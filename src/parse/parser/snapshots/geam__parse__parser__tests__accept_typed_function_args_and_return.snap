@@ -1,0 +1,142 @@
+---
+source: src/parse/parser/tests.rs
+expression: "parse(r#\"\npub fn add(left: Int, right: Int) -> Int {\n  left + right\n}\n\"#)"
+---
+Module {
+    name: "test/module",
+    path: "test/module.gleam",
+    documentation: [],
+    type_info: (),
+    definitions: [
+        Function(
+            Function {
+                location: SrcSpan {
+                    start: 5,
+                    end: 11,
+                },
+                body_start: Some(
+                    42,
+                ),
+                end_position: 60,
+                name: Some(
+                    (
+                        SrcSpan {
+                            start: 8,
+                            end: 11,
+                        },
+                        "add",
+                    ),
+                ),
+                arguments: [
+                    Arg {
+                        location: SrcSpan {
+                            start: 12,
+                            end: 21,
+                        },
+                        name: (
+                            SrcSpan {
+                                start: 12,
+                                end: 16,
+                            },
+                            "left",
+                        ),
+                        annotation: Some(
+                            Constructor {
+                                location: SrcSpan {
+                                    start: 18,
+                                    end: 21,
+                                },
+                                module: None,
+                                name: (
+                                    SrcSpan {
+                                        start: 18,
+                                        end: 21,
+                                    },
+                                    "Int",
+                                ),
+                                arguments: [],
+                            },
+                        ),
+                        type_: (),
+                    },
+                    Arg {
+                        location: SrcSpan {
+                            start: 23,
+                            end: 33,
+                        },
+                        name: (
+                            SrcSpan {
+                                start: 23,
+                                end: 28,
+                            },
+                            "right",
+                        ),
+                        annotation: Some(
+                            Constructor {
+                                location: SrcSpan {
+                                    start: 30,
+                                    end: 33,
+                                },
+                                module: None,
+                                name: (
+                                    SrcSpan {
+                                        start: 30,
+                                        end: 33,
+                                    },
+                                    "Int",
+                                ),
+                                arguments: [],
+                            },
+                        ),
+                        type_: (),
+                    },
+                ],
+                body: [
+                    Expression(
+                        BinOp {
+                            location: SrcSpan {
+                                start: 46,
+                                end: 58,
+                            },
+                            operator: AddInt,
+                            operator_start: 51,
+                            left: Var {
+                                location: SrcSpan {
+                                    start: 46,
+                                    end: 50,
+                                },
+                                name: "left",
+                            },
+                            right: Var {
+                                location: SrcSpan {
+                                    start: 53,
+                                    end: 58,
+                                },
+                                name: "right",
+                            },
+                        },
+                    ),
+                ],
+                publicity: Public,
+                return_annotation: Some(
+                    Constructor {
+                        location: SrcSpan {
+                            start: 38,
+                            end: 41,
+                        },
+                        module: None,
+                        name: (
+                            SrcSpan {
+                                start: 38,
+                                end: 41,
+                            },
+                            "Int",
+                        ),
+                        arguments: [],
+                    },
+                ),
+                return_type: (),
+            },
+        ),
+    ],
+}

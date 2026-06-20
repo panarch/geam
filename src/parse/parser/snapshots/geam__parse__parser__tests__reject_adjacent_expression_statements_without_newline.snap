@@ -1,0 +1,19 @@
+---
+source: src/parse/parser/tests.rs
+expression: "reject(r#\"\npub fn main() {\n  1 2\n}\n\"#)"
+---
+ParseError {
+    error: UnexpectedToken {
+        token: Int {
+            value: "2",
+            int_value: 2,
+        },
+        expected: [
+            "a newline or `}`",
+        ],
+    },
+    location: SrcSpan {
+        start: 21,
+        end: 22,
+    },
+}

@@ -1,0 +1,11 @@
+---
+source: src/parse/lexer/tests.rs
+expression: "lex_reject(r#\"\"\\q\"\"#)"
+---
+LexicalError {
+    error: BadStringEscape,
+    location: SrcSpan {
+        start: 1,
+        end: 2,
+    },
+}

@@ -1,0 +1,13 @@
+---
+source: src/parse/parser/tests.rs
+expression: "reject(r#\"\npub fn main(value) {\n  case value {\n    [head, ..tail] -> head\n  }\n}\n\"#)"
+---
+ParseError {
+    error: UnsupportedSyntax {
+        syntax: "list pattern spread",
+    },
+    location: SrcSpan {
+        start: 48,
+        end: 50,
+    },
+}

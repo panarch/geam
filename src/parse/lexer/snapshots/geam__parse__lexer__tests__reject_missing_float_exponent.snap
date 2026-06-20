@@ -1,0 +1,11 @@
+---
+source: src/parse/lexer/tests.rs
+expression: "lex_reject(\"1e\")"
+---
+LexicalError {
+    error: MissingExponent,
+    location: SrcSpan {
+        start: 2,
+        end: 2,
+    },
+}

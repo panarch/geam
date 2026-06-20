@@ -1,0 +1,13 @@
+---
+source: src/parse/lexer/tests.rs
+expression: "lex_reject(\"~\")"
+---
+LexicalError {
+    error: UnrecognizedToken {
+        tok: '~',
+    },
+    location: SrcSpan {
+        start: 0,
+        end: 1,
+    },
+}

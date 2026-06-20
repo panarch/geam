@@ -1,0 +1,13 @@
+---
+source: src/parse/parser/tests.rs
+expression: "reject(r#\"\npub fn main() {\n  assert True\n}\n\"#)"
+---
+ParseError {
+    error: UnsupportedSyntax {
+        syntax: "assert expressions",
+    },
+    location: SrcSpan {
+        start: 19,
+        end: 25,
+    },
+}

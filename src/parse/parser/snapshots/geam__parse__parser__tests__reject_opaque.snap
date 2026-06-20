@@ -1,0 +1,13 @@
+---
+source: src/parse/parser/tests.rs
+expression: "reject(r#\"\npub opaque type Secret {\n  Secret\n}\n\"#)"
+---
+ParseError {
+    error: UnsupportedSyntax {
+        syntax: "opaque types",
+    },
+    location: SrcSpan {
+        start: 5,
+        end: 11,
+    },
+}

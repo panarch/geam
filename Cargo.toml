@@ -1,0 +1,13 @@
+[package]
+name = "geam"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+camino = "1"
+ecow = "0"
+num-bigint = "0.4.6"
+thiserror = "2"
+
+[dev-dependencies]
+insta = { version = "1", features = ["glob"] }

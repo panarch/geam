@@ -1,0 +1,11 @@
+---
+source: src/parse/lexer/tests.rs
+expression: "lex_reject(\"0x\")"
+---
+LexicalError {
+    error: RadixIntNoValue,
+    location: SrcSpan {
+        start: 1,
+        end: 1,
+    },
+}

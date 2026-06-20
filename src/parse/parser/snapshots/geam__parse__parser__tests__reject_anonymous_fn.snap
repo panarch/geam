@@ -1,0 +1,13 @@
+---
+source: src/parse/parser/tests.rs
+expression: "reject(r#\"\npub fn main() {\n  fn(x) { x }\n}\n\"#)"
+---
+ParseError {
+    error: UnsupportedSyntax {
+        syntax: "anonymous functions",
+    },
+    location: SrcSpan {
+        start: 19,
+        end: 21,
+    },
+}

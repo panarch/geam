@@ -1,0 +1,196 @@
+---
+source: src/parse/parser/tests.rs
+expression: "parse(r#\"\npub fn main(user) {\n  let count = 1\n  let typed: Int = count\n  let #(name, age) = #(user.name, 42)\n  typed\n}\n\"#)"
+---
+Module {
+    name: "test/module",
+    path: "test/module.gleam",
+    documentation: [],
+    type_info: (),
+    definitions: [
+        Function(
+            Function {
+                location: SrcSpan {
+                    start: 5,
+                    end: 12,
+                },
+                body_start: Some(
+                    19,
+                ),
+                end_position: 109,
+                name: Some(
+                    (
+                        SrcSpan {
+                            start: 8,
+                            end: 12,
+                        },
+                        "main",
+                    ),
+                ),
+                arguments: [
+                    Arg {
+                        location: SrcSpan {
+                            start: 13,
+                            end: 17,
+                        },
+                        name: (
+                            SrcSpan {
+                                start: 13,
+                                end: 17,
+                            },
+                            "user",
+                        ),
+                        annotation: None,
+                        type_: (),
+                    },
+                ],
+                body: [
+                    Assignment(
+                        Assignment {
+                            location: SrcSpan {
+                                start: 23,
+                                end: 36,
+                            },
+                            pattern: Variable {
+                                location: SrcSpan {
+                                    start: 27,
+                                    end: 32,
+                                },
+                                name: "count",
+                                type_: (),
+                            },
+                            annotation: None,
+                            value: Int {
+                                location: SrcSpan {
+                                    start: 35,
+                                    end: 36,
+                                },
+                                value: "1",
+                                int_value: 1,
+                            },
+                        },
+                    ),
+                    Assignment(
+                        Assignment {
+                            location: SrcSpan {
+                                start: 39,
+                                end: 61,
+                            },
+                            pattern: Variable {
+                                location: SrcSpan {
+                                    start: 43,
+                                    end: 48,
+                                },
+                                name: "typed",
+                                type_: (),
+                            },
+                            annotation: Some(
+                                Constructor {
+                                    location: SrcSpan {
+                                        start: 50,
+                                        end: 53,
+                                    },
+                                    module: None,
+                                    name: (
+                                        SrcSpan {
+                                            start: 50,
+                                            end: 53,
+                                        },
+                                        "Int",
+                                    ),
+                                    arguments: [],
+                                },
+                            ),
+                            value: Var {
+                                location: SrcSpan {
+                                    start: 56,
+                                    end: 61,
+                                },
+                                name: "count",
+                            },
+                        },
+                    ),
+                    Assignment(
+                        Assignment {
+                            location: SrcSpan {
+                                start: 64,
+                                end: 99,
+                            },
+                            pattern: Tuple {
+                                location: SrcSpan {
+                                    start: 68,
+                                    end: 80,
+                                },
+                                elements: [
+                                    Variable {
+                                        location: SrcSpan {
+                                            start: 70,
+                                            end: 74,
+                                        },
+                                        name: "name",
+                                        type_: (),
+                                    },
+                                    Variable {
+                                        location: SrcSpan {
+                                            start: 76,
+                                            end: 79,
+                                        },
+                                        name: "age",
+                                        type_: (),
+                                    },
+                                ],
+                            },
+                            annotation: None,
+                            value: Tuple {
+                                location: SrcSpan {
+                                    start: 83,
+                                    end: 99,
+                                },
+                                elements: [
+                                    FieldAccess {
+                                        location: SrcSpan {
+                                            start: 85,
+                                            end: 94,
+                                        },
+                                        label_location: SrcSpan {
+                                            start: 90,
+                                            end: 94,
+                                        },
+                                        label: "name",
+                                        container: Var {
+                                            location: SrcSpan {
+                                                start: 85,
+                                                end: 89,
+                                            },
+                                            name: "user",
+                                        },
+                                    },
+                                    Int {
+                                        location: SrcSpan {
+                                            start: 96,
+                                            end: 98,
+                                        },
+                                        value: "42",
+                                        int_value: 42,
+                                    },
+                                ],
+                            },
+                        },
+                    ),
+                    Expression(
+                        Var {
+                            location: SrcSpan {
+                                start: 102,
+                                end: 107,
+                            },
+                            name: "typed",
+                        },
+                    ),
+                ],
+                publicity: Public,
+                return_annotation: None,
+                return_type: (),
+            },
+        ),
+    ],
+}
