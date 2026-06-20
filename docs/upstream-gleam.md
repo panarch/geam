@@ -48,7 +48,7 @@ The most important upstream ideas are:
 Geam currently adapts the shape and intent of Gleam's front-end rather than the
 entire implementation.
 
-- Geam defines its own source AST instead of importing the full Gleam AST.
+- Geam defines its own untyped AST instead of importing the full Gleam AST.
 - Geam owns its lexer, token model, parser, and parse error types while keeping
   their shape close enough to compare against the referenced Gleam front-end.
 - Parser and lexer behavior is locked with unit tests and `insta` snapshots.
@@ -63,7 +63,7 @@ The public parser API is intentionally small:
 pub fn parse_module(
     path: camino::Utf8PathBuf,
     src: &str,
-) -> Result<geam::ast::SourceModule, geam::parse::ParseError>
+) -> Result<geam::ast::UntypedModule, geam::parse::ParseError>
 ```
 
 ## Intentionally Not Imported
@@ -83,7 +83,7 @@ are intentionally excluded from the first milestone:
 
 The first parser milestone rejects unsupported syntax at the parser boundary
 where practical. Later semantic/profile checks may refine this boundary, but
-Geam should not silently accept the full Gleam language as its source AST.
+Geam should not silently accept the full Gleam language as its untyped AST.
 
 ## Current Language Boundary
 

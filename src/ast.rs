@@ -36,12 +36,12 @@ pub struct Module<Info, Definitions> {
     pub definitions: Definitions,
 }
 
-pub type SourceModule = Module<(), Vec<SourceDefinition>>;
-pub type SourceDefinition = Definition<(), Expr>;
-pub type SourceFunction = Function<(), Expr>;
-pub type SourceStatement = Statement<(), Expr>;
-pub type SourcePattern = Pattern<()>;
-pub type SourceClause = Clause<Expr, ()>;
+pub type UntypedModule = Module<(), Vec<UntypedDefinition>>;
+pub type UntypedDefinition = Definition<(), UntypedExpr>;
+pub type UntypedFunction = Function<(), UntypedExpr>;
+pub type UntypedStatement = Statement<(), UntypedExpr>;
+pub type UntypedPattern = Pattern<()>;
+pub type UntypedClause = Clause<UntypedExpr, ()>;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Publicity {
@@ -200,7 +200,7 @@ pub struct Assignment<TypeT, ExprT> {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Expr {
+pub enum UntypedExpr {
     Int {
         location: SrcSpan,
         value: EcoString,
@@ -216,7 +216,7 @@ pub enum Expr {
     },
     Block {
         location: SrcSpan,
-        statements: Vec<SourceStatement>,
+        statements: Vec<UntypedStatement>,
     },
     Var {
         location: SrcSpan,
@@ -245,7 +245,7 @@ pub enum Expr {
     Case {
         location: SrcSpan,
         subjects: Vec<Self>,
-        clauses: Vec<SourceClause>,
+        clauses: Vec<UntypedClause>,
     },
     FieldAccess {
         location: SrcSpan,
@@ -272,7 +272,7 @@ pub enum Expr {
     },
 }
 
-impl HasLocation for Expr {
+impl HasLocation for UntypedExpr {
     fn location(&self) -> SrcSpan {
         match self {
             Self::PipeLine { expressions } => match (expressions.first(), expressions.last()) {

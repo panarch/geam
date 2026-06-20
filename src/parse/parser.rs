@@ -1,8 +1,8 @@
 use crate::ast::{
-    Arg, AssignName, Assignment, BinOp, CallArg, Clause, ClauseGuard, CustomType, Definition, Expr,
+    Arg, AssignName, Assignment, BinOp, CallArg, Clause, ClauseGuard, CustomType, Definition,
     Function, HasLocation, Import, Module, Pattern, Publicity, RecordConstructor,
-    RecordConstructorArg, SourceModule, SourceStatement, SpannedString, SrcSpan, Statement,
-    TypeAlias, TypeAst,
+    RecordConstructorArg, SpannedString, SrcSpan, Statement, TypeAlias, TypeAst, UntypedExpr,
+    UntypedModule, UntypedStatement,
 };
 use crate::parse::error::{LexicalError, ParseError, ParseErrorType, parse_error};
 use crate::parse::lexer::{Spanned, tokenize};
@@ -10,7 +10,7 @@ use crate::parse::token::Token;
 use camino::Utf8PathBuf;
 use ecow::EcoString;
 
-pub fn parse_module(path: Utf8PathBuf, src: &str) -> Result<SourceModule, ParseError> {
+pub fn parse_module(path: Utf8PathBuf, src: &str) -> Result<UntypedModule, ParseError> {
     let tokens = tokenize(src).map_err(parse_lex_error)?;
     Parser::new(path, tokens).parse_module()
 }
@@ -37,7 +37,7 @@ impl Parser {
         }
     }
 
-    fn parse_module(&mut self) -> Result<SourceModule, ParseError> {
+    fn parse_module(&mut self) -> Result<UntypedModule, ParseError> {
         let mut definitions = Vec::new();
 
         self.skip_newlines();
@@ -62,7 +62,7 @@ impl Parser {
         })
     }
 
-    fn parse_definition(&mut self) -> Result<Definition<(), Expr>, ParseError> {
+    fn parse_definition(&mut self) -> Result<Definition<(), UntypedExpr>, ParseError> {
         let publicity = if self.at(&Token::Pub) {
             self.bump();
             Publicity::Public
@@ -124,7 +124,7 @@ impl Parser {
     fn parse_type_definition(
         &mut self,
         publicity: Publicity,
-    ) -> Result<Definition<(), Expr>, ParseError> {
+    ) -> Result<Definition<(), UntypedExpr>, ParseError> {
         let start = self.expect(&Token::Type, vec!["`type`".into()])?.start;
         let (name, parameters) = self.parse_type_name_with_parameters()?;
 
@@ -258,7 +258,10 @@ impl Parser {
         })
     }
 
-    fn parse_function(&mut self, publicity: Publicity) -> Result<Function<(), Expr>, ParseError> {
+    fn parse_function(
+        &mut self,
+        publicity: Publicity,
+    ) -> Result<Function<(), UntypedExpr>, ParseError> {
         let start = self.expect(&Token::Fn, vec!["`fn`".into()])?.start;
         let name = self.expect_name()?;
         self.expect(&Token::LeftParen, vec!["`(`".into()])?;
@@ -324,7 +327,7 @@ impl Parser {
         })
     }
 
-    fn parse_statements_until_right_brace(&mut self) -> Result<Vec<SourceStatement>, ParseError> {
+    fn parse_statements_until_right_brace(&mut self) -> Result<Vec<UntypedStatement>, ParseError> {
         let mut statements = Vec::new();
         self.skip_newlines();
 
@@ -343,7 +346,7 @@ impl Parser {
         Ok(statements)
     }
 
-    fn parse_statement(&mut self) -> Result<SourceStatement, ParseError> {
+    fn parse_statement(&mut self) -> Result<UntypedStatement, ParseError> {
         match self.current_token() {
             Token::Let => self.parse_assignment(),
             Token::Use => self.unsupported_current("use expressions"),
@@ -352,7 +355,7 @@ impl Parser {
         }
     }
 
-    fn parse_assignment(&mut self) -> Result<SourceStatement, ParseError> {
+    fn parse_assignment(&mut self) -> Result<UntypedStatement, ParseError> {
         let start = self.expect(&Token::Let, vec!["`let`".into()])?.start;
         if self.at(&Token::Assert) {
             return self.unsupported_current("let assert");
@@ -377,11 +380,11 @@ impl Parser {
         })))
     }
 
-    fn parse_expression(&mut self) -> Result<Expr, ParseError> {
+    fn parse_expression(&mut self) -> Result<UntypedExpr, ParseError> {
         self.parse_pipeline()
     }
 
-    fn parse_pipeline(&mut self) -> Result<Expr, ParseError> {
+    fn parse_pipeline(&mut self) -> Result<UntypedExpr, ParseError> {
         let mut expressions = vec![self.parse_binary(1)?];
 
         while self.maybe(&Token::Pipe).is_some() {
@@ -391,11 +394,11 @@ impl Parser {
         if expressions.len() == 1 {
             Ok(expressions.pop().expect("one expression was parsed"))
         } else {
-            Ok(Expr::PipeLine { expressions })
+            Ok(UntypedExpr::PipeLine { expressions })
         }
     }
 
-    fn parse_binary(&mut self, min_precedence: u8) -> Result<Expr, ParseError> {
+    fn parse_binary(&mut self, min_precedence: u8) -> Result<UntypedExpr, ParseError> {
         let mut left = self.parse_unary()?;
 
         while let Some((operator, precedence, operator_start)) = self.current_bin_op() {
@@ -406,7 +409,7 @@ impl Parser {
             self.bump();
             let right = self.parse_binary(precedence + 1)?;
             let location = left.location().merge(&right.location());
-            left = Expr::BinOp {
+            left = UntypedExpr::BinOp {
                 location,
                 operator,
                 operator_start,
@@ -418,13 +421,13 @@ impl Parser {
         Ok(left)
     }
 
-    fn parse_unary(&mut self) -> Result<Expr, ParseError> {
+    fn parse_unary(&mut self) -> Result<UntypedExpr, ParseError> {
         match self.current_token() {
             Token::Bang => {
                 let start = self.bump().start;
                 let value = self.parse_unary()?;
                 let location = SrcSpan::new(start, value.location().end);
-                Ok(Expr::NegateBool {
+                Ok(UntypedExpr::NegateBool {
                     location,
                     value: Box::new(value),
                 })
@@ -433,7 +436,7 @@ impl Parser {
                 let start = self.bump().start;
                 let value = self.parse_unary()?;
                 let location = SrcSpan::new(start, value.location().end);
-                Ok(Expr::NegateInt {
+                Ok(UntypedExpr::NegateInt {
                     location,
                     value: Box::new(value),
                 })
@@ -442,7 +445,7 @@ impl Parser {
         }
     }
 
-    fn parse_postfix(&mut self) -> Result<Expr, ParseError> {
+    fn parse_postfix(&mut self) -> Result<UntypedExpr, ParseError> {
         let mut expression = self.parse_primary()?;
 
         loop {
@@ -451,7 +454,7 @@ impl Parser {
                     let open_parenthesis = self.bump().start;
                     let arguments = self.parse_call_args()?;
                     let end = self.expect(&Token::RightParen, vec!["`)`".into()])?.end;
-                    expression = Expr::Call {
+                    expression = UntypedExpr::Call {
                         location: SrcSpan::new(expression.location().start, end),
                         fun: Box::new(expression),
                         arguments,
@@ -463,7 +466,7 @@ impl Parser {
                     match self.current_token().clone() {
                         Token::Name { name } | Token::UpName { name } => {
                             let label = self.bump();
-                            expression = Expr::FieldAccess {
+                            expression = UntypedExpr::FieldAccess {
                                 location: SrcSpan::new(expression.location().start, label.end),
                                 label_location: label.location(),
                                 label: name,
@@ -476,7 +479,7 @@ impl Parser {
                                 error: ParseErrorType::ExpectedName,
                                 location: index_token.location(),
                             })?;
-                            expression = Expr::TupleIndex {
+                            expression = UntypedExpr::TupleIndex {
                                 location: SrcSpan::new(
                                     expression.location().start,
                                     index_token.end,
@@ -500,7 +503,7 @@ impl Parser {
         Ok(expression)
     }
 
-    fn parse_call_args(&mut self) -> Result<Vec<CallArg<Expr>>, ParseError> {
+    fn parse_call_args(&mut self) -> Result<Vec<CallArg<UntypedExpr>>, ParseError> {
         let mut arguments = Vec::new();
         self.skip_newlines();
 
@@ -532,7 +535,7 @@ impl Parser {
         Ok(arguments)
     }
 
-    fn parse_call_arg(&mut self) -> Result<CallArg<Expr>, ParseError> {
+    fn parse_call_arg(&mut self) -> Result<CallArg<UntypedExpr>, ParseError> {
         let label =
             if matches!(self.current_token(), Token::Name { .. }) && self.next_is(&Token::Colon) {
                 let label = self.expect_name()?;
@@ -556,11 +559,11 @@ impl Parser {
         })
     }
 
-    fn parse_primary(&mut self) -> Result<Expr, ParseError> {
+    fn parse_primary(&mut self) -> Result<UntypedExpr, ParseError> {
         match self.current_token().clone() {
             Token::Int { value, int_value } => {
                 let token = self.bump();
-                Ok(Expr::Int {
+                Ok(UntypedExpr::Int {
                     location: token.location(),
                     value,
                     int_value,
@@ -568,21 +571,21 @@ impl Parser {
             }
             Token::Float { value } => {
                 let token = self.bump();
-                Ok(Expr::Float {
+                Ok(UntypedExpr::Float {
                     location: token.location(),
                     value,
                 })
             }
             Token::String { value } => {
                 let token = self.bump();
-                Ok(Expr::String {
+                Ok(UntypedExpr::String {
                     location: token.location(),
                     value,
                 })
             }
             Token::Name { name } | Token::UpName { name } => {
                 let token = self.bump();
-                Ok(Expr::Var {
+                Ok(UntypedExpr::Var {
                     location: token.location(),
                     name,
                 })
@@ -616,17 +619,17 @@ impl Parser {
         }
     }
 
-    fn parse_block_expression(&mut self) -> Result<Expr, ParseError> {
+    fn parse_block_expression(&mut self) -> Result<UntypedExpr, ParseError> {
         let start = self.expect(&Token::LeftBrace, vec!["`{`".into()])?.start;
         let statements = self.parse_statements_until_right_brace()?;
         let end = self.expect(&Token::RightBrace, vec!["`}`".into()])?.end;
-        Ok(Expr::Block {
+        Ok(UntypedExpr::Block {
             location: SrcSpan::new(start, end),
             statements,
         })
     }
 
-    fn parse_list_expression(&mut self) -> Result<Expr, ParseError> {
+    fn parse_list_expression(&mut self) -> Result<UntypedExpr, ParseError> {
         let start = self.expect(&Token::LeftSquare, vec!["`[`".into()])?.start;
         let mut elements = Vec::new();
         self.skip_newlines();
@@ -651,13 +654,13 @@ impl Parser {
         }
 
         let end = self.expect(&Token::RightSquare, vec!["`]`".into()])?.end;
-        Ok(Expr::List {
+        Ok(UntypedExpr::List {
             location: SrcSpan::new(start, end),
             elements,
         })
     }
 
-    fn parse_tuple_expression(&mut self) -> Result<Expr, ParseError> {
+    fn parse_tuple_expression(&mut self) -> Result<UntypedExpr, ParseError> {
         let start = self.expect(&Token::Hash, vec!["`#`".into()])?.start;
         self.expect(&Token::LeftParen, vec!["`(`".into()])?;
         let mut elements = Vec::new();
@@ -677,13 +680,13 @@ impl Parser {
         }
 
         let end = self.expect(&Token::RightParen, vec!["`)`".into()])?.end;
-        Ok(Expr::Tuple {
+        Ok(UntypedExpr::Tuple {
             location: SrcSpan::new(start, end),
             elements,
         })
     }
 
-    fn parse_case_expression(&mut self) -> Result<Expr, ParseError> {
+    fn parse_case_expression(&mut self) -> Result<UntypedExpr, ParseError> {
         let start = self.expect(&Token::Case, vec!["`case`".into()])?.start;
         let mut subjects = Vec::new();
 
@@ -718,14 +721,14 @@ impl Parser {
         }
 
         let end = self.expect(&Token::RightBrace, vec!["`}`".into()])?.end;
-        Ok(Expr::Case {
+        Ok(UntypedExpr::Case {
             location: SrcSpan::new(start, end),
             subjects,
             clauses,
         })
     }
 
-    fn parse_case_clause(&mut self) -> Result<Clause<Expr, ()>, ParseError> {
+    fn parse_case_clause(&mut self) -> Result<Clause<UntypedExpr, ()>, ParseError> {
         let pattern = self.parse_pattern_list()?;
         let mut alternative_patterns = Vec::new();
 

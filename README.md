@@ -41,8 +41,8 @@ The initial implementation target is:
 source text
 -> Geam lexer/token
 -> Geam subset parser
--> Geam source AST
+-> Geam untyped AST
 ```
 
-Core IR and execution should be designed after the source AST and parser boundary
+Core IR and execution should be designed after the untyped AST and parser boundary
 is stable enough to test against selected Gleam parser fixtures.
