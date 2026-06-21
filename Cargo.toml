@@ -5,9 +5,9 @@ edition = "2024"
 
 [dependencies]
 camino = "1"
-ecow = "0"
-num-bigint = "0.4.6"
+# Keep this aligned with the Gleam v1.17.0 lockfile while using gleam-core as a
+# path dependency. gleam-core does not compile against ecow 0.3.0.
+ecow = "=0.2.6"
+gleam-core = { path = "../gleam/compiler-core" }
+im = "15"
 thiserror = "2"
-
-[dev-dependencies]
-insta = { version = "1", features = ["glob"] }

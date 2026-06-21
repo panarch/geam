@@ -1,7 +1,11 @@
 # Testing
 
-Geam uses Rust unit tests and `insta` snapshots for the first front-end
+Geam uses Rust unit tests for compiler-boundary, lowering, and runtime
 milestones.
+
+The current compiler-boundary milestone depends on a local Gleam checkout at the
+baseline recorded in the README. `cargo test` compiles the `gleam-core` path
+dependency as part of the normal suite.
 
 ## Commands
 
@@ -9,12 +13,6 @@ Run the normal test suite:
 
 ```sh
 cargo test
-```
-
-Update snapshots only when intentionally changing parser output:
-
-```sh
-INSTA_UPDATE=always cargo test
 ```
 
 Run formatting and lint checks:
@@ -54,5 +52,5 @@ The HTML report is written to:
 target/llvm-cov/html/index.html
 ```
 
-Use the summary and HTML report to identify parser accept/reject gaps, lexer
-error paths, and analyse/type inference paths that still need direct tests.
+Use the summary and HTML report to identify Gleam boundary wrapper paths and
+later lowering/profile/runtime paths that still need direct tests.

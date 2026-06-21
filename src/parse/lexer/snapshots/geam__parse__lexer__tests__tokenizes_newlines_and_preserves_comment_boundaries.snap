@@ -1,9 +1,0 @@
----
-source: src/parse/lexer/tests.rs
-expression: "lex(\"one\\n// comment\\r\\ntwo\")"
----
-Name { name: "one" } @ 0..3
-NewLine @ 3..4
-NewLine @ 14..16
-Name { name: "two" } @ 16..19
-EndOfFile @ 19..19

@@ -1,12 +1,13 @@
-# Upstream Gleam Reference
+# Upstream Gleam Compiler Boundary
 
-Geam's first front-end milestone is intentionally close to Gleam, but it is not a
-copy of the full Gleam compiler front-end. This document records the upstream
-baseline, what was referenced or adapted, and what was intentionally left out.
+Geam does not own a separate source language front-end. It relies on Gleam's
+published compiler front-end, then starts Geam-specific work at the typed AST
+boundary. This document records the upstream baseline, what is used directly,
+and where Geam's runtime-specific boundary begins.
 
 ## Baseline
 
-Geam's initial front-end reference is:
+Geam's compiler boundary reference is:
 
 ```text
 Repository: https://github.com/gleam-lang/gleam
@@ -15,132 +16,77 @@ Commit:     afc1b7d956b433e638d52dbd06470f53a0b26f6a
 Published:  2026-06-02
 ```
 
-The baseline is release-based rather than `main`-based so parser, AST, and test
-comparisons are made against a published Gleam toolchain.
+The baseline is release-based rather than `main`-based so typed AST and
+compiler-boundary behavior are compared against a published Gleam toolchain.
 
-## Referenced Upstream Areas
+## Used Gleam Areas
 
-The initial Geam parser milestone referenced these Gleam front-end areas:
+The first compiler-boundary milestone depends on `gleam-core` from the baseline
+checkout and calls these compiler areas directly:
 
 ```text
+compiler-core/src/parse.rs
+compiler-core/src/parse/error.rs
+compiler-core/src/analyse.rs
+compiler-core/src/type_.rs
 compiler-core/src/ast.rs
 compiler-core/src/ast/untyped.rs
 compiler-core/src/ast/typed.rs
-compiler-core/src/ast/constant.rs
-compiler-core/src/parse.rs
-compiler-core/src/parse/lexer.rs
-compiler-core/src/parse/token.rs
-compiler-core/src/parse/error.rs
-compiler-core/src/parse/tests.rs
-compiler-core/src/parse/snapshots/
-compiler-core/src/analyse.rs
-compiler-core/src/analyse/name.rs
-compiler-core/src/type_.rs
-compiler-core/src/type_/environment.rs
-compiler-core/src/type_/expression.rs
-compiler-core/src/type_/pattern.rs
-compiler-core/src/type_/pipe.rs
-compiler-core/src/type_/tests.rs
 ```
 
-The most important upstream ideas are:
+The Geam wrapper parses source text, inserts Gleam's prelude interface, assigns
+the caller-provided module name, and runs `ModuleAnalyzerConstructor::infer_module`
+to produce a Gleam `TypedModule`.
 
-- A generic AST shape that can represent phase-specific data without storing
-  untyped and typed information in the same node.
-- A hand-written parser with expression precedence handling.
-- Source spans on AST nodes.
-- Snapshot-oriented parser tests.
-- Fresh inference variables, unification, call type matching, and generalisation
-  for the accepted expression subset.
+## Geam Boundary
 
-## Adapted In Geam
+Milestone 1 intentionally does not define a Geam source AST, Core IR, runtime,
+module loader, package resolver, or CLI. Its boundary is:
 
-Geam currently adapts the shape and intent of Gleam's front-end rather than the
-entire implementation.
+```text
+source text -> Gleam TypedModule
+```
 
-- Geam defines its own untyped AST instead of importing the full Gleam AST.
-- Geam owns its lexer, token model, parser, and parse error types while keeping
-  their shape close enough to compare against the referenced Gleam front-end.
-- Geam owns a smaller type inference implementation, but its core behavior is
-  expected to stay close to Gleam for accepted syntax.
-- Geam has an explicit untyped-to-typed `analyse` boundary and a small
-  `ModuleInterface` for caller-supplied imports.
-- Analyse follows Gleam's broad phase split by keeping name validation,
-  dependency ordering, finalisation, expression typing, and pattern typing as
-  separate responsibilities.
-- Because imported module interfaces are caller-supplied in this milestone,
-  Geam validates their basic compiler invariants at import time instead of
-  assuming they were produced by a full module loader. This includes rejecting
-  unresolved inference variables, invalid type parameter sets, invalid value
-  constructor kinds, and record constructor/type parameter shape mismatches.
-- Geam's value constructors keep the minimum Gleam-like value kind needed by the
-  subset, such as distinguishing module functions from record constructors.
-- Parser and lexer behavior is locked with unit tests and `insta` snapshots.
+Geam-specific profile validation belongs in the lowering phase from Gleam's typed
+AST into Geam's runtime representation. That phase should reject unsupported
+execution semantics before evaluation instead of accepting a program and failing
+inside the runtime.
+
+The earlier Geam-owned parser and analyse prototype has been removed. The active
+direction is to rely on Gleam's typed AST and build Geam profile validation,
+lowering, and execution after that boundary.
 
 This document intentionally avoids mirroring Geam's current internal file tree.
 Use the repository itself as the source of truth for exact module and test file
 locations.
 
-The public parser API is intentionally small:
+The current public compiler-boundary API is:
 
 ```rust
-pub fn parse_module(
-    path: camino::Utf8PathBuf,
+pub fn compile_typed_module(
+    module_name: impl Into<ecow::EcoString>,
+    path: impl Into<camino::Utf8PathBuf>,
     src: &str,
-) -> Result<geam::ast::UntypedModule, geam::parse::ParseError>
+) -> Result<gleam_core::ast::TypedModule, geam::frontend::FrontendError>
 ```
 
-The public analyse API is also intentionally small:
+## Intentionally Out Of Scope
 
-```rust
-pub fn analyse_module(
-    module: geam::ast::UntypedModule,
-    importable_modules: &geam::type_::ImportableModules,
-) -> Result<geam::ast::TypedModule, geam::analyse::AnalyseError>
-```
+These areas are intentionally excluded from the first compiler-boundary
+milestone:
 
-`importable_modules` is supplied by the caller. Geam does not load dependency
-source files, resolve packages, or dynamically compile imported modules in this
-milestone.
-
-## Intentionally Not Imported
-
-Geam does not import or preserve the full Gleam compiler front-end. These areas
-are intentionally excluded from the first milestone:
-
-- Full typed AST internals beyond the accepted subset and the complete Gleam
-  type inference machinery.
 - LSP node lookup helpers.
 - Erlang and JavaScript target metadata.
 - Code generation metadata.
-- Compiler-specific structures such as `Inferred`, `Purity`, `Implementations`,
-  `Names`, and unused-definition tracking.
-- Module constants and constant evaluation.
-- Full Gleam parser acceptance followed by a later reject pass.
-- Core IR, runtime execution, host module resolution, and CLI behavior.
+- Project compilation, package resolution, module loading, dependency graph
+  analysis, and artifact writing.
+- Geam Core IR, runtime execution, host bindings, and CLI behavior.
 
-The first parser milestone rejects unsupported syntax at the parser boundary
-where practical. Later semantic/profile checks may refine this boundary, but
-Geam should not silently accept the full Gleam language as its untyped AST.
+## Current Source Boundary
 
-## Current Language Boundary
-
-The first Geam parser accepts:
-
-- Imports, functions, custom types, and type aliases.
-- Expression statements and `let` assignment.
-- Literals, variables, lists, tuples, calls, binary operators, pipelines, case
-  expressions, field access, tuple index, and boolean/int negation.
-- Basic patterns, constructor patterns, tuple/list patterns, string-prefix
-  patterns, alias patterns, alternative case patterns, and syntactic case guards.
-
-It rejects:
-
-- Module constants, attributes, `external`, `target`, and `opaque`.
-- `use`, `assert`, and `let assert`.
-- Anonymous function literals.
-- `todo`, `panic`, and `echo`.
-- Bit arrays, record update, and list tail/spread syntax.
+Milestone 1 accepts and rejects programs according to Gleam `v1.17.0` parser and
+analyse rules. Geam's smaller execution profile will be introduced by typed-AST
+lowering, not by forking Gleam's parser or type inferencer.
 
 ## Sync Policy
 
@@ -148,9 +94,9 @@ When updating Geam to a newer Gleam baseline, record:
 
 - Old and new Gleam release tags.
 - Old and new commit hashes.
-- Front-end files compared.
-- Geam AST/parser changes made.
-- Accept/reject fixture changes.
+- Compiler-boundary files compared.
+- Geam compiler-boundary wrapper or lowering changes made.
+- Profile/lowering fixture changes.
 - License or provenance changes, if any.
 
 The README should keep the current upstream release and commit hash visible.
