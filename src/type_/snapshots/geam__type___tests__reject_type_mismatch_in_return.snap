@@ -1,0 +1,24 @@
+---
+source: src/type_/tests.rs
+expression: "analyse(r#\"\npub fn main() -> String {\n  1\n}\n\"#)"
+---
+Err(
+    AnalyseError {
+        error: TypeMismatch {
+            expected: Named {
+                module: "gleam",
+                name: "String",
+                arguments: [],
+            },
+            actual: Named {
+                module: "gleam",
+                name: "Int",
+                arguments: [],
+            },
+        },
+        location: SrcSpan {
+            start: 5,
+            end: 12,
+        },
+    },
+)

@@ -1,0 +1,183 @@
+---
+source: src/type_/tests.rs
+expression: "analyse_with(r#\"\nimport gleam/io as logger\n\npub fn main(message: String) {\n  logger.println(message)\n}\n\"#,\nio_imports(),)"
+---
+Ok(
+    Module {
+        name: "main",
+        path: "main.gleam",
+        documentation: [],
+        type_info: ModuleInterface {
+            name: "main",
+            types: {},
+            values: {
+                "main": ValueConstructor {
+                    publicity: Public,
+                    variant: ModuleFn,
+                    type_: Fn {
+                        arguments: [
+                            Named {
+                                module: "gleam",
+                                name: "String",
+                                arguments: [],
+                            },
+                        ],
+                        return_: Named {
+                            module: "gleam",
+                            name: "Nil",
+                            arguments: [],
+                        },
+                    },
+                    parameter_labels: [],
+                },
+            },
+        },
+        definitions: TypedDefinitions {
+            imports: [
+                Import {
+                    location: SrcSpan {
+                        start: 1,
+                        end: 26,
+                    },
+                    module: "gleam/io",
+                    alias: Some(
+                        (
+                            SrcSpan {
+                                start: 20,
+                                end: 26,
+                            },
+                            "logger",
+                        ),
+                    ),
+                },
+            ],
+            custom_types: [],
+            type_aliases: [],
+            functions: [
+                Function {
+                    location: SrcSpan {
+                        start: 32,
+                        end: 39,
+                    },
+                    body_start: Some(
+                        57,
+                    ),
+                    end_position: 86,
+                    name: Some(
+                        (
+                            SrcSpan {
+                                start: 35,
+                                end: 39,
+                            },
+                            "main",
+                        ),
+                    ),
+                    arguments: [
+                        Arg {
+                            location: SrcSpan {
+                                start: 40,
+                                end: 55,
+                            },
+                            name: (
+                                SrcSpan {
+                                    start: 40,
+                                    end: 47,
+                                },
+                                "message",
+                            ),
+                            annotation: Some(
+                                Constructor {
+                                    location: SrcSpan {
+                                        start: 49,
+                                        end: 55,
+                                    },
+                                    module: None,
+                                    name: (
+                                        SrcSpan {
+                                            start: 49,
+                                            end: 55,
+                                        },
+                                        "String",
+                                    ),
+                                    arguments: [],
+                                },
+                            ),
+                            type_: Named {
+                                module: "gleam",
+                                name: "String",
+                                arguments: [],
+                            },
+                        },
+                    ],
+                    body: [
+                        Expression(
+                            Call {
+                                location: SrcSpan {
+                                    start: 61,
+                                    end: 84,
+                                },
+                                type_: Named {
+                                    module: "gleam",
+                                    name: "Nil",
+                                    arguments: [],
+                                },
+                                fun: ModuleSelect {
+                                    location: SrcSpan {
+                                        start: 61,
+                                        end: 75,
+                                    },
+                                    type_: Fn {
+                                        arguments: [
+                                            Named {
+                                                module: "gleam",
+                                                name: "String",
+                                                arguments: [],
+                                            },
+                                        ],
+                                        return_: Named {
+                                            module: "gleam",
+                                            name: "Nil",
+                                            arguments: [],
+                                        },
+                                    },
+                                    module_name: "gleam/io",
+                                    module_alias: "logger",
+                                    label: "println",
+                                },
+                                arguments: [
+                                    CallArg {
+                                        location: SrcSpan {
+                                            start: 76,
+                                            end: 83,
+                                        },
+                                        label: None,
+                                        value: Var {
+                                            location: SrcSpan {
+                                                start: 76,
+                                                end: 83,
+                                            },
+                                            type_: Named {
+                                                module: "gleam",
+                                                name: "String",
+                                                arguments: [],
+                                            },
+                                            name: "message",
+                                        },
+                                    },
+                                ],
+                                open_parenthesis: 75,
+                            },
+                        ),
+                    ],
+                    publicity: Public,
+                    return_annotation: None,
+                    return_type: Named {
+                        module: "gleam",
+                        name: "Nil",
+                        arguments: [],
+                    },
+                },
+            ],
+        },
+    },
+)

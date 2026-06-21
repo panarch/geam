@@ -306,7 +306,7 @@ impl Parser {
     }
 
     fn parse_arg(&mut self) -> Result<Arg<()>, ParseError> {
-        let (name_span, name) = self.expect_assignable_name()?;
+        let (name_span, name) = self.expect_name()?;
         let annotation = if self.maybe(&Token::Colon).is_some() {
             Some(self.parse_type()?)
         } else {
@@ -1206,16 +1206,6 @@ impl Parser {
                 Ok((token.location(), name))
             }
             _ => parse_error(ParseErrorType::ExpectedUpName, self.current().location()),
-        }
-    }
-
-    fn expect_assignable_name(&mut self) -> Result<SpannedString, ParseError> {
-        match self.current_token().clone() {
-            Token::Name { name } | Token::DiscardName { name } => {
-                let token = self.bump();
-                Ok((token.location(), name))
-            }
-            _ => parse_error(ParseErrorType::ExpectedName, self.current().location()),
         }
     }
 

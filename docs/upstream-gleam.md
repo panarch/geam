@@ -33,6 +33,14 @@ compiler-core/src/parse/token.rs
 compiler-core/src/parse/error.rs
 compiler-core/src/parse/tests.rs
 compiler-core/src/parse/snapshots/
+compiler-core/src/analyse.rs
+compiler-core/src/analyse/name.rs
+compiler-core/src/type_.rs
+compiler-core/src/type_/environment.rs
+compiler-core/src/type_/expression.rs
+compiler-core/src/type_/pattern.rs
+compiler-core/src/type_/pipe.rs
+compiler-core/src/type_/tests.rs
 ```
 
 The most important upstream ideas are:
@@ -42,6 +50,8 @@ The most important upstream ideas are:
 - A hand-written parser with expression precedence handling.
 - Source spans on AST nodes.
 - Snapshot-oriented parser tests.
+- Fresh inference variables, unification, call type matching, and generalisation
+  for the accepted expression subset.
 
 ## Adapted In Geam
 
@@ -51,6 +61,20 @@ entire implementation.
 - Geam defines its own untyped AST instead of importing the full Gleam AST.
 - Geam owns its lexer, token model, parser, and parse error types while keeping
   their shape close enough to compare against the referenced Gleam front-end.
+- Geam owns a smaller type inference implementation, but its core behavior is
+  expected to stay close to Gleam for accepted syntax.
+- Geam has an explicit untyped-to-typed `analyse` boundary and a small
+  `ModuleInterface` for caller-supplied imports.
+- Analyse follows Gleam's broad phase split by keeping name validation,
+  dependency ordering, finalisation, expression typing, and pattern typing as
+  separate responsibilities.
+- Because imported module interfaces are caller-supplied in this milestone,
+  Geam validates their basic compiler invariants at import time instead of
+  assuming they were produced by a full module loader. This includes rejecting
+  unresolved inference variables, invalid type parameter sets, invalid value
+  constructor kinds, and record constructor/type parameter shape mismatches.
+- Geam's value constructors keep the minimum Gleam-like value kind needed by the
+  subset, such as distinguishing module functions from record constructors.
 - Parser and lexer behavior is locked with unit tests and `insta` snapshots.
 
 This document intentionally avoids mirroring Geam's current internal file tree.
@@ -66,12 +90,26 @@ pub fn parse_module(
 ) -> Result<geam::ast::UntypedModule, geam::parse::ParseError>
 ```
 
+The public analyse API is also intentionally small:
+
+```rust
+pub fn analyse_module(
+    module: geam::ast::UntypedModule,
+    importable_modules: &geam::type_::ImportableModules,
+) -> Result<geam::ast::TypedModule, geam::analyse::AnalyseError>
+```
+
+`importable_modules` is supplied by the caller. Geam does not load dependency
+source files, resolve packages, or dynamically compile imported modules in this
+milestone.
+
 ## Intentionally Not Imported
 
 Geam does not import or preserve the full Gleam compiler front-end. These areas
 are intentionally excluded from the first milestone:
 
-- Typed AST internals and type inference data.
+- Full typed AST internals beyond the accepted subset and the complete Gleam
+  type inference machinery.
 - LSP node lookup helpers.
 - Erlang and JavaScript target metadata.
 - Code generation metadata.

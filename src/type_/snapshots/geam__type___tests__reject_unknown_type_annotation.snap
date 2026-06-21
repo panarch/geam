@@ -1,0 +1,15 @@
+---
+source: src/type_/tests.rs
+expression: "analyse(r#\"\npub fn main(value: Missing) {\n  value\n}\n\"#)"
+---
+Err(
+    AnalyseError {
+        error: UnknownType {
+            name: "Missing",
+        },
+        location: SrcSpan {
+            start: 20,
+            end: 27,
+        },
+    },
+)

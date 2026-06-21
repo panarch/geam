@@ -1,0 +1,16 @@
+---
+source: src/type_/tests.rs
+expression: "analyse(r#\"\npub fn add(x: Int, y: Int) -> Int {\n  x + y\n}\n\npub fn main() {\n  add(1)\n}\n\"#)"
+---
+Err(
+    AnalyseError {
+        error: WrongArity {
+            expected: 2,
+            actual: 1,
+        },
+        location: SrcSpan {
+            start: 66,
+            end: 72,
+        },
+    },
+)

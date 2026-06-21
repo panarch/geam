@@ -283,6 +283,34 @@ pub fn main() {
 }
 
 #[test]
+fn reject_discard_function_argument() {
+    insta::assert_snapshot!(
+        "reject_discard_function_argument",
+        reject(
+            r#"
+pub fn ignore(_: Int) {
+  98
+}
+"#
+        )
+    );
+}
+
+#[test]
+fn reject_named_discard_function_argument() {
+    insta::assert_snapshot!(
+        "reject_named_discard_function_argument",
+        reject(
+            r#"
+pub fn ignore(_ignore_me: Int) {
+  98
+}
+"#
+        )
+    );
+}
+
+#[test]
 fn reject_const() {
     insta::assert_snapshot!("reject_const", reject("const answer = 42"));
 }

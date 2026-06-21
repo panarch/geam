@@ -1,0 +1,271 @@
+---
+source: src/type_/tests.rs
+expression: "analyse(r#\"\npub type UserId = Int\n\npub fn main(pair: #(UserId, String)) {\n  let #(id, name) = pair\n  id\n}\n\"#)"
+---
+Ok(
+    Module {
+        name: "main",
+        path: "main.gleam",
+        documentation: [],
+        type_info: ModuleInterface {
+            name: "main",
+            types: {
+                "UserId": TypeConstructor {
+                    publicity: Public,
+                    parameters: [],
+                    type_: Named {
+                        module: "gleam",
+                        name: "Int",
+                        arguments: [],
+                    },
+                },
+            },
+            values: {
+                "main": ValueConstructor {
+                    publicity: Public,
+                    variant: ModuleFn,
+                    type_: Fn {
+                        arguments: [
+                            Tuple {
+                                elements: [
+                                    Named {
+                                        module: "gleam",
+                                        name: "Int",
+                                        arguments: [],
+                                    },
+                                    Named {
+                                        module: "gleam",
+                                        name: "String",
+                                        arguments: [],
+                                    },
+                                ],
+                            },
+                        ],
+                        return_: Named {
+                            module: "gleam",
+                            name: "Int",
+                            arguments: [],
+                        },
+                    },
+                    parameter_labels: [],
+                },
+            },
+        },
+        definitions: TypedDefinitions {
+            imports: [],
+            custom_types: [],
+            type_aliases: [
+                TypeAlias {
+                    location: SrcSpan {
+                        start: 5,
+                        end: 22,
+                    },
+                    publicity: Public,
+                    name: (
+                        SrcSpan {
+                            start: 10,
+                            end: 16,
+                        },
+                        "UserId",
+                    ),
+                    parameters: [],
+                    alias: Constructor {
+                        location: SrcSpan {
+                            start: 19,
+                            end: 22,
+                        },
+                        module: None,
+                        name: (
+                            SrcSpan {
+                                start: 19,
+                                end: 22,
+                            },
+                            "Int",
+                        ),
+                        arguments: [],
+                    },
+                    type_: Named {
+                        module: "gleam",
+                        name: "Int",
+                        arguments: [],
+                    },
+                },
+            ],
+            functions: [
+                Function {
+                    location: SrcSpan {
+                        start: 28,
+                        end: 35,
+                    },
+                    body_start: Some(
+                        61,
+                    ),
+                    end_position: 94,
+                    name: Some(
+                        (
+                            SrcSpan {
+                                start: 31,
+                                end: 35,
+                            },
+                            "main",
+                        ),
+                    ),
+                    arguments: [
+                        Arg {
+                            location: SrcSpan {
+                                start: 36,
+                                end: 59,
+                            },
+                            name: (
+                                SrcSpan {
+                                    start: 36,
+                                    end: 40,
+                                },
+                                "pair",
+                            ),
+                            annotation: Some(
+                                Tuple {
+                                    location: SrcSpan {
+                                        start: 42,
+                                        end: 59,
+                                    },
+                                    elements: [
+                                        Constructor {
+                                            location: SrcSpan {
+                                                start: 44,
+                                                end: 50,
+                                            },
+                                            module: None,
+                                            name: (
+                                                SrcSpan {
+                                                    start: 44,
+                                                    end: 50,
+                                                },
+                                                "UserId",
+                                            ),
+                                            arguments: [],
+                                        },
+                                        Constructor {
+                                            location: SrcSpan {
+                                                start: 52,
+                                                end: 58,
+                                            },
+                                            module: None,
+                                            name: (
+                                                SrcSpan {
+                                                    start: 52,
+                                                    end: 58,
+                                                },
+                                                "String",
+                                            ),
+                                            arguments: [],
+                                        },
+                                    ],
+                                },
+                            ),
+                            type_: Tuple {
+                                elements: [
+                                    Named {
+                                        module: "gleam",
+                                        name: "Int",
+                                        arguments: [],
+                                    },
+                                    Named {
+                                        module: "gleam",
+                                        name: "String",
+                                        arguments: [],
+                                    },
+                                ],
+                            },
+                        },
+                    ],
+                    body: [
+                        Assignment(
+                            Assignment {
+                                location: SrcSpan {
+                                    start: 65,
+                                    end: 87,
+                                },
+                                pattern: Tuple {
+                                    location: SrcSpan {
+                                        start: 69,
+                                        end: 80,
+                                    },
+                                    elements: [
+                                        Variable {
+                                            location: SrcSpan {
+                                                start: 71,
+                                                end: 73,
+                                            },
+                                            name: "id",
+                                            type_: Named {
+                                                module: "gleam",
+                                                name: "Int",
+                                                arguments: [],
+                                            },
+                                        },
+                                        Variable {
+                                            location: SrcSpan {
+                                                start: 75,
+                                                end: 79,
+                                            },
+                                            name: "name",
+                                            type_: Named {
+                                                module: "gleam",
+                                                name: "String",
+                                                arguments: [],
+                                            },
+                                        },
+                                    ],
+                                },
+                                annotation: None,
+                                value: Var {
+                                    location: SrcSpan {
+                                        start: 83,
+                                        end: 87,
+                                    },
+                                    type_: Tuple {
+                                        elements: [
+                                            Named {
+                                                module: "gleam",
+                                                name: "Int",
+                                                arguments: [],
+                                            },
+                                            Named {
+                                                module: "gleam",
+                                                name: "String",
+                                                arguments: [],
+                                            },
+                                        ],
+                                    },
+                                    name: "pair",
+                                },
+                            },
+                        ),
+                        Expression(
+                            Var {
+                                location: SrcSpan {
+                                    start: 90,
+                                    end: 92,
+                                },
+                                type_: Named {
+                                    module: "gleam",
+                                    name: "Int",
+                                    arguments: [],
+                                },
+                                name: "id",
+                            },
+                        ),
+                    ],
+                    publicity: Public,
+                    return_annotation: None,
+                    return_type: Named {
+                        module: "gleam",
+                        name: "Int",
+                        arguments: [],
+                    },
+                },
+            ],
+        },
+    },
+)

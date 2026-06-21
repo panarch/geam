@@ -1,0 +1,15 @@
+---
+source: src/type_/tests.rs
+expression: "analyse(r#\"\npub fn main() {\n  value\n}\n\"#)"
+---
+Err(
+    AnalyseError {
+        error: UnknownVariable {
+            name: "value",
+        },
+        location: SrcSpan {
+            start: 19,
+            end: 24,
+        },
+    },
+)

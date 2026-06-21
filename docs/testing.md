@@ -1,6 +1,7 @@
 # Testing
 
-Geam uses Rust unit tests and `insta` snapshots for the first parser milestone.
+Geam uses Rust unit tests and `insta` snapshots for the first front-end
+milestones.
 
 ## Commands
 
@@ -53,5 +54,5 @@ The HTML report is written to:
 target/llvm-cov/html/index.html
 ```
 
-Use the summary and HTML report to identify parser accept-set gaps, parser
-reject-set gaps, and lexer error paths.
+Use the summary and HTML report to identify parser accept/reject gaps, lexer
+error paths, and analyse/type inference paths that still need direct tests.

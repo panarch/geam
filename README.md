@@ -42,7 +42,9 @@ source text
 -> Geam lexer/token
 -> Geam subset parser
 -> Geam untyped AST
+-> Geam type inference/analyse
+-> Geam typed AST
 ```
 
-Core IR and execution should be designed after the untyped AST and parser boundary
-is stable enough to test against selected Gleam parser fixtures.
+Core IR and execution should be designed after the untyped/typed AST boundary is
+stable enough to test against selected Gleam parser and inference fixtures.

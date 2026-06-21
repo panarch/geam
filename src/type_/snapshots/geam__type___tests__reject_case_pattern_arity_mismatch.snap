@@ -1,0 +1,16 @@
+---
+source: src/type_/tests.rs
+expression: "analyse(r#\"\npub fn main(a: Int, b: Int) {\n  case a, b {\n    x -> x\n  }\n}\n\"#)"
+---
+Err(
+    AnalyseError {
+        error: CasePatternArityMismatch {
+            expected: 2,
+            actual: 1,
+        },
+        location: SrcSpan {
+            start: 49,
+            end: 55,
+        },
+    },
+)

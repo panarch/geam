@@ -2,8 +2,10 @@ use camino::Utf8PathBuf;
 use ecow::EcoString;
 use num_bigint::BigInt;
 
+mod typed;
 mod untyped;
 
+pub use self::typed::{TypedDefinitions, TypedExpr};
 pub use self::untyped::UntypedExpr;
 
 pub type SpannedString = (SrcSpan, EcoString);
@@ -47,10 +49,23 @@ pub type UntypedStatement = Statement<(), UntypedExpr>;
 pub type UntypedPattern = Pattern<()>;
 pub type UntypedClause = Clause<UntypedExpr, ()>;
 
+pub type TypedModule = Module<crate::type_::ModuleInterface, TypedDefinitions>;
+pub type TypedDefinition = Definition<std::sync::Arc<crate::type_::Type>, TypedExpr>;
+pub type TypedFunction = Function<std::sync::Arc<crate::type_::Type>, TypedExpr>;
+pub type TypedStatement = Statement<std::sync::Arc<crate::type_::Type>, TypedExpr>;
+pub type TypedPattern = Pattern<std::sync::Arc<crate::type_::Type>>;
+pub type TypedClause = Clause<TypedExpr, std::sync::Arc<crate::type_::Type>>;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Publicity {
     Public,
     Private,
+}
+
+impl Publicity {
+    pub const fn is_public(self) -> bool {
+        matches!(self, Self::Public)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

@@ -1,0 +1,187 @@
+---
+source: src/type_/tests.rs
+expression: "analyse(r#\"\npub fn add(x: Int, y: Int) {\n  x + y\n}\n\"#)"
+---
+Ok(
+    Module {
+        name: "main",
+        path: "main.gleam",
+        documentation: [],
+        type_info: ModuleInterface {
+            name: "main",
+            types: {},
+            values: {
+                "add": ValueConstructor {
+                    publicity: Public,
+                    variant: ModuleFn,
+                    type_: Fn {
+                        arguments: [
+                            Named {
+                                module: "gleam",
+                                name: "Int",
+                                arguments: [],
+                            },
+                            Named {
+                                module: "gleam",
+                                name: "Int",
+                                arguments: [],
+                            },
+                        ],
+                        return_: Named {
+                            module: "gleam",
+                            name: "Int",
+                            arguments: [],
+                        },
+                    },
+                    parameter_labels: [],
+                },
+            },
+        },
+        definitions: TypedDefinitions {
+            imports: [],
+            custom_types: [],
+            type_aliases: [],
+            functions: [
+                Function {
+                    location: SrcSpan {
+                        start: 5,
+                        end: 11,
+                    },
+                    body_start: Some(
+                        28,
+                    ),
+                    end_position: 39,
+                    name: Some(
+                        (
+                            SrcSpan {
+                                start: 8,
+                                end: 11,
+                            },
+                            "add",
+                        ),
+                    ),
+                    arguments: [
+                        Arg {
+                            location: SrcSpan {
+                                start: 12,
+                                end: 18,
+                            },
+                            name: (
+                                SrcSpan {
+                                    start: 12,
+                                    end: 13,
+                                },
+                                "x",
+                            ),
+                            annotation: Some(
+                                Constructor {
+                                    location: SrcSpan {
+                                        start: 15,
+                                        end: 18,
+                                    },
+                                    module: None,
+                                    name: (
+                                        SrcSpan {
+                                            start: 15,
+                                            end: 18,
+                                        },
+                                        "Int",
+                                    ),
+                                    arguments: [],
+                                },
+                            ),
+                            type_: Named {
+                                module: "gleam",
+                                name: "Int",
+                                arguments: [],
+                            },
+                        },
+                        Arg {
+                            location: SrcSpan {
+                                start: 20,
+                                end: 26,
+                            },
+                            name: (
+                                SrcSpan {
+                                    start: 20,
+                                    end: 21,
+                                },
+                                "y",
+                            ),
+                            annotation: Some(
+                                Constructor {
+                                    location: SrcSpan {
+                                        start: 23,
+                                        end: 26,
+                                    },
+                                    module: None,
+                                    name: (
+                                        SrcSpan {
+                                            start: 23,
+                                            end: 26,
+                                        },
+                                        "Int",
+                                    ),
+                                    arguments: [],
+                                },
+                            ),
+                            type_: Named {
+                                module: "gleam",
+                                name: "Int",
+                                arguments: [],
+                            },
+                        },
+                    ],
+                    body: [
+                        Expression(
+                            BinOp {
+                                location: SrcSpan {
+                                    start: 32,
+                                    end: 37,
+                                },
+                                type_: Named {
+                                    module: "gleam",
+                                    name: "Int",
+                                    arguments: [],
+                                },
+                                operator: AddInt,
+                                operator_start: 34,
+                                left: Var {
+                                    location: SrcSpan {
+                                        start: 32,
+                                        end: 33,
+                                    },
+                                    type_: Named {
+                                        module: "gleam",
+                                        name: "Int",
+                                        arguments: [],
+                                    },
+                                    name: "x",
+                                },
+                                right: Var {
+                                    location: SrcSpan {
+                                        start: 36,
+                                        end: 37,
+                                    },
+                                    type_: Named {
+                                        module: "gleam",
+                                        name: "Int",
+                                        arguments: [],
+                                    },
+                                    name: "y",
+                                },
+                            },
+                        ),
+                    ],
+                    publicity: Public,
+                    return_annotation: None,
+                    return_type: Named {
+                        module: "gleam",
+                        name: "Int",
+                        arguments: [],
+                    },
+                },
+            ],
+        },
+    },
+)

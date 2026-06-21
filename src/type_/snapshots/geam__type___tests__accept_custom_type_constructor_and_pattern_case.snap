@@ -1,0 +1,582 @@
+---
+source: src/type_/tests.rs
+expression: "analyse(r#\"\npub type Option(a) {\n  Some(a)\n  None\n}\n\npub fn make(value: Int) {\n  Some(value)\n}\n\npub fn unwrap(option: Option(Int)) {\n  case option {\n    Some(value) -> value\n    None -> 0\n  }\n}\n\"#)"
+---
+Ok(
+    Module {
+        name: "main",
+        path: "main.gleam",
+        documentation: [],
+        type_info: ModuleInterface {
+            name: "main",
+            types: {
+                "Option": TypeConstructor {
+                    publicity: Public,
+                    parameters: [
+                        "a",
+                    ],
+                    type_: Named {
+                        module: "main",
+                        name: "Option",
+                        arguments: [
+                            Var {
+                                name: "a",
+                            },
+                        ],
+                    },
+                },
+            },
+            values: {
+                "None": ValueConstructor {
+                    publicity: Public,
+                    variant: Record,
+                    type_: Named {
+                        module: "main",
+                        name: "Option",
+                        arguments: [
+                            Var {
+                                name: "a",
+                            },
+                        ],
+                    },
+                    parameter_labels: [],
+                },
+                "Some": ValueConstructor {
+                    publicity: Public,
+                    variant: Record,
+                    type_: Fn {
+                        arguments: [
+                            Var {
+                                name: "a",
+                            },
+                        ],
+                        return_: Named {
+                            module: "main",
+                            name: "Option",
+                            arguments: [
+                                Var {
+                                    name: "a",
+                                },
+                            ],
+                        },
+                    },
+                    parameter_labels: [
+                        None,
+                    ],
+                },
+                "make": ValueConstructor {
+                    publicity: Public,
+                    variant: ModuleFn,
+                    type_: Fn {
+                        arguments: [
+                            Named {
+                                module: "gleam",
+                                name: "Int",
+                                arguments: [],
+                            },
+                        ],
+                        return_: Named {
+                            module: "main",
+                            name: "Option",
+                            arguments: [
+                                Named {
+                                    module: "gleam",
+                                    name: "Int",
+                                    arguments: [],
+                                },
+                            ],
+                        },
+                    },
+                    parameter_labels: [],
+                },
+                "unwrap": ValueConstructor {
+                    publicity: Public,
+                    variant: ModuleFn,
+                    type_: Fn {
+                        arguments: [
+                            Named {
+                                module: "main",
+                                name: "Option",
+                                arguments: [
+                                    Named {
+                                        module: "gleam",
+                                        name: "Int",
+                                        arguments: [],
+                                    },
+                                ],
+                            },
+                        ],
+                        return_: Named {
+                            module: "gleam",
+                            name: "Int",
+                            arguments: [],
+                        },
+                    },
+                    parameter_labels: [],
+                },
+            },
+        },
+        definitions: TypedDefinitions {
+            imports: [],
+            custom_types: [
+                CustomType {
+                    location: SrcSpan {
+                        start: 5,
+                        end: 40,
+                    },
+                    publicity: Public,
+                    name: (
+                        SrcSpan {
+                            start: 10,
+                            end: 16,
+                        },
+                        "Option",
+                    ),
+                    parameters: [
+                        (
+                            SrcSpan {
+                                start: 17,
+                                end: 18,
+                            },
+                            "a",
+                        ),
+                    ],
+                    constructors: [
+                        RecordConstructor {
+                            location: SrcSpan {
+                                start: 24,
+                                end: 31,
+                            },
+                            name: (
+                                SrcSpan {
+                                    start: 24,
+                                    end: 28,
+                                },
+                                "Some",
+                            ),
+                            arguments: [
+                                RecordConstructorArg {
+                                    location: SrcSpan {
+                                        start: 29,
+                                        end: 30,
+                                    },
+                                    label: None,
+                                    annotation: Var {
+                                        location: SrcSpan {
+                                            start: 29,
+                                            end: 30,
+                                        },
+                                        name: "a",
+                                    },
+                                    type_: Var {
+                                        name: "a",
+                                    },
+                                },
+                            ],
+                        },
+                        RecordConstructor {
+                            location: SrcSpan {
+                                start: 34,
+                                end: 38,
+                            },
+                            name: (
+                                SrcSpan {
+                                    start: 34,
+                                    end: 38,
+                                },
+                                "None",
+                            ),
+                            arguments: [],
+                        },
+                    ],
+                    type_: Named {
+                        module: "main",
+                        name: "Option",
+                        arguments: [
+                            Var {
+                                name: "a",
+                            },
+                        ],
+                    },
+                },
+            ],
+            type_aliases: [],
+            functions: [
+                Function {
+                    location: SrcSpan {
+                        start: 46,
+                        end: 53,
+                    },
+                    body_start: Some(
+                        66,
+                    ),
+                    end_position: 83,
+                    name: Some(
+                        (
+                            SrcSpan {
+                                start: 49,
+                                end: 53,
+                            },
+                            "make",
+                        ),
+                    ),
+                    arguments: [
+                        Arg {
+                            location: SrcSpan {
+                                start: 54,
+                                end: 64,
+                            },
+                            name: (
+                                SrcSpan {
+                                    start: 54,
+                                    end: 59,
+                                },
+                                "value",
+                            ),
+                            annotation: Some(
+                                Constructor {
+                                    location: SrcSpan {
+                                        start: 61,
+                                        end: 64,
+                                    },
+                                    module: None,
+                                    name: (
+                                        SrcSpan {
+                                            start: 61,
+                                            end: 64,
+                                        },
+                                        "Int",
+                                    ),
+                                    arguments: [],
+                                },
+                            ),
+                            type_: Named {
+                                module: "gleam",
+                                name: "Int",
+                                arguments: [],
+                            },
+                        },
+                    ],
+                    body: [
+                        Expression(
+                            Call {
+                                location: SrcSpan {
+                                    start: 70,
+                                    end: 81,
+                                },
+                                type_: Named {
+                                    module: "main",
+                                    name: "Option",
+                                    arguments: [
+                                        Named {
+                                            module: "gleam",
+                                            name: "Int",
+                                            arguments: [],
+                                        },
+                                    ],
+                                },
+                                fun: Var {
+                                    location: SrcSpan {
+                                        start: 70,
+                                        end: 74,
+                                    },
+                                    type_: Fn {
+                                        arguments: [
+                                            Named {
+                                                module: "gleam",
+                                                name: "Int",
+                                                arguments: [],
+                                            },
+                                        ],
+                                        return_: Named {
+                                            module: "main",
+                                            name: "Option",
+                                            arguments: [
+                                                Named {
+                                                    module: "gleam",
+                                                    name: "Int",
+                                                    arguments: [],
+                                                },
+                                            ],
+                                        },
+                                    },
+                                    name: "Some",
+                                },
+                                arguments: [
+                                    CallArg {
+                                        location: SrcSpan {
+                                            start: 75,
+                                            end: 80,
+                                        },
+                                        label: None,
+                                        value: Var {
+                                            location: SrcSpan {
+                                                start: 75,
+                                                end: 80,
+                                            },
+                                            type_: Named {
+                                                module: "gleam",
+                                                name: "Int",
+                                                arguments: [],
+                                            },
+                                            name: "value",
+                                        },
+                                    },
+                                ],
+                                open_parenthesis: 74,
+                            },
+                        ),
+                    ],
+                    publicity: Public,
+                    return_annotation: None,
+                    return_type: Named {
+                        module: "main",
+                        name: "Option",
+                        arguments: [
+                            Named {
+                                module: "gleam",
+                                name: "Int",
+                                arguments: [],
+                            },
+                        ],
+                    },
+                },
+                Function {
+                    location: SrcSpan {
+                        start: 89,
+                        end: 98,
+                    },
+                    body_start: Some(
+                        120,
+                    ),
+                    end_position: 182,
+                    name: Some(
+                        (
+                            SrcSpan {
+                                start: 92,
+                                end: 98,
+                            },
+                            "unwrap",
+                        ),
+                    ),
+                    arguments: [
+                        Arg {
+                            location: SrcSpan {
+                                start: 99,
+                                end: 118,
+                            },
+                            name: (
+                                SrcSpan {
+                                    start: 99,
+                                    end: 105,
+                                },
+                                "option",
+                            ),
+                            annotation: Some(
+                                Constructor {
+                                    location: SrcSpan {
+                                        start: 107,
+                                        end: 118,
+                                    },
+                                    module: None,
+                                    name: (
+                                        SrcSpan {
+                                            start: 107,
+                                            end: 113,
+                                        },
+                                        "Option",
+                                    ),
+                                    arguments: [
+                                        Constructor {
+                                            location: SrcSpan {
+                                                start: 114,
+                                                end: 117,
+                                            },
+                                            module: None,
+                                            name: (
+                                                SrcSpan {
+                                                    start: 114,
+                                                    end: 117,
+                                                },
+                                                "Int",
+                                            ),
+                                            arguments: [],
+                                        },
+                                    ],
+                                },
+                            ),
+                            type_: Named {
+                                module: "main",
+                                name: "Option",
+                                arguments: [
+                                    Named {
+                                        module: "gleam",
+                                        name: "Int",
+                                        arguments: [],
+                                    },
+                                ],
+                            },
+                        },
+                    ],
+                    body: [
+                        Expression(
+                            Case {
+                                location: SrcSpan {
+                                    start: 124,
+                                    end: 180,
+                                },
+                                type_: Named {
+                                    module: "gleam",
+                                    name: "Int",
+                                    arguments: [],
+                                },
+                                subjects: [
+                                    Var {
+                                        location: SrcSpan {
+                                            start: 129,
+                                            end: 135,
+                                        },
+                                        type_: Named {
+                                            module: "main",
+                                            name: "Option",
+                                            arguments: [
+                                                Named {
+                                                    module: "gleam",
+                                                    name: "Int",
+                                                    arguments: [],
+                                                },
+                                            ],
+                                        },
+                                        name: "option",
+                                    },
+                                ],
+                                clauses: [
+                                    Clause {
+                                        location: SrcSpan {
+                                            start: 142,
+                                            end: 162,
+                                        },
+                                        pattern: [
+                                            Constructor {
+                                                location: SrcSpan {
+                                                    start: 142,
+                                                    end: 153,
+                                                },
+                                                name_location: SrcSpan {
+                                                    start: 142,
+                                                    end: 146,
+                                                },
+                                                name: "Some",
+                                                arguments: [
+                                                    CallArg {
+                                                        location: SrcSpan {
+                                                            start: 147,
+                                                            end: 152,
+                                                        },
+                                                        label: None,
+                                                        value: Variable {
+                                                            location: SrcSpan {
+                                                                start: 147,
+                                                                end: 152,
+                                                            },
+                                                            name: "value",
+                                                            type_: Named {
+                                                                module: "gleam",
+                                                                name: "Int",
+                                                                arguments: [],
+                                                            },
+                                                        },
+                                                    },
+                                                ],
+                                                module: None,
+                                                type_: Named {
+                                                    module: "main",
+                                                    name: "Option",
+                                                    arguments: [
+                                                        Named {
+                                                            module: "gleam",
+                                                            name: "Int",
+                                                            arguments: [],
+                                                        },
+                                                    ],
+                                                },
+                                            },
+                                        ],
+                                        alternative_patterns: [],
+                                        guard: None,
+                                        then: Var {
+                                            location: SrcSpan {
+                                                start: 157,
+                                                end: 162,
+                                            },
+                                            type_: Named {
+                                                module: "gleam",
+                                                name: "Int",
+                                                arguments: [],
+                                            },
+                                            name: "value",
+                                        },
+                                    },
+                                    Clause {
+                                        location: SrcSpan {
+                                            start: 167,
+                                            end: 176,
+                                        },
+                                        pattern: [
+                                            Constructor {
+                                                location: SrcSpan {
+                                                    start: 167,
+                                                    end: 171,
+                                                },
+                                                name_location: SrcSpan {
+                                                    start: 167,
+                                                    end: 171,
+                                                },
+                                                name: "None",
+                                                arguments: [],
+                                                module: None,
+                                                type_: Named {
+                                                    module: "main",
+                                                    name: "Option",
+                                                    arguments: [
+                                                        Named {
+                                                            module: "gleam",
+                                                            name: "Int",
+                                                            arguments: [],
+                                                        },
+                                                    ],
+                                                },
+                                            },
+                                        ],
+                                        alternative_patterns: [],
+                                        guard: None,
+                                        then: Int {
+                                            location: SrcSpan {
+                                                start: 175,
+                                                end: 176,
+                                            },
+                                            type_: Named {
+                                                module: "gleam",
+                                                name: "Int",
+                                                arguments: [],
+                                            },
+                                            value: "0",
+                                            int_value: 0,
+                                        },
+                                    },
+                                ],
+                            },
+                        ),
+                    ],
+                    publicity: Public,
+                    return_annotation: None,
+                    return_type: Named {
+                        module: "gleam",
+                        name: "Int",
+                        arguments: [],
+                    },
+                },
+            ],
+        },
+    },
+)

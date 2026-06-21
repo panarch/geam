@@ -1,0 +1,13 @@
+---
+source: src/type_/tests.rs
+expression: "analyse(r#\"\npub fn main() {\n  {}\n}\n\"#)"
+---
+Err(
+    AnalyseError {
+        error: EmptyBlock,
+        location: SrcSpan {
+            start: 19,
+            end: 21,
+        },
+    },
+)

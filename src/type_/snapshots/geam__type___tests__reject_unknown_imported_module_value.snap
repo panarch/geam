@@ -1,0 +1,16 @@
+---
+source: src/type_/tests.rs
+expression: "analyse_with(r#\"\nimport gleam/io\n\npub fn main(message: String) {\n  io.print(message)\n}\n\"#,\nio_imports(),)"
+---
+Err(
+    AnalyseError {
+        error: UnknownModuleValue {
+            module: "gleam/io",
+            value: "print",
+        },
+        location: SrcSpan {
+            start: 54,
+            end: 59,
+        },
+    },
+)
