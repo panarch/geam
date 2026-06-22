@@ -171,25 +171,21 @@ fn plan_bin_op(operator: GleamBinOp) -> Result<BinOp, PlanError> {
         GleamBinOp::AddInt => Ok(BinOp::AddInt),
         GleamBinOp::SubInt => Ok(BinOp::SubInt),
         GleamBinOp::MultInt => Ok(BinOp::MultInt),
+        GleamBinOp::LtInt => Ok(BinOp::LtInt),
+        GleamBinOp::LtEqInt => Ok(BinOp::LtEqInt),
+        GleamBinOp::GtInt => Ok(BinOp::GtInt),
+        GleamBinOp::GtEqInt => Ok(BinOp::GtEqInt),
         GleamBinOp::Eq => Ok(BinOp::Eq),
         GleamBinOp::NotEq => Ok(BinOp::NotEq),
         GleamBinOp::Concatenate => Ok(BinOp::Concatenate),
         GleamBinOp::And => Err(PlanError::UnsupportedBinOp { operator: "and" }),
         GleamBinOp::Or => Err(PlanError::UnsupportedBinOp { operator: "or" }),
-        GleamBinOp::LtInt => Err(PlanError::UnsupportedBinOp { operator: "lt int" }),
-        GleamBinOp::LtEqInt => Err(PlanError::UnsupportedBinOp {
-            operator: "lte int",
-        }),
         GleamBinOp::LtFloat => Err(PlanError::UnsupportedBinOp {
             operator: "lt float",
         }),
         GleamBinOp::LtEqFloat => Err(PlanError::UnsupportedBinOp {
             operator: "lte float",
         }),
-        GleamBinOp::GtEqInt => Err(PlanError::UnsupportedBinOp {
-            operator: "gte int",
-        }),
-        GleamBinOp::GtInt => Err(PlanError::UnsupportedBinOp { operator: "gt int" }),
         GleamBinOp::GtEqFloat => Err(PlanError::UnsupportedBinOp {
             operator: "gte float",
         }),
@@ -220,7 +216,7 @@ fn plan_bin_op(operator: GleamBinOp) -> Result<BinOp, PlanError> {
 #[cfg(test)]
 mod tests {
     use crate::planner::PlanError;
-    use crate::planner::dsl::{bool_, function, local, module, nil, string};
+    use crate::planner::dsl::{bool_, function, int, local, module, nil, string};
     use crate::planner::plan_module;
     use crate::planner::support::{compile, compile_minimal_module, dummy_span, expect_plan_error};
     use gleam_core::ast::Publicity;
@@ -246,6 +242,38 @@ pub fn main() {
         .expect("source should plan");
         let expected = module("main")
             .function(function("main").return_(string("hello, ").concatenate(string("geam"))))
+            .build();
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn plan_integer_comparisons() {
+        let actual = plan_module(compile(
+            r#"
+pub fn lt() {
+  1 < 2
+}
+
+pub fn lte() {
+  1 <= 2
+}
+
+pub fn gt() {
+  2 > 1
+}
+
+pub fn gte() {
+  2 >= 1
+}
+"#,
+        ))
+        .expect("source should plan");
+        let expected = module("main")
+            .function(function("lt").return_(int(1).lt_int(int(2))))
+            .function(function("lte").return_(int(1).lte_int(int(2))))
+            .function(function("gt").return_(int(2).gt_int(int(1))))
+            .function(function("gte").return_(int(2).gte_int(int(1))))
             .build();
 
         assert_eq!(actual, expected);
@@ -775,12 +803,8 @@ pub fn main() {
         let cases = [
             (GleamBinOp::And, "and"),
             (GleamBinOp::Or, "or"),
-            (GleamBinOp::LtInt, "lt int"),
-            (GleamBinOp::LtEqInt, "lte int"),
             (GleamBinOp::LtFloat, "lt float"),
             (GleamBinOp::LtEqFloat, "lte float"),
-            (GleamBinOp::GtEqInt, "gte int"),
-            (GleamBinOp::GtInt, "gt int"),
             (GleamBinOp::GtEqFloat, "gte float"),
             (GleamBinOp::GtFloat, "gt float"),
             (GleamBinOp::AddFloat, "add float"),

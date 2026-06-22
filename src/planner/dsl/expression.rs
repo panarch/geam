@@ -63,6 +63,22 @@ impl ExprBuilder {
         self.bin_op(BinOp::MultInt, right)
     }
 
+    pub(in crate::planner) fn lt_int(self, right: Self) -> Self {
+        self.bin_op(BinOp::LtInt, right)
+    }
+
+    pub(in crate::planner) fn lte_int(self, right: Self) -> Self {
+        self.bin_op(BinOp::LtEqInt, right)
+    }
+
+    pub(in crate::planner) fn gt_int(self, right: Self) -> Self {
+        self.bin_op(BinOp::GtInt, right)
+    }
+
+    pub(in crate::planner) fn gte_int(self, right: Self) -> Self {
+        self.bin_op(BinOp::GtEqInt, right)
+    }
+
     pub(in crate::planner) fn equal(self, right: Self) -> Self {
         self.bin_op(BinOp::Eq, right)
     }
@@ -192,6 +208,26 @@ mod tests {
     #[test]
     fn expr_builder_mult_int() {
         assert_int_binop(int(1).mult_int(int(2)), BinOp::MultInt);
+    }
+
+    #[test]
+    fn expr_builder_lt_int() {
+        assert_int_binop(int(1).lt_int(int(2)), BinOp::LtInt);
+    }
+
+    #[test]
+    fn expr_builder_lte_int() {
+        assert_int_binop(int(1).lte_int(int(2)), BinOp::LtEqInt);
+    }
+
+    #[test]
+    fn expr_builder_gt_int() {
+        assert_int_binop(int(1).gt_int(int(2)), BinOp::GtInt);
+    }
+
+    #[test]
+    fn expr_builder_gte_int() {
+        assert_int_binop(int(1).gte_int(int(2)), BinOp::GtEqInt);
     }
 
     #[test]

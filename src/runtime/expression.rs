@@ -43,6 +43,10 @@ fn eval_bin_op(op: BinOp, left: Value, right: Value) -> Result<Value, RuntimeErr
         BinOp::AddInt => Ok(Value::Int(expect_int(left)? + expect_int(right)?)),
         BinOp::SubInt => Ok(Value::Int(expect_int(left)? - expect_int(right)?)),
         BinOp::MultInt => Ok(Value::Int(expect_int(left)? * expect_int(right)?)),
+        BinOp::LtInt => Ok(Value::Bool(expect_int(left)? < expect_int(right)?)),
+        BinOp::LtEqInt => Ok(Value::Bool(expect_int(left)? <= expect_int(right)?)),
+        BinOp::GtInt => Ok(Value::Bool(expect_int(left)? > expect_int(right)?)),
+        BinOp::GtEqInt => Ok(Value::Bool(expect_int(left)? >= expect_int(right)?)),
         BinOp::Eq => Ok(Value::Bool(left == right)),
         BinOp::NotEq => Ok(Value::Bool(left != right)),
         BinOp::Concatenate => Ok(Value::String(
@@ -121,6 +125,53 @@ pub fn main() {
 "#,
             ),
             int(-3),
+        );
+    }
+
+    #[test]
+    fn eval_integer_comparisons() {
+        assert_eq!(
+            run_src(
+                r#"
+pub fn main() {
+  1 < 2
+}
+"#,
+            ),
+            Value::Bool(true),
+        );
+
+        assert_eq!(
+            run_src(
+                r#"
+pub fn main() {
+  2 <= 2
+}
+"#,
+            ),
+            Value::Bool(true),
+        );
+
+        assert_eq!(
+            run_src(
+                r#"
+pub fn main() {
+  2 > 1
+}
+"#,
+            ),
+            Value::Bool(true),
+        );
+
+        assert_eq!(
+            run_src(
+                r#"
+pub fn main() {
+  1 >= 2
+}
+"#,
+            ),
+            Value::Bool(false),
         );
     }
 
@@ -205,6 +256,14 @@ pub fn main() {
     fn report_type_mismatch() {
         assert_eq!(
             eval_bin_op(BinOp::AddInt, Value::String("bad".into()), int(1)),
+            Err(RuntimeError::TypeMismatch {
+                expected: "Int",
+                actual: "String",
+            }),
+        );
+
+        assert_eq!(
+            eval_bin_op(BinOp::LtInt, Value::String("bad".into()), int(1)),
             Err(RuntimeError::TypeMismatch {
                 expected: "Int",
                 actual: "String",
