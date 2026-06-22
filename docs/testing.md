@@ -30,27 +30,11 @@ cargo test
 ```
 
 Planner unit tests use `planner::dsl` expected plans instead of snapshots, so
-supported lowering changes should update the expected plan directly next to the
-source being tested.
+supported lowering changes update the expected plan directly next to the source
+being tested.
 
-Planner test names should make the source of the case clear:
-
-- `plan_*`: supported lowering from Gleam source into a Geam `ModulePlan`.
-- `reject_profile_*`: valid Gleam source that Geam's current execution profile
-  intentionally rejects.
-- `reject_margin_*`: synthetic typed AST margin cases that are difficult or
-  impossible to express as ordinary source fixtures, but still need explicit
-  planner behavior.
-
-Prefer source-backed tests for ordinary supported and unsupported language
-features. Use synthetic typed AST construction only when the test is covering
-Gleam typed-AST margin, defensive planner behavior, or an internal compiler
-shape that cannot be produced cleanly from a small source example.
-
-Runtime unit tests use inline Gleam source strings for valid execution behavior
-and reserve direct internal tests for runtime-only units such as local frames.
-Fixture files are kept for integration tests that document the public execution
-pipeline.
+For review rules around planner profile/margin tests, helper shape, and coverage
+policy, see [review-policy.md](review-policy.md).
 
 Run formatting and lint checks:
 
@@ -90,7 +74,4 @@ target/llvm-cov/html/index.html
 ```
 
 Use the summary and HTML report to identify Gleam boundary wrapper, planner, and
-runtime paths that still need direct tests. Coverage gaps should be treated as
-work unless they are clearly test-only guard paths used to assert fixture or
-typed-AST shape. If those guard paths become noisy, move them into small tested
-helpers rather than scattering inline `panic!` guards through planner tests.
+runtime paths that still need direct tests.

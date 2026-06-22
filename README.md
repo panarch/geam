@@ -58,3 +58,6 @@ cargo test
 
 See [docs/testing.md](docs/testing.md) for fixture rules, planner test naming,
 coverage commands, and validation expectations.
+
+See [docs/review-policy.md](docs/review-policy.md) for planner boundary, error,
+helper, and coverage review rules.

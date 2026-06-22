@@ -59,9 +59,9 @@ source text -> Gleam TypedModule -> Geam ModulePlan -> Geam runtime Value
 ```
 
 Geam-specific profile validation belongs in the lowering phase from Gleam's typed
-AST into Geam's runtime representation. That phase should reject unsupported
-execution semantics before evaluation instead of accepting a program and failing
-inside the runtime.
+AST into Geam's runtime representation. That phase rejects unsupported execution
+semantics before evaluation instead of accepting a program and failing inside the
+runtime.
 
 The earlier Geam-owned parser and analyse prototype has been removed. The active
 direction is to rely on Gleam's typed AST and build Geam profile validation,
@@ -120,6 +120,6 @@ When updating Geam to a newer Gleam baseline, record:
 - Profile/lowering fixture changes.
 - License or provenance changes, if any.
 
-The README should keep the current upstream release and commit hash visible.
-This document should explain the practical differences between Geam and the
-referenced Gleam version.
+The README keeps the current upstream release and commit hash visible. This
+document explains the practical differences between Geam and the referenced
+Gleam version.
