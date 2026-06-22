@@ -68,7 +68,7 @@ mod tests {
     use crate::planner::PlanError;
     use crate::planner::dsl::{function, int, local, module};
     use crate::planner::plan_module;
-    use crate::planner::support::{compile, compile_base_module, empty_span, expect_plan_error};
+    use crate::planner::support::{compile, compile_minimal_module, dummy_span, expect_plan_error};
     use gleam_core::analyse::Inferred;
     use gleam_core::ast::{
         AssignName, AssignmentKind, BitArraySize, Pattern, Statement, TypedExpr, TypedPattern,
@@ -166,12 +166,12 @@ pub fn main() {
             }),
         );
 
-        let mut final_use = compile_base_module();
+        let mut final_use = compile_minimal_module();
         final_use.definitions.functions[0].body = vec![Statement::Use(gleam_core::ast::Use {
             call: Box::new(compiled_int_expression()),
-            location: empty_span(),
-            right_hand_side_location: empty_span(),
-            assignments_location: empty_span(),
+            location: dummy_span(),
+            right_hand_side_location: dummy_span(),
+            assignments_location: dummy_span(),
             assignments: Vec::new(),
         })];
         assert_eq!(
@@ -181,13 +181,13 @@ pub fn main() {
             }),
         );
 
-        let mut step_use = compile_base_module();
+        let mut step_use = compile_minimal_module();
         step_use.definitions.functions[0].body = vec![
             Statement::Use(gleam_core::ast::Use {
                 call: Box::new(compiled_int_expression()),
-                location: empty_span(),
-                right_hand_side_location: empty_span(),
-                assignments_location: empty_span(),
+                location: dummy_span(),
+                right_hand_side_location: dummy_span(),
+                assignments_location: dummy_span(),
                 assignments: Vec::new(),
             }),
             Statement::Expression(compiled_int_expression()),
@@ -254,7 +254,7 @@ pub fn main() {
     #[test]
     fn reject_margin_non_variable_pattern_shapes() {
         let variable = |name: &str| Pattern::Variable {
-            location: empty_span(),
+            location: dummy_span(),
             name: name.into(),
             type_: type_::int(),
             origin: VariableOrigin::generated(),
@@ -265,7 +265,7 @@ pub fn main() {
         let cases: Vec<(TypedPattern, &str)> = vec![
             (
                 Pattern::Int {
-                    location: empty_span(),
+                    location: dummy_span(),
                     value: "1".into(),
                     int_value: BigInt::from(1),
                 },
@@ -273,7 +273,7 @@ pub fn main() {
             ),
             (
                 Pattern::Float {
-                    location: empty_span(),
+                    location: dummy_span(),
                     value: "1.0".into(),
                     float_value: LiteralFloatValue::ONE,
                 },
@@ -281,14 +281,14 @@ pub fn main() {
             ),
             (
                 Pattern::String {
-                    location: empty_span(),
+                    location: dummy_span(),
                     value: "a".into(),
                 },
                 "string",
             ),
             (
                 Pattern::BitArraySize(BitArraySize::Int {
-                    location: empty_span(),
+                    location: dummy_span(),
                     value: "1".into(),
                     int_value: BigInt::from(1),
                 }),
@@ -297,7 +297,7 @@ pub fn main() {
             (
                 Pattern::Assign {
                     name: "x".into(),
-                    location: empty_span(),
+                    location: dummy_span(),
                     pattern: Box::new(variable("inner")),
                 },
                 "assign",
@@ -305,14 +305,14 @@ pub fn main() {
             (
                 Pattern::Discard {
                     name: "_".into(),
-                    location: empty_span(),
+                    location: dummy_span(),
                     type_: type_::int(),
                 },
                 "discard",
             ),
             (
                 Pattern::List {
-                    location: empty_span(),
+                    location: dummy_span(),
                     elements: vec![variable("x")],
                     tail: None,
                     type_: type_::list(type_::int()),
@@ -321,8 +321,8 @@ pub fn main() {
             ),
             (
                 Pattern::Constructor {
-                    location: empty_span(),
-                    name_location: empty_span(),
+                    location: dummy_span(),
+                    name_location: dummy_span(),
                     name: "Boxed".into(),
                     arguments: Vec::new(),
                     module: None,
@@ -334,24 +334,24 @@ pub fn main() {
             ),
             (
                 Pattern::Tuple {
-                    location: empty_span(),
+                    location: dummy_span(),
                     elements: vec![variable("x")],
                 },
                 "tuple",
             ),
             (
                 Pattern::BitArray {
-                    location: empty_span(),
+                    location: dummy_span(),
                     segments: Vec::new(),
                 },
                 "bit array",
             ),
             (
                 Pattern::StringPrefix {
-                    location: empty_span(),
-                    left_location: empty_span(),
+                    location: dummy_span(),
+                    left_location: dummy_span(),
                     left_side_assignment: None,
-                    right_location: empty_span(),
+                    right_location: dummy_span(),
                     left_side_string: "pre".into(),
                     right_side_assignment: AssignName::Variable("rest".into()),
                 },
@@ -359,7 +359,7 @@ pub fn main() {
             ),
             (
                 Pattern::Invalid {
-                    location: empty_span(),
+                    location: dummy_span(),
                     type_: type_::int(),
                 },
                 "invalid",
@@ -375,7 +375,7 @@ pub fn main() {
     }
 
     fn compiled_int_expression() -> TypedExpr {
-        let mut module = compile_base_module();
+        let mut module = compile_minimal_module();
         let Statement::Expression(expression) = module.definitions.functions[0].body.remove(0)
         else {
             panic!("expected main body to contain an integer expression");

@@ -45,7 +45,7 @@ mod tests {
     use super::plan_module;
     use crate::planner::PlanError;
     use crate::planner::dsl::{function, int, module};
-    use crate::planner::support::{compile, compile_base_module, empty_span, expect_plan_error};
+    use crate::planner::support::{compile, compile_minimal_module, dummy_span, expect_plan_error};
     use gleam_core::ast::TypedImport;
 
     #[test]
@@ -124,11 +124,11 @@ pub fn main() {
 
     #[test]
     fn reject_margin_import_definition() {
-        let mut module = compile_base_module();
+        let mut module = compile_minimal_module();
         module.definitions.imports.push(TypedImport {
             documentation: None,
-            location: empty_span(),
-            module_location: empty_span(),
+            location: dummy_span(),
+            module_location: dummy_span(),
             module: "gleam/io".into(),
             as_name: None,
             unqualified_values: Vec::new(),

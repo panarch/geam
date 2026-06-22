@@ -222,7 +222,7 @@ mod tests {
     use crate::planner::PlanError;
     use crate::planner::dsl::{bool_, function, local, module, nil, string};
     use crate::planner::plan_module;
-    use crate::planner::support::{compile, compile_base_module, empty_span, expect_plan_error};
+    use crate::planner::support::{compile, compile_minimal_module, dummy_span, expect_plan_error};
     use gleam_core::ast::{
         BinOp as GleamBinOp, Constant, ImplicitCallArgOrigin, Statement, TypedExpr, TypedModule,
     };
@@ -403,7 +403,7 @@ pub fn main() {
         let synthetic_cases = [
             (
                 module_returning_typed_expr(TypedExpr::PositionalAccess {
-                    location: empty_span(),
+                    location: dummy_span(),
                     type_: type_::int(),
                     index: 0,
                     record: Box::new(typed_int_expr(1)),
@@ -414,7 +414,7 @@ pub fn main() {
             ),
             (
                 module_returning_typed_expr(TypedExpr::ModuleSelect {
-                    location: empty_span(),
+                    location: dummy_span(),
                     field_start: 0,
                     type_: type_::int(),
                     label: "answer".into(),
@@ -422,11 +422,11 @@ pub fn main() {
                     module_alias: "other".into(),
                     constructor: ModuleValueConstructor::Constant {
                         literal: Constant::Int {
-                            location: empty_span(),
+                            location: dummy_span(),
                             value: "1".into(),
                             int_value: BigInt::from(1),
                         },
-                        location: empty_span(),
+                        location: dummy_span(),
                         documentation: None,
                     },
                 }),
@@ -436,7 +436,7 @@ pub fn main() {
             ),
             (
                 module_returning_typed_expr(TypedExpr::Invalid {
-                    location: empty_span(),
+                    location: dummy_span(),
                     type_: type_::int(),
                     extra_information: None,
                 }),
@@ -469,7 +469,7 @@ pub fn main() {
 
         assert_eq!(
             plan_module(module_returning_typed_expr(TypedExpr::RecordUpdate {
-                location: empty_span(),
+                location: dummy_span(),
                 spread_start: 0,
                 type_: type_::int(),
                 updated_record: Box::new(typed_int_expr(1)),
@@ -565,7 +565,7 @@ pub fn main() {
             panic!("expected call function to be a variable");
         };
         constructor.variant = ValueConstructorVariant::LocalVariable {
-            location: empty_span(),
+            location: dummy_span(),
             origin: VariableOrigin::generated(),
         };
         assert_eq!(
@@ -592,7 +592,7 @@ pub fn main() {
         };
         module_constant_call.definitions.functions[0].body =
             vec![Statement::Expression(TypedExpr::Call {
-                location: empty_span(),
+                location: dummy_span(),
                 type_: type_::int(),
                 fun: Box::new(module_constant),
                 arguments: Vec::new(),
@@ -754,7 +754,7 @@ pub fn main() {
         for (operator, expected) in cases {
             assert_eq!(
                 plan_module(module_returning_typed_expr(TypedExpr::BinOp {
-                    location: empty_span(),
+                    location: dummy_span(),
                     type_: type_::int(),
                     operator,
                     operator_start: 0,
@@ -767,14 +767,14 @@ pub fn main() {
     }
 
     fn module_returning_typed_expr(expression: TypedExpr) -> TypedModule {
-        let mut module = compile_base_module();
+        let mut module = compile_minimal_module();
         module.definitions.functions[0].body = vec![Statement::Expression(expression)];
         module
     }
 
     fn typed_int_expr(value: i64) -> TypedExpr {
         TypedExpr::Int {
-            location: empty_span(),
+            location: dummy_span(),
             type_: type_::int(),
             value: value.to_string().into(),
             int_value: BigInt::from(value),

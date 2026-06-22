@@ -110,7 +110,7 @@ mod tests {
     use crate::planner::PlanError;
     use crate::planner::dsl::{call, function, int, local, module};
     use crate::planner::plan_module;
-    use crate::planner::support::{compile, compile_base_module, empty_span, expect_plan_error};
+    use crate::planner::support::{compile, compile_minimal_module, dummy_span, expect_plan_error};
     use gleam_core::ast::ArgNames;
 
     #[test]
@@ -163,9 +163,9 @@ pub fn main() {
 
     #[test]
     fn reject_margin_function_shapes() {
-        let mut external = compile_base_module();
+        let mut external = compile_minimal_module();
         external.definitions.functions[0].external_erlang =
-            Some(("module".into(), "function".into(), empty_span()));
+            Some(("module".into(), "function".into(), dummy_span()));
         assert_eq!(
             plan_module(external),
             Err(PlanError::UnsupportedFunction {
@@ -183,7 +183,7 @@ pub fn main(value: Int) {
         );
         discard_arg.definitions.functions[0].arguments[0].names = ArgNames::Discard {
             name: "_".into(),
-            location: empty_span(),
+            location: dummy_span(),
         };
         assert_eq!(
             plan_module(discard_arg),
@@ -193,7 +193,7 @@ pub fn main(value: Int) {
             }),
         );
 
-        let mut empty_body = compile_base_module();
+        let mut empty_body = compile_minimal_module();
         empty_body.definitions.functions[0].body = Vec::new();
         assert_eq!(
             plan_module(empty_body),

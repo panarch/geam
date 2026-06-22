@@ -25,7 +25,8 @@ mod support {
         plan_module(compile(src)).expect_err("source should fail planning")
     }
 
-    pub(in crate::planner) fn compile_base_module() -> TypedModule {
+    // Minimal valid typed module used as a mutable fixture in planner margin tests.
+    pub(in crate::planner) fn compile_minimal_module() -> TypedModule {
         compile(
             r#"
 pub fn main() {
@@ -35,7 +36,8 @@ pub fn main() {
         )
     }
 
-    pub(in crate::planner) fn empty_span() -> SrcSpan {
+    // Dummy location for hand-built typed AST nodes in planner margin tests.
+    pub(in crate::planner) fn dummy_span() -> SrcSpan {
         SrcSpan::new(0, 0)
     }
 }
