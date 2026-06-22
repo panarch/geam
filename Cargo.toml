@@ -5,10 +5,10 @@ edition = "2024"
 
 [dependencies]
 camino = "1"
-# Keep this aligned with the Gleam v1.17.0 lockfile while using gleam-core as a
-# path dependency. gleam-core does not compile against ecow 0.3.0.
+# Keep this aligned with the Gleam v1.17.0 dependency graph. gleam-core does not
+# compile against ecow 0.3.0.
 ecow = "=0.2.6"
-gleam-core = { path = "../gleam/compiler-core" }
+gleam-core = { git = "https://github.com/gleam-lang/gleam", rev = "afc1b7d956b433e638d52dbd06470f53a0b26f6a", package = "gleam-core" }
 im = "15"
 num-bigint = "0.4.6"
 thiserror = "2"

@@ -48,7 +48,7 @@ The main public entry points are:
 Current Gleam baseline: `v1.17.0`.
 
 See [docs/upstream-gleam.md](docs/upstream-gleam.md) for the exact commit,
-local checkout expectations, compiler-boundary details, and sync policy.
+compiler-boundary details, and sync policy.
 
 ## Testing
 

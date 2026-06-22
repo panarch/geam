@@ -3,9 +3,9 @@
 Geam uses Rust unit tests for compiler-boundary, lowering, and runtime
 milestones.
 
-The current compiler-boundary and runtime milestones depend on a local Gleam
-checkout at the baseline recorded in the README. `cargo test` compiles the
-`gleam-core` path dependency as part of the normal suite.
+The current compiler-boundary and runtime milestones depend on `gleam-core`
+pinned to the upstream baseline recorded in the README. `cargo test` compiles
+that Git dependency as part of the normal suite.
 
 Source-level execution tests live under `tests/fixtures/execution/*.gleam`.
 Each fixture must end with a `// geam:expect ...` line, for example:

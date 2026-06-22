@@ -21,8 +21,8 @@ compiler-boundary behavior are compared against a published Gleam toolchain.
 
 ## Used Gleam Areas
 
-The first compiler-boundary milestone depends on `gleam-core` from the baseline
-checkout. The primary compiler areas used by Geam are:
+The first compiler-boundary milestone depends on `gleam-core` pinned to the
+baseline commit. The primary compiler areas used by Geam are:
 
 ```text
 compiler-core/src/parse.rs
