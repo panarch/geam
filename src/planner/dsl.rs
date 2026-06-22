@@ -11,7 +11,7 @@ pub(in crate::planner) use module::{ModuleBuilder, module};
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::plan::{Expr, FunctionPlan, ModulePlan, Value};
+    use crate::plan::{Expr, FunctionId, FunctionPlan, ModulePlan, Value};
     use num_bigint::BigInt;
 
     #[test]
@@ -24,7 +24,9 @@ mod tests {
             actual,
             ModulePlan {
                 module: "main".into(),
+                main: FunctionId(0),
                 functions: vec![FunctionPlan {
+                    id: FunctionId(0),
                     name: "main".into(),
                     params: vec![],
                     steps: vec![],

@@ -9,27 +9,13 @@ pub use error::RuntimeError;
 use crate::plan::ModulePlan;
 
 pub fn run_main(plan: &ModulePlan) -> Result<Value, RuntimeError> {
-    run_function(plan, "main", Vec::new())
-}
-
-pub fn run_function(
-    plan: &ModulePlan,
-    name: &str,
-    args: Vec<Value>,
-) -> Result<Value, RuntimeError> {
-    function::run_function(plan, name, args)
+    function::run_function(plan, plan.main, Vec::new())
 }
 
 #[cfg(test)]
 fn run_src(src: &str) -> Value {
     let plan = plan_src(src);
     run_main(&plan).expect("source should run")
-}
-
-#[cfg(test)]
-fn run_function_src(src: &str, name: &str, args: Vec<Value>) -> Result<Value, RuntimeError> {
-    let plan = plan_src(src);
-    run_function(&plan, name, args)
 }
 
 #[cfg(test)]
@@ -46,7 +32,7 @@ fn int(value: i64) -> Value {
 
 #[cfg(test)]
 mod tests {
-    use super::{RuntimeError, int, run_function_src, run_src};
+    use super::{int, run_src};
 
     #[test]
     fn run_main() {
@@ -59,24 +45,6 @@ pub fn main() {
 "#,
             ),
             int(1),
-        );
-    }
-
-    #[test]
-    fn report_missing_function() {
-        assert_eq!(
-            run_function_src(
-                r#"
-pub fn main() {
-  1
-}
-"#,
-                "missing",
-                Vec::new(),
-            ),
-            Err(RuntimeError::MissingFunction {
-                name: "missing".into(),
-            }),
         );
     }
 }

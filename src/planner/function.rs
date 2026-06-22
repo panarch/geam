@@ -1,15 +1,16 @@
-use crate::plan::{FunctionPlan, Param};
-use crate::planner::context::PlanContext;
+use crate::plan::{FunctionId, FunctionPlan, Param};
+use crate::planner::context::{FunctionInfo, PlanContext};
 use crate::planner::error::PlanError;
 use crate::planner::expression::plan_expr;
 use crate::planner::statement::plan_step;
 use ecow::EcoString;
 use gleam_core::ast::{ArgNames, Statement, TypedFunction};
-use std::collections::HashSet;
+use std::collections::HashMap;
 
 pub(super) fn plan_function(
+    id: FunctionId,
     module_name: &EcoString,
-    function_names: &HashSet<EcoString>,
+    functions: &HashMap<EcoString, FunctionInfo>,
     function: TypedFunction,
 ) -> Result<FunctionPlan, PlanError> {
     let name = function_name(&function)?;
@@ -21,7 +22,7 @@ pub(super) fn plan_function(
         });
     }
 
-    let mut context = PlanContext::new(module_name, function_names);
+    let mut context = PlanContext::new(module_name, functions);
     let params = plan_params(&mut context, name.clone(), function.arguments)?;
     let mut body = function.body;
     let Some(last_statement) = body.pop() else {
@@ -56,6 +57,7 @@ pub(super) fn plan_function(
     };
 
     Ok(FunctionPlan {
+        id,
         name,
         params,
         steps,
@@ -176,8 +178,12 @@ pub fn main() {
 
         let mut discard_arg = compile(
             r#"
-pub fn main(value: Int) {
+fn helper(value: Int) {
   value
+}
+
+pub fn main() {
+  helper(1)
 }
 "#,
         );
@@ -188,7 +194,7 @@ pub fn main(value: Int) {
         assert_eq!(
             plan_module(discard_arg),
             Err(PlanError::UnsupportedArgument {
-                function: "main".into(),
+                function: "helper".into(),
                 reason: "discard arguments are not supported",
             }),
         );

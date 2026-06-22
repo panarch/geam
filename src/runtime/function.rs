@@ -1,22 +1,15 @@
-use crate::plan::{FunctionPlan, ModulePlan, Step, Value};
+use crate::plan::{FunctionId, FunctionPlan, ModulePlan, Step, Value};
 use crate::runtime::error::RuntimeError;
 use crate::runtime::expression::eval_expr;
 use crate::runtime::frame::Frame;
 
 pub(super) fn run_function(
     plan: &ModulePlan,
-    name: &str,
+    function: FunctionId,
     args: Vec<Value>,
 ) -> Result<Value, RuntimeError> {
-    let function = find_function(plan, name)?;
+    let function = &plan.functions[function.0];
     execute_function(plan, function, args)
-}
-
-fn find_function<'a>(plan: &'a ModulePlan, name: &str) -> Result<&'a FunctionPlan, RuntimeError> {
-    plan.functions
-        .iter()
-        .find(|function| function.name == name)
-        .ok_or_else(|| RuntimeError::MissingFunction { name: name.into() })
 }
 
 fn execute_function(
@@ -24,14 +17,6 @@ fn execute_function(
     function: &FunctionPlan,
     args: Vec<Value>,
 ) -> Result<Value, RuntimeError> {
-    if function.params.len() != args.len() {
-        return Err(RuntimeError::ArityMismatch {
-            name: function.name.clone(),
-            expected: function.params.len(),
-            got: args.len(),
-        });
-    }
-
     let mut frame = Frame::default();
     for (param, value) in function.params.iter().zip(args) {
         frame.set(param.local, value);
@@ -54,8 +39,7 @@ fn execute_function(
 
 #[cfg(test)]
 mod tests {
-    use super::super::{RuntimeError, int, plan_src, run_src};
-    use super::run_function;
+    use super::super::{int, run_src};
 
     #[test]
     fn execute_let_binding() {
@@ -88,35 +72,20 @@ pub fn main() {
     }
 
     #[test]
-    fn run_function_with_arguments() {
-        let plan = plan_src(
-            r#"
-pub fn double(value: Int) {
-  value * 2
-}
-"#,
-        );
-
-        assert_eq!(run_function(&plan, "double", vec![int(3)]), Ok(int(6)));
-    }
-
-    #[test]
-    fn report_arity_mismatch() {
-        let plan = plan_src(
-            r#"
-pub fn double(value: Int) {
-  value * 2
-}
-"#,
-        );
-
+    fn execute_function_with_arguments() {
         assert_eq!(
-            run_function(&plan, "double", Vec::new()),
-            Err(RuntimeError::ArityMismatch {
-                name: "double".into(),
-                expected: 1,
-                got: 0,
-            }),
+            run_src(
+                r#"
+fn double(value: Int) {
+  value * 2
+}
+
+pub fn main() {
+  double(3)
+}
+"#,
+            ),
+            int(6),
         );
     }
 }

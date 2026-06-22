@@ -1,5 +1,5 @@
-use crate::plan::{FunctionPlan, Param};
-use crate::planner::dsl::expression::ExprBuilder;
+use crate::plan::{FunctionId, FunctionPlan, Param};
+use crate::planner::dsl::expression::{ExprBuilder, FunctionTable};
 use crate::planner::dsl::locals::LocalTable;
 use crate::planner::dsl::step::StepBuilder;
 use ecow::EcoString;
@@ -49,7 +49,15 @@ impl FunctionBuilder {
         self
     }
 
-    pub(in crate::planner) fn build(self) -> FunctionPlan {
+    pub(in crate::planner) fn name(&self) -> &EcoString {
+        &self.name
+    }
+
+    pub(in crate::planner) fn build(
+        self,
+        id: FunctionId,
+        functions: &FunctionTable,
+    ) -> FunctionPlan {
         let mut locals = LocalTable::default();
         let params = self
             .params
@@ -63,7 +71,7 @@ impl FunctionBuilder {
         let steps = self
             .steps
             .into_iter()
-            .map(|step| step.build(&mut locals))
+            .map(|step| step.build(&mut locals, functions))
             .collect();
 
         let return_ = self
@@ -74,9 +82,10 @@ impl FunctionBuilder {
                     self.name
                 )
             })
-            .build(&locals);
+            .build(&locals, functions);
 
         FunctionPlan {
+            id,
             name: self.name,
             params,
             steps,
@@ -88,8 +97,8 @@ impl FunctionBuilder {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::plan::{Expr, FunctionRef, LocalId, Step, Value};
-    use crate::planner::dsl::expression::{call, int, local, string};
+    use crate::plan::{Expr, LocalId, Step, Value};
+    use crate::planner::dsl::expression::{FunctionTable, call, int, local, string};
     use num_bigint::BigInt;
 
     #[test]
@@ -99,11 +108,12 @@ mod tests {
             .let_("x", local("input"))
             .evaluate(string("side effect"))
             .return_(call("helper", [local("x"), string("done")]))
-            .build();
+            .build(FunctionId(0), &function_table());
 
         assert_eq!(
             actual,
             FunctionPlan {
+                id: FunctionId(0),
                 name: "main".into(),
                 params: vec![Param {
                     local: LocalId(0),
@@ -121,7 +131,7 @@ mod tests {
                     Step::Evaluate(Expr::Value(Value::String("side effect".into()))),
                 ],
                 return_: Expr::Call {
-                    function: FunctionRef::Local("helper".into()),
+                    function: FunctionId(1),
                     args: vec![
                         Expr::LocalGet {
                             local: LocalId(1),
@@ -136,7 +146,9 @@ mod tests {
 
     #[test]
     fn function_builder_return() {
-        let actual = function("main").return_(int(1)).build();
+        let actual = function("main")
+            .return_(int(1))
+            .build(FunctionId(0), &FunctionTable::default());
 
         assert_eq!(actual.return_, Expr::Value(Value::Int(BigInt::from(1))));
     }
@@ -144,6 +156,10 @@ mod tests {
     #[test]
     #[should_panic(expected = "function `main` in planner DSL must define a return expression")]
     fn function_builder_build_without_return() {
-        function("main").build();
+        function("main").build(FunctionId(0), &FunctionTable::default());
+    }
+
+    fn function_table() -> FunctionTable {
+        FunctionTable::from([("helper".into(), FunctionId(1))])
     }
 }

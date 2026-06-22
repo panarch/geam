@@ -89,11 +89,6 @@ pub fn plan_module(
 ) -> Result<geam::ModulePlan, geam::PlanError>
 
 pub fn run_main(plan: &geam::ModulePlan) -> Result<geam::Value, geam::RuntimeError>
-pub fn run_function(
-    plan: &geam::ModulePlan,
-    name: &str,
-    args: Vec<geam::Value>,
-) -> Result<geam::Value, geam::RuntimeError>
 ```
 
 ## Intentionally Out Of Scope

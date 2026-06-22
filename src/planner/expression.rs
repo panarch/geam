@@ -1,5 +1,5 @@
-use crate::plan::{BinOp, Expr, FunctionRef, Value};
-use crate::planner::context::PlanContext;
+use crate::plan::{BinOp, Expr, Value};
+use crate::planner::context::{FunctionInfo, PlanContext};
 use crate::planner::error::PlanError;
 use ecow::EcoString;
 use gleam_core::ast::{BinOp as GleamBinOp, TypedExpr};
@@ -119,18 +119,26 @@ fn plan_call(
     }
 
     let function = plan_function_ref(fun, context)?;
+    if function.arity != arguments.len() {
+        return Err(PlanError::UnsupportedCall {
+            reason: "local function call arity mismatch",
+        });
+    }
     let args = arguments
         .into_iter()
         .map(|argument| plan_expr(argument.value, context))
         .collect::<Result<Vec<_>, _>>()?;
 
-    Ok(Expr::Call { function, args })
+    Ok(Expr::Call {
+        function: function.id,
+        args,
+    })
 }
 
 fn plan_function_ref(
     expression: TypedExpr,
     context: &PlanContext<'_>,
-) -> Result<FunctionRef, PlanError> {
+) -> Result<FunctionInfo, PlanError> {
     let TypedExpr::Var { constructor, .. } = expression else {
         return Err(PlanError::UnsupportedCall {
             reason: "only direct local function calls are supported",
@@ -145,11 +153,14 @@ fn plan_function_ref(
             external_javascript,
             ..
         } if module == *context.module_name
-            && context.function_names.contains(&name)
             && external_erlang.is_none()
             && external_javascript.is_none() =>
         {
-            Ok(FunctionRef::Local(name))
+            context
+                .lookup_function(&name)
+                .ok_or(PlanError::UnsupportedCall {
+                    reason: "only current-module functions are supported",
+                })
         }
         ValueConstructorVariant::ModuleFn { .. } => Err(PlanError::UnsupportedCall {
             reason: "only current-module functions are supported",
@@ -212,7 +223,7 @@ fn plan_bin_op(operator: GleamBinOp) -> Result<BinOp, PlanError> {
 #[cfg(test)]
 mod tests {
     use crate::planner::PlanError;
-    use crate::planner::dsl::{bool_, function, int, local, module, nil, string};
+    use crate::planner::dsl::{bool_, call, function, int, local, module, nil, string};
     use crate::planner::plan_module;
     use crate::planner::support::{compile, compile_minimal_module, dummy_span, expect_plan_error};
     use gleam_core::ast::Publicity;
@@ -247,7 +258,7 @@ pub fn main() {
     fn plan_integer_comparisons() {
         let actual = plan_module(compile(
             r#"
-pub fn lt() {
+pub fn main() {
   1 < 2
 }
 
@@ -266,7 +277,7 @@ pub fn gte() {
         ))
         .expect("source should plan");
         let expected = module("main")
-            .function(function("lt").return_(int(1).lt_int(int(2))))
+            .function(function("main").return_(int(1).lt_int(int(2))))
             .function(function("lte").return_(int(1).lte_int(int(2))))
             .function(function("gt").return_(int(2).gt_int(int(1))))
             .function(function("gte").return_(int(2).gte_int(int(1))))
@@ -279,7 +290,7 @@ pub fn gte() {
     fn plan_integer_division_and_remainder() {
         let actual = plan_module(compile(
             r#"
-pub fn divide() {
+pub fn main() {
   11 / 3
 }
 
@@ -290,7 +301,7 @@ pub fn remainder() {
         ))
         .expect("source should plan");
         let expected = module("main")
-            .function(function("divide").return_(int(11).div_int(int(3))))
+            .function(function("main").return_(int(11).div_int(int(3))))
             .function(function("remainder").return_(int(11).remainder_int(int(3))))
             .build();
 
@@ -308,6 +319,10 @@ pub fn negate(value: Int) {
 pub fn invert(value: Bool) {
   !value
 }
+
+pub fn main() {
+  negate(1)
+}
 "#,
         ))
         .expect("source should plan");
@@ -322,6 +337,7 @@ pub fn invert(value: Bool) {
                     .param("value")
                     .return_(local("value").negate_bool()),
             )
+            .function(function("main").return_(call("negate", [int(1)])))
             .build();
 
         assert_eq!(actual, expected);
@@ -722,6 +738,27 @@ pub fn main() {
             plan_module(implicit_call),
             Err(PlanError::UnsupportedCall {
                 reason: "implicit call arguments are not supported",
+            }),
+        );
+
+        let mut arity_mismatch_call = compile(
+            r#"
+fn identity(value: Int) {
+  value
+}
+
+pub fn main() {
+  identity(1)
+}
+"#,
+        );
+        let (_, arguments) =
+            expect_call_statement_mut(&mut arity_mismatch_call.definitions.functions[1].body[0]);
+        arguments.clear();
+        assert_eq!(
+            plan_module(arity_mismatch_call),
+            Err(PlanError::UnsupportedCall {
+                reason: "local function call arity mismatch",
             }),
         );
 

@@ -1,4 +1,4 @@
-use crate::plan::{BinOp, Expr, FunctionRef, ModulePlan, Value};
+use crate::plan::{BinOp, Expr, ModulePlan, Value};
 use crate::runtime::error::RuntimeError;
 use crate::runtime::frame::Frame;
 use crate::runtime::function;
@@ -18,9 +18,7 @@ pub(super) fn eval_expr(
                 .iter()
                 .map(|argument| eval_expr(plan, frame, argument))
                 .collect::<Result<Vec<_>, _>>()?;
-            match function {
-                FunctionRef::Local(name) => function::run_function(plan, name.as_str(), args),
-            }
+            function::run_function(plan, *function, args)
         }
         Expr::BinOp { op, left, right } => {
             let left = eval_expr(plan, frame, left)?;
@@ -116,7 +114,7 @@ mod tests {
     use super::super::frame::Frame;
     use super::super::{RuntimeError, Value, int, run_src};
     use super::{eval_bin_op, eval_expr};
-    use crate::plan::{BinOp, Expr, ModulePlan};
+    use crate::plan::{BinOp, Expr, FunctionId, ModulePlan};
 
     #[test]
     fn eval_integer_arithmetic() {
@@ -321,6 +319,7 @@ pub fn main() {
     fn eval_negate_int() {
         let plan = ModulePlan {
             module: "main".into(),
+            main: FunctionId(0),
             functions: Vec::new(),
         };
         let mut frame = Frame::default();
@@ -426,6 +425,7 @@ pub fn main() {
 
         let plan = ModulePlan {
             module: "main".into(),
+            main: FunctionId(0),
             functions: Vec::new(),
         };
         let mut frame = Frame::default();

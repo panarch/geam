@@ -40,7 +40,6 @@ The main public entry points are:
 - `compile_typed_module`
 - `plan_module`
 - `run_main`
-- `run_function`
 
 ## Upstream
 

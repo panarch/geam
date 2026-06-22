@@ -1,7 +1,8 @@
-use crate::plan::{BinOp, Expr, FunctionRef, Value};
+use crate::plan::{BinOp, Expr, FunctionId, Value};
 use crate::planner::dsl::locals::LocalTable;
 use ecow::EcoString;
 use num_bigint::BigInt;
+use std::collections::HashMap;
 
 pub(in crate::planner) fn int(value: i64) -> ExprBuilder {
     ExprBuilder::Value(Value::Int(BigInt::from(value)))
@@ -115,7 +116,7 @@ impl ExprBuilder {
         }
     }
 
-    pub(super) fn build(self, locals: &LocalTable) -> Expr {
+    pub(super) fn build(self, locals: &LocalTable, functions: &FunctionTable) -> Expr {
         match self {
             Self::Value(value) => Expr::Value(value),
             Self::Local(name) => Expr::LocalGet {
@@ -123,18 +124,29 @@ impl ExprBuilder {
                 name,
             },
             Self::Call { name, args } => Expr::Call {
-                function: FunctionRef::Local(name),
-                args: args.into_iter().map(|arg| arg.build(locals)).collect(),
+                function: lookup_function(functions, &name),
+                args: args
+                    .into_iter()
+                    .map(|arg| arg.build(locals, functions))
+                    .collect(),
             },
             Self::BinOp { op, left, right } => Expr::BinOp {
                 op,
-                left: Box::new(left.build(locals)),
-                right: Box::new(right.build(locals)),
+                left: Box::new(left.build(locals, functions)),
+                right: Box::new(right.build(locals, functions)),
             },
-            Self::NegateInt(value) => Expr::NegateInt(Box::new(value.build(locals))),
-            Self::NegateBool(value) => Expr::NegateBool(Box::new(value.build(locals))),
+            Self::NegateInt(value) => Expr::NegateInt(Box::new(value.build(locals, functions))),
+            Self::NegateBool(value) => Expr::NegateBool(Box::new(value.build(locals, functions))),
         }
     }
+}
+
+pub(super) type FunctionTable = HashMap<EcoString, FunctionId>;
+
+fn lookup_function(functions: &FunctionTable, name: &EcoString) -> FunctionId {
+    *functions
+        .get(name)
+        .unwrap_or_else(|| panic!("unknown function `{name}` in planner DSL"))
 }
 
 #[cfg(test)]
@@ -175,7 +187,7 @@ mod tests {
         locals.define("x".into());
 
         assert_eq!(
-            local("x").build(&locals),
+            local("x").build(&locals, &FunctionTable::default()),
             Expr::LocalGet {
                 local: LocalId(0),
                 name: "x".into(),
@@ -189,9 +201,9 @@ mod tests {
         locals.define("x".into());
 
         assert_eq!(
-            call("helper", [local("x"), string("done")]).build(&locals),
+            call("helper", [local("x"), string("done")]).build(&locals, &function_table()),
             Expr::Call {
-                function: FunctionRef::Local("helper".into()),
+                function: FunctionId(1),
                 args: vec![
                     Expr::LocalGet {
                         local: LocalId(0),
@@ -201,6 +213,12 @@ mod tests {
                 ],
             }
         );
+    }
+
+    #[test]
+    #[should_panic(expected = "unknown function `missing` in planner DSL")]
+    fn call_build_panics_on_missing_function() {
+        call("missing", []).build(&LocalTable::default(), &FunctionTable::default());
     }
 
     #[test]
@@ -298,6 +316,10 @@ mod tests {
     }
 
     fn build_expr(expr: ExprBuilder) -> Expr {
-        expr.build(&LocalTable::default())
+        expr.build(&LocalTable::default(), &function_table())
+    }
+
+    fn function_table() -> FunctionTable {
+        FunctionTable::from([("helper".into(), FunctionId(1))])
     }
 }

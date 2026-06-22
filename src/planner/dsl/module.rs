@@ -1,4 +1,5 @@
-use crate::plan::ModulePlan;
+use crate::plan::{FunctionId, ModulePlan};
+use crate::planner::dsl::expression::FunctionTable;
 use crate::planner::dsl::function::FunctionBuilder;
 use ecow::EcoString;
 
@@ -22,15 +23,30 @@ impl ModuleBuilder {
     }
 
     pub(in crate::planner) fn build(self) -> ModulePlan {
+        let functions = function_table(&self.functions);
+        let main = *functions
+            .get("main")
+            .expect("planner DSL module must define a main function");
+
         ModulePlan {
             module: self.name,
+            main,
             functions: self
                 .functions
                 .into_iter()
-                .map(FunctionBuilder::build)
+                .enumerate()
+                .map(|(index, function)| function.build(FunctionId(index), &functions))
                 .collect(),
         }
     }
+}
+
+fn function_table(functions: &[FunctionBuilder]) -> FunctionTable {
+    functions
+        .iter()
+        .enumerate()
+        .map(|(index, function)| (function.name().clone(), FunctionId(index)))
+        .collect()
 }
 
 #[cfg(test)]
@@ -52,14 +68,17 @@ mod tests {
             actual,
             ModulePlan {
                 module: "main".into(),
+                main: FunctionId(0),
                 functions: vec![
                     FunctionPlan {
+                        id: FunctionId(0),
                         name: "main".into(),
                         params: vec![],
                         steps: vec![],
                         return_: Expr::Value(Value::Int(BigInt::from(1))),
                     },
                     FunctionPlan {
+                        id: FunctionId(1),
                         name: "helper".into(),
                         params: vec![],
                         steps: vec![],
@@ -68,5 +87,13 @@ mod tests {
                 ],
             }
         );
+    }
+
+    #[test]
+    #[should_panic(expected = "planner DSL module must define a main function")]
+    fn module_build_without_main_function() {
+        module("main")
+            .function(function("helper").return_(nil()))
+            .build();
     }
 }

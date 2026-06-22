@@ -1,5 +1,5 @@
 use crate::plan::Step;
-use crate::planner::dsl::expression::ExprBuilder;
+use crate::planner::dsl::expression::{ExprBuilder, FunctionTable};
 use crate::planner::dsl::locals::LocalTable;
 use ecow::EcoString;
 
@@ -10,14 +10,14 @@ pub(super) enum StepBuilder {
 }
 
 impl StepBuilder {
-    pub(super) fn build(self, locals: &mut LocalTable) -> Step {
+    pub(super) fn build(self, locals: &mut LocalTable, functions: &FunctionTable) -> Step {
         match self {
             Self::Let { name, value } => {
-                let value = value.build(locals);
+                let value = value.build(locals, functions);
                 let local = locals.define(name.clone());
                 Step::Let { local, name, value }
             }
-            Self::Evaluate(value) => Step::Evaluate(value.build(locals)),
+            Self::Evaluate(value) => Step::Evaluate(value.build(locals, functions)),
         }
     }
 }
@@ -26,7 +26,7 @@ impl StepBuilder {
 mod tests {
     use super::*;
     use crate::plan::{Expr, LocalId, Value};
-    use crate::planner::dsl::expression::{int, local, string};
+    use crate::planner::dsl::expression::{FunctionTable, int, local, string};
     use num_bigint::BigInt;
 
     #[test]
@@ -38,7 +38,7 @@ mod tests {
             name: "x".into(),
             value: local("x"),
         }
-        .build(&mut locals);
+        .build(&mut locals, &FunctionTable::default());
 
         assert_eq!(
             actual,
@@ -58,7 +58,8 @@ mod tests {
     fn step_builder_evaluate() {
         let mut locals = LocalTable::default();
 
-        let actual = StepBuilder::Evaluate(string("side effect")).build(&mut locals);
+        let actual = StepBuilder::Evaluate(string("side effect"))
+            .build(&mut locals, &FunctionTable::default());
 
         assert_eq!(
             actual,
@@ -73,7 +74,7 @@ mod tests {
             name: "x".into(),
             value: int(1),
         }
-        .build(&mut LocalTable::default());
+        .build(&mut LocalTable::default(), &FunctionTable::default());
 
         assert_eq!(
             actual,

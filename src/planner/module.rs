@@ -1,9 +1,10 @@
-use crate::plan::ModulePlan;
+use crate::plan::{FunctionId, ModulePlan};
+use crate::planner::context::FunctionInfo;
 use crate::planner::error::PlanError;
 use crate::planner::function::{function_name, plan_function};
 use ecow::EcoString;
 use gleam_core::ast::TypedModule;
-use std::collections::HashSet;
+use std::collections::HashMap;
 
 pub fn plan_module(module: TypedModule) -> Result<ModulePlan, PlanError> {
     reject_top_level("import", module.definitions.imports.len())?;
@@ -12,24 +13,59 @@ pub fn plan_module(module: TypedModule) -> Result<ModulePlan, PlanError> {
     reject_top_level("type alias", module.definitions.type_aliases.len())?;
 
     let module_name = module.name;
-    let function_names = function_names(&module.definitions.functions)?;
+    let functions = function_table(&module.definitions.functions)?;
+    let main = main_function(&functions)?;
     let functions = module
         .definitions
         .functions
         .into_iter()
-        .map(|function| plan_function(&module_name, &function_names, function))
+        .enumerate()
+        .map(|(index, function)| {
+            plan_function(FunctionId(index), &module_name, &functions, function)
+        })
         .collect::<Result<Vec<_>, _>>()?;
 
     Ok(ModulePlan {
         module: module_name,
+        main,
         functions,
     })
 }
 
-fn function_names(
+fn function_table(
     functions: &[gleam_core::ast::TypedFunction],
-) -> Result<HashSet<EcoString>, PlanError> {
-    functions.iter().map(function_name).collect()
+) -> Result<HashMap<EcoString, FunctionInfo>, PlanError> {
+    functions
+        .iter()
+        .enumerate()
+        .map(|(index, function)| {
+            Ok((
+                function_name(function)?,
+                FunctionInfo {
+                    id: FunctionId(index),
+                    arity: function.arguments.len(),
+                },
+            ))
+        })
+        .collect()
+}
+
+fn main_function(functions: &HashMap<EcoString, FunctionInfo>) -> Result<FunctionId, PlanError> {
+    let main = functions
+        .get("main")
+        .ok_or_else(|| PlanError::UnsupportedFunction {
+            name: "main".into(),
+            reason: "main function is required",
+        })?;
+
+    if main.arity != 0 {
+        return Err(PlanError::UnsupportedFunction {
+            name: "main".into(),
+            reason: "main must not take arguments",
+        });
+    }
+
+    Ok(main.id)
 }
 
 fn reject_top_level(kind: &'static str, count: usize) -> Result<(), PlanError> {
@@ -78,6 +114,40 @@ pub fn main() {
 "#,
             ),
             PlanError::UnsupportedTopLevel { kind: "constant" },
+        );
+    }
+
+    #[test]
+    fn reject_profile_missing_main_function() {
+        assert_eq!(
+            expect_plan_error(
+                r#"
+pub fn other() {
+  1
+}
+"#,
+            ),
+            PlanError::UnsupportedFunction {
+                name: "main".into(),
+                reason: "main function is required",
+            },
+        );
+    }
+
+    #[test]
+    fn reject_profile_main_function_with_arguments() {
+        assert_eq!(
+            expect_plan_error(
+                r#"
+pub fn main(value: Int) {
+  value
+}
+"#,
+            ),
+            PlanError::UnsupportedFunction {
+                name: "main".into(),
+                reason: "main must not take arguments",
+            },
         );
     }
 

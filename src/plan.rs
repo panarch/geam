@@ -4,14 +4,19 @@ use num_bigint::BigInt;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct LocalId(pub usize);
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct FunctionId(pub usize);
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ModulePlan {
     pub module: EcoString,
+    pub main: FunctionId,
     pub functions: Vec<FunctionPlan>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FunctionPlan {
+    pub id: FunctionId,
     pub name: EcoString,
     pub params: Vec<Param>,
     pub steps: Vec<Step>,
@@ -42,7 +47,7 @@ pub enum Expr {
         name: EcoString,
     },
     Call {
-        function: FunctionRef,
+        function: FunctionId,
         args: Vec<Expr>,
     },
     BinOp {
@@ -52,11 +57,6 @@ pub enum Expr {
     },
     NegateInt(Box<Expr>),
     NegateBool(Box<Expr>),
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum FunctionRef {
-    Local(EcoString),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
