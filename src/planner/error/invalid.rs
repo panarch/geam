@@ -79,6 +79,8 @@ pub enum InvalidCallShapeReason {
     LocalFunctionCallArityMismatch,
     #[error("local function call return type is not supported")]
     LocalFunctionCallUnsupportedReturnType,
+    #[error("local function call return type does not match function table")]
+    LocalFunctionCallReturnTypeMismatch,
     #[error("calling module constants is not supported")]
     ModuleConstant,
     #[error("non-current module function")]

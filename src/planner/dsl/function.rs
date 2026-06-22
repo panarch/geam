@@ -1,202 +1,130 @@
-use crate::plan::{FunctionId, FunctionPlan, Param, ValueType};
-use crate::planner::dsl::expression::{ExprBuilder, FunctionTable};
-use crate::planner::dsl::locals::LocalTable;
-use crate::planner::dsl::step::StepBuilder;
+use crate::plan::{
+    BoolLocalId, Expr, FunctionId, FunctionPlan, IntLocalId, LocalId, NilLocalId, Param, Step,
+    StringLocalId,
+};
+use crate::planner::dsl::expression::{Bool, Int, Nil, String};
 use ecow::EcoString;
 
-pub(in crate::planner) fn function(name: impl Into<EcoString>) -> FunctionBuilder {
-    FunctionBuilder {
+pub(crate) struct FunctionDsl {
+    name: EcoString,
+    params: Vec<Param>,
+    steps: Vec<Step>,
+    return_: Expr,
+}
+
+pub(crate) fn function(name: impl Into<EcoString>, return_: impl Into<Expr>) -> FunctionDsl {
+    FunctionDsl {
         name: name.into(),
         params: Vec::new(),
         steps: Vec::new(),
-        return_: None,
+        return_: return_.into(),
     }
 }
 
-#[derive(Debug, Clone)]
-pub(in crate::planner) struct FunctionBuilder {
-    name: EcoString,
-    params: Vec<(EcoString, ValueType)>,
-    steps: Vec<StepBuilder>,
-    return_: Option<ExprBuilder>,
-}
-
-impl FunctionBuilder {
-    pub(in crate::planner) fn param(mut self, name: impl Into<EcoString>) -> Self {
-        self.params.push((name.into(), ValueType::Int));
+impl FunctionDsl {
+    pub(crate) fn param_int(mut self, local: usize, name: impl Into<EcoString>) -> Self {
+        self.params
+            .push(Param::new(LocalId::Int(IntLocalId(local)), name.into()));
         self
     }
 
-    pub(in crate::planner) fn param_string(mut self, name: impl Into<EcoString>) -> Self {
-        self.params.push((name.into(), ValueType::String));
+    pub(crate) fn param_string(mut self, local: usize, name: impl Into<EcoString>) -> Self {
+        self.params.push(Param::new(
+            LocalId::String(StringLocalId(local)),
+            name.into(),
+        ));
         self
     }
 
-    pub(in crate::planner) fn param_bool(mut self, name: impl Into<EcoString>) -> Self {
-        self.params.push((name.into(), ValueType::Bool));
+    pub(crate) fn param_bool(mut self, local: usize, name: impl Into<EcoString>) -> Self {
+        self.params
+            .push(Param::new(LocalId::Bool(BoolLocalId(local)), name.into()));
         self
     }
 
-    pub(in crate::planner) fn param_nil(mut self, name: impl Into<EcoString>) -> Self {
-        self.params.push((name.into(), ValueType::Nil));
+    pub(crate) fn param_nil(mut self, local: usize, name: impl Into<EcoString>) -> Self {
+        self.params
+            .push(Param::new(LocalId::Nil(NilLocalId(local)), name.into()));
         self
     }
 
-    pub(in crate::planner) fn let_(
+    pub(crate) fn let_int(mut self, local: usize, name: impl Into<EcoString>, value: Int) -> Self {
+        self.steps
+            .push(Step::let_int(IntLocalId(local), name.into(), value.into()));
+        self
+    }
+
+    pub(crate) fn let_string(
         mut self,
+        local: usize,
         name: impl Into<EcoString>,
-        value: ExprBuilder,
+        value: String,
     ) -> Self {
-        self.steps.push(StepBuilder::Let {
-            name: name.into(),
-            value,
-        });
+        self.steps.push(Step::let_string(
+            StringLocalId(local),
+            name.into(),
+            value.into(),
+        ));
         self
     }
 
-    pub(in crate::planner) fn evaluate(mut self, value: ExprBuilder) -> Self {
-        self.steps.push(StepBuilder::Evaluate(value));
+    pub(crate) fn let_bool(
+        mut self,
+        local: usize,
+        name: impl Into<EcoString>,
+        value: Bool,
+    ) -> Self {
+        self.steps.push(Step::let_bool(
+            BoolLocalId(local),
+            name.into(),
+            value.into(),
+        ));
         self
     }
 
-    pub(in crate::planner) fn return_(mut self, value: ExprBuilder) -> Self {
-        self.return_ = Some(value);
+    pub(crate) fn let_nil(mut self, local: usize, name: impl Into<EcoString>, value: Nil) -> Self {
+        self.steps
+            .push(Step::let_nil(NilLocalId(local), name.into(), value.into()));
         self
     }
 
-    pub(in crate::planner) fn name(&self) -> &EcoString {
-        &self.name
+    pub(crate) fn evaluate(mut self, value: impl Into<Expr>) -> Self {
+        self.steps.push(Step::evaluate(value.into()));
+        self
     }
 
-    pub(super) fn return_type(&self, functions: &FunctionTable) -> ValueType {
-        let mut locals = LocalTable::default();
-        for (name, type_) in &self.params {
-            locals.define(name.clone(), *type_);
-        }
-        self.return_
-            .as_ref()
-            .unwrap_or_else(|| {
-                panic!(
-                    "function `{}` in planner DSL must define a return expression",
-                    self.name
-                )
-            })
-            .value_type(&locals, functions)
-    }
-
-    pub(in crate::planner) fn build(
-        self,
-        id: FunctionId,
-        functions: &FunctionTable,
-    ) -> FunctionPlan {
-        let mut locals = LocalTable::default();
-        let params = self
-            .params
-            .into_iter()
-            .map(|(name, type_)| {
-                let local = locals.define(name.clone(), type_);
-                Param { local, name }
-            })
-            .collect();
-
-        let steps = self
-            .steps
-            .into_iter()
-            .map(|step| step.build(&mut locals, functions))
-            .collect();
-
-        let return_ = self
-            .return_
-            .unwrap_or_else(|| {
-                panic!(
-                    "function `{}` in planner DSL must define a return expression",
-                    self.name
-                )
-            })
-            .build(&locals, functions);
-
-        FunctionPlan {
-            id,
-            name: self.name,
-            params,
-            steps,
-            return_,
-        }
+    pub(crate) fn build(self, id: FunctionId) -> FunctionPlan {
+        FunctionPlan::new(id, self.name, self.params, self.steps, self.return_)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::plan::{Expr, IntExpr, IntLocalId, LocalId, Step, StringExpr};
-    use crate::planner::dsl::expression::{FunctionEntry, FunctionTable, call, int, local, string};
-    use num_bigint::BigInt;
+    use crate::plan::StepKind;
+    use crate::planner::dsl::expression::{bool_, int, nil, string};
 
     #[test]
-    fn function_build() {
-        let actual = function("main")
-            .param("input")
-            .let_("x", local("input"))
-            .evaluate(string("side effect"))
-            .return_(call("helper", [local("x"), string("done")]))
-            .build(FunctionId(0), &function_table());
+    fn function_dsl() {
+        let function = function("main", int(1))
+            .param_int(0, "a")
+            .param_string(0, "b")
+            .param_bool(0, "c")
+            .param_nil(0, "d")
+            .let_int(1, "x", int(2))
+            .let_string(1, "y", string("a"))
+            .let_bool(1, "z", bool_(true))
+            .let_nil(1, "n", nil())
+            .evaluate(int(3))
+            .build(FunctionId::new(0));
 
-        assert_eq!(
-            actual,
-            FunctionPlan {
-                id: FunctionId(0),
-                name: "main".into(),
-                params: vec![Param {
-                    local: LocalId::Int(IntLocalId(0)),
-                    name: "input".into(),
-                }],
-                steps: vec![
-                    Step::LetInt {
-                        local: IntLocalId(1),
-                        name: "x".into(),
-                        value: IntExpr::LocalGet {
-                            local: IntLocalId(0),
-                            name: "input".into(),
-                        },
-                    },
-                    Step::Evaluate(Expr::String(StringExpr::Value("side effect".into()))),
-                ],
-                return_: Expr::Int(IntExpr::Call {
-                    function: FunctionId(1),
-                    args: vec![
-                        Expr::Int(IntExpr::LocalGet {
-                            local: IntLocalId(1),
-                            name: "x".into(),
-                        }),
-                        Expr::String(StringExpr::Value("done".into())),
-                    ],
-                }),
-            }
-        );
-    }
-
-    #[test]
-    fn function_builder_return() {
-        let actual = function("main")
-            .return_(int(1))
-            .build(FunctionId(0), &FunctionTable::default());
-
-        assert_eq!(actual.return_, Expr::Int(IntExpr::Value(BigInt::from(1))));
-    }
-
-    #[test]
-    #[should_panic(expected = "function `main` in planner DSL must define a return expression")]
-    fn function_builder_build_without_return() {
-        function("main").build(FunctionId(0), &FunctionTable::default());
-    }
-
-    fn function_table() -> FunctionTable {
-        FunctionTable::from([(
-            "helper".into(),
-            FunctionEntry {
-                id: FunctionId(1),
-                return_type: ValueType::Int,
-            },
-        )])
+        assert_eq!(function.name(), "main");
+        assert_eq!(function.params().len(), 4);
+        assert_eq!(function.steps().len(), 5);
+        assert!(matches!(
+            function.steps()[0].kind(),
+            StepKind::LetInt { .. }
+        ));
+        assert!(matches!(function.steps()[4].kind(), StepKind::Evaluate(_)));
     }
 }

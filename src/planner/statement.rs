@@ -1,4 +1,4 @@
-use crate::plan::{Expr, Step};
+use crate::plan::{ExprKind, Step};
 use crate::planner::context::PlanContext;
 use crate::planner::error::{
     InvalidTypedAstReason, PlanError, UnsupportedAssignmentKind, UnsupportedPatternKind,
@@ -13,7 +13,7 @@ pub(super) fn plan_step(
     context: &mut PlanContext<'_>,
 ) -> Result<Step, PlanError> {
     match statement {
-        Statement::Expression(expression) => Ok(Step::Evaluate(plan_expr(expression, context)?)),
+        Statement::Expression(expression) => Ok(Step::evaluate(plan_expr(expression, context)?)),
         Statement::Assignment(assignment) => plan_assignment(*assignment, context),
         Statement::Use(_) => Err(PlanError::InvalidTypedAst {
             reason: InvalidTypedAstReason::UseStatement,
@@ -43,22 +43,23 @@ fn plan_assignment(
     }
 
     let name = plan_variable_pattern(assignment.pattern)?;
-    match plan_expr(assignment.value, context)? {
-        Expr::Int(value) => {
+    let value = plan_expr(assignment.value, context)?;
+    match value.kind() {
+        ExprKind::Int(value) => {
             let local = context.define_int_local(name.clone());
-            Ok(Step::LetInt { local, name, value })
+            Ok(Step::let_int(local, name, value.clone()))
         }
-        Expr::String(value) => {
+        ExprKind::String(value) => {
             let local = context.define_string_local(name.clone());
-            Ok(Step::LetString { local, name, value })
+            Ok(Step::let_string(local, name, value.clone()))
         }
-        Expr::Bool(value) => {
+        ExprKind::Bool(value) => {
             let local = context.define_bool_local(name.clone());
-            Ok(Step::LetBool { local, name, value })
+            Ok(Step::let_bool(local, name, value.clone()))
         }
-        Expr::Nil(value) => {
+        ExprKind::Nil(value) => {
             let local = context.define_nil_local(name.clone());
-            Ok(Step::LetNil { local, name, value })
+            Ok(Step::let_nil(local, name, value.clone()))
         }
     }
 }
@@ -92,7 +93,7 @@ fn plan_variable_pattern(pattern: TypedPattern) -> Result<EcoString, PlanError> 
 #[cfg(test)]
 mod tests {
     use super::plan_variable_pattern;
-    use crate::planner::dsl::{function, int, local, module};
+    use crate::planner::dsl::{function, int, local_int, module};
     use crate::planner::plan_module;
     use crate::planner::support::{compile, compile_minimal_module, dummy_span, expect_plan_error};
     use crate::planner::{
@@ -119,13 +120,11 @@ pub fn main() {
 "#,
         ))
         .expect("source should plan");
-        let expected = module("main")
-            .function(
-                function("main")
-                    .let_("x", int(1))
-                    .return_(local("x").add_int(int(2))),
-            )
-            .build();
+        let expected = module(
+            "main",
+            function("main", local_int(0, "x").add_int(int(2))).let_int(0, "x", int(1)),
+            [],
+        );
 
         assert_eq!(actual, expected);
     }
@@ -141,9 +140,7 @@ pub fn main() {
 "#,
         ))
         .expect("source should plan");
-        let expected = module("main")
-            .function(function("main").evaluate(int(1)).return_(int(2)))
-            .build();
+        let expected = module("main", function("main", int(2)).evaluate(int(1)), []);
 
         assert_eq!(actual, expected);
     }

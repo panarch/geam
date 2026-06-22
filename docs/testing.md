@@ -29,9 +29,9 @@ Run the normal test suite:
 cargo test
 ```
 
-Planner unit tests use `planner::dsl` expected plans instead of snapshots, so
-supported lowering changes update the expected plan directly next to the source
-being tested.
+Planner unit tests use the crate-internal `planner::dsl` expected-plan helpers
+instead of snapshots, so supported lowering changes update the expected plan
+directly next to the source being tested.
 
 For review rules around planner profile/margin tests, helper shape, and coverage
 policy, see [review-policy.md](review-policy.md).

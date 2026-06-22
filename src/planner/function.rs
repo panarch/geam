@@ -1,18 +1,17 @@
-use crate::plan::ValueType;
-use crate::plan::{FunctionId, FunctionPlan, Param};
+use crate::plan::{FunctionPlan, Param};
 use crate::planner::context::{FunctionInfo, PlanContext};
 use crate::planner::error::{
-    InvalidFunctionShapeReason, InvalidTypedAstReason, PlanError, UnsupportedArgumentReason,
-    UnsupportedFunctionReason, UnsupportedStatementKind,
+    InvalidFunctionShapeReason, InvalidTypedAstReason, PlanError, UnsupportedFunctionReason,
+    UnsupportedStatementKind,
 };
 use crate::planner::expression::plan_expr;
 use crate::planner::statement::plan_step;
 use ecow::EcoString;
-use gleam_core::ast::{ArgNames, Statement, TypedFunction};
+use gleam_core::ast::{Statement, TypedFunction};
 use std::collections::HashMap;
 
 pub(super) fn plan_function(
-    id: FunctionId,
+    info: FunctionInfo,
     module_name: &EcoString,
     functions: &HashMap<EcoString, FunctionInfo>,
     function: TypedFunction,
@@ -27,7 +26,14 @@ pub(super) fn plan_function(
     }
 
     let mut context = PlanContext::new(module_name, functions);
-    let params = plan_params(&mut context, name.clone(), function.arguments)?;
+    let params = info
+        .params
+        .iter()
+        .map(|param| {
+            context.define_existing_local(param.name.clone(), param.local);
+            Param::new(param.local, param.name.clone())
+        })
+        .collect();
     let mut body = function.body;
     let Some(last_statement) = body.pop() else {
         return Err(PlanError::InvalidTypedAst {
@@ -62,13 +68,7 @@ pub(super) fn plan_function(
         }
     };
 
-    Ok(FunctionPlan {
-        id,
-        name,
-        params,
-        steps,
-        return_,
-    })
+    Ok(FunctionPlan::new(info.id, name, params, steps, return_))
 }
 
 pub(super) fn function_name(function: &TypedFunction) -> Result<EcoString, PlanError> {
@@ -84,46 +84,12 @@ pub(super) fn function_name(function: &TypedFunction) -> Result<EcoString, PlanE
         })
 }
 
-fn plan_params(
-    context: &mut PlanContext<'_>,
-    function_name: EcoString,
-    arguments: Vec<gleam_core::ast::TypedArg>,
-) -> Result<Vec<Param>, PlanError> {
-    arguments
-        .into_iter()
-        .map(|argument| {
-            let Some(argument_name) = argument.names.get_variable_name().cloned() else {
-                return Err(PlanError::UnsupportedArgument {
-                    function: function_name.clone(),
-                    reason: UnsupportedArgumentReason::Discard,
-                });
-            };
-
-            if !matches!(argument.names, ArgNames::Named { .. }) {
-                return Err(PlanError::UnsupportedArgument {
-                    function: function_name.clone(),
-                    reason: UnsupportedArgumentReason::Labelled,
-                });
-            }
-
-            let Some(type_) = ValueType::from_gleam(&argument.type_) else {
-                return Err(PlanError::UnsupportedArgument {
-                    function: function_name.clone(),
-                    reason: UnsupportedArgumentReason::UnsupportedType,
-                });
-            };
-            let local = context.define_local(argument_name.clone(), type_);
-            Ok(Param {
-                local,
-                name: argument_name,
-            })
-        })
-        .collect()
-}
-
 #[cfg(test)]
 mod tests {
-    use crate::planner::dsl::{bool_, call, function, int, local, module, nil, string};
+    use crate::planner::dsl::{
+        bool_, bool_arg, call_bool, call_int, call_nil, call_string, function, int, int_arg,
+        local_bool, local_int, local_nil, local_string, module, nil, nil_arg, string, string_arg,
+    };
     use crate::planner::plan_module;
     use crate::planner::support::{compile, compile_minimal_module, expect_plan_error};
     use crate::planner::{
@@ -145,15 +111,41 @@ pub fn main() {
 "#,
         ))
         .expect("source should plan");
-        let expected = module("main")
-            .function(
-                function("add")
-                    .param("a")
-                    .param("b")
-                    .return_(local("a").add_int(local("b"))),
-            )
-            .function(function("main").return_(call("add", [int(1), int(2)])))
-            .build();
+        let expected = module(
+            "main",
+            function(
+                "main",
+                call_int(1, [int_arg(0, int(1)), int_arg(1, int(2))]),
+            ),
+            [
+                function("add", local_int(0, "a").add_int(local_int(1, "b")))
+                    .param_int(0, "a")
+                    .param_int(1, "b"),
+            ],
+        );
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn plan_main_as_local_function_call() {
+        let actual = plan_module(compile(
+            r#"
+pub fn main() {
+  1
+}
+
+pub fn helper() {
+  main()
+}
+"#,
+        ))
+        .expect("source should plan");
+        let expected = module(
+            "main",
+            function("main", int(1)),
+            [function("helper", call_int(0, []))],
+        );
 
         assert_eq!(actual, expected);
     }
@@ -188,26 +180,17 @@ pub fn nil_main() {
 "#,
         ))
         .expect("source should plan");
-        let expected = module("main")
-            .function(
-                function("string_id")
-                    .param_string("value")
-                    .return_(local("value")),
-            )
-            .function(
-                function("bool_id")
-                    .param_bool("value")
-                    .return_(local("value")),
-            )
-            .function(
-                function("nil_id")
-                    .param_nil("value")
-                    .return_(local("value")),
-            )
-            .function(function("main").return_(call("string_id", [string("geam")])))
-            .function(function("bool_main").return_(call("bool_id", [bool_(true)])))
-            .function(function("nil_main").return_(call("nil_id", [nil()])))
-            .build();
+        let expected = module(
+            "main",
+            function("main", call_string(1, [string_arg(0, string("geam"))])),
+            [
+                function("string_id", local_string(0, "value")).param_string(0, "value"),
+                function("bool_id", local_bool(0, "value")).param_bool(0, "value"),
+                function("nil_id", local_nil(0, "value")).param_nil(0, "value"),
+                function("bool_main", call_bool(0, [bool_arg(0, bool_(true))])),
+                function("nil_main", call_nil(0, [nil_arg(0, nil())])),
+            ],
+        );
 
         assert_eq!(actual, expected);
     }

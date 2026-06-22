@@ -1,5 +1,7 @@
-use crate::plan::{BoolExpr, Expr, FunctionId, IntExpr, LocalId, NilExpr, StringExpr, ValueType};
-use crate::planner::context::{FunctionInfo, PlanContext};
+use crate::plan::{
+    BoolExpr, CallArg, Expr, IntExpr, LocalId, NilExpr, RuntimeFunctionId, StringExpr, ValueType,
+};
+use crate::planner::context::{FunctionInfo, FunctionParam, PlanContext};
 use crate::planner::error::{
     InvalidCallShapeReason, InvalidExpressionShapeKind, InvalidExpressionType,
     InvalidTypedAstReason, PlanError, UnsupportedBinOpKind, UnsupportedCallReason,
@@ -15,8 +17,8 @@ pub(super) fn plan_expr(
     context: &mut PlanContext<'_>,
 ) -> Result<Expr, PlanError> {
     match expression {
-        TypedExpr::Int { int_value, .. } => Ok(Expr::Int(IntExpr::Value(int_value))),
-        TypedExpr::String { value, .. } => Ok(Expr::String(StringExpr::Value(value))),
+        TypedExpr::Int { int_value, .. } => Ok(Expr::int(IntExpr::value(int_value))),
+        TypedExpr::String { value, .. } => Ok(Expr::string(StringExpr::value(value))),
         TypedExpr::Var {
             constructor, name, ..
         } => plan_var(name, constructor, context),
@@ -32,12 +34,12 @@ pub(super) fn plan_expr(
             right,
             ..
         } => plan_bin_op(operator, *left, *right, context),
-        TypedExpr::NegateInt { value, .. } => Ok(Expr::Int(IntExpr::Negate(Box::new(
-            plan_int_expr(*value, context)?,
-        )))),
-        TypedExpr::NegateBool { value, .. } => Ok(Expr::Bool(BoolExpr::Not(Box::new(
-            plan_bool_expr(*value, context)?,
-        )))),
+        TypedExpr::NegateInt { value, .. } => {
+            Ok(Expr::int(IntExpr::negate(plan_int_expr(*value, context)?)))
+        }
+        TypedExpr::NegateBool { value, .. } => {
+            Ok(Expr::bool(BoolExpr::not(plan_bool_expr(*value, context)?)))
+        }
         TypedExpr::Float { .. } => Err(PlanError::UnsupportedExpression {
             kind: UnsupportedExpressionKind::Float,
         }),
@@ -122,9 +124,9 @@ fn plan_var(
             arity,
             ..
         } if arity == 0 && module == PRELUDE_MODULE_NAME => match name.as_str() {
-            "True" => Ok(Expr::Bool(BoolExpr::Value(true))),
-            "False" => Ok(Expr::Bool(BoolExpr::Value(false))),
-            "Nil" => Ok(Expr::Nil(NilExpr::Value)),
+            "True" => Ok(Expr::bool(BoolExpr::value(true))),
+            "False" => Ok(Expr::bool(BoolExpr::value(false))),
+            "Nil" => Ok(Expr::nil(NilExpr::value())),
             _ => Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::ExpressionShape {
                     kind: InvalidExpressionShapeKind::PreludeConstructor,
@@ -177,12 +179,47 @@ fn plan_call(
             },
         });
     }
-    let args = arguments
-        .into_iter()
-        .map(|argument| plan_expr(argument.value, context))
-        .collect::<Result<Vec<_>, _>>()?;
+    let return_type = ValueType::from_gleam(type_.as_ref()).ok_or(PlanError::InvalidTypedAst {
+        reason: InvalidTypedAstReason::CallShape {
+            reason: InvalidCallShapeReason::LocalFunctionCallUnsupportedReturnType,
+        },
+    })?;
+    let (Some(function_return_type), Some(function_id)) =
+        (function.return_type, function.runtime_id)
+    else {
+        return Err(PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::CallShape {
+                reason: InvalidCallShapeReason::LocalFunctionCallUnsupportedReturnType,
+            },
+        });
+    };
+    if return_type != function_return_type {
+        return Err(PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::CallShape {
+                reason: InvalidCallShapeReason::LocalFunctionCallReturnTypeMismatch,
+            },
+        });
+    }
+    let args = plan_call_args(arguments, &function.params, context)?;
 
-    call_expr(type_.as_ref(), function.id, args)
+    call_expr(function_id, args)
+}
+
+fn plan_call_args(
+    arguments: Vec<gleam_core::ast::CallArg<TypedExpr>>,
+    params: &[FunctionParam],
+    context: &mut PlanContext<'_>,
+) -> Result<Vec<CallArg>, PlanError> {
+    arguments
+        .into_iter()
+        .zip(params)
+        .map(|(argument, param)| {
+            let expression = plan_expr(argument.value, context)?;
+            expression.into_call_arg(param.local).map_err(|other| {
+                invalid_expression_type(expected_expression_type(param.local), &other)
+            })
+        })
+        .collect()
 }
 
 fn plan_function_ref(
@@ -244,54 +281,54 @@ fn plan_bin_op(
     context: &mut PlanContext<'_>,
 ) -> Result<Expr, PlanError> {
     match operator {
-        GleamBinOp::AddInt => Ok(Expr::Int(IntExpr::Add {
-            left: Box::new(plan_int_expr(left, context)?),
-            right: Box::new(plan_int_expr(right, context)?),
-        })),
-        GleamBinOp::SubInt => Ok(Expr::Int(IntExpr::Sub {
-            left: Box::new(plan_int_expr(left, context)?),
-            right: Box::new(plan_int_expr(right, context)?),
-        })),
-        GleamBinOp::MultInt => Ok(Expr::Int(IntExpr::Mult {
-            left: Box::new(plan_int_expr(left, context)?),
-            right: Box::new(plan_int_expr(right, context)?),
-        })),
-        GleamBinOp::DivInt => Ok(Expr::Int(IntExpr::Div {
-            left: Box::new(plan_int_expr(left, context)?),
-            right: Box::new(plan_int_expr(right, context)?),
-        })),
-        GleamBinOp::RemainderInt => Ok(Expr::Int(IntExpr::Remainder {
-            left: Box::new(plan_int_expr(left, context)?),
-            right: Box::new(plan_int_expr(right, context)?),
-        })),
-        GleamBinOp::LtInt => Ok(Expr::Bool(BoolExpr::LtInt {
-            left: Box::new(plan_int_expr(left, context)?),
-            right: Box::new(plan_int_expr(right, context)?),
-        })),
-        GleamBinOp::LtEqInt => Ok(Expr::Bool(BoolExpr::LtEqInt {
-            left: Box::new(plan_int_expr(left, context)?),
-            right: Box::new(plan_int_expr(right, context)?),
-        })),
-        GleamBinOp::GtInt => Ok(Expr::Bool(BoolExpr::GtInt {
-            left: Box::new(plan_int_expr(left, context)?),
-            right: Box::new(plan_int_expr(right, context)?),
-        })),
-        GleamBinOp::GtEqInt => Ok(Expr::Bool(BoolExpr::GtEqInt {
-            left: Box::new(plan_int_expr(left, context)?),
-            right: Box::new(plan_int_expr(right, context)?),
-        })),
-        GleamBinOp::Eq => Ok(Expr::Bool(BoolExpr::Equal {
-            left: Box::new(plan_expr(left, context)?),
-            right: Box::new(plan_expr(right, context)?),
-        })),
-        GleamBinOp::NotEq => Ok(Expr::Bool(BoolExpr::NotEqual {
-            left: Box::new(plan_expr(left, context)?),
-            right: Box::new(plan_expr(right, context)?),
-        })),
-        GleamBinOp::Concatenate => Ok(Expr::String(StringExpr::Concatenate {
-            left: Box::new(plan_string_expr(left, context)?),
-            right: Box::new(plan_string_expr(right, context)?),
-        })),
+        GleamBinOp::AddInt => Ok(Expr::int(IntExpr::add(
+            plan_int_expr(left, context)?,
+            plan_int_expr(right, context)?,
+        ))),
+        GleamBinOp::SubInt => Ok(Expr::int(IntExpr::sub(
+            plan_int_expr(left, context)?,
+            plan_int_expr(right, context)?,
+        ))),
+        GleamBinOp::MultInt => Ok(Expr::int(IntExpr::mult(
+            plan_int_expr(left, context)?,
+            plan_int_expr(right, context)?,
+        ))),
+        GleamBinOp::DivInt => Ok(Expr::int(IntExpr::div(
+            plan_int_expr(left, context)?,
+            plan_int_expr(right, context)?,
+        ))),
+        GleamBinOp::RemainderInt => Ok(Expr::int(IntExpr::remainder(
+            plan_int_expr(left, context)?,
+            plan_int_expr(right, context)?,
+        ))),
+        GleamBinOp::LtInt => Ok(Expr::bool(BoolExpr::lt_int(
+            plan_int_expr(left, context)?,
+            plan_int_expr(right, context)?,
+        ))),
+        GleamBinOp::LtEqInt => Ok(Expr::bool(BoolExpr::lte_int(
+            plan_int_expr(left, context)?,
+            plan_int_expr(right, context)?,
+        ))),
+        GleamBinOp::GtInt => Ok(Expr::bool(BoolExpr::gt_int(
+            plan_int_expr(left, context)?,
+            plan_int_expr(right, context)?,
+        ))),
+        GleamBinOp::GtEqInt => Ok(Expr::bool(BoolExpr::gte_int(
+            plan_int_expr(left, context)?,
+            plan_int_expr(right, context)?,
+        ))),
+        GleamBinOp::Eq => Ok(Expr::bool(BoolExpr::equal(
+            plan_expr(left, context)?,
+            plan_expr(right, context)?,
+        ))),
+        GleamBinOp::NotEq => Ok(Expr::bool(BoolExpr::not_equal(
+            plan_expr(left, context)?,
+            plan_expr(right, context)?,
+        ))),
+        GleamBinOp::Concatenate => Ok(Expr::string(StringExpr::concatenate(
+            plan_string_expr(left, context)?,
+            plan_string_expr(right, context)?,
+        ))),
         GleamBinOp::And => Err(PlanError::UnsupportedBinOp {
             operator: UnsupportedBinOpKind::And,
         }),
@@ -327,24 +364,19 @@ fn plan_bin_op(
 
 fn local_get(local: LocalId, name: EcoString) -> Expr {
     match local {
-        LocalId::Int(local) => Expr::Int(IntExpr::LocalGet { local, name }),
-        LocalId::String(local) => Expr::String(StringExpr::LocalGet { local, name }),
-        LocalId::Bool(local) => Expr::Bool(BoolExpr::LocalGet { local, name }),
-        LocalId::Nil(local) => Expr::Nil(NilExpr::LocalGet { local, name }),
+        LocalId::Int(local) => Expr::int(IntExpr::local_get(local, name)),
+        LocalId::String(local) => Expr::string(StringExpr::local_get(local, name)),
+        LocalId::Bool(local) => Expr::bool(BoolExpr::local_get(local, name)),
+        LocalId::Nil(local) => Expr::nil(NilExpr::local_get(local, name)),
     }
 }
 
-fn call_expr(type_: &Type, function: FunctionId, args: Vec<Expr>) -> Result<Expr, PlanError> {
-    match ValueType::from_gleam(type_) {
-        Some(ValueType::Int) => Ok(Expr::Int(IntExpr::Call { function, args })),
-        Some(ValueType::String) => Ok(Expr::String(StringExpr::Call { function, args })),
-        Some(ValueType::Bool) => Ok(Expr::Bool(BoolExpr::Call { function, args })),
-        Some(ValueType::Nil) => Ok(Expr::Nil(NilExpr::Call { function, args })),
-        None => Err(PlanError::InvalidTypedAst {
-            reason: InvalidTypedAstReason::CallShape {
-                reason: InvalidCallShapeReason::LocalFunctionCallUnsupportedReturnType,
-            },
-        }),
+fn call_expr(function: RuntimeFunctionId, args: Vec<CallArg>) -> Result<Expr, PlanError> {
+    match function {
+        RuntimeFunctionId::Int(function) => Ok(Expr::int(IntExpr::call(function, args))),
+        RuntimeFunctionId::String(function) => Ok(Expr::string(StringExpr::call(function, args))),
+        RuntimeFunctionId::Bool(function) => Ok(Expr::bool(BoolExpr::call(function, args))),
+        RuntimeFunctionId::Nil(function) => Ok(Expr::nil(NilExpr::call(function, args))),
     }
 }
 
@@ -352,33 +384,27 @@ fn plan_int_expr(
     expression: TypedExpr,
     context: &mut PlanContext<'_>,
 ) -> Result<IntExpr, PlanError> {
-    match plan_expr(expression, context)? {
-        Expr::Int(expression) => Ok(expression),
-        other => Err(invalid_expression_type(InvalidExpressionType::Int, &other)),
-    }
+    plan_expr(expression, context)?
+        .into_int()
+        .map_err(|other| invalid_expression_type(InvalidExpressionType::Int, &other))
 }
 
 fn plan_string_expr(
     expression: TypedExpr,
     context: &mut PlanContext<'_>,
 ) -> Result<StringExpr, PlanError> {
-    match plan_expr(expression, context)? {
-        Expr::String(expression) => Ok(expression),
-        other => Err(invalid_expression_type(
-            InvalidExpressionType::String,
-            &other,
-        )),
-    }
+    plan_expr(expression, context)?
+        .into_string()
+        .map_err(|other| invalid_expression_type(InvalidExpressionType::String, &other))
 }
 
 fn plan_bool_expr(
     expression: TypedExpr,
     context: &mut PlanContext<'_>,
 ) -> Result<BoolExpr, PlanError> {
-    match plan_expr(expression, context)? {
-        Expr::Bool(expression) => Ok(expression),
-        other => Err(invalid_expression_type(InvalidExpressionType::Bool, &other)),
-    }
+    plan_expr(expression, context)?
+        .into_bool()
+        .map_err(|other| invalid_expression_type(InvalidExpressionType::Bool, &other))
 }
 
 fn invalid_expression_type(expected: InvalidExpressionType, actual: &Expr) -> PlanError {
@@ -391,17 +417,29 @@ fn invalid_expression_type(expected: InvalidExpressionType, actual: &Expr) -> Pl
 }
 
 fn expression_type(expression: &Expr) -> InvalidExpressionType {
-    match expression {
-        Expr::Int(_) => InvalidExpressionType::Int,
-        Expr::String(_) => InvalidExpressionType::String,
-        Expr::Bool(_) => InvalidExpressionType::Bool,
-        Expr::Nil(_) => InvalidExpressionType::Nil,
+    match expression.value_type() {
+        ValueType::Int => InvalidExpressionType::Int,
+        ValueType::String => InvalidExpressionType::String,
+        ValueType::Bool => InvalidExpressionType::Bool,
+        ValueType::Nil => InvalidExpressionType::Nil,
+    }
+}
+
+fn expected_expression_type(local: LocalId) -> InvalidExpressionType {
+    match local {
+        LocalId::Int(_) => InvalidExpressionType::Int,
+        LocalId::String(_) => InvalidExpressionType::String,
+        LocalId::Bool(_) => InvalidExpressionType::Bool,
+        LocalId::Nil(_) => InvalidExpressionType::Nil,
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::planner::dsl::{bool_, call, function, int, local, module, nil, string};
+    use crate::planner::dsl::{
+        bool_, call_int, equal, function, int, int_arg, local_bool, local_int, module, nil,
+        not_equal, string,
+    };
     use crate::planner::plan_module;
     use crate::planner::support::{compile, compile_minimal_module, dummy_span, expect_plan_error};
     use crate::planner::{
@@ -430,9 +468,11 @@ pub fn main() {
 "#,
         ))
         .expect("source should plan");
-        let expected = module("main")
-            .function(function("main").return_(string("hello, ").concatenate(string("geam"))))
-            .build();
+        let expected = module(
+            "main",
+            function("main", string("hello, ").concatenate(string("geam"))),
+            [],
+        );
 
         assert_eq!(actual, expected);
     }
@@ -459,12 +499,38 @@ pub fn gte() {
 "#,
         ))
         .expect("source should plan");
-        let expected = module("main")
-            .function(function("main").return_(int(1).lt_int(int(2))))
-            .function(function("lte").return_(int(1).lte_int(int(2))))
-            .function(function("gt").return_(int(2).gt_int(int(1))))
-            .function(function("gte").return_(int(2).gte_int(int(1))))
-            .build();
+        let expected = module(
+            "main",
+            function("main", int(1).lt_int(int(2))),
+            [
+                function("lte", int(1).lte_int(int(2))),
+                function("gt", int(2).gt_int(int(1))),
+                function("gte", int(2).gte_int(int(1))),
+            ],
+        );
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn plan_equality_operators() {
+        let actual = plan_module(compile(
+            r#"
+pub fn main() {
+  1 == 1
+}
+
+pub fn not_equal() {
+  True != False
+}
+"#,
+        ))
+        .expect("source should plan");
+        let expected = module(
+            "main",
+            function("main", equal(int(1), int(1))),
+            [function("not_equal", not_equal(bool_(true), bool_(false)))],
+        );
 
         assert_eq!(actual, expected);
     }
@@ -483,10 +549,11 @@ pub fn remainder() {
 "#,
         ))
         .expect("source should plan");
-        let expected = module("main")
-            .function(function("main").return_(int(11).div_int(int(3))))
-            .function(function("remainder").return_(int(11).remainder_int(int(3))))
-            .build();
+        let expected = module(
+            "main",
+            function("main", int(11).div_int(int(3))),
+            [function("remainder", int(11).remainder_int(int(3)))],
+        );
 
         assert_eq!(actual, expected);
     }
@@ -509,19 +576,14 @@ pub fn main() {
 "#,
         ))
         .expect("source should plan");
-        let expected = module("main")
-            .function(
-                function("negate")
-                    .param("value")
-                    .return_(local("value").negate_int()),
-            )
-            .function(
-                function("invert")
-                    .param_bool("value")
-                    .return_(local("value").negate_bool()),
-            )
-            .function(function("main").return_(call("negate", [int(1)])))
-            .build();
+        let expected = module(
+            "main",
+            function("main", call_int(1, [int_arg(0, int(1))])),
+            [
+                function("negate", local_int(0, "value").negate_int()).param_int(0, "value"),
+                function("invert", local_bool(0, "value").negate_bool()).param_bool(0, "value"),
+            ],
+        );
 
         assert_eq!(actual, expected);
     }
@@ -544,11 +606,14 @@ pub fn main() {
 "#,
         ))
         .expect("source should plan");
-        let expected = module("main")
-            .function(function("truth").return_(bool_(true)))
-            .function(function("falsehood").return_(bool_(false)))
-            .function(function("main").return_(nil()))
-            .build();
+        let expected = module(
+            "main",
+            function("main", nil()),
+            [
+                function("truth", bool_(true)),
+                function("falsehood", bool_(false)),
+            ],
+        );
 
         assert_eq!(actual, expected);
     }
@@ -971,6 +1036,51 @@ pub fn main() {
         );
     }
 
+    #[test]
+    fn reject_margin_call_to_unsupported_return_function() {
+        let mut module = compile(
+            r#"
+fn helper() {
+  1
+}
+
+pub fn main() {
+  helper()
+}
+"#,
+        );
+        module.definitions.functions[0].return_type = type_::list(type_::int());
+
+        assert_eq!(
+            plan_module(module),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::CallShape {
+                    reason: InvalidCallShapeReason::LocalFunctionCallUnsupportedReturnType,
+                },
+            }),
+        );
+    }
+
+    #[test]
+    fn reject_profile_call_to_unsupported_return_function_body() {
+        assert_eq!(
+            expect_plan_error(
+                r#"
+pub fn main() {
+  helper()
+}
+
+fn helper() {
+  [1]
+}
+"#,
+            ),
+            PlanError::UnsupportedExpression {
+                kind: UnsupportedExpressionKind::List,
+            },
+        );
+    }
+
     fn reject_margin_module_constant_call(mut module_constant_call: TypedModule) {
         module_constant_call.definitions.constants.clear();
         let statement = module_constant_call.definitions.functions[0].body.remove(0);
@@ -1103,6 +1213,94 @@ pub fn main() {
             }),
         );
 
+        let mut return_type_mismatch_call = compile(
+            r#"
+fn identity(value: Int) {
+  value
+}
+
+pub fn main() {
+  identity(1)
+}
+"#,
+        );
+        let (type_, _, _) = expect_call_statement_mut(
+            &mut return_type_mismatch_call.definitions.functions[1].body[0],
+        );
+        *type_ = type_::bool();
+        assert_eq!(
+            plan_module(return_type_mismatch_call),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::CallShape {
+                    reason: InvalidCallShapeReason::LocalFunctionCallReturnTypeMismatch,
+                },
+            }),
+        );
+
+        assert_call_argument_type_mismatch(
+            r#"
+fn identity(value: Int) {
+  value
+}
+
+pub fn main() {
+  identity(1)
+}
+"#,
+            1,
+            typed_string_expr("wrong"),
+            InvalidExpressionType::Int,
+            InvalidExpressionType::String,
+        );
+
+        assert_call_argument_type_mismatch(
+            r#"
+fn identity(value: String) {
+  value
+}
+
+pub fn main() {
+  identity("ok")
+}
+"#,
+            1,
+            typed_int_expr(1),
+            InvalidExpressionType::String,
+            InvalidExpressionType::Int,
+        );
+
+        assert_call_argument_type_mismatch(
+            r#"
+fn identity(value: Bool) {
+  value
+}
+
+pub fn main() {
+  identity(True)
+}
+"#,
+            1,
+            typed_int_expr(1),
+            InvalidExpressionType::Bool,
+            InvalidExpressionType::Int,
+        );
+
+        assert_call_argument_type_mismatch(
+            r#"
+fn identity(value: Nil) {
+  value
+}
+
+pub fn main() {
+  identity(Nil)
+}
+"#,
+            1,
+            typed_int_expr(1),
+            InvalidExpressionType::Nil,
+            InvalidExpressionType::Int,
+        );
+
         let mut local_function_value_call = compile(
             r#"
 fn identity(value: Int) {
@@ -1183,6 +1381,26 @@ pub fn main() {
                 reason: InvalidTypedAstReason::CallShape {
                     reason: InvalidCallShapeReason::RecordConstructor,
                 },
+            }),
+        );
+    }
+
+    fn assert_call_argument_type_mismatch(
+        src: &str,
+        function_index: usize,
+        value: TypedExpr,
+        expected: InvalidExpressionType,
+        actual: InvalidExpressionType,
+    ) {
+        let mut module = compile(src);
+        let (_, _, arguments) =
+            expect_call_statement_mut(&mut module.definitions.functions[function_index].body[0]);
+        arguments[0].value = value;
+
+        assert_eq!(
+            plan_module(module),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionType { expected, actual },
             }),
         );
     }

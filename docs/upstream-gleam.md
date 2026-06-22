@@ -55,7 +55,7 @@ Geam intentionally does not define a source AST or source-language compiler. Its
 current boundary is:
 
 ```text
-source text -> Gleam TypedModule -> Geam ModulePlan -> Geam runtime Value
+source text -> Gleam TypedModule -> Geam ExecutionPlan -> Geam runtime Value
 ```
 
 Geam-specific profile validation belongs in the lowering phase from Gleam's typed
@@ -86,9 +86,9 @@ The current public execution APIs are:
 ```rust
 pub fn plan_module(
     module: gleam_core::ast::TypedModule,
-) -> Result<geam::ModulePlan, geam::PlanError>
+) -> Result<geam::ExecutionPlan, geam::PlanError>
 
-pub fn run_main(plan: &geam::ModulePlan) -> Result<geam::Value, geam::RuntimeError>
+pub fn run_main(plan: &geam::ExecutionPlan) -> geam::Value
 ```
 
 ## Intentionally Out Of Scope

@@ -1,14 +1,24 @@
 use crate::plan::{
-    BoolLocalId, FunctionId, IntLocalId, LocalId, NilLocalId, StringLocalId, ValueType,
+    BoolFunctionId, BoolLocalId, FunctionId, IntFunctionId, IntLocalId, LocalId, NilFunctionId,
+    NilLocalId, RuntimeFunctionId, StringFunctionId, StringLocalId, ValueType,
 };
 use ecow::EcoString;
 use gleam_core::type_::Type;
 use std::collections::HashMap;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Clone)]
 pub(super) struct FunctionInfo {
     pub(super) id: FunctionId,
+    pub(super) runtime_id: Option<RuntimeFunctionId>,
     pub(super) arity: usize,
+    pub(super) params: Vec<FunctionParam>,
+    pub(super) return_type: Option<ValueType>,
+}
+
+#[derive(Clone)]
+pub(super) struct FunctionParam {
+    pub(super) local: LocalId,
+    pub(super) name: EcoString,
 }
 
 pub(super) struct PlanContext<'a> {
@@ -37,13 +47,22 @@ impl<'a> PlanContext<'a> {
         }
     }
 
-    pub(super) fn define_local(&mut self, name: EcoString, type_: ValueType) -> LocalId {
-        match type_ {
-            ValueType::Int => LocalId::Int(self.define_int_local(name.clone())),
-            ValueType::String => LocalId::String(self.define_string_local(name.clone())),
-            ValueType::Bool => LocalId::Bool(self.define_bool_local(name.clone())),
-            ValueType::Nil => LocalId::Nil(self.define_nil_local(name.clone())),
+    pub(super) fn define_existing_local(&mut self, name: EcoString, local: LocalId) {
+        match local {
+            LocalId::Int(local) => {
+                self.next_int_local = self.next_int_local.max(local.0 + 1);
+            }
+            LocalId::String(local) => {
+                self.next_string_local = self.next_string_local.max(local.0 + 1);
+            }
+            LocalId::Bool(local) => {
+                self.next_bool_local = self.next_bool_local.max(local.0 + 1);
+            }
+            LocalId::Nil(local) => {
+                self.next_nil_local = self.next_nil_local.max(local.0 + 1);
+            }
         }
+        self.locals.insert(name, local);
     }
 
     pub(super) fn define_int_local(&mut self, name: EcoString) -> IntLocalId {
@@ -79,7 +98,42 @@ impl<'a> PlanContext<'a> {
     }
 
     pub(super) fn lookup_function(&self, name: &EcoString) -> Option<FunctionInfo> {
-        self.functions.get(name).copied()
+        self.functions.get(name).cloned()
+    }
+}
+
+#[derive(Debug, Default)]
+pub(super) struct FunctionRuntimeIds {
+    next_int: usize,
+    next_string: usize,
+    next_bool: usize,
+    next_nil: usize,
+}
+
+impl FunctionRuntimeIds {
+    pub(super) fn next(&mut self, return_type: ValueType) -> RuntimeFunctionId {
+        match return_type {
+            ValueType::Int => {
+                let id = IntFunctionId(self.next_int);
+                self.next_int += 1;
+                RuntimeFunctionId::Int(id)
+            }
+            ValueType::String => {
+                let id = StringFunctionId(self.next_string);
+                self.next_string += 1;
+                RuntimeFunctionId::String(id)
+            }
+            ValueType::Bool => {
+                let id = BoolFunctionId(self.next_bool);
+                self.next_bool += 1;
+                RuntimeFunctionId::Bool(id)
+            }
+            ValueType::Nil => {
+                let id = NilFunctionId(self.next_nil);
+                self.next_nil += 1;
+                RuntimeFunctionId::Nil(id)
+            }
+        }
     }
 }
 

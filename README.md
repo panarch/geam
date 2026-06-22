@@ -12,7 +12,7 @@ Gleam already runs by lowering into another execution environment:
 ```text
 Gleam source -> Erlang source    -> BEAM
 Gleam source -> JavaScript       -> Node / Deno / Bun
-Gleam source -> Geam module plan -> Rust-embedded runtime
+Gleam source -> Geam execution plan -> Rust-embedded runtime
 ```
 
 Geam keeps Gleam as the source language. It uses Gleam's parser and
@@ -22,12 +22,14 @@ resulting typed module into a Rust-owned plan.
 ```text
 Gleam source
 -> Gleam typed module
--> Geam module plan
+-> Geam execution plan
 -> Geam runtime value
 ```
 
 Unsupported execution semantics are rejected while planning from Gleam's typed
 AST, before runtime evaluation.
+The resulting execution plan is an opaque validated value, not public raw AST
+data assembled by runtime callers.
 
 ## Status
 

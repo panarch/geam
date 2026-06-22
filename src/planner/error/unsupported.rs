@@ -20,6 +20,8 @@ pub enum UnsupportedFunctionReason {
     MissingMain,
     #[error("main must not take arguments")]
     MainWithArguments,
+    #[error("function return type is not supported")]
+    UnsupportedReturnType,
 }
 
 #[derive(Debug, Error, Clone, Copy, PartialEq, Eq)]

@@ -26,7 +26,7 @@ fn run_fixture(file_name: &str) {
     let expected = parse_expected_value(&src);
     let module = compile_typed_module("main", path, &src).expect("fixture should compile");
     let plan = plan_module(module).expect("fixture should plan");
-    let actual = run_main(&plan).expect("fixture should run");
+    let actual = run_main(&plan);
 
     assert_eq!(actual, expected);
 }

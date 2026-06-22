@@ -10,11 +10,11 @@ Gleam remains the source language. Geam starts after Gleam has produced a typed
 AST:
 
 ```text
-Gleam source -> Gleam TypedModule -> Geam ModulePlan -> Geam runtime Value
+Gleam source -> Gleam TypedModule -> Geam ExecutionPlan -> Geam runtime Value
 ```
 
 The planner is the Geam profile validation boundary. Unsupported Gleam semantics
-must be rejected while lowering into `ModulePlan`, not deferred to runtime.
+must be rejected while lowering into `ExecutionPlan`, not deferred to runtime.
 
 Use these categories consistently:
 
@@ -24,9 +24,22 @@ Use these categories consistently:
   by compiling valid Gleam source through Gleam's frontend, but still need
   explicit planner behavior.
 
-Runtime code assumes it receives a valid `ModulePlan`. When a runtime error is
-structurally unreachable, fix the plan structure instead of adding a runtime
-check.
+Runtime code assumes it receives a valid `ExecutionPlan`. Structural execution
+failures belong in plan construction as `PlanError`, not in a runtime error
+enum.
+
+## Panic Rules
+
+Production Geam logic must not use explicit panic paths for control flow,
+profile validation, or invariant handling. Do not use `panic!`, `unreachable!`,
+`unwrap`, or `expect` in non-test logic code.
+
+Boundary failures must become structured errors before runtime execution. If a
+case can be reached from valid Gleam source, reject it as a profile error. If it
+requires a synthetic or mutated typed AST shape, reject it as `InvalidTypedAst`.
+
+`#[cfg(test)]` helpers may use panic paths only to assert fixture shape. Keep
+those panics local, visible, and covered by explicit panic tests.
 
 ## Error Rules
 
@@ -43,7 +56,7 @@ Planner errors make the boundary visible:
 
 Planner test names must identify the source of the case:
 
-- `plan_*`: supported lowering from Gleam source into a Geam `ModulePlan`.
+- `plan_*`: supported lowering from Gleam source into a Geam `ExecutionPlan`.
 - `reject_profile_*`: valid Gleam source that Geam's current execution profile
   intentionally rejects.
 - `reject_margin_*`: synthetic typed AST margin cases.
@@ -62,7 +75,7 @@ Test helpers reduce real repetition without hiding the reviewed shape.
 - Avoid single-use shallow wrapper helpers.
 - Name helpers after their fixture role, not their implementation detail.
 - Keep helpers in the nearest module that uses them.
-- Use the planner DSL for readable expected plans.
+- Use the crate-internal `planner::dsl` helpers for readable expected plans.
 - Keep test-only panic guards visible and covered rather than scattering
   untested inline `panic!` branches.
 
