@@ -63,6 +63,14 @@ impl ExprBuilder {
         self.bin_op(BinOp::MultInt, right)
     }
 
+    pub(in crate::planner) fn div_int(self, right: Self) -> Self {
+        self.bin_op(BinOp::DivInt, right)
+    }
+
+    pub(in crate::planner) fn remainder_int(self, right: Self) -> Self {
+        self.bin_op(BinOp::RemainderInt, right)
+    }
+
     pub(in crate::planner) fn lt_int(self, right: Self) -> Self {
         self.bin_op(BinOp::LtInt, right)
     }
@@ -208,6 +216,16 @@ mod tests {
     #[test]
     fn expr_builder_mult_int() {
         assert_int_binop(int(1).mult_int(int(2)), BinOp::MultInt);
+    }
+
+    #[test]
+    fn expr_builder_div_int() {
+        assert_int_binop(int(1).div_int(int(2)), BinOp::DivInt);
+    }
+
+    #[test]
+    fn expr_builder_remainder_int() {
+        assert_int_binop(int(1).remainder_int(int(2)), BinOp::RemainderInt);
     }
 
     #[test]

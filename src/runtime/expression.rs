@@ -43,6 +43,8 @@ fn eval_bin_op(op: BinOp, left: Value, right: Value) -> Result<Value, RuntimeErr
         BinOp::AddInt => Ok(Value::Int(expect_int(left)? + expect_int(right)?)),
         BinOp::SubInt => Ok(Value::Int(expect_int(left)? - expect_int(right)?)),
         BinOp::MultInt => Ok(Value::Int(expect_int(left)? * expect_int(right)?)),
+        BinOp::DivInt => eval_div_int(left, right),
+        BinOp::RemainderInt => eval_remainder_int(left, right),
         BinOp::LtInt => Ok(Value::Bool(expect_int(left)? < expect_int(right)?)),
         BinOp::LtEqInt => Ok(Value::Bool(expect_int(left)? <= expect_int(right)?)),
         BinOp::GtInt => Ok(Value::Bool(expect_int(left)? > expect_int(right)?)),
@@ -53,6 +55,30 @@ fn eval_bin_op(op: BinOp, left: Value, right: Value) -> Result<Value, RuntimeErr
             format!("{}{}", expect_string(left)?, expect_string(right)?).into(),
         )),
     }
+}
+
+fn eval_div_int(left: Value, right: Value) -> Result<Value, RuntimeError> {
+    let left = expect_int(left)?;
+    let right = expect_int(right)?;
+
+    // Gleam defines Int division by zero as 0 across its targets.
+    if right == BigInt::from(0) {
+        return Ok(Value::Int(BigInt::from(0)));
+    }
+
+    Ok(Value::Int(left / right))
+}
+
+fn eval_remainder_int(left: Value, right: Value) -> Result<Value, RuntimeError> {
+    let left = expect_int(left)?;
+    let right = expect_int(right)?;
+
+    // Gleam defines Int remainder by zero as 0 across its targets.
+    if right == BigInt::from(0) {
+        return Ok(Value::Int(BigInt::from(0)));
+    }
+
+    Ok(Value::Int(left % right))
 }
 
 fn expect_int(value: Value) -> Result<BigInt, RuntimeError> {
@@ -125,6 +151,122 @@ pub fn main() {
 "#,
             ),
             int(-3),
+        );
+    }
+
+    #[test]
+    fn eval_integer_division() {
+        assert_eq!(
+            run_src(
+                r#"
+pub fn main() {
+  11 / 3
+}
+"#,
+            ),
+            int(3),
+        );
+
+        assert_eq!(
+            run_src(
+                r#"
+pub fn main() {
+  -11 / 3
+}
+"#,
+            ),
+            int(-3),
+        );
+
+        assert_eq!(
+            run_src(
+                r#"
+pub fn main() {
+  11 / -3
+}
+"#,
+            ),
+            int(-3),
+        );
+
+        assert_eq!(
+            run_src(
+                r#"
+pub fn main() {
+  -11 / -3
+}
+"#,
+            ),
+            int(3),
+        );
+
+        assert_eq!(
+            run_src(
+                r#"
+pub fn main() {
+  1 / 0
+}
+"#,
+            ),
+            int(0),
+        );
+    }
+
+    #[test]
+    fn eval_integer_remainder() {
+        assert_eq!(
+            run_src(
+                r#"
+pub fn main() {
+  11 % 3
+}
+"#,
+            ),
+            int(2),
+        );
+
+        assert_eq!(
+            run_src(
+                r#"
+pub fn main() {
+  -11 % 3
+}
+"#,
+            ),
+            int(-2),
+        );
+
+        assert_eq!(
+            run_src(
+                r#"
+pub fn main() {
+  11 % -3
+}
+"#,
+            ),
+            int(2),
+        );
+
+        assert_eq!(
+            run_src(
+                r#"
+pub fn main() {
+  -11 % -3
+}
+"#,
+            ),
+            int(-2),
+        );
+
+        assert_eq!(
+            run_src(
+                r#"
+pub fn main() {
+  1 % 0
+}
+"#,
+            ),
+            int(0),
         );
     }
 

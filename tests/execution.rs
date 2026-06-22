@@ -13,6 +13,7 @@ macro_rules! execution_case {
 execution_case!(integer_return, "integer_return.gleam");
 execution_case!(integer_arithmetic, "integer_arithmetic.gleam");
 execution_case!(integer_comparison, "integer_comparison.gleam");
+execution_case!(integer_division, "integer_division.gleam");
 execution_case!(let_binding, "let_binding.gleam");
 execution_case!(local_function_call, "local_function_call.gleam");
 execution_case!(string_concatenation, "string_concatenation.gleam");

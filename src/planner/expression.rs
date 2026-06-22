@@ -171,6 +171,8 @@ fn plan_bin_op(operator: GleamBinOp) -> Result<BinOp, PlanError> {
         GleamBinOp::AddInt => Ok(BinOp::AddInt),
         GleamBinOp::SubInt => Ok(BinOp::SubInt),
         GleamBinOp::MultInt => Ok(BinOp::MultInt),
+        GleamBinOp::DivInt => Ok(BinOp::DivInt),
+        GleamBinOp::RemainderInt => Ok(BinOp::RemainderInt),
         GleamBinOp::LtInt => Ok(BinOp::LtInt),
         GleamBinOp::LtEqInt => Ok(BinOp::LtEqInt),
         GleamBinOp::GtInt => Ok(BinOp::GtInt),
@@ -201,14 +203,8 @@ fn plan_bin_op(operator: GleamBinOp) -> Result<BinOp, PlanError> {
         GleamBinOp::MultFloat => Err(PlanError::UnsupportedBinOp {
             operator: "mult float",
         }),
-        GleamBinOp::DivInt => Err(PlanError::UnsupportedBinOp {
-            operator: "div int",
-        }),
         GleamBinOp::DivFloat => Err(PlanError::UnsupportedBinOp {
             operator: "div float",
-        }),
-        GleamBinOp::RemainderInt => Err(PlanError::UnsupportedBinOp {
-            operator: "remainder int",
         }),
     }
 }
@@ -274,6 +270,28 @@ pub fn gte() {
             .function(function("lte").return_(int(1).lte_int(int(2))))
             .function(function("gt").return_(int(2).gt_int(int(1))))
             .function(function("gte").return_(int(2).gte_int(int(1))))
+            .build();
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn plan_integer_division_and_remainder() {
+        let actual = plan_module(compile(
+            r#"
+pub fn divide() {
+  11 / 3
+}
+
+pub fn remainder() {
+  11 % 3
+}
+"#,
+        ))
+        .expect("source should plan");
+        let expected = module("main")
+            .function(function("divide").return_(int(11).div_int(int(3))))
+            .function(function("remainder").return_(int(11).remainder_int(int(3))))
             .build();
 
         assert_eq!(actual, expected);
@@ -810,9 +828,7 @@ pub fn main() {
             (GleamBinOp::AddFloat, "add float"),
             (GleamBinOp::SubFloat, "sub float"),
             (GleamBinOp::MultFloat, "mult float"),
-            (GleamBinOp::DivInt, "div int"),
             (GleamBinOp::DivFloat, "div float"),
-            (GleamBinOp::RemainderInt, "remainder int"),
         ];
 
         for (operator, expected) in cases {

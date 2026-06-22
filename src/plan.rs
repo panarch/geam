@@ -64,6 +64,8 @@ pub enum BinOp {
     AddInt,
     SubInt,
     MultInt,
+    DivInt,
+    RemainderInt,
     LtInt,
     LtEqInt,
     GtInt,
