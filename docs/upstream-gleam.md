@@ -22,7 +22,7 @@ compiler-boundary behavior are compared against a published Gleam toolchain.
 ## Used Gleam Areas
 
 The first compiler-boundary milestone depends on `gleam-core` from the baseline
-checkout and calls these compiler areas directly:
+checkout. The primary compiler areas used by Geam are:
 
 ```text
 compiler-core/src/parse.rs
@@ -34,17 +34,28 @@ compiler-core/src/ast/untyped.rs
 compiler-core/src/ast/typed.rs
 ```
 
+The boundary wrapper also uses Gleam support APIs required to run analyse in the
+same shape as Gleam itself:
+
+```text
+compiler-core/src/build.rs
+compiler-core/src/config.rs
+compiler-core/src/line_numbers.rs
+compiler-core/src/uid.rs
+compiler-core/src/warning.rs
+```
+
 The Geam wrapper parses source text, inserts Gleam's prelude interface, assigns
 the caller-provided module name, and runs `ModuleAnalyzerConstructor::infer_module`
 to produce a Gleam `TypedModule`.
 
 ## Geam Boundary
 
-Milestone 1 intentionally does not define a Geam source AST, Core IR, runtime,
-module loader, package resolver, or CLI. Its boundary is:
+Geam intentionally does not define a source AST or source-language compiler. Its
+current boundary is:
 
 ```text
-source text -> Gleam TypedModule
+source text -> Gleam TypedModule -> Geam ModulePlan -> Geam runtime Value
 ```
 
 Geam-specific profile validation belongs in the lowering phase from Gleam's typed
@@ -70,6 +81,21 @@ pub fn compile_typed_module(
 ) -> Result<gleam_core::ast::TypedModule, geam::frontend::FrontendError>
 ```
 
+The current public execution APIs are:
+
+```rust
+pub fn plan_module(
+    module: gleam_core::ast::TypedModule,
+) -> Result<geam::ModulePlan, geam::PlanError>
+
+pub fn run_main(plan: &geam::ModulePlan) -> Result<geam::Value, geam::RuntimeError>
+pub fn run_function(
+    plan: &geam::ModulePlan,
+    name: &str,
+    args: Vec<geam::Value>,
+) -> Result<geam::Value, geam::RuntimeError>
+```
+
 ## Intentionally Out Of Scope
 
 These areas are intentionally excluded from the first compiler-boundary
@@ -80,13 +106,13 @@ milestone:
 - Code generation metadata.
 - Project compilation, package resolution, module loading, dependency graph
   analysis, and artifact writing.
-- Geam Core IR, runtime execution, host bindings, and CLI behavior.
+- Imports, host bindings, broader Gleam profile support, and CLI behavior.
 
 ## Current Source Boundary
 
-Milestone 1 accepts and rejects programs according to Gleam `v1.17.0` parser and
-analyse rules. Geam's smaller execution profile will be introduced by typed-AST
-lowering, not by forking Gleam's parser or type inferencer.
+Source acceptance follows Gleam `v1.17.0` parser and analyse rules. Geam's
+smaller execution profile is enforced by typed-AST planning, not by forking
+Gleam's parser or type inferencer.
 
 ## Sync Policy
 

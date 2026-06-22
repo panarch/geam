@@ -915,6 +915,7 @@ dependencies = [
  "ecow",
  "gleam-core",
  "im",
+ "num-bigint",
  "thiserror 2.0.18",
 ]
 

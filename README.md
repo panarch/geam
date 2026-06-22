@@ -1,71 +1,61 @@
 # Geam
 
-Geam is a Rust-embedded runtime and lowering layer for a Gleam-compatible
-execution profile. Gleam remains the source language; Geam starts after Gleam
-has parsed and type-checked a module, then lowers the supported typed program
-surface into Geam's own runtime representation.
+Geam runs a supported subset of typed Gleam code inside Rust programs.
+The name is pronounced like Korean "김" (/kim/, romanized "gim").
 
-## Upstream Gleam Reference
+It is not a new language, a Gleam fork, a full Gleam implementation, a package
+manager, or an official Gleam target. Geam is an experimental Rust-embedded
+alternative execution runtime for Gleam.
 
-Geam's compiler boundary references the latest official Gleam release at the
-time the project baseline was recorded:
-
-- Repository: https://github.com/gleam-lang/gleam
-- Release: `v1.17.0`
-- Commit: `afc1b7d956b433e638d52dbd06470f53a0b26f6a`
-- Release date: 2026-06-02
-
-This baseline is intentionally release-based rather than `main`-based so typed
-AST and compiler-boundary behavior are compared against a published Gleam
-toolchain. Future upstream sync work should record both the old and new release
-tag and exact commit hash.
-
-Milestone 1 uses the `gleam-core` compiler front-end from a local checkout of
-this baseline. The expected development layout is:
+Gleam already runs by lowering into another execution environment:
 
 ```text
-rust/
-|-- geam/
-`-- gleam/    # checked out at afc1b7d956b433e638d52dbd06470f53a0b26f6a
+Gleam source -> Erlang source    -> BEAM
+Gleam source -> JavaScript       -> Node / Deno / Bun
+Gleam source -> Geam module plan -> Rust-embedded runtime
 ```
 
-If Geam later copies or adapts Gleam source files, preserve the applicable
-upstream license notices and document the intentional differences.
-
-See [docs/upstream-gleam.md](docs/upstream-gleam.md) for the tracked upstream
-reference, direct compiler dependency, Geam runtime boundary, and sync policy.
-
-See [docs/testing.md](docs/testing.md) for test and line coverage commands.
-
-## Runtime Direction
-
-Geam does not define a separate source language, parser, or type checker. Its
-current direction is to use Gleam's parser and analyse/infer pass as the
-compiler boundary. Geam-specific validation should happen while lowering from
-Gleam's typed AST into Geam's runtime representation, so unsupported execution
-semantics are rejected before evaluation.
-
-The first milestone target is:
+Geam keeps Gleam as the source language. It uses Gleam's parser and
+analyse/infer pass, then lowers the supported executable surface of the
+resulting typed module into a Rust-owned plan.
 
 ```text
-source text
--> Gleam parser
--> Gleam untyped AST
--> Gleam analyse/infer
--> Gleam typed AST
+Gleam source
+-> Gleam typed module
+-> Geam module plan
+-> Geam runtime value
 ```
 
-Core IR and execution are intentionally out of scope for this milestone. The
-public Geam entry point for the current compiler-boundary milestone is:
+Unsupported execution semantics are rejected while planning from Gleam's typed
+AST, before runtime evaluation.
 
-```rust
-pub fn compile_typed_module(
-    module_name: impl Into<ecow::EcoString>,
-    path: impl Into<camino::Utf8PathBuf>,
-    src: &str,
-) -> Result<gleam_core::ast::TypedModule, geam::frontend::FrontendError>
+## Status
+
+Geam is in an early runtime milestone. The current execution profile supports a
+small function-only surface for integers, strings, booleans, nil, local
+bindings, local calls, and basic operators.
+
+The main public entry points are:
+
+- `compile_typed_module`
+- `plan_module`
+- `run_main`
+- `run_function`
+
+## Upstream
+
+Current Gleam baseline: `v1.17.0`.
+
+See [docs/upstream-gleam.md](docs/upstream-gleam.md) for the exact commit,
+local checkout expectations, compiler-boundary details, and sync policy.
+
+## Testing
+
+Run the test suite:
+
+```sh
+cargo test
 ```
 
-The previous Geam-owned parser/analyse prototype has been removed. Future
-Geam-specific work should start from Gleam's typed AST boundary and move toward
-profile validation, lowering, and runtime execution.
+See [docs/testing.md](docs/testing.md) for fixture rules, planner test naming,
+coverage commands, and validation expectations.

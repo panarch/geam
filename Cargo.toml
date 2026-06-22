@@ -10,4 +10,5 @@ camino = "1"
 ecow = "=0.2.6"
 gleam-core = { path = "../gleam/compiler-core" }
 im = "15"
+num-bigint = "0.4.6"
 thiserror = "2"
