@@ -37,6 +37,38 @@ pub(crate) fn not_equal(left: impl Into<Expr>, right: impl Into<Expr>) -> Bool {
     Bool(BoolExpr::not_equal(left.into(), right.into()))
 }
 
+pub(crate) fn case_int(subject: Bool, true_: Int, false_: Int) -> Int {
+    Int(IntExpr::bool_case(
+        subject.into(),
+        true_.into(),
+        false_.into(),
+    ))
+}
+
+pub(crate) fn case_string(subject: Bool, true_: String, false_: String) -> String {
+    String(StringExpr::bool_case(
+        subject.into(),
+        true_.into(),
+        false_.into(),
+    ))
+}
+
+pub(crate) fn case_bool(subject: Bool, true_: Bool, false_: Bool) -> Bool {
+    Bool(BoolExpr::bool_case(
+        subject.into(),
+        true_.into(),
+        false_.into(),
+    ))
+}
+
+pub(crate) fn case_nil(subject: Bool, true_: Nil, false_: Nil) -> Nil {
+    Nil(NilExpr::bool_case(
+        subject.into(),
+        true_.into(),
+        false_.into(),
+    ))
+}
+
 pub(crate) fn local_int(index: usize, name: impl Into<EcoString>) -> Int {
     Int(IntExpr::local_get(IntLocalId(index), name.into()))
 }
@@ -233,6 +265,10 @@ mod tests {
             int(1).negate_int().0.kind(),
             IntExprKind::Negate(_)
         ));
+        assert!(matches!(
+            case_int(bool_(true), int(1), int(0)).0.kind(),
+            IntExprKind::BoolCase { .. },
+        ));
     }
 
     #[test]
@@ -240,6 +276,10 @@ mod tests {
         assert!(matches!(
             string("a").concatenate(string("b")).0.kind(),
             StringExprKind::Concatenate { .. },
+        ));
+        assert!(matches!(
+            case_string(bool_(true), string("a"), string("b")).0.kind(),
+            StringExprKind::BoolCase { .. },
         ));
     }
 
@@ -272,6 +312,18 @@ mod tests {
         assert!(matches!(
             bool_(true).negate_bool().0.kind(),
             BoolExprKind::Not(_)
+        ));
+        assert!(matches!(
+            case_bool(bool_(true), bool_(true), bool_(false)).0.kind(),
+            BoolExprKind::BoolCase { .. },
+        ));
+    }
+
+    #[test]
+    fn nil_dsl() {
+        assert!(matches!(
+            case_nil(bool_(true), nil(), nil()).0.kind(),
+            NilExprKind::BoolCase { .. },
         ));
     }
 

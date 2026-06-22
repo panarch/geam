@@ -8,11 +8,12 @@ mod module;
 mod statement;
 
 pub use error::{
-    InvalidCallShapeReason, InvalidExpressionShapeKind, InvalidExpressionType,
-    InvalidFunctionShapeReason, InvalidTypedAstReason, PlanError, UnsupportedArgumentReason,
-    UnsupportedAssignmentKind, UnsupportedBinOpKind, UnsupportedCallReason,
-    UnsupportedExpressionKind, UnsupportedFunctionReason, UnsupportedPatternKind,
-    UnsupportedStatementKind, UnsupportedTopLevelKind,
+    InvalidCallShapeReason, InvalidCaseShapeReason, InvalidExpressionShapeKind,
+    InvalidExpressionType, InvalidFunctionShapeReason, InvalidTypedAstReason, PlanError,
+    UnsupportedArgumentReason, UnsupportedAssignmentKind, UnsupportedBinOpKind,
+    UnsupportedCallReason, UnsupportedCaseReason, UnsupportedExpressionKind,
+    UnsupportedFunctionReason, UnsupportedPatternKind, UnsupportedStatementKind,
+    UnsupportedTopLevelKind,
 };
 pub use module::plan_module;
 

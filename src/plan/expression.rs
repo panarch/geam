@@ -81,6 +81,11 @@ pub(crate) enum IntExprKind {
         right: Box<IntExpr>,
     },
     Negate(Box<IntExpr>),
+    BoolCase {
+        subject: Box<BoolExpr>,
+        true_: Box<IntExpr>,
+        false_: Box<IntExpr>,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -102,6 +107,11 @@ pub(crate) enum StringExprKind {
     Concatenate {
         left: Box<StringExpr>,
         right: Box<StringExpr>,
+    },
+    BoolCase {
+        subject: Box<BoolExpr>,
+        true_: Box<StringExpr>,
+        false_: Box<StringExpr>,
     },
 }
 
@@ -146,6 +156,11 @@ pub(crate) enum BoolExprKind {
         left: Box<Expr>,
         right: Box<Expr>,
     },
+    BoolCase {
+        subject: Box<BoolExpr>,
+        true_: Box<BoolExpr>,
+        false_: Box<BoolExpr>,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -163,6 +178,11 @@ pub(crate) enum NilExprKind {
     Call {
         function: NilFunctionId,
         args: Vec<CallArg>,
+    },
+    BoolCase {
+        subject: Box<BoolExpr>,
+        true_: Box<NilExpr>,
+        false_: Box<NilExpr>,
     },
 }
 
@@ -188,6 +208,28 @@ impl Expr {
     pub(crate) fn nil(expression: NilExpr) -> Self {
         Self {
             kind: ExprKind::Nil(expression),
+        }
+    }
+
+    pub(crate) fn bool_case(
+        subject: BoolExpr,
+        true_: Expr,
+        false_: Expr,
+    ) -> Result<Self, (Self, Self)> {
+        match (true_.kind, false_.kind) {
+            (ExprKind::Int(true_), ExprKind::Int(false_)) => {
+                Ok(Self::int(IntExpr::bool_case(subject, true_, false_)))
+            }
+            (ExprKind::String(true_), ExprKind::String(false_)) => {
+                Ok(Self::string(StringExpr::bool_case(subject, true_, false_)))
+            }
+            (ExprKind::Bool(true_), ExprKind::Bool(false_)) => {
+                Ok(Self::bool(BoolExpr::bool_case(subject, true_, false_)))
+            }
+            (ExprKind::Nil(true_), ExprKind::Nil(false_)) => {
+                Ok(Self::nil(NilExpr::bool_case(subject, true_, false_)))
+            }
+            (true_, false_) => Err((Self { kind: true_ }, Self { kind: false_ })),
         }
     }
 
@@ -344,6 +386,16 @@ impl IntExpr {
         }
     }
 
+    pub(crate) fn bool_case(subject: BoolExpr, true_: IntExpr, false_: IntExpr) -> Self {
+        Self {
+            kind: IntExprKind::BoolCase {
+                subject: Box::new(subject),
+                true_: Box::new(true_),
+                false_: Box::new(false_),
+            },
+        }
+    }
+
     pub(crate) fn kind(&self) -> &IntExprKind {
         &self.kind
     }
@@ -373,6 +425,16 @@ impl StringExpr {
             kind: StringExprKind::Concatenate {
                 left: Box::new(left),
                 right: Box::new(right),
+            },
+        }
+    }
+
+    pub(crate) fn bool_case(subject: BoolExpr, true_: StringExpr, false_: StringExpr) -> Self {
+        Self {
+            kind: StringExprKind::BoolCase {
+                subject: Box::new(subject),
+                true_: Box::new(true_),
+                false_: Box::new(false_),
             },
         }
     }
@@ -461,6 +523,16 @@ impl BoolExpr {
         }
     }
 
+    pub(crate) fn bool_case(subject: BoolExpr, true_: BoolExpr, false_: BoolExpr) -> Self {
+        Self {
+            kind: BoolExprKind::BoolCase {
+                subject: Box::new(subject),
+                true_: Box::new(true_),
+                false_: Box::new(false_),
+            },
+        }
+    }
+
     pub(crate) fn kind(&self) -> &BoolExprKind {
         &self.kind
     }
@@ -482,6 +554,16 @@ impl NilExpr {
     pub(crate) fn call(function: NilFunctionId, args: Vec<CallArg>) -> Self {
         Self {
             kind: NilExprKind::Call { function, args },
+        }
+    }
+
+    pub(crate) fn bool_case(subject: BoolExpr, true_: NilExpr, false_: NilExpr) -> Self {
+        Self {
+            kind: NilExprKind::BoolCase {
+                subject: Box::new(subject),
+                true_: Box::new(true_),
+                false_: Box::new(false_),
+            },
         }
     }
 
@@ -528,6 +610,69 @@ mod tests {
     }
 
     #[test]
+    fn expr_bool_case_shapes() {
+        assert_eq!(
+            Expr::bool_case(
+                BoolExpr::value(true),
+                Expr::int(IntExpr::value(BigInt::from(1))),
+                Expr::int(IntExpr::value(BigInt::from(0))),
+            ),
+            Ok(Expr::int(IntExpr::bool_case(
+                BoolExpr::value(true),
+                IntExpr::value(BigInt::from(1)),
+                IntExpr::value(BigInt::from(0)),
+            ))),
+        );
+        assert_eq!(
+            Expr::bool_case(
+                BoolExpr::value(true),
+                Expr::string(StringExpr::value("yes".into())),
+                Expr::string(StringExpr::value("no".into())),
+            ),
+            Ok(Expr::string(StringExpr::bool_case(
+                BoolExpr::value(true),
+                StringExpr::value("yes".into()),
+                StringExpr::value("no".into()),
+            ))),
+        );
+        assert_eq!(
+            Expr::bool_case(
+                BoolExpr::value(true),
+                Expr::bool(BoolExpr::value(true)),
+                Expr::bool(BoolExpr::value(false)),
+            ),
+            Ok(Expr::bool(BoolExpr::bool_case(
+                BoolExpr::value(true),
+                BoolExpr::value(true),
+                BoolExpr::value(false),
+            ))),
+        );
+        assert_eq!(
+            Expr::bool_case(
+                BoolExpr::value(true),
+                Expr::nil(NilExpr::value()),
+                Expr::nil(NilExpr::value()),
+            ),
+            Ok(Expr::nil(NilExpr::bool_case(
+                BoolExpr::value(true),
+                NilExpr::value(),
+                NilExpr::value(),
+            ))),
+        );
+        assert_eq!(
+            Expr::bool_case(
+                BoolExpr::value(true),
+                Expr::int(IntExpr::value(BigInt::from(1))),
+                Expr::bool(BoolExpr::value(false)),
+            ),
+            Err((
+                Expr::int(IntExpr::value(BigInt::from(1))),
+                Expr::bool(BoolExpr::value(false)),
+            )),
+        );
+    }
+
+    #[test]
     fn expr_value_type() {
         assert_eq!(
             Expr::from(Value::Int(BigInt::from(1))).value_type(),
@@ -556,6 +701,37 @@ mod tests {
             BoolExprKind::Value(true)
         ));
         assert!(matches!(NilExpr::value().kind(), NilExprKind::Value));
+        assert!(matches!(
+            IntExpr::bool_case(
+                BoolExpr::value(true),
+                IntExpr::value(1.into()),
+                IntExpr::value(0.into())
+            )
+            .kind(),
+            IntExprKind::BoolCase { .. }
+        ));
+        assert!(matches!(
+            StringExpr::bool_case(
+                BoolExpr::value(true),
+                StringExpr::value("yes".into()),
+                StringExpr::value("no".into())
+            )
+            .kind(),
+            StringExprKind::BoolCase { .. }
+        ));
+        assert!(matches!(
+            BoolExpr::bool_case(
+                BoolExpr::value(true),
+                BoolExpr::value(true),
+                BoolExpr::value(false)
+            )
+            .kind(),
+            BoolExprKind::BoolCase { .. }
+        ));
+        assert!(matches!(
+            NilExpr::bool_case(BoolExpr::value(true), NilExpr::value(), NilExpr::value()).kind(),
+            NilExprKind::BoolCase { .. }
+        ));
         assert!(matches!(
             Expr::from(Value::Nil).kind(),
             ExprKind::Nil(NilExpr { .. })

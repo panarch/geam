@@ -23,6 +23,8 @@ pub enum InvalidTypedAstReason {
     },
     #[error("call shape: {reason}")]
     CallShape { reason: InvalidCallShapeReason },
+    #[error("case shape: {reason}")]
+    CaseShape { reason: InvalidCaseShapeReason },
     #[error("unknown local variable: {name}")]
     UnknownLocal { name: EcoString },
 }
@@ -89,4 +91,24 @@ pub enum InvalidCallShapeReason {
     MissingCurrentModuleFunction,
     #[error("calling record constructors is not supported")]
     RecordConstructor,
+}
+
+#[derive(Debug, Error, Clone, Copy, PartialEq, Eq)]
+pub enum InvalidCaseShapeReason {
+    #[error("branch return type does not match case type")]
+    BranchReturnTypeMismatch,
+    #[error("empty clauses")]
+    EmptyClauses,
+    #[error("empty subjects")]
+    EmptySubjects,
+    #[error("invalid pattern")]
+    InvalidPattern,
+    #[error("missing false pattern")]
+    MissingFalsePattern,
+    #[error("missing true pattern")]
+    MissingTruePattern,
+    #[error("pattern type mismatch")]
+    PatternTypeMismatch,
+    #[error("pattern subject count mismatch")]
+    PatternSubjectCountMismatch,
 }

@@ -18,6 +18,7 @@ execution_case!(let_binding, "let_binding.gleam");
 execution_case!(local_function_call, "local_function_call.gleam");
 execution_case!(string_concatenation, "string_concatenation.gleam");
 execution_case!(bool_value, "bool_value.gleam");
+execution_case!(bool_case, "bool_case.gleam");
 execution_case!(nil_value, "nil_value.gleam");
 
 fn run_fixture(file_name: &str) {

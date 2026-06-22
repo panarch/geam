@@ -1,3 +1,5 @@
+mod case;
+
 use crate::plan::{
     BoolExpr, CallArg, Expr, IntExpr, LocalId, NilExpr, RuntimeFunctionId, StringExpr, ValueType,
 };
@@ -55,9 +57,12 @@ pub(super) fn plan_expr(
         TypedExpr::List { .. } => Err(PlanError::UnsupportedExpression {
             kind: UnsupportedExpressionKind::List,
         }),
-        TypedExpr::Case { .. } => Err(PlanError::UnsupportedExpression {
-            kind: UnsupportedExpressionKind::Case,
-        }),
+        TypedExpr::Case {
+            type_,
+            subjects,
+            clauses,
+            ..
+        } => case::plan_case(type_, subjects, clauses, context),
         TypedExpr::RecordAccess { .. } => Err(PlanError::InvalidTypedAst {
             reason: InvalidTypedAstReason::ExpressionShape {
                 kind: InvalidExpressionShapeKind::RecordAccess,
@@ -679,12 +684,6 @@ pub fn main() {
                 r#"pub fn main() { fn(x) { x }(1) }"#,
                 PlanError::UnsupportedCall {
                     reason: UnsupportedCallReason::NonDirectLocalFunction,
-                },
-            ),
-            (
-                r#"pub fn main() { case 1 { 1 -> 2 _ -> 3 } }"#,
-                PlanError::UnsupportedExpression {
-                    kind: UnsupportedExpressionKind::Case,
                 },
             ),
             (

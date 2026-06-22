@@ -68,8 +68,6 @@ pub enum UnsupportedExpressionKind {
     BitArray,
     #[error("block")]
     Block,
-    #[error("case")]
-    Case,
     #[error("echo")]
     Echo,
     #[error("float")]
@@ -118,4 +116,24 @@ pub enum UnsupportedBinOpKind {
 pub enum UnsupportedCallReason {
     #[error("only direct local function calls are supported")]
     NonDirectLocalFunction,
+}
+
+#[derive(Debug, Error, Clone, Copy, PartialEq, Eq)]
+pub enum UnsupportedCaseReason {
+    #[error("alternative patterns are not supported")]
+    AlternativePatterns,
+    #[error("assign patterns are not supported")]
+    AssignPattern,
+    #[error("discard patterns are not supported")]
+    DiscardPattern,
+    #[error("duplicate bool patterns are not supported")]
+    DuplicateBoolPattern,
+    #[error("guards are not supported")]
+    Guard,
+    #[error("multiple subjects are not supported")]
+    MultipleSubjects,
+    #[error("non-bool subjects are not supported")]
+    NonBoolSubject,
+    #[error("variable patterns are not supported")]
+    VariablePattern,
 }

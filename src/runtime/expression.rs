@@ -48,6 +48,17 @@ pub(super) fn eval_int_expr(
             eval_int_expr(plan, frame, right),
         ),
         IntExprKind::Negate(value) => -eval_int_expr(plan, frame, value),
+        IntExprKind::BoolCase {
+            subject,
+            true_,
+            false_,
+        } => {
+            if eval_bool_expr(plan, frame, subject) {
+                eval_int_expr(plan, frame, true_)
+            } else {
+                eval_int_expr(plan, frame, false_)
+            }
+        }
     }
 }
 
@@ -68,6 +79,17 @@ pub(super) fn eval_string_expr(
             eval_string_expr(plan, frame, right),
         )
         .into(),
+        StringExprKind::BoolCase {
+            subject,
+            true_,
+            false_,
+        } => {
+            if eval_bool_expr(plan, frame, subject) {
+                eval_string_expr(plan, frame, true_)
+            } else {
+                eval_string_expr(plan, frame, false_)
+            }
+        }
     }
 }
 
@@ -101,6 +123,17 @@ pub(super) fn eval_bool_expr(
         BoolExprKind::NotEqual { left, right } => {
             eval_expr(plan, frame, left) != eval_expr(plan, frame, right)
         }
+        BoolExprKind::BoolCase {
+            subject,
+            true_,
+            false_,
+        } => {
+            if eval_bool_expr(plan, frame, subject) {
+                eval_bool_expr(plan, frame, true_)
+            } else {
+                eval_bool_expr(plan, frame, false_)
+            }
+        }
     }
 }
 
@@ -110,6 +143,17 @@ pub(super) fn eval_nil_expr(plan: &ExecutionPlan, frame: &mut Frame, expression:
         NilExprKind::LocalGet { local, .. } => frame.get_nil(*local),
         NilExprKind::Call { function, args } => {
             function::run_nil_call(plan, *function, args, frame)
+        }
+        NilExprKind::BoolCase {
+            subject,
+            true_,
+            false_,
+        } => {
+            if eval_bool_expr(plan, frame, subject) {
+                eval_nil_expr(plan, frame, true_);
+            } else {
+                eval_nil_expr(plan, frame, false_);
+            }
         }
     }
 }
@@ -408,6 +452,140 @@ pub fn main() {
                 r#"
 pub fn main() {
   Nil
+}
+"#,
+            ),
+            Value::Nil,
+        );
+    }
+
+    #[test]
+    fn eval_bool_case_int() {
+        assert_eq!(
+            run_src(
+                r#"
+pub fn main() {
+  case True {
+    True -> 1
+    False -> 0
+  }
+}
+"#,
+            ),
+            int(1),
+        );
+
+        assert_eq!(
+            run_src(
+                r#"
+pub fn main() {
+  case False {
+    True -> 1
+    False -> 0
+  }
+}
+"#,
+            ),
+            int(0),
+        );
+    }
+
+    #[test]
+    fn eval_bool_case_string() {
+        assert_eq!(
+            run_src(
+                r#"
+pub fn main() {
+  case True {
+    True -> "yes"
+    False -> "no"
+  }
+}
+"#,
+            ),
+            Value::String("yes".into()),
+        );
+
+        assert_eq!(
+            run_src(
+                r#"
+pub fn main() {
+  case False {
+    True -> "yes"
+    False -> "no"
+  }
+}
+"#,
+            ),
+            Value::String("no".into()),
+        );
+    }
+
+    #[test]
+    fn eval_bool_case_bool() {
+        assert_eq!(
+            run_src(
+                r#"
+pub fn main() {
+  let value = True
+  case value {
+    True -> False
+    False -> True
+  }
+}
+"#,
+            ),
+            Value::Bool(false),
+        );
+
+        assert_eq!(
+            run_src(
+                r#"
+pub fn main() {
+  let value = False
+  case value {
+    True -> False
+    False -> True
+  }
+}
+"#,
+            ),
+            Value::Bool(true),
+        );
+    }
+
+    #[test]
+    fn eval_bool_case_nil() {
+        assert_eq!(
+            run_src(
+                r#"
+fn flag() {
+  True
+}
+
+pub fn main() {
+  case flag() {
+    True -> Nil
+    False -> Nil
+  }
+}
+"#,
+            ),
+            Value::Nil,
+        );
+
+        assert_eq!(
+            run_src(
+                r#"
+fn flag() {
+  False
+}
+
+pub fn main() {
+  case flag() {
+    True -> Nil
+    False -> Nil
+  }
 }
 "#,
             ),
