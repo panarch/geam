@@ -1,5 +1,5 @@
 use crate::plan::{FunctionId, ModulePlan};
-use crate::planner::dsl::expression::FunctionTable;
+use crate::planner::dsl::expression::{FunctionEntry, FunctionTable};
 use crate::planner::dsl::function::FunctionBuilder;
 use ecow::EcoString;
 
@@ -24,8 +24,9 @@ impl ModuleBuilder {
 
     pub(in crate::planner) fn build(self) -> ModulePlan {
         let functions = function_table(&self.functions);
-        let main = *functions
+        let main = functions
             .get("main")
+            .map(|function| function.id)
             .expect("planner DSL module must define a main function");
 
         ModulePlan {
@@ -42,17 +43,24 @@ impl ModuleBuilder {
 }
 
 fn function_table(functions: &[FunctionBuilder]) -> FunctionTable {
-    functions
-        .iter()
-        .enumerate()
-        .map(|(index, function)| (function.name().clone(), FunctionId(index)))
-        .collect()
+    let mut table = FunctionTable::new();
+    for (index, function) in functions.iter().enumerate() {
+        let return_type = function.return_type(&table);
+        table.insert(
+            function.name().clone(),
+            FunctionEntry {
+                id: FunctionId(index),
+                return_type,
+            },
+        );
+    }
+    table
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::plan::{Expr, FunctionPlan, Value};
+    use crate::plan::{Expr, FunctionPlan, IntExpr, NilExpr};
     use crate::planner::dsl::expression::{int, nil};
     use crate::planner::dsl::function::function;
     use num_bigint::BigInt;
@@ -75,14 +83,14 @@ mod tests {
                         name: "main".into(),
                         params: vec![],
                         steps: vec![],
-                        return_: Expr::Value(Value::Int(BigInt::from(1))),
+                        return_: Expr::Int(IntExpr::Value(BigInt::from(1))),
                     },
                     FunctionPlan {
                         id: FunctionId(1),
                         name: "helper".into(),
                         params: vec![],
                         steps: vec![],
-                        return_: Expr::Value(Value::Nil),
+                        return_: Expr::Nil(NilExpr::Value),
                     },
                 ],
             }
@@ -95,5 +103,11 @@ mod tests {
         module("main")
             .function(function("helper").return_(nil()))
             .build();
+    }
+
+    #[test]
+    #[should_panic(expected = "function `main` in planner DSL must define a return expression")]
+    fn module_build_panics_on_function_without_return() {
+        module("main").function(function("main")).build();
     }
 }

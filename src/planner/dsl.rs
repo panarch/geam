@@ -11,7 +11,7 @@ pub(in crate::planner) use module::{ModuleBuilder, module};
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::plan::{Expr, FunctionId, FunctionPlan, ModulePlan, Value};
+    use crate::plan::{Expr, FunctionId, FunctionPlan, IntExpr, ModulePlan};
     use num_bigint::BigInt;
 
     #[test]
@@ -30,7 +30,7 @@ mod tests {
                     name: "main".into(),
                     params: vec![],
                     steps: vec![],
-                    return_: Expr::Value(Value::Int(BigInt::from(1))),
+                    return_: Expr::Int(IntExpr::Value(BigInt::from(1))),
                 }],
             }
         );

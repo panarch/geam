@@ -1,4 +1,4 @@
-use crate::plan::Step;
+use crate::plan::{Expr, Step};
 use crate::planner::context::PlanContext;
 use crate::planner::error::{
     InvalidTypedAstReason, PlanError, UnsupportedAssignmentKind, UnsupportedPatternKind,
@@ -43,10 +43,24 @@ fn plan_assignment(
     }
 
     let name = plan_variable_pattern(assignment.pattern)?;
-    let value = plan_expr(assignment.value, context)?;
-    let local = context.define_local(name.clone());
-
-    Ok(Step::Let { local, name, value })
+    match plan_expr(assignment.value, context)? {
+        Expr::Int(value) => {
+            let local = context.define_int_local(name.clone());
+            Ok(Step::LetInt { local, name, value })
+        }
+        Expr::String(value) => {
+            let local = context.define_string_local(name.clone());
+            Ok(Step::LetString { local, name, value })
+        }
+        Expr::Bool(value) => {
+            let local = context.define_bool_local(name.clone());
+            Ok(Step::LetBool { local, name, value })
+        }
+        Expr::Nil(value) => {
+            let local = context.define_nil_local(name.clone());
+            Ok(Step::LetNil { local, name, value })
+        }
+    }
 }
 
 fn plan_variable_pattern(pattern: TypedPattern) -> Result<EcoString, PlanError> {
@@ -82,8 +96,8 @@ mod tests {
     use crate::planner::plan_module;
     use crate::planner::support::{compile, compile_minimal_module, dummy_span, expect_plan_error};
     use crate::planner::{
-        InvalidTypedAstReason, PlanError, UnsupportedAssignmentKind, UnsupportedCallReason,
-        UnsupportedPatternKind, UnsupportedStatementKind,
+        InvalidTypedAstReason, PlanError, UnsupportedAssignmentKind, UnsupportedPatternKind,
+        UnsupportedStatementKind,
     };
     use gleam_core::analyse::Inferred;
     use gleam_core::ast::{
@@ -212,8 +226,9 @@ fn pair(callback: fn() -> Int) {
 }
 "#,
             ),
-            PlanError::UnsupportedCall {
-                reason: UnsupportedCallReason::LocalFunctionValue,
+            PlanError::UnsupportedArgument {
+                function: "pair".into(),
+                reason: crate::planner::UnsupportedArgumentReason::UnsupportedType,
             },
         );
     }

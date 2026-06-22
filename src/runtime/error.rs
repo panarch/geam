@@ -5,10 +5,4 @@ use thiserror::Error;
 pub enum RuntimeError {
     #[error("unbound local: {local:?}")]
     UnboundLocal { local: LocalId },
-
-    #[error("expected {expected}, got {actual}")]
-    TypeMismatch {
-        expected: &'static str,
-        actual: &'static str,
-    },
 }

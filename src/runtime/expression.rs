@@ -1,4 +1,4 @@
-use crate::plan::{BinOp, Expr, ModulePlan, Value};
+use crate::plan::{BoolExpr, Expr, IntExpr, ModulePlan, NilExpr, StringExpr, Value};
 use crate::runtime::error::RuntimeError;
 use crate::runtime::frame::Frame;
 use crate::runtime::function;
@@ -11,110 +11,133 @@ pub(super) fn eval_expr(
     expression: &Expr,
 ) -> Result<Value, RuntimeError> {
     match expression {
-        Expr::Value(value) => Ok(value.clone()),
-        Expr::LocalGet { local, .. } => frame.get(*local),
-        Expr::Call { function, args } => {
-            let args = args
-                .iter()
-                .map(|argument| eval_expr(plan, frame, argument))
-                .collect::<Result<Vec<_>, _>>()?;
-            function::run_function(plan, *function, args)
-        }
-        Expr::BinOp { op, left, right } => {
-            let left = eval_expr(plan, frame, left)?;
-            let right = eval_expr(plan, frame, right)?;
-            eval_bin_op(*op, left, right)
-        }
-        Expr::NegateInt(value) => {
-            let value = eval_expr(plan, frame, value)?;
-            Ok(Value::Int(-expect_int(value)?))
-        }
-        Expr::NegateBool(value) => {
-            let value = eval_expr(plan, frame, value)?;
-            Ok(Value::Bool(!expect_bool(value)?))
+        Expr::Int(expression) => Ok(Value::Int(eval_int_expr(plan, frame, expression)?)),
+        Expr::String(expression) => Ok(Value::String(eval_string_expr(plan, frame, expression)?)),
+        Expr::Bool(expression) => Ok(Value::Bool(eval_bool_expr(plan, frame, expression)?)),
+        Expr::Nil(expression) => {
+            eval_nil_expr(plan, frame, expression)?;
+            Ok(Value::Nil)
         }
     }
 }
 
-fn eval_bin_op(op: BinOp, left: Value, right: Value) -> Result<Value, RuntimeError> {
-    match op {
-        BinOp::AddInt => Ok(Value::Int(expect_int(left)? + expect_int(right)?)),
-        BinOp::SubInt => Ok(Value::Int(expect_int(left)? - expect_int(right)?)),
-        BinOp::MultInt => Ok(Value::Int(expect_int(left)? * expect_int(right)?)),
-        BinOp::DivInt => eval_div_int(left, right),
-        BinOp::RemainderInt => eval_remainder_int(left, right),
-        BinOp::LtInt => Ok(Value::Bool(expect_int(left)? < expect_int(right)?)),
-        BinOp::LtEqInt => Ok(Value::Bool(expect_int(left)? <= expect_int(right)?)),
-        BinOp::GtInt => Ok(Value::Bool(expect_int(left)? > expect_int(right)?)),
-        BinOp::GtEqInt => Ok(Value::Bool(expect_int(left)? >= expect_int(right)?)),
-        BinOp::Eq => Ok(Value::Bool(left == right)),
-        BinOp::NotEq => Ok(Value::Bool(left != right)),
-        BinOp::Concatenate => Ok(Value::String(
-            format!("{}{}", expect_string(left)?, expect_string(right)?).into(),
-        )),
+pub(super) fn eval_int_expr(
+    plan: &ModulePlan,
+    frame: &mut Frame,
+    expression: &IntExpr,
+) -> Result<BigInt, RuntimeError> {
+    match expression {
+        IntExpr::Value(value) => Ok(value.clone()),
+        IntExpr::LocalGet { local, .. } => frame.get_int(*local),
+        IntExpr::Call { function, args } => function::run_int_call(plan, *function, args, frame),
+        IntExpr::Add { left, right } => {
+            Ok(eval_int_expr(plan, frame, left)? + eval_int_expr(plan, frame, right)?)
+        }
+        IntExpr::Sub { left, right } => {
+            Ok(eval_int_expr(plan, frame, left)? - eval_int_expr(plan, frame, right)?)
+        }
+        IntExpr::Mult { left, right } => {
+            Ok(eval_int_expr(plan, frame, left)? * eval_int_expr(plan, frame, right)?)
+        }
+        IntExpr::Div { left, right } => eval_div_int(
+            eval_int_expr(plan, frame, left)?,
+            eval_int_expr(plan, frame, right)?,
+        ),
+        IntExpr::Remainder { left, right } => eval_remainder_int(
+            eval_int_expr(plan, frame, left)?,
+            eval_int_expr(plan, frame, right)?,
+        ),
+        IntExpr::Negate(value) => Ok(-eval_int_expr(plan, frame, value)?),
     }
 }
 
-fn eval_div_int(left: Value, right: Value) -> Result<Value, RuntimeError> {
-    let left = expect_int(left)?;
-    let right = expect_int(right)?;
+pub(super) fn eval_string_expr(
+    plan: &ModulePlan,
+    frame: &mut Frame,
+    expression: &StringExpr,
+) -> Result<EcoString, RuntimeError> {
+    match expression {
+        StringExpr::Value(value) => Ok(value.clone()),
+        StringExpr::LocalGet { local, .. } => frame.get_string(*local),
+        StringExpr::Call { function, args } => {
+            function::run_string_call(plan, *function, args, frame)
+        }
+        StringExpr::Concatenate { left, right } => Ok(format!(
+            "{}{}",
+            eval_string_expr(plan, frame, left)?,
+            eval_string_expr(plan, frame, right)?,
+        )
+        .into()),
+    }
+}
 
+pub(super) fn eval_bool_expr(
+    plan: &ModulePlan,
+    frame: &mut Frame,
+    expression: &BoolExpr,
+) -> Result<bool, RuntimeError> {
+    match expression {
+        BoolExpr::Value(value) => Ok(*value),
+        BoolExpr::LocalGet { local, .. } => frame.get_bool(*local),
+        BoolExpr::Call { function, args } => function::run_bool_call(plan, *function, args, frame),
+        BoolExpr::Not(value) => Ok(!eval_bool_expr(plan, frame, value)?),
+        BoolExpr::LtInt { left, right } => {
+            Ok(eval_int_expr(plan, frame, left)? < eval_int_expr(plan, frame, right)?)
+        }
+        BoolExpr::LtEqInt { left, right } => {
+            Ok(eval_int_expr(plan, frame, left)? <= eval_int_expr(plan, frame, right)?)
+        }
+        BoolExpr::GtInt { left, right } => {
+            Ok(eval_int_expr(plan, frame, left)? > eval_int_expr(plan, frame, right)?)
+        }
+        BoolExpr::GtEqInt { left, right } => {
+            Ok(eval_int_expr(plan, frame, left)? >= eval_int_expr(plan, frame, right)?)
+        }
+        BoolExpr::Equal { left, right } => {
+            Ok(eval_expr(plan, frame, left)? == eval_expr(plan, frame, right)?)
+        }
+        BoolExpr::NotEqual { left, right } => {
+            Ok(eval_expr(plan, frame, left)? != eval_expr(plan, frame, right)?)
+        }
+    }
+}
+
+pub(super) fn eval_nil_expr(
+    plan: &ModulePlan,
+    frame: &mut Frame,
+    expression: &NilExpr,
+) -> Result<(), RuntimeError> {
+    match expression {
+        NilExpr::Value => Ok(()),
+        NilExpr::LocalGet { local, .. } => frame.get_nil(*local),
+        NilExpr::Call { function, args } => function::run_nil_call(plan, *function, args, frame),
+    }
+}
+
+fn eval_div_int(left: BigInt, right: BigInt) -> Result<BigInt, RuntimeError> {
     // Gleam defines Int division by zero as 0 across its targets.
     if right == BigInt::from(0) {
-        return Ok(Value::Int(BigInt::from(0)));
+        return Ok(BigInt::from(0));
     }
 
-    Ok(Value::Int(left / right))
+    Ok(left / right)
 }
 
-fn eval_remainder_int(left: Value, right: Value) -> Result<Value, RuntimeError> {
-    let left = expect_int(left)?;
-    let right = expect_int(right)?;
-
+fn eval_remainder_int(left: BigInt, right: BigInt) -> Result<BigInt, RuntimeError> {
     // Gleam defines Int remainder by zero as 0 across its targets.
     if right == BigInt::from(0) {
-        return Ok(Value::Int(BigInt::from(0)));
+        return Ok(BigInt::from(0));
     }
 
-    Ok(Value::Int(left % right))
-}
-
-fn expect_int(value: Value) -> Result<BigInt, RuntimeError> {
-    match value {
-        Value::Int(value) => Ok(value),
-        other => Err(RuntimeError::TypeMismatch {
-            expected: "Int",
-            actual: other.kind(),
-        }),
-    }
-}
-
-fn expect_bool(value: Value) -> Result<bool, RuntimeError> {
-    match value {
-        Value::Bool(value) => Ok(value),
-        other => Err(RuntimeError::TypeMismatch {
-            expected: "Bool",
-            actual: other.kind(),
-        }),
-    }
-}
-
-fn expect_string(value: Value) -> Result<EcoString, RuntimeError> {
-    match value {
-        Value::String(value) => Ok(value),
-        other => Err(RuntimeError::TypeMismatch {
-            expected: "String",
-            actual: other.kind(),
-        }),
-    }
+    Ok(left % right)
 }
 
 #[cfg(test)]
 mod tests {
-    use super::super::frame::Frame;
-    use super::super::{RuntimeError, Value, int, run_src};
-    use super::{eval_bin_op, eval_expr};
-    use crate::plan::{BinOp, Expr, FunctionId, ModulePlan};
+    use super::super::{Value, int, run_src};
+    use super::{eval_bool_expr, eval_int_expr};
+    use crate::plan::{BoolExpr, IntExpr, ModulePlan};
+    use crate::runtime::frame::Frame;
 
     #[test]
     fn eval_integer_arithmetic() {
@@ -319,13 +342,19 @@ pub fn main() {
     fn eval_negate_int() {
         let plan = ModulePlan {
             module: "main".into(),
-            main: FunctionId(0),
+            main: crate::FunctionId(0),
             functions: Vec::new(),
         };
         let mut frame = Frame::default();
-        let expression = Expr::NegateInt(Box::new(Expr::Value(int(3))));
 
-        assert_eq!(eval_expr(&plan, &mut frame, &expression), Ok(int(-3)));
+        assert_eq!(
+            eval_int_expr(
+                &plan,
+                &mut frame,
+                &IntExpr::Negate(Box::new(IntExpr::Value(3.into())))
+            ),
+            Ok((-3).into()),
+        );
     }
 
     #[test]
@@ -394,49 +423,21 @@ pub fn main() {
     }
 
     #[test]
-    fn report_type_mismatch() {
-        assert_eq!(
-            eval_bin_op(BinOp::AddInt, Value::String("bad".into()), int(1)),
-            Err(RuntimeError::TypeMismatch {
-                expected: "Int",
-                actual: "String",
-            }),
-        );
-
-        assert_eq!(
-            eval_bin_op(BinOp::LtInt, Value::String("bad".into()), int(1)),
-            Err(RuntimeError::TypeMismatch {
-                expected: "Int",
-                actual: "String",
-            }),
-        );
-
-        assert_eq!(
-            eval_bin_op(
-                BinOp::Concatenate,
-                Value::Bool(true),
-                Value::String("value".into()),
-            ),
-            Err(RuntimeError::TypeMismatch {
-                expected: "String",
-                actual: "Bool",
-            }),
-        );
-
+    fn eval_bool_not() {
         let plan = ModulePlan {
             module: "main".into(),
-            main: FunctionId(0),
+            main: crate::FunctionId(0),
             functions: Vec::new(),
         };
         let mut frame = Frame::default();
-        let expression = Expr::NegateBool(Box::new(Expr::Value(Value::Nil)));
 
         assert_eq!(
-            eval_expr(&plan, &mut frame, &expression),
-            Err(RuntimeError::TypeMismatch {
-                expected: "Bool",
-                actual: "Nil",
-            }),
+            eval_bool_expr(
+                &plan,
+                &mut frame,
+                &BoolExpr::Not(Box::new(BoolExpr::Value(true)))
+            ),
+            Ok(false),
         );
     }
 }

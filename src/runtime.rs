@@ -9,7 +9,7 @@ pub use error::RuntimeError;
 use crate::plan::ModulePlan;
 
 pub fn run_main(plan: &ModulePlan) -> Result<Value, RuntimeError> {
-    function::run_function(plan, plan.main, Vec::new())
+    function::run_function(plan, plan.main, &[], &mut frame::Frame::default())
 }
 
 #[cfg(test)]

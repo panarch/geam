@@ -16,6 +16,11 @@ pub enum InvalidTypedAstReason {
     InvalidPattern,
     #[error("expression shape: {kind}")]
     ExpressionShape { kind: InvalidExpressionShapeKind },
+    #[error("expression type: expected {expected}, got {actual}")]
+    ExpressionType {
+        expected: InvalidExpressionType,
+        actual: InvalidExpressionType,
+    },
     #[error("call shape: {reason}")]
     CallShape { reason: InvalidCallShapeReason },
     #[error("unknown local variable: {name}")]
@@ -51,13 +56,29 @@ pub enum InvalidExpressionShapeKind {
 }
 
 #[derive(Debug, Error, Clone, Copy, PartialEq, Eq)]
+pub enum InvalidExpressionType {
+    #[error("Int")]
+    Int,
+    #[error("String")]
+    String,
+    #[error("Bool")]
+    Bool,
+    #[error("Nil")]
+    Nil,
+}
+
+#[derive(Debug, Error, Clone, Copy, PartialEq, Eq)]
 pub enum InvalidCallShapeReason {
     #[error("implicit call arguments")]
     ImplicitArguments,
     #[error("labelled call arguments")]
     LabelledArguments,
+    #[error("local function value")]
+    LocalFunctionValue,
     #[error("local function call arity mismatch")]
     LocalFunctionCallArityMismatch,
+    #[error("local function call return type is not supported")]
+    LocalFunctionCallUnsupportedReturnType,
     #[error("calling module constants is not supported")]
     ModuleConstant,
     #[error("non-current module function")]

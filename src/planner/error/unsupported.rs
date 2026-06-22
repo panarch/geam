@@ -28,6 +28,8 @@ pub enum UnsupportedArgumentReason {
     Discard,
     #[error("labelled arguments are not supported")]
     Labelled,
+    #[error("argument type is not supported")]
+    UnsupportedType,
 }
 
 #[derive(Debug, Error, Clone, Copy, PartialEq, Eq)]
@@ -112,8 +114,6 @@ pub enum UnsupportedBinOpKind {
 
 #[derive(Debug, Error, Clone, Copy, PartialEq, Eq)]
 pub enum UnsupportedCallReason {
-    #[error("calling local function values is not supported")]
-    LocalFunctionValue,
     #[error("only direct local function calls are supported")]
     NonDirectLocalFunction,
 }

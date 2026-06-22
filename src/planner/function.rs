@@ -1,3 +1,4 @@
+use crate::plan::ValueType;
 use crate::plan::{FunctionId, FunctionPlan, Param};
 use crate::planner::context::{FunctionInfo, PlanContext};
 use crate::planner::error::{
@@ -105,7 +106,13 @@ fn plan_params(
                 });
             }
 
-            let local = context.define_local(argument_name.clone());
+            let Some(type_) = ValueType::from_gleam(&argument.type_) else {
+                return Err(PlanError::UnsupportedArgument {
+                    function: function_name.clone(),
+                    reason: UnsupportedArgumentReason::UnsupportedType,
+                });
+            };
+            let local = context.define_local(argument_name.clone(), type_);
             Ok(Param {
                 local,
                 name: argument_name,
@@ -116,7 +123,7 @@ fn plan_params(
 
 #[cfg(test)]
 mod tests {
-    use crate::planner::dsl::{call, function, int, local, module};
+    use crate::planner::dsl::{bool_, call, function, int, local, module, nil, string};
     use crate::planner::plan_module;
     use crate::planner::support::{compile, compile_minimal_module, expect_plan_error};
     use crate::planner::{
@@ -146,6 +153,60 @@ pub fn main() {
                     .return_(local("a").add_int(local("b"))),
             )
             .function(function("main").return_(call("add", [int(1), int(2)])))
+            .build();
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn plan_typed_local_function_calls() {
+        let actual = plan_module(compile(
+            r#"
+pub fn string_id(value: String) {
+  value
+}
+
+pub fn bool_id(value: Bool) {
+  value
+}
+
+pub fn nil_id(value: Nil) {
+  value
+}
+
+pub fn main() {
+  string_id("geam")
+}
+
+pub fn bool_main() {
+  bool_id(True)
+}
+
+pub fn nil_main() {
+  nil_id(Nil)
+}
+"#,
+        ))
+        .expect("source should plan");
+        let expected = module("main")
+            .function(
+                function("string_id")
+                    .param_string("value")
+                    .return_(local("value")),
+            )
+            .function(
+                function("bool_id")
+                    .param_bool("value")
+                    .return_(local("value")),
+            )
+            .function(
+                function("nil_id")
+                    .param_nil("value")
+                    .return_(local("value")),
+            )
+            .function(function("main").return_(call("string_id", [string("geam")])))
+            .function(function("bool_main").return_(call("bool_id", [bool_(true)])))
+            .function(function("nil_main").return_(call("nil_id", [nil()])))
             .build();
 
         assert_eq!(actual, expected);

@@ -1,40 +1,43 @@
-use crate::plan::{BinOp, Expr, Value};
+use crate::plan::{BoolExpr, Expr, FunctionId, IntExpr, LocalId, NilExpr, StringExpr, ValueType};
 use crate::planner::context::{FunctionInfo, PlanContext};
 use crate::planner::error::{
-    InvalidCallShapeReason, InvalidExpressionShapeKind, InvalidTypedAstReason, PlanError,
-    UnsupportedBinOpKind, UnsupportedCallReason, UnsupportedExpressionKind,
+    InvalidCallShapeReason, InvalidExpressionShapeKind, InvalidExpressionType,
+    InvalidTypedAstReason, PlanError, UnsupportedBinOpKind, UnsupportedCallReason,
+    UnsupportedExpressionKind,
 };
 use ecow::EcoString;
 use gleam_core::ast::{BinOp as GleamBinOp, TypedExpr};
-use gleam_core::type_::{PRELUDE_MODULE_NAME, ValueConstructor, ValueConstructorVariant};
+use gleam_core::type_::{PRELUDE_MODULE_NAME, Type, ValueConstructor, ValueConstructorVariant};
+use std::sync::Arc;
 
 pub(super) fn plan_expr(
     expression: TypedExpr,
     context: &mut PlanContext<'_>,
 ) -> Result<Expr, PlanError> {
     match expression {
-        TypedExpr::Int { int_value, .. } => Ok(Expr::Value(Value::Int(int_value))),
-        TypedExpr::String { value, .. } => Ok(Expr::Value(Value::String(value))),
+        TypedExpr::Int { int_value, .. } => Ok(Expr::Int(IntExpr::Value(int_value))),
+        TypedExpr::String { value, .. } => Ok(Expr::String(StringExpr::Value(value))),
         TypedExpr::Var {
             constructor, name, ..
         } => plan_var(name, constructor, context),
-        TypedExpr::Call { fun, arguments, .. } => plan_call(*fun, arguments, context),
+        TypedExpr::Call {
+            type_,
+            fun,
+            arguments,
+            ..
+        } => plan_call(type_, *fun, arguments, context),
         TypedExpr::BinOp {
             operator,
             left,
             right,
             ..
-        } => Ok(Expr::BinOp {
-            op: plan_bin_op(operator)?,
-            left: Box::new(plan_expr(*left, context)?),
-            right: Box::new(plan_expr(*right, context)?),
-        }),
-        TypedExpr::NegateInt { value, .. } => {
-            Ok(Expr::NegateInt(Box::new(plan_expr(*value, context)?)))
-        }
-        TypedExpr::NegateBool { value, .. } => {
-            Ok(Expr::NegateBool(Box::new(plan_expr(*value, context)?)))
-        }
+        } => plan_bin_op(operator, *left, *right, context),
+        TypedExpr::NegateInt { value, .. } => Ok(Expr::Int(IntExpr::Negate(Box::new(
+            plan_int_expr(*value, context)?,
+        )))),
+        TypedExpr::NegateBool { value, .. } => Ok(Expr::Bool(BoolExpr::Not(Box::new(
+            plan_bool_expr(*value, context)?,
+        )))),
         TypedExpr::Float { .. } => Err(PlanError::UnsupportedExpression {
             kind: UnsupportedExpressionKind::Float,
         }),
@@ -111,7 +114,7 @@ fn plan_var(
                 .ok_or_else(|| PlanError::InvalidTypedAst {
                     reason: InvalidTypedAstReason::UnknownLocal { name: name.clone() },
                 })?;
-            Ok(Expr::LocalGet { local, name })
+            Ok(local_get(local, name))
         }
         ValueConstructorVariant::Record {
             name,
@@ -119,9 +122,9 @@ fn plan_var(
             arity,
             ..
         } if arity == 0 && module == PRELUDE_MODULE_NAME => match name.as_str() {
-            "True" => Ok(Expr::Value(Value::Bool(true))),
-            "False" => Ok(Expr::Value(Value::Bool(false))),
-            "Nil" => Ok(Expr::Value(Value::Nil)),
+            "True" => Ok(Expr::Bool(BoolExpr::Value(true))),
+            "False" => Ok(Expr::Bool(BoolExpr::Value(false))),
+            "Nil" => Ok(Expr::Nil(NilExpr::Value)),
             _ => Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::ExpressionShape {
                     kind: InvalidExpressionShapeKind::PreludeConstructor,
@@ -145,6 +148,7 @@ fn plan_var(
 }
 
 fn plan_call(
+    type_: Arc<Type>,
     fun: TypedExpr,
     arguments: Vec<gleam_core::ast::CallArg<TypedExpr>>,
     context: &mut PlanContext<'_>,
@@ -178,10 +182,7 @@ fn plan_call(
         .map(|argument| plan_expr(argument.value, context))
         .collect::<Result<Vec<_>, _>>()?;
 
-    Ok(Expr::Call {
-        function: function.id,
-        args,
-    })
+    call_expr(type_.as_ref(), function.id, args)
 }
 
 fn plan_function_ref(
@@ -218,8 +219,10 @@ fn plan_function_ref(
                 reason: InvalidCallShapeReason::NonCurrentModuleFunction,
             },
         }),
-        ValueConstructorVariant::LocalVariable { .. } => Err(PlanError::UnsupportedCall {
-            reason: UnsupportedCallReason::LocalFunctionValue,
+        ValueConstructorVariant::LocalVariable { .. } => Err(PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::CallShape {
+                reason: InvalidCallShapeReason::LocalFunctionValue,
+            },
         }),
         ValueConstructorVariant::ModuleConstant { .. } => Err(PlanError::InvalidTypedAst {
             reason: InvalidTypedAstReason::CallShape {
@@ -234,20 +237,61 @@ fn plan_function_ref(
     }
 }
 
-fn plan_bin_op(operator: GleamBinOp) -> Result<BinOp, PlanError> {
+fn plan_bin_op(
+    operator: GleamBinOp,
+    left: TypedExpr,
+    right: TypedExpr,
+    context: &mut PlanContext<'_>,
+) -> Result<Expr, PlanError> {
     match operator {
-        GleamBinOp::AddInt => Ok(BinOp::AddInt),
-        GleamBinOp::SubInt => Ok(BinOp::SubInt),
-        GleamBinOp::MultInt => Ok(BinOp::MultInt),
-        GleamBinOp::DivInt => Ok(BinOp::DivInt),
-        GleamBinOp::RemainderInt => Ok(BinOp::RemainderInt),
-        GleamBinOp::LtInt => Ok(BinOp::LtInt),
-        GleamBinOp::LtEqInt => Ok(BinOp::LtEqInt),
-        GleamBinOp::GtInt => Ok(BinOp::GtInt),
-        GleamBinOp::GtEqInt => Ok(BinOp::GtEqInt),
-        GleamBinOp::Eq => Ok(BinOp::Eq),
-        GleamBinOp::NotEq => Ok(BinOp::NotEq),
-        GleamBinOp::Concatenate => Ok(BinOp::Concatenate),
+        GleamBinOp::AddInt => Ok(Expr::Int(IntExpr::Add {
+            left: Box::new(plan_int_expr(left, context)?),
+            right: Box::new(plan_int_expr(right, context)?),
+        })),
+        GleamBinOp::SubInt => Ok(Expr::Int(IntExpr::Sub {
+            left: Box::new(plan_int_expr(left, context)?),
+            right: Box::new(plan_int_expr(right, context)?),
+        })),
+        GleamBinOp::MultInt => Ok(Expr::Int(IntExpr::Mult {
+            left: Box::new(plan_int_expr(left, context)?),
+            right: Box::new(plan_int_expr(right, context)?),
+        })),
+        GleamBinOp::DivInt => Ok(Expr::Int(IntExpr::Div {
+            left: Box::new(plan_int_expr(left, context)?),
+            right: Box::new(plan_int_expr(right, context)?),
+        })),
+        GleamBinOp::RemainderInt => Ok(Expr::Int(IntExpr::Remainder {
+            left: Box::new(plan_int_expr(left, context)?),
+            right: Box::new(plan_int_expr(right, context)?),
+        })),
+        GleamBinOp::LtInt => Ok(Expr::Bool(BoolExpr::LtInt {
+            left: Box::new(plan_int_expr(left, context)?),
+            right: Box::new(plan_int_expr(right, context)?),
+        })),
+        GleamBinOp::LtEqInt => Ok(Expr::Bool(BoolExpr::LtEqInt {
+            left: Box::new(plan_int_expr(left, context)?),
+            right: Box::new(plan_int_expr(right, context)?),
+        })),
+        GleamBinOp::GtInt => Ok(Expr::Bool(BoolExpr::GtInt {
+            left: Box::new(plan_int_expr(left, context)?),
+            right: Box::new(plan_int_expr(right, context)?),
+        })),
+        GleamBinOp::GtEqInt => Ok(Expr::Bool(BoolExpr::GtEqInt {
+            left: Box::new(plan_int_expr(left, context)?),
+            right: Box::new(plan_int_expr(right, context)?),
+        })),
+        GleamBinOp::Eq => Ok(Expr::Bool(BoolExpr::Equal {
+            left: Box::new(plan_expr(left, context)?),
+            right: Box::new(plan_expr(right, context)?),
+        })),
+        GleamBinOp::NotEq => Ok(Expr::Bool(BoolExpr::NotEqual {
+            left: Box::new(plan_expr(left, context)?),
+            right: Box::new(plan_expr(right, context)?),
+        })),
+        GleamBinOp::Concatenate => Ok(Expr::String(StringExpr::Concatenate {
+            left: Box::new(plan_string_expr(left, context)?),
+            right: Box::new(plan_string_expr(right, context)?),
+        })),
         GleamBinOp::And => Err(PlanError::UnsupportedBinOp {
             operator: UnsupportedBinOpKind::And,
         }),
@@ -281,19 +325,95 @@ fn plan_bin_op(operator: GleamBinOp) -> Result<BinOp, PlanError> {
     }
 }
 
+fn local_get(local: LocalId, name: EcoString) -> Expr {
+    match local {
+        LocalId::Int(local) => Expr::Int(IntExpr::LocalGet { local, name }),
+        LocalId::String(local) => Expr::String(StringExpr::LocalGet { local, name }),
+        LocalId::Bool(local) => Expr::Bool(BoolExpr::LocalGet { local, name }),
+        LocalId::Nil(local) => Expr::Nil(NilExpr::LocalGet { local, name }),
+    }
+}
+
+fn call_expr(type_: &Type, function: FunctionId, args: Vec<Expr>) -> Result<Expr, PlanError> {
+    match ValueType::from_gleam(type_) {
+        Some(ValueType::Int) => Ok(Expr::Int(IntExpr::Call { function, args })),
+        Some(ValueType::String) => Ok(Expr::String(StringExpr::Call { function, args })),
+        Some(ValueType::Bool) => Ok(Expr::Bool(BoolExpr::Call { function, args })),
+        Some(ValueType::Nil) => Ok(Expr::Nil(NilExpr::Call { function, args })),
+        None => Err(PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::CallShape {
+                reason: InvalidCallShapeReason::LocalFunctionCallUnsupportedReturnType,
+            },
+        }),
+    }
+}
+
+fn plan_int_expr(
+    expression: TypedExpr,
+    context: &mut PlanContext<'_>,
+) -> Result<IntExpr, PlanError> {
+    match plan_expr(expression, context)? {
+        Expr::Int(expression) => Ok(expression),
+        other => Err(invalid_expression_type(InvalidExpressionType::Int, &other)),
+    }
+}
+
+fn plan_string_expr(
+    expression: TypedExpr,
+    context: &mut PlanContext<'_>,
+) -> Result<StringExpr, PlanError> {
+    match plan_expr(expression, context)? {
+        Expr::String(expression) => Ok(expression),
+        other => Err(invalid_expression_type(
+            InvalidExpressionType::String,
+            &other,
+        )),
+    }
+}
+
+fn plan_bool_expr(
+    expression: TypedExpr,
+    context: &mut PlanContext<'_>,
+) -> Result<BoolExpr, PlanError> {
+    match plan_expr(expression, context)? {
+        Expr::Bool(expression) => Ok(expression),
+        other => Err(invalid_expression_type(InvalidExpressionType::Bool, &other)),
+    }
+}
+
+fn invalid_expression_type(expected: InvalidExpressionType, actual: &Expr) -> PlanError {
+    PlanError::InvalidTypedAst {
+        reason: InvalidTypedAstReason::ExpressionType {
+            expected,
+            actual: expression_type(actual),
+        },
+    }
+}
+
+fn expression_type(expression: &Expr) -> InvalidExpressionType {
+    match expression {
+        Expr::Int(_) => InvalidExpressionType::Int,
+        Expr::String(_) => InvalidExpressionType::String,
+        Expr::Bool(_) => InvalidExpressionType::Bool,
+        Expr::Nil(_) => InvalidExpressionType::Nil,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::planner::dsl::{bool_, call, function, int, local, module, nil, string};
     use crate::planner::plan_module;
     use crate::planner::support::{compile, compile_minimal_module, dummy_span, expect_plan_error};
     use crate::planner::{
-        InvalidCallShapeReason, InvalidExpressionShapeKind, InvalidTypedAstReason, PlanError,
-        UnsupportedBinOpKind, UnsupportedCallReason, UnsupportedExpressionKind,
+        InvalidCallShapeReason, InvalidExpressionShapeKind, InvalidExpressionType,
+        InvalidTypedAstReason, PlanError, UnsupportedBinOpKind, UnsupportedCallReason,
+        UnsupportedExpressionKind,
     };
     use gleam_core::ast::Publicity;
     use gleam_core::ast::{
         CallArg, Constant, ImplicitCallArgOrigin, Statement, TypedExpr, TypedModule, TypedStatement,
     };
+    use gleam_core::type_::error::VariableOrigin;
     use gleam_core::type_::{
         self, Deprecation, ModuleValueConstructor, PRELUDE_MODULE_NAME, ValueConstructor,
         ValueConstructorVariant,
@@ -397,7 +517,7 @@ pub fn main() {
             )
             .function(
                 function("invert")
-                    .param("value")
+                    .param_bool("value")
                     .return_(local("value").negate_bool()),
             )
             .function(function("main").return_(call("negate", [int(1)])))
@@ -653,6 +773,86 @@ pub fn main() {
     }
 
     #[test]
+    fn reject_margin_expression_type_mismatch() {
+        assert_eq!(
+            plan_module(module_returning_typed_expr(TypedExpr::BinOp {
+                location: dummy_span(),
+                type_: type_::int(),
+                operator: gleam_core::ast::BinOp::AddInt,
+                operator_start: 0,
+                left: Box::new(typed_string_expr("bad")),
+                right: Box::new(typed_int_expr(1)),
+            })),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionType {
+                    expected: InvalidExpressionType::Int,
+                    actual: InvalidExpressionType::String,
+                },
+            }),
+        );
+        assert_eq!(
+            plan_module(module_returning_typed_expr(TypedExpr::BinOp {
+                location: dummy_span(),
+                type_: type_::string(),
+                operator: gleam_core::ast::BinOp::Concatenate,
+                operator_start: 0,
+                left: Box::new(typed_int_expr(1)),
+                right: Box::new(typed_string_expr("bad")),
+            })),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionType {
+                    expected: InvalidExpressionType::String,
+                    actual: InvalidExpressionType::Int,
+                },
+            }),
+        );
+        assert_eq!(
+            plan_module(module_returning_typed_expr(TypedExpr::NegateBool {
+                location: dummy_span(),
+                value: Box::new(typed_int_expr(1)),
+            })),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionType {
+                    expected: InvalidExpressionType::Bool,
+                    actual: InvalidExpressionType::Int,
+                },
+            }),
+        );
+        assert_eq!(
+            plan_module(module_returning_typed_expr(TypedExpr::BinOp {
+                location: dummy_span(),
+                type_: type_::int(),
+                operator: gleam_core::ast::BinOp::AddInt,
+                operator_start: 0,
+                left: Box::new(typed_prelude_constructor("True", type_::bool())),
+                right: Box::new(typed_int_expr(1)),
+            })),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionType {
+                    expected: InvalidExpressionType::Int,
+                    actual: InvalidExpressionType::Bool,
+                },
+            }),
+        );
+        assert_eq!(
+            plan_module(module_returning_typed_expr(TypedExpr::BinOp {
+                location: dummy_span(),
+                type_: type_::int(),
+                operator: gleam_core::ast::BinOp::AddInt,
+                operator_start: 0,
+                left: Box::new(typed_prelude_constructor("Nil", type_::nil())),
+                right: Box::new(typed_int_expr(1)),
+            })),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionType {
+                    expected: InvalidExpressionType::Int,
+                    actual: InvalidExpressionType::Nil,
+                },
+            }),
+        );
+    }
+
+    #[test]
     fn reject_margin_value_constructor_variants() {
         let mut unbound_local = compile(
             r#"
@@ -764,8 +964,9 @@ pub fn main() {
 }
 "#,
             ),
-            PlanError::UnsupportedCall {
-                reason: UnsupportedCallReason::LocalFunctionValue,
+            PlanError::UnsupportedArgument {
+                function: "apply".into(),
+                reason: crate::planner::UnsupportedArgumentReason::UnsupportedType,
             },
         );
     }
@@ -820,7 +1021,7 @@ pub fn main() {
 }
 "#,
         );
-        let (_, arguments) =
+        let (_, _, arguments) =
             expect_call_statement_mut(&mut labelled_call.definitions.functions[1].body[0]);
         arguments[0].label = Some("value".into());
         assert_eq!(
@@ -843,7 +1044,7 @@ pub fn main() {
 }
 "#,
         );
-        let (_, arguments) =
+        let (_, _, arguments) =
             expect_call_statement_mut(&mut implicit_call.definitions.functions[1].body[0]);
         arguments[0].implicit = Some(ImplicitCallArgOrigin::Pipe);
         assert_eq!(
@@ -866,7 +1067,7 @@ pub fn main() {
 }
 "#,
         );
-        let (_, arguments) =
+        let (_, _, arguments) =
             expect_call_statement_mut(&mut arity_mismatch_call.definitions.functions[1].body[0]);
         arguments.clear();
         assert_eq!(
@@ -874,6 +1075,58 @@ pub fn main() {
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::CallShape {
                     reason: InvalidCallShapeReason::LocalFunctionCallArityMismatch,
+                },
+            }),
+        );
+
+        let mut unsupported_return_type_call = compile(
+            r#"
+fn identity(value: Int) {
+  value
+}
+
+pub fn main() {
+  identity(1)
+}
+"#,
+        );
+        let (type_, _, _) = expect_call_statement_mut(
+            &mut unsupported_return_type_call.definitions.functions[1].body[0],
+        );
+        *type_ = type_::tuple(vec![type_::int()]);
+        assert_eq!(
+            plan_module(unsupported_return_type_call),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::CallShape {
+                    reason: InvalidCallShapeReason::LocalFunctionCallUnsupportedReturnType,
+                },
+            }),
+        );
+
+        let mut local_function_value_call = compile(
+            r#"
+fn identity(value: Int) {
+  value
+}
+
+pub fn main() {
+  identity(1)
+}
+"#,
+        );
+        let (_, fun, _) = expect_call_statement_mut(
+            &mut local_function_value_call.definitions.functions[1].body[0],
+        );
+        let constructor = expect_var_constructor_mut(fun);
+        constructor.variant = ValueConstructorVariant::LocalVariable {
+            location: dummy_span(),
+            origin: VariableOrigin::generated(),
+        };
+        assert_eq!(
+            plan_module(local_function_value_call),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::CallShape {
+                    reason: InvalidCallShapeReason::LocalFunctionValue,
                 },
             }),
         );
@@ -940,7 +1193,7 @@ pub fn main() {
             .functions
             .last_mut()
             .expect("expected test module to have a function");
-        let (fun, _) = expect_call_statement_mut(&mut function.body[0]);
+        let (_, fun, _) = expect_call_statement_mut(&mut function.body[0]);
         let constructor = expect_var_constructor_mut(fun);
         let ValueConstructorVariant::ModuleFn { module, .. } = &mut constructor.variant else {
             panic!("expected module function constructor");
@@ -1034,11 +1287,21 @@ pub fn main() {
 
     fn expect_call_statement_mut(
         statement: &mut TypedStatement,
-    ) -> (&mut TypedExpr, &mut Vec<CallArg<TypedExpr>>) {
-        let Statement::Expression(TypedExpr::Call { fun, arguments, .. }) = statement else {
+    ) -> (
+        &mut std::sync::Arc<type_::Type>,
+        &mut TypedExpr,
+        &mut Vec<CallArg<TypedExpr>>,
+    ) {
+        let Statement::Expression(TypedExpr::Call {
+            type_,
+            fun,
+            arguments,
+            ..
+        }) = statement
+        else {
             panic!("expected call expression statement");
         };
-        (fun.as_mut(), arguments)
+        (type_, fun.as_mut(), arguments)
     }
 
     #[test]
@@ -1070,6 +1333,36 @@ pub fn main() {
             type_: type_::int(),
             value: value.to_string().into(),
             int_value: BigInt::from(value),
+        }
+    }
+
+    fn typed_string_expr(value: &str) -> TypedExpr {
+        TypedExpr::String {
+            location: dummy_span(),
+            type_: type_::string(),
+            value: value.into(),
+        }
+    }
+
+    fn typed_prelude_constructor(name: &str, type_: std::sync::Arc<type_::Type>) -> TypedExpr {
+        TypedExpr::Var {
+            location: dummy_span(),
+            name: name.into(),
+            constructor: ValueConstructor {
+                publicity: Publicity::Private,
+                deprecation: Deprecation::NotDeprecated,
+                type_,
+                variant: ValueConstructorVariant::Record {
+                    name: name.into(),
+                    arity: 0,
+                    field_map: None,
+                    location: dummy_span(),
+                    module: PRELUDE_MODULE_NAME.into(),
+                    variants_count: 1,
+                    variant_index: 0,
+                    documentation: None,
+                },
+            },
         }
     }
 }
