@@ -3,8 +3,9 @@ mod function;
 mod module;
 
 pub(crate) use expression::{
-    bool_, bool_arg, call_bool, call_int, call_nil, call_string, case_bool, case_int, case_nil,
-    case_string, equal, int, int_arg, local_bool, local_int, local_nil, local_string, nil, nil_arg,
+    bool_, bool_arg, bool_case_bool, bool_case_int, bool_case_nil, bool_case_string, call_bool,
+    call_int, call_nil, call_string, equal, int, int_arg, int_case_bool, int_case_int,
+    int_case_nil, int_case_string, local_bool, local_int, local_nil, local_string, nil, nil_arg,
     not_equal, string, string_arg,
 };
 pub(crate) use function::function;

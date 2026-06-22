@@ -37,7 +37,7 @@ pub(crate) fn not_equal(left: impl Into<Expr>, right: impl Into<Expr>) -> Bool {
     Bool(BoolExpr::not_equal(left.into(), right.into()))
 }
 
-pub(crate) fn case_int(subject: Bool, true_: Int, false_: Int) -> Int {
+pub(crate) fn bool_case_int(subject: Bool, true_: Int, false_: Int) -> Int {
     Int(IntExpr::bool_case(
         subject.into(),
         true_.into(),
@@ -45,7 +45,7 @@ pub(crate) fn case_int(subject: Bool, true_: Int, false_: Int) -> Int {
     ))
 }
 
-pub(crate) fn case_string(subject: Bool, true_: String, false_: String) -> String {
+pub(crate) fn bool_case_string(subject: Bool, true_: String, false_: String) -> String {
     String(StringExpr::bool_case(
         subject.into(),
         true_.into(),
@@ -53,7 +53,7 @@ pub(crate) fn case_string(subject: Bool, true_: String, false_: String) -> Strin
     ))
 }
 
-pub(crate) fn case_bool(subject: Bool, true_: Bool, false_: Bool) -> Bool {
+pub(crate) fn bool_case_bool(subject: Bool, true_: Bool, false_: Bool) -> Bool {
     Bool(BoolExpr::bool_case(
         subject.into(),
         true_.into(),
@@ -61,11 +61,71 @@ pub(crate) fn case_bool(subject: Bool, true_: Bool, false_: Bool) -> Bool {
     ))
 }
 
-pub(crate) fn case_nil(subject: Bool, true_: Nil, false_: Nil) -> Nil {
+pub(crate) fn bool_case_nil(subject: Bool, true_: Nil, false_: Nil) -> Nil {
     Nil(NilExpr::bool_case(
         subject.into(),
         true_.into(),
         false_.into(),
+    ))
+}
+
+pub(crate) fn int_case_int(
+    subject: Int,
+    clauses: impl IntoIterator<Item = (i64, Int)>,
+    fallback: Int,
+) -> Int {
+    Int(IntExpr::int_case(
+        subject.into(),
+        clauses
+            .into_iter()
+            .map(|(value, branch)| (BigInt::from(value), branch.into()))
+            .collect(),
+        fallback.into(),
+    ))
+}
+
+pub(crate) fn int_case_string(
+    subject: Int,
+    clauses: impl IntoIterator<Item = (i64, String)>,
+    fallback: String,
+) -> String {
+    String(StringExpr::int_case(
+        subject.into(),
+        clauses
+            .into_iter()
+            .map(|(value, branch)| (BigInt::from(value), branch.into()))
+            .collect(),
+        fallback.into(),
+    ))
+}
+
+pub(crate) fn int_case_bool(
+    subject: Int,
+    clauses: impl IntoIterator<Item = (i64, Bool)>,
+    fallback: Bool,
+) -> Bool {
+    Bool(BoolExpr::int_case(
+        subject.into(),
+        clauses
+            .into_iter()
+            .map(|(value, branch)| (BigInt::from(value), branch.into()))
+            .collect(),
+        fallback.into(),
+    ))
+}
+
+pub(crate) fn int_case_nil(
+    subject: Int,
+    clauses: impl IntoIterator<Item = (i64, Nil)>,
+    fallback: Nil,
+) -> Nil {
+    Nil(NilExpr::int_case(
+        subject.into(),
+        clauses
+            .into_iter()
+            .map(|(value, branch)| (BigInt::from(value), branch.into()))
+            .collect(),
+        fallback.into(),
     ))
 }
 
@@ -266,8 +326,12 @@ mod tests {
             IntExprKind::Negate(_)
         ));
         assert!(matches!(
-            case_int(bool_(true), int(1), int(0)).0.kind(),
+            bool_case_int(bool_(true), int(1), int(0)).0.kind(),
             IntExprKind::BoolCase { .. },
+        ));
+        assert!(matches!(
+            int_case_int(int(1), [(1, int(10))], int(0)).0.kind(),
+            IntExprKind::IntCase { .. },
         ));
     }
 
@@ -278,8 +342,16 @@ mod tests {
             StringExprKind::Concatenate { .. },
         ));
         assert!(matches!(
-            case_string(bool_(true), string("a"), string("b")).0.kind(),
+            bool_case_string(bool_(true), string("a"), string("b"))
+                .0
+                .kind(),
             StringExprKind::BoolCase { .. },
+        ));
+        assert!(matches!(
+            int_case_string(int(1), [(1, string("one"))], string("other"))
+                .0
+                .kind(),
+            StringExprKind::IntCase { .. },
         ));
     }
 
@@ -314,16 +386,28 @@ mod tests {
             BoolExprKind::Not(_)
         ));
         assert!(matches!(
-            case_bool(bool_(true), bool_(true), bool_(false)).0.kind(),
+            bool_case_bool(bool_(true), bool_(true), bool_(false))
+                .0
+                .kind(),
             BoolExprKind::BoolCase { .. },
+        ));
+        assert!(matches!(
+            int_case_bool(int(1), [(1, bool_(true))], bool_(false))
+                .0
+                .kind(),
+            BoolExprKind::IntCase { .. },
         ));
     }
 
     #[test]
     fn nil_dsl() {
         assert!(matches!(
-            case_nil(bool_(true), nil(), nil()).0.kind(),
+            bool_case_nil(bool_(true), nil(), nil()).0.kind(),
             NilExprKind::BoolCase { .. },
+        ));
+        assert!(matches!(
+            int_case_nil(int(1), [(1, nil())], nil()).0.kind(),
+            NilExprKind::IntCase { .. },
         ));
     }
 

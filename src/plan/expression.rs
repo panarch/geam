@@ -86,6 +86,11 @@ pub(crate) enum IntExprKind {
         true_: Box<IntExpr>,
         false_: Box<IntExpr>,
     },
+    IntCase {
+        subject: Box<IntExpr>,
+        clauses: Vec<(BigInt, IntExpr)>,
+        fallback: Box<IntExpr>,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -112,6 +117,11 @@ pub(crate) enum StringExprKind {
         subject: Box<BoolExpr>,
         true_: Box<StringExpr>,
         false_: Box<StringExpr>,
+    },
+    IntCase {
+        subject: Box<IntExpr>,
+        clauses: Vec<(BigInt, StringExpr)>,
+        fallback: Box<StringExpr>,
     },
 }
 
@@ -161,6 +171,11 @@ pub(crate) enum BoolExprKind {
         true_: Box<BoolExpr>,
         false_: Box<BoolExpr>,
     },
+    IntCase {
+        subject: Box<IntExpr>,
+        clauses: Vec<(BigInt, BoolExpr)>,
+        fallback: Box<BoolExpr>,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -183,6 +198,11 @@ pub(crate) enum NilExprKind {
         subject: Box<BoolExpr>,
         true_: Box<NilExpr>,
         false_: Box<NilExpr>,
+    },
+    IntCase {
+        subject: Box<IntExpr>,
+        clauses: Vec<(BigInt, NilExpr)>,
+        fallback: Box<NilExpr>,
     },
 }
 
@@ -230,6 +250,71 @@ impl Expr {
                 Ok(Self::nil(NilExpr::bool_case(subject, true_, false_)))
             }
             (true_, false_) => Err((Self { kind: true_ }, Self { kind: false_ })),
+        }
+    }
+
+    pub(crate) fn int_case(
+        subject: IntExpr,
+        clauses: Vec<(BigInt, Expr)>,
+        fallback: Expr,
+    ) -> Result<Self, ()> {
+        match fallback.kind {
+            ExprKind::Int(fallback) => {
+                let mut typed_clauses = Vec::with_capacity(clauses.len());
+                for (value, clause) in clauses {
+                    let ExprKind::Int(clause) = clause.kind else {
+                        return Err(());
+                    };
+                    typed_clauses.push((value, clause));
+                }
+                Ok(Self::int(IntExpr::int_case(
+                    subject,
+                    typed_clauses,
+                    fallback,
+                )))
+            }
+            ExprKind::String(fallback) => {
+                let mut typed_clauses = Vec::with_capacity(clauses.len());
+                for (value, clause) in clauses {
+                    let ExprKind::String(clause) = clause.kind else {
+                        return Err(());
+                    };
+                    typed_clauses.push((value, clause));
+                }
+                Ok(Self::string(StringExpr::int_case(
+                    subject,
+                    typed_clauses,
+                    fallback,
+                )))
+            }
+            ExprKind::Bool(fallback) => {
+                let mut typed_clauses = Vec::with_capacity(clauses.len());
+                for (value, clause) in clauses {
+                    let ExprKind::Bool(clause) = clause.kind else {
+                        return Err(());
+                    };
+                    typed_clauses.push((value, clause));
+                }
+                Ok(Self::bool(BoolExpr::int_case(
+                    subject,
+                    typed_clauses,
+                    fallback,
+                )))
+            }
+            ExprKind::Nil(fallback) => {
+                let mut typed_clauses = Vec::with_capacity(clauses.len());
+                for (value, clause) in clauses {
+                    let ExprKind::Nil(clause) = clause.kind else {
+                        return Err(());
+                    };
+                    typed_clauses.push((value, clause));
+                }
+                Ok(Self::nil(NilExpr::int_case(
+                    subject,
+                    typed_clauses,
+                    fallback,
+                )))
+            }
         }
     }
 
@@ -396,6 +481,20 @@ impl IntExpr {
         }
     }
 
+    pub(crate) fn int_case(
+        subject: IntExpr,
+        clauses: Vec<(BigInt, IntExpr)>,
+        fallback: IntExpr,
+    ) -> Self {
+        Self {
+            kind: IntExprKind::IntCase {
+                subject: Box::new(subject),
+                clauses,
+                fallback: Box::new(fallback),
+            },
+        }
+    }
+
     pub(crate) fn kind(&self) -> &IntExprKind {
         &self.kind
     }
@@ -435,6 +534,20 @@ impl StringExpr {
                 subject: Box::new(subject),
                 true_: Box::new(true_),
                 false_: Box::new(false_),
+            },
+        }
+    }
+
+    pub(crate) fn int_case(
+        subject: IntExpr,
+        clauses: Vec<(BigInt, StringExpr)>,
+        fallback: StringExpr,
+    ) -> Self {
+        Self {
+            kind: StringExprKind::IntCase {
+                subject: Box::new(subject),
+                clauses,
+                fallback: Box::new(fallback),
             },
         }
     }
@@ -533,6 +646,20 @@ impl BoolExpr {
         }
     }
 
+    pub(crate) fn int_case(
+        subject: IntExpr,
+        clauses: Vec<(BigInt, BoolExpr)>,
+        fallback: BoolExpr,
+    ) -> Self {
+        Self {
+            kind: BoolExprKind::IntCase {
+                subject: Box::new(subject),
+                clauses,
+                fallback: Box::new(fallback),
+            },
+        }
+    }
+
     pub(crate) fn kind(&self) -> &BoolExprKind {
         &self.kind
     }
@@ -563,6 +690,20 @@ impl NilExpr {
                 subject: Box::new(subject),
                 true_: Box::new(true_),
                 false_: Box::new(false_),
+            },
+        }
+    }
+
+    pub(crate) fn int_case(
+        subject: IntExpr,
+        clauses: Vec<(BigInt, NilExpr)>,
+        fallback: NilExpr,
+    ) -> Self {
+        Self {
+            kind: NilExprKind::IntCase {
+                subject: Box::new(subject),
+                clauses,
+                fallback: Box::new(fallback),
             },
         }
     }
@@ -673,6 +814,93 @@ mod tests {
     }
 
     #[test]
+    fn expr_int_case_shapes() {
+        assert_eq!(
+            Expr::int_case(
+                IntExpr::value(BigInt::from(1)),
+                vec![(BigInt::from(1), Expr::int(IntExpr::value(BigInt::from(10))))],
+                Expr::int(IntExpr::value(BigInt::from(0))),
+            ),
+            Ok(Expr::int(IntExpr::int_case(
+                IntExpr::value(BigInt::from(1)),
+                vec![(BigInt::from(1), IntExpr::value(BigInt::from(10)))],
+                IntExpr::value(BigInt::from(0)),
+            ))),
+        );
+        assert_eq!(
+            Expr::int_case(
+                IntExpr::value(BigInt::from(1)),
+                vec![(
+                    BigInt::from(1),
+                    Expr::string(StringExpr::value("one".into()))
+                )],
+                Expr::string(StringExpr::value("other".into())),
+            ),
+            Ok(Expr::string(StringExpr::int_case(
+                IntExpr::value(BigInt::from(1)),
+                vec![(BigInt::from(1), StringExpr::value("one".into()))],
+                StringExpr::value("other".into()),
+            ))),
+        );
+        assert_eq!(
+            Expr::int_case(
+                IntExpr::value(BigInt::from(1)),
+                vec![(BigInt::from(1), Expr::bool(BoolExpr::value(true)))],
+                Expr::bool(BoolExpr::value(false)),
+            ),
+            Ok(Expr::bool(BoolExpr::int_case(
+                IntExpr::value(BigInt::from(1)),
+                vec![(BigInt::from(1), BoolExpr::value(true))],
+                BoolExpr::value(false),
+            ))),
+        );
+        assert_eq!(
+            Expr::int_case(
+                IntExpr::value(BigInt::from(1)),
+                vec![(BigInt::from(1), Expr::nil(NilExpr::value()))],
+                Expr::nil(NilExpr::value()),
+            ),
+            Ok(Expr::nil(NilExpr::int_case(
+                IntExpr::value(BigInt::from(1)),
+                vec![(BigInt::from(1), NilExpr::value())],
+                NilExpr::value(),
+            ))),
+        );
+        assert_eq!(
+            Expr::int_case(
+                IntExpr::value(BigInt::from(1)),
+                vec![(BigInt::from(1), Expr::bool(BoolExpr::value(true)))],
+                Expr::int(IntExpr::value(BigInt::from(0))),
+            ),
+            Err(()),
+        );
+        assert_eq!(
+            Expr::int_case(
+                IntExpr::value(BigInt::from(1)),
+                vec![(BigInt::from(1), Expr::int(IntExpr::value(BigInt::from(1))))],
+                Expr::string(StringExpr::value("other".into())),
+            ),
+            Err(()),
+        );
+        assert_eq!(
+            Expr::int_case(
+                IntExpr::value(BigInt::from(1)),
+                vec![(BigInt::from(1), Expr::int(IntExpr::value(BigInt::from(1))))],
+                Expr::bool(BoolExpr::value(false)),
+            ),
+            Err(()),
+        );
+        assert_eq!(
+            Expr::int_case(
+                IntExpr::value(BigInt::from(1)),
+                vec![(BigInt::from(1), Expr::int(IntExpr::value(BigInt::from(1))))],
+                Expr::nil(NilExpr::value()),
+            ),
+            Err(()),
+        );
+    }
+
+    #[test]
     fn expr_value_type() {
         assert_eq!(
             Expr::from(Value::Int(BigInt::from(1))).value_type(),
@@ -711,6 +939,15 @@ mod tests {
             IntExprKind::BoolCase { .. }
         ));
         assert!(matches!(
+            IntExpr::int_case(
+                IntExpr::value(1.into()),
+                vec![(1.into(), IntExpr::value(10.into()))],
+                IntExpr::value(0.into())
+            )
+            .kind(),
+            IntExprKind::IntCase { .. }
+        ));
+        assert!(matches!(
             StringExpr::bool_case(
                 BoolExpr::value(true),
                 StringExpr::value("yes".into()),
@@ -718,6 +955,15 @@ mod tests {
             )
             .kind(),
             StringExprKind::BoolCase { .. }
+        ));
+        assert!(matches!(
+            StringExpr::int_case(
+                IntExpr::value(1.into()),
+                vec![(1.into(), StringExpr::value("one".into()))],
+                StringExpr::value("other".into())
+            )
+            .kind(),
+            StringExprKind::IntCase { .. }
         ));
         assert!(matches!(
             BoolExpr::bool_case(
@@ -729,8 +975,26 @@ mod tests {
             BoolExprKind::BoolCase { .. }
         ));
         assert!(matches!(
+            BoolExpr::int_case(
+                IntExpr::value(1.into()),
+                vec![(1.into(), BoolExpr::value(true))],
+                BoolExpr::value(false)
+            )
+            .kind(),
+            BoolExprKind::IntCase { .. }
+        ));
+        assert!(matches!(
             NilExpr::bool_case(BoolExpr::value(true), NilExpr::value(), NilExpr::value()).kind(),
             NilExprKind::BoolCase { .. }
+        ));
+        assert!(matches!(
+            NilExpr::int_case(
+                IntExpr::value(1.into()),
+                vec![(1.into(), NilExpr::value())],
+                NilExpr::value()
+            )
+            .kind(),
+            NilExprKind::IntCase { .. }
         ));
         assert!(matches!(
             Expr::from(Value::Nil).kind(),

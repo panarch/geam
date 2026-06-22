@@ -105,6 +105,8 @@ pub enum InvalidCaseShapeReason {
     InvalidPattern,
     #[error("missing false pattern")]
     MissingFalsePattern,
+    #[error("missing fallback pattern")]
+    MissingFallbackPattern,
     #[error("missing true pattern")]
     MissingTruePattern,
     #[error("pattern type mismatch")]

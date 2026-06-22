@@ -59,6 +59,19 @@ pub(super) fn eval_int_expr(
                 eval_int_expr(plan, frame, false_)
             }
         }
+        IntExprKind::IntCase {
+            subject,
+            clauses,
+            fallback,
+        } => {
+            let subject = eval_int_expr(plan, frame, subject);
+            for (pattern, branch) in clauses {
+                if pattern == &subject {
+                    return eval_int_expr(plan, frame, branch);
+                }
+            }
+            eval_int_expr(plan, frame, fallback)
+        }
     }
 }
 
@@ -89,6 +102,19 @@ pub(super) fn eval_string_expr(
             } else {
                 eval_string_expr(plan, frame, false_)
             }
+        }
+        StringExprKind::IntCase {
+            subject,
+            clauses,
+            fallback,
+        } => {
+            let subject = eval_int_expr(plan, frame, subject);
+            for (pattern, branch) in clauses {
+                if pattern == &subject {
+                    return eval_string_expr(plan, frame, branch);
+                }
+            }
+            eval_string_expr(plan, frame, fallback)
         }
     }
 }
@@ -134,6 +160,19 @@ pub(super) fn eval_bool_expr(
                 eval_bool_expr(plan, frame, false_)
             }
         }
+        BoolExprKind::IntCase {
+            subject,
+            clauses,
+            fallback,
+        } => {
+            let subject = eval_int_expr(plan, frame, subject);
+            for (pattern, branch) in clauses {
+                if pattern == &subject {
+                    return eval_bool_expr(plan, frame, branch);
+                }
+            }
+            eval_bool_expr(plan, frame, fallback)
+        }
     }
 }
 
@@ -154,6 +193,19 @@ pub(super) fn eval_nil_expr(plan: &ExecutionPlan, frame: &mut Frame, expression:
             } else {
                 eval_nil_expr(plan, frame, false_);
             }
+        }
+        NilExprKind::IntCase {
+            subject,
+            clauses,
+            fallback,
+        } => {
+            let subject = eval_int_expr(plan, frame, subject);
+            for (pattern, branch) in clauses {
+                if pattern == &subject {
+                    return eval_nil_expr(plan, frame, branch);
+                }
+            }
+            eval_nil_expr(plan, frame, fallback);
         }
     }
 }
@@ -585,6 +637,159 @@ pub fn main() {
   case flag() {
     True -> Nil
     False -> Nil
+  }
+}
+"#,
+            ),
+            Value::Nil,
+        );
+    }
+
+    #[test]
+    fn eval_int_case_int() {
+        assert_eq!(
+            run_src(
+                r#"
+pub fn main() {
+  case 1 {
+    1 -> 10
+    _ -> 0
+  }
+}
+"#,
+            ),
+            int(10),
+        );
+
+        assert_eq!(
+            run_src(
+                r#"
+pub fn main() {
+  case 9 {
+    1 -> 10
+    _ -> 0
+  }
+}
+"#,
+            ),
+            int(0),
+        );
+
+        assert_eq!(
+            run_src(
+                r#"
+pub fn main() {
+  case 1 {
+    _ -> 7
+    1 -> 10
+  }
+}
+"#,
+            ),
+            int(7),
+        );
+
+        assert_eq!(
+            run_src(
+                r#"
+pub fn main() {
+  case 1 {
+    1 -> 10
+    1 -> 20
+    _ -> 0
+  }
+}
+"#,
+            ),
+            int(10),
+        );
+    }
+
+    #[test]
+    fn eval_int_case_string() {
+        assert_eq!(
+            run_src(
+                r#"
+pub fn main() {
+  case 1 {
+    1 -> "one"
+    _ -> "other"
+  }
+}
+"#,
+            ),
+            Value::String("one".into()),
+        );
+
+        assert_eq!(
+            run_src(
+                r#"
+pub fn main() {
+  case 2 {
+    1 -> "one"
+    _ -> "other"
+  }
+}
+"#,
+            ),
+            Value::String("other".into()),
+        );
+    }
+
+    #[test]
+    fn eval_int_case_bool() {
+        assert_eq!(
+            run_src(
+                r#"
+pub fn main() {
+  case 1 {
+    1 -> True
+    _ -> False
+  }
+}
+"#,
+            ),
+            Value::Bool(true),
+        );
+
+        assert_eq!(
+            run_src(
+                r#"
+pub fn main() {
+  case 2 {
+    1 -> True
+    _ -> False
+  }
+}
+"#,
+            ),
+            Value::Bool(false),
+        );
+    }
+
+    #[test]
+    fn eval_int_case_nil() {
+        assert_eq!(
+            run_src(
+                r#"
+pub fn main() {
+  case 1 {
+    1 -> Nil
+    _ -> Nil
+  }
+}
+"#,
+            ),
+            Value::Nil,
+        );
+
+        assert_eq!(
+            run_src(
+                r#"
+pub fn main() {
+  case 2 {
+    1 -> Nil
+    _ -> Nil
   }
 }
 "#,

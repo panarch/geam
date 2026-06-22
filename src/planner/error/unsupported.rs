@@ -128,8 +128,8 @@ pub enum UnsupportedCaseReason {
     Guard,
     #[error("multiple subjects are not supported")]
     MultipleSubjects,
-    #[error("non-bool subjects are not supported")]
-    NonBoolSubject,
+    #[error("case subject type is not supported")]
+    UnsupportedSubjectType,
     #[error("variable patterns are not supported")]
     VariablePattern,
 }
