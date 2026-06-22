@@ -223,12 +223,14 @@ mod tests {
     use crate::planner::dsl::{bool_, function, local, module, nil, string};
     use crate::planner::plan_module;
     use crate::planner::support::{compile, compile_minimal_module, dummy_span, expect_plan_error};
+    use gleam_core::ast::Publicity;
     use gleam_core::ast::{
-        BinOp as GleamBinOp, Constant, ImplicitCallArgOrigin, Statement, TypedExpr, TypedModule,
+        BinOp as GleamBinOp, CallArg, Constant, ImplicitCallArgOrigin, Statement, TypedExpr,
+        TypedModule, TypedStatement,
     };
     use gleam_core::type_::{
-        self, ModuleValueConstructor, PRELUDE_MODULE_NAME, ValueConstructorVariant,
-        error::VariableOrigin,
+        self, Deprecation, ModuleValueConstructor, PRELUDE_MODULE_NAME, ValueConstructor,
+        ValueConstructorVariant, error::VariableOrigin,
     };
     use num_bigint::BigInt;
 
@@ -485,6 +487,21 @@ pub fn main() {
 
     #[test]
     fn reject_margin_value_constructor_variants() {
+        let mut unbound_local = compile(
+            r#"
+pub fn main() {
+  let x = 1
+  x
+}
+"#,
+        );
+        let variable = unbound_local.definitions.functions[0].body.remove(1);
+        unbound_local.definitions.functions[0].body = vec![variable];
+        assert_eq!(
+            plan_module(unbound_local),
+            Err(PlanError::UnknownLocal { name: "x".into() }),
+        );
+
         let mut module_constant = compile(
             r#"
 const answer = 1
@@ -521,25 +538,26 @@ pub fn main() {
             }),
         );
 
-        let mut prelude_constructor = compile(
-            r#"
-pub fn main() {
-  True
-}
-"#,
-        );
-        let Statement::Expression(TypedExpr::Var { constructor, .. }) =
-            &mut prelude_constructor.definitions.functions[0].body[0]
-        else {
-            panic!("expected True to compile to a variable expression");
-        };
-        let ValueConstructorVariant::Record { name, module, .. } = &mut constructor.variant else {
-            panic!("expected True to compile to a prelude record constructor");
-        };
-        *name = "Other".into();
-        *module = PRELUDE_MODULE_NAME.into();
         assert_eq!(
-            plan_module(prelude_constructor),
+            plan_module(module_returning_typed_expr(TypedExpr::Var {
+                location: dummy_span(),
+                name: "Other".into(),
+                constructor: ValueConstructor {
+                    publicity: Publicity::Private,
+                    deprecation: Deprecation::NotDeprecated,
+                    type_: type_::bool(),
+                    variant: ValueConstructorVariant::Record {
+                        name: "Other".into(),
+                        arity: 0,
+                        field_map: None,
+                        location: dummy_span(),
+                        module: PRELUDE_MODULE_NAME.into(),
+                        variants_count: 1,
+                        variant_index: 0,
+                        documentation: None,
+                    },
+                },
+            })),
             Err(PlanError::UnsupportedExpression {
                 kind: "prelude constructor",
             }),
@@ -556,14 +574,9 @@ pub fn main() {
 }
 "#,
         );
-        let Statement::Expression(TypedExpr::Call { fun, .. }) =
-            &mut local_variable_call.definitions.functions[1].body[0]
-        else {
-            panic!("expected main body to be a call");
-        };
-        let TypedExpr::Var { constructor, .. } = fun.as_mut() else {
-            panic!("expected call function to be a variable");
-        };
+        let (fun, _) =
+            expect_call_statement_mut(&mut local_variable_call.definitions.functions[1].body[0]);
+        let constructor = expect_var_constructor_mut(fun);
         constructor.variant = ValueConstructorVariant::LocalVariable {
             location: dummy_span(),
             origin: VariableOrigin::generated(),
@@ -575,7 +588,7 @@ pub fn main() {
             }),
         );
 
-        let mut module_constant_call = compile(
+        let module_constant_call = compile(
             r#"
 const answer = 1
 
@@ -584,11 +597,14 @@ pub fn main() {
 }
 "#,
         );
+        reject_margin_module_constant_call(module_constant_call);
+    }
+
+    fn reject_margin_module_constant_call(mut module_constant_call: TypedModule) {
         module_constant_call.definitions.constants.clear();
-        let Statement::Expression(module_constant) =
-            module_constant_call.definitions.functions[0].body.remove(0)
-        else {
-            panic!("expected main body to be a module constant expression");
+        let statement = module_constant_call.definitions.functions[0].body.remove(0);
+        let Statement::Expression(module_constant) = statement else {
+            panic!("expected expression statement");
         };
         module_constant_call.definitions.functions[0].body =
             vec![Statement::Expression(TypedExpr::Call {
@@ -607,6 +623,19 @@ pub fn main() {
     }
 
     #[test]
+    #[should_panic(expected = "expected expression statement")]
+    fn reject_margin_module_constant_call_panics_on_assignment_statement() {
+        reject_margin_module_constant_call(compile(
+            r#"
+pub fn main() {
+  let x = 1
+  x
+}
+"#,
+        ));
+    }
+
+    #[test]
     fn reject_margin_call_shapes() {
         let mut labelled_call = compile(
             r#"
@@ -619,11 +648,8 @@ pub fn main() {
 }
 "#,
         );
-        let Statement::Expression(TypedExpr::Call { arguments, .. }) =
-            &mut labelled_call.definitions.functions[1].body[0]
-        else {
-            panic!("expected main body to be a call");
-        };
+        let (_, arguments) =
+            expect_call_statement_mut(&mut labelled_call.definitions.functions[1].body[0]);
         arguments[0].label = Some("value".into());
         assert_eq!(
             plan_module(labelled_call),
@@ -643,11 +669,8 @@ pub fn main() {
 }
 "#,
         );
-        let Statement::Expression(TypedExpr::Call { arguments, .. }) =
-            &mut implicit_call.definitions.functions[1].body[0]
-        else {
-            panic!("expected main body to be a call");
-        };
+        let (_, arguments) =
+            expect_call_statement_mut(&mut implicit_call.definitions.functions[1].body[0]);
         arguments[0].implicit = Some(ImplicitCallArgOrigin::Pipe);
         assert_eq!(
             plan_module(implicit_call),
@@ -667,12 +690,9 @@ pub fn main() {
 }
 "#,
         );
-        let Statement::Expression(TypedExpr::Call { fun, .. }) =
-            &mut non_direct_call.definitions.functions[1].body[0]
-        else {
-            panic!("expected main body to be a call");
-        };
-        **fun = typed_int_expr(1);
+        let (fun, _) =
+            expect_call_statement_mut(&mut non_direct_call.definitions.functions[1].body[0]);
+        *fun = typed_int_expr(1);
         assert_eq!(
             plan_module(non_direct_call),
             Err(PlanError::UnsupportedCall {
@@ -680,7 +700,7 @@ pub fn main() {
             }),
         );
 
-        let mut non_local_module_fn = compile(
+        let non_local_module_fn = compile(
             r#"
 fn identity(value: Int) {
   value
@@ -691,24 +711,7 @@ pub fn main() {
 }
 "#,
         );
-        let Statement::Expression(TypedExpr::Call { fun, .. }) =
-            &mut non_local_module_fn.definitions.functions[1].body[0]
-        else {
-            panic!("expected main body to be a call");
-        };
-        let TypedExpr::Var { constructor, .. } = fun.as_mut() else {
-            panic!("expected call function to be a variable");
-        };
-        let ValueConstructorVariant::ModuleFn { module, .. } = &mut constructor.variant else {
-            panic!("expected call function to be a module function");
-        };
-        *module = "other".into();
-        assert_eq!(
-            plan_module(non_local_module_fn),
-            Err(PlanError::UnsupportedCall {
-                reason: "only current-module functions are supported",
-            }),
-        );
+        reject_margin_non_local_module_fn_call(non_local_module_fn);
 
         let mut record_constructor_call = compile(
             r#"
@@ -728,6 +731,43 @@ pub fn main() {
                 reason: "calling record constructors is not supported",
             }),
         );
+    }
+
+    fn reject_margin_non_local_module_fn_call(mut non_local_module_fn: TypedModule) {
+        let function = non_local_module_fn
+            .definitions
+            .functions
+            .last_mut()
+            .expect("expected test module to have a function");
+        let (fun, _) = expect_call_statement_mut(&mut function.body[0]);
+        let constructor = expect_var_constructor_mut(fun);
+        let ValueConstructorVariant::ModuleFn { module, .. } = &mut constructor.variant else {
+            panic!("expected module function constructor");
+        };
+        *module = "other".into();
+        assert_eq!(
+            plan_module(non_local_module_fn),
+            Err(PlanError::UnsupportedCall {
+                reason: "only current-module functions are supported",
+            }),
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "expected module function constructor")]
+    fn reject_margin_non_local_module_fn_call_panics_on_record_constructor() {
+        let record_constructor_call = compile(
+            r#"
+pub type Boxed {
+  Boxed(Int)
+}
+
+pub fn main() {
+  Boxed(1)
+}
+"#,
+        );
+        reject_margin_non_local_module_fn_call(record_constructor_call);
     }
 
     #[test]
@@ -770,6 +810,38 @@ pub fn main() {
         let mut module = compile_minimal_module();
         module.definitions.functions[0].body = vec![Statement::Expression(expression)];
         module
+    }
+
+    fn expect_call_statement_mut(
+        statement: &mut TypedStatement,
+    ) -> (&mut TypedExpr, &mut Vec<CallArg<TypedExpr>>) {
+        let Statement::Expression(TypedExpr::Call { fun, arguments, .. }) = statement else {
+            panic!("expected call expression statement");
+        };
+        (fun.as_mut(), arguments)
+    }
+
+    #[test]
+    #[should_panic(expected = "expected call expression statement")]
+    fn expect_call_statement_mut_panics_on_expression() {
+        let mut module = compile_minimal_module();
+
+        expect_call_statement_mut(&mut module.definitions.functions[0].body[0]);
+    }
+
+    fn expect_var_constructor_mut(expression: &mut TypedExpr) -> &mut ValueConstructor {
+        let TypedExpr::Var { constructor, .. } = expression else {
+            panic!("expected variable expression");
+        };
+        constructor
+    }
+
+    #[test]
+    #[should_panic(expected = "expected variable expression")]
+    fn expect_var_constructor_mut_panics_on_int() {
+        let mut expression = typed_int_expr(1);
+
+        expect_var_constructor_mut(&mut expression);
     }
 
     fn typed_int_expr(value: i64) -> TypedExpr {

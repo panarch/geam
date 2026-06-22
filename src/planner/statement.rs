@@ -71,8 +71,10 @@ mod tests {
     use crate::planner::support::{compile, compile_minimal_module, dummy_span, expect_plan_error};
     use gleam_core::analyse::Inferred;
     use gleam_core::ast::{
-        AssignName, AssignmentKind, BitArraySize, Pattern, Statement, TypedExpr, TypedPattern,
+        AssignName, AssignmentKind, BitArraySize, Pattern, Statement, TypedAssignment, TypedExpr,
+        TypedPattern,
     };
+    use gleam_core::exhaustiveness::CompiledCase;
     use gleam_core::parse::LiteralFloatValue;
     use gleam_core::type_::{self, error::VariableOrigin};
     use num_bigint::BigInt;
@@ -168,7 +170,7 @@ pub fn main() {
 
         let mut final_use = compile_minimal_module();
         final_use.definitions.functions[0].body = vec![Statement::Use(gleam_core::ast::Use {
-            call: Box::new(compiled_int_expression()),
+            call: Box::new(typed_int_expr(1)),
             location: dummy_span(),
             right_hand_side_location: dummy_span(),
             assignments_location: dummy_span(),
@@ -184,13 +186,13 @@ pub fn main() {
         let mut step_use = compile_minimal_module();
         step_use.definitions.functions[0].body = vec![
             Statement::Use(gleam_core::ast::Use {
-                call: Box::new(compiled_int_expression()),
+                call: Box::new(typed_int_expr(1)),
                 location: dummy_span(),
                 right_hand_side_location: dummy_span(),
                 assignments_location: dummy_span(),
                 assignments: Vec::new(),
             }),
-            Statement::Expression(compiled_int_expression()),
+            Statement::Expression(typed_int_expr(1)),
         ];
         assert_eq!(
             plan_module(step_use),
@@ -217,19 +219,23 @@ pub fn main() {
 
     #[test]
     fn reject_margin_generated_assignment() {
-        let mut generated = compile(
-            r#"
-pub fn main() {
-  let x = 1
-  x
-}
-"#,
-        );
-        let Statement::Assignment(assignment) = &mut generated.definitions.functions[0].body[0]
-        else {
-            panic!("expected first statement to be a let assignment");
-        };
-        assignment.kind = AssignmentKind::Generated;
+        let mut generated = compile_minimal_module();
+        generated.definitions.functions[0].body = vec![
+            Statement::Assignment(Box::new(TypedAssignment {
+                location: dummy_span(),
+                value: typed_int_expr(1),
+                pattern: Pattern::Variable {
+                    location: dummy_span(),
+                    name: "x".into(),
+                    type_: type_::int(),
+                    origin: VariableOrigin::generated(),
+                },
+                kind: AssignmentKind::Generated,
+                compiled_case: CompiledCase::simple_variable_assignment("x".into(), type_::int()),
+                annotation: None,
+            })),
+            Statement::Expression(typed_int_expr(1)),
+        ];
         assert_eq!(
             plan_module(generated),
             Err(PlanError::UnsupportedAssignment { kind: "generated" }),
@@ -374,12 +380,12 @@ pub fn main() {
         }
     }
 
-    fn compiled_int_expression() -> TypedExpr {
-        let mut module = compile_minimal_module();
-        let Statement::Expression(expression) = module.definitions.functions[0].body.remove(0)
-        else {
-            panic!("expected main body to contain an integer expression");
-        };
-        expression
+    fn typed_int_expr(value: i64) -> TypedExpr {
+        TypedExpr::Int {
+            location: dummy_span(),
+            type_: type_::int(),
+            value: value.to_string().into(),
+            int_value: BigInt::from(value),
+        }
     }
 }
