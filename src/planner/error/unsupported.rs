@@ -124,10 +124,6 @@ pub enum UnsupportedCaseReason {
     AlternativePatterns,
     #[error("assign patterns are not supported")]
     AssignPattern,
-    #[error("discard patterns are not supported")]
-    DiscardPattern,
-    #[error("duplicate bool patterns are not supported")]
-    DuplicateBoolPattern,
     #[error("guards are not supported")]
     Guard,
     #[error("multiple subjects are not supported")]
