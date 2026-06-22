@@ -1,7 +1,8 @@
 use crate::plan::{FunctionId, FunctionPlan, Param};
 use crate::planner::context::{FunctionInfo, PlanContext};
 use crate::planner::error::{
-    PlanError, UnsupportedArgumentReason, UnsupportedFunctionReason, UnsupportedStatementKind,
+    InvalidFunctionShapeReason, InvalidTypedAstReason, PlanError, UnsupportedArgumentReason,
+    UnsupportedFunctionReason, UnsupportedStatementKind,
 };
 use crate::planner::expression::plan_expr;
 use crate::planner::statement::plan_step;
@@ -28,9 +29,11 @@ pub(super) fn plan_function(
     let params = plan_params(&mut context, name.clone(), function.arguments)?;
     let mut body = function.body;
     let Some(last_statement) = body.pop() else {
-        return Err(PlanError::UnsupportedFunction {
-            name,
-            reason: UnsupportedFunctionReason::EmptyBody,
+        return Err(PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::FunctionShape {
+                name,
+                reason: InvalidFunctionShapeReason::EmptyBody,
+            },
         });
     };
 
@@ -47,8 +50,8 @@ pub(super) fn plan_function(
             });
         }
         Statement::Use(_) => {
-            return Err(PlanError::UnsupportedStatement {
-                kind: UnsupportedStatementKind::UseAsFinalStatement,
+            return Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::UseStatement,
             });
         }
         Statement::Assert(_) => {
@@ -72,9 +75,11 @@ pub(super) fn function_name(function: &TypedFunction) -> Result<EcoString, PlanE
         .name
         .as_ref()
         .map(|(_, name)| name.clone())
-        .ok_or(PlanError::UnsupportedFunction {
-            name: "<anonymous>".into(),
-            reason: UnsupportedFunctionReason::Anonymous,
+        .ok_or_else(|| PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::FunctionShape {
+                name: "<anonymous>".into(),
+                reason: InvalidFunctionShapeReason::Anonymous,
+            },
         })
 }
 
@@ -113,9 +118,11 @@ fn plan_params(
 mod tests {
     use crate::planner::dsl::{call, function, int, local, module};
     use crate::planner::plan_module;
-    use crate::planner::support::{compile, compile_minimal_module, dummy_span, expect_plan_error};
-    use crate::planner::{PlanError, UnsupportedArgumentReason, UnsupportedFunctionReason};
-    use gleam_core::ast::ArgNames;
+    use crate::planner::support::{compile, compile_minimal_module, expect_plan_error};
+    use crate::planner::{
+        InvalidFunctionShapeReason, InvalidTypedAstReason, PlanError, UnsupportedArgumentReason,
+        UnsupportedFunctionReason,
+    };
 
     #[test]
     fn plan_local_function_call() {
@@ -166,48 +173,62 @@ pub fn main() {
     }
 
     #[test]
-    fn reject_margin_function_shapes() {
-        let mut external = compile_minimal_module();
-        external.definitions.functions[0].external_erlang =
-            Some(("module".into(), "function".into(), dummy_span()));
+    fn reject_profile_function_shapes() {
         assert_eq!(
-            plan_module(external),
-            Err(PlanError::UnsupportedFunction {
+            expect_plan_error(
+                r#"
+@external(erlang, "one", "two")
+fn main() -> Int
+"#,
+            ),
+            PlanError::UnsupportedFunction {
                 name: "main".into(),
                 reason: UnsupportedFunctionReason::External,
-            }),
+            },
         );
 
-        let mut discard_arg = compile(
-            r#"
-fn helper(value: Int) {
-  value
+        assert_eq!(
+            expect_plan_error(
+                r#"
+fn helper(_: Int) {
+  1
 }
 
 pub fn main() {
   helper(1)
 }
 "#,
-        );
-        discard_arg.definitions.functions[0].arguments[0].names = ArgNames::Discard {
-            name: "_".into(),
-            location: dummy_span(),
-        };
-        assert_eq!(
-            plan_module(discard_arg),
-            Err(PlanError::UnsupportedArgument {
+            ),
+            PlanError::UnsupportedArgument {
                 function: "helper".into(),
                 reason: UnsupportedArgumentReason::Discard,
-            }),
+            },
         );
+    }
 
+    #[test]
+    fn reject_margin_function_shapes() {
         let mut empty_body = compile_minimal_module();
         empty_body.definitions.functions[0].body = Vec::new();
         assert_eq!(
             plan_module(empty_body),
-            Err(PlanError::UnsupportedFunction {
-                name: "main".into(),
-                reason: UnsupportedFunctionReason::EmptyBody,
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::FunctionShape {
+                    name: "main".into(),
+                    reason: InvalidFunctionShapeReason::EmptyBody,
+                },
+            }),
+        );
+
+        let mut anonymous = compile_minimal_module();
+        anonymous.definitions.functions[0].name = None;
+        assert_eq!(
+            plan_module(anonymous),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::FunctionShape {
+                    name: "<anonymous>".into(),
+                    reason: InvalidFunctionShapeReason::Anonymous,
+                },
             }),
         );
     }

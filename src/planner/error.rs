@@ -1,6 +1,13 @@
 use ecow::EcoString;
 use thiserror::Error;
 
+mod invalid;
+
+pub use invalid::{
+    InvalidCallShapeReason, InvalidExpressionShapeKind, InvalidFunctionShapeReason,
+    InvalidTypedAstReason,
+};
+
 #[derive(Debug, Error, Clone, PartialEq, Eq)]
 pub enum PlanError {
     #[error("unsupported top-level definition: {kind}")]
@@ -36,8 +43,8 @@ pub enum PlanError {
     #[error("unsupported call: {reason}")]
     UnsupportedCall { reason: UnsupportedCallReason },
 
-    #[error("unknown local variable: {name}")]
-    UnknownLocal { name: EcoString },
+    #[error("invalid Gleam typed AST: {reason}")]
+    InvalidTypedAst { reason: InvalidTypedAstReason },
 }
 
 #[derive(Debug, Error, Clone, Copy, PartialEq, Eq)]
@@ -54,10 +61,6 @@ pub enum UnsupportedTopLevelKind {
 
 #[derive(Debug, Error, Clone, Copy, PartialEq, Eq)]
 pub enum UnsupportedFunctionReason {
-    #[error("anonymous functions are not module functions")]
-    Anonymous,
-    #[error("empty function bodies are not supported")]
-    EmptyBody,
     #[error("external functions are not executable by the Geam runtime")]
     External,
     #[error("main function is required")]
@@ -82,16 +85,10 @@ pub enum UnsupportedStatementKind {
     AssertAsFinalStatement,
     #[error("assignment as final statement")]
     AssignmentAsFinalStatement,
-    #[error("use")]
-    Use,
-    #[error("use as final statement")]
-    UseAsFinalStatement,
 }
 
 #[derive(Debug, Error, Clone, Copy, PartialEq, Eq)]
 pub enum UnsupportedAssignmentKind {
-    #[error("generated")]
-    Generated,
     #[error("let assert")]
     LetAssert,
 }
@@ -100,26 +97,8 @@ pub enum UnsupportedAssignmentKind {
 pub enum UnsupportedPatternKind {
     #[error("assign")]
     Assign,
-    #[error("bit array")]
-    BitArray,
-    #[error("bit array size")]
-    BitArraySize,
-    #[error("constructor")]
-    Constructor,
     #[error("discard")]
     Discard,
-    #[error("float")]
-    Float,
-    #[error("int")]
-    Int,
-    #[error("invalid")]
-    Invalid,
-    #[error("list")]
-    List,
-    #[error("string")]
-    String,
-    #[error("string prefix")]
-    StringPrefix,
     #[error("tuple")]
     Tuple,
 }
@@ -140,28 +119,12 @@ pub enum UnsupportedExpressionKind {
     Float,
     #[error("function reference")]
     FunctionReference,
-    #[error("invalid")]
-    Invalid,
     #[error("list")]
     List,
-    #[error("module constant")]
-    ModuleConstant,
-    #[error("module select")]
-    ModuleSelect,
     #[error("panic")]
     Panic,
     #[error("pipeline")]
     Pipeline,
-    #[error("positional access")]
-    PositionalAccess,
-    #[error("prelude constructor")]
-    PreludeConstructor,
-    #[error("record access")]
-    RecordAccess,
-    #[error("record constructor")]
-    RecordConstructor,
-    #[error("record update")]
-    RecordUpdate,
     #[error("todo")]
     Todo,
     #[error("tuple")]
@@ -198,18 +161,6 @@ pub enum UnsupportedBinOpKind {
 pub enum UnsupportedCallReason {
     #[error("calling local function values is not supported")]
     LocalFunctionValue,
-    #[error("calling module constants is not supported")]
-    ModuleConstant,
-    #[error("calling record constructors is not supported")]
-    RecordConstructor,
-    #[error("implicit call arguments are not supported")]
-    ImplicitArguments,
-    #[error("labelled call arguments are not supported")]
-    LabelledArguments,
-    #[error("local function call arity mismatch")]
-    LocalFunctionCallArityMismatch,
-    #[error("only current-module functions are supported")]
-    NonCurrentModuleFunction,
     #[error("only direct local function calls are supported")]
     NonDirectLocalFunction,
 }

@@ -1,7 +1,8 @@
 use crate::plan::{BinOp, Expr, Value};
 use crate::planner::context::{FunctionInfo, PlanContext};
 use crate::planner::error::{
-    PlanError, UnsupportedBinOpKind, UnsupportedCallReason, UnsupportedExpressionKind,
+    InvalidCallShapeReason, InvalidExpressionShapeKind, InvalidTypedAstReason, PlanError,
+    UnsupportedBinOpKind, UnsupportedCallReason, UnsupportedExpressionKind,
 };
 use ecow::EcoString;
 use gleam_core::ast::{BinOp as GleamBinOp, TypedExpr};
@@ -52,14 +53,20 @@ pub(super) fn plan_expr(
         TypedExpr::Case { .. } => Err(PlanError::UnsupportedExpression {
             kind: UnsupportedExpressionKind::Case,
         }),
-        TypedExpr::RecordAccess { .. } => Err(PlanError::UnsupportedExpression {
-            kind: UnsupportedExpressionKind::RecordAccess,
+        TypedExpr::RecordAccess { .. } => Err(PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::ExpressionShape {
+                kind: InvalidExpressionShapeKind::RecordAccess,
+            },
         }),
-        TypedExpr::PositionalAccess { .. } => Err(PlanError::UnsupportedExpression {
-            kind: UnsupportedExpressionKind::PositionalAccess,
+        TypedExpr::PositionalAccess { .. } => Err(PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::ExpressionShape {
+                kind: InvalidExpressionShapeKind::PositionalAccess,
+            },
         }),
-        TypedExpr::ModuleSelect { .. } => Err(PlanError::UnsupportedExpression {
-            kind: UnsupportedExpressionKind::ModuleSelect,
+        TypedExpr::ModuleSelect { .. } => Err(PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::ExpressionShape {
+                kind: InvalidExpressionShapeKind::ModuleSelect,
+            },
         }),
         TypedExpr::Tuple { .. } => Err(PlanError::UnsupportedExpression {
             kind: UnsupportedExpressionKind::Tuple,
@@ -79,11 +86,15 @@ pub(super) fn plan_expr(
         TypedExpr::BitArray { .. } => Err(PlanError::UnsupportedExpression {
             kind: UnsupportedExpressionKind::BitArray,
         }),
-        TypedExpr::RecordUpdate { .. } => Err(PlanError::UnsupportedExpression {
-            kind: UnsupportedExpressionKind::RecordUpdate,
+        TypedExpr::RecordUpdate { .. } => Err(PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::ExpressionShape {
+                kind: InvalidExpressionShapeKind::RecordUpdate,
+            },
         }),
-        TypedExpr::Invalid { .. } => Err(PlanError::UnsupportedExpression {
-            kind: UnsupportedExpressionKind::Invalid,
+        TypedExpr::Invalid { .. } => Err(PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::ExpressionShape {
+                kind: InvalidExpressionShapeKind::Invalid,
+            },
         }),
     }
 }
@@ -97,7 +108,9 @@ fn plan_var(
         ValueConstructorVariant::LocalVariable { .. } => {
             let local = context
                 .lookup_local(&name)
-                .ok_or_else(|| PlanError::UnknownLocal { name: name.clone() })?;
+                .ok_or_else(|| PlanError::InvalidTypedAst {
+                    reason: InvalidTypedAstReason::UnknownLocal { name: name.clone() },
+                })?;
             Ok(Expr::LocalGet { local, name })
         }
         ValueConstructorVariant::Record {
@@ -109,18 +122,24 @@ fn plan_var(
             "True" => Ok(Expr::Value(Value::Bool(true))),
             "False" => Ok(Expr::Value(Value::Bool(false))),
             "Nil" => Ok(Expr::Value(Value::Nil)),
-            _ => Err(PlanError::UnsupportedExpression {
-                kind: UnsupportedExpressionKind::PreludeConstructor,
+            _ => Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionShape {
+                    kind: InvalidExpressionShapeKind::PreludeConstructor,
+                },
             }),
         },
         ValueConstructorVariant::ModuleFn { .. } => Err(PlanError::UnsupportedExpression {
             kind: UnsupportedExpressionKind::FunctionReference,
         }),
-        ValueConstructorVariant::ModuleConstant { .. } => Err(PlanError::UnsupportedExpression {
-            kind: UnsupportedExpressionKind::ModuleConstant,
+        ValueConstructorVariant::ModuleConstant { .. } => Err(PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::ExpressionShape {
+                kind: InvalidExpressionShapeKind::ModuleConstant,
+            },
         }),
-        ValueConstructorVariant::Record { .. } => Err(PlanError::UnsupportedExpression {
-            kind: UnsupportedExpressionKind::RecordConstructor,
+        ValueConstructorVariant::Record { .. } => Err(PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::ExpressionShape {
+                kind: InvalidExpressionShapeKind::RecordConstructor,
+            },
         }),
     }
 }
@@ -131,21 +150,27 @@ fn plan_call(
     context: &mut PlanContext<'_>,
 ) -> Result<Expr, PlanError> {
     if arguments.iter().any(|argument| argument.label.is_some()) {
-        return Err(PlanError::UnsupportedCall {
-            reason: UnsupportedCallReason::LabelledArguments,
+        return Err(PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::CallShape {
+                reason: InvalidCallShapeReason::LabelledArguments,
+            },
         });
     }
 
     if arguments.iter().any(|argument| argument.implicit.is_some()) {
-        return Err(PlanError::UnsupportedCall {
-            reason: UnsupportedCallReason::ImplicitArguments,
+        return Err(PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::CallShape {
+                reason: InvalidCallShapeReason::ImplicitArguments,
+            },
         });
     }
 
     let function = plan_function_ref(fun, context)?;
     if function.arity != arguments.len() {
-        return Err(PlanError::UnsupportedCall {
-            reason: UnsupportedCallReason::LocalFunctionCallArityMismatch,
+        return Err(PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::CallShape {
+                reason: InvalidCallShapeReason::LocalFunctionCallArityMismatch,
+            },
         });
     }
     let args = arguments
@@ -182,21 +207,29 @@ fn plan_function_ref(
         {
             context
                 .lookup_function(&name)
-                .ok_or(PlanError::UnsupportedCall {
-                    reason: UnsupportedCallReason::NonCurrentModuleFunction,
+                .ok_or(PlanError::InvalidTypedAst {
+                    reason: InvalidTypedAstReason::CallShape {
+                        reason: InvalidCallShapeReason::MissingCurrentModuleFunction,
+                    },
                 })
         }
-        ValueConstructorVariant::ModuleFn { .. } => Err(PlanError::UnsupportedCall {
-            reason: UnsupportedCallReason::NonCurrentModuleFunction,
+        ValueConstructorVariant::ModuleFn { .. } => Err(PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::CallShape {
+                reason: InvalidCallShapeReason::NonCurrentModuleFunction,
+            },
         }),
         ValueConstructorVariant::LocalVariable { .. } => Err(PlanError::UnsupportedCall {
             reason: UnsupportedCallReason::LocalFunctionValue,
         }),
-        ValueConstructorVariant::ModuleConstant { .. } => Err(PlanError::UnsupportedCall {
-            reason: UnsupportedCallReason::ModuleConstant,
+        ValueConstructorVariant::ModuleConstant { .. } => Err(PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::CallShape {
+                reason: InvalidCallShapeReason::ModuleConstant,
+            },
         }),
-        ValueConstructorVariant::Record { .. } => Err(PlanError::UnsupportedCall {
-            reason: UnsupportedCallReason::RecordConstructor,
+        ValueConstructorVariant::Record { .. } => Err(PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::CallShape {
+                reason: InvalidCallShapeReason::RecordConstructor,
+            },
         }),
     }
 }
@@ -254,16 +287,16 @@ mod tests {
     use crate::planner::plan_module;
     use crate::planner::support::{compile, compile_minimal_module, dummy_span, expect_plan_error};
     use crate::planner::{
-        PlanError, UnsupportedBinOpKind, UnsupportedCallReason, UnsupportedExpressionKind,
+        InvalidCallShapeReason, InvalidExpressionShapeKind, InvalidTypedAstReason, PlanError,
+        UnsupportedBinOpKind, UnsupportedCallReason, UnsupportedExpressionKind,
     };
     use gleam_core::ast::Publicity;
     use gleam_core::ast::{
-        BinOp as GleamBinOp, CallArg, Constant, ImplicitCallArgOrigin, Statement, TypedExpr,
-        TypedModule, TypedStatement,
+        CallArg, Constant, ImplicitCallArgOrigin, Statement, TypedExpr, TypedModule, TypedStatement,
     };
     use gleam_core::type_::{
         self, Deprecation, ModuleValueConstructor, PRELUDE_MODULE_NAME, ValueConstructor,
-        ValueConstructorVariant, error::VariableOrigin,
+        ValueConstructorVariant,
     };
     use num_bigint::BigInt;
 
@@ -458,6 +491,12 @@ pub fn main() {
                 },
             ),
             (
+                r#"pub fn main() { fn(x) { x }(1) }"#,
+                PlanError::UnsupportedCall {
+                    reason: UnsupportedCallReason::NonDirectLocalFunction,
+                },
+            ),
+            (
                 r#"pub fn main() { case 1 { 1 -> 2 _ -> 3 } }"#,
                 PlanError::UnsupportedExpression {
                     kind: UnsupportedExpressionKind::Case,
@@ -513,7 +552,7 @@ pub fn main() {
     }
 
     #[test]
-    fn reject_margin_expression_variants() {
+    fn reject_margin_expression_shapes() {
         let synthetic_cases = [
             (
                 module_returning_typed_expr(TypedExpr::PositionalAccess {
@@ -522,8 +561,10 @@ pub fn main() {
                     index: 0,
                     record: Box::new(typed_int_expr(1)),
                 }),
-                PlanError::UnsupportedExpression {
-                    kind: UnsupportedExpressionKind::PositionalAccess,
+                PlanError::InvalidTypedAst {
+                    reason: InvalidTypedAstReason::ExpressionShape {
+                        kind: InvalidExpressionShapeKind::PositionalAccess,
+                    },
                 },
             ),
             (
@@ -544,18 +585,10 @@ pub fn main() {
                         documentation: None,
                     },
                 }),
-                PlanError::UnsupportedExpression {
-                    kind: UnsupportedExpressionKind::ModuleSelect,
-                },
-            ),
-            (
-                module_returning_typed_expr(TypedExpr::Invalid {
-                    location: dummy_span(),
-                    type_: type_::int(),
-                    extra_information: None,
-                }),
-                PlanError::UnsupportedExpression {
-                    kind: UnsupportedExpressionKind::Invalid,
+                PlanError::InvalidTypedAst {
+                    reason: InvalidTypedAstReason::ExpressionShape {
+                        kind: InvalidExpressionShapeKind::ModuleSelect,
+                    },
                 },
             ),
         ];
@@ -578,8 +611,10 @@ pub fn main() {
         record_access.definitions.custom_types.clear();
         assert_eq!(
             plan_module(record_access),
-            Err(PlanError::UnsupportedExpression {
-                kind: UnsupportedExpressionKind::RecordAccess,
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionShape {
+                    kind: InvalidExpressionShapeKind::RecordAccess,
+                },
             }),
         );
 
@@ -593,8 +628,26 @@ pub fn main() {
                 constructor: Box::new(typed_int_expr(1)),
                 arguments: Vec::new(),
             })),
-            Err(PlanError::UnsupportedExpression {
-                kind: UnsupportedExpressionKind::RecordUpdate,
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionShape {
+                    kind: InvalidExpressionShapeKind::RecordUpdate,
+                },
+            }),
+        );
+    }
+
+    #[test]
+    fn reject_margin_invalid_expression() {
+        assert_eq!(
+            plan_module(module_returning_typed_expr(TypedExpr::Invalid {
+                location: dummy_span(),
+                type_: type_::int(),
+                extra_information: None,
+            })),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionShape {
+                    kind: InvalidExpressionShapeKind::Invalid,
+                },
             }),
         );
     }
@@ -613,7 +666,9 @@ pub fn main() {
         unbound_local.definitions.functions[0].body = vec![variable];
         assert_eq!(
             plan_module(unbound_local),
-            Err(PlanError::UnknownLocal { name: "x".into() }),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::UnknownLocal { name: "x".into() },
+            }),
         );
 
         let mut module_constant = compile(
@@ -628,8 +683,10 @@ pub fn main() {
         module_constant.definitions.constants.clear();
         assert_eq!(
             plan_module(module_constant),
-            Err(PlanError::UnsupportedExpression {
-                kind: UnsupportedExpressionKind::ModuleConstant,
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionShape {
+                    kind: InvalidExpressionShapeKind::ModuleConstant,
+                },
             }),
         );
 
@@ -647,8 +704,10 @@ pub fn main() {
         record_constructor.definitions.custom_types.clear();
         assert_eq!(
             plan_module(record_constructor),
-            Err(PlanError::UnsupportedExpression {
-                kind: UnsupportedExpressionKind::RecordConstructor,
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionShape {
+                    kind: InvalidExpressionShapeKind::RecordConstructor,
+                },
             }),
         );
 
@@ -672,33 +731,10 @@ pub fn main() {
                     },
                 },
             })),
-            Err(PlanError::UnsupportedExpression {
-                kind: UnsupportedExpressionKind::PreludeConstructor,
-            }),
-        );
-
-        let mut local_variable_call = compile(
-            r#"
-fn identity(value: Int) {
-  value
-}
-
-pub fn main() {
-  identity(1)
-}
-"#,
-        );
-        let (fun, _) =
-            expect_call_statement_mut(&mut local_variable_call.definitions.functions[1].body[0]);
-        let constructor = expect_var_constructor_mut(fun);
-        constructor.variant = ValueConstructorVariant::LocalVariable {
-            location: dummy_span(),
-            origin: VariableOrigin::generated(),
-        };
-        assert_eq!(
-            plan_module(local_variable_call),
-            Err(PlanError::UnsupportedCall {
-                reason: UnsupportedCallReason::LocalFunctionValue,
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionShape {
+                    kind: InvalidExpressionShapeKind::PreludeConstructor,
+                },
             }),
         );
 
@@ -712,6 +748,26 @@ pub fn main() {
 "#,
         );
         reject_margin_module_constant_call(module_constant_call);
+    }
+
+    #[test]
+    fn reject_profile_local_function_value_call() {
+        assert_eq!(
+            expect_plan_error(
+                r#"
+fn apply(callback: fn(Int) -> Int) {
+  callback(1)
+}
+
+pub fn main() {
+  1
+}
+"#,
+            ),
+            PlanError::UnsupportedCall {
+                reason: UnsupportedCallReason::LocalFunctionValue,
+            },
+        );
     }
 
     fn reject_margin_module_constant_call(mut module_constant_call: TypedModule) {
@@ -730,8 +786,10 @@ pub fn main() {
             })];
         assert_eq!(
             plan_module(module_constant_call),
-            Err(PlanError::UnsupportedCall {
-                reason: UnsupportedCallReason::ModuleConstant,
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::CallShape {
+                    reason: InvalidCallShapeReason::ModuleConstant,
+                },
             }),
         );
     }
@@ -767,8 +825,10 @@ pub fn main() {
         arguments[0].label = Some("value".into());
         assert_eq!(
             plan_module(labelled_call),
-            Err(PlanError::UnsupportedCall {
-                reason: UnsupportedCallReason::LabelledArguments,
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::CallShape {
+                    reason: InvalidCallShapeReason::LabelledArguments,
+                },
             }),
         );
 
@@ -788,8 +848,10 @@ pub fn main() {
         arguments[0].implicit = Some(ImplicitCallArgOrigin::Pipe);
         assert_eq!(
             plan_module(implicit_call),
-            Err(PlanError::UnsupportedCall {
-                reason: UnsupportedCallReason::ImplicitArguments,
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::CallShape {
+                    reason: InvalidCallShapeReason::ImplicitArguments,
+                },
             }),
         );
 
@@ -809,12 +871,14 @@ pub fn main() {
         arguments.clear();
         assert_eq!(
             plan_module(arity_mismatch_call),
-            Err(PlanError::UnsupportedCall {
-                reason: UnsupportedCallReason::LocalFunctionCallArityMismatch,
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::CallShape {
+                    reason: InvalidCallShapeReason::LocalFunctionCallArityMismatch,
+                },
             }),
         );
 
-        let mut non_direct_call = compile(
+        let mut missing_current_module_fn = compile(
             r#"
 fn identity(value: Int) {
   value
@@ -825,13 +889,13 @@ pub fn main() {
 }
 "#,
         );
-        let (fun, _) =
-            expect_call_statement_mut(&mut non_direct_call.definitions.functions[1].body[0]);
-        *fun = typed_int_expr(1);
+        missing_current_module_fn.definitions.functions.remove(0);
         assert_eq!(
-            plan_module(non_direct_call),
-            Err(PlanError::UnsupportedCall {
-                reason: UnsupportedCallReason::NonDirectLocalFunction,
+            plan_module(missing_current_module_fn),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::CallShape {
+                    reason: InvalidCallShapeReason::MissingCurrentModuleFunction,
+                },
             }),
         );
 
@@ -862,8 +926,10 @@ pub fn main() {
         record_constructor_call.definitions.custom_types.clear();
         assert_eq!(
             plan_module(record_constructor_call),
-            Err(PlanError::UnsupportedCall {
-                reason: UnsupportedCallReason::RecordConstructor,
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::CallShape {
+                    reason: InvalidCallShapeReason::RecordConstructor,
+                },
             }),
         );
     }
@@ -882,8 +948,10 @@ pub fn main() {
         *module = "other".into();
         assert_eq!(
             plan_module(non_local_module_fn),
-            Err(PlanError::UnsupportedCall {
-                reason: UnsupportedCallReason::NonCurrentModuleFunction,
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::CallShape {
+                    reason: InvalidCallShapeReason::NonCurrentModuleFunction,
+                },
             }),
         );
     }
@@ -906,31 +974,54 @@ pub fn main() {
     }
 
     #[test]
-    fn reject_margin_binary_operators() {
+    fn reject_profile_binary_operators() {
         let cases = [
-            (GleamBinOp::And, UnsupportedBinOpKind::And),
-            (GleamBinOp::Or, UnsupportedBinOpKind::Or),
-            (GleamBinOp::LtFloat, UnsupportedBinOpKind::LtFloat),
-            (GleamBinOp::LtEqFloat, UnsupportedBinOpKind::LtEqFloat),
-            (GleamBinOp::GtEqFloat, UnsupportedBinOpKind::GtEqFloat),
-            (GleamBinOp::GtFloat, UnsupportedBinOpKind::GtFloat),
-            (GleamBinOp::AddFloat, UnsupportedBinOpKind::AddFloat),
-            (GleamBinOp::SubFloat, UnsupportedBinOpKind::SubFloat),
-            (GleamBinOp::MultFloat, UnsupportedBinOpKind::MultFloat),
-            (GleamBinOp::DivFloat, UnsupportedBinOpKind::DivFloat),
+            (
+                r#"pub fn main() { True && False }"#,
+                UnsupportedBinOpKind::And,
+            ),
+            (
+                r#"pub fn main() { True || False }"#,
+                UnsupportedBinOpKind::Or,
+            ),
+            (
+                r#"pub fn main() { 1.0 <. 2.0 }"#,
+                UnsupportedBinOpKind::LtFloat,
+            ),
+            (
+                r#"pub fn main() { 1.0 <=. 2.0 }"#,
+                UnsupportedBinOpKind::LtEqFloat,
+            ),
+            (
+                r#"pub fn main() { 1.0 >=. 2.0 }"#,
+                UnsupportedBinOpKind::GtEqFloat,
+            ),
+            (
+                r#"pub fn main() { 1.0 >. 2.0 }"#,
+                UnsupportedBinOpKind::GtFloat,
+            ),
+            (
+                r#"pub fn main() { 1.0 +. 2.0 }"#,
+                UnsupportedBinOpKind::AddFloat,
+            ),
+            (
+                r#"pub fn main() { 1.0 -. 2.0 }"#,
+                UnsupportedBinOpKind::SubFloat,
+            ),
+            (
+                r#"pub fn main() { 1.0 *. 2.0 }"#,
+                UnsupportedBinOpKind::MultFloat,
+            ),
+            (
+                r#"pub fn main() { 1.0 /. 2.0 }"#,
+                UnsupportedBinOpKind::DivFloat,
+            ),
         ];
 
-        for (operator, expected) in cases {
+        for (src, expected) in cases {
             assert_eq!(
-                plan_module(module_returning_typed_expr(TypedExpr::BinOp {
-                    location: dummy_span(),
-                    type_: type_::int(),
-                    operator,
-                    operator_start: 0,
-                    left: Box::new(typed_int_expr(1)),
-                    right: Box::new(typed_int_expr(2)),
-                })),
-                Err(PlanError::UnsupportedBinOp { operator: expected }),
+                expect_plan_error(src),
+                PlanError::UnsupportedBinOp { operator: expected },
             );
         }
     }

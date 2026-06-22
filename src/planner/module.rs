@@ -92,9 +92,8 @@ fn reject_top_level(kind: UnsupportedTopLevelKind, count: usize) -> Result<(), P
 mod tests {
     use super::plan_module;
     use crate::planner::dsl::{function, int, module};
-    use crate::planner::support::{compile, compile_minimal_module, dummy_span, expect_plan_error};
+    use crate::planner::support::{compile, expect_plan_error};
     use crate::planner::{PlanError, UnsupportedFunctionReason, UnsupportedTopLevelKind};
-    use gleam_core::ast::TypedImport;
 
     #[test]
     fn plan_integer_return() {
@@ -211,24 +210,20 @@ pub fn main() {
     }
 
     #[test]
-    fn reject_margin_import_definition() {
-        let mut module = compile_minimal_module();
-        module.definitions.imports.push(TypedImport {
-            documentation: None,
-            location: dummy_span(),
-            module_location: dummy_span(),
-            module: "gleam/io".into(),
-            as_name: None,
-            unqualified_values: Vec::new(),
-            unqualified_types: Vec::new(),
-            package: "gleam_stdlib".into(),
-        });
-
+    fn reject_profile_import_definition() {
         assert_eq!(
-            plan_module(module),
-            Err(PlanError::UnsupportedTopLevel {
+            expect_plan_error(
+                r#"
+import gleam
+
+pub fn main() {
+  1
+}
+"#,
+            ),
+            PlanError::UnsupportedTopLevel {
                 kind: UnsupportedTopLevelKind::Import,
-            }),
+            },
         );
     }
 

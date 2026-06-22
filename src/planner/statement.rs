@@ -1,7 +1,8 @@
 use crate::plan::Step;
 use crate::planner::context::PlanContext;
 use crate::planner::error::{
-    PlanError, UnsupportedAssignmentKind, UnsupportedPatternKind, UnsupportedStatementKind,
+    InvalidTypedAstReason, PlanError, UnsupportedAssignmentKind, UnsupportedPatternKind,
+    UnsupportedStatementKind,
 };
 use crate::planner::expression::plan_expr;
 use ecow::EcoString;
@@ -14,8 +15,8 @@ pub(super) fn plan_step(
     match statement {
         Statement::Expression(expression) => Ok(Step::Evaluate(plan_expr(expression, context)?)),
         Statement::Assignment(assignment) => plan_assignment(*assignment, context),
-        Statement::Use(_) => Err(PlanError::UnsupportedStatement {
-            kind: UnsupportedStatementKind::Use,
+        Statement::Use(_) => Err(PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::UseStatement,
         }),
         Statement::Assert(_) => Err(PlanError::UnsupportedStatement {
             kind: UnsupportedStatementKind::Assert,
@@ -30,8 +31,8 @@ fn plan_assignment(
     match assignment.kind {
         AssignmentKind::Let => {}
         AssignmentKind::Generated => {
-            return Err(PlanError::UnsupportedAssignment {
-                kind: UnsupportedAssignmentKind::Generated,
+            return Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::GeneratedAssignment,
             });
         }
         AssignmentKind::Assert { .. } => {
@@ -51,41 +52,25 @@ fn plan_assignment(
 fn plan_variable_pattern(pattern: TypedPattern) -> Result<EcoString, PlanError> {
     match pattern {
         Pattern::Variable { name, .. } => Ok(name),
-        Pattern::Int { .. } => Err(PlanError::UnsupportedPattern {
-            kind: UnsupportedPatternKind::Int,
-        }),
-        Pattern::Float { .. } => Err(PlanError::UnsupportedPattern {
-            kind: UnsupportedPatternKind::Float,
-        }),
-        Pattern::String { .. } => Err(PlanError::UnsupportedPattern {
-            kind: UnsupportedPatternKind::String,
-        }),
-        Pattern::BitArraySize(_) => Err(PlanError::UnsupportedPattern {
-            kind: UnsupportedPatternKind::BitArraySize,
-        }),
         Pattern::Assign { .. } => Err(PlanError::UnsupportedPattern {
             kind: UnsupportedPatternKind::Assign,
         }),
         Pattern::Discard { .. } => Err(PlanError::UnsupportedPattern {
             kind: UnsupportedPatternKind::Discard,
         }),
-        Pattern::List { .. } => Err(PlanError::UnsupportedPattern {
-            kind: UnsupportedPatternKind::List,
-        }),
-        Pattern::Constructor { .. } => Err(PlanError::UnsupportedPattern {
-            kind: UnsupportedPatternKind::Constructor,
-        }),
         Pattern::Tuple { .. } => Err(PlanError::UnsupportedPattern {
             kind: UnsupportedPatternKind::Tuple,
         }),
-        Pattern::BitArray { .. } => Err(PlanError::UnsupportedPattern {
-            kind: UnsupportedPatternKind::BitArray,
-        }),
-        Pattern::StringPrefix { .. } => Err(PlanError::UnsupportedPattern {
-            kind: UnsupportedPatternKind::StringPrefix,
-        }),
-        Pattern::Invalid { .. } => Err(PlanError::UnsupportedPattern {
-            kind: UnsupportedPatternKind::Invalid,
+        Pattern::Int { .. }
+        | Pattern::Float { .. }
+        | Pattern::String { .. }
+        | Pattern::BitArraySize(_)
+        | Pattern::List { .. }
+        | Pattern::Constructor { .. }
+        | Pattern::BitArray { .. }
+        | Pattern::StringPrefix { .. }
+        | Pattern::Invalid { .. } => Err(PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::InvalidPattern,
         }),
     }
 }
@@ -97,12 +82,12 @@ mod tests {
     use crate::planner::plan_module;
     use crate::planner::support::{compile, compile_minimal_module, dummy_span, expect_plan_error};
     use crate::planner::{
-        PlanError, UnsupportedAssignmentKind, UnsupportedPatternKind, UnsupportedStatementKind,
+        InvalidTypedAstReason, PlanError, UnsupportedAssignmentKind, UnsupportedCallReason,
+        UnsupportedPatternKind, UnsupportedStatementKind,
     };
     use gleam_core::analyse::Inferred;
     use gleam_core::ast::{
         AssignName, AssignmentKind, BitArraySize, Pattern, Statement, TypedAssignment, TypedExpr,
-        TypedPattern,
     };
     use gleam_core::exhaustiveness::CompiledCase;
     use gleam_core::parse::LiteralFloatValue;
@@ -184,39 +169,57 @@ pub fn main() {
     }
 
     #[test]
-    fn reject_margin_statement_positions() {
-        let mut final_assignment = compile(
-            r#"
+    fn reject_profile_final_statement_positions() {
+        assert_eq!(
+            expect_plan_error(
+                r#"
 pub fn main() {
   let x = 1
-  x
 }
 "#,
-        );
-        let assignment = final_assignment.definitions.functions[0].body.remove(0);
-        final_assignment.definitions.functions[0].body = vec![assignment];
-        assert_eq!(
-            plan_module(final_assignment),
-            Err(PlanError::UnsupportedStatement {
+            ),
+            PlanError::UnsupportedStatement {
                 kind: UnsupportedStatementKind::AssignmentAsFinalStatement,
-            }),
+            },
         );
 
-        let mut final_use = compile_minimal_module();
-        final_use.definitions.functions[0].body = vec![Statement::Use(gleam_core::ast::Use {
-            call: Box::new(typed_int_expr(1)),
-            location: dummy_span(),
-            right_hand_side_location: dummy_span(),
-            assignments_location: dummy_span(),
-            assignments: Vec::new(),
-        })];
         assert_eq!(
-            plan_module(final_use),
-            Err(PlanError::UnsupportedStatement {
-                kind: UnsupportedStatementKind::UseAsFinalStatement,
-            }),
+            expect_plan_error(
+                r#"
+pub fn main() {
+  assert True
+}
+"#,
+            ),
+            PlanError::UnsupportedStatement {
+                kind: UnsupportedStatementKind::AssertAsFinalStatement,
+            },
         );
+    }
 
+    #[test]
+    fn reject_profile_use_syntax() {
+        assert_eq!(
+            expect_plan_error(
+                r#"
+pub fn main() {
+  use <- pair
+  1
+}
+
+fn pair(callback: fn() -> Int) {
+  callback()
+}
+"#,
+            ),
+            PlanError::UnsupportedCall {
+                reason: UnsupportedCallReason::LocalFunctionValue,
+            },
+        );
+    }
+
+    #[test]
+    fn reject_margin_use_statement_shapes() {
         let mut step_use = compile_minimal_module();
         step_use.definitions.functions[0].body = vec![
             Statement::Use(gleam_core::ast::Use {
@@ -230,25 +233,23 @@ pub fn main() {
         ];
         assert_eq!(
             plan_module(step_use),
-            Err(PlanError::UnsupportedStatement {
-                kind: UnsupportedStatementKind::Use,
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::UseStatement,
             }),
         );
 
-        let mut final_assert = compile(
-            r#"
-pub fn main() {
-  assert True
-  1
-}
-"#,
-        );
-        let assert_statement = final_assert.definitions.functions[0].body.remove(0);
-        final_assert.definitions.functions[0].body = vec![assert_statement];
+        let mut final_use = compile_minimal_module();
+        final_use.definitions.functions[0].body = vec![Statement::Use(gleam_core::ast::Use {
+            call: Box::new(typed_int_expr(1)),
+            location: dummy_span(),
+            right_hand_side_location: dummy_span(),
+            assignments_location: dummy_span(),
+            assignments: Vec::new(),
+        })];
         assert_eq!(
-            plan_module(final_assert),
-            Err(PlanError::UnsupportedStatement {
-                kind: UnsupportedStatementKind::AssertAsFinalStatement,
+            plan_module(final_use),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::UseStatement,
             }),
         );
     }
@@ -274,8 +275,8 @@ pub fn main() {
         ];
         assert_eq!(
             plan_module(generated),
-            Err(PlanError::UnsupportedAssignment {
-                kind: UnsupportedAssignmentKind::Generated,
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::GeneratedAssignment,
             }),
         );
     }
@@ -298,7 +299,50 @@ pub fn main() {
     }
 
     #[test]
-    fn reject_margin_non_variable_pattern_shapes() {
+    fn reject_profile_non_variable_pattern_shapes() {
+        let cases = [
+            (
+                r#"
+pub fn main() {
+  let _ = 1
+  1
+}
+"#,
+                PlanError::UnsupportedPattern {
+                    kind: UnsupportedPatternKind::Discard,
+                },
+            ),
+            (
+                r#"
+pub fn main() {
+  let #(a, b) = #(1, 2)
+  a
+}
+"#,
+                PlanError::UnsupportedPattern {
+                    kind: UnsupportedPatternKind::Tuple,
+                },
+            ),
+            (
+                r#"
+pub fn main() {
+  let value as alias = 1
+  alias
+}
+"#,
+                PlanError::UnsupportedPattern {
+                    kind: UnsupportedPatternKind::Assign,
+                },
+            ),
+        ];
+
+        for (src, expected) in cases {
+            assert_eq!(expect_plan_error(src), expected);
+        }
+    }
+
+    #[test]
+    fn reject_margin_invalid_pattern_shapes() {
         let variable = |name: &str| Pattern::Variable {
             location: dummy_span(),
             name: name.into(),
@@ -308,114 +352,66 @@ pub fn main() {
 
         assert_eq!(plan_variable_pattern(variable("x")), Ok("x".into()));
 
-        let cases: Vec<(TypedPattern, UnsupportedPatternKind)> = vec![
-            (
-                Pattern::Int {
-                    location: dummy_span(),
-                    value: "1".into(),
-                    int_value: BigInt::from(1),
-                },
-                UnsupportedPatternKind::Int,
-            ),
-            (
-                Pattern::Float {
-                    location: dummy_span(),
-                    value: "1.0".into(),
-                    float_value: LiteralFloatValue::ONE,
-                },
-                UnsupportedPatternKind::Float,
-            ),
-            (
-                Pattern::String {
-                    location: dummy_span(),
-                    value: "a".into(),
-                },
-                UnsupportedPatternKind::String,
-            ),
-            (
-                Pattern::BitArraySize(BitArraySize::Int {
-                    location: dummy_span(),
-                    value: "1".into(),
-                    int_value: BigInt::from(1),
-                }),
-                UnsupportedPatternKind::BitArraySize,
-            ),
-            (
-                Pattern::Assign {
-                    name: "x".into(),
-                    location: dummy_span(),
-                    pattern: Box::new(variable("inner")),
-                },
-                UnsupportedPatternKind::Assign,
-            ),
-            (
-                Pattern::Discard {
-                    name: "_".into(),
-                    location: dummy_span(),
-                    type_: type_::int(),
-                },
-                UnsupportedPatternKind::Discard,
-            ),
-            (
-                Pattern::List {
-                    location: dummy_span(),
-                    elements: vec![variable("x")],
-                    tail: None,
-                    type_: type_::list(type_::int()),
-                },
-                UnsupportedPatternKind::List,
-            ),
-            (
-                Pattern::Constructor {
-                    location: dummy_span(),
-                    name_location: dummy_span(),
-                    name: "Boxed".into(),
-                    arguments: Vec::new(),
-                    module: None,
-                    constructor: Inferred::Unknown,
-                    spread: None,
-                    type_: type_::int(),
-                },
-                UnsupportedPatternKind::Constructor,
-            ),
-            (
-                Pattern::Tuple {
-                    location: dummy_span(),
-                    elements: vec![variable("x")],
-                },
-                UnsupportedPatternKind::Tuple,
-            ),
-            (
-                Pattern::BitArray {
-                    location: dummy_span(),
-                    segments: Vec::new(),
-                },
-                UnsupportedPatternKind::BitArray,
-            ),
-            (
-                Pattern::StringPrefix {
-                    location: dummy_span(),
-                    left_location: dummy_span(),
-                    left_side_assignment: None,
-                    right_location: dummy_span(),
-                    left_side_string: "pre".into(),
-                    right_side_assignment: AssignName::Variable("rest".into()),
-                },
-                UnsupportedPatternKind::StringPrefix,
-            ),
-            (
-                Pattern::Invalid {
-                    location: dummy_span(),
-                    type_: type_::int(),
-                },
-                UnsupportedPatternKind::Invalid,
-            ),
+        let patterns = vec![
+            Pattern::Int {
+                location: dummy_span(),
+                value: "1".into(),
+                int_value: BigInt::from(1),
+            },
+            Pattern::Float {
+                location: dummy_span(),
+                value: "1.0".into(),
+                float_value: LiteralFloatValue::ONE,
+            },
+            Pattern::String {
+                location: dummy_span(),
+                value: "a".into(),
+            },
+            Pattern::BitArraySize(BitArraySize::Int {
+                location: dummy_span(),
+                value: "1".into(),
+                int_value: BigInt::from(1),
+            }),
+            Pattern::List {
+                location: dummy_span(),
+                elements: vec![variable("x")],
+                tail: None,
+                type_: type_::list(type_::int()),
+            },
+            Pattern::Constructor {
+                location: dummy_span(),
+                name_location: dummy_span(),
+                name: "Boxed".into(),
+                arguments: Vec::new(),
+                module: None,
+                constructor: Inferred::Unknown,
+                spread: None,
+                type_: type_::int(),
+            },
+            Pattern::BitArray {
+                location: dummy_span(),
+                segments: Vec::new(),
+            },
+            Pattern::StringPrefix {
+                location: dummy_span(),
+                left_location: dummy_span(),
+                left_side_assignment: None,
+                right_location: dummy_span(),
+                left_side_string: "pre".into(),
+                right_side_assignment: AssignName::Variable("rest".into()),
+            },
+            Pattern::Invalid {
+                location: dummy_span(),
+                type_: type_::int(),
+            },
         ];
 
-        for (pattern, kind) in cases {
+        for pattern in patterns {
             assert_eq!(
                 plan_variable_pattern(pattern),
-                Err(PlanError::UnsupportedPattern { kind }),
+                Err(PlanError::InvalidTypedAst {
+                    reason: InvalidTypedAstReason::InvalidPattern,
+                }),
             );
         }
     }
