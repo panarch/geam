@@ -1,6 +1,8 @@
 use crate::plan::Step;
 use crate::planner::context::PlanContext;
-use crate::planner::error::PlanError;
+use crate::planner::error::{
+    PlanError, UnsupportedAssignmentKind, UnsupportedPatternKind, UnsupportedStatementKind,
+};
 use crate::planner::expression::plan_expr;
 use ecow::EcoString;
 use gleam_core::ast::{AssignmentKind, Pattern, Statement, TypedAssignment, TypedPattern};
@@ -12,8 +14,12 @@ pub(super) fn plan_step(
     match statement {
         Statement::Expression(expression) => Ok(Step::Evaluate(plan_expr(expression, context)?)),
         Statement::Assignment(assignment) => plan_assignment(*assignment, context),
-        Statement::Use(_) => Err(PlanError::UnsupportedStatement { kind: "use" }),
-        Statement::Assert(_) => Err(PlanError::UnsupportedStatement { kind: "assert" }),
+        Statement::Use(_) => Err(PlanError::UnsupportedStatement {
+            kind: UnsupportedStatementKind::Use,
+        }),
+        Statement::Assert(_) => Err(PlanError::UnsupportedStatement {
+            kind: UnsupportedStatementKind::Assert,
+        }),
     }
 }
 
@@ -24,10 +30,14 @@ fn plan_assignment(
     match assignment.kind {
         AssignmentKind::Let => {}
         AssignmentKind::Generated => {
-            return Err(PlanError::UnsupportedAssignment { kind: "generated" });
+            return Err(PlanError::UnsupportedAssignment {
+                kind: UnsupportedAssignmentKind::Generated,
+            });
         }
         AssignmentKind::Assert { .. } => {
-            return Err(PlanError::UnsupportedAssignment { kind: "let assert" });
+            return Err(PlanError::UnsupportedAssignment {
+                kind: UnsupportedAssignmentKind::LetAssert,
+            });
         }
     }
 
@@ -41,34 +51,54 @@ fn plan_assignment(
 fn plan_variable_pattern(pattern: TypedPattern) -> Result<EcoString, PlanError> {
     match pattern {
         Pattern::Variable { name, .. } => Ok(name),
-        Pattern::Int { .. } => Err(PlanError::UnsupportedPattern { kind: "int" }),
-        Pattern::Float { .. } => Err(PlanError::UnsupportedPattern { kind: "float" }),
-        Pattern::String { .. } => Err(PlanError::UnsupportedPattern { kind: "string" }),
+        Pattern::Int { .. } => Err(PlanError::UnsupportedPattern {
+            kind: UnsupportedPatternKind::Int,
+        }),
+        Pattern::Float { .. } => Err(PlanError::UnsupportedPattern {
+            kind: UnsupportedPatternKind::Float,
+        }),
+        Pattern::String { .. } => Err(PlanError::UnsupportedPattern {
+            kind: UnsupportedPatternKind::String,
+        }),
         Pattern::BitArraySize(_) => Err(PlanError::UnsupportedPattern {
-            kind: "bit array size",
+            kind: UnsupportedPatternKind::BitArraySize,
         }),
-        Pattern::Assign { .. } => Err(PlanError::UnsupportedPattern { kind: "assign" }),
-        Pattern::Discard { .. } => Err(PlanError::UnsupportedPattern { kind: "discard" }),
-        Pattern::List { .. } => Err(PlanError::UnsupportedPattern { kind: "list" }),
+        Pattern::Assign { .. } => Err(PlanError::UnsupportedPattern {
+            kind: UnsupportedPatternKind::Assign,
+        }),
+        Pattern::Discard { .. } => Err(PlanError::UnsupportedPattern {
+            kind: UnsupportedPatternKind::Discard,
+        }),
+        Pattern::List { .. } => Err(PlanError::UnsupportedPattern {
+            kind: UnsupportedPatternKind::List,
+        }),
         Pattern::Constructor { .. } => Err(PlanError::UnsupportedPattern {
-            kind: "constructor",
+            kind: UnsupportedPatternKind::Constructor,
         }),
-        Pattern::Tuple { .. } => Err(PlanError::UnsupportedPattern { kind: "tuple" }),
-        Pattern::BitArray { .. } => Err(PlanError::UnsupportedPattern { kind: "bit array" }),
+        Pattern::Tuple { .. } => Err(PlanError::UnsupportedPattern {
+            kind: UnsupportedPatternKind::Tuple,
+        }),
+        Pattern::BitArray { .. } => Err(PlanError::UnsupportedPattern {
+            kind: UnsupportedPatternKind::BitArray,
+        }),
         Pattern::StringPrefix { .. } => Err(PlanError::UnsupportedPattern {
-            kind: "string prefix",
+            kind: UnsupportedPatternKind::StringPrefix,
         }),
-        Pattern::Invalid { .. } => Err(PlanError::UnsupportedPattern { kind: "invalid" }),
+        Pattern::Invalid { .. } => Err(PlanError::UnsupportedPattern {
+            kind: UnsupportedPatternKind::Invalid,
+        }),
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::plan_variable_pattern;
-    use crate::planner::PlanError;
     use crate::planner::dsl::{function, int, local, module};
     use crate::planner::plan_module;
     use crate::planner::support::{compile, compile_minimal_module, dummy_span, expect_plan_error};
+    use crate::planner::{
+        PlanError, UnsupportedAssignmentKind, UnsupportedPatternKind, UnsupportedStatementKind,
+    };
     use gleam_core::analyse::Inferred;
     use gleam_core::ast::{
         AssignName, AssignmentKind, BitArraySize, Pattern, Statement, TypedAssignment, TypedExpr,
@@ -130,7 +160,9 @@ pub fn main() {
 }
 "#,
             ),
-            PlanError::UnsupportedStatement { kind: "assert" },
+            PlanError::UnsupportedStatement {
+                kind: UnsupportedStatementKind::Assert,
+            },
         );
     }
 
@@ -145,7 +177,9 @@ pub fn main() {
 }
 "#,
             ),
-            PlanError::UnsupportedPattern { kind: "tuple" },
+            PlanError::UnsupportedPattern {
+                kind: UnsupportedPatternKind::Tuple,
+            },
         );
     }
 
@@ -164,7 +198,7 @@ pub fn main() {
         assert_eq!(
             plan_module(final_assignment),
             Err(PlanError::UnsupportedStatement {
-                kind: "assignment as final statement",
+                kind: UnsupportedStatementKind::AssignmentAsFinalStatement,
             }),
         );
 
@@ -179,7 +213,7 @@ pub fn main() {
         assert_eq!(
             plan_module(final_use),
             Err(PlanError::UnsupportedStatement {
-                kind: "use as final statement",
+                kind: UnsupportedStatementKind::UseAsFinalStatement,
             }),
         );
 
@@ -196,7 +230,9 @@ pub fn main() {
         ];
         assert_eq!(
             plan_module(step_use),
-            Err(PlanError::UnsupportedStatement { kind: "use" }),
+            Err(PlanError::UnsupportedStatement {
+                kind: UnsupportedStatementKind::Use,
+            }),
         );
 
         let mut final_assert = compile(
@@ -212,7 +248,7 @@ pub fn main() {
         assert_eq!(
             plan_module(final_assert),
             Err(PlanError::UnsupportedStatement {
-                kind: "assert as final statement",
+                kind: UnsupportedStatementKind::AssertAsFinalStatement,
             }),
         );
     }
@@ -238,7 +274,9 @@ pub fn main() {
         ];
         assert_eq!(
             plan_module(generated),
-            Err(PlanError::UnsupportedAssignment { kind: "generated" }),
+            Err(PlanError::UnsupportedAssignment {
+                kind: UnsupportedAssignmentKind::Generated,
+            }),
         );
     }
 
@@ -253,7 +291,9 @@ pub fn main() {
 }
 "#,
             ),
-            PlanError::UnsupportedAssignment { kind: "let assert" },
+            PlanError::UnsupportedAssignment {
+                kind: UnsupportedAssignmentKind::LetAssert,
+            },
         );
     }
 
@@ -268,14 +308,14 @@ pub fn main() {
 
         assert_eq!(plan_variable_pattern(variable("x")), Ok("x".into()));
 
-        let cases: Vec<(TypedPattern, &str)> = vec![
+        let cases: Vec<(TypedPattern, UnsupportedPatternKind)> = vec![
             (
                 Pattern::Int {
                     location: dummy_span(),
                     value: "1".into(),
                     int_value: BigInt::from(1),
                 },
-                "int",
+                UnsupportedPatternKind::Int,
             ),
             (
                 Pattern::Float {
@@ -283,14 +323,14 @@ pub fn main() {
                     value: "1.0".into(),
                     float_value: LiteralFloatValue::ONE,
                 },
-                "float",
+                UnsupportedPatternKind::Float,
             ),
             (
                 Pattern::String {
                     location: dummy_span(),
                     value: "a".into(),
                 },
-                "string",
+                UnsupportedPatternKind::String,
             ),
             (
                 Pattern::BitArraySize(BitArraySize::Int {
@@ -298,7 +338,7 @@ pub fn main() {
                     value: "1".into(),
                     int_value: BigInt::from(1),
                 }),
-                "bit array size",
+                UnsupportedPatternKind::BitArraySize,
             ),
             (
                 Pattern::Assign {
@@ -306,7 +346,7 @@ pub fn main() {
                     location: dummy_span(),
                     pattern: Box::new(variable("inner")),
                 },
-                "assign",
+                UnsupportedPatternKind::Assign,
             ),
             (
                 Pattern::Discard {
@@ -314,7 +354,7 @@ pub fn main() {
                     location: dummy_span(),
                     type_: type_::int(),
                 },
-                "discard",
+                UnsupportedPatternKind::Discard,
             ),
             (
                 Pattern::List {
@@ -323,7 +363,7 @@ pub fn main() {
                     tail: None,
                     type_: type_::list(type_::int()),
                 },
-                "list",
+                UnsupportedPatternKind::List,
             ),
             (
                 Pattern::Constructor {
@@ -336,21 +376,21 @@ pub fn main() {
                     spread: None,
                     type_: type_::int(),
                 },
-                "constructor",
+                UnsupportedPatternKind::Constructor,
             ),
             (
                 Pattern::Tuple {
                     location: dummy_span(),
                     elements: vec![variable("x")],
                 },
-                "tuple",
+                UnsupportedPatternKind::Tuple,
             ),
             (
                 Pattern::BitArray {
                     location: dummy_span(),
                     segments: Vec::new(),
                 },
-                "bit array",
+                UnsupportedPatternKind::BitArray,
             ),
             (
                 Pattern::StringPrefix {
@@ -361,14 +401,14 @@ pub fn main() {
                     left_side_string: "pre".into(),
                     right_side_assignment: AssignName::Variable("rest".into()),
                 },
-                "string prefix",
+                UnsupportedPatternKind::StringPrefix,
             ),
             (
                 Pattern::Invalid {
                     location: dummy_span(),
                     type_: type_::int(),
                 },
-                "invalid",
+                UnsupportedPatternKind::Invalid,
             ),
         ];
 

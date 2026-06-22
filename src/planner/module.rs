@@ -1,16 +1,28 @@
 use crate::plan::{FunctionId, ModulePlan};
 use crate::planner::context::FunctionInfo;
-use crate::planner::error::PlanError;
+use crate::planner::error::{PlanError, UnsupportedFunctionReason, UnsupportedTopLevelKind};
 use crate::planner::function::{function_name, plan_function};
 use ecow::EcoString;
 use gleam_core::ast::TypedModule;
 use std::collections::HashMap;
 
 pub fn plan_module(module: TypedModule) -> Result<ModulePlan, PlanError> {
-    reject_top_level("import", module.definitions.imports.len())?;
-    reject_top_level("constant", module.definitions.constants.len())?;
-    reject_top_level("custom type", module.definitions.custom_types.len())?;
-    reject_top_level("type alias", module.definitions.type_aliases.len())?;
+    reject_top_level(
+        UnsupportedTopLevelKind::Import,
+        module.definitions.imports.len(),
+    )?;
+    reject_top_level(
+        UnsupportedTopLevelKind::Constant,
+        module.definitions.constants.len(),
+    )?;
+    reject_top_level(
+        UnsupportedTopLevelKind::CustomType,
+        module.definitions.custom_types.len(),
+    )?;
+    reject_top_level(
+        UnsupportedTopLevelKind::TypeAlias,
+        module.definitions.type_aliases.len(),
+    )?;
 
     let module_name = module.name;
     let functions = function_table(&module.definitions.functions)?;
@@ -55,20 +67,20 @@ fn main_function(functions: &HashMap<EcoString, FunctionInfo>) -> Result<Functio
         .get("main")
         .ok_or_else(|| PlanError::UnsupportedFunction {
             name: "main".into(),
-            reason: "main function is required",
+            reason: UnsupportedFunctionReason::MissingMain,
         })?;
 
     if main.arity != 0 {
         return Err(PlanError::UnsupportedFunction {
             name: "main".into(),
-            reason: "main must not take arguments",
+            reason: UnsupportedFunctionReason::MainWithArguments,
         });
     }
 
     Ok(main.id)
 }
 
-fn reject_top_level(kind: &'static str, count: usize) -> Result<(), PlanError> {
+fn reject_top_level(kind: UnsupportedTopLevelKind, count: usize) -> Result<(), PlanError> {
     if count == 0 {
         Ok(())
     } else {
@@ -79,9 +91,9 @@ fn reject_top_level(kind: &'static str, count: usize) -> Result<(), PlanError> {
 #[cfg(test)]
 mod tests {
     use super::plan_module;
-    use crate::planner::PlanError;
     use crate::planner::dsl::{function, int, module};
     use crate::planner::support::{compile, compile_minimal_module, dummy_span, expect_plan_error};
+    use crate::planner::{PlanError, UnsupportedFunctionReason, UnsupportedTopLevelKind};
     use gleam_core::ast::TypedImport;
 
     #[test]
@@ -113,7 +125,9 @@ pub fn main() {
 }
 "#,
             ),
-            PlanError::UnsupportedTopLevel { kind: "constant" },
+            PlanError::UnsupportedTopLevel {
+                kind: UnsupportedTopLevelKind::Constant,
+            },
         );
     }
 
@@ -129,7 +143,7 @@ pub fn other() {
             ),
             PlanError::UnsupportedFunction {
                 name: "main".into(),
-                reason: "main function is required",
+                reason: UnsupportedFunctionReason::MissingMain,
             },
         );
     }
@@ -146,7 +160,7 @@ pub fn main(value: Int) {
             ),
             PlanError::UnsupportedFunction {
                 name: "main".into(),
-                reason: "main must not take arguments",
+                reason: UnsupportedFunctionReason::MainWithArguments,
             },
         );
     }
@@ -161,7 +175,9 @@ pub fn main() {
   answer
 }
 "#,
-            PlanError::UnsupportedTopLevel { kind: "constant" },
+            PlanError::UnsupportedTopLevel {
+                kind: UnsupportedTopLevelKind::Constant,
+            },
         );
 
         assert_plan_error(
@@ -175,7 +191,7 @@ pub fn main() {
 }
 "#,
             PlanError::UnsupportedTopLevel {
-                kind: "custom type",
+                kind: UnsupportedTopLevelKind::CustomType,
             },
         );
 
@@ -188,7 +204,9 @@ pub fn main() {
   1
 }
 "#,
-            PlanError::UnsupportedTopLevel { kind: "type alias" },
+            PlanError::UnsupportedTopLevel {
+                kind: UnsupportedTopLevelKind::TypeAlias,
+            },
         );
     }
 
@@ -208,7 +226,9 @@ pub fn main() {
 
         assert_eq!(
             plan_module(module),
-            Err(PlanError::UnsupportedTopLevel { kind: "import" }),
+            Err(PlanError::UnsupportedTopLevel {
+                kind: UnsupportedTopLevelKind::Import,
+            }),
         );
     }
 

@@ -1,6 +1,8 @@
 use crate::plan::{BinOp, Expr, Value};
 use crate::planner::context::{FunctionInfo, PlanContext};
-use crate::planner::error::PlanError;
+use crate::planner::error::{
+    PlanError, UnsupportedBinOpKind, UnsupportedCallReason, UnsupportedExpressionKind,
+};
 use ecow::EcoString;
 use gleam_core::ast::{BinOp as GleamBinOp, TypedExpr};
 use gleam_core::type_::{PRELUDE_MODULE_NAME, ValueConstructor, ValueConstructorVariant};
@@ -32,35 +34,57 @@ pub(super) fn plan_expr(
         TypedExpr::NegateBool { value, .. } => {
             Ok(Expr::NegateBool(Box::new(plan_expr(*value, context)?)))
         }
-        TypedExpr::Float { .. } => Err(PlanError::UnsupportedExpression { kind: "float" }),
-        TypedExpr::Block { .. } => Err(PlanError::UnsupportedExpression { kind: "block" }),
-        TypedExpr::Pipeline { .. } => Err(PlanError::UnsupportedExpression { kind: "pipeline" }),
-        TypedExpr::Fn { .. } => Err(PlanError::UnsupportedExpression {
-            kind: "anonymous function",
+        TypedExpr::Float { .. } => Err(PlanError::UnsupportedExpression {
+            kind: UnsupportedExpressionKind::Float,
         }),
-        TypedExpr::List { .. } => Err(PlanError::UnsupportedExpression { kind: "list" }),
-        TypedExpr::Case { .. } => Err(PlanError::UnsupportedExpression { kind: "case" }),
+        TypedExpr::Block { .. } => Err(PlanError::UnsupportedExpression {
+            kind: UnsupportedExpressionKind::Block,
+        }),
+        TypedExpr::Pipeline { .. } => Err(PlanError::UnsupportedExpression {
+            kind: UnsupportedExpressionKind::Pipeline,
+        }),
+        TypedExpr::Fn { .. } => Err(PlanError::UnsupportedExpression {
+            kind: UnsupportedExpressionKind::AnonymousFunction,
+        }),
+        TypedExpr::List { .. } => Err(PlanError::UnsupportedExpression {
+            kind: UnsupportedExpressionKind::List,
+        }),
+        TypedExpr::Case { .. } => Err(PlanError::UnsupportedExpression {
+            kind: UnsupportedExpressionKind::Case,
+        }),
         TypedExpr::RecordAccess { .. } => Err(PlanError::UnsupportedExpression {
-            kind: "record access",
+            kind: UnsupportedExpressionKind::RecordAccess,
         }),
         TypedExpr::PositionalAccess { .. } => Err(PlanError::UnsupportedExpression {
-            kind: "positional access",
+            kind: UnsupportedExpressionKind::PositionalAccess,
         }),
         TypedExpr::ModuleSelect { .. } => Err(PlanError::UnsupportedExpression {
-            kind: "module select",
+            kind: UnsupportedExpressionKind::ModuleSelect,
         }),
-        TypedExpr::Tuple { .. } => Err(PlanError::UnsupportedExpression { kind: "tuple" }),
+        TypedExpr::Tuple { .. } => Err(PlanError::UnsupportedExpression {
+            kind: UnsupportedExpressionKind::Tuple,
+        }),
         TypedExpr::TupleIndex { .. } => Err(PlanError::UnsupportedExpression {
-            kind: "tuple index",
+            kind: UnsupportedExpressionKind::TupleIndex,
         }),
-        TypedExpr::Todo { .. } => Err(PlanError::UnsupportedExpression { kind: "todo" }),
-        TypedExpr::Panic { .. } => Err(PlanError::UnsupportedExpression { kind: "panic" }),
-        TypedExpr::Echo { .. } => Err(PlanError::UnsupportedExpression { kind: "echo" }),
-        TypedExpr::BitArray { .. } => Err(PlanError::UnsupportedExpression { kind: "bit array" }),
+        TypedExpr::Todo { .. } => Err(PlanError::UnsupportedExpression {
+            kind: UnsupportedExpressionKind::Todo,
+        }),
+        TypedExpr::Panic { .. } => Err(PlanError::UnsupportedExpression {
+            kind: UnsupportedExpressionKind::Panic,
+        }),
+        TypedExpr::Echo { .. } => Err(PlanError::UnsupportedExpression {
+            kind: UnsupportedExpressionKind::Echo,
+        }),
+        TypedExpr::BitArray { .. } => Err(PlanError::UnsupportedExpression {
+            kind: UnsupportedExpressionKind::BitArray,
+        }),
         TypedExpr::RecordUpdate { .. } => Err(PlanError::UnsupportedExpression {
-            kind: "record update",
+            kind: UnsupportedExpressionKind::RecordUpdate,
         }),
-        TypedExpr::Invalid { .. } => Err(PlanError::UnsupportedExpression { kind: "invalid" }),
+        TypedExpr::Invalid { .. } => Err(PlanError::UnsupportedExpression {
+            kind: UnsupportedExpressionKind::Invalid,
+        }),
     }
 }
 
@@ -86,17 +110,17 @@ fn plan_var(
             "False" => Ok(Expr::Value(Value::Bool(false))),
             "Nil" => Ok(Expr::Value(Value::Nil)),
             _ => Err(PlanError::UnsupportedExpression {
-                kind: "prelude constructor",
+                kind: UnsupportedExpressionKind::PreludeConstructor,
             }),
         },
         ValueConstructorVariant::ModuleFn { .. } => Err(PlanError::UnsupportedExpression {
-            kind: "function reference",
+            kind: UnsupportedExpressionKind::FunctionReference,
         }),
         ValueConstructorVariant::ModuleConstant { .. } => Err(PlanError::UnsupportedExpression {
-            kind: "module constant",
+            kind: UnsupportedExpressionKind::ModuleConstant,
         }),
         ValueConstructorVariant::Record { .. } => Err(PlanError::UnsupportedExpression {
-            kind: "record constructor",
+            kind: UnsupportedExpressionKind::RecordConstructor,
         }),
     }
 }
@@ -108,20 +132,20 @@ fn plan_call(
 ) -> Result<Expr, PlanError> {
     if arguments.iter().any(|argument| argument.label.is_some()) {
         return Err(PlanError::UnsupportedCall {
-            reason: "labelled call arguments are not supported",
+            reason: UnsupportedCallReason::LabelledArguments,
         });
     }
 
     if arguments.iter().any(|argument| argument.implicit.is_some()) {
         return Err(PlanError::UnsupportedCall {
-            reason: "implicit call arguments are not supported",
+            reason: UnsupportedCallReason::ImplicitArguments,
         });
     }
 
     let function = plan_function_ref(fun, context)?;
     if function.arity != arguments.len() {
         return Err(PlanError::UnsupportedCall {
-            reason: "local function call arity mismatch",
+            reason: UnsupportedCallReason::LocalFunctionCallArityMismatch,
         });
     }
     let args = arguments
@@ -141,7 +165,7 @@ fn plan_function_ref(
 ) -> Result<FunctionInfo, PlanError> {
     let TypedExpr::Var { constructor, .. } = expression else {
         return Err(PlanError::UnsupportedCall {
-            reason: "only direct local function calls are supported",
+            reason: UnsupportedCallReason::NonDirectLocalFunction,
         });
     };
 
@@ -159,20 +183,20 @@ fn plan_function_ref(
             context
                 .lookup_function(&name)
                 .ok_or(PlanError::UnsupportedCall {
-                    reason: "only current-module functions are supported",
+                    reason: UnsupportedCallReason::NonCurrentModuleFunction,
                 })
         }
         ValueConstructorVariant::ModuleFn { .. } => Err(PlanError::UnsupportedCall {
-            reason: "only current-module functions are supported",
+            reason: UnsupportedCallReason::NonCurrentModuleFunction,
         }),
         ValueConstructorVariant::LocalVariable { .. } => Err(PlanError::UnsupportedCall {
-            reason: "calling local function values is not supported",
+            reason: UnsupportedCallReason::LocalFunctionValue,
         }),
         ValueConstructorVariant::ModuleConstant { .. } => Err(PlanError::UnsupportedCall {
-            reason: "calling module constants is not supported",
+            reason: UnsupportedCallReason::ModuleConstant,
         }),
         ValueConstructorVariant::Record { .. } => Err(PlanError::UnsupportedCall {
-            reason: "calling record constructors is not supported",
+            reason: UnsupportedCallReason::RecordConstructor,
         }),
     }
 }
@@ -191,41 +215,47 @@ fn plan_bin_op(operator: GleamBinOp) -> Result<BinOp, PlanError> {
         GleamBinOp::Eq => Ok(BinOp::Eq),
         GleamBinOp::NotEq => Ok(BinOp::NotEq),
         GleamBinOp::Concatenate => Ok(BinOp::Concatenate),
-        GleamBinOp::And => Err(PlanError::UnsupportedBinOp { operator: "and" }),
-        GleamBinOp::Or => Err(PlanError::UnsupportedBinOp { operator: "or" }),
+        GleamBinOp::And => Err(PlanError::UnsupportedBinOp {
+            operator: UnsupportedBinOpKind::And,
+        }),
+        GleamBinOp::Or => Err(PlanError::UnsupportedBinOp {
+            operator: UnsupportedBinOpKind::Or,
+        }),
         GleamBinOp::LtFloat => Err(PlanError::UnsupportedBinOp {
-            operator: "lt float",
+            operator: UnsupportedBinOpKind::LtFloat,
         }),
         GleamBinOp::LtEqFloat => Err(PlanError::UnsupportedBinOp {
-            operator: "lte float",
+            operator: UnsupportedBinOpKind::LtEqFloat,
         }),
         GleamBinOp::GtEqFloat => Err(PlanError::UnsupportedBinOp {
-            operator: "gte float",
+            operator: UnsupportedBinOpKind::GtEqFloat,
         }),
         GleamBinOp::GtFloat => Err(PlanError::UnsupportedBinOp {
-            operator: "gt float",
+            operator: UnsupportedBinOpKind::GtFloat,
         }),
         GleamBinOp::AddFloat => Err(PlanError::UnsupportedBinOp {
-            operator: "add float",
+            operator: UnsupportedBinOpKind::AddFloat,
         }),
         GleamBinOp::SubFloat => Err(PlanError::UnsupportedBinOp {
-            operator: "sub float",
+            operator: UnsupportedBinOpKind::SubFloat,
         }),
         GleamBinOp::MultFloat => Err(PlanError::UnsupportedBinOp {
-            operator: "mult float",
+            operator: UnsupportedBinOpKind::MultFloat,
         }),
         GleamBinOp::DivFloat => Err(PlanError::UnsupportedBinOp {
-            operator: "div float",
+            operator: UnsupportedBinOpKind::DivFloat,
         }),
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::planner::PlanError;
     use crate::planner::dsl::{bool_, call, function, int, local, module, nil, string};
     use crate::planner::plan_module;
     use crate::planner::support::{compile, compile_minimal_module, dummy_span, expect_plan_error};
+    use crate::planner::{
+        PlanError, UnsupportedBinOpKind, UnsupportedCallReason, UnsupportedExpressionKind,
+    };
     use gleam_core::ast::Publicity;
     use gleam_core::ast::{
         BinOp as GleamBinOp, CallArg, Constant, ImplicitCallArgOrigin, Statement, TypedExpr,
@@ -384,7 +414,9 @@ pub fn main() {
 }
 "#,
             ),
-            PlanError::UnsupportedExpression { kind: "pipeline" },
+            PlanError::UnsupportedExpression {
+                kind: UnsupportedExpressionKind::Pipeline,
+            },
         );
     }
 
@@ -398,7 +430,9 @@ pub fn main() {
 }
 "#,
             ),
-            PlanError::UnsupportedExpression { kind: "list" },
+            PlanError::UnsupportedExpression {
+                kind: UnsupportedExpressionKind::List,
+            },
         );
     }
 
@@ -407,52 +441,68 @@ pub fn main() {
         let cases = [
             (
                 r#"pub fn main() { 1.0 }"#,
-                PlanError::UnsupportedExpression { kind: "float" },
+                PlanError::UnsupportedExpression {
+                    kind: UnsupportedExpressionKind::Float,
+                },
             ),
             (
                 r#"pub fn main() { { 1 } }"#,
-                PlanError::UnsupportedExpression { kind: "block" },
+                PlanError::UnsupportedExpression {
+                    kind: UnsupportedExpressionKind::Block,
+                },
             ),
             (
                 r#"pub fn main() { fn(x) { x } }"#,
                 PlanError::UnsupportedExpression {
-                    kind: "anonymous function",
+                    kind: UnsupportedExpressionKind::AnonymousFunction,
                 },
             ),
             (
                 r#"pub fn main() { case 1 { 1 -> 2 _ -> 3 } }"#,
-                PlanError::UnsupportedExpression { kind: "case" },
+                PlanError::UnsupportedExpression {
+                    kind: UnsupportedExpressionKind::Case,
+                },
             ),
             (
                 r#"pub fn main() { #(1, 2) }"#,
-                PlanError::UnsupportedExpression { kind: "tuple" },
+                PlanError::UnsupportedExpression {
+                    kind: UnsupportedExpressionKind::Tuple,
+                },
             ),
             (
                 r#"pub fn main() { #(1, 2).0 }"#,
                 PlanError::UnsupportedExpression {
-                    kind: "tuple index",
+                    kind: UnsupportedExpressionKind::TupleIndex,
                 },
             ),
             (
                 r#"pub fn main() { todo }"#,
-                PlanError::UnsupportedExpression { kind: "todo" },
+                PlanError::UnsupportedExpression {
+                    kind: UnsupportedExpressionKind::Todo,
+                },
             ),
             (
                 r#"pub fn main() { panic }"#,
-                PlanError::UnsupportedExpression { kind: "panic" },
+                PlanError::UnsupportedExpression {
+                    kind: UnsupportedExpressionKind::Panic,
+                },
             ),
             (
                 r#"pub fn main() { echo 1 }"#,
-                PlanError::UnsupportedExpression { kind: "echo" },
+                PlanError::UnsupportedExpression {
+                    kind: UnsupportedExpressionKind::Echo,
+                },
             ),
             (
                 r#"pub fn main() { <<1>> }"#,
-                PlanError::UnsupportedExpression { kind: "bit array" },
+                PlanError::UnsupportedExpression {
+                    kind: UnsupportedExpressionKind::BitArray,
+                },
             ),
             (
                 r#"fn identity(value: Int) { value } pub fn main() { identity }"#,
                 PlanError::UnsupportedExpression {
-                    kind: "function reference",
+                    kind: UnsupportedExpressionKind::FunctionReference,
                 },
             ),
         ];
@@ -473,7 +523,7 @@ pub fn main() {
                     record: Box::new(typed_int_expr(1)),
                 }),
                 PlanError::UnsupportedExpression {
-                    kind: "positional access",
+                    kind: UnsupportedExpressionKind::PositionalAccess,
                 },
             ),
             (
@@ -495,7 +545,7 @@ pub fn main() {
                     },
                 }),
                 PlanError::UnsupportedExpression {
-                    kind: "module select",
+                    kind: UnsupportedExpressionKind::ModuleSelect,
                 },
             ),
             (
@@ -504,7 +554,9 @@ pub fn main() {
                     type_: type_::int(),
                     extra_information: None,
                 }),
-                PlanError::UnsupportedExpression { kind: "invalid" },
+                PlanError::UnsupportedExpression {
+                    kind: UnsupportedExpressionKind::Invalid,
+                },
             ),
         ];
 
@@ -527,7 +579,7 @@ pub fn main() {
         assert_eq!(
             plan_module(record_access),
             Err(PlanError::UnsupportedExpression {
-                kind: "record access",
+                kind: UnsupportedExpressionKind::RecordAccess,
             }),
         );
 
@@ -542,7 +594,7 @@ pub fn main() {
                 arguments: Vec::new(),
             })),
             Err(PlanError::UnsupportedExpression {
-                kind: "record update",
+                kind: UnsupportedExpressionKind::RecordUpdate,
             }),
         );
     }
@@ -577,7 +629,7 @@ pub fn main() {
         assert_eq!(
             plan_module(module_constant),
             Err(PlanError::UnsupportedExpression {
-                kind: "module constant",
+                kind: UnsupportedExpressionKind::ModuleConstant,
             }),
         );
 
@@ -596,7 +648,7 @@ pub fn main() {
         assert_eq!(
             plan_module(record_constructor),
             Err(PlanError::UnsupportedExpression {
-                kind: "record constructor",
+                kind: UnsupportedExpressionKind::RecordConstructor,
             }),
         );
 
@@ -621,7 +673,7 @@ pub fn main() {
                 },
             })),
             Err(PlanError::UnsupportedExpression {
-                kind: "prelude constructor",
+                kind: UnsupportedExpressionKind::PreludeConstructor,
             }),
         );
 
@@ -646,7 +698,7 @@ pub fn main() {
         assert_eq!(
             plan_module(local_variable_call),
             Err(PlanError::UnsupportedCall {
-                reason: "calling local function values is not supported",
+                reason: UnsupportedCallReason::LocalFunctionValue,
             }),
         );
 
@@ -679,7 +731,7 @@ pub fn main() {
         assert_eq!(
             plan_module(module_constant_call),
             Err(PlanError::UnsupportedCall {
-                reason: "calling module constants is not supported",
+                reason: UnsupportedCallReason::ModuleConstant,
             }),
         );
     }
@@ -716,7 +768,7 @@ pub fn main() {
         assert_eq!(
             plan_module(labelled_call),
             Err(PlanError::UnsupportedCall {
-                reason: "labelled call arguments are not supported",
+                reason: UnsupportedCallReason::LabelledArguments,
             }),
         );
 
@@ -737,7 +789,7 @@ pub fn main() {
         assert_eq!(
             plan_module(implicit_call),
             Err(PlanError::UnsupportedCall {
-                reason: "implicit call arguments are not supported",
+                reason: UnsupportedCallReason::ImplicitArguments,
             }),
         );
 
@@ -758,7 +810,7 @@ pub fn main() {
         assert_eq!(
             plan_module(arity_mismatch_call),
             Err(PlanError::UnsupportedCall {
-                reason: "local function call arity mismatch",
+                reason: UnsupportedCallReason::LocalFunctionCallArityMismatch,
             }),
         );
 
@@ -779,7 +831,7 @@ pub fn main() {
         assert_eq!(
             plan_module(non_direct_call),
             Err(PlanError::UnsupportedCall {
-                reason: "only direct local function calls are supported",
+                reason: UnsupportedCallReason::NonDirectLocalFunction,
             }),
         );
 
@@ -811,7 +863,7 @@ pub fn main() {
         assert_eq!(
             plan_module(record_constructor_call),
             Err(PlanError::UnsupportedCall {
-                reason: "calling record constructors is not supported",
+                reason: UnsupportedCallReason::RecordConstructor,
             }),
         );
     }
@@ -831,7 +883,7 @@ pub fn main() {
         assert_eq!(
             plan_module(non_local_module_fn),
             Err(PlanError::UnsupportedCall {
-                reason: "only current-module functions are supported",
+                reason: UnsupportedCallReason::NonCurrentModuleFunction,
             }),
         );
     }
@@ -856,16 +908,16 @@ pub fn main() {
     #[test]
     fn reject_margin_binary_operators() {
         let cases = [
-            (GleamBinOp::And, "and"),
-            (GleamBinOp::Or, "or"),
-            (GleamBinOp::LtFloat, "lt float"),
-            (GleamBinOp::LtEqFloat, "lte float"),
-            (GleamBinOp::GtEqFloat, "gte float"),
-            (GleamBinOp::GtFloat, "gt float"),
-            (GleamBinOp::AddFloat, "add float"),
-            (GleamBinOp::SubFloat, "sub float"),
-            (GleamBinOp::MultFloat, "mult float"),
-            (GleamBinOp::DivFloat, "div float"),
+            (GleamBinOp::And, UnsupportedBinOpKind::And),
+            (GleamBinOp::Or, UnsupportedBinOpKind::Or),
+            (GleamBinOp::LtFloat, UnsupportedBinOpKind::LtFloat),
+            (GleamBinOp::LtEqFloat, UnsupportedBinOpKind::LtEqFloat),
+            (GleamBinOp::GtEqFloat, UnsupportedBinOpKind::GtEqFloat),
+            (GleamBinOp::GtFloat, UnsupportedBinOpKind::GtFloat),
+            (GleamBinOp::AddFloat, UnsupportedBinOpKind::AddFloat),
+            (GleamBinOp::SubFloat, UnsupportedBinOpKind::SubFloat),
+            (GleamBinOp::MultFloat, UnsupportedBinOpKind::MultFloat),
+            (GleamBinOp::DivFloat, UnsupportedBinOpKind::DivFloat),
         ];
 
         for (operator, expected) in cases {

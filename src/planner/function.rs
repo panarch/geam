@@ -1,6 +1,8 @@
 use crate::plan::{FunctionId, FunctionPlan, Param};
 use crate::planner::context::{FunctionInfo, PlanContext};
-use crate::planner::error::PlanError;
+use crate::planner::error::{
+    PlanError, UnsupportedArgumentReason, UnsupportedFunctionReason, UnsupportedStatementKind,
+};
 use crate::planner::expression::plan_expr;
 use crate::planner::statement::plan_step;
 use ecow::EcoString;
@@ -18,7 +20,7 @@ pub(super) fn plan_function(
     if function.external_erlang.is_some() || function.external_javascript.is_some() {
         return Err(PlanError::UnsupportedFunction {
             name,
-            reason: "external functions are not executable by the Geam runtime",
+            reason: UnsupportedFunctionReason::External,
         });
     }
 
@@ -28,7 +30,7 @@ pub(super) fn plan_function(
     let Some(last_statement) = body.pop() else {
         return Err(PlanError::UnsupportedFunction {
             name,
-            reason: "empty function bodies are not supported",
+            reason: UnsupportedFunctionReason::EmptyBody,
         });
     };
 
@@ -41,17 +43,17 @@ pub(super) fn plan_function(
         Statement::Expression(expression) => plan_expr(expression, &mut context)?,
         Statement::Assignment(_) => {
             return Err(PlanError::UnsupportedStatement {
-                kind: "assignment as final statement",
+                kind: UnsupportedStatementKind::AssignmentAsFinalStatement,
             });
         }
         Statement::Use(_) => {
             return Err(PlanError::UnsupportedStatement {
-                kind: "use as final statement",
+                kind: UnsupportedStatementKind::UseAsFinalStatement,
             });
         }
         Statement::Assert(_) => {
             return Err(PlanError::UnsupportedStatement {
-                kind: "assert as final statement",
+                kind: UnsupportedStatementKind::AssertAsFinalStatement,
             });
         }
     };
@@ -72,7 +74,7 @@ pub(super) fn function_name(function: &TypedFunction) -> Result<EcoString, PlanE
         .map(|(_, name)| name.clone())
         .ok_or(PlanError::UnsupportedFunction {
             name: "<anonymous>".into(),
-            reason: "anonymous functions are not module functions",
+            reason: UnsupportedFunctionReason::Anonymous,
         })
 }
 
@@ -87,14 +89,14 @@ fn plan_params(
             let Some(argument_name) = argument.names.get_variable_name().cloned() else {
                 return Err(PlanError::UnsupportedArgument {
                     function: function_name.clone(),
-                    reason: "discard arguments are not supported",
+                    reason: UnsupportedArgumentReason::Discard,
                 });
             };
 
             if !matches!(argument.names, ArgNames::Named { .. }) {
                 return Err(PlanError::UnsupportedArgument {
                     function: function_name.clone(),
-                    reason: "labelled arguments are not supported",
+                    reason: UnsupportedArgumentReason::Labelled,
                 });
             }
 
@@ -109,10 +111,10 @@ fn plan_params(
 
 #[cfg(test)]
 mod tests {
-    use crate::planner::PlanError;
     use crate::planner::dsl::{call, function, int, local, module};
     use crate::planner::plan_module;
     use crate::planner::support::{compile, compile_minimal_module, dummy_span, expect_plan_error};
+    use crate::planner::{PlanError, UnsupportedArgumentReason, UnsupportedFunctionReason};
     use gleam_core::ast::ArgNames;
 
     #[test]
@@ -158,7 +160,7 @@ pub fn main() {
             ),
             PlanError::UnsupportedArgument {
                 function: "identity".into(),
-                reason: "labelled arguments are not supported",
+                reason: UnsupportedArgumentReason::Labelled,
             },
         );
     }
@@ -172,7 +174,7 @@ pub fn main() {
             plan_module(external),
             Err(PlanError::UnsupportedFunction {
                 name: "main".into(),
-                reason: "external functions are not executable by the Geam runtime",
+                reason: UnsupportedFunctionReason::External,
             }),
         );
 
@@ -195,7 +197,7 @@ pub fn main() {
             plan_module(discard_arg),
             Err(PlanError::UnsupportedArgument {
                 function: "helper".into(),
-                reason: "discard arguments are not supported",
+                reason: UnsupportedArgumentReason::Discard,
             }),
         );
 
@@ -205,7 +207,7 @@ pub fn main() {
             plan_module(empty_body),
             Err(PlanError::UnsupportedFunction {
                 name: "main".into(),
-                reason: "empty function bodies are not supported",
+                reason: UnsupportedFunctionReason::EmptyBody,
             }),
         );
     }

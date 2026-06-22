@@ -7,7 +7,11 @@ mod function;
 mod module;
 mod statement;
 
-pub use error::PlanError;
+pub use error::{
+    PlanError, UnsupportedArgumentReason, UnsupportedAssignmentKind, UnsupportedBinOpKind,
+    UnsupportedCallReason, UnsupportedExpressionKind, UnsupportedFunctionReason,
+    UnsupportedPatternKind, UnsupportedStatementKind, UnsupportedTopLevelKind,
+};
 pub use module::plan_module;
 
 #[cfg(test)]
