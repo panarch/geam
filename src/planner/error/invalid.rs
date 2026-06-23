@@ -35,8 +35,14 @@ pub enum InvalidTypedAstReason {
 pub enum InvalidFunctionShapeReason {
     #[error("anonymous functions are not module functions")]
     Anonymous,
+    #[error("function arity does not match function type")]
+    ArityMismatch,
     #[error("empty function bodies are not supported")]
     EmptyBody,
+    #[error("function literal kind is not valid in this expression position")]
+    InvalidLiteralKind,
+    #[error("function argument names are not valid in this expression position")]
+    InvalidArgumentNames,
 }
 
 #[derive(Debug, Error, Clone, Copy, PartialEq, Eq)]
@@ -69,10 +75,18 @@ pub enum InvalidExpressionType {
     Bool,
     #[error("Nil")]
     Nil,
+    #[error("Function")]
+    Function,
 }
 
 #[derive(Debug, Error, Clone, Copy, PartialEq, Eq)]
 pub enum InvalidCallShapeReason {
+    #[error("function value call arity mismatch")]
+    FunctionCallArityMismatch,
+    #[error("function value call return type mismatch")]
+    FunctionCallReturnTypeMismatch,
+    #[error("function value call target is not a function")]
+    FunctionCallTargetTypeMismatch,
     #[error("implicit call arguments")]
     ImplicitArguments,
     #[error("labelled call arguments")]

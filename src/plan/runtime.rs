@@ -1,6 +1,7 @@
 use super::{
-    BoolExpr, BoolFunctionId, ExprKind, FunctionPlan, IntExpr, IntFunctionId, NilExpr,
-    NilFunctionId, RuntimeFunction, RuntimeFunctionId, StringExpr, StringFunctionId,
+    BoolExpr, BoolFunctionId, ExprKind, FunctionExpr, FunctionFunctionId, FunctionPlan, IntExpr,
+    IntFunctionId, NilExpr, NilFunctionId, RuntimeFunction, RuntimeFunctionId, StringExpr,
+    StringFunctionId,
 };
 
 pub(super) struct RuntimePlan {
@@ -9,6 +10,7 @@ pub(super) struct RuntimePlan {
     string_functions: Vec<RuntimeFunction<StringExpr>>,
     bool_functions: Vec<RuntimeFunction<BoolExpr>>,
     nil_functions: Vec<RuntimeFunction<NilExpr>>,
+    function_functions: Vec<RuntimeFunction<FunctionExpr>>,
 }
 
 impl RuntimePlan {
@@ -26,6 +28,7 @@ impl RuntimePlan {
             string_functions: runtime.string_functions,
             bool_functions: runtime.bool_functions,
             nil_functions: runtime.nil_functions,
+            function_functions: runtime.function_functions,
         }
     }
 
@@ -48,6 +51,13 @@ impl RuntimePlan {
     pub(super) fn nil_function(&self, id: NilFunctionId) -> &RuntimeFunction<NilExpr> {
         &self.nil_functions[id.0]
     }
+
+    pub(super) fn function_function(
+        &self,
+        id: FunctionFunctionId,
+    ) -> &RuntimeFunction<FunctionExpr> {
+        &self.function_functions[id.0]
+    }
 }
 
 #[derive(Default)]
@@ -56,6 +66,7 @@ struct RuntimePlanBuilder {
     string_functions: Vec<RuntimeFunction<StringExpr>>,
     bool_functions: Vec<RuntimeFunction<BoolExpr>>,
     nil_functions: Vec<RuntimeFunction<NilExpr>>,
+    function_functions: Vec<RuntimeFunction<FunctionExpr>>,
 }
 
 impl RuntimePlanBuilder {
@@ -106,6 +117,17 @@ fn runtime_function(
                 return_.clone(),
             ));
             RuntimeFunctionId::Nil(id)
+        }
+        ExprKind::Function(return_) => {
+            let id = FunctionFunctionId(runtime_functions.function_functions.len());
+            runtime_functions
+                .function_functions
+                .push(RuntimeFunction::new(
+                    function.frame_layout(),
+                    function.steps().to_vec(),
+                    return_.clone(),
+                ));
+            RuntimeFunctionId::Function(id)
         }
     }
 }

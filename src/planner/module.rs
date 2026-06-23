@@ -1,5 +1,5 @@
 use crate::plan::{ExecutionPlan, FunctionId, LocalId, ValueType};
-use crate::planner::context::{FunctionInfo, FunctionParam, FunctionRuntimeIds};
+use crate::planner::context::{FunctionInfo, FunctionParam, FunctionPlanState, FunctionRuntimeIds};
 use crate::planner::error::{
     PlanError, UnsupportedArgumentReason, UnsupportedFunctionReason, UnsupportedTopLevelKind,
 };
@@ -32,21 +32,37 @@ pub fn plan_module(module: TypedModule) -> Result<ExecutionPlan, PlanError> {
         main,
         functions_before_main,
         functions_after_main,
+        runtime_ids,
+        next_function_index,
     } = function_table(&module.definitions.functions)?;
     let main = validate_main_function(main)?;
     let mut functions = Vec::new();
+    let mut state = FunctionPlanState::new(runtime_ids, next_function_index);
 
     for function in functions_before_main {
-        let planned = plan_function(function.info, &module_name, &by_name, function.function)?;
+        let planned = plan_function(
+            function.info,
+            &module_name,
+            &by_name,
+            &mut state,
+            function.function,
+        )?;
         functions.push(planned);
     }
 
-    let main = plan_function(main.info, &module_name, &by_name, main.function)?;
+    let main = plan_function(main.info, &module_name, &by_name, &mut state, main.function)?;
 
     for function in functions_after_main {
-        let planned = plan_function(function.info, &module_name, &by_name, function.function)?;
+        let planned = plan_function(
+            function.info,
+            &module_name,
+            &by_name,
+            &mut state,
+            function.function,
+        )?;
         functions.push(planned);
     }
+    functions.extend(state.into_anonymous_functions());
 
     Ok(ExecutionPlan::new(module_name, main, functions))
 }
@@ -56,6 +72,8 @@ struct FunctionTable {
     main: FunctionToPlan,
     functions_before_main: Vec<FunctionToPlan>,
     functions_after_main: Vec<FunctionToPlan>,
+    runtime_ids: FunctionRuntimeIds,
+    next_function_index: usize,
 }
 
 struct FunctionToPlan {
@@ -129,6 +147,8 @@ fn function_table(
         main,
         functions_before_main,
         functions_after_main,
+        runtime_ids,
+        next_function_index,
     })
 }
 
@@ -137,13 +157,18 @@ fn function_info(
     seed: &FunctionSeed,
     runtime_ids: &mut FunctionRuntimeIds,
 ) -> FunctionInfo {
-    let return_type = seed.return_type;
-    let runtime_id = return_type.map(|return_type| runtime_ids.next(return_type));
+    let return_type = seed.return_type.clone();
+    let runtime_id = return_type
+        .clone()
+        .map(|return_type| runtime_ids.next(return_type));
     FunctionInfo {
         id: FunctionId::new(function_index),
         runtime_id,
         arity: seed.arity,
         params: seed.params.clone(),
+        type_: return_type.clone().map(|return_type| {
+            crate::plan::FunctionType::new(param_types(&seed.params), return_type)
+        }),
         return_type,
     }
 }
@@ -165,6 +190,7 @@ fn function_params(
     let mut next_string = 0;
     let mut next_bool = 0;
     let mut next_nil = 0;
+    let mut next_function = 0;
 
     arguments
         .iter()
@@ -183,35 +209,47 @@ fn function_params(
                 });
             }
 
-            let local = match ValueType::from_gleam(&argument.type_) {
-                Some(ValueType::Int) => {
+            let Some(type_) = ValueType::from_gleam(&argument.type_) else {
+                return Err(PlanError::UnsupportedArgument {
+                    function: function_name.clone(),
+                    reason: UnsupportedArgumentReason::UnsupportedType,
+                });
+            };
+
+            let local = match &type_ {
+                ValueType::Int => {
                     let local = LocalId::Int(crate::plan::IntLocalId(next_int));
                     next_int += 1;
                     local
                 }
-                Some(ValueType::String) => {
+                ValueType::String => {
                     let local = LocalId::String(crate::plan::StringLocalId(next_string));
                     next_string += 1;
                     local
                 }
-                Some(ValueType::Bool) => {
+                ValueType::Bool => {
                     let local = LocalId::Bool(crate::plan::BoolLocalId(next_bool));
                     next_bool += 1;
                     local
                 }
-                Some(ValueType::Nil) => {
+                ValueType::Nil => {
                     let local = LocalId::Nil(crate::plan::NilLocalId(next_nil));
                     next_nil += 1;
                     local
                 }
-                None => Err(PlanError::UnsupportedArgument {
-                    function: function_name.clone(),
-                    reason: UnsupportedArgumentReason::UnsupportedType,
-                })?,
+                ValueType::Function(_) => {
+                    let local = LocalId::Function(crate::plan::FunctionLocalId(next_function));
+                    next_function += 1;
+                    local
+                }
             };
-            Ok(FunctionParam { local, name })
+            Ok(FunctionParam { local, name, type_ })
         })
         .collect()
+}
+
+fn param_types(params: &[FunctionParam]) -> Vec<ValueType> {
+    params.iter().map(|param| param.type_.clone()).collect()
 }
 
 fn validate_main_function(main: FunctionToPlan) -> Result<FunctionToPlan, PlanError> {
@@ -238,7 +276,10 @@ mod tests {
     use super::plan_module;
     use crate::planner::dsl::{function, int, module};
     use crate::planner::support::{compile, expect_plan_error};
-    use crate::planner::{PlanError, UnsupportedFunctionReason, UnsupportedTopLevelKind};
+    use crate::planner::{
+        PlanError, UnsupportedArgumentReason, UnsupportedExpressionKind, UnsupportedFunctionReason,
+        UnsupportedTopLevelKind,
+    };
 
     #[test]
     fn plan_integer_return() {
@@ -303,6 +344,67 @@ pub fn main(value: Int) {
             PlanError::UnsupportedFunction {
                 name: "main".into(),
                 reason: UnsupportedFunctionReason::MainWithArguments,
+            },
+        );
+    }
+
+    #[test]
+    fn reject_profile_function_before_main() {
+        assert_eq!(
+            expect_plan_error(
+                r#"
+fn values() {
+  [1]
+}
+
+pub fn main() {
+  1
+}
+"#,
+            ),
+            PlanError::UnsupportedExpression {
+                kind: UnsupportedExpressionKind::List,
+            },
+        );
+    }
+
+    #[test]
+    fn reject_profile_function_after_main() {
+        assert_eq!(
+            expect_plan_error(
+                r#"
+pub fn main() {
+  1
+}
+
+fn values() {
+  [1]
+}
+"#,
+            ),
+            PlanError::UnsupportedExpression {
+                kind: UnsupportedExpressionKind::List,
+            },
+        );
+    }
+
+    #[test]
+    fn reject_profile_function_argument_type() {
+        assert_eq!(
+            expect_plan_error(
+                r#"
+pub fn main() {
+  1
+}
+
+fn count(values: List(Int)) {
+  1
+}
+"#,
+            ),
+            PlanError::UnsupportedArgument {
+                function: "count".into(),
+                reason: UnsupportedArgumentReason::UnsupportedType,
             },
         );
     }

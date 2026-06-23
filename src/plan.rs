@@ -10,21 +10,21 @@ use self::runtime::RuntimePlan;
 use ecow::EcoString;
 use std::fmt;
 
-pub use expression::{BoolExpr, CallArg, Expr, IntExpr, NilExpr, StringExpr};
+pub use expression::{BoolExpr, CallArg, Expr, FunctionExpr, IntExpr, NilExpr, StringExpr};
 pub(crate) use expression::{
-    BoolExprKind, CallArgKind, ExprKind, IntExprKind, NilExprKind, StringExprKind,
+    BoolExprKind, CallArgKind, ExprKind, FunctionExprKind, IntExprKind, NilExprKind, StringExprKind,
 };
 pub(crate) use frame::FrameLayout;
 pub(crate) use function::RuntimeFunction;
 pub use function::{FunctionPlan, Param};
 pub(crate) use id::RuntimeFunctionId;
 pub use id::{
-    BoolFunctionId, BoolLocalId, FunctionId, IntFunctionId, IntLocalId, LocalId, NilFunctionId,
-    NilLocalId, StringFunctionId, StringLocalId,
+    BoolFunctionId, BoolLocalId, FunctionFunctionId, FunctionId, FunctionLocalId, IntFunctionId,
+    IntLocalId, LocalId, NilFunctionId, NilLocalId, StringFunctionId, StringLocalId,
 };
 pub use step::Step;
 pub(crate) use step::StepKind;
-pub use value::{Value, ValueType};
+pub use value::{FunctionType, FunctionValue, Value, ValueType};
 
 pub struct ExecutionPlan {
     module: EcoString,
@@ -75,6 +75,13 @@ impl ExecutionPlan {
 
     pub(crate) fn nil_function(&self, id: NilFunctionId) -> &RuntimeFunction<NilExpr> {
         self.runtime.nil_function(id)
+    }
+
+    pub(crate) fn function_function(
+        &self,
+        id: FunctionFunctionId,
+    ) -> &RuntimeFunction<FunctionExpr> {
+        self.runtime.function_function(id)
     }
 }
 

@@ -1,5 +1,5 @@
 use crate::plan::{FunctionPlan, Param};
-use crate::planner::context::{FunctionInfo, PlanContext};
+use crate::planner::context::{FunctionInfo, FunctionPlanState, PlanContext};
 use crate::planner::error::{
     InvalidFunctionShapeReason, InvalidTypedAstReason, PlanError, UnsupportedFunctionReason,
 };
@@ -12,6 +12,7 @@ pub(super) fn plan_function(
     info: FunctionInfo,
     module_name: &EcoString,
     functions: &HashMap<EcoString, FunctionInfo>,
+    state: &mut FunctionPlanState,
     function: TypedFunction,
 ) -> Result<FunctionPlan, PlanError> {
     let name = function_name(&function)?;
@@ -23,12 +24,12 @@ pub(super) fn plan_function(
         });
     }
 
-    let mut context = PlanContext::new(module_name, functions);
+    let mut context = PlanContext::new(module_name, functions, state);
     let params = info
         .params
         .iter()
         .map(|param| {
-            context.define_existing_local(param.name.clone(), param.local);
+            context.define_existing_local(param.name.clone(), param.local, param.type_.clone());
             Param::new(param.local, param.name.clone())
         })
         .collect();

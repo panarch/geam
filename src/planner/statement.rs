@@ -128,6 +128,11 @@ pub(in crate::planner) fn plan_variable_step(
             let local = context.define_nil_local(name.clone());
             Step::let_nil(local, name, value)
         }
+        ExprKind::Function(value) => {
+            let type_ = value.type_().clone();
+            let local = context.define_function_local(name.clone(), type_);
+            Step::let_function(local, name, value)
+        }
     }
 }
 
@@ -290,9 +295,8 @@ fn pair(callback: fn() -> Int) {
 }
 "#,
             ),
-            PlanError::UnsupportedArgument {
-                function: "pair".into(),
-                reason: crate::planner::UnsupportedArgumentReason::UnsupportedType,
+            PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::UseStatement,
             },
         );
     }

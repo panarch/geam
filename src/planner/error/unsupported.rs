@@ -66,6 +66,8 @@ pub enum UnsupportedExpressionKind {
     AnonymousFunction,
     #[error("bit array")]
     BitArray,
+    #[error("capturing function")]
+    CapturingFunction,
     #[error("echo")]
     Echo,
     #[error("float")]
@@ -82,6 +84,8 @@ pub enum UnsupportedExpressionKind {
     Tuple,
     #[error("tuple index")]
     TupleIndex,
+    #[error("use function")]
+    UseFunction,
 }
 
 #[derive(Debug, Error, Clone, Copy, PartialEq, Eq)]
@@ -102,12 +106,6 @@ pub enum UnsupportedBinOpKind {
     MultFloat,
     #[error("sub float")]
     SubFloat,
-}
-
-#[derive(Debug, Error, Clone, Copy, PartialEq, Eq)]
-pub enum UnsupportedCallReason {
-    #[error("only direct local function calls are supported")]
-    NonDirectLocalFunction,
 }
 
 #[derive(Debug, Error, Clone, Copy, PartialEq, Eq)]

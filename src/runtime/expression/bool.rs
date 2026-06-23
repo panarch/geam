@@ -1,5 +1,5 @@
 use super::{eval_expr, eval_int_expr};
-use crate::plan::{BoolExpr, BoolExprKind, ExecutionPlan};
+use crate::plan::{BoolExpr, BoolExprKind, ExecutionPlan, RuntimeFunctionId};
 use crate::runtime::frame::Frame;
 use crate::runtime::function;
 
@@ -13,6 +13,18 @@ pub(in crate::runtime) fn eval_bool_expr(
         BoolExprKind::LocalGet { local, .. } => frame.get_bool(*local),
         BoolExprKind::Call { function, args } => {
             function::run_bool_call(plan, *function, args, frame)
+        }
+        BoolExprKind::FunctionCall { function, args } => {
+            let function = super::eval_function_expr(plan, frame, function);
+            match function.runtime_id() {
+                RuntimeFunctionId::Bool(function_id) => {
+                    function::run_dynamic_bool_call(plan, function_id, &function, args, frame)
+                }
+                RuntimeFunctionId::Int(_)
+                | RuntimeFunctionId::String(_)
+                | RuntimeFunctionId::Nil(_)
+                | RuntimeFunctionId::Function(_) => false,
+            }
         }
         BoolExprKind::Not(value) => !eval_bool_expr(plan, frame, value),
         BoolExprKind::LtInt { left, right } => {
@@ -83,6 +95,12 @@ fn eval_or(left: bool, right: impl FnOnce() -> bool) -> bool {
 #[cfg(test)]
 mod tests {
     use super::{eval_and, eval_or};
+    use crate::plan::{
+        BoolExpr, ExecutionPlan, Expr, FunctionExpr, FunctionFunctionId, FunctionId, FunctionPlan,
+        FunctionType, FunctionValue, IntFunctionId, NilFunctionId, RuntimeFunctionId,
+        StringFunctionId, ValueType,
+    };
+    use crate::runtime::frame::Frame;
     use crate::runtime::{Value, run_src};
     use std::cell::Cell;
 
@@ -342,5 +360,43 @@ pub fn main() {
             ),
             Value::Bool(true),
         );
+    }
+
+    #[test]
+    fn eval_invalid_function_call_return_shape() {
+        let plan = empty_plan();
+        for runtime_id in [
+            RuntimeFunctionId::Int(IntFunctionId(0)),
+            RuntimeFunctionId::String(StringFunctionId(0)),
+            RuntimeFunctionId::Nil(NilFunctionId(0)),
+            RuntimeFunctionId::Function(FunctionFunctionId(0)),
+        ] {
+            let function = FunctionExpr::value(FunctionValue::new(
+                FunctionType::new(Vec::new(), ValueType::Int),
+                runtime_id,
+                Vec::new(),
+            ));
+            let expression = BoolExpr::function_call(function, Vec::new());
+
+            assert!(!super::eval_bool_expr(
+                &plan,
+                &mut Frame::default(),
+                &expression
+            ));
+        }
+    }
+
+    fn empty_plan() -> ExecutionPlan {
+        ExecutionPlan::new(
+            "main".into(),
+            FunctionPlan::new(
+                FunctionId::new(0),
+                "main".into(),
+                Vec::new(),
+                Vec::new(),
+                Expr::bool(BoolExpr::value(false)),
+            ),
+            Vec::new(),
+        )
     }
 }

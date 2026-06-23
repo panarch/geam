@@ -4,6 +4,7 @@ pub enum LocalId {
     String(StringLocalId),
     Bool(BoolLocalId),
     Nil(NilLocalId),
+    Function(FunctionLocalId),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -19,6 +20,9 @@ pub struct BoolLocalId(pub(crate) usize);
 pub struct NilLocalId(pub(crate) usize);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct FunctionLocalId(pub(crate) usize);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct FunctionId(usize);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -27,6 +31,7 @@ pub(crate) enum RuntimeFunctionId {
     String(StringFunctionId),
     Bool(BoolFunctionId),
     Nil(NilFunctionId),
+    Function(FunctionFunctionId),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -40,6 +45,9 @@ pub struct BoolFunctionId(pub(crate) usize);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct NilFunctionId(pub(crate) usize);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct FunctionFunctionId(pub(crate) usize);
 
 impl FunctionId {
     pub(crate) fn new(index: usize) -> Self {

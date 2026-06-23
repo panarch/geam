@@ -1,11 +1,12 @@
 mod block;
 mod call;
 mod case;
+mod function;
 mod operator;
 mod pipeline;
 mod var;
 
-use crate::plan::{BoolExpr, Expr, IntExpr, StringExpr, ValueType};
+use crate::plan::{BoolExpr, Expr, FunctionExpr, IntExpr, StringExpr, ValueType};
 use crate::planner::context::PlanContext;
 use crate::planner::error::{
     InvalidExpressionShapeKind, InvalidExpressionType, InvalidTypedAstReason, PlanError,
@@ -48,9 +49,13 @@ pub(super) fn plan_expr(
             finally_kind,
             ..
         } => pipeline::plan(first_value, assignments, *finally, finally_kind, context),
-        TypedExpr::Fn { .. } => Err(PlanError::UnsupportedExpression {
-            kind: UnsupportedExpressionKind::AnonymousFunction,
-        }),
+        TypedExpr::Fn {
+            type_,
+            kind,
+            arguments,
+            body,
+            ..
+        } => function::plan_anonymous(type_, kind, arguments, body, context),
         TypedExpr::List { .. } => Err(PlanError::UnsupportedExpression {
             kind: UnsupportedExpressionKind::List,
         }),
@@ -133,6 +138,15 @@ fn plan_bool_expr(
         .map_err(|other| invalid_expression_type(InvalidExpressionType::Bool, &other))
 }
 
+fn plan_function_expr(
+    expression: TypedExpr,
+    context: &mut PlanContext<'_>,
+) -> Result<FunctionExpr, PlanError> {
+    plan_expr(expression, context)?
+        .into_function()
+        .map_err(|other| invalid_expression_type(InvalidExpressionType::Function, &other))
+}
+
 fn invalid_expression_type(expected: InvalidExpressionType, actual: &Expr) -> PlanError {
     PlanError::InvalidTypedAst {
         reason: InvalidTypedAstReason::ExpressionType {
@@ -148,6 +162,7 @@ fn expression_type(expression: &Expr) -> InvalidExpressionType {
         ValueType::String => InvalidExpressionType::String,
         ValueType::Bool => InvalidExpressionType::Bool,
         ValueType::Nil => InvalidExpressionType::Nil,
+        ValueType::Function(_) => InvalidExpressionType::Function,
     }
 }
 
@@ -214,11 +229,16 @@ pub(in crate::planner::expression) fn typed_prelude_constructor(
 
 #[cfg(test)]
 mod tests {
-    use super::{module_returning_typed_expr, typed_int_expr};
+    use super::{invalid_expression_type, module_returning_typed_expr, typed_int_expr};
+    use crate::plan::{
+        Expr, FunctionExpr, FunctionType, FunctionValue, NilFunctionId, RuntimeFunctionId,
+        ValueType,
+    };
     use crate::planner::plan_module;
     use crate::planner::support::{compile, dummy_span, expect_plan_error};
     use crate::planner::{
-        InvalidExpressionShapeKind, InvalidTypedAstReason, PlanError, UnsupportedExpressionKind,
+        InvalidExpressionShapeKind, InvalidExpressionType, InvalidTypedAstReason, PlanError,
+        UnsupportedExpressionKind,
     };
     use gleam_core::ast::{Constant, TypedExpr};
     use gleam_core::type_::{self, ModuleValueConstructor};
@@ -231,12 +251,6 @@ mod tests {
                 r#"pub fn main() { 1.0 }"#,
                 PlanError::UnsupportedExpression {
                     kind: UnsupportedExpressionKind::Float,
-                },
-            ),
-            (
-                r#"pub fn main() { fn(x) { x } }"#,
-                PlanError::UnsupportedExpression {
-                    kind: UnsupportedExpressionKind::AnonymousFunction,
                 },
             ),
             (
@@ -386,6 +400,25 @@ pub fn main() {
                     kind: InvalidExpressionShapeKind::Invalid,
                 },
             }),
+        );
+    }
+
+    #[test]
+    fn reject_margin_function_expression_type() {
+        let expression = Expr::function(FunctionExpr::value(FunctionValue::new(
+            FunctionType::new(Vec::new(), ValueType::Nil),
+            RuntimeFunctionId::Nil(NilFunctionId(0)),
+            Vec::new(),
+        )));
+
+        assert_eq!(
+            invalid_expression_type(InvalidExpressionType::Int, &expression),
+            PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionType {
+                    expected: InvalidExpressionType::Int,
+                    actual: InvalidExpressionType::Function,
+                },
+            },
         );
     }
 }

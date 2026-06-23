@@ -1,4 +1,5 @@
 mod bool;
+mod function;
 mod int;
 mod nil;
 mod string;
@@ -7,7 +8,8 @@ use crate::plan::{ExecutionPlan, Expr, ExprKind, Value};
 use crate::runtime::frame::Frame;
 
 pub(super) use self::{
-    bool::eval_bool_expr, int::eval_int_expr, nil::eval_nil_expr, string::eval_string_expr,
+    bool::eval_bool_expr, function::eval_function_expr, int::eval_int_expr, nil::eval_nil_expr,
+    string::eval_string_expr,
 };
 
 pub(super) fn eval_expr(plan: &ExecutionPlan, frame: &mut Frame, expression: &Expr) -> Value {
@@ -18,6 +20,9 @@ pub(super) fn eval_expr(plan: &ExecutionPlan, frame: &mut Frame, expression: &Ex
         ExprKind::Nil(expression) => {
             eval_nil_expr(plan, frame, expression);
             Value::Nil
+        }
+        ExprKind::Function(expression) => {
+            Value::Function(eval_function_expr(plan, frame, expression))
         }
     }
 }

@@ -1,5 +1,5 @@
-use super::expression::{BoolExpr, Expr, IntExpr, NilExpr, StringExpr};
-use super::id::{BoolLocalId, IntLocalId, NilLocalId, StringLocalId};
+use super::expression::{BoolExpr, Expr, FunctionExpr, IntExpr, NilExpr, StringExpr};
+use super::id::{BoolLocalId, FunctionLocalId, IntLocalId, NilLocalId, StringLocalId};
 use ecow::EcoString;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -29,6 +29,11 @@ pub(crate) enum StepKind {
         name: EcoString,
         value: NilExpr,
     },
+    LetFunction {
+        local: FunctionLocalId,
+        name: EcoString,
+        value: FunctionExpr,
+    },
     Evaluate(Expr),
 }
 
@@ -54,6 +59,16 @@ impl Step {
     pub(crate) fn let_nil(local: NilLocalId, name: EcoString, value: NilExpr) -> Self {
         Self {
             kind: StepKind::LetNil { local, name, value },
+        }
+    }
+
+    pub(crate) fn let_function(
+        local: FunctionLocalId,
+        name: EcoString,
+        value: FunctionExpr,
+    ) -> Self {
+        Self {
+            kind: StepKind::LetFunction { local, name, value },
         }
     }
 

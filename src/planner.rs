@@ -11,7 +11,7 @@ pub use error::{
     InvalidCallShapeReason, InvalidCaseShapeReason, InvalidExpressionShapeKind,
     InvalidExpressionType, InvalidFunctionShapeReason, InvalidPipelineShapeReason,
     InvalidTypedAstReason, PlanError, UnsupportedArgumentReason, UnsupportedAssignmentKind,
-    UnsupportedBinOpKind, UnsupportedCallReason, UnsupportedCaseReason, UnsupportedExpressionKind,
+    UnsupportedBinOpKind, UnsupportedCaseReason, UnsupportedExpressionKind,
     UnsupportedFunctionReason, UnsupportedPatternKind, UnsupportedPipelineReason,
     UnsupportedStatementKind, UnsupportedTopLevelKind,
 };

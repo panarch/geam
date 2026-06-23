@@ -1,4 +1,4 @@
-use crate::plan::{BoolExpr, Expr, ExprKind, IntExpr, NilExpr, Step, StringExpr};
+use crate::plan::{BoolExpr, Expr, ExprKind, FunctionExpr, IntExpr, NilExpr, Step, StringExpr};
 use crate::planner::context::PlanContext;
 use crate::planner::error::PlanError;
 use crate::planner::statement::plan_non_empty_steps_and_return;
@@ -22,6 +22,7 @@ pub(super) fn block_expr(steps: Vec<Step>, return_: Expr) -> Expr {
         ExprKind::String(return_) => Expr::string(StringExpr::block(steps, return_)),
         ExprKind::Bool(return_) => Expr::bool(BoolExpr::block(steps, return_)),
         ExprKind::Nil(return_) => Expr::nil(NilExpr::block(steps, return_)),
+        ExprKind::Function(return_) => Expr::function(FunctionExpr::block(steps, return_)),
     }
 }
 

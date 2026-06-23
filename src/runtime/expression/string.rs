@@ -1,5 +1,5 @@
 use super::{eval_bool_expr, eval_int_expr};
-use crate::plan::{ExecutionPlan, StringExpr, StringExprKind};
+use crate::plan::{ExecutionPlan, RuntimeFunctionId, StringExpr, StringExprKind};
 use crate::runtime::frame::Frame;
 use crate::runtime::function;
 use ecow::EcoString;
@@ -14,6 +14,18 @@ pub(in crate::runtime) fn eval_string_expr(
         StringExprKind::LocalGet { local, .. } => frame.get_string(*local),
         StringExprKind::Call { function, args } => {
             function::run_string_call(plan, *function, args, frame)
+        }
+        StringExprKind::FunctionCall { function, args } => {
+            let function = super::eval_function_expr(plan, frame, function);
+            match function.runtime_id() {
+                RuntimeFunctionId::String(function_id) => {
+                    function::run_dynamic_string_call(plan, function_id, &function, args, frame)
+                }
+                RuntimeFunctionId::Int(_)
+                | RuntimeFunctionId::Bool(_)
+                | RuntimeFunctionId::Nil(_)
+                | RuntimeFunctionId::Function(_) => EcoString::default(),
+            }
         }
         StringExprKind::Concatenate { left, right } => format!(
             "{}{}",
@@ -54,6 +66,13 @@ pub(in crate::runtime) fn eval_string_expr(
 
 #[cfg(test)]
 mod tests {
+    use super::eval_string_expr;
+    use crate::plan::{
+        BoolFunctionId, ExecutionPlan, Expr, FunctionExpr, FunctionFunctionId, FunctionId,
+        FunctionPlan, FunctionType, FunctionValue, IntFunctionId, NilFunctionId, RuntimeFunctionId,
+        StringExpr, ValueType,
+    };
+    use crate::runtime::frame::Frame;
     use crate::runtime::{Value, run_src};
 
     #[test]
@@ -147,5 +166,42 @@ pub fn main() {
             ),
             Value::String("geam".into()),
         );
+    }
+
+    #[test]
+    fn eval_invalid_function_call_return_shape() {
+        let plan = empty_plan();
+        for runtime_id in [
+            RuntimeFunctionId::Int(IntFunctionId(0)),
+            RuntimeFunctionId::Bool(BoolFunctionId(0)),
+            RuntimeFunctionId::Nil(NilFunctionId(0)),
+            RuntimeFunctionId::Function(FunctionFunctionId(0)),
+        ] {
+            let function = FunctionExpr::value(FunctionValue::new(
+                FunctionType::new(Vec::new(), ValueType::Int),
+                runtime_id,
+                Vec::new(),
+            ));
+            let expression = StringExpr::function_call(function, Vec::new());
+
+            assert_eq!(
+                eval_string_expr(&plan, &mut Frame::default(), &expression),
+                "",
+            );
+        }
+    }
+
+    fn empty_plan() -> ExecutionPlan {
+        ExecutionPlan::new(
+            "main".into(),
+            FunctionPlan::new(
+                FunctionId::new(0),
+                "main".into(),
+                Vec::new(),
+                Vec::new(),
+                Expr::string(StringExpr::value("".into())),
+            ),
+            Vec::new(),
+        )
     }
 }

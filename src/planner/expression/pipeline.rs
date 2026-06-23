@@ -423,12 +423,7 @@ fn identity_nil(value: Nil) {
                 reason: UnsupportedPipelineReason::Echo,
             },
         );
-        assert_eq!(
-            expect_plan_error(r#"pub fn main() { 1 |> fn(x) { x } }"#),
-            PlanError::UnsupportedPipeline {
-                reason: UnsupportedPipelineReason::NonDirectLocalFunction,
-            },
-        );
+        assert!(plan_module(compile(r#"pub fn main() { 1 |> fn(x) { x } }"#)).is_ok());
         assert_eq!(
             expect_plan_error(
                 r#"
@@ -437,8 +432,8 @@ pub fn main() {
 }
 "#,
             ),
-            PlanError::UnsupportedPipeline {
-                reason: UnsupportedPipelineReason::FunctionCall,
+            PlanError::UnsupportedExpression {
+                kind: UnsupportedExpressionKind::CapturingFunction,
             },
         );
         assert_eq!(
@@ -587,9 +582,11 @@ pub fn main() {
         };
         assert_eq!(
             plan_module(local_variable_function),
-            Err(invalid_pipeline_shape(
-                InvalidPipelineShapeReason::NonDirectLocalFunction,
-            )),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::UnknownLocal {
+                    name: "add_one".into(),
+                },
+            }),
         );
     }
 
