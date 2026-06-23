@@ -28,6 +28,28 @@ Runtime code assumes it receives a valid `ExecutionPlan`. Structural execution
 failures belong in plan construction as `PlanError`, not in a runtime error
 enum.
 
+## Gleam Compatibility Rules
+
+For any Gleam source that Geam accepts, observable runtime behavior must match
+Gleam semantics.
+
+If Gleam defines target-independent behavior, Geam follows that behavior. If
+Gleam normalizes backend differences, Geam follows the normalized Gleam behavior
+rather than Rust's default behavior.
+
+The planner may reject valid Gleam source as outside the current Geam profile,
+but it must not accept source and then execute it with different semantics.
+
+Preserve Gleam evaluation semantics, including expression evaluation order,
+short-circuit behavior, case clause ordering, first-match behavior, shadowing,
+and block scope.
+
+When Gleam's typed AST already encodes an invariant, Geam should preserve that
+shape instead of weakening it into a wider internal representation.
+
+Target-specific externals or backend-dependent behavior must be rejected until
+Geam has an explicit compatibility rule for that surface.
+
 ## Panic Rules
 
 Production Geam logic must not use explicit panic paths for control flow,
