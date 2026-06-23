@@ -76,8 +76,6 @@ pub enum UnsupportedExpressionKind {
     List,
     #[error("panic")]
     Panic,
-    #[error("pipeline")]
-    Pipeline,
     #[error("todo")]
     Todo,
     #[error("tuple")]
@@ -126,4 +124,14 @@ pub enum UnsupportedCaseReason {
     UnsupportedSubjectType,
     #[error("variable patterns are not supported")]
     VariablePattern,
+}
+
+#[derive(Debug, Error, Clone, Copy, PartialEq, Eq)]
+pub enum UnsupportedPipelineReason {
+    #[error("echo")]
+    Echo,
+    #[error("function value pipeline calls are not supported")]
+    FunctionCall,
+    #[error("only direct local function pipeline calls are supported")]
+    NonDirectLocalFunction,
 }

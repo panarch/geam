@@ -9,11 +9,11 @@ mod statement;
 
 pub use error::{
     InvalidCallShapeReason, InvalidCaseShapeReason, InvalidExpressionShapeKind,
-    InvalidExpressionType, InvalidFunctionShapeReason, InvalidTypedAstReason, PlanError,
-    UnsupportedArgumentReason, UnsupportedAssignmentKind, UnsupportedBinOpKind,
-    UnsupportedCallReason, UnsupportedCaseReason, UnsupportedExpressionKind,
-    UnsupportedFunctionReason, UnsupportedPatternKind, UnsupportedStatementKind,
-    UnsupportedTopLevelKind,
+    InvalidExpressionType, InvalidFunctionShapeReason, InvalidPipelineShapeReason,
+    InvalidTypedAstReason, PlanError, UnsupportedArgumentReason, UnsupportedAssignmentKind,
+    UnsupportedBinOpKind, UnsupportedCallReason, UnsupportedCaseReason, UnsupportedExpressionKind,
+    UnsupportedFunctionReason, UnsupportedPatternKind, UnsupportedPipelineReason,
+    UnsupportedStatementKind, UnsupportedTopLevelKind,
 };
 pub use module::plan_module;
 

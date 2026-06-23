@@ -2,6 +2,7 @@ mod block;
 mod call;
 mod case;
 mod operator;
+mod pipeline;
 mod var;
 
 use crate::plan::{BoolExpr, Expr, IntExpr, StringExpr, ValueType};
@@ -40,9 +41,13 @@ pub(super) fn plan_expr(
             kind: UnsupportedExpressionKind::Float,
         }),
         TypedExpr::Block { statements, .. } => block::plan(statements, context),
-        TypedExpr::Pipeline { .. } => Err(PlanError::UnsupportedExpression {
-            kind: UnsupportedExpressionKind::Pipeline,
-        }),
+        TypedExpr::Pipeline {
+            first_value,
+            assignments,
+            finally,
+            finally_kind,
+            ..
+        } => pipeline::plan(first_value, assignments, *finally, finally_kind, context),
         TypedExpr::Fn { .. } => Err(PlanError::UnsupportedExpression {
             kind: UnsupportedExpressionKind::AnonymousFunction,
         }),
@@ -226,12 +231,6 @@ mod tests {
                 r#"pub fn main() { 1.0 }"#,
                 PlanError::UnsupportedExpression {
                     kind: UnsupportedExpressionKind::Float,
-                },
-            ),
-            (
-                r#"pub fn main() { 1 |> fn(x) { x } }"#,
-                PlanError::UnsupportedExpression {
-                    kind: UnsupportedExpressionKind::Pipeline,
                 },
             ),
             (

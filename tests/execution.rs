@@ -23,6 +23,7 @@ execution_case!(bool_case, "bool_case.gleam");
 execution_case!(bool_case_fallback, "bool_case_fallback.gleam");
 execution_case!(int_case, "int_case.gleam");
 execution_case!(block_expression, "block_expression.gleam");
+execution_case!(pipeline, "pipeline.gleam");
 execution_case!(nil_value, "nil_value.gleam");
 
 fn run_fixture(file_name: &str) {

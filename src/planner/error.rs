@@ -6,13 +6,14 @@ mod unsupported;
 
 pub use invalid::{
     InvalidCallShapeReason, InvalidCaseShapeReason, InvalidExpressionShapeKind,
-    InvalidExpressionType, InvalidFunctionShapeReason, InvalidTypedAstReason,
+    InvalidExpressionType, InvalidFunctionShapeReason, InvalidPipelineShapeReason,
+    InvalidTypedAstReason,
 };
 pub use unsupported::{
     UnsupportedArgumentReason, UnsupportedAssignmentKind, UnsupportedBinOpKind,
     UnsupportedCallReason, UnsupportedCaseReason, UnsupportedExpressionKind,
-    UnsupportedFunctionReason, UnsupportedPatternKind, UnsupportedStatementKind,
-    UnsupportedTopLevelKind,
+    UnsupportedFunctionReason, UnsupportedPatternKind, UnsupportedPipelineReason,
+    UnsupportedStatementKind, UnsupportedTopLevelKind,
 };
 
 #[derive(Debug, Error, Clone, PartialEq, Eq)]
@@ -52,6 +53,9 @@ pub enum PlanError {
 
     #[error("unsupported case: {reason}")]
     UnsupportedCase { reason: UnsupportedCaseReason },
+
+    #[error("unsupported pipeline: {reason}")]
+    UnsupportedPipeline { reason: UnsupportedPipelineReason },
 
     #[error("invalid Gleam typed AST: {reason}")]
     InvalidTypedAst { reason: InvalidTypedAstReason },

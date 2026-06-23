@@ -16,7 +16,7 @@ pub(super) fn plan(
     })
 }
 
-fn block_expr(steps: Vec<Step>, return_: Expr) -> Expr {
+pub(super) fn block_expr(steps: Vec<Step>, return_: Expr) -> Expr {
     match return_.into_kind() {
         ExprKind::Int(return_) => Expr::int(IntExpr::block(steps, return_)),
         ExprKind::String(return_) => Expr::string(StringExpr::block(steps, return_)),

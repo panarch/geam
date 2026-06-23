@@ -103,22 +103,30 @@ fn plan_assignment(
 
     let name = plan_variable_pattern(assignment.pattern)?;
     let value = plan_expr(assignment.value, context)?;
-    match value.kind() {
+    Ok(plan_variable_step(name, value, context))
+}
+
+pub(in crate::planner) fn plan_variable_step(
+    name: EcoString,
+    value: crate::plan::Expr,
+    context: &mut PlanContext<'_>,
+) -> Step {
+    match value.into_kind() {
         ExprKind::Int(value) => {
             let local = context.define_int_local(name.clone());
-            Ok(Step::let_int(local, name, value.clone()))
+            Step::let_int(local, name, value)
         }
         ExprKind::String(value) => {
             let local = context.define_string_local(name.clone());
-            Ok(Step::let_string(local, name, value.clone()))
+            Step::let_string(local, name, value)
         }
         ExprKind::Bool(value) => {
             let local = context.define_bool_local(name.clone());
-            Ok(Step::let_bool(local, name, value.clone()))
+            Step::let_bool(local, name, value)
         }
         ExprKind::Nil(value) => {
             let local = context.define_nil_local(name.clone());
-            Ok(Step::let_nil(local, name, value.clone()))
+            Step::let_nil(local, name, value)
         }
     }
 }

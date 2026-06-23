@@ -4,17 +4,20 @@ use crate::plan::{
 };
 use crate::planner::context::{FunctionInfo, FunctionParam, PlanContext};
 use crate::planner::error::{
-    InvalidCallShapeReason, InvalidExpressionType, InvalidTypedAstReason, PlanError,
-    UnsupportedCallReason,
+    InvalidCallShapeReason, InvalidExpressionType, InvalidPipelineShapeReason,
+    InvalidTypedAstReason, PlanError, UnsupportedCallReason, UnsupportedPipelineReason,
 };
-use gleam_core::ast::TypedExpr;
+use ecow::EcoString;
+use gleam_core::ast::{
+    CallArg as GleamCallArg, FunctionLiteralKind, ImplicitCallArgOrigin, Statement, TypedExpr,
+};
 use gleam_core::type_::{Type, ValueConstructorVariant};
 use std::sync::Arc;
 
 pub(super) fn plan_call(
     type_: Arc<Type>,
     fun: TypedExpr,
-    arguments: Vec<gleam_core::ast::CallArg<TypedExpr>>,
+    arguments: Vec<GleamCallArg<TypedExpr>>,
     context: &mut PlanContext<'_>,
 ) -> Result<Expr, PlanError> {
     if arguments.iter().any(|argument| argument.label.is_some()) {
@@ -33,7 +36,127 @@ pub(super) fn plan_call(
         });
     }
 
-    let function = plan_function_ref(fun, context)?;
+    plan_local_call(
+        type_,
+        fun,
+        arguments,
+        context,
+        FunctionRefMode::Normal,
+        None,
+    )
+}
+
+pub(super) fn plan_pipeline_direct_call(
+    type_: Arc<Type>,
+    fun: TypedExpr,
+    arguments: Vec<GleamCallArg<TypedExpr>>,
+    context: &mut PlanContext<'_>,
+) -> Result<Expr, PlanError> {
+    pipe_argument(&arguments)?;
+
+    plan_local_call(
+        type_,
+        fun,
+        arguments,
+        context,
+        FunctionRefMode::Pipeline,
+        None,
+    )
+}
+
+pub(super) fn plan_pipeline_hole_call(
+    type_: Arc<Type>,
+    fun: TypedExpr,
+    arguments: Vec<GleamCallArg<TypedExpr>>,
+    context: &mut PlanContext<'_>,
+) -> Result<Expr, PlanError> {
+    let pipe_value = plan_expr(pipe_argument(&arguments)?.clone(), context)?;
+
+    let TypedExpr::Fn {
+        kind: FunctionLiteralKind::Capture { .. },
+        arguments: capture_args,
+        body,
+        ..
+    } = fun
+    else {
+        return Err(invalid_pipeline_shape(
+            InvalidPipelineShapeReason::InvalidHoleCapture,
+        ));
+    };
+    let [capture_arg] = capture_args.as_slice() else {
+        return Err(invalid_pipeline_shape(
+            InvalidPipelineShapeReason::InvalidHoleCapture,
+        ));
+    };
+    let Some(capture_name) = capture_arg.names.get_variable_name().cloned() else {
+        return Err(invalid_pipeline_shape(
+            InvalidPipelineShapeReason::InvalidHoleCapture,
+        ));
+    };
+
+    let mut body = body.into_iter();
+    let Some(Statement::Expression(TypedExpr::Call { fun, arguments, .. })) = body.next() else {
+        return Err(invalid_pipeline_shape(
+            InvalidPipelineShapeReason::NonCallStep,
+        ));
+    };
+    if body.next().is_some() {
+        return Err(invalid_pipeline_shape(
+            InvalidPipelineShapeReason::InvalidHoleCapture,
+        ));
+    }
+    if arguments.iter().any(|argument| argument.label.is_some()) {
+        return Err(invalid_pipeline_shape(
+            InvalidPipelineShapeReason::LabelledArguments,
+        ));
+    }
+    if arguments.iter().any(|argument| argument.implicit.is_some()) {
+        return Err(invalid_pipeline_shape(
+            InvalidPipelineShapeReason::UnsupportedImplicitArgument,
+        ));
+    }
+    if count_capture_arguments(&arguments, &capture_name) != 1 {
+        return Err(invalid_pipeline_shape(
+            InvalidPipelineShapeReason::InvalidHoleCapture,
+        ));
+    }
+
+    plan_local_call(
+        type_,
+        *fun,
+        arguments,
+        context,
+        FunctionRefMode::Pipeline,
+        Some(&CaptureSubstitution {
+            name: capture_name,
+            value: pipe_value,
+        }),
+    )
+}
+
+#[derive(Clone, Copy)]
+enum FunctionRefMode {
+    Normal,
+    Pipeline,
+}
+
+struct CaptureSubstitution {
+    name: EcoString,
+    value: Expr,
+}
+
+fn plan_local_call(
+    type_: Arc<Type>,
+    fun: TypedExpr,
+    arguments: Vec<GleamCallArg<TypedExpr>>,
+    context: &mut PlanContext<'_>,
+    function_ref_mode: FunctionRefMode,
+    capture: Option<&CaptureSubstitution>,
+) -> Result<Expr, PlanError> {
+    let function = match function_ref_mode {
+        FunctionRefMode::Normal => plan_function_ref(fun, context),
+        FunctionRefMode::Pipeline => plan_pipeline_function_ref(fun, context),
+    }?;
     if function.arity != arguments.len() {
         return Err(PlanError::InvalidTypedAst {
             reason: InvalidTypedAstReason::CallShape {
@@ -62,26 +185,51 @@ pub(super) fn plan_call(
             },
         });
     }
-    let args = plan_call_args(arguments, &function.params, context)?;
+    let args = plan_call_args(arguments, &function.params, context, capture)?;
 
     Ok(call_expr(function_id, args))
 }
 
 fn plan_call_args(
-    arguments: Vec<gleam_core::ast::CallArg<TypedExpr>>,
+    arguments: Vec<GleamCallArg<TypedExpr>>,
     params: &[FunctionParam],
     context: &mut PlanContext<'_>,
+    capture: Option<&CaptureSubstitution>,
 ) -> Result<Vec<CallArg>, PlanError> {
     arguments
         .into_iter()
         .zip(params)
         .map(|(argument, param)| {
-            let expression = plan_expr(argument.value, context)?;
+            let expression = plan_argument_value(argument.value, capture, context)?;
             expression.into_call_arg(param.local).map_err(|other| {
                 invalid_expression_type(expected_expression_type(param.local), &other)
             })
         })
         .collect()
+}
+
+fn plan_argument_value(
+    argument: TypedExpr,
+    capture: Option<&CaptureSubstitution>,
+    context: &mut PlanContext<'_>,
+) -> Result<Expr, PlanError> {
+    if let Some(capture) = capture
+        && is_capture_local(&argument, &capture.name)
+    {
+        return Ok(capture.value.clone());
+    }
+
+    plan_expr(argument, context)
+}
+
+fn count_capture_arguments(
+    arguments: &[GleamCallArg<TypedExpr>],
+    capture_name: &EcoString,
+) -> usize {
+    arguments
+        .iter()
+        .filter(|argument| is_capture_local(&argument.value, capture_name))
+        .count()
 }
 
 fn plan_function_ref(
@@ -133,6 +281,106 @@ fn plan_function_ref(
                 reason: InvalidCallShapeReason::RecordConstructor,
             },
         }),
+    }
+}
+
+fn plan_pipeline_function_ref(
+    expression: TypedExpr,
+    context: &PlanContext<'_>,
+) -> Result<FunctionInfo, PlanError> {
+    let TypedExpr::Var { constructor, .. } = expression else {
+        return if matches!(expression, TypedExpr::Call { .. }) {
+            Err(PlanError::UnsupportedPipeline {
+                reason: UnsupportedPipelineReason::FunctionCall,
+            })
+        } else {
+            Err(PlanError::UnsupportedPipeline {
+                reason: UnsupportedPipelineReason::NonDirectLocalFunction,
+            })
+        };
+    };
+
+    match constructor.variant {
+        ValueConstructorVariant::ModuleFn {
+            module,
+            name,
+            external_erlang,
+            external_javascript,
+            ..
+        } if module == *context.module_name
+            && external_erlang.is_none()
+            && external_javascript.is_none() =>
+        {
+            context
+                .lookup_function(&name)
+                .ok_or(PlanError::InvalidTypedAst {
+                    reason: InvalidTypedAstReason::CallShape {
+                        reason: InvalidCallShapeReason::MissingCurrentModuleFunction,
+                    },
+                })
+        }
+        ValueConstructorVariant::ModuleFn { .. }
+        | ValueConstructorVariant::LocalVariable { .. }
+        | ValueConstructorVariant::ModuleConstant { .. }
+        | ValueConstructorVariant::Record { .. } => Err(invalid_pipeline_shape(
+            InvalidPipelineShapeReason::NonDirectLocalFunction,
+        )),
+    }
+}
+
+fn pipe_argument(arguments: &[GleamCallArg<TypedExpr>]) -> Result<&TypedExpr, PlanError> {
+    if arguments.iter().any(|argument| argument.label.is_some()) {
+        return Err(invalid_pipeline_shape(
+            InvalidPipelineShapeReason::LabelledArguments,
+        ));
+    }
+
+    let mut pipe_argument = None;
+    for argument in arguments {
+        match argument.implicit {
+            None => {}
+            Some(ImplicitCallArgOrigin::Pipe) => {
+                if pipe_argument.replace(&argument.value).is_some() {
+                    return Err(invalid_pipeline_shape(
+                        InvalidPipelineShapeReason::MultiplePipeArguments,
+                    ));
+                }
+            }
+            Some(
+                ImplicitCallArgOrigin::Use
+                | ImplicitCallArgOrigin::PatternFieldSpread
+                | ImplicitCallArgOrigin::IncorrectArityUse
+                | ImplicitCallArgOrigin::RecordUpdate,
+            ) => {
+                return Err(invalid_pipeline_shape(
+                    InvalidPipelineShapeReason::UnsupportedImplicitArgument,
+                ));
+            }
+        }
+    }
+
+    pipe_argument
+        .ok_or_else(|| invalid_pipeline_shape(InvalidPipelineShapeReason::MissingPipeArgument))
+}
+
+fn is_capture_local(expression: &TypedExpr, capture_name: &ecow::EcoString) -> bool {
+    matches!(
+        expression,
+        TypedExpr::Var {
+            name,
+            constructor,
+            ..
+        } if name == capture_name
+            && matches!(
+                constructor.variant,
+                ValueConstructorVariant::LocalVariable { .. }
+            )
+    )
+}
+
+fn invalid_pipeline_shape(reason: InvalidPipelineShapeReason) -> PlanError {
+    PlanError::InvalidTypedAst {
+        reason: InvalidTypedAstReason::PipelineShape { reason },
     }
 }
 

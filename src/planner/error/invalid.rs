@@ -25,6 +25,8 @@ pub enum InvalidTypedAstReason {
     CallShape { reason: InvalidCallShapeReason },
     #[error("case shape: {reason}")]
     CaseShape { reason: InvalidCaseShapeReason },
+    #[error("pipeline shape: {reason}")]
+    PipelineShape { reason: InvalidPipelineShapeReason },
     #[error("unknown local variable: {name}")]
     UnknownLocal { name: EcoString },
 }
@@ -113,4 +115,22 @@ pub enum InvalidCaseShapeReason {
     PatternTypeMismatch,
     #[error("pattern subject count mismatch")]
     PatternSubjectCountMismatch,
+}
+
+#[derive(Debug, Error, Clone, Copy, PartialEq, Eq)]
+pub enum InvalidPipelineShapeReason {
+    #[error("invalid hole capture")]
+    InvalidHoleCapture,
+    #[error("labelled arguments")]
+    LabelledArguments,
+    #[error("missing pipe argument")]
+    MissingPipeArgument,
+    #[error("multiple pipe arguments")]
+    MultiplePipeArguments,
+    #[error("non-direct local function")]
+    NonDirectLocalFunction,
+    #[error("non-call pipeline step")]
+    NonCallStep,
+    #[error("unsupported implicit argument")]
+    UnsupportedImplicitArgument,
 }
