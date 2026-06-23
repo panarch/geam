@@ -1,4 +1,5 @@
 mod arithmetic;
+mod boolean;
 mod equality;
 mod ordering;
 mod string;
@@ -28,8 +29,8 @@ pub(super) fn plan_bin_op(
         GleamBinOp::Eq => equality::equal(left, right, context),
         GleamBinOp::NotEq => equality::not_equal(left, right, context),
         GleamBinOp::Concatenate => string::concatenate(left, right, context),
-        GleamBinOp::And => unsupported(UnsupportedBinOpKind::And),
-        GleamBinOp::Or => unsupported(UnsupportedBinOpKind::Or),
+        GleamBinOp::And => boolean::and(left, right, context),
+        GleamBinOp::Or => boolean::or(left, right, context),
         GleamBinOp::LtFloat => unsupported(UnsupportedBinOpKind::LtFloat),
         GleamBinOp::LtEqFloat => unsupported(UnsupportedBinOpKind::LtEqFloat),
         GleamBinOp::GtEqFloat => unsupported(UnsupportedBinOpKind::GtEqFloat),
@@ -119,14 +120,6 @@ pub fn main() {
     #[test]
     fn reject_profile_binary_operators() {
         let cases = [
-            (
-                r#"pub fn main() { True && False }"#,
-                UnsupportedBinOpKind::And,
-            ),
-            (
-                r#"pub fn main() { True || False }"#,
-                UnsupportedBinOpKind::Or,
-            ),
             (
                 r#"pub fn main() { 1.0 <. 2.0 }"#,
                 UnsupportedBinOpKind::LtFloat,

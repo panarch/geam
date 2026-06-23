@@ -238,6 +238,14 @@ impl String {
 }
 
 impl Bool {
+    pub(crate) fn and_bool(self, right: Self) -> Self {
+        Self(BoolExpr::and(self.into(), right.into()))
+    }
+
+    pub(crate) fn or_bool(self, right: Self) -> Self {
+        Self(BoolExpr::or(self.into(), right.into()))
+    }
+
     pub(crate) fn negate_bool(self) -> Self {
         Self(BoolExpr::not(self.into()))
     }
@@ -380,6 +388,14 @@ mod tests {
         assert!(matches!(
             not_equal(bool_(true), bool_(false)).0.kind(),
             BoolExprKind::NotEqual { .. },
+        ));
+        assert!(matches!(
+            bool_(true).and_bool(bool_(false)).0.kind(),
+            BoolExprKind::And { .. },
+        ));
+        assert!(matches!(
+            bool_(true).or_bool(bool_(false)).0.kind(),
+            BoolExprKind::Or { .. },
         ));
         assert!(matches!(
             bool_(true).negate_bool().0.kind(),

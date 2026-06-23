@@ -92,8 +92,6 @@ pub enum UnsupportedExpressionKind {
 pub enum UnsupportedBinOpKind {
     #[error("add float")]
     AddFloat,
-    #[error("and")]
-    And,
     #[error("div float")]
     DivFloat,
     #[error("gt float")]
@@ -106,8 +104,6 @@ pub enum UnsupportedBinOpKind {
     LtEqFloat,
     #[error("mult float")]
     MultFloat,
-    #[error("or")]
-    Or,
     #[error("sub float")]
     SubFloat,
 }

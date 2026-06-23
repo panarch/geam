@@ -18,6 +18,7 @@ execution_case!(let_binding, "let_binding.gleam");
 execution_case!(local_function_call, "local_function_call.gleam");
 execution_case!(string_concatenation, "string_concatenation.gleam");
 execution_case!(bool_value, "bool_value.gleam");
+execution_case!(bool_operators, "bool_operators.gleam");
 execution_case!(bool_case, "bool_case.gleam");
 execution_case!(bool_case_fallback, "bool_case_fallback.gleam");
 execution_case!(int_case, "int_case.gleam");

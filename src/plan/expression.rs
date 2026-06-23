@@ -166,6 +166,14 @@ pub(crate) enum BoolExprKind {
         left: Box<Expr>,
         right: Box<Expr>,
     },
+    And {
+        left: Box<BoolExpr>,
+        right: Box<BoolExpr>,
+    },
+    Or {
+        left: Box<BoolExpr>,
+        right: Box<BoolExpr>,
+    },
     BoolCase {
         subject: Box<BoolExpr>,
         true_: Box<BoolExpr>,
@@ -636,6 +644,24 @@ impl BoolExpr {
         }
     }
 
+    pub(crate) fn and(left: BoolExpr, right: BoolExpr) -> Self {
+        Self {
+            kind: BoolExprKind::And {
+                left: Box::new(left),
+                right: Box::new(right),
+            },
+        }
+    }
+
+    pub(crate) fn or(left: BoolExpr, right: BoolExpr) -> Self {
+        Self {
+            kind: BoolExprKind::Or {
+                left: Box::new(left),
+                right: Box::new(right),
+            },
+        }
+    }
+
     pub(crate) fn bool_case(subject: BoolExpr, true_: BoolExpr, false_: BoolExpr) -> Self {
         Self {
             kind: BoolExprKind::BoolCase {
@@ -982,6 +1008,14 @@ mod tests {
             )
             .kind(),
             BoolExprKind::IntCase { .. }
+        ));
+        assert!(matches!(
+            BoolExpr::and(BoolExpr::value(true), BoolExpr::value(false)).kind(),
+            BoolExprKind::And { .. }
+        ));
+        assert!(matches!(
+            BoolExpr::or(BoolExpr::value(true), BoolExpr::value(false)).kind(),
+            BoolExprKind::Or { .. }
         ));
         assert!(matches!(
             NilExpr::bool_case(BoolExpr::value(true), NilExpr::value(), NilExpr::value()).kind(),
