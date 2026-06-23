@@ -7,6 +7,65 @@ use crate::planner::error::{
 use crate::planner::expression::plan_expr;
 use ecow::EcoString;
 use gleam_core::ast::{AssignmentKind, Pattern, Statement, TypedAssignment, TypedPattern};
+use vec1::Vec1;
+
+pub(super) struct PlannedStatements {
+    pub(super) steps: Vec<Step>,
+    pub(super) return_: crate::plan::Expr,
+}
+
+pub(super) fn plan_steps_and_return(
+    mut statements: Vec<gleam_core::ast::TypedStatement>,
+    context: &mut PlanContext<'_>,
+    empty_error: PlanError,
+) -> Result<PlannedStatements, PlanError> {
+    let Some(last_statement) = statements.pop() else {
+        return Err(empty_error);
+    };
+
+    plan_ordered_steps_and_return(statements, last_statement, context)
+}
+
+pub(super) fn plan_non_empty_steps_and_return(
+    statements: Vec1<gleam_core::ast::TypedStatement>,
+    context: &mut PlanContext<'_>,
+) -> Result<PlannedStatements, PlanError> {
+    let (statements, last_statement) = statements.split_off_last();
+
+    plan_ordered_steps_and_return(statements, last_statement, context)
+}
+
+fn plan_ordered_steps_and_return(
+    statements: Vec<gleam_core::ast::TypedStatement>,
+    last_statement: gleam_core::ast::TypedStatement,
+    context: &mut PlanContext<'_>,
+) -> Result<PlannedStatements, PlanError> {
+    let steps = statements
+        .into_iter()
+        .map(|statement| plan_step(statement, context))
+        .collect::<Result<Vec<_>, _>>()?;
+
+    let return_ = match last_statement {
+        Statement::Expression(expression) => plan_expr(expression, context)?,
+        Statement::Assignment(_) => {
+            return Err(PlanError::UnsupportedStatement {
+                kind: UnsupportedStatementKind::AssignmentAsFinalStatement,
+            });
+        }
+        Statement::Use(_) => {
+            return Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::UseStatement,
+            });
+        }
+        Statement::Assert(_) => {
+            return Err(PlanError::UnsupportedStatement {
+                kind: UnsupportedStatementKind::AssertAsFinalStatement,
+            });
+        }
+    };
+
+    Ok(PlannedStatements { steps, return_ })
+}
 
 pub(super) fn plan_step(
     statement: gleam_core::ast::TypedStatement,

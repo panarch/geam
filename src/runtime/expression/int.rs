@@ -57,6 +57,10 @@ pub(in crate::runtime) fn eval_int_expr(
             }
             eval_int_expr(plan, frame, fallback)
         }
+        IntExprKind::Block { steps, return_ } => {
+            function::execute_steps(plan, steps, frame);
+            eval_int_expr(plan, frame, return_)
+        }
     }
 }
 
@@ -355,6 +359,42 @@ pub fn main() {
 "#,
             ),
             int(10),
+        );
+    }
+
+    #[test]
+    fn eval_block_int() {
+        assert_eq!(
+            run_src(
+                r#"
+pub fn main() {
+  {
+    let x = 1
+    x + 2
+  }
+}
+"#,
+            ),
+            int(3),
+        );
+    }
+
+    #[test]
+    fn eval_block_shadowing() {
+        assert_eq!(
+            run_src(
+                r#"
+pub fn main() {
+  let x = 1
+  {
+    let x = 2
+    x + 1
+  }
+  x
+}
+"#,
+            ),
+            int(1),
         );
     }
 }

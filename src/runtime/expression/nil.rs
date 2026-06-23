@@ -38,6 +38,10 @@ pub(in crate::runtime) fn eval_nil_expr(
             }
             eval_nil_expr(plan, frame, fallback);
         }
+        NilExprKind::Block { steps, return_ } => {
+            function::execute_steps(plan, steps, frame);
+            eval_nil_expr(plan, frame, return_);
+        }
     }
 }
 
@@ -121,6 +125,23 @@ pub fn main() {
   case 2 {
     1 -> Nil
     _ -> Nil
+  }
+}
+"#,
+            ),
+            Value::Nil,
+        );
+    }
+
+    #[test]
+    fn eval_block_nil() {
+        assert_eq!(
+            run_src(
+                r#"
+pub fn main() {
+  {
+    1
+    Nil
   }
 }
 "#,

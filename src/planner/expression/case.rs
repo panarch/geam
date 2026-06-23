@@ -192,13 +192,16 @@ pub fn main() {
 pub fn main() {
   case True {
     _ -> 1
-    True -> { 2 }
+    True -> {
+      [1]
+      2
+    }
   }
 }
 "#,
             ),
             PlanError::UnsupportedExpression {
-                kind: UnsupportedExpressionKind::Block,
+                kind: UnsupportedExpressionKind::List,
             },
         );
 
@@ -208,13 +211,16 @@ pub fn main() {
 pub fn main() {
   case 1 {
     _ -> 1
-    1 -> { 2 }
+    1 -> {
+      [1]
+      2
+    }
   }
 }
 "#,
             ),
             PlanError::UnsupportedExpression {
-                kind: UnsupportedExpressionKind::Block,
+                kind: UnsupportedExpressionKind::List,
             },
         );
     }

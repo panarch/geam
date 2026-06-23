@@ -2,12 +2,10 @@ use crate::plan::{FunctionPlan, Param};
 use crate::planner::context::{FunctionInfo, PlanContext};
 use crate::planner::error::{
     InvalidFunctionShapeReason, InvalidTypedAstReason, PlanError, UnsupportedFunctionReason,
-    UnsupportedStatementKind,
 };
-use crate::planner::expression::plan_expr;
-use crate::planner::statement::plan_step;
+use crate::planner::statement::plan_steps_and_return;
 use ecow::EcoString;
-use gleam_core::ast::{Statement, TypedFunction};
+use gleam_core::ast::TypedFunction;
 use std::collections::HashMap;
 
 pub(super) fn plan_function(
@@ -34,41 +32,24 @@ pub(super) fn plan_function(
             Param::new(param.local, param.name.clone())
         })
         .collect();
-    let mut body = function.body;
-    let Some(last_statement) = body.pop() else {
-        return Err(PlanError::InvalidTypedAst {
+    let planned = plan_steps_and_return(
+        function.body,
+        &mut context,
+        PlanError::InvalidTypedAst {
             reason: InvalidTypedAstReason::FunctionShape {
-                name,
+                name: name.clone(),
                 reason: InvalidFunctionShapeReason::EmptyBody,
             },
-        });
-    };
+        },
+    )?;
 
-    let steps = body
-        .into_iter()
-        .map(|statement| plan_step(statement, &mut context))
-        .collect::<Result<Vec<_>, _>>()?;
-
-    let return_ = match last_statement {
-        Statement::Expression(expression) => plan_expr(expression, &mut context)?,
-        Statement::Assignment(_) => {
-            return Err(PlanError::UnsupportedStatement {
-                kind: UnsupportedStatementKind::AssignmentAsFinalStatement,
-            });
-        }
-        Statement::Use(_) => {
-            return Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::UseStatement,
-            });
-        }
-        Statement::Assert(_) => {
-            return Err(PlanError::UnsupportedStatement {
-                kind: UnsupportedStatementKind::AssertAsFinalStatement,
-            });
-        }
-    };
-
-    Ok(FunctionPlan::new(info.id, name, params, steps, return_))
+    Ok(FunctionPlan::new(
+        info.id,
+        name,
+        params,
+        planned.steps,
+        planned.return_,
+    ))
 }
 
 pub(super) fn function_name(function: &TypedFunction) -> Result<EcoString, PlanError> {

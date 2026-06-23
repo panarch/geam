@@ -12,3 +12,4 @@ gleam-core = { git = "https://github.com/gleam-lang/gleam", rev = "afc1b7d956b43
 im = "15"
 num-bigint = "0.4.6"
 thiserror = "2"
+vec1 = "1"

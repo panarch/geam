@@ -1,3 +1,4 @@
+use super::FrameLayout;
 use super::expression::Expr;
 use super::id::{FunctionId, LocalId};
 use super::step::Step;
@@ -10,6 +11,7 @@ pub struct FunctionPlan {
     params: Vec<Param>,
     steps: Vec<Step>,
     return_: Expr,
+    frame_layout: FrameLayout,
 }
 
 #[derive(Debug, PartialEq)]
@@ -19,6 +21,7 @@ pub struct Param {
 }
 
 pub(crate) struct RuntimeFunction<Return> {
+    frame_layout: FrameLayout,
     steps: Vec<Step>,
     return_: Return,
 }
@@ -31,12 +34,15 @@ impl FunctionPlan {
         steps: Vec<Step>,
         return_: Expr,
     ) -> Self {
+        let frame_layout = FrameLayout::from_function_parts(&params, &steps, &return_);
+
         Self {
             id,
             name,
             params,
             steps,
             return_,
+            frame_layout,
         }
     }
 
@@ -59,11 +65,23 @@ impl FunctionPlan {
     pub fn return_(&self) -> &Expr {
         &self.return_
     }
+
+    pub(crate) fn frame_layout(&self) -> FrameLayout {
+        self.frame_layout
+    }
 }
 
 impl<Return> RuntimeFunction<Return> {
-    pub(crate) fn new(steps: Vec<Step>, return_: Return) -> Self {
-        Self { steps, return_ }
+    pub(crate) fn new(frame_layout: FrameLayout, steps: Vec<Step>, return_: Return) -> Self {
+        Self {
+            frame_layout,
+            steps,
+            return_,
+        }
+    }
+
+    pub(crate) fn frame_layout(&self) -> FrameLayout {
+        self.frame_layout
     }
 
     pub(crate) fn steps(&self) -> &[Step] {
@@ -83,12 +101,16 @@ impl Param {
     pub fn name(&self) -> &EcoString {
         &self.name
     }
+
+    pub(crate) fn local(&self) -> LocalId {
+        self.local
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::{FunctionPlan, Param, RuntimeFunction};
-    use crate::plan::{Expr, FunctionId, IntExpr, IntLocalId, LocalId};
+    use crate::plan::{Expr, FrameLayout, FunctionId, IntExpr, IntLocalId, LocalId};
     use num_bigint::BigInt;
 
     #[test]
@@ -112,6 +134,7 @@ mod tests {
             function.return_(),
             &Expr::int(IntExpr::value(BigInt::from(1)))
         );
+        assert_eq!(function.frame_layout().ints(), 1);
     }
 
     #[test]
@@ -124,8 +147,11 @@ mod tests {
     #[test]
     fn runtime_function_accessors() {
         let return_ = IntExpr::value(BigInt::from(1));
-        let function = RuntimeFunction::new(Vec::new(), return_);
+        let mut layout = FrameLayout::default();
+        layout.include_int(IntLocalId(0));
+        let function = RuntimeFunction::new(layout, Vec::new(), return_);
 
+        assert_eq!(function.frame_layout().ints(), 1);
         assert_eq!(function.steps(), &[]);
         assert_eq!(function.return_(), &IntExpr::value(BigInt::from(1)));
     }

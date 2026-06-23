@@ -45,6 +45,10 @@ pub(in crate::runtime) fn eval_string_expr(
             }
             eval_string_expr(plan, frame, fallback)
         }
+        StringExprKind::Block { steps, return_ } => {
+            function::execute_steps(plan, steps, frame);
+            eval_string_expr(plan, frame, return_)
+        }
     }
 }
 
@@ -125,6 +129,23 @@ pub fn main() {
 "#,
             ),
             Value::String("other".into()),
+        );
+    }
+
+    #[test]
+    fn eval_block_string() {
+        assert_eq!(
+            run_src(
+                r#"
+pub fn main() {
+  {
+    "ignored"
+    "geam"
+  }
+}
+"#,
+            ),
+            Value::String("geam".into()),
         );
     }
 }

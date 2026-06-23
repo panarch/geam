@@ -1,6 +1,6 @@
 use crate::plan::{
     BoolExpr, BoolFunctionId, BoolLocalId, CallArg, Expr, IntExpr, IntFunctionId, IntLocalId,
-    NilExpr, NilFunctionId, NilLocalId, StringExpr, StringFunctionId, StringLocalId,
+    NilExpr, NilFunctionId, NilLocalId, Step, StringExpr, StringFunctionId, StringLocalId,
 };
 use ecow::EcoString;
 use num_bigint::BigInt;
@@ -127,6 +127,45 @@ pub(crate) fn int_case_nil(
             .collect(),
         fallback.into(),
     ))
+}
+
+pub(crate) fn block_int(steps: impl IntoIterator<Item = Step>, return_: Int) -> Int {
+    Int(IntExpr::block(steps.into_iter().collect(), return_.into()))
+}
+
+pub(crate) fn block_string(steps: impl IntoIterator<Item = Step>, return_: String) -> String {
+    String(StringExpr::block(
+        steps.into_iter().collect(),
+        return_.into(),
+    ))
+}
+
+pub(crate) fn block_bool(steps: impl IntoIterator<Item = Step>, return_: Bool) -> Bool {
+    Bool(BoolExpr::block(steps.into_iter().collect(), return_.into()))
+}
+
+pub(crate) fn block_nil(steps: impl IntoIterator<Item = Step>, return_: Nil) -> Nil {
+    Nil(NilExpr::block(steps.into_iter().collect(), return_.into()))
+}
+
+pub(crate) fn let_int_step(local: usize, name: impl Into<EcoString>, value: Int) -> Step {
+    Step::let_int(IntLocalId(local), name.into(), value.into())
+}
+
+pub(crate) fn let_string_step(local: usize, name: impl Into<EcoString>, value: String) -> Step {
+    Step::let_string(StringLocalId(local), name.into(), value.into())
+}
+
+pub(crate) fn let_bool_step(local: usize, name: impl Into<EcoString>, value: Bool) -> Step {
+    Step::let_bool(BoolLocalId(local), name.into(), value.into())
+}
+
+pub(crate) fn let_nil_step(local: usize, name: impl Into<EcoString>, value: Nil) -> Step {
+    Step::let_nil(NilLocalId(local), name.into(), value.into())
+}
+
+pub(crate) fn evaluate_step(value: impl Into<Expr>) -> Step {
+    Step::evaluate(value.into())
 }
 
 pub(crate) fn local_int(index: usize, name: impl Into<EcoString>) -> Int {
@@ -303,7 +342,7 @@ impl From<Nil> for NilExpr {
 mod tests {
     use super::*;
     use crate::plan::{
-        BoolExprKind, CallArgKind, ExprKind, IntExprKind, NilExprKind, StringExprKind,
+        BoolExprKind, CallArgKind, ExprKind, IntExprKind, NilExprKind, StepKind, StringExprKind,
     };
 
     #[test]
@@ -341,6 +380,12 @@ mod tests {
             int_case_int(int(1), [(1, int(10))], int(0)).0.kind(),
             IntExprKind::IntCase { .. },
         ));
+        assert!(matches!(
+            block_int([let_int_step(0, "x", int(1))], local_int(0, "x"))
+                .0
+                .kind(),
+            IntExprKind::Block { .. },
+        ));
     }
 
     #[test]
@@ -360,6 +405,12 @@ mod tests {
                 .0
                 .kind(),
             StringExprKind::IntCase { .. },
+        ));
+        assert!(matches!(
+            block_string([let_string_step(0, "x", string("a"))], local_string(0, "x"))
+                .0
+                .kind(),
+            StringExprKind::Block { .. },
         ));
     }
 
@@ -413,6 +464,12 @@ mod tests {
                 .kind(),
             BoolExprKind::IntCase { .. },
         ));
+        assert!(matches!(
+            block_bool([let_bool_step(0, "x", bool_(true))], local_bool(0, "x"))
+                .0
+                .kind(),
+            BoolExprKind::Block { .. },
+        ));
     }
 
     #[test]
@@ -424,6 +481,12 @@ mod tests {
         assert!(matches!(
             int_case_nil(int(1), [(1, nil())], nil()).0.kind(),
             NilExprKind::IntCase { .. },
+        ));
+        assert!(matches!(
+            block_nil([let_nil_step(0, "x", nil())], local_nil(0, "x"))
+                .0
+                .kind(),
+            NilExprKind::Block { .. },
         ));
     }
 
@@ -476,5 +539,13 @@ mod tests {
             CallArgKind::Bool { .. },
         ));
         assert!(matches!(nil_arg(0, nil()).kind(), CallArgKind::Nil { .. },));
+    }
+
+    #[test]
+    fn step_dsl() {
+        assert!(matches!(
+            evaluate_step(int(1)).kind(),
+            StepKind::Evaluate(_),
+        ));
     }
 }

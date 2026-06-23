@@ -1,4 +1,5 @@
 mod expression;
+mod frame;
 mod function;
 mod id;
 mod runtime;
@@ -13,6 +14,7 @@ pub use expression::{BoolExpr, CallArg, Expr, IntExpr, NilExpr, StringExpr};
 pub(crate) use expression::{
     BoolExprKind, CallArgKind, ExprKind, IntExprKind, NilExprKind, StringExprKind,
 };
+pub(crate) use frame::FrameLayout;
 pub(crate) use function::RuntimeFunction;
 pub use function::{FunctionPlan, Param};
 pub(crate) use id::RuntimeFunctionId;

@@ -1,3 +1,4 @@
+mod block;
 mod call;
 mod case;
 mod operator;
@@ -38,9 +39,7 @@ pub(super) fn plan_expr(
         TypedExpr::Float { .. } => Err(PlanError::UnsupportedExpression {
             kind: UnsupportedExpressionKind::Float,
         }),
-        TypedExpr::Block { .. } => Err(PlanError::UnsupportedExpression {
-            kind: UnsupportedExpressionKind::Block,
-        }),
+        TypedExpr::Block { statements, .. } => block::plan(statements, context),
         TypedExpr::Pipeline { .. } => Err(PlanError::UnsupportedExpression {
             kind: UnsupportedExpressionKind::Pipeline,
         }),
@@ -227,12 +226,6 @@ mod tests {
                 r#"pub fn main() { 1.0 }"#,
                 PlanError::UnsupportedExpression {
                     kind: UnsupportedExpressionKind::Float,
-                },
-            ),
-            (
-                r#"pub fn main() { { 1 } }"#,
-                PlanError::UnsupportedExpression {
-                    kind: UnsupportedExpressionKind::Block,
                 },
             ),
             (

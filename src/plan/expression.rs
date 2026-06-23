@@ -2,6 +2,7 @@ use super::id::{
     BoolFunctionId, BoolLocalId, IntFunctionId, IntLocalId, LocalId, NilFunctionId, NilLocalId,
     StringFunctionId, StringLocalId,
 };
+use super::step::Step;
 use super::value::{Value, ValueType};
 use ecow::EcoString;
 use num_bigint::BigInt;
@@ -91,6 +92,10 @@ pub(crate) enum IntExprKind {
         clauses: Vec<(BigInt, IntExpr)>,
         fallback: Box<IntExpr>,
     },
+    Block {
+        steps: Vec<Step>,
+        return_: Box<IntExpr>,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -122,6 +127,10 @@ pub(crate) enum StringExprKind {
         subject: Box<IntExpr>,
         clauses: Vec<(BigInt, StringExpr)>,
         fallback: Box<StringExpr>,
+    },
+    Block {
+        steps: Vec<Step>,
+        return_: Box<StringExpr>,
     },
 }
 
@@ -184,6 +193,10 @@ pub(crate) enum BoolExprKind {
         clauses: Vec<(BigInt, BoolExpr)>,
         fallback: Box<BoolExpr>,
     },
+    Block {
+        steps: Vec<Step>,
+        return_: Box<BoolExpr>,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -211,6 +224,10 @@ pub(crate) enum NilExprKind {
         subject: Box<IntExpr>,
         clauses: Vec<(BigInt, NilExpr)>,
         fallback: Box<NilExpr>,
+    },
+    Block {
+        steps: Vec<Step>,
+        return_: Box<NilExpr>,
     },
 }
 
@@ -328,6 +345,10 @@ impl Expr {
 
     pub(crate) fn kind(&self) -> &ExprKind {
         &self.kind
+    }
+
+    pub(crate) fn into_kind(self) -> ExprKind {
+        self.kind
     }
 
     pub(crate) fn into_int(self) -> Result<IntExpr, Self> {
@@ -503,6 +524,15 @@ impl IntExpr {
         }
     }
 
+    pub(crate) fn block(steps: Vec<Step>, return_: IntExpr) -> Self {
+        Self {
+            kind: IntExprKind::Block {
+                steps,
+                return_: Box::new(return_),
+            },
+        }
+    }
+
     pub(crate) fn kind(&self) -> &IntExprKind {
         &self.kind
     }
@@ -556,6 +586,15 @@ impl StringExpr {
                 subject: Box::new(subject),
                 clauses,
                 fallback: Box::new(fallback),
+            },
+        }
+    }
+
+    pub(crate) fn block(steps: Vec<Step>, return_: StringExpr) -> Self {
+        Self {
+            kind: StringExprKind::Block {
+                steps,
+                return_: Box::new(return_),
             },
         }
     }
@@ -686,6 +725,15 @@ impl BoolExpr {
         }
     }
 
+    pub(crate) fn block(steps: Vec<Step>, return_: BoolExpr) -> Self {
+        Self {
+            kind: BoolExprKind::Block {
+                steps,
+                return_: Box::new(return_),
+            },
+        }
+    }
+
     pub(crate) fn kind(&self) -> &BoolExprKind {
         &self.kind
     }
@@ -734,6 +782,15 @@ impl NilExpr {
         }
     }
 
+    pub(crate) fn block(steps: Vec<Step>, return_: NilExpr) -> Self {
+        Self {
+            kind: NilExprKind::Block {
+                steps,
+                return_: Box::new(return_),
+            },
+        }
+    }
+
     pub(crate) fn kind(&self) -> &NilExprKind {
         &self.kind
     }
@@ -756,7 +813,7 @@ mod tests {
         BoolExpr, BoolExprKind, Expr, ExprKind, IntExpr, IntExprKind, NilExpr, NilExprKind,
         StringExpr, StringExprKind,
     };
-    use crate::plan::{Value, ValueType};
+    use crate::plan::{Step, Value, ValueType};
     use num_bigint::BigInt;
 
     #[test]
@@ -974,6 +1031,14 @@ mod tests {
             IntExprKind::IntCase { .. }
         ));
         assert!(matches!(
+            IntExpr::block(
+                vec![Step::evaluate(Expr::int(IntExpr::value(1.into())))],
+                IntExpr::value(2.into()),
+            )
+            .kind(),
+            IntExprKind::Block { .. }
+        ));
+        assert!(matches!(
             StringExpr::bool_case(
                 BoolExpr::value(true),
                 StringExpr::value("yes".into()),
@@ -990,6 +1055,14 @@ mod tests {
             )
             .kind(),
             StringExprKind::IntCase { .. }
+        ));
+        assert!(matches!(
+            StringExpr::block(
+                vec![Step::evaluate(Expr::string(StringExpr::value("a".into())))],
+                StringExpr::value("b".into()),
+            )
+            .kind(),
+            StringExprKind::Block { .. }
         ));
         assert!(matches!(
             BoolExpr::bool_case(
@@ -1018,6 +1091,14 @@ mod tests {
             BoolExprKind::Or { .. }
         ));
         assert!(matches!(
+            BoolExpr::block(
+                vec![Step::evaluate(Expr::bool(BoolExpr::value(false)))],
+                BoolExpr::value(true),
+            )
+            .kind(),
+            BoolExprKind::Block { .. }
+        ));
+        assert!(matches!(
             NilExpr::bool_case(BoolExpr::value(true), NilExpr::value(), NilExpr::value()).kind(),
             NilExprKind::BoolCase { .. }
         ));
@@ -1029,6 +1110,14 @@ mod tests {
             )
             .kind(),
             NilExprKind::IntCase { .. }
+        ));
+        assert!(matches!(
+            NilExpr::block(
+                vec![Step::evaluate(Expr::nil(NilExpr::value()))],
+                NilExpr::value(),
+            )
+            .kind(),
+            NilExprKind::Block { .. }
         ));
         assert!(matches!(
             Expr::from(Value::Nil).kind(),

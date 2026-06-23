@@ -65,6 +65,10 @@ pub(in crate::runtime) fn eval_bool_expr(
             }
             eval_bool_expr(plan, frame, fallback)
         }
+        BoolExprKind::Block { steps, return_ } => {
+            function::execute_steps(plan, steps, frame);
+            eval_bool_expr(plan, frame, return_)
+        }
     }
 }
 
@@ -320,6 +324,23 @@ pub fn main() {
 "#,
             ),
             Value::Bool(false),
+        );
+    }
+
+    #[test]
+    fn eval_block_bool() {
+        assert_eq!(
+            run_src(
+                r#"
+pub fn main() {
+  {
+    1
+    True
+  }
+}
+"#,
+            ),
+            Value::Bool(true),
         );
     }
 }

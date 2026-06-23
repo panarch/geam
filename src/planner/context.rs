@@ -100,6 +100,16 @@ impl<'a> PlanContext<'a> {
     pub(super) fn lookup_function(&self, name: &EcoString) -> Option<FunctionInfo> {
         self.functions.get(name).cloned()
     }
+
+    pub(super) fn with_local_scope<T, E>(
+        &mut self,
+        f: impl FnOnce(&mut Self) -> Result<T, E>,
+    ) -> Result<T, E> {
+        let locals = self.locals.clone();
+        let result = f(self);
+        self.locals = locals;
+        result
+    }
 }
 
 #[derive(Debug, Default)]
@@ -150,5 +160,33 @@ impl ValueType {
         } else {
             None
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{FunctionInfo, PlanContext};
+    use crate::plan::{IntLocalId, LocalId};
+    use ecow::EcoString;
+    use std::collections::HashMap;
+
+    #[test]
+    fn local_scope_restores_names_after_error_without_reusing_ids() {
+        let module = EcoString::from("main");
+        let functions = HashMap::<EcoString, FunctionInfo>::new();
+        let mut context = PlanContext::new(&module, &functions);
+
+        assert_eq!(context.define_int_local("x".into()), IntLocalId(0));
+        let result = context.with_local_scope(|context| {
+            assert_eq!(context.define_int_local("x".into()), IntLocalId(1));
+            Err::<(), _>(())
+        });
+
+        assert_eq!(result, Err(()));
+        assert_eq!(
+            context.lookup_local(&"x".into()),
+            Some(LocalId::Int(IntLocalId(0)))
+        );
+        assert_eq!(context.define_int_local("y".into()), IntLocalId(2));
     }
 }

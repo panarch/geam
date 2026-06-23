@@ -68,24 +68,30 @@ pub fn or_op() {
             expect_plan_error(
                 r#"
 pub fn main() {
-  False && { True }
+  False && {
+    [1]
+    True
+  }
 }
 "#,
             ),
             PlanError::UnsupportedExpression {
-                kind: UnsupportedExpressionKind::Block,
+                kind: UnsupportedExpressionKind::List,
             },
         );
         assert_eq!(
             expect_plan_error(
                 r#"
 pub fn main() {
-  True || { False }
+  True || {
+    [1]
+    False
+  }
 }
 "#,
             ),
             PlanError::UnsupportedExpression {
-                kind: UnsupportedExpressionKind::Block,
+                kind: UnsupportedExpressionKind::List,
             },
         );
     }

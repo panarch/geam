@@ -917,6 +917,7 @@ dependencies = [
  "im",
  "num-bigint",
  "thiserror 2.0.18",
+ "vec1",
 ]
 
 [[package]]

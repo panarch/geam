@@ -271,14 +271,17 @@ fn duplicate_literal(value: Int) {
 pub fn main() {
   case 1 {
     1 -> 1
-    1 -> { 2 }
+    1 -> {
+      [1]
+      2
+    }
     _ -> 0
   }
 }
 "#,
             ),
             PlanError::UnsupportedExpression {
-                kind: UnsupportedExpressionKind::Block,
+                kind: UnsupportedExpressionKind::List,
             },
         );
     }

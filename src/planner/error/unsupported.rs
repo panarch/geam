@@ -66,8 +66,6 @@ pub enum UnsupportedExpressionKind {
     AnonymousFunction,
     #[error("bit array")]
     BitArray,
-    #[error("block")]
-    Block,
     #[error("echo")]
     Echo,
     #[error("float")]

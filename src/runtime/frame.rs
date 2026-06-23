@@ -1,16 +1,22 @@
-use crate::plan::{BoolLocalId, IntLocalId, NilLocalId, StringLocalId};
+use crate::plan::{BoolLocalId, FrameLayout, IntLocalId, NilLocalId, StringLocalId};
 use ecow::EcoString;
 use num_bigint::BigInt;
 
-#[derive(Default)]
 pub(super) struct Frame {
     ints: Vec<BigInt>,
     strings: Vec<EcoString>,
     bools: Vec<bool>,
-    nils: usize,
 }
 
 impl Frame {
+    pub(super) fn new(layout: FrameLayout) -> Self {
+        Self {
+            ints: vec![BigInt::from(0); layout.ints()],
+            strings: vec![EcoString::default(); layout.strings()],
+            bools: vec![false; layout.bools()],
+        }
+    }
+
     pub(super) fn set_int(&mut self, local: IntLocalId, value: BigInt) {
         set_slot(&mut self.ints, local.0, value);
     }
@@ -35,32 +41,31 @@ impl Frame {
         self.bools[local.0]
     }
 
-    pub(super) fn set_nil(&mut self, local: NilLocalId) {
-        if local.0 == self.nils {
-            self.nils += 1;
-        }
-    }
+    pub(super) fn set_nil(&mut self, _local: NilLocalId) {}
 
     pub(super) fn get_nil(&self, _local: NilLocalId) {}
 }
 
-fn set_slot<T>(slots: &mut Vec<T>, index: usize, value: T) {
-    if index == slots.len() {
-        slots.push(value);
-    } else {
-        slots[index] = value;
+impl Default for Frame {
+    fn default() -> Self {
+        Self::new(FrameLayout::default())
     }
+}
+
+fn set_slot<T>(slots: &mut [T], index: usize, value: T) {
+    slots[index] = value;
 }
 
 #[cfg(test)]
 mod tests {
     use super::Frame;
-    use crate::plan::{BoolLocalId, IntLocalId, NilLocalId, StringLocalId};
+    use crate::plan::{BoolLocalId, FrameLayout, IntLocalId, NilLocalId, StringLocalId};
     use num_bigint::BigInt;
 
     #[test]
     fn frame_set_and_get_local() {
-        let mut frame = Frame::default();
+        let frame = frame_with_layout(1, 1, 1, 1);
+        let mut frame = frame;
 
         frame.set_int(IntLocalId(0), int(1));
         frame.set_string(StringLocalId(0), "geam".into());
@@ -75,12 +80,29 @@ mod tests {
 
     #[test]
     fn frame_set_overwrites_local() {
-        let mut frame = Frame::default();
+        let mut frame = frame_with_layout(1, 0, 0, 0);
 
         frame.set_int(IntLocalId(0), int(1));
         frame.set_int(IntLocalId(0), int(2));
 
         assert_eq!(frame.get_int(IntLocalId(0)), int(2));
+    }
+
+    fn frame_with_layout(ints: usize, strings: usize, bools: usize, nils: usize) -> Frame {
+        let mut layout = FrameLayout::default();
+        if ints > 0 {
+            layout.include_int(IntLocalId(ints - 1));
+        }
+        if strings > 0 {
+            layout.include_string(StringLocalId(strings - 1));
+        }
+        if bools > 0 {
+            layout.include_bool(BoolLocalId(bools - 1));
+        }
+        if nils > 0 {
+            layout.include_nil(NilLocalId(nils - 1));
+        }
+        Frame::new(layout)
     }
 
     fn int(value: i64) -> BigInt {

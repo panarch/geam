@@ -72,6 +72,7 @@ fn runtime_function(
         ExprKind::Int(return_) => {
             let id = IntFunctionId(runtime_functions.int_functions.len());
             runtime_functions.int_functions.push(RuntimeFunction::new(
+                function.frame_layout(),
                 function.steps().to_vec(),
                 return_.clone(),
             ));
@@ -82,6 +83,7 @@ fn runtime_function(
             runtime_functions
                 .string_functions
                 .push(RuntimeFunction::new(
+                    function.frame_layout(),
                     function.steps().to_vec(),
                     return_.clone(),
                 ));
@@ -90,6 +92,7 @@ fn runtime_function(
         ExprKind::Bool(return_) => {
             let id = BoolFunctionId(runtime_functions.bool_functions.len());
             runtime_functions.bool_functions.push(RuntimeFunction::new(
+                function.frame_layout(),
                 function.steps().to_vec(),
                 return_.clone(),
             ));
@@ -98,6 +101,7 @@ fn runtime_function(
         ExprKind::Nil(return_) => {
             let id = NilFunctionId(runtime_functions.nil_functions.len());
             runtime_functions.nil_functions.push(RuntimeFunction::new(
+                function.frame_layout(),
                 function.steps().to_vec(),
                 return_.clone(),
             ));

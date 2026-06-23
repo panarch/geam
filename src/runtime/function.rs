@@ -1,5 +1,5 @@
 use crate::plan::{
-    BoolFunctionId, CallArg, CallArgKind, ExecutionPlan, IntFunctionId, NilFunctionId,
+    BoolFunctionId, CallArg, CallArgKind, ExecutionPlan, FrameLayout, IntFunctionId, NilFunctionId,
     RuntimeFunctionId, StepKind, StringFunctionId, Value,
 };
 use crate::runtime::expression::{
@@ -35,7 +35,7 @@ pub(super) fn run_int_call(
     caller_frame: &mut Frame,
 ) -> BigInt {
     let function = plan.int_function(function);
-    let mut frame = bind_arguments(plan, args, caller_frame);
+    let mut frame = bind_arguments(plan, args, caller_frame, function.frame_layout());
     execute_steps(plan, function.steps(), &mut frame);
     eval_int_expr(plan, &mut frame, function.return_())
 }
@@ -47,7 +47,7 @@ pub(super) fn run_string_call(
     caller_frame: &mut Frame,
 ) -> EcoString {
     let function = plan.string_function(function);
-    let mut frame = bind_arguments(plan, args, caller_frame);
+    let mut frame = bind_arguments(plan, args, caller_frame, function.frame_layout());
     execute_steps(plan, function.steps(), &mut frame);
     eval_string_expr(plan, &mut frame, function.return_())
 }
@@ -59,7 +59,7 @@ pub(super) fn run_bool_call(
     caller_frame: &mut Frame,
 ) -> bool {
     let function = plan.bool_function(function);
-    let mut frame = bind_arguments(plan, args, caller_frame);
+    let mut frame = bind_arguments(plan, args, caller_frame, function.frame_layout());
     execute_steps(plan, function.steps(), &mut frame);
     eval_bool_expr(plan, &mut frame, function.return_())
 }
@@ -71,12 +71,16 @@ pub(super) fn run_nil_call(
     caller_frame: &mut Frame,
 ) {
     let function = plan.nil_function(function);
-    let mut frame = bind_arguments(plan, args, caller_frame);
+    let mut frame = bind_arguments(plan, args, caller_frame, function.frame_layout());
     execute_steps(plan, function.steps(), &mut frame);
     eval_nil_expr(plan, &mut frame, function.return_());
 }
 
-fn execute_steps(plan: &ExecutionPlan, steps: &[crate::plan::Step], frame: &mut Frame) {
+pub(in crate::runtime) fn execute_steps(
+    plan: &ExecutionPlan,
+    steps: &[crate::plan::Step],
+    frame: &mut Frame,
+) {
     for step in steps {
         match step.kind() {
             StepKind::LetInt { local, value, .. } => {
@@ -102,8 +106,13 @@ fn execute_steps(plan: &ExecutionPlan, steps: &[crate::plan::Step], frame: &mut 
     }
 }
 
-fn bind_arguments(plan: &ExecutionPlan, args: &[CallArg], caller_frame: &mut Frame) -> Frame {
-    let mut frame = Frame::default();
+fn bind_arguments(
+    plan: &ExecutionPlan,
+    args: &[CallArg],
+    caller_frame: &mut Frame,
+    frame_layout: FrameLayout,
+) -> Frame {
+    let mut frame = Frame::new(frame_layout);
 
     for arg in args {
         match arg.kind() {
@@ -243,6 +252,49 @@ pub fn main() {
 "#,
             ),
             Value::Nil,
+        );
+    }
+
+    #[test]
+    fn execute_sparse_bool_local_after_skipped_block() {
+        assert_eq!(
+            run_src(
+                r#"
+pub fn main() {
+  False && {
+    let x = True
+    x
+  }
+
+  let y = True
+  y
+}
+"#,
+            ),
+            Value::Bool(true),
+        );
+    }
+
+    #[test]
+    fn execute_sparse_bool_local_after_untaken_case_block() {
+        assert_eq!(
+            run_src(
+                r#"
+pub fn main() {
+  case False {
+    True -> {
+      let x = True
+      x
+    }
+    False -> False
+  }
+
+  let y = True
+  y
+}
+"#,
+            ),
+            Value::Bool(true),
         );
     }
 }
