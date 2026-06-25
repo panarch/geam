@@ -38,6 +38,15 @@ Do not use `Option` or `Result` in internal plan constructors to represent
 unsupported profile features, typed-AST margin cases, or runtime executability
 checks. Reject those cases before constructing plan data.
 
+`ExecutionPlan` shapes must not contain runtime state for features that are
+outside the current Geam profile. If a feature is profile-out, its storage,
+ids, frame slots, and executable plan variants must also stay out unless they
+are required by an accepted source path.
+
+Treat over-wide execution plan state as a blocking design issue, even when no
+current source fixture executes incorrectly. The plan model is the validation
+boundary; unused executable shape creates future margin and review ambiguity.
+
 ## Gleam Compatibility Rules
 
 For any Gleam source that Geam accepts, observable runtime behavior must match
