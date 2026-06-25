@@ -477,7 +477,6 @@ pub fn main() {
         let expected = module(
             "main",
             function("main", call_int(1, [int_arg(0, int(1))])).let_function(
-                0,
                 "function",
                 function_ref(
                     RuntimeFunctionId::Int(IntFunctionId(1)),

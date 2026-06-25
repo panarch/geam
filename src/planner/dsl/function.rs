@@ -1,6 +1,6 @@
 use crate::plan::{
-    BoolLocalId, Expr, FunctionId, FunctionLocalId, FunctionPlan, IntLocalId, LocalId, NilLocalId,
-    Param, ReturnExpr, Step, StringLocalId,
+    BoolLocalId, Expr, FunctionId, FunctionPlan, IntLocalId, LocalId, NilLocalId, Param,
+    ReturnExpr, Step, StringLocalId,
 };
 use crate::planner::dsl::expression::{Bool, Function, Int, Nil, String};
 use ecow::EcoString;
@@ -88,17 +88,9 @@ impl FunctionDsl {
         self
     }
 
-    pub(crate) fn let_function(
-        mut self,
-        local: usize,
-        name: impl Into<EcoString>,
-        value: Function,
-    ) -> Self {
-        self.steps.push(Step::let_function(
-            FunctionLocalId(local),
-            name.into(),
-            value.into(),
-        ));
+    pub(crate) fn let_function(mut self, name: impl Into<EcoString>, value: Function) -> Self {
+        self.steps
+            .push(Step::let_function(name.into(), value.into()));
         self
     }
 
@@ -130,7 +122,6 @@ mod tests {
             .let_bool(1, "z", bool_(true))
             .let_nil(1, "n", nil())
             .let_function(
-                0,
                 "f",
                 function_ref(
                     RuntimeFunctionId::Int(IntFunctionId(0)),

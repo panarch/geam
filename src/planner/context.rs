@@ -33,7 +33,6 @@ pub(super) struct PlanContext<'a> {
     next_string_local: usize,
     next_bool_local: usize,
     next_nil_local: usize,
-    next_function_local: usize,
 }
 
 impl<'a> PlanContext<'a> {
@@ -50,7 +49,6 @@ impl<'a> PlanContext<'a> {
             next_string_local: 0,
             next_bool_local: 0,
             next_nil_local: 0,
-            next_function_local: 0,
         }
     }
 
@@ -73,29 +71,12 @@ impl<'a> PlanContext<'a> {
             LocalId::Nil(local) => {
                 self.next_nil_local = self.next_nil_local.max(local.0 + 1);
             }
-            LocalId::Function(local) => {
-                self.next_function_local = self.next_function_local.max(local.0 + 1);
-            }
         }
         self.locals.insert(name, (local, type_));
     }
 
-    pub(super) fn define_function_local(
-        &mut self,
-        name: EcoString,
-        value: FunctionValue,
-    ) -> crate::plan::FunctionLocalId {
-        let local = crate::plan::FunctionLocalId(self.next_function_local);
-        self.next_function_local += 1;
-        self.locals.insert(
-            name.clone(),
-            (
-                LocalId::Function(local),
-                ValueType::Function(Box::new(value.type_().clone())),
-            ),
-        );
+    pub(super) fn define_function_alias(&mut self, name: EcoString, value: FunctionValue) {
         self.function_values.insert(name, value);
-        local
     }
 
     pub(super) fn define_int_local(&mut self, name: EcoString) -> IntLocalId {
@@ -219,7 +200,10 @@ impl ValueType {
 #[cfg(test)]
 mod tests {
     use super::{FunctionInfo, FunctionRuntimeIds, PlanContext};
-    use crate::plan::{FunctionLocalId, FunctionType, IntLocalId, LocalId, ValueType};
+    use crate::plan::{
+        FunctionType, FunctionValue, IntFunctionId, IntLocalId, LocalId, RuntimeFunctionId,
+        ValueType,
+    };
     use ecow::EcoString;
     use std::collections::HashMap;
 
@@ -244,24 +228,20 @@ mod tests {
     }
 
     #[test]
-    fn define_existing_function_local_records_shape() {
+    fn define_function_alias_records_value() {
         let module = EcoString::from("main");
         let functions = HashMap::<EcoString, FunctionInfo>::new();
         let mut context = PlanContext::new(&module, &functions);
-
-        context.define_existing_local(
-            "f".into(),
-            LocalId::Function(FunctionLocalId(2)),
-            ValueType::Function(Box::new(FunctionType::new(Vec::new(), ValueType::Int))),
+        let value = FunctionValue::new(
+            FunctionType::new(Vec::new(), ValueType::Int),
+            RuntimeFunctionId::Int(IntFunctionId(0)),
+            Vec::new(),
         );
 
-        assert_eq!(
-            context.lookup_local(&"f".into()),
-            Some((
-                LocalId::Function(FunctionLocalId(2)),
-                ValueType::Function(Box::new(FunctionType::new(Vec::new(), ValueType::Int))),
-            ))
-        );
+        context.define_function_alias("f".into(), value.clone());
+
+        assert_eq!(context.lookup_function_value(&"f".into()), Some(value));
+        assert_eq!(context.lookup_local(&"f".into()), None);
     }
 
     #[test]

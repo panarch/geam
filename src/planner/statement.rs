@@ -134,8 +134,8 @@ pub(in crate::planner) fn plan_variable_step(
                     kind: UnsupportedAssignmentKind::NonValueFunction,
                 });
             };
-            let local = context.define_function_local(name.clone(), function_value.clone());
-            Ok(Step::let_function(local, name, value))
+            context.define_function_alias(name.clone(), function_value.clone());
+            Ok(Step::let_function(name, value))
         }
     }
 }

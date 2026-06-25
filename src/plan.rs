@@ -19,8 +19,8 @@ pub use function::{FunctionPlan, Param, ReturnExpr};
 pub(crate) use function::{ReturnExprKind, RuntimeFunction};
 pub(crate) use id::RuntimeFunctionId;
 pub use id::{
-    BoolFunctionId, BoolLocalId, FunctionId, FunctionLocalId, IntFunctionId, IntLocalId, LocalId,
-    NilFunctionId, NilLocalId, StringFunctionId, StringLocalId,
+    BoolFunctionId, BoolLocalId, FunctionId, IntFunctionId, IntLocalId, LocalId, NilFunctionId,
+    NilLocalId, StringFunctionId, StringLocalId,
 };
 pub use step::Step;
 pub(crate) use step::StepKind;

@@ -4,7 +4,6 @@ pub enum LocalId {
     String(StringLocalId),
     Bool(BoolLocalId),
     Nil(NilLocalId),
-    Function(FunctionLocalId),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -18,9 +17,6 @@ pub struct BoolLocalId(pub(crate) usize);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct NilLocalId(pub(crate) usize);
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct FunctionLocalId(pub(crate) usize);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct FunctionId(usize);

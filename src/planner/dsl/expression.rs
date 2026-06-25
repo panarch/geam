@@ -1,8 +1,7 @@
 use crate::plan::{
-    BoolExpr, BoolFunctionId, BoolLocalId, CallArg, Expr, FunctionExpr, FunctionLocalId,
-    FunctionType, FunctionValue, IntExpr, IntFunctionId, IntLocalId, LocalId, NilExpr,
-    NilFunctionId, NilLocalId, ReturnExpr, RuntimeFunctionId, Step, StringExpr, StringFunctionId,
-    StringLocalId,
+    BoolExpr, BoolFunctionId, BoolLocalId, CallArg, Expr, FunctionExpr, FunctionType,
+    FunctionValue, IntExpr, IntFunctionId, IntLocalId, LocalId, NilExpr, NilFunctionId, NilLocalId,
+    ReturnExpr, RuntimeFunctionId, Step, StringExpr, StringFunctionId, StringLocalId,
 };
 use ecow::EcoString;
 use num_bigint::BigInt;
@@ -187,8 +186,8 @@ pub(crate) fn let_nil_step(local: usize, name: impl Into<EcoString>, value: Nil)
     Step::let_nil(NilLocalId(local), name.into(), value.into())
 }
 
-pub(crate) fn let_function_step(local: usize, name: impl Into<EcoString>, value: Function) -> Step {
-    Step::let_function(FunctionLocalId(local), name.into(), value.into())
+pub(crate) fn let_function_step(name: impl Into<EcoString>, value: Function) -> Step {
+    Step::let_function(name.into(), value.into())
 }
 
 pub(crate) fn evaluate_step(value: impl Into<Expr>) -> Step {
@@ -572,7 +571,6 @@ mod tests {
         ));
         assert!(matches!(
             let_function_step(
-                0,
                 "f",
                 function_ref(
                     RuntimeFunctionId::Int(crate::plan::IntFunctionId(0)),

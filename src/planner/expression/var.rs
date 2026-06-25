@@ -16,13 +16,16 @@ pub(super) fn plan_var(
 ) -> Result<Expr, PlanError> {
     match constructor.variant {
         ValueConstructorVariant::LocalVariable { .. } => {
-            let (local, type_) =
-                context
-                    .lookup_local(&name)
-                    .ok_or_else(|| PlanError::InvalidTypedAst {
-                        reason: InvalidTypedAstReason::UnknownLocal { name: name.clone() },
-                    })?;
-            local_get(local, name, type_, context)
+            if let Some((local, type_)) = context.lookup_local(&name) {
+                return local_get(local, name, type_);
+            }
+            if let Some(value) = context.lookup_function_value(&name) {
+                return Ok(Expr::function(FunctionExpr::value(value)));
+            }
+
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::UnknownLocal { name },
+            })
         }
         ValueConstructorVariant::Record {
             name,
@@ -88,12 +91,7 @@ pub(super) fn plan_var(
     }
 }
 
-fn local_get(
-    local: LocalId,
-    name: EcoString,
-    type_: ValueType,
-    context: &PlanContext<'_>,
-) -> Result<Expr, PlanError> {
+fn local_get(local: LocalId, name: EcoString, type_: ValueType) -> Result<Expr, PlanError> {
     match (local, type_) {
         (LocalId::Int(local), ValueType::Int) => Ok(Expr::int(IntExpr::local_get(local, name))),
         (LocalId::String(local), ValueType::String) => {
@@ -101,18 +99,6 @@ fn local_get(
         }
         (LocalId::Bool(local), ValueType::Bool) => Ok(Expr::bool(BoolExpr::local_get(local, name))),
         (LocalId::Nil(local), ValueType::Nil) => Ok(Expr::nil(NilExpr::local_get(local, name))),
-        (LocalId::Function(_), ValueType::Function(_)) => {
-            let value =
-                context
-                    .lookup_function_value(&name)
-                    .ok_or_else(|| PlanError::InvalidTypedAst {
-                        reason: InvalidTypedAstReason::CallShape {
-                            reason:
-                                crate::planner::error::InvalidCallShapeReason::LocalFunctionValue,
-                        },
-                    })?;
-            Ok(Expr::function(FunctionExpr::value(value)))
-        }
         _ => Err(PlanError::InvalidTypedAst {
             reason: InvalidTypedAstReason::ExpressionShape {
                 kind: InvalidExpressionShapeKind::Invalid,
@@ -503,31 +489,17 @@ pub fn main() {
     fn reject_margin_local_type_shape_mismatch() {
         let module_name = EcoString::from("main");
         let functions = HashMap::<EcoString, FunctionInfo>::new();
-        let context = PlanContext::new(&module_name, &functions);
+        let _context = PlanContext::new(&module_name, &functions);
 
         assert_eq!(
             super::local_get(
                 LocalId::Int(IntLocalId(0)),
                 "value".into(),
                 ValueType::String,
-                &context,
             ),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::ExpressionShape {
                     kind: InvalidExpressionShapeKind::Invalid,
-                },
-            }),
-        );
-        assert_eq!(
-            super::local_get(
-                LocalId::Function(crate::plan::FunctionLocalId(0)),
-                "value".into(),
-                ValueType::Function(Box::new(FunctionType::new(Vec::new(), ValueType::Int))),
-                &context,
-            ),
-            Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::CallShape {
-                    reason: crate::planner::InvalidCallShapeReason::LocalFunctionValue,
                 },
             }),
         );

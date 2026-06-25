@@ -1,5 +1,5 @@
 use super::expression::{BoolExpr, Expr, FunctionExpr, IntExpr, NilExpr, StringExpr};
-use super::id::{BoolLocalId, FunctionLocalId, IntLocalId, NilLocalId, StringLocalId};
+use super::id::{BoolLocalId, IntLocalId, NilLocalId, StringLocalId};
 use ecow::EcoString;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -30,7 +30,6 @@ pub(crate) enum StepKind {
         value: NilExpr,
     },
     LetFunction {
-        local: FunctionLocalId,
         name: EcoString,
         value: FunctionExpr,
     },
@@ -62,13 +61,9 @@ impl Step {
         }
     }
 
-    pub(crate) fn let_function(
-        local: FunctionLocalId,
-        name: EcoString,
-        value: FunctionExpr,
-    ) -> Self {
+    pub(crate) fn let_function(name: EcoString, value: FunctionExpr) -> Self {
         Self {
-            kind: StepKind::LetFunction { local, name, value },
+            kind: StepKind::LetFunction { name, value },
         }
     }
 
@@ -87,8 +82,8 @@ impl Step {
 mod tests {
     use super::{Step, StepKind};
     use crate::plan::{
-        Expr, FunctionExpr, FunctionLocalId, FunctionType, FunctionValue, IntExpr, IntFunctionId,
-        IntLocalId, RuntimeFunctionId, ValueType,
+        Expr, FunctionExpr, FunctionType, FunctionValue, IntExpr, IntFunctionId, IntLocalId,
+        RuntimeFunctionId, ValueType,
     };
     use num_bigint::BigInt;
 
@@ -104,7 +99,6 @@ mod tests {
         ));
         assert!(matches!(
             Step::let_function(
-                FunctionLocalId(0),
                 "f".into(),
                 FunctionExpr::value(FunctionValue::new(
                     FunctionType::new(vec![ValueType::Int], ValueType::Int),

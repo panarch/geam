@@ -1,6 +1,6 @@
 use super::expression::{BoolExpr, CallArg, Expr, FunctionExpr, IntExpr, NilExpr, StringExpr};
 use super::function::{Param, ReturnExpr};
-use super::id::{BoolLocalId, FunctionLocalId, IntLocalId, LocalId, NilLocalId, StringLocalId};
+use super::id::{BoolLocalId, IntLocalId, LocalId, NilLocalId, StringLocalId};
 use super::step::Step;
 use super::{
     BoolExprKind, CallArgKind, ExprKind, FunctionExprKind, IntExprKind, NilExprKind,
@@ -13,7 +13,6 @@ pub(crate) struct FrameLayout {
     strings: usize,
     bools: usize,
     nils: usize,
-    functions: usize,
 }
 
 impl FrameLayout {
@@ -39,7 +38,6 @@ impl FrameLayout {
             LocalId::String(local) => self.include_string(local),
             LocalId::Bool(local) => self.include_bool(local),
             LocalId::Nil(local) => self.include_nil(local),
-            LocalId::Function(local) => self.include_function(local),
         }
     }
 
@@ -59,10 +57,6 @@ impl FrameLayout {
         self.nils = self.nils.max(local.0 + 1);
     }
 
-    pub(crate) fn include_function(&mut self, local: FunctionLocalId) {
-        self.functions = self.functions.max(local.0 + 1);
-    }
-
     pub(crate) fn ints(self) -> usize {
         self.ints
     }
@@ -73,11 +67,6 @@ impl FrameLayout {
 
     pub(crate) fn bools(self) -> usize {
         self.bools
-    }
-
-    #[cfg(test)]
-    pub(crate) fn functions(self) -> usize {
-        self.functions
     }
 
     #[cfg(test)]
@@ -338,9 +327,9 @@ impl FrameLayout {
 mod tests {
     use super::FrameLayout;
     use crate::plan::{
-        BoolExpr, BoolLocalId, Expr, FunctionExpr, FunctionLocalId, FunctionType, FunctionValue,
-        IntExpr, IntFunctionId, IntLocalId, LocalId, NilLocalId, ReturnExpr, RuntimeFunctionId,
-        Step, StringLocalId, ValueType,
+        BoolExpr, BoolLocalId, Expr, FunctionExpr, FunctionType, FunctionValue, IntExpr,
+        IntFunctionId, IntLocalId, LocalId, NilLocalId, ReturnExpr, RuntimeFunctionId, Step,
+        StringLocalId, ValueType,
     };
 
     #[test]
@@ -351,13 +340,11 @@ mod tests {
         layout.include_local(LocalId::String(StringLocalId(2)));
         layout.include_local(LocalId::Bool(BoolLocalId(3)));
         layout.include_local(LocalId::Nil(NilLocalId(4)));
-        layout.include_local(LocalId::Function(FunctionLocalId(5)));
 
         assert_eq!(layout.ints(), 2);
         assert_eq!(layout.strings(), 3);
         assert_eq!(layout.bools(), 4);
         assert_eq!(layout.nils(), 5);
-        assert_eq!(layout.functions(), 6);
     }
 
     #[test]
@@ -389,7 +376,6 @@ mod tests {
 
         assert_eq!(layout.ints(), 5);
         assert_eq!(layout.bools(), 3);
-        assert_eq!(layout.functions(), 0);
     }
 
     fn function_value() -> FunctionValue {

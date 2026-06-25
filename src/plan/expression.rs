@@ -927,8 +927,8 @@ mod tests {
         IntExpr, IntExprKind, NilExpr, NilExprKind, StringExpr, StringExprKind,
     };
     use crate::plan::{
-        BoolLocalId, FunctionLocalId, FunctionType, FunctionValue, IntFunctionId, IntLocalId,
-        LocalId, NilLocalId, RuntimeFunctionId, Step, StringLocalId, Value, ValueType,
+        BoolLocalId, FunctionType, FunctionValue, IntFunctionId, IntLocalId, LocalId, NilLocalId,
+        RuntimeFunctionId, Step, StringLocalId, Value, ValueType,
     };
     use num_bigint::BigInt;
 
@@ -1391,7 +1391,7 @@ mod tests {
         ));
         assert_eq!(
             Expr::function(FunctionExpr::value(function_value()))
-                .into_call_arg(LocalId::Function(FunctionLocalId(0))),
+                .into_call_arg(LocalId::Int(IntLocalId(0))),
             Err(Expr::function(FunctionExpr::value(function_value()))),
         );
         assert_eq!(
