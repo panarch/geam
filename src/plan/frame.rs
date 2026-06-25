@@ -363,28 +363,24 @@ mod tests {
     #[test]
     fn frame_layout_includes_function_expression_nested_locals() {
         let steps = vec![Step::evaluate(Expr::function(FunctionExpr::block(
-            vec![Step::evaluate(Expr::function(
-                FunctionExpr::bool_case(
-                    BoolExpr::local_get(BoolLocalId(2), "flag".into()),
+            vec![Step::evaluate(Expr::function(FunctionExpr::bool_case(
+                BoolExpr::local_get(BoolLocalId(2), "flag".into()),
+                FunctionExpr::value(function_value()),
+                FunctionExpr::int_case(
+                    IntExpr::local_get(IntLocalId(3), "subject".into()),
+                    vec![(
+                        1.into(),
+                        FunctionExpr::block(
+                            vec![Step::evaluate(Expr::int(IntExpr::local_get(
+                                IntLocalId(4),
+                                "value".into(),
+                            )))],
+                            FunctionExpr::value(function_value()),
+                        ),
+                    )],
                     FunctionExpr::value(function_value()),
-                    FunctionExpr::int_case(
-                        IntExpr::local_get(IntLocalId(3), "subject".into()),
-                        vec![(
-                            1.into(),
-                            FunctionExpr::block(
-                                vec![Step::evaluate(Expr::int(IntExpr::local_get(
-                                    IntLocalId(4),
-                                    "value".into(),
-                                )))],
-                                FunctionExpr::value(function_value()),
-                            ),
-                        )],
-                        FunctionExpr::value(function_value()),
-                    )
-                    .expect("matching function branch types"),
-                )
-                .expect("matching function branch types"),
-            ))],
+                ),
+            )))],
             FunctionExpr::value(function_value()),
         )))];
         let return_ = ReturnExpr::int(IntExpr::value(0.into()));

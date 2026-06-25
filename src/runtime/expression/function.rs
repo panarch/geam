@@ -75,8 +75,7 @@ mod tests {
                 BoolExpr::value(true),
                 FunctionExpr::value(int_function_value()),
                 FunctionExpr::value(other_int_function_value()),
-            )
-            .expect("matching function branch types"),
+            ),
         );
 
         assert_int_function(function);
@@ -88,8 +87,7 @@ mod tests {
                 BoolExpr::value(false),
                 FunctionExpr::value(other_int_function_value()),
                 FunctionExpr::value(int_function_value()),
-            )
-            .expect("matching function branch types"),
+            ),
         );
 
         assert_int_function(function);
@@ -106,8 +104,7 @@ mod tests {
                 IntExpr::value(BigInt::from(1)),
                 vec![(BigInt::from(1), FunctionExpr::value(int_function_value()))],
                 FunctionExpr::value(other_int_function_value()),
-            )
-            .expect("matching function branch types"),
+            ),
         );
 
         assert_int_function(function);
@@ -122,8 +119,7 @@ mod tests {
                     FunctionExpr::value(other_int_function_value()),
                 )],
                 FunctionExpr::value(int_function_value()),
-            )
-            .expect("matching function branch types"),
+            ),
         );
 
         assert_int_function(function);
