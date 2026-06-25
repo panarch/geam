@@ -28,6 +28,16 @@ Runtime code assumes it receives a valid `ExecutionPlan`. Structural execution
 failures belong in plan construction as `PlanError`, not in a runtime error
 enum.
 
+## Plan Construction Rules
+
+Plan construction is not a validation layer. Reaching an `ExecutionPlan` or plan
+node constructor means the planner has already accepted a runtime-executable
+shape.
+
+Do not use `Option` or `Result` in internal plan constructors to represent
+unsupported profile features, typed-AST margin cases, or runtime executability
+checks. Reject those cases before constructing plan data.
+
 ## Gleam Compatibility Rules
 
 For any Gleam source that Geam accepts, observable runtime behavior must match
