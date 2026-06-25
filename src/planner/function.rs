@@ -27,12 +27,6 @@ pub(super) fn plan_function(
 
     let mut context = PlanContext::new(module_name, functions);
     if let Some(type_) = info.type_.as_ref() {
-        if matches!(type_.return_(), ValueType::Function(_)) {
-            return Err(PlanError::UnsupportedFunction {
-                name,
-                reason: UnsupportedFunctionReason::UnsupportedReturnType,
-            });
-        }
         validate_function_param_types(&name, type_, &info.params)?;
     }
     let params = info

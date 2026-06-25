@@ -71,6 +71,12 @@ fn function_table(
     for function in functions {
         let name = function_name(function)?;
         let return_type = ValueType::from_gleam(&function.return_type);
+        if matches!(return_type, Some(ValueType::Function(_))) {
+            return Err(PlanError::UnsupportedFunction {
+                name,
+                reason: UnsupportedFunctionReason::UnsupportedReturnType,
+            });
+        }
         let params = function_params(name.clone(), &function.arguments)?;
         seeds.push(FunctionSeed {
             name,
@@ -363,6 +369,58 @@ fn values() {
             ),
             PlanError::UnsupportedExpression {
                 kind: UnsupportedExpressionKind::List,
+            },
+        );
+    }
+
+    #[test]
+    fn reject_profile_function_return_type_after_main_reference() {
+        assert_eq!(
+            expect_plan_error(
+                r#"
+pub fn main() {
+  get
+  1
+}
+
+fn add_one(value: Int) {
+  value + 1
+}
+
+fn get() {
+  add_one
+}
+"#,
+            ),
+            PlanError::UnsupportedFunction {
+                name: "get".into(),
+                reason: UnsupportedFunctionReason::UnsupportedReturnType,
+            },
+        );
+    }
+
+    #[test]
+    fn reject_profile_function_return_type_after_main_call() {
+        assert_eq!(
+            expect_plan_error(
+                r#"
+pub fn main() {
+  get()
+  1
+}
+
+fn add_one(value: Int) {
+  value + 1
+}
+
+fn get() {
+  add_one
+}
+"#,
+            ),
+            PlanError::UnsupportedFunction {
+                name: "get".into(),
+                reason: UnsupportedFunctionReason::UnsupportedReturnType,
             },
         );
     }
