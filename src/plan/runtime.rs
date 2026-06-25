@@ -1,8 +1,8 @@
 use super::{
-    BoolExpr, BoolFunctionId, ExprKind, FunctionExpr, FunctionFunctionId, FunctionPlan, IntExpr,
-    IntFunctionId, NilExpr, NilFunctionId, RuntimeFunction, RuntimeFunctionId, StringExpr,
-    StringFunctionId,
+    BoolExpr, BoolFunctionId, FunctionPlan, IntExpr, IntFunctionId, NilExpr, NilFunctionId,
+    RuntimeFunction, RuntimeFunctionId, StringExpr, StringFunctionId,
 };
+use crate::plan::ReturnExprKind;
 
 pub(super) struct RuntimePlan {
     main: RuntimeFunctionId,
@@ -10,7 +10,6 @@ pub(super) struct RuntimePlan {
     string_functions: Vec<RuntimeFunction<StringExpr>>,
     bool_functions: Vec<RuntimeFunction<BoolExpr>>,
     nil_functions: Vec<RuntimeFunction<NilExpr>>,
-    function_functions: Vec<RuntimeFunction<FunctionExpr>>,
 }
 
 impl RuntimePlan {
@@ -28,7 +27,6 @@ impl RuntimePlan {
             string_functions: runtime.string_functions,
             bool_functions: runtime.bool_functions,
             nil_functions: runtime.nil_functions,
-            function_functions: runtime.function_functions,
         }
     }
 
@@ -51,13 +49,6 @@ impl RuntimePlan {
     pub(super) fn nil_function(&self, id: NilFunctionId) -> &RuntimeFunction<NilExpr> {
         &self.nil_functions[id.0]
     }
-
-    pub(super) fn function_function(
-        &self,
-        id: FunctionFunctionId,
-    ) -> &RuntimeFunction<FunctionExpr> {
-        &self.function_functions[id.0]
-    }
 }
 
 #[derive(Default)]
@@ -66,7 +57,6 @@ struct RuntimePlanBuilder {
     string_functions: Vec<RuntimeFunction<StringExpr>>,
     bool_functions: Vec<RuntimeFunction<BoolExpr>>,
     nil_functions: Vec<RuntimeFunction<NilExpr>>,
-    function_functions: Vec<RuntimeFunction<FunctionExpr>>,
 }
 
 impl RuntimePlanBuilder {
@@ -80,7 +70,7 @@ fn runtime_function(
     runtime_functions: &mut RuntimePlanBuilder,
 ) -> RuntimeFunctionId {
     match function.return_().kind() {
-        ExprKind::Int(return_) => {
+        ReturnExprKind::Int(return_) => {
             let id = IntFunctionId(runtime_functions.int_functions.len());
             runtime_functions.int_functions.push(RuntimeFunction::new(
                 function.frame_layout(),
@@ -89,7 +79,7 @@ fn runtime_function(
             ));
             RuntimeFunctionId::Int(id)
         }
-        ExprKind::String(return_) => {
+        ReturnExprKind::String(return_) => {
             let id = StringFunctionId(runtime_functions.string_functions.len());
             runtime_functions
                 .string_functions
@@ -100,7 +90,7 @@ fn runtime_function(
                 ));
             RuntimeFunctionId::String(id)
         }
-        ExprKind::Bool(return_) => {
+        ReturnExprKind::Bool(return_) => {
             let id = BoolFunctionId(runtime_functions.bool_functions.len());
             runtime_functions.bool_functions.push(RuntimeFunction::new(
                 function.frame_layout(),
@@ -109,7 +99,7 @@ fn runtime_function(
             ));
             RuntimeFunctionId::Bool(id)
         }
-        ExprKind::Nil(return_) => {
+        ReturnExprKind::Nil(return_) => {
             let id = NilFunctionId(runtime_functions.nil_functions.len());
             runtime_functions.nil_functions.push(RuntimeFunction::new(
                 function.frame_layout(),
@@ -117,17 +107,6 @@ fn runtime_function(
                 return_.clone(),
             ));
             RuntimeFunctionId::Nil(id)
-        }
-        ExprKind::Function(return_) => {
-            let id = FunctionFunctionId(runtime_functions.function_functions.len());
-            runtime_functions
-                .function_functions
-                .push(RuntimeFunction::new(
-                    function.frame_layout(),
-                    function.steps().to_vec(),
-                    return_.clone(),
-                ));
-            RuntimeFunctionId::Function(id)
         }
     }
 }

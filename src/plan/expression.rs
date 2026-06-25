@@ -1,6 +1,6 @@
 use super::id::{
-    BoolFunctionId, BoolLocalId, FunctionFunctionId, FunctionLocalId, IntFunctionId, IntLocalId,
-    LocalId, NilFunctionId, NilLocalId, StringFunctionId, StringLocalId,
+    BoolFunctionId, BoolLocalId, IntFunctionId, IntLocalId, LocalId, NilFunctionId, NilLocalId,
+    StringFunctionId, StringLocalId,
 };
 use super::step::Step;
 use super::value::{FunctionType, FunctionValue, Value, ValueType};
@@ -44,10 +44,6 @@ pub(crate) enum CallArgKind {
         local: NilLocalId,
         value: NilExpr,
     },
-    Function {
-        local: FunctionLocalId,
-        value: FunctionExpr,
-    },
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -65,10 +61,6 @@ pub(crate) enum IntExprKind {
     Call {
         function: IntFunctionId,
         args: Vec<CallArg>,
-    },
-    FunctionCall {
-        function: Box<FunctionExpr>,
-        args: Vec<Expr>,
     },
     Add {
         left: Box<IntExpr>,
@@ -123,10 +115,6 @@ pub(crate) enum StringExprKind {
         function: StringFunctionId,
         args: Vec<CallArg>,
     },
-    FunctionCall {
-        function: Box<FunctionExpr>,
-        args: Vec<Expr>,
-    },
     Concatenate {
         left: Box<StringExpr>,
         right: Box<StringExpr>,
@@ -162,10 +150,6 @@ pub(crate) enum BoolExprKind {
     Call {
         function: BoolFunctionId,
         args: Vec<CallArg>,
-    },
-    FunctionCall {
-        function: Box<FunctionExpr>,
-        args: Vec<Expr>,
     },
     Not(Box<BoolExpr>),
     LtInt {
@@ -232,10 +216,6 @@ pub(crate) enum NilExprKind {
         function: NilFunctionId,
         args: Vec<CallArg>,
     },
-    FunctionCall {
-        function: Box<FunctionExpr>,
-        args: Vec<Expr>,
-    },
     BoolCase {
         subject: Box<BoolExpr>,
         true_: Box<NilExpr>,
@@ -261,18 +241,6 @@ pub struct FunctionExpr {
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum FunctionExprKind {
     Value(FunctionValue),
-    LocalGet {
-        local: FunctionLocalId,
-        name: EcoString,
-    },
-    Call {
-        function: FunctionFunctionId,
-        args: Vec<CallArg>,
-    },
-    FunctionCall {
-        function: Box<FunctionExpr>,
-        args: Vec<Expr>,
-    },
     BoolCase {
         subject: Box<BoolExpr>,
         true_: Box<FunctionExpr>,
@@ -429,22 +397,6 @@ impl Expr {
         }
     }
 
-    pub(crate) fn function_call(
-        function: FunctionExpr,
-        args: Vec<Expr>,
-        return_type: ValueType,
-    ) -> Self {
-        match return_type {
-            ValueType::Int => Self::int(IntExpr::function_call(function, args)),
-            ValueType::String => Self::string(StringExpr::function_call(function, args)),
-            ValueType::Bool => Self::bool(BoolExpr::function_call(function, args)),
-            ValueType::Nil => Self::nil(NilExpr::function_call(function, args)),
-            ValueType::Function(type_) => {
-                Self::function(FunctionExpr::function_call(function, args, *type_))
-            }
-        }
-    }
-
     pub(crate) fn kind(&self) -> &ExprKind {
         &self.kind
     }
@@ -507,9 +459,6 @@ impl Expr {
             (LocalId::String(local), ExprKind::String(value)) => Ok(CallArg::string(local, value)),
             (LocalId::Bool(local), ExprKind::Bool(value)) => Ok(CallArg::bool(local, value)),
             (LocalId::Nil(local), ExprKind::Nil(value)) => Ok(CallArg::nil(local, value)),
-            (LocalId::Function(local), ExprKind::Function(value)) => {
-                Ok(CallArg::function(local, value))
-            }
             (_, kind) => Err(Self { kind }),
         }
     }
@@ -540,12 +489,6 @@ impl CallArg {
         }
     }
 
-    pub(crate) fn function(local: FunctionLocalId, value: FunctionExpr) -> Self {
-        Self {
-            kind: CallArgKind::Function { local, value },
-        }
-    }
-
     pub(crate) fn kind(&self) -> &CallArgKind {
         &self.kind
     }
@@ -567,15 +510,6 @@ impl IntExpr {
     pub(crate) fn call(function: IntFunctionId, args: Vec<CallArg>) -> Self {
         Self {
             kind: IntExprKind::Call { function, args },
-        }
-    }
-
-    pub(crate) fn function_call(function: FunctionExpr, args: Vec<Expr>) -> Self {
-        Self {
-            kind: IntExprKind::FunctionCall {
-                function: Box::new(function),
-                args,
-            },
         }
     }
 
@@ -687,15 +621,6 @@ impl StringExpr {
         }
     }
 
-    pub(crate) fn function_call(function: FunctionExpr, args: Vec<Expr>) -> Self {
-        Self {
-            kind: StringExprKind::FunctionCall {
-                function: Box::new(function),
-                args,
-            },
-        }
-    }
-
     pub(crate) fn concatenate(left: StringExpr, right: StringExpr) -> Self {
         Self {
             kind: StringExprKind::Concatenate {
@@ -759,15 +684,6 @@ impl BoolExpr {
     pub(crate) fn call(function: BoolFunctionId, args: Vec<CallArg>) -> Self {
         Self {
             kind: BoolExprKind::Call { function, args },
-        }
-    }
-
-    pub(crate) fn function_call(function: FunctionExpr, args: Vec<Expr>) -> Self {
-        Self {
-            kind: BoolExprKind::FunctionCall {
-                function: Box::new(function),
-                args,
-            },
         }
     }
 
@@ -906,15 +822,6 @@ impl NilExpr {
         }
     }
 
-    pub(crate) fn function_call(function: FunctionExpr, args: Vec<Expr>) -> Self {
-        Self {
-            kind: NilExprKind::FunctionCall {
-                function: Box::new(function),
-                args,
-            },
-        }
-    }
-
     pub(crate) fn bool_case(subject: BoolExpr, true_: NilExpr, false_: NilExpr) -> Self {
         Self {
             kind: NilExprKind::BoolCase {
@@ -958,38 +865,6 @@ impl FunctionExpr {
         Self {
             type_: value.type_().clone(),
             kind: FunctionExprKind::Value(value),
-        }
-    }
-
-    pub(crate) fn local_get(local: FunctionLocalId, name: EcoString, type_: FunctionType) -> Self {
-        Self {
-            type_,
-            kind: FunctionExprKind::LocalGet { local, name },
-        }
-    }
-
-    pub(crate) fn call(
-        function: FunctionFunctionId,
-        args: Vec<CallArg>,
-        type_: FunctionType,
-    ) -> Self {
-        Self {
-            type_,
-            kind: FunctionExprKind::Call { function, args },
-        }
-    }
-
-    pub(crate) fn function_call(
-        function: FunctionExpr,
-        args: Vec<Expr>,
-        type_: FunctionType,
-    ) -> Self {
-        Self {
-            type_,
-            kind: FunctionExprKind::FunctionCall {
-                function: Box::new(function),
-                args,
-            },
         }
     }
 
@@ -1068,12 +943,12 @@ impl From<Value> for Expr {
 #[cfg(test)]
 mod tests {
     use super::{
-        BoolExpr, BoolExprKind, Expr, ExprKind, FunctionExpr, FunctionExprKind, IntExpr,
-        IntExprKind, NilExpr, NilExprKind, StringExpr, StringExprKind,
+        BoolExpr, BoolExprKind, CallArgKind, Expr, ExprKind, FunctionExpr, FunctionExprKind,
+        IntExpr, IntExprKind, NilExpr, NilExprKind, StringExpr, StringExprKind,
     };
     use crate::plan::{
-        FunctionFunctionId, FunctionType, FunctionValue, IntFunctionId, IntLocalId, LocalId,
-        RuntimeFunctionId, Step, Value, ValueType,
+        BoolLocalId, FunctionLocalId, FunctionType, FunctionValue, IntFunctionId, IntLocalId,
+        LocalId, NilLocalId, RuntimeFunctionId, Step, StringLocalId, Value, ValueType,
     };
     use num_bigint::BigInt;
 
@@ -1324,37 +1199,6 @@ mod tests {
     }
 
     #[test]
-    fn expr_function_call_shapes() {
-        let function = FunctionExpr::value(function_value());
-        let args = vec![Expr::int(IntExpr::value(BigInt::from(1)))];
-
-        assert_eq!(
-            Expr::function_call(function.clone(), args.clone(), ValueType::Int),
-            Expr::int(IntExpr::function_call(function.clone(), args.clone(),)),
-        );
-        assert_eq!(
-            Expr::function_call(function.clone(), args.clone(), ValueType::String),
-            Expr::string(StringExpr::function_call(function.clone(), args.clone(),)),
-        );
-        assert_eq!(
-            Expr::function_call(function.clone(), args.clone(), ValueType::Bool),
-            Expr::bool(BoolExpr::function_call(function.clone(), args.clone(),)),
-        );
-        assert_eq!(
-            Expr::function_call(function.clone(), args.clone(), ValueType::Nil),
-            Expr::nil(NilExpr::function_call(function.clone(), args.clone(),)),
-        );
-        assert_eq!(
-            Expr::function_call(
-                function.clone(),
-                args.clone(),
-                ValueType::Function(Box::new(function_type())),
-            ),
-            Expr::function(FunctionExpr::function_call(function, args, function_type(),)),
-        );
-    }
-
-    #[test]
     fn expr_value_type() {
         assert_eq!(
             Expr::from(Value::Int(BigInt::from(1))).value_type(),
@@ -1503,19 +1347,6 @@ mod tests {
             FunctionExprKind::Value(_)
         ));
         assert!(matches!(
-            FunctionExpr::call(FunctionFunctionId(0), Vec::new(), function_type()).kind(),
-            FunctionExprKind::Call { .. }
-        ));
-        assert!(matches!(
-            FunctionExpr::function_call(
-                FunctionExpr::value(function_value()),
-                Vec::new(),
-                function_type(),
-            )
-            .kind(),
-            FunctionExprKind::FunctionCall { .. }
-        ));
-        assert!(matches!(
             FunctionExpr::int_case(
                 IntExpr::value(1.into()),
                 vec![(1.into(), FunctionExpr::value(function_value()))],
@@ -1595,6 +1426,63 @@ mod tests {
         assert_eq!(
             Expr::from(Value::Int(BigInt::from(1))).into_function(),
             Err(Expr::from(Value::Int(BigInt::from(1)))),
+        );
+        assert_eq!(
+            Expr::function(FunctionExpr::value(function_value())).into_function(),
+            Ok(FunctionExpr::value(function_value())),
+        );
+    }
+
+    #[test]
+    fn expr_into_call_arg() {
+        assert!(matches!(
+            Expr::int(IntExpr::value(BigInt::from(1)))
+                .into_call_arg(LocalId::Int(IntLocalId(0)))
+                .expect("int call arg")
+                .kind(),
+            CallArgKind::Int {
+                local: IntLocalId(0),
+                ..
+            },
+        ));
+        assert!(matches!(
+            Expr::string(StringExpr::value("geam".into()))
+                .into_call_arg(LocalId::String(StringLocalId(0)))
+                .expect("string call arg")
+                .kind(),
+            CallArgKind::String {
+                local: StringLocalId(0),
+                ..
+            },
+        ));
+        assert!(matches!(
+            Expr::bool(BoolExpr::value(true))
+                .into_call_arg(LocalId::Bool(BoolLocalId(0)))
+                .expect("bool call arg")
+                .kind(),
+            CallArgKind::Bool {
+                local: BoolLocalId(0),
+                ..
+            },
+        ));
+        assert!(matches!(
+            Expr::nil(NilExpr::value())
+                .into_call_arg(LocalId::Nil(NilLocalId(0)))
+                .expect("nil call arg")
+                .kind(),
+            CallArgKind::Nil {
+                local: NilLocalId(0),
+                ..
+            },
+        ));
+        assert_eq!(
+            Expr::function(FunctionExpr::value(function_value()))
+                .into_call_arg(LocalId::Function(FunctionLocalId(0))),
+            Err(Expr::function(FunctionExpr::value(function_value()))),
+        );
+        assert_eq!(
+            Expr::int(IntExpr::value(BigInt::from(1))).into_call_arg(LocalId::Bool(BoolLocalId(0))),
+            Err(Expr::int(IntExpr::value(BigInt::from(1)))),
         );
     }
 

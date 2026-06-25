@@ -31,7 +31,6 @@ pub(crate) enum RuntimeFunctionId {
     String(StringFunctionId),
     Bool(BoolFunctionId),
     Nil(NilFunctionId),
-    Function(FunctionFunctionId),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -45,9 +44,6 @@ pub struct BoolFunctionId(pub(crate) usize);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct NilFunctionId(pub(crate) usize);
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct FunctionFunctionId(pub(crate) usize);
 
 impl FunctionId {
     pub(crate) fn new(index: usize) -> Self {

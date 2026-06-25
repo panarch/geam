@@ -1,7 +1,8 @@
 use super::FrameLayout;
-use super::expression::Expr;
+use super::expression::{BoolExpr, IntExpr, NilExpr, StringExpr};
 use super::id::{FunctionId, LocalId};
 use super::step::Step;
+use super::value::ValueType;
 use ecow::EcoString;
 
 #[derive(Debug, PartialEq)]
@@ -10,7 +11,7 @@ pub struct FunctionPlan {
     name: EcoString,
     params: Vec<Param>,
     steps: Vec<Step>,
-    return_: Expr,
+    return_: ReturnExpr,
     frame_layout: FrameLayout,
 }
 
@@ -26,13 +27,26 @@ pub(crate) struct RuntimeFunction<Return> {
     return_: Return,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct ReturnExpr {
+    kind: ReturnExprKind,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) enum ReturnExprKind {
+    Int(IntExpr),
+    String(StringExpr),
+    Bool(BoolExpr),
+    Nil(NilExpr),
+}
+
 impl FunctionPlan {
     pub(crate) fn new(
         id: FunctionId,
         name: EcoString,
         params: Vec<Param>,
         steps: Vec<Step>,
-        return_: Expr,
+        return_: ReturnExpr,
     ) -> Self {
         let frame_layout = FrameLayout::from_function_parts(&params, &steps, &return_);
 
@@ -62,12 +76,51 @@ impl FunctionPlan {
         &self.steps
     }
 
-    pub fn return_(&self) -> &Expr {
+    pub fn return_(&self) -> &ReturnExpr {
         &self.return_
     }
 
     pub(crate) fn frame_layout(&self) -> FrameLayout {
         self.frame_layout
+    }
+}
+
+impl ReturnExpr {
+    pub(crate) fn int(expression: IntExpr) -> Self {
+        Self {
+            kind: ReturnExprKind::Int(expression),
+        }
+    }
+
+    pub(crate) fn string(expression: StringExpr) -> Self {
+        Self {
+            kind: ReturnExprKind::String(expression),
+        }
+    }
+
+    pub(crate) fn bool(expression: BoolExpr) -> Self {
+        Self {
+            kind: ReturnExprKind::Bool(expression),
+        }
+    }
+
+    pub(crate) fn nil(expression: NilExpr) -> Self {
+        Self {
+            kind: ReturnExprKind::Nil(expression),
+        }
+    }
+
+    pub(crate) fn kind(&self) -> &ReturnExprKind {
+        &self.kind
+    }
+
+    pub fn value_type(&self) -> ValueType {
+        match self.kind() {
+            ReturnExprKind::Int(_) => ValueType::Int,
+            ReturnExprKind::String(_) => ValueType::String,
+            ReturnExprKind::Bool(_) => ValueType::Bool,
+            ReturnExprKind::Nil(_) => ValueType::Nil,
+        }
     }
 }
 
@@ -109,14 +162,17 @@ impl Param {
 
 #[cfg(test)]
 mod tests {
-    use super::{FunctionPlan, Param, RuntimeFunction};
-    use crate::plan::{Expr, FrameLayout, FunctionId, IntExpr, IntLocalId, LocalId};
+    use super::{FunctionPlan, Param, ReturnExpr, RuntimeFunction};
+    use crate::plan::{
+        BoolExpr, FrameLayout, FunctionId, IntExpr, IntLocalId, LocalId, NilExpr, StringExpr,
+        ValueType,
+    };
     use num_bigint::BigInt;
 
     #[test]
     fn function_plan_accessors() {
         let param = Param::new(LocalId::Int(IntLocalId(0)), "x".into());
-        let return_ = Expr::int(IntExpr::value(BigInt::from(1)));
+        let return_ = ReturnExpr::int(IntExpr::value(BigInt::from(1)));
         let function = FunctionPlan::new(
             FunctionId::new(0),
             "main".into(),
@@ -132,9 +188,29 @@ mod tests {
         assert_eq!(function.steps(), &[]);
         assert_eq!(
             function.return_(),
-            &Expr::int(IntExpr::value(BigInt::from(1)))
+            &ReturnExpr::int(IntExpr::value(BigInt::from(1)))
         );
         assert_eq!(function.frame_layout().ints(), 1);
+    }
+
+    #[test]
+    fn return_expr_value_type() {
+        assert_eq!(
+            ReturnExpr::int(IntExpr::value(BigInt::from(1))).value_type(),
+            ValueType::Int,
+        );
+        assert_eq!(
+            ReturnExpr::string(StringExpr::value("geam".into())).value_type(),
+            ValueType::String,
+        );
+        assert_eq!(
+            ReturnExpr::bool(BoolExpr::value(true)).value_type(),
+            ValueType::Bool,
+        );
+        assert_eq!(
+            ReturnExpr::nil(NilExpr::value()).value_type(),
+            ValueType::Nil,
+        );
     }
 
     #[test]

@@ -43,6 +43,12 @@ pub enum InvalidFunctionShapeReason {
     InvalidLiteralKind,
     #[error("function argument names are not valid in this expression position")]
     InvalidArgumentNames,
+    #[error("function runtime shape is missing")]
+    MissingRuntimeShape,
+    #[error("function argument type does not match parameter local")]
+    ArgumentTypeMismatch,
+    #[error("function return type does not match body")]
+    ReturnTypeMismatch,
 }
 
 #[derive(Debug, Error, Clone, Copy, PartialEq, Eq)]
@@ -83,6 +89,8 @@ pub enum InvalidExpressionType {
 pub enum InvalidCallShapeReason {
     #[error("function value call arity mismatch")]
     FunctionCallArityMismatch,
+    #[error("function value parameter shape mismatch")]
+    FunctionValueParameterShapeMismatch,
     #[error("function value call return type mismatch")]
     FunctionCallReturnTypeMismatch,
     #[error("function value call target is not a function")]

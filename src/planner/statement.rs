@@ -1,4 +1,4 @@
-use crate::plan::{ExprKind, Step};
+use crate::plan::{ExprKind, FunctionExprKind, Step};
 use crate::planner::context::PlanContext;
 use crate::planner::error::{
     InvalidTypedAstReason, PlanError, UnsupportedAssignmentKind, UnsupportedPatternKind,
@@ -103,35 +103,39 @@ fn plan_assignment(
 
     let name = plan_variable_pattern(assignment.pattern)?;
     let value = plan_expr(assignment.value, context)?;
-    Ok(plan_variable_step(name, value, context))
+    plan_variable_step(name, value, context)
 }
 
 pub(in crate::planner) fn plan_variable_step(
     name: EcoString,
     value: crate::plan::Expr,
     context: &mut PlanContext<'_>,
-) -> Step {
+) -> Result<Step, PlanError> {
     match value.into_kind() {
         ExprKind::Int(value) => {
             let local = context.define_int_local(name.clone());
-            Step::let_int(local, name, value)
+            Ok(Step::let_int(local, name, value))
         }
         ExprKind::String(value) => {
             let local = context.define_string_local(name.clone());
-            Step::let_string(local, name, value)
+            Ok(Step::let_string(local, name, value))
         }
         ExprKind::Bool(value) => {
             let local = context.define_bool_local(name.clone());
-            Step::let_bool(local, name, value)
+            Ok(Step::let_bool(local, name, value))
         }
         ExprKind::Nil(value) => {
             let local = context.define_nil_local(name.clone());
-            Step::let_nil(local, name, value)
+            Ok(Step::let_nil(local, name, value))
         }
         ExprKind::Function(value) => {
-            let type_ = value.type_().clone();
-            let local = context.define_function_local(name.clone(), type_);
-            Step::let_function(local, name, value)
+            let FunctionExprKind::Value(function_value) = value.kind() else {
+                return Err(PlanError::UnsupportedAssignment {
+                    kind: UnsupportedAssignmentKind::NonValueFunction,
+                });
+            };
+            let local = context.define_function_local(name.clone(), function_value.clone());
+            Ok(Step::let_function(local, name, value))
         }
     }
 }
@@ -218,6 +222,30 @@ pub fn main() {
     }
 
     #[test]
+    fn reject_profile_non_value_function_assignment() {
+        assert_eq!(
+            expect_plan_error(
+                r#"
+fn add_one(value: Int) {
+  value + 1
+}
+
+pub fn main() {
+  let function = case True {
+    True -> add_one
+    False -> add_one
+  }
+  1
+}
+"#,
+            ),
+            PlanError::UnsupportedAssignment {
+                kind: UnsupportedAssignmentKind::NonValueFunction,
+            },
+        );
+    }
+
+    #[test]
     fn reject_profile_assert_statement() {
         assert_eq!(
             expect_plan_error(
@@ -295,14 +323,15 @@ fn pair(callback: fn() -> Int) {
 }
 "#,
             ),
-            PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::UseStatement,
+            PlanError::UnsupportedArgument {
+                function: "pair".into(),
+                reason: crate::planner::UnsupportedArgumentReason::UnsupportedType,
             },
         );
     }
 
     #[test]
-    fn reject_margin_use_statement_shapes() {
+    fn reject_margin_step_use_statement_shape() {
         let mut step_use = compile_minimal_module();
         step_use.definitions.functions[0].body = vec![
             Statement::Use(gleam_core::ast::Use {
@@ -320,7 +349,10 @@ fn pair(callback: fn() -> Int) {
                 reason: InvalidTypedAstReason::UseStatement,
             }),
         );
+    }
 
+    #[test]
+    fn reject_margin_final_use_statement_shape() {
         let mut final_use = compile_minimal_module();
         final_use.definitions.functions[0].body = vec![Statement::Use(gleam_core::ast::Use {
             call: Box::new(typed_int_expr(1)),

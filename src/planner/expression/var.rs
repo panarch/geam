@@ -3,8 +3,9 @@ use crate::plan::{
 };
 use crate::planner::context::PlanContext;
 use crate::planner::error::{
-    InvalidExpressionShapeKind, InvalidTypedAstReason, PlanError, UnsupportedExpressionKind,
+    InvalidExpressionShapeKind, InvalidFunctionShapeReason, InvalidTypedAstReason, PlanError,
 };
+use crate::planner::function::{validate_function_param_types, validate_function_runtime_id};
 use ecow::EcoString;
 use gleam_core::type_::{PRELUDE_MODULE_NAME, ValueConstructor, ValueConstructorVariant};
 
@@ -15,18 +16,13 @@ pub(super) fn plan_var(
 ) -> Result<Expr, PlanError> {
     match constructor.variant {
         ValueConstructorVariant::LocalVariable { .. } => {
-            if context.is_outer_local(&name) {
-                return Err(PlanError::UnsupportedExpression {
-                    kind: UnsupportedExpressionKind::CapturingFunction,
-                });
-            }
             let (local, type_) =
                 context
                     .lookup_local(&name)
                     .ok_or_else(|| PlanError::InvalidTypedAst {
                         reason: InvalidTypedAstReason::UnknownLocal { name: name.clone() },
                     })?;
-            local_get(local, name, type_)
+            local_get(local, name, type_, context)
         }
         ValueConstructorVariant::Record {
             name,
@@ -60,22 +56,24 @@ pub(super) fn plan_var(
                         reason: InvalidTypedAstReason::UnknownLocal { name: name.clone() },
                     })?;
             let (Some(runtime_id), Some(type_)) = (function.runtime_id, function.type_) else {
-                return Err(PlanError::UnsupportedExpression {
-                    kind: UnsupportedExpressionKind::FunctionReference,
+                return Err(PlanError::InvalidTypedAst {
+                    reason: InvalidTypedAstReason::FunctionShape {
+                        name: name.clone(),
+                        reason: InvalidFunctionShapeReason::MissingRuntimeShape,
+                    },
                 });
             };
-            let params = function
-                .params
-                .iter()
-                .map(|param| param.local)
-                .collect::<Vec<_>>();
+            validate_function_param_types(&name, &type_, &function.params)?;
+            validate_function_runtime_id(&name, &type_, runtime_id)?;
+            let params = function.params.iter().map(|param| param.local).collect();
+            let value = FunctionValue::new(type_, runtime_id, params);
 
-            Ok(Expr::function(FunctionExpr::value(FunctionValue::new(
-                type_, runtime_id, params,
-            ))))
+            Ok(Expr::function(FunctionExpr::value(value)))
         }
-        ValueConstructorVariant::ModuleFn { .. } => Err(PlanError::UnsupportedExpression {
-            kind: UnsupportedExpressionKind::FunctionReference,
+        ValueConstructorVariant::ModuleFn { .. } => Err(PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::ExpressionShape {
+                kind: InvalidExpressionShapeKind::ModuleSelect,
+            },
         }),
         ValueConstructorVariant::ModuleConstant { .. } => Err(PlanError::InvalidTypedAst {
             reason: InvalidTypedAstReason::ExpressionShape {
@@ -90,7 +88,12 @@ pub(super) fn plan_var(
     }
 }
 
-fn local_get(local: LocalId, name: EcoString, type_: ValueType) -> Result<Expr, PlanError> {
+fn local_get(
+    local: LocalId,
+    name: EcoString,
+    type_: ValueType,
+    context: &PlanContext<'_>,
+) -> Result<Expr, PlanError> {
     match (local, type_) {
         (LocalId::Int(local), ValueType::Int) => Ok(Expr::int(IntExpr::local_get(local, name))),
         (LocalId::String(local), ValueType::String) => {
@@ -98,8 +101,17 @@ fn local_get(local: LocalId, name: EcoString, type_: ValueType) -> Result<Expr, 
         }
         (LocalId::Bool(local), ValueType::Bool) => Ok(Expr::bool(BoolExpr::local_get(local, name))),
         (LocalId::Nil(local), ValueType::Nil) => Ok(Expr::nil(NilExpr::local_get(local, name))),
-        (LocalId::Function(local), ValueType::Function(type_)) => {
-            Ok(Expr::function(FunctionExpr::local_get(local, name, *type_)))
+        (LocalId::Function(_), ValueType::Function(_)) => {
+            let value =
+                context
+                    .lookup_function_value(&name)
+                    .ok_or_else(|| PlanError::InvalidTypedAst {
+                        reason: InvalidTypedAstReason::CallShape {
+                            reason:
+                                crate::planner::error::InvalidCallShapeReason::LocalFunctionValue,
+                        },
+                    })?;
+            Ok(Expr::function(FunctionExpr::value(value)))
         }
         _ => Err(PlanError::InvalidTypedAst {
             reason: InvalidTypedAstReason::ExpressionShape {
@@ -112,17 +124,24 @@ fn local_get(local: LocalId, name: EcoString, type_: ValueType) -> Result<Expr, 
 #[cfg(test)]
 mod tests {
     use super::super::{module_returning_typed_expr, typed_int_expr, typed_prelude_constructor};
-    use crate::plan::{IntLocalId, LocalId, ValueType};
+    use crate::plan::{
+        FunctionId, FunctionType, IntFunctionId, IntLocalId, LocalId, RuntimeFunctionId,
+        StringLocalId, ValueType,
+    };
+    use crate::planner::context::{FunctionInfo, FunctionParam, PlanContext};
     use crate::planner::dsl::{
-        bool_, function, int, local_bool, local_int, local_nil, local_string, module, nil,
+        bool_, function, function_ref, int, local_bool, local_int, local_nil, local_string, module,
+        nil,
     };
     use crate::planner::plan_module;
     use crate::planner::support::compile;
     use crate::planner::{
-        InvalidExpressionShapeKind, InvalidTypedAstReason, PlanError, UnsupportedExpressionKind,
+        InvalidExpressionShapeKind, InvalidFunctionShapeReason, InvalidTypedAstReason, PlanError,
     };
+    use ecow::EcoString;
     use gleam_core::ast::{Statement, TypedExpr, TypedStatement};
     use gleam_core::type_;
+    use std::collections::HashMap;
 
     #[test]
     fn plan_local_variables() {
@@ -196,20 +215,30 @@ pub fn main() {
 
     #[test]
     fn plan_top_level_function_reference_expression() {
-        assert!(
-            plan_module(compile(
-                r#"
+        let actual = plan_module(compile(
+            r#"
 fn identity(value: Int) {
   value
 }
 
 pub fn main() {
   identity
+  1
 }
 "#,
-            ))
-            .is_ok()
+        ))
+        .expect("source should plan");
+        let expected = module(
+            "main",
+            function("main", int(1)).evaluate(function_ref(
+                RuntimeFunctionId::Int(IntFunctionId(1)),
+                FunctionType::new(vec![ValueType::Int], ValueType::Int),
+                [LocalId::Int(IntLocalId(0))],
+            )),
+            [function("identity", local_int(0, "value")).param_int(0, "value")],
         );
+
+        assert_eq!(actual, expected);
     }
 
     #[test]
@@ -235,6 +264,7 @@ pub fn main() {
             r#"
 pub fn main() {
   identity
+  1
 }
 
 fn identity(value: Int) {
@@ -266,25 +296,6 @@ fn identity(value: Int) {
             }),
         );
 
-        let mut unsupported_return_function = compile(
-            r#"
-fn values() {
-  [1]
-}
-
-pub fn main() {
-  values
-}
-"#,
-        );
-        unsupported_return_function.definitions.functions.swap(0, 1);
-        assert_eq!(
-            plan_module(unsupported_return_function),
-            Err(PlanError::UnsupportedExpression {
-                kind: UnsupportedExpressionKind::FunctionReference,
-            }),
-        );
-
         let mut non_current_function = compile(
             r#"
 fn identity(value: Int) {
@@ -293,6 +304,7 @@ fn identity(value: Int) {
 
 pub fn main() {
   identity
+  1
 }
 "#,
         );
@@ -312,8 +324,10 @@ pub fn main() {
         *module = "other".into();
         assert_eq!(
             plan_module(non_current_function),
-            Err(PlanError::UnsupportedExpression {
-                kind: UnsupportedExpressionKind::FunctionReference,
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionShape {
+                    kind: InvalidExpressionShapeKind::ModuleSelect,
+                },
             }),
         );
 
@@ -371,16 +385,149 @@ pub fn main() {
     }
 
     #[test]
+    fn reject_margin_function_reference_missing_runtime_shape() {
+        // Module planning rejects unsupported helper bodies before source can reach this helper path.
+        let module = compile(
+            r#"
+fn helper(value: Int) {
+  value
+}
+
+pub fn main() {
+  helper
+  1
+}
+"#,
+        );
+        let mut module = module;
+        let main = module
+            .definitions
+            .functions
+            .iter_mut()
+            .find(|function| {
+                function
+                    .name
+                    .as_ref()
+                    .is_some_and(|(_, name)| name == "main")
+            })
+            .expect("main function should exist");
+        let (name, constructor) =
+            expect_var_mut(expect_expression_statement_mut(&mut main.body[0]));
+        let (name, constructor) = (name.clone(), constructor.clone());
+        let module_name = EcoString::from("main");
+        let mut functions = HashMap::new();
+        functions.insert(
+            "helper".into(),
+            FunctionInfo {
+                id: FunctionId::new(0),
+                runtime_id: None,
+                arity: 1,
+                params: Vec::new(),
+                return_type: None,
+                type_: None,
+            },
+        );
+        let context = PlanContext::new(&module_name, &functions);
+
+        assert_eq!(
+            super::plan_var(name, constructor, &context),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::FunctionShape {
+                    name: "helper".into(),
+                    reason: InvalidFunctionShapeReason::MissingRuntimeShape,
+                },
+            }),
+        );
+    }
+
+    #[test]
+    fn reject_margin_top_level_function_reference_argument_type_mismatch() {
+        let mut module = compile(
+            r#"
+fn helper(value: Int) {
+  value
+}
+
+pub fn main() {
+  helper
+}
+"#,
+        );
+        let main = module
+            .definitions
+            .functions
+            .iter_mut()
+            .find(|function| {
+                function
+                    .name
+                    .as_ref()
+                    .is_some_and(|(_, name)| name == "main")
+            })
+            .expect("main function should exist");
+        let (name, constructor) = {
+            let expression = expect_expression_statement_mut(&mut main.body[0]);
+            let (name, constructor) = expect_var_mut(expression);
+            (name.clone(), constructor.clone())
+        };
+        let module_name = EcoString::from("main");
+        let mut functions = HashMap::new();
+        functions.insert(
+            "helper".into(),
+            FunctionInfo {
+                id: FunctionId::new(0),
+                runtime_id: Some(RuntimeFunctionId::Int(IntFunctionId(0))),
+                arity: 1,
+                params: vec![FunctionParam {
+                    local: LocalId::String(StringLocalId(0)),
+                    name: "value".into(),
+                    type_: ValueType::String,
+                }],
+                return_type: Some(ValueType::Int),
+                type_: Some(FunctionType::new(vec![ValueType::Int], ValueType::Int)),
+            },
+        );
+        let context = PlanContext::new(&module_name, &functions);
+
+        assert_eq!(
+            super::plan_var(name, constructor, &context),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::FunctionShape {
+                    name: "helper".into(),
+                    reason: InvalidFunctionShapeReason::ArgumentTypeMismatch,
+                },
+            }),
+        );
+    }
+
+    #[test]
     fn reject_margin_local_type_shape_mismatch() {
+        let module_name = EcoString::from("main");
+        let functions = HashMap::<EcoString, FunctionInfo>::new();
+        let context = PlanContext::new(&module_name, &functions);
+
         assert_eq!(
             super::local_get(
                 LocalId::Int(IntLocalId(0)),
                 "value".into(),
-                ValueType::String
+                ValueType::String,
+                &context,
             ),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::ExpressionShape {
                     kind: InvalidExpressionShapeKind::Invalid,
+                },
+            }),
+        );
+        assert_eq!(
+            super::local_get(
+                LocalId::Function(crate::plan::FunctionLocalId(0)),
+                "value".into(),
+                ValueType::Function(Box::new(FunctionType::new(Vec::new(), ValueType::Int))),
+                &context,
+            ),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::CallShape {
+                    reason: crate::planner::InvalidCallShapeReason::LocalFunctionValue,
                 },
             }),
         );
@@ -394,14 +541,24 @@ pub fn main() {
     }
 
     fn expect_module_fn_module_mut(expression: &mut TypedExpr) -> &mut ecow::EcoString {
-        let TypedExpr::Var { constructor, .. } = expression else {
-            panic!("expected variable expression");
-        };
+        let (_, constructor) = expect_var_mut(expression);
         let type_::ValueConstructorVariant::ModuleFn { module, .. } = &mut constructor.variant
         else {
             panic!("expected module function constructor");
         };
         module
+    }
+
+    fn expect_var_mut(
+        expression: &mut TypedExpr,
+    ) -> (&mut EcoString, &mut type_::ValueConstructor) {
+        let TypedExpr::Var {
+            name, constructor, ..
+        } = expression
+        else {
+            panic!("expected variable expression");
+        };
+        (name, constructor)
     }
 
     #[test]

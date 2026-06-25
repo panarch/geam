@@ -1,7 +1,6 @@
 use crate::plan::{
-    BoolFunctionId, CallArg, CallArgKind, ExecutionPlan, Expr, ExprKind, FrameLayout,
-    FunctionFunctionId, FunctionValue, IntFunctionId, LocalId, NilFunctionId, RuntimeFunctionId,
-    StepKind, StringFunctionId, Value,
+    BoolFunctionId, CallArg, CallArgKind, ExecutionPlan, FrameLayout, IntFunctionId, NilFunctionId,
+    RuntimeFunctionId, StepKind, StringFunctionId, Value,
 };
 use crate::runtime::expression::{
     eval_bool_expr, eval_expr, eval_function_expr, eval_int_expr, eval_nil_expr, eval_string_expr,
@@ -25,9 +24,6 @@ pub(super) fn run_main(plan: &ExecutionPlan) -> Value {
         RuntimeFunctionId::Nil(function) => {
             run_nil_call(plan, function, &[], &mut caller_frame);
             Value::Nil
-        }
-        RuntimeFunctionId::Function(function) => {
-            Value::Function(run_function_call(plan, function, &[], &mut caller_frame))
         }
     }
 }
@@ -80,113 +76,6 @@ pub(super) fn run_nil_call(
     eval_nil_expr(plan, &mut frame, function.return_());
 }
 
-pub(super) fn run_function_call(
-    plan: &ExecutionPlan,
-    function: FunctionFunctionId,
-    args: &[CallArg],
-    caller_frame: &mut Frame,
-) -> FunctionValue {
-    let function = plan.function_function(function);
-    let mut frame = bind_arguments(plan, args, caller_frame, function.frame_layout());
-    execute_steps(plan, function.steps(), &mut frame);
-    eval_function_expr(plan, &mut frame, function.return_())
-}
-
-pub(in crate::runtime) fn run_dynamic_int_call(
-    plan: &ExecutionPlan,
-    function_id: IntFunctionId,
-    function_value: &FunctionValue,
-    args: &[Expr],
-    caller_frame: &mut Frame,
-) -> BigInt {
-    let function = plan.int_function(function_id);
-    let mut frame = bind_dynamic_arguments(
-        plan,
-        args,
-        function_value.params(),
-        caller_frame,
-        function.frame_layout(),
-    );
-    execute_steps(plan, function.steps(), &mut frame);
-    eval_int_expr(plan, &mut frame, function.return_())
-}
-
-pub(in crate::runtime) fn run_dynamic_string_call(
-    plan: &ExecutionPlan,
-    function_id: StringFunctionId,
-    function_value: &FunctionValue,
-    args: &[Expr],
-    caller_frame: &mut Frame,
-) -> EcoString {
-    let function = plan.string_function(function_id);
-    let mut frame = bind_dynamic_arguments(
-        plan,
-        args,
-        function_value.params(),
-        caller_frame,
-        function.frame_layout(),
-    );
-    execute_steps(plan, function.steps(), &mut frame);
-    eval_string_expr(plan, &mut frame, function.return_())
-}
-
-pub(in crate::runtime) fn run_dynamic_bool_call(
-    plan: &ExecutionPlan,
-    function_id: BoolFunctionId,
-    function_value: &FunctionValue,
-    args: &[Expr],
-    caller_frame: &mut Frame,
-) -> bool {
-    let function = plan.bool_function(function_id);
-    let mut frame = bind_dynamic_arguments(
-        plan,
-        args,
-        function_value.params(),
-        caller_frame,
-        function.frame_layout(),
-    );
-    execute_steps(plan, function.steps(), &mut frame);
-    eval_bool_expr(plan, &mut frame, function.return_())
-}
-
-pub(in crate::runtime) fn run_dynamic_nil_call(
-    plan: &ExecutionPlan,
-    function_id: NilFunctionId,
-    function_value: &FunctionValue,
-    args: &[Expr],
-    caller_frame: &mut Frame,
-) {
-    let function = plan.nil_function(function_id);
-    let mut frame = bind_dynamic_arguments(
-        plan,
-        args,
-        function_value.params(),
-        caller_frame,
-        function.frame_layout(),
-    );
-    execute_steps(plan, function.steps(), &mut frame);
-    eval_nil_expr(plan, &mut frame, function.return_());
-}
-
-pub(in crate::runtime) fn run_dynamic_function_call(
-    plan: &ExecutionPlan,
-    function_id: FunctionFunctionId,
-    function_value: &FunctionValue,
-    args: &[Expr],
-    caller_frame: &mut Frame,
-) -> FunctionValue {
-    let function = plan.function_function(function_id);
-    let mut frame = bind_dynamic_arguments(
-        plan,
-        args,
-        function_value.params(),
-        caller_frame,
-        function.frame_layout(),
-    );
-    execute_steps(plan, function.steps(), &mut frame);
-    eval_function_expr(plan, &mut frame, function.return_())
-}
-
 pub(in crate::runtime) fn execute_steps(
     plan: &ExecutionPlan,
     steps: &[crate::plan::Step],
@@ -210,9 +99,8 @@ pub(in crate::runtime) fn execute_steps(
                 eval_nil_expr(plan, frame, value);
                 frame.set_nil(*local);
             }
-            StepKind::LetFunction { local, value, .. } => {
-                let value = eval_function_expr(plan, frame, value);
-                frame.set_function(*local, value);
+            StepKind::LetFunction { value, .. } => {
+                let _ = eval_function_expr(plan, frame, value);
             }
             StepKind::Evaluate(expression) => {
                 let _ = eval_expr(plan, frame, expression);
@@ -247,67 +135,15 @@ fn bind_arguments(
                 eval_nil_expr(plan, caller_frame, value);
                 frame.set_nil(*local);
             }
-            CallArgKind::Function { local, value } => {
-                let value = eval_function_expr(plan, caller_frame, value);
-                frame.set_function(*local, value);
-            }
         }
     }
 
     frame
-}
-
-fn bind_dynamic_arguments(
-    plan: &ExecutionPlan,
-    args: &[Expr],
-    params: &[LocalId],
-    caller_frame: &mut Frame,
-    frame_layout: FrameLayout,
-) -> Frame {
-    let mut frame = Frame::new(frame_layout);
-
-    for (arg, param) in args.iter().zip(params) {
-        bind_dynamic_argument(plan, arg, *param, caller_frame, &mut frame);
-    }
-
-    frame
-}
-
-fn bind_dynamic_argument(
-    plan: &ExecutionPlan,
-    arg: &Expr,
-    param: LocalId,
-    caller_frame: &mut Frame,
-    frame: &mut Frame,
-) {
-    match (arg.kind(), param) {
-        (ExprKind::Int(value), LocalId::Int(local)) => {
-            frame.set_int(local, eval_int_expr(plan, caller_frame, value));
-        }
-        (ExprKind::String(value), LocalId::String(local)) => {
-            frame.set_string(local, eval_string_expr(plan, caller_frame, value));
-        }
-        (ExprKind::Bool(value), LocalId::Bool(local)) => {
-            frame.set_bool(local, eval_bool_expr(plan, caller_frame, value));
-        }
-        (ExprKind::Nil(value), LocalId::Nil(local)) => {
-            eval_nil_expr(plan, caller_frame, value);
-            frame.set_nil(local);
-        }
-        (ExprKind::Function(value), LocalId::Function(local)) => {
-            frame.set_function(local, eval_function_expr(plan, caller_frame, value));
-        }
-        _ => {}
-    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::super::{Value, int, run_src};
-    use crate::ValueType;
-    use crate::plan::{Expr, FrameLayout, IntExpr, LocalId, StringLocalId};
-    use crate::runtime::frame::Frame;
-    use num_bigint::BigInt;
 
     #[test]
     fn execute_let_binding() {
@@ -344,6 +180,25 @@ pub fn main() {
 "#,
             ),
             int(5),
+        );
+    }
+
+    #[test]
+    fn execute_function_value_let_step() {
+        assert_eq!(
+            run_src(
+                r#"
+fn add_one(value: Int) {
+  value + 1
+}
+
+pub fn main() {
+  let add = add_one
+  add(1)
+}
+"#,
+            ),
+            int(2),
         );
     }
 
@@ -425,219 +280,6 @@ pub fn main() {
             ),
             Value::Nil,
         );
-    }
-
-    #[test]
-    fn execute_function_values() {
-        assert_eq!(
-            run_src(
-                r#"
-fn add_one(value: Int) {
-  value + 1
-}
-
-pub fn main() {
-  let function = add_one
-  function(1)
-}
-"#,
-            ),
-            int(2),
-        );
-
-        assert_eq!(
-            run_src(
-                r#"
-pub fn main() {
-  let function = fn(value) { value + 1 }
-  function(1)
-}
-"#,
-            ),
-            int(2),
-        );
-
-        assert_eq!(
-            run_src(
-                r#"
-fn add_one(value: Int) {
-  value + 1
-}
-
-fn apply(function: fn(Int) -> Int, value: Int) {
-  function(value)
-}
-
-pub fn main() {
-  apply(add_one, 1)
-}
-"#,
-            ),
-            int(2),
-        );
-
-        assert_eq!(
-            run_src(
-                r#"
-fn add_one(value: Int) {
-  value + 1
-}
-
-fn get() {
-  add_one
-}
-
-pub fn main() {
-  get()(1)
-}
-"#,
-            ),
-            int(2),
-        );
-
-        assert_eq!(
-            run_src(
-                r#"
-fn add_one(value: Int) {
-  value + 1
-}
-
-fn apply(function: fn(Int) -> Int) {
-  function
-}
-
-fn get_apply() {
-  apply
-}
-
-pub fn main() {
-  get_apply()(add_one)(1)
-}
-"#,
-            ),
-            int(2),
-        );
-
-        assert_eq!(
-            run_src(
-                r#"
-fn identity(value: String) {
-  value
-}
-
-fn get() {
-  identity
-}
-
-pub fn main() {
-  get()("geam")
-}
-"#,
-            ),
-            Value::String("geam".into()),
-        );
-
-        assert_eq!(
-            run_src(
-                r#"
-fn identity(value: Bool) {
-  value
-}
-
-fn get() {
-  identity
-}
-
-pub fn main() {
-  get()(True)
-}
-"#,
-            ),
-            Value::Bool(true),
-        );
-
-        assert_eq!(
-            run_src(
-                r#"
-fn identity(value: Nil) {
-  value
-}
-
-fn get() {
-  identity
-}
-
-pub fn main() {
-  get()(Nil)
-}
-"#,
-            ),
-            Value::Nil,
-        );
-    }
-
-    #[test]
-    fn execute_main_returning_function_value() {
-        let function = run_function_value_src(
-            r#"
-fn add_one(value: Int) {
-  value + 1
-}
-
-pub fn main() {
-  add_one
-}
-"#,
-        );
-
-        assert_eq!(function.type_().arguments(), &[ValueType::Int]);
-        assert_eq!(function.type_().return_(), &ValueType::Int);
-    }
-
-    #[test]
-    #[should_panic(expected = "main should return a function value")]
-    fn run_function_value_src_panics_on_non_function_value() {
-        run_function_value_src(
-            r#"
-pub fn main() {
-  1
-}
-"#,
-        );
-    }
-
-    fn run_function_value_src(src: &str) -> crate::plan::FunctionValue {
-        let Value::Function(function) = run_src(src) else {
-            panic!("main should return a function value");
-        };
-
-        function
-    }
-
-    #[test]
-    fn bind_dynamic_argument_ignores_mismatched_shape() {
-        let plan = super::super::plan_src(
-            r#"
-pub fn main() {
-  1
-}
-"#,
-        );
-        let mut layout = FrameLayout::default();
-        layout.include_string(StringLocalId(0));
-        let mut caller_frame = Frame::default();
-        let mut frame = Frame::new(layout);
-        let argument = Expr::int(IntExpr::value(BigInt::from(1)));
-
-        super::bind_dynamic_argument(
-            &plan,
-            &argument,
-            LocalId::String(StringLocalId(0)),
-            &mut caller_frame,
-            &mut frame,
-        );
-
-        assert_eq!(frame.get_string(StringLocalId(0)), "");
     }
 
     #[test]

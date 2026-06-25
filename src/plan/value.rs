@@ -76,3 +76,46 @@ impl FunctionValue {
         &self.params
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{FunctionType, FunctionValue, ValueType};
+    use crate::plan::{IntLocalId, LocalId, NilFunctionId, RuntimeFunctionId, StringFunctionId};
+
+    #[test]
+    fn function_value_accepts_matching_shape() {
+        let value = FunctionValue::new(
+            FunctionType::new(vec![ValueType::Int], ValueType::String),
+            RuntimeFunctionId::String(StringFunctionId(0)),
+            vec![LocalId::Int(IntLocalId(0))],
+        );
+
+        assert_eq!(value.type_().arguments(), &[ValueType::Int]);
+        assert_eq!(value.type_().return_(), &ValueType::String);
+        assert_eq!(
+            value.runtime_id(),
+            RuntimeFunctionId::String(StringFunctionId(0))
+        );
+        assert_eq!(value.params(), &[LocalId::Int(IntLocalId(0))]);
+    }
+
+    #[test]
+    fn function_value_accepts_function_argument_shape() {
+        let value = FunctionValue::new(
+            FunctionType::new(
+                vec![ValueType::Function(Box::new(FunctionType::new(
+                    Vec::new(),
+                    ValueType::Nil,
+                )))],
+                ValueType::Nil,
+            ),
+            RuntimeFunctionId::Nil(NilFunctionId(0)),
+            Vec::new(),
+        );
+
+        assert!(matches!(
+            value.type_().arguments(),
+            [ValueType::Function(_)]
+        ));
+    }
+}

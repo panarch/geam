@@ -1,18 +1,18 @@
 use crate::plan::{
-    BoolLocalId, Expr, FunctionId, FunctionPlan, IntLocalId, LocalId, NilLocalId, Param, Step,
-    StringLocalId,
+    BoolLocalId, Expr, FunctionId, FunctionLocalId, FunctionPlan, IntLocalId, LocalId, NilLocalId,
+    Param, ReturnExpr, Step, StringLocalId,
 };
-use crate::planner::dsl::expression::{Bool, Int, Nil, String};
+use crate::planner::dsl::expression::{Bool, Function, Int, Nil, String};
 use ecow::EcoString;
 
 pub(crate) struct FunctionDsl {
     name: EcoString,
     params: Vec<Param>,
     steps: Vec<Step>,
-    return_: Expr,
+    return_: ReturnExpr,
 }
 
-pub(crate) fn function(name: impl Into<EcoString>, return_: impl Into<Expr>) -> FunctionDsl {
+pub(crate) fn function(name: impl Into<EcoString>, return_: impl Into<ReturnExpr>) -> FunctionDsl {
     FunctionDsl {
         name: name.into(),
         params: Vec::new(),
@@ -88,6 +88,20 @@ impl FunctionDsl {
         self
     }
 
+    pub(crate) fn let_function(
+        mut self,
+        local: usize,
+        name: impl Into<EcoString>,
+        value: Function,
+    ) -> Self {
+        self.steps.push(Step::let_function(
+            FunctionLocalId(local),
+            name.into(),
+            value.into(),
+        ));
+        self
+    }
+
     pub(crate) fn evaluate(mut self, value: impl Into<Expr>) -> Self {
         self.steps.push(Step::evaluate(value.into()));
         self
@@ -101,8 +115,8 @@ impl FunctionDsl {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::plan::StepKind;
-    use crate::planner::dsl::expression::{bool_, int, nil, string};
+    use crate::plan::{FunctionType, IntFunctionId, RuntimeFunctionId, StepKind, ValueType};
+    use crate::planner::dsl::expression::{bool_, function_ref, int, nil, string};
 
     #[test]
     fn function_dsl() {
@@ -115,16 +129,29 @@ mod tests {
             .let_string(1, "y", string("a"))
             .let_bool(1, "z", bool_(true))
             .let_nil(1, "n", nil())
+            .let_function(
+                0,
+                "f",
+                function_ref(
+                    RuntimeFunctionId::Int(IntFunctionId(0)),
+                    FunctionType::new(Vec::new(), ValueType::Int),
+                    [],
+                ),
+            )
             .evaluate(int(3))
             .build(FunctionId::new(0));
 
         assert_eq!(function.name(), "main");
         assert_eq!(function.params().len(), 4);
-        assert_eq!(function.steps().len(), 5);
+        assert_eq!(function.steps().len(), 6);
         assert!(matches!(
             function.steps()[0].kind(),
             StepKind::LetInt { .. }
         ));
-        assert!(matches!(function.steps()[4].kind(), StepKind::Evaluate(_)));
+        assert!(matches!(
+            function.steps()[4].kind(),
+            StepKind::LetFunction { .. },
+        ));
+        assert!(matches!(function.steps()[5].kind(), StepKind::Evaluate(_)));
     }
 }

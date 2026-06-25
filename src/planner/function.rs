@@ -1,5 +1,7 @@
-use crate::plan::{FunctionPlan, Param};
-use crate::planner::context::{FunctionInfo, FunctionPlanState, PlanContext};
+use crate::plan::{
+    Expr, ExprKind, FunctionPlan, FunctionType, Param, ReturnExpr, RuntimeFunctionId, ValueType,
+};
+use crate::planner::context::{FunctionInfo, FunctionParam, PlanContext};
 use crate::planner::error::{
     InvalidFunctionShapeReason, InvalidTypedAstReason, PlanError, UnsupportedFunctionReason,
 };
@@ -12,7 +14,6 @@ pub(super) fn plan_function(
     info: FunctionInfo,
     module_name: &EcoString,
     functions: &HashMap<EcoString, FunctionInfo>,
-    state: &mut FunctionPlanState,
     function: TypedFunction,
 ) -> Result<FunctionPlan, PlanError> {
     let name = function_name(&function)?;
@@ -24,7 +25,16 @@ pub(super) fn plan_function(
         });
     }
 
-    let mut context = PlanContext::new(module_name, functions, state);
+    let mut context = PlanContext::new(module_name, functions);
+    if let Some(type_) = info.type_.as_ref() {
+        if matches!(type_.return_(), ValueType::Function(_)) {
+            return Err(PlanError::UnsupportedFunction {
+                name,
+                reason: UnsupportedFunctionReason::UnsupportedReturnType,
+            });
+        }
+        validate_function_param_types(&name, type_, &info.params)?;
+    }
     let params = info
         .params
         .iter()
@@ -43,14 +53,95 @@ pub(super) fn plan_function(
             },
         },
     )?;
+    let Some(return_type) = info.return_type.as_ref() else {
+        return Err(PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::FunctionShape {
+                name: name.clone(),
+                reason: InvalidFunctionShapeReason::ReturnTypeMismatch,
+            },
+        });
+    };
+    let return_ = function_return_expr(&name, return_type, planned.return_)?;
 
     Ok(FunctionPlan::new(
         info.id,
         name,
         params,
         planned.steps,
-        planned.return_,
+        return_,
     ))
+}
+
+fn function_return_expr(
+    name: &EcoString,
+    expected: &ValueType,
+    actual: Expr,
+) -> Result<ReturnExpr, PlanError> {
+    match (expected, actual.into_kind()) {
+        (ValueType::Int, ExprKind::Int(actual)) => Ok(ReturnExpr::int(actual)),
+        (ValueType::String, ExprKind::String(actual)) => Ok(ReturnExpr::string(actual)),
+        (ValueType::Bool, ExprKind::Bool(actual)) => Ok(ReturnExpr::bool(actual)),
+        (ValueType::Nil, ExprKind::Nil(actual)) => Ok(ReturnExpr::nil(actual)),
+        _ => Err(PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::FunctionShape {
+                name: name.clone(),
+                reason: InvalidFunctionShapeReason::ReturnTypeMismatch,
+            },
+        }),
+    }
+}
+
+pub(in crate::planner) fn validate_function_param_types(
+    name: &EcoString,
+    expected: &FunctionType,
+    params: &[FunctionParam],
+) -> Result<(), PlanError> {
+    if expected.arguments().len() != params.len() {
+        return Err(PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::FunctionShape {
+                name: name.clone(),
+                reason: InvalidFunctionShapeReason::ArityMismatch,
+            },
+        });
+    }
+
+    for (expected, param) in expected.arguments().iter().zip(params) {
+        if expected != &param.type_ {
+            return Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::FunctionShape {
+                    name: name.clone(),
+                    reason: InvalidFunctionShapeReason::ArgumentTypeMismatch,
+                },
+            });
+        }
+    }
+
+    Ok(())
+}
+
+pub(in crate::planner) fn validate_function_runtime_id(
+    name: &EcoString,
+    expected: &FunctionType,
+    runtime_id: RuntimeFunctionId,
+) -> Result<(), PlanError> {
+    let matches = matches!(
+        (runtime_id, expected.return_()),
+        (RuntimeFunctionId::Int(_), ValueType::Int)
+            | (RuntimeFunctionId::String(_), ValueType::String)
+            | (RuntimeFunctionId::Bool(_), ValueType::Bool)
+            | (RuntimeFunctionId::Nil(_), ValueType::Nil)
+    );
+
+    if matches {
+        return Ok(());
+    }
+
+    Err(PlanError::InvalidTypedAst {
+        reason: InvalidTypedAstReason::FunctionShape {
+            name: name.clone(),
+            reason: InvalidFunctionShapeReason::ReturnTypeMismatch,
+        },
+    })
 }
 
 pub(super) fn function_name(function: &TypedFunction) -> Result<EcoString, PlanError> {
@@ -68,6 +159,12 @@ pub(super) fn function_name(function: &TypedFunction) -> Result<EcoString, PlanE
 
 #[cfg(test)]
 mod tests {
+    use super::{validate_function_param_types, validate_function_runtime_id};
+    use crate::plan::{
+        FunctionType, IntFunctionId, IntLocalId, LocalId, RuntimeFunctionId, StringFunctionId,
+        StringLocalId, ValueType,
+    };
+    use crate::planner::context::FunctionParam;
     use crate::planner::dsl::{
         bool_, bool_arg, call_bool, call_int, call_nil, call_string, function, int, int_arg,
         local_bool, local_int, local_nil, local_string, module, nil, nil_arg, string, string_arg,
@@ -230,6 +327,24 @@ pub fn main() {
                 reason: UnsupportedArgumentReason::Discard,
             },
         );
+
+        assert_eq!(
+            expect_plan_error(
+                r#"
+fn identity(value: Int) {
+  value
+}
+
+pub fn main() {
+  identity
+}
+"#,
+            ),
+            PlanError::UnsupportedFunction {
+                name: "main".into(),
+                reason: UnsupportedFunctionReason::UnsupportedReturnType,
+            },
+        );
     }
 
     #[test]
@@ -256,6 +371,103 @@ pub fn main() {
                     reason: InvalidFunctionShapeReason::Anonymous,
                 },
             }),
+        );
+
+        let mut return_type_mismatch = compile_minimal_module();
+        return_type_mismatch.definitions.functions[0].return_type = gleam_core::type_::bool();
+        assert_eq!(
+            plan_module(return_type_mismatch),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::FunctionShape {
+                    name: "main".into(),
+                    reason: InvalidFunctionShapeReason::ReturnTypeMismatch,
+                },
+            }),
+        );
+
+        let mut unsupported_return_type = compile_minimal_module();
+        unsupported_return_type.definitions.functions[0].return_type =
+            gleam_core::type_::list(gleam_core::type_::int());
+        assert_eq!(
+            plan_module(unsupported_return_type),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::FunctionShape {
+                    name: "main".into(),
+                    reason: InvalidFunctionShapeReason::ReturnTypeMismatch,
+                },
+            }),
+        );
+    }
+
+    #[test]
+    fn reject_margin_function_param_type_validation() {
+        let name = "main".into();
+        let type_ = FunctionType::new(vec![ValueType::Int], ValueType::Int);
+
+        assert_eq!(
+            validate_function_param_types(&name, &type_, &[]),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::FunctionShape {
+                    name: "main".into(),
+                    reason: InvalidFunctionShapeReason::ArityMismatch,
+                },
+            }),
+        );
+
+        assert_eq!(
+            validate_function_param_types(
+                &name,
+                &type_,
+                &[FunctionParam {
+                    local: LocalId::String(StringLocalId(0)),
+                    name: "value".into(),
+                    type_: ValueType::String,
+                }],
+            ),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::FunctionShape {
+                    name: "main".into(),
+                    reason: InvalidFunctionShapeReason::ArgumentTypeMismatch,
+                },
+            }),
+        );
+
+        assert_eq!(
+            validate_function_param_types(
+                &name,
+                &type_,
+                &[FunctionParam {
+                    local: LocalId::Int(IntLocalId(0)),
+                    name: "value".into(),
+                    type_: ValueType::Int,
+                }],
+            ),
+            Ok(()),
+        );
+    }
+
+    #[test]
+    fn reject_margin_function_runtime_id_validation() {
+        let name = "main".into();
+        let type_ = FunctionType::new(Vec::new(), ValueType::String);
+
+        assert_eq!(
+            validate_function_runtime_id(&name, &type_, RuntimeFunctionId::Int(IntFunctionId(0)),),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::FunctionShape {
+                    name: "main".into(),
+                    reason: InvalidFunctionShapeReason::ReturnTypeMismatch,
+                },
+            }),
+        );
+
+        assert_eq!(
+            validate_function_runtime_id(
+                &name,
+                &type_,
+                RuntimeFunctionId::String(StringFunctionId(0)),
+            ),
+            Ok(()),
         );
     }
 }

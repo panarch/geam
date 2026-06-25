@@ -1,12 +1,11 @@
-use super::{invalid_expression_type, plan_expr, plan_function_expr};
+use super::{invalid_expression_type, plan_expr};
 use crate::plan::{
-    BoolExpr, CallArg, Expr, FunctionExpr, IntExpr, NilExpr, RuntimeFunctionId, StringExpr,
-    ValueType,
+    BoolExpr, CallArg, Expr, IntExpr, NilExpr, RuntimeFunctionId, StringExpr, ValueType,
 };
 use crate::planner::context::{FunctionInfo, FunctionParam, PlanContext};
 use crate::planner::error::{
     InvalidCallShapeReason, InvalidExpressionType, InvalidPipelineShapeReason,
-    InvalidTypedAstReason, PlanError,
+    InvalidTypedAstReason, PlanError, UnsupportedExpressionKind, UnsupportedPipelineReason,
 };
 use ecow::EcoString;
 use gleam_core::ast::{
@@ -37,7 +36,14 @@ pub(super) fn plan_call(
         });
     }
 
-    plan_call_expression(type_, fun, arguments, context, None)
+    plan_call_expression(
+        type_,
+        fun,
+        arguments,
+        context,
+        None,
+        FunctionValueCallMode::Allow,
+    )
 }
 
 pub(super) fn plan_pipeline_direct_call(
@@ -48,7 +54,14 @@ pub(super) fn plan_pipeline_direct_call(
 ) -> Result<Expr, PlanError> {
     pipe_argument(&arguments)?;
 
-    plan_call_expression(type_, fun, arguments, context, None)
+    plan_call_expression(
+        type_,
+        fun,
+        arguments,
+        context,
+        None,
+        FunctionValueCallMode::Reject,
+    )
 }
 
 pub(super) fn plan_pipeline_hole_call(
@@ -117,6 +130,7 @@ pub(super) fn plan_pipeline_hole_call(
             name: capture_name,
             value: pipe_value,
         }),
+        FunctionValueCallMode::Reject,
     )
 }
 
@@ -125,12 +139,19 @@ struct CaptureSubstitution {
     value: Expr,
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum FunctionValueCallMode {
+    Allow,
+    Reject,
+}
+
 fn plan_call_expression(
     type_: Arc<Type>,
     fun: TypedExpr,
     arguments: Vec<GleamCallArg<TypedExpr>>,
     context: &mut PlanContext<'_>,
     capture: Option<&CaptureSubstitution>,
+    function_value_call_mode: FunctionValueCallMode,
 ) -> Result<Expr, PlanError> {
     if let TypedExpr::Var { constructor, .. } = &fun {
         match &constructor.variant {
@@ -178,6 +199,12 @@ fn plan_call_expression(
         }
     }
 
+    if function_value_call_mode == FunctionValueCallMode::Reject {
+        return Err(PlanError::UnsupportedPipeline {
+            reason: UnsupportedPipelineReason::FunctionValueCall,
+        });
+    }
+
     plan_function_value_call(type_, fun, arguments, context, capture)
 }
 
@@ -218,7 +245,7 @@ fn plan_direct_function_call(
     }
     let args = plan_call_args(arguments, &function.params, context, capture)?;
 
-    call_expr(function_id, args, return_type)
+    call_expr(function_id, args)
 }
 
 fn plan_function_value_call(
@@ -228,7 +255,14 @@ fn plan_function_value_call(
     context: &mut PlanContext<'_>,
     capture: Option<&CaptureSubstitution>,
 ) -> Result<Expr, PlanError> {
-    let function = plan_function_expr(fun, context)?;
+    let function = plan_expr(fun, context)?
+        .into_function()
+        .map_err(|other| invalid_expression_type(InvalidExpressionType::Function, &other))?;
+    let crate::plan::FunctionExprKind::Value(function) = function.kind() else {
+        return Err(PlanError::UnsupportedExpression {
+            kind: UnsupportedExpressionKind::NonValueFunctionCallee,
+        });
+    };
     let return_type = ValueType::from_gleam(type_.as_ref()).ok_or(PlanError::InvalidTypedAst {
         reason: InvalidTypedAstReason::CallShape {
             reason: InvalidCallShapeReason::LocalFunctionCallUnsupportedReturnType,
@@ -248,23 +282,33 @@ fn plan_function_value_call(
             },
         });
     }
+    let params = function_value_params(function)?;
+    let args = plan_call_args(arguments, &params, context, capture)?;
 
-    let args = arguments
-        .into_iter()
-        .zip(function.type_().arguments().iter())
-        .map(|(argument, expected)| {
-            let expression = plan_argument_value(argument.value, capture, context)?;
-            if expression.value_type() != *expected {
-                return Err(invalid_expression_type(
-                    expected_expression_type(expected),
-                    &expression,
-                ));
-            }
-            Ok(expression)
+    call_expr(function.runtime_id(), args)
+}
+
+fn function_value_params(
+    function: &crate::plan::FunctionValue,
+) -> Result<Vec<FunctionParam>, PlanError> {
+    if function.params().len() != function.type_().arguments().len() {
+        return Err(PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::CallShape {
+                reason: InvalidCallShapeReason::FunctionValueParameterShapeMismatch,
+            },
+        });
+    }
+
+    Ok(function
+        .params()
+        .iter()
+        .zip(function.type_().arguments())
+        .map(|(local, type_)| FunctionParam {
+            local: *local,
+            name: EcoString::default(),
+            type_: type_.clone(),
         })
-        .collect::<Result<Vec<_>, _>>()?;
-
-    Ok(Expr::function_call(function, args, return_type))
+        .collect())
 }
 
 fn plan_call_args(
@@ -365,26 +409,12 @@ fn invalid_pipeline_shape(reason: InvalidPipelineShapeReason) -> PlanError {
     }
 }
 
-fn call_expr(
-    function: RuntimeFunctionId,
-    args: Vec<CallArg>,
-    return_type: ValueType,
-) -> Result<Expr, PlanError> {
+fn call_expr(function: RuntimeFunctionId, args: Vec<CallArg>) -> Result<Expr, PlanError> {
     match function {
         RuntimeFunctionId::Int(function) => Ok(Expr::int(IntExpr::call(function, args))),
         RuntimeFunctionId::String(function) => Ok(Expr::string(StringExpr::call(function, args))),
         RuntimeFunctionId::Bool(function) => Ok(Expr::bool(BoolExpr::call(function, args))),
         RuntimeFunctionId::Nil(function) => Ok(Expr::nil(NilExpr::call(function, args))),
-        RuntimeFunctionId::Function(function) => {
-            let ValueType::Function(type_) = return_type else {
-                return Err(PlanError::InvalidTypedAst {
-                    reason: InvalidTypedAstReason::CallShape {
-                        reason: InvalidCallShapeReason::LocalFunctionCallReturnTypeMismatch,
-                    },
-                });
-            };
-            Ok(Expr::function(FunctionExpr::call(function, args, *type_)))
-        }
     }
 }
 
@@ -401,27 +431,92 @@ fn expected_expression_type(type_: &ValueType) -> InvalidExpressionType {
 #[cfg(test)]
 mod tests {
     use super::super::{typed_int_expr, typed_string_expr};
-    use super::call_expr;
-    use crate::plan::{FunctionFunctionId, RuntimeFunctionId, ValueType};
+    use crate::plan::{
+        FunctionType, FunctionValue, IntFunctionId, IntLocalId, LocalId, RuntimeFunctionId,
+        ValueType,
+    };
+    use crate::planner::dsl::{call_int, function, function_ref, int, int_arg, local_int, module};
     use crate::planner::plan_module;
-    use crate::planner::support::{compile, compile_minimal_module, dummy_span};
+    use crate::planner::support::{compile, compile_minimal_module, dummy_span, expect_plan_error};
     use crate::planner::{
         InvalidCallShapeReason, InvalidExpressionType, InvalidTypedAstReason, PlanError,
+        UnsupportedExpressionKind,
     };
     use gleam_core::ast::{
         CallArg, ImplicitCallArgOrigin, Statement, TypedExpr, TypedModule, TypedStatement,
     };
-    use gleam_core::type_::error::VariableOrigin;
-    use gleam_core::type_::{self, ValueConstructor, ValueConstructorVariant};
+    use gleam_core::type_::{
+        self, ValueConstructor, ValueConstructorVariant, error::VariableOrigin,
+    };
 
     #[test]
-    fn plan_anonymous_function_call() {
-        assert!(plan_module(compile(r#"pub fn main() { fn(x) { x }(1) }"#)).is_ok());
+    fn reject_profile_anonymous_function_call() {
+        assert_eq!(
+            plan_module(compile(r#"pub fn main() { fn(x) { x }(1) }"#)),
+            Err(PlanError::UnsupportedExpression {
+                kind: UnsupportedExpressionKind::AnonymousFunction,
+            }),
+        );
+    }
+
+    #[test]
+    fn plan_function_value_assignment_before_call() {
+        let actual = plan_module(compile(
+            r#"
+fn add_one(value: Int) {
+  value + 1
+}
+
+pub fn main() {
+  let function = add_one
+  function(1)
+}
+"#,
+        ))
+        .expect("source should plan");
+        let expected = module(
+            "main",
+            function("main", call_int(1, [int_arg(0, int(1))])).let_function(
+                0,
+                "function",
+                function_ref(
+                    RuntimeFunctionId::Int(IntFunctionId(1)),
+                    FunctionType::new(vec![ValueType::Int], ValueType::Int),
+                    [LocalId::Int(IntLocalId(0))],
+                ),
+            ),
+            [function("add_one", local_int(0, "value").add_int(int(1))).param_int(0, "value")],
+        );
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn reject_profile_non_value_function_callee() {
+        assert_eq!(
+            expect_plan_error(
+                r#"
+fn add_one(value: Int) {
+  value + 1
+}
+
+pub fn main() {
+  case True {
+    True -> add_one
+    False -> add_one
+  }(1)
+}
+"#,
+            ),
+            PlanError::UnsupportedExpression {
+                kind: UnsupportedExpressionKind::NonValueFunctionCallee,
+            },
+        );
     }
 
     #[test]
     fn reject_margin_function_value_call_shapes() {
-        let mut return_mismatch = compile(
+        let mut non_function_callee = compile(
             r#"
 fn add_one(value: Int) {
   value + 1
@@ -433,11 +528,62 @@ pub fn main() {
 }
 "#,
         );
-        let (type_, _, _) =
-            expect_call_statement_mut(&mut return_mismatch.definitions.functions[1].body[1]);
+        let (_, fun, _) =
+            expect_call_statement_mut(&mut non_function_callee.definitions.functions[1].body[1]);
+        *fun = typed_int_expr(1);
+        assert_eq!(
+            plan_module(non_function_callee),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionType {
+                    expected: InvalidExpressionType::Function,
+                    actual: InvalidExpressionType::Int,
+                },
+            }),
+        );
+
+        let mut unsupported_return_type_call = compile(
+            r#"
+fn add_one(value: Int) {
+  value + 1
+}
+
+pub fn main() {
+  let function = add_one
+  function(1)
+}
+"#,
+        );
+        let (type_, _, _) = expect_call_statement_mut(
+            &mut unsupported_return_type_call.definitions.functions[1].body[1],
+        );
+        *type_ = type_::list(type_::int());
+        assert_eq!(
+            plan_module(unsupported_return_type_call),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::CallShape {
+                    reason: InvalidCallShapeReason::LocalFunctionCallUnsupportedReturnType,
+                },
+            }),
+        );
+
+        let mut return_type_mismatch_call = compile(
+            r#"
+fn add_one(value: Int) {
+  value + 1
+}
+
+pub fn main() {
+  let function = add_one
+  function(1)
+}
+"#,
+        );
+        let (type_, _, _) = expect_call_statement_mut(
+            &mut return_type_mismatch_call.definitions.functions[1].body[1],
+        );
         *type_ = type_::bool();
         assert_eq!(
-            plan_module(return_mismatch),
+            plan_module(return_type_mismatch_call),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::CallShape {
                     reason: InvalidCallShapeReason::FunctionCallReturnTypeMismatch,
@@ -445,7 +591,7 @@ pub fn main() {
             }),
         );
 
-        let mut arity_mismatch = compile(
+        let mut argument_type_mismatch_call = compile(
             r#"
 fn add_one(value: Int) {
   value + 1
@@ -457,35 +603,12 @@ pub fn main() {
 }
 "#,
         );
-        let (_, _, arguments) =
-            expect_call_statement_mut(&mut arity_mismatch.definitions.functions[1].body[1]);
-        arguments.clear();
-        assert_eq!(
-            plan_module(arity_mismatch),
-            Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::CallShape {
-                    reason: InvalidCallShapeReason::FunctionCallArityMismatch,
-                },
-            }),
+        let (_, _, arguments) = expect_call_statement_mut(
+            &mut argument_type_mismatch_call.definitions.functions[1].body[1],
         );
-
-        let mut argument_mismatch = compile(
-            r#"
-fn add_one(value: Int) {
-  value + 1
-}
-
-pub fn main() {
-  let function = add_one
-  function(1)
-}
-"#,
-        );
-        let (_, _, arguments) =
-            expect_call_statement_mut(&mut argument_mismatch.definitions.functions[1].body[1]);
         arguments[0].value = typed_string_expr("wrong");
         assert_eq!(
-            plan_module(argument_mismatch),
+            plan_module(argument_type_mismatch_call),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::ExpressionType {
                     expected: InvalidExpressionType::Int,
@@ -494,7 +617,7 @@ pub fn main() {
             }),
         );
 
-        let mut unsupported_return = compile(
+        let mut arity_mismatch_call = compile(
             r#"
 fn add_one(value: Int) {
   value + 1
@@ -506,32 +629,44 @@ pub fn main() {
 }
 "#,
         );
-        let (type_, _, _) =
-            expect_call_statement_mut(&mut unsupported_return.definitions.functions[1].body[1]);
-        *type_ = type_::list(type_::int());
+        let (_, _, arguments) =
+            expect_call_statement_mut(&mut arity_mismatch_call.definitions.functions[1].body[1]);
+        arguments.clear();
         assert_eq!(
-            plan_module(unsupported_return),
+            plan_module(arity_mismatch_call),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::CallShape {
-                    reason: InvalidCallShapeReason::LocalFunctionCallUnsupportedReturnType,
+                    reason: InvalidCallShapeReason::FunctionCallArityMismatch,
                 },
             }),
         );
     }
 
     #[test]
-    fn reject_margin_call_expr_function_return_type_mismatch() {
+    fn reject_margin_function_value_parameter_shape_mismatch() {
         assert_eq!(
-            call_expr(
-                RuntimeFunctionId::Function(FunctionFunctionId(0)),
+            super::function_value_params(&FunctionValue::new(
+                FunctionType::new(vec![ValueType::Int], ValueType::Int),
+                RuntimeFunctionId::Int(IntFunctionId(0)),
                 Vec::new(),
-                ValueType::Int,
-            ),
-            Err(PlanError::InvalidTypedAst {
+            ))
+            .err(),
+            Some(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::CallShape {
-                    reason: InvalidCallShapeReason::LocalFunctionCallReturnTypeMismatch,
+                    reason: InvalidCallShapeReason::FunctionValueParameterShapeMismatch,
                 },
             }),
+        );
+    }
+
+    #[test]
+    fn call_arg_expected_type_supports_function_shape() {
+        assert_eq!(
+            super::expected_expression_type(&ValueType::Function(Box::new(FunctionType::new(
+                Vec::new(),
+                ValueType::Int,
+            )))),
+            InvalidExpressionType::Function,
         );
     }
 
@@ -539,16 +674,38 @@ pub fn main() {
     fn reject_margin_call_to_unsupported_return_function() {
         let mut module = compile(
             r#"
-fn helper() {
-  1
-}
-
 pub fn main() {
   helper()
 }
+
+fn helper() {
+  1
+}
 "#,
         );
-        module.definitions.functions[0].return_type = type_::list(type_::int());
+        let helper = module
+            .definitions
+            .functions
+            .iter_mut()
+            .find(|function| {
+                function
+                    .name
+                    .as_ref()
+                    .is_some_and(|(_, name)| name == "helper")
+            })
+            .expect("helper function should exist");
+        helper.return_type = type_::list(type_::int());
+        module.definitions.functions.sort_by_key(|function| {
+            if function
+                .name
+                .as_ref()
+                .is_some_and(|(_, name)| name == "main")
+            {
+                0
+            } else {
+                1
+            }
+        });
 
         assert_eq!(
             plan_module(module),
@@ -654,6 +811,33 @@ pub fn main() {
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::CallShape {
                     reason: InvalidCallShapeReason::ImplicitArguments,
+                },
+            }),
+        );
+
+        let mut local_variable_callee = compile(
+            r#"
+fn identity(value: Int) {
+  value
+}
+
+pub fn main() {
+  identity(1)
+}
+"#,
+        );
+        let (_, fun, _) =
+            expect_call_statement_mut(&mut local_variable_callee.definitions.functions[1].body[0]);
+        let constructor = expect_var_constructor_mut(fun);
+        constructor.variant = ValueConstructorVariant::LocalVariable {
+            location: dummy_span(),
+            origin: VariableOrigin::generated(),
+        };
+        assert_eq!(
+            plan_module(local_variable_callee),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::UnknownLocal {
+                    name: "identity".into(),
                 },
             }),
         );
@@ -791,89 +975,6 @@ pub fn main() {
             typed_int_expr(1),
             InvalidExpressionType::Nil,
             InvalidExpressionType::Int,
-        );
-
-        let mut function_argument_mismatch = compile(
-            r#"
-fn add_one(value: Int) {
-  value + 1
-}
-
-fn apply(function: fn(Int) -> Int) {
-  function(1)
-}
-
-pub fn main() {
-  apply(add_one)
-}
-"#,
-        );
-        let (_, _, arguments) = expect_call_statement_mut(
-            &mut function_argument_mismatch.definitions.functions[2].body[0],
-        );
-        arguments[0].value = typed_int_expr(1);
-        assert_eq!(
-            plan_module(function_argument_mismatch),
-            Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::ExpressionType {
-                    expected: InvalidExpressionType::Function,
-                    actual: InvalidExpressionType::Int,
-                },
-            }),
-        );
-
-        let mut function_callee_mismatch = compile(
-            r#"
-fn add_one(value: Int) {
-  value + 1
-}
-
-pub fn main() {
-  let function = add_one
-  function(1)
-}
-"#,
-        );
-        let (_, fun, _) = expect_call_statement_mut(
-            &mut function_callee_mismatch.definitions.functions[1].body[1],
-        );
-        *fun = typed_int_expr(1);
-        assert_eq!(
-            plan_module(function_callee_mismatch),
-            Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::ExpressionType {
-                    expected: InvalidExpressionType::Function,
-                    actual: InvalidExpressionType::Int,
-                },
-            }),
-        );
-
-        let mut local_function_value_call = compile(
-            r#"
-fn identity(value: Int) {
-  value
-}
-
-pub fn main() {
-  identity(1)
-}
-"#,
-        );
-        let (_, fun, _) = expect_call_statement_mut(
-            &mut local_function_value_call.definitions.functions[1].body[0],
-        );
-        let constructor = expect_var_constructor_mut(fun);
-        constructor.variant = ValueConstructorVariant::LocalVariable {
-            location: dummy_span(),
-            origin: VariableOrigin::generated(),
-        };
-        assert_eq!(
-            plan_module(local_function_value_call),
-            Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::UnknownLocal {
-                    name: "identity".into(),
-                },
-            }),
         );
 
         let mut missing_current_module_fn = compile(

@@ -15,12 +15,12 @@ pub(crate) use expression::{
     BoolExprKind, CallArgKind, ExprKind, FunctionExprKind, IntExprKind, NilExprKind, StringExprKind,
 };
 pub(crate) use frame::FrameLayout;
-pub(crate) use function::RuntimeFunction;
-pub use function::{FunctionPlan, Param};
+pub use function::{FunctionPlan, Param, ReturnExpr};
+pub(crate) use function::{ReturnExprKind, RuntimeFunction};
 pub(crate) use id::RuntimeFunctionId;
 pub use id::{
-    BoolFunctionId, BoolLocalId, FunctionFunctionId, FunctionId, FunctionLocalId, IntFunctionId,
-    IntLocalId, LocalId, NilFunctionId, NilLocalId, StringFunctionId, StringLocalId,
+    BoolFunctionId, BoolLocalId, FunctionId, FunctionLocalId, IntFunctionId, IntLocalId, LocalId,
+    NilFunctionId, NilLocalId, StringFunctionId, StringLocalId,
 };
 pub use step::Step;
 pub(crate) use step::StepKind;
@@ -76,13 +76,6 @@ impl ExecutionPlan {
     pub(crate) fn nil_function(&self, id: NilFunctionId) -> &RuntimeFunction<NilExpr> {
         self.runtime.nil_function(id)
     }
-
-    pub(crate) fn function_function(
-        &self,
-        id: FunctionFunctionId,
-    ) -> &RuntimeFunction<FunctionExpr> {
-        self.runtime.function_function(id)
-    }
 }
 
 impl fmt::Debug for ExecutionPlan {
@@ -104,7 +97,7 @@ impl PartialEq for ExecutionPlan {
 
 #[cfg(test)]
 mod tests {
-    use super::{ExecutionPlan, Expr, FunctionId, FunctionPlan, IntExpr};
+    use super::{ExecutionPlan, FunctionId, FunctionPlan, IntExpr, ReturnExpr};
     use num_bigint::BigInt;
 
     #[test]
@@ -114,14 +107,14 @@ mod tests {
             "main".into(),
             Vec::new(),
             Vec::new(),
-            Expr::int(IntExpr::value(BigInt::from(1))),
+            ReturnExpr::int(IntExpr::value(BigInt::from(1))),
         );
         let helper = FunctionPlan::new(
             FunctionId::new(1),
             "helper".into(),
             Vec::new(),
             Vec::new(),
-            Expr::int(IntExpr::value(BigInt::from(2))),
+            ReturnExpr::int(IntExpr::value(BigInt::from(2))),
         );
         let plan = ExecutionPlan::new("main".into(), main, vec![helper]);
 
@@ -140,7 +133,7 @@ mod tests {
                 "main".into(),
                 Vec::new(),
                 Vec::new(),
-                Expr::int(IntExpr::value(BigInt::from(1))),
+                ReturnExpr::int(IntExpr::value(BigInt::from(1))),
             ),
             Vec::new(),
         );

@@ -1,6 +1,4 @@
-use crate::plan::{
-    BoolLocalId, FrameLayout, FunctionLocalId, FunctionValue, IntLocalId, NilLocalId, StringLocalId,
-};
+use crate::plan::{BoolLocalId, FrameLayout, IntLocalId, NilLocalId, StringLocalId};
 use ecow::EcoString;
 use num_bigint::BigInt;
 
@@ -8,7 +6,6 @@ pub(super) struct Frame {
     ints: Vec<BigInt>,
     strings: Vec<EcoString>,
     bools: Vec<bool>,
-    functions: Vec<Option<FunctionValue>>,
 }
 
 impl Frame {
@@ -17,7 +14,6 @@ impl Frame {
             ints: vec![BigInt::from(0); layout.ints()],
             strings: vec![EcoString::default(); layout.strings()],
             bools: vec![false; layout.bools()],
-            functions: vec![None; layout.functions()],
         }
     }
 
@@ -48,21 +44,6 @@ impl Frame {
     pub(super) fn set_nil(&mut self, _local: NilLocalId) {}
 
     pub(super) fn get_nil(&self, _local: NilLocalId) {}
-
-    pub(super) fn set_function(&mut self, local: FunctionLocalId, value: FunctionValue) {
-        set_slot(&mut self.functions, local.0, Some(value));
-    }
-
-    pub(super) fn get_function(&self, local: FunctionLocalId) -> FunctionValue {
-        match &self.functions[local.0] {
-            Some(value) => value.clone(),
-            None => FunctionValue::new(
-                crate::plan::FunctionType::new(Vec::new(), crate::plan::ValueType::Nil),
-                crate::plan::RuntimeFunctionId::Nil(crate::plan::NilFunctionId(0)),
-                Vec::new(),
-            ),
-        }
-    }
 }
 
 impl Default for Frame {
@@ -78,14 +59,12 @@ fn set_slot<T>(slots: &mut [T], index: usize, value: T) {
 #[cfg(test)]
 mod tests {
     use super::Frame;
-    use crate::plan::{
-        BoolLocalId, FrameLayout, FunctionLocalId, IntLocalId, NilLocalId, StringLocalId, ValueType,
-    };
+    use crate::plan::{BoolLocalId, FrameLayout, IntLocalId, NilLocalId, StringLocalId};
     use num_bigint::BigInt;
 
     #[test]
     fn frame_set_and_get_local() {
-        let frame = frame_with_layout(1, 1, 1, 1, 0);
+        let frame = frame_with_layout(1, 1, 1, 1);
         let mut frame = frame;
 
         frame.set_int(IntLocalId(0), int(1));
@@ -101,7 +80,7 @@ mod tests {
 
     #[test]
     fn frame_set_overwrites_local() {
-        let mut frame = frame_with_layout(1, 0, 0, 0, 0);
+        let mut frame = frame_with_layout(1, 0, 0, 0);
 
         frame.set_int(IntLocalId(0), int(1));
         frame.set_int(IntLocalId(0), int(2));
@@ -109,23 +88,7 @@ mod tests {
         assert_eq!(frame.get_int(IntLocalId(0)), int(2));
     }
 
-    #[test]
-    fn frame_get_unset_function_local() {
-        let frame = frame_with_layout(0, 0, 0, 0, 1);
-
-        assert_eq!(
-            frame.get_function(FunctionLocalId(0)).type_().return_(),
-            &ValueType::Nil,
-        );
-    }
-
-    fn frame_with_layout(
-        ints: usize,
-        strings: usize,
-        bools: usize,
-        nils: usize,
-        functions: usize,
-    ) -> Frame {
+    fn frame_with_layout(ints: usize, strings: usize, bools: usize, nils: usize) -> Frame {
         let mut layout = FrameLayout::default();
         if ints > 0 {
             layout.include_int(IntLocalId(ints - 1));
@@ -138,9 +101,6 @@ mod tests {
         }
         if nils > 0 {
             layout.include_nil(NilLocalId(nils - 1));
-        }
-        if functions > 0 {
-            layout.include_function(FunctionLocalId(functions - 1));
         }
         Frame::new(layout)
     }

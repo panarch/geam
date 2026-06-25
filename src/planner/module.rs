@@ -1,5 +1,5 @@
 use crate::plan::{ExecutionPlan, FunctionId, LocalId, ValueType};
-use crate::planner::context::{FunctionInfo, FunctionParam, FunctionPlanState, FunctionRuntimeIds};
+use crate::planner::context::{FunctionInfo, FunctionParam, FunctionRuntimeIds};
 use crate::planner::error::{
     PlanError, UnsupportedArgumentReason, UnsupportedFunctionReason, UnsupportedTopLevelKind,
 };
@@ -32,37 +32,21 @@ pub fn plan_module(module: TypedModule) -> Result<ExecutionPlan, PlanError> {
         main,
         functions_before_main,
         functions_after_main,
-        runtime_ids,
-        next_function_index,
     } = function_table(&module.definitions.functions)?;
     let main = validate_main_function(main)?;
     let mut functions = Vec::new();
-    let mut state = FunctionPlanState::new(runtime_ids, next_function_index);
 
     for function in functions_before_main {
-        let planned = plan_function(
-            function.info,
-            &module_name,
-            &by_name,
-            &mut state,
-            function.function,
-        )?;
+        let planned = plan_function(function.info, &module_name, &by_name, function.function)?;
         functions.push(planned);
     }
 
-    let main = plan_function(main.info, &module_name, &by_name, &mut state, main.function)?;
+    let main = plan_function(main.info, &module_name, &by_name, main.function)?;
 
     for function in functions_after_main {
-        let planned = plan_function(
-            function.info,
-            &module_name,
-            &by_name,
-            &mut state,
-            function.function,
-        )?;
+        let planned = plan_function(function.info, &module_name, &by_name, function.function)?;
         functions.push(planned);
     }
-    functions.extend(state.into_anonymous_functions());
 
     Ok(ExecutionPlan::new(module_name, main, functions))
 }
@@ -72,8 +56,6 @@ struct FunctionTable {
     main: FunctionToPlan,
     functions_before_main: Vec<FunctionToPlan>,
     functions_after_main: Vec<FunctionToPlan>,
-    runtime_ids: FunctionRuntimeIds,
-    next_function_index: usize,
 }
 
 struct FunctionToPlan {
@@ -147,8 +129,6 @@ fn function_table(
         main,
         functions_before_main,
         functions_after_main,
-        runtime_ids,
-        next_function_index,
     })
 }
 
@@ -160,7 +140,7 @@ fn function_info(
     let return_type = seed.return_type.clone();
     let runtime_id = return_type
         .clone()
-        .map(|return_type| runtime_ids.next(return_type));
+        .and_then(|return_type| runtime_ids.next(return_type));
     FunctionInfo {
         id: FunctionId::new(function_index),
         runtime_id,
@@ -190,7 +170,6 @@ fn function_params(
     let mut next_string = 0;
     let mut next_bool = 0;
     let mut next_nil = 0;
-    let mut next_function = 0;
 
     arguments
         .iter()
@@ -215,7 +194,6 @@ fn function_params(
                     reason: UnsupportedArgumentReason::UnsupportedType,
                 });
             };
-
             let local = match &type_ {
                 ValueType::Int => {
                     let local = LocalId::Int(crate::plan::IntLocalId(next_int));
@@ -238,9 +216,10 @@ fn function_params(
                     local
                 }
                 ValueType::Function(_) => {
-                    let local = LocalId::Function(crate::plan::FunctionLocalId(next_function));
-                    next_function += 1;
-                    local
+                    return Err(PlanError::UnsupportedArgument {
+                        function: function_name.clone(),
+                        reason: UnsupportedArgumentReason::UnsupportedType,
+                    });
                 }
             };
             Ok(FunctionParam { local, name, type_ })

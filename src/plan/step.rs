@@ -86,7 +86,10 @@ impl Step {
 #[cfg(test)]
 mod tests {
     use super::{Step, StepKind};
-    use crate::plan::{Expr, IntExpr, IntLocalId};
+    use crate::plan::{
+        Expr, FunctionExpr, FunctionLocalId, FunctionType, FunctionValue, IntExpr, IntFunctionId,
+        IntLocalId, RuntimeFunctionId, ValueType,
+    };
     use num_bigint::BigInt;
 
     #[test]
@@ -98,6 +101,19 @@ mod tests {
         assert!(matches!(
             Step::evaluate(Expr::int(IntExpr::value(BigInt::from(1)))).kind(),
             StepKind::Evaluate(_),
+        ));
+        assert!(matches!(
+            Step::let_function(
+                FunctionLocalId(0),
+                "f".into(),
+                FunctionExpr::value(FunctionValue::new(
+                    FunctionType::new(vec![ValueType::Int], ValueType::Int),
+                    RuntimeFunctionId::Int(IntFunctionId(0)),
+                    Vec::new(),
+                )),
+            )
+            .kind(),
+            StepKind::LetFunction { .. },
         ));
     }
 }

@@ -1,5 +1,5 @@
 use super::eval_bool_expr;
-use crate::plan::{ExecutionPlan, IntExpr, IntExprKind, RuntimeFunctionId};
+use crate::plan::{ExecutionPlan, IntExpr, IntExprKind};
 use crate::runtime::frame::Frame;
 use crate::runtime::function;
 use num_bigint::BigInt;
@@ -14,18 +14,6 @@ pub(in crate::runtime) fn eval_int_expr(
         IntExprKind::LocalGet { local, .. } => frame.get_int(*local),
         IntExprKind::Call { function, args } => {
             function::run_int_call(plan, *function, args, frame)
-        }
-        IntExprKind::FunctionCall { function, args } => {
-            let function = super::eval_function_expr(plan, frame, function);
-            match function.runtime_id() {
-                RuntimeFunctionId::Int(function_id) => {
-                    function::run_dynamic_int_call(plan, function_id, &function, args, frame)
-                }
-                RuntimeFunctionId::String(_)
-                | RuntimeFunctionId::Bool(_)
-                | RuntimeFunctionId::Nil(_)
-                | RuntimeFunctionId::Function(_) => BigInt::from(0),
-            }
         }
         IntExprKind::Add { left, right } => {
             eval_int_expr(plan, frame, left) + eval_int_expr(plan, frame, right)
@@ -96,14 +84,7 @@ fn eval_remainder_int(left: BigInt, right: BigInt) -> BigInt {
 
 #[cfg(test)]
 mod tests {
-    use super::eval_int_expr;
-    use crate::plan::{
-        ExecutionPlan, Expr, FunctionExpr, FunctionId, FunctionPlan, FunctionType, FunctionValue,
-        IntExpr, IntFunctionId, RuntimeFunctionId, StringFunctionId, ValueType,
-    };
-    use crate::runtime::frame::Frame;
     use crate::runtime::{int, run_src};
-    use num_bigint::BigInt;
 
     #[test]
     fn eval_integer_arithmetic() {
@@ -415,35 +396,5 @@ pub fn main() {
             ),
             int(1),
         );
-    }
-
-    #[test]
-    fn eval_invalid_function_call_return_shape() {
-        let plan = empty_plan();
-        let function = FunctionExpr::value(FunctionValue::new(
-            FunctionType::new(Vec::new(), ValueType::String),
-            RuntimeFunctionId::String(StringFunctionId(0)),
-            Vec::new(),
-        ));
-        let expression = IntExpr::function_call(function, Vec::new());
-
-        assert_eq!(
-            eval_int_expr(&plan, &mut Frame::default(), &expression),
-            BigInt::from(0)
-        );
-    }
-
-    fn empty_plan() -> ExecutionPlan {
-        ExecutionPlan::new(
-            "main".into(),
-            FunctionPlan::new(
-                FunctionId::new(0),
-                "main".into(),
-                Vec::new(),
-                Vec::new(),
-                Expr::int(IntExpr::call(IntFunctionId(0), Vec::new())),
-            ),
-            Vec::new(),
-        )
     }
 }

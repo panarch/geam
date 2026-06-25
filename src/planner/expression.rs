@@ -6,7 +6,7 @@ mod operator;
 mod pipeline;
 mod var;
 
-use crate::plan::{BoolExpr, Expr, FunctionExpr, IntExpr, StringExpr, ValueType};
+use crate::plan::{BoolExpr, Expr, IntExpr, StringExpr, ValueType};
 use crate::planner::context::PlanContext;
 use crate::planner::error::{
     InvalidExpressionShapeKind, InvalidExpressionType, InvalidTypedAstReason, PlanError,
@@ -136,15 +136,6 @@ fn plan_bool_expr(
     plan_expr(expression, context)?
         .into_bool()
         .map_err(|other| invalid_expression_type(InvalidExpressionType::Bool, &other))
-}
-
-fn plan_function_expr(
-    expression: TypedExpr,
-    context: &mut PlanContext<'_>,
-) -> Result<FunctionExpr, PlanError> {
-    plan_expr(expression, context)?
-        .into_function()
-        .map_err(|other| invalid_expression_type(InvalidExpressionType::Function, &other))
 }
 
 fn invalid_expression_type(expected: InvalidExpressionType, actual: &Expr) -> PlanError {

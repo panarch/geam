@@ -42,10 +42,14 @@ pub enum UnsupportedStatementKind {
     AssertAsFinalStatement,
     #[error("assignment as final statement")]
     AssignmentAsFinalStatement,
+    #[error("use")]
+    Use,
 }
 
 #[derive(Debug, Error, Clone, Copy, PartialEq, Eq)]
 pub enum UnsupportedAssignmentKind {
+    #[error("non-value function assignment")]
+    NonValueFunction,
     #[error("let assert")]
     LetAssert,
 }
@@ -66,14 +70,12 @@ pub enum UnsupportedExpressionKind {
     AnonymousFunction,
     #[error("bit array")]
     BitArray,
-    #[error("capturing function")]
-    CapturingFunction,
     #[error("echo")]
     Echo,
     #[error("float")]
     Float,
-    #[error("function reference")]
-    FunctionReference,
+    #[error("non-value function callee")]
+    NonValueFunctionCallee,
     #[error("list")]
     List,
     #[error("panic")]
@@ -94,6 +96,8 @@ pub enum UnsupportedBinOpKind {
     AddFloat,
     #[error("div float")]
     DivFloat,
+    #[error("equal function")]
+    EqFunction,
     #[error("gt float")]
     GtFloat,
     #[error("gte float")]
@@ -104,6 +108,8 @@ pub enum UnsupportedBinOpKind {
     LtEqFloat,
     #[error("mult float")]
     MultFloat,
+    #[error("not equal function")]
+    NotEqFunction,
     #[error("sub float")]
     SubFloat,
 }
@@ -129,7 +135,7 @@ pub enum UnsupportedPipelineReason {
     #[error("echo")]
     Echo,
     #[error("function value pipeline calls are not supported")]
-    FunctionCall,
+    FunctionValueCall,
     #[error("only direct local function pipeline calls are supported")]
     NonDirectLocalFunction,
 }
