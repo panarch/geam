@@ -65,7 +65,7 @@ those panics local, visible, and covered by explicit panic tests.
 
 ## Error Rules
 
-Planner errors make the boundary visible:
+Errors make boundaries visible:
 
 - Use `Unsupported*` errors for valid Gleam source outside the Geam profile.
 - Use `InvalidTypedAst` errors for typed AST margin cases.
@@ -73,6 +73,12 @@ Planner errors make the boundary visible:
 - Keep dynamic values, such as function and local names, as structured fields.
 - Do not merge unsupported profile cases and invalid typed AST cases into one
   catch-all error.
+- Stable error variants should represent one boundary condition. Do not use one
+  variant for multiple distinct profile, typed-AST, host, or runtime boundaries
+  merely because the broad feature family is similar.
+- When the accepted profile grows into an area that was previously rejected by a
+  broad `Unsupported*` variant, revisit that variant. Rename or split it if the
+  old name also describes behavior that is now supported.
 
 ## Test Rules
 
@@ -85,6 +91,14 @@ Planner test names must identify the source of the case:
 
 `reject_profile_*` tests are source-based. `reject_margin_*` tests are direct
 typed-AST based and expect `InvalidTypedAst`.
+
+Planner accept tests should compare the expected `ExecutionPlan` whenever the
+plan shape is meaningful. Avoid `is_ok()` for planner accept coverage unless the
+exact shape is irrelevant to the test.
+
+When result-typed plan shape is the point of a planner test, include that shape
+in the test name. Prefer explicit names such as `function_valued_block` over
+short names that hide the reviewed result family.
 
 Unit tests live next to the module they validate. Do not use large detached
 `tests.rs` files for complex modules. Integration tests document the public
