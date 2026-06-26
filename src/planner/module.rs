@@ -1,5 +1,6 @@
 use crate::plan::{
-    ExecutionPlan, FunctionId, IntFunctionLocalId, ParamLocal, RuntimeFunctionId, ValueType,
+    ExecutionPlan, FunctionId, FunctionType, IntFunctionLocalId, ParamLocal, RuntimeFunctionId,
+    ValueType,
 };
 use crate::planner::context::{FunctionInfo, FunctionParam, FunctionRuntimeIds};
 use crate::planner::error::{
@@ -275,7 +276,7 @@ fn function_params(
 
 fn function_param_local(
     function_name: &EcoString,
-    type_: &crate::plan::FunctionType,
+    type_: &FunctionType,
     next_int_function: &mut usize,
     next_string_function: &mut usize,
     next_bool_function: &mut usize,
@@ -283,12 +284,14 @@ fn function_param_local(
 ) -> Result<ParamLocal, PlanError> {
     match type_.return_() {
         ValueType::Int => {
+            validate_function_argument_types(function_name, type_)?;
             let local =
                 ParamLocal::int_function(IntFunctionLocalId(*next_int_function), type_.clone());
             *next_int_function += 1;
             Ok(local)
         }
         ValueType::String => {
+            validate_function_argument_types(function_name, type_)?;
             let local = ParamLocal::string_function(
                 crate::plan::StringFunctionLocalId(*next_string_function),
                 type_.clone(),
@@ -297,6 +300,7 @@ fn function_param_local(
             Ok(local)
         }
         ValueType::Bool => {
+            validate_function_argument_types(function_name, type_)?;
             let local = ParamLocal::bool_function(
                 crate::plan::BoolFunctionLocalId(*next_bool_function),
                 type_.clone(),
@@ -305,6 +309,7 @@ fn function_param_local(
             Ok(local)
         }
         ValueType::Nil => {
+            validate_function_argument_types(function_name, type_)?;
             let local = ParamLocal::nil_function(
                 crate::plan::NilFunctionLocalId(*next_nil_function),
                 type_.clone(),
@@ -312,10 +317,34 @@ fn function_param_local(
             *next_nil_function += 1;
             Ok(local)
         }
-        ValueType::Function(_) => Err(PlanError::UnsupportedArgument {
-            function: function_name.clone(),
-            reason: UnsupportedArgumentReason::UnsupportedType,
-        }),
+        ValueType::Function(_) => Err(unsupported_function_returning_function(function_name)),
+    }
+}
+
+fn validate_function_argument_types(
+    function_name: &EcoString,
+    type_: &FunctionType,
+) -> Result<(), PlanError> {
+    for argument in type_.argument_types() {
+        if let ValueType::Function(type_) = argument {
+            match type_.return_() {
+                ValueType::Int | ValueType::String | ValueType::Bool | ValueType::Nil => {}
+                ValueType::Function(_) => {
+                    return Err(unsupported_function_returning_function(function_name));
+                }
+            }
+
+            validate_function_argument_types(function_name, type_)?;
+        }
+    }
+
+    Ok(())
+}
+
+fn unsupported_function_returning_function(function_name: &EcoString) -> PlanError {
+    PlanError::UnsupportedArgument {
+        function: function_name.clone(),
+        reason: UnsupportedArgumentReason::FunctionReturningFunction,
     }
 }
 
@@ -606,7 +635,25 @@ fn higher(callback: fn() -> fn(Int) -> Int) {
             ),
             PlanError::UnsupportedArgument {
                 function: "higher".into(),
-                reason: UnsupportedArgumentReason::UnsupportedType,
+                reason: UnsupportedArgumentReason::FunctionReturningFunction,
+            },
+        );
+
+        assert_eq!(
+            expect_plan_error(
+                r#"
+pub fn main() {
+  1
+}
+
+fn higher(callback: fn(fn() -> fn(Int) -> Int) -> Int) {
+  1
+}
+"#,
+            ),
+            PlanError::UnsupportedArgument {
+                function: "higher".into(),
+                reason: UnsupportedArgumentReason::FunctionReturningFunction,
             },
         );
     }
