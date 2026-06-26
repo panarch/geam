@@ -5,7 +5,11 @@ mod int;
 mod nil;
 mod string;
 
-use super::id::{BoolLocalId, IntLocalId, LocalId, NilLocalId, StringLocalId};
+use super::function::ParamLocal;
+use super::id::{
+    BoolFunctionLocalId, BoolLocalId, IntFunctionLocalId, IntLocalId, NilFunctionLocalId,
+    NilLocalId, StringFunctionLocalId, StringLocalId,
+};
 use super::value::{Value, ValueType};
 
 pub(crate) use self::case::{BoolCaseBranches, IntCaseBranches};
@@ -49,6 +53,11 @@ pub struct CallArg {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct FunctionCallArg {
+    kind: FunctionCallArgKind,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub(crate) enum CallArgKind {
     Int {
         local: IntLocalId,
@@ -66,6 +75,34 @@ pub(crate) enum CallArgKind {
         local: NilLocalId,
         value: NilExpr,
     },
+    IntFunction {
+        local: IntFunctionLocalId,
+        value: IntFunctionExpr,
+    },
+    StringFunction {
+        local: StringFunctionLocalId,
+        value: StringFunctionExpr,
+    },
+    BoolFunction {
+        local: BoolFunctionLocalId,
+        value: BoolFunctionExpr,
+    },
+    NilFunction {
+        local: NilFunctionLocalId,
+        value: NilFunctionExpr,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) enum FunctionCallArgKind {
+    Int(IntExpr),
+    String(StringExpr),
+    Bool(BoolExpr),
+    Nil(NilExpr),
+    IntFunction(IntFunctionExpr),
+    StringFunction(StringFunctionExpr),
+    BoolFunction(BoolFunctionExpr),
+    NilFunction(NilFunctionExpr),
 }
 
 impl Expr {
@@ -213,12 +250,74 @@ impl Expr {
         }
     }
 
-    pub(crate) fn into_call_arg(self, local: LocalId) -> Result<CallArg, Self> {
+    pub(crate) fn into_call_arg(self, local: &ParamLocal) -> Result<CallArg, Self> {
         match (local, self.kind) {
-            (LocalId::Int(local), ExprKind::Int(value)) => Ok(CallArg::int(local, value)),
-            (LocalId::String(local), ExprKind::String(value)) => Ok(CallArg::string(local, value)),
-            (LocalId::Bool(local), ExprKind::Bool(value)) => Ok(CallArg::bool(local, value)),
-            (LocalId::Nil(local), ExprKind::Nil(value)) => Ok(CallArg::nil(local, value)),
+            (ParamLocal::Int(local), ExprKind::Int(value)) => Ok(CallArg::int(*local, value)),
+            (ParamLocal::String(local), ExprKind::String(value)) => {
+                Ok(CallArg::string(*local, value))
+            }
+            (ParamLocal::Bool(local), ExprKind::Bool(value)) => Ok(CallArg::bool(*local, value)),
+            (ParamLocal::Nil(local), ExprKind::Nil(value)) => Ok(CallArg::nil(*local, value)),
+            (
+                ParamLocal::IntFunction {
+                    local,
+                    type_: expected,
+                },
+                ExprKind::Function(value),
+            ) if value.type_() == expected => match value.into_int() {
+                Ok(value) => Ok(CallArg::int_function(*local, value)),
+                Err(value) => Err(Expr::function(value)),
+            },
+            (
+                ParamLocal::StringFunction {
+                    local,
+                    type_: expected,
+                },
+                ExprKind::Function(value),
+            ) if value.type_() == expected => match value.into_string() {
+                Ok(value) => Ok(CallArg::string_function(*local, value)),
+                Err(value) => Err(Expr::function(value)),
+            },
+            (
+                ParamLocal::BoolFunction {
+                    local,
+                    type_: expected,
+                },
+                ExprKind::Function(value),
+            ) if value.type_() == expected => match value.into_bool() {
+                Ok(value) => Ok(CallArg::bool_function(*local, value)),
+                Err(value) => Err(Expr::function(value)),
+            },
+            (
+                ParamLocal::NilFunction {
+                    local,
+                    type_: expected,
+                },
+                ExprKind::Function(value),
+            ) if value.type_() == expected => match value.into_nil() {
+                Ok(value) => Ok(CallArg::nil_function(*local, value)),
+                Err(value) => Err(Expr::function(value)),
+            },
+            (_, kind) => Err(Self { kind }),
+        }
+    }
+
+    pub(crate) fn into_function_call_arg(self, type_: &ValueType) -> Result<FunctionCallArg, Self> {
+        match (type_, self.kind) {
+            (ValueType::Int, ExprKind::Int(value)) => Ok(FunctionCallArg::int(value)),
+            (ValueType::String, ExprKind::String(value)) => Ok(FunctionCallArg::string(value)),
+            (ValueType::Bool, ExprKind::Bool(value)) => Ok(FunctionCallArg::bool(value)),
+            (ValueType::Nil, ExprKind::Nil(value)) => Ok(FunctionCallArg::nil(value)),
+            (ValueType::Function(expected), ExprKind::Function(value))
+                if value.type_() == expected.as_ref() =>
+            {
+                match value.into_kind() {
+                    FunctionExprKind::Int(value) => Ok(FunctionCallArg::int_function(value)),
+                    FunctionExprKind::String(value) => Ok(FunctionCallArg::string_function(value)),
+                    FunctionExprKind::Bool(value) => Ok(FunctionCallArg::bool_function(value)),
+                    FunctionExprKind::Nil(value) => Ok(FunctionCallArg::nil_function(value)),
+                }
+            }
             (_, kind) => Err(Self { kind }),
         }
     }
@@ -249,7 +348,85 @@ impl CallArg {
         }
     }
 
+    pub(crate) fn int_function(local: IntFunctionLocalId, value: IntFunctionExpr) -> Self {
+        Self {
+            kind: CallArgKind::IntFunction { local, value },
+        }
+    }
+
+    pub(crate) fn string_function(local: StringFunctionLocalId, value: StringFunctionExpr) -> Self {
+        Self {
+            kind: CallArgKind::StringFunction { local, value },
+        }
+    }
+
+    pub(crate) fn bool_function(local: BoolFunctionLocalId, value: BoolFunctionExpr) -> Self {
+        Self {
+            kind: CallArgKind::BoolFunction { local, value },
+        }
+    }
+
+    pub(crate) fn nil_function(local: NilFunctionLocalId, value: NilFunctionExpr) -> Self {
+        Self {
+            kind: CallArgKind::NilFunction { local, value },
+        }
+    }
+
     pub(crate) fn kind(&self) -> &CallArgKind {
+        &self.kind
+    }
+}
+
+impl FunctionCallArg {
+    pub(crate) fn int(value: IntExpr) -> Self {
+        Self {
+            kind: FunctionCallArgKind::Int(value),
+        }
+    }
+
+    pub(crate) fn string(value: StringExpr) -> Self {
+        Self {
+            kind: FunctionCallArgKind::String(value),
+        }
+    }
+
+    pub(crate) fn bool(value: BoolExpr) -> Self {
+        Self {
+            kind: FunctionCallArgKind::Bool(value),
+        }
+    }
+
+    pub(crate) fn nil(value: NilExpr) -> Self {
+        Self {
+            kind: FunctionCallArgKind::Nil(value),
+        }
+    }
+
+    pub(crate) fn int_function(value: IntFunctionExpr) -> Self {
+        Self {
+            kind: FunctionCallArgKind::IntFunction(value),
+        }
+    }
+
+    pub(crate) fn string_function(value: StringFunctionExpr) -> Self {
+        Self {
+            kind: FunctionCallArgKind::StringFunction(value),
+        }
+    }
+
+    pub(crate) fn bool_function(value: BoolFunctionExpr) -> Self {
+        Self {
+            kind: FunctionCallArgKind::BoolFunction(value),
+        }
+    }
+
+    pub(crate) fn nil_function(value: NilFunctionExpr) -> Self {
+        Self {
+            kind: FunctionCallArgKind::NilFunction(value),
+        }
+    }
+
+    pub(crate) fn kind(&self) -> &FunctionCallArgKind {
         &self.kind
     }
 }
@@ -269,15 +446,14 @@ impl From<Value> for Expr {
 #[cfg(test)]
 mod tests {
     use super::{
-        BoolCaseBranches, BoolExpr, BoolFunctionExpr, CallArgKind, Expr, FunctionExpr,
+        BoolCaseBranches, BoolExpr, BoolFunctionExpr, CallArg, Expr, FunctionCallArg, FunctionExpr,
         IntCaseBranches, IntExpr, IntFunctionExpr, NilExpr, NilFunctionExpr, StringExpr,
         StringFunctionExpr,
     };
     use crate::plan::{
-        BoolFunctionId, BoolFunctionValue, BoolLocalId, FunctionArgumentType, FunctionType,
-        FunctionValue, IntFunctionId, IntFunctionValue, IntLocalId, LocalId, NilFunctionId,
-        NilFunctionValue, NilLocalId, RuntimeFunctionId, StringFunctionId, StringFunctionValue,
-        StringLocalId, Value, ValueType,
+        BoolFunctionId, BoolFunctionValue, BoolLocalId, FunctionType, FunctionValue, IntFunctionId,
+        IntFunctionValue, IntLocalId, NilFunctionId, NilFunctionValue, NilLocalId, ParamLocal,
+        RuntimeFunctionId, StringFunctionId, StringFunctionValue, StringLocalId, Value, ValueType,
     };
     use num_bigint::BigInt;
 
@@ -587,53 +763,176 @@ mod tests {
 
     #[test]
     fn expr_into_call_arg() {
-        assert!(matches!(
+        assert_eq!(
             Expr::int(IntExpr::value(BigInt::from(1)))
-                .into_call_arg(LocalId::Int(IntLocalId(0)))
-                .expect("int call arg")
-                .kind(),
-            CallArgKind::Int {
-                local: IntLocalId(0),
-                ..
-            },
-        ));
-        assert!(matches!(
+                .into_call_arg(&ParamLocal::int(IntLocalId(0))),
+            Ok(CallArg::int(IntLocalId(0), IntExpr::value(BigInt::from(1)),)),
+        );
+        assert_eq!(
             Expr::string(StringExpr::value("geam".into()))
-                .into_call_arg(LocalId::String(StringLocalId(0)))
-                .expect("string call arg")
-                .kind(),
-            CallArgKind::String {
-                local: StringLocalId(0),
-                ..
-            },
-        ));
-        assert!(matches!(
-            Expr::bool(BoolExpr::value(true))
-                .into_call_arg(LocalId::Bool(BoolLocalId(0)))
-                .expect("bool call arg")
-                .kind(),
-            CallArgKind::Bool {
-                local: BoolLocalId(0),
-                ..
-            },
-        ));
-        assert!(matches!(
-            Expr::nil(NilExpr::value())
-                .into_call_arg(LocalId::Nil(NilLocalId(0)))
-                .expect("nil call arg")
-                .kind(),
-            CallArgKind::Nil {
-                local: NilLocalId(0),
-                ..
-            },
-        ));
+                .into_call_arg(&ParamLocal::string(StringLocalId(0))),
+            Ok(CallArg::string(
+                StringLocalId(0),
+                StringExpr::value("geam".into()),
+            )),
+        );
+        assert_eq!(
+            Expr::bool(BoolExpr::value(true)).into_call_arg(&ParamLocal::bool(BoolLocalId(0))),
+            Ok(CallArg::bool(BoolLocalId(0), BoolExpr::value(true))),
+        );
+        assert_eq!(
+            Expr::nil(NilExpr::value()).into_call_arg(&ParamLocal::nil(NilLocalId(0))),
+            Ok(CallArg::nil(NilLocalId(0), NilExpr::value())),
+        );
+        assert_eq!(
+            Expr::function(FunctionExpr::value(function_value())).into_call_arg(
+                &ParamLocal::int_function(
+                    crate::plan::IntFunctionLocalId(0),
+                    FunctionType::new(vec![ValueType::Int], ValueType::Int),
+                )
+            ),
+            Ok(CallArg::int_function(
+                crate::plan::IntFunctionLocalId(0),
+                int_function_expr(),
+            )),
+        );
+        assert_eq!(
+            Expr::function(FunctionExpr::string(string_function_expr())).into_call_arg(
+                &ParamLocal::string_function(
+                    crate::plan::StringFunctionLocalId(0),
+                    FunctionType::new(vec![ValueType::String], ValueType::String),
+                )
+            ),
+            Ok(CallArg::string_function(
+                crate::plan::StringFunctionLocalId(0),
+                string_function_expr(),
+            )),
+        );
+        assert_eq!(
+            Expr::function(FunctionExpr::bool(bool_function_expr())).into_call_arg(
+                &ParamLocal::bool_function(
+                    crate::plan::BoolFunctionLocalId(0),
+                    FunctionType::new(vec![ValueType::Bool], ValueType::Bool),
+                )
+            ),
+            Ok(CallArg::bool_function(
+                crate::plan::BoolFunctionLocalId(0),
+                bool_function_expr(),
+            )),
+        );
+        assert_eq!(
+            Expr::function(FunctionExpr::nil(nil_function_expr())).into_call_arg(
+                &ParamLocal::nil_function(
+                    crate::plan::NilFunctionLocalId(0),
+                    FunctionType::new(vec![ValueType::Nil], ValueType::Nil),
+                )
+            ),
+            Ok(CallArg::nil_function(
+                crate::plan::NilFunctionLocalId(0),
+                nil_function_expr(),
+            )),
+        );
+        assert_eq!(
+            Expr::function(FunctionExpr::string(malformed_string_function_expr(
+                function_type(),
+            )))
+            .into_call_arg(&ParamLocal::int_function(
+                crate::plan::IntFunctionLocalId(0),
+                function_type(),
+            )),
+            Err(Expr::function(FunctionExpr::string(
+                malformed_string_function_expr(function_type()),
+            ))),
+        );
+        assert_eq!(
+            Expr::function(FunctionExpr::bool(malformed_bool_function_expr(
+                string_function_type(),
+            )))
+            .into_call_arg(&ParamLocal::string_function(
+                crate::plan::StringFunctionLocalId(0),
+                string_function_type(),
+            )),
+            Err(Expr::function(FunctionExpr::bool(
+                malformed_bool_function_expr(string_function_type()),
+            ))),
+        );
+        assert_eq!(
+            Expr::function(FunctionExpr::nil(malformed_nil_function_expr(
+                bool_function_type(),
+            )))
+            .into_call_arg(&ParamLocal::bool_function(
+                crate::plan::BoolFunctionLocalId(0),
+                bool_function_type(),
+            )),
+            Err(Expr::function(FunctionExpr::nil(
+                malformed_nil_function_expr(bool_function_type()),
+            ))),
+        );
+        assert_eq!(
+            Expr::function(FunctionExpr::int(malformed_int_function_expr(
+                nil_function_type(),
+            )))
+            .into_call_arg(&ParamLocal::nil_function(
+                crate::plan::NilFunctionLocalId(0),
+                nil_function_type(),
+            )),
+            Err(Expr::function(FunctionExpr::int(
+                malformed_int_function_expr(nil_function_type()),
+            ))),
+        );
         assert_eq!(
             Expr::function(FunctionExpr::value(function_value()))
-                .into_call_arg(LocalId::Int(IntLocalId(0))),
+                .into_call_arg(&ParamLocal::int(IntLocalId(0))),
             Err(Expr::function(FunctionExpr::value(function_value()))),
         );
         assert_eq!(
-            Expr::int(IntExpr::value(BigInt::from(1))).into_call_arg(LocalId::Bool(BoolLocalId(0))),
+            Expr::int(IntExpr::value(BigInt::from(1)))
+                .into_call_arg(&ParamLocal::bool(BoolLocalId(0))),
+            Err(Expr::int(IntExpr::value(BigInt::from(1)))),
+        );
+    }
+
+    #[test]
+    fn expr_into_function_call_arg() {
+        assert_eq!(
+            Expr::int(IntExpr::value(BigInt::from(1))).into_function_call_arg(&ValueType::Int),
+            Ok(FunctionCallArg::int(IntExpr::value(BigInt::from(1)))),
+        );
+        assert_eq!(
+            Expr::string(StringExpr::value("geam".into()))
+                .into_function_call_arg(&ValueType::String),
+            Ok(FunctionCallArg::string(StringExpr::value("geam".into()))),
+        );
+        assert_eq!(
+            Expr::bool(BoolExpr::value(true)).into_function_call_arg(&ValueType::Bool),
+            Ok(FunctionCallArg::bool(BoolExpr::value(true))),
+        );
+        assert_eq!(
+            Expr::nil(NilExpr::value()).into_function_call_arg(&ValueType::Nil),
+            Ok(FunctionCallArg::nil(NilExpr::value())),
+        );
+        assert_eq!(
+            Expr::function(FunctionExpr::int(int_function_expr()))
+                .into_function_call_arg(&ValueType::Function(Box::new(function_type())),),
+            Ok(FunctionCallArg::int_function(int_function_expr())),
+        );
+        assert_eq!(
+            Expr::function(FunctionExpr::string(string_function_expr()))
+                .into_function_call_arg(&ValueType::Function(Box::new(string_function_type())),),
+            Ok(FunctionCallArg::string_function(string_function_expr())),
+        );
+        assert_eq!(
+            Expr::function(FunctionExpr::bool(bool_function_expr()))
+                .into_function_call_arg(&ValueType::Function(Box::new(bool_function_type())),),
+            Ok(FunctionCallArg::bool_function(bool_function_expr())),
+        );
+        assert_eq!(
+            Expr::function(FunctionExpr::nil(nil_function_expr()))
+                .into_function_call_arg(&ValueType::Function(Box::new(nil_function_type())),),
+            Ok(FunctionCallArg::nil_function(nil_function_expr())),
+        );
+        assert_eq!(
+            Expr::int(IntExpr::value(BigInt::from(1))).into_function_call_arg(&ValueType::Bool),
             Err(Expr::int(IntExpr::value(BigInt::from(1)))),
         );
     }
@@ -641,39 +940,67 @@ mod tests {
     fn function_value() -> FunctionValue {
         FunctionValue::new(
             RuntimeFunctionId::Int(IntFunctionId(0)),
-            vec![LocalId::Int(IntLocalId(0))],
+            vec![ParamLocal::int(IntLocalId(0))],
         )
     }
 
     fn int_function_expr() -> IntFunctionExpr {
         IntFunctionExpr::value(IntFunctionValue::new(
             IntFunctionId(0),
-            vec![LocalId::Int(IntLocalId(0))],
+            vec![ParamLocal::int(IntLocalId(0))],
         ))
     }
 
     fn string_function_expr() -> StringFunctionExpr {
         StringFunctionExpr::value(StringFunctionValue::new(
             StringFunctionId(0),
-            vec![LocalId::String(StringLocalId(0))],
+            vec![ParamLocal::string(StringLocalId(0))],
         ))
     }
 
     fn bool_function_expr() -> BoolFunctionExpr {
         BoolFunctionExpr::value(BoolFunctionValue::new(
             BoolFunctionId(0),
-            vec![LocalId::Bool(BoolLocalId(0))],
+            vec![ParamLocal::bool(BoolLocalId(0))],
         ))
     }
 
     fn nil_function_expr() -> NilFunctionExpr {
         NilFunctionExpr::value(NilFunctionValue::new(
             NilFunctionId(0),
-            vec![LocalId::Nil(NilLocalId(0))],
+            vec![ParamLocal::nil(NilLocalId(0))],
         ))
     }
 
+    fn malformed_int_function_expr(type_: FunctionType) -> IntFunctionExpr {
+        IntFunctionExpr::local_get(crate::plan::IntFunctionLocalId(0), "f".into(), type_)
+    }
+
+    fn malformed_string_function_expr(type_: FunctionType) -> StringFunctionExpr {
+        StringFunctionExpr::local_get(crate::plan::StringFunctionLocalId(0), "f".into(), type_)
+    }
+
+    fn malformed_bool_function_expr(type_: FunctionType) -> BoolFunctionExpr {
+        BoolFunctionExpr::local_get(crate::plan::BoolFunctionLocalId(0), "f".into(), type_)
+    }
+
+    fn malformed_nil_function_expr(type_: FunctionType) -> NilFunctionExpr {
+        NilFunctionExpr::local_get(crate::plan::NilFunctionLocalId(0), "f".into(), type_)
+    }
+
     fn function_type() -> FunctionType {
-        FunctionType::new(vec![FunctionArgumentType::Int], ValueType::Int)
+        FunctionType::new(vec![ValueType::Int], ValueType::Int)
+    }
+
+    fn string_function_type() -> FunctionType {
+        FunctionType::new(vec![ValueType::String], ValueType::String)
+    }
+
+    fn bool_function_type() -> FunctionType {
+        FunctionType::new(vec![ValueType::Bool], ValueType::Bool)
+    }
+
+    fn nil_function_type() -> FunctionType {
+        FunctionType::new(vec![ValueType::Nil], ValueType::Nil)
     }
 }

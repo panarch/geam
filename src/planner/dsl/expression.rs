@@ -1,9 +1,9 @@
 use crate::plan::{
     BoolExpr, BoolFunctionExpr, BoolFunctionId, BoolFunctionLocalId, BoolFunctionValue,
-    BoolLocalId, CallArg, Expr, FunctionArgumentType, FunctionExpr, FunctionExprKind, FunctionType,
+    BoolLocalId, CallArg, Expr, FunctionCallArg, FunctionExpr, FunctionExprKind, FunctionType,
     FunctionValue, IntExpr, IntFunctionExpr, IntFunctionId, IntFunctionLocalId, IntFunctionValue,
     IntLocalId, LocalId, NilExpr, NilFunctionExpr, NilFunctionId, NilFunctionLocalId,
-    NilFunctionValue, NilLocalId, ReturnExpr, RuntimeFunctionId, Step, StringExpr,
+    NilFunctionValue, NilLocalId, ParamLocal, ReturnExpr, RuntimeFunctionId, Step, StringExpr,
     StringFunctionExpr, StringFunctionId, StringFunctionLocalId, StringFunctionValue,
     StringLocalId, ValueType,
 };
@@ -28,6 +28,14 @@ pub(crate) struct BoolFunction(BoolFunctionExpr);
 
 pub(crate) struct NilFunction(NilFunctionExpr);
 
+pub(crate) trait IntoValueType {
+    fn into_value_type(self) -> ValueType;
+}
+
+pub(crate) trait IntoParamLocal {
+    fn into_param_local(self) -> ParamLocal;
+}
+
 pub(crate) fn int(value: i64) -> Int {
     Int(IntExpr::value(BigInt::from(value)))
 }
@@ -46,63 +54,114 @@ pub(crate) fn nil() -> Nil {
 
 pub(crate) fn function_ref(
     runtime_id: RuntimeFunctionId,
-    params: impl IntoIterator<Item = LocalId>,
+    params: impl IntoIterator<Item = impl IntoParamLocal>,
 ) -> Function {
     Function(FunctionExpr::value(FunctionValue::new(
         runtime_id,
-        params.into_iter().collect(),
+        params
+            .into_iter()
+            .map(IntoParamLocal::into_param_local)
+            .collect(),
     )))
 }
 
 pub(crate) fn int_function_ref(
     runtime_id: usize,
-    params: impl IntoIterator<Item = LocalId>,
+    params: impl IntoIterator<Item = impl IntoParamLocal>,
 ) -> IntFunction {
     IntFunction(IntFunctionExpr::value(IntFunctionValue::new(
         IntFunctionId(runtime_id),
-        params.into_iter().collect(),
+        params
+            .into_iter()
+            .map(IntoParamLocal::into_param_local)
+            .collect(),
     )))
 }
 
 pub(crate) fn string_function_ref(
     runtime_id: usize,
-    params: impl IntoIterator<Item = LocalId>,
+    params: impl IntoIterator<Item = impl IntoParamLocal>,
 ) -> StringFunction {
     StringFunction(StringFunctionExpr::value(StringFunctionValue::new(
         StringFunctionId(runtime_id),
-        params.into_iter().collect(),
+        params
+            .into_iter()
+            .map(IntoParamLocal::into_param_local)
+            .collect(),
     )))
 }
 
 pub(crate) fn bool_function_ref(
     runtime_id: usize,
-    params: impl IntoIterator<Item = LocalId>,
+    params: impl IntoIterator<Item = impl IntoParamLocal>,
 ) -> BoolFunction {
     BoolFunction(BoolFunctionExpr::value(BoolFunctionValue::new(
         BoolFunctionId(runtime_id),
-        params.into_iter().collect(),
+        params
+            .into_iter()
+            .map(IntoParamLocal::into_param_local)
+            .collect(),
     )))
 }
 
 pub(crate) fn nil_function_ref(
     runtime_id: usize,
-    params: impl IntoIterator<Item = LocalId>,
+    params: impl IntoIterator<Item = impl IntoParamLocal>,
 ) -> NilFunction {
     NilFunction(NilFunctionExpr::value(NilFunctionValue::new(
         NilFunctionId(runtime_id),
-        params.into_iter().collect(),
+        params
+            .into_iter()
+            .map(IntoParamLocal::into_param_local)
+            .collect(),
     )))
 }
 
 pub(crate) fn local_int_function(
     local: usize,
     name: impl Into<EcoString>,
-    params: impl IntoIterator<Item = LocalId>,
+    params: impl IntoIterator<Item = impl IntoValueType>,
 ) -> IntFunction {
     IntFunction(IntFunctionExpr::local_get(
         IntFunctionLocalId(local),
         name.into(),
         int_function_type(params),
+    ))
+}
+
+pub(crate) fn local_string_function(
+    local: usize,
+    name: impl Into<EcoString>,
+    params: impl IntoIterator<Item = impl IntoValueType>,
+) -> StringFunction {
+    StringFunction(StringFunctionExpr::local_get(
+        StringFunctionLocalId(local),
+        name.into(),
+        string_function_type(params),
+    ))
+}
+
+pub(crate) fn local_bool_function(
+    local: usize,
+    name: impl Into<EcoString>,
+    params: impl IntoIterator<Item = impl IntoValueType>,
+) -> BoolFunction {
+    BoolFunction(BoolFunctionExpr::local_get(
+        BoolFunctionLocalId(local),
+        name.into(),
+        bool_function_type(params),
+    ))
+}
+
+pub(crate) fn local_nil_function(
+    local: usize,
+    name: impl Into<EcoString>,
+    params: impl IntoIterator<Item = impl IntoValueType>,
+) -> NilFunction {
+    NilFunction(NilFunctionExpr::local_get(
+        NilFunctionLocalId(local),
+        name.into(),
+        nil_function_type(params),
     ))
 }
 
@@ -455,7 +514,7 @@ pub(crate) fn call_nil(function: usize, args: impl IntoIterator<Item = CallArg>)
 
 pub(crate) fn call_int_function(
     function: IntFunction,
-    args: impl IntoIterator<Item = CallArg>,
+    args: impl IntoIterator<Item = FunctionCallArg>,
 ) -> Int {
     Int(IntExpr::function_call(
         function.into(),
@@ -467,16 +526,36 @@ pub(crate) fn int_arg(local: usize, value: Int) -> CallArg {
     CallArg::int(IntLocalId(local), value.into())
 }
 
+pub(crate) fn int_function_call_arg(value: Int) -> FunctionCallArg {
+    FunctionCallArg::int(value.into())
+}
+
+pub(crate) fn int_function_arg(local: usize, value: IntFunction) -> CallArg {
+    CallArg::int_function(IntFunctionLocalId(local), value.into())
+}
+
 pub(crate) fn string_arg(local: usize, value: String) -> CallArg {
     CallArg::string(StringLocalId(local), value.into())
+}
+
+pub(crate) fn string_function_arg(local: usize, value: StringFunction) -> CallArg {
+    CallArg::string_function(StringFunctionLocalId(local), value.into())
 }
 
 pub(crate) fn bool_arg(local: usize, value: Bool) -> CallArg {
     CallArg::bool(BoolLocalId(local), value.into())
 }
 
+pub(crate) fn bool_function_arg(local: usize, value: BoolFunction) -> CallArg {
+    CallArg::bool_function(BoolFunctionLocalId(local), value.into())
+}
+
 pub(crate) fn nil_arg(local: usize, value: Nil) -> CallArg {
     CallArg::nil(NilLocalId(local), value.into())
+}
+
+pub(crate) fn nil_function_arg(local: usize, value: NilFunction) -> CallArg {
+    CallArg::nil_function(NilFunctionLocalId(local), value.into())
 }
 
 impl Int {
@@ -661,14 +740,73 @@ impl From<NilFunction> for NilFunctionExpr {
     }
 }
 
-fn int_function_type(params: impl IntoIterator<Item = LocalId>) -> FunctionType {
+fn int_function_type(params: impl IntoIterator<Item = impl IntoValueType>) -> FunctionType {
+    function_type(params, ValueType::Int)
+}
+
+fn string_function_type(params: impl IntoIterator<Item = impl IntoValueType>) -> FunctionType {
+    function_type(params, ValueType::String)
+}
+
+fn bool_function_type(params: impl IntoIterator<Item = impl IntoValueType>) -> FunctionType {
+    function_type(params, ValueType::Bool)
+}
+
+fn nil_function_type(params: impl IntoIterator<Item = impl IntoValueType>) -> FunctionType {
+    function_type(params, ValueType::Nil)
+}
+
+fn function_type(
+    params: impl IntoIterator<Item = impl IntoValueType>,
+    return_: ValueType,
+) -> FunctionType {
     FunctionType::new(
         params
             .into_iter()
-            .map(|param| FunctionArgumentType::from_local(&param))
+            .map(IntoValueType::into_value_type)
             .collect(),
-        ValueType::Int,
+        return_,
     )
+}
+
+impl IntoValueType for ValueType {
+    fn into_value_type(self) -> ValueType {
+        self
+    }
+}
+
+impl IntoValueType for LocalId {
+    fn into_value_type(self) -> ValueType {
+        match self {
+            LocalId::Int(_) => ValueType::Int,
+            LocalId::String(_) => ValueType::String,
+            LocalId::Bool(_) => ValueType::Bool,
+            LocalId::Nil(_) => ValueType::Nil,
+        }
+    }
+}
+
+impl IntoValueType for ParamLocal {
+    fn into_value_type(self) -> ValueType {
+        self.value_type()
+    }
+}
+
+impl IntoParamLocal for LocalId {
+    fn into_param_local(self) -> ParamLocal {
+        match self {
+            LocalId::Int(local) => ParamLocal::int(local),
+            LocalId::String(local) => ParamLocal::string(local),
+            LocalId::Bool(local) => ParamLocal::bool(local),
+            LocalId::Nil(local) => ParamLocal::nil(local),
+        }
+    }
+}
+
+impl IntoParamLocal for ParamLocal {
+    fn into_param_local(self) -> ParamLocal {
+        self
+    }
 }
 
 #[cfg(test)]
@@ -995,6 +1133,15 @@ mod tests {
     }
 
     #[test]
+    fn value_type_dsl() {
+        assert_eq!(ValueType::Int.into_value_type(), ValueType::Int);
+        assert_eq!(
+            ParamLocal::int(crate::plan::IntLocalId(0)).into_value_type(),
+            ValueType::Int,
+        );
+    }
+
+    #[test]
     fn local_dsl() {
         assert!(matches!(
             local_int(0, "x").0.kind(),
@@ -1011,6 +1158,46 @@ mod tests {
         assert!(matches!(
             local_nil(0, "x").0.kind(),
             NilExprKind::LocalGet { .. },
+        ));
+        assert!(matches!(
+            local_int_function(
+                0,
+                "f",
+                [crate::plan::LocalId::Int(crate::plan::IntLocalId(0))]
+            )
+            .0
+            .kind(),
+            IntFunctionExprKind::LocalGet { .. },
+        ));
+        assert!(matches!(
+            local_string_function(
+                0,
+                "f",
+                [crate::plan::LocalId::String(crate::plan::StringLocalId(0))],
+            )
+            .0
+            .kind(),
+            crate::plan::StringFunctionExprKind::LocalGet { .. },
+        ));
+        assert!(matches!(
+            local_bool_function(
+                0,
+                "f",
+                [crate::plan::LocalId::Bool(crate::plan::BoolLocalId(0))],
+            )
+            .0
+            .kind(),
+            crate::plan::BoolFunctionExprKind::LocalGet { .. },
+        ));
+        assert!(matches!(
+            local_nil_function(
+                0,
+                "f",
+                [crate::plan::LocalId::Nil(crate::plan::NilLocalId(0))],
+            )
+            .0
+            .kind(),
+            crate::plan::NilFunctionExprKind::LocalGet { .. },
         ));
     }
 
@@ -1035,14 +1222,30 @@ mod tests {
     fn call_arg_dsl() {
         assert!(matches!(int_arg(0, int(1)).kind(), CallArgKind::Int { .. },));
         assert!(matches!(
+            int_function_arg(0, int_function_ref(0, Vec::<ParamLocal>::new())).kind(),
+            CallArgKind::IntFunction { .. },
+        ));
+        assert!(matches!(
             string_arg(0, string("a")).kind(),
             CallArgKind::String { .. },
+        ));
+        assert!(matches!(
+            string_function_arg(0, string_function_ref(0, Vec::<ParamLocal>::new())).kind(),
+            CallArgKind::StringFunction { .. },
         ));
         assert!(matches!(
             bool_arg(0, bool_(true)).kind(),
             CallArgKind::Bool { .. },
         ));
+        assert!(matches!(
+            bool_function_arg(0, bool_function_ref(0, Vec::<ParamLocal>::new())).kind(),
+            CallArgKind::BoolFunction { .. },
+        ));
         assert!(matches!(nil_arg(0, nil()).kind(), CallArgKind::Nil { .. },));
+        assert!(matches!(
+            nil_function_arg(0, nil_function_ref(0, Vec::<ParamLocal>::new())).kind(),
+            CallArgKind::NilFunction { .. },
+        ));
     }
 
     #[test]

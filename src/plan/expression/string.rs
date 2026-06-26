@@ -1,4 +1,4 @@
-use super::{BoolExpr, CallArg, IntExpr, StringFunctionExpr};
+use super::{BoolExpr, CallArg, FunctionCallArg, IntExpr, StringFunctionExpr};
 use crate::plan::{Step, StringFunctionId, StringLocalId};
 use ecow::EcoString;
 use num_bigint::BigInt;
@@ -21,7 +21,7 @@ pub(crate) enum StringExprKind {
     },
     FunctionCall {
         function: Box<StringFunctionExpr>,
-        args: Vec<CallArg>,
+        args: Vec<FunctionCallArg>,
     },
     Concatenate {
         left: Box<StringExpr>,
@@ -62,7 +62,7 @@ impl StringExpr {
         }
     }
 
-    pub(crate) fn function_call(function: StringFunctionExpr, args: Vec<CallArg>) -> Self {
+    pub(crate) fn function_call(function: StringFunctionExpr, args: Vec<FunctionCallArg>) -> Self {
         Self {
             kind: StringExprKind::FunctionCall {
                 function: Box::new(function),
@@ -121,10 +121,7 @@ impl StringExpr {
 #[cfg(test)]
 mod tests {
     use super::{StringExpr, StringExprKind};
-    use crate::plan::{
-        BoolExpr, Expr, IntExpr, LocalId, Step, StringFunctionId, StringFunctionValue,
-        StringLocalId,
-    };
+    use crate::plan::{BoolExpr, Expr, IntExpr, Step, StringFunctionId, StringFunctionValue};
 
     #[test]
     fn string_expr_kind_accessors() {
@@ -167,7 +164,7 @@ mod tests {
     fn function_expr() -> crate::plan::StringFunctionExpr {
         crate::plan::StringFunctionExpr::value(StringFunctionValue::new(
             StringFunctionId(0),
-            vec![LocalId::String(StringLocalId(0))],
+            Vec::new(),
         ))
     }
 }

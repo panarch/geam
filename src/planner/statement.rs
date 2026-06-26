@@ -53,8 +53,8 @@ fn plan_ordered_steps_and_return(
             });
         }
         Statement::Use(_) => {
-            return Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::UseStatement,
+            return Err(PlanError::UnsupportedStatement {
+                kind: UnsupportedStatementKind::Use,
             });
         }
         Statement::Assert(_) => {
@@ -386,9 +386,8 @@ fn pair(callback: fn() -> Int) {
 }
 "#,
             ),
-            PlanError::UnsupportedArgument {
-                function: "pair".into(),
-                reason: crate::planner::UnsupportedArgumentReason::UnsupportedType,
+            PlanError::UnsupportedStatement {
+                kind: UnsupportedStatementKind::Use,
             },
         );
     }
@@ -408,24 +407,6 @@ fn pair(callback: fn() -> Int) {
         ];
         assert_eq!(
             plan_module(step_use),
-            Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::UseStatement,
-            }),
-        );
-    }
-
-    #[test]
-    fn reject_margin_final_use_statement_shape() {
-        let mut final_use = compile_minimal_module();
-        final_use.definitions.functions[0].body = vec![Statement::Use(gleam_core::ast::Use {
-            call: Box::new(typed_int_expr(1)),
-            location: dummy_span(),
-            right_hand_side_location: dummy_span(),
-            assignments_location: dummy_span(),
-            assignments: Vec::new(),
-        })];
-        assert_eq!(
-            plan_module(final_use),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::UseStatement,
             }),

@@ -1,4 +1,6 @@
-use crate::plan::{ExecutionPlan, FunctionId, LocalId, RuntimeFunctionId, ValueType};
+use crate::plan::{
+    ExecutionPlan, FunctionId, IntFunctionLocalId, ParamLocal, RuntimeFunctionId, ValueType,
+};
 use crate::planner::context::{FunctionInfo, FunctionParam, FunctionRuntimeIds};
 use crate::planner::error::{
     PlanError, UnsupportedArgumentReason, UnsupportedFunctionReason, UnsupportedTopLevelKind,
@@ -10,22 +12,33 @@ use gleam_core::type_::Type;
 use std::collections::HashMap;
 
 pub fn plan_module(module: TypedModule) -> Result<ExecutionPlan, PlanError> {
-    reject_top_level(
-        UnsupportedTopLevelKind::Import,
-        module.definitions.imports.len(),
-    )?;
-    reject_top_level(
-        UnsupportedTopLevelKind::Constant,
-        module.definitions.constants.len(),
-    )?;
-    reject_top_level(
-        UnsupportedTopLevelKind::CustomType,
-        module.definitions.custom_types.len(),
-    )?;
-    reject_top_level(
-        UnsupportedTopLevelKind::TypeAlias,
-        module.definitions.type_aliases.len(),
-    )?;
+    let definitions = module.definitions;
+
+    let imports = definitions.imports.len();
+    let constants = definitions.constants.len();
+    let custom_types = definitions.custom_types.len();
+    let type_aliases = definitions.type_aliases.len();
+
+    if imports != 0 {
+        return Err(PlanError::UnsupportedTopLevel {
+            kind: UnsupportedTopLevelKind::Import,
+        });
+    }
+    if constants != 0 {
+        return Err(PlanError::UnsupportedTopLevel {
+            kind: UnsupportedTopLevelKind::Constant,
+        });
+    }
+    if custom_types != 0 {
+        return Err(PlanError::UnsupportedTopLevel {
+            kind: UnsupportedTopLevelKind::CustomType,
+        });
+    }
+    if type_aliases != 0 {
+        return Err(PlanError::UnsupportedTopLevel {
+            kind: UnsupportedTopLevelKind::TypeAlias,
+        });
+    }
 
     let module_name = module.name;
     let FunctionTable {
@@ -33,7 +46,7 @@ pub fn plan_module(module: TypedModule) -> Result<ExecutionPlan, PlanError> {
         main,
         functions_before_main,
         functions_after_main,
-    } = function_table(&module.definitions.functions)?;
+    } = function_table(&definitions.functions)?;
     let main = validate_main_function(main)?;
     let mut functions = Vec::new();
 
@@ -197,6 +210,10 @@ fn function_params(
     let mut next_string = 0;
     let mut next_bool = 0;
     let mut next_nil = 0;
+    let mut next_int_function = 0;
+    let mut next_string_function = 0;
+    let mut next_bool_function = 0;
+    let mut next_nil_function = 0;
 
     arguments
         .iter()
@@ -223,35 +240,83 @@ fn function_params(
             };
             let local = match &type_ {
                 ValueType::Int => {
-                    let local = LocalId::Int(crate::plan::IntLocalId(next_int));
+                    let local = ParamLocal::int(crate::plan::IntLocalId(next_int));
                     next_int += 1;
                     local
                 }
                 ValueType::String => {
-                    let local = LocalId::String(crate::plan::StringLocalId(next_string));
+                    let local = ParamLocal::string(crate::plan::StringLocalId(next_string));
                     next_string += 1;
                     local
                 }
                 ValueType::Bool => {
-                    let local = LocalId::Bool(crate::plan::BoolLocalId(next_bool));
+                    let local = ParamLocal::bool(crate::plan::BoolLocalId(next_bool));
                     next_bool += 1;
                     local
                 }
                 ValueType::Nil => {
-                    let local = LocalId::Nil(crate::plan::NilLocalId(next_nil));
+                    let local = ParamLocal::nil(crate::plan::NilLocalId(next_nil));
                     next_nil += 1;
                     local
                 }
-                ValueType::Function(_) => {
-                    return Err(PlanError::UnsupportedArgument {
-                        function: function_name.clone(),
-                        reason: UnsupportedArgumentReason::UnsupportedType,
-                    });
-                }
+                ValueType::Function(type_) => function_param_local(
+                    &function_name,
+                    type_,
+                    &mut next_int_function,
+                    &mut next_string_function,
+                    &mut next_bool_function,
+                    &mut next_nil_function,
+                )?,
             };
             Ok(FunctionParam { local, name })
         })
         .collect()
+}
+
+fn function_param_local(
+    function_name: &EcoString,
+    type_: &crate::plan::FunctionType,
+    next_int_function: &mut usize,
+    next_string_function: &mut usize,
+    next_bool_function: &mut usize,
+    next_nil_function: &mut usize,
+) -> Result<ParamLocal, PlanError> {
+    match type_.return_() {
+        ValueType::Int => {
+            let local =
+                ParamLocal::int_function(IntFunctionLocalId(*next_int_function), type_.clone());
+            *next_int_function += 1;
+            Ok(local)
+        }
+        ValueType::String => {
+            let local = ParamLocal::string_function(
+                crate::plan::StringFunctionLocalId(*next_string_function),
+                type_.clone(),
+            );
+            *next_string_function += 1;
+            Ok(local)
+        }
+        ValueType::Bool => {
+            let local = ParamLocal::bool_function(
+                crate::plan::BoolFunctionLocalId(*next_bool_function),
+                type_.clone(),
+            );
+            *next_bool_function += 1;
+            Ok(local)
+        }
+        ValueType::Nil => {
+            let local = ParamLocal::nil_function(
+                crate::plan::NilFunctionLocalId(*next_nil_function),
+                type_.clone(),
+            );
+            *next_nil_function += 1;
+            Ok(local)
+        }
+        ValueType::Function(_) => Err(PlanError::UnsupportedArgument {
+            function: function_name.clone(),
+            reason: UnsupportedArgumentReason::UnsupportedType,
+        }),
+    }
 }
 
 fn validate_main_function(main: FunctionToPlan) -> Result<FunctionToPlan, PlanError> {
@@ -265,21 +330,15 @@ fn validate_main_function(main: FunctionToPlan) -> Result<FunctionToPlan, PlanEr
     Ok(main)
 }
 
-fn reject_top_level(kind: UnsupportedTopLevelKind, count: usize) -> Result<(), PlanError> {
-    if count == 0 {
-        Ok(())
-    } else {
-        Err(PlanError::UnsupportedTopLevel { kind })
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::plan_module;
+    use crate::plan::{FunctionType, ValueType};
     use crate::planner::dsl::{function, int, module};
     use crate::planner::support::{compile, expect_plan_error};
     use crate::planner::{
-        PlanError, UnsupportedArgumentReason, UnsupportedFunctionReason, UnsupportedTopLevelKind,
+        PlanError, UnsupportedArgumentReason, UnsupportedExpressionKind, UnsupportedFunctionReason,
+        UnsupportedTopLevelKind,
     };
 
     #[test]
@@ -392,6 +451,46 @@ fn values() {
     }
 
     #[test]
+    fn reject_profile_function_body_before_main() {
+        assert_eq!(
+            expect_plan_error(
+                r#"
+fn helper() -> Int {
+  panic
+}
+
+pub fn main() {
+  1
+}
+"#,
+            ),
+            PlanError::UnsupportedExpression {
+                kind: UnsupportedExpressionKind::Panic,
+            },
+        );
+    }
+
+    #[test]
+    fn reject_profile_function_body_after_main() {
+        assert_eq!(
+            expect_plan_error(
+                r#"
+pub fn main() {
+  1
+}
+
+fn helper() -> Int {
+  panic
+}
+"#,
+            ),
+            PlanError::UnsupportedExpression {
+                kind: UnsupportedExpressionKind::Panic,
+            },
+        );
+    }
+
+    #[test]
     fn reject_profile_function_return_type_after_main_reference() {
         assert_eq!(
             expect_plan_error(
@@ -444,7 +543,37 @@ fn get() {
     }
 
     #[test]
-    fn reject_profile_function_argument_type() {
+    fn plan_function_argument_with_function_argument_type() {
+        let actual = plan_module(compile(
+            r#"
+pub fn main() {
+  1
+}
+
+fn higher(callback: fn(fn(Int) -> Int) -> Int) {
+  1
+}
+"#,
+        ))
+        .expect("source should plan");
+        let expected = module(
+            "main",
+            function("main", int(1)),
+            [function("higher", int(1)).param_int_function(
+                0,
+                "callback",
+                [ValueType::Function(Box::new(FunctionType::new(
+                    vec![ValueType::Int],
+                    ValueType::Int,
+                )))],
+            )],
+        );
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn reject_profile_unsupported_function_argument_type() {
         assert_eq!(
             expect_plan_error(
                 r#"
@@ -460,6 +589,63 @@ fn count(values: List(Int)) {
             PlanError::UnsupportedArgument {
                 function: "count".into(),
                 reason: UnsupportedArgumentReason::UnsupportedType,
+            },
+        );
+
+        assert_eq!(
+            expect_plan_error(
+                r#"
+pub fn main() {
+  1
+}
+
+fn higher(callback: fn() -> fn(Int) -> Int) {
+  1
+}
+"#,
+            ),
+            PlanError::UnsupportedArgument {
+                function: "higher".into(),
+                reason: UnsupportedArgumentReason::UnsupportedType,
+            },
+        );
+    }
+
+    #[test]
+    fn reject_profile_function_argument_name_shape() {
+        assert_eq!(
+            expect_plan_error(
+                r#"
+fn helper(_: Int) {
+  1
+}
+
+pub fn main() {
+  helper(1)
+}
+"#,
+            ),
+            PlanError::UnsupportedArgument {
+                function: "helper".into(),
+                reason: UnsupportedArgumentReason::Discard,
+            },
+        );
+
+        assert_eq!(
+            expect_plan_error(
+                r#"
+fn identity(value value: Int) {
+  value
+}
+
+pub fn main() {
+  identity(1)
+}
+"#,
+            ),
+            PlanError::UnsupportedArgument {
+                function: "identity".into(),
+                reason: UnsupportedArgumentReason::Labelled,
             },
         );
     }

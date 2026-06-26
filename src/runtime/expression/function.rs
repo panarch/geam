@@ -188,11 +188,11 @@ mod tests {
         eval_nil_function_expr, eval_string_function_expr,
     };
     use crate::plan::{
-        BoolExpr, BoolFunctionExpr, BoolFunctionId, BoolFunctionValue, BoolLocalId, ExecutionPlan,
-        Expr, FunctionArgumentType, FunctionExpr, FunctionId, FunctionPlan, FunctionType,
-        FunctionValue, IntExpr, IntFunctionExpr, IntFunctionId, IntFunctionValue, IntLocalId,
-        LocalId, NilFunctionExpr, NilFunctionId, NilFunctionValue, NilLocalId, RuntimeFunctionId,
-        Step, StringFunctionExpr, StringFunctionId, StringFunctionValue, StringLocalId, ValueType,
+        BoolExpr, BoolFunctionExpr, BoolFunctionId, BoolFunctionValue, ExecutionPlan, Expr,
+        FunctionExpr, FunctionId, FunctionPlan, FunctionType, FunctionValue, IntExpr,
+        IntFunctionExpr, IntFunctionId, IntFunctionValue, IntLocalId, NilFunctionExpr,
+        NilFunctionId, NilFunctionValue, NilLocalId, ParamLocal, RuntimeFunctionId, Step,
+        StringFunctionExpr, StringFunctionId, StringFunctionValue, StringLocalId, ValueType,
     };
     use crate::runtime::frame::Frame;
     use num_bigint::BigInt;
@@ -505,7 +505,7 @@ mod tests {
 
         assert_eq!(
             type_,
-            FunctionType::new(vec![FunctionArgumentType::Int], ValueType::Int),
+            FunctionType::new(vec![ValueType::Int], ValueType::Int),
         );
         assert_eq!(type_.return_(), &ValueType::Int);
     }
@@ -513,84 +513,84 @@ mod tests {
     fn function_value() -> FunctionValue {
         FunctionValue::new(
             RuntimeFunctionId::Int(IntFunctionId(0)),
-            vec![LocalId::Int(IntLocalId(0))],
+            vec![ParamLocal::int(IntLocalId(0))],
         )
     }
 
     fn string_function_value() -> FunctionValue {
         FunctionValue::new(
             RuntimeFunctionId::String(StringFunctionId(0)),
-            vec![LocalId::String(StringLocalId(0))],
+            vec![ParamLocal::string(StringLocalId(0))],
         )
     }
 
     fn bool_function_value() -> FunctionValue {
         FunctionValue::new(
             RuntimeFunctionId::Bool(BoolFunctionId(0)),
-            vec![LocalId::Bool(BoolLocalId(0))],
+            vec![ParamLocal::bool(crate::plan::BoolLocalId(0))],
         )
     }
 
     fn nil_function_value() -> FunctionValue {
         FunctionValue::new(
             RuntimeFunctionId::Nil(NilFunctionId(0)),
-            vec![LocalId::Nil(NilLocalId(0))],
+            vec![ParamLocal::nil(NilLocalId(0))],
         )
     }
 
     fn int_function_value() -> IntFunctionExpr {
         IntFunctionExpr::value(IntFunctionValue::new(
             IntFunctionId(0),
-            vec![LocalId::Int(IntLocalId(0))],
+            vec![ParamLocal::int(IntLocalId(0))],
         ))
     }
 
     fn other_int_function_value() -> IntFunctionExpr {
         IntFunctionExpr::value(IntFunctionValue::new(
             IntFunctionId(1),
-            vec![LocalId::Int(IntLocalId(0))],
+            vec![ParamLocal::int(IntLocalId(0))],
         ))
     }
 
     fn string_function_expr() -> StringFunctionExpr {
         StringFunctionExpr::value(StringFunctionValue::new(
             StringFunctionId(0),
-            vec![LocalId::String(StringLocalId(0))],
+            vec![ParamLocal::string(StringLocalId(0))],
         ))
     }
 
     fn other_string_function_expr() -> StringFunctionExpr {
         StringFunctionExpr::value(StringFunctionValue::new(
             StringFunctionId(1),
-            vec![LocalId::String(StringLocalId(0))],
+            vec![ParamLocal::string(StringLocalId(0))],
         ))
     }
 
     fn bool_function_expr() -> BoolFunctionExpr {
         BoolFunctionExpr::value(BoolFunctionValue::new(
             BoolFunctionId(0),
-            vec![LocalId::Bool(BoolLocalId(0))],
+            vec![ParamLocal::bool(crate::plan::BoolLocalId(0))],
         ))
     }
 
     fn other_bool_function_expr() -> BoolFunctionExpr {
         BoolFunctionExpr::value(BoolFunctionValue::new(
             BoolFunctionId(1),
-            vec![LocalId::Bool(BoolLocalId(0))],
+            vec![ParamLocal::bool(crate::plan::BoolLocalId(0))],
         ))
     }
 
     fn nil_function_expr() -> NilFunctionExpr {
         NilFunctionExpr::value(NilFunctionValue::new(
             NilFunctionId(0),
-            vec![LocalId::Nil(NilLocalId(0))],
+            vec![ParamLocal::nil(NilLocalId(0))],
         ))
     }
 
     fn other_nil_function_expr() -> NilFunctionExpr {
         NilFunctionExpr::value(NilFunctionValue::new(
             NilFunctionId(1),
-            vec![LocalId::Nil(NilLocalId(0))],
+            vec![ParamLocal::nil(NilLocalId(0))],
         ))
     }
 }

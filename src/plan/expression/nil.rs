@@ -1,4 +1,4 @@
-use super::{BoolExpr, CallArg, IntExpr, NilFunctionExpr};
+use super::{BoolExpr, CallArg, FunctionCallArg, IntExpr, NilFunctionExpr};
 use crate::plan::{NilFunctionId, NilLocalId, Step};
 use ecow::EcoString;
 use num_bigint::BigInt;
@@ -21,7 +21,7 @@ pub(crate) enum NilExprKind {
     },
     FunctionCall {
         function: Box<NilFunctionExpr>,
-        args: Vec<CallArg>,
+        args: Vec<FunctionCallArg>,
     },
     BoolCase {
         subject: Box<BoolExpr>,
@@ -58,7 +58,7 @@ impl NilExpr {
         }
     }
 
-    pub(crate) fn function_call(function: NilFunctionExpr, args: Vec<CallArg>) -> Self {
+    pub(crate) fn function_call(function: NilFunctionExpr, args: Vec<FunctionCallArg>) -> Self {
         Self {
             kind: NilExprKind::FunctionCall {
                 function: Box::new(function),
@@ -108,9 +108,7 @@ impl NilExpr {
 #[cfg(test)]
 mod tests {
     use super::{NilExpr, NilExprKind};
-    use crate::plan::{
-        BoolExpr, Expr, IntExpr, LocalId, NilFunctionId, NilFunctionValue, NilLocalId, Step,
-    };
+    use crate::plan::{BoolExpr, Expr, IntExpr, NilFunctionId, NilFunctionValue, Step};
 
     #[test]
     fn nil_expr_kind_accessors() {
@@ -143,9 +141,6 @@ mod tests {
     }
 
     fn function_expr() -> crate::plan::NilFunctionExpr {
-        crate::plan::NilFunctionExpr::value(NilFunctionValue::new(
-            NilFunctionId(0),
-            vec![LocalId::Nil(NilLocalId(0))],
-        ))
+        crate::plan::NilFunctionExpr::value(NilFunctionValue::new(NilFunctionId(0), Vec::new()))
     }
 }

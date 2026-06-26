@@ -1,8 +1,8 @@
 use crate::plan::{
-    BoolFunctionId, BoolFunctionLocalId, BoolLocalId, FunctionArgumentType, FunctionId,
-    FunctionType, FunctionValue, IntFunctionId, IntFunctionLocalId, IntLocalId, LocalId,
-    NilFunctionId, NilFunctionLocalId, NilLocalId, RuntimeFunctionId, StringFunctionId,
-    StringFunctionLocalId, StringLocalId, ValueType,
+    BoolFunctionId, BoolFunctionLocalId, BoolLocalId, FunctionId, FunctionType, FunctionValue,
+    IntFunctionId, IntFunctionLocalId, IntLocalId, LocalId, NilFunctionId, NilFunctionLocalId,
+    NilLocalId, ParamLocal, RuntimeFunctionId, StringFunctionId, StringFunctionLocalId,
+    StringLocalId, ValueType,
 };
 use ecow::EcoString;
 use gleam_core::type_::Type;
@@ -17,7 +17,7 @@ pub(super) struct FunctionInfo {
 
 #[derive(Clone)]
 pub(super) struct FunctionParam {
-    pub(super) local: LocalId,
+    pub(super) local: ParamLocal,
     pub(super) name: EcoString,
 }
 
@@ -103,6 +103,63 @@ impl<'a> PlanContext<'a> {
         }
         self.bindings
             .insert(name, LocalBinding::Primitive { local, type_ });
+    }
+
+    pub(super) fn define_existing_param(&mut self, name: EcoString, local: &ParamLocal) {
+        match local {
+            ParamLocal::Int(local) => {
+                self.define_existing_local(name, LocalId::Int(*local), ValueType::Int);
+            }
+            ParamLocal::String(local) => {
+                self.define_existing_local(name, LocalId::String(*local), ValueType::String);
+            }
+            ParamLocal::Bool(local) => {
+                self.define_existing_local(name, LocalId::Bool(*local), ValueType::Bool);
+            }
+            ParamLocal::Nil(local) => {
+                self.define_existing_local(name, LocalId::Nil(*local), ValueType::Nil);
+            }
+            ParamLocal::IntFunction { local, type_ } => {
+                self.next_int_function_local = self.next_int_function_local.max(local.0 + 1);
+                self.bindings.insert(
+                    name,
+                    LocalBinding::Function(FunctionLocalBinding::Int {
+                        local: *local,
+                        type_: type_.clone(),
+                    }),
+                );
+            }
+            ParamLocal::StringFunction { local, type_ } => {
+                self.next_string_function_local = self.next_string_function_local.max(local.0 + 1);
+                self.bindings.insert(
+                    name,
+                    LocalBinding::Function(FunctionLocalBinding::String {
+                        local: *local,
+                        type_: type_.clone(),
+                    }),
+                );
+            }
+            ParamLocal::BoolFunction { local, type_ } => {
+                self.next_bool_function_local = self.next_bool_function_local.max(local.0 + 1);
+                self.bindings.insert(
+                    name,
+                    LocalBinding::Function(FunctionLocalBinding::Bool {
+                        local: *local,
+                        type_: type_.clone(),
+                    }),
+                );
+            }
+            ParamLocal::NilFunction { local, type_ } => {
+                self.next_nil_function_local = self.next_nil_function_local.max(local.0 + 1);
+                self.bindings.insert(
+                    name,
+                    LocalBinding::Function(FunctionLocalBinding::Nil {
+                        local: *local,
+                        type_: type_.clone(),
+                    }),
+                );
+            }
+        }
     }
 
     pub(super) fn define_int_function_local(
@@ -254,7 +311,10 @@ impl FunctionInfo {
     pub(super) fn value(&self) -> FunctionValue {
         FunctionValue::new(
             self.runtime_id,
-            self.params.iter().map(|param| param.local).collect(),
+            self.params
+                .iter()
+                .map(|param| param.local.clone())
+                .collect(),
         )
     }
 }
@@ -306,10 +366,7 @@ impl ValueType {
         } else if let Some((arguments, return_)) = type_.fn_types() {
             let arguments = arguments
                 .iter()
-                .map(|argument| {
-                    Self::from_gleam(argument.as_ref())
-                        .and_then(|type_| FunctionArgumentType::from_value_type(&type_))
-                })
+                .map(|argument| Self::from_gleam(argument.as_ref()))
                 .collect::<Option<Vec<_>>>()?;
             let return_ = Self::from_gleam(return_.as_ref())?;
             Some(Self::Function(Box::new(FunctionType::new(

@@ -1,6 +1,7 @@
 use crate::plan::{
-    BoolLocalId, Expr, FunctionId, FunctionPlan, IntLocalId, LocalId, NilLocalId, Param,
-    ReturnExpr, Step, StringLocalId,
+    BoolFunctionLocalId, BoolLocalId, Expr, FunctionId, FunctionPlan, FunctionType,
+    IntFunctionLocalId, IntLocalId, NilFunctionLocalId, NilLocalId, Param, ParamLocal, ReturnExpr,
+    Step, StringFunctionLocalId, StringLocalId, ValueType,
 };
 use crate::planner::dsl::expression::{Bool, Int, Nil, String};
 use ecow::EcoString;
@@ -24,27 +25,93 @@ pub(crate) fn function(name: impl Into<EcoString>, return_: impl Into<ReturnExpr
 impl FunctionDsl {
     pub(crate) fn param_int(mut self, local: usize, name: impl Into<EcoString>) -> Self {
         self.params
-            .push(Param::new(LocalId::Int(IntLocalId(local)), name.into()));
+            .push(Param::new(ParamLocal::int(IntLocalId(local)), name.into()));
         self
     }
 
     pub(crate) fn param_string(mut self, local: usize, name: impl Into<EcoString>) -> Self {
         self.params.push(Param::new(
-            LocalId::String(StringLocalId(local)),
+            ParamLocal::string(StringLocalId(local)),
             name.into(),
         ));
         self
     }
 
     pub(crate) fn param_bool(mut self, local: usize, name: impl Into<EcoString>) -> Self {
-        self.params
-            .push(Param::new(LocalId::Bool(BoolLocalId(local)), name.into()));
+        self.params.push(Param::new(
+            ParamLocal::bool(BoolLocalId(local)),
+            name.into(),
+        ));
         self
     }
 
     pub(crate) fn param_nil(mut self, local: usize, name: impl Into<EcoString>) -> Self {
         self.params
-            .push(Param::new(LocalId::Nil(NilLocalId(local)), name.into()));
+            .push(Param::new(ParamLocal::nil(NilLocalId(local)), name.into()));
+        self
+    }
+
+    pub(crate) fn param_int_function(
+        mut self,
+        local: usize,
+        name: impl Into<EcoString>,
+        arguments: impl IntoIterator<Item = ValueType>,
+    ) -> Self {
+        self.params.push(Param::new(
+            ParamLocal::int_function(
+                IntFunctionLocalId(local),
+                FunctionType::new(arguments.into_iter().collect(), ValueType::Int),
+            ),
+            name.into(),
+        ));
+        self
+    }
+
+    pub(crate) fn param_string_function(
+        mut self,
+        local: usize,
+        name: impl Into<EcoString>,
+        arguments: impl IntoIterator<Item = ValueType>,
+    ) -> Self {
+        self.params.push(Param::new(
+            ParamLocal::string_function(
+                StringFunctionLocalId(local),
+                FunctionType::new(arguments.into_iter().collect(), ValueType::String),
+            ),
+            name.into(),
+        ));
+        self
+    }
+
+    pub(crate) fn param_bool_function(
+        mut self,
+        local: usize,
+        name: impl Into<EcoString>,
+        arguments: impl IntoIterator<Item = ValueType>,
+    ) -> Self {
+        self.params.push(Param::new(
+            ParamLocal::bool_function(
+                BoolFunctionLocalId(local),
+                FunctionType::new(arguments.into_iter().collect(), ValueType::Bool),
+            ),
+            name.into(),
+        ));
+        self
+    }
+
+    pub(crate) fn param_nil_function(
+        mut self,
+        local: usize,
+        name: impl Into<EcoString>,
+        arguments: impl IntoIterator<Item = ValueType>,
+    ) -> Self {
+        self.params.push(Param::new(
+            ParamLocal::nil_function(
+                NilFunctionLocalId(local),
+                FunctionType::new(arguments.into_iter().collect(), ValueType::Nil),
+            ),
+            name.into(),
+        ));
         self
     }
 
@@ -116,6 +183,10 @@ mod tests {
             .param_string(0, "b")
             .param_bool(0, "c")
             .param_nil(0, "d")
+            .param_int_function(0, "f", [ValueType::Int])
+            .param_string_function(0, "g", [ValueType::String])
+            .param_bool_function(0, "h", [ValueType::Bool])
+            .param_nil_function(0, "i", [ValueType::Nil])
             .let_int(1, "x", int(2))
             .let_string(1, "y", string("a"))
             .let_bool(1, "z", bool_(true))
@@ -125,7 +196,7 @@ mod tests {
             .build(FunctionId::new(0));
 
         assert_eq!(function.name(), "main");
-        assert_eq!(function.params().len(), 4);
+        assert_eq!(function.params().len(), 8);
         assert_eq!(function.steps().len(), 6);
         assert!(matches!(
             function.steps()[0].kind(),

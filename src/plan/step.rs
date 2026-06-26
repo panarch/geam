@@ -138,7 +138,7 @@ impl Step {
 mod tests {
     use super::{Step, StepKind};
     use crate::plan::{
-        Expr, IntExpr, IntFunctionId, IntFunctionLocalId, IntFunctionValue, IntLocalId, LocalId,
+        Expr, IntExpr, IntFunctionId, IntFunctionLocalId, IntFunctionValue, IntLocalId, ParamLocal,
     };
     use num_bigint::BigInt;
 
@@ -161,7 +161,7 @@ mod tests {
     fn function_expr() -> crate::plan::IntFunctionExpr {
         crate::plan::IntFunctionExpr::value(IntFunctionValue::new(
             IntFunctionId(0),
-            vec![LocalId::Int(IntLocalId(0))],
+            vec![ParamLocal::int(IntLocalId(0))],
         ))
     }
 }

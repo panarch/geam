@@ -57,7 +57,9 @@ pub(super) fn plan_var(
                         reason: InvalidTypedAstReason::UnknownLocal { name: name.clone() },
                     })?;
 
-            Ok(Expr::function(FunctionExpr::value(function.value())))
+            let value = function.value();
+
+            Ok(Expr::function(FunctionExpr::value(value)))
         }
         ValueConstructorVariant::ModuleFn { .. } => Err(PlanError::InvalidTypedAst {
             reason: InvalidTypedAstReason::ExpressionShape {
@@ -113,10 +115,13 @@ fn local_get(local: LocalId, name: EcoString, type_: ValueType) -> Result<Expr, 
 #[cfg(test)]
 mod tests {
     use super::super::{module_returning_typed_expr, typed_int_expr, typed_prelude_constructor};
-    use crate::plan::{IntFunctionId, IntLocalId, LocalId, RuntimeFunctionId, ValueType};
+    use crate::plan::{
+        FunctionType, IntFunctionId, IntFunctionLocalId, IntLocalId, LocalId, ParamLocal,
+        RuntimeFunctionId, ValueType,
+    };
     use crate::planner::dsl::{
-        bool_, function, function_ref, int, local_bool, local_int, local_nil, local_string, module,
-        nil,
+        bool_, call_int_function, function, function_ref, int, int_function_call_arg, local_bool,
+        local_int, local_int_function, local_nil, local_string, module, nil,
     };
     use crate::planner::plan_module;
     use crate::planner::support::compile;
@@ -217,6 +222,54 @@ pub fn main() {
                 [LocalId::Int(IntLocalId(0))],
             )),
             [function("identity", local_int(0, "value")).param_int(0, "value")],
+        );
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn plan_top_level_function_reference_with_function_argument() {
+        let actual = plan_module(compile(
+            r#"
+fn add_one(value: Int) {
+  value + 1
+}
+
+fn apply(function: fn(Int) -> Int, value: Int) {
+  function(value)
+}
+
+pub fn main() {
+  apply
+  1
+}
+"#,
+        ))
+        .expect("source should plan");
+        let expected = module(
+            "main",
+            function("main", int(1)).evaluate(function_ref(
+                RuntimeFunctionId::Int(IntFunctionId(2)),
+                [
+                    ParamLocal::int_function(
+                        IntFunctionLocalId(0),
+                        FunctionType::new(vec![ValueType::Int], ValueType::Int),
+                    ),
+                    ParamLocal::int(IntLocalId(0)),
+                ],
+            )),
+            [
+                function("add_one", local_int(0, "value").add_int(int(1))).param_int(0, "value"),
+                function(
+                    "apply",
+                    call_int_function(
+                        local_int_function(0, "function", [LocalId::Int(IntLocalId(0))]),
+                        [int_function_call_arg(local_int(0, "value"))],
+                    ),
+                )
+                .param_int_function(0, "function", [ValueType::Int])
+                .param_int(0, "value"),
+            ],
         );
 
         assert_eq!(actual, expected);
