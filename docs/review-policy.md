@@ -95,6 +95,10 @@ Errors make boundaries visible:
 - Stable error variants should represent one boundary condition. Do not use one
   variant for multiple distinct profile, typed-AST, host, or runtime boundaries
   merely because the broad feature family is similar.
+- Stable error variants must correspond to a reachable production boundary.
+  Test-only references do not justify keeping an error variant.
+- When feature scope changes, re-audit newly added error variants and remove any
+  that are only test-referenced or speculative.
 - When the accepted profile grows into an area that was previously rejected by a
   broad `Unsupported*` variant, revisit that variant. Rename or split it if the
   old name also describes behavior that is now supported.
