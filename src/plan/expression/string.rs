@@ -1,4 +1,4 @@
-use super::{BoolExpr, CallArg, IntExpr};
+use super::{BoolExpr, CallArg, IntExpr, StringFunctionExpr};
 use crate::plan::{Step, StringFunctionId, StringLocalId};
 use ecow::EcoString;
 use num_bigint::BigInt;
@@ -17,6 +17,10 @@ pub(crate) enum StringExprKind {
     },
     Call {
         function: StringFunctionId,
+        args: Vec<CallArg>,
+    },
+    FunctionCall {
+        function: Box<StringFunctionExpr>,
         args: Vec<CallArg>,
     },
     Concatenate {
@@ -55,6 +59,15 @@ impl StringExpr {
     pub(crate) fn call(function: StringFunctionId, args: Vec<CallArg>) -> Self {
         Self {
             kind: StringExprKind::Call { function, args },
+        }
+    }
+
+    pub(crate) fn function_call(function: StringFunctionExpr, args: Vec<CallArg>) -> Self {
+        Self {
+            kind: StringExprKind::FunctionCall {
+                function: Box::new(function),
+                args,
+            },
         }
     }
 
@@ -108,7 +121,10 @@ impl StringExpr {
 #[cfg(test)]
 mod tests {
     use super::{StringExpr, StringExprKind};
-    use crate::plan::{BoolExpr, Expr, IntExpr, Step};
+    use crate::plan::{
+        BoolExpr, Expr, IntExpr, LocalId, Step, StringFunctionId, StringFunctionValue,
+        StringLocalId,
+    };
 
     #[test]
     fn string_expr_kind_accessors() {
@@ -124,6 +140,10 @@ mod tests {
             )
             .kind(),
             StringExprKind::BoolCase { .. }
+        ));
+        assert!(matches!(
+            StringExpr::function_call(function_expr(), Vec::new()).kind(),
+            StringExprKind::FunctionCall { .. }
         ));
         assert!(matches!(
             StringExpr::int_case(
@@ -142,5 +162,12 @@ mod tests {
             .kind(),
             StringExprKind::Block { .. }
         ));
+    }
+
+    fn function_expr() -> crate::plan::StringFunctionExpr {
+        crate::plan::StringFunctionExpr::value(StringFunctionValue::new(
+            StringFunctionId(0),
+            vec![LocalId::String(StringLocalId(0))],
+        ))
     }
 }

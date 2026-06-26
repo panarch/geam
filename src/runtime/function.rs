@@ -3,7 +3,8 @@ use crate::plan::{
     RuntimeFunctionId, StepKind, StringFunctionId, Value,
 };
 use crate::runtime::expression::{
-    eval_bool_expr, eval_expr, eval_int_expr, eval_nil_expr, eval_string_expr,
+    eval_bool_expr, eval_bool_function_expr, eval_expr, eval_int_expr, eval_int_function_expr,
+    eval_nil_expr, eval_nil_function_expr, eval_string_expr, eval_string_function_expr,
 };
 use crate::runtime::frame::Frame;
 use ecow::EcoString;
@@ -99,6 +100,22 @@ pub(in crate::runtime) fn execute_steps(
                 eval_nil_expr(plan, frame, value);
                 frame.set_nil(*local);
             }
+            StepKind::LetIntFunction { local, value, .. } => {
+                let value = eval_int_function_expr(plan, frame, value);
+                frame.set_int_function(*local, value);
+            }
+            StepKind::LetStringFunction { local, value, .. } => {
+                let value = eval_string_function_expr(plan, frame, value);
+                frame.set_string_function(*local, value);
+            }
+            StepKind::LetBoolFunction { local, value, .. } => {
+                let value = eval_bool_function_expr(plan, frame, value);
+                frame.set_bool_function(*local, value);
+            }
+            StepKind::LetNilFunction { local, value, .. } => {
+                let value = eval_nil_function_expr(plan, frame, value);
+                frame.set_nil_function(*local, value);
+            }
             StepKind::Evaluate(expression) => {
                 let _ = eval_expr(plan, frame, expression);
             }
@@ -136,6 +153,46 @@ fn bind_arguments(
     }
 
     frame
+}
+
+pub(in crate::runtime) fn run_int_function_call(
+    plan: &ExecutionPlan,
+    function: &crate::plan::IntFunctionExpr,
+    args: &[CallArg],
+    caller_frame: &mut Frame,
+) -> BigInt {
+    let function = eval_int_function_expr(plan, caller_frame, function);
+    run_int_call(plan, function.runtime_id(), args, caller_frame)
+}
+
+pub(in crate::runtime) fn run_string_function_call(
+    plan: &ExecutionPlan,
+    function: &crate::plan::StringFunctionExpr,
+    args: &[CallArg],
+    caller_frame: &mut Frame,
+) -> EcoString {
+    let function = eval_string_function_expr(plan, caller_frame, function);
+    run_string_call(plan, function.runtime_id(), args, caller_frame)
+}
+
+pub(in crate::runtime) fn run_bool_function_call(
+    plan: &ExecutionPlan,
+    function: &crate::plan::BoolFunctionExpr,
+    args: &[CallArg],
+    caller_frame: &mut Frame,
+) -> bool {
+    let function = eval_bool_function_expr(plan, caller_frame, function);
+    run_bool_call(plan, function.runtime_id(), args, caller_frame)
+}
+
+pub(in crate::runtime) fn run_nil_function_call(
+    plan: &ExecutionPlan,
+    function: &crate::plan::NilFunctionExpr,
+    args: &[CallArg],
+    caller_frame: &mut Frame,
+) {
+    let function = eval_nil_function_expr(plan, caller_frame, function);
+    run_nil_call(plan, function.runtime_id(), args, caller_frame);
 }
 
 #[cfg(test)]
@@ -196,6 +253,54 @@ pub fn main() {
 "#,
             ),
             int(2),
+        );
+
+        assert_eq!(
+            run_src(
+                r#"
+fn identity(value: String) {
+  value
+}
+
+pub fn main() {
+  let function = identity
+  function("geam")
+}
+"#,
+            ),
+            Value::String("geam".into()),
+        );
+
+        assert_eq!(
+            run_src(
+                r#"
+fn identity(value: Bool) {
+  value
+}
+
+pub fn main() {
+  let function = identity
+  function(True)
+}
+"#,
+            ),
+            Value::Bool(true),
+        );
+
+        assert_eq!(
+            run_src(
+                r#"
+fn identity(value: Nil) {
+  value
+}
+
+pub fn main() {
+  let function = identity
+  function(Nil)
+}
+"#,
+            ),
+            Value::Nil,
         );
     }
 

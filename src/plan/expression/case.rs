@@ -1,4 +1,7 @@
-use super::{BoolExpr, FunctionExpr, IntExpr, NilExpr, StringExpr};
+use super::{
+    BoolExpr, BoolFunctionExpr, IntExpr, IntFunctionExpr, NilExpr, NilFunctionExpr, StringExpr,
+    StringFunctionExpr,
+};
 use num_bigint::BigInt;
 
 pub(crate) enum BoolCaseBranches {
@@ -18,9 +21,21 @@ pub(crate) enum BoolCaseBranches {
         true_: NilExpr,
         false_: NilExpr,
     },
-    Function {
-        true_: FunctionExpr,
-        false_: FunctionExpr,
+    IntFunction {
+        true_: IntFunctionExpr,
+        false_: IntFunctionExpr,
+    },
+    StringFunction {
+        true_: StringFunctionExpr,
+        false_: StringFunctionExpr,
+    },
+    BoolFunction {
+        true_: BoolFunctionExpr,
+        false_: BoolFunctionExpr,
+    },
+    NilFunction {
+        true_: NilFunctionExpr,
+        false_: NilFunctionExpr,
     },
 }
 
@@ -41,8 +56,20 @@ pub(crate) enum IntCaseBranches {
         clauses: Vec<(BigInt, NilExpr)>,
         fallback: NilExpr,
     },
-    Function {
-        clauses: Vec<(BigInt, FunctionExpr)>,
-        fallback: FunctionExpr,
+    IntFunction {
+        clauses: Vec<(BigInt, IntFunctionExpr)>,
+        fallback: IntFunctionExpr,
+    },
+    StringFunction {
+        clauses: Vec<(BigInt, StringFunctionExpr)>,
+        fallback: StringFunctionExpr,
+    },
+    BoolFunction {
+        clauses: Vec<(BigInt, BoolFunctionExpr)>,
+        fallback: BoolFunctionExpr,
+    },
+    NilFunction {
+        clauses: Vec<(BigInt, NilFunctionExpr)>,
+        fallback: NilFunctionExpr,
     },
 }

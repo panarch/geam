@@ -16,13 +16,9 @@ pub(super) fn plan(
 ) -> Result<Expr, PlanError> {
     context.with_local_scope(|context| {
         let mut steps = Vec::with_capacity(assignments.len() + 1);
-        if let Some(step) = plan_first_assignment(first_value, context)? {
-            steps.push(step);
-        }
+        steps.push(plan_first_assignment(first_value, context)?);
         for (assignment, kind) in assignments {
-            if let Some(step) = plan_assignment(assignment, kind, context)? {
-                steps.push(step);
-            }
+            steps.push(plan_assignment(assignment, kind, context)?);
         }
         let return_ = plan_pipeline_value(finally, finally_kind, context)?;
 
@@ -33,7 +29,7 @@ pub(super) fn plan(
 fn plan_first_assignment(
     assignment: TypedPipelineAssignment,
     context: &mut PlanContext<'_>,
-) -> Result<Option<Step>, PlanError> {
+) -> Result<Step, PlanError> {
     let value = plan_expr(*assignment.value, context)?;
 
     plan_variable_runtime_step(assignment.name, value, context)
@@ -43,7 +39,7 @@ fn plan_assignment(
     assignment: TypedPipelineAssignment,
     kind: PipelineAssignmentKind,
     context: &mut PlanContext<'_>,
-) -> Result<Option<Step>, PlanError> {
+) -> Result<Step, PlanError> {
     let value = plan_pipeline_value(*assignment.value, kind, context)?;
 
     plan_variable_runtime_step(assignment.name, value, context)

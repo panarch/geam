@@ -93,6 +93,11 @@ impl FunctionDsl {
         self
     }
 
+    pub(crate) fn step(mut self, step: Step) -> Self {
+        self.steps.push(step);
+        self
+    }
+
     pub(crate) fn build(self, id: FunctionId) -> FunctionPlan {
         FunctionPlan::new(id, self.name, self.params, self.steps, self.return_)
     }
@@ -115,16 +120,17 @@ mod tests {
             .let_string(1, "y", string("a"))
             .let_bool(1, "z", bool_(true))
             .let_nil(1, "n", nil())
+            .step(Step::evaluate(int(4).into()))
             .evaluate(int(3))
             .build(FunctionId::new(0));
 
         assert_eq!(function.name(), "main");
         assert_eq!(function.params().len(), 4);
-        assert_eq!(function.steps().len(), 5);
+        assert_eq!(function.steps().len(), 6);
         assert!(matches!(
             function.steps()[0].kind(),
             StepKind::LetInt { .. }
         ));
-        assert!(matches!(function.steps()[4].kind(), StepKind::Evaluate(_)));
+        assert!(matches!(function.steps()[5].kind(), StepKind::Evaluate(_)));
     }
 }

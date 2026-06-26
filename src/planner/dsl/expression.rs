@@ -1,7 +1,11 @@
 use crate::plan::{
-    BoolExpr, BoolFunctionId, BoolLocalId, CallArg, Expr, FunctionExpr, FunctionValue, IntExpr,
-    IntFunctionId, IntLocalId, LocalId, NilExpr, NilFunctionId, NilLocalId, ReturnExpr,
-    RuntimeFunctionId, Step, StringExpr, StringFunctionId, StringLocalId,
+    BoolExpr, BoolFunctionExpr, BoolFunctionId, BoolFunctionLocalId, BoolFunctionValue,
+    BoolLocalId, CallArg, Expr, FunctionArgumentType, FunctionExpr, FunctionExprKind, FunctionType,
+    FunctionValue, IntExpr, IntFunctionExpr, IntFunctionId, IntFunctionLocalId, IntFunctionValue,
+    IntLocalId, LocalId, NilExpr, NilFunctionExpr, NilFunctionId, NilFunctionLocalId,
+    NilFunctionValue, NilLocalId, ReturnExpr, RuntimeFunctionId, Step, StringExpr,
+    StringFunctionExpr, StringFunctionId, StringFunctionLocalId, StringFunctionValue,
+    StringLocalId, ValueType,
 };
 use ecow::EcoString;
 use num_bigint::BigInt;
@@ -15,6 +19,14 @@ pub(crate) struct Bool(BoolExpr);
 pub(crate) struct Nil(NilExpr);
 
 pub(crate) struct Function(FunctionExpr);
+
+pub(crate) struct IntFunction(IntFunctionExpr);
+
+pub(crate) struct StringFunction(StringFunctionExpr);
+
+pub(crate) struct BoolFunction(BoolFunctionExpr);
+
+pub(crate) struct NilFunction(NilFunctionExpr);
 
 pub(crate) fn int(value: i64) -> Int {
     Int(IntExpr::value(BigInt::from(value)))
@@ -40,6 +52,58 @@ pub(crate) fn function_ref(
         runtime_id,
         params.into_iter().collect(),
     )))
+}
+
+pub(crate) fn int_function_ref(
+    runtime_id: usize,
+    params: impl IntoIterator<Item = LocalId>,
+) -> IntFunction {
+    IntFunction(IntFunctionExpr::value(IntFunctionValue::new(
+        IntFunctionId(runtime_id),
+        params.into_iter().collect(),
+    )))
+}
+
+pub(crate) fn string_function_ref(
+    runtime_id: usize,
+    params: impl IntoIterator<Item = LocalId>,
+) -> StringFunction {
+    StringFunction(StringFunctionExpr::value(StringFunctionValue::new(
+        StringFunctionId(runtime_id),
+        params.into_iter().collect(),
+    )))
+}
+
+pub(crate) fn bool_function_ref(
+    runtime_id: usize,
+    params: impl IntoIterator<Item = LocalId>,
+) -> BoolFunction {
+    BoolFunction(BoolFunctionExpr::value(BoolFunctionValue::new(
+        BoolFunctionId(runtime_id),
+        params.into_iter().collect(),
+    )))
+}
+
+pub(crate) fn nil_function_ref(
+    runtime_id: usize,
+    params: impl IntoIterator<Item = LocalId>,
+) -> NilFunction {
+    NilFunction(NilFunctionExpr::value(NilFunctionValue::new(
+        NilFunctionId(runtime_id),
+        params.into_iter().collect(),
+    )))
+}
+
+pub(crate) fn local_int_function(
+    local: usize,
+    name: impl Into<EcoString>,
+    params: impl IntoIterator<Item = LocalId>,
+) -> IntFunction {
+    IntFunction(IntFunctionExpr::local_get(
+        IntFunctionLocalId(local),
+        name.into(),
+        int_function_type(params),
+    ))
 }
 
 pub(crate) fn equal(left: impl Into<Expr>, right: impl Into<Expr>) -> Bool {
@@ -76,6 +140,54 @@ pub(crate) fn bool_case_bool(subject: Bool, true_: Bool, false_: Bool) -> Bool {
 
 pub(crate) fn bool_case_nil(subject: Bool, true_: Nil, false_: Nil) -> Nil {
     Nil(NilExpr::bool_case(
+        subject.into(),
+        true_.into(),
+        false_.into(),
+    ))
+}
+
+pub(crate) fn bool_case_int_function(
+    subject: Bool,
+    true_: IntFunction,
+    false_: IntFunction,
+) -> IntFunction {
+    IntFunction(IntFunctionExpr::bool_case(
+        subject.into(),
+        true_.into(),
+        false_.into(),
+    ))
+}
+
+pub(crate) fn bool_case_string_function(
+    subject: Bool,
+    true_: StringFunction,
+    false_: StringFunction,
+) -> StringFunction {
+    StringFunction(StringFunctionExpr::bool_case(
+        subject.into(),
+        true_.into(),
+        false_.into(),
+    ))
+}
+
+pub(crate) fn bool_case_bool_function(
+    subject: Bool,
+    true_: BoolFunction,
+    false_: BoolFunction,
+) -> BoolFunction {
+    BoolFunction(BoolFunctionExpr::bool_case(
+        subject.into(),
+        true_.into(),
+        false_.into(),
+    ))
+}
+
+pub(crate) fn bool_case_nil_function(
+    subject: Bool,
+    true_: NilFunction,
+    false_: NilFunction,
+) -> NilFunction {
+    NilFunction(NilFunctionExpr::bool_case(
         subject.into(),
         true_.into(),
         false_.into(),
@@ -142,6 +254,66 @@ pub(crate) fn int_case_nil(
     ))
 }
 
+pub(crate) fn int_case_int_function(
+    subject: Int,
+    clauses: impl IntoIterator<Item = (i64, IntFunction)>,
+    fallback: IntFunction,
+) -> IntFunction {
+    IntFunction(IntFunctionExpr::int_case(
+        subject.into(),
+        clauses
+            .into_iter()
+            .map(|(value, branch)| (BigInt::from(value), branch.into()))
+            .collect(),
+        fallback.into(),
+    ))
+}
+
+pub(crate) fn int_case_string_function(
+    subject: Int,
+    clauses: impl IntoIterator<Item = (i64, StringFunction)>,
+    fallback: StringFunction,
+) -> StringFunction {
+    StringFunction(StringFunctionExpr::int_case(
+        subject.into(),
+        clauses
+            .into_iter()
+            .map(|(value, branch)| (BigInt::from(value), branch.into()))
+            .collect(),
+        fallback.into(),
+    ))
+}
+
+pub(crate) fn int_case_bool_function(
+    subject: Int,
+    clauses: impl IntoIterator<Item = (i64, BoolFunction)>,
+    fallback: BoolFunction,
+) -> BoolFunction {
+    BoolFunction(BoolFunctionExpr::int_case(
+        subject.into(),
+        clauses
+            .into_iter()
+            .map(|(value, branch)| (BigInt::from(value), branch.into()))
+            .collect(),
+        fallback.into(),
+    ))
+}
+
+pub(crate) fn int_case_nil_function(
+    subject: Int,
+    clauses: impl IntoIterator<Item = (i64, NilFunction)>,
+    fallback: NilFunction,
+) -> NilFunction {
+    NilFunction(NilFunctionExpr::int_case(
+        subject.into(),
+        clauses
+            .into_iter()
+            .map(|(value, branch)| (BigInt::from(value), branch.into()))
+            .collect(),
+        fallback.into(),
+    ))
+}
+
 pub(crate) fn block_int(steps: impl IntoIterator<Item = Step>, return_: Int) -> Int {
     Int(IntExpr::block(steps.into_iter().collect(), return_.into()))
 }
@@ -162,7 +334,24 @@ pub(crate) fn block_nil(steps: impl IntoIterator<Item = Step>, return_: Nil) -> 
 }
 
 pub(crate) fn block_function(steps: impl IntoIterator<Item = Step>, return_: Function) -> Function {
-    Function(FunctionExpr::block(
+    let steps = steps.into_iter().collect();
+    Function(match FunctionExpr::from(return_).into_kind() {
+        FunctionExprKind::Int(return_) => FunctionExpr::int(IntFunctionExpr::block(steps, return_)),
+        FunctionExprKind::String(return_) => {
+            FunctionExpr::string(StringFunctionExpr::block(steps, return_))
+        }
+        FunctionExprKind::Bool(return_) => {
+            FunctionExpr::bool(BoolFunctionExpr::block(steps, return_))
+        }
+        FunctionExprKind::Nil(return_) => FunctionExpr::nil(NilFunctionExpr::block(steps, return_)),
+    })
+}
+
+pub(crate) fn block_int_function(
+    steps: impl IntoIterator<Item = Step>,
+    return_: IntFunction,
+) -> IntFunction {
+    IntFunction(IntFunctionExpr::block(
         steps.into_iter().collect(),
         return_.into(),
     ))
@@ -182,6 +371,38 @@ pub(crate) fn let_bool_step(local: usize, name: impl Into<EcoString>, value: Boo
 
 pub(crate) fn let_nil_step(local: usize, name: impl Into<EcoString>, value: Nil) -> Step {
     Step::let_nil(NilLocalId(local), name.into(), value.into())
+}
+
+pub(crate) fn let_int_function_step(
+    local: usize,
+    name: impl Into<EcoString>,
+    value: IntFunction,
+) -> Step {
+    Step::let_int_function(IntFunctionLocalId(local), name.into(), value.into())
+}
+
+pub(crate) fn let_string_function_step(
+    local: usize,
+    name: impl Into<EcoString>,
+    value: StringFunction,
+) -> Step {
+    Step::let_string_function(StringFunctionLocalId(local), name.into(), value.into())
+}
+
+pub(crate) fn let_bool_function_step(
+    local: usize,
+    name: impl Into<EcoString>,
+    value: BoolFunction,
+) -> Step {
+    Step::let_bool_function(BoolFunctionLocalId(local), name.into(), value.into())
+}
+
+pub(crate) fn let_nil_function_step(
+    local: usize,
+    name: impl Into<EcoString>,
+    value: NilFunction,
+) -> Step {
+    Step::let_nil_function(NilFunctionLocalId(local), name.into(), value.into())
 }
 
 pub(crate) fn evaluate_step(value: impl Into<Expr>) -> Step {
@@ -228,6 +449,16 @@ pub(crate) fn call_bool(function: usize, args: impl IntoIterator<Item = CallArg>
 pub(crate) fn call_nil(function: usize, args: impl IntoIterator<Item = CallArg>) -> Nil {
     Nil(NilExpr::call(
         NilFunctionId(function),
+        args.into_iter().collect(),
+    ))
+}
+
+pub(crate) fn call_int_function(
+    function: IntFunction,
+    args: impl IntoIterator<Item = CallArg>,
+) -> Int {
+    Int(IntExpr::function_call(
+        function.into(),
         args.into_iter().collect(),
     ))
 }
@@ -394,12 +625,58 @@ impl From<Function> for FunctionExpr {
     }
 }
 
+impl From<IntFunction> for Function {
+    fn from(value: IntFunction) -> Self {
+        Function(FunctionExpr::int(value.into()))
+    }
+}
+
+impl From<IntFunction> for FunctionExpr {
+    fn from(value: IntFunction) -> Self {
+        FunctionExpr::int(value.into())
+    }
+}
+
+impl From<IntFunction> for IntFunctionExpr {
+    fn from(value: IntFunction) -> Self {
+        value.0
+    }
+}
+
+impl From<StringFunction> for StringFunctionExpr {
+    fn from(value: StringFunction) -> Self {
+        value.0
+    }
+}
+
+impl From<BoolFunction> for BoolFunctionExpr {
+    fn from(value: BoolFunction) -> Self {
+        value.0
+    }
+}
+
+impl From<NilFunction> for NilFunctionExpr {
+    fn from(value: NilFunction) -> Self {
+        value.0
+    }
+}
+
+fn int_function_type(params: impl IntoIterator<Item = LocalId>) -> FunctionType {
+    FunctionType::new(
+        params
+            .into_iter()
+            .map(|param| FunctionArgumentType::from_local(&param))
+            .collect(),
+        ValueType::Int,
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::plan::{
-        BoolExprKind, CallArgKind, ExprKind, FunctionExprKind, IntExprKind, NilExprKind,
-        RuntimeFunctionId, StepKind, StringExprKind,
+        BoolExprKind, CallArgKind, ExprKind, FunctionExprKind, IntExprKind, IntFunctionExprKind,
+        NilExprKind, RuntimeFunctionId, StepKind, StringExprKind,
     };
 
     #[test]
@@ -568,7 +845,7 @@ mod tests {
                 [crate::plan::LocalId::Int(crate::plan::IntLocalId(0))],
             ))
             .kind(),
-            FunctionExprKind::Value(_),
+            FunctionExprKind::Int(_),
         ));
         assert!(matches!(
             FunctionExpr::from(block_function(
@@ -579,7 +856,141 @@ mod tests {
                 ),
             ))
             .kind(),
-            FunctionExprKind::Block { .. },
+            FunctionExprKind::Int(_),
+        ));
+        assert!(matches!(
+            FunctionExpr::from(block_function(
+                [],
+                function_ref(
+                    RuntimeFunctionId::String(crate::plan::StringFunctionId(0)),
+                    [crate::plan::LocalId::String(crate::plan::StringLocalId(0))],
+                ),
+            ))
+            .kind(),
+            FunctionExprKind::String(_),
+        ));
+        assert!(matches!(
+            FunctionExpr::from(block_function(
+                [],
+                function_ref(
+                    RuntimeFunctionId::Bool(crate::plan::BoolFunctionId(0)),
+                    [crate::plan::LocalId::Bool(crate::plan::BoolLocalId(0))],
+                ),
+            ))
+            .kind(),
+            FunctionExprKind::Bool(_),
+        ));
+        assert!(matches!(
+            FunctionExpr::from(block_function(
+                [],
+                function_ref(
+                    RuntimeFunctionId::Nil(crate::plan::NilFunctionId(0)),
+                    [crate::plan::LocalId::Nil(crate::plan::NilLocalId(0))],
+                ),
+            ))
+            .kind(),
+            FunctionExprKind::Nil(_),
+        ));
+        assert!(matches!(
+            FunctionExpr::from(Function::from(int_function_ref(
+                0,
+                [crate::plan::LocalId::Int(crate::plan::IntLocalId(0))],
+            )))
+            .kind(),
+            FunctionExprKind::Int(_),
+        ));
+        assert!(matches!(
+            block_int_function(
+                [],
+                int_function_ref(0, [crate::plan::LocalId::Int(crate::plan::IntLocalId(0))]),
+            )
+            .0
+            .kind(),
+            IntFunctionExprKind::Block { .. },
+        ));
+        assert!(matches!(
+            bool_case_string_function(
+                bool_(true),
+                string_function_ref(
+                    0,
+                    [crate::plan::LocalId::String(crate::plan::StringLocalId(0))],
+                ),
+                string_function_ref(
+                    1,
+                    [crate::plan::LocalId::String(crate::plan::StringLocalId(0))],
+                ),
+            )
+            .0
+            .kind(),
+            crate::plan::StringFunctionExprKind::BoolCase { .. },
+        ));
+        assert!(matches!(
+            bool_case_bool_function(
+                bool_(true),
+                bool_function_ref(0, [crate::plan::LocalId::Bool(crate::plan::BoolLocalId(0))]),
+                bool_function_ref(1, [crate::plan::LocalId::Bool(crate::plan::BoolLocalId(0))]),
+            )
+            .0
+            .kind(),
+            crate::plan::BoolFunctionExprKind::BoolCase { .. },
+        ));
+        assert!(matches!(
+            bool_case_nil_function(
+                bool_(true),
+                nil_function_ref(0, [crate::plan::LocalId::Nil(crate::plan::NilLocalId(0))]),
+                nil_function_ref(1, [crate::plan::LocalId::Nil(crate::plan::NilLocalId(0))]),
+            )
+            .0
+            .kind(),
+            crate::plan::NilFunctionExprKind::BoolCase { .. },
+        ));
+        assert!(matches!(
+            int_case_string_function(
+                int(1),
+                [(
+                    1,
+                    string_function_ref(
+                        0,
+                        [crate::plan::LocalId::String(crate::plan::StringLocalId(0))],
+                    ),
+                )],
+                string_function_ref(
+                    1,
+                    [crate::plan::LocalId::String(crate::plan::StringLocalId(0))],
+                ),
+            )
+            .0
+            .kind(),
+            crate::plan::StringFunctionExprKind::IntCase { .. },
+        ));
+        assert!(matches!(
+            int_case_bool_function(
+                int(1),
+                [(
+                    1,
+                    bool_function_ref(
+                        0,
+                        [crate::plan::LocalId::Bool(crate::plan::BoolLocalId(0))],
+                    ),
+                )],
+                bool_function_ref(1, [crate::plan::LocalId::Bool(crate::plan::BoolLocalId(0))]),
+            )
+            .0
+            .kind(),
+            crate::plan::BoolFunctionExprKind::IntCase { .. },
+        ));
+        assert!(matches!(
+            int_case_nil_function(
+                int(1),
+                [(
+                    1,
+                    nil_function_ref(0, [crate::plan::LocalId::Nil(crate::plan::NilLocalId(0))]),
+                )],
+                nil_function_ref(1, [crate::plan::LocalId::Nil(crate::plan::NilLocalId(0))]),
+            )
+            .0
+            .kind(),
+            crate::plan::NilFunctionExprKind::IntCase { .. },
         ));
     }
 
@@ -636,6 +1047,45 @@ mod tests {
 
     #[test]
     fn step_dsl() {
+        assert!(matches!(
+            let_int_function_step(
+                0,
+                "f",
+                int_function_ref(0, [crate::plan::LocalId::Int(crate::plan::IntLocalId(0))]),
+            )
+            .kind(),
+            StepKind::LetIntFunction { .. },
+        ));
+        assert!(matches!(
+            let_string_function_step(
+                0,
+                "f",
+                string_function_ref(
+                    0,
+                    [crate::plan::LocalId::String(crate::plan::StringLocalId(0))],
+                ),
+            )
+            .kind(),
+            StepKind::LetStringFunction { .. },
+        ));
+        assert!(matches!(
+            let_bool_function_step(
+                0,
+                "f",
+                bool_function_ref(0, [crate::plan::LocalId::Bool(crate::plan::BoolLocalId(0))]),
+            )
+            .kind(),
+            StepKind::LetBoolFunction { .. },
+        ));
+        assert!(matches!(
+            let_nil_function_step(
+                0,
+                "f",
+                nil_function_ref(0, [crate::plan::LocalId::Nil(crate::plan::NilLocalId(0))]),
+            )
+            .kind(),
+            StepKind::LetNilFunction { .. },
+        ));
         assert!(matches!(
             evaluate_step(int(1)).kind(),
             StepKind::Evaluate(_),

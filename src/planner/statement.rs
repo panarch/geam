@@ -42,9 +42,7 @@ fn plan_ordered_steps_and_return(
 ) -> Result<PlannedStatements, PlanError> {
     let mut steps = Vec::new();
     for statement in statements {
-        if let Some(step) = plan_runtime_step(statement, context)? {
-            steps.push(step);
-        }
+        steps.push(plan_runtime_step(statement, context)?);
     }
 
     let return_ = match last_statement {
@@ -72,11 +70,9 @@ fn plan_ordered_steps_and_return(
 pub(super) fn plan_runtime_step(
     statement: gleam_core::ast::TypedStatement,
     context: &mut PlanContext<'_>,
-) -> Result<Option<Step>, PlanError> {
+) -> Result<Step, PlanError> {
     match statement {
-        Statement::Expression(expression) => {
-            Ok(Some(Step::evaluate(plan_expr(expression, context)?)))
-        }
+        Statement::Expression(expression) => Ok(Step::evaluate(plan_expr(expression, context)?)),
         Statement::Assignment(assignment) => plan_assignment(*assignment, context),
         Statement::Use(_) => Err(PlanError::InvalidTypedAst {
             reason: InvalidTypedAstReason::UseStatement,
@@ -90,7 +86,7 @@ pub(super) fn plan_runtime_step(
 fn plan_assignment(
     assignment: TypedAssignment,
     context: &mut PlanContext<'_>,
-) -> Result<Option<Step>, PlanError> {
+) -> Result<Step, PlanError> {
     match assignment.kind {
         AssignmentKind::Let => {}
         AssignmentKind::Generated => {
@@ -114,33 +110,43 @@ pub(in crate::planner) fn plan_variable_runtime_step(
     name: EcoString,
     value: crate::plan::Expr,
     context: &mut PlanContext<'_>,
-) -> Result<Option<Step>, PlanError> {
+) -> Result<Step, PlanError> {
     match value.into_kind() {
         ExprKind::Int(value) => {
             let local = context.define_int_local(name.clone());
-            Ok(Some(Step::let_int(local, name, value)))
+            Ok(Step::let_int(local, name, value))
         }
         ExprKind::String(value) => {
             let local = context.define_string_local(name.clone());
-            Ok(Some(Step::let_string(local, name, value)))
+            Ok(Step::let_string(local, name, value))
         }
         ExprKind::Bool(value) => {
             let local = context.define_bool_local(name.clone());
-            Ok(Some(Step::let_bool(local, name, value)))
+            Ok(Step::let_bool(local, name, value))
         }
         ExprKind::Nil(value) => {
             let local = context.define_nil_local(name.clone());
-            Ok(Some(Step::let_nil(local, name, value)))
+            Ok(Step::let_nil(local, name, value))
         }
-        ExprKind::Function(value) => {
-            let FunctionExprKind::Value(function_value) = value.kind() else {
-                return Err(PlanError::UnsupportedAssignment {
-                    kind: UnsupportedAssignmentKind::NonValueFunction,
-                });
-            };
-            context.define_function_alias(name, function_value.clone());
-            Ok(None)
-        }
+        ExprKind::Function(value) => Ok(match value.into_kind() {
+            FunctionExprKind::Int(value) => {
+                let local = context.define_int_function_local(name.clone(), value.type_().clone());
+                Step::let_int_function(local, name, value)
+            }
+            FunctionExprKind::String(value) => {
+                let local =
+                    context.define_string_function_local(name.clone(), value.type_().clone());
+                Step::let_string_function(local, name, value)
+            }
+            FunctionExprKind::Bool(value) => {
+                let local = context.define_bool_function_local(name.clone(), value.type_().clone());
+                Step::let_bool_function(local, name, value)
+            }
+            FunctionExprKind::Nil(value) => {
+                let local = context.define_nil_function_local(name.clone(), value.type_().clone());
+                Step::let_nil_function(local, name, value)
+            }
+        }),
     }
 }
 
@@ -173,7 +179,13 @@ fn plan_variable_pattern(pattern: TypedPattern) -> Result<EcoString, PlanError> 
 #[cfg(test)]
 mod tests {
     use super::plan_variable_pattern;
-    use crate::planner::dsl::{function, int, local_int, module};
+    use crate::plan::{BoolLocalId, IntLocalId, LocalId, NilLocalId, StringLocalId};
+    use crate::planner::dsl::{
+        bool_, bool_case_int_function, bool_function_ref, function, int, int_function_ref,
+        let_bool_function_step, let_int_function_step, let_nil_function_step,
+        let_string_function_step, local_bool, local_int, local_nil, local_string, module,
+        nil_function_ref, string_function_ref,
+    };
     use crate::planner::plan_module;
     use crate::planner::support::{compile, compile_minimal_module, dummy_span, expect_plan_error};
     use crate::planner::{
@@ -226,12 +238,23 @@ pub fn main() {
     }
 
     #[test]
-    fn reject_profile_non_value_function_assignment() {
-        assert_eq!(
-            expect_plan_error(
-                r#"
+    fn plan_function_valued_assignment() {
+        let actual = plan_module(compile(
+            r#"
 fn add_one(value: Int) {
   value + 1
+}
+
+fn string_identity(value: String) {
+  value
+}
+
+fn bool_identity(value: Bool) {
+  value
+}
+
+fn nil_identity(value: Nil) {
+  value
 }
 
 pub fn main() {
@@ -239,14 +262,50 @@ pub fn main() {
     True -> add_one
     False -> add_one
   }
+  let string = string_identity
+  let bool = bool_identity
+  let nil = nil_identity
   1
 }
 "#,
-            ),
-            PlanError::UnsupportedAssignment {
-                kind: UnsupportedAssignmentKind::NonValueFunction,
-            },
+        ))
+        .expect("source should plan");
+        let expected = module(
+            "main",
+            function("main", int(1))
+                .step(let_int_function_step(
+                    0,
+                    "function",
+                    bool_case_int_function(
+                        bool_(true),
+                        int_function_ref(1, [LocalId::Int(IntLocalId(0))]),
+                        int_function_ref(1, [LocalId::Int(IntLocalId(0))]),
+                    ),
+                ))
+                .step(let_string_function_step(
+                    0,
+                    "string",
+                    string_function_ref(0, [LocalId::String(StringLocalId(0))]),
+                ))
+                .step(let_bool_function_step(
+                    0,
+                    "bool",
+                    bool_function_ref(0, [LocalId::Bool(BoolLocalId(0))]),
+                ))
+                .step(let_nil_function_step(
+                    0,
+                    "nil",
+                    nil_function_ref(0, [LocalId::Nil(NilLocalId(0))]),
+                )),
+            [
+                function("add_one", local_int(0, "value").add_int(int(1))).param_int(0, "value"),
+                function("string_identity", local_string(0, "value")).param_string(0, "value"),
+                function("bool_identity", local_bool(0, "value")).param_bool(0, "value"),
+                function("nil_identity", local_nil(0, "value")).param_nil(0, "value"),
+            ],
         );
+
+        assert_eq!(actual, expected);
     }
 
     #[test]

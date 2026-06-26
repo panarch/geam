@@ -1,5 +1,8 @@
-use crate::plan::{BoolExpr, Expr, FunctionExpr, IntExpr, LocalId, NilExpr, StringExpr, ValueType};
-use crate::planner::context::PlanContext;
+use crate::plan::{
+    BoolExpr, BoolFunctionExpr, Expr, FunctionExpr, IntExpr, IntFunctionExpr, LocalId, NilExpr,
+    NilFunctionExpr, StringExpr, StringFunctionExpr, ValueType,
+};
+use crate::planner::context::{FunctionLocalBinding, PlanContext};
 use crate::planner::error::{InvalidExpressionShapeKind, InvalidTypedAstReason, PlanError};
 use ecow::EcoString;
 use gleam_core::type_::{PRELUDE_MODULE_NAME, ValueConstructor, ValueConstructorVariant};
@@ -14,8 +17,8 @@ pub(super) fn plan_var(
             if let Some((local, type_)) = context.lookup_local(&name) {
                 return local_get(local, name, type_);
             }
-            if let Some(value) = context.lookup_function_value(&name) {
-                return Ok(Expr::function(FunctionExpr::value(value)));
+            if let Some(binding) = context.lookup_function_local(&name) {
+                return Ok(function_local_get(binding, name));
             }
 
             Err(PlanError::InvalidTypedAst {
@@ -71,6 +74,23 @@ pub(super) fn plan_var(
                 kind: InvalidExpressionShapeKind::RecordConstructor,
             },
         }),
+    }
+}
+
+fn function_local_get(binding: FunctionLocalBinding, name: EcoString) -> Expr {
+    match binding {
+        FunctionLocalBinding::Int { local, type_ } => Expr::function(FunctionExpr::int(
+            IntFunctionExpr::local_get(local, name, type_),
+        )),
+        FunctionLocalBinding::String { local, type_ } => Expr::function(FunctionExpr::string(
+            StringFunctionExpr::local_get(local, name, type_),
+        )),
+        FunctionLocalBinding::Bool { local, type_ } => Expr::function(FunctionExpr::bool(
+            BoolFunctionExpr::local_get(local, name, type_),
+        )),
+        FunctionLocalBinding::Nil { local, type_ } => Expr::function(FunctionExpr::nil(
+            NilFunctionExpr::local_get(local, name, type_),
+        )),
     }
 }
 

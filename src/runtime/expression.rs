@@ -8,7 +8,13 @@ use crate::plan::{ExecutionPlan, Expr, ExprKind, Value};
 use crate::runtime::frame::Frame;
 
 pub(super) use self::{
-    bool::eval_bool_expr, function::eval_function_expr, int::eval_int_expr, nil::eval_nil_expr,
+    bool::eval_bool_expr,
+    function::{
+        eval_bool_function_expr, eval_function_expr, eval_int_function_expr,
+        eval_nil_function_expr, eval_string_function_expr,
+    },
+    int::eval_int_expr,
+    nil::eval_nil_expr,
     string::eval_string_expr,
 };
 

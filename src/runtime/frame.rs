@@ -1,11 +1,20 @@
-use crate::plan::{BoolLocalId, FrameLayout, IntLocalId, NilLocalId, StringLocalId};
+use crate::plan::{
+    BoolFunctionLocalId, BoolFunctionValue, BoolLocalId, FrameLayout, IntFunctionLocalId,
+    IntFunctionValue, IntLocalId, NilFunctionLocalId, NilFunctionValue, NilLocalId,
+    StringFunctionLocalId, StringFunctionValue, StringLocalId,
+};
 use ecow::EcoString;
 use num_bigint::BigInt;
+use std::collections::HashMap;
 
 pub(super) struct Frame {
     ints: Vec<BigInt>,
     strings: Vec<EcoString>,
     bools: Vec<bool>,
+    int_functions: HashMap<IntFunctionLocalId, IntFunctionValue>,
+    string_functions: HashMap<StringFunctionLocalId, StringFunctionValue>,
+    bool_functions: HashMap<BoolFunctionLocalId, BoolFunctionValue>,
+    nil_functions: HashMap<NilFunctionLocalId, NilFunctionValue>,
 }
 
 impl Frame {
@@ -14,6 +23,10 @@ impl Frame {
             ints: vec![BigInt::from(0); layout.ints()],
             strings: vec![EcoString::default(); layout.strings()],
             bools: vec![false; layout.bools()],
+            int_functions: HashMap::with_capacity(layout.int_functions()),
+            string_functions: HashMap::with_capacity(layout.string_functions()),
+            bool_functions: HashMap::with_capacity(layout.bool_functions()),
+            nil_functions: HashMap::with_capacity(layout.nil_functions()),
         }
     }
 
@@ -44,6 +57,46 @@ impl Frame {
     pub(super) fn set_nil(&mut self, _local: NilLocalId) {}
 
     pub(super) fn get_nil(&self, _local: NilLocalId) {}
+
+    pub(super) fn set_int_function(&mut self, local: IntFunctionLocalId, value: IntFunctionValue) {
+        self.int_functions.insert(local, value);
+    }
+
+    pub(super) fn get_int_function(&self, local: IntFunctionLocalId) -> IntFunctionValue {
+        self.int_functions[&local].clone()
+    }
+
+    pub(super) fn set_string_function(
+        &mut self,
+        local: StringFunctionLocalId,
+        value: StringFunctionValue,
+    ) {
+        self.string_functions.insert(local, value);
+    }
+
+    pub(super) fn get_string_function(&self, local: StringFunctionLocalId) -> StringFunctionValue {
+        self.string_functions[&local].clone()
+    }
+
+    pub(super) fn set_bool_function(
+        &mut self,
+        local: BoolFunctionLocalId,
+        value: BoolFunctionValue,
+    ) {
+        self.bool_functions.insert(local, value);
+    }
+
+    pub(super) fn get_bool_function(&self, local: BoolFunctionLocalId) -> BoolFunctionValue {
+        self.bool_functions[&local].clone()
+    }
+
+    pub(super) fn set_nil_function(&mut self, local: NilFunctionLocalId, value: NilFunctionValue) {
+        self.nil_functions.insert(local, value);
+    }
+
+    pub(super) fn get_nil_function(&self, local: NilFunctionLocalId) -> NilFunctionValue {
+        self.nil_functions[&local].clone()
+    }
 }
 
 impl Default for Frame {
@@ -59,23 +112,46 @@ fn set_slot<T>(slots: &mut [T], index: usize, value: T) {
 #[cfg(test)]
 mod tests {
     use super::Frame;
-    use crate::plan::{BoolLocalId, FrameLayout, IntLocalId, NilLocalId, StringLocalId};
+    use crate::plan::{
+        BoolFunctionId, BoolFunctionLocalId, BoolFunctionValue, BoolLocalId, FrameLayout,
+        IntFunctionId, IntFunctionLocalId, IntFunctionValue, IntLocalId, LocalId, NilFunctionId,
+        NilFunctionLocalId, NilFunctionValue, NilLocalId, StringFunctionId, StringFunctionLocalId,
+        StringFunctionValue, StringLocalId,
+    };
     use num_bigint::BigInt;
 
     #[test]
     fn frame_set_and_get_local() {
         let frame = frame_with_layout(1, 1, 1, 1);
         let mut frame = frame;
+        let int_function = int_function_value();
+        let string_function = string_function_value();
+        let bool_function = bool_function_value();
+        let nil_function = nil_function_value();
 
         frame.set_int(IntLocalId(0), int(1));
         frame.set_string(StringLocalId(0), "geam".into());
         frame.set_bool(BoolLocalId(0), true);
         frame.set_nil(NilLocalId(0));
+        frame.set_int_function(IntFunctionLocalId(0), int_function.clone());
+        frame.set_string_function(StringFunctionLocalId(0), string_function.clone());
+        frame.set_bool_function(BoolFunctionLocalId(0), bool_function.clone());
+        frame.set_nil_function(NilFunctionLocalId(0), nil_function.clone());
 
         assert_eq!(frame.get_int(IntLocalId(0)), int(1));
         assert_eq!(frame.get_string(StringLocalId(0)), "geam");
         assert!(frame.get_bool(BoolLocalId(0)));
         assert_eq!(frame.get_nil(NilLocalId(0)), ());
+        assert_eq!(frame.get_int_function(IntFunctionLocalId(0)), int_function);
+        assert_eq!(
+            frame.get_string_function(StringFunctionLocalId(0)),
+            string_function,
+        );
+        assert_eq!(
+            frame.get_bool_function(BoolFunctionLocalId(0)),
+            bool_function,
+        );
+        assert_eq!(frame.get_nil_function(NilFunctionLocalId(0)), nil_function);
     }
 
     #[test]
@@ -84,8 +160,14 @@ mod tests {
 
         frame.set_int(IntLocalId(0), int(1));
         frame.set_int(IntLocalId(0), int(2));
+        frame.set_int_function(IntFunctionLocalId(0), int_function_value());
+        frame.set_int_function(IntFunctionLocalId(0), other_int_function_value());
 
         assert_eq!(frame.get_int(IntLocalId(0)), int(2));
+        assert_eq!(
+            frame.get_int_function(IntFunctionLocalId(0)),
+            other_int_function_value(),
+        );
     }
 
     fn frame_with_layout(ints: usize, strings: usize, bools: usize, nils: usize) -> Frame {
@@ -102,10 +184,34 @@ mod tests {
         if nils > 0 {
             layout.include_nil(NilLocalId(nils - 1));
         }
+        layout.include_int_function(IntFunctionLocalId(0));
+        layout.include_string_function(StringFunctionLocalId(0));
+        layout.include_bool_function(BoolFunctionLocalId(0));
+        layout.include_nil_function(NilFunctionLocalId(0));
         Frame::new(layout)
     }
 
     fn int(value: i64) -> BigInt {
         BigInt::from(value)
+    }
+
+    fn int_function_value() -> IntFunctionValue {
+        IntFunctionValue::new(IntFunctionId(0), vec![LocalId::Int(IntLocalId(0))])
+    }
+
+    fn other_int_function_value() -> IntFunctionValue {
+        IntFunctionValue::new(IntFunctionId(1), vec![LocalId::Int(IntLocalId(0))])
+    }
+
+    fn string_function_value() -> StringFunctionValue {
+        StringFunctionValue::new(StringFunctionId(0), vec![LocalId::String(StringLocalId(0))])
+    }
+
+    fn bool_function_value() -> BoolFunctionValue {
+        BoolFunctionValue::new(BoolFunctionId(0), vec![LocalId::Bool(BoolLocalId(0))])
+    }
+
+    fn nil_function_value() -> NilFunctionValue {
+        NilFunctionValue::new(NilFunctionId(0), vec![LocalId::Int(IntLocalId(0))])
     }
 }

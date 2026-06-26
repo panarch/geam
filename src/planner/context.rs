@@ -1,7 +1,8 @@
 use crate::plan::{
-    BoolFunctionId, BoolLocalId, FunctionArgumentType, FunctionId, FunctionType, FunctionValue,
-    IntFunctionId, IntLocalId, LocalId, NilFunctionId, NilLocalId, RuntimeFunctionId,
-    StringFunctionId, StringLocalId, ValueType,
+    BoolFunctionId, BoolFunctionLocalId, BoolLocalId, FunctionArgumentType, FunctionId,
+    FunctionType, FunctionValue, IntFunctionId, IntFunctionLocalId, IntLocalId, LocalId,
+    NilFunctionId, NilFunctionLocalId, NilLocalId, RuntimeFunctionId, StringFunctionId,
+    StringFunctionLocalId, StringLocalId, ValueType,
 };
 use ecow::EcoString;
 use gleam_core::type_::Type;
@@ -28,12 +29,36 @@ pub(super) struct PlanContext<'a> {
     next_string_local: usize,
     next_bool_local: usize,
     next_nil_local: usize,
+    next_int_function_local: usize,
+    next_string_function_local: usize,
+    next_bool_function_local: usize,
+    next_nil_function_local: usize,
 }
 
 #[derive(Clone)]
 enum LocalBinding {
     Primitive { local: LocalId, type_: ValueType },
-    Function(FunctionValue),
+    Function(FunctionLocalBinding),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) enum FunctionLocalBinding {
+    Int {
+        local: IntFunctionLocalId,
+        type_: FunctionType,
+    },
+    String {
+        local: StringFunctionLocalId,
+        type_: FunctionType,
+    },
+    Bool {
+        local: BoolFunctionLocalId,
+        type_: FunctionType,
+    },
+    Nil {
+        local: NilFunctionLocalId,
+        type_: FunctionType,
+    },
 }
 
 impl<'a> PlanContext<'a> {
@@ -49,6 +74,10 @@ impl<'a> PlanContext<'a> {
             next_string_local: 0,
             next_bool_local: 0,
             next_nil_local: 0,
+            next_int_function_local: 0,
+            next_string_function_local: 0,
+            next_bool_function_local: 0,
+            next_nil_function_local: 0,
         }
     }
 
@@ -76,8 +105,60 @@ impl<'a> PlanContext<'a> {
             .insert(name, LocalBinding::Primitive { local, type_ });
     }
 
-    pub(super) fn define_function_alias(&mut self, name: EcoString, value: FunctionValue) {
-        self.bindings.insert(name, LocalBinding::Function(value));
+    pub(super) fn define_int_function_local(
+        &mut self,
+        name: EcoString,
+        type_: FunctionType,
+    ) -> IntFunctionLocalId {
+        let local = IntFunctionLocalId(self.next_int_function_local);
+        self.next_int_function_local += 1;
+        self.bindings.insert(
+            name,
+            LocalBinding::Function(FunctionLocalBinding::Int { local, type_ }),
+        );
+        local
+    }
+
+    pub(super) fn define_string_function_local(
+        &mut self,
+        name: EcoString,
+        type_: FunctionType,
+    ) -> StringFunctionLocalId {
+        let local = StringFunctionLocalId(self.next_string_function_local);
+        self.next_string_function_local += 1;
+        self.bindings.insert(
+            name,
+            LocalBinding::Function(FunctionLocalBinding::String { local, type_ }),
+        );
+        local
+    }
+
+    pub(super) fn define_bool_function_local(
+        &mut self,
+        name: EcoString,
+        type_: FunctionType,
+    ) -> BoolFunctionLocalId {
+        let local = BoolFunctionLocalId(self.next_bool_function_local);
+        self.next_bool_function_local += 1;
+        self.bindings.insert(
+            name,
+            LocalBinding::Function(FunctionLocalBinding::Bool { local, type_ }),
+        );
+        local
+    }
+
+    pub(super) fn define_nil_function_local(
+        &mut self,
+        name: EcoString,
+        type_: FunctionType,
+    ) -> NilFunctionLocalId {
+        let local = NilFunctionLocalId(self.next_nil_function_local);
+        self.next_nil_function_local += 1;
+        self.bindings.insert(
+            name,
+            LocalBinding::Function(FunctionLocalBinding::Nil { local, type_ }),
+        );
+        local
     }
 
     pub(super) fn define_int_local(&mut self, name: EcoString) -> IntLocalId {
@@ -143,9 +224,9 @@ impl<'a> PlanContext<'a> {
         self.functions.get(name).cloned()
     }
 
-    pub(super) fn lookup_function_value(&self, name: &EcoString) -> Option<FunctionValue> {
+    pub(super) fn lookup_function_local(&self, name: &EcoString) -> Option<FunctionLocalBinding> {
         match self.bindings.get(name)? {
-            LocalBinding::Function(value) => Some(value.clone()),
+            LocalBinding::Function(binding) => Some(binding.clone()),
             LocalBinding::Primitive { .. } => None,
         }
     }
@@ -242,9 +323,11 @@ impl ValueType {
 
 #[cfg(test)]
 mod tests {
+    use super::FunctionLocalBinding;
     use super::{FunctionInfo, FunctionRuntimeIds, PlanContext};
     use crate::plan::{
-        FunctionValue, IntFunctionId, IntLocalId, LocalId, RuntimeFunctionId, ValueType,
+        FunctionValue, IntFunctionId, IntFunctionLocalId, IntLocalId, LocalId, RuntimeFunctionId,
+        ValueType,
     };
     use ecow::EcoString;
     use std::collections::HashMap;
@@ -270,42 +353,54 @@ mod tests {
     }
 
     #[test]
-    fn define_function_alias_records_value() {
+    fn define_function_local_records_binding() {
         let module = EcoString::from("main");
         let functions = HashMap::<EcoString, FunctionInfo>::new();
         let mut context = PlanContext::new(&module, &functions);
         let value = function_value();
 
-        context.define_function_alias("f".into(), value.clone());
+        let local = context.define_int_function_local("f".into(), value.type_());
 
-        assert_eq!(context.lookup_function_value(&"f".into()), Some(value));
+        assert_eq!(
+            context.lookup_function_local(&"f".into()),
+            Some(FunctionLocalBinding::Int {
+                local,
+                type_: value.type_(),
+            })
+        );
         assert_eq!(context.lookup_local(&"f".into()), None);
     }
 
     #[test]
-    fn function_alias_shadows_primitive_binding() {
+    fn function_local_shadows_primitive_binding() {
         let module = EcoString::from("main");
         let functions = HashMap::<EcoString, FunctionInfo>::new();
         let mut context = PlanContext::new(&module, &functions);
         let value = function_value();
 
         context.define_int_local("f".into());
-        context.define_function_alias("f".into(), value.clone());
+        context.define_int_function_local("f".into(), value.type_());
 
-        assert_eq!(context.lookup_function_value(&"f".into()), Some(value));
+        assert_eq!(
+            context.lookup_function_local(&"f".into()),
+            Some(FunctionLocalBinding::Int {
+                local: IntFunctionLocalId(0),
+                type_: value.type_(),
+            })
+        );
         assert_eq!(context.lookup_local(&"f".into()), None);
     }
 
     #[test]
-    fn primitive_binding_shadows_function_alias() {
+    fn primitive_binding_shadows_function_local() {
         let module = EcoString::from("main");
         let functions = HashMap::<EcoString, FunctionInfo>::new();
         let mut context = PlanContext::new(&module, &functions);
 
-        context.define_function_alias("f".into(), function_value());
+        context.define_int_function_local("f".into(), function_value().type_());
         let local = context.define_int_local("f".into());
 
-        assert_eq!(context.lookup_function_value(&"f".into()), None);
+        assert_eq!(context.lookup_function_local(&"f".into()), None);
         assert_eq!(
             context.lookup_local(&"f".into()),
             Some((LocalId::Int(local), ValueType::Int))

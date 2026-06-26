@@ -15,6 +15,9 @@ pub(in crate::runtime) fn eval_int_expr(
         IntExprKind::Call { function, args } => {
             function::run_int_call(plan, *function, args, frame)
         }
+        IntExprKind::FunctionCall { function, args } => {
+            function::run_int_function_call(plan, function, args, frame)
+        }
         IntExprKind::Add { left, right } => {
             eval_int_expr(plan, frame, left) + eval_int_expr(plan, frame, right)
         }
