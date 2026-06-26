@@ -10,13 +10,13 @@ use self::runtime::RuntimePlan;
 use ecow::EcoString;
 use std::fmt;
 
-pub use expression::{BoolExpr, CallArg, Expr, IntExpr, NilExpr, StringExpr};
+pub use expression::{BoolExpr, CallArg, Expr, FunctionExpr, IntExpr, NilExpr, StringExpr};
 pub(crate) use expression::{
-    BoolExprKind, CallArgKind, ExprKind, IntExprKind, NilExprKind, StringExprKind,
+    BoolExprKind, CallArgKind, ExprKind, FunctionExprKind, IntExprKind, NilExprKind, StringExprKind,
 };
 pub(crate) use frame::FrameLayout;
-pub(crate) use function::RuntimeFunction;
-pub use function::{FunctionPlan, Param};
+pub use function::{FunctionPlan, Param, ReturnExpr};
+pub(crate) use function::{ReturnExprKind, RuntimeFunction};
 pub(crate) use id::RuntimeFunctionId;
 pub use id::{
     BoolFunctionId, BoolLocalId, FunctionId, IntFunctionId, IntLocalId, LocalId, NilFunctionId,
@@ -24,7 +24,7 @@ pub use id::{
 };
 pub use step::Step;
 pub(crate) use step::StepKind;
-pub use value::{Value, ValueType};
+pub use value::{FunctionType, FunctionValue, Value, ValueType};
 
 pub struct ExecutionPlan {
     module: EcoString,
@@ -97,7 +97,7 @@ impl PartialEq for ExecutionPlan {
 
 #[cfg(test)]
 mod tests {
-    use super::{ExecutionPlan, Expr, FunctionId, FunctionPlan, IntExpr};
+    use super::{ExecutionPlan, FunctionId, FunctionPlan, IntExpr, ReturnExpr};
     use num_bigint::BigInt;
 
     #[test]
@@ -107,14 +107,14 @@ mod tests {
             "main".into(),
             Vec::new(),
             Vec::new(),
-            Expr::int(IntExpr::value(BigInt::from(1))),
+            ReturnExpr::int(IntExpr::value(BigInt::from(1))),
         );
         let helper = FunctionPlan::new(
             FunctionId::new(1),
             "helper".into(),
             Vec::new(),
             Vec::new(),
-            Expr::int(IntExpr::value(BigInt::from(2))),
+            ReturnExpr::int(IntExpr::value(BigInt::from(2))),
         );
         let plan = ExecutionPlan::new("main".into(), main, vec![helper]);
 
@@ -133,7 +133,7 @@ mod tests {
                 "main".into(),
                 Vec::new(),
                 Vec::new(),
-                Expr::int(IntExpr::value(BigInt::from(1))),
+                ReturnExpr::int(IntExpr::value(BigInt::from(1))),
             ),
             Vec::new(),
         );

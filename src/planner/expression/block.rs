@@ -1,4 +1,4 @@
-use crate::plan::{BoolExpr, Expr, ExprKind, IntExpr, NilExpr, Step, StringExpr};
+use crate::plan::{BoolExpr, Expr, ExprKind, FunctionExpr, IntExpr, NilExpr, Step, StringExpr};
 use crate::planner::context::PlanContext;
 use crate::planner::error::PlanError;
 use crate::planner::statement::plan_non_empty_steps_and_return;
@@ -22,14 +22,17 @@ pub(super) fn block_expr(steps: Vec<Step>, return_: Expr) -> Expr {
         ExprKind::String(return_) => Expr::string(StringExpr::block(steps, return_)),
         ExprKind::Bool(return_) => Expr::bool(BoolExpr::block(steps, return_)),
         ExprKind::Nil(return_) => Expr::nil(NilExpr::block(steps, return_)),
+        ExprKind::Function(return_) => Expr::function(FunctionExpr::block(steps, return_)),
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use crate::plan::{IntFunctionId, LocalId, RuntimeFunctionId};
     use crate::planner::dsl::{
-        block_bool, block_int, block_nil, block_string, bool_, evaluate_step, function, int,
-        let_int_step, let_nil_step, local_int, local_nil, module, nil, string,
+        block_bool, block_function, block_int, block_nil, block_string, bool_, evaluate_step,
+        function, function_ref, int, let_int_step, let_nil_step, local_int, local_nil, module, nil,
+        string,
     };
     use crate::planner::plan_module;
     use crate::planner::support::{compile, expect_plan_error};
@@ -60,6 +63,36 @@ pub fn nil_main() {
                 function("bool_main", block_bool([], bool_(true))),
                 function("nil_main", block_nil([], nil())),
             ],
+        );
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn plan_function_valued_block_expression_statement() {
+        let actual = plan_module(compile(
+            r#"
+fn identity(value: Int) {
+  value
+}
+
+pub fn main() {
+  { identity }
+  1
+}
+"#,
+        ))
+        .expect("source should plan");
+        let expected = module(
+            "main",
+            function("main", int(1)).evaluate(block_function(
+                [],
+                function_ref(
+                    RuntimeFunctionId::Int(IntFunctionId(1)),
+                    [LocalId::Int(crate::plan::IntLocalId(0))],
+                ),
+            )),
+            [function("identity", local_int(0, "value")).param_int(0, "value")],
         );
 
         assert_eq!(actual, expected);

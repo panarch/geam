@@ -1,7 +1,8 @@
 use super::{
-    BoolExpr, BoolFunctionId, ExprKind, FunctionPlan, IntExpr, IntFunctionId, NilExpr,
-    NilFunctionId, RuntimeFunction, RuntimeFunctionId, StringExpr, StringFunctionId,
+    BoolExpr, BoolFunctionId, FunctionPlan, IntExpr, IntFunctionId, NilExpr, NilFunctionId,
+    RuntimeFunction, RuntimeFunctionId, StringExpr, StringFunctionId,
 };
+use crate::plan::ReturnExprKind;
 
 pub(super) struct RuntimePlan {
     main: RuntimeFunctionId,
@@ -69,7 +70,7 @@ fn runtime_function(
     runtime_functions: &mut RuntimePlanBuilder,
 ) -> RuntimeFunctionId {
     match function.return_().kind() {
-        ExprKind::Int(return_) => {
+        ReturnExprKind::Int(return_) => {
             let id = IntFunctionId(runtime_functions.int_functions.len());
             runtime_functions.int_functions.push(RuntimeFunction::new(
                 function.frame_layout(),
@@ -78,7 +79,7 @@ fn runtime_function(
             ));
             RuntimeFunctionId::Int(id)
         }
-        ExprKind::String(return_) => {
+        ReturnExprKind::String(return_) => {
             let id = StringFunctionId(runtime_functions.string_functions.len());
             runtime_functions
                 .string_functions
@@ -89,7 +90,7 @@ fn runtime_function(
                 ));
             RuntimeFunctionId::String(id)
         }
-        ExprKind::Bool(return_) => {
+        ReturnExprKind::Bool(return_) => {
             let id = BoolFunctionId(runtime_functions.bool_functions.len());
             runtime_functions.bool_functions.push(RuntimeFunction::new(
                 function.frame_layout(),
@@ -98,7 +99,7 @@ fn runtime_function(
             ));
             RuntimeFunctionId::Bool(id)
         }
-        ExprKind::Nil(return_) => {
+        ReturnExprKind::Nil(return_) => {
             let id = NilFunctionId(runtime_functions.nil_functions.len());
             runtime_functions.nil_functions.push(RuntimeFunction::new(
                 function.frame_layout(),

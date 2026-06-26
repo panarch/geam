@@ -1,4 +1,4 @@
-use crate::plan::{FunctionPlan, Param};
+use crate::plan::{Expr, ExprKind, FunctionPlan, Param, ReturnExpr, ValueType};
 use crate::planner::context::{FunctionInfo, PlanContext};
 use crate::planner::error::{
     InvalidFunctionShapeReason, InvalidTypedAstReason, PlanError, UnsupportedFunctionReason,
@@ -28,7 +28,11 @@ pub(super) fn plan_function(
         .params
         .iter()
         .map(|param| {
-            context.define_existing_local(param.name.clone(), param.local);
+            context.define_existing_local(
+                param.name.clone(),
+                param.local,
+                param.local.value_type(),
+            );
             Param::new(param.local, param.name.clone())
         })
         .collect();
@@ -42,14 +46,34 @@ pub(super) fn plan_function(
             },
         },
     )?;
+    let return_ = function_return_expr(&name, &info.return_type(), planned.return_)?;
 
     Ok(FunctionPlan::new(
         info.id,
         name,
         params,
         planned.steps,
-        planned.return_,
+        return_,
     ))
+}
+
+fn function_return_expr(
+    name: &EcoString,
+    expected: &ValueType,
+    actual: Expr,
+) -> Result<ReturnExpr, PlanError> {
+    match (expected, actual.into_kind()) {
+        (ValueType::Int, ExprKind::Int(actual)) => Ok(ReturnExpr::int(actual)),
+        (ValueType::String, ExprKind::String(actual)) => Ok(ReturnExpr::string(actual)),
+        (ValueType::Bool, ExprKind::Bool(actual)) => Ok(ReturnExpr::bool(actual)),
+        (ValueType::Nil, ExprKind::Nil(actual)) => Ok(ReturnExpr::nil(actual)),
+        _ => Err(PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::FunctionShape {
+                name: name.clone(),
+                reason: InvalidFunctionShapeReason::ReturnTypeMismatch,
+            },
+        }),
+    }
 }
 
 pub(super) fn function_name(function: &TypedFunction) -> Result<EcoString, PlanError> {
@@ -229,6 +253,38 @@ pub fn main() {
                 reason: UnsupportedArgumentReason::Discard,
             },
         );
+
+        assert_eq!(
+            expect_plan_error(
+                r#"
+pub fn main() {
+  [1]
+}
+"#,
+            ),
+            PlanError::UnsupportedFunction {
+                name: "main".into(),
+                reason: UnsupportedFunctionReason::UnsupportedReturnType,
+            },
+        );
+
+        assert_eq!(
+            expect_plan_error(
+                r#"
+fn identity(value: Int) {
+  value
+}
+
+pub fn main() {
+  identity
+}
+"#,
+            ),
+            PlanError::UnsupportedFunction {
+                name: "main".into(),
+                reason: UnsupportedFunctionReason::UnsupportedReturnType,
+            },
+        );
     }
 
     #[test]
@@ -253,6 +309,18 @@ pub fn main() {
                 reason: InvalidTypedAstReason::FunctionShape {
                     name: "<anonymous>".into(),
                     reason: InvalidFunctionShapeReason::Anonymous,
+                },
+            }),
+        );
+
+        let mut return_type_mismatch = compile_minimal_module();
+        return_type_mismatch.definitions.functions[0].return_type = gleam_core::type_::bool();
+        assert_eq!(
+            plan_module(return_type_mismatch),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::FunctionShape {
+                    name: "main".into(),
+                    reason: InvalidFunctionShapeReason::ReturnTypeMismatch,
                 },
             }),
         );

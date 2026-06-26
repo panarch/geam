@@ -130,6 +130,37 @@ pub(super) fn expect_case_statement_mut(
 }
 
 #[cfg(test)]
+pub(super) fn expect_assignment_case_statement_mut(
+    statement: &mut TypedStatement,
+) -> (
+    &mut std::sync::Arc<Type>,
+    &mut Vec<TypedExpr>,
+    &mut Vec<TypedClause>,
+) {
+    let Statement::Assignment(assignment) = statement else {
+        panic!("expected case assignment statement");
+    };
+    let TypedExpr::Case {
+        type_,
+        subjects,
+        clauses,
+        ..
+    } = &mut assignment.value
+    else {
+        panic!("expected case assignment value");
+    };
+    (type_, subjects, clauses)
+}
+
+#[cfg(test)]
+pub(super) fn expect_expression_statement(statement: &TypedStatement) -> &TypedExpr {
+    let Statement::Expression(expression) = statement else {
+        panic!("expected expression statement");
+    };
+    expression
+}
+
+#[cfg(test)]
 mod tests {
     use crate::planner::plan_module;
     use crate::planner::support::{compile_minimal_module, dummy_span, expect_plan_error};
@@ -320,5 +351,43 @@ pub fn main() {
         let mut module = compile_minimal_module();
 
         super::expect_case_statement_mut(&mut module.definitions.functions[0].body[0]);
+    }
+
+    #[test]
+    #[should_panic(expected = "expected case assignment statement")]
+    fn expect_assignment_case_statement_mut_panics_on_expression() {
+        let mut module = compile_minimal_module();
+
+        super::expect_assignment_case_statement_mut(&mut module.definitions.functions[0].body[0]);
+    }
+
+    #[test]
+    #[should_panic(expected = "expected case assignment value")]
+    fn expect_assignment_case_statement_mut_panics_on_int_assignment() {
+        let mut module = crate::planner::support::compile(
+            r#"
+pub fn main() {
+  let x = 1
+  x
+}
+"#,
+        );
+
+        super::expect_assignment_case_statement_mut(&mut module.definitions.functions[0].body[0]);
+    }
+
+    #[test]
+    #[should_panic(expected = "expected expression statement")]
+    fn expect_expression_statement_panics_on_assignment() {
+        let module = crate::planner::support::compile(
+            r#"
+pub fn main() {
+  let x = 1
+  x
+}
+"#,
+        );
+
+        super::expect_expression_statement(&module.definitions.functions[0].body[0]);
     }
 }

@@ -4,7 +4,7 @@ use crate::planner::context::PlanContext;
 use crate::planner::error::{
     InvalidPipelineShapeReason, InvalidTypedAstReason, PlanError, UnsupportedPipelineReason,
 };
-use crate::planner::statement::plan_variable_step;
+use crate::planner::statement::plan_variable_runtime_step;
 use gleam_core::ast::{PipelineAssignmentKind, TypedExpr, TypedPipelineAssignment};
 
 pub(super) fn plan(
@@ -16,9 +16,13 @@ pub(super) fn plan(
 ) -> Result<Expr, PlanError> {
     context.with_local_scope(|context| {
         let mut steps = Vec::with_capacity(assignments.len() + 1);
-        steps.push(plan_first_assignment(first_value, context)?);
+        if let Some(step) = plan_first_assignment(first_value, context)? {
+            steps.push(step);
+        }
         for (assignment, kind) in assignments {
-            steps.push(plan_assignment(assignment, kind, context)?);
+            if let Some(step) = plan_assignment(assignment, kind, context)? {
+                steps.push(step);
+            }
         }
         let return_ = plan_pipeline_value(finally, finally_kind, context)?;
 
@@ -29,20 +33,20 @@ pub(super) fn plan(
 fn plan_first_assignment(
     assignment: TypedPipelineAssignment,
     context: &mut PlanContext<'_>,
-) -> Result<Step, PlanError> {
+) -> Result<Option<Step>, PlanError> {
     let value = plan_expr(*assignment.value, context)?;
 
-    Ok(plan_variable_step(assignment.name, value, context))
+    plan_variable_runtime_step(assignment.name, value, context)
 }
 
 fn plan_assignment(
     assignment: TypedPipelineAssignment,
     kind: PipelineAssignmentKind,
     context: &mut PlanContext<'_>,
-) -> Result<Step, PlanError> {
+) -> Result<Option<Step>, PlanError> {
     let value = plan_pipeline_value(*assignment.value, kind, context)?;
 
-    Ok(plan_variable_step(assignment.name, value, context))
+    plan_variable_runtime_step(assignment.name, value, context)
 }
 
 fn plan_pipeline_value(
@@ -120,7 +124,6 @@ mod tests {
         ArgNames, CallArg, ImplicitCallArgOrigin, PipelineAssignmentKind, Statement, TypedArg,
         TypedExpr, TypedPipelineAssignment, TypedStatement,
     };
-    use gleam_core::type_::error::VariableOrigin;
     use gleam_core::type_::{self, ValueConstructor, ValueConstructorVariant};
     use std::sync::Arc;
     use vec1::Vec1;
@@ -426,7 +429,7 @@ fn identity_nil(value: Nil) {
         assert_eq!(
             expect_plan_error(r#"pub fn main() { 1 |> fn(x) { x } }"#),
             PlanError::UnsupportedPipeline {
-                reason: UnsupportedPipelineReason::NonDirectLocalFunction,
+                reason: UnsupportedPipelineReason::FunctionValueCall,
             },
         );
         assert_eq!(
@@ -438,7 +441,7 @@ pub fn main() {
 "#,
             ),
             PlanError::UnsupportedPipeline {
-                reason: UnsupportedPipelineReason::FunctionCall,
+                reason: UnsupportedPipelineReason::FunctionValueCall,
             },
         );
         assert_eq!(
@@ -574,27 +577,24 @@ pub fn main() {
     }
 
     #[test]
-    fn reject_margin_pipeline_non_direct_var_function() {
-        let mut local_variable_function = compile_pipeline_module();
+    fn reject_margin_pipeline_hole_capture_shapes() {
+        let mut missing_pipe_argument = compile_hole_pipeline_module();
         let (_, _, finally, _) = expect_pipeline_statement_mut(
-            &mut local_variable_function.definitions.functions[1].body[0],
+            &mut missing_pipe_argument.definitions.functions[1].body[0],
         );
-        let (_, fun, _) = expect_pipeline_final_call_mut(finally);
-        let constructor = expect_var_constructor_mut(fun);
-        constructor.variant = ValueConstructorVariant::LocalVariable {
-            location: dummy_span(),
-            origin: VariableOrigin::generated(),
-        };
+        let arguments = expect_call_arguments_mut(finally);
+        for argument in arguments {
+            if argument.implicit == Some(ImplicitCallArgOrigin::Pipe) {
+                argument.implicit = None;
+            }
+        }
         assert_eq!(
-            plan_module(local_variable_function),
+            plan_module(missing_pipe_argument),
             Err(invalid_pipeline_shape(
-                InvalidPipelineShapeReason::NonDirectLocalFunction,
+                InvalidPipelineShapeReason::MissingPipeArgument,
             )),
         );
-    }
 
-    #[test]
-    fn reject_margin_pipeline_hole_capture_shapes() {
         let mut missing_capture_arg = compile_hole_pipeline_module();
         let (capture_args, _) = expect_pipeline_hole_capture_mut(
             &mut missing_capture_arg.definitions.functions[1].body[0],

@@ -1,6 +1,7 @@
 use crate::plan::{
-    BoolExpr, BoolFunctionId, BoolLocalId, CallArg, Expr, IntExpr, IntFunctionId, IntLocalId,
-    NilExpr, NilFunctionId, NilLocalId, Step, StringExpr, StringFunctionId, StringLocalId,
+    BoolExpr, BoolFunctionId, BoolLocalId, CallArg, Expr, FunctionExpr, FunctionValue, IntExpr,
+    IntFunctionId, IntLocalId, LocalId, NilExpr, NilFunctionId, NilLocalId, ReturnExpr,
+    RuntimeFunctionId, Step, StringExpr, StringFunctionId, StringLocalId,
 };
 use ecow::EcoString;
 use num_bigint::BigInt;
@@ -12,6 +13,8 @@ pub(crate) struct String(StringExpr);
 pub(crate) struct Bool(BoolExpr);
 
 pub(crate) struct Nil(NilExpr);
+
+pub(crate) struct Function(FunctionExpr);
 
 pub(crate) fn int(value: i64) -> Int {
     Int(IntExpr::value(BigInt::from(value)))
@@ -27,6 +30,16 @@ pub(crate) fn bool_(value: bool) -> Bool {
 
 pub(crate) fn nil() -> Nil {
     Nil(NilExpr::value())
+}
+
+pub(crate) fn function_ref(
+    runtime_id: RuntimeFunctionId,
+    params: impl IntoIterator<Item = LocalId>,
+) -> Function {
+    Function(FunctionExpr::value(FunctionValue::new(
+        runtime_id,
+        params.into_iter().collect(),
+    )))
 }
 
 pub(crate) fn equal(left: impl Into<Expr>, right: impl Into<Expr>) -> Bool {
@@ -146,6 +159,13 @@ pub(crate) fn block_bool(steps: impl IntoIterator<Item = Step>, return_: Bool) -
 
 pub(crate) fn block_nil(steps: impl IntoIterator<Item = Step>, return_: Nil) -> Nil {
     Nil(NilExpr::block(steps.into_iter().collect(), return_.into()))
+}
+
+pub(crate) fn block_function(steps: impl IntoIterator<Item = Step>, return_: Function) -> Function {
+    Function(FunctionExpr::block(
+        steps.into_iter().collect(),
+        return_.into(),
+    ))
 }
 
 pub(crate) fn let_int_step(local: usize, name: impl Into<EcoString>, value: Int) -> Step {
@@ -296,7 +316,19 @@ impl From<Int> for Expr {
     }
 }
 
+impl From<Int> for ReturnExpr {
+    fn from(value: Int) -> Self {
+        Self::int(value.into())
+    }
+}
+
 impl From<String> for Expr {
+    fn from(value: String) -> Self {
+        Self::string(value.into())
+    }
+}
+
+impl From<String> for ReturnExpr {
     fn from(value: String) -> Self {
         Self::string(value.into())
     }
@@ -308,9 +340,27 @@ impl From<Bool> for Expr {
     }
 }
 
+impl From<Bool> for ReturnExpr {
+    fn from(value: Bool) -> Self {
+        Self::bool(value.into())
+    }
+}
+
 impl From<Nil> for Expr {
     fn from(value: Nil) -> Self {
         Self::nil(value.into())
+    }
+}
+
+impl From<Nil> for ReturnExpr {
+    fn from(value: Nil) -> Self {
+        Self::nil(value.into())
+    }
+}
+
+impl From<Function> for Expr {
+    fn from(value: Function) -> Self {
+        Self::function(value.into())
     }
 }
 
@@ -338,11 +388,18 @@ impl From<Nil> for NilExpr {
     }
 }
 
+impl From<Function> for FunctionExpr {
+    fn from(value: Function) -> Self {
+        value.0
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::plan::{
-        BoolExprKind, CallArgKind, ExprKind, IntExprKind, NilExprKind, StepKind, StringExprKind,
+        BoolExprKind, CallArgKind, ExprKind, FunctionExprKind, IntExprKind, NilExprKind,
+        RuntimeFunctionId, StepKind, StringExprKind,
     };
 
     #[test]
@@ -390,6 +447,10 @@ mod tests {
 
     #[test]
     fn string_dsl() {
+        assert!(matches!(
+            Expr::from(string("a")).kind(),
+            ExprKind::String(_),
+        ));
         assert!(matches!(
             string("a").concatenate(string("b")).0.kind(),
             StringExprKind::Concatenate { .. },
@@ -474,6 +535,7 @@ mod tests {
 
     #[test]
     fn nil_dsl() {
+        assert!(matches!(Expr::from(nil()).kind(), ExprKind::Nil(_),));
         assert!(matches!(
             bool_case_nil(bool_(true), nil(), nil()).0.kind(),
             NilExprKind::BoolCase { .. },
@@ -487,6 +549,37 @@ mod tests {
                 .0
                 .kind(),
             NilExprKind::Block { .. },
+        ));
+    }
+
+    #[test]
+    fn function_dsl() {
+        assert!(matches!(
+            Expr::from(function_ref(
+                RuntimeFunctionId::Int(crate::plan::IntFunctionId(0)),
+                [crate::plan::LocalId::Int(crate::plan::IntLocalId(0))],
+            ))
+            .kind(),
+            ExprKind::Function(_),
+        ));
+        assert!(matches!(
+            FunctionExpr::from(function_ref(
+                RuntimeFunctionId::Int(crate::plan::IntFunctionId(0)),
+                [crate::plan::LocalId::Int(crate::plan::IntLocalId(0))],
+            ))
+            .kind(),
+            FunctionExprKind::Value(_),
+        ));
+        assert!(matches!(
+            FunctionExpr::from(block_function(
+                [],
+                function_ref(
+                    RuntimeFunctionId::Int(crate::plan::IntFunctionId(0)),
+                    [crate::plan::LocalId::Int(crate::plan::IntLocalId(0))],
+                ),
+            ))
+            .kind(),
+            FunctionExprKind::Block { .. },
         ));
     }
 

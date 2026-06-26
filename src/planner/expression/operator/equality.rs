@@ -1,6 +1,6 @@
-use crate::plan::{BoolExpr, Expr};
+use crate::plan::{BoolExpr, Expr, ValueType};
 use crate::planner::context::PlanContext;
-use crate::planner::error::PlanError;
+use crate::planner::error::{PlanError, UnsupportedBinOpKind};
 use gleam_core::ast::TypedExpr;
 
 pub(super) fn equal(
@@ -8,10 +8,11 @@ pub(super) fn equal(
     right: TypedExpr,
     context: &mut PlanContext<'_>,
 ) -> Result<Expr, PlanError> {
-    Ok(Expr::bool(BoolExpr::equal(
-        super::super::plan_expr(left, context)?,
-        super::super::plan_expr(right, context)?,
-    )))
+    let left = super::super::plan_expr(left, context)?;
+    let right = super::super::plan_expr(right, context)?;
+    reject_function_equality(&left, &right, UnsupportedBinOpKind::EqFunction)?;
+
+    Ok(Expr::bool(BoolExpr::equal(left, right)))
 }
 
 pub(super) fn not_equal(
@@ -19,17 +20,33 @@ pub(super) fn not_equal(
     right: TypedExpr,
     context: &mut PlanContext<'_>,
 ) -> Result<Expr, PlanError> {
-    Ok(Expr::bool(BoolExpr::not_equal(
-        super::super::plan_expr(left, context)?,
-        super::super::plan_expr(right, context)?,
-    )))
+    let left = super::super::plan_expr(left, context)?;
+    let right = super::super::plan_expr(right, context)?;
+    reject_function_equality(&left, &right, UnsupportedBinOpKind::NotEqFunction)?;
+
+    Ok(Expr::bool(BoolExpr::not_equal(left, right)))
+}
+
+fn reject_function_equality(
+    left: &Expr,
+    right: &Expr,
+    operator: UnsupportedBinOpKind,
+) -> Result<(), PlanError> {
+    if matches!(left.value_type(), ValueType::Function(_))
+        || matches!(right.value_type(), ValueType::Function(_))
+    {
+        return Err(PlanError::UnsupportedBinOp { operator });
+    }
+
+    Ok(())
 }
 
 #[cfg(test)]
 mod tests {
     use crate::planner::dsl::{bool_, equal, function, int, module, not_equal};
     use crate::planner::plan_module;
-    use crate::planner::support::compile;
+    use crate::planner::support::{compile, expect_plan_error};
+    use crate::planner::{PlanError, UnsupportedBinOpKind};
 
     #[test]
     fn plan_equality_operators() {
@@ -52,5 +69,41 @@ pub fn not_equal() {
         );
 
         assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn reject_profile_function_equality_operators() {
+        assert_eq!(
+            expect_plan_error(
+                r#"
+fn add_one(value: Int) {
+  value + 1
+}
+
+pub fn main() {
+  add_one == add_one
+}
+"#,
+            ),
+            PlanError::UnsupportedBinOp {
+                operator: UnsupportedBinOpKind::EqFunction,
+            },
+        );
+        assert_eq!(
+            expect_plan_error(
+                r#"
+fn add_one(value: Int) {
+  value + 1
+}
+
+pub fn main() {
+  add_one != add_one
+}
+"#,
+            ),
+            PlanError::UnsupportedBinOp {
+                operator: UnsupportedBinOpKind::NotEqFunction,
+            },
+        );
     }
 }

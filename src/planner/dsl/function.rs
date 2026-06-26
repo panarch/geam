@@ -1,6 +1,6 @@
 use crate::plan::{
-    BoolLocalId, Expr, FunctionId, FunctionPlan, IntLocalId, LocalId, NilLocalId, Param, Step,
-    StringLocalId,
+    BoolLocalId, Expr, FunctionId, FunctionPlan, IntLocalId, LocalId, NilLocalId, Param,
+    ReturnExpr, Step, StringLocalId,
 };
 use crate::planner::dsl::expression::{Bool, Int, Nil, String};
 use ecow::EcoString;
@@ -9,10 +9,10 @@ pub(crate) struct FunctionDsl {
     name: EcoString,
     params: Vec<Param>,
     steps: Vec<Step>,
-    return_: Expr,
+    return_: ReturnExpr,
 }
 
-pub(crate) fn function(name: impl Into<EcoString>, return_: impl Into<Expr>) -> FunctionDsl {
+pub(crate) fn function(name: impl Into<EcoString>, return_: impl Into<ReturnExpr>) -> FunctionDsl {
     FunctionDsl {
         name: name.into(),
         params: Vec::new(),

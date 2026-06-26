@@ -1,6 +1,7 @@
 mod block;
 mod call;
 mod case;
+mod function;
 mod operator;
 mod pipeline;
 mod var;
@@ -48,9 +49,13 @@ pub(super) fn plan_expr(
             finally_kind,
             ..
         } => pipeline::plan(first_value, assignments, *finally, finally_kind, context),
-        TypedExpr::Fn { .. } => Err(PlanError::UnsupportedExpression {
-            kind: UnsupportedExpressionKind::AnonymousFunction,
-        }),
+        TypedExpr::Fn {
+            type_,
+            kind,
+            arguments,
+            body,
+            ..
+        } => function::plan_anonymous(type_, kind, arguments, body, context),
         TypedExpr::List { .. } => Err(PlanError::UnsupportedExpression {
             kind: UnsupportedExpressionKind::List,
         }),
@@ -148,6 +153,7 @@ fn expression_type(expression: &Expr) -> InvalidExpressionType {
         ValueType::String => InvalidExpressionType::String,
         ValueType::Bool => InvalidExpressionType::Bool,
         ValueType::Nil => InvalidExpressionType::Nil,
+        ValueType::Function(_) => InvalidExpressionType::Function,
     }
 }
 
@@ -214,11 +220,13 @@ pub(in crate::planner::expression) fn typed_prelude_constructor(
 
 #[cfg(test)]
 mod tests {
-    use super::{module_returning_typed_expr, typed_int_expr};
+    use super::{invalid_expression_type, module_returning_typed_expr, typed_int_expr};
+    use crate::plan::{Expr, FunctionExpr, FunctionValue, NilFunctionId, RuntimeFunctionId};
     use crate::planner::plan_module;
     use crate::planner::support::{compile, dummy_span, expect_plan_error};
     use crate::planner::{
-        InvalidExpressionShapeKind, InvalidTypedAstReason, PlanError, UnsupportedExpressionKind,
+        InvalidExpressionShapeKind, InvalidExpressionType, InvalidTypedAstReason, PlanError,
+        UnsupportedExpressionKind,
     };
     use gleam_core::ast::{Constant, TypedExpr};
     use gleam_core::type_::{self, ModuleValueConstructor};
@@ -228,25 +236,34 @@ mod tests {
     fn reject_profile_expression_variants() {
         let cases = [
             (
-                r#"pub fn main() { 1.0 }"#,
+                r#"
+pub fn main() {
+  1.0
+  1
+}
+"#,
                 PlanError::UnsupportedExpression {
                     kind: UnsupportedExpressionKind::Float,
                 },
             ),
             (
-                r#"pub fn main() { fn(x) { x } }"#,
-                PlanError::UnsupportedExpression {
-                    kind: UnsupportedExpressionKind::AnonymousFunction,
-                },
-            ),
-            (
-                r#"pub fn main() { [1, 2, 3] }"#,
+                r#"
+pub fn main() {
+  [1, 2, 3]
+  1
+}
+"#,
                 PlanError::UnsupportedExpression {
                     kind: UnsupportedExpressionKind::List,
                 },
             ),
             (
-                r#"pub fn main() { #(1, 2) }"#,
+                r#"
+pub fn main() {
+  #(1, 2)
+  1
+}
+"#,
                 PlanError::UnsupportedExpression {
                     kind: UnsupportedExpressionKind::Tuple,
                 },
@@ -258,13 +275,23 @@ mod tests {
                 },
             ),
             (
-                r#"pub fn main() { todo }"#,
+                r#"
+pub fn main() {
+  todo
+  1
+}
+"#,
                 PlanError::UnsupportedExpression {
                     kind: UnsupportedExpressionKind::Todo,
                 },
             ),
             (
-                r#"pub fn main() { panic }"#,
+                r#"
+pub fn main() {
+  panic
+  1
+}
+"#,
                 PlanError::UnsupportedExpression {
                     kind: UnsupportedExpressionKind::Panic,
                 },
@@ -276,7 +303,12 @@ mod tests {
                 },
             ),
             (
-                r#"pub fn main() { <<1>> }"#,
+                r#"
+pub fn main() {
+  <<1>>
+  1
+}
+"#,
                 PlanError::UnsupportedExpression {
                     kind: UnsupportedExpressionKind::BitArray,
                 },
@@ -386,6 +418,24 @@ pub fn main() {
                     kind: InvalidExpressionShapeKind::Invalid,
                 },
             }),
+        );
+    }
+
+    #[test]
+    fn reject_margin_function_expression_type() {
+        let expression = Expr::function(FunctionExpr::value(FunctionValue::new(
+            RuntimeFunctionId::Nil(NilFunctionId(0)),
+            Vec::new(),
+        )));
+
+        assert_eq!(
+            invalid_expression_type(InvalidExpressionType::Int, &expression),
+            PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionType {
+                    expected: InvalidExpressionType::Int,
+                    actual: InvalidExpressionType::Function,
+                },
+            },
         );
     }
 }

@@ -432,6 +432,54 @@ pub fn main() {
         );
     }
 
+    #[test]
+    fn reject_margin_int_case_function_branch_type_mismatch() {
+        let mut module = crate::planner::support::compile(
+            r#"
+pub fn main() {
+  let function = case 1 {
+    1 -> add_one
+    _ -> add_one
+  }
+  stringify
+  1
+}
+
+fn add_one(value: Int) {
+  value + 1
+}
+
+fn stringify(value: Int) {
+  "value"
+}
+"#,
+        );
+        let body = module
+            .definitions
+            .functions
+            .iter_mut()
+            .find(|function| {
+                function
+                    .name
+                    .as_ref()
+                    .is_some_and(|(_, name)| name == "main")
+            })
+            .map(|function| &mut function.body)
+            .expect("expected main function");
+        let replacement = super::super::expect_expression_statement(&body[1]).clone();
+        let (_, _, clauses) = super::super::expect_assignment_case_statement_mut(&mut body[0]);
+        clauses[1].then = replacement;
+
+        assert_eq!(
+            plan_module(module),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::CaseShape {
+                    reason: InvalidCaseShapeReason::BranchReturnTypeMismatch,
+                },
+            }),
+        );
+    }
+
     fn compile_int_case_module() -> TypedModule {
         crate::planner::support::compile(
             r#"

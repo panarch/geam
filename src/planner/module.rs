@@ -1,4 +1,4 @@
-use crate::plan::{ExecutionPlan, FunctionId, LocalId, ValueType};
+use crate::plan::{ExecutionPlan, FunctionId, LocalId, RuntimeFunctionId, ValueType};
 use crate::planner::context::{FunctionInfo, FunctionParam, FunctionRuntimeIds};
 use crate::planner::error::{
     PlanError, UnsupportedArgumentReason, UnsupportedFunctionReason, UnsupportedTopLevelKind,
@@ -6,6 +6,7 @@ use crate::planner::error::{
 use crate::planner::function::{function_name, plan_function};
 use ecow::EcoString;
 use gleam_core::ast::{ArgNames, TypedFunction, TypedModule};
+use gleam_core::type_::Type;
 use std::collections::HashMap;
 
 pub fn plan_module(module: TypedModule) -> Result<ExecutionPlan, PlanError> {
@@ -70,12 +71,11 @@ fn function_table(
 
     for function in functions {
         let name = function_name(function)?;
-        let return_type = ValueType::from_gleam(&function.return_type);
+        let return_type = FunctionReturnType::from_gleam(name.clone(), &function.return_type)?;
         let params = function_params(name.clone(), &function.arguments)?;
         seeds.push(FunctionSeed {
             name,
             function: function.clone(),
-            arity: function.arguments.len(),
             params,
             return_type,
         });
@@ -137,14 +137,11 @@ fn function_info(
     seed: &FunctionSeed,
     runtime_ids: &mut FunctionRuntimeIds,
 ) -> FunctionInfo {
-    let return_type = seed.return_type;
-    let runtime_id = return_type.map(|return_type| runtime_ids.next(return_type));
+    let runtime_id = seed.return_type.runtime_id(runtime_ids);
     FunctionInfo {
         id: FunctionId::new(function_index),
         runtime_id,
-        arity: seed.arity,
         params: seed.params.clone(),
-        return_type,
     }
 }
 
@@ -152,9 +149,44 @@ fn function_info(
 struct FunctionSeed {
     name: EcoString,
     function: TypedFunction,
-    arity: usize,
     params: Vec<FunctionParam>,
-    return_type: Option<ValueType>,
+    return_type: FunctionReturnType,
+}
+
+#[derive(Clone, Copy)]
+enum FunctionReturnType {
+    Int,
+    String,
+    Bool,
+    Nil,
+}
+
+impl FunctionReturnType {
+    fn from_gleam(name: EcoString, type_: &Type) -> Result<Self, PlanError> {
+        if type_.is_int() {
+            Ok(Self::Int)
+        } else if type_.is_string() {
+            Ok(Self::String)
+        } else if type_.is_bool() {
+            Ok(Self::Bool)
+        } else if type_.is_nil() {
+            Ok(Self::Nil)
+        } else {
+            Err(PlanError::UnsupportedFunction {
+                name,
+                reason: UnsupportedFunctionReason::UnsupportedReturnType,
+            })
+        }
+    }
+
+    fn runtime_id(self, runtime_ids: &mut FunctionRuntimeIds) -> RuntimeFunctionId {
+        match self {
+            Self::Int => runtime_ids.next_int(),
+            Self::String => runtime_ids.next_string(),
+            Self::Bool => runtime_ids.next_bool(),
+            Self::Nil => runtime_ids.next_nil(),
+        }
+    }
 }
 
 fn function_params(
@@ -183,31 +215,39 @@ fn function_params(
                 });
             }
 
-            let local = match ValueType::from_gleam(&argument.type_) {
-                Some(ValueType::Int) => {
+            let Some(type_) = ValueType::from_gleam(&argument.type_) else {
+                return Err(PlanError::UnsupportedArgument {
+                    function: function_name.clone(),
+                    reason: UnsupportedArgumentReason::UnsupportedType,
+                });
+            };
+            let local = match &type_ {
+                ValueType::Int => {
                     let local = LocalId::Int(crate::plan::IntLocalId(next_int));
                     next_int += 1;
                     local
                 }
-                Some(ValueType::String) => {
+                ValueType::String => {
                     let local = LocalId::String(crate::plan::StringLocalId(next_string));
                     next_string += 1;
                     local
                 }
-                Some(ValueType::Bool) => {
+                ValueType::Bool => {
                     let local = LocalId::Bool(crate::plan::BoolLocalId(next_bool));
                     next_bool += 1;
                     local
                 }
-                Some(ValueType::Nil) => {
+                ValueType::Nil => {
                     let local = LocalId::Nil(crate::plan::NilLocalId(next_nil));
                     next_nil += 1;
                     local
                 }
-                None => Err(PlanError::UnsupportedArgument {
-                    function: function_name.clone(),
-                    reason: UnsupportedArgumentReason::UnsupportedType,
-                })?,
+                ValueType::Function(_) => {
+                    return Err(PlanError::UnsupportedArgument {
+                        function: function_name.clone(),
+                        reason: UnsupportedArgumentReason::UnsupportedType,
+                    });
+                }
             };
             Ok(FunctionParam { local, name })
         })
@@ -215,7 +255,7 @@ fn function_params(
 }
 
 fn validate_main_function(main: FunctionToPlan) -> Result<FunctionToPlan, PlanError> {
-    if main.info.arity != 0 {
+    if main.info.arity() != 0 {
         return Err(PlanError::UnsupportedFunction {
             name: "main".into(),
             reason: UnsupportedFunctionReason::MainWithArguments,
@@ -238,7 +278,9 @@ mod tests {
     use super::plan_module;
     use crate::planner::dsl::{function, int, module};
     use crate::planner::support::{compile, expect_plan_error};
-    use crate::planner::{PlanError, UnsupportedFunctionReason, UnsupportedTopLevelKind};
+    use crate::planner::{
+        PlanError, UnsupportedArgumentReason, UnsupportedFunctionReason, UnsupportedTopLevelKind,
+    };
 
     #[test]
     fn plan_integer_return() {
@@ -303,6 +345,121 @@ pub fn main(value: Int) {
             PlanError::UnsupportedFunction {
                 name: "main".into(),
                 reason: UnsupportedFunctionReason::MainWithArguments,
+            },
+        );
+    }
+
+    #[test]
+    fn reject_profile_function_before_main() {
+        assert_eq!(
+            expect_plan_error(
+                r#"
+fn values() {
+  [1]
+}
+
+pub fn main() {
+  1
+}
+"#,
+            ),
+            PlanError::UnsupportedFunction {
+                name: "values".into(),
+                reason: UnsupportedFunctionReason::UnsupportedReturnType,
+            },
+        );
+    }
+
+    #[test]
+    fn reject_profile_function_after_main() {
+        assert_eq!(
+            expect_plan_error(
+                r#"
+pub fn main() {
+  1
+}
+
+fn values() {
+  [1]
+}
+"#,
+            ),
+            PlanError::UnsupportedFunction {
+                name: "values".into(),
+                reason: UnsupportedFunctionReason::UnsupportedReturnType,
+            },
+        );
+    }
+
+    #[test]
+    fn reject_profile_function_return_type_after_main_reference() {
+        assert_eq!(
+            expect_plan_error(
+                r#"
+pub fn main() {
+  get
+  1
+}
+
+fn add_one(value: Int) {
+  value + 1
+}
+
+fn get() {
+  add_one
+}
+"#,
+            ),
+            PlanError::UnsupportedFunction {
+                name: "get".into(),
+                reason: UnsupportedFunctionReason::UnsupportedReturnType,
+            },
+        );
+    }
+
+    #[test]
+    fn reject_profile_function_return_type_after_main_call() {
+        assert_eq!(
+            expect_plan_error(
+                r#"
+pub fn main() {
+  get()
+  1
+}
+
+fn add_one(value: Int) {
+  value + 1
+}
+
+fn get() {
+  add_one
+}
+"#,
+            ),
+            PlanError::UnsupportedFunction {
+                name: "get".into(),
+                reason: UnsupportedFunctionReason::UnsupportedReturnType,
+            },
+        );
+    }
+
+    #[test]
+    fn reject_profile_function_argument_type() {
+        assert_eq!(
+            expect_plan_error(
+                r#"
+pub fn main() {
+  1
+}
+
+fn count(values: List(Int)) {
+  1
+}
+"#,
+            ),
+            PlanError::UnsupportedArgument {
+                function: "count".into(),
+                reason: UnsupportedArgumentReason::UnsupportedType,
             },
         );
     }

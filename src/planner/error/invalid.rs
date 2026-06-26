@@ -37,6 +37,8 @@ pub enum InvalidFunctionShapeReason {
     Anonymous,
     #[error("empty function bodies are not supported")]
     EmptyBody,
+    #[error("function return type does not match body")]
+    ReturnTypeMismatch,
 }
 
 #[derive(Debug, Error, Clone, Copy, PartialEq, Eq)]
@@ -69,16 +71,22 @@ pub enum InvalidExpressionType {
     Bool,
     #[error("Nil")]
     Nil,
+    #[error("Function")]
+    Function,
 }
 
 #[derive(Debug, Error, Clone, Copy, PartialEq, Eq)]
 pub enum InvalidCallShapeReason {
+    #[error("function value call arity mismatch")]
+    FunctionCallArityMismatch,
+    #[error("function value call return type mismatch")]
+    FunctionCallReturnTypeMismatch,
+    #[error("function value call return type is not supported")]
+    FunctionCallUnsupportedReturnType,
     #[error("implicit call arguments")]
     ImplicitArguments,
     #[error("labelled call arguments")]
     LabelledArguments,
-    #[error("local function value")]
-    LocalFunctionValue,
     #[error("local function call arity mismatch")]
     LocalFunctionCallArityMismatch,
     #[error("local function call return type is not supported")]
@@ -127,8 +135,6 @@ pub enum InvalidPipelineShapeReason {
     MissingPipeArgument,
     #[error("multiple pipe arguments")]
     MultiplePipeArguments,
-    #[error("non-direct local function")]
-    NonDirectLocalFunction,
     #[error("non-call pipeline step")]
     NonCallStep,
     #[error("unsupported implicit argument")]

@@ -28,6 +28,25 @@ Runtime code assumes it receives a valid `ExecutionPlan`. Structural execution
 failures belong in plan construction as `PlanError`, not in a runtime error
 enum.
 
+## Plan Construction Rules
+
+Plan construction is not a validation layer. Reaching an `ExecutionPlan` or plan
+node constructor means the planner has already accepted a runtime-executable
+shape.
+
+Do not use `Option` or `Result` in internal plan constructors to represent
+unsupported profile features, typed-AST margin cases, or runtime executability
+checks. Reject those cases before constructing plan data.
+
+`ExecutionPlan` shapes must not contain runtime state for features that are
+outside the current Geam profile. If a feature is profile-out, its storage,
+ids, frame slots, and executable plan variants must also stay out unless they
+are required by an accepted source path.
+
+Treat over-wide execution plan state as a blocking design issue, even when no
+current source fixture executes incorrectly. The plan model is the validation
+boundary; unused executable shape creates future margin and review ambiguity.
+
 ## Gleam Compatibility Rules
 
 For any Gleam source that Geam accepts, observable runtime behavior must match
@@ -76,6 +95,10 @@ Errors make boundaries visible:
 - Stable error variants should represent one boundary condition. Do not use one
   variant for multiple distinct profile, typed-AST, host, or runtime boundaries
   merely because the broad feature family is similar.
+- Stable error variants must correspond to a reachable production boundary.
+  Test-only references do not justify keeping an error variant.
+- When feature scope changes, re-audit newly added error variants and remove any
+  that are only test-referenced or speculative.
 - When the accepted profile grows into an area that was previously rejected by a
   broad `Unsupported*` variant, revisit that variant. Rename or split it if the
   old name also describes behavior that is now supported.

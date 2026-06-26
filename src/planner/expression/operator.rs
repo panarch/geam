@@ -137,19 +137,39 @@ pub fn main() {
                 UnsupportedBinOpKind::GtFloat,
             ),
             (
-                r#"pub fn main() { 1.0 +. 2.0 }"#,
+                r#"
+pub fn main() {
+  1.0 +. 2.0
+  1
+}
+"#,
                 UnsupportedBinOpKind::AddFloat,
             ),
             (
-                r#"pub fn main() { 1.0 -. 2.0 }"#,
+                r#"
+pub fn main() {
+  1.0 -. 2.0
+  1
+}
+"#,
                 UnsupportedBinOpKind::SubFloat,
             ),
             (
-                r#"pub fn main() { 1.0 *. 2.0 }"#,
+                r#"
+pub fn main() {
+  1.0 *. 2.0
+  1
+}
+"#,
                 UnsupportedBinOpKind::MultFloat,
             ),
             (
-                r#"pub fn main() { 1.0 /. 2.0 }"#,
+                r#"
+pub fn main() {
+  1.0 /. 2.0
+  1
+}
+"#,
                 UnsupportedBinOpKind::DivFloat,
             ),
         ];

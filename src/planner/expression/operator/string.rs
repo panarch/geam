@@ -61,5 +61,22 @@ pub fn main() {
                 },
             }),
         );
+
+        assert_eq!(
+            plan_module(module_returning_typed_expr(TypedExpr::BinOp {
+                location: dummy_span(),
+                type_: type_::string(),
+                operator: BinOp::Concatenate,
+                operator_start: 0,
+                left: Box::new(typed_string_expr("bad")),
+                right: Box::new(typed_int_expr(1)),
+            })),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionType {
+                    expected: InvalidExpressionType::String,
+                    actual: InvalidExpressionType::Int,
+                },
+            }),
+        );
     }
 }

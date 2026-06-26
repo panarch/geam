@@ -162,16 +162,40 @@ pub fn main() {
         assert_eq!(
             run_src(
                 r#"
+fn identity(value: Int) {
+  value
+}
+
 pub fn main() {
   "side"
   True
   Nil
   1 == 1
+  identity
   5
 }
 "#,
             ),
             int(5),
+        );
+    }
+
+    #[test]
+    fn execute_function_value_alias_call() {
+        assert_eq!(
+            run_src(
+                r#"
+fn add_one(value: Int) {
+  value + 1
+}
+
+pub fn main() {
+  let add = add_one
+  add(1)
+}
+"#,
+            ),
+            int(2),
         );
     }
 
