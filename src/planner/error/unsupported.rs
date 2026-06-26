@@ -86,8 +86,6 @@ pub enum UnsupportedExpressionKind {
     Tuple,
     #[error("tuple index")]
     TupleIndex,
-    #[error("use function")]
-    UseFunction,
 }
 
 #[derive(Debug, Error, Clone, Copy, PartialEq, Eq)]

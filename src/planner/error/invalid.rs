@@ -39,10 +39,6 @@ pub enum InvalidFunctionShapeReason {
     ArityMismatch,
     #[error("empty function bodies are not supported")]
     EmptyBody,
-    #[error("function literal kind is not valid in this expression position")]
-    InvalidLiteralKind,
-    #[error("function argument names are not valid in this expression position")]
-    InvalidArgumentNames,
     #[error("function argument type does not match parameter local")]
     ArgumentTypeMismatch,
     #[error("function return type does not match body")]
@@ -91,14 +87,10 @@ pub enum InvalidCallShapeReason {
     FunctionValueParameterShapeMismatch,
     #[error("function value call return type mismatch")]
     FunctionCallReturnTypeMismatch,
-    #[error("function value call target is not a function")]
-    FunctionCallTargetTypeMismatch,
     #[error("implicit call arguments")]
     ImplicitArguments,
     #[error("labelled call arguments")]
     LabelledArguments,
-    #[error("local function value")]
-    LocalFunctionValue,
     #[error("local function call arity mismatch")]
     LocalFunctionCallArityMismatch,
     #[error("local function call return type is not supported")]
