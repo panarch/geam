@@ -155,6 +155,7 @@ fn function_info(
     FunctionInfo {
         id: FunctionId::new(function_index),
         runtime_id,
+        return_type: seed.return_type.value_type(),
         params: seed.params.clone(),
     }
 }
@@ -199,6 +200,15 @@ impl FunctionReturnType {
             Self::String => runtime_ids.next_string(),
             Self::Bool => runtime_ids.next_bool(),
             Self::Nil => runtime_ids.next_nil(),
+        }
+    }
+
+    fn value_type(self) -> ValueType {
+        match self {
+            Self::Int => ValueType::Int,
+            Self::String => ValueType::String,
+            Self::Bool => ValueType::Bool,
+            Self::Nil => ValueType::Nil,
         }
     }
 }

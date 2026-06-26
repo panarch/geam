@@ -12,6 +12,7 @@ use std::collections::HashMap;
 pub(super) struct FunctionInfo {
     pub(super) id: FunctionId,
     pub(super) runtime_id: RuntimeFunctionId,
+    pub(super) return_type: ValueType,
     pub(super) params: Vec<FunctionParam>,
 }
 
@@ -305,7 +306,7 @@ impl FunctionInfo {
     }
 
     pub(super) fn return_type(&self) -> ValueType {
-        self.runtime_id.value_type()
+        self.return_type.clone()
     }
 
     pub(super) fn value(&self) -> FunctionValue {
