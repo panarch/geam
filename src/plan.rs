@@ -10,10 +10,11 @@ use self::runtime::RuntimePlan;
 use ecow::EcoString;
 use std::fmt;
 
-pub use expression::{BoolExpr, CallArg, Expr, FunctionExpr, IntExpr, NilExpr, StringExpr};
 pub(crate) use expression::{
-    BoolExprKind, CallArgKind, ExprKind, FunctionExprKind, IntExprKind, NilExprKind, StringExprKind,
+    BoolCaseBranches, BoolExprKind, CallArgKind, ExprKind, FunctionExprKind, IntCaseBranches,
+    IntExprKind, NilExprKind, StringExprKind,
 };
+pub use expression::{BoolExpr, CallArg, Expr, FunctionExpr, IntExpr, NilExpr, StringExpr};
 pub(crate) use frame::FrameLayout;
 pub use function::{FunctionPlan, Param, ReturnExpr};
 pub(crate) use function::{ReturnExprKind, RuntimeFunction};

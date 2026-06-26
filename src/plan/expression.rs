@@ -1,4 +1,5 @@
 mod bool;
+mod case;
 mod function;
 mod int;
 mod nil;
@@ -6,8 +7,8 @@ mod string;
 
 use super::id::{BoolLocalId, IntLocalId, LocalId, NilLocalId, StringLocalId};
 use super::value::{Value, ValueType};
-use num_bigint::BigInt;
 
+pub(crate) use self::case::{BoolCaseBranches, IntCaseBranches};
 pub use self::{
     bool::BoolExpr, function::FunctionExpr, int::IntExpr, nil::NilExpr, string::StringExpr,
 };
@@ -86,115 +87,42 @@ impl Expr {
         }
     }
 
-    pub(crate) fn bool_case(
-        subject: BoolExpr,
-        true_: Expr,
-        false_: Expr,
-    ) -> Result<Self, Box<(Self, Self)>> {
-        match (true_.kind, false_.kind) {
-            (ExprKind::Int(true_), ExprKind::Int(false_)) => {
-                Ok(Self::int(IntExpr::bool_case(subject, true_, false_)))
+    pub(crate) fn bool_case(subject: BoolExpr, branches: BoolCaseBranches) -> Self {
+        match branches {
+            BoolCaseBranches::Int { true_, false_ } => {
+                Self::int(IntExpr::bool_case(subject, true_, false_))
             }
-            (ExprKind::String(true_), ExprKind::String(false_)) => {
-                Ok(Self::string(StringExpr::bool_case(subject, true_, false_)))
+            BoolCaseBranches::String { true_, false_ } => {
+                Self::string(StringExpr::bool_case(subject, true_, false_))
             }
-            (ExprKind::Bool(true_), ExprKind::Bool(false_)) => {
-                Ok(Self::bool(BoolExpr::bool_case(subject, true_, false_)))
+            BoolCaseBranches::Bool { true_, false_ } => {
+                Self::bool(BoolExpr::bool_case(subject, true_, false_))
             }
-            (ExprKind::Nil(true_), ExprKind::Nil(false_)) => {
-                Ok(Self::nil(NilExpr::bool_case(subject, true_, false_)))
+            BoolCaseBranches::Nil { true_, false_ } => {
+                Self::nil(NilExpr::bool_case(subject, true_, false_))
             }
-            (ExprKind::Function(true_), ExprKind::Function(false_)) => {
-                if true_.type_() == false_.type_() {
-                    Ok(Self::function(FunctionExpr::bool_case(
-                        subject, true_, false_,
-                    )))
-                } else {
-                    Err(Box::new((Self::function(true_), Self::function(false_))))
-                }
+            BoolCaseBranches::Function { true_, false_ } => {
+                Self::function(FunctionExpr::bool_case(subject, true_, false_))
             }
-            (true_, false_) => Err(Box::new((Self { kind: true_ }, Self { kind: false_ }))),
         }
     }
 
-    pub(crate) fn int_case(
-        subject: IntExpr,
-        clauses: Vec<(BigInt, Expr)>,
-        fallback: Expr,
-    ) -> Result<Self, ()> {
-        match fallback.kind {
-            ExprKind::Int(fallback) => {
-                let mut typed_clauses = Vec::with_capacity(clauses.len());
-                for (value, clause) in clauses {
-                    let ExprKind::Int(clause) = clause.kind else {
-                        return Err(());
-                    };
-                    typed_clauses.push((value, clause));
-                }
-                Ok(Self::int(IntExpr::int_case(
-                    subject,
-                    typed_clauses,
-                    fallback,
-                )))
+    pub(crate) fn int_case(subject: IntExpr, branches: IntCaseBranches) -> Self {
+        match branches {
+            IntCaseBranches::Int { clauses, fallback } => {
+                Self::int(IntExpr::int_case(subject, clauses, fallback))
             }
-            ExprKind::String(fallback) => {
-                let mut typed_clauses = Vec::with_capacity(clauses.len());
-                for (value, clause) in clauses {
-                    let ExprKind::String(clause) = clause.kind else {
-                        return Err(());
-                    };
-                    typed_clauses.push((value, clause));
-                }
-                Ok(Self::string(StringExpr::int_case(
-                    subject,
-                    typed_clauses,
-                    fallback,
-                )))
+            IntCaseBranches::String { clauses, fallback } => {
+                Self::string(StringExpr::int_case(subject, clauses, fallback))
             }
-            ExprKind::Bool(fallback) => {
-                let mut typed_clauses = Vec::with_capacity(clauses.len());
-                for (value, clause) in clauses {
-                    let ExprKind::Bool(clause) = clause.kind else {
-                        return Err(());
-                    };
-                    typed_clauses.push((value, clause));
-                }
-                Ok(Self::bool(BoolExpr::int_case(
-                    subject,
-                    typed_clauses,
-                    fallback,
-                )))
+            IntCaseBranches::Bool { clauses, fallback } => {
+                Self::bool(BoolExpr::int_case(subject, clauses, fallback))
             }
-            ExprKind::Nil(fallback) => {
-                let mut typed_clauses = Vec::with_capacity(clauses.len());
-                for (value, clause) in clauses {
-                    let ExprKind::Nil(clause) = clause.kind else {
-                        return Err(());
-                    };
-                    typed_clauses.push((value, clause));
-                }
-                Ok(Self::nil(NilExpr::int_case(
-                    subject,
-                    typed_clauses,
-                    fallback,
-                )))
+            IntCaseBranches::Nil { clauses, fallback } => {
+                Self::nil(NilExpr::int_case(subject, clauses, fallback))
             }
-            ExprKind::Function(fallback) => {
-                let mut typed_clauses = Vec::with_capacity(clauses.len());
-                for (value, clause) in clauses {
-                    let ExprKind::Function(clause) = clause.kind else {
-                        return Err(());
-                    };
-                    if clause.type_() != fallback.type_() {
-                        return Err(());
-                    }
-                    typed_clauses.push((value, clause));
-                }
-                Ok(Self::function(FunctionExpr::int_case(
-                    subject,
-                    typed_clauses,
-                    fallback,
-                )))
+            IntCaseBranches::Function { clauses, fallback } => {
+                Self::function(FunctionExpr::int_case(subject, clauses, fallback))
             }
         }
     }
@@ -310,10 +238,13 @@ impl From<Value> for Expr {
 
 #[cfg(test)]
 mod tests {
-    use super::{BoolExpr, CallArgKind, Expr, FunctionExpr, IntExpr, NilExpr, StringExpr};
+    use super::{
+        BoolCaseBranches, BoolExpr, CallArgKind, Expr, FunctionExpr, IntCaseBranches, IntExpr,
+        NilExpr, StringExpr,
+    };
     use crate::plan::{
         BoolLocalId, FunctionType, FunctionValue, IntFunctionId, IntLocalId, LocalId, NilLocalId,
-        RuntimeFunctionId, StringFunctionId, StringLocalId, Value, ValueType,
+        RuntimeFunctionId, StringLocalId, Value, ValueType,
     };
     use num_bigint::BigInt;
 
@@ -343,84 +274,72 @@ mod tests {
         assert_eq!(
             Expr::bool_case(
                 BoolExpr::value(true),
-                Expr::int(IntExpr::value(BigInt::from(1))),
-                Expr::int(IntExpr::value(BigInt::from(0))),
+                BoolCaseBranches::Int {
+                    true_: IntExpr::value(BigInt::from(1)),
+                    false_: IntExpr::value(BigInt::from(0)),
+                },
             ),
-            Ok(Expr::int(IntExpr::bool_case(
+            Expr::int(IntExpr::bool_case(
                 BoolExpr::value(true),
                 IntExpr::value(BigInt::from(1)),
                 IntExpr::value(BigInt::from(0)),
-            ))),
+            )),
         );
         assert_eq!(
             Expr::bool_case(
                 BoolExpr::value(true),
-                Expr::string(StringExpr::value("yes".into())),
-                Expr::string(StringExpr::value("no".into())),
+                BoolCaseBranches::String {
+                    true_: StringExpr::value("yes".into()),
+                    false_: StringExpr::value("no".into()),
+                },
             ),
-            Ok(Expr::string(StringExpr::bool_case(
+            Expr::string(StringExpr::bool_case(
                 BoolExpr::value(true),
                 StringExpr::value("yes".into()),
                 StringExpr::value("no".into()),
-            ))),
+            )),
         );
         assert_eq!(
             Expr::bool_case(
                 BoolExpr::value(true),
-                Expr::bool(BoolExpr::value(true)),
-                Expr::bool(BoolExpr::value(false)),
+                BoolCaseBranches::Bool {
+                    true_: BoolExpr::value(true),
+                    false_: BoolExpr::value(false),
+                },
             ),
-            Ok(Expr::bool(BoolExpr::bool_case(
+            Expr::bool(BoolExpr::bool_case(
                 BoolExpr::value(true),
                 BoolExpr::value(true),
                 BoolExpr::value(false),
-            ))),
+            )),
         );
         assert_eq!(
             Expr::bool_case(
                 BoolExpr::value(true),
-                Expr::nil(NilExpr::value()),
-                Expr::nil(NilExpr::value()),
+                BoolCaseBranches::Nil {
+                    true_: NilExpr::value(),
+                    false_: NilExpr::value(),
+                },
             ),
-            Ok(Expr::nil(NilExpr::bool_case(
+            Expr::nil(NilExpr::bool_case(
                 BoolExpr::value(true),
                 NilExpr::value(),
                 NilExpr::value(),
-            ))),
+            )),
         );
         assert_eq!(
             Expr::bool_case(
                 BoolExpr::value(true),
-                Expr::function(FunctionExpr::value(function_value())),
-                Expr::function(FunctionExpr::value(function_value())),
+                BoolCaseBranches::Function {
+                    true_: FunctionExpr::value(function_value()),
+                    false_: FunctionExpr::value(function_value()),
+                },
             ),
-            Ok(Expr::function(FunctionExpr::bool_case(
+            Expr::function(FunctionExpr::bool_case(
                 BoolExpr::value(true),
                 FunctionExpr::value(function_value()),
                 FunctionExpr::value(function_value()),
-            ))),
-        );
-        assert_eq!(
-            Expr::bool_case(
-                BoolExpr::value(true),
-                Expr::int(IntExpr::value(BigInt::from(1))),
-                Expr::bool(BoolExpr::value(false)),
-            ),
-            Err(Box::new((
-                Expr::int(IntExpr::value(BigInt::from(1))),
-                Expr::bool(BoolExpr::value(false)),
-            ))),
-        );
-        assert_eq!(
-            Expr::bool_case(
-                BoolExpr::value(true),
-                Expr::function(FunctionExpr::value(function_value())),
-                Expr::function(FunctionExpr::value(string_function_value())),
-            ),
-            Err(Box::new((
-                Expr::function(FunctionExpr::value(function_value())),
-                Expr::function(FunctionExpr::value(string_function_value())),
-            ))),
+            )),
         );
     }
 
@@ -429,119 +348,72 @@ mod tests {
         assert_eq!(
             Expr::int_case(
                 IntExpr::value(BigInt::from(1)),
-                vec![(BigInt::from(1), Expr::int(IntExpr::value(BigInt::from(10))))],
-                Expr::int(IntExpr::value(BigInt::from(0))),
+                IntCaseBranches::Int {
+                    clauses: vec![(BigInt::from(1), IntExpr::value(BigInt::from(10)))],
+                    fallback: IntExpr::value(BigInt::from(0)),
+                },
             ),
-            Ok(Expr::int(IntExpr::int_case(
+            Expr::int(IntExpr::int_case(
                 IntExpr::value(BigInt::from(1)),
                 vec![(BigInt::from(1), IntExpr::value(BigInt::from(10)))],
                 IntExpr::value(BigInt::from(0)),
-            ))),
+            )),
         );
         assert_eq!(
             Expr::int_case(
                 IntExpr::value(BigInt::from(1)),
-                vec![(
-                    BigInt::from(1),
-                    Expr::string(StringExpr::value("one".into()))
-                )],
-                Expr::string(StringExpr::value("other".into())),
+                IntCaseBranches::String {
+                    clauses: vec![(BigInt::from(1), StringExpr::value("one".into()))],
+                    fallback: StringExpr::value("other".into()),
+                },
             ),
-            Ok(Expr::string(StringExpr::int_case(
+            Expr::string(StringExpr::int_case(
                 IntExpr::value(BigInt::from(1)),
                 vec![(BigInt::from(1), StringExpr::value("one".into()))],
                 StringExpr::value("other".into()),
-            ))),
+            )),
         );
         assert_eq!(
             Expr::int_case(
                 IntExpr::value(BigInt::from(1)),
-                vec![(BigInt::from(1), Expr::bool(BoolExpr::value(true)))],
-                Expr::bool(BoolExpr::value(false)),
+                IntCaseBranches::Bool {
+                    clauses: vec![(BigInt::from(1), BoolExpr::value(true))],
+                    fallback: BoolExpr::value(false),
+                },
             ),
-            Ok(Expr::bool(BoolExpr::int_case(
+            Expr::bool(BoolExpr::int_case(
                 IntExpr::value(BigInt::from(1)),
                 vec![(BigInt::from(1), BoolExpr::value(true))],
                 BoolExpr::value(false),
-            ))),
+            )),
         );
         assert_eq!(
             Expr::int_case(
                 IntExpr::value(BigInt::from(1)),
-                vec![(BigInt::from(1), Expr::nil(NilExpr::value()))],
-                Expr::nil(NilExpr::value()),
+                IntCaseBranches::Nil {
+                    clauses: vec![(BigInt::from(1), NilExpr::value())],
+                    fallback: NilExpr::value(),
+                },
             ),
-            Ok(Expr::nil(NilExpr::int_case(
+            Expr::nil(NilExpr::int_case(
                 IntExpr::value(BigInt::from(1)),
                 vec![(BigInt::from(1), NilExpr::value())],
                 NilExpr::value(),
-            ))),
+            )),
         );
         assert_eq!(
             Expr::int_case(
                 IntExpr::value(BigInt::from(1)),
-                vec![(
-                    BigInt::from(1),
-                    Expr::function(FunctionExpr::value(function_value()))
-                )],
-                Expr::function(FunctionExpr::value(function_value())),
+                IntCaseBranches::Function {
+                    clauses: vec![(BigInt::from(1), FunctionExpr::value(function_value()))],
+                    fallback: FunctionExpr::value(function_value()),
+                },
             ),
-            Ok(Expr::function(FunctionExpr::int_case(
+            Expr::function(FunctionExpr::int_case(
                 IntExpr::value(BigInt::from(1)),
                 vec![(BigInt::from(1), FunctionExpr::value(function_value()))],
                 FunctionExpr::value(function_value()),
-            ))),
-        );
-        assert_eq!(
-            Expr::int_case(
-                IntExpr::value(BigInt::from(1)),
-                vec![(BigInt::from(1), Expr::bool(BoolExpr::value(true)))],
-                Expr::int(IntExpr::value(BigInt::from(0))),
-            ),
-            Err(()),
-        );
-        assert_eq!(
-            Expr::int_case(
-                IntExpr::value(BigInt::from(1)),
-                vec![(BigInt::from(1), Expr::int(IntExpr::value(BigInt::from(1))))],
-                Expr::string(StringExpr::value("other".into())),
-            ),
-            Err(()),
-        );
-        assert_eq!(
-            Expr::int_case(
-                IntExpr::value(BigInt::from(1)),
-                vec![(
-                    BigInt::from(1),
-                    Expr::function(FunctionExpr::value(string_function_value()))
-                )],
-                Expr::function(FunctionExpr::value(function_value())),
-            ),
-            Err(()),
-        );
-        assert_eq!(
-            Expr::int_case(
-                IntExpr::value(BigInt::from(1)),
-                vec![(BigInt::from(1), Expr::int(IntExpr::value(BigInt::from(1))))],
-                Expr::function(FunctionExpr::value(function_value())),
-            ),
-            Err(()),
-        );
-        assert_eq!(
-            Expr::int_case(
-                IntExpr::value(BigInt::from(1)),
-                vec![(BigInt::from(1), Expr::int(IntExpr::value(BigInt::from(1))))],
-                Expr::bool(BoolExpr::value(false)),
-            ),
-            Err(()),
-        );
-        assert_eq!(
-            Expr::int_case(
-                IntExpr::value(BigInt::from(1)),
-                vec![(BigInt::from(1), Expr::int(IntExpr::value(BigInt::from(1))))],
-                Expr::nil(NilExpr::value()),
-            ),
-            Err(()),
+            )),
         );
     }
 
@@ -652,13 +524,6 @@ mod tests {
     fn function_value() -> FunctionValue {
         FunctionValue::new(
             RuntimeFunctionId::Int(IntFunctionId(0)),
-            vec![LocalId::Int(IntLocalId(0))],
-        )
-    }
-
-    fn string_function_value() -> FunctionValue {
-        FunctionValue::new(
-            RuntimeFunctionId::String(StringFunctionId(0)),
             vec![LocalId::Int(IntLocalId(0))],
         )
     }

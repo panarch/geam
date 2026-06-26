@@ -2,7 +2,7 @@ use super::{
     invalid_case_shape, single_case_pattern, unsupported_case, validate_case_branch_type,
     validate_clause_shape,
 };
-use crate::plan::{BoolExpr, Expr};
+use crate::plan::{BoolCaseBranches, BoolExpr, Expr, ExprKind};
 use crate::planner::context::PlanContext;
 use crate::planner::error::{InvalidCaseShapeReason, PlanError, UnsupportedCaseReason};
 use gleam_core::ast::{Pattern, TypedClause, TypedExpr};
@@ -128,8 +128,26 @@ fn set_case_branch(branch: &mut Option<Expr>, value: Expr) {
 }
 
 fn bool_case_expr(subject: BoolExpr, true_: Expr, false_: Expr) -> Result<Expr, PlanError> {
-    Expr::bool_case(subject, true_, false_)
-        .map_err(|_| invalid_case_shape(InvalidCaseShapeReason::BranchReturnTypeMismatch))
+    let branches = match (true_.into_kind(), false_.into_kind()) {
+        (ExprKind::Int(true_), ExprKind::Int(false_)) => BoolCaseBranches::Int { true_, false_ },
+        (ExprKind::String(true_), ExprKind::String(false_)) => {
+            BoolCaseBranches::String { true_, false_ }
+        }
+        (ExprKind::Bool(true_), ExprKind::Bool(false_)) => BoolCaseBranches::Bool { true_, false_ },
+        (ExprKind::Nil(true_), ExprKind::Nil(false_)) => BoolCaseBranches::Nil { true_, false_ },
+        (ExprKind::Function(true_), ExprKind::Function(false_))
+            if true_.type_() == false_.type_() =>
+        {
+            BoolCaseBranches::Function { true_, false_ }
+        }
+        _ => {
+            return Err(invalid_case_shape(
+                InvalidCaseShapeReason::BranchReturnTypeMismatch,
+            ));
+        }
+    };
+
+    Ok(Expr::bool_case(subject, branches))
 }
 
 #[cfg(test)]
