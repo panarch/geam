@@ -1,0 +1,125 @@
+use super::{BoolExpr, CallArg, IntExpr};
+use crate::plan::{NilFunctionId, NilLocalId, Step};
+use ecow::EcoString;
+use num_bigint::BigInt;
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct NilExpr {
+    kind: NilExprKind,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) enum NilExprKind {
+    Value,
+    LocalGet {
+        local: NilLocalId,
+        name: EcoString,
+    },
+    Call {
+        function: NilFunctionId,
+        args: Vec<CallArg>,
+    },
+    BoolCase {
+        subject: Box<BoolExpr>,
+        true_: Box<NilExpr>,
+        false_: Box<NilExpr>,
+    },
+    IntCase {
+        subject: Box<IntExpr>,
+        clauses: Vec<(BigInt, NilExpr)>,
+        fallback: Box<NilExpr>,
+    },
+    Block {
+        steps: Vec<Step>,
+        return_: Box<NilExpr>,
+    },
+}
+
+impl NilExpr {
+    pub(crate) fn value() -> Self {
+        Self {
+            kind: NilExprKind::Value,
+        }
+    }
+
+    pub(crate) fn local_get(local: NilLocalId, name: EcoString) -> Self {
+        Self {
+            kind: NilExprKind::LocalGet { local, name },
+        }
+    }
+
+    pub(crate) fn call(function: NilFunctionId, args: Vec<CallArg>) -> Self {
+        Self {
+            kind: NilExprKind::Call { function, args },
+        }
+    }
+
+    pub(crate) fn bool_case(subject: BoolExpr, true_: NilExpr, false_: NilExpr) -> Self {
+        Self {
+            kind: NilExprKind::BoolCase {
+                subject: Box::new(subject),
+                true_: Box::new(true_),
+                false_: Box::new(false_),
+            },
+        }
+    }
+
+    pub(crate) fn int_case(
+        subject: IntExpr,
+        clauses: Vec<(BigInt, NilExpr)>,
+        fallback: NilExpr,
+    ) -> Self {
+        Self {
+            kind: NilExprKind::IntCase {
+                subject: Box::new(subject),
+                clauses,
+                fallback: Box::new(fallback),
+            },
+        }
+    }
+
+    pub(crate) fn block(steps: Vec<Step>, return_: NilExpr) -> Self {
+        Self {
+            kind: NilExprKind::Block {
+                steps,
+                return_: Box::new(return_),
+            },
+        }
+    }
+
+    pub(crate) fn kind(&self) -> &NilExprKind {
+        &self.kind
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{NilExpr, NilExprKind};
+    use crate::plan::{BoolExpr, Expr, IntExpr, Step};
+
+    #[test]
+    fn nil_expr_kind_accessors() {
+        assert!(matches!(NilExpr::value().kind(), NilExprKind::Value));
+        assert!(matches!(
+            NilExpr::bool_case(BoolExpr::value(true), NilExpr::value(), NilExpr::value()).kind(),
+            NilExprKind::BoolCase { .. }
+        ));
+        assert!(matches!(
+            NilExpr::int_case(
+                IntExpr::value(1.into()),
+                vec![(1.into(), NilExpr::value())],
+                NilExpr::value()
+            )
+            .kind(),
+            NilExprKind::IntCase { .. }
+        ));
+        assert!(matches!(
+            NilExpr::block(
+                vec![Step::evaluate(Expr::nil(NilExpr::value()))],
+                NilExpr::value(),
+            )
+            .kind(),
+            NilExprKind::Block { .. }
+        ));
+    }
+}
