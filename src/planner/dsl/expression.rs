@@ -184,10 +184,6 @@ pub(crate) fn let_nil_step(local: usize, name: impl Into<EcoString>, value: Nil)
     Step::let_nil(NilLocalId(local), name.into(), value.into())
 }
 
-pub(crate) fn let_function_step(name: impl Into<EcoString>, value: Function) -> Step {
-    Step::let_function(name.into(), value.into())
-}
-
 pub(crate) fn evaluate_step(value: impl Into<Expr>) -> Step {
     Step::evaluate(value.into())
 }
@@ -565,17 +561,6 @@ mod tests {
             ))
             .kind(),
             ExprKind::Function(_),
-        ));
-        assert!(matches!(
-            let_function_step(
-                "f",
-                function_ref(
-                    RuntimeFunctionId::Int(crate::plan::IntFunctionId(0)),
-                    [crate::plan::LocalId::Int(crate::plan::IntLocalId(0))],
-                ),
-            )
-            .kind(),
-            StepKind::LetFunction { .. },
         ));
         assert!(matches!(
             FunctionExpr::from(function_ref(

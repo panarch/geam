@@ -98,9 +98,6 @@ impl FrameLayout {
                 self.include_nil_expr(value);
                 self.include_nil(*local);
             }
-            StepKind::LetFunction { value, .. } => {
-                self.include_function_expr(value);
-            }
             StepKind::Evaluate(value) => self.include_expr(value),
         }
     }

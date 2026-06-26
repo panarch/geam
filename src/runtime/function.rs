@@ -3,7 +3,7 @@ use crate::plan::{
     RuntimeFunctionId, StepKind, StringFunctionId, Value,
 };
 use crate::runtime::expression::{
-    eval_bool_expr, eval_expr, eval_function_expr, eval_int_expr, eval_nil_expr, eval_string_expr,
+    eval_bool_expr, eval_expr, eval_int_expr, eval_nil_expr, eval_string_expr,
 };
 use crate::runtime::frame::Frame;
 use ecow::EcoString;
@@ -98,9 +98,6 @@ pub(in crate::runtime) fn execute_steps(
             StepKind::LetNil { local, value, .. } => {
                 eval_nil_expr(plan, frame, value);
                 frame.set_nil(*local);
-            }
-            StepKind::LetFunction { value, .. } => {
-                let _ = eval_function_expr(plan, frame, value);
             }
             StepKind::Evaluate(expression) => {
                 let _ = eval_expr(plan, frame, expression);

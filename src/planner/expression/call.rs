@@ -238,7 +238,7 @@ fn plan_direct_function_call(
     }
     let args = plan_call_args(arguments, &function.params, context, capture)?;
 
-    call_expr(function_id, args)
+    Ok(call_expr(function_id, args))
 }
 
 fn plan_function_value_call(
@@ -286,7 +286,7 @@ fn plan_function_value_call(
         .collect::<Vec<_>>();
     let args = plan_call_args(arguments, &params, context, capture)?;
 
-    call_expr(function.runtime_id(), args)
+    Ok(call_expr(function.runtime_id(), args))
 }
 
 fn plan_call_args(
@@ -387,12 +387,12 @@ fn invalid_pipeline_shape(reason: InvalidPipelineShapeReason) -> PlanError {
     }
 }
 
-fn call_expr(function: RuntimeFunctionId, args: Vec<CallArg>) -> Result<Expr, PlanError> {
+fn call_expr(function: RuntimeFunctionId, args: Vec<CallArg>) -> Expr {
     match function {
-        RuntimeFunctionId::Int(function) => Ok(Expr::int(IntExpr::call(function, args))),
-        RuntimeFunctionId::String(function) => Ok(Expr::string(StringExpr::call(function, args))),
-        RuntimeFunctionId::Bool(function) => Ok(Expr::bool(BoolExpr::call(function, args))),
-        RuntimeFunctionId::Nil(function) => Ok(Expr::nil(NilExpr::call(function, args))),
+        RuntimeFunctionId::Int(function) => Expr::int(IntExpr::call(function, args)),
+        RuntimeFunctionId::String(function) => Expr::string(StringExpr::call(function, args)),
+        RuntimeFunctionId::Bool(function) => Expr::bool(BoolExpr::call(function, args)),
+        RuntimeFunctionId::Nil(function) => Expr::nil(NilExpr::call(function, args)),
     }
 }
 
@@ -409,10 +409,8 @@ fn expected_expression_type(type_: &ValueType) -> InvalidExpressionType {
 #[cfg(test)]
 mod tests {
     use super::super::{typed_int_expr, typed_string_expr};
-    use crate::plan::{
-        FunctionType, IntFunctionId, IntLocalId, LocalId, RuntimeFunctionId, ValueType,
-    };
-    use crate::planner::dsl::{call_int, function, function_ref, int, int_arg, local_int, module};
+    use crate::plan::{FunctionType, ValueType};
+    use crate::planner::dsl::{call_int, function, int, int_arg, local_int, module};
     use crate::planner::plan_module;
     use crate::planner::support::{compile, compile_minimal_module, dummy_span, expect_plan_error};
     use crate::planner::{
@@ -453,13 +451,7 @@ pub fn main() {
         .expect("source should plan");
         let expected = module(
             "main",
-            function("main", call_int(1, [int_arg(0, int(1))])).let_function(
-                "function",
-                function_ref(
-                    RuntimeFunctionId::Int(IntFunctionId(1)),
-                    [LocalId::Int(IntLocalId(0))],
-                ),
-            ),
+            function("main", call_int(1, [int_arg(0, int(1))])),
             [function("add_one", local_int(0, "value").add_int(int(1))).param_int(0, "value")],
         );
 
@@ -490,26 +482,16 @@ pub fn primitive_shadow() {
         .expect("source should plan");
         let add_one =
             function("add_one", local_int(0, "value").add_int(int(1))).param_int(0, "value");
-        let add_one_ref = function_ref(
-            RuntimeFunctionId::Int(IntFunctionId(1)),
-            [LocalId::Int(IntLocalId(0))],
-        );
         let expected = module(
             "main",
-            function("main", call_int(1, [int_arg(0, int(1))]))
-                .let_int(0, "function", int(1))
-                .let_function("function", add_one_ref),
+            function("main", call_int(1, [int_arg(0, int(1))])).let_int(0, "function", int(1)),
             [
                 add_one,
-                function("primitive_shadow", local_int(0, "function").add_int(int(1)))
-                    .let_function(
-                        "function",
-                        function_ref(
-                            RuntimeFunctionId::Int(IntFunctionId(1)),
-                            [LocalId::Int(IntLocalId(0))],
-                        ),
-                    )
-                    .let_int(0, "function", int(1)),
+                function("primitive_shadow", local_int(0, "function").add_int(int(1))).let_int(
+                    0,
+                    "function",
+                    int(1),
+                ),
             ],
         );
 

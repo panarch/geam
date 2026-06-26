@@ -133,8 +133,6 @@ pub enum InvalidPipelineShapeReason {
     MissingPipeArgument,
     #[error("multiple pipe arguments")]
     MultiplePipeArguments,
-    #[error("non-direct local function")]
-    NonDirectLocalFunction,
     #[error("non-call pipeline step")]
     NonCallStep,
     #[error("unsupported implicit argument")]

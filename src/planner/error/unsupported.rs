@@ -134,6 +134,4 @@ pub enum UnsupportedPipelineReason {
     Echo,
     #[error("function value pipeline calls are not supported")]
     FunctionValueCall,
-    #[error("only direct local function pipeline calls are supported")]
-    NonDirectLocalFunction,
 }

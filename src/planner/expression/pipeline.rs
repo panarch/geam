@@ -4,7 +4,7 @@ use crate::planner::context::PlanContext;
 use crate::planner::error::{
     InvalidPipelineShapeReason, InvalidTypedAstReason, PlanError, UnsupportedPipelineReason,
 };
-use crate::planner::statement::plan_variable_step;
+use crate::planner::statement::plan_variable_runtime_step;
 use gleam_core::ast::{PipelineAssignmentKind, TypedExpr, TypedPipelineAssignment};
 
 pub(super) fn plan(
@@ -16,9 +16,13 @@ pub(super) fn plan(
 ) -> Result<Expr, PlanError> {
     context.with_local_scope(|context| {
         let mut steps = Vec::with_capacity(assignments.len() + 1);
-        steps.push(plan_first_assignment(first_value, context)?);
+        if let Some(step) = plan_first_assignment(first_value, context)? {
+            steps.push(step);
+        }
         for (assignment, kind) in assignments {
-            steps.push(plan_assignment(assignment, kind, context)?);
+            if let Some(step) = plan_assignment(assignment, kind, context)? {
+                steps.push(step);
+            }
         }
         let return_ = plan_pipeline_value(finally, finally_kind, context)?;
 
@@ -29,20 +33,20 @@ pub(super) fn plan(
 fn plan_first_assignment(
     assignment: TypedPipelineAssignment,
     context: &mut PlanContext<'_>,
-) -> Result<Step, PlanError> {
+) -> Result<Option<Step>, PlanError> {
     let value = plan_expr(*assignment.value, context)?;
 
-    plan_variable_step(assignment.name, value, context)
+    plan_variable_runtime_step(assignment.name, value, context)
 }
 
 fn plan_assignment(
     assignment: TypedPipelineAssignment,
     kind: PipelineAssignmentKind,
     context: &mut PlanContext<'_>,
-) -> Result<Step, PlanError> {
+) -> Result<Option<Step>, PlanError> {
     let value = plan_pipeline_value(*assignment.value, kind, context)?;
 
-    plan_variable_step(assignment.name, value, context)
+    plan_variable_runtime_step(assignment.name, value, context)
 }
 
 fn plan_pipeline_value(

@@ -40,10 +40,12 @@ fn plan_ordered_steps_and_return(
     last_statement: gleam_core::ast::TypedStatement,
     context: &mut PlanContext<'_>,
 ) -> Result<PlannedStatements, PlanError> {
-    let steps = statements
-        .into_iter()
-        .map(|statement| plan_step(statement, context))
-        .collect::<Result<Vec<_>, _>>()?;
+    let mut steps = Vec::new();
+    for statement in statements {
+        if let Some(step) = plan_runtime_step(statement, context)? {
+            steps.push(step);
+        }
+    }
 
     let return_ = match last_statement {
         Statement::Expression(expression) => plan_expr(expression, context)?,
@@ -67,12 +69,14 @@ fn plan_ordered_steps_and_return(
     Ok(PlannedStatements { steps, return_ })
 }
 
-pub(super) fn plan_step(
+pub(super) fn plan_runtime_step(
     statement: gleam_core::ast::TypedStatement,
     context: &mut PlanContext<'_>,
-) -> Result<Step, PlanError> {
+) -> Result<Option<Step>, PlanError> {
     match statement {
-        Statement::Expression(expression) => Ok(Step::evaluate(plan_expr(expression, context)?)),
+        Statement::Expression(expression) => {
+            Ok(Some(Step::evaluate(plan_expr(expression, context)?)))
+        }
         Statement::Assignment(assignment) => plan_assignment(*assignment, context),
         Statement::Use(_) => Err(PlanError::InvalidTypedAst {
             reason: InvalidTypedAstReason::UseStatement,
@@ -86,7 +90,7 @@ pub(super) fn plan_step(
 fn plan_assignment(
     assignment: TypedAssignment,
     context: &mut PlanContext<'_>,
-) -> Result<Step, PlanError> {
+) -> Result<Option<Step>, PlanError> {
     match assignment.kind {
         AssignmentKind::Let => {}
         AssignmentKind::Generated => {
@@ -103,30 +107,30 @@ fn plan_assignment(
 
     let name = plan_variable_pattern(assignment.pattern)?;
     let value = plan_expr(assignment.value, context)?;
-    plan_variable_step(name, value, context)
+    plan_variable_runtime_step(name, value, context)
 }
 
-pub(in crate::planner) fn plan_variable_step(
+pub(in crate::planner) fn plan_variable_runtime_step(
     name: EcoString,
     value: crate::plan::Expr,
     context: &mut PlanContext<'_>,
-) -> Result<Step, PlanError> {
+) -> Result<Option<Step>, PlanError> {
     match value.into_kind() {
         ExprKind::Int(value) => {
             let local = context.define_int_local(name.clone());
-            Ok(Step::let_int(local, name, value))
+            Ok(Some(Step::let_int(local, name, value)))
         }
         ExprKind::String(value) => {
             let local = context.define_string_local(name.clone());
-            Ok(Step::let_string(local, name, value))
+            Ok(Some(Step::let_string(local, name, value)))
         }
         ExprKind::Bool(value) => {
             let local = context.define_bool_local(name.clone());
-            Ok(Step::let_bool(local, name, value))
+            Ok(Some(Step::let_bool(local, name, value)))
         }
         ExprKind::Nil(value) => {
             let local = context.define_nil_local(name.clone());
-            Ok(Step::let_nil(local, name, value))
+            Ok(Some(Step::let_nil(local, name, value)))
         }
         ExprKind::Function(value) => {
             let FunctionExprKind::Value(function_value) = value.kind() else {
@@ -134,8 +138,8 @@ pub(in crate::planner) fn plan_variable_step(
                     kind: UnsupportedAssignmentKind::NonValueFunction,
                 });
             };
-            context.define_function_alias(name.clone(), function_value.clone());
-            Ok(Step::let_function(name, value))
+            context.define_function_alias(name, function_value.clone());
+            Ok(None)
         }
     }
 }
