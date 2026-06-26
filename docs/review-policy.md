@@ -99,6 +99,9 @@ Errors make boundaries visible:
   Test-only references do not justify keeping an error variant.
 - When feature scope changes, re-audit newly added error variants and remove any
   that are only test-referenced or speculative.
+- Use `Option` for lookups or partial conversions when the caller owns the
+  boundary meaning of absence. If all callers translate `None` into the same
+  failure boundary, return `Result` or a structured reason instead.
 - When the accepted profile grows into an area that was previously rejected by a
   broad `Unsupported*` variant, revisit that variant. Rename or split it if the
   old name also describes behavior that is now supported.
@@ -124,8 +127,12 @@ in the test name. Prefer explicit names such as `function_valued_block` over
 short names that hide the reviewed result family.
 
 Unit tests live next to the module they validate. Do not use large detached
-`tests.rs` files for complex modules. Integration tests document the public
-execution pipeline from source fixture to runtime value.
+`tests.rs` files for complex modules. Integration tests are fixture-based and
+document accepted Gleam source running through the public execution pipeline to
+a runtime value.
+
+Planner rejection coverage belongs in the owning planner unit test unless it is
+represented by a dedicated fixture-based integration case.
 
 ## Helper And DSL Rules
 

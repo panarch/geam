@@ -522,9 +522,9 @@ mod tests {
         StringFunctionExprKind,
     };
     use crate::plan::{
-        BoolExpr, BoolFunctionLocalId, BoolFunctionValue, BoolLocalId, Expr, FunctionType,
-        FunctionValue, IntExpr, IntFunctionId, IntFunctionLocalId, IntFunctionValue, IntLocalId,
-        LocalId, NilFunctionLocalId, NilFunctionValue, RuntimeFunctionId, Step,
+        BoolExpr, BoolFunctionLocalId, BoolFunctionValue, Expr, FunctionType, FunctionValue,
+        IntExpr, IntFunctionId, IntFunctionLocalId, IntFunctionValue, IntLocalId,
+        NilFunctionLocalId, NilFunctionValue, ParamLocal, RuntimeFunctionId, Step,
         StringFunctionLocalId, StringFunctionValue, ValueType,
     };
 
@@ -597,7 +597,7 @@ mod tests {
     fn int_function_expr_kind_accessors() {
         assert_eq!(
             int_function_type(),
-            FunctionType::new(vec![crate::plan::FunctionArgumentType::Int], ValueType::Int),
+            FunctionType::new(vec![crate::plan::ValueType::Int], ValueType::Int),
         );
         assert!(matches!(
             IntFunctionExpr::local_get(IntFunctionLocalId(0), "f".into(), int_function_type(),)
@@ -730,41 +730,41 @@ mod tests {
     }
 
     fn function_value() -> FunctionValue {
-        FunctionValue::new(
-            RuntimeFunctionId::Int(IntFunctionId(0)),
-            vec![LocalId::Int(IntLocalId(0))],
-        )
+        FunctionValue::new(RuntimeFunctionId::Int(IntFunctionId(0)), vec![int_param(0)])
     }
 
     fn int_function_value() -> IntFunctionExpr {
-        IntFunctionExpr::value(IntFunctionValue::new(
-            IntFunctionId(0),
-            vec![LocalId::Int(IntLocalId(0))],
-        ))
+        IntFunctionExpr::value(IntFunctionValue::new(IntFunctionId(0), vec![int_param(0)]))
     }
 
     fn string_function_value() -> StringFunctionExpr {
         StringFunctionExpr::value(StringFunctionValue::new(
             crate::plan::StringFunctionId(0),
-            vec![LocalId::String(crate::plan::StringLocalId(0))],
+            vec![crate::plan::ParamLocal::string(crate::plan::StringLocalId(
+                0,
+            ))],
         ))
     }
 
     fn bool_function_value() -> BoolFunctionExpr {
         BoolFunctionExpr::value(BoolFunctionValue::new(
             crate::plan::BoolFunctionId(0),
-            vec![LocalId::Bool(BoolLocalId(0))],
+            vec![crate::plan::ParamLocal::bool(crate::plan::BoolLocalId(0))],
         ))
     }
 
     fn nil_function_value() -> NilFunctionExpr {
         NilFunctionExpr::value(NilFunctionValue::new(
             crate::plan::NilFunctionId(0),
-            vec![LocalId::Nil(crate::plan::NilLocalId(0))],
+            vec![crate::plan::ParamLocal::nil(crate::plan::NilLocalId(0))],
         ))
     }
 
     fn int_function_type() -> FunctionType {
-        FunctionType::new(vec![crate::plan::FunctionArgumentType::Int], ValueType::Int)
+        FunctionType::new(vec![crate::plan::ValueType::Int], ValueType::Int)
+    }
+
+    fn int_param(index: usize) -> ParamLocal {
+        ParamLocal::int(IntLocalId(index))
     }
 }

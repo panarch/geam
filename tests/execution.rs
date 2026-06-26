@@ -10,6 +10,15 @@ macro_rules! execution_case {
     };
 }
 
+macro_rules! rejection_case {
+    ($name:ident, $fixture:literal) => {
+        #[test]
+        fn $name() {
+            reject_fixture($fixture);
+        }
+    };
+}
+
 execution_case!(integer_return, "integer_return.gleam");
 execution_case!(integer_arithmetic, "integer_arithmetic.gleam");
 execution_case!(integer_comparison, "integer_comparison.gleam");
@@ -24,7 +33,36 @@ execution_case!(bool_case_fallback, "bool_case_fallback.gleam");
 execution_case!(int_case, "int_case.gleam");
 execution_case!(block_expression, "block_expression.gleam");
 execution_case!(pipeline, "pipeline.gleam");
+execution_case!(function_after_main, "function_after_main.gleam");
 execution_case!(function_value_local, "function_value_local.gleam");
+execution_case!(
+    function_value_argument_callback,
+    "function_value_argument_callback.gleam"
+);
+execution_case!(
+    function_value_argument_higher_order_alias,
+    "function_value_argument_higher_order_alias.gleam"
+);
+execution_case!(
+    function_value_argument_higher_order_return_shapes,
+    "function_value_argument_higher_order_return_shapes.gleam"
+);
+execution_case!(
+    function_value_argument_input_shapes,
+    "function_value_argument_input_shapes.gleam"
+);
+execution_case!(
+    function_value_argument_local_value,
+    "function_value_argument_local_value.gleam"
+);
+execution_case!(
+    function_value_argument_multi_arity,
+    "function_value_argument_multi_arity.gleam"
+);
+execution_case!(
+    function_value_argument_return_shapes,
+    "function_value_argument_return_shapes.gleam"
+);
 execution_case!(function_value_shadowing, "function_value_shadowing.gleam");
 execution_case!(
     function_value_block_callee,
@@ -36,6 +74,36 @@ execution_case!(
 );
 execution_case!(nil_value, "nil_value.gleam");
 
+rejection_case!(reject_top_level_import, "top_level_import.gleam");
+rejection_case!(reject_top_level_constant, "top_level_constant.gleam");
+rejection_case!(reject_top_level_custom_type, "top_level_custom_type.gleam");
+rejection_case!(reject_top_level_type_alias, "top_level_type_alias.gleam");
+rejection_case!(reject_missing_main, "missing_main.gleam");
+rejection_case!(reject_main_with_arguments, "main_with_arguments.gleam");
+rejection_case!(
+    reject_function_unsupported_return_type,
+    "function_unsupported_return_type.gleam"
+);
+rejection_case!(reject_argument_discard, "argument_discard.gleam");
+rejection_case!(reject_argument_labelled, "argument_labelled.gleam");
+rejection_case!(
+    reject_argument_unsupported_type,
+    "argument_unsupported_type.gleam"
+);
+rejection_case!(
+    reject_argument_function_return_shape,
+    "argument_function_return_shape.gleam"
+);
+rejection_case!(
+    reject_function_before_main_unsupported_body,
+    "function_before_main_unsupported_body.gleam"
+);
+rejection_case!(reject_main_unsupported_body, "main_unsupported_body.gleam");
+rejection_case!(
+    reject_function_after_main_unsupported_body,
+    "function_after_main_unsupported_body.gleam"
+);
+
 fn run_fixture(file_name: &str) {
     let path = format!("tests/fixtures/execution/{file_name}");
     let src = std::fs::read_to_string(&path).expect("fixture should be readable");
@@ -45,6 +113,14 @@ fn run_fixture(file_name: &str) {
     let actual = run_main(&plan);
 
     assert_eq!(actual, expected);
+}
+
+fn reject_fixture(file_name: &str) {
+    let path = format!("tests/fixtures/rejection/{file_name}");
+    let src = std::fs::read_to_string(&path).expect("fixture should be readable");
+    let module = compile_typed_module("main", path, &src).expect("fixture should compile");
+
+    assert!(plan_module(module).is_err());
 }
 
 fn parse_expected_value(src: &str) -> Value {

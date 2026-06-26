@@ -28,12 +28,8 @@ pub(super) fn plan_function(
         .params
         .iter()
         .map(|param| {
-            context.define_existing_local(
-                param.name.clone(),
-                param.local,
-                param.local.value_type(),
-            );
-            Param::new(param.local, param.name.clone())
+            context.define_existing_param(param.name.clone(), &param.local);
+            Param::new(param.local.clone(), param.name.clone())
         })
         .collect();
     let planned = plan_steps_and_return(

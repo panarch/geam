@@ -1,9 +1,9 @@
 use super::{invalid_expression_type, plan_expr};
 use crate::plan::{
-    BoolExpr, CallArg, Expr, FunctionArgumentType, FunctionExpr, IntExpr, LocalId, NilExpr,
+    BoolExpr, CallArg, Expr, FunctionCallArg, FunctionExpr, IntExpr, NilExpr, ParamLocal,
     RuntimeFunctionId, StringExpr, ValueType,
 };
-use crate::planner::context::{FunctionInfo, FunctionParam, PlanContext};
+use crate::planner::context::{FunctionInfo, PlanContext};
 use crate::planner::error::{
     InvalidCallShapeReason, InvalidExpressionType, InvalidPipelineShapeReason,
     InvalidTypedAstReason, PlanError, UnsupportedPipelineReason,
@@ -253,7 +253,12 @@ fn plan_direct_function_call(
             },
         });
     }
-    let args = plan_call_args(arguments, &function.params, context, capture)?;
+    let args = plan_call_args(
+        arguments,
+        function.params.iter().map(|param| &param.local),
+        context,
+        capture,
+    )?;
 
     Ok(call_expr(function_id, args))
 }
@@ -295,36 +300,70 @@ fn plan_function_value_call(
         });
     }
 
-    let params = function_call_params(&function_type);
-    let args = plan_call_args(arguments, &params, context, capture)?;
+    let args =
+        plan_function_call_args(arguments, function_type.argument_types(), context, capture)?;
 
     function_call_expr(function, args, return_type)
 }
 
-fn plan_call_args(
+fn plan_call_args<'a>(
     arguments: Vec<GleamCallArg<TypedExpr>>,
-    params: &[FunctionParam],
+    params: impl IntoIterator<Item = &'a ParamLocal>,
     context: &mut PlanContext<'_>,
     capture: Option<&CaptureSubstitution>,
 ) -> Result<Vec<CallArg>, PlanError> {
     let mut args = Vec::with_capacity(arguments.len());
     for (argument, param) in arguments.into_iter().zip(params) {
         let expression = plan_argument_value(argument.value, capture, context)?;
-        let arg = match expression.into_call_arg(param.local) {
+        let arg = match expression.into_call_arg(param) {
             Ok(arg) => arg,
-            Err(other) => {
-                let expected = match param.local {
-                    LocalId::Int(_) => InvalidExpressionType::Int,
-                    LocalId::String(_) => InvalidExpressionType::String,
-                    LocalId::Bool(_) => InvalidExpressionType::Bool,
-                    LocalId::Nil(_) => InvalidExpressionType::Nil,
-                };
-                return Err(invalid_expression_type(expected, &other));
-            }
+            Err(other) => return Err(call_arg_type_mismatch(param.value_type(), &other)),
         };
         args.push(arg);
     }
     Ok(args)
+}
+
+fn plan_function_call_args(
+    arguments: Vec<GleamCallArg<TypedExpr>>,
+    params: &[ValueType],
+    context: &mut PlanContext<'_>,
+    capture: Option<&CaptureSubstitution>,
+) -> Result<Vec<FunctionCallArg>, PlanError> {
+    let mut args = Vec::with_capacity(arguments.len());
+    for (argument, type_) in arguments.into_iter().zip(params) {
+        let expression = plan_argument_value(argument.value, capture, context)?;
+        let arg = match expression.into_function_call_arg(type_) {
+            Ok(arg) => arg,
+            Err(other) => return Err(call_arg_type_mismatch(type_.clone(), &other)),
+        };
+        args.push(arg);
+    }
+    Ok(args)
+}
+
+fn call_arg_type_mismatch(expected: ValueType, actual: &Expr) -> PlanError {
+    if matches!(expected, ValueType::Function(_))
+        && matches!(actual.value_type(), ValueType::Function(_))
+    {
+        PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::CallShape {
+                reason: InvalidCallShapeReason::FunctionCallArgumentTypeMismatch,
+            },
+        }
+    } else {
+        invalid_expression_type(invalid_expression_type_kind(expected), actual)
+    }
+}
+
+fn invalid_expression_type_kind(type_: ValueType) -> InvalidExpressionType {
+    match type_ {
+        ValueType::Int => InvalidExpressionType::Int,
+        ValueType::String => InvalidExpressionType::String,
+        ValueType::Bool => InvalidExpressionType::Bool,
+        ValueType::Nil => InvalidExpressionType::Nil,
+        ValueType::Function(_) => InvalidExpressionType::Function,
+    }
 }
 
 fn plan_argument_value(
@@ -424,7 +463,7 @@ fn call_expr(function: RuntimeFunctionId, args: Vec<CallArg>) -> Expr {
 
 fn function_call_expr(
     function: FunctionExpr,
-    args: Vec<CallArg>,
+    args: Vec<FunctionCallArg>,
     return_type: ValueType,
 ) -> Result<Expr, PlanError> {
     match return_type {
@@ -470,59 +509,17 @@ fn function_call_expr(
     }
 }
 
-fn function_call_params(function_type: &crate::plan::FunctionType) -> Vec<FunctionParam> {
-    let mut next_int = 0;
-    let mut next_string = 0;
-    let mut next_bool = 0;
-    let mut next_nil = 0;
-
-    function_type
-        .argument_types()
-        .iter()
-        .map(|type_| {
-            let local = match type_ {
-                FunctionArgumentType::Int => {
-                    let local = LocalId::Int(crate::plan::IntLocalId(next_int));
-                    next_int += 1;
-                    local
-                }
-                FunctionArgumentType::String => {
-                    let local = LocalId::String(crate::plan::StringLocalId(next_string));
-                    next_string += 1;
-                    local
-                }
-                FunctionArgumentType::Bool => {
-                    let local = LocalId::Bool(crate::plan::BoolLocalId(next_bool));
-                    next_bool += 1;
-                    local
-                }
-                FunctionArgumentType::Nil => {
-                    let local = LocalId::Nil(crate::plan::NilLocalId(next_nil));
-                    next_nil += 1;
-                    local
-                }
-            };
-
-            FunctionParam {
-                local,
-                name: EcoString::default(),
-            }
-        })
-        .collect()
-}
-
 #[cfg(test)]
 mod tests {
     use super::super::{typed_int_expr, typed_string_expr};
     use crate::plan::{
-        BoolFunctionId, BoolLocalId, ExprKind, FunctionArgumentType, FunctionExpr, FunctionType,
-        IntLocalId, LocalId, NilFunctionId, NilLocalId, RuntimeFunctionId, StringFunctionId,
-        StringLocalId, ValueType,
+        BoolFunctionId, ExprKind, FunctionExpr, FunctionType, IntLocalId, LocalId, NilFunctionId,
+        ParamLocal, RuntimeFunctionId, StringFunctionId, ValueType,
     };
     use crate::planner::dsl::{
-        block_int_function, bool_, bool_case_int_function, call_int_function, function,
-        function_ref, int, int_arg, int_case_int_function, int_function_ref, let_int_function_step,
-        local_int, local_int_function, module,
+        block_int_function, bool_, bool_case_int_function, call_int, call_int_function, function,
+        function_ref, int, int_arg, int_case_int_function, int_function_arg, int_function_call_arg,
+        int_function_ref, let_int_function_step, local_int, local_int_function, module,
     };
     use crate::planner::plan_module;
     use crate::planner::support::{compile, compile_minimal_module, dummy_span};
@@ -568,7 +565,7 @@ pub fn main() {
                 "main",
                 call_int_function(
                     local_int_function(0, "function", [LocalId::Int(IntLocalId(0))]),
-                    [int_arg(0, int(1))],
+                    [int_function_call_arg(int(1))],
                 ),
             )
             .step(let_int_function_step(
@@ -577,6 +574,109 @@ pub fn main() {
                 int_function_ref(1, [LocalId::Int(IntLocalId(0))]),
             )),
             [function("add_one", local_int(0, "value").add_int(int(1))).param_int(0, "value")],
+        );
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn plan_function_value_argument_direct_call() {
+        let actual = plan_module(compile(
+            r#"
+fn add_one(value: Int) {
+  value + 1
+}
+
+fn apply(function: fn(Int) -> Int, value: Int) {
+  function(value)
+}
+
+pub fn main() {
+  apply(add_one, 41)
+}
+"#,
+        ))
+        .expect("source should plan");
+        let expected = module(
+            "main",
+            function(
+                "main",
+                call_int(
+                    2,
+                    [
+                        int_function_arg(0, int_function_ref(1, [LocalId::Int(IntLocalId(0))])),
+                        int_arg(0, int(41)),
+                    ],
+                ),
+            ),
+            [
+                function("add_one", local_int(0, "value").add_int(int(1))).param_int(0, "value"),
+                function(
+                    "apply",
+                    call_int_function(
+                        local_int_function(0, "function", [LocalId::Int(IntLocalId(0))]),
+                        [int_function_call_arg(local_int(0, "value"))],
+                    ),
+                )
+                .param_int_function(0, "function", [ValueType::Int])
+                .param_int(0, "value"),
+            ],
+        );
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn plan_local_function_value_argument_direct_call() {
+        let actual = plan_module(compile(
+            r#"
+fn add_one(value: Int) {
+  value + 1
+}
+
+fn apply(function: fn(Int) -> Int, value: Int) {
+  function(value)
+}
+
+pub fn main() {
+  let add = add_one
+  apply(add, 41)
+}
+"#,
+        ))
+        .expect("source should plan");
+        let expected = module(
+            "main",
+            function(
+                "main",
+                call_int(
+                    2,
+                    [
+                        int_function_arg(
+                            0,
+                            local_int_function(0, "add", [LocalId::Int(IntLocalId(0))]),
+                        ),
+                        int_arg(0, int(41)),
+                    ],
+                ),
+            )
+            .step(let_int_function_step(
+                0,
+                "add",
+                int_function_ref(1, [LocalId::Int(IntLocalId(0))]),
+            )),
+            [
+                function("add_one", local_int(0, "value").add_int(int(1))).param_int(0, "value"),
+                function(
+                    "apply",
+                    call_int_function(
+                        local_int_function(0, "function", [LocalId::Int(IntLocalId(0))]),
+                        [int_function_call_arg(local_int(0, "value"))],
+                    ),
+                )
+                .param_int_function(0, "function", [ValueType::Int])
+                .param_int(0, "value"),
+            ],
         );
 
         assert_eq!(actual, expected);
@@ -612,7 +712,7 @@ pub fn primitive_shadow() {
                 "main",
                 call_int_function(
                     local_int_function(0, "function", [LocalId::Int(IntLocalId(0))]),
-                    [int_arg(0, int(1))],
+                    [int_function_call_arg(int(1))],
                 ),
             )
             .let_int(0, "function", int(1))
@@ -656,7 +756,7 @@ pub fn main() {
                 "main",
                 call_int_function(
                     block_int_function([], int_function_ref(1, [LocalId::Int(IntLocalId(0))])),
-                    [int_arg(0, int(1))],
+                    [int_function_call_arg(int(1))],
                 ),
             ),
             [function("add_one", local_int(0, "value").add_int(int(1))).param_int(0, "value")],
@@ -710,7 +810,7 @@ pub fn main() {
                         int_function_ref(1, [LocalId::Int(IntLocalId(0))]),
                         int_function_ref(2, [LocalId::Int(IntLocalId(0))]),
                     ),
-                    [int_arg(0, int(1))],
+                    [int_function_call_arg(int(1))],
                 ),
             )
             .let_int(
@@ -722,7 +822,7 @@ pub fn main() {
                         [(0, int_function_ref(2, [LocalId::Int(IntLocalId(0))]))],
                         int_function_ref(1, [LocalId::Int(IntLocalId(0))]),
                     ),
-                    [int_arg(0, int(1))],
+                    [int_function_call_arg(int(1))],
                 ),
             ),
             [add_one, add_ten],
@@ -890,19 +990,36 @@ pub fn main() {
     }
 
     #[test]
-    fn function_call_params_supports_primitive_argument_shapes() {
-        let params = super::function_call_params(&FunctionType::new(
-            vec![
-                FunctionArgumentType::String,
-                FunctionArgumentType::Bool,
-                FunctionArgumentType::Nil,
-            ],
-            ValueType::Int,
-        ));
-
-        assert!(matches!(params[0].local, LocalId::String(StringLocalId(0)),));
-        assert!(matches!(params[1].local, LocalId::Bool(BoolLocalId(0))));
-        assert!(matches!(params[2].local, LocalId::Nil(NilLocalId(0))));
+    fn call_arg_type_mismatch_reports_function_shapes() {
+        assert_eq!(
+            super::call_arg_type_mismatch(
+                ValueType::Function(Box::new(FunctionType::new(
+                    vec![ValueType::String],
+                    ValueType::String,
+                ))),
+                &crate::plan::Expr::function(FunctionExpr::from(int_function_ref(
+                    0,
+                    [LocalId::Int(IntLocalId(0))],
+                ))),
+            ),
+            PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::CallShape {
+                    reason: InvalidCallShapeReason::FunctionCallArgumentTypeMismatch,
+                },
+            },
+        );
+        assert_eq!(
+            super::call_arg_type_mismatch(
+                ValueType::Function(Box::new(FunctionType::new(Vec::new(), ValueType::Int))),
+                &call_int(0, []).into(),
+            ),
+            PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionType {
+                    expected: InvalidExpressionType::Function,
+                    actual: InvalidExpressionType::Int,
+                },
+            },
+        );
     }
 
     #[test]
@@ -911,7 +1028,7 @@ pub fn main() {
             super::function_call_expr(
                 FunctionExpr::from(function_ref(
                     RuntimeFunctionId::String(StringFunctionId(0)),
-                    [],
+                    Vec::<ParamLocal>::new(),
                 )),
                 Vec::new(),
                 ValueType::String,
@@ -922,7 +1039,10 @@ pub fn main() {
         ));
         assert!(matches!(
             super::function_call_expr(
-                FunctionExpr::from(function_ref(RuntimeFunctionId::Bool(BoolFunctionId(0)), [],)),
+                FunctionExpr::from(function_ref(
+                    RuntimeFunctionId::Bool(BoolFunctionId(0)),
+                    Vec::<ParamLocal>::new(),
+                )),
                 Vec::new(),
                 ValueType::Bool,
             )
@@ -932,7 +1052,10 @@ pub fn main() {
         ));
         assert!(matches!(
             super::function_call_expr(
-                FunctionExpr::from(function_ref(RuntimeFunctionId::Nil(NilFunctionId(0)), [],)),
+                FunctionExpr::from(function_ref(
+                    RuntimeFunctionId::Nil(NilFunctionId(0)),
+                    Vec::<ParamLocal>::new(),
+                )),
                 Vec::new(),
                 ValueType::Nil,
             )
@@ -948,7 +1071,7 @@ pub fn main() {
             super::function_call_expr(
                 FunctionExpr::from(function_ref(
                     RuntimeFunctionId::String(StringFunctionId(0)),
-                    [],
+                    Vec::<ParamLocal>::new(),
                 )),
                 Vec::new(),
                 ValueType::Int,
@@ -957,7 +1080,7 @@ pub fn main() {
         );
         assert_eq!(
             super::function_call_expr(
-                FunctionExpr::from(int_function_ref(0, [])),
+                FunctionExpr::from(int_function_ref(0, Vec::<ParamLocal>::new())),
                 Vec::new(),
                 ValueType::String,
             ),
@@ -965,7 +1088,7 @@ pub fn main() {
         );
         assert_eq!(
             super::function_call_expr(
-                FunctionExpr::from(int_function_ref(0, [])),
+                FunctionExpr::from(int_function_ref(0, Vec::<ParamLocal>::new())),
                 Vec::new(),
                 ValueType::Bool,
             ),
@@ -973,7 +1096,7 @@ pub fn main() {
         );
         assert_eq!(
             super::function_call_expr(
-                FunctionExpr::from(int_function_ref(0, [])),
+                FunctionExpr::from(int_function_ref(0, Vec::<ParamLocal>::new())),
                 Vec::new(),
                 ValueType::Nil,
             ),
@@ -981,7 +1104,7 @@ pub fn main() {
         );
         assert_eq!(
             super::function_call_expr(
-                FunctionExpr::from(int_function_ref(0, [])),
+                FunctionExpr::from(int_function_ref(0, Vec::<ParamLocal>::new())),
                 Vec::new(),
                 ValueType::Function(Box::new(FunctionType::new(Vec::new(), ValueType::Int))),
             ),

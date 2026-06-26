@@ -11,17 +11,17 @@ use ecow::EcoString;
 use std::fmt;
 
 pub(crate) use expression::{
-    BoolCaseBranches, BoolExprKind, BoolFunctionExprKind, CallArgKind, ExprKind, FunctionExprKind,
-    IntCaseBranches, IntExprKind, IntFunctionExprKind, NilExprKind, NilFunctionExprKind,
-    StringExprKind, StringFunctionExprKind,
+    BoolCaseBranches, BoolExprKind, BoolFunctionExprKind, CallArgKind, ExprKind,
+    FunctionCallArgKind, FunctionExprKind, IntCaseBranches, IntExprKind, IntFunctionExprKind,
+    NilExprKind, NilFunctionExprKind, StringExprKind, StringFunctionExprKind,
 };
 pub use expression::{
-    BoolExpr, BoolFunctionExpr, CallArg, Expr, FunctionExpr, IntExpr, IntFunctionExpr, NilExpr,
-    NilFunctionExpr, StringExpr, StringFunctionExpr,
+    BoolExpr, BoolFunctionExpr, CallArg, Expr, FunctionCallArg, FunctionExpr, IntExpr,
+    IntFunctionExpr, NilExpr, NilFunctionExpr, StringExpr, StringFunctionExpr,
 };
 pub(crate) use frame::FrameLayout;
 pub use function::{FunctionPlan, Param, ReturnExpr};
-pub(crate) use function::{ReturnExprKind, RuntimeFunction};
+pub(crate) use function::{ParamLocal, ReturnExprKind, RuntimeFunction};
 pub(crate) use id::RuntimeFunctionId;
 pub use id::{
     BoolFunctionId, BoolFunctionLocalId, BoolLocalId, FunctionId, IntFunctionId,
@@ -31,8 +31,7 @@ pub use id::{
 pub use step::Step;
 pub(crate) use step::StepKind;
 pub(crate) use value::{
-    BoolFunctionValue, FunctionArgumentType, FunctionValueKind, IntFunctionValue, NilFunctionValue,
-    StringFunctionValue,
+    BoolFunctionValue, FunctionValueKind, IntFunctionValue, NilFunctionValue, StringFunctionValue,
 };
 pub use value::{FunctionType, FunctionValue, Value, ValueType};
 

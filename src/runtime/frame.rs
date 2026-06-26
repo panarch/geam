@@ -114,9 +114,9 @@ mod tests {
     use super::Frame;
     use crate::plan::{
         BoolFunctionId, BoolFunctionLocalId, BoolFunctionValue, BoolLocalId, FrameLayout,
-        IntFunctionId, IntFunctionLocalId, IntFunctionValue, IntLocalId, LocalId, NilFunctionId,
-        NilFunctionLocalId, NilFunctionValue, NilLocalId, StringFunctionId, StringFunctionLocalId,
-        StringFunctionValue, StringLocalId,
+        IntFunctionId, IntFunctionLocalId, IntFunctionValue, IntLocalId, NilFunctionId,
+        NilFunctionLocalId, NilFunctionValue, NilLocalId, ParamLocal, StringFunctionId,
+        StringFunctionLocalId, StringFunctionValue, StringLocalId,
     };
     use num_bigint::BigInt;
 
@@ -196,22 +196,25 @@ mod tests {
     }
 
     fn int_function_value() -> IntFunctionValue {
-        IntFunctionValue::new(IntFunctionId(0), vec![LocalId::Int(IntLocalId(0))])
+        IntFunctionValue::new(IntFunctionId(0), vec![ParamLocal::int(IntLocalId(0))])
     }
 
     fn other_int_function_value() -> IntFunctionValue {
-        IntFunctionValue::new(IntFunctionId(1), vec![LocalId::Int(IntLocalId(0))])
+        IntFunctionValue::new(IntFunctionId(1), vec![ParamLocal::int(IntLocalId(0))])
     }
 
     fn string_function_value() -> StringFunctionValue {
-        StringFunctionValue::new(StringFunctionId(0), vec![LocalId::String(StringLocalId(0))])
+        StringFunctionValue::new(
+            StringFunctionId(0),
+            vec![ParamLocal::string(StringLocalId(0))],
+        )
     }
 
     fn bool_function_value() -> BoolFunctionValue {
-        BoolFunctionValue::new(BoolFunctionId(0), vec![LocalId::Bool(BoolLocalId(0))])
+        BoolFunctionValue::new(BoolFunctionId(0), vec![ParamLocal::bool(BoolLocalId(0))])
     }
 
     fn nil_function_value() -> NilFunctionValue {
-        NilFunctionValue::new(NilFunctionId(0), vec![LocalId::Int(IntLocalId(0))])
+        NilFunctionValue::new(NilFunctionId(0), vec![ParamLocal::int(IntLocalId(0))])
     }
 }

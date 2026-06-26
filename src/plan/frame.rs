@@ -1,17 +1,17 @@
 use super::expression::{
-    BoolExpr, BoolFunctionExpr, CallArg, Expr, FunctionExpr, IntExpr, IntFunctionExpr, NilExpr,
-    NilFunctionExpr, StringExpr, StringFunctionExpr,
+    BoolExpr, BoolFunctionExpr, CallArg, Expr, FunctionCallArg, FunctionExpr, IntExpr,
+    IntFunctionExpr, NilExpr, NilFunctionExpr, StringExpr, StringFunctionExpr,
 };
-use super::function::{Param, ReturnExpr};
+use super::function::{Param, ParamLocal, ReturnExpr};
 use super::id::{
-    BoolFunctionLocalId, BoolLocalId, IntFunctionLocalId, IntLocalId, LocalId, NilFunctionLocalId,
+    BoolFunctionLocalId, BoolLocalId, IntFunctionLocalId, IntLocalId, NilFunctionLocalId,
     NilLocalId, StringFunctionLocalId, StringLocalId,
 };
 use super::step::Step;
 use super::{
-    BoolExprKind, BoolFunctionExprKind, CallArgKind, ExprKind, FunctionExprKind, IntExprKind,
-    IntFunctionExprKind, NilExprKind, NilFunctionExprKind, ReturnExprKind, StepKind,
-    StringExprKind, StringFunctionExprKind,
+    BoolExprKind, BoolFunctionExprKind, CallArgKind, ExprKind, FunctionCallArgKind,
+    FunctionExprKind, IntExprKind, IntFunctionExprKind, NilExprKind, NilFunctionExprKind,
+    ReturnExprKind, StepKind, StringExprKind, StringFunctionExprKind,
 };
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -43,12 +43,16 @@ impl FrameLayout {
         layout
     }
 
-    pub(crate) fn include_local(&mut self, local: LocalId) {
+    pub(crate) fn include_local(&mut self, local: &ParamLocal) {
         match local {
-            LocalId::Int(local) => self.include_int(local),
-            LocalId::String(local) => self.include_string(local),
-            LocalId::Bool(local) => self.include_bool(local),
-            LocalId::Nil(local) => self.include_nil(local),
+            ParamLocal::Int(local) => self.include_int(*local),
+            ParamLocal::String(local) => self.include_string(*local),
+            ParamLocal::Bool(local) => self.include_bool(*local),
+            ParamLocal::Nil(local) => self.include_nil(*local),
+            ParamLocal::IntFunction { local, .. } => self.include_int_function(*local),
+            ParamLocal::StringFunction { local, .. } => self.include_string_function(*local),
+            ParamLocal::BoolFunction { local, .. } => self.include_bool_function(*local),
+            ParamLocal::NilFunction { local, .. } => self.include_nil_function(*local),
         }
     }
 
@@ -187,6 +191,29 @@ impl FrameLayout {
                 CallArgKind::String { value, .. } => self.include_string_expr(value),
                 CallArgKind::Bool { value, .. } => self.include_bool_expr(value),
                 CallArgKind::Nil { value, .. } => self.include_nil_expr(value),
+                CallArgKind::IntFunction { value, .. } => self.include_int_function_expr(value),
+                CallArgKind::StringFunction { value, .. } => {
+                    self.include_string_function_expr(value);
+                }
+                CallArgKind::BoolFunction { value, .. } => self.include_bool_function_expr(value),
+                CallArgKind::NilFunction { value, .. } => self.include_nil_function_expr(value),
+            }
+        }
+    }
+
+    fn include_function_call_args(&mut self, args: &[FunctionCallArg]) {
+        for arg in args {
+            match arg.kind() {
+                FunctionCallArgKind::Int(value) => self.include_int_expr(value),
+                FunctionCallArgKind::String(value) => self.include_string_expr(value),
+                FunctionCallArgKind::Bool(value) => self.include_bool_expr(value),
+                FunctionCallArgKind::Nil(value) => self.include_nil_expr(value),
+                FunctionCallArgKind::IntFunction(value) => self.include_int_function_expr(value),
+                FunctionCallArgKind::StringFunction(value) => {
+                    self.include_string_function_expr(value);
+                }
+                FunctionCallArgKind::BoolFunction(value) => self.include_bool_function_expr(value),
+                FunctionCallArgKind::NilFunction(value) => self.include_nil_function_expr(value),
             }
         }
     }
@@ -198,7 +225,7 @@ impl FrameLayout {
             IntExprKind::Call { args, .. } => self.include_call_args(args),
             IntExprKind::FunctionCall { function, args } => {
                 self.include_int_function_expr(function);
-                self.include_call_args(args);
+                self.include_function_call_args(args);
             }
             IntExprKind::Add { left, right }
             | IntExprKind::Sub { left, right }
@@ -243,7 +270,7 @@ impl FrameLayout {
             StringExprKind::Call { args, .. } => self.include_call_args(args),
             StringExprKind::FunctionCall { function, args } => {
                 self.include_string_function_expr(function);
-                self.include_call_args(args);
+                self.include_function_call_args(args);
             }
             StringExprKind::Concatenate { left, right } => {
                 self.include_string_expr(left);
@@ -283,7 +310,7 @@ impl FrameLayout {
             BoolExprKind::Call { args, .. } => self.include_call_args(args),
             BoolExprKind::FunctionCall { function, args } => {
                 self.include_bool_function_expr(function);
-                self.include_call_args(args);
+                self.include_function_call_args(args);
             }
             BoolExprKind::Not(value) => self.include_bool_expr(value),
             BoolExprKind::LtInt { left, right }
@@ -335,7 +362,7 @@ impl FrameLayout {
             NilExprKind::Call { args, .. } => self.include_call_args(args),
             NilExprKind::FunctionCall { function, args } => {
                 self.include_nil_function_expr(function);
-                self.include_call_args(args);
+                self.include_function_call_args(args);
             }
             NilExprKind::BoolCase {
                 subject,
@@ -506,8 +533,8 @@ mod tests {
     use crate::plan::{
         BoolExpr, BoolFunctionExpr, BoolFunctionLocalId, BoolFunctionValue, BoolLocalId, Expr,
         FunctionExpr, IntExpr, IntFunctionExpr, IntFunctionId, IntFunctionLocalId,
-        IntFunctionValue, IntLocalId, LocalId, NilExpr, NilFunctionExpr, NilFunctionLocalId,
-        NilFunctionValue, NilLocalId, ReturnExpr, Step, StringExpr, StringFunctionExpr,
+        IntFunctionValue, IntLocalId, NilExpr, NilFunctionExpr, NilFunctionLocalId,
+        NilFunctionValue, NilLocalId, ParamLocal, ReturnExpr, Step, StringExpr, StringFunctionExpr,
         StringFunctionLocalId, StringFunctionValue, StringLocalId,
     };
 
@@ -515,10 +542,10 @@ mod tests {
     fn frame_layout_includes_local_ids() {
         let mut layout = FrameLayout::default();
 
-        layout.include_local(LocalId::Int(IntLocalId(1)));
-        layout.include_local(LocalId::String(StringLocalId(2)));
-        layout.include_local(LocalId::Bool(BoolLocalId(3)));
-        layout.include_local(LocalId::Nil(NilLocalId(4)));
+        layout.include_local(&ParamLocal::int(IntLocalId(1)));
+        layout.include_local(&ParamLocal::string(StringLocalId(2)));
+        layout.include_local(&ParamLocal::bool(BoolLocalId(3)));
+        layout.include_local(&ParamLocal::nil(NilLocalId(4)));
         layout.include_int_function(IntFunctionLocalId(5));
         layout.include_nil_function(NilFunctionLocalId(6));
 
@@ -734,28 +761,28 @@ mod tests {
     fn int_function_expr() -> IntFunctionExpr {
         IntFunctionExpr::value(IntFunctionValue::new(
             IntFunctionId(0),
-            vec![crate::plan::LocalId::Int(crate::plan::IntLocalId(0))],
+            vec![ParamLocal::int(IntLocalId(0))],
         ))
     }
 
     fn string_function_expr() -> StringFunctionExpr {
         StringFunctionExpr::value(StringFunctionValue::new(
             crate::plan::StringFunctionId(0),
-            vec![crate::plan::LocalId::String(crate::plan::StringLocalId(0))],
+            vec![ParamLocal::string(StringLocalId(0))],
         ))
     }
 
     fn bool_function_expr() -> BoolFunctionExpr {
         BoolFunctionExpr::value(BoolFunctionValue::new(
             crate::plan::BoolFunctionId(0),
-            vec![crate::plan::LocalId::Bool(crate::plan::BoolLocalId(0))],
+            vec![ParamLocal::bool(BoolLocalId(0))],
         ))
     }
 
     fn nil_function_expr() -> NilFunctionExpr {
         NilFunctionExpr::value(NilFunctionValue::new(
             crate::plan::NilFunctionId(0),
-            vec![crate::plan::LocalId::Nil(crate::plan::NilLocalId(0))],
+            vec![ParamLocal::nil(NilLocalId(0))],
         ))
     }
 }

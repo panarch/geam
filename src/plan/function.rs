@@ -1,8 +1,11 @@
 use super::FrameLayout;
 use super::expression::{BoolExpr, IntExpr, NilExpr, StringExpr};
-use super::id::{FunctionId, LocalId};
+use super::id::{
+    BoolFunctionLocalId, BoolLocalId, FunctionId, IntFunctionLocalId, IntLocalId,
+    NilFunctionLocalId, NilLocalId, StringFunctionLocalId, StringLocalId,
+};
 use super::step::Step;
-use super::value::ValueType;
+use super::value::{FunctionType, ValueType};
 use ecow::EcoString;
 
 #[derive(Debug, PartialEq)]
@@ -17,8 +20,32 @@ pub struct FunctionPlan {
 
 #[derive(Debug, PartialEq)]
 pub struct Param {
-    local: LocalId,
+    local: ParamLocal,
     name: EcoString,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum ParamLocal {
+    Int(IntLocalId),
+    String(StringLocalId),
+    Bool(BoolLocalId),
+    Nil(NilLocalId),
+    IntFunction {
+        local: IntFunctionLocalId,
+        type_: FunctionType,
+    },
+    StringFunction {
+        local: StringFunctionLocalId,
+        type_: FunctionType,
+    },
+    BoolFunction {
+        local: BoolFunctionLocalId,
+        type_: FunctionType,
+    },
+    NilFunction {
+        local: NilFunctionLocalId,
+        type_: FunctionType,
+    },
 }
 
 pub(crate) struct RuntimeFunction<Return> {
@@ -147,7 +174,7 @@ impl<Return> RuntimeFunction<Return> {
 }
 
 impl Param {
-    pub(crate) fn new(local: LocalId, name: EcoString) -> Self {
+    pub(crate) fn new(local: ParamLocal, name: EcoString) -> Self {
         Self { local, name }
     }
 
@@ -155,23 +182,71 @@ impl Param {
         &self.name
     }
 
-    pub(crate) fn local(&self) -> LocalId {
-        self.local
+    pub(crate) fn local(&self) -> &ParamLocal {
+        &self.local
+    }
+}
+
+impl ParamLocal {
+    pub(crate) fn int(local: IntLocalId) -> Self {
+        Self::Int(local)
+    }
+
+    pub(crate) fn string(local: StringLocalId) -> Self {
+        Self::String(local)
+    }
+
+    pub(crate) fn bool(local: BoolLocalId) -> Self {
+        Self::Bool(local)
+    }
+
+    pub(crate) fn nil(local: NilLocalId) -> Self {
+        Self::Nil(local)
+    }
+
+    pub(crate) fn int_function(local: IntFunctionLocalId, type_: FunctionType) -> Self {
+        Self::IntFunction { local, type_ }
+    }
+
+    pub(crate) fn string_function(local: StringFunctionLocalId, type_: FunctionType) -> Self {
+        Self::StringFunction { local, type_ }
+    }
+
+    pub(crate) fn bool_function(local: BoolFunctionLocalId, type_: FunctionType) -> Self {
+        Self::BoolFunction { local, type_ }
+    }
+
+    pub(crate) fn nil_function(local: NilFunctionLocalId, type_: FunctionType) -> Self {
+        Self::NilFunction { local, type_ }
+    }
+
+    pub(crate) fn value_type(&self) -> ValueType {
+        match self {
+            Self::Int(_) => ValueType::Int,
+            Self::String(_) => ValueType::String,
+            Self::Bool(_) => ValueType::Bool,
+            Self::Nil(_) => ValueType::Nil,
+            Self::IntFunction { type_, .. }
+            | Self::StringFunction { type_, .. }
+            | Self::BoolFunction { type_, .. }
+            | Self::NilFunction { type_, .. } => ValueType::Function(Box::new(type_.clone())),
+        }
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{FunctionPlan, Param, ReturnExpr, RuntimeFunction};
+    use super::{FunctionPlan, Param, ParamLocal, ReturnExpr, RuntimeFunction};
     use crate::plan::{
-        BoolExpr, FrameLayout, FunctionId, IntExpr, IntLocalId, LocalId, NilExpr, StringExpr,
-        ValueType,
+        BoolExpr, BoolFunctionLocalId, BoolLocalId, FrameLayout, FunctionId, FunctionType, IntExpr,
+        IntFunctionLocalId, IntLocalId, NilExpr, NilFunctionLocalId, StringExpr,
+        StringFunctionLocalId, ValueType,
     };
     use num_bigint::BigInt;
 
     #[test]
     fn function_plan_accessors() {
-        let param = Param::new(LocalId::Int(IntLocalId(0)), "x".into());
+        let param = Param::new(ParamLocal::int(IntLocalId(0)), "x".into());
         let return_ = ReturnExpr::int(IntExpr::value(BigInt::from(1)));
         let function = FunctionPlan::new(
             FunctionId::new(0),
@@ -215,9 +290,70 @@ mod tests {
 
     #[test]
     fn param_name_accessor() {
-        let param = Param::new(LocalId::Int(IntLocalId(0)), "x".into());
+        let param = Param::new(ParamLocal::int(IntLocalId(0)), "x".into());
 
         assert_eq!(param.name(), "x");
+    }
+
+    #[test]
+    fn param_local_value_type() {
+        assert_eq!(ParamLocal::int(IntLocalId(0)).value_type(), ValueType::Int);
+        assert_eq!(
+            ParamLocal::string(crate::plan::StringLocalId(0)).value_type(),
+            ValueType::String,
+        );
+        assert_eq!(
+            ParamLocal::bool(BoolLocalId(0)).value_type(),
+            ValueType::Bool,
+        );
+        assert_eq!(
+            ParamLocal::nil(crate::plan::NilLocalId(0)).value_type(),
+            ValueType::Nil,
+        );
+        assert_eq!(
+            ParamLocal::int_function(
+                IntFunctionLocalId(0),
+                FunctionType::new(vec![ValueType::Int], ValueType::Int),
+            )
+            .value_type(),
+            ValueType::Function(Box::new(FunctionType::new(
+                vec![ValueType::Int],
+                ValueType::Int,
+            ))),
+        );
+        assert_eq!(
+            ParamLocal::string_function(
+                StringFunctionLocalId(0),
+                FunctionType::new(vec![ValueType::String], ValueType::String),
+            )
+            .value_type(),
+            ValueType::Function(Box::new(FunctionType::new(
+                vec![ValueType::String],
+                ValueType::String,
+            ))),
+        );
+        assert_eq!(
+            ParamLocal::bool_function(
+                BoolFunctionLocalId(0),
+                FunctionType::new(vec![ValueType::Bool], ValueType::Bool),
+            )
+            .value_type(),
+            ValueType::Function(Box::new(FunctionType::new(
+                vec![ValueType::Bool],
+                ValueType::Bool,
+            ))),
+        );
+        assert_eq!(
+            ParamLocal::nil_function(
+                NilFunctionLocalId(0),
+                FunctionType::new(vec![ValueType::Nil], ValueType::Nil),
+            )
+            .value_type(),
+            ValueType::Function(Box::new(FunctionType::new(
+                vec![ValueType::Nil],
+                ValueType::Nil,
+            ))),
+        );
     }
 
     #[test]
