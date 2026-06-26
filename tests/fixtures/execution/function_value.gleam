@@ -19,6 +19,7 @@ fn nil_identity(value: Nil) {
 }
 
 pub fn main() {
+  let add = 1
   let add = add_one
   let string = string_identity
   let bool = bool_identity
@@ -33,7 +34,13 @@ pub fn main() {
     add(10)
   }
 
-  inner + add(1)
+  let int_shadow = {
+    let add = add_one
+    let add = 5
+    add + 2
+  }
+
+  inner + int_shadow + add(1)
 }
 
-// geam:expect Int(22)
+// geam:expect Int(29)

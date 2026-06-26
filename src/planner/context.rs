@@ -27,12 +27,17 @@ pub(super) struct FunctionParam {
 pub(super) struct PlanContext<'a> {
     pub(super) module_name: &'a EcoString,
     functions: &'a HashMap<EcoString, FunctionInfo>,
-    locals: HashMap<EcoString, (LocalId, ValueType)>,
-    function_values: HashMap<EcoString, FunctionValue>,
+    bindings: HashMap<EcoString, LocalBinding>,
     next_int_local: usize,
     next_string_local: usize,
     next_bool_local: usize,
     next_nil_local: usize,
+}
+
+#[derive(Clone)]
+enum LocalBinding {
+    Primitive { local: LocalId, type_: ValueType },
+    Function(FunctionValue),
 }
 
 impl<'a> PlanContext<'a> {
@@ -43,8 +48,7 @@ impl<'a> PlanContext<'a> {
         Self {
             module_name,
             functions,
-            locals: HashMap::new(),
-            function_values: HashMap::new(),
+            bindings: HashMap::new(),
             next_int_local: 0,
             next_string_local: 0,
             next_bool_local: 0,
@@ -72,47 +76,71 @@ impl<'a> PlanContext<'a> {
                 self.next_nil_local = self.next_nil_local.max(local.0 + 1);
             }
         }
-        self.locals.insert(name, (local, type_));
+        self.bindings
+            .insert(name, LocalBinding::Primitive { local, type_ });
     }
 
     pub(super) fn define_function_alias(&mut self, name: EcoString, value: FunctionValue) {
-        self.function_values.insert(name, value);
+        self.bindings.insert(name, LocalBinding::Function(value));
     }
 
     pub(super) fn define_int_local(&mut self, name: EcoString) -> IntLocalId {
         let local = IntLocalId(self.next_int_local);
         self.next_int_local += 1;
-        self.locals
-            .insert(name, (LocalId::Int(local), ValueType::Int));
+        self.bindings.insert(
+            name,
+            LocalBinding::Primitive {
+                local: LocalId::Int(local),
+                type_: ValueType::Int,
+            },
+        );
         local
     }
 
     pub(super) fn define_string_local(&mut self, name: EcoString) -> StringLocalId {
         let local = StringLocalId(self.next_string_local);
         self.next_string_local += 1;
-        self.locals
-            .insert(name, (LocalId::String(local), ValueType::String));
+        self.bindings.insert(
+            name,
+            LocalBinding::Primitive {
+                local: LocalId::String(local),
+                type_: ValueType::String,
+            },
+        );
         local
     }
 
     pub(super) fn define_bool_local(&mut self, name: EcoString) -> BoolLocalId {
         let local = BoolLocalId(self.next_bool_local);
         self.next_bool_local += 1;
-        self.locals
-            .insert(name, (LocalId::Bool(local), ValueType::Bool));
+        self.bindings.insert(
+            name,
+            LocalBinding::Primitive {
+                local: LocalId::Bool(local),
+                type_: ValueType::Bool,
+            },
+        );
         local
     }
 
     pub(super) fn define_nil_local(&mut self, name: EcoString) -> NilLocalId {
         let local = NilLocalId(self.next_nil_local);
         self.next_nil_local += 1;
-        self.locals
-            .insert(name, (LocalId::Nil(local), ValueType::Nil));
+        self.bindings.insert(
+            name,
+            LocalBinding::Primitive {
+                local: LocalId::Nil(local),
+                type_: ValueType::Nil,
+            },
+        );
         local
     }
 
     pub(super) fn lookup_local(&self, name: &EcoString) -> Option<(LocalId, ValueType)> {
-        self.locals.get(name).cloned()
+        match self.bindings.get(name)? {
+            LocalBinding::Primitive { local, type_ } => Some((*local, type_.clone())),
+            LocalBinding::Function(_) => None,
+        }
     }
 
     pub(super) fn lookup_function(&self, name: &EcoString) -> Option<FunctionInfo> {
@@ -120,18 +148,19 @@ impl<'a> PlanContext<'a> {
     }
 
     pub(super) fn lookup_function_value(&self, name: &EcoString) -> Option<FunctionValue> {
-        self.function_values.get(name).cloned()
+        match self.bindings.get(name)? {
+            LocalBinding::Function(value) => Some(value.clone()),
+            LocalBinding::Primitive { .. } => None,
+        }
     }
 
     pub(super) fn with_local_scope<T, E>(
         &mut self,
         f: impl FnOnce(&mut Self) -> Result<T, E>,
     ) -> Result<T, E> {
-        let locals = self.locals.clone();
-        let function_values = self.function_values.clone();
+        let bindings = self.bindings.clone();
         let result = f(self);
-        self.locals = locals;
-        self.function_values = function_values;
+        self.bindings = bindings;
         result
     }
 }
@@ -232,16 +261,42 @@ mod tests {
         let module = EcoString::from("main");
         let functions = HashMap::<EcoString, FunctionInfo>::new();
         let mut context = PlanContext::new(&module, &functions);
-        let value = FunctionValue::new(
-            FunctionType::new(Vec::new(), ValueType::Int),
-            RuntimeFunctionId::Int(IntFunctionId(0)),
-            Vec::new(),
-        );
+        let value = function_value();
 
         context.define_function_alias("f".into(), value.clone());
 
         assert_eq!(context.lookup_function_value(&"f".into()), Some(value));
         assert_eq!(context.lookup_local(&"f".into()), None);
+    }
+
+    #[test]
+    fn function_alias_shadows_primitive_binding() {
+        let module = EcoString::from("main");
+        let functions = HashMap::<EcoString, FunctionInfo>::new();
+        let mut context = PlanContext::new(&module, &functions);
+        let value = function_value();
+
+        context.define_int_local("f".into());
+        context.define_function_alias("f".into(), value.clone());
+
+        assert_eq!(context.lookup_function_value(&"f".into()), Some(value));
+        assert_eq!(context.lookup_local(&"f".into()), None);
+    }
+
+    #[test]
+    fn primitive_binding_shadows_function_alias() {
+        let module = EcoString::from("main");
+        let functions = HashMap::<EcoString, FunctionInfo>::new();
+        let mut context = PlanContext::new(&module, &functions);
+
+        context.define_function_alias("f".into(), function_value());
+        let local = context.define_int_local("f".into());
+
+        assert_eq!(context.lookup_function_value(&"f".into()), None);
+        assert_eq!(
+            context.lookup_local(&"f".into()),
+            Some((LocalId::Int(local), ValueType::Int))
+        );
     }
 
     #[test]
@@ -255,5 +310,13 @@ mod tests {
             )))),
             None,
         );
+    }
+
+    fn function_value() -> FunctionValue {
+        FunctionValue::new(
+            FunctionType::new(Vec::new(), ValueType::Int),
+            RuntimeFunctionId::Int(IntFunctionId(0)),
+            Vec::new(),
+        )
     }
 }

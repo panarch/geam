@@ -491,6 +491,58 @@ pub fn main() {
     }
 
     #[test]
+    fn plan_function_value_and_primitive_shadowing_bindings() {
+        let actual = plan_module(compile(
+            r#"
+fn add_one(value: Int) {
+  value + 1
+}
+
+pub fn main() {
+  let function = 1
+  let function = add_one
+  function(1)
+}
+
+pub fn primitive_shadow() {
+  let function = add_one
+  let function = 1
+  function + 1
+}
+"#,
+        ))
+        .expect("source should plan");
+        let add_one =
+            function("add_one", local_int(0, "value").add_int(int(1))).param_int(0, "value");
+        let add_one_ref = function_ref(
+            RuntimeFunctionId::Int(IntFunctionId(1)),
+            FunctionType::new(vec![ValueType::Int], ValueType::Int),
+            [LocalId::Int(IntLocalId(0))],
+        );
+        let expected = module(
+            "main",
+            function("main", call_int(1, [int_arg(0, int(1))]))
+                .let_int(0, "function", int(1))
+                .let_function("function", add_one_ref),
+            [
+                add_one,
+                function("primitive_shadow", local_int(0, "function").add_int(int(1)))
+                    .let_function(
+                        "function",
+                        function_ref(
+                            RuntimeFunctionId::Int(IntFunctionId(1)),
+                            FunctionType::new(vec![ValueType::Int], ValueType::Int),
+                            [LocalId::Int(IntLocalId(0))],
+                        ),
+                    )
+                    .let_int(0, "function", int(1)),
+            ],
+        );
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
     fn reject_profile_non_value_function_callee() {
         assert_eq!(
             expect_plan_error(
