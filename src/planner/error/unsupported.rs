@@ -72,8 +72,6 @@ pub enum UnsupportedExpressionKind {
     Echo,
     #[error("float")]
     Float,
-    #[error("non-value function callee")]
-    NonValueFunctionCallee,
     #[error("list")]
     List,
     #[error("panic")]

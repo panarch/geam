@@ -595,6 +595,23 @@ pub fn main() {
             )),
         );
 
+        let mut unsupported_pipe_value = compile_hole_pipeline_module();
+        let (_, _, finally, _) = expect_pipeline_statement_mut(
+            &mut unsupported_pipe_value.definitions.functions[1].body[0],
+        );
+        let arguments = expect_call_arguments_mut(finally);
+        let pipe_argument = arguments
+            .iter_mut()
+            .find(|argument| argument.implicit == Some(ImplicitCallArgOrigin::Pipe))
+            .expect("expected pipe argument");
+        pipe_argument.value = typed_list_expr();
+        assert_eq!(
+            plan_module(unsupported_pipe_value),
+            Err(PlanError::UnsupportedExpression {
+                kind: UnsupportedExpressionKind::List,
+            }),
+        );
+
         let mut missing_capture_arg = compile_hole_pipeline_module();
         let (capture_args, _) = expect_pipeline_hole_capture_mut(
             &mut missing_capture_arg.definitions.functions[1].body[0],
@@ -784,6 +801,19 @@ pub fn main() {
         };
 
         (first_value, assignments, finally, finally_kind)
+    }
+
+    fn typed_list_expr() -> TypedExpr {
+        let mut module = compile(
+            r#"
+pub fn main() {
+  [1]
+}
+"#,
+        );
+        let mut statement = module.definitions.functions[0].body.remove(0);
+
+        expect_expression_statement_mut(&mut statement).clone()
     }
 
     #[test]

@@ -29,6 +29,36 @@ pub fn main() {
   bool(True)
   nil(Nil)
 
+  { string_identity }("geam")
+  { bool_identity }(True)
+  { nil_identity }(Nil)
+
+  case True {
+    True -> string_identity
+    False -> string_identity
+  }("geam")
+  case True {
+    True -> bool_identity
+    False -> bool_identity
+  }(True)
+  case True {
+    True -> nil_identity
+    False -> nil_identity
+  }(Nil)
+
+  case 0 {
+    0 -> string_identity
+    _ -> string_identity
+  }("geam")
+  case 0 {
+    0 -> bool_identity
+    _ -> bool_identity
+  }(True)
+  case 0 {
+    0 -> nil_identity
+    _ -> nil_identity
+  }(Nil)
+
   let inner = {
     let add = add_ten
     add(10)
@@ -40,7 +70,17 @@ pub fn main() {
     add + 2
   }
 
-  inner + int_shadow + add(1)
+  let block_call = { add_one }(1)
+  let bool_case_call = case True {
+    True -> add_one
+    False -> add_ten
+  }(1)
+  let int_case_call = case 0 {
+    0 -> add_ten
+    _ -> add_one
+  }(1)
+
+  inner + int_shadow + add(1) + block_call + bool_case_call + int_case_call
 }
 
-// geam:expect Int(29)
+// geam:expect Int(44)

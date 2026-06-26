@@ -45,8 +45,9 @@ pub(in crate::runtime) fn eval_function_expr(
 mod tests {
     use super::eval_function_expr;
     use crate::plan::{
-        BoolExpr, ExecutionPlan, Expr, FunctionExpr, FunctionId, FunctionPlan, FunctionValue,
-        IntExpr, IntFunctionId, RuntimeFunctionId, Step, ValueType,
+        BoolExpr, ExecutionPlan, Expr, FunctionArgumentType, FunctionExpr, FunctionId,
+        FunctionPlan, FunctionType, FunctionValue, IntExpr, IntFunctionId, RuntimeFunctionId, Step,
+        ValueType,
     };
     use crate::runtime::frame::Frame;
     use num_bigint::BigInt;
@@ -158,7 +159,10 @@ mod tests {
     fn assert_int_function(function: FunctionValue) {
         let type_ = function.type_();
 
-        assert_eq!(type_.arguments(), &[ValueType::Int]);
+        assert_eq!(
+            type_,
+            FunctionType::new(vec![FunctionArgumentType::Int], ValueType::Int),
+        );
         assert_eq!(type_.return_(), &ValueType::Int);
     }
 
