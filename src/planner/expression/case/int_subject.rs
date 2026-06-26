@@ -2,7 +2,7 @@ use super::{
     invalid_case_shape, single_case_pattern, unsupported_case, validate_case_branch_type,
     validate_clause_shape,
 };
-use crate::plan::{Expr, IntExpr};
+use crate::plan::{Expr, ExprKind, FunctionType, IntCaseBranches, IntExpr};
 use crate::planner::context::PlanContext;
 use crate::planner::error::{InvalidCaseShapeReason, PlanError, UnsupportedCaseReason};
 use gleam_core::ast::{Pattern, TypedClause, TypedExpr};
@@ -106,15 +106,113 @@ fn int_case_expr(
     clauses: Vec<(BigInt, Expr)>,
     fallback: Expr,
 ) -> Result<Expr, PlanError> {
-    Expr::int_case(subject, clauses, fallback)
-        .map_err(|()| invalid_case_shape(InvalidCaseShapeReason::BranchReturnTypeMismatch))
+    let branches = match fallback.into_kind() {
+        ExprKind::Int(fallback) => IntCaseBranches::Int {
+            clauses: int_case_clauses(clauses)?,
+            fallback,
+        },
+        ExprKind::String(fallback) => IntCaseBranches::String {
+            clauses: string_case_clauses(clauses)?,
+            fallback,
+        },
+        ExprKind::Bool(fallback) => IntCaseBranches::Bool {
+            clauses: bool_case_clauses(clauses)?,
+            fallback,
+        },
+        ExprKind::Nil(fallback) => IntCaseBranches::Nil {
+            clauses: nil_case_clauses(clauses)?,
+            fallback,
+        },
+        ExprKind::Function(fallback) => IntCaseBranches::Function {
+            clauses: function_case_clauses(clauses, fallback.type_())?,
+            fallback,
+        },
+    };
+
+    Ok(Expr::int_case(subject, branches))
+}
+
+fn int_case_clauses(
+    clauses: Vec<(BigInt, Expr)>,
+) -> Result<Vec<(BigInt, crate::plan::IntExpr)>, PlanError> {
+    let mut typed_clauses = Vec::with_capacity(clauses.len());
+    for (value, clause) in clauses {
+        let ExprKind::Int(clause) = clause.into_kind() else {
+            return Err(branch_return_type_mismatch());
+        };
+        typed_clauses.push((value, clause));
+    }
+    Ok(typed_clauses)
+}
+
+fn string_case_clauses(
+    clauses: Vec<(BigInt, Expr)>,
+) -> Result<Vec<(BigInt, crate::plan::StringExpr)>, PlanError> {
+    let mut typed_clauses = Vec::with_capacity(clauses.len());
+    for (value, clause) in clauses {
+        let ExprKind::String(clause) = clause.into_kind() else {
+            return Err(branch_return_type_mismatch());
+        };
+        typed_clauses.push((value, clause));
+    }
+    Ok(typed_clauses)
+}
+
+fn bool_case_clauses(
+    clauses: Vec<(BigInt, Expr)>,
+) -> Result<Vec<(BigInt, crate::plan::BoolExpr)>, PlanError> {
+    let mut typed_clauses = Vec::with_capacity(clauses.len());
+    for (value, clause) in clauses {
+        let ExprKind::Bool(clause) = clause.into_kind() else {
+            return Err(branch_return_type_mismatch());
+        };
+        typed_clauses.push((value, clause));
+    }
+    Ok(typed_clauses)
+}
+
+fn nil_case_clauses(
+    clauses: Vec<(BigInt, Expr)>,
+) -> Result<Vec<(BigInt, crate::plan::NilExpr)>, PlanError> {
+    let mut typed_clauses = Vec::with_capacity(clauses.len());
+    for (value, clause) in clauses {
+        let ExprKind::Nil(clause) = clause.into_kind() else {
+            return Err(branch_return_type_mismatch());
+        };
+        typed_clauses.push((value, clause));
+    }
+    Ok(typed_clauses)
+}
+
+fn function_case_clauses(
+    clauses: Vec<(BigInt, Expr)>,
+    expected: &FunctionType,
+) -> Result<Vec<(BigInt, crate::plan::FunctionExpr)>, PlanError> {
+    let mut typed_clauses = Vec::with_capacity(clauses.len());
+    for (value, clause) in clauses {
+        let ExprKind::Function(clause) = clause.into_kind() else {
+            return Err(branch_return_type_mismatch());
+        };
+        if clause.type_() != expected {
+            return Err(branch_return_type_mismatch());
+        }
+        typed_clauses.push((value, clause));
+    }
+    Ok(typed_clauses)
+}
+
+fn branch_return_type_mismatch() -> PlanError {
+    invalid_case_shape(InvalidCaseShapeReason::BranchReturnTypeMismatch)
 }
 
 #[cfg(test)]
 mod tests {
+    use crate::plan::{
+        FunctionExpr, IntFunctionId, IntLocalId, LocalId, RuntimeFunctionId, StringFunctionId,
+    };
     use crate::planner::dsl::{
-        bool_, function, int, int_case_bool, int_case_int, int_case_nil, int_case_string,
-        local_int, module, nil, string,
+        bool_, function, function_ref, int, int_case_bool, int_case_int, int_case_nil,
+        int_case_string, local_int, module, nil, string,
     };
     use crate::planner::plan_module;
     use crate::planner::support::{dummy_span, expect_plan_error};
@@ -234,6 +332,32 @@ fn duplicate_literal(value: Int) {
                 .param_int(0, "value"),
             ],
         );
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn plan_int_case_function_expr_shape() {
+        let actual = super::int_case_expr(
+            int(1).into(),
+            vec![(BigInt::from(1), int_function_ref_expr(0))],
+            int_function_ref_expr(0),
+        );
+        let branch: FunctionExpr = function_ref(
+            RuntimeFunctionId::Int(IntFunctionId(0)),
+            [LocalId::Int(IntLocalId(0))],
+        )
+        .into();
+        let fallback: FunctionExpr = function_ref(
+            RuntimeFunctionId::Int(IntFunctionId(0)),
+            [LocalId::Int(IntLocalId(0))],
+        )
+        .into();
+        let expected = Ok(crate::plan::Expr::function(FunctionExpr::int_case(
+            int(1).into(),
+            vec![(BigInt::from(1), branch)],
+            fallback,
+        )));
 
         assert_eq!(actual, expected);
     }
@@ -421,15 +545,78 @@ pub fn main() {
         assert_eq!(
             super::int_case_expr(
                 int(1).into(),
+                vec![(BigInt::from(1), bool_(true).into())],
+                int(0).into(),
+            ),
+            Err(case_branch_return_type_mismatch()),
+        );
+
+        assert_eq!(
+            super::int_case_expr(
+                int(1).into(),
+                vec![(BigInt::from(1), int(10).into())],
+                string("other").into(),
+            ),
+            Err(case_branch_return_type_mismatch()),
+        );
+
+        assert_eq!(
+            super::int_case_expr(
+                int(1).into(),
                 vec![(BigInt::from(1), int(10).into())],
                 bool_(false).into(),
             ),
-            Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::CaseShape {
-                    reason: InvalidCaseShapeReason::BranchReturnTypeMismatch,
-                },
-            }),
+            Err(case_branch_return_type_mismatch()),
         );
+
+        assert_eq!(
+            super::int_case_expr(
+                int(1).into(),
+                vec![(BigInt::from(1), int(10).into())],
+                nil().into(),
+            ),
+            Err(case_branch_return_type_mismatch()),
+        );
+
+        assert_eq!(
+            super::int_case_expr(
+                int(1).into(),
+                vec![(BigInt::from(1), int(10).into())],
+                int_function_ref_expr(0),
+            ),
+            Err(case_branch_return_type_mismatch()),
+        );
+
+        let string_function: crate::plan::Expr = function_ref(
+            RuntimeFunctionId::String(StringFunctionId(0)),
+            [LocalId::Int(IntLocalId(0))],
+        )
+        .into();
+
+        assert_eq!(
+            super::int_case_expr(
+                int(1).into(),
+                vec![(BigInt::from(1), string_function)],
+                int_function_ref_expr(0),
+            ),
+            Err(case_branch_return_type_mismatch()),
+        );
+    }
+
+    fn int_function_ref_expr(id: usize) -> crate::plan::Expr {
+        function_ref(
+            RuntimeFunctionId::Int(IntFunctionId(id)),
+            [LocalId::Int(IntLocalId(0))],
+        )
+        .into()
+    }
+
+    fn case_branch_return_type_mismatch() -> PlanError {
+        PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::CaseShape {
+                reason: InvalidCaseShapeReason::BranchReturnTypeMismatch,
+            },
+        }
     }
 
     #[test]
