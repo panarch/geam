@@ -181,7 +181,7 @@ pub fn main() {
     }
 
     #[test]
-    fn execute_function_value_let_step() {
+    fn execute_function_value_alias_call() {
         assert_eq!(
             run_src(
                 r#"
