@@ -28,7 +28,7 @@ pub(super) fn block_expr(steps: Vec<Step>, return_: Expr) -> Expr {
 
 #[cfg(test)]
 mod tests {
-    use crate::plan::{FunctionType, IntFunctionId, LocalId, RuntimeFunctionId, ValueType};
+    use crate::plan::{IntFunctionId, LocalId, RuntimeFunctionId};
     use crate::planner::dsl::{
         block_bool, block_function, block_int, block_nil, block_string, bool_, evaluate_step,
         function, function_ref, int, let_int_step, let_nil_step, local_int, local_nil, module, nil,
@@ -89,7 +89,6 @@ pub fn main() {
                 [],
                 function_ref(
                     RuntimeFunctionId::Int(IntFunctionId(1)),
-                    FunctionType::new(vec![ValueType::Int], ValueType::Int),
                     [LocalId::Int(crate::plan::IntLocalId(0))],
                 ),
             )),

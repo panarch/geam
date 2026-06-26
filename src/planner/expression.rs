@@ -221,10 +221,7 @@ pub(in crate::planner::expression) fn typed_prelude_constructor(
 #[cfg(test)]
 mod tests {
     use super::{invalid_expression_type, module_returning_typed_expr, typed_int_expr};
-    use crate::plan::{
-        Expr, FunctionExpr, FunctionType, FunctionValue, NilFunctionId, RuntimeFunctionId,
-        ValueType,
-    };
+    use crate::plan::{Expr, FunctionExpr, FunctionValue, NilFunctionId, RuntimeFunctionId};
     use crate::planner::plan_module;
     use crate::planner::support::{compile, dummy_span, expect_plan_error};
     use crate::planner::{
@@ -427,7 +424,6 @@ pub fn main() {
     #[test]
     fn reject_margin_function_expression_type() {
         let expression = Expr::function(FunctionExpr::value(FunctionValue::new(
-            FunctionType::new(Vec::new(), ValueType::Nil),
             RuntimeFunctionId::Nil(NilFunctionId(0)),
             Vec::new(),
         )));

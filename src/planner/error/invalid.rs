@@ -35,12 +35,8 @@ pub enum InvalidTypedAstReason {
 pub enum InvalidFunctionShapeReason {
     #[error("anonymous functions are not module functions")]
     Anonymous,
-    #[error("function arity does not match function type")]
-    ArityMismatch,
     #[error("empty function bodies are not supported")]
     EmptyBody,
-    #[error("function argument type does not match parameter local")]
-    ArgumentTypeMismatch,
     #[error("function return type does not match body")]
     ReturnTypeMismatch,
 }
@@ -83,8 +79,6 @@ pub enum InvalidExpressionType {
 pub enum InvalidCallShapeReason {
     #[error("function value call arity mismatch")]
     FunctionCallArityMismatch,
-    #[error("function value parameter shape mismatch")]
-    FunctionValueParameterShapeMismatch,
     #[error("function value call return type mismatch")]
     FunctionCallReturnTypeMismatch,
     #[error("implicit call arguments")]

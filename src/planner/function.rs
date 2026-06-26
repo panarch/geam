@@ -1,7 +1,5 @@
-use crate::plan::{
-    Expr, ExprKind, FunctionPlan, FunctionType, Param, ReturnExpr, RuntimeFunctionId, ValueType,
-};
-use crate::planner::context::{FunctionInfo, FunctionParam, PlanContext};
+use crate::plan::{Expr, ExprKind, FunctionPlan, Param, ReturnExpr, ValueType};
+use crate::planner::context::{FunctionInfo, PlanContext};
 use crate::planner::error::{
     InvalidFunctionShapeReason, InvalidTypedAstReason, PlanError, UnsupportedFunctionReason,
 };
@@ -26,12 +24,15 @@ pub(super) fn plan_function(
     }
 
     let mut context = PlanContext::new(module_name, functions);
-    validate_function_param_types(&name, &info.type_, &info.params)?;
     let params = info
         .params
         .iter()
         .map(|param| {
-            context.define_existing_local(param.name.clone(), param.local, param.type_.clone());
+            context.define_existing_local(
+                param.name.clone(),
+                param.local,
+                param.local.value_type(),
+            );
             Param::new(param.local, param.name.clone())
         })
         .collect();
@@ -45,7 +46,7 @@ pub(super) fn plan_function(
             },
         },
     )?;
-    let return_ = function_return_expr(&name, &info.return_type, planned.return_)?;
+    let return_ = function_return_expr(&name, &info.return_type(), planned.return_)?;
 
     Ok(FunctionPlan::new(
         info.id,
@@ -75,59 +76,6 @@ fn function_return_expr(
     }
 }
 
-pub(in crate::planner) fn validate_function_param_types(
-    name: &EcoString,
-    expected: &FunctionType,
-    params: &[FunctionParam],
-) -> Result<(), PlanError> {
-    if expected.arguments().len() != params.len() {
-        return Err(PlanError::InvalidTypedAst {
-            reason: InvalidTypedAstReason::FunctionShape {
-                name: name.clone(),
-                reason: InvalidFunctionShapeReason::ArityMismatch,
-            },
-        });
-    }
-
-    for (expected, param) in expected.arguments().iter().zip(params) {
-        if expected != &param.type_ {
-            return Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::FunctionShape {
-                    name: name.clone(),
-                    reason: InvalidFunctionShapeReason::ArgumentTypeMismatch,
-                },
-            });
-        }
-    }
-
-    Ok(())
-}
-
-pub(in crate::planner) fn validate_function_runtime_id(
-    name: &EcoString,
-    expected: &FunctionType,
-    runtime_id: RuntimeFunctionId,
-) -> Result<(), PlanError> {
-    let matches = matches!(
-        (runtime_id, expected.return_()),
-        (RuntimeFunctionId::Int(_), ValueType::Int)
-            | (RuntimeFunctionId::String(_), ValueType::String)
-            | (RuntimeFunctionId::Bool(_), ValueType::Bool)
-            | (RuntimeFunctionId::Nil(_), ValueType::Nil)
-    );
-
-    if matches {
-        return Ok(());
-    }
-
-    Err(PlanError::InvalidTypedAst {
-        reason: InvalidTypedAstReason::FunctionShape {
-            name: name.clone(),
-            reason: InvalidFunctionShapeReason::ReturnTypeMismatch,
-        },
-    })
-}
-
 pub(super) fn function_name(function: &TypedFunction) -> Result<EcoString, PlanError> {
     function
         .name
@@ -143,12 +91,6 @@ pub(super) fn function_name(function: &TypedFunction) -> Result<EcoString, PlanE
 
 #[cfg(test)]
 mod tests {
-    use super::{validate_function_param_types, validate_function_runtime_id};
-    use crate::plan::{
-        FunctionType, IntFunctionId, IntLocalId, LocalId, RuntimeFunctionId, StringFunctionId,
-        StringLocalId, ValueType,
-    };
-    use crate::planner::context::FunctionParam;
     use crate::planner::dsl::{
         bool_, bool_arg, call_bool, call_int, call_nil, call_string, function, int, int_arg,
         local_bool, local_int, local_nil, local_string, module, nil, nil_arg, string, string_arg,
@@ -381,78 +323,6 @@ pub fn main() {
                     reason: InvalidFunctionShapeReason::ReturnTypeMismatch,
                 },
             }),
-        );
-    }
-
-    #[test]
-    fn reject_margin_function_param_type_validation() {
-        let name = "main".into();
-        let type_ = FunctionType::new(vec![ValueType::Int], ValueType::Int);
-
-        assert_eq!(
-            validate_function_param_types(&name, &type_, &[]),
-            Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::FunctionShape {
-                    name: "main".into(),
-                    reason: InvalidFunctionShapeReason::ArityMismatch,
-                },
-            }),
-        );
-
-        assert_eq!(
-            validate_function_param_types(
-                &name,
-                &type_,
-                &[FunctionParam {
-                    local: LocalId::String(StringLocalId(0)),
-                    name: "value".into(),
-                    type_: ValueType::String,
-                }],
-            ),
-            Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::FunctionShape {
-                    name: "main".into(),
-                    reason: InvalidFunctionShapeReason::ArgumentTypeMismatch,
-                },
-            }),
-        );
-
-        assert_eq!(
-            validate_function_param_types(
-                &name,
-                &type_,
-                &[FunctionParam {
-                    local: LocalId::Int(IntLocalId(0)),
-                    name: "value".into(),
-                    type_: ValueType::Int,
-                }],
-            ),
-            Ok(()),
-        );
-    }
-
-    #[test]
-    fn reject_margin_function_runtime_id_validation() {
-        let name = "main".into();
-        let type_ = FunctionType::new(Vec::new(), ValueType::String);
-
-        assert_eq!(
-            validate_function_runtime_id(&name, &type_, RuntimeFunctionId::Int(IntFunctionId(0)),),
-            Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::FunctionShape {
-                    name: "main".into(),
-                    reason: InvalidFunctionShapeReason::ReturnTypeMismatch,
-                },
-            }),
-        );
-
-        assert_eq!(
-            validate_function_runtime_id(
-                &name,
-                &type_,
-                RuntimeFunctionId::String(StringFunctionId(0)),
-            ),
-            Ok(()),
         );
     }
 }

@@ -1,9 +1,6 @@
-use crate::plan::{
-    BoolExpr, Expr, FunctionExpr, FunctionValue, IntExpr, LocalId, NilExpr, StringExpr, ValueType,
-};
+use crate::plan::{BoolExpr, Expr, FunctionExpr, IntExpr, LocalId, NilExpr, StringExpr, ValueType};
 use crate::planner::context::PlanContext;
 use crate::planner::error::{InvalidExpressionShapeKind, InvalidTypedAstReason, PlanError};
-use crate::planner::function::{validate_function_param_types, validate_function_runtime_id};
 use ecow::EcoString;
 use gleam_core::type_::{PRELUDE_MODULE_NAME, ValueConstructor, ValueConstructorVariant};
 
@@ -56,14 +53,8 @@ pub(super) fn plan_var(
                     .ok_or_else(|| PlanError::InvalidTypedAst {
                         reason: InvalidTypedAstReason::UnknownLocal { name: name.clone() },
                     })?;
-            let runtime_id = function.runtime_id;
-            let type_ = function.type_;
-            validate_function_param_types(&name, &type_, &function.params)?;
-            validate_function_runtime_id(&name, &type_, runtime_id)?;
-            let params = function.params.iter().map(|param| param.local).collect();
-            let value = FunctionValue::new(type_, runtime_id, params);
 
-            Ok(Expr::function(FunctionExpr::value(value)))
+            Ok(Expr::function(FunctionExpr::value(function.value())))
         }
         ValueConstructorVariant::ModuleFn { .. } => Err(PlanError::InvalidTypedAst {
             reason: InvalidTypedAstReason::ExpressionShape {
@@ -102,24 +93,17 @@ fn local_get(local: LocalId, name: EcoString, type_: ValueType) -> Result<Expr, 
 #[cfg(test)]
 mod tests {
     use super::super::{module_returning_typed_expr, typed_int_expr, typed_prelude_constructor};
-    use crate::plan::{
-        FunctionId, FunctionType, IntFunctionId, IntLocalId, LocalId, RuntimeFunctionId,
-        StringLocalId, ValueType,
-    };
-    use crate::planner::context::{FunctionInfo, FunctionParam, PlanContext};
+    use crate::plan::{IntFunctionId, IntLocalId, LocalId, RuntimeFunctionId, ValueType};
     use crate::planner::dsl::{
         bool_, function, function_ref, int, local_bool, local_int, local_nil, local_string, module,
         nil,
     };
     use crate::planner::plan_module;
     use crate::planner::support::compile;
-    use crate::planner::{
-        InvalidExpressionShapeKind, InvalidFunctionShapeReason, InvalidTypedAstReason, PlanError,
-    };
+    use crate::planner::{InvalidExpressionShapeKind, InvalidTypedAstReason, PlanError};
     use ecow::EcoString;
     use gleam_core::ast::{Statement, TypedExpr, TypedStatement};
     use gleam_core::type_;
-    use std::collections::HashMap;
 
     #[test]
     fn plan_local_variables() {
@@ -210,7 +194,6 @@ pub fn main() {
             "main",
             function("main", int(1)).evaluate(function_ref(
                 RuntimeFunctionId::Int(IntFunctionId(1)),
-                FunctionType::new(vec![ValueType::Int], ValueType::Int),
                 [LocalId::Int(IntLocalId(0))],
             )),
             [function("identity", local_int(0, "value")).param_int(0, "value")],
@@ -364,70 +347,7 @@ pub fn main() {
     }
 
     #[test]
-    fn reject_margin_top_level_function_reference_argument_type_mismatch() {
-        let mut module = compile(
-            r#"
-fn helper(value: Int) {
-  value
-}
-
-pub fn main() {
-  helper
-}
-"#,
-        );
-        let main = module
-            .definitions
-            .functions
-            .iter_mut()
-            .find(|function| {
-                function
-                    .name
-                    .as_ref()
-                    .is_some_and(|(_, name)| name == "main")
-            })
-            .expect("main function should exist");
-        let (name, constructor) = {
-            let expression = expect_expression_statement_mut(&mut main.body[0]);
-            let (name, constructor) = expect_var_mut(expression);
-            (name.clone(), constructor.clone())
-        };
-        let module_name = EcoString::from("main");
-        let mut functions = HashMap::new();
-        functions.insert(
-            "helper".into(),
-            FunctionInfo {
-                id: FunctionId::new(0),
-                runtime_id: RuntimeFunctionId::Int(IntFunctionId(0)),
-                arity: 1,
-                params: vec![FunctionParam {
-                    local: LocalId::String(StringLocalId(0)),
-                    name: "value".into(),
-                    type_: ValueType::String,
-                }],
-                return_type: ValueType::Int,
-                type_: FunctionType::new(vec![ValueType::Int], ValueType::Int),
-            },
-        );
-        let context = PlanContext::new(&module_name, &functions);
-
-        assert_eq!(
-            super::plan_var(name, constructor, &context),
-            Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::FunctionShape {
-                    name: "helper".into(),
-                    reason: InvalidFunctionShapeReason::ArgumentTypeMismatch,
-                },
-            }),
-        );
-    }
-
-    #[test]
     fn reject_margin_local_type_shape_mismatch() {
-        let module_name = EcoString::from("main");
-        let functions = HashMap::<EcoString, FunctionInfo>::new();
-        let _context = PlanContext::new(&module_name, &functions);
-
         assert_eq!(
             super::local_get(
                 LocalId::Int(IntLocalId(0)),

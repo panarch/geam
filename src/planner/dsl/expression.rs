@@ -1,7 +1,7 @@
 use crate::plan::{
-    BoolExpr, BoolFunctionId, BoolLocalId, CallArg, Expr, FunctionExpr, FunctionType,
-    FunctionValue, IntExpr, IntFunctionId, IntLocalId, LocalId, NilExpr, NilFunctionId, NilLocalId,
-    ReturnExpr, RuntimeFunctionId, Step, StringExpr, StringFunctionId, StringLocalId,
+    BoolExpr, BoolFunctionId, BoolLocalId, CallArg, Expr, FunctionExpr, FunctionValue, IntExpr,
+    IntFunctionId, IntLocalId, LocalId, NilExpr, NilFunctionId, NilLocalId, ReturnExpr,
+    RuntimeFunctionId, Step, StringExpr, StringFunctionId, StringLocalId,
 };
 use ecow::EcoString;
 use num_bigint::BigInt;
@@ -34,11 +34,9 @@ pub(crate) fn nil() -> Nil {
 
 pub(crate) fn function_ref(
     runtime_id: RuntimeFunctionId,
-    type_: FunctionType,
     params: impl IntoIterator<Item = LocalId>,
 ) -> Function {
     Function(FunctionExpr::value(FunctionValue::new(
-        type_,
         runtime_id,
         params.into_iter().collect(),
     )))
@@ -404,8 +402,8 @@ impl From<Function> for FunctionExpr {
 mod tests {
     use super::*;
     use crate::plan::{
-        BoolExprKind, CallArgKind, ExprKind, FunctionExprKind, FunctionType, IntExprKind,
-        NilExprKind, RuntimeFunctionId, StepKind, StringExprKind, ValueType,
+        BoolExprKind, CallArgKind, ExprKind, FunctionExprKind, IntExprKind, NilExprKind,
+        RuntimeFunctionId, StepKind, StringExprKind,
     };
 
     #[test]
@@ -563,7 +561,6 @@ mod tests {
         assert!(matches!(
             Expr::from(function_ref(
                 RuntimeFunctionId::Int(crate::plan::IntFunctionId(0)),
-                FunctionType::new(vec![ValueType::Int], ValueType::Int),
                 [crate::plan::LocalId::Int(crate::plan::IntLocalId(0))],
             ))
             .kind(),
@@ -574,7 +571,6 @@ mod tests {
                 "f",
                 function_ref(
                     RuntimeFunctionId::Int(crate::plan::IntFunctionId(0)),
-                    FunctionType::new(vec![ValueType::Int], ValueType::Int),
                     [crate::plan::LocalId::Int(crate::plan::IntLocalId(0))],
                 ),
             )
@@ -584,7 +580,6 @@ mod tests {
         assert!(matches!(
             FunctionExpr::from(function_ref(
                 RuntimeFunctionId::Int(crate::plan::IntFunctionId(0)),
-                FunctionType::new(vec![ValueType::Int], ValueType::Int),
                 [crate::plan::LocalId::Int(crate::plan::IntLocalId(0))],
             ))
             .kind(),
@@ -595,7 +590,6 @@ mod tests {
                 [],
                 function_ref(
                     RuntimeFunctionId::Int(crate::plan::IntFunctionId(0)),
-                    FunctionType::new(vec![ValueType::Int], ValueType::Int),
                     [crate::plan::LocalId::Int(crate::plan::IntLocalId(0))],
                 ),
             ))

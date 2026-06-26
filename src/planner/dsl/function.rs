@@ -107,7 +107,7 @@ impl FunctionDsl {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::plan::{FunctionType, IntFunctionId, RuntimeFunctionId, StepKind, ValueType};
+    use crate::plan::{IntFunctionId, RuntimeFunctionId, StepKind};
     use crate::planner::dsl::expression::{bool_, function_ref, int, nil, string};
 
     #[test]
@@ -123,11 +123,7 @@ mod tests {
             .let_nil(1, "n", nil())
             .let_function(
                 "f",
-                function_ref(
-                    RuntimeFunctionId::Int(IntFunctionId(0)),
-                    FunctionType::new(Vec::new(), ValueType::Int),
-                    [],
-                ),
+                function_ref(RuntimeFunctionId::Int(IntFunctionId(0)), []),
             )
             .evaluate(int(3))
             .build(FunctionId::new(0));

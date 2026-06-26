@@ -20,7 +20,6 @@ pub struct FunctionType {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FunctionValue {
-    type_: FunctionType,
     runtime_id: RuntimeFunctionId,
     params: Vec<LocalId>,
 }
@@ -52,20 +51,15 @@ impl FunctionType {
 }
 
 impl FunctionValue {
-    pub(crate) fn new(
-        type_: FunctionType,
-        runtime_id: RuntimeFunctionId,
-        params: Vec<LocalId>,
-    ) -> Self {
-        Self {
-            type_,
-            runtime_id,
-            params,
-        }
+    pub(crate) fn new(runtime_id: RuntimeFunctionId, params: Vec<LocalId>) -> Self {
+        Self { runtime_id, params }
     }
 
-    pub fn type_(&self) -> &FunctionType {
-        &self.type_
+    pub fn type_(&self) -> FunctionType {
+        FunctionType::new(
+            self.params.iter().map(|param| param.value_type()).collect(),
+            self.runtime_id.value_type(),
+        )
     }
 
     pub(crate) fn runtime_id(&self) -> RuntimeFunctionId {
@@ -85,13 +79,13 @@ mod tests {
     #[test]
     fn function_value_accepts_matching_shape() {
         let value = FunctionValue::new(
-            FunctionType::new(vec![ValueType::Int], ValueType::String),
             RuntimeFunctionId::String(StringFunctionId(0)),
             vec![LocalId::Int(IntLocalId(0))],
         );
+        let type_ = value.type_();
 
-        assert_eq!(value.type_().arguments(), &[ValueType::Int]);
-        assert_eq!(value.type_().return_(), &ValueType::String);
+        assert_eq!(type_.arguments(), &[ValueType::Int]);
+        assert_eq!(type_.return_(), &ValueType::String);
         assert_eq!(
             value.runtime_id(),
             RuntimeFunctionId::String(StringFunctionId(0))
@@ -100,22 +94,9 @@ mod tests {
     }
 
     #[test]
-    fn function_value_accepts_function_argument_shape() {
-        let value = FunctionValue::new(
-            FunctionType::new(
-                vec![ValueType::Function(Box::new(FunctionType::new(
-                    Vec::new(),
-                    ValueType::Nil,
-                )))],
-                ValueType::Nil,
-            ),
-            RuntimeFunctionId::Nil(NilFunctionId(0)),
-            Vec::new(),
-        );
+    fn function_value_type_uses_runtime_id_for_return_type() {
+        let value = FunctionValue::new(RuntimeFunctionId::Nil(NilFunctionId(0)), Vec::new());
 
-        assert!(matches!(
-            value.type_().arguments(),
-            [ValueType::Function(_)]
-        ));
+        assert_eq!(value.type_(), FunctionType::new(Vec::new(), ValueType::Nil));
     }
 }

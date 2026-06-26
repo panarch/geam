@@ -867,7 +867,7 @@ impl NilExpr {
 impl FunctionExpr {
     pub(crate) fn value(value: FunctionValue) -> Self {
         Self {
-            type_: value.type_().clone(),
+            type_: value.type_(),
             kind: FunctionExprKind::Value(value),
         }
     }
@@ -1433,7 +1433,6 @@ mod tests {
 
     fn function_value() -> FunctionValue {
         FunctionValue::new(
-            function_type(),
             RuntimeFunctionId::Int(IntFunctionId(0)),
             vec![LocalId::Int(IntLocalId(0))],
         )
@@ -1441,7 +1440,6 @@ mod tests {
 
     fn string_function_value() -> FunctionValue {
         FunctionValue::new(
-            FunctionType::new(vec![ValueType::Int], ValueType::String),
             RuntimeFunctionId::String(StringFunctionId(0)),
             vec![LocalId::Int(IntLocalId(0))],
         )

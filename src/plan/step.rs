@@ -82,8 +82,7 @@ impl Step {
 mod tests {
     use super::{Step, StepKind};
     use crate::plan::{
-        Expr, FunctionExpr, FunctionType, FunctionValue, IntExpr, IntFunctionId, IntLocalId,
-        RuntimeFunctionId, ValueType,
+        Expr, FunctionExpr, FunctionValue, IntExpr, IntFunctionId, IntLocalId, RuntimeFunctionId,
     };
     use num_bigint::BigInt;
 
@@ -101,9 +100,8 @@ mod tests {
             Step::let_function(
                 "f".into(),
                 FunctionExpr::value(FunctionValue::new(
-                    FunctionType::new(vec![ValueType::Int], ValueType::Int),
                     RuntimeFunctionId::Int(IntFunctionId(0)),
-                    Vec::new(),
+                    vec![crate::plan::LocalId::Int(IntLocalId(0))],
                 )),
             )
             .kind(),

@@ -215,14 +215,14 @@ fn plan_direct_function_call(
     context: &mut PlanContext<'_>,
     capture: Option<&CaptureSubstitution>,
 ) -> Result<Expr, PlanError> {
-    if function.arity != arguments.len() {
+    if function.arity() != arguments.len() {
         return Err(PlanError::InvalidTypedAst {
             reason: InvalidTypedAstReason::CallShape {
                 reason: InvalidCallShapeReason::LocalFunctionCallArityMismatch,
             },
         });
     }
-    let function_return_type = function.return_type;
+    let function_return_type = function.return_type();
     let function_id = function.runtime_id;
     let return_type = ValueType::from_gleam(type_.as_ref()).ok_or(PlanError::InvalidTypedAst {
         reason: InvalidTypedAstReason::CallShape {
@@ -256,52 +256,37 @@ fn plan_function_value_call(
             kind: UnsupportedExpressionKind::NonValueFunctionCallee,
         });
     };
+    let function_type = function.type_();
     let return_type = ValueType::from_gleam(type_.as_ref()).ok_or(PlanError::InvalidTypedAst {
         reason: InvalidTypedAstReason::CallShape {
             reason: InvalidCallShapeReason::LocalFunctionCallUnsupportedReturnType,
         },
     })?;
-    if &return_type != function.type_().return_() {
+    if &return_type != function_type.return_() {
         return Err(PlanError::InvalidTypedAst {
             reason: InvalidTypedAstReason::CallShape {
                 reason: InvalidCallShapeReason::FunctionCallReturnTypeMismatch,
             },
         });
     }
-    if arguments.len() != function.type_().arguments().len() {
+    if arguments.len() != function_type.arguments().len() {
         return Err(PlanError::InvalidTypedAst {
             reason: InvalidTypedAstReason::CallShape {
                 reason: InvalidCallShapeReason::FunctionCallArityMismatch,
             },
         });
     }
-    let params = function_value_params(function)?;
+    let params = function
+        .params()
+        .iter()
+        .map(|local| FunctionParam {
+            local: *local,
+            name: EcoString::default(),
+        })
+        .collect::<Vec<_>>();
     let args = plan_call_args(arguments, &params, context, capture)?;
 
     call_expr(function.runtime_id(), args)
-}
-
-fn function_value_params(
-    function: &crate::plan::FunctionValue,
-) -> Result<Vec<FunctionParam>, PlanError> {
-    if function.params().len() != function.type_().arguments().len() {
-        return Err(PlanError::InvalidTypedAst {
-            reason: InvalidTypedAstReason::CallShape {
-                reason: InvalidCallShapeReason::FunctionValueParameterShapeMismatch,
-            },
-        });
-    }
-
-    Ok(function
-        .params()
-        .iter()
-        .zip(function.type_().arguments())
-        .map(|(local, type_)| FunctionParam {
-            local: *local,
-            name: EcoString::default(),
-            type_: type_.clone(),
-        })
-        .collect())
 }
 
 fn plan_call_args(
@@ -316,7 +301,7 @@ fn plan_call_args(
         .map(|(argument, param)| {
             let expression = plan_argument_value(argument.value, capture, context)?;
             expression.into_call_arg(param.local).map_err(|other| {
-                invalid_expression_type(expected_expression_type(&param.type_), &other)
+                invalid_expression_type(expected_expression_type(&param.local.value_type()), &other)
             })
         })
         .collect()
@@ -425,8 +410,7 @@ fn expected_expression_type(type_: &ValueType) -> InvalidExpressionType {
 mod tests {
     use super::super::{typed_int_expr, typed_string_expr};
     use crate::plan::{
-        FunctionType, FunctionValue, IntFunctionId, IntLocalId, LocalId, RuntimeFunctionId,
-        ValueType,
+        FunctionType, IntFunctionId, IntLocalId, LocalId, RuntimeFunctionId, ValueType,
     };
     use crate::planner::dsl::{call_int, function, function_ref, int, int_arg, local_int, module};
     use crate::planner::plan_module;
@@ -473,7 +457,6 @@ pub fn main() {
                 "function",
                 function_ref(
                     RuntimeFunctionId::Int(IntFunctionId(1)),
-                    FunctionType::new(vec![ValueType::Int], ValueType::Int),
                     [LocalId::Int(IntLocalId(0))],
                 ),
             ),
@@ -509,7 +492,6 @@ pub fn primitive_shadow() {
             function("add_one", local_int(0, "value").add_int(int(1))).param_int(0, "value");
         let add_one_ref = function_ref(
             RuntimeFunctionId::Int(IntFunctionId(1)),
-            FunctionType::new(vec![ValueType::Int], ValueType::Int),
             [LocalId::Int(IntLocalId(0))],
         );
         let expected = module(
@@ -524,7 +506,6 @@ pub fn primitive_shadow() {
                         "function",
                         function_ref(
                             RuntimeFunctionId::Int(IntFunctionId(1)),
-                            FunctionType::new(vec![ValueType::Int], ValueType::Int),
                             [LocalId::Int(IntLocalId(0))],
                         ),
                     )
@@ -681,23 +662,6 @@ pub fn main() {
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::CallShape {
                     reason: InvalidCallShapeReason::FunctionCallArityMismatch,
-                },
-            }),
-        );
-    }
-
-    #[test]
-    fn reject_margin_function_value_parameter_shape_mismatch() {
-        assert_eq!(
-            super::function_value_params(&FunctionValue::new(
-                FunctionType::new(vec![ValueType::Int], ValueType::Int),
-                RuntimeFunctionId::Int(IntFunctionId(0)),
-                Vec::new(),
-            ))
-            .err(),
-            Some(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::CallShape {
-                    reason: InvalidCallShapeReason::FunctionValueParameterShapeMismatch,
                 },
             }),
         );

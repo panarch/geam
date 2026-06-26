@@ -76,7 +76,6 @@ fn function_table(
         seeds.push(FunctionSeed {
             name,
             function: function.clone(),
-            arity: function.arguments.len(),
             params,
             return_type,
         });
@@ -138,15 +137,11 @@ fn function_info(
     seed: &FunctionSeed,
     runtime_ids: &mut FunctionRuntimeIds,
 ) -> FunctionInfo {
-    let return_type = seed.return_type.value_type();
     let runtime_id = seed.return_type.runtime_id(runtime_ids);
     FunctionInfo {
         id: FunctionId::new(function_index),
         runtime_id,
-        arity: seed.arity,
         params: seed.params.clone(),
-        type_: crate::plan::FunctionType::new(param_types(&seed.params), return_type.clone()),
-        return_type,
     }
 }
 
@@ -154,7 +149,6 @@ fn function_info(
 struct FunctionSeed {
     name: EcoString,
     function: TypedFunction,
-    arity: usize,
     params: Vec<FunctionParam>,
     return_type: FunctionReturnType,
 }
@@ -182,15 +176,6 @@ impl FunctionReturnType {
                 name,
                 reason: UnsupportedFunctionReason::UnsupportedReturnType,
             })
-        }
-    }
-
-    fn value_type(self) -> ValueType {
-        match self {
-            Self::Int => ValueType::Int,
-            Self::String => ValueType::String,
-            Self::Bool => ValueType::Bool,
-            Self::Nil => ValueType::Nil,
         }
     }
 
@@ -264,17 +249,13 @@ fn function_params(
                     });
                 }
             };
-            Ok(FunctionParam { local, name, type_ })
+            Ok(FunctionParam { local, name })
         })
         .collect()
 }
 
-fn param_types(params: &[FunctionParam]) -> Vec<ValueType> {
-    params.iter().map(|param| param.type_.clone()).collect()
-}
-
 fn validate_main_function(main: FunctionToPlan) -> Result<FunctionToPlan, PlanError> {
-    if main.info.arity != 0 {
+    if main.info.arity() != 0 {
         return Err(PlanError::UnsupportedFunction {
             name: "main".into(),
             reason: UnsupportedFunctionReason::MainWithArguments,

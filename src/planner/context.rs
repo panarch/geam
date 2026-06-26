@@ -11,17 +11,13 @@ use std::collections::HashMap;
 pub(super) struct FunctionInfo {
     pub(super) id: FunctionId,
     pub(super) runtime_id: RuntimeFunctionId,
-    pub(super) arity: usize,
     pub(super) params: Vec<FunctionParam>,
-    pub(super) return_type: ValueType,
-    pub(super) type_: FunctionType,
 }
 
 #[derive(Clone)]
 pub(super) struct FunctionParam {
     pub(super) local: LocalId,
     pub(super) name: EcoString,
-    pub(super) type_: ValueType,
 }
 
 pub(super) struct PlanContext<'a> {
@@ -165,6 +161,23 @@ impl<'a> PlanContext<'a> {
     }
 }
 
+impl FunctionInfo {
+    pub(super) fn arity(&self) -> usize {
+        self.params.len()
+    }
+
+    pub(super) fn return_type(&self) -> ValueType {
+        self.runtime_id.value_type()
+    }
+
+    pub(super) fn value(&self) -> FunctionValue {
+        FunctionValue::new(
+            self.runtime_id,
+            self.params.iter().map(|param| param.local).collect(),
+        )
+    }
+}
+
 #[derive(Debug, Default)]
 pub(super) struct FunctionRuntimeIds {
     next_int: usize,
@@ -228,8 +241,7 @@ impl ValueType {
 mod tests {
     use super::{FunctionInfo, FunctionRuntimeIds, PlanContext};
     use crate::plan::{
-        FunctionType, FunctionValue, IntFunctionId, IntLocalId, LocalId, RuntimeFunctionId,
-        ValueType,
+        FunctionValue, IntFunctionId, IntLocalId, LocalId, RuntimeFunctionId, ValueType,
     };
     use ecow::EcoString;
     use std::collections::HashMap;
@@ -318,10 +330,6 @@ mod tests {
     }
 
     fn function_value() -> FunctionValue {
-        FunctionValue::new(
-            FunctionType::new(Vec::new(), ValueType::Int),
-            RuntimeFunctionId::Int(IntFunctionId(0)),
-            Vec::new(),
-        )
+        FunctionValue::new(RuntimeFunctionId::Int(IntFunctionId(0)), Vec::new())
     }
 }

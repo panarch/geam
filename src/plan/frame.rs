@@ -327,9 +327,8 @@ impl FrameLayout {
 mod tests {
     use super::FrameLayout;
     use crate::plan::{
-        BoolExpr, BoolLocalId, Expr, FunctionExpr, FunctionType, FunctionValue, IntExpr,
-        IntFunctionId, IntLocalId, LocalId, NilLocalId, ReturnExpr, RuntimeFunctionId, Step,
-        StringLocalId, ValueType,
+        BoolExpr, BoolLocalId, Expr, FunctionExpr, FunctionValue, IntExpr, IntFunctionId,
+        IntLocalId, LocalId, NilLocalId, ReturnExpr, RuntimeFunctionId, Step, StringLocalId,
     };
 
     #[test]
@@ -380,13 +379,8 @@ mod tests {
 
     fn function_value() -> FunctionValue {
         FunctionValue::new(
-            function_type(),
             RuntimeFunctionId::Int(IntFunctionId(0)),
-            Vec::new(),
+            vec![crate::plan::LocalId::Int(crate::plan::IntLocalId(0))],
         )
-    }
-
-    fn function_type() -> FunctionType {
-        FunctionType::new(vec![ValueType::Int], ValueType::Int)
     }
 }

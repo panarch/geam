@@ -45,8 +45,8 @@ pub(in crate::runtime) fn eval_function_expr(
 mod tests {
     use super::eval_function_expr;
     use crate::plan::{
-        BoolExpr, ExecutionPlan, Expr, FunctionExpr, FunctionId, FunctionPlan, FunctionType,
-        FunctionValue, IntExpr, IntFunctionId, RuntimeFunctionId, Step, ValueType,
+        BoolExpr, ExecutionPlan, Expr, FunctionExpr, FunctionId, FunctionPlan, FunctionValue,
+        IntExpr, IntFunctionId, RuntimeFunctionId, Step, ValueType,
     };
     use crate::runtime::frame::Frame;
     use num_bigint::BigInt;
@@ -156,27 +156,23 @@ mod tests {
     }
 
     fn assert_int_function(function: FunctionValue) {
-        assert_eq!(function.type_().arguments(), &[ValueType::Int]);
-        assert_eq!(function.type_().return_(), &ValueType::Int);
+        let type_ = function.type_();
+
+        assert_eq!(type_.arguments(), &[ValueType::Int]);
+        assert_eq!(type_.return_(), &ValueType::Int);
     }
 
     fn int_function_value() -> FunctionValue {
         FunctionValue::new(
-            function_type(),
             RuntimeFunctionId::Int(IntFunctionId(0)),
-            Vec::new(),
+            vec![crate::plan::LocalId::Int(crate::plan::IntLocalId(0))],
         )
     }
 
     fn other_int_function_value() -> FunctionValue {
         FunctionValue::new(
-            function_type(),
             RuntimeFunctionId::Int(IntFunctionId(1)),
-            Vec::new(),
+            vec![crate::plan::LocalId::Int(crate::plan::IntLocalId(0))],
         )
-    }
-
-    fn function_type() -> FunctionType {
-        FunctionType::new(vec![ValueType::Int], ValueType::Int)
     }
 }

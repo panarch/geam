@@ -52,12 +52,69 @@ impl FunctionId {
     }
 }
 
+impl LocalId {
+    pub(crate) fn value_type(self) -> crate::plan::ValueType {
+        match self {
+            Self::Int(_) => crate::plan::ValueType::Int,
+            Self::String(_) => crate::plan::ValueType::String,
+            Self::Bool(_) => crate::plan::ValueType::Bool,
+            Self::Nil(_) => crate::plan::ValueType::Nil,
+        }
+    }
+}
+
+impl RuntimeFunctionId {
+    pub(crate) fn value_type(self) -> crate::plan::ValueType {
+        match self {
+            Self::Int(_) => crate::plan::ValueType::Int,
+            Self::String(_) => crate::plan::ValueType::String,
+            Self::Bool(_) => crate::plan::ValueType::Bool,
+            Self::Nil(_) => crate::plan::ValueType::Nil,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::FunctionId;
+    use super::{
+        BoolFunctionId, BoolLocalId, FunctionId, IntFunctionId, IntLocalId, LocalId, NilFunctionId,
+        NilLocalId, RuntimeFunctionId, StringFunctionId, StringLocalId,
+    };
+    use crate::plan::ValueType;
 
     #[test]
     fn function_id_index() {
         assert_eq!(FunctionId::new(5).index(), 5);
+    }
+
+    #[test]
+    fn local_id_value_type() {
+        assert_eq!(LocalId::Int(IntLocalId(0)).value_type(), ValueType::Int);
+        assert_eq!(
+            LocalId::String(StringLocalId(0)).value_type(),
+            ValueType::String
+        );
+        assert_eq!(LocalId::Bool(BoolLocalId(0)).value_type(), ValueType::Bool);
+        assert_eq!(LocalId::Nil(NilLocalId(0)).value_type(), ValueType::Nil);
+    }
+
+    #[test]
+    fn runtime_function_id_value_type() {
+        assert_eq!(
+            RuntimeFunctionId::Int(IntFunctionId(0)).value_type(),
+            ValueType::Int
+        );
+        assert_eq!(
+            RuntimeFunctionId::String(StringFunctionId(0)).value_type(),
+            ValueType::String
+        );
+        assert_eq!(
+            RuntimeFunctionId::Bool(BoolFunctionId(0)).value_type(),
+            ValueType::Bool
+        );
+        assert_eq!(
+            RuntimeFunctionId::Nil(NilFunctionId(0)).value_type(),
+            ValueType::Nil
+        );
     }
 }
