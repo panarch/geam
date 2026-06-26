@@ -14,6 +14,9 @@ pub(in crate::runtime) fn eval_bool_expr(
         BoolExprKind::Call { function, args } => {
             function::run_bool_call(plan, *function, args, frame)
         }
+        BoolExprKind::FunctionCall { function, args } => {
+            function::run_bool_function_call(plan, function, args, frame)
+        }
         BoolExprKind::Not(value) => !eval_bool_expr(plan, frame, value),
         BoolExprKind::LtInt { left, right } => {
             eval_int_expr(plan, frame, left) < eval_int_expr(plan, frame, right)

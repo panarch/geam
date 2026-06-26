@@ -14,6 +14,9 @@ pub(in crate::runtime) fn eval_nil_expr(
         NilExprKind::Call { function, args } => {
             function::run_nil_call(plan, *function, args, frame)
         }
+        NilExprKind::FunctionCall { function, args } => {
+            function::run_nil_function_call(plan, function, args, frame)
+        }
         NilExprKind::BoolCase {
             subject,
             true_,

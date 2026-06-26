@@ -24,7 +24,16 @@ execution_case!(bool_case_fallback, "bool_case_fallback.gleam");
 execution_case!(int_case, "int_case.gleam");
 execution_case!(block_expression, "block_expression.gleam");
 execution_case!(pipeline, "pipeline.gleam");
-execution_case!(function_value, "function_value.gleam");
+execution_case!(function_value_local, "function_value_local.gleam");
+execution_case!(function_value_shadowing, "function_value_shadowing.gleam");
+execution_case!(
+    function_value_block_callee,
+    "function_value_block_callee.gleam"
+);
+execution_case!(
+    function_value_case_callee,
+    "function_value_case_callee.gleam"
+);
 execution_case!(nil_value, "nil_value.gleam");
 
 fn run_fixture(file_name: &str) {

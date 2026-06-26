@@ -11,21 +11,29 @@ use ecow::EcoString;
 use std::fmt;
 
 pub(crate) use expression::{
-    BoolCaseBranches, BoolExprKind, CallArgKind, ExprKind, FunctionExprKind, IntCaseBranches,
-    IntExprKind, NilExprKind, StringExprKind,
+    BoolCaseBranches, BoolExprKind, BoolFunctionExprKind, CallArgKind, ExprKind, FunctionExprKind,
+    IntCaseBranches, IntExprKind, IntFunctionExprKind, NilExprKind, NilFunctionExprKind,
+    StringExprKind, StringFunctionExprKind,
 };
-pub use expression::{BoolExpr, CallArg, Expr, FunctionExpr, IntExpr, NilExpr, StringExpr};
+pub use expression::{
+    BoolExpr, BoolFunctionExpr, CallArg, Expr, FunctionExpr, IntExpr, IntFunctionExpr, NilExpr,
+    NilFunctionExpr, StringExpr, StringFunctionExpr,
+};
 pub(crate) use frame::FrameLayout;
 pub use function::{FunctionPlan, Param, ReturnExpr};
 pub(crate) use function::{ReturnExprKind, RuntimeFunction};
 pub(crate) use id::RuntimeFunctionId;
 pub use id::{
-    BoolFunctionId, BoolLocalId, FunctionId, IntFunctionId, IntLocalId, LocalId, NilFunctionId,
-    NilLocalId, StringFunctionId, StringLocalId,
+    BoolFunctionId, BoolFunctionLocalId, BoolLocalId, FunctionId, IntFunctionId,
+    IntFunctionLocalId, IntLocalId, LocalId, NilFunctionId, NilFunctionLocalId, NilLocalId,
+    StringFunctionId, StringFunctionLocalId, StringLocalId,
 };
 pub use step::Step;
 pub(crate) use step::StepKind;
-pub(crate) use value::FunctionArgumentType;
+pub(crate) use value::{
+    BoolFunctionValue, FunctionArgumentType, FunctionValueKind, IntFunctionValue, NilFunctionValue,
+    StringFunctionValue,
+};
 pub use value::{FunctionType, FunctionValue, Value, ValueType};
 
 pub struct ExecutionPlan {

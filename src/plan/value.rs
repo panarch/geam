@@ -1,7 +1,9 @@
 use ecow::EcoString;
 use num_bigint::BigInt;
 
-use super::{LocalId, RuntimeFunctionId};
+use super::{
+    BoolFunctionId, IntFunctionId, LocalId, NilFunctionId, RuntimeFunctionId, StringFunctionId,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ValueType {
@@ -28,7 +30,38 @@ pub(crate) enum FunctionArgumentType {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FunctionValue {
-    runtime_id: RuntimeFunctionId,
+    kind: FunctionValueKind,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum FunctionValueKind {
+    Int(IntFunctionValue),
+    String(StringFunctionValue),
+    Bool(BoolFunctionValue),
+    Nil(NilFunctionValue),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct IntFunctionValue {
+    runtime_id: IntFunctionId,
+    params: Vec<LocalId>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct StringFunctionValue {
+    runtime_id: StringFunctionId,
+    params: Vec<LocalId>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct BoolFunctionValue {
+    runtime_id: BoolFunctionId,
+    params: Vec<LocalId>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct NilFunctionValue {
+    runtime_id: NilFunctionId,
     params: Vec<LocalId>,
 }
 
@@ -81,29 +114,144 @@ impl FunctionArgumentType {
 
 impl FunctionValue {
     pub(crate) fn new(runtime_id: RuntimeFunctionId, params: Vec<LocalId>) -> Self {
-        Self { runtime_id, params }
+        let kind = match runtime_id {
+            RuntimeFunctionId::Int(runtime_id) => {
+                FunctionValueKind::Int(IntFunctionValue::new(runtime_id, params))
+            }
+            RuntimeFunctionId::String(runtime_id) => {
+                FunctionValueKind::String(StringFunctionValue::new(runtime_id, params))
+            }
+            RuntimeFunctionId::Bool(runtime_id) => {
+                FunctionValueKind::Bool(BoolFunctionValue::new(runtime_id, params))
+            }
+            RuntimeFunctionId::Nil(runtime_id) => {
+                FunctionValueKind::Nil(NilFunctionValue::new(runtime_id, params))
+            }
+        };
+
+        Self { kind }
     }
 
     pub fn type_(&self) -> FunctionType {
-        FunctionType::new(
-            self.params
-                .iter()
-                .map(FunctionArgumentType::from_local)
-                .collect(),
-            self.runtime_id.value_type(),
-        )
+        match &self.kind {
+            FunctionValueKind::Int(value) => value.type_(),
+            FunctionValueKind::String(value) => value.type_(),
+            FunctionValueKind::Bool(value) => value.type_(),
+            FunctionValueKind::Nil(value) => value.type_(),
+        }
     }
 
-    pub(crate) fn runtime_id(&self) -> RuntimeFunctionId {
+    pub(crate) fn kind(&self) -> &FunctionValueKind {
+        &self.kind
+    }
+}
+
+impl IntFunctionValue {
+    pub(crate) fn new(runtime_id: IntFunctionId, params: Vec<LocalId>) -> Self {
+        Self { runtime_id, params }
+    }
+
+    pub(crate) fn type_(&self) -> FunctionType {
+        function_type(&self.params, ValueType::Int)
+    }
+
+    pub(crate) fn runtime_id(&self) -> IntFunctionId {
         self.runtime_id
+    }
+}
+
+impl StringFunctionValue {
+    pub(crate) fn new(runtime_id: StringFunctionId, params: Vec<LocalId>) -> Self {
+        Self { runtime_id, params }
+    }
+
+    pub(crate) fn type_(&self) -> FunctionType {
+        function_type(&self.params, ValueType::String)
+    }
+
+    pub(crate) fn runtime_id(&self) -> StringFunctionId {
+        self.runtime_id
+    }
+}
+
+impl BoolFunctionValue {
+    pub(crate) fn new(runtime_id: BoolFunctionId, params: Vec<LocalId>) -> Self {
+        Self { runtime_id, params }
+    }
+
+    pub(crate) fn type_(&self) -> FunctionType {
+        function_type(&self.params, ValueType::Bool)
+    }
+
+    pub(crate) fn runtime_id(&self) -> BoolFunctionId {
+        self.runtime_id
+    }
+}
+
+impl NilFunctionValue {
+    pub(crate) fn new(runtime_id: NilFunctionId, params: Vec<LocalId>) -> Self {
+        Self { runtime_id, params }
+    }
+
+    pub(crate) fn type_(&self) -> FunctionType {
+        function_type(&self.params, ValueType::Nil)
+    }
+
+    pub(crate) fn runtime_id(&self) -> NilFunctionId {
+        self.runtime_id
+    }
+}
+
+fn function_type(params: &[LocalId], return_: ValueType) -> FunctionType {
+    FunctionType::new(
+        params
+            .iter()
+            .map(FunctionArgumentType::from_local)
+            .collect(),
+        return_,
+    )
+}
+
+impl From<IntFunctionValue> for FunctionValue {
+    fn from(value: IntFunctionValue) -> Self {
+        Self {
+            kind: FunctionValueKind::Int(value),
+        }
+    }
+}
+
+impl From<StringFunctionValue> for FunctionValue {
+    fn from(value: StringFunctionValue) -> Self {
+        Self {
+            kind: FunctionValueKind::String(value),
+        }
+    }
+}
+
+impl From<BoolFunctionValue> for FunctionValue {
+    fn from(value: BoolFunctionValue) -> Self {
+        Self {
+            kind: FunctionValueKind::Bool(value),
+        }
+    }
+}
+
+impl From<NilFunctionValue> for FunctionValue {
+    fn from(value: NilFunctionValue) -> Self {
+        Self {
+            kind: FunctionValueKind::Nil(value),
+        }
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{FunctionArgumentType, FunctionType, FunctionValue, ValueType};
+    use super::{
+        BoolFunctionValue, FunctionArgumentType, FunctionType, FunctionValue, IntFunctionValue,
+        NilFunctionValue, StringFunctionValue, ValueType,
+    };
     use crate::plan::{
-        BoolLocalId, IntFunctionId, IntLocalId, LocalId, NilFunctionId, NilLocalId,
+        BoolFunctionId, BoolLocalId, IntFunctionId, IntLocalId, LocalId, NilFunctionId, NilLocalId,
         RuntimeFunctionId, StringFunctionId, StringLocalId,
     };
 
@@ -120,10 +268,6 @@ mod tests {
             FunctionType::new(vec![FunctionArgumentType::Int], ValueType::String),
         );
         assert_eq!(type_.return_(), &ValueType::String);
-        assert_eq!(
-            value.runtime_id(),
-            RuntimeFunctionId::String(StringFunctionId(0))
-        );
     }
 
     #[test]
@@ -131,6 +275,20 @@ mod tests {
         let value = FunctionValue::new(RuntimeFunctionId::Nil(NilFunctionId(0)), Vec::new());
 
         assert_eq!(value.type_(), FunctionType::new(Vec::new(), ValueType::Nil));
+    }
+
+    #[test]
+    fn function_value_conversions_preserve_return_family() {
+        let int: FunctionValue = IntFunctionValue::new(IntFunctionId(0), Vec::new()).into();
+        let string: FunctionValue =
+            StringFunctionValue::new(StringFunctionId(0), Vec::new()).into();
+        let bool: FunctionValue = BoolFunctionValue::new(BoolFunctionId(0), Vec::new()).into();
+        let nil: FunctionValue = NilFunctionValue::new(NilFunctionId(0), Vec::new()).into();
+
+        assert_eq!(int.type_().return_(), &ValueType::Int);
+        assert_eq!(string.type_().return_(), &ValueType::String);
+        assert_eq!(bool.type_().return_(), &ValueType::Bool);
+        assert_eq!(nil.type_().return_(), &ValueType::Nil);
     }
 
     #[test]

@@ -46,8 +46,6 @@ pub enum UnsupportedStatementKind {
 
 #[derive(Debug, Error, Clone, Copy, PartialEq, Eq)]
 pub enum UnsupportedAssignmentKind {
-    #[error("non-value function assignment")]
-    NonValueFunction,
     #[error("let assert")]
     LetAssert,
 }

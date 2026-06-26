@@ -1,5 +1,11 @@
-use super::expression::{BoolExpr, Expr, IntExpr, NilExpr, StringExpr};
-use super::id::{BoolLocalId, IntLocalId, NilLocalId, StringLocalId};
+use super::expression::{
+    BoolExpr, BoolFunctionExpr, Expr, IntExpr, IntFunctionExpr, NilExpr, NilFunctionExpr,
+    StringExpr, StringFunctionExpr,
+};
+use super::id::{
+    BoolFunctionLocalId, BoolLocalId, IntFunctionLocalId, IntLocalId, NilFunctionLocalId,
+    NilLocalId, StringFunctionLocalId, StringLocalId,
+};
 use ecow::EcoString;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -29,6 +35,26 @@ pub(crate) enum StepKind {
         name: EcoString,
         value: NilExpr,
     },
+    LetIntFunction {
+        local: IntFunctionLocalId,
+        name: EcoString,
+        value: IntFunctionExpr,
+    },
+    LetStringFunction {
+        local: StringFunctionLocalId,
+        name: EcoString,
+        value: StringFunctionExpr,
+    },
+    LetBoolFunction {
+        local: BoolFunctionLocalId,
+        name: EcoString,
+        value: BoolFunctionExpr,
+    },
+    LetNilFunction {
+        local: NilFunctionLocalId,
+        name: EcoString,
+        value: NilFunctionExpr,
+    },
     Evaluate(Expr),
 }
 
@@ -57,6 +83,46 @@ impl Step {
         }
     }
 
+    pub(crate) fn let_int_function(
+        local: IntFunctionLocalId,
+        name: EcoString,
+        value: IntFunctionExpr,
+    ) -> Self {
+        Self {
+            kind: StepKind::LetIntFunction { local, name, value },
+        }
+    }
+
+    pub(crate) fn let_string_function(
+        local: StringFunctionLocalId,
+        name: EcoString,
+        value: StringFunctionExpr,
+    ) -> Self {
+        Self {
+            kind: StepKind::LetStringFunction { local, name, value },
+        }
+    }
+
+    pub(crate) fn let_bool_function(
+        local: BoolFunctionLocalId,
+        name: EcoString,
+        value: BoolFunctionExpr,
+    ) -> Self {
+        Self {
+            kind: StepKind::LetBoolFunction { local, name, value },
+        }
+    }
+
+    pub(crate) fn let_nil_function(
+        local: NilFunctionLocalId,
+        name: EcoString,
+        value: NilFunctionExpr,
+    ) -> Self {
+        Self {
+            kind: StepKind::LetNilFunction { local, name, value },
+        }
+    }
+
     pub(crate) fn evaluate(value: Expr) -> Self {
         Self {
             kind: StepKind::Evaluate(value),
@@ -71,7 +137,9 @@ impl Step {
 #[cfg(test)]
 mod tests {
     use super::{Step, StepKind};
-    use crate::plan::{Expr, IntExpr, IntLocalId};
+    use crate::plan::{
+        Expr, IntExpr, IntFunctionId, IntFunctionLocalId, IntFunctionValue, IntLocalId, LocalId,
+    };
     use num_bigint::BigInt;
 
     #[test]
@@ -81,8 +149,19 @@ mod tests {
             StepKind::LetInt { .. },
         ));
         assert!(matches!(
+            Step::let_int_function(IntFunctionLocalId(0), "f".into(), function_expr()).kind(),
+            StepKind::LetIntFunction { .. },
+        ));
+        assert!(matches!(
             Step::evaluate(Expr::int(IntExpr::value(BigInt::from(1)))).kind(),
             StepKind::Evaluate(_),
         ));
+    }
+
+    fn function_expr() -> crate::plan::IntFunctionExpr {
+        crate::plan::IntFunctionExpr::value(IntFunctionValue::new(
+            IntFunctionId(0),
+            vec![LocalId::Int(IntLocalId(0))],
+        ))
     }
 }

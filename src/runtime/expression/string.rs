@@ -15,6 +15,9 @@ pub(in crate::runtime) fn eval_string_expr(
         StringExprKind::Call { function, args } => {
             function::run_string_call(plan, *function, args, frame)
         }
+        StringExprKind::FunctionCall { function, args } => {
+            function::run_string_function_call(plan, function, args, frame)
+        }
         StringExprKind::Concatenate { left, right } => format!(
             "{}{}",
             eval_string_expr(plan, frame, left),

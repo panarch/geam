@@ -1,4 +1,4 @@
-use super::{BoolExpr, CallArg};
+use super::{BoolExpr, CallArg, IntFunctionExpr};
 use crate::plan::{IntFunctionId, IntLocalId, Step};
 use ecow::EcoString;
 use num_bigint::BigInt;
@@ -17,6 +17,10 @@ pub(crate) enum IntExprKind {
     },
     Call {
         function: IntFunctionId,
+        args: Vec<CallArg>,
+    },
+    FunctionCall {
+        function: Box<IntFunctionExpr>,
         args: Vec<CallArg>,
     },
     Add {
@@ -72,6 +76,15 @@ impl IntExpr {
     pub(crate) fn call(function: IntFunctionId, args: Vec<CallArg>) -> Self {
         Self {
             kind: IntExprKind::Call { function, args },
+        }
+    }
+
+    pub(crate) fn function_call(function: IntFunctionExpr, args: Vec<CallArg>) -> Self {
+        Self {
+            kind: IntExprKind::FunctionCall {
+                function: Box::new(function),
+                args,
+            },
         }
     }
 
@@ -167,7 +180,7 @@ impl IntExpr {
 #[cfg(test)]
 mod tests {
     use super::{IntExpr, IntExprKind};
-    use crate::plan::{BoolExpr, Expr, Step};
+    use crate::plan::{BoolExpr, Expr, IntFunctionId, IntFunctionValue, IntLocalId, LocalId, Step};
 
     #[test]
     fn int_expr_kind_accessors() {
@@ -183,6 +196,10 @@ mod tests {
             )
             .kind(),
             IntExprKind::BoolCase { .. }
+        ));
+        assert!(matches!(
+            IntExpr::function_call(function_expr(), Vec::new()).kind(),
+            IntExprKind::FunctionCall { .. }
         ));
         assert!(matches!(
             IntExpr::int_case(
@@ -201,5 +218,12 @@ mod tests {
             .kind(),
             IntExprKind::Block { .. }
         ));
+    }
+
+    fn function_expr() -> crate::plan::IntFunctionExpr {
+        crate::plan::IntFunctionExpr::value(IntFunctionValue::new(
+            IntFunctionId(0),
+            vec![LocalId::Int(IntLocalId(0))],
+        ))
     }
 }

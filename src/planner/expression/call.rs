@@ -1,8 +1,7 @@
 use super::{invalid_expression_type, plan_expr};
 use crate::plan::{
-    BoolCaseBranches, BoolExpr, CallArg, Expr, ExprKind, FunctionArgumentType, FunctionExpr,
-    FunctionExprKind, IntCaseBranches, IntExpr, LocalId, NilExpr, RuntimeFunctionId, StringExpr,
-    ValueType,
+    BoolExpr, CallArg, Expr, FunctionArgumentType, FunctionExpr, IntExpr, LocalId, NilExpr,
+    RuntimeFunctionId, StringExpr, ValueType,
 };
 use crate::planner::context::{FunctionInfo, FunctionParam, PlanContext};
 use crate::planner::error::{
@@ -297,51 +296,9 @@ fn plan_function_value_call(
     }
 
     let params = function_call_params(&function_type);
-    plan_function_expr_call(function, arguments, &params, context, capture)
-}
+    let args = plan_call_args(arguments, &params, context, capture)?;
 
-fn plan_function_expr_call(
-    function: FunctionExpr,
-    arguments: Vec<GleamCallArg<TypedExpr>>,
-    params: &[FunctionParam],
-    context: &mut PlanContext<'_>,
-    capture: Option<&CaptureSubstitution>,
-) -> Result<Expr, PlanError> {
-    match function.kind().clone() {
-        FunctionExprKind::Value(function) => {
-            let args = plan_call_args(arguments, params, context, capture)?;
-            Ok(call_expr(function.runtime_id(), args))
-        }
-        FunctionExprKind::BoolCase {
-            subject,
-            true_,
-            false_,
-        } => {
-            let true_ =
-                plan_function_expr_call(*true_, arguments.clone(), params, context, capture)?;
-            let false_ = plan_function_expr_call(*false_, arguments, params, context, capture)?;
-            bool_case_call_expr(*subject, true_, false_)
-        }
-        FunctionExprKind::IntCase {
-            subject,
-            clauses,
-            fallback,
-        } => {
-            let mut call_clauses = Vec::with_capacity(clauses.len());
-            for (pattern, branch) in clauses {
-                call_clauses.push((
-                    pattern,
-                    plan_function_expr_call(branch, arguments.clone(), params, context, capture)?,
-                ));
-            }
-            let fallback = plan_function_expr_call(*fallback, arguments, params, context, capture)?;
-            int_case_call_expr(*subject, call_clauses, fallback)
-        }
-        FunctionExprKind::Block { steps, return_ } => {
-            let return_ = plan_function_expr_call(*return_, arguments, params, context, capture)?;
-            block_call_expr(steps, return_)
-        }
-    }
+    function_call_expr(function, args, return_type)
 }
 
 fn plan_call_args(
@@ -465,6 +422,54 @@ fn call_expr(function: RuntimeFunctionId, args: Vec<CallArg>) -> Expr {
     }
 }
 
+fn function_call_expr(
+    function: FunctionExpr,
+    args: Vec<CallArg>,
+    return_type: ValueType,
+) -> Result<Expr, PlanError> {
+    match return_type {
+        ValueType::Int => match function.into_int() {
+            Ok(function) => Ok(Expr::int(IntExpr::function_call(function, args))),
+            Err(_) => Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::CallShape {
+                    reason: InvalidCallShapeReason::FunctionCallReturnTypeMismatch,
+                },
+            }),
+        },
+        ValueType::String => match function.into_string() {
+            Ok(function) => Ok(Expr::string(StringExpr::function_call(function, args))),
+            Err(_) => Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::CallShape {
+                    reason: InvalidCallShapeReason::FunctionCallReturnTypeMismatch,
+                },
+            }),
+        },
+        ValueType::Bool => match function.into_bool() {
+            Ok(function) => Ok(Expr::bool(crate::plan::BoolExpr::function_call(
+                function, args,
+            ))),
+            Err(_) => Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::CallShape {
+                    reason: InvalidCallShapeReason::FunctionCallReturnTypeMismatch,
+                },
+            }),
+        },
+        ValueType::Nil => match function.into_nil() {
+            Ok(function) => Ok(Expr::nil(NilExpr::function_call(function, args))),
+            Err(_) => Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::CallShape {
+                    reason: InvalidCallShapeReason::FunctionCallReturnTypeMismatch,
+                },
+            }),
+        },
+        ValueType::Function(_) => Err(PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::CallShape {
+                reason: InvalidCallShapeReason::FunctionCallUnsupportedReturnType,
+            },
+        }),
+    }
+}
+
 fn function_call_params(function_type: &crate::plan::FunctionType) -> Vec<FunctionParam> {
     let mut next_int = 0;
     let mut next_string = 0;
@@ -506,156 +511,18 @@ fn function_call_params(function_type: &crate::plan::FunctionType) -> Vec<Functi
         .collect()
 }
 
-fn bool_case_call_expr(subject: BoolExpr, true_: Expr, false_: Expr) -> Result<Expr, PlanError> {
-    let branches = match (true_.into_kind(), false_.into_kind()) {
-        (ExprKind::Int(true_), ExprKind::Int(false_)) => BoolCaseBranches::Int { true_, false_ },
-        (ExprKind::String(true_), ExprKind::String(false_)) => {
-            BoolCaseBranches::String { true_, false_ }
-        }
-        (ExprKind::Bool(true_), ExprKind::Bool(false_)) => BoolCaseBranches::Bool { true_, false_ },
-        (ExprKind::Nil(true_), ExprKind::Nil(false_)) => BoolCaseBranches::Nil { true_, false_ },
-        _ => {
-            return Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::CallShape {
-                    reason: InvalidCallShapeReason::FunctionCallReturnTypeMismatch,
-                },
-            });
-        }
-    };
-
-    Ok(Expr::bool_case(subject, branches))
-}
-
-fn int_case_call_expr(
-    subject: IntExpr,
-    clauses: Vec<(num_bigint::BigInt, Expr)>,
-    fallback: Expr,
-) -> Result<Expr, PlanError> {
-    let branches = match fallback.into_kind() {
-        ExprKind::Int(fallback) => IntCaseBranches::Int {
-            clauses: int_call_clauses(clauses)?,
-            fallback,
-        },
-        ExprKind::String(fallback) => IntCaseBranches::String {
-            clauses: string_call_clauses(clauses)?,
-            fallback,
-        },
-        ExprKind::Bool(fallback) => IntCaseBranches::Bool {
-            clauses: bool_call_clauses(clauses)?,
-            fallback,
-        },
-        ExprKind::Nil(fallback) => IntCaseBranches::Nil {
-            clauses: nil_call_clauses(clauses)?,
-            fallback,
-        },
-        ExprKind::Function(_) => {
-            return Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::CallShape {
-                    reason: InvalidCallShapeReason::FunctionCallReturnTypeMismatch,
-                },
-            });
-        }
-    };
-
-    Ok(Expr::int_case(subject, branches))
-}
-
-fn int_call_clauses(
-    clauses: Vec<(num_bigint::BigInt, Expr)>,
-) -> Result<Vec<(num_bigint::BigInt, IntExpr)>, PlanError> {
-    let mut typed = Vec::with_capacity(clauses.len());
-    for (pattern, clause) in clauses {
-        let ExprKind::Int(clause) = clause.into_kind() else {
-            return Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::CallShape {
-                    reason: InvalidCallShapeReason::FunctionCallReturnTypeMismatch,
-                },
-            });
-        };
-        typed.push((pattern, clause));
-    }
-    Ok(typed)
-}
-
-fn string_call_clauses(
-    clauses: Vec<(num_bigint::BigInt, Expr)>,
-) -> Result<Vec<(num_bigint::BigInt, StringExpr)>, PlanError> {
-    let mut typed = Vec::with_capacity(clauses.len());
-    for (pattern, clause) in clauses {
-        let ExprKind::String(clause) = clause.into_kind() else {
-            return Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::CallShape {
-                    reason: InvalidCallShapeReason::FunctionCallReturnTypeMismatch,
-                },
-            });
-        };
-        typed.push((pattern, clause));
-    }
-    Ok(typed)
-}
-
-fn bool_call_clauses(
-    clauses: Vec<(num_bigint::BigInt, Expr)>,
-) -> Result<Vec<(num_bigint::BigInt, BoolExpr)>, PlanError> {
-    let mut typed = Vec::with_capacity(clauses.len());
-    for (pattern, clause) in clauses {
-        let ExprKind::Bool(clause) = clause.into_kind() else {
-            return Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::CallShape {
-                    reason: InvalidCallShapeReason::FunctionCallReturnTypeMismatch,
-                },
-            });
-        };
-        typed.push((pattern, clause));
-    }
-    Ok(typed)
-}
-
-fn nil_call_clauses(
-    clauses: Vec<(num_bigint::BigInt, Expr)>,
-) -> Result<Vec<(num_bigint::BigInt, NilExpr)>, PlanError> {
-    let mut typed = Vec::with_capacity(clauses.len());
-    for (pattern, clause) in clauses {
-        let ExprKind::Nil(clause) = clause.into_kind() else {
-            return Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::CallShape {
-                    reason: InvalidCallShapeReason::FunctionCallReturnTypeMismatch,
-                },
-            });
-        };
-        typed.push((pattern, clause));
-    }
-    Ok(typed)
-}
-
-fn block_call_expr(steps: Vec<crate::plan::Step>, return_: Expr) -> Result<Expr, PlanError> {
-    Ok(match return_.into_kind() {
-        ExprKind::Int(return_) => Expr::int(IntExpr::block(steps, return_)),
-        ExprKind::String(return_) => Expr::string(StringExpr::block(steps, return_)),
-        ExprKind::Bool(return_) => Expr::bool(BoolExpr::block(steps, return_)),
-        ExprKind::Nil(return_) => Expr::nil(NilExpr::block(steps, return_)),
-        ExprKind::Function(_) => {
-            return Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::CallShape {
-                    reason: InvalidCallShapeReason::FunctionCallReturnTypeMismatch,
-                },
-            });
-        }
-    })
-}
-
 #[cfg(test)]
 mod tests {
     use super::super::{typed_int_expr, typed_string_expr};
     use crate::plan::{
-        BoolLocalId, IntFunctionId, IntLocalId, LocalId, NilLocalId, RuntimeFunctionId,
-        StringFunctionId, StringLocalId,
+        BoolFunctionId, BoolLocalId, ExprKind, FunctionArgumentType, FunctionExpr, FunctionType,
+        IntLocalId, LocalId, NilFunctionId, NilLocalId, RuntimeFunctionId, StringFunctionId,
+        StringLocalId, ValueType,
     };
-    use crate::plan::{FunctionArgumentType, FunctionExpr, FunctionType, ValueType};
     use crate::planner::dsl::{
-        block_bool, block_int, block_nil, block_string, bool_, bool_case_bool, bool_case_int,
-        bool_case_nil, bool_case_string, call_int, function, function_ref, int, int_arg,
-        int_case_bool, int_case_int, int_case_nil, int_case_string, local_int, module, nil, string,
+        block_int_function, bool_, bool_case_int_function, call_int_function, function,
+        function_ref, int, int_arg, int_case_int_function, int_function_ref, let_int_function_step,
+        local_int, local_int_function, module,
     };
     use crate::planner::plan_module;
     use crate::planner::support::{compile, compile_minimal_module, dummy_span};
@@ -663,7 +530,6 @@ mod tests {
         InvalidCallShapeReason, InvalidExpressionType, InvalidTypedAstReason, PlanError,
         UnsupportedExpressionKind,
     };
-    use ecow::EcoString;
     use gleam_core::ast::{
         CallArg, ImplicitCallArgOrigin, Statement, TypedExpr, TypedModule, TypedStatement,
     };
@@ -698,7 +564,18 @@ pub fn main() {
         .expect("source should plan");
         let expected = module(
             "main",
-            function("main", call_int(1, [int_arg(0, int(1))])),
+            function(
+                "main",
+                call_int_function(
+                    local_int_function(0, "function", [LocalId::Int(IntLocalId(0))]),
+                    [int_arg(0, int(1))],
+                ),
+            )
+            .step(let_int_function_step(
+                0,
+                "function",
+                int_function_ref(1, [LocalId::Int(IntLocalId(0))]),
+            )),
             [function("add_one", local_int(0, "value").add_int(int(1))).param_int(0, "value")],
         );
 
@@ -731,14 +608,28 @@ pub fn primitive_shadow() {
             function("add_one", local_int(0, "value").add_int(int(1))).param_int(0, "value");
         let expected = module(
             "main",
-            function("main", call_int(1, [int_arg(0, int(1))])).let_int(0, "function", int(1)),
+            function(
+                "main",
+                call_int_function(
+                    local_int_function(0, "function", [LocalId::Int(IntLocalId(0))]),
+                    [int_arg(0, int(1))],
+                ),
+            )
+            .let_int(0, "function", int(1))
+            .step(let_int_function_step(
+                0,
+                "function",
+                int_function_ref(1, [LocalId::Int(IntLocalId(0))]),
+            )),
             [
                 add_one,
-                function("primitive_shadow", local_int(0, "function").add_int(int(1))).let_int(
-                    0,
-                    "function",
-                    int(1),
-                ),
+                function("primitive_shadow", local_int(0, "function").add_int(int(1)))
+                    .step(let_int_function_step(
+                        0,
+                        "function",
+                        int_function_ref(1, [LocalId::Int(IntLocalId(0))]),
+                    ))
+                    .let_int(0, "function", int(1)),
             ],
         );
 
@@ -761,7 +652,13 @@ pub fn main() {
         .expect("source should plan");
         let expected = module(
             "main",
-            function("main", block_int([], call_int(1, [int_arg(0, int(1))]))),
+            function(
+                "main",
+                call_int_function(
+                    block_int_function([], int_function_ref(1, [LocalId::Int(IntLocalId(0))])),
+                    [int_arg(0, int(1))],
+                ),
+            ),
             [function("add_one", local_int(0, "value").add_int(int(1))).param_int(0, "value")],
         );
 
@@ -807,19 +704,25 @@ pub fn main() {
             .let_int(
                 0,
                 "bool_result",
-                bool_case_int(
-                    bool_(true),
-                    call_int(1, [int_arg(0, int(1))]),
-                    call_int(2, [int_arg(0, int(1))]),
+                call_int_function(
+                    bool_case_int_function(
+                        bool_(true),
+                        int_function_ref(1, [LocalId::Int(IntLocalId(0))]),
+                        int_function_ref(2, [LocalId::Int(IntLocalId(0))]),
+                    ),
+                    [int_arg(0, int(1))],
                 ),
             )
             .let_int(
                 1,
                 "int_result",
-                int_case_int(
-                    int(0),
-                    [(0, call_int(2, [int_arg(0, int(1))]))],
-                    call_int(1, [int_arg(0, int(1))]),
+                call_int_function(
+                    int_case_int_function(
+                        int(0),
+                        [(0, int_function_ref(2, [LocalId::Int(IntLocalId(0))]))],
+                        int_function_ref(1, [LocalId::Int(IntLocalId(0))]),
+                    ),
+                    [int_arg(0, int(1))],
                 ),
             ),
             [add_one, add_ten],
@@ -987,102 +890,6 @@ pub fn main() {
     }
 
     #[test]
-    fn reject_margin_function_value_call_lowering_shape_mismatch() {
-        assert_eq!(
-            super::bool_case_call_expr(bool_(true).into(), int(1).into(), string("wrong").into()),
-            Err(function_call_return_type_mismatch()),
-        );
-        assert_eq!(
-            super::int_case_call_expr(
-                int(1).into(),
-                vec![(1.into(), string("wrong").into())],
-                int(0).into()
-            ),
-            Err(function_call_return_type_mismatch()),
-        );
-        assert_eq!(
-            super::int_case_call_expr(
-                int(1).into(),
-                vec![(1.into(), int(1).into())],
-                string("fallback").into()
-            ),
-            Err(function_call_return_type_mismatch()),
-        );
-        assert_eq!(
-            super::int_case_call_expr(
-                int(1).into(),
-                vec![(1.into(), int(1).into())],
-                bool_(false).into()
-            ),
-            Err(function_call_return_type_mismatch()),
-        );
-        assert_eq!(
-            super::int_case_call_expr(int(1).into(), vec![(1.into(), int(1).into())], nil().into()),
-            Err(function_call_return_type_mismatch()),
-        );
-        assert_eq!(
-            super::int_case_call_expr(int(1).into(), Vec::new(), function_expr()),
-            Err(function_call_return_type_mismatch()),
-        );
-        assert_eq!(
-            super::block_call_expr(Vec::new(), function_expr()),
-            Err(function_call_return_type_mismatch()),
-        );
-    }
-
-    #[test]
-    fn plan_function_value_call_lowering_return_shapes() {
-        assert_eq!(
-            super::bool_case_call_expr(
-                bool_(true).into(),
-                string("yes").into(),
-                string("no").into(),
-            ),
-            Ok(bool_case_string(bool_(true), string("yes"), string("no")).into()),
-        );
-        assert_eq!(
-            super::bool_case_call_expr(bool_(true).into(), bool_(true).into(), bool_(false).into()),
-            Ok(bool_case_bool(bool_(true), bool_(true), bool_(false)).into()),
-        );
-        assert_eq!(
-            super::bool_case_call_expr(bool_(true).into(), nil().into(), nil().into()),
-            Ok(bool_case_nil(bool_(true), nil(), nil()).into()),
-        );
-        assert_eq!(
-            super::int_case_call_expr(
-                int(1).into(),
-                vec![(1.into(), string("one").into())],
-                string("other").into(),
-            ),
-            Ok(int_case_string(int(1), [(1, string("one"))], string("other")).into()),
-        );
-        assert_eq!(
-            super::int_case_call_expr(
-                int(1).into(),
-                vec![(1.into(), bool_(true).into())],
-                bool_(false).into(),
-            ),
-            Ok(int_case_bool(int(1), [(1, bool_(true))], bool_(false)).into()),
-        );
-        assert_eq!(
-            super::int_case_call_expr(int(1).into(), vec![(1.into(), nil().into())], nil().into()),
-            Ok(int_case_nil(int(1), [(1, nil())], nil()).into()),
-        );
-        assert_eq!(
-            super::block_call_expr(Vec::new(), string("value").into()),
-            Ok(block_string([], string("value")).into()),
-        );
-        assert_eq!(
-            super::block_call_expr(Vec::new(), bool_(true).into()),
-            Ok(block_bool([], bool_(true)).into()),
-        );
-        assert_eq!(
-            super::block_call_expr(Vec::new(), nil().into()),
-            Ok(block_nil([], nil()).into()),
-        );
-    }
-
-    #[test]
     fn function_call_params_supports_primitive_argument_shapes() {
         let params = super::function_call_params(&FunctionType::new(
             vec![
@@ -1099,127 +906,91 @@ pub fn main() {
     }
 
     #[test]
-    fn reject_margin_function_value_call_recursive_lowering_errors() {
-        let module = EcoString::from("main");
-        let functions = std::collections::HashMap::<EcoString, super::FunctionInfo>::new();
-        let mut context = super::PlanContext::new(&module, &functions);
-        let params = [super::FunctionParam {
-            local: LocalId::Int(IntLocalId(0)),
-            name: EcoString::default(),
-        }];
-        let string_argument = call_arguments(typed_string_expr("wrong"));
-        let int_argument = call_arguments(typed_int_expr(1));
-        let expected_type_error = Err(PlanError::InvalidTypedAst {
-            reason: InvalidTypedAstReason::ExpressionType {
-                expected: InvalidExpressionType::Int,
-                actual: InvalidExpressionType::String,
-            },
-        });
-        let expected_shape_error = Err(function_call_return_type_mismatch());
-
-        assert_eq!(
-            super::plan_function_expr_call(
-                FunctionExpr::bool_case(
-                    bool_(true).into(),
-                    int_function_expr(),
-                    int_function_expr()
-                ),
-                string_argument.clone(),
-                &params,
-                &mut context,
-                None,
-            ),
-            expected_type_error,
-        );
-        assert_eq!(
-            super::plan_function_expr_call(
-                FunctionExpr::bool_case(
-                    bool_(true).into(),
-                    int_function_expr(),
-                    mismatched_function_case(),
-                ),
-                int_argument.clone(),
-                &params,
-                &mut context,
-                None,
-            ),
-            expected_shape_error.clone(),
-        );
-        assert_eq!(
-            super::plan_function_expr_call(
-                FunctionExpr::int_case(
-                    int(1).into(),
-                    vec![(1.into(), mismatched_function_case())],
-                    int_function_expr(),
-                ),
-                int_argument.clone(),
-                &params,
-                &mut context,
-                None,
-            ),
-            expected_shape_error.clone(),
-        );
-        assert_eq!(
-            super::plan_function_expr_call(
-                FunctionExpr::int_case(
-                    int(1).into(),
-                    vec![(1.into(), int_function_expr())],
-                    mismatched_function_case(),
-                ),
-                int_argument.clone(),
-                &params,
-                &mut context,
-                None,
-            ),
-            expected_shape_error.clone(),
-        );
-        assert_eq!(
-            super::plan_function_expr_call(
-                FunctionExpr::block(Vec::new(), mismatched_function_case()),
-                int_argument,
-                &params,
-                &mut context,
-                None,
-            ),
-            expected_shape_error,
-        );
-    }
-
-    fn function_expr() -> crate::plan::Expr {
-        function_ref(
-            RuntimeFunctionId::Int(IntFunctionId(0)),
-            [LocalId::Int(IntLocalId(0))],
-        )
-        .into()
-    }
-
-    fn int_function_expr() -> FunctionExpr {
-        function_ref(
-            RuntimeFunctionId::Int(IntFunctionId(0)),
-            [LocalId::Int(IntLocalId(0))],
-        )
-        .into()
-    }
-
-    fn mismatched_function_case() -> FunctionExpr {
-        FunctionExpr::bool_case(
-            bool_(true).into(),
-            int_function_expr(),
-            function_ref(
-                RuntimeFunctionId::String(StringFunctionId(0)),
-                [LocalId::Int(IntLocalId(0))],
+    fn function_call_expr_preserves_return_family() {
+        assert!(matches!(
+            super::function_call_expr(
+                FunctionExpr::from(function_ref(
+                    RuntimeFunctionId::String(StringFunctionId(0)),
+                    [],
+                )),
+                Vec::new(),
+                ValueType::String,
             )
-            .into(),
-        )
+            .expect("string function call")
+            .kind(),
+            ExprKind::String(_),
+        ));
+        assert!(matches!(
+            super::function_call_expr(
+                FunctionExpr::from(function_ref(RuntimeFunctionId::Bool(BoolFunctionId(0)), [],)),
+                Vec::new(),
+                ValueType::Bool,
+            )
+            .expect("bool function call")
+            .kind(),
+            ExprKind::Bool(_),
+        ));
+        assert!(matches!(
+            super::function_call_expr(
+                FunctionExpr::from(function_ref(RuntimeFunctionId::Nil(NilFunctionId(0)), [],)),
+                Vec::new(),
+                ValueType::Nil,
+            )
+            .expect("nil function call")
+            .kind(),
+            ExprKind::Nil(_),
+        ));
     }
 
-    fn call_arguments(value: TypedExpr) -> Vec<CallArg<TypedExpr>> {
-        vec![CallArg {
-            label: None,
-            location: dummy_span(),
-            value,
-            implicit: None,
-        }]
+    #[test]
+    fn reject_margin_function_call_expr_return_family_mismatch() {
+        assert_eq!(
+            super::function_call_expr(
+                FunctionExpr::from(function_ref(
+                    RuntimeFunctionId::String(StringFunctionId(0)),
+                    [],
+                )),
+                Vec::new(),
+                ValueType::Int,
+            ),
+            Err(function_call_return_type_mismatch()),
+        );
+        assert_eq!(
+            super::function_call_expr(
+                FunctionExpr::from(int_function_ref(0, [])),
+                Vec::new(),
+                ValueType::String,
+            ),
+            Err(function_call_return_type_mismatch()),
+        );
+        assert_eq!(
+            super::function_call_expr(
+                FunctionExpr::from(int_function_ref(0, [])),
+                Vec::new(),
+                ValueType::Bool,
+            ),
+            Err(function_call_return_type_mismatch()),
+        );
+        assert_eq!(
+            super::function_call_expr(
+                FunctionExpr::from(int_function_ref(0, [])),
+                Vec::new(),
+                ValueType::Nil,
+            ),
+            Err(function_call_return_type_mismatch()),
+        );
+        assert_eq!(
+            super::function_call_expr(
+                FunctionExpr::from(int_function_ref(0, [])),
+                Vec::new(),
+                ValueType::Function(Box::new(FunctionType::new(Vec::new(), ValueType::Int))),
+            ),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::CallShape {
+                    reason: InvalidCallShapeReason::FunctionCallUnsupportedReturnType,
+                },
+            }),
+        );
     }
 
     fn function_call_return_type_mismatch() -> PlanError {

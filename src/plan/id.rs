@@ -18,6 +18,18 @@ pub struct BoolLocalId(pub(crate) usize);
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct NilLocalId(pub(crate) usize);
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct IntFunctionLocalId(pub(crate) usize);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct StringFunctionLocalId(pub(crate) usize);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct BoolFunctionLocalId(pub(crate) usize);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct NilFunctionLocalId(pub(crate) usize);
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct FunctionId(usize);
 
@@ -77,8 +89,9 @@ impl RuntimeFunctionId {
 #[cfg(test)]
 mod tests {
     use super::{
-        BoolFunctionId, BoolLocalId, FunctionId, IntFunctionId, IntLocalId, LocalId, NilFunctionId,
-        NilLocalId, RuntimeFunctionId, StringFunctionId, StringLocalId,
+        BoolFunctionId, BoolFunctionLocalId, BoolLocalId, FunctionId, IntFunctionId,
+        IntFunctionLocalId, IntLocalId, LocalId, NilFunctionId, NilFunctionLocalId, NilLocalId,
+        RuntimeFunctionId, StringFunctionId, StringFunctionLocalId, StringLocalId,
     };
     use crate::plan::ValueType;
 
@@ -115,6 +128,26 @@ mod tests {
         assert_eq!(
             RuntimeFunctionId::Nil(NilFunctionId(0)).value_type(),
             ValueType::Nil
+        );
+    }
+
+    #[test]
+    fn function_local_id_debug_surface() {
+        assert_eq!(
+            format!("{:?}", IntFunctionLocalId(3)),
+            "IntFunctionLocalId(3)"
+        );
+        assert_eq!(
+            format!("{:?}", StringFunctionLocalId(3)),
+            "StringFunctionLocalId(3)"
+        );
+        assert_eq!(
+            format!("{:?}", BoolFunctionLocalId(3)),
+            "BoolFunctionLocalId(3)"
+        );
+        assert_eq!(
+            format!("{:?}", NilFunctionLocalId(3)),
+            "NilFunctionLocalId(3)"
         );
     }
 }

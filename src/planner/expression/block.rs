@@ -1,4 +1,7 @@
-use crate::plan::{BoolExpr, Expr, ExprKind, FunctionExpr, IntExpr, NilExpr, Step, StringExpr};
+use crate::plan::{
+    BoolExpr, BoolFunctionExpr, Expr, ExprKind, FunctionExpr, FunctionExprKind, IntExpr,
+    IntFunctionExpr, NilExpr, NilFunctionExpr, Step, StringExpr, StringFunctionExpr,
+};
 use crate::planner::context::PlanContext;
 use crate::planner::error::PlanError;
 use crate::planner::statement::plan_non_empty_steps_and_return;
@@ -22,7 +25,20 @@ pub(super) fn block_expr(steps: Vec<Step>, return_: Expr) -> Expr {
         ExprKind::String(return_) => Expr::string(StringExpr::block(steps, return_)),
         ExprKind::Bool(return_) => Expr::bool(BoolExpr::block(steps, return_)),
         ExprKind::Nil(return_) => Expr::nil(NilExpr::block(steps, return_)),
-        ExprKind::Function(return_) => Expr::function(FunctionExpr::block(steps, return_)),
+        ExprKind::Function(return_) => match return_.into_kind() {
+            FunctionExprKind::Int(return_) => {
+                Expr::function(FunctionExpr::int(IntFunctionExpr::block(steps, return_)))
+            }
+            FunctionExprKind::String(return_) => Expr::function(FunctionExpr::string(
+                StringFunctionExpr::block(steps, return_),
+            )),
+            FunctionExprKind::Bool(return_) => {
+                Expr::function(FunctionExpr::bool(BoolFunctionExpr::block(steps, return_)))
+            }
+            FunctionExprKind::Nil(return_) => {
+                Expr::function(FunctionExpr::nil(NilFunctionExpr::block(steps, return_)))
+            }
+        },
     }
 }
 
@@ -31,8 +47,8 @@ mod tests {
     use crate::plan::{IntFunctionId, LocalId, RuntimeFunctionId};
     use crate::planner::dsl::{
         block_bool, block_function, block_int, block_nil, block_string, bool_, evaluate_step,
-        function, function_ref, int, let_int_step, let_nil_step, local_int, local_nil, module, nil,
-        string,
+        function, function_ref, int, let_int_step, let_nil_step, local_bool, local_int, local_nil,
+        local_string, module, nil, string,
     };
     use crate::planner::plan_module;
     use crate::planner::support::{compile, expect_plan_error};
@@ -76,8 +92,23 @@ fn identity(value: Int) {
   value
 }
 
+fn string_identity(value: String) {
+  value
+}
+
+fn bool_identity(value: Bool) {
+  value
+}
+
+fn nil_identity(value: Nil) {
+  value
+}
+
 pub fn main() {
   { identity }
+  { string_identity }
+  { bool_identity }
+  { nil_identity }
   1
 }
 "#,
@@ -85,14 +116,41 @@ pub fn main() {
         .expect("source should plan");
         let expected = module(
             "main",
-            function("main", int(1)).evaluate(block_function(
-                [],
-                function_ref(
-                    RuntimeFunctionId::Int(IntFunctionId(1)),
-                    [LocalId::Int(crate::plan::IntLocalId(0))],
-                ),
-            )),
-            [function("identity", local_int(0, "value")).param_int(0, "value")],
+            function("main", int(1))
+                .evaluate(block_function(
+                    [],
+                    function_ref(
+                        RuntimeFunctionId::Int(IntFunctionId(1)),
+                        [LocalId::Int(crate::plan::IntLocalId(0))],
+                    ),
+                ))
+                .evaluate(block_function(
+                    [],
+                    function_ref(
+                        RuntimeFunctionId::String(crate::plan::StringFunctionId(0)),
+                        [LocalId::String(crate::plan::StringLocalId(0))],
+                    ),
+                ))
+                .evaluate(block_function(
+                    [],
+                    function_ref(
+                        RuntimeFunctionId::Bool(crate::plan::BoolFunctionId(0)),
+                        [LocalId::Bool(crate::plan::BoolLocalId(0))],
+                    ),
+                ))
+                .evaluate(block_function(
+                    [],
+                    function_ref(
+                        RuntimeFunctionId::Nil(crate::plan::NilFunctionId(0)),
+                        [LocalId::Nil(crate::plan::NilLocalId(0))],
+                    ),
+                )),
+            [
+                function("identity", local_int(0, "value")).param_int(0, "value"),
+                function("string_identity", local_string(0, "value")).param_string(0, "value"),
+                function("bool_identity", local_bool(0, "value")).param_bool(0, "value"),
+                function("nil_identity", local_nil(0, "value")).param_nil(0, "value"),
+            ],
         );
 
         assert_eq!(actual, expected);

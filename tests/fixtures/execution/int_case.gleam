@@ -22,6 +22,21 @@ fn duplicate_literal(value: Int) {
 }
 
 pub fn main() {
+  case 1 {
+    1 -> "one"
+    _ -> "other"
+  }
+
+  case 1 {
+    1 -> True
+    _ -> False
+  }
+
+  case 1 {
+    1 -> Nil
+    _ -> Nil
+  }
+
   classify(1) + classify(9) + fallback_first(1) + duplicate_literal(1)
 }
 
