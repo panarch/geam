@@ -259,7 +259,7 @@ fn plan_function_value_call(
     let function_type = function.type_();
     let return_type = ValueType::from_gleam(type_.as_ref()).ok_or(PlanError::InvalidTypedAst {
         reason: InvalidTypedAstReason::CallShape {
-            reason: InvalidCallShapeReason::LocalFunctionCallUnsupportedReturnType,
+            reason: InvalidCallShapeReason::FunctionCallUnsupportedReturnType,
         },
     })?;
     if &return_type != function_type.return_() {
@@ -568,7 +568,7 @@ pub fn main() {
             plan_module(unsupported_return_type_call),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::CallShape {
-                    reason: InvalidCallShapeReason::LocalFunctionCallUnsupportedReturnType,
+                    reason: InvalidCallShapeReason::FunctionCallUnsupportedReturnType,
                 },
             }),
         );

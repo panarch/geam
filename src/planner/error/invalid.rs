@@ -81,6 +81,8 @@ pub enum InvalidCallShapeReason {
     FunctionCallArityMismatch,
     #[error("function value call return type mismatch")]
     FunctionCallReturnTypeMismatch,
+    #[error("function value call return type is not supported")]
+    FunctionCallUnsupportedReturnType,
     #[error("implicit call arguments")]
     ImplicitArguments,
     #[error("labelled call arguments")]
