@@ -14,8 +14,16 @@ pub enum ValueType {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FunctionType {
-    arguments: Vec<ValueType>,
+    arguments: Vec<FunctionArgumentType>,
     return_: Box<ValueType>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum FunctionArgumentType {
+    Int,
+    String,
+    Bool,
+    Nil,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -34,19 +42,40 @@ pub enum Value {
 }
 
 impl FunctionType {
-    pub(crate) fn new(arguments: Vec<ValueType>, return_: ValueType) -> Self {
+    pub(crate) fn new(arguments: Vec<FunctionArgumentType>, return_: ValueType) -> Self {
         Self {
             arguments,
             return_: Box::new(return_),
         }
     }
 
-    pub fn arguments(&self) -> &[ValueType] {
-        &self.arguments
-    }
-
     pub fn return_(&self) -> &ValueType {
         &self.return_
+    }
+
+    pub(crate) fn argument_types(&self) -> &[FunctionArgumentType] {
+        &self.arguments
+    }
+}
+
+impl FunctionArgumentType {
+    pub(crate) fn from_value_type(type_: &ValueType) -> Option<Self> {
+        match type_ {
+            ValueType::Int => Some(Self::Int),
+            ValueType::String => Some(Self::String),
+            ValueType::Bool => Some(Self::Bool),
+            ValueType::Nil => Some(Self::Nil),
+            ValueType::Function(_) => None,
+        }
+    }
+
+    pub(crate) fn from_local(local: &LocalId) -> Self {
+        match local {
+            LocalId::Int(_) => Self::Int,
+            LocalId::String(_) => Self::String,
+            LocalId::Bool(_) => Self::Bool,
+            LocalId::Nil(_) => Self::Nil,
+        }
     }
 }
 
@@ -57,7 +86,10 @@ impl FunctionValue {
 
     pub fn type_(&self) -> FunctionType {
         FunctionType::new(
-            self.params.iter().map(|param| param.value_type()).collect(),
+            self.params
+                .iter()
+                .map(FunctionArgumentType::from_local)
+                .collect(),
             self.runtime_id.value_type(),
         )
     }
@@ -65,16 +97,15 @@ impl FunctionValue {
     pub(crate) fn runtime_id(&self) -> RuntimeFunctionId {
         self.runtime_id
     }
-
-    pub(crate) fn params(&self) -> &[LocalId] {
-        &self.params
-    }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{FunctionType, FunctionValue, ValueType};
-    use crate::plan::{IntLocalId, LocalId, NilFunctionId, RuntimeFunctionId, StringFunctionId};
+    use super::{FunctionArgumentType, FunctionType, FunctionValue, ValueType};
+    use crate::plan::{
+        BoolLocalId, IntFunctionId, IntLocalId, LocalId, NilFunctionId, NilLocalId,
+        RuntimeFunctionId, StringFunctionId, StringLocalId,
+    };
 
     #[test]
     fn function_value_accepts_matching_shape() {
@@ -84,13 +115,15 @@ mod tests {
         );
         let type_ = value.type_();
 
-        assert_eq!(type_.arguments(), &[ValueType::Int]);
+        assert_eq!(
+            type_,
+            FunctionType::new(vec![FunctionArgumentType::Int], ValueType::String),
+        );
         assert_eq!(type_.return_(), &ValueType::String);
         assert_eq!(
             value.runtime_id(),
             RuntimeFunctionId::String(StringFunctionId(0))
         );
-        assert_eq!(value.params(), &[LocalId::Int(IntLocalId(0))]);
     }
 
     #[test]
@@ -98,5 +131,61 @@ mod tests {
         let value = FunctionValue::new(RuntimeFunctionId::Nil(NilFunctionId(0)), Vec::new());
 
         assert_eq!(value.type_(), FunctionType::new(Vec::new(), ValueType::Nil));
+    }
+
+    #[test]
+    fn function_argument_type_rejects_function_shape() {
+        assert_eq!(
+            FunctionArgumentType::from_value_type(&ValueType::Function(Box::new(
+                FunctionType::new(Vec::new(), ValueType::Int),
+            ))),
+            None,
+        );
+    }
+
+    #[test]
+    fn function_argument_type_accepts_primitive_shapes() {
+        assert_eq!(
+            FunctionArgumentType::from_value_type(&ValueType::Int),
+            Some(FunctionArgumentType::Int),
+        );
+        assert_eq!(
+            FunctionArgumentType::from_value_type(&ValueType::String),
+            Some(FunctionArgumentType::String),
+        );
+        assert_eq!(
+            FunctionArgumentType::from_value_type(&ValueType::Bool),
+            Some(FunctionArgumentType::Bool),
+        );
+        assert_eq!(
+            FunctionArgumentType::from_value_type(&ValueType::Nil),
+            Some(FunctionArgumentType::Nil),
+        );
+    }
+
+    #[test]
+    fn function_value_type_uses_all_parameter_shapes() {
+        let value = FunctionValue::new(
+            RuntimeFunctionId::Int(IntFunctionId(0)),
+            vec![
+                LocalId::Int(IntLocalId(0)),
+                LocalId::String(StringLocalId(0)),
+                LocalId::Bool(BoolLocalId(0)),
+                LocalId::Nil(NilLocalId(0)),
+            ],
+        );
+
+        assert_eq!(
+            value.type_(),
+            FunctionType::new(
+                vec![
+                    FunctionArgumentType::Int,
+                    FunctionArgumentType::String,
+                    FunctionArgumentType::Bool,
+                    FunctionArgumentType::Nil,
+                ],
+                ValueType::Int,
+            ),
+        );
     }
 }

@@ -1,7 +1,7 @@
 use crate::plan::{
-    BoolFunctionId, BoolLocalId, FunctionId, FunctionType, FunctionValue, IntFunctionId,
-    IntLocalId, LocalId, NilFunctionId, NilLocalId, RuntimeFunctionId, StringFunctionId,
-    StringLocalId, ValueType,
+    BoolFunctionId, BoolLocalId, FunctionArgumentType, FunctionId, FunctionType, FunctionValue,
+    IntFunctionId, IntLocalId, LocalId, NilFunctionId, NilLocalId, RuntimeFunctionId,
+    StringFunctionId, StringLocalId, ValueType,
 };
 use ecow::EcoString;
 use gleam_core::type_::Type;
@@ -225,7 +225,10 @@ impl ValueType {
         } else if let Some((arguments, return_)) = type_.fn_types() {
             let arguments = arguments
                 .iter()
-                .map(|argument| Self::from_gleam(argument.as_ref()))
+                .map(|argument| {
+                    Self::from_gleam(argument.as_ref())
+                        .and_then(|type_| FunctionArgumentType::from_value_type(&type_))
+                })
                 .collect::<Option<Vec<_>>>()?;
             let return_ = Self::from_gleam(return_.as_ref())?;
             Some(Self::Function(Box::new(FunctionType::new(

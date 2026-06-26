@@ -243,8 +243,8 @@ mod tests {
         NilExpr, StringExpr,
     };
     use crate::plan::{
-        BoolLocalId, FunctionType, FunctionValue, IntFunctionId, IntLocalId, LocalId, NilLocalId,
-        RuntimeFunctionId, StringLocalId, Value, ValueType,
+        BoolLocalId, FunctionArgumentType, FunctionType, FunctionValue, IntFunctionId, IntLocalId,
+        LocalId, NilLocalId, RuntimeFunctionId, StringLocalId, Value, ValueType,
     };
     use num_bigint::BigInt;
 
@@ -529,6 +529,6 @@ mod tests {
     }
 
     fn function_type() -> FunctionType {
-        FunctionType::new(vec![ValueType::Int], ValueType::Int)
+        FunctionType::new(vec![FunctionArgumentType::Int], ValueType::Int)
     }
 }

@@ -25,6 +25,7 @@ pub use id::{
 };
 pub use step::Step;
 pub(crate) use step::StepKind;
+pub(crate) use value::FunctionArgumentType;
 pub use value::{FunctionType, FunctionValue, Value, ValueType};
 
 pub struct ExecutionPlan {
