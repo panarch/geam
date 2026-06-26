@@ -306,9 +306,15 @@ impl Expr {
             (ExprKind::Nil(true_), ExprKind::Nil(false_)) => {
                 Ok(Self::nil(NilExpr::bool_case(subject, true_, false_)))
             }
-            (ExprKind::Function(true_), ExprKind::Function(false_)) => Ok(Self::function(
-                FunctionExpr::bool_case(subject, true_, false_),
-            )),
+            (ExprKind::Function(true_), ExprKind::Function(false_)) => {
+                if true_.type_() == false_.type_() {
+                    Ok(Self::function(FunctionExpr::bool_case(
+                        subject, true_, false_,
+                    )))
+                } else {
+                    Err(Box::new((Self::function(true_), Self::function(false_))))
+                }
+            }
             (true_, false_) => Err(Box::new((Self { kind: true_ }, Self { kind: false_ }))),
         }
     }
@@ -381,6 +387,9 @@ impl Expr {
                     let ExprKind::Function(clause) = clause.kind else {
                         return Err(());
                     };
+                    if clause.type_() != fallback.type_() {
+                        return Err(());
+                    }
                     typed_clauses.push((value, clause));
                 }
                 Ok(Self::function(FunctionExpr::int_case(
@@ -928,7 +937,7 @@ mod tests {
     };
     use crate::plan::{
         BoolLocalId, FunctionType, FunctionValue, IntFunctionId, IntLocalId, LocalId, NilLocalId,
-        RuntimeFunctionId, Step, StringLocalId, Value, ValueType,
+        RuntimeFunctionId, Step, StringFunctionId, StringLocalId, Value, ValueType,
     };
     use num_bigint::BigInt;
 
@@ -1026,6 +1035,17 @@ mod tests {
                 Expr::bool(BoolExpr::value(false)),
             ))),
         );
+        assert_eq!(
+            Expr::bool_case(
+                BoolExpr::value(true),
+                Expr::function(FunctionExpr::value(function_value())),
+                Expr::function(FunctionExpr::value(string_function_value())),
+            ),
+            Err(Box::new((
+                Expr::function(FunctionExpr::value(function_value())),
+                Expr::function(FunctionExpr::value(string_function_value())),
+            ))),
+        );
     }
 
     #[test]
@@ -1109,6 +1129,17 @@ mod tests {
                 IntExpr::value(BigInt::from(1)),
                 vec![(BigInt::from(1), Expr::int(IntExpr::value(BigInt::from(1))))],
                 Expr::string(StringExpr::value("other".into())),
+            ),
+            Err(()),
+        );
+        assert_eq!(
+            Expr::int_case(
+                IntExpr::value(BigInt::from(1)),
+                vec![(
+                    BigInt::from(1),
+                    Expr::function(FunctionExpr::value(string_function_value()))
+                )],
+                Expr::function(FunctionExpr::value(function_value())),
             ),
             Err(()),
         );
@@ -1404,6 +1435,14 @@ mod tests {
         FunctionValue::new(
             function_type(),
             RuntimeFunctionId::Int(IntFunctionId(0)),
+            vec![LocalId::Int(IntLocalId(0))],
+        )
+    }
+
+    fn string_function_value() -> FunctionValue {
+        FunctionValue::new(
+            FunctionType::new(vec![ValueType::Int], ValueType::String),
+            RuntimeFunctionId::String(StringFunctionId(0)),
             vec![LocalId::Int(IntLocalId(0))],
         )
     }
