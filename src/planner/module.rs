@@ -1,4 +1,4 @@
-use crate::plan::{ExecutionPlan, FunctionId, LocalId, ValueType};
+use crate::plan::{ExecutionPlan, FunctionId, LocalId, RuntimeFunctionId, ValueType};
 use crate::planner::context::{FunctionInfo, FunctionParam, FunctionRuntimeIds};
 use crate::planner::error::{
     PlanError, UnsupportedArgumentReason, UnsupportedFunctionReason, UnsupportedTopLevelKind,
@@ -6,6 +6,7 @@ use crate::planner::error::{
 use crate::planner::function::{function_name, plan_function};
 use ecow::EcoString;
 use gleam_core::ast::{ArgNames, TypedFunction, TypedModule};
+use gleam_core::type_::Type;
 use std::collections::HashMap;
 
 pub fn plan_module(module: TypedModule) -> Result<ExecutionPlan, PlanError> {
@@ -70,13 +71,7 @@ fn function_table(
 
     for function in functions {
         let name = function_name(function)?;
-        let return_type = ValueType::from_gleam(&function.return_type);
-        if matches!(return_type, Some(ValueType::Function(_))) {
-            return Err(PlanError::UnsupportedFunction {
-                name,
-                reason: UnsupportedFunctionReason::UnsupportedReturnType,
-            });
-        }
+        let return_type = FunctionReturnType::from_gleam(name.clone(), &function.return_type)?;
         let params = function_params(name.clone(), &function.arguments)?;
         seeds.push(FunctionSeed {
             name,
@@ -143,18 +138,14 @@ fn function_info(
     seed: &FunctionSeed,
     runtime_ids: &mut FunctionRuntimeIds,
 ) -> FunctionInfo {
-    let return_type = seed.return_type.clone();
-    let runtime_id = return_type
-        .clone()
-        .and_then(|return_type| runtime_ids.next(return_type));
+    let return_type = seed.return_type.value_type();
+    let runtime_id = seed.return_type.runtime_id(runtime_ids);
     FunctionInfo {
         id: FunctionId::new(function_index),
         runtime_id,
         arity: seed.arity,
         params: seed.params.clone(),
-        type_: return_type.clone().map(|return_type| {
-            crate::plan::FunctionType::new(param_types(&seed.params), return_type)
-        }),
+        type_: crate::plan::FunctionType::new(param_types(&seed.params), return_type.clone()),
         return_type,
     }
 }
@@ -165,7 +156,52 @@ struct FunctionSeed {
     function: TypedFunction,
     arity: usize,
     params: Vec<FunctionParam>,
-    return_type: Option<ValueType>,
+    return_type: FunctionReturnType,
+}
+
+#[derive(Clone, Copy)]
+enum FunctionReturnType {
+    Int,
+    String,
+    Bool,
+    Nil,
+}
+
+impl FunctionReturnType {
+    fn from_gleam(name: EcoString, type_: &Type) -> Result<Self, PlanError> {
+        if type_.is_int() {
+            Ok(Self::Int)
+        } else if type_.is_string() {
+            Ok(Self::String)
+        } else if type_.is_bool() {
+            Ok(Self::Bool)
+        } else if type_.is_nil() {
+            Ok(Self::Nil)
+        } else {
+            Err(PlanError::UnsupportedFunction {
+                name,
+                reason: UnsupportedFunctionReason::UnsupportedReturnType,
+            })
+        }
+    }
+
+    fn value_type(self) -> ValueType {
+        match self {
+            Self::Int => ValueType::Int,
+            Self::String => ValueType::String,
+            Self::Bool => ValueType::Bool,
+            Self::Nil => ValueType::Nil,
+        }
+    }
+
+    fn runtime_id(self, runtime_ids: &mut FunctionRuntimeIds) -> RuntimeFunctionId {
+        match self {
+            Self::Int => runtime_ids.next_int(),
+            Self::String => runtime_ids.next_string(),
+            Self::Bool => runtime_ids.next_bool(),
+            Self::Nil => runtime_ids.next_nil(),
+        }
+    }
 }
 
 fn function_params(
@@ -262,8 +298,7 @@ mod tests {
     use crate::planner::dsl::{function, int, module};
     use crate::planner::support::{compile, expect_plan_error};
     use crate::planner::{
-        PlanError, UnsupportedArgumentReason, UnsupportedExpressionKind, UnsupportedFunctionReason,
-        UnsupportedTopLevelKind,
+        PlanError, UnsupportedArgumentReason, UnsupportedFunctionReason, UnsupportedTopLevelKind,
     };
 
     #[test]
@@ -347,8 +382,9 @@ pub fn main() {
 }
 "#,
             ),
-            PlanError::UnsupportedExpression {
-                kind: UnsupportedExpressionKind::List,
+            PlanError::UnsupportedFunction {
+                name: "values".into(),
+                reason: UnsupportedFunctionReason::UnsupportedReturnType,
             },
         );
     }
@@ -367,8 +403,9 @@ fn values() {
 }
 "#,
             ),
-            PlanError::UnsupportedExpression {
-                kind: UnsupportedExpressionKind::List,
+            PlanError::UnsupportedFunction {
+                name: "values".into(),
+                reason: UnsupportedFunctionReason::UnsupportedReturnType,
             },
         );
     }

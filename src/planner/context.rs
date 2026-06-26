@@ -10,11 +10,11 @@ use std::collections::HashMap;
 #[derive(Clone)]
 pub(super) struct FunctionInfo {
     pub(super) id: FunctionId,
-    pub(super) runtime_id: Option<RuntimeFunctionId>,
+    pub(super) runtime_id: RuntimeFunctionId,
     pub(super) arity: usize,
     pub(super) params: Vec<FunctionParam>,
-    pub(super) return_type: Option<ValueType>,
-    pub(super) type_: Option<FunctionType>,
+    pub(super) return_type: ValueType,
+    pub(super) type_: FunctionType,
 }
 
 #[derive(Clone)]
@@ -174,30 +174,28 @@ pub(super) struct FunctionRuntimeIds {
 }
 
 impl FunctionRuntimeIds {
-    pub(super) fn next(&mut self, return_type: ValueType) -> Option<RuntimeFunctionId> {
-        match return_type {
-            ValueType::Int => {
-                let id = IntFunctionId(self.next_int);
-                self.next_int += 1;
-                Some(RuntimeFunctionId::Int(id))
-            }
-            ValueType::String => {
-                let id = StringFunctionId(self.next_string);
-                self.next_string += 1;
-                Some(RuntimeFunctionId::String(id))
-            }
-            ValueType::Bool => {
-                let id = BoolFunctionId(self.next_bool);
-                self.next_bool += 1;
-                Some(RuntimeFunctionId::Bool(id))
-            }
-            ValueType::Nil => {
-                let id = NilFunctionId(self.next_nil);
-                self.next_nil += 1;
-                Some(RuntimeFunctionId::Nil(id))
-            }
-            ValueType::Function(_) => None,
-        }
+    pub(super) fn next_int(&mut self) -> RuntimeFunctionId {
+        let id = IntFunctionId(self.next_int);
+        self.next_int += 1;
+        RuntimeFunctionId::Int(id)
+    }
+
+    pub(super) fn next_string(&mut self) -> RuntimeFunctionId {
+        let id = StringFunctionId(self.next_string);
+        self.next_string += 1;
+        RuntimeFunctionId::String(id)
+    }
+
+    pub(super) fn next_bool(&mut self) -> RuntimeFunctionId {
+        let id = BoolFunctionId(self.next_bool);
+        self.next_bool += 1;
+        RuntimeFunctionId::Bool(id)
+    }
+
+    pub(super) fn next_nil(&mut self) -> RuntimeFunctionId {
+        let id = NilFunctionId(self.next_nil);
+        self.next_nil += 1;
+        RuntimeFunctionId::Nil(id)
     }
 }
 
@@ -300,15 +298,22 @@ mod tests {
     }
 
     #[test]
-    fn function_runtime_ids_skip_function_return_ids() {
+    fn function_runtime_ids_allocate_by_return_type() {
         let mut ids = FunctionRuntimeIds::default();
 
+        assert_eq!(ids.next_int(), RuntimeFunctionId::Int(IntFunctionId(0)));
+        assert_eq!(ids.next_int(), RuntimeFunctionId::Int(IntFunctionId(1)));
         assert_eq!(
-            ids.next(ValueType::Function(Box::new(FunctionType::new(
-                Vec::new(),
-                ValueType::Int,
-            )))),
-            None,
+            ids.next_string(),
+            RuntimeFunctionId::String(crate::plan::StringFunctionId(0))
+        );
+        assert_eq!(
+            ids.next_bool(),
+            RuntimeFunctionId::Bool(crate::plan::BoolFunctionId(0))
+        );
+        assert_eq!(
+            ids.next_nil(),
+            RuntimeFunctionId::Nil(crate::plan::NilFunctionId(0))
         );
     }
 

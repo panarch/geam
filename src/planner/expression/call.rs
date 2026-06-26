@@ -222,15 +222,8 @@ fn plan_direct_function_call(
             },
         });
     }
-    let (Some(function_return_type), Some(function_id)) =
-        (function.return_type.clone(), function.runtime_id)
-    else {
-        return Err(PlanError::InvalidTypedAst {
-            reason: InvalidTypedAstReason::CallShape {
-                reason: InvalidCallShapeReason::LocalFunctionCallUnsupportedReturnType,
-            },
-        });
-    };
+    let function_return_type = function.return_type;
+    let function_id = function.runtime_id;
     let return_type = ValueType::from_gleam(type_.as_ref()).ok_or(PlanError::InvalidTypedAst {
         reason: InvalidTypedAstReason::CallShape {
             reason: InvalidCallShapeReason::LocalFunctionCallUnsupportedReturnType,
@@ -721,53 +714,6 @@ pub fn main() {
         );
     }
 
-    #[test]
-    fn reject_margin_call_to_unsupported_return_function() {
-        let mut module = compile(
-            r#"
-pub fn main() {
-  helper()
-}
-
-fn helper() {
-  1
-}
-"#,
-        );
-        let helper = module
-            .definitions
-            .functions
-            .iter_mut()
-            .find(|function| {
-                function
-                    .name
-                    .as_ref()
-                    .is_some_and(|(_, name)| name == "helper")
-            })
-            .expect("helper function should exist");
-        helper.return_type = type_::list(type_::int());
-        module.definitions.functions.sort_by_key(|function| {
-            if function
-                .name
-                .as_ref()
-                .is_some_and(|(_, name)| name == "main")
-            {
-                0
-            } else {
-                1
-            }
-        });
-
-        assert_eq!(
-            plan_module(module),
-            Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::CallShape {
-                    reason: InvalidCallShapeReason::LocalFunctionCallUnsupportedReturnType,
-                },
-            }),
-        );
-    }
-
     fn reject_margin_module_constant_call(mut module_constant_call: TypedModule) {
         module_constant_call.definitions.constants.clear();
         let statement = module_constant_call.definitions.functions[0].body.remove(0);
@@ -1070,6 +1016,7 @@ pub type Boxed {
 
 pub fn main() {
   Boxed(1)
+  1
 }
 "#,
         );

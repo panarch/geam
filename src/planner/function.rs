@@ -26,9 +26,7 @@ pub(super) fn plan_function(
     }
 
     let mut context = PlanContext::new(module_name, functions);
-    if let Some(type_) = info.type_.as_ref() {
-        validate_function_param_types(&name, type_, &info.params)?;
-    }
+    validate_function_param_types(&name, &info.type_, &info.params)?;
     let params = info
         .params
         .iter()
@@ -47,15 +45,7 @@ pub(super) fn plan_function(
             },
         },
     )?;
-    let Some(return_type) = info.return_type.as_ref() else {
-        return Err(PlanError::InvalidTypedAst {
-            reason: InvalidTypedAstReason::FunctionShape {
-                name: name.clone(),
-                reason: InvalidFunctionShapeReason::ReturnTypeMismatch,
-            },
-        });
-    };
-    let return_ = function_return_expr(&name, return_type, planned.return_)?;
+    let return_ = function_return_expr(&name, &info.return_type, planned.return_)?;
 
     Ok(FunctionPlan::new(
         info.id,
@@ -325,6 +315,20 @@ pub fn main() {
         assert_eq!(
             expect_plan_error(
                 r#"
+pub fn main() {
+  [1]
+}
+"#,
+            ),
+            PlanError::UnsupportedFunction {
+                name: "main".into(),
+                reason: UnsupportedFunctionReason::UnsupportedReturnType,
+            },
+        );
+
+        assert_eq!(
+            expect_plan_error(
+                r#"
 fn identity(value: Int) {
   value
 }
@@ -371,19 +375,6 @@ pub fn main() {
         return_type_mismatch.definitions.functions[0].return_type = gleam_core::type_::bool();
         assert_eq!(
             plan_module(return_type_mismatch),
-            Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::FunctionShape {
-                    name: "main".into(),
-                    reason: InvalidFunctionShapeReason::ReturnTypeMismatch,
-                },
-            }),
-        );
-
-        let mut unsupported_return_type = compile_minimal_module();
-        unsupported_return_type.definitions.functions[0].return_type =
-            gleam_core::type_::list(gleam_core::type_::int());
-        assert_eq!(
-            plan_module(unsupported_return_type),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::FunctionShape {
                     name: "main".into(),

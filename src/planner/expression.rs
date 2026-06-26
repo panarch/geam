@@ -239,19 +239,34 @@ mod tests {
     fn reject_profile_expression_variants() {
         let cases = [
             (
-                r#"pub fn main() { 1.0 }"#,
+                r#"
+pub fn main() {
+  1.0
+  1
+}
+"#,
                 PlanError::UnsupportedExpression {
                     kind: UnsupportedExpressionKind::Float,
                 },
             ),
             (
-                r#"pub fn main() { [1, 2, 3] }"#,
+                r#"
+pub fn main() {
+  [1, 2, 3]
+  1
+}
+"#,
                 PlanError::UnsupportedExpression {
                     kind: UnsupportedExpressionKind::List,
                 },
             ),
             (
-                r#"pub fn main() { #(1, 2) }"#,
+                r#"
+pub fn main() {
+  #(1, 2)
+  1
+}
+"#,
                 PlanError::UnsupportedExpression {
                     kind: UnsupportedExpressionKind::Tuple,
                 },
@@ -263,13 +278,23 @@ mod tests {
                 },
             ),
             (
-                r#"pub fn main() { todo }"#,
+                r#"
+pub fn main() {
+  todo
+  1
+}
+"#,
                 PlanError::UnsupportedExpression {
                     kind: UnsupportedExpressionKind::Todo,
                 },
             ),
             (
-                r#"pub fn main() { panic }"#,
+                r#"
+pub fn main() {
+  panic
+  1
+}
+"#,
                 PlanError::UnsupportedExpression {
                     kind: UnsupportedExpressionKind::Panic,
                 },
@@ -281,7 +306,12 @@ mod tests {
                 },
             ),
             (
-                r#"pub fn main() { <<1>> }"#,
+                r#"
+pub fn main() {
+  <<1>>
+  1
+}
+"#,
                 PlanError::UnsupportedExpression {
                     kind: UnsupportedExpressionKind::BitArray,
                 },

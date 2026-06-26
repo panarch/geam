@@ -43,8 +43,6 @@ pub enum InvalidFunctionShapeReason {
     InvalidLiteralKind,
     #[error("function argument names are not valid in this expression position")]
     InvalidArgumentNames,
-    #[error("function runtime shape is missing")]
-    MissingRuntimeShape,
     #[error("function argument type does not match parameter local")]
     ArgumentTypeMismatch,
     #[error("function return type does not match body")]
