@@ -1,6 +1,7 @@
 use crate::plan::{
-    BoolExpr, BoolFunctionExpr, Expr, ExprKind, FunctionExpr, FunctionExprKind, IntExpr,
-    IntFunctionExpr, NilExpr, NilFunctionExpr, Step, StringExpr, StringFunctionExpr,
+    BoolExpr, BoolFunctionExpr, Expr, ExprKind, FunctionExpr, FunctionExprKind,
+    FunctionFunctionExpr, IntExpr, IntFunctionExpr, NilExpr, NilFunctionExpr, Step, StringExpr,
+    StringFunctionExpr,
 };
 use crate::planner::context::PlanContext;
 use crate::planner::error::PlanError;
@@ -38,13 +39,19 @@ pub(super) fn block_expr(steps: Vec<Step>, return_: Expr) -> Expr {
             FunctionExprKind::Nil(return_) => {
                 Expr::function(FunctionExpr::nil(NilFunctionExpr::block(steps, return_)))
             }
+            FunctionExprKind::Function(return_) => Expr::function(FunctionExpr::function(
+                FunctionFunctionExpr::block(steps, return_),
+            )),
         },
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::plan::{IntFunctionId, LocalId, RuntimeFunctionId};
+    use crate::plan::{
+        FunctionFunctionId, FunctionType, IntFunctionFunctionId, IntFunctionId, LocalId,
+        RuntimeFunctionId, ValueType,
+    };
     use crate::planner::dsl::{
         block_bool, block_function, block_int, block_nil, block_string, bool_, evaluate_step,
         function, function_ref, int, let_int_step, let_nil_step, local_bool, local_int, local_nil,
@@ -104,11 +111,16 @@ fn nil_identity(value: Nil) {
   value
 }
 
+fn get_identity() {
+  identity
+}
+
 pub fn main() {
   { identity }
   { string_identity }
   { bool_identity }
   { nil_identity }
+  { get_identity }
   1
 }
 "#,
@@ -118,31 +130,41 @@ pub fn main() {
             "main",
             function("main", int(1))
                 .evaluate(block_function(
-                    [],
+                    vec![],
                     function_ref(
                         RuntimeFunctionId::Int(IntFunctionId(1)),
                         [LocalId::Int(crate::plan::IntLocalId(0))],
                     ),
                 ))
                 .evaluate(block_function(
-                    [],
+                    vec![],
                     function_ref(
                         RuntimeFunctionId::String(crate::plan::StringFunctionId(0)),
                         [LocalId::String(crate::plan::StringLocalId(0))],
                     ),
                 ))
                 .evaluate(block_function(
-                    [],
+                    vec![],
                     function_ref(
                         RuntimeFunctionId::Bool(crate::plan::BoolFunctionId(0)),
                         [LocalId::Bool(crate::plan::BoolLocalId(0))],
                     ),
                 ))
                 .evaluate(block_function(
-                    [],
+                    vec![],
                     function_ref(
                         RuntimeFunctionId::Nil(crate::plan::NilFunctionId(0)),
                         [LocalId::Nil(crate::plan::NilLocalId(0))],
+                    ),
+                ))
+                .evaluate(block_function(
+                    vec![],
+                    function_ref(
+                        RuntimeFunctionId::Function {
+                            id: FunctionFunctionId::Int(IntFunctionFunctionId(0)),
+                            return_type: FunctionType::new(vec![ValueType::Int], ValueType::Int),
+                        },
+                        Vec::<LocalId>::new(),
                     ),
                 )),
             [
@@ -150,6 +172,13 @@ pub fn main() {
                 function("string_identity", local_string(0, "value")).param_string(0, "value"),
                 function("bool_identity", local_bool(0, "value")).param_bool(0, "value"),
                 function("nil_identity", local_nil(0, "value")).param_nil(0, "value"),
+                function(
+                    "get_identity",
+                    function_ref(
+                        RuntimeFunctionId::Int(IntFunctionId(1)),
+                        [LocalId::Int(crate::plan::IntLocalId(0))],
+                    ),
+                ),
             ],
         );
 

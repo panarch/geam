@@ -63,6 +63,18 @@ execution_case!(
     function_value_argument_return_shapes,
     "function_value_argument_return_shapes.gleam"
 );
+execution_case!(
+    function_returning_function_argument,
+    "function_returning_function_argument.gleam"
+);
+execution_case!(
+    function_returning_function_direct_shapes,
+    "function_returning_function_direct_shapes.gleam"
+);
+execution_case!(
+    function_returning_function_recursive,
+    "function_returning_function_recursive.gleam"
+);
 execution_case!(function_value_shadowing, "function_value_shadowing.gleam");
 execution_case!(
     function_value_block_callee,
@@ -89,10 +101,6 @@ rejection_case!(reject_argument_labelled, "argument_labelled.gleam");
 rejection_case!(
     reject_argument_unsupported_type,
     "argument_unsupported_type.gleam"
-);
-rejection_case!(
-    reject_argument_function_return_shape,
-    "argument_function_return_shape.gleam"
 );
 rejection_case!(
     reject_function_before_main_unsupported_body,

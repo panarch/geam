@@ -1,8 +1,10 @@
 use crate::plan::{
-    BoolFunctionId, BoolFunctionLocalId, BoolLocalId, FunctionId, FunctionType, FunctionValue,
-    IntFunctionId, IntFunctionLocalId, IntLocalId, LocalId, NilFunctionId, NilFunctionLocalId,
-    NilLocalId, ParamLocal, RuntimeFunctionId, StringFunctionId, StringFunctionLocalId,
-    StringLocalId, ValueType,
+    BoolFunctionFunctionId, BoolFunctionId, BoolFunctionLocalId, BoolLocalId,
+    FunctionFunctionFunctionId, FunctionFunctionId, FunctionFunctionLocalId, FunctionId,
+    FunctionType, FunctionValue, IntFunctionFunctionId, IntFunctionId, IntFunctionLocalId,
+    IntLocalId, LocalId, NilFunctionFunctionId, NilFunctionId, NilFunctionLocalId, NilLocalId,
+    ParamLocal, RuntimeFunctionId, StringFunctionFunctionId, StringFunctionId,
+    StringFunctionLocalId, StringLocalId, ValueType,
 };
 use ecow::EcoString;
 use gleam_core::type_::Type;
@@ -34,6 +36,7 @@ pub(super) struct PlanContext<'a> {
     next_string_function_local: usize,
     next_bool_function_local: usize,
     next_nil_function_local: usize,
+    next_function_function_local: usize,
 }
 
 #[derive(Clone)]
@@ -60,6 +63,10 @@ pub(super) enum FunctionLocalBinding {
         local: NilFunctionLocalId,
         type_: FunctionType,
     },
+    Function {
+        local: FunctionFunctionLocalId,
+        type_: FunctionType,
+    },
 }
 
 impl<'a> PlanContext<'a> {
@@ -79,6 +86,7 @@ impl<'a> PlanContext<'a> {
             next_string_function_local: 0,
             next_bool_function_local: 0,
             next_nil_function_local: 0,
+            next_function_function_local: 0,
         }
     }
 
@@ -160,6 +168,17 @@ impl<'a> PlanContext<'a> {
                     }),
                 );
             }
+            ParamLocal::FunctionFunction { local, type_ } => {
+                self.next_function_function_local =
+                    self.next_function_function_local.max(local.0 + 1);
+                self.bindings.insert(
+                    name,
+                    LocalBinding::Function(FunctionLocalBinding::Function {
+                        local: *local,
+                        type_: type_.clone(),
+                    }),
+                );
+            }
         }
     }
 
@@ -215,6 +234,20 @@ impl<'a> PlanContext<'a> {
         self.bindings.insert(
             name,
             LocalBinding::Function(FunctionLocalBinding::Nil { local, type_ }),
+        );
+        local
+    }
+
+    pub(super) fn define_function_function_local(
+        &mut self,
+        name: EcoString,
+        type_: FunctionType,
+    ) -> FunctionFunctionLocalId {
+        let local = FunctionFunctionLocalId(self.next_function_function_local);
+        self.next_function_function_local += 1;
+        self.bindings.insert(
+            name,
+            LocalBinding::Function(FunctionLocalBinding::Function { local, type_ }),
         );
         local
     }
@@ -311,7 +344,7 @@ impl FunctionInfo {
 
     pub(super) fn value(&self) -> FunctionValue {
         FunctionValue::new(
-            self.runtime_id,
+            self.runtime_id.clone(),
             self.params
                 .iter()
                 .map(|param| param.local.clone())
@@ -326,6 +359,11 @@ pub(super) struct FunctionRuntimeIds {
     next_string: usize,
     next_bool: usize,
     next_nil: usize,
+    next_int_function: usize,
+    next_string_function: usize,
+    next_bool_function: usize,
+    next_nil_function: usize,
+    next_function_function: usize,
 }
 
 impl FunctionRuntimeIds {
@@ -351,6 +389,38 @@ impl FunctionRuntimeIds {
         let id = NilFunctionId(self.next_nil);
         self.next_nil += 1;
         RuntimeFunctionId::Nil(id)
+    }
+
+    pub(super) fn next_function(&mut self, return_type: FunctionType) -> RuntimeFunctionId {
+        let id = match return_type.return_() {
+            ValueType::Int => {
+                let id = IntFunctionFunctionId(self.next_int_function);
+                self.next_int_function += 1;
+                FunctionFunctionId::Int(id)
+            }
+            ValueType::String => {
+                let id = StringFunctionFunctionId(self.next_string_function);
+                self.next_string_function += 1;
+                FunctionFunctionId::String(id)
+            }
+            ValueType::Bool => {
+                let id = BoolFunctionFunctionId(self.next_bool_function);
+                self.next_bool_function += 1;
+                FunctionFunctionId::Bool(id)
+            }
+            ValueType::Nil => {
+                let id = NilFunctionFunctionId(self.next_nil_function);
+                self.next_nil_function += 1;
+                FunctionFunctionId::Nil(id)
+            }
+            ValueType::Function(_) => {
+                let id = FunctionFunctionFunctionId(self.next_function_function);
+                self.next_function_function += 1;
+                FunctionFunctionId::Function(id)
+            }
+        };
+
+        RuntimeFunctionId::Function { id, return_type }
     }
 }
 

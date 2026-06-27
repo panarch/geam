@@ -2,7 +2,8 @@ use ecow::EcoString;
 use num_bigint::BigInt;
 
 use super::{
-    BoolFunctionId, IntFunctionId, NilFunctionId, ParamLocal, RuntimeFunctionId, StringFunctionId,
+    BoolFunctionId, FunctionFunctionId, IntFunctionId, NilFunctionId, ParamLocal,
+    RuntimeFunctionId, StringFunctionId,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -31,6 +32,7 @@ pub(crate) enum FunctionValueKind {
     String(StringFunctionValue),
     Bool(BoolFunctionValue),
     Nil(NilFunctionValue),
+    Function(FunctionFunctionValue),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -58,6 +60,13 @@ pub(crate) struct NilFunctionValue {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct FunctionFunctionValue {
+    runtime_id: FunctionFunctionId,
+    params: Vec<ParamLocal>,
+    return_type: FunctionType,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Value {
     Int(BigInt),
     String(EcoString),
@@ -82,7 +91,7 @@ impl FunctionType {
         &self.return_
     }
 
-    pub(crate) fn argument_types(&self) -> &[ValueType] {
+    pub fn argument_types(&self) -> &[ValueType] {
         &self.arguments
     }
 }
@@ -102,6 +111,9 @@ impl FunctionValue {
             RuntimeFunctionId::Nil(runtime_id) => {
                 FunctionValueKind::Nil(NilFunctionValue::new(runtime_id, params))
             }
+            RuntimeFunctionId::Function { id, return_type } => {
+                FunctionValueKind::Function(FunctionFunctionValue::new(id, params, return_type))
+            }
         };
 
         Self { kind }
@@ -113,6 +125,7 @@ impl FunctionValue {
             FunctionValueKind::String(value) => value.type_(),
             FunctionValueKind::Bool(value) => value.type_(),
             FunctionValueKind::Nil(value) => value.type_(),
+            FunctionValueKind::Function(value) => value.type_(),
         }
     }
 
@@ -127,6 +140,7 @@ impl FunctionValue {
             FunctionValueKind::String(value) => value.params(),
             FunctionValueKind::Bool(value) => value.params(),
             FunctionValueKind::Nil(value) => value.params(),
+            FunctionValueKind::Function(value) => value.params(),
         }
     }
 }
@@ -203,6 +217,35 @@ impl NilFunctionValue {
     }
 }
 
+impl FunctionFunctionValue {
+    pub(crate) fn new(
+        runtime_id: FunctionFunctionId,
+        params: Vec<ParamLocal>,
+        return_type: FunctionType,
+    ) -> Self {
+        Self {
+            runtime_id,
+            params,
+            return_type,
+        }
+    }
+
+    pub(crate) fn type_(&self) -> FunctionType {
+        FunctionType::from_params(
+            &self.params,
+            ValueType::Function(Box::new(self.return_type.clone())),
+        )
+    }
+
+    pub(crate) fn runtime_id(&self) -> FunctionFunctionId {
+        self.runtime_id
+    }
+
+    pub(crate) fn params(&self) -> &[ParamLocal] {
+        &self.params
+    }
+}
+
 impl From<IntFunctionValue> for FunctionValue {
     fn from(value: IntFunctionValue) -> Self {
         Self {
@@ -235,16 +278,24 @@ impl From<NilFunctionValue> for FunctionValue {
     }
 }
 
+impl From<FunctionFunctionValue> for FunctionValue {
+    fn from(value: FunctionFunctionValue) -> Self {
+        Self {
+            kind: FunctionValueKind::Function(value),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
-        BoolFunctionValue, FunctionType, FunctionValue, IntFunctionValue, NilFunctionValue,
-        StringFunctionValue, ValueType,
+        BoolFunctionValue, FunctionFunctionValue, FunctionType, FunctionValue, IntFunctionValue,
+        NilFunctionValue, StringFunctionValue, ValueType,
     };
     use crate::plan::{
-        BoolFunctionId, BoolFunctionLocalId, BoolLocalId, FunctionValueKind, IntFunctionId,
-        IntLocalId, NilFunctionId, NilLocalId, ParamLocal, RuntimeFunctionId, StringFunctionId,
-        StringLocalId,
+        BoolFunctionId, BoolFunctionLocalId, BoolLocalId, FunctionFunctionId, FunctionValueKind,
+        IntFunctionFunctionId, IntFunctionId, IntLocalId, NilFunctionId, NilLocalId, ParamLocal,
+        RuntimeFunctionId, StringFunctionId, StringLocalId,
     };
 
     #[test]
@@ -259,6 +310,7 @@ mod tests {
             type_,
             FunctionType::new(vec![ValueType::Int], ValueType::String),
         );
+        assert_eq!(type_.argument_types(), &[ValueType::Int]);
         assert_eq!(type_.return_(), &ValueType::String);
     }
 
@@ -276,11 +328,18 @@ mod tests {
             StringFunctionValue::new(StringFunctionId(0), Vec::new()).into();
         let bool: FunctionValue = BoolFunctionValue::new(BoolFunctionId(0), Vec::new()).into();
         let nil: FunctionValue = NilFunctionValue::new(NilFunctionId(0), Vec::new()).into();
+        let function: FunctionValue = FunctionFunctionValue::new(
+            FunctionFunctionId::Int(IntFunctionFunctionId(0)),
+            Vec::new(),
+            FunctionType::new(vec![ValueType::Int], ValueType::Int),
+        )
+        .into();
 
         assert_eq!(int.type_().return_(), &ValueType::Int);
         assert_eq!(string.type_().return_(), &ValueType::String);
         assert_eq!(bool.type_().return_(), &ValueType::Bool);
         assert_eq!(nil.type_().return_(), &ValueType::Nil);
+        assert!(matches!(function.type_().return_(), ValueType::Function(_)));
     }
 
     #[test]
@@ -313,6 +372,26 @@ mod tests {
     }
 
     #[test]
+    fn function_value_type_uses_function_return_type_metadata() {
+        let return_type = FunctionType::new(vec![ValueType::Int], ValueType::Int);
+        let value = FunctionValue::new(
+            RuntimeFunctionId::Function {
+                id: FunctionFunctionId::Int(IntFunctionFunctionId(0)),
+                return_type: return_type.clone(),
+            },
+            vec![bool_param(0)],
+        );
+
+        assert_eq!(
+            value.type_(),
+            FunctionType::new(
+                vec![ValueType::Bool],
+                ValueType::Function(Box::new(return_type)),
+            ),
+        );
+    }
+
+    #[test]
     fn function_value_preserves_exact_parameter_slots() {
         let params = vec![int_param(2), bool_param(1)];
         let int = FunctionValue::new(RuntimeFunctionId::Int(IntFunctionId(0)), params.clone());
@@ -322,11 +401,19 @@ mod tests {
         );
         let bool = FunctionValue::new(RuntimeFunctionId::Bool(BoolFunctionId(0)), params.clone());
         let nil = FunctionValue::new(RuntimeFunctionId::Nil(NilFunctionId(0)), params.clone());
+        let function = FunctionValue::new(
+            RuntimeFunctionId::Function {
+                id: FunctionFunctionId::Int(IntFunctionFunctionId(0)),
+                return_type: FunctionType::new(Vec::new(), ValueType::Int),
+            },
+            params.clone(),
+        );
 
         assert_eq!(int.params(), params);
         assert_eq!(string.params(), params);
         assert_eq!(bool.params(), params);
         assert_eq!(nil.params(), params);
+        assert_eq!(function.params(), params);
         assert!(matches!(int.kind(), FunctionValueKind::Int(_)));
     }
 

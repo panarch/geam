@@ -11,6 +11,14 @@ pub(in crate::runtime) fn eval_nil_function_expr(
     match expression.kind() {
         NilFunctionExprKind::Value(value) => value.clone(),
         NilFunctionExprKind::LocalGet { local, .. } => frame.get_nil_function(*local),
+        NilFunctionExprKind::Call { function, args, .. } => {
+            function::run_nil_function_returning_function_call(plan, *function, args, frame)
+        }
+        NilFunctionExprKind::FunctionCall {
+            function: callee,
+            args,
+            ..
+        } => function::run_nil_function_function_call(plan, callee, args, frame),
         NilFunctionExprKind::BoolCase {
             subject,
             true_,

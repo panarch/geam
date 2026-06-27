@@ -1,7 +1,7 @@
 use crate::plan::{
-    BoolFunctionLocalId, BoolFunctionValue, BoolLocalId, FrameLayout, IntFunctionLocalId,
-    IntFunctionValue, IntLocalId, NilFunctionLocalId, NilFunctionValue, NilLocalId,
-    StringFunctionLocalId, StringFunctionValue, StringLocalId,
+    BoolFunctionLocalId, BoolFunctionValue, BoolLocalId, FrameLayout, FunctionFunctionLocalId,
+    FunctionFunctionValue, IntFunctionLocalId, IntFunctionValue, IntLocalId, NilFunctionLocalId,
+    NilFunctionValue, NilLocalId, StringFunctionLocalId, StringFunctionValue, StringLocalId,
 };
 use ecow::EcoString;
 use num_bigint::BigInt;
@@ -15,6 +15,7 @@ pub(super) struct Frame {
     string_functions: HashMap<StringFunctionLocalId, StringFunctionValue>,
     bool_functions: HashMap<BoolFunctionLocalId, BoolFunctionValue>,
     nil_functions: HashMap<NilFunctionLocalId, NilFunctionValue>,
+    function_functions: HashMap<FunctionFunctionLocalId, FunctionFunctionValue>,
 }
 
 impl Frame {
@@ -27,6 +28,7 @@ impl Frame {
             string_functions: HashMap::with_capacity(layout.string_functions()),
             bool_functions: HashMap::with_capacity(layout.bool_functions()),
             nil_functions: HashMap::with_capacity(layout.nil_functions()),
+            function_functions: HashMap::with_capacity(layout.function_functions()),
         }
     }
 
@@ -96,6 +98,21 @@ impl Frame {
 
     pub(super) fn get_nil_function(&self, local: NilFunctionLocalId) -> NilFunctionValue {
         self.nil_functions[&local].clone()
+    }
+
+    pub(super) fn set_function_function(
+        &mut self,
+        local: FunctionFunctionLocalId,
+        value: FunctionFunctionValue,
+    ) {
+        self.function_functions.insert(local, value);
+    }
+
+    pub(super) fn get_function_function(
+        &self,
+        local: FunctionFunctionLocalId,
+    ) -> FunctionFunctionValue {
+        self.function_functions[&local].clone()
     }
 }
 

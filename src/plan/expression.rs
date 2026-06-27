@@ -7,8 +7,8 @@ mod string;
 
 use super::function::ParamLocal;
 use super::id::{
-    BoolFunctionLocalId, BoolLocalId, IntFunctionLocalId, IntLocalId, NilFunctionLocalId,
-    NilLocalId, StringFunctionLocalId, StringLocalId,
+    BoolFunctionLocalId, BoolLocalId, FunctionFunctionLocalId, IntFunctionLocalId, IntLocalId,
+    NilFunctionLocalId, NilLocalId, StringFunctionLocalId, StringLocalId,
 };
 use super::value::{Value, ValueType};
 
@@ -16,7 +16,8 @@ pub(crate) use self::case::{BoolCaseBranches, IntCaseBranches};
 pub use self::{
     bool::BoolExpr,
     function::{
-        BoolFunctionExpr, FunctionExpr, IntFunctionExpr, NilFunctionExpr, StringFunctionExpr,
+        BoolFunctionExpr, FunctionExpr, FunctionFunctionExpr, IntFunctionExpr, NilFunctionExpr,
+        StringFunctionExpr,
     },
     int::IntExpr,
     nil::NilExpr,
@@ -25,8 +26,8 @@ pub use self::{
 pub(crate) use self::{
     bool::BoolExprKind,
     function::{
-        BoolFunctionExprKind, FunctionExprKind, IntFunctionExprKind, NilFunctionExprKind,
-        StringFunctionExprKind,
+        BoolFunctionExprKind, FunctionExprKind, FunctionFunctionExprKind, IntFunctionExprKind,
+        NilFunctionExprKind, StringFunctionExprKind,
     },
     int::IntExprKind,
     nil::NilExprKind,
@@ -91,6 +92,10 @@ pub(crate) enum CallArgKind {
         local: NilFunctionLocalId,
         value: NilFunctionExpr,
     },
+    FunctionFunction {
+        local: FunctionFunctionLocalId,
+        value: FunctionFunctionExpr,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -103,6 +108,7 @@ pub(crate) enum FunctionCallArgKind {
     StringFunction(StringFunctionExpr),
     BoolFunction(BoolFunctionExpr),
     NilFunction(NilFunctionExpr),
+    FunctionFunction(FunctionFunctionExpr),
 }
 
 impl Expr {
@@ -162,6 +168,9 @@ impl Expr {
             BoolCaseBranches::NilFunction { true_, false_ } => Self::function(FunctionExpr::nil(
                 NilFunctionExpr::bool_case(subject, true_, false_),
             )),
+            BoolCaseBranches::FunctionFunction { true_, false_ } => Self::function(
+                FunctionExpr::function(FunctionFunctionExpr::bool_case(subject, true_, false_)),
+            ),
         }
     }
 
@@ -190,6 +199,9 @@ impl Expr {
             ),
             IntCaseBranches::NilFunction { clauses, fallback } => Self::function(
                 FunctionExpr::nil(NilFunctionExpr::int_case(subject, clauses, fallback)),
+            ),
+            IntCaseBranches::FunctionFunction { clauses, fallback } => Self::function(
+                FunctionExpr::function(FunctionFunctionExpr::int_case(subject, clauses, fallback)),
             ),
         }
     }
@@ -298,6 +310,16 @@ impl Expr {
                 Ok(value) => Ok(CallArg::nil_function(*local, value)),
                 Err(value) => Err(Expr::function(value)),
             },
+            (
+                ParamLocal::FunctionFunction {
+                    local,
+                    type_: expected,
+                },
+                ExprKind::Function(value),
+            ) if value.type_() == expected => match value.into_function() {
+                Ok(value) => Ok(CallArg::function_function(*local, value)),
+                Err(value) => Err(Expr::function(value)),
+            },
             (_, kind) => Err(Self { kind }),
         }
     }
@@ -316,6 +338,9 @@ impl Expr {
                     FunctionExprKind::String(value) => Ok(FunctionCallArg::string_function(value)),
                     FunctionExprKind::Bool(value) => Ok(FunctionCallArg::bool_function(value)),
                     FunctionExprKind::Nil(value) => Ok(FunctionCallArg::nil_function(value)),
+                    FunctionExprKind::Function(value) => {
+                        Ok(FunctionCallArg::function_function(value))
+                    }
                 }
             }
             (_, kind) => Err(Self { kind }),
@@ -369,6 +394,15 @@ impl CallArg {
     pub(crate) fn nil_function(local: NilFunctionLocalId, value: NilFunctionExpr) -> Self {
         Self {
             kind: CallArgKind::NilFunction { local, value },
+        }
+    }
+
+    pub(crate) fn function_function(
+        local: FunctionFunctionLocalId,
+        value: FunctionFunctionExpr,
+    ) -> Self {
+        Self {
+            kind: CallArgKind::FunctionFunction { local, value },
         }
     }
 
@@ -426,6 +460,12 @@ impl FunctionCallArg {
         }
     }
 
+    pub(crate) fn function_function(value: FunctionFunctionExpr) -> Self {
+        Self {
+            kind: FunctionCallArgKind::FunctionFunction(value),
+        }
+    }
+
     pub(crate) fn kind(&self) -> &FunctionCallArgKind {
         &self.kind
     }
@@ -447,13 +487,14 @@ impl From<Value> for Expr {
 mod tests {
     use super::{
         BoolCaseBranches, BoolExpr, BoolFunctionExpr, CallArg, Expr, FunctionCallArg, FunctionExpr,
-        IntCaseBranches, IntExpr, IntFunctionExpr, NilExpr, NilFunctionExpr, StringExpr,
-        StringFunctionExpr,
+        FunctionFunctionExpr, IntCaseBranches, IntExpr, IntFunctionExpr, NilExpr, NilFunctionExpr,
+        StringExpr, StringFunctionExpr,
     };
     use crate::plan::{
-        BoolFunctionId, BoolFunctionValue, BoolLocalId, FunctionType, FunctionValue, IntFunctionId,
-        IntFunctionValue, IntLocalId, NilFunctionId, NilFunctionValue, NilLocalId, ParamLocal,
-        RuntimeFunctionId, StringFunctionId, StringFunctionValue, StringLocalId, Value, ValueType,
+        BoolFunctionId, BoolFunctionValue, BoolLocalId, FunctionFunctionId, FunctionFunctionValue,
+        FunctionType, FunctionValue, IntFunctionFunctionId, IntFunctionId, IntFunctionValue,
+        IntLocalId, NilFunctionId, NilFunctionValue, NilLocalId, ParamLocal, RuntimeFunctionId,
+        StringFunctionId, StringFunctionValue, StringLocalId, Value, ValueType,
     };
     use num_bigint::BigInt;
 
@@ -833,6 +874,18 @@ mod tests {
             )),
         );
         assert_eq!(
+            Expr::function(FunctionExpr::function(function_function_expr())).into_call_arg(
+                &ParamLocal::function_function(
+                    crate::plan::FunctionFunctionLocalId(0),
+                    function_function_type(),
+                )
+            ),
+            Ok(CallArg::function_function(
+                crate::plan::FunctionFunctionLocalId(0),
+                function_function_expr(),
+            )),
+        );
+        assert_eq!(
             Expr::function(FunctionExpr::string(malformed_string_function_expr(
                 function_type(),
             )))
@@ -866,6 +919,18 @@ mod tests {
             )),
             Err(Expr::function(FunctionExpr::nil(
                 malformed_nil_function_expr(bool_function_type()),
+            ))),
+        );
+        assert_eq!(
+            Expr::function(FunctionExpr::int(malformed_int_function_expr(
+                function_function_type(),
+            )))
+            .into_call_arg(&ParamLocal::function_function(
+                crate::plan::FunctionFunctionLocalId(0),
+                function_function_type(),
+            )),
+            Err(Expr::function(FunctionExpr::int(
+                malformed_int_function_expr(function_function_type()),
             ))),
         );
         assert_eq!(
@@ -932,6 +997,11 @@ mod tests {
             Ok(FunctionCallArg::nil_function(nil_function_expr())),
         );
         assert_eq!(
+            Expr::function(FunctionExpr::function(function_function_expr()))
+                .into_function_call_arg(&ValueType::Function(Box::new(function_function_type())),),
+            Ok(FunctionCallArg::function_function(function_function_expr())),
+        );
+        assert_eq!(
             Expr::int(IntExpr::value(BigInt::from(1))).into_function_call_arg(&ValueType::Bool),
             Err(Expr::int(IntExpr::value(BigInt::from(1)))),
         );
@@ -972,6 +1042,14 @@ mod tests {
         ))
     }
 
+    fn function_function_expr() -> FunctionFunctionExpr {
+        FunctionFunctionExpr::value(FunctionFunctionValue::new(
+            FunctionFunctionId::Int(IntFunctionFunctionId(0)),
+            Vec::new(),
+            function_type(),
+        ))
+    }
+
     fn malformed_int_function_expr(type_: FunctionType) -> IntFunctionExpr {
         IntFunctionExpr::local_get(crate::plan::IntFunctionLocalId(0), "f".into(), type_)
     }
@@ -1002,5 +1080,9 @@ mod tests {
 
     fn nil_function_type() -> FunctionType {
         FunctionType::new(vec![ValueType::Nil], ValueType::Nil)
+    }
+
+    fn function_function_type() -> FunctionType {
+        FunctionType::new(Vec::new(), ValueType::Function(Box::new(function_type())))
     }
 }

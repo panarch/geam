@@ -1,6 +1,7 @@
 mod bool;
 mod int;
 mod nil;
+mod returning_function;
 mod string;
 
 use crate::plan::{ExecutionPlan, FunctionExpr, FunctionExprKind, FunctionValue};
@@ -8,7 +9,7 @@ use crate::runtime::frame::Frame;
 
 pub(in crate::runtime) use self::{
     bool::eval_bool_function_expr, int::eval_int_function_expr, nil::eval_nil_function_expr,
-    string::eval_string_function_expr,
+    returning_function::eval_function_function_expr, string::eval_string_function_expr,
 };
 
 pub(in crate::runtime) fn eval_function_expr(
@@ -25,6 +26,9 @@ pub(in crate::runtime) fn eval_function_expr(
             eval_bool_function_expr(plan, frame, expression).into()
         }
         FunctionExprKind::Nil(expression) => eval_nil_function_expr(plan, frame, expression).into(),
+        FunctionExprKind::Function(expression) => {
+            eval_function_function_expr(plan, frame, expression).into()
+        }
     }
 }
 

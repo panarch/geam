@@ -1,4 +1,7 @@
-use crate::plan::{BoolExpr, FunctionType, IntExpr, IntFunctionLocalId, IntFunctionValue, Step};
+use crate::plan::{
+    BoolExpr, FunctionFunctionExpr, FunctionType, IntExpr, IntFunctionFunctionId,
+    IntFunctionLocalId, IntFunctionValue, Step,
+};
 use ecow::EcoString;
 use num_bigint::BigInt;
 
@@ -14,6 +17,16 @@ pub(crate) enum IntFunctionExprKind {
     LocalGet {
         local: IntFunctionLocalId,
         name: EcoString,
+    },
+    Call {
+        function: IntFunctionFunctionId,
+        args: Vec<crate::plan::CallArg>,
+        type_: FunctionType,
+    },
+    FunctionCall {
+        function: Box<FunctionFunctionExpr>,
+        args: Vec<crate::plan::FunctionCallArg>,
+        type_: FunctionType,
     },
     BoolCase {
         subject: Box<BoolExpr>,
@@ -47,6 +60,36 @@ impl IntFunctionExpr {
         Self {
             type_,
             kind: IntFunctionExprKind::LocalGet { local, name },
+        }
+    }
+
+    pub(crate) fn call(
+        function: IntFunctionFunctionId,
+        args: Vec<crate::plan::CallArg>,
+        type_: FunctionType,
+    ) -> Self {
+        Self {
+            type_: type_.clone(),
+            kind: IntFunctionExprKind::Call {
+                function,
+                args,
+                type_,
+            },
+        }
+    }
+
+    pub(crate) fn function_call(
+        function: FunctionFunctionExpr,
+        args: Vec<crate::plan::FunctionCallArg>,
+        type_: FunctionType,
+    ) -> Self {
+        Self {
+            type_: type_.clone(),
+            kind: IntFunctionExprKind::FunctionCall {
+                function: Box::new(function),
+                args,
+                type_,
+            },
         }
     }
 
@@ -103,8 +146,9 @@ impl IntFunctionExpr {
 mod tests {
     use super::{IntFunctionExpr, IntFunctionExprKind};
     use crate::plan::{
-        BoolExpr, Expr, FunctionType, IntExpr, IntFunctionId, IntFunctionLocalId, IntFunctionValue,
-        IntLocalId, ParamLocal, Step, ValueType,
+        BoolExpr, Expr, FunctionFunctionExpr, FunctionFunctionId, FunctionFunctionValue,
+        FunctionType, IntExpr, IntFunctionFunctionId, IntFunctionId, IntFunctionLocalId,
+        IntFunctionValue, IntLocalId, ParamLocal, Step, ValueType,
     };
 
     #[test]
@@ -117,6 +161,19 @@ mod tests {
             IntFunctionExpr::local_get(IntFunctionLocalId(0), "f".into(), int_function_type(),)
                 .kind(),
             IntFunctionExprKind::LocalGet { .. }
+        ));
+        assert!(matches!(
+            IntFunctionExpr::call(IntFunctionFunctionId(0), Vec::new(), int_function_type()).kind(),
+            IntFunctionExprKind::Call { .. }
+        ));
+        assert!(matches!(
+            IntFunctionExpr::function_call(
+                function_function_value(),
+                Vec::new(),
+                int_function_type(),
+            )
+            .kind(),
+            IntFunctionExprKind::FunctionCall { .. }
         ));
         assert!(matches!(
             IntFunctionExpr::int_case(
@@ -173,5 +230,13 @@ mod tests {
 
     fn int_function_type() -> FunctionType {
         FunctionType::new(vec![ValueType::Int], ValueType::Int)
+    }
+
+    fn function_function_value() -> FunctionFunctionExpr {
+        FunctionFunctionExpr::value(FunctionFunctionValue::new(
+            FunctionFunctionId::Int(IntFunctionFunctionId(0)),
+            Vec::new(),
+            int_function_type(),
+        ))
     }
 }

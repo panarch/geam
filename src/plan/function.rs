@@ -1,8 +1,8 @@
 use super::FrameLayout;
-use super::expression::{BoolExpr, IntExpr, NilExpr, StringExpr};
+use super::expression::{BoolExpr, FunctionExpr, IntExpr, NilExpr, StringExpr};
 use super::id::{
-    BoolFunctionLocalId, BoolLocalId, FunctionId, IntFunctionLocalId, IntLocalId,
-    NilFunctionLocalId, NilLocalId, StringFunctionLocalId, StringLocalId,
+    BoolFunctionLocalId, BoolLocalId, FunctionFunctionLocalId, FunctionId, IntFunctionLocalId,
+    IntLocalId, NilFunctionLocalId, NilLocalId, StringFunctionLocalId, StringLocalId,
 };
 use super::step::Step;
 use super::value::{FunctionType, ValueType};
@@ -46,6 +46,10 @@ pub(crate) enum ParamLocal {
         local: NilFunctionLocalId,
         type_: FunctionType,
     },
+    FunctionFunction {
+        local: FunctionFunctionLocalId,
+        type_: FunctionType,
+    },
 }
 
 pub(crate) struct RuntimeFunction<Return> {
@@ -65,6 +69,7 @@ pub(crate) enum ReturnExprKind {
     String(StringExpr),
     Bool(BoolExpr),
     Nil(NilExpr),
+    Function(FunctionExpr),
 }
 
 impl FunctionPlan {
@@ -137,6 +142,12 @@ impl ReturnExpr {
         }
     }
 
+    pub(crate) fn function(expression: FunctionExpr) -> Self {
+        Self {
+            kind: ReturnExprKind::Function(expression),
+        }
+    }
+
     pub(crate) fn kind(&self) -> &ReturnExprKind {
         &self.kind
     }
@@ -147,6 +158,9 @@ impl ReturnExpr {
             ReturnExprKind::String(_) => ValueType::String,
             ReturnExprKind::Bool(_) => ValueType::Bool,
             ReturnExprKind::Nil(_) => ValueType::Nil,
+            ReturnExprKind::Function(expression) => {
+                ValueType::Function(Box::new(expression.type_().clone()))
+            }
         }
     }
 }
@@ -220,6 +234,10 @@ impl ParamLocal {
         Self::NilFunction { local, type_ }
     }
 
+    pub(crate) fn function_function(local: FunctionFunctionLocalId, type_: FunctionType) -> Self {
+        Self::FunctionFunction { local, type_ }
+    }
+
     pub(crate) fn value_type(&self) -> ValueType {
         match self {
             Self::Int(_) => ValueType::Int,
@@ -229,7 +247,8 @@ impl ParamLocal {
             Self::IntFunction { type_, .. }
             | Self::StringFunction { type_, .. }
             | Self::BoolFunction { type_, .. }
-            | Self::NilFunction { type_, .. } => ValueType::Function(Box::new(type_.clone())),
+            | Self::NilFunction { type_, .. }
+            | Self::FunctionFunction { type_, .. } => ValueType::Function(Box::new(type_.clone())),
         }
     }
 }
@@ -238,9 +257,10 @@ impl ParamLocal {
 mod tests {
     use super::{FunctionPlan, Param, ParamLocal, ReturnExpr, RuntimeFunction};
     use crate::plan::{
-        BoolExpr, BoolFunctionLocalId, BoolLocalId, FrameLayout, FunctionId, FunctionType, IntExpr,
-        IntFunctionLocalId, IntLocalId, NilExpr, NilFunctionLocalId, StringExpr,
-        StringFunctionLocalId, ValueType,
+        BoolExpr, BoolFunctionLocalId, BoolLocalId, FrameLayout, FunctionExpr, FunctionId,
+        FunctionType, FunctionValue, IntExpr, IntFunctionId, IntFunctionLocalId, IntLocalId,
+        NilExpr, NilFunctionLocalId, RuntimeFunctionId, StringExpr, StringFunctionLocalId,
+        ValueType,
     };
     use num_bigint::BigInt;
 
@@ -285,6 +305,14 @@ mod tests {
         assert_eq!(
             ReturnExpr::nil(NilExpr::value()).value_type(),
             ValueType::Nil,
+        );
+        assert_eq!(
+            ReturnExpr::function(FunctionExpr::value(FunctionValue::new(
+                RuntimeFunctionId::Int(IntFunctionId(0)),
+                Vec::new(),
+            )))
+            .value_type(),
+            ValueType::Function(Box::new(FunctionType::new(Vec::new(), ValueType::Int))),
         );
     }
 

@@ -12,26 +12,29 @@ use std::fmt;
 
 pub(crate) use expression::{
     BoolCaseBranches, BoolExprKind, BoolFunctionExprKind, CallArgKind, ExprKind,
-    FunctionCallArgKind, FunctionExprKind, IntCaseBranches, IntExprKind, IntFunctionExprKind,
-    NilExprKind, NilFunctionExprKind, StringExprKind, StringFunctionExprKind,
+    FunctionCallArgKind, FunctionExprKind, FunctionFunctionExprKind, IntCaseBranches, IntExprKind,
+    IntFunctionExprKind, NilExprKind, NilFunctionExprKind, StringExprKind, StringFunctionExprKind,
 };
 pub use expression::{
-    BoolExpr, BoolFunctionExpr, CallArg, Expr, FunctionCallArg, FunctionExpr, IntExpr,
-    IntFunctionExpr, NilExpr, NilFunctionExpr, StringExpr, StringFunctionExpr,
+    BoolExpr, BoolFunctionExpr, CallArg, Expr, FunctionCallArg, FunctionExpr, FunctionFunctionExpr,
+    IntExpr, IntFunctionExpr, NilExpr, NilFunctionExpr, StringExpr, StringFunctionExpr,
 };
 pub(crate) use frame::FrameLayout;
 pub use function::{FunctionPlan, Param, ReturnExpr};
 pub(crate) use function::{ParamLocal, ReturnExprKind, RuntimeFunction};
-pub(crate) use id::RuntimeFunctionId;
 pub use id::{
-    BoolFunctionId, BoolFunctionLocalId, BoolLocalId, FunctionId, IntFunctionId,
-    IntFunctionLocalId, IntLocalId, LocalId, NilFunctionId, NilFunctionLocalId, NilLocalId,
-    StringFunctionId, StringFunctionLocalId, StringLocalId,
+    BoolFunctionFunctionId, BoolFunctionId, BoolFunctionLocalId, BoolLocalId,
+    FunctionFunctionFunctionId, FunctionFunctionLocalId, FunctionId, IntFunctionFunctionId,
+    IntFunctionId, IntFunctionLocalId, IntLocalId, LocalId, NilFunctionFunctionId, NilFunctionId,
+    NilFunctionLocalId, NilLocalId, StringFunctionFunctionId, StringFunctionId,
+    StringFunctionLocalId, StringLocalId,
 };
+pub(crate) use id::{FunctionFunctionId, RuntimeFunctionId};
 pub use step::Step;
 pub(crate) use step::StepKind;
 pub(crate) use value::{
-    BoolFunctionValue, FunctionValueKind, IntFunctionValue, NilFunctionValue, StringFunctionValue,
+    BoolFunctionValue, FunctionFunctionValue, FunctionValueKind, IntFunctionValue,
+    NilFunctionValue, StringFunctionValue,
 };
 pub use value::{FunctionType, FunctionValue, Value, ValueType};
 
@@ -84,6 +87,41 @@ impl ExecutionPlan {
 
     pub(crate) fn nil_function(&self, id: NilFunctionId) -> &RuntimeFunction<NilExpr> {
         self.runtime.nil_function(id)
+    }
+
+    pub(crate) fn int_function_function(
+        &self,
+        id: IntFunctionFunctionId,
+    ) -> &RuntimeFunction<IntFunctionExpr> {
+        self.runtime.int_function_function(id)
+    }
+
+    pub(crate) fn string_function_function(
+        &self,
+        id: StringFunctionFunctionId,
+    ) -> &RuntimeFunction<StringFunctionExpr> {
+        self.runtime.string_function_function(id)
+    }
+
+    pub(crate) fn bool_function_function(
+        &self,
+        id: BoolFunctionFunctionId,
+    ) -> &RuntimeFunction<BoolFunctionExpr> {
+        self.runtime.bool_function_function(id)
+    }
+
+    pub(crate) fn nil_function_function(
+        &self,
+        id: NilFunctionFunctionId,
+    ) -> &RuntimeFunction<NilFunctionExpr> {
+        self.runtime.nil_function_function(id)
+    }
+
+    pub(crate) fn function_function_function(
+        &self,
+        id: FunctionFunctionFunctionId,
+    ) -> &RuntimeFunction<FunctionFunctionExpr> {
+        self.runtime.function_function_function(id)
     }
 }
 

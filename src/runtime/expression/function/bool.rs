@@ -11,6 +11,14 @@ pub(in crate::runtime) fn eval_bool_function_expr(
     match expression.kind() {
         BoolFunctionExprKind::Value(value) => value.clone(),
         BoolFunctionExprKind::LocalGet { local, .. } => frame.get_bool_function(*local),
+        BoolFunctionExprKind::Call { function, args, .. } => {
+            function::run_bool_function_returning_function_call(plan, *function, args, frame)
+        }
+        BoolFunctionExprKind::FunctionCall {
+            function: callee,
+            args,
+            ..
+        } => function::run_bool_function_function_call(plan, callee, args, frame),
         BoolFunctionExprKind::BoolCase {
             subject,
             true_,

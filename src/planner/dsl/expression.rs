@@ -1,11 +1,12 @@
 use crate::plan::{
     BoolExpr, BoolFunctionExpr, BoolFunctionId, BoolFunctionLocalId, BoolFunctionValue,
-    BoolLocalId, CallArg, Expr, FunctionCallArg, FunctionExpr, FunctionExprKind, FunctionType,
-    FunctionValue, IntExpr, IntFunctionExpr, IntFunctionId, IntFunctionLocalId, IntFunctionValue,
-    IntLocalId, LocalId, NilExpr, NilFunctionExpr, NilFunctionId, NilFunctionLocalId,
-    NilFunctionValue, NilLocalId, ParamLocal, ReturnExpr, RuntimeFunctionId, Step, StringExpr,
-    StringFunctionExpr, StringFunctionId, StringFunctionLocalId, StringFunctionValue,
-    StringLocalId, ValueType,
+    BoolLocalId, CallArg, Expr, FunctionCallArg, FunctionExpr, FunctionExprKind,
+    FunctionFunctionExpr, FunctionFunctionId, FunctionFunctionLocalId, FunctionFunctionValue,
+    FunctionType, FunctionValue, IntExpr, IntFunctionExpr, IntFunctionFunctionId, IntFunctionId,
+    IntFunctionLocalId, IntFunctionValue, IntLocalId, LocalId, NilExpr, NilFunctionExpr,
+    NilFunctionId, NilFunctionLocalId, NilFunctionValue, NilLocalId, ParamLocal, ReturnExpr,
+    RuntimeFunctionId, Step, StringExpr, StringFunctionExpr, StringFunctionId,
+    StringFunctionLocalId, StringFunctionValue, StringLocalId, ValueType,
 };
 use ecow::EcoString;
 use num_bigint::BigInt;
@@ -27,6 +28,8 @@ pub(crate) struct StringFunction(StringFunctionExpr);
 pub(crate) struct BoolFunction(BoolFunctionExpr);
 
 pub(crate) struct NilFunction(NilFunctionExpr);
+
+pub(crate) struct FunctionFunction(FunctionFunctionExpr);
 
 pub(crate) trait IntoValueType {
     fn into_value_type(self) -> ValueType;
@@ -129,6 +132,21 @@ pub(crate) fn local_int_function(
     ))
 }
 
+pub(crate) fn function_function_ref(
+    runtime_id: FunctionFunctionId,
+    params: impl IntoIterator<Item = impl IntoParamLocal>,
+    return_type: FunctionType,
+) -> FunctionFunction {
+    FunctionFunction(FunctionFunctionExpr::value(FunctionFunctionValue::new(
+        runtime_id,
+        params
+            .into_iter()
+            .map(IntoParamLocal::into_param_local)
+            .collect(),
+        return_type,
+    )))
+}
+
 pub(crate) fn local_string_function(
     local: usize,
     name: impl Into<EcoString>,
@@ -162,6 +180,18 @@ pub(crate) fn local_nil_function(
         NilFunctionLocalId(local),
         name.into(),
         nil_function_type(params),
+    ))
+}
+
+pub(crate) fn local_function_function(
+    local: usize,
+    name: impl Into<EcoString>,
+    type_: FunctionType,
+) -> FunctionFunction {
+    FunctionFunction(FunctionFunctionExpr::local_get(
+        FunctionFunctionLocalId(local),
+        name.into(),
+        type_,
     ))
 }
 
@@ -247,6 +277,18 @@ pub(crate) fn bool_case_nil_function(
     false_: NilFunction,
 ) -> NilFunction {
     NilFunction(NilFunctionExpr::bool_case(
+        subject.into(),
+        true_.into(),
+        false_.into(),
+    ))
+}
+
+pub(crate) fn bool_case_function_function(
+    subject: Bool,
+    true_: FunctionFunction,
+    false_: FunctionFunction,
+) -> FunctionFunction {
+    FunctionFunction(FunctionFunctionExpr::bool_case(
         subject.into(),
         true_.into(),
         false_.into(),
@@ -373,6 +415,21 @@ pub(crate) fn int_case_nil_function(
     ))
 }
 
+pub(crate) fn int_case_function_function(
+    subject: Int,
+    clauses: impl IntoIterator<Item = (i64, FunctionFunction)>,
+    fallback: FunctionFunction,
+) -> FunctionFunction {
+    FunctionFunction(FunctionFunctionExpr::int_case(
+        subject.into(),
+        clauses
+            .into_iter()
+            .map(|(value, branch)| (BigInt::from(value), branch.into()))
+            .collect(),
+        fallback.into(),
+    ))
+}
+
 pub(crate) fn block_int(steps: impl IntoIterator<Item = Step>, return_: Int) -> Int {
     Int(IntExpr::block(steps.into_iter().collect(), return_.into()))
 }
@@ -392,8 +449,7 @@ pub(crate) fn block_nil(steps: impl IntoIterator<Item = Step>, return_: Nil) -> 
     Nil(NilExpr::block(steps.into_iter().collect(), return_.into()))
 }
 
-pub(crate) fn block_function(steps: impl IntoIterator<Item = Step>, return_: Function) -> Function {
-    let steps = steps.into_iter().collect();
+pub(crate) fn block_function(steps: Vec<Step>, return_: Function) -> Function {
     Function(match FunctionExpr::from(return_).into_kind() {
         FunctionExprKind::Int(return_) => FunctionExpr::int(IntFunctionExpr::block(steps, return_)),
         FunctionExprKind::String(return_) => {
@@ -403,7 +459,20 @@ pub(crate) fn block_function(steps: impl IntoIterator<Item = Step>, return_: Fun
             FunctionExpr::bool(BoolFunctionExpr::block(steps, return_))
         }
         FunctionExprKind::Nil(return_) => FunctionExpr::nil(NilFunctionExpr::block(steps, return_)),
+        FunctionExprKind::Function(return_) => {
+            FunctionExpr::function(FunctionFunctionExpr::block(steps, return_))
+        }
     })
+}
+
+pub(crate) fn block_function_function(
+    steps: impl IntoIterator<Item = Step>,
+    return_: FunctionFunction,
+) -> FunctionFunction {
+    FunctionFunction(FunctionFunctionExpr::block(
+        steps.into_iter().collect(),
+        return_.into(),
+    ))
 }
 
 pub(crate) fn block_int_function(
@@ -509,6 +578,18 @@ pub(crate) fn call_nil(function: usize, args: impl IntoIterator<Item = CallArg>)
     Nil(NilExpr::call(
         NilFunctionId(function),
         args.into_iter().collect(),
+    ))
+}
+
+pub(crate) fn call_int_returning_function(
+    function: usize,
+    args: impl IntoIterator<Item = CallArg>,
+    return_type: FunctionType,
+) -> IntFunction {
+    IntFunction(IntFunctionExpr::call(
+        IntFunctionFunctionId(function),
+        args.into_iter().collect(),
+        return_type,
     ))
 }
 
@@ -674,6 +755,12 @@ impl From<Function> for Expr {
     }
 }
 
+impl From<Function> for ReturnExpr {
+    fn from(value: Function) -> Self {
+        Self::function(value.into())
+    }
+}
+
 impl From<Int> for IntExpr {
     fn from(value: Int) -> Self {
         value.0
@@ -710,6 +797,12 @@ impl From<IntFunction> for Function {
     }
 }
 
+impl From<IntFunction> for Expr {
+    fn from(value: IntFunction) -> Self {
+        Self::function(FunctionExpr::int(value.into()))
+    }
+}
+
 impl From<IntFunction> for FunctionExpr {
     fn from(value: IntFunction) -> Self {
         FunctionExpr::int(value.into())
@@ -728,14 +821,56 @@ impl From<StringFunction> for StringFunctionExpr {
     }
 }
 
+impl From<StringFunction> for Expr {
+    fn from(value: StringFunction) -> Self {
+        Self::function(FunctionExpr::string(value.into()))
+    }
+}
+
 impl From<BoolFunction> for BoolFunctionExpr {
     fn from(value: BoolFunction) -> Self {
         value.0
     }
 }
 
+impl From<BoolFunction> for Expr {
+    fn from(value: BoolFunction) -> Self {
+        Self::function(FunctionExpr::bool(value.into()))
+    }
+}
+
 impl From<NilFunction> for NilFunctionExpr {
     fn from(value: NilFunction) -> Self {
+        value.0
+    }
+}
+
+impl From<NilFunction> for Expr {
+    fn from(value: NilFunction) -> Self {
+        Self::function(FunctionExpr::nil(value.into()))
+    }
+}
+
+impl From<FunctionFunction> for Function {
+    fn from(value: FunctionFunction) -> Self {
+        Function(FunctionExpr::function(value.into()))
+    }
+}
+
+impl From<FunctionFunction> for Expr {
+    fn from(value: FunctionFunction) -> Self {
+        Self::function(FunctionExpr::function(value.into()))
+    }
+}
+
+impl From<FunctionFunction> for FunctionExpr {
+    fn from(value: FunctionFunction) -> Self {
+        FunctionExpr::function(value.into())
+    }
+}
+
+impl From<FunctionFunction> for FunctionFunctionExpr {
+    fn from(value: FunctionFunction) -> Self {
         value.0
     }
 }
@@ -813,8 +948,9 @@ impl IntoParamLocal for ParamLocal {
 mod tests {
     use super::*;
     use crate::plan::{
-        BoolExprKind, CallArgKind, ExprKind, FunctionExprKind, IntExprKind, IntFunctionExprKind,
-        NilExprKind, RuntimeFunctionId, StepKind, StringExprKind,
+        BoolExprKind, CallArgKind, ExprKind, FunctionExprKind, FunctionFunctionId, IntExprKind,
+        IntFunctionExprKind, IntFunctionFunctionId, NilExprKind, RuntimeFunctionId, StepKind,
+        StringExprKind,
     };
 
     #[test]
@@ -978,6 +1114,30 @@ mod tests {
             ExprKind::Function(_),
         ));
         assert!(matches!(
+            Expr::from(string_function_ref(
+                0,
+                [crate::plan::LocalId::String(crate::plan::StringLocalId(0))],
+            ))
+            .kind(),
+            ExprKind::Function(_),
+        ));
+        assert!(matches!(
+            Expr::from(bool_function_ref(
+                0,
+                [crate::plan::LocalId::Bool(crate::plan::BoolLocalId(0))],
+            ))
+            .kind(),
+            ExprKind::Function(_),
+        ));
+        assert!(matches!(
+            Expr::from(nil_function_ref(
+                0,
+                [crate::plan::LocalId::Nil(crate::plan::NilLocalId(0))],
+            ))
+            .kind(),
+            ExprKind::Function(_),
+        ));
+        assert!(matches!(
             FunctionExpr::from(function_ref(
                 RuntimeFunctionId::Int(crate::plan::IntFunctionId(0)),
                 [crate::plan::LocalId::Int(crate::plan::IntLocalId(0))],
@@ -987,7 +1147,7 @@ mod tests {
         ));
         assert!(matches!(
             FunctionExpr::from(block_function(
-                [],
+                vec![],
                 function_ref(
                     RuntimeFunctionId::Int(crate::plan::IntFunctionId(0)),
                     [crate::plan::LocalId::Int(crate::plan::IntLocalId(0))],
@@ -998,7 +1158,7 @@ mod tests {
         ));
         assert!(matches!(
             FunctionExpr::from(block_function(
-                [],
+                vec![],
                 function_ref(
                     RuntimeFunctionId::String(crate::plan::StringFunctionId(0)),
                     [crate::plan::LocalId::String(crate::plan::StringLocalId(0))],
@@ -1009,7 +1169,7 @@ mod tests {
         ));
         assert!(matches!(
             FunctionExpr::from(block_function(
-                [],
+                vec![],
                 function_ref(
                     RuntimeFunctionId::Bool(crate::plan::BoolFunctionId(0)),
                     [crate::plan::LocalId::Bool(crate::plan::BoolLocalId(0))],
@@ -1020,7 +1180,7 @@ mod tests {
         ));
         assert!(matches!(
             FunctionExpr::from(block_function(
-                [],
+                vec![],
                 function_ref(
                     RuntimeFunctionId::Nil(crate::plan::NilFunctionId(0)),
                     [crate::plan::LocalId::Nil(crate::plan::NilLocalId(0))],
@@ -1029,6 +1189,69 @@ mod tests {
             .kind(),
             FunctionExprKind::Nil(_),
         ));
+        let returned_function_type = FunctionType::new(vec![ValueType::Int], ValueType::Int);
+        let function_returning_function = function_function_ref(
+            FunctionFunctionId::Int(IntFunctionFunctionId(0)),
+            Vec::<ParamLocal>::new(),
+            returned_function_type.clone(),
+        );
+        assert_eq!(
+            FunctionExpr::from(Function::from(function_returning_function))
+                .into_function()
+                .expect("function-returning-function expression")
+                .type_(),
+            &FunctionType::new(
+                Vec::new(),
+                ValueType::Function(Box::new(returned_function_type.clone())),
+            ),
+        );
+        assert_eq!(
+            Expr::from(function_function_ref(
+                FunctionFunctionId::Int(IntFunctionFunctionId(0)),
+                Vec::<ParamLocal>::new(),
+                returned_function_type.clone(),
+            ))
+            .into_function()
+            .expect("function expression")
+            .into_function()
+            .expect("function-returning-function expression")
+            .type_(),
+            &FunctionType::new(
+                Vec::new(),
+                ValueType::Function(Box::new(returned_function_type.clone())),
+            ),
+        );
+        assert_eq!(
+            FunctionExpr::from(function_function_ref(
+                FunctionFunctionId::Int(IntFunctionFunctionId(0)),
+                Vec::<ParamLocal>::new(),
+                returned_function_type.clone(),
+            ))
+            .into_function()
+            .expect("function-returning-function expression")
+            .type_(),
+            &FunctionType::new(
+                Vec::new(),
+                ValueType::Function(Box::new(returned_function_type.clone())),
+            ),
+        );
+        assert_eq!(
+            FunctionExpr::from(block_function(
+                vec![],
+                Function::from(function_function_ref(
+                    FunctionFunctionId::Int(IntFunctionFunctionId(0)),
+                    Vec::<ParamLocal>::new(),
+                    returned_function_type.clone(),
+                )),
+            ))
+            .into_function()
+            .expect("function-returning-function expression")
+            .type_(),
+            &FunctionType::new(
+                Vec::new(),
+                ValueType::Function(Box::new(returned_function_type.clone())),
+            ),
+        );
         assert!(matches!(
             FunctionExpr::from(Function::from(int_function_ref(
                 0,
@@ -1046,6 +1269,28 @@ mod tests {
             .kind(),
             IntFunctionExprKind::Block { .. },
         ));
+        assert_eq!(
+            block_function_function(
+                [],
+                function_function_ref(
+                    FunctionFunctionId::Int(IntFunctionFunctionId(0)),
+                    Vec::<ParamLocal>::new(),
+                    returned_function_type.clone(),
+                ),
+            )
+            .0
+            .type_(),
+            &FunctionType::new(
+                Vec::new(),
+                ValueType::Function(Box::new(returned_function_type.clone())),
+            ),
+        );
+        assert_eq!(
+            call_int_returning_function(0, [], returned_function_type.clone())
+                .0
+                .type_(),
+            &returned_function_type,
+        );
         assert!(matches!(
             bool_case_string_function(
                 bool_(true),
@@ -1082,6 +1327,27 @@ mod tests {
             .kind(),
             crate::plan::NilFunctionExprKind::BoolCase { .. },
         ));
+        assert_eq!(
+            bool_case_function_function(
+                bool_(true),
+                function_function_ref(
+                    FunctionFunctionId::Int(IntFunctionFunctionId(0)),
+                    Vec::<ParamLocal>::new(),
+                    returned_function_type.clone(),
+                ),
+                function_function_ref(
+                    FunctionFunctionId::Int(IntFunctionFunctionId(1)),
+                    Vec::<ParamLocal>::new(),
+                    returned_function_type.clone(),
+                ),
+            )
+            .0
+            .type_(),
+            &FunctionType::new(
+                Vec::new(),
+                ValueType::Function(Box::new(returned_function_type.clone())),
+            ),
+        );
         assert!(matches!(
             int_case_string_function(
                 int(1),
@@ -1130,6 +1396,30 @@ mod tests {
             .kind(),
             crate::plan::NilFunctionExprKind::IntCase { .. },
         ));
+        assert_eq!(
+            int_case_function_function(
+                int(1),
+                [(
+                    1,
+                    function_function_ref(
+                        FunctionFunctionId::Int(IntFunctionFunctionId(0)),
+                        Vec::<ParamLocal>::new(),
+                        returned_function_type.clone(),
+                    ),
+                )],
+                function_function_ref(
+                    FunctionFunctionId::Int(IntFunctionFunctionId(1)),
+                    Vec::<ParamLocal>::new(),
+                    returned_function_type.clone(),
+                ),
+            )
+            .0
+            .type_(),
+            &FunctionType::new(
+                Vec::new(),
+                ValueType::Function(Box::new(returned_function_type)),
+            ),
+        );
     }
 
     #[test]

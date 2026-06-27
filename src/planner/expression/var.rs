@@ -1,6 +1,6 @@
 use crate::plan::{
-    BoolExpr, BoolFunctionExpr, Expr, FunctionExpr, IntExpr, IntFunctionExpr, LocalId, NilExpr,
-    NilFunctionExpr, StringExpr, StringFunctionExpr, ValueType,
+    BoolExpr, BoolFunctionExpr, Expr, FunctionExpr, FunctionFunctionExpr, IntExpr, IntFunctionExpr,
+    LocalId, NilExpr, NilFunctionExpr, StringExpr, StringFunctionExpr, ValueType,
 };
 use crate::planner::context::{FunctionLocalBinding, PlanContext};
 use crate::planner::error::{InvalidExpressionShapeKind, InvalidTypedAstReason, PlanError};
@@ -92,6 +92,9 @@ fn function_local_get(binding: FunctionLocalBinding, name: EcoString) -> Expr {
         )),
         FunctionLocalBinding::Nil { local, type_ } => Expr::function(FunctionExpr::nil(
             NilFunctionExpr::local_get(local, name, type_),
+        )),
+        FunctionLocalBinding::Function { local, type_ } => Expr::function(FunctionExpr::function(
+            FunctionFunctionExpr::local_get(local, name, type_),
         )),
     }
 }

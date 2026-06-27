@@ -28,8 +28,6 @@ pub enum UnsupportedFunctionReason {
 pub enum UnsupportedArgumentReason {
     #[error("discard arguments are not supported")]
     Discard,
-    #[error("function arguments must not return functions")]
-    FunctionReturningFunction,
     #[error("labelled arguments are not supported")]
     Labelled,
     #[error("argument type is not supported")]

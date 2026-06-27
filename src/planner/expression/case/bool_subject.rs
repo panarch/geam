@@ -167,6 +167,10 @@ fn bool_function_case_branches(
         (crate::plan::FunctionExprKind::Nil(true_), crate::plan::FunctionExprKind::Nil(false_)) => {
             Ok(BoolCaseBranches::NilFunction { true_, false_ })
         }
+        (
+            crate::plan::FunctionExprKind::Function(true_),
+            crate::plan::FunctionExprKind::Function(false_),
+        ) => Ok(BoolCaseBranches::FunctionFunction { true_, false_ }),
         _ => Err(invalid_case_shape(
             InvalidCaseShapeReason::BranchReturnTypeMismatch,
         )),
@@ -176,8 +180,9 @@ fn bool_function_case_branches(
 #[cfg(test)]
 mod tests {
     use crate::plan::{
-        BoolFunctionId, FunctionExpr, IntFunctionId, IntLocalId, LocalId, NilFunctionId,
-        RuntimeFunctionId, StringFunctionId,
+        BoolExpr, BoolFunctionId, Expr, FunctionExpr, FunctionFunctionId, FunctionType,
+        IntFunctionFunctionId, IntFunctionId, IntLocalId, LocalId, NilFunctionId,
+        RuntimeFunctionId, StringFunctionId, ValueType,
     };
     use crate::planner::dsl::{
         bool_, bool_case_bool, bool_case_int, bool_case_nil, bool_case_string, call_bool, function,
@@ -187,6 +192,7 @@ mod tests {
     use crate::planner::support::{dummy_span, expect_plan_error};
     use crate::planner::{
         InvalidCaseShapeReason, InvalidTypedAstReason, PlanError, UnsupportedCaseReason,
+        UnsupportedExpressionKind,
     };
     use gleam_core::ast::Pattern;
     use gleam_core::type_::{self, error::VariableOrigin};
@@ -361,8 +367,8 @@ fn duplicate_true(value: Bool) {
 
     #[test]
     fn reject_margin_bool_case_function_branch_type_mismatch_direct() {
-        assert!(matches!(
-            super::bool_function_case_branches(
+        assert_eq!(
+            (super::bool_function_case_branches(
                 FunctionExpr::from(function_ref(
                     RuntimeFunctionId::Int(IntFunctionId(0)),
                     [LocalId::Int(IntLocalId(0))],
@@ -371,15 +377,16 @@ fn duplicate_true(value: Bool) {
                     RuntimeFunctionId::String(StringFunctionId(0)),
                     [LocalId::Int(IntLocalId(0))],
                 )),
-            ),
-            Err(PlanError::InvalidTypedAst {
+            ))
+            .err(),
+            Some(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::CaseShape {
                     reason: InvalidCaseShapeReason::BranchReturnTypeMismatch,
                 },
             }),
-        ));
-        assert!(matches!(
-            super::bool_function_case_branches(
+        );
+        assert_eq!(
+            (super::bool_function_case_branches(
                 FunctionExpr::from(function_ref(
                     RuntimeFunctionId::Bool(BoolFunctionId(0)),
                     [LocalId::Int(IntLocalId(0))],
@@ -388,58 +395,101 @@ fn duplicate_true(value: Bool) {
                     RuntimeFunctionId::String(StringFunctionId(0)),
                     [LocalId::Int(IntLocalId(0))],
                 )),
-            ),
-            Err(PlanError::InvalidTypedAst {
+            ))
+            .err(),
+            Some(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::CaseShape {
                     reason: InvalidCaseShapeReason::BranchReturnTypeMismatch,
                 },
             }),
-        ));
+        );
     }
 
     #[test]
     fn plan_bool_case_function_branch_return_families_direct() {
-        assert!(matches!(
-            super::bool_function_case_branches(
-                FunctionExpr::from(function_ref(
-                    RuntimeFunctionId::String(StringFunctionId(0)),
-                    [LocalId::String(crate::plan::StringLocalId(0))],
-                )),
-                FunctionExpr::from(function_ref(
-                    RuntimeFunctionId::String(StringFunctionId(1)),
-                    [LocalId::String(crate::plan::StringLocalId(0))],
-                )),
-            ),
-            Ok(crate::plan::BoolCaseBranches::StringFunction { .. }),
-        ));
-        assert!(matches!(
-            super::bool_function_case_branches(
-                FunctionExpr::from(function_ref(
-                    RuntimeFunctionId::Bool(BoolFunctionId(0)),
-                    [LocalId::Bool(crate::plan::BoolLocalId(0))],
-                )),
-                FunctionExpr::from(function_ref(
-                    RuntimeFunctionId::Bool(BoolFunctionId(1)),
-                    [LocalId::Bool(crate::plan::BoolLocalId(0))],
-                )),
-            ),
-            Ok(crate::plan::BoolCaseBranches::BoolFunction { .. }),
-        ));
-        assert!(matches!(
-            super::bool_function_case_branches(
-                FunctionExpr::from(function_ref(
-                    RuntimeFunctionId::Nil(NilFunctionId(0)),
-                    [LocalId::Nil(crate::plan::NilLocalId(0))],
-                )),
-                FunctionExpr::from(function_ref(
-                    RuntimeFunctionId::Nil(NilFunctionId(1)),
-                    [LocalId::Nil(crate::plan::NilLocalId(0))],
-                )),
-            ),
-            Ok(crate::plan::BoolCaseBranches::NilFunction { .. }),
-        ));
-    }
+        let string_branches = super::bool_function_case_branches(
+            FunctionExpr::from(function_ref(
+                RuntimeFunctionId::String(StringFunctionId(0)),
+                [LocalId::String(crate::plan::StringLocalId(0))],
+            )),
+            FunctionExpr::from(function_ref(
+                RuntimeFunctionId::String(StringFunctionId(1)),
+                [LocalId::String(crate::plan::StringLocalId(0))],
+            )),
+        )
+        .expect("string function branches");
+        assert_eq!(
+            Expr::bool_case(BoolExpr::value(true), string_branches).value_type(),
+            ValueType::Function(Box::new(FunctionType::new(
+                vec![ValueType::String],
+                ValueType::String,
+            ))),
+        );
 
+        let bool_branches = super::bool_function_case_branches(
+            FunctionExpr::from(function_ref(
+                RuntimeFunctionId::Bool(BoolFunctionId(0)),
+                [LocalId::Bool(crate::plan::BoolLocalId(0))],
+            )),
+            FunctionExpr::from(function_ref(
+                RuntimeFunctionId::Bool(BoolFunctionId(1)),
+                [LocalId::Bool(crate::plan::BoolLocalId(0))],
+            )),
+        )
+        .expect("bool function branches");
+        assert_eq!(
+            Expr::bool_case(BoolExpr::value(true), bool_branches).value_type(),
+            ValueType::Function(Box::new(FunctionType::new(
+                vec![ValueType::Bool],
+                ValueType::Bool,
+            ))),
+        );
+
+        let nil_branches = super::bool_function_case_branches(
+            FunctionExpr::from(function_ref(
+                RuntimeFunctionId::Nil(NilFunctionId(0)),
+                [LocalId::Nil(crate::plan::NilLocalId(0))],
+            )),
+            FunctionExpr::from(function_ref(
+                RuntimeFunctionId::Nil(NilFunctionId(1)),
+                [LocalId::Nil(crate::plan::NilLocalId(0))],
+            )),
+        )
+        .expect("nil function branches");
+        assert_eq!(
+            Expr::bool_case(BoolExpr::value(true), nil_branches).value_type(),
+            ValueType::Function(Box::new(FunctionType::new(
+                vec![ValueType::Nil],
+                ValueType::Nil,
+            ))),
+        );
+
+        let returned_function_type = FunctionType::new(vec![ValueType::Int], ValueType::Int);
+        let function_branches = super::bool_function_case_branches(
+            FunctionExpr::from(function_ref(
+                RuntimeFunctionId::Function {
+                    id: FunctionFunctionId::Int(IntFunctionFunctionId(0)),
+                    return_type: returned_function_type.clone(),
+                },
+                Vec::<LocalId>::new(),
+            )),
+            FunctionExpr::from(function_ref(
+                RuntimeFunctionId::Function {
+                    id: FunctionFunctionId::Int(IntFunctionFunctionId(1)),
+                    return_type: returned_function_type.clone(),
+                },
+                Vec::<LocalId>::new(),
+            )),
+        )
+        .expect("function-returning-function branches");
+        assert_eq!(
+            Expr::bool_case(BoolExpr::value(true), function_branches).value_type(),
+            ValueType::Function(Box::new(FunctionType::new(
+                Vec::new(),
+                ValueType::Function(Box::new(returned_function_type)),
+            ))),
+        );
+    }
     #[test]
     fn reject_profile_bool_case_patterns() {
         let cases = [
@@ -468,6 +518,16 @@ pub fn main() {
 "#,
                 UnsupportedCaseReason::AssignPattern,
             ),
+            (
+                r#"
+pub fn main() {
+  case True {
+    _ as alias -> 1
+  }
+}
+"#,
+                UnsupportedCaseReason::AssignPattern,
+            ),
         ];
 
         for (src, reason) in cases {
@@ -476,6 +536,25 @@ pub fn main() {
                 PlanError::UnsupportedCase { reason },
             );
         }
+    }
+
+    #[test]
+    fn reject_profile_bool_case_subject_expression() {
+        assert_eq!(
+            expect_plan_error(
+                r#"
+pub fn main() {
+  case todo {
+    True -> 1
+    False -> 0
+  }
+}
+"#,
+            ),
+            PlanError::UnsupportedExpression {
+                kind: UnsupportedExpressionKind::Todo,
+            },
+        );
     }
 
     #[test]
@@ -678,6 +757,28 @@ pub fn main() {
     fn reject_margin_bool_case_expr_type_mismatch() {
         assert_eq!(
             super::bool_case_expr(bool_(true).into(), int(1).into(), bool_(false).into()),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::CaseShape {
+                    reason: InvalidCaseShapeReason::BranchReturnTypeMismatch,
+                },
+            }),
+        );
+    }
+
+    #[test]
+    fn reject_margin_bool_case_function_expr_type_mismatch_direct() {
+        assert_eq!(
+            super::bool_case_expr(
+                BoolExpr::value(true),
+                Expr::from(function_ref(
+                    RuntimeFunctionId::Int(IntFunctionId(0)),
+                    [LocalId::Int(IntLocalId(0))],
+                )),
+                Expr::from(function_ref(
+                    RuntimeFunctionId::String(StringFunctionId(0)),
+                    [LocalId::Int(IntLocalId(0))],
+                )),
+            ),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::CaseShape {
                     reason: InvalidCaseShapeReason::BranchReturnTypeMismatch,

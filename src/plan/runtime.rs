@@ -1,6 +1,9 @@
 use super::{
-    BoolExpr, BoolFunctionId, FunctionPlan, IntExpr, IntFunctionId, NilExpr, NilFunctionId,
-    RuntimeFunction, RuntimeFunctionId, StringExpr, StringFunctionId,
+    BoolExpr, BoolFunctionExpr, BoolFunctionFunctionId, BoolFunctionId, FunctionFunctionExpr,
+    FunctionFunctionFunctionId, FunctionFunctionId, FunctionPlan, IntExpr, IntFunctionExpr,
+    IntFunctionFunctionId, IntFunctionId, NilExpr, NilFunctionExpr, NilFunctionFunctionId,
+    NilFunctionId, RuntimeFunction, RuntimeFunctionId, StringExpr, StringFunctionExpr,
+    StringFunctionFunctionId, StringFunctionId,
 };
 use crate::plan::ReturnExprKind;
 
@@ -10,6 +13,11 @@ pub(super) struct RuntimePlan {
     string_functions: Vec<RuntimeFunction<StringExpr>>,
     bool_functions: Vec<RuntimeFunction<BoolExpr>>,
     nil_functions: Vec<RuntimeFunction<NilExpr>>,
+    int_function_functions: Vec<RuntimeFunction<IntFunctionExpr>>,
+    string_function_functions: Vec<RuntimeFunction<StringFunctionExpr>>,
+    bool_function_functions: Vec<RuntimeFunction<BoolFunctionExpr>>,
+    nil_function_functions: Vec<RuntimeFunction<NilFunctionExpr>>,
+    function_function_functions: Vec<RuntimeFunction<FunctionFunctionExpr>>,
 }
 
 impl RuntimePlan {
@@ -27,11 +35,16 @@ impl RuntimePlan {
             string_functions: runtime.string_functions,
             bool_functions: runtime.bool_functions,
             nil_functions: runtime.nil_functions,
+            int_function_functions: runtime.int_function_functions,
+            string_function_functions: runtime.string_function_functions,
+            bool_function_functions: runtime.bool_function_functions,
+            nil_function_functions: runtime.nil_function_functions,
+            function_function_functions: runtime.function_function_functions,
         }
     }
 
     pub(super) fn main(&self) -> RuntimeFunctionId {
-        self.main
+        self.main.clone()
     }
 
     pub(super) fn int_function(&self, id: IntFunctionId) -> &RuntimeFunction<IntExpr> {
@@ -49,6 +62,41 @@ impl RuntimePlan {
     pub(super) fn nil_function(&self, id: NilFunctionId) -> &RuntimeFunction<NilExpr> {
         &self.nil_functions[id.0]
     }
+
+    pub(super) fn int_function_function(
+        &self,
+        id: IntFunctionFunctionId,
+    ) -> &RuntimeFunction<IntFunctionExpr> {
+        &self.int_function_functions[id.0]
+    }
+
+    pub(super) fn string_function_function(
+        &self,
+        id: StringFunctionFunctionId,
+    ) -> &RuntimeFunction<StringFunctionExpr> {
+        &self.string_function_functions[id.0]
+    }
+
+    pub(super) fn bool_function_function(
+        &self,
+        id: BoolFunctionFunctionId,
+    ) -> &RuntimeFunction<BoolFunctionExpr> {
+        &self.bool_function_functions[id.0]
+    }
+
+    pub(super) fn nil_function_function(
+        &self,
+        id: NilFunctionFunctionId,
+    ) -> &RuntimeFunction<NilFunctionExpr> {
+        &self.nil_function_functions[id.0]
+    }
+
+    pub(super) fn function_function_function(
+        &self,
+        id: FunctionFunctionFunctionId,
+    ) -> &RuntimeFunction<FunctionFunctionExpr> {
+        &self.function_function_functions[id.0]
+    }
 }
 
 #[derive(Default)]
@@ -57,6 +105,11 @@ struct RuntimePlanBuilder {
     string_functions: Vec<RuntimeFunction<StringExpr>>,
     bool_functions: Vec<RuntimeFunction<BoolExpr>>,
     nil_functions: Vec<RuntimeFunction<NilExpr>>,
+    int_function_functions: Vec<RuntimeFunction<IntFunctionExpr>>,
+    string_function_functions: Vec<RuntimeFunction<StringFunctionExpr>>,
+    bool_function_functions: Vec<RuntimeFunction<BoolFunctionExpr>>,
+    nil_function_functions: Vec<RuntimeFunction<NilFunctionExpr>>,
+    function_function_functions: Vec<RuntimeFunction<FunctionFunctionExpr>>,
 }
 
 impl RuntimePlanBuilder {
@@ -108,5 +161,75 @@ fn runtime_function(
             ));
             RuntimeFunctionId::Nil(id)
         }
+        ReturnExprKind::Function(return_) => {
+            function_function(runtime_functions, function, return_)
+        }
     }
+}
+
+fn function_function(
+    runtime_functions: &mut RuntimePlanBuilder,
+    function: &FunctionPlan,
+    return_: &crate::plan::FunctionExpr,
+) -> RuntimeFunctionId {
+    let (id, return_type) = match return_.kind() {
+        crate::plan::FunctionExprKind::Int(return_) => {
+            let id = IntFunctionFunctionId(runtime_functions.int_function_functions.len());
+            runtime_functions
+                .int_function_functions
+                .push(RuntimeFunction::new(
+                    function.frame_layout(),
+                    function.steps().to_vec(),
+                    return_.clone(),
+                ));
+            (FunctionFunctionId::Int(id), return_.type_().clone())
+        }
+        crate::plan::FunctionExprKind::String(return_) => {
+            let id = StringFunctionFunctionId(runtime_functions.string_function_functions.len());
+            runtime_functions
+                .string_function_functions
+                .push(RuntimeFunction::new(
+                    function.frame_layout(),
+                    function.steps().to_vec(),
+                    return_.clone(),
+                ));
+            (FunctionFunctionId::String(id), return_.type_().clone())
+        }
+        crate::plan::FunctionExprKind::Bool(return_) => {
+            let id = BoolFunctionFunctionId(runtime_functions.bool_function_functions.len());
+            runtime_functions
+                .bool_function_functions
+                .push(RuntimeFunction::new(
+                    function.frame_layout(),
+                    function.steps().to_vec(),
+                    return_.clone(),
+                ));
+            (FunctionFunctionId::Bool(id), return_.type_().clone())
+        }
+        crate::plan::FunctionExprKind::Nil(return_) => {
+            let id = NilFunctionFunctionId(runtime_functions.nil_function_functions.len());
+            runtime_functions
+                .nil_function_functions
+                .push(RuntimeFunction::new(
+                    function.frame_layout(),
+                    function.steps().to_vec(),
+                    return_.clone(),
+                ));
+            (FunctionFunctionId::Nil(id), return_.type_().clone())
+        }
+        crate::plan::FunctionExprKind::Function(return_) => {
+            let id =
+                FunctionFunctionFunctionId(runtime_functions.function_function_functions.len());
+            runtime_functions
+                .function_function_functions
+                .push(RuntimeFunction::new(
+                    function.frame_layout(),
+                    function.steps().to_vec(),
+                    return_.clone(),
+                ));
+            (FunctionFunctionId::Function(id), return_.type_().clone())
+        }
+    };
+
+    RuntimeFunctionId::Function { id, return_type }
 }

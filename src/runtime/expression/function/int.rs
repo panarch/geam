@@ -11,6 +11,14 @@ pub(in crate::runtime) fn eval_int_function_expr(
     match expression.kind() {
         IntFunctionExprKind::Value(value) => value.clone(),
         IntFunctionExprKind::LocalGet { local, .. } => frame.get_int_function(*local),
+        IntFunctionExprKind::Call { function, args, .. } => {
+            function::run_int_function_returning_function_call(plan, *function, args, frame)
+        }
+        IntFunctionExprKind::FunctionCall {
+            function: callee,
+            args,
+            ..
+        } => function::run_int_function_function_call(plan, callee, args, frame),
         IntFunctionExprKind::BoolCase {
             subject,
             true_,

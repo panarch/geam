@@ -1,9 +1,9 @@
 use crate::plan::{
-    BoolFunctionLocalId, BoolLocalId, Expr, FunctionId, FunctionPlan, FunctionType,
-    IntFunctionLocalId, IntLocalId, NilFunctionLocalId, NilLocalId, Param, ParamLocal, ReturnExpr,
-    Step, StringFunctionLocalId, StringLocalId, ValueType,
+    BoolFunctionLocalId, BoolLocalId, Expr, FunctionFunctionLocalId, FunctionId, FunctionPlan,
+    FunctionType, IntFunctionLocalId, IntLocalId, NilFunctionLocalId, NilLocalId, Param,
+    ParamLocal, ReturnExpr, Step, StringFunctionLocalId, StringLocalId, ValueType,
 };
-use crate::planner::dsl::expression::{Bool, Int, Nil, String};
+use crate::planner::dsl::expression::{Bool, FunctionFunction, Int, Nil, String};
 use ecow::EcoString;
 
 pub(crate) struct FunctionDsl {
@@ -115,6 +115,19 @@ impl FunctionDsl {
         self
     }
 
+    pub(crate) fn param_function_function(
+        mut self,
+        local: usize,
+        name: impl Into<EcoString>,
+        type_: FunctionType,
+    ) -> Self {
+        self.params.push(Param::new(
+            ParamLocal::function_function(FunctionFunctionLocalId(local), type_),
+            name.into(),
+        ));
+        self
+    }
+
     pub(crate) fn let_int(mut self, local: usize, name: impl Into<EcoString>, value: Int) -> Self {
         self.steps
             .push(Step::let_int(IntLocalId(local), name.into(), value.into()));
@@ -155,6 +168,20 @@ impl FunctionDsl {
         self
     }
 
+    pub(crate) fn let_function_function(
+        mut self,
+        local: usize,
+        name: impl Into<EcoString>,
+        value: FunctionFunction,
+    ) -> Self {
+        self.steps.push(Step::let_function_function(
+            FunctionFunctionLocalId(local),
+            name.into(),
+            value.into(),
+        ));
+        self
+    }
+
     pub(crate) fn evaluate(mut self, value: impl Into<Expr>) -> Self {
         self.steps.push(Step::evaluate(value.into()));
         self
@@ -187,21 +214,47 @@ mod tests {
             .param_string_function(0, "g", [ValueType::String])
             .param_bool_function(0, "h", [ValueType::Bool])
             .param_nil_function(0, "i", [ValueType::Nil])
+            .param_function_function(
+                0,
+                "j",
+                FunctionType::new(
+                    Vec::new(),
+                    ValueType::Function(Box::new(FunctionType::new(
+                        vec![ValueType::Int],
+                        ValueType::Int,
+                    ))),
+                ),
+            )
             .let_int(1, "x", int(2))
             .let_string(1, "y", string("a"))
             .let_bool(1, "z", bool_(true))
             .let_nil(1, "n", nil())
+            .let_function_function(
+                1,
+                "ff",
+                crate::planner::dsl::expression::local_function_function(
+                    0,
+                    "j",
+                    FunctionType::new(
+                        Vec::new(),
+                        ValueType::Function(Box::new(FunctionType::new(
+                            vec![ValueType::Int],
+                            ValueType::Int,
+                        ))),
+                    ),
+                ),
+            )
             .step(Step::evaluate(int(4).into()))
             .evaluate(int(3))
             .build(FunctionId::new(0));
 
         assert_eq!(function.name(), "main");
-        assert_eq!(function.params().len(), 8);
-        assert_eq!(function.steps().len(), 6);
+        assert_eq!(function.params().len(), 9);
+        assert_eq!(function.steps().len(), 7);
         assert!(matches!(
             function.steps()[0].kind(),
             StepKind::LetInt { .. }
         ));
-        assert!(matches!(function.steps()[5].kind(), StepKind::Evaluate(_)));
+        assert!(matches!(function.steps()[6].kind(), StepKind::Evaluate(_)));
     }
 }

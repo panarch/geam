@@ -63,6 +63,11 @@ fn function_return_expr(
         (ValueType::String, ExprKind::String(actual)) => Ok(ReturnExpr::string(actual)),
         (ValueType::Bool, ExprKind::Bool(actual)) => Ok(ReturnExpr::bool(actual)),
         (ValueType::Nil, ExprKind::Nil(actual)) => Ok(ReturnExpr::nil(actual)),
+        (ValueType::Function(expected), ExprKind::Function(actual))
+            if expected.as_ref() == actual.type_() =>
+        {
+            Ok(ReturnExpr::function(actual))
+        }
         _ => Err(PlanError::InvalidTypedAst {
             reason: InvalidTypedAstReason::FunctionShape {
                 name: name.clone(),
@@ -87,9 +92,11 @@ pub(super) fn function_name(function: &TypedFunction) -> Result<EcoString, PlanE
 
 #[cfg(test)]
 mod tests {
+    use crate::plan::{IntFunctionId, IntLocalId, LocalId, RuntimeFunctionId};
     use crate::planner::dsl::{
-        bool_, bool_arg, call_bool, call_int, call_nil, call_string, function, int, int_arg,
-        local_bool, local_int, local_nil, local_string, module, nil, nil_arg, string, string_arg,
+        bool_, bool_arg, call_bool, call_int, call_nil, call_string, function, function_ref, int,
+        int_arg, local_bool, local_int, local_nil, local_string, module, nil, nil_arg, string,
+        string_arg,
     };
     use crate::planner::plan_module;
     use crate::planner::support::{compile, compile_minimal_module, expect_plan_error};
@@ -123,6 +130,35 @@ pub fn main() {
                     .param_int(0, "a")
                     .param_int(1, "b"),
             ],
+        );
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn plan_main_returning_function_value() {
+        let actual = plan_module(compile(
+            r#"
+fn identity(value: Int) {
+  value
+}
+
+pub fn main() {
+  identity
+}
+"#,
+        ))
+        .expect("source should plan");
+        let expected = module(
+            "main",
+            function(
+                "main",
+                function_ref(
+                    RuntimeFunctionId::Int(IntFunctionId(0)),
+                    [LocalId::Int(IntLocalId(0))],
+                ),
+            ),
+            [function("identity", local_int(0, "value")).param_int(0, "value")],
         );
 
         assert_eq!(actual, expected);
@@ -255,24 +291,6 @@ pub fn main() {
                 r#"
 pub fn main() {
   [1]
-}
-"#,
-            ),
-            PlanError::UnsupportedFunction {
-                name: "main".into(),
-                reason: UnsupportedFunctionReason::UnsupportedReturnType,
-            },
-        );
-
-        assert_eq!(
-            expect_plan_error(
-                r#"
-fn identity(value: Int) {
-  value
-}
-
-pub fn main() {
-  identity
 }
 "#,
             ),

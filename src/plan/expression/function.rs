@@ -1,16 +1,18 @@
 mod bool;
 mod int;
 mod nil;
+mod returning_function;
 mod string;
 
 use crate::plan::{FunctionType, FunctionValue, FunctionValueKind};
 
 pub use self::{
-    bool::BoolFunctionExpr, int::IntFunctionExpr, nil::NilFunctionExpr, string::StringFunctionExpr,
+    bool::BoolFunctionExpr, int::IntFunctionExpr, nil::NilFunctionExpr,
+    returning_function::FunctionFunctionExpr, string::StringFunctionExpr,
 };
 pub(crate) use self::{
     bool::BoolFunctionExprKind, int::IntFunctionExprKind, nil::NilFunctionExprKind,
-    string::StringFunctionExprKind,
+    returning_function::FunctionFunctionExprKind, string::StringFunctionExprKind,
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -24,6 +26,7 @@ pub(crate) enum FunctionExprKind {
     String(StringFunctionExpr),
     Bool(BoolFunctionExpr),
     Nil(NilFunctionExpr),
+    Function(FunctionFunctionExpr),
 }
 
 impl FunctionExpr {
@@ -35,6 +38,9 @@ impl FunctionExpr {
             }
             FunctionValueKind::Bool(value) => Self::bool(BoolFunctionExpr::value(value.clone())),
             FunctionValueKind::Nil(value) => Self::nil(NilFunctionExpr::value(value.clone())),
+            FunctionValueKind::Function(value) => {
+                Self::function(FunctionFunctionExpr::value(value.clone()))
+            }
         }
     }
 
@@ -62,12 +68,19 @@ impl FunctionExpr {
         }
     }
 
+    pub(crate) fn function(expression: FunctionFunctionExpr) -> Self {
+        Self {
+            kind: FunctionExprKind::Function(expression),
+        }
+    }
+
     pub fn type_(&self) -> &FunctionType {
         match &self.kind {
             FunctionExprKind::Int(expression) => expression.type_(),
             FunctionExprKind::String(expression) => expression.type_(),
             FunctionExprKind::Bool(expression) => expression.type_(),
             FunctionExprKind::Nil(expression) => expression.type_(),
+            FunctionExprKind::Function(expression) => expression.type_(),
         }
     }
 
@@ -106,6 +119,13 @@ impl FunctionExpr {
             kind => Err(Self { kind }),
         }
     }
+
+    pub(crate) fn into_function(self) -> Result<FunctionFunctionExpr, Self> {
+        match self.kind {
+            FunctionExprKind::Function(expression) => Ok(expression),
+            kind => Err(Self { kind }),
+        }
+    }
 }
 
 impl From<IntFunctionExpr> for FunctionExpr {
@@ -132,16 +152,23 @@ impl From<NilFunctionExpr> for FunctionExpr {
     }
 }
 
+impl From<FunctionFunctionExpr> for FunctionExpr {
+    fn from(expression: FunctionFunctionExpr) -> Self {
+        Self::function(expression)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
-        BoolFunctionExpr, FunctionExpr, FunctionExprKind, IntFunctionExpr, NilFunctionExpr,
-        StringFunctionExpr,
+        BoolFunctionExpr, FunctionExpr, FunctionExprKind, FunctionFunctionExpr, IntFunctionExpr,
+        NilFunctionExpr, StringFunctionExpr,
     };
     use crate::plan::{
-        BoolFunctionId, BoolFunctionValue, FunctionValue, IntFunctionId, IntFunctionValue,
-        NilFunctionId, NilFunctionValue, ParamLocal, RuntimeFunctionId, StringFunctionId,
-        StringFunctionValue,
+        BoolFunctionId, BoolFunctionValue, FunctionFunctionId, FunctionFunctionValue, FunctionType,
+        FunctionValue, IntFunctionFunctionId, IntFunctionId, IntFunctionValue, NilFunctionId,
+        NilFunctionValue, ParamLocal, RuntimeFunctionId, StringFunctionId, StringFunctionValue,
+        ValueType,
     };
 
     #[test]
@@ -165,6 +192,10 @@ mod tests {
         assert!(matches!(
             FunctionExpr::nil(nil_function_value()).kind(),
             FunctionExprKind::Nil(_)
+        ));
+        assert!(matches!(
+            FunctionExpr::function(function_function_value()).kind(),
+            FunctionExprKind::Function(_)
         ));
     }
 
@@ -207,6 +238,10 @@ mod tests {
             FunctionExpr::from(nil_function_value()).kind(),
             FunctionExprKind::Nil(_),
         ));
+        assert!(matches!(
+            FunctionExpr::from(function_function_value()).kind(),
+            FunctionExprKind::Function(_),
+        ));
     }
 
     fn function_value() -> FunctionValue {
@@ -241,6 +276,14 @@ mod tests {
         NilFunctionExpr::value(NilFunctionValue::new(
             NilFunctionId(0),
             vec![ParamLocal::nil(crate::plan::NilLocalId(0))],
+        ))
+    }
+
+    fn function_function_value() -> FunctionFunctionExpr {
+        FunctionFunctionExpr::value(FunctionFunctionValue::new(
+            FunctionFunctionId::Int(IntFunctionFunctionId(0)),
+            Vec::new(),
+            FunctionType::new(vec![ValueType::Int], ValueType::Int),
         ))
     }
 }
