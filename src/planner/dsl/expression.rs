@@ -1,6 +1,6 @@
 use crate::plan::{
     BoolExpr, BoolFunctionExpr, BoolFunctionId, BoolFunctionLocalId, BoolFunctionValue,
-    BoolLocalId, CallArg, Expr, FunctionCallArg, FunctionExpr, FunctionExprKind,
+    BoolLocalId, CallArg, Expr, FunctionExpr, FunctionExprKind,
     FunctionFunctionExpr, FunctionFunctionId, FunctionFunctionLocalId, FunctionFunctionValue,
     FunctionType, FunctionValue, IntExpr, IntFunctionExpr, IntFunctionFunctionId, IntFunctionId,
     IntFunctionLocalId, IntFunctionValue, IntLocalId, LocalId, NilExpr, NilFunctionExpr,
@@ -595,7 +595,7 @@ pub(crate) fn call_int_returning_function(
 
 pub(crate) fn call_int_function(
     function: IntFunction,
-    args: impl IntoIterator<Item = FunctionCallArg>,
+    args: impl IntoIterator<Item = CallArg>,
 ) -> Int {
     Int(IntExpr::function_call(
         function.into(),
@@ -607,8 +607,8 @@ pub(crate) fn int_arg(local: usize, value: Int) -> CallArg {
     CallArg::int(IntLocalId(local), value.into())
 }
 
-pub(crate) fn int_function_call_arg(value: Int) -> FunctionCallArg {
-    FunctionCallArg::int(value.into())
+pub(crate) fn int_function_call_arg(local: usize, value: Int) -> CallArg {
+    CallArg::int(IntLocalId(local), value.into())
 }
 
 pub(crate) fn int_function_arg(local: usize, value: IntFunction) -> CallArg {

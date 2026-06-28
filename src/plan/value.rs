@@ -158,6 +158,7 @@ impl IntFunctionValue {
         self.runtime_id
     }
 
+    #[cfg(test)]
     pub(crate) fn params(&self) -> &[ParamLocal] {
         &self.params
     }
@@ -176,6 +177,7 @@ impl StringFunctionValue {
         self.runtime_id
     }
 
+    #[cfg(test)]
     pub(crate) fn params(&self) -> &[ParamLocal] {
         &self.params
     }
@@ -194,6 +196,7 @@ impl BoolFunctionValue {
         self.runtime_id
     }
 
+    #[cfg(test)]
     pub(crate) fn params(&self) -> &[ParamLocal] {
         &self.params
     }
@@ -212,6 +215,7 @@ impl NilFunctionValue {
         self.runtime_id
     }
 
+    #[cfg(test)]
     pub(crate) fn params(&self) -> &[ParamLocal] {
         &self.params
     }
@@ -241,6 +245,7 @@ impl FunctionFunctionValue {
         self.runtime_id
     }
 
+    #[cfg(test)]
     pub(crate) fn params(&self) -> &[ParamLocal] {
         &self.params
     }

@@ -1,6 +1,6 @@
 use super::{invalid_expression_type, invalid_expression_type_for_value, plan_expr};
 use crate::plan::{
-    BoolExpr, CallArg, Expr, FunctionCallArg, FunctionExpr, FunctionFunctionExpr, IntExpr, NilExpr,
+    BoolExpr, CallArg, Expr, FunctionExpr, FunctionFunctionExpr, IntExpr, NilExpr, ParamLocal,
     RuntimeFunctionId, StringExpr, ValueType,
 };
 use crate::planner::context::{FunctionInfo, FunctionParam, PlanContext};
@@ -355,17 +355,98 @@ fn plan_function_call_args(
     params: &[ValueType],
     context: &mut PlanContext<'_>,
     capture: Option<&CaptureSubstitution>,
-) -> Result<Vec<FunctionCallArg>, PlanError> {
+) -> Result<Vec<CallArg>, PlanError> {
+    let locals = function_call_param_locals(params);
     let mut args = Vec::with_capacity(arguments.len());
-    for (argument, type_) in arguments.into_iter().zip(params) {
+    for (argument, local) in arguments.into_iter().zip(&locals) {
         let expression = plan_argument_value(argument.value, capture, context)?;
-        let arg = match expression.into_function_call_arg(type_) {
+        let arg = match expression.into_call_arg(local) {
             Ok(arg) => arg,
-            Err(other) => return Err(call_arg_type_mismatch(type_.clone(), &other)),
+            Err(other) => return Err(call_arg_type_mismatch(local.value_type(), &other)),
         };
         args.push(arg);
     }
     Ok(args)
+}
+
+fn function_call_param_locals(params: &[ValueType]) -> Vec<ParamLocal> {
+    let mut next_int = 0;
+    let mut next_string = 0;
+    let mut next_bool = 0;
+    let mut next_nil = 0;
+    let mut next_int_function = 0;
+    let mut next_string_function = 0;
+    let mut next_bool_function = 0;
+    let mut next_nil_function = 0;
+    let mut next_function_function = 0;
+
+    params
+        .iter()
+        .map(|type_| match type_ {
+            ValueType::Int => {
+                let local = ParamLocal::int(crate::plan::IntLocalId(next_int));
+                next_int += 1;
+                local
+            }
+            ValueType::String => {
+                let local = ParamLocal::string(crate::plan::StringLocalId(next_string));
+                next_string += 1;
+                local
+            }
+            ValueType::Bool => {
+                let local = ParamLocal::bool(crate::plan::BoolLocalId(next_bool));
+                next_bool += 1;
+                local
+            }
+            ValueType::Nil => {
+                let local = ParamLocal::nil(crate::plan::NilLocalId(next_nil));
+                next_nil += 1;
+                local
+            }
+            ValueType::Function(type_) => match type_.return_() {
+                ValueType::Int => {
+                    let local = ParamLocal::int_function(
+                        crate::plan::IntFunctionLocalId(next_int_function),
+                        type_.as_ref().clone(),
+                    );
+                    next_int_function += 1;
+                    local
+                }
+                ValueType::String => {
+                    let local = ParamLocal::string_function(
+                        crate::plan::StringFunctionLocalId(next_string_function),
+                        type_.as_ref().clone(),
+                    );
+                    next_string_function += 1;
+                    local
+                }
+                ValueType::Bool => {
+                    let local = ParamLocal::bool_function(
+                        crate::plan::BoolFunctionLocalId(next_bool_function),
+                        type_.as_ref().clone(),
+                    );
+                    next_bool_function += 1;
+                    local
+                }
+                ValueType::Nil => {
+                    let local = ParamLocal::nil_function(
+                        crate::plan::NilFunctionLocalId(next_nil_function),
+                        type_.as_ref().clone(),
+                    );
+                    next_nil_function += 1;
+                    local
+                }
+                ValueType::Function(_) => {
+                    let local = ParamLocal::function_function(
+                        crate::plan::FunctionFunctionLocalId(next_function_function),
+                        type_.as_ref().clone(),
+                    );
+                    next_function_function += 1;
+                    local
+                }
+            },
+        })
+        .collect()
 }
 
 fn call_arg_type_mismatch(expected: ValueType, actual: &Expr) -> PlanError {
@@ -506,7 +587,7 @@ fn function_returning_function_call_expr(
 
 fn function_call_expr(
     function: FunctionExpr,
-    args: Vec<FunctionCallArg>,
+    args: Vec<CallArg>,
     return_type: ValueType,
 ) -> Result<Expr, PlanError> {
     match return_type {
@@ -561,7 +642,7 @@ fn function_call_expr(
 
 fn function_returning_function_value_call_expr(
     function: FunctionFunctionExpr,
-    args: Vec<FunctionCallArg>,
+    args: Vec<CallArg>,
     return_type: crate::plan::FunctionType,
 ) -> Expr {
     match return_type.return_() {
@@ -663,7 +744,7 @@ pub fn main() {
                 "main",
                 call_int_function(
                     local_int_function(0, "function", [LocalId::Int(IntLocalId(0))]),
-                    [int_function_call_arg(int(1))],
+                    [int_function_call_arg(0, int(1))],
                 ),
             )
             .step(let_int_function_step(
@@ -713,7 +794,7 @@ pub fn main() {
                     "apply",
                     call_int_function(
                         local_int_function(0, "function", [LocalId::Int(IntLocalId(0))]),
-                        [int_function_call_arg(local_int(0, "value"))],
+                        [int_function_call_arg(0, local_int(0, "value"))],
                     ),
                 )
                 .param_int_function(0, "function", [ValueType::Int])
@@ -769,7 +850,7 @@ pub fn main() {
                     "apply",
                     call_int_function(
                         local_int_function(0, "function", [LocalId::Int(IntLocalId(0))]),
-                        [int_function_call_arg(local_int(0, "value"))],
+                        [int_function_call_arg(0, local_int(0, "value"))],
                     ),
                 )
                 .param_int_function(0, "function", [ValueType::Int])
@@ -810,7 +891,7 @@ pub fn primitive_shadow() {
                 "main",
                 call_int_function(
                     local_int_function(0, "function", [LocalId::Int(IntLocalId(0))]),
-                    [int_function_call_arg(int(1))],
+                    [int_function_call_arg(0, int(1))],
                 ),
             )
             .let_int(0, "function", int(1))
@@ -854,7 +935,7 @@ pub fn main() {
                 "main",
                 call_int_function(
                     block_int_function([], int_function_ref(1, [LocalId::Int(IntLocalId(0))])),
-                    [int_function_call_arg(int(1))],
+                    [int_function_call_arg(0, int(1))],
                 ),
             ),
             [function("add_one", local_int(0, "value").add_int(int(1))).param_int(0, "value")],
@@ -908,7 +989,7 @@ pub fn main() {
                         int_function_ref(1, [LocalId::Int(IntLocalId(0))]),
                         int_function_ref(2, [LocalId::Int(IntLocalId(0))]),
                     ),
-                    [int_function_call_arg(int(1))],
+                    [int_function_call_arg(0, int(1))],
                 ),
             )
             .let_int(
@@ -920,7 +1001,7 @@ pub fn main() {
                         [(0, int_function_ref(2, [LocalId::Int(IntLocalId(0))]))],
                         int_function_ref(1, [LocalId::Int(IntLocalId(0))]),
                     ),
-                    [int_function_call_arg(int(1))],
+                    [int_function_call_arg(0, int(1))],
                 ),
             ),
             [add_one, add_ten],

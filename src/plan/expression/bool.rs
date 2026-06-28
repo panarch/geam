@@ -1,4 +1,4 @@
-use super::{BoolFunctionExpr, CallArg, Expr, FunctionCallArg, IntExpr};
+use super::{BoolFunctionExpr, CallArg, Expr, IntExpr};
 use crate::plan::{BoolFunctionId, BoolLocalId, Step};
 use ecow::EcoString;
 use num_bigint::BigInt;
@@ -21,7 +21,7 @@ pub(crate) enum BoolExprKind {
     },
     FunctionCall {
         function: Box<BoolFunctionExpr>,
-        args: Vec<FunctionCallArg>,
+        args: Vec<CallArg>,
     },
     Not(Box<BoolExpr>),
     LtInt {
@@ -91,7 +91,7 @@ impl BoolExpr {
         }
     }
 
-    pub(crate) fn function_call(function: BoolFunctionExpr, args: Vec<FunctionCallArg>) -> Self {
+    pub(crate) fn function_call(function: BoolFunctionExpr, args: Vec<CallArg>) -> Self {
         Self {
             kind: BoolExprKind::FunctionCall {
                 function: Box::new(function),

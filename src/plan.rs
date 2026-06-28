@@ -12,12 +12,12 @@ use std::fmt;
 
 pub(crate) use expression::{
     BoolCaseBranches, BoolExprKind, BoolFunctionExprKind, CallArgKind, ExprKind,
-    FunctionCallArgKind, FunctionExprKind, FunctionFunctionExprKind, IntCaseBranches, IntExprKind,
+    FunctionExprKind, FunctionFunctionExprKind, IntCaseBranches, IntExprKind,
     IntFunctionExprKind, NilExprKind, NilFunctionExprKind, StringExprKind, StringFunctionExprKind,
 };
 pub use expression::{
-    BoolExpr, BoolFunctionExpr, CallArg, Expr, FunctionCallArg, FunctionExpr, FunctionFunctionExpr,
-    IntExpr, IntFunctionExpr, NilExpr, NilFunctionExpr, StringExpr, StringFunctionExpr,
+    BoolExpr, BoolFunctionExpr, CallArg, Expr, FunctionExpr, FunctionFunctionExpr, IntExpr,
+    IntFunctionExpr, NilExpr, NilFunctionExpr, StringExpr, StringFunctionExpr,
 };
 pub(crate) use frame::FrameLayout;
 pub use function::{FunctionPlan, Param, ReturnExpr};

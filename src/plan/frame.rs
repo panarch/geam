@@ -1,5 +1,5 @@
 use super::expression::{
-    BoolExpr, BoolFunctionExpr, CallArg, Expr, FunctionCallArg, FunctionExpr, FunctionFunctionExpr,
+    BoolExpr, BoolFunctionExpr, CallArg, Expr, FunctionExpr, FunctionFunctionExpr,
     IntExpr, IntFunctionExpr, NilExpr, NilFunctionExpr, StringExpr, StringFunctionExpr,
 };
 use super::function::{Param, ParamLocal, ReturnExpr};
@@ -9,7 +9,7 @@ use super::id::{
 };
 use super::step::Step;
 use super::{
-    BoolExprKind, BoolFunctionExprKind, CallArgKind, ExprKind, FunctionCallArgKind,
+    BoolExprKind, BoolFunctionExprKind, CallArgKind, ExprKind,
     FunctionExprKind, FunctionFunctionExprKind, IntExprKind, IntFunctionExprKind, NilExprKind,
     NilFunctionExprKind, ReturnExprKind, StepKind, StringExprKind, StringFunctionExprKind,
 };
@@ -219,26 +219,6 @@ impl FrameLayout {
         }
     }
 
-    fn include_function_call_args(&mut self, args: &[FunctionCallArg]) {
-        for arg in args {
-            match arg.kind() {
-                FunctionCallArgKind::Int(value) => self.include_int_expr(value),
-                FunctionCallArgKind::String(value) => self.include_string_expr(value),
-                FunctionCallArgKind::Bool(value) => self.include_bool_expr(value),
-                FunctionCallArgKind::Nil(value) => self.include_nil_expr(value),
-                FunctionCallArgKind::IntFunction(value) => self.include_int_function_expr(value),
-                FunctionCallArgKind::StringFunction(value) => {
-                    self.include_string_function_expr(value);
-                }
-                FunctionCallArgKind::BoolFunction(value) => self.include_bool_function_expr(value),
-                FunctionCallArgKind::NilFunction(value) => self.include_nil_function_expr(value),
-                FunctionCallArgKind::FunctionFunction(value) => {
-                    self.include_function_function_expr(value);
-                }
-            }
-        }
-    }
-
     fn include_int_expr(&mut self, expression: &IntExpr) {
         match expression.kind() {
             IntExprKind::Value(_) => {}
@@ -246,7 +226,7 @@ impl FrameLayout {
             IntExprKind::Call { args, .. } => self.include_call_args(args),
             IntExprKind::FunctionCall { function, args } => {
                 self.include_int_function_expr(function);
-                self.include_function_call_args(args);
+                self.include_call_args(args);
             }
             IntExprKind::Add { left, right }
             | IntExprKind::Sub { left, right }
@@ -291,7 +271,7 @@ impl FrameLayout {
             StringExprKind::Call { args, .. } => self.include_call_args(args),
             StringExprKind::FunctionCall { function, args } => {
                 self.include_string_function_expr(function);
-                self.include_function_call_args(args);
+                self.include_call_args(args);
             }
             StringExprKind::Concatenate { left, right } => {
                 self.include_string_expr(left);
@@ -331,7 +311,7 @@ impl FrameLayout {
             BoolExprKind::Call { args, .. } => self.include_call_args(args),
             BoolExprKind::FunctionCall { function, args } => {
                 self.include_bool_function_expr(function);
-                self.include_function_call_args(args);
+                self.include_call_args(args);
             }
             BoolExprKind::Not(value) => self.include_bool_expr(value),
             BoolExprKind::LtInt { left, right }
@@ -383,7 +363,7 @@ impl FrameLayout {
             NilExprKind::Call { args, .. } => self.include_call_args(args),
             NilExprKind::FunctionCall { function, args } => {
                 self.include_nil_function_expr(function);
-                self.include_function_call_args(args);
+                self.include_call_args(args);
             }
             NilExprKind::BoolCase {
                 subject,
@@ -431,7 +411,7 @@ impl FrameLayout {
             IntFunctionExprKind::Call { args, .. } => self.include_call_args(args),
             IntFunctionExprKind::FunctionCall { function, args, .. } => {
                 self.include_function_function_expr(function);
-                self.include_function_call_args(args);
+                self.include_call_args(args);
             }
             IntFunctionExprKind::BoolCase {
                 subject,
@@ -469,7 +449,7 @@ impl FrameLayout {
             StringFunctionExprKind::Call { args, .. } => self.include_call_args(args),
             StringFunctionExprKind::FunctionCall { function, args, .. } => {
                 self.include_function_function_expr(function);
-                self.include_function_call_args(args);
+                self.include_call_args(args);
             }
             StringFunctionExprKind::BoolCase {
                 subject,
@@ -505,7 +485,7 @@ impl FrameLayout {
             BoolFunctionExprKind::Call { args, .. } => self.include_call_args(args),
             BoolFunctionExprKind::FunctionCall { function, args, .. } => {
                 self.include_function_function_expr(function);
-                self.include_function_call_args(args);
+                self.include_call_args(args);
             }
             BoolFunctionExprKind::BoolCase {
                 subject,
@@ -541,7 +521,7 @@ impl FrameLayout {
             NilFunctionExprKind::Call { args, .. } => self.include_call_args(args),
             NilFunctionExprKind::FunctionCall { function, args, .. } => {
                 self.include_function_function_expr(function);
-                self.include_function_call_args(args);
+                self.include_call_args(args);
             }
             NilFunctionExprKind::BoolCase {
                 subject,
@@ -579,7 +559,7 @@ impl FrameLayout {
             FunctionFunctionExprKind::Call { args, .. } => self.include_call_args(args),
             FunctionFunctionExprKind::FunctionCall { function, args, .. } => {
                 self.include_function_function_expr(function);
-                self.include_function_call_args(args);
+                self.include_call_args(args);
             }
             FunctionFunctionExprKind::BoolCase {
                 subject,

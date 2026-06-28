@@ -25,7 +25,7 @@ pub(crate) enum BoolFunctionExprKind {
     },
     FunctionCall {
         function: Box<FunctionFunctionExpr>,
-        args: Vec<crate::plan::FunctionCallArg>,
+        args: Vec<crate::plan::CallArg>,
         type_: FunctionType,
     },
     BoolCase {
@@ -80,7 +80,7 @@ impl BoolFunctionExpr {
 
     pub(crate) fn function_call(
         function: FunctionFunctionExpr,
-        args: Vec<crate::plan::FunctionCallArg>,
+        args: Vec<crate::plan::CallArg>,
         type_: FunctionType,
     ) -> Self {
         Self {

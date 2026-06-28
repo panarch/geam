@@ -54,11 +54,6 @@ pub struct CallArg {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct FunctionCallArg {
-    kind: FunctionCallArgKind,
-}
-
-#[derive(Debug, Clone, PartialEq)]
 pub(crate) enum CallArgKind {
     Int {
         local: IntLocalId,
@@ -96,19 +91,6 @@ pub(crate) enum CallArgKind {
         local: FunctionFunctionLocalId,
         value: FunctionFunctionExpr,
     },
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub(crate) enum FunctionCallArgKind {
-    Int(IntExpr),
-    String(StringExpr),
-    Bool(BoolExpr),
-    Nil(NilExpr),
-    IntFunction(IntFunctionExpr),
-    StringFunction(StringFunctionExpr),
-    BoolFunction(BoolFunctionExpr),
-    NilFunction(NilFunctionExpr),
-    FunctionFunction(FunctionFunctionExpr),
 }
 
 impl Expr {
@@ -324,28 +306,6 @@ impl Expr {
         }
     }
 
-    pub(crate) fn into_function_call_arg(self, type_: &ValueType) -> Result<FunctionCallArg, Self> {
-        match (type_, self.kind) {
-            (ValueType::Int, ExprKind::Int(value)) => Ok(FunctionCallArg::int(value)),
-            (ValueType::String, ExprKind::String(value)) => Ok(FunctionCallArg::string(value)),
-            (ValueType::Bool, ExprKind::Bool(value)) => Ok(FunctionCallArg::bool(value)),
-            (ValueType::Nil, ExprKind::Nil(value)) => Ok(FunctionCallArg::nil(value)),
-            (ValueType::Function(expected), ExprKind::Function(value))
-                if value.type_() == expected.as_ref() =>
-            {
-                match value.into_kind() {
-                    FunctionExprKind::Int(value) => Ok(FunctionCallArg::int_function(value)),
-                    FunctionExprKind::String(value) => Ok(FunctionCallArg::string_function(value)),
-                    FunctionExprKind::Bool(value) => Ok(FunctionCallArg::bool_function(value)),
-                    FunctionExprKind::Nil(value) => Ok(FunctionCallArg::nil_function(value)),
-                    FunctionExprKind::Function(value) => {
-                        Ok(FunctionCallArg::function_function(value))
-                    }
-                }
-            }
-            (_, kind) => Err(Self { kind }),
-        }
-    }
 }
 
 impl CallArg {
@@ -411,66 +371,6 @@ impl CallArg {
     }
 }
 
-impl FunctionCallArg {
-    pub(crate) fn int(value: IntExpr) -> Self {
-        Self {
-            kind: FunctionCallArgKind::Int(value),
-        }
-    }
-
-    pub(crate) fn string(value: StringExpr) -> Self {
-        Self {
-            kind: FunctionCallArgKind::String(value),
-        }
-    }
-
-    pub(crate) fn bool(value: BoolExpr) -> Self {
-        Self {
-            kind: FunctionCallArgKind::Bool(value),
-        }
-    }
-
-    pub(crate) fn nil(value: NilExpr) -> Self {
-        Self {
-            kind: FunctionCallArgKind::Nil(value),
-        }
-    }
-
-    pub(crate) fn int_function(value: IntFunctionExpr) -> Self {
-        Self {
-            kind: FunctionCallArgKind::IntFunction(value),
-        }
-    }
-
-    pub(crate) fn string_function(value: StringFunctionExpr) -> Self {
-        Self {
-            kind: FunctionCallArgKind::StringFunction(value),
-        }
-    }
-
-    pub(crate) fn bool_function(value: BoolFunctionExpr) -> Self {
-        Self {
-            kind: FunctionCallArgKind::BoolFunction(value),
-        }
-    }
-
-    pub(crate) fn nil_function(value: NilFunctionExpr) -> Self {
-        Self {
-            kind: FunctionCallArgKind::NilFunction(value),
-        }
-    }
-
-    pub(crate) fn function_function(value: FunctionFunctionExpr) -> Self {
-        Self {
-            kind: FunctionCallArgKind::FunctionFunction(value),
-        }
-    }
-
-    pub(crate) fn kind(&self) -> &FunctionCallArgKind {
-        &self.kind
-    }
-}
-
 impl From<Value> for Expr {
     fn from(value: Value) -> Self {
         match value {
@@ -486,7 +386,7 @@ impl From<Value> for Expr {
 #[cfg(test)]
 mod tests {
     use super::{
-        BoolCaseBranches, BoolExpr, BoolFunctionExpr, CallArg, Expr, FunctionCallArg, FunctionExpr,
+        BoolCaseBranches, BoolExpr, BoolFunctionExpr, CallArg, Expr, FunctionExpr,
         FunctionFunctionExpr, IntCaseBranches, IntExpr, IntFunctionExpr, NilExpr, NilFunctionExpr,
         StringExpr, StringFunctionExpr,
     };
@@ -953,56 +853,6 @@ mod tests {
         assert_eq!(
             Expr::int(IntExpr::value(BigInt::from(1)))
                 .into_call_arg(&ParamLocal::bool(BoolLocalId(0))),
-            Err(Expr::int(IntExpr::value(BigInt::from(1)))),
-        );
-    }
-
-    #[test]
-    fn expr_into_function_call_arg() {
-        assert_eq!(
-            Expr::int(IntExpr::value(BigInt::from(1))).into_function_call_arg(&ValueType::Int),
-            Ok(FunctionCallArg::int(IntExpr::value(BigInt::from(1)))),
-        );
-        assert_eq!(
-            Expr::string(StringExpr::value("geam".into()))
-                .into_function_call_arg(&ValueType::String),
-            Ok(FunctionCallArg::string(StringExpr::value("geam".into()))),
-        );
-        assert_eq!(
-            Expr::bool(BoolExpr::value(true)).into_function_call_arg(&ValueType::Bool),
-            Ok(FunctionCallArg::bool(BoolExpr::value(true))),
-        );
-        assert_eq!(
-            Expr::nil(NilExpr::value()).into_function_call_arg(&ValueType::Nil),
-            Ok(FunctionCallArg::nil(NilExpr::value())),
-        );
-        assert_eq!(
-            Expr::function(FunctionExpr::int(int_function_expr()))
-                .into_function_call_arg(&ValueType::Function(Box::new(function_type())),),
-            Ok(FunctionCallArg::int_function(int_function_expr())),
-        );
-        assert_eq!(
-            Expr::function(FunctionExpr::string(string_function_expr()))
-                .into_function_call_arg(&ValueType::Function(Box::new(string_function_type())),),
-            Ok(FunctionCallArg::string_function(string_function_expr())),
-        );
-        assert_eq!(
-            Expr::function(FunctionExpr::bool(bool_function_expr()))
-                .into_function_call_arg(&ValueType::Function(Box::new(bool_function_type())),),
-            Ok(FunctionCallArg::bool_function(bool_function_expr())),
-        );
-        assert_eq!(
-            Expr::function(FunctionExpr::nil(nil_function_expr()))
-                .into_function_call_arg(&ValueType::Function(Box::new(nil_function_type())),),
-            Ok(FunctionCallArg::nil_function(nil_function_expr())),
-        );
-        assert_eq!(
-            Expr::function(FunctionExpr::function(function_function_expr()))
-                .into_function_call_arg(&ValueType::Function(Box::new(function_function_type())),),
-            Ok(FunctionCallArg::function_function(function_function_expr())),
-        );
-        assert_eq!(
-            Expr::int(IntExpr::value(BigInt::from(1))).into_function_call_arg(&ValueType::Bool),
             Err(Expr::int(IntExpr::value(BigInt::from(1)))),
         );
     }
