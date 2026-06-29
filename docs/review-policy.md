@@ -142,6 +142,10 @@ a runtime value.
 Planner rejection coverage belongs in the owning planner unit test unless it is
 represented by a dedicated fixture-based integration case.
 
+Only add public planner API integration tests when the public boundary itself is
+the reviewed behavior, not to cover planner implementation branches that belong
+to an owning planner unit test.
+
 ## Helper And DSL Rules
 
 Test helpers reduce real repetition without hiding the reviewed shape.
