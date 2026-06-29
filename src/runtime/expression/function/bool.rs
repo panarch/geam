@@ -1,4 +1,5 @@
 use crate::plan::{BoolFunctionExpr, BoolFunctionExprKind, BoolFunctionValue, ExecutionPlan};
+use crate::runtime::ExecutionError;
 use crate::runtime::expression::{eval_bool_expr, eval_int_expr};
 use crate::runtime::frame::Frame;
 use crate::runtime::function;
@@ -7,16 +8,24 @@ pub(in crate::runtime) fn eval_bool_function_expr(
     plan: &ExecutionPlan,
     frame: &mut Frame,
     expression: &BoolFunctionExpr,
-) -> BoolFunctionValue {
+) -> Result<BoolFunctionValue, ExecutionError> {
     match expression.kind() {
-        BoolFunctionExprKind::Value(value) => value.clone(),
-        BoolFunctionExprKind::LocalGet { local, .. } => frame.get_bool_function(*local),
+        BoolFunctionExprKind::Value(value) => Ok(value.clone()),
+        BoolFunctionExprKind::LocalGet { local, .. } => Ok(frame.get_bool_function(*local)),
+        BoolFunctionExprKind::Call { function, args, .. } => {
+            function::run_bool_function_returning_function_call(plan, *function, args, frame)
+        }
+        BoolFunctionExprKind::FunctionCall {
+            function: callee,
+            args,
+            ..
+        } => function::run_bool_function_function_call(plan, callee, args, frame),
         BoolFunctionExprKind::BoolCase {
             subject,
             true_,
             false_,
         } => {
-            if eval_bool_expr(plan, frame, subject) {
+            if eval_bool_expr(plan, frame, subject)? {
                 eval_bool_function_expr(plan, frame, true_)
             } else {
                 eval_bool_function_expr(plan, frame, false_)
@@ -27,7 +36,7 @@ pub(in crate::runtime) fn eval_bool_function_expr(
             clauses,
             fallback,
         } => {
-            let subject = eval_int_expr(plan, frame, subject);
+            let subject = eval_int_expr(plan, frame, subject)?;
             for (pattern, branch) in clauses {
                 if pattern == &subject {
                     return eval_bool_function_expr(plan, frame, branch);
@@ -36,7 +45,7 @@ pub(in crate::runtime) fn eval_bool_function_expr(
             eval_bool_function_expr(plan, frame, fallback)
         }
         BoolFunctionExprKind::Block { steps, return_ } => {
-            function::execute_steps(plan, steps, frame);
+            function::execute_steps(plan, steps, frame)?;
             eval_bool_function_expr(plan, frame, return_)
         }
     }
@@ -47,7 +56,7 @@ mod tests {
     use super::eval_bool_function_expr;
     use crate::plan::{
         BoolExpr, BoolFunctionExpr, BoolFunctionId, BoolFunctionValue, BoolLocalId, ExecutionPlan,
-        Expr, FunctionId, FunctionPlan, IntExpr, ParamLocal, ReturnExpr, Step,
+        Expr, FunctionId, FunctionPlan, IntExpr, IntFunctionId, ParamLocal, ReturnExpr, Step,
     };
     use crate::runtime::frame::Frame;
 
@@ -66,6 +75,7 @@ mod tests {
                     other_function_value(),
                 ),
             )
+            .expect("expression should evaluate")
             .runtime_id(),
             BoolFunctionId(0),
         );
@@ -79,6 +89,7 @@ mod tests {
                     function_value(),
                 ),
             )
+            .expect("expression should evaluate")
             .runtime_id(),
             BoolFunctionId(0),
         );
@@ -99,6 +110,7 @@ mod tests {
                     other_function_value(),
                 ),
             )
+            .expect("expression should evaluate")
             .runtime_id(),
             BoolFunctionId(0),
         );
@@ -112,6 +124,7 @@ mod tests {
                     function_value(),
                 ),
             )
+            .expect("expression should evaluate")
             .runtime_id(),
             BoolFunctionId(0),
         );
@@ -131,6 +144,7 @@ mod tests {
                     function_value(),
                 ),
             )
+            .expect("expression should evaluate")
             .runtime_id(),
             BoolFunctionId(0),
         );
@@ -144,7 +158,7 @@ mod tests {
                 "main".into(),
                 Vec::new(),
                 Vec::new(),
-                ReturnExpr::int(IntExpr::value(1.into())),
+                ReturnExpr::int(IntFunctionId(0), IntExpr::value(1.into())),
             ),
             Vec::new(),
         )

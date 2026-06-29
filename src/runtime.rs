@@ -1,19 +1,21 @@
+mod error;
 mod expression;
 mod frame;
 mod function;
 
 pub use crate::plan::Value;
+pub use error::ExecutionError;
 
 use crate::plan::ExecutionPlan;
 
-pub fn run_main(plan: &ExecutionPlan) -> Value {
+pub fn run_main(plan: &ExecutionPlan) -> Result<Value, ExecutionError> {
     function::run_main(plan)
 }
 
 #[cfg(test)]
 fn run_src(src: &str) -> Value {
     let plan = plan_src(src);
-    run_main(&plan)
+    run_main(&plan).expect("source should run")
 }
 
 #[cfg(test)]

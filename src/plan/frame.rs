@@ -1,16 +1,16 @@
 use super::expression::{
-    BoolExpr, BoolFunctionExpr, CallArg, Expr, FunctionCallArg, FunctionExpr, IntExpr,
+    BoolExpr, BoolFunctionExpr, CallArg, Expr, FunctionExpr, FunctionFunctionExpr, IntExpr,
     IntFunctionExpr, NilExpr, NilFunctionExpr, StringExpr, StringFunctionExpr,
 };
 use super::function::{Param, ParamLocal, ReturnExpr};
 use super::id::{
-    BoolFunctionLocalId, BoolLocalId, IntFunctionLocalId, IntLocalId, NilFunctionLocalId,
-    NilLocalId, StringFunctionLocalId, StringLocalId,
+    BoolFunctionLocalId, BoolLocalId, FunctionFunctionLocalId, IntFunctionLocalId, IntLocalId,
+    NilFunctionLocalId, NilLocalId, StringFunctionLocalId, StringLocalId,
 };
 use super::step::Step;
 use super::{
-    BoolExprKind, BoolFunctionExprKind, CallArgKind, ExprKind, FunctionCallArgKind,
-    FunctionExprKind, IntExprKind, IntFunctionExprKind, NilExprKind, NilFunctionExprKind,
+    BoolExprKind, BoolFunctionExprKind, CallArgKind, ExprKind, FunctionExprKind,
+    FunctionFunctionExprKind, IntExprKind, IntFunctionExprKind, NilExprKind, NilFunctionExprKind,
     ReturnExprKind, StepKind, StringExprKind, StringFunctionExprKind,
 };
 
@@ -24,6 +24,7 @@ pub(crate) struct FrameLayout {
     string_functions: usize,
     bool_functions: usize,
     nil_functions: usize,
+    function_functions: usize,
 }
 
 impl FrameLayout {
@@ -53,6 +54,7 @@ impl FrameLayout {
             ParamLocal::StringFunction { local, .. } => self.include_string_function(*local),
             ParamLocal::BoolFunction { local, .. } => self.include_bool_function(*local),
             ParamLocal::NilFunction { local, .. } => self.include_nil_function(*local),
+            ParamLocal::FunctionFunction { local, .. } => self.include_function_function(*local),
         }
     }
 
@@ -88,6 +90,10 @@ impl FrameLayout {
         self.nil_functions = self.nil_functions.max(local.0 + 1);
     }
 
+    pub(crate) fn include_function_function(&mut self, local: FunctionFunctionLocalId) {
+        self.function_functions = self.function_functions.max(local.0 + 1);
+    }
+
     pub(crate) fn ints(self) -> usize {
         self.ints
     }
@@ -119,6 +125,10 @@ impl FrameLayout {
 
     pub(crate) fn nil_functions(self) -> usize {
         self.nil_functions
+    }
+
+    pub(crate) fn function_functions(self) -> usize {
+        self.function_functions
     }
 
     fn include_steps(&mut self, steps: &[Step]) {
@@ -161,6 +171,10 @@ impl FrameLayout {
                 self.include_nil_function_expr(value);
                 self.include_nil_function(*local);
             }
+            StepKind::LetFunctionFunction { local, value, .. } => {
+                self.include_function_function_expr(value);
+                self.include_function_function(*local);
+            }
             StepKind::Evaluate(value) => self.include_expr(value),
         }
     }
@@ -177,10 +191,25 @@ impl FrameLayout {
 
     fn include_return_expr(&mut self, expression: &ReturnExpr) {
         match expression.kind() {
-            ReturnExprKind::Int(expression) => self.include_int_expr(expression),
-            ReturnExprKind::String(expression) => self.include_string_expr(expression),
-            ReturnExprKind::Bool(expression) => self.include_bool_expr(expression),
-            ReturnExprKind::Nil(expression) => self.include_nil_expr(expression),
+            ReturnExprKind::Int { expression, .. } => self.include_int_expr(expression),
+            ReturnExprKind::String { expression, .. } => self.include_string_expr(expression),
+            ReturnExprKind::Bool { expression, .. } => self.include_bool_expr(expression),
+            ReturnExprKind::Nil { expression, .. } => self.include_nil_expr(expression),
+            ReturnExprKind::IntFunction { expression, .. } => {
+                self.include_int_function_expr(expression);
+            }
+            ReturnExprKind::StringFunction { expression, .. } => {
+                self.include_string_function_expr(expression);
+            }
+            ReturnExprKind::BoolFunction { expression, .. } => {
+                self.include_bool_function_expr(expression);
+            }
+            ReturnExprKind::NilFunction { expression, .. } => {
+                self.include_nil_function_expr(expression);
+            }
+            ReturnExprKind::FunctionFunction { expression, .. } => {
+                self.include_function_function_expr(expression);
+            }
         }
     }
 
@@ -197,23 +226,9 @@ impl FrameLayout {
                 }
                 CallArgKind::BoolFunction { value, .. } => self.include_bool_function_expr(value),
                 CallArgKind::NilFunction { value, .. } => self.include_nil_function_expr(value),
-            }
-        }
-    }
-
-    fn include_function_call_args(&mut self, args: &[FunctionCallArg]) {
-        for arg in args {
-            match arg.kind() {
-                FunctionCallArgKind::Int(value) => self.include_int_expr(value),
-                FunctionCallArgKind::String(value) => self.include_string_expr(value),
-                FunctionCallArgKind::Bool(value) => self.include_bool_expr(value),
-                FunctionCallArgKind::Nil(value) => self.include_nil_expr(value),
-                FunctionCallArgKind::IntFunction(value) => self.include_int_function_expr(value),
-                FunctionCallArgKind::StringFunction(value) => {
-                    self.include_string_function_expr(value);
+                CallArgKind::FunctionFunction { value, .. } => {
+                    self.include_function_function_expr(value);
                 }
-                FunctionCallArgKind::BoolFunction(value) => self.include_bool_function_expr(value),
-                FunctionCallArgKind::NilFunction(value) => self.include_nil_function_expr(value),
             }
         }
     }
@@ -225,7 +240,7 @@ impl FrameLayout {
             IntExprKind::Call { args, .. } => self.include_call_args(args),
             IntExprKind::FunctionCall { function, args } => {
                 self.include_int_function_expr(function);
-                self.include_function_call_args(args);
+                self.include_call_args(args);
             }
             IntExprKind::Add { left, right }
             | IntExprKind::Sub { left, right }
@@ -270,7 +285,7 @@ impl FrameLayout {
             StringExprKind::Call { args, .. } => self.include_call_args(args),
             StringExprKind::FunctionCall { function, args } => {
                 self.include_string_function_expr(function);
-                self.include_function_call_args(args);
+                self.include_call_args(args);
             }
             StringExprKind::Concatenate { left, right } => {
                 self.include_string_expr(left);
@@ -310,7 +325,7 @@ impl FrameLayout {
             BoolExprKind::Call { args, .. } => self.include_call_args(args),
             BoolExprKind::FunctionCall { function, args } => {
                 self.include_bool_function_expr(function);
-                self.include_function_call_args(args);
+                self.include_call_args(args);
             }
             BoolExprKind::Not(value) => self.include_bool_expr(value),
             BoolExprKind::LtInt { left, right }
@@ -362,7 +377,7 @@ impl FrameLayout {
             NilExprKind::Call { args, .. } => self.include_call_args(args),
             NilExprKind::FunctionCall { function, args } => {
                 self.include_nil_function_expr(function);
-                self.include_function_call_args(args);
+                self.include_call_args(args);
             }
             NilExprKind::BoolCase {
                 subject,
@@ -397,6 +412,9 @@ impl FrameLayout {
             FunctionExprKind::String(expression) => self.include_string_function_expr(expression),
             FunctionExprKind::Bool(expression) => self.include_bool_function_expr(expression),
             FunctionExprKind::Nil(expression) => self.include_nil_function_expr(expression),
+            FunctionExprKind::Function(expression) => {
+                self.include_function_function_expr(expression);
+            }
         }
     }
 
@@ -404,6 +422,11 @@ impl FrameLayout {
         match expression.kind() {
             IntFunctionExprKind::Value(_) => {}
             IntFunctionExprKind::LocalGet { local, .. } => self.include_int_function(*local),
+            IntFunctionExprKind::Call { args, .. } => self.include_call_args(args),
+            IntFunctionExprKind::FunctionCall { function, args, .. } => {
+                self.include_function_function_expr(function);
+                self.include_call_args(args);
+            }
             IntFunctionExprKind::BoolCase {
                 subject,
                 true_,
@@ -437,6 +460,11 @@ impl FrameLayout {
             StringFunctionExprKind::LocalGet { local, .. } => {
                 self.include_string_function(*local);
             }
+            StringFunctionExprKind::Call { args, .. } => self.include_call_args(args),
+            StringFunctionExprKind::FunctionCall { function, args, .. } => {
+                self.include_function_function_expr(function);
+                self.include_call_args(args);
+            }
             StringFunctionExprKind::BoolCase {
                 subject,
                 true_,
@@ -468,6 +496,11 @@ impl FrameLayout {
         match expression.kind() {
             BoolFunctionExprKind::Value(_) => {}
             BoolFunctionExprKind::LocalGet { local, .. } => self.include_bool_function(*local),
+            BoolFunctionExprKind::Call { args, .. } => self.include_call_args(args),
+            BoolFunctionExprKind::FunctionCall { function, args, .. } => {
+                self.include_function_function_expr(function);
+                self.include_call_args(args);
+            }
             BoolFunctionExprKind::BoolCase {
                 subject,
                 true_,
@@ -499,6 +532,11 @@ impl FrameLayout {
         match expression.kind() {
             NilFunctionExprKind::Value(_) => {}
             NilFunctionExprKind::LocalGet { local, .. } => self.include_nil_function(*local),
+            NilFunctionExprKind::Call { args, .. } => self.include_call_args(args),
+            NilFunctionExprKind::FunctionCall { function, args, .. } => {
+                self.include_function_function_expr(function);
+                self.include_call_args(args);
+            }
             NilFunctionExprKind::BoolCase {
                 subject,
                 true_,
@@ -522,6 +560,44 @@ impl FrameLayout {
             NilFunctionExprKind::Block { steps, return_ } => {
                 self.include_steps(steps);
                 self.include_nil_function_expr(return_);
+            }
+        }
+    }
+
+    fn include_function_function_expr(&mut self, expression: &FunctionFunctionExpr) {
+        match expression.kind() {
+            FunctionFunctionExprKind::Value(_) => {}
+            FunctionFunctionExprKind::LocalGet { local, .. } => {
+                self.include_function_function(*local);
+            }
+            FunctionFunctionExprKind::Call { args, .. } => self.include_call_args(args),
+            FunctionFunctionExprKind::FunctionCall { function, args, .. } => {
+                self.include_function_function_expr(function);
+                self.include_call_args(args);
+            }
+            FunctionFunctionExprKind::BoolCase {
+                subject,
+                true_,
+                false_,
+            } => {
+                self.include_bool_expr(subject);
+                self.include_function_function_expr(true_);
+                self.include_function_function_expr(false_);
+            }
+            FunctionFunctionExprKind::IntCase {
+                subject,
+                clauses,
+                fallback,
+            } => {
+                self.include_int_expr(subject);
+                for (_, branch) in clauses {
+                    self.include_function_function_expr(branch);
+                }
+                self.include_function_function_expr(fallback);
+            }
+            FunctionFunctionExprKind::Block { steps, return_ } => {
+                self.include_steps(steps);
+                self.include_function_function_expr(return_);
             }
         }
     }
@@ -584,7 +660,7 @@ mod tests {
                 int_function_expr(),
             ),
         )))];
-        let return_ = ReturnExpr::int(IntExpr::value(0.into()));
+        let return_ = ReturnExpr::int(IntFunctionId(0), IntExpr::value(0.into()));
 
         let layout = FrameLayout::from_function_parts(&[], &steps, &return_);
 
@@ -603,14 +679,17 @@ mod tests {
                 int_function_expr().type_().clone(),
             ),
         )];
-        let return_ = ReturnExpr::int(IntExpr::function_call(
-            IntFunctionExpr::local_get(
-                IntFunctionLocalId(3),
-                "h".into(),
-                int_function_expr().type_().clone(),
+        let return_ = ReturnExpr::int(
+            IntFunctionId(0),
+            IntExpr::function_call(
+                IntFunctionExpr::local_get(
+                    IntFunctionLocalId(3),
+                    "h".into(),
+                    int_function_expr().type_().clone(),
+                ),
+                Vec::new(),
             ),
-            Vec::new(),
-        ));
+        );
 
         let layout = FrameLayout::from_function_parts(&[], &steps, &return_);
 
@@ -642,7 +721,7 @@ mod tests {
                 ),
             ))),
         ];
-        let return_ = ReturnExpr::int(IntExpr::value(0.into()));
+        let return_ = ReturnExpr::int(IntFunctionId(0), IntExpr::value(0.into()));
 
         let layout = FrameLayout::from_function_parts(&[], &steps, &return_);
 
@@ -746,7 +825,7 @@ mod tests {
             ))),
             Step::evaluate(Expr::int(IntExpr::negate(IntExpr::value(1.into())))),
         ];
-        let return_ = ReturnExpr::int(IntExpr::value(0.into()));
+        let return_ = ReturnExpr::int(IntFunctionId(0), IntExpr::value(0.into()));
 
         let layout = FrameLayout::from_function_parts(&[], &steps, &return_);
 

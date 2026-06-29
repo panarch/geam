@@ -146,6 +146,11 @@ pub(in crate::planner) fn plan_variable_runtime_step(
                 let local = context.define_nil_function_local(name.clone(), value.type_().clone());
                 Step::let_nil_function(local, name, value)
             }
+            FunctionExprKind::Function(value) => {
+                let local =
+                    context.define_function_function_local(name.clone(), value.type_().clone());
+                Step::let_function_function(local, name, value)
+            }
         }),
     }
 }

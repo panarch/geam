@@ -88,7 +88,9 @@ pub fn plan_module(
     module: gleam_core::ast::TypedModule,
 ) -> Result<geam::ExecutionPlan, geam::PlanError>
 
-pub fn run_main(plan: &geam::ExecutionPlan) -> geam::Value
+pub fn run_main(
+    plan: &geam::ExecutionPlan,
+) -> Result<geam::Value, geam::ExecutionError>
 ```
 
 ## Intentionally Out Of Scope

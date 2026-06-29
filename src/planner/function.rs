@@ -1,4 +1,7 @@
-use crate::plan::{Expr, ExprKind, FunctionPlan, Param, ReturnExpr, ValueType};
+use crate::plan::{
+    Expr, ExprKind, FunctionFunctionId, FunctionPlan, Param, ReturnExpr, RuntimeFunctionId,
+    ValueType,
+};
 use crate::planner::context::{FunctionInfo, PlanContext};
 use crate::planner::error::{
     InvalidFunctionShapeReason, InvalidTypedAstReason, PlanError, UnsupportedFunctionReason,
@@ -42,7 +45,12 @@ pub(super) fn plan_function(
             },
         },
     )?;
-    let return_ = function_return_expr(&name, &info.return_type(), planned.return_)?;
+    let return_ = function_return_expr(
+        &name,
+        &info.return_type(),
+        &info.runtime_id,
+        planned.return_,
+    )?;
 
     Ok(FunctionPlan::new(
         info.id,
@@ -56,13 +64,60 @@ pub(super) fn plan_function(
 fn function_return_expr(
     name: &EcoString,
     expected: &ValueType,
+    runtime_id: &RuntimeFunctionId,
     actual: Expr,
 ) -> Result<ReturnExpr, PlanError> {
-    match (expected, actual.into_kind()) {
-        (ValueType::Int, ExprKind::Int(actual)) => Ok(ReturnExpr::int(actual)),
-        (ValueType::String, ExprKind::String(actual)) => Ok(ReturnExpr::string(actual)),
-        (ValueType::Bool, ExprKind::Bool(actual)) => Ok(ReturnExpr::bool(actual)),
-        (ValueType::Nil, ExprKind::Nil(actual)) => Ok(ReturnExpr::nil(actual)),
+    match (expected, runtime_id, actual.into_kind()) {
+        (ValueType::Int, RuntimeFunctionId::Int(runtime_id), ExprKind::Int(actual)) => {
+            Ok(ReturnExpr::int(*runtime_id, actual))
+        }
+        (ValueType::String, RuntimeFunctionId::String(runtime_id), ExprKind::String(actual)) => {
+            Ok(ReturnExpr::string(*runtime_id, actual))
+        }
+        (ValueType::Bool, RuntimeFunctionId::Bool(runtime_id), ExprKind::Bool(actual)) => {
+            Ok(ReturnExpr::bool(*runtime_id, actual))
+        }
+        (ValueType::Nil, RuntimeFunctionId::Nil(runtime_id), ExprKind::Nil(actual)) => {
+            Ok(ReturnExpr::nil(*runtime_id, actual))
+        }
+        (
+            ValueType::Function(expected),
+            RuntimeFunctionId::Function { id, return_type },
+            ExprKind::Function(actual),
+        ) if expected.as_ref() == actual.type_() && expected.as_ref() == return_type => {
+            function_returning_function_expr(name, *id, actual)
+        }
+        _ => Err(PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::FunctionShape {
+                name: name.clone(),
+                reason: InvalidFunctionShapeReason::ReturnTypeMismatch,
+            },
+        }),
+    }
+}
+
+fn function_returning_function_expr(
+    name: &EcoString,
+    runtime_id: FunctionFunctionId,
+    actual: crate::plan::FunctionExpr,
+) -> Result<ReturnExpr, PlanError> {
+    match (runtime_id, actual.into_kind()) {
+        (FunctionFunctionId::Int(runtime_id), crate::plan::FunctionExprKind::Int(actual)) => {
+            Ok(ReturnExpr::int_function(runtime_id, actual))
+        }
+        (FunctionFunctionId::String(runtime_id), crate::plan::FunctionExprKind::String(actual)) => {
+            Ok(ReturnExpr::string_function(runtime_id, actual))
+        }
+        (FunctionFunctionId::Bool(runtime_id), crate::plan::FunctionExprKind::Bool(actual)) => {
+            Ok(ReturnExpr::bool_function(runtime_id, actual))
+        }
+        (FunctionFunctionId::Nil(runtime_id), crate::plan::FunctionExprKind::Nil(actual)) => {
+            Ok(ReturnExpr::nil_function(runtime_id, actual))
+        }
+        (
+            FunctionFunctionId::Function(runtime_id),
+            crate::plan::FunctionExprKind::Function(actual),
+        ) => Ok(ReturnExpr::function_function(runtime_id, actual)),
         _ => Err(PlanError::InvalidTypedAst {
             reason: InvalidTypedAstReason::FunctionShape {
                 name: name.clone(),
@@ -73,23 +128,33 @@ fn function_return_expr(
 }
 
 pub(super) fn function_name(function: &TypedFunction) -> Result<EcoString, PlanError> {
-    function
-        .name
-        .as_ref()
-        .map(|(_, name)| name.clone())
-        .ok_or_else(|| PlanError::InvalidTypedAst {
+    match &function.name {
+        Some((_, name)) => Ok(name.clone()),
+        None => Err(PlanError::InvalidTypedAst {
             reason: InvalidTypedAstReason::FunctionShape {
                 name: "<anonymous>".into(),
                 reason: InvalidFunctionShapeReason::Anonymous,
             },
-        })
+        }),
+    }
 }
 
 #[cfg(test)]
 mod tests {
+    use crate::plan::{
+        BoolFunctionExpr, BoolFunctionFunctionId, BoolFunctionId, BoolFunctionValue, Expr,
+        FunctionExpr, FunctionFunctionExpr, FunctionFunctionFunctionId, FunctionFunctionId,
+        FunctionFunctionValue, FunctionId, FunctionType, IntFunctionExpr, IntFunctionFunctionId,
+        IntFunctionId, IntFunctionValue, IntLocalId, LocalId, NilFunctionExpr,
+        NilFunctionFunctionId, NilFunctionId, NilFunctionValue, ParamLocal, ReturnExpr,
+        RuntimeFunctionId, StringFunctionExpr, StringFunctionFunctionId, StringFunctionId,
+        StringFunctionValue, ValueType,
+    };
+    use crate::planner::context::FunctionInfo;
     use crate::planner::dsl::{
-        bool_, bool_arg, call_bool, call_int, call_nil, call_string, function, int, int_arg,
-        local_bool, local_int, local_nil, local_string, module, nil, nil_arg, string, string_arg,
+        bool_, bool_arg, call_bool, call_int, call_nil, call_string, function, function_ref, int,
+        int_arg, local_bool, local_int, local_nil, local_string, module, nil, nil_arg, string,
+        string_arg,
     };
     use crate::planner::plan_module;
     use crate::planner::support::{compile, compile_minimal_module, expect_plan_error};
@@ -126,6 +191,176 @@ pub fn main() {
         );
 
         assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn plan_main_returning_function_value() {
+        let actual = plan_module(compile(
+            r#"
+fn identity(value: Int) {
+  value
+}
+
+pub fn main() {
+  identity
+}
+"#,
+        ))
+        .expect("source should plan");
+        let expected = module(
+            "main",
+            function(
+                "main",
+                function_ref(
+                    RuntimeFunctionId::Int(IntFunctionId(0)),
+                    [LocalId::Int(IntLocalId(0))],
+                ),
+            ),
+            [function("identity", local_int(0, "value")).param_int(0, "value")],
+        );
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn reject_margin_function_return_family_mismatch() {
+        assert_eq!(
+            super::function_return_expr(
+                &"main".into(),
+                &ValueType::Function(Box::new(FunctionType::new(Vec::new(), ValueType::Int))),
+                &RuntimeFunctionId::Function {
+                    id: FunctionFunctionId::String(StringFunctionFunctionId(0)),
+                    return_type: FunctionType::new(Vec::new(), ValueType::Int),
+                },
+                Expr::function(FunctionExpr::int(IntFunctionExpr::value(
+                    IntFunctionValue::new(IntFunctionId(0), Vec::new()),
+                ))),
+            ),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::FunctionShape {
+                    name: "main".into(),
+                    reason: InvalidFunctionShapeReason::ReturnTypeMismatch,
+                },
+            }),
+        );
+    }
+
+    #[test]
+    fn reject_margin_function_return_type_metadata_mismatch() {
+        let expected = FunctionType::new(Vec::new(), ValueType::Int);
+        assert_eq!(
+            super::function_return_expr(
+                &"main".into(),
+                &ValueType::Function(Box::new(expected.clone())),
+                &RuntimeFunctionId::Function {
+                    id: FunctionFunctionId::Int(crate::plan::IntFunctionFunctionId(0)),
+                    return_type: expected,
+                },
+                Expr::function(FunctionExpr::int(IntFunctionExpr::value(
+                    IntFunctionValue::new(IntFunctionId(0), vec![ParamLocal::int(IntLocalId(0))],),
+                ))),
+            ),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::FunctionShape {
+                    name: "main".into(),
+                    reason: InvalidFunctionShapeReason::ReturnTypeMismatch,
+                },
+            }),
+        );
+
+        let expected = FunctionType::new(vec![ValueType::Int], ValueType::Int);
+        assert_eq!(
+            super::function_return_expr(
+                &"main".into(),
+                &ValueType::Function(Box::new(expected)),
+                &RuntimeFunctionId::Function {
+                    id: FunctionFunctionId::Int(crate::plan::IntFunctionFunctionId(0)),
+                    return_type: FunctionType::new(vec![ValueType::Int], ValueType::Int),
+                },
+                Expr::function(FunctionExpr::int(IntFunctionExpr::value(
+                    IntFunctionValue::new(IntFunctionId(0), Vec::new()),
+                ))),
+            ),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::FunctionShape {
+                    name: "main".into(),
+                    reason: InvalidFunctionShapeReason::ReturnTypeMismatch,
+                },
+            }),
+        );
+    }
+
+    #[test]
+    fn function_returning_function_expr_preserves_return_families() {
+        let function_return_type = FunctionType::new(Vec::new(), ValueType::Int);
+
+        assert_eq!(
+            super::function_returning_function_expr(
+                &"main".into(),
+                FunctionFunctionId::String(StringFunctionFunctionId(0)),
+                FunctionExpr::string(StringFunctionExpr::value(StringFunctionValue::new(
+                    StringFunctionId(0),
+                    Vec::new(),
+                ))),
+            ),
+            Ok(ReturnExpr::string_function(
+                StringFunctionFunctionId(0),
+                StringFunctionExpr::value(StringFunctionValue::new(
+                    StringFunctionId(0),
+                    Vec::new()
+                )),
+            )),
+        );
+
+        assert_eq!(
+            super::function_returning_function_expr(
+                &"main".into(),
+                FunctionFunctionId::Bool(BoolFunctionFunctionId(0)),
+                FunctionExpr::bool(BoolFunctionExpr::value(BoolFunctionValue::new(
+                    BoolFunctionId(0),
+                    Vec::new(),
+                ))),
+            ),
+            Ok(ReturnExpr::bool_function(
+                BoolFunctionFunctionId(0),
+                BoolFunctionExpr::value(BoolFunctionValue::new(BoolFunctionId(0), Vec::new())),
+            )),
+        );
+
+        assert_eq!(
+            super::function_returning_function_expr(
+                &"main".into(),
+                FunctionFunctionId::Nil(NilFunctionFunctionId(0)),
+                FunctionExpr::nil(NilFunctionExpr::value(NilFunctionValue::new(
+                    NilFunctionId(0),
+                    Vec::new(),
+                ))),
+            ),
+            Ok(ReturnExpr::nil_function(
+                NilFunctionFunctionId(0),
+                NilFunctionExpr::value(NilFunctionValue::new(NilFunctionId(0), Vec::new())),
+            )),
+        );
+
+        assert_eq!(
+            super::function_returning_function_expr(
+                &"main".into(),
+                FunctionFunctionId::Function(FunctionFunctionFunctionId(0)),
+                FunctionExpr::function(FunctionFunctionExpr::value(FunctionFunctionValue::new(
+                    FunctionFunctionId::Int(IntFunctionFunctionId(0)),
+                    Vec::new(),
+                    function_return_type.clone(),
+                ))),
+            ),
+            Ok(ReturnExpr::function_function(
+                FunctionFunctionFunctionId(0),
+                FunctionFunctionExpr::value(FunctionFunctionValue::new(
+                    FunctionFunctionId::Int(IntFunctionFunctionId(0)),
+                    Vec::new(),
+                    function_return_type,
+                )),
+            )),
+        );
     }
 
     #[test]
@@ -223,7 +458,7 @@ pub fn main() {
             expect_plan_error(
                 r#"
 @external(erlang, "one", "two")
-fn main() -> Int
+pub fn main() -> Int
 "#,
             ),
             PlanError::UnsupportedFunction {
@@ -255,24 +490,6 @@ pub fn main() {
                 r#"
 pub fn main() {
   [1]
-}
-"#,
-            ),
-            PlanError::UnsupportedFunction {
-                name: "main".into(),
-                reason: UnsupportedFunctionReason::UnsupportedReturnType,
-            },
-        );
-
-        assert_eq!(
-            expect_plan_error(
-                r#"
-fn identity(value: Int) {
-  value
-}
-
-pub fn main() {
-  identity
 }
 "#,
             ),
@@ -317,6 +534,29 @@ pub fn main() {
                 reason: InvalidTypedAstReason::FunctionShape {
                     name: "main".into(),
                     reason: InvalidFunctionShapeReason::ReturnTypeMismatch,
+                },
+            }),
+        );
+    }
+
+    #[test]
+    fn reject_margin_plan_function_name_shape() {
+        let mut module = compile_minimal_module();
+        let mut function = module.definitions.functions.remove(0);
+        function.name = None;
+        let info = FunctionInfo {
+            id: FunctionId::new(0),
+            runtime_id: RuntimeFunctionId::Int(IntFunctionId(0)),
+            return_type: ValueType::Int,
+            params: Vec::new(),
+        };
+
+        assert_eq!(
+            super::plan_function(info, &"main".into(), &Default::default(), function),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::FunctionShape {
+                    name: "<anonymous>".into(),
+                    reason: InvalidFunctionShapeReason::Anonymous,
                 },
             }),
         );

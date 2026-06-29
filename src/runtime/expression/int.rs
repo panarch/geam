@@ -1,5 +1,6 @@
 use super::eval_bool_expr;
 use crate::plan::{ExecutionPlan, IntExpr, IntExprKind};
+use crate::runtime::ExecutionError;
 use crate::runtime::frame::Frame;
 use crate::runtime::function;
 use num_bigint::BigInt;
@@ -8,10 +9,10 @@ pub(in crate::runtime) fn eval_int_expr(
     plan: &ExecutionPlan,
     frame: &mut Frame,
     expression: &IntExpr,
-) -> BigInt {
+) -> Result<BigInt, ExecutionError> {
     match expression.kind() {
-        IntExprKind::Value(value) => value.clone(),
-        IntExprKind::LocalGet { local, .. } => frame.get_int(*local),
+        IntExprKind::Value(value) => Ok(value.clone()),
+        IntExprKind::LocalGet { local, .. } => Ok(frame.get_int(*local)),
         IntExprKind::Call { function, args } => {
             function::run_int_call(plan, *function, args, frame)
         }
@@ -19,29 +20,29 @@ pub(in crate::runtime) fn eval_int_expr(
             function::run_int_function_call(plan, function, args, frame)
         }
         IntExprKind::Add { left, right } => {
-            eval_int_expr(plan, frame, left) + eval_int_expr(plan, frame, right)
+            Ok(eval_int_expr(plan, frame, left)? + eval_int_expr(plan, frame, right)?)
         }
         IntExprKind::Sub { left, right } => {
-            eval_int_expr(plan, frame, left) - eval_int_expr(plan, frame, right)
+            Ok(eval_int_expr(plan, frame, left)? - eval_int_expr(plan, frame, right)?)
         }
         IntExprKind::Mult { left, right } => {
-            eval_int_expr(plan, frame, left) * eval_int_expr(plan, frame, right)
+            Ok(eval_int_expr(plan, frame, left)? * eval_int_expr(plan, frame, right)?)
         }
-        IntExprKind::Div { left, right } => eval_div_int(
-            eval_int_expr(plan, frame, left),
-            eval_int_expr(plan, frame, right),
-        ),
-        IntExprKind::Remainder { left, right } => eval_remainder_int(
-            eval_int_expr(plan, frame, left),
-            eval_int_expr(plan, frame, right),
-        ),
-        IntExprKind::Negate(value) => -eval_int_expr(plan, frame, value),
+        IntExprKind::Div { left, right } => Ok(eval_div_int(
+            eval_int_expr(plan, frame, left)?,
+            eval_int_expr(plan, frame, right)?,
+        )),
+        IntExprKind::Remainder { left, right } => Ok(eval_remainder_int(
+            eval_int_expr(plan, frame, left)?,
+            eval_int_expr(plan, frame, right)?,
+        )),
+        IntExprKind::Negate(value) => Ok(-eval_int_expr(plan, frame, value)?),
         IntExprKind::BoolCase {
             subject,
             true_,
             false_,
         } => {
-            if eval_bool_expr(plan, frame, subject) {
+            if eval_bool_expr(plan, frame, subject)? {
                 eval_int_expr(plan, frame, true_)
             } else {
                 eval_int_expr(plan, frame, false_)
@@ -52,7 +53,7 @@ pub(in crate::runtime) fn eval_int_expr(
             clauses,
             fallback,
         } => {
-            let subject = eval_int_expr(plan, frame, subject);
+            let subject = eval_int_expr(plan, frame, subject)?;
             for (pattern, branch) in clauses {
                 if pattern == &subject {
                     return eval_int_expr(plan, frame, branch);
@@ -61,7 +62,7 @@ pub(in crate::runtime) fn eval_int_expr(
             eval_int_expr(plan, frame, fallback)
         }
         IntExprKind::Block { steps, return_ } => {
-            function::execute_steps(plan, steps, frame);
+            function::execute_steps(plan, steps, frame)?;
             eval_int_expr(plan, frame, return_)
         }
     }

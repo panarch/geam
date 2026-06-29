@@ -1,4 +1,4 @@
-use super::{BoolExpr, CallArg, FunctionCallArg, IntFunctionExpr};
+use super::{BoolExpr, CallArg, IntFunctionExpr};
 use crate::plan::{IntFunctionId, IntLocalId, Step};
 use ecow::EcoString;
 use num_bigint::BigInt;
@@ -21,7 +21,7 @@ pub(crate) enum IntExprKind {
     },
     FunctionCall {
         function: Box<IntFunctionExpr>,
-        args: Vec<FunctionCallArg>,
+        args: Vec<CallArg>,
     },
     Add {
         left: Box<IntExpr>,
@@ -79,7 +79,7 @@ impl IntExpr {
         }
     }
 
-    pub(crate) fn function_call(function: IntFunctionExpr, args: Vec<FunctionCallArg>) -> Self {
+    pub(crate) fn function_call(function: IntFunctionExpr, args: Vec<CallArg>) -> Self {
         Self {
             kind: IntExprKind::FunctionCall {
                 function: Box::new(function),

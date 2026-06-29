@@ -1,6 +1,6 @@
 use crate::plan::{
-    ExecutionPlan, FunctionId, FunctionType, IntFunctionLocalId, ParamLocal, RuntimeFunctionId,
-    ValueType,
+    ExecutionPlan, FunctionFunctionLocalId, FunctionId, FunctionType, IntFunctionLocalId,
+    ParamLocal, ValueType,
 };
 use crate::planner::context::{FunctionInfo, FunctionParam, FunctionRuntimeIds};
 use crate::planner::error::{
@@ -85,7 +85,7 @@ fn function_table(
 
     for function in functions {
         let name = function_name(function)?;
-        let return_type = FunctionReturnType::from_gleam(name.clone(), &function.return_type)?;
+        let return_type = function_return_type(name.clone(), &function.return_type)?;
         let params = function_params(name.clone(), &function.arguments)?;
         seeds.push(FunctionSeed {
             name,
@@ -151,11 +151,11 @@ fn function_info(
     seed: &FunctionSeed,
     runtime_ids: &mut FunctionRuntimeIds,
 ) -> FunctionInfo {
-    let runtime_id = seed.return_type.runtime_id(runtime_ids);
+    let runtime_id = runtime_ids.next(&seed.return_type);
     FunctionInfo {
         id: FunctionId::new(function_index),
         runtime_id,
-        return_type: seed.return_type.value_type(),
+        return_type: seed.return_type.clone(),
         params: seed.params.clone(),
     }
 }
@@ -165,52 +165,14 @@ struct FunctionSeed {
     name: EcoString,
     function: TypedFunction,
     params: Vec<FunctionParam>,
-    return_type: FunctionReturnType,
+    return_type: ValueType,
 }
 
-#[derive(Clone, Copy)]
-enum FunctionReturnType {
-    Int,
-    String,
-    Bool,
-    Nil,
-}
-
-impl FunctionReturnType {
-    fn from_gleam(name: EcoString, type_: &Type) -> Result<Self, PlanError> {
-        if type_.is_int() {
-            Ok(Self::Int)
-        } else if type_.is_string() {
-            Ok(Self::String)
-        } else if type_.is_bool() {
-            Ok(Self::Bool)
-        } else if type_.is_nil() {
-            Ok(Self::Nil)
-        } else {
-            Err(PlanError::UnsupportedFunction {
-                name,
-                reason: UnsupportedFunctionReason::UnsupportedReturnType,
-            })
-        }
-    }
-
-    fn runtime_id(self, runtime_ids: &mut FunctionRuntimeIds) -> RuntimeFunctionId {
-        match self {
-            Self::Int => runtime_ids.next_int(),
-            Self::String => runtime_ids.next_string(),
-            Self::Bool => runtime_ids.next_bool(),
-            Self::Nil => runtime_ids.next_nil(),
-        }
-    }
-
-    fn value_type(self) -> ValueType {
-        match self {
-            Self::Int => ValueType::Int,
-            Self::String => ValueType::String,
-            Self::Bool => ValueType::Bool,
-            Self::Nil => ValueType::Nil,
-        }
-    }
+fn function_return_type(name: EcoString, type_: &Type) -> Result<ValueType, PlanError> {
+    ValueType::from_gleam(type_).ok_or(PlanError::UnsupportedFunction {
+        name,
+        reason: UnsupportedFunctionReason::UnsupportedReturnType,
+    })
 }
 
 fn function_params(
@@ -225,6 +187,7 @@ fn function_params(
     let mut next_string_function = 0;
     let mut next_bool_function = 0;
     let mut next_nil_function = 0;
+    let mut next_function_function = 0;
 
     arguments
         .iter()
@@ -271,13 +234,13 @@ fn function_params(
                     local
                 }
                 ValueType::Function(type_) => function_param_local(
-                    &function_name,
                     type_,
                     &mut next_int_function,
                     &mut next_string_function,
                     &mut next_bool_function,
                     &mut next_nil_function,
-                )?,
+                    &mut next_function_function,
+                ),
             };
             Ok(FunctionParam { local, name })
         })
@@ -285,76 +248,52 @@ fn function_params(
 }
 
 fn function_param_local(
-    function_name: &EcoString,
     type_: &FunctionType,
     next_int_function: &mut usize,
     next_string_function: &mut usize,
     next_bool_function: &mut usize,
     next_nil_function: &mut usize,
-) -> Result<ParamLocal, PlanError> {
+    next_function_function: &mut usize,
+) -> ParamLocal {
     match type_.return_() {
         ValueType::Int => {
-            validate_function_argument_types(function_name, type_)?;
             let local =
                 ParamLocal::int_function(IntFunctionLocalId(*next_int_function), type_.clone());
             *next_int_function += 1;
-            Ok(local)
+            local
         }
         ValueType::String => {
-            validate_function_argument_types(function_name, type_)?;
             let local = ParamLocal::string_function(
                 crate::plan::StringFunctionLocalId(*next_string_function),
                 type_.clone(),
             );
             *next_string_function += 1;
-            Ok(local)
+            local
         }
         ValueType::Bool => {
-            validate_function_argument_types(function_name, type_)?;
             let local = ParamLocal::bool_function(
                 crate::plan::BoolFunctionLocalId(*next_bool_function),
                 type_.clone(),
             );
             *next_bool_function += 1;
-            Ok(local)
+            local
         }
         ValueType::Nil => {
-            validate_function_argument_types(function_name, type_)?;
             let local = ParamLocal::nil_function(
                 crate::plan::NilFunctionLocalId(*next_nil_function),
                 type_.clone(),
             );
             *next_nil_function += 1;
-            Ok(local)
+            local
         }
-        ValueType::Function(_) => Err(unsupported_function_returning_function(function_name)),
-    }
-}
-
-fn validate_function_argument_types(
-    function_name: &EcoString,
-    type_: &FunctionType,
-) -> Result<(), PlanError> {
-    for argument in type_.argument_types() {
-        if let ValueType::Function(type_) = argument {
-            match type_.return_() {
-                ValueType::Int | ValueType::String | ValueType::Bool | ValueType::Nil => {}
-                ValueType::Function(_) => {
-                    return Err(unsupported_function_returning_function(function_name));
-                }
-            }
-
-            validate_function_argument_types(function_name, type_)?;
+        ValueType::Function(_) => {
+            let local = ParamLocal::function_function(
+                FunctionFunctionLocalId(*next_function_function),
+                type_.clone(),
+            );
+            *next_function_function += 1;
+            local
         }
-    }
-
-    Ok(())
-}
-
-fn unsupported_function_returning_function(function_name: &EcoString) -> PlanError {
-    PlanError::UnsupportedArgument {
-        function: function_name.clone(),
-        reason: UnsupportedArgumentReason::FunctionReturningFunction,
     }
 }
 
@@ -372,8 +311,13 @@ fn validate_main_function(main: FunctionToPlan) -> Result<FunctionToPlan, PlanEr
 #[cfg(test)]
 mod tests {
     use super::plan_module;
-    use crate::plan::{FunctionType, ValueType};
-    use crate::planner::dsl::{function, int, module};
+    use crate::plan::{
+        FunctionFunctionId, FunctionType, IntFunctionFunctionId, IntFunctionId, IntLocalId,
+        LocalId, ParamLocal, RuntimeFunctionId, ValueType,
+    };
+    use crate::planner::dsl::{
+        call_int_returning_function, function, function_ref, int, local_int, module,
+    };
     use crate::planner::support::{compile, expect_plan_error};
     use crate::planner::{
         PlanError, UnsupportedArgumentReason, UnsupportedExpressionKind, UnsupportedFunctionReason,
@@ -530,10 +474,9 @@ fn helper() -> Int {
     }
 
     #[test]
-    fn reject_profile_function_return_type_after_main_reference() {
-        assert_eq!(
-            expect_plan_error(
-                r#"
+    fn plan_function_returning_function_after_main_reference() {
+        let actual = plan_module(compile(
+            r#"
 pub fn main() {
   get
   1
@@ -547,19 +490,37 @@ fn get() {
   add_one
 }
 "#,
-            ),
-            PlanError::UnsupportedFunction {
-                name: "get".into(),
-                reason: UnsupportedFunctionReason::UnsupportedReturnType,
-            },
+        ))
+        .expect("source should plan");
+        let returned_function_type = FunctionType::new(vec![ValueType::Int], ValueType::Int);
+        let expected = module(
+            "main",
+            function("main", int(1)).evaluate(function_ref(
+                RuntimeFunctionId::Function {
+                    id: FunctionFunctionId::Int(IntFunctionFunctionId(0)),
+                    return_type: returned_function_type.clone(),
+                },
+                Vec::<ParamLocal>::new(),
+            )),
+            [
+                function("add_one", local_int(0, "value").add_int(int(1))).param_int(0, "value"),
+                function(
+                    "get",
+                    function_ref(
+                        RuntimeFunctionId::Int(IntFunctionId(1)),
+                        [LocalId::Int(IntLocalId(0))],
+                    ),
+                ),
+            ],
         );
+
+        assert_eq!(actual, expected);
     }
 
     #[test]
-    fn reject_profile_function_return_type_after_main_call() {
-        assert_eq!(
-            expect_plan_error(
-                r#"
+    fn plan_function_returning_function_after_main_call() {
+        let actual = plan_module(compile(
+            r#"
 pub fn main() {
   get()
   1
@@ -573,12 +534,29 @@ fn get() {
   add_one
 }
 "#,
-            ),
-            PlanError::UnsupportedFunction {
-                name: "get".into(),
-                reason: UnsupportedFunctionReason::UnsupportedReturnType,
-            },
+        ))
+        .expect("source should plan");
+        let returned_function_type = FunctionType::new(vec![ValueType::Int], ValueType::Int);
+        let expected = module(
+            "main",
+            function("main", int(1)).evaluate(call_int_returning_function(
+                0,
+                [],
+                returned_function_type,
+            )),
+            [
+                function("add_one", local_int(0, "value").add_int(int(1))).param_int(0, "value"),
+                function(
+                    "get",
+                    function_ref(
+                        RuntimeFunctionId::Int(IntFunctionId(1)),
+                        [LocalId::Int(IntLocalId(0))],
+                    ),
+                ),
+            ],
         );
+
+        assert_eq!(actual, expected);
     }
 
     #[test]
@@ -592,20 +570,34 @@ pub fn main() {
 fn higher(callback: fn(fn(Int) -> Int) -> Int) {
   1
 }
+
+fn getter(callback: fn() -> fn(Int) -> Int) {
+  1
+}
 "#,
         ))
         .expect("source should plan");
+        let returned_function_type = FunctionType::new(vec![ValueType::Int], ValueType::Int);
         let expected = module(
             "main",
             function("main", int(1)),
-            [function("higher", int(1)).param_int_function(
-                0,
-                "callback",
-                [ValueType::Function(Box::new(FunctionType::new(
-                    vec![ValueType::Int],
-                    ValueType::Int,
-                )))],
-            )],
+            [
+                function("higher", int(1)).param_int_function(
+                    0,
+                    "callback",
+                    [ValueType::Function(Box::new(
+                        returned_function_type.clone(),
+                    ))],
+                ),
+                function("getter", int(1)).param_function_function(
+                    0,
+                    "callback",
+                    FunctionType::new(
+                        Vec::new(),
+                        ValueType::Function(Box::new(returned_function_type)),
+                    ),
+                ),
+            ],
         );
 
         assert_eq!(actual, expected);
@@ -628,42 +620,6 @@ fn count(values: List(Int)) {
             PlanError::UnsupportedArgument {
                 function: "count".into(),
                 reason: UnsupportedArgumentReason::UnsupportedType,
-            },
-        );
-
-        assert_eq!(
-            expect_plan_error(
-                r#"
-pub fn main() {
-  1
-}
-
-fn higher(callback: fn() -> fn(Int) -> Int) {
-  1
-}
-"#,
-            ),
-            PlanError::UnsupportedArgument {
-                function: "higher".into(),
-                reason: UnsupportedArgumentReason::FunctionReturningFunction,
-            },
-        );
-
-        assert_eq!(
-            expect_plan_error(
-                r#"
-pub fn main() {
-  1
-}
-
-fn higher(callback: fn(fn() -> fn(Int) -> Int) -> Int) {
-  1
-}
-"#,
-            ),
-            PlanError::UnsupportedArgument {
-                function: "higher".into(),
-                reason: UnsupportedArgumentReason::FunctionReturningFunction,
             },
         );
     }

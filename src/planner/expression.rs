@@ -147,8 +147,22 @@ fn invalid_expression_type(expected: InvalidExpressionType, actual: &Expr) -> Pl
     }
 }
 
+fn invalid_expression_type_for_value(expected: ValueType, actual: &Expr) -> PlanError {
+    invalid_expression_type(value_type_expression_type(expected), actual)
+}
+
 fn expression_type(expression: &Expr) -> InvalidExpressionType {
     match expression.value_type() {
+        ValueType::Int => InvalidExpressionType::Int,
+        ValueType::String => InvalidExpressionType::String,
+        ValueType::Bool => InvalidExpressionType::Bool,
+        ValueType::Nil => InvalidExpressionType::Nil,
+        ValueType::Function(_) => InvalidExpressionType::Function,
+    }
+}
+
+fn value_type_expression_type(type_: ValueType) -> InvalidExpressionType {
+    match type_ {
         ValueType::Int => InvalidExpressionType::Int,
         ValueType::String => InvalidExpressionType::String,
         ValueType::Bool => InvalidExpressionType::Bool,

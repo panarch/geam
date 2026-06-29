@@ -1,4 +1,7 @@
-use crate::plan::{BoolExpr, BoolFunctionLocalId, BoolFunctionValue, FunctionType, IntExpr, Step};
+use crate::plan::{
+    BoolExpr, BoolFunctionFunctionId, BoolFunctionLocalId, BoolFunctionValue, FunctionFunctionExpr,
+    FunctionType, IntExpr, Step,
+};
 use ecow::EcoString;
 use num_bigint::BigInt;
 
@@ -14,6 +17,16 @@ pub(crate) enum BoolFunctionExprKind {
     LocalGet {
         local: BoolFunctionLocalId,
         name: EcoString,
+    },
+    Call {
+        function: BoolFunctionFunctionId,
+        args: Vec<crate::plan::CallArg>,
+        type_: FunctionType,
+    },
+    FunctionCall {
+        function: Box<FunctionFunctionExpr>,
+        args: Vec<crate::plan::CallArg>,
+        type_: FunctionType,
     },
     BoolCase {
         subject: Box<BoolExpr>,
@@ -47,6 +60,36 @@ impl BoolFunctionExpr {
         Self {
             type_,
             kind: BoolFunctionExprKind::LocalGet { local, name },
+        }
+    }
+
+    pub(crate) fn call(
+        function: BoolFunctionFunctionId,
+        args: Vec<crate::plan::CallArg>,
+        type_: FunctionType,
+    ) -> Self {
+        Self {
+            type_: type_.clone(),
+            kind: BoolFunctionExprKind::Call {
+                function,
+                args,
+                type_,
+            },
+        }
+    }
+
+    pub(crate) fn function_call(
+        function: FunctionFunctionExpr,
+        args: Vec<crate::plan::CallArg>,
+        type_: FunctionType,
+    ) -> Self {
+        Self {
+            type_: type_.clone(),
+            kind: BoolFunctionExprKind::FunctionCall {
+                function: Box::new(function),
+                args,
+                type_,
+            },
         }
     }
 
@@ -103,7 +146,8 @@ impl BoolFunctionExpr {
 mod tests {
     use super::{BoolFunctionExpr, BoolFunctionExprKind};
     use crate::plan::{
-        BoolExpr, BoolFunctionId, BoolFunctionLocalId, BoolFunctionValue, BoolLocalId, Expr,
+        BoolExpr, BoolFunctionFunctionId, BoolFunctionId, BoolFunctionLocalId, BoolFunctionValue,
+        BoolLocalId, Expr, FunctionFunctionExpr, FunctionFunctionId, FunctionFunctionValue,
         FunctionType, IntExpr, ParamLocal, Step, ValueType,
     };
 
@@ -112,6 +156,15 @@ mod tests {
         assert!(matches!(
             BoolFunctionExpr::local_get(BoolFunctionLocalId(0), "f".into(), function_type()).kind(),
             BoolFunctionExprKind::LocalGet { .. },
+        ));
+        assert!(matches!(
+            BoolFunctionExpr::call(BoolFunctionFunctionId(0), Vec::new(), function_type()).kind(),
+            BoolFunctionExprKind::Call { .. },
+        ));
+        assert!(matches!(
+            BoolFunctionExpr::function_call(function_function_value(), Vec::new(), function_type())
+                .kind(),
+            BoolFunctionExprKind::FunctionCall { .. },
         ));
         assert!(matches!(
             BoolFunctionExpr::bool_case(BoolExpr::value(true), function_value(), function_value(),)
@@ -151,5 +204,13 @@ mod tests {
 
     fn function_type() -> FunctionType {
         FunctionType::new(vec![ValueType::Bool], ValueType::Bool)
+    }
+
+    fn function_function_value() -> FunctionFunctionExpr {
+        FunctionFunctionExpr::value(FunctionFunctionValue::new(
+            FunctionFunctionId::Bool(BoolFunctionFunctionId(0)),
+            Vec::new(),
+            function_type(),
+        ))
     }
 }

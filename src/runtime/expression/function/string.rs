@@ -1,4 +1,5 @@
 use crate::plan::{ExecutionPlan, StringFunctionExpr, StringFunctionExprKind, StringFunctionValue};
+use crate::runtime::ExecutionError;
 use crate::runtime::expression::{eval_bool_expr, eval_int_expr};
 use crate::runtime::frame::Frame;
 use crate::runtime::function;
@@ -7,16 +8,24 @@ pub(in crate::runtime) fn eval_string_function_expr(
     plan: &ExecutionPlan,
     frame: &mut Frame,
     expression: &StringFunctionExpr,
-) -> StringFunctionValue {
+) -> Result<StringFunctionValue, ExecutionError> {
     match expression.kind() {
-        StringFunctionExprKind::Value(value) => value.clone(),
-        StringFunctionExprKind::LocalGet { local, .. } => frame.get_string_function(*local),
+        StringFunctionExprKind::Value(value) => Ok(value.clone()),
+        StringFunctionExprKind::LocalGet { local, .. } => Ok(frame.get_string_function(*local)),
+        StringFunctionExprKind::Call { function, args, .. } => {
+            function::run_string_function_returning_function_call(plan, *function, args, frame)
+        }
+        StringFunctionExprKind::FunctionCall {
+            function: callee,
+            args,
+            ..
+        } => function::run_string_function_function_call(plan, callee, args, frame),
         StringFunctionExprKind::BoolCase {
             subject,
             true_,
             false_,
         } => {
-            if eval_bool_expr(plan, frame, subject) {
+            if eval_bool_expr(plan, frame, subject)? {
                 eval_string_function_expr(plan, frame, true_)
             } else {
                 eval_string_function_expr(plan, frame, false_)
@@ -27,7 +36,7 @@ pub(in crate::runtime) fn eval_string_function_expr(
             clauses,
             fallback,
         } => {
-            let subject = eval_int_expr(plan, frame, subject);
+            let subject = eval_int_expr(plan, frame, subject)?;
             for (pattern, branch) in clauses {
                 if pattern == &subject {
                     return eval_string_function_expr(plan, frame, branch);
@@ -36,7 +45,7 @@ pub(in crate::runtime) fn eval_string_function_expr(
             eval_string_function_expr(plan, frame, fallback)
         }
         StringFunctionExprKind::Block { steps, return_ } => {
-            function::execute_steps(plan, steps, frame);
+            function::execute_steps(plan, steps, frame)?;
             eval_string_function_expr(plan, frame, return_)
         }
     }
@@ -46,8 +55,9 @@ pub(in crate::runtime) fn eval_string_function_expr(
 mod tests {
     use super::eval_string_function_expr;
     use crate::plan::{
-        BoolExpr, ExecutionPlan, Expr, FunctionId, FunctionPlan, IntExpr, ParamLocal, ReturnExpr,
-        Step, StringFunctionExpr, StringFunctionId, StringFunctionValue, StringLocalId,
+        BoolExpr, ExecutionPlan, Expr, FunctionId, FunctionPlan, IntExpr, IntFunctionId,
+        ParamLocal, ReturnExpr, Step, StringFunctionExpr, StringFunctionId, StringFunctionValue,
+        StringLocalId,
     };
     use crate::runtime::frame::Frame;
 
@@ -66,6 +76,7 @@ mod tests {
                     other_function_value(),
                 ),
             )
+            .expect("expression should evaluate")
             .runtime_id(),
             StringFunctionId(0),
         );
@@ -79,6 +90,7 @@ mod tests {
                     function_value(),
                 ),
             )
+            .expect("expression should evaluate")
             .runtime_id(),
             StringFunctionId(0),
         );
@@ -99,6 +111,7 @@ mod tests {
                     other_function_value(),
                 ),
             )
+            .expect("expression should evaluate")
             .runtime_id(),
             StringFunctionId(0),
         );
@@ -112,6 +125,7 @@ mod tests {
                     function_value(),
                 ),
             )
+            .expect("expression should evaluate")
             .runtime_id(),
             StringFunctionId(0),
         );
@@ -131,6 +145,7 @@ mod tests {
                     function_value(),
                 ),
             )
+            .expect("expression should evaluate")
             .runtime_id(),
             StringFunctionId(0),
         );
@@ -144,7 +159,7 @@ mod tests {
                 "main".into(),
                 Vec::new(),
                 Vec::new(),
-                ReturnExpr::int(IntExpr::value(1.into())),
+                ReturnExpr::int(IntFunctionId(0), IntExpr::value(1.into())),
             ),
             Vec::new(),
         )

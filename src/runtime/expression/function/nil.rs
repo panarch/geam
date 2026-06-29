@@ -1,4 +1,5 @@
 use crate::plan::{ExecutionPlan, NilFunctionExpr, NilFunctionExprKind, NilFunctionValue};
+use crate::runtime::ExecutionError;
 use crate::runtime::expression::{eval_bool_expr, eval_int_expr};
 use crate::runtime::frame::Frame;
 use crate::runtime::function;
@@ -7,16 +8,24 @@ pub(in crate::runtime) fn eval_nil_function_expr(
     plan: &ExecutionPlan,
     frame: &mut Frame,
     expression: &NilFunctionExpr,
-) -> NilFunctionValue {
+) -> Result<NilFunctionValue, ExecutionError> {
     match expression.kind() {
-        NilFunctionExprKind::Value(value) => value.clone(),
-        NilFunctionExprKind::LocalGet { local, .. } => frame.get_nil_function(*local),
+        NilFunctionExprKind::Value(value) => Ok(value.clone()),
+        NilFunctionExprKind::LocalGet { local, .. } => Ok(frame.get_nil_function(*local)),
+        NilFunctionExprKind::Call { function, args, .. } => {
+            function::run_nil_function_returning_function_call(plan, *function, args, frame)
+        }
+        NilFunctionExprKind::FunctionCall {
+            function: callee,
+            args,
+            ..
+        } => function::run_nil_function_function_call(plan, callee, args, frame),
         NilFunctionExprKind::BoolCase {
             subject,
             true_,
             false_,
         } => {
-            if eval_bool_expr(plan, frame, subject) {
+            if eval_bool_expr(plan, frame, subject)? {
                 eval_nil_function_expr(plan, frame, true_)
             } else {
                 eval_nil_function_expr(plan, frame, false_)
@@ -27,7 +36,7 @@ pub(in crate::runtime) fn eval_nil_function_expr(
             clauses,
             fallback,
         } => {
-            let subject = eval_int_expr(plan, frame, subject);
+            let subject = eval_int_expr(plan, frame, subject)?;
             for (pattern, branch) in clauses {
                 if pattern == &subject {
                     return eval_nil_function_expr(plan, frame, branch);
@@ -36,7 +45,7 @@ pub(in crate::runtime) fn eval_nil_function_expr(
             eval_nil_function_expr(plan, frame, fallback)
         }
         NilFunctionExprKind::Block { steps, return_ } => {
-            function::execute_steps(plan, steps, frame);
+            function::execute_steps(plan, steps, frame)?;
             eval_nil_function_expr(plan, frame, return_)
         }
     }
@@ -46,8 +55,8 @@ pub(in crate::runtime) fn eval_nil_function_expr(
 mod tests {
     use super::eval_nil_function_expr;
     use crate::plan::{
-        BoolExpr, ExecutionPlan, Expr, FunctionId, FunctionPlan, IntExpr, NilFunctionExpr,
-        NilFunctionId, NilFunctionValue, NilLocalId, ParamLocal, ReturnExpr, Step,
+        BoolExpr, ExecutionPlan, Expr, FunctionId, FunctionPlan, IntExpr, IntFunctionId,
+        NilFunctionExpr, NilFunctionId, NilFunctionValue, NilLocalId, ParamLocal, ReturnExpr, Step,
     };
     use crate::runtime::frame::Frame;
 
@@ -66,6 +75,7 @@ mod tests {
                     other_function_value(),
                 ),
             )
+            .expect("expression should evaluate")
             .runtime_id(),
             NilFunctionId(0),
         );
@@ -79,6 +89,7 @@ mod tests {
                     function_value(),
                 ),
             )
+            .expect("expression should evaluate")
             .runtime_id(),
             NilFunctionId(0),
         );
@@ -99,6 +110,7 @@ mod tests {
                     other_function_value(),
                 ),
             )
+            .expect("expression should evaluate")
             .runtime_id(),
             NilFunctionId(0),
         );
@@ -112,6 +124,7 @@ mod tests {
                     function_value(),
                 ),
             )
+            .expect("expression should evaluate")
             .runtime_id(),
             NilFunctionId(0),
         );
@@ -131,6 +144,7 @@ mod tests {
                     function_value(),
                 ),
             )
+            .expect("expression should evaluate")
             .runtime_id(),
             NilFunctionId(0),
         );
@@ -144,7 +158,7 @@ mod tests {
                 "main".into(),
                 Vec::new(),
                 Vec::new(),
-                ReturnExpr::int(IntExpr::value(1.into())),
+                ReturnExpr::int(IntFunctionId(0), IntExpr::value(1.into())),
             ),
             Vec::new(),
         )

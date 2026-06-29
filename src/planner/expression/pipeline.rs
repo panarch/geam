@@ -117,8 +117,8 @@ mod tests {
         UnsupportedExpressionKind, UnsupportedPipelineReason,
     };
     use gleam_core::ast::{
-        ArgNames, CallArg, ImplicitCallArgOrigin, PipelineAssignmentKind, Statement, TypedArg,
-        TypedExpr, TypedPipelineAssignment, TypedStatement,
+        ArgNames, CallArg, FunctionLiteralKind, ImplicitCallArgOrigin, PipelineAssignmentKind,
+        Statement, TypedArg, TypedExpr, TypedPipelineAssignment, TypedStatement,
     };
     use gleam_core::type_::{self, ValueConstructor, ValueConstructorVariant};
     use std::sync::Arc;
@@ -609,7 +609,7 @@ pub fn main() {
         );
 
         let mut missing_capture_arg = compile_hole_pipeline_module();
-        let (capture_args, _) = expect_pipeline_hole_capture_mut(
+        let (_, capture_args, _) = expect_pipeline_hole_capture_mut(
             &mut missing_capture_arg.definitions.functions[1].body[0],
         );
         capture_args.clear();
@@ -620,8 +620,20 @@ pub fn main() {
             )),
         );
 
+        let mut non_capture_function_kind = compile_hole_pipeline_module();
+        let (kind, _, _) = expect_pipeline_hole_capture_mut(
+            &mut non_capture_function_kind.definitions.functions[1].body[0],
+        );
+        *kind = FunctionLiteralKind::Anonymous { head: dummy_span() };
+        assert_eq!(
+            plan_module(non_capture_function_kind),
+            Err(invalid_pipeline_shape(
+                InvalidPipelineShapeReason::InvalidHoleCapture,
+            )),
+        );
+
         let mut discard_capture_arg = compile_hole_pipeline_module();
-        let (capture_args, _) = expect_pipeline_hole_capture_mut(
+        let (_, capture_args, _) = expect_pipeline_hole_capture_mut(
             &mut discard_capture_arg.definitions.functions[1].body[0],
         );
         capture_args[0].names = ArgNames::Discard {
@@ -636,7 +648,7 @@ pub fn main() {
         );
 
         let mut non_call_body = compile_hole_pipeline_module();
-        let (_, body) =
+        let (_, _, body) =
             expect_pipeline_hole_capture_mut(&mut non_call_body.definitions.functions[1].body[0]);
         body[0] = Statement::Expression(super::super::typed_int_expr(1));
         assert_eq!(
@@ -647,7 +659,7 @@ pub fn main() {
         );
 
         let mut extra_body_statement = compile_hole_pipeline_module();
-        let (_, body) = expect_pipeline_hole_capture_mut(
+        let (_, _, body) = expect_pipeline_hole_capture_mut(
             &mut extra_body_statement.definitions.functions[1].body[0],
         );
         body.push(Statement::Expression(super::super::typed_int_expr(1)));
@@ -659,7 +671,7 @@ pub fn main() {
         );
 
         let mut labelled_inner_argument = compile_hole_pipeline_module();
-        let (_, body) = expect_pipeline_hole_capture_mut(
+        let (_, _, body) = expect_pipeline_hole_capture_mut(
             &mut labelled_inner_argument.definitions.functions[1].body[0],
         );
         let arguments = expect_call_arguments_mut(expect_expression_statement_mut(&mut body[0]));
@@ -672,7 +684,7 @@ pub fn main() {
         );
 
         let mut implicit_inner_argument = compile_hole_pipeline_module();
-        let (_, body) = expect_pipeline_hole_capture_mut(
+        let (_, _, body) = expect_pipeline_hole_capture_mut(
             &mut implicit_inner_argument.definitions.functions[1].body[0],
         );
         let arguments = expect_call_arguments_mut(expect_expression_statement_mut(&mut body[0]));
@@ -685,7 +697,7 @@ pub fn main() {
         );
 
         let mut missing_capture_usage = compile_hole_pipeline_module();
-        let (_, body) = expect_pipeline_hole_capture_mut(
+        let (_, _, body) = expect_pipeline_hole_capture_mut(
             &mut missing_capture_usage.definitions.functions[1].body[0],
         );
         let arguments = expect_call_arguments_mut(expect_expression_statement_mut(&mut body[0]));
@@ -698,7 +710,7 @@ pub fn main() {
         );
 
         let mut duplicate_capture_usage = compile_hole_pipeline_module();
-        let (_, body) = expect_pipeline_hole_capture_mut(
+        let (_, _, body) = expect_pipeline_hole_capture_mut(
             &mut duplicate_capture_usage.definitions.functions[1].body[0],
         );
         let arguments = expect_call_arguments_mut(expect_expression_statement_mut(&mut body[0]));
@@ -711,7 +723,7 @@ pub fn main() {
         );
 
         let mut non_local_capture_argument = compile_hole_pipeline_module();
-        let (_, body) = expect_pipeline_hole_capture_mut(
+        let (_, _, body) = expect_pipeline_hole_capture_mut(
             &mut non_local_capture_argument.definitions.functions[1].body[0],
         );
         let arguments = expect_call_arguments_mut(expect_expression_statement_mut(&mut body[0]));
@@ -858,17 +870,24 @@ pub fn main() {
 
     fn expect_pipeline_hole_capture_mut(
         statement: &mut TypedStatement,
-    ) -> (&mut Vec<TypedArg>, &mut Vec1<TypedStatement>) {
+    ) -> (
+        &mut FunctionLiteralKind,
+        &mut Vec<TypedArg>,
+        &mut Vec1<TypedStatement>,
+    ) {
         let (_, _, finally, _) = expect_pipeline_statement_mut(statement);
         let (_, fun, _) = expect_pipeline_final_call_mut(finally);
         let TypedExpr::Fn {
-            arguments, body, ..
+            kind,
+            arguments,
+            body,
+            ..
         } = fun.as_mut()
         else {
             panic!("expected pipeline hole capture function");
         };
 
-        (arguments, body)
+        (kind, arguments, body)
     }
 
     #[test]

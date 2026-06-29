@@ -1,4 +1,7 @@
-use crate::plan::{BoolExpr, FunctionType, IntExpr, NilFunctionLocalId, NilFunctionValue, Step};
+use crate::plan::{
+    BoolExpr, FunctionFunctionExpr, FunctionType, IntExpr, NilFunctionFunctionId,
+    NilFunctionLocalId, NilFunctionValue, Step,
+};
 use ecow::EcoString;
 use num_bigint::BigInt;
 
@@ -14,6 +17,16 @@ pub(crate) enum NilFunctionExprKind {
     LocalGet {
         local: NilFunctionLocalId,
         name: EcoString,
+    },
+    Call {
+        function: NilFunctionFunctionId,
+        args: Vec<crate::plan::CallArg>,
+        type_: FunctionType,
+    },
+    FunctionCall {
+        function: Box<FunctionFunctionExpr>,
+        args: Vec<crate::plan::CallArg>,
+        type_: FunctionType,
     },
     BoolCase {
         subject: Box<BoolExpr>,
@@ -47,6 +60,36 @@ impl NilFunctionExpr {
         Self {
             type_,
             kind: NilFunctionExprKind::LocalGet { local, name },
+        }
+    }
+
+    pub(crate) fn call(
+        function: NilFunctionFunctionId,
+        args: Vec<crate::plan::CallArg>,
+        type_: FunctionType,
+    ) -> Self {
+        Self {
+            type_: type_.clone(),
+            kind: NilFunctionExprKind::Call {
+                function,
+                args,
+                type_,
+            },
+        }
+    }
+
+    pub(crate) fn function_call(
+        function: FunctionFunctionExpr,
+        args: Vec<crate::plan::CallArg>,
+        type_: FunctionType,
+    ) -> Self {
+        Self {
+            type_: type_.clone(),
+            kind: NilFunctionExprKind::FunctionCall {
+                function: Box::new(function),
+                args,
+                type_,
+            },
         }
     }
 
@@ -103,8 +146,9 @@ impl NilFunctionExpr {
 mod tests {
     use super::{NilFunctionExpr, NilFunctionExprKind};
     use crate::plan::{
-        BoolExpr, Expr, FunctionType, IntExpr, NilFunctionId, NilFunctionLocalId, NilFunctionValue,
-        NilLocalId, ParamLocal, Step, ValueType,
+        BoolExpr, Expr, FunctionFunctionExpr, FunctionFunctionId, FunctionFunctionValue,
+        FunctionType, IntExpr, NilFunctionFunctionId, NilFunctionId, NilFunctionLocalId,
+        NilFunctionValue, NilLocalId, ParamLocal, Step, ValueType,
     };
 
     #[test]
@@ -112,6 +156,15 @@ mod tests {
         assert!(matches!(
             NilFunctionExpr::local_get(NilFunctionLocalId(0), "f".into(), function_type()).kind(),
             NilFunctionExprKind::LocalGet { .. },
+        ));
+        assert!(matches!(
+            NilFunctionExpr::call(NilFunctionFunctionId(0), Vec::new(), function_type()).kind(),
+            NilFunctionExprKind::Call { .. },
+        ));
+        assert!(matches!(
+            NilFunctionExpr::function_call(function_function_value(), Vec::new(), function_type())
+                .kind(),
+            NilFunctionExprKind::FunctionCall { .. },
         ));
         assert!(matches!(
             NilFunctionExpr::bool_case(BoolExpr::value(true), function_value(), function_value(),)
@@ -151,5 +204,13 @@ mod tests {
 
     fn function_type() -> FunctionType {
         FunctionType::new(vec![ValueType::Nil], ValueType::Nil)
+    }
+
+    fn function_function_value() -> FunctionFunctionExpr {
+        FunctionFunctionExpr::value(FunctionFunctionValue::new(
+            FunctionFunctionId::Nil(NilFunctionFunctionId(0)),
+            Vec::new(),
+            function_type(),
+        ))
     }
 }

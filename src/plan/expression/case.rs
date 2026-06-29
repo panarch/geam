@@ -1,6 +1,6 @@
 use super::{
-    BoolExpr, BoolFunctionExpr, IntExpr, IntFunctionExpr, NilExpr, NilFunctionExpr, StringExpr,
-    StringFunctionExpr,
+    BoolExpr, BoolFunctionExpr, FunctionFunctionExpr, IntExpr, IntFunctionExpr, NilExpr,
+    NilFunctionExpr, StringExpr, StringFunctionExpr,
 };
 use num_bigint::BigInt;
 
@@ -37,6 +37,10 @@ pub(crate) enum BoolCaseBranches {
         true_: NilFunctionExpr,
         false_: NilFunctionExpr,
     },
+    FunctionFunction {
+        true_: FunctionFunctionExpr,
+        false_: FunctionFunctionExpr,
+    },
 }
 
 pub(crate) enum IntCaseBranches {
@@ -71,5 +75,9 @@ pub(crate) enum IntCaseBranches {
     NilFunction {
         clauses: Vec<(BigInt, NilFunctionExpr)>,
         fallback: NilFunctionExpr,
+    },
+    FunctionFunction {
+        clauses: Vec<(BigInt, FunctionFunctionExpr)>,
+        fallback: FunctionFunctionExpr,
     },
 }

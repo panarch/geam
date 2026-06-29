@@ -11,27 +11,30 @@ use ecow::EcoString;
 use std::fmt;
 
 pub(crate) use expression::{
-    BoolCaseBranches, BoolExprKind, BoolFunctionExprKind, CallArgKind, ExprKind,
-    FunctionCallArgKind, FunctionExprKind, IntCaseBranches, IntExprKind, IntFunctionExprKind,
-    NilExprKind, NilFunctionExprKind, StringExprKind, StringFunctionExprKind,
+    BoolCaseBranches, BoolExprKind, BoolFunctionExprKind, CallArgKind, ExprKind, FunctionExprKind,
+    FunctionFunctionExprKind, IntCaseBranches, IntExprKind, IntFunctionExprKind, NilExprKind,
+    NilFunctionExprKind, StringExprKind, StringFunctionExprKind,
 };
 pub use expression::{
-    BoolExpr, BoolFunctionExpr, CallArg, Expr, FunctionCallArg, FunctionExpr, IntExpr,
+    BoolExpr, BoolFunctionExpr, CallArg, Expr, FunctionExpr, FunctionFunctionExpr, IntExpr,
     IntFunctionExpr, NilExpr, NilFunctionExpr, StringExpr, StringFunctionExpr,
 };
 pub(crate) use frame::FrameLayout;
 pub use function::{FunctionPlan, Param, ReturnExpr};
 pub(crate) use function::{ParamLocal, ReturnExprKind, RuntimeFunction};
-pub(crate) use id::RuntimeFunctionId;
 pub use id::{
-    BoolFunctionId, BoolFunctionLocalId, BoolLocalId, FunctionId, IntFunctionId,
-    IntFunctionLocalId, IntLocalId, LocalId, NilFunctionId, NilFunctionLocalId, NilLocalId,
-    StringFunctionId, StringFunctionLocalId, StringLocalId,
+    BoolFunctionFunctionId, BoolFunctionId, BoolFunctionLocalId, BoolLocalId,
+    FunctionFunctionFunctionId, FunctionFunctionLocalId, FunctionId, IntFunctionFunctionId,
+    IntFunctionId, IntFunctionLocalId, IntLocalId, LocalId, NilFunctionFunctionId, NilFunctionId,
+    NilFunctionLocalId, NilLocalId, StringFunctionFunctionId, StringFunctionId,
+    StringFunctionLocalId, StringLocalId,
 };
+pub(crate) use id::{FunctionFunctionId, FunctionReturnFamily, RuntimeFunctionId};
 pub use step::Step;
 pub(crate) use step::StepKind;
 pub(crate) use value::{
-    BoolFunctionValue, FunctionValueKind, IntFunctionValue, NilFunctionValue, StringFunctionValue,
+    BoolFunctionValue, FunctionFunctionValue, FunctionValueKind, IntFunctionValue,
+    NilFunctionValue, StringFunctionValue,
 };
 pub use value::{FunctionType, FunctionValue, Value, ValueType};
 
@@ -85,6 +88,41 @@ impl ExecutionPlan {
     pub(crate) fn nil_function(&self, id: NilFunctionId) -> &RuntimeFunction<NilExpr> {
         self.runtime.nil_function(id)
     }
+
+    pub(crate) fn int_function_function(
+        &self,
+        id: IntFunctionFunctionId,
+    ) -> &RuntimeFunction<IntFunctionExpr> {
+        self.runtime.int_function_function(id)
+    }
+
+    pub(crate) fn string_function_function(
+        &self,
+        id: StringFunctionFunctionId,
+    ) -> &RuntimeFunction<StringFunctionExpr> {
+        self.runtime.string_function_function(id)
+    }
+
+    pub(crate) fn bool_function_function(
+        &self,
+        id: BoolFunctionFunctionId,
+    ) -> &RuntimeFunction<BoolFunctionExpr> {
+        self.runtime.bool_function_function(id)
+    }
+
+    pub(crate) fn nil_function_function(
+        &self,
+        id: NilFunctionFunctionId,
+    ) -> &RuntimeFunction<NilFunctionExpr> {
+        self.runtime.nil_function_function(id)
+    }
+
+    pub(crate) fn function_function_function(
+        &self,
+        id: FunctionFunctionFunctionId,
+    ) -> &RuntimeFunction<FunctionFunctionExpr> {
+        self.runtime.function_function_function(id)
+    }
 }
 
 impl fmt::Debug for ExecutionPlan {
@@ -106,7 +144,10 @@ impl PartialEq for ExecutionPlan {
 
 #[cfg(test)]
 mod tests {
-    use super::{ExecutionPlan, FunctionId, FunctionPlan, IntExpr, ReturnExpr};
+    use super::{
+        ExecutionPlan, FunctionId, FunctionPlan, IntExpr, IntFunctionId, ReturnExpr,
+        RuntimeFunctionId,
+    };
     use num_bigint::BigInt;
 
     #[test]
@@ -116,14 +157,14 @@ mod tests {
             "main".into(),
             Vec::new(),
             Vec::new(),
-            ReturnExpr::int(IntExpr::value(BigInt::from(1))),
+            ReturnExpr::int(IntFunctionId(0), IntExpr::value(BigInt::from(1))),
         );
         let helper = FunctionPlan::new(
             FunctionId::new(1),
             "helper".into(),
             Vec::new(),
             Vec::new(),
-            ReturnExpr::int(IntExpr::value(BigInt::from(2))),
+            ReturnExpr::int(IntFunctionId(1), IntExpr::value(BigInt::from(2))),
         );
         let plan = ExecutionPlan::new("main".into(), main, vec![helper]);
 
@@ -131,6 +172,38 @@ mod tests {
         assert_eq!(plan.main_function().name(), "main");
         assert_eq!(plan.functions().len(), 1);
         assert_eq!(plan.functions()[0].name(), "helper");
+    }
+
+    #[test]
+    fn execution_plan_runtime_table_uses_return_expr_ids() {
+        let main = FunctionPlan::new(
+            FunctionId::new(0),
+            "main".into(),
+            Vec::new(),
+            Vec::new(),
+            ReturnExpr::int(IntFunctionId(1), IntExpr::value(BigInt::from(11))),
+        );
+        let helper = FunctionPlan::new(
+            FunctionId::new(1),
+            "helper".into(),
+            Vec::new(),
+            Vec::new(),
+            ReturnExpr::int(IntFunctionId(0), IntExpr::value(BigInt::from(10))),
+        );
+        let plan = ExecutionPlan::new("main".into(), main, vec![helper]);
+
+        assert_eq!(
+            plan.main_runtime(),
+            RuntimeFunctionId::Int(IntFunctionId(1))
+        );
+        assert_eq!(
+            plan.int_function(IntFunctionId(0)).return_(),
+            &IntExpr::value(BigInt::from(10)),
+        );
+        assert_eq!(
+            plan.int_function(IntFunctionId(1)).return_(),
+            &IntExpr::value(BigInt::from(11)),
+        );
     }
 
     #[test]
@@ -142,7 +215,7 @@ mod tests {
                 "main".into(),
                 Vec::new(),
                 Vec::new(),
-                ReturnExpr::int(IntExpr::value(BigInt::from(1))),
+                ReturnExpr::int(IntFunctionId(0), IntExpr::value(BigInt::from(1))),
             ),
             Vec::new(),
         );
@@ -152,6 +225,7 @@ mod tests {
         assert!(debug.contains("module"));
         assert!(debug.contains("main"));
         assert!(debug.contains("functions"));
-        assert!(!debug.contains("runtime"));
+        assert!(!debug.contains("runtime:"));
+        assert!(!debug.contains("RuntimePlan"));
     }
 }
