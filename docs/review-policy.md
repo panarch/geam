@@ -28,15 +28,13 @@ Runtime code assumes it receives a valid `ExecutionPlan`. Structural execution
 failures belong in plan construction as `PlanError`, not in a runtime error
 enum.
 
-Runtime may dispatch on planner-validated tags when the plan shape is recursive,
-such as function values that return function values. This dispatch is execution
-routing, not validation. It must not become `RuntimeError`, default fallback
+Runtime tag dispatch is allowed only for planner-validated recursive plan
+shapes, and only as execution routing. It must not become validation, fallback
 behavior, or a source-visible semantic difference.
 
-When Rust cannot encode a planner-validated projection directly, keep the
-projection private, explicit, and covered. The panic branch is an internal
-`ExecutionPlan` invariant failure, not profile validation or runtime error
-handling.
+`ExecutionError` is limited to internal execution invariant failures that Rust
+cannot encode in the current plan shape. Adding a new `ExecutionError`
+constructor or invariant kind requires explicit design review.
 
 ## Plan Construction Rules
 
@@ -83,11 +81,7 @@ Geam has an explicit compatibility rule for that surface.
 
 Production Geam logic must not use explicit panic paths for control flow,
 profile validation, or recoverable invariant handling. Do not use
-`unreachable!`, `unwrap`, or `expect` in non-test logic code.
-
-The only allowed production `panic!` path is a private, planner-validated
-projection whose mismatch cannot be reached from `plan_module` output. Keep
-that projection local, cold, and covered by unit tests.
+`panic!`, `unreachable!`, `unwrap`, or `expect` in non-test logic code.
 
 Boundary failures must become structured errors before runtime execution. If a
 case can be reached from valid Gleam source, reject it as a profile error. If it

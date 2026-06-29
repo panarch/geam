@@ -70,6 +70,15 @@ pub(crate) enum FunctionFunctionId {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum FunctionReturnFamily {
+    Int,
+    String,
+    Bool,
+    Nil,
+    Function,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct IntFunctionFunctionId(pub(crate) usize);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -96,47 +105,62 @@ impl FunctionId {
 }
 
 impl FunctionFunctionId {
-    pub(crate) fn int(self) -> IntFunctionFunctionId {
+    pub(crate) fn family(self) -> FunctionReturnFamily {
         match self {
-            Self::Int(id) => id,
-            _ => validated_function_tag_mismatch("Int"),
+            Self::Int(_) => FunctionReturnFamily::Int,
+            Self::String(_) => FunctionReturnFamily::String,
+            Self::Bool(_) => FunctionReturnFamily::Bool,
+            Self::Nil(_) => FunctionReturnFamily::Nil,
+            Self::Function(_) => FunctionReturnFamily::Function,
         }
     }
 
-    pub(crate) fn string(self) -> StringFunctionFunctionId {
+    pub(crate) fn int(self) -> Option<IntFunctionFunctionId> {
         match self {
-            Self::String(id) => id,
-            _ => validated_function_tag_mismatch("String"),
+            Self::Int(id) => Some(id),
+            _ => None,
         }
     }
 
-    pub(crate) fn bool(self) -> BoolFunctionFunctionId {
+    pub(crate) fn string(self) -> Option<StringFunctionFunctionId> {
         match self {
-            Self::Bool(id) => id,
-            _ => validated_function_tag_mismatch("Bool"),
+            Self::String(id) => Some(id),
+            _ => None,
         }
     }
 
-    pub(crate) fn nil(self) -> NilFunctionFunctionId {
+    pub(crate) fn bool(self) -> Option<BoolFunctionFunctionId> {
         match self {
-            Self::Nil(id) => id,
-            _ => validated_function_tag_mismatch("Nil"),
+            Self::Bool(id) => Some(id),
+            _ => None,
         }
     }
 
-    pub(crate) fn function(self) -> FunctionFunctionFunctionId {
+    pub(crate) fn nil(self) -> Option<NilFunctionFunctionId> {
         match self {
-            Self::Function(id) => id,
-            _ => validated_function_tag_mismatch("Function"),
+            Self::Nil(id) => Some(id),
+            _ => None,
+        }
+    }
+
+    pub(crate) fn function(self) -> Option<FunctionFunctionFunctionId> {
+        match self {
+            Self::Function(id) => Some(id),
+            _ => None,
         }
     }
 }
 
-#[cold]
-fn validated_function_tag_mismatch(expected: &'static str) -> ! {
-    panic!(
-        "planner-validated function tag mismatch: expected {expected} function-returning function"
-    )
+impl std::fmt::Display for FunctionReturnFamily {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Int => f.write_str("Int"),
+            Self::String => f.write_str("String"),
+            Self::Bool => f.write_str("Bool"),
+            Self::Nil => f.write_str("Nil"),
+            Self::Function => f.write_str("Function"),
+        }
+    }
 }
 
 #[cfg(test)]
@@ -181,53 +205,83 @@ mod tests {
     fn function_function_id_typed_projection() {
         assert_eq!(
             FunctionFunctionId::Int(IntFunctionFunctionId(1)).int(),
-            IntFunctionFunctionId(1),
+            Some(IntFunctionFunctionId(1)),
         );
         assert_eq!(
             FunctionFunctionId::String(StringFunctionFunctionId(2)).string(),
-            StringFunctionFunctionId(2),
+            Some(StringFunctionFunctionId(2)),
         );
         assert_eq!(
             FunctionFunctionId::Bool(BoolFunctionFunctionId(3)).bool(),
-            BoolFunctionFunctionId(3),
+            Some(BoolFunctionFunctionId(3)),
         );
         assert_eq!(
             FunctionFunctionId::Nil(NilFunctionFunctionId(4)).nil(),
-            NilFunctionFunctionId(4),
+            Some(NilFunctionFunctionId(4)),
         );
         assert_eq!(
             FunctionFunctionId::Function(FunctionFunctionFunctionId(5)).function(),
-            FunctionFunctionFunctionId(5),
+            Some(FunctionFunctionFunctionId(5)),
         );
     }
 
     #[test]
-    #[should_panic(expected = "planner-validated function tag mismatch")]
-    fn function_function_id_int_projection_panics_on_mismatch() {
-        FunctionFunctionId::String(StringFunctionFunctionId(1)).int();
+    fn function_function_id_typed_projection_mismatch() {
+        assert_eq!(
+            FunctionFunctionId::String(StringFunctionFunctionId(1)).int(),
+            None,
+        );
+        assert_eq!(
+            FunctionFunctionId::Int(IntFunctionFunctionId(1)).string(),
+            None,
+        );
+        assert_eq!(
+            FunctionFunctionId::Int(IntFunctionFunctionId(1)).bool(),
+            None,
+        );
+        assert_eq!(
+            FunctionFunctionId::Int(IntFunctionFunctionId(1)).nil(),
+            None
+        );
+        assert_eq!(
+            FunctionFunctionId::Int(IntFunctionFunctionId(1)).function(),
+            None,
+        );
     }
 
     #[test]
-    #[should_panic(expected = "planner-validated function tag mismatch")]
-    fn function_function_id_string_projection_panics_on_mismatch() {
-        FunctionFunctionId::Int(IntFunctionFunctionId(1)).string();
+    fn function_function_id_family() {
+        assert_eq!(
+            FunctionFunctionId::Int(IntFunctionFunctionId(1)).family(),
+            super::FunctionReturnFamily::Int,
+        );
+        assert_eq!(
+            FunctionFunctionId::String(StringFunctionFunctionId(1)).family(),
+            super::FunctionReturnFamily::String,
+        );
+        assert_eq!(
+            FunctionFunctionId::Bool(BoolFunctionFunctionId(1)).family(),
+            super::FunctionReturnFamily::Bool,
+        );
+        assert_eq!(
+            FunctionFunctionId::Nil(NilFunctionFunctionId(1)).family(),
+            super::FunctionReturnFamily::Nil,
+        );
+        assert_eq!(
+            FunctionFunctionId::Function(FunctionFunctionFunctionId(1)).family(),
+            super::FunctionReturnFamily::Function,
+        );
     }
 
     #[test]
-    #[should_panic(expected = "planner-validated function tag mismatch")]
-    fn function_function_id_bool_projection_panics_on_mismatch() {
-        FunctionFunctionId::Int(IntFunctionFunctionId(1)).bool();
-    }
-
-    #[test]
-    #[should_panic(expected = "planner-validated function tag mismatch")]
-    fn function_function_id_nil_projection_panics_on_mismatch() {
-        FunctionFunctionId::Int(IntFunctionFunctionId(1)).nil();
-    }
-
-    #[test]
-    #[should_panic(expected = "planner-validated function tag mismatch")]
-    fn function_function_id_function_projection_panics_on_mismatch() {
-        FunctionFunctionId::Int(IntFunctionFunctionId(1)).function();
+    fn function_return_family_display() {
+        assert_eq!(super::FunctionReturnFamily::Int.to_string(), "Int");
+        assert_eq!(super::FunctionReturnFamily::String.to_string(), "String");
+        assert_eq!(super::FunctionReturnFamily::Bool.to_string(), "Bool");
+        assert_eq!(super::FunctionReturnFamily::Nil.to_string(), "Nil");
+        assert_eq!(
+            super::FunctionReturnFamily::Function.to_string(),
+            "Function"
+        );
     }
 }

@@ -1,5 +1,6 @@
 use super::{eval_bool_expr, eval_int_expr};
 use crate::plan::{ExecutionPlan, StringExpr, StringExprKind};
+use crate::runtime::ExecutionError;
 use crate::runtime::frame::Frame;
 use crate::runtime::function;
 use ecow::EcoString;
@@ -8,28 +9,28 @@ pub(in crate::runtime) fn eval_string_expr(
     plan: &ExecutionPlan,
     frame: &mut Frame,
     expression: &StringExpr,
-) -> EcoString {
+) -> Result<EcoString, ExecutionError> {
     match expression.kind() {
-        StringExprKind::Value(value) => value.clone(),
-        StringExprKind::LocalGet { local, .. } => frame.get_string(*local),
+        StringExprKind::Value(value) => Ok(value.clone()),
+        StringExprKind::LocalGet { local, .. } => Ok(frame.get_string(*local)),
         StringExprKind::Call { function, args } => {
             function::run_string_call(plan, *function, args, frame)
         }
         StringExprKind::FunctionCall { function, args } => {
             function::run_string_function_call(plan, function, args, frame)
         }
-        StringExprKind::Concatenate { left, right } => format!(
+        StringExprKind::Concatenate { left, right } => Ok(format!(
             "{}{}",
-            eval_string_expr(plan, frame, left),
-            eval_string_expr(plan, frame, right),
+            eval_string_expr(plan, frame, left)?,
+            eval_string_expr(plan, frame, right)?,
         )
-        .into(),
+        .into()),
         StringExprKind::BoolCase {
             subject,
             true_,
             false_,
         } => {
-            if eval_bool_expr(plan, frame, subject) {
+            if eval_bool_expr(plan, frame, subject)? {
                 eval_string_expr(plan, frame, true_)
             } else {
                 eval_string_expr(plan, frame, false_)
@@ -40,7 +41,7 @@ pub(in crate::runtime) fn eval_string_expr(
             clauses,
             fallback,
         } => {
-            let subject = eval_int_expr(plan, frame, subject);
+            let subject = eval_int_expr(plan, frame, subject)?;
             for (pattern, branch) in clauses {
                 if pattern == &subject {
                     return eval_string_expr(plan, frame, branch);
@@ -49,7 +50,7 @@ pub(in crate::runtime) fn eval_string_expr(
             eval_string_expr(plan, frame, fallback)
         }
         StringExprKind::Block { steps, return_ } => {
-            function::execute_steps(plan, steps, frame);
+            function::execute_steps(plan, steps, frame)?;
             eval_string_expr(plan, frame, return_)
         }
     }

@@ -5,6 +5,7 @@ mod nil;
 mod string;
 
 use crate::plan::{ExecutionPlan, Expr, ExprKind, Value};
+use crate::runtime::ExecutionError;
 use crate::runtime::frame::Frame;
 
 pub(super) use self::{
@@ -18,17 +19,24 @@ pub(super) use self::{
     string::eval_string_expr,
 };
 
-pub(super) fn eval_expr(plan: &ExecutionPlan, frame: &mut Frame, expression: &Expr) -> Value {
+pub(super) fn eval_expr(
+    plan: &ExecutionPlan,
+    frame: &mut Frame,
+    expression: &Expr,
+) -> Result<Value, ExecutionError> {
     match expression.kind() {
-        ExprKind::Int(expression) => Value::Int(eval_int_expr(plan, frame, expression)),
-        ExprKind::String(expression) => Value::String(eval_string_expr(plan, frame, expression)),
-        ExprKind::Bool(expression) => Value::Bool(eval_bool_expr(plan, frame, expression)),
+        ExprKind::Int(expression) => Ok(Value::Int(eval_int_expr(plan, frame, expression)?)),
+        ExprKind::String(expression) => {
+            Ok(Value::String(eval_string_expr(plan, frame, expression)?))
+        }
+        ExprKind::Bool(expression) => Ok(Value::Bool(eval_bool_expr(plan, frame, expression)?)),
         ExprKind::Nil(expression) => {
-            eval_nil_expr(plan, frame, expression);
-            Value::Nil
+            eval_nil_expr(plan, frame, expression)?;
+            Ok(Value::Nil)
         }
         ExprKind::Function(expression) => {
-            Value::Function(eval_function_expr(plan, frame, expression))
+            let value = eval_function_expr(plan, frame, expression)?;
+            Ok(Value::Function(value))
         }
     }
 }

@@ -1,5 +1,4 @@
-use geam::{Value, compile_typed_module, plan_module, run_main};
-use num_bigint::BigInt;
+use geam::{FunctionType, Value, ValueType, compile_typed_module, plan_module, run_main};
 
 macro_rules! execution_case {
     ($name:ident, $fixture:literal) => {
@@ -34,6 +33,26 @@ execution_case!(int_case, "int_case.gleam");
 execution_case!(block_expression, "block_expression.gleam");
 execution_case!(pipeline, "pipeline.gleam");
 execution_case!(function_after_main, "function_after_main.gleam");
+execution_case!(
+    main_returning_int_function,
+    "main_returning_int_function.gleam"
+);
+execution_case!(
+    main_returning_string_function,
+    "main_returning_string_function.gleam"
+);
+execution_case!(
+    main_returning_bool_function,
+    "main_returning_bool_function.gleam"
+);
+execution_case!(
+    main_returning_nil_function,
+    "main_returning_nil_function.gleam"
+);
+execution_case!(
+    main_returning_function_returning_function,
+    "main_returning_function_returning_function.gleam"
+);
 execution_case!(function_value_local, "function_value_local.gleam");
 execution_case!(
     function_value_argument_callback,
@@ -119,12 +138,12 @@ rejection_case!(
 fn run_fixture(file_name: &str) {
     let path = format!("tests/fixtures/execution/{file_name}");
     let src = std::fs::read_to_string(&path).expect("fixture should be readable");
-    let expected = parse_expected_value(&src);
+    let expected = expected_text(&src);
     let module = compile_typed_module("main", path, &src).expect("fixture should compile");
     let plan = plan_module(module).expect("fixture should plan");
-    let actual = run_main(&plan);
+    let actual = run_main(&plan).expect("fixture should run");
 
-    assert_eq!(actual, expected);
+    assert_eq!(render_value(&actual), expected);
 }
 
 fn reject_fixture(file_name: &str) {
@@ -135,7 +154,7 @@ fn reject_fixture(file_name: &str) {
     assert!(plan_module(module).is_err());
 }
 
-fn parse_expected_value(src: &str) -> Value {
+fn expected_text(src: &str) -> &str {
     let line = src
         .lines()
         .rev()
@@ -146,27 +165,39 @@ fn parse_expected_value(src: &str) -> Value {
         panic!("last non-empty fixture line must start with `// geam:expect `");
     };
 
-    if let Some(value) = value.strip_prefix("Int(").and_then(|s| s.strip_suffix(')')) {
-        return Value::Int(value.parse::<BigInt>().expect("valid Int expectation"));
-    }
+    value
+}
 
-    if let Some(value) = value
-        .strip_prefix("String(\"")
-        .and_then(|s| s.strip_suffix("\")"))
-    {
-        return Value::String(value.into());
+fn render_value(value: &Value) -> String {
+    match value {
+        Value::Int(value) => format!("Int({value})"),
+        Value::String(value) => format!("String({value:?})"),
+        Value::Bool(value) => format!("Bool({value})"),
+        Value::Nil => "Nil".into(),
+        Value::Function(function) => {
+            let type_ = function.type_();
+            format!("Function({})", render_function_type(&type_))
+        }
     }
+}
 
-    if let Some(value) = value
-        .strip_prefix("Bool(")
-        .and_then(|s| s.strip_suffix(')'))
-    {
-        return Value::Bool(value.parse::<bool>().expect("valid Bool expectation"));
+fn render_function_type(type_: &FunctionType) -> String {
+    let arguments = type_
+        .argument_types()
+        .iter()
+        .map(render_value_type)
+        .collect::<Vec<_>>()
+        .join(", ");
+
+    format!("fn({arguments}) -> {}", render_value_type(type_.return_()))
+}
+
+fn render_value_type(type_: &ValueType) -> String {
+    match type_ {
+        ValueType::Int => "Int".into(),
+        ValueType::String => "String".into(),
+        ValueType::Bool => "Bool".into(),
+        ValueType::Nil => "Nil".into(),
+        ValueType::Function(type_) => render_function_type(type_),
     }
-
-    if value == "Nil" {
-        return Value::Nil;
-    }
-
-    panic!("unsupported expectation: {value}");
 }

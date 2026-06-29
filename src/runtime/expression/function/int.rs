@@ -1,4 +1,5 @@
 use crate::plan::{ExecutionPlan, IntFunctionExpr, IntFunctionExprKind, IntFunctionValue};
+use crate::runtime::ExecutionError;
 use crate::runtime::expression::{eval_bool_expr, eval_int_expr};
 use crate::runtime::frame::Frame;
 use crate::runtime::function;
@@ -7,10 +8,10 @@ pub(in crate::runtime) fn eval_int_function_expr(
     plan: &ExecutionPlan,
     frame: &mut Frame,
     expression: &IntFunctionExpr,
-) -> IntFunctionValue {
+) -> Result<IntFunctionValue, ExecutionError> {
     match expression.kind() {
-        IntFunctionExprKind::Value(value) => value.clone(),
-        IntFunctionExprKind::LocalGet { local, .. } => frame.get_int_function(*local),
+        IntFunctionExprKind::Value(value) => Ok(value.clone()),
+        IntFunctionExprKind::LocalGet { local, .. } => Ok(frame.get_int_function(*local)),
         IntFunctionExprKind::Call { function, args, .. } => {
             function::run_int_function_returning_function_call(plan, *function, args, frame)
         }
@@ -24,7 +25,7 @@ pub(in crate::runtime) fn eval_int_function_expr(
             true_,
             false_,
         } => {
-            if eval_bool_expr(plan, frame, subject) {
+            if eval_bool_expr(plan, frame, subject)? {
                 eval_int_function_expr(plan, frame, true_)
             } else {
                 eval_int_function_expr(plan, frame, false_)
@@ -35,7 +36,7 @@ pub(in crate::runtime) fn eval_int_function_expr(
             clauses,
             fallback,
         } => {
-            let subject = eval_int_expr(plan, frame, subject);
+            let subject = eval_int_expr(plan, frame, subject)?;
             for (pattern, branch) in clauses {
                 if pattern == &subject {
                     return eval_int_function_expr(plan, frame, branch);
@@ -44,7 +45,7 @@ pub(in crate::runtime) fn eval_int_function_expr(
             eval_int_function_expr(plan, frame, fallback)
         }
         IntFunctionExprKind::Block { steps, return_ } => {
-            function::execute_steps(plan, steps, frame);
+            function::execute_steps(plan, steps, frame)?;
             eval_int_function_expr(plan, frame, return_)
         }
     }
@@ -71,7 +72,8 @@ mod tests {
                 function_value(),
                 other_function_value(),
             ),
-        );
+        )
+        .expect("expression should evaluate");
 
         assert_eq!(function.runtime_id(), IntFunctionId(0));
 
@@ -83,7 +85,8 @@ mod tests {
                 other_function_value(),
                 function_value(),
             ),
-        );
+        )
+        .expect("expression should evaluate");
 
         assert_eq!(function.runtime_id(), IntFunctionId(0));
     }
@@ -100,7 +103,8 @@ mod tests {
                 vec![(1.into(), function_value())],
                 other_function_value(),
             ),
-        );
+        )
+        .expect("expression should evaluate");
 
         assert_eq!(function.runtime_id(), IntFunctionId(0));
 
@@ -112,7 +116,8 @@ mod tests {
                 vec![(1.into(), other_function_value())],
                 function_value(),
             ),
-        );
+        )
+        .expect("expression should evaluate");
 
         assert_eq!(function.runtime_id(), IntFunctionId(0));
     }
@@ -128,7 +133,8 @@ mod tests {
                 vec![Step::evaluate(Expr::int(IntExpr::value(1.into())))],
                 function_value(),
             ),
-        );
+        )
+        .expect("expression should evaluate");
 
         assert_eq!(function.runtime_id(), IntFunctionId(0));
     }

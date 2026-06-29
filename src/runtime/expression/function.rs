@@ -5,6 +5,7 @@ mod returning_function;
 mod string;
 
 use crate::plan::{ExecutionPlan, FunctionExpr, FunctionExprKind, FunctionValue};
+use crate::runtime::ExecutionError;
 use crate::runtime::frame::Frame;
 
 pub(in crate::runtime) use self::{
@@ -16,18 +17,22 @@ pub(in crate::runtime) fn eval_function_expr(
     plan: &ExecutionPlan,
     frame: &mut Frame,
     expression: &FunctionExpr,
-) -> FunctionValue {
+) -> Result<FunctionValue, ExecutionError> {
     match expression.kind() {
-        FunctionExprKind::Int(expression) => eval_int_function_expr(plan, frame, expression).into(),
+        FunctionExprKind::Int(expression) => {
+            Ok(eval_int_function_expr(plan, frame, expression)?.into())
+        }
         FunctionExprKind::String(expression) => {
-            eval_string_function_expr(plan, frame, expression).into()
+            Ok(eval_string_function_expr(plan, frame, expression)?.into())
         }
         FunctionExprKind::Bool(expression) => {
-            eval_bool_function_expr(plan, frame, expression).into()
+            Ok(eval_bool_function_expr(plan, frame, expression)?.into())
         }
-        FunctionExprKind::Nil(expression) => eval_nil_function_expr(plan, frame, expression).into(),
+        FunctionExprKind::Nil(expression) => {
+            Ok(eval_nil_function_expr(plan, frame, expression)?.into())
+        }
         FunctionExprKind::Function(expression) => {
-            eval_function_function_expr(plan, frame, expression).into()
+            Ok(eval_function_function_expr(plan, frame, expression)?.into())
         }
     }
 }
@@ -47,7 +52,8 @@ mod tests {
         let plan = plan();
         let mut frame = Frame::default();
         let function =
-            eval_function_expr(&plan, &mut frame, &FunctionExpr::value(function_value()));
+            eval_function_expr(&plan, &mut frame, &FunctionExpr::value(function_value()))
+                .expect("expression should evaluate");
 
         assert_int_function(function);
     }
@@ -63,6 +69,7 @@ mod tests {
                 &mut frame,
                 &FunctionExpr::value(string_function_value())
             )
+            .expect("expression should evaluate")
             .type_()
             .return_(),
             &ValueType::String,
@@ -73,6 +80,7 @@ mod tests {
                 &mut frame,
                 &FunctionExpr::value(bool_function_value())
             )
+            .expect("expression should evaluate")
             .type_()
             .return_(),
             &ValueType::Bool,
@@ -83,6 +91,7 @@ mod tests {
                 &mut frame,
                 &FunctionExpr::value(nil_function_value())
             )
+            .expect("expression should evaluate")
             .type_()
             .return_(),
             &ValueType::Nil,

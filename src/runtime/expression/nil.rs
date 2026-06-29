@@ -1,5 +1,6 @@
 use super::{eval_bool_expr, eval_int_expr};
 use crate::plan::{ExecutionPlan, NilExpr, NilExprKind};
+use crate::runtime::ExecutionError;
 use crate::runtime::frame::Frame;
 use crate::runtime::function;
 
@@ -7,10 +8,13 @@ pub(in crate::runtime) fn eval_nil_expr(
     plan: &ExecutionPlan,
     frame: &mut Frame,
     expression: &NilExpr,
-) {
+) -> Result<(), ExecutionError> {
     match expression.kind() {
-        NilExprKind::Value => {}
-        NilExprKind::LocalGet { local, .. } => frame.get_nil(*local),
+        NilExprKind::Value => Ok(()),
+        NilExprKind::LocalGet { local, .. } => {
+            frame.get_nil(*local);
+            Ok(())
+        }
         NilExprKind::Call { function, args } => {
             function::run_nil_call(plan, *function, args, frame)
         }
@@ -22,10 +26,10 @@ pub(in crate::runtime) fn eval_nil_expr(
             true_,
             false_,
         } => {
-            if eval_bool_expr(plan, frame, subject) {
-                eval_nil_expr(plan, frame, true_);
+            if eval_bool_expr(plan, frame, subject)? {
+                eval_nil_expr(plan, frame, true_)
             } else {
-                eval_nil_expr(plan, frame, false_);
+                eval_nil_expr(plan, frame, false_)
             }
         }
         NilExprKind::IntCase {
@@ -33,17 +37,17 @@ pub(in crate::runtime) fn eval_nil_expr(
             clauses,
             fallback,
         } => {
-            let subject = eval_int_expr(plan, frame, subject);
+            let subject = eval_int_expr(plan, frame, subject)?;
             for (pattern, branch) in clauses {
                 if pattern == &subject {
                     return eval_nil_expr(plan, frame, branch);
                 }
             }
-            eval_nil_expr(plan, frame, fallback);
+            eval_nil_expr(plan, frame, fallback)
         }
         NilExprKind::Block { steps, return_ } => {
-            function::execute_steps(plan, steps, frame);
-            eval_nil_expr(plan, frame, return_);
+            function::execute_steps(plan, steps, frame)?;
+            eval_nil_expr(plan, frame, return_)
         }
     }
 }

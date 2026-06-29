@@ -10,4 +10,4 @@ pub use plan::{
     StringLocalId, Value, ValueType,
 };
 pub use planner::{PlanError, plan_module};
-pub use runtime::run_main;
+pub use runtime::{ExecutionError, run_main};
