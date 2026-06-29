@@ -52,3 +52,251 @@ pub(in crate::runtime) fn eval_function_function_expr(
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::plan::{
+        FunctionFunctionId, FunctionFunctionValue, FunctionType, IntFunctionFunctionId, ValueType,
+    };
+    use crate::runtime::{Value, run_src};
+
+    #[test]
+    fn eval_function_function_value() {
+        assert_returns_function_returning_int(
+            r#"
+fn add_one(value: Int) {
+  value + 1
+}
+
+fn get() {
+  add_one
+}
+
+pub fn main() {
+  get
+}
+"#,
+        );
+    }
+
+    #[test]
+    fn eval_function_function_local_get() {
+        assert_returns_function_returning_int(
+            r#"
+fn add_one(value: Int) {
+  value + 1
+}
+
+fn get() {
+  add_one
+}
+
+pub fn main() {
+  let getter = get
+  getter
+}
+"#,
+        );
+    }
+
+    #[test]
+    fn eval_function_function_direct_call() {
+        assert_returns_function_returning_int(
+            r#"
+fn add_one(value: Int) {
+  value + 1
+}
+
+fn get() {
+  add_one
+}
+
+fn select() {
+  get
+}
+
+pub fn main() {
+  select()
+}
+"#,
+        );
+    }
+
+    #[test]
+    fn eval_function_function_value_call() {
+        assert_returns_function_returning_int(
+            r#"
+fn add_one(value: Int) {
+  value + 1
+}
+
+fn get() {
+  add_one
+}
+
+fn select() {
+  get
+}
+
+pub fn main() {
+  let selector = select
+  selector()
+}
+"#,
+        );
+    }
+
+    #[test]
+    fn eval_function_function_bool_case_branches() {
+        assert_returns_function_returning_int(
+            r#"
+fn add_one(value: Int) {
+  value + 1
+}
+
+fn add_two(value: Int) {
+  value + 2
+}
+
+fn get() {
+  add_one
+}
+
+fn get_other() {
+  add_two
+}
+
+pub fn main() {
+  case True {
+    True -> get
+    False -> get_other
+  }
+}
+"#,
+        );
+
+        assert_returns_function_returning_int(
+            r#"
+fn add_one(value: Int) {
+  value + 1
+}
+
+fn add_two(value: Int) {
+  value + 2
+}
+
+fn get() {
+  add_one
+}
+
+fn get_other() {
+  add_two
+}
+
+pub fn main() {
+  case False {
+    True -> get_other
+    False -> get
+  }
+}
+"#,
+        );
+    }
+
+    #[test]
+    fn eval_function_function_int_case_branches() {
+        assert_returns_function_returning_int(
+            r#"
+fn add_one(value: Int) {
+  value + 1
+}
+
+fn add_two(value: Int) {
+  value + 2
+}
+
+fn get() {
+  add_one
+}
+
+fn get_other() {
+  add_two
+}
+
+pub fn main() {
+  case 1 {
+    1 -> get
+    _ -> get_other
+  }
+}
+"#,
+        );
+
+        assert_returns_function_returning_int(
+            r#"
+fn add_one(value: Int) {
+  value + 1
+}
+
+fn add_two(value: Int) {
+  value + 2
+}
+
+fn get() {
+  add_one
+}
+
+fn get_other() {
+  add_two
+}
+
+pub fn main() {
+  case 2 {
+    1 -> get_other
+    _ -> get
+  }
+}
+"#,
+        );
+    }
+
+    #[test]
+    fn eval_function_function_block() {
+        assert_returns_function_returning_int(
+            r#"
+fn add_one(value: Int) {
+  value + 1
+}
+
+fn get() {
+  add_one
+}
+
+pub fn main() {
+  {
+    let getter = get
+    getter
+  }
+}
+"#,
+        );
+    }
+
+    fn assert_returns_function_returning_int(src: &str) {
+        assert_eq!(
+            run_src(src),
+            Value::Function(
+                FunctionFunctionValue::new(
+                    FunctionFunctionId::Int(IntFunctionFunctionId(0)),
+                    Vec::new(),
+                    returned_int_function_type(),
+                )
+                .into(),
+            ),
+        );
+    }
+
+    fn returned_int_function_type() -> FunctionType {
+        FunctionType::new(vec![ValueType::Int], ValueType::Int)
+    }
+}

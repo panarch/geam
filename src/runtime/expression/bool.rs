@@ -92,9 +92,15 @@ fn eval_or(
 
 #[cfg(test)]
 mod tests {
-    use super::{eval_and, eval_or};
-    use crate::plan::FunctionReturnFamily;
+    use super::{eval_and, eval_bool_expr, eval_or};
+    use crate::plan::{
+        BoolExpr, BoolFunctionExpr, ExecutionPlan, Expr, FunctionFunctionExpr, FunctionFunctionId,
+        FunctionFunctionValue, FunctionId, FunctionPlan, FunctionReturnFamily, FunctionType,
+        IntExpr, IntFunctionExpr, IntFunctionId, ReturnExpr, Step, StringFunctionFunctionId,
+        ValueType,
+    };
     use crate::runtime::ExecutionError;
+    use crate::runtime::frame::Frame;
     use crate::runtime::{Value, run_src};
     use std::cell::Cell;
 
@@ -280,6 +286,111 @@ pub fn main() {
         );
     }
 
+    #[test]
+    fn eval_bool_expr_propagates_operand_errors() {
+        let plan = plan();
+        let mut frame = Frame::default();
+
+        assert_eq!(
+            eval_bool_expr(&plan, &mut frame, &BoolExpr::not(error_bool_expr())),
+            Err(function_return_family_error_value(
+                FunctionReturnFamily::Bool,
+                FunctionReturnFamily::String,
+            )),
+        );
+        assert_eq!(
+            eval_bool_expr(
+                &plan,
+                &mut frame,
+                &BoolExpr::lt_int(error_int_expr(), IntExpr::value(1.into())),
+            ),
+            Err(function_return_family_error_value(
+                FunctionReturnFamily::Int,
+                FunctionReturnFamily::String,
+            )),
+        );
+        assert_eq!(
+            eval_bool_expr(
+                &plan,
+                &mut frame,
+                &BoolExpr::equal(
+                    Expr::bool(error_bool_expr()),
+                    Expr::bool(BoolExpr::value(true))
+                ),
+            ),
+            Err(function_return_family_error_value(
+                FunctionReturnFamily::Bool,
+                FunctionReturnFamily::String,
+            )),
+        );
+        assert_eq!(
+            eval_bool_expr(
+                &plan,
+                &mut frame,
+                &BoolExpr::and(error_bool_expr(), BoolExpr::value(true)),
+            ),
+            Err(function_return_family_error_value(
+                FunctionReturnFamily::Bool,
+                FunctionReturnFamily::String,
+            )),
+        );
+        assert_eq!(
+            eval_bool_expr(
+                &plan,
+                &mut frame,
+                &BoolExpr::or(error_bool_expr(), BoolExpr::value(false)),
+            ),
+            Err(function_return_family_error_value(
+                FunctionReturnFamily::Bool,
+                FunctionReturnFamily::String,
+            )),
+        );
+        assert_eq!(
+            eval_bool_expr(
+                &plan,
+                &mut frame,
+                &BoolExpr::bool_case(
+                    error_bool_expr(),
+                    BoolExpr::value(true),
+                    BoolExpr::value(false),
+                ),
+            ),
+            Err(function_return_family_error_value(
+                FunctionReturnFamily::Bool,
+                FunctionReturnFamily::String,
+            )),
+        );
+        assert_eq!(
+            eval_bool_expr(
+                &plan,
+                &mut frame,
+                &BoolExpr::int_case(
+                    error_int_expr(),
+                    vec![(1.into(), BoolExpr::value(true))],
+                    BoolExpr::value(false),
+                ),
+            ),
+            Err(function_return_family_error_value(
+                FunctionReturnFamily::Int,
+                FunctionReturnFamily::String,
+            )),
+        );
+        assert_eq!(
+            eval_bool_expr(
+                &plan,
+                &mut frame,
+                &BoolExpr::block(
+                    vec![Step::evaluate(Expr::bool(error_bool_expr()))],
+                    BoolExpr::value(true),
+                ),
+            ),
+            Err(function_return_family_error_value(
+                FunctionReturnFamily::Bool,
+                FunctionReturnFamily::String,
+            )),
+        );
+    }
+
     fn reset_called() {
         RIGHT_CALLED.set(false);
     }
@@ -305,15 +416,66 @@ pub fn main() {
     }
 
     fn function_return_family_error() -> Result<bool, ExecutionError> {
-        Err(ExecutionError::function_return_family_mismatch(
+        Err(function_return_family_error_value(
             FunctionReturnFamily::Bool,
             FunctionReturnFamily::Int,
         ))
     }
 
+    fn function_return_family_error_value(
+        expected: FunctionReturnFamily,
+        actual: FunctionReturnFamily,
+    ) -> ExecutionError {
+        ExecutionError::function_return_family_mismatch(expected, actual)
+    }
+
     fn mark_called(value: bool) -> bool {
         RIGHT_CALLED.set(true);
         value
+    }
+
+    fn plan() -> ExecutionPlan {
+        ExecutionPlan::new(
+            "main".into(),
+            FunctionPlan::new(
+                FunctionId::new(0),
+                "main".into(),
+                Vec::new(),
+                Vec::new(),
+                ReturnExpr::int(IntFunctionId(0), IntExpr::value(0.into())),
+            ),
+            Vec::new(),
+        )
+    }
+
+    fn error_bool_expr() -> BoolExpr {
+        BoolExpr::function_call(
+            BoolFunctionExpr::function_call(
+                function_function_expr(),
+                Vec::new(),
+                FunctionType::new(Vec::new(), ValueType::Bool),
+            ),
+            Vec::new(),
+        )
+    }
+
+    fn error_int_expr() -> IntExpr {
+        IntExpr::function_call(
+            IntFunctionExpr::function_call(
+                function_function_expr(),
+                Vec::new(),
+                FunctionType::new(Vec::new(), ValueType::Int),
+            ),
+            Vec::new(),
+        )
+    }
+
+    fn function_function_expr() -> FunctionFunctionExpr {
+        FunctionFunctionExpr::value(FunctionFunctionValue::new(
+            FunctionFunctionId::String(StringFunctionFunctionId(0)),
+            Vec::new(),
+            FunctionType::new(Vec::new(), ValueType::String),
+        ))
     }
 
     #[test]

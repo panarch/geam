@@ -23,10 +23,19 @@ execution_case!(integer_arithmetic, "integer_arithmetic.gleam");
 execution_case!(integer_comparison, "integer_comparison.gleam");
 execution_case!(integer_division, "integer_division.gleam");
 execution_case!(let_binding, "let_binding.gleam");
+execution_case!(string_let_binding, "string_let_binding.gleam");
+execution_case!(bool_let_binding, "bool_let_binding.gleam");
+execution_case!(nil_let_binding, "nil_let_binding.gleam");
+execution_case!(expression_steps, "expression_steps.gleam");
 execution_case!(local_function_call, "local_function_call.gleam");
+execution_case!(string_function_call, "string_function_call.gleam");
+execution_case!(bool_function_call, "bool_function_call.gleam");
+execution_case!(nil_function_call, "nil_function_call.gleam");
 execution_case!(string_concatenation, "string_concatenation.gleam");
 execution_case!(bool_value, "bool_value.gleam");
 execution_case!(bool_operators, "bool_operators.gleam");
+execution_case!(short_circuit_block_scope, "short_circuit_block_scope.gleam");
+execution_case!(case_block_scope, "case_block_scope.gleam");
 execution_case!(bool_case, "bool_case.gleam");
 execution_case!(bool_case_fallback, "bool_case_fallback.gleam");
 execution_case!(int_case, "int_case.gleam");
@@ -115,6 +124,7 @@ rejection_case!(reject_top_level_custom_type, "top_level_custom_type.gleam");
 rejection_case!(reject_top_level_type_alias, "top_level_type_alias.gleam");
 rejection_case!(reject_missing_main, "missing_main.gleam");
 rejection_case!(reject_main_with_arguments, "main_with_arguments.gleam");
+rejection_case!(reject_external_function, "external_function.gleam");
 rejection_case!(
     reject_function_unsupported_return_type,
     "function_unsupported_return_type.gleam"

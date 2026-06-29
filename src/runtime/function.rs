@@ -443,7 +443,6 @@ fn run_function_returning_function_call(
 
 #[cfg(test)]
 mod tests {
-    use super::super::{Value, int, run_src};
     use super::{
         execute_steps, run_bool_call, run_bool_function_call, run_bool_function_function_call,
         run_bool_function_returning_function_call, run_function_function_function_call,
@@ -458,352 +457,15 @@ mod tests {
         BoolFunctionValue, BoolLocalId, CallArg, ExecutionPlan, Expr, FunctionExpr,
         FunctionExprKind, FunctionFunctionExpr, FunctionFunctionFunctionId, FunctionFunctionId,
         FunctionFunctionLocalId, FunctionFunctionValue, FunctionId, FunctionPlan,
-        FunctionReturnFamily, FunctionType, IntExpr, IntFunctionExpr, IntFunctionFunctionId,
-        IntFunctionId, IntFunctionLocalId, IntFunctionValue, IntLocalId, NilExpr, NilFunctionExpr,
-        NilFunctionFunctionId, NilFunctionId, NilFunctionLocalId, NilFunctionValue, NilLocalId,
-        ReturnExpr, Step, StringExpr, StringFunctionExpr, StringFunctionFunctionId,
-        StringFunctionId, StringFunctionLocalId, StringFunctionValue, StringLocalId, ValueType,
+        FunctionReturnFamily, FunctionType, FunctionValue, IntExpr, IntFunctionExpr,
+        IntFunctionFunctionId, IntFunctionId, IntFunctionLocalId, IntFunctionValue, IntLocalId,
+        NilExpr, NilFunctionExpr, NilFunctionFunctionId, NilFunctionId, NilFunctionLocalId,
+        NilFunctionValue, NilLocalId, ParamLocal, ReturnExpr, RuntimeFunctionId, Step, StringExpr,
+        StringFunctionExpr, StringFunctionFunctionId, StringFunctionId, StringFunctionLocalId,
+        StringFunctionValue, StringLocalId, ValueType,
     };
-    use crate::runtime::ExecutionError;
     use crate::runtime::frame::Frame;
-
-    #[test]
-    fn execute_let_binding() {
-        assert_eq!(
-            run_src(
-                r#"
-pub fn main() {
-  let x = 1
-  x + 2
-}
-"#,
-            ),
-            int(3),
-        );
-    }
-
-    #[test]
-    fn execute_expression_steps() {
-        assert_eq!(
-            run_src(
-                r#"
-fn identity(value: Int) {
-  value
-}
-
-fn get_identity() {
-  identity
-}
-
-pub fn main() {
-  "side"
-  True
-  Nil
-  1 == 1
-  identity
-  get_identity
-  5
-}
-"#,
-            ),
-            int(5),
-        );
-    }
-
-    #[test]
-    fn execute_function_value_alias_call() {
-        assert_eq!(
-            run_src(
-                r#"
-fn add_one(value: Int) {
-  value + 1
-}
-
-pub fn main() {
-  let add = add_one
-  add(1)
-}
-"#,
-            ),
-            int(2),
-        );
-
-        assert_eq!(
-            run_src(
-                r#"
-fn identity(value: String) {
-  value
-}
-
-pub fn main() {
-  let function = identity
-  function("geam")
-}
-"#,
-            ),
-            Value::String("geam".into()),
-        );
-
-        let expected = Value::Bool(true);
-        assert_eq!(
-            run_src(
-                r#"
-fn identity(value: Bool) {
-  value
-}
-
-pub fn main() {
-  let function = identity
-  function(True)
-}
-"#,
-            ),
-            expected,
-        );
-
-        let expected = Value::Nil;
-        assert_eq!(
-            run_src(
-                r#"
-fn identity(value: Nil) {
-  value
-}
-
-pub fn main() {
-  let function = identity
-  function(Nil)
-}
-"#,
-            ),
-            expected,
-        );
-    }
-
-    #[test]
-    fn execute_main_returning_function_value() {
-        assert_returned_function_type(
-            r#"
-fn identity(value: Int) {
-  value
-}
-
-pub fn main() {
-  identity
-}
-"#,
-            FunctionType::new(vec![ValueType::Int], ValueType::Int),
-        );
-
-        assert_returned_function_type(
-            r#"
-fn identity(value: String) {
-  value
-}
-
-pub fn main() {
-  identity
-}
-"#,
-            FunctionType::new(vec![ValueType::String], ValueType::String),
-        );
-
-        assert_returned_function_type(
-            r#"
-fn identity(value: Bool) {
-  value
-}
-
-pub fn main() {
-  identity
-}
-"#,
-            FunctionType::new(vec![ValueType::Bool], ValueType::Bool),
-        );
-
-        assert_returned_function_type(
-            r#"
-fn identity(value: Nil) {
-  value
-}
-
-pub fn main() {
-  identity
-}
-"#,
-            FunctionType::new(vec![ValueType::Nil], ValueType::Nil),
-        );
-
-        assert_returned_function_type(
-            r#"
-fn add_one(value: Int) {
-  value + 1
-}
-
-fn get() {
-  add_one
-}
-
-pub fn main() {
-  get
-}
-"#,
-            FunctionType::new(
-                Vec::new(),
-                ValueType::Function(Box::new(FunctionType::new(
-                    vec![ValueType::Int],
-                    ValueType::Int,
-                ))),
-            ),
-        );
-    }
-
-    #[test]
-    fn execute_typed_let_steps() {
-        assert_eq!(
-            run_src(
-                r#"
-pub fn main() {
-  let text = "geam"
-  let flag = True
-  let none = Nil
-  text
-}
-"#,
-            ),
-            Value::String("geam".into()),
-        );
-    }
-
-    #[test]
-    fn execute_typed_function_calls() {
-        assert_eq!(
-            run_src(
-                r#"
-fn add(a: Int, b: Int) {
-  a + b
-}
-
-pub fn main() {
-  add(1, 2)
-}
-"#,
-            ),
-            int(3),
-        );
-
-        assert_eq!(
-            run_src(
-                r#"
-fn join(a: String, b: String) {
-  a <> b
-}
-
-pub fn main() {
-  join("ge", "am")
-}
-"#,
-            ),
-            Value::String("geam".into()),
-        );
-
-        let expected = Value::Bool(true);
-        assert_eq!(
-            run_src(
-                r#"
-fn id(value: Bool) {
-  value
-}
-
-pub fn main() {
-  id(True)
-}
-"#,
-            ),
-            expected,
-        );
-
-        let expected = Value::Nil;
-        assert_eq!(
-            run_src(
-                r#"
-fn id(value: Nil) {
-  value
-}
-
-pub fn main() {
-  id(Nil)
-}
-"#,
-            ),
-            expected,
-        );
-    }
-
-    #[test]
-    fn execute_sparse_bool_local_after_skipped_block() {
-        let expected = Value::Bool(true);
-        assert_eq!(
-            run_src(
-                r#"
-pub fn main() {
-  False && {
-    let x = True
-    x
-  }
-
-  let y = True
-  y
-}
-"#,
-            ),
-            expected,
-        );
-    }
-
-    #[test]
-    fn execute_sparse_bool_local_after_untaken_case_block() {
-        let expected = Value::Bool(true);
-        assert_eq!(
-            run_src(
-                r#"
-pub fn main() {
-  case False {
-    True -> {
-      let x = True
-      x
-    }
-    False -> False
-  }
-
-  let y = True
-  y
-}
-"#,
-            ),
-            expected,
-        );
-    }
-
-    #[test]
-    #[should_panic]
-    fn assert_returned_function_type_panics_on_non_function() {
-        assert_returned_function_type(
-            r#"
-pub fn main() {
-  1
-}
-"#,
-            FunctionType::new(Vec::new(), ValueType::Int),
-        );
-    }
-
-    fn assert_returned_function_type(src: &str, expected: FunctionType) {
-        let Value::Function(function) = run_src(src) else {
-            panic!("main should return a function value");
-        };
-
-        assert_eq!(function.type_(), expected);
-    }
+    use crate::runtime::{ExecutionError, Value, run_src};
 
     #[test]
     fn function_function_call_returns_execution_error_on_return_family_mismatch() {
@@ -859,54 +521,220 @@ pub fn main() {
 
     #[test]
     fn function_function_call_returns_function_values() {
+        assert_eq!(
+            run_src(
+                r#"
+fn int_identity(value: Int) {
+  value
+}
+
+fn string_identity(value: String) {
+  value
+}
+
+fn bool_identity(value: Bool) {
+  value
+}
+
+fn nil_identity(value: Nil) {
+  value
+}
+
+fn get_int() {
+  int_identity
+}
+
+fn get_string() {
+  string_identity
+}
+
+fn get_bool() {
+  bool_identity
+}
+
+fn get_nil() {
+  nil_identity
+}
+
+fn get_get_int() {
+  get_int
+}
+
+fn get_get_get_int() {
+  get_get_int
+}
+
+pub fn main() {
+  let int_ok = get_int()(1) + get_get_get_int()()()(2) == 3
+  let bool_ok = get_bool()(True)
+
+  get_nil()(Nil)
+
+  case int_ok && bool_ok {
+    True -> get_string()("ge") <> get_string()("am")
+    False -> "bad"
+  }
+}
+"#,
+            ),
+            Value::String("geam".into()),
+        );
+    }
+
+    #[test]
+    fn run_src_returns_function_value_shapes() {
+        assert_eq!(
+            run_src(
+                r#"
+fn identity(value: Int) {
+  value
+}
+
+pub fn main() {
+  identity
+}
+"#,
+            ),
+            Value::Function(FunctionValue::new(
+                RuntimeFunctionId::Int(IntFunctionId(0)),
+                vec![ParamLocal::int(IntLocalId(0))],
+            )),
+        );
+        assert_eq!(
+            run_src(
+                r#"
+fn identity(value: String) {
+  value
+}
+
+pub fn main() {
+  identity
+}
+"#,
+            ),
+            Value::Function(FunctionValue::new(
+                RuntimeFunctionId::String(StringFunctionId(0)),
+                vec![ParamLocal::string(StringLocalId(0))],
+            )),
+        );
+        assert_eq!(
+            run_src(
+                r#"
+fn identity(value: Bool) {
+  value
+}
+
+pub fn main() {
+  identity
+}
+"#,
+            ),
+            Value::Function(FunctionValue::new(
+                RuntimeFunctionId::Bool(BoolFunctionId(0)),
+                vec![ParamLocal::bool(BoolLocalId(0))],
+            )),
+        );
+        assert_eq!(
+            run_src(
+                r#"
+fn identity(value: Nil) {
+  value
+}
+
+pub fn main() {
+  identity
+}
+"#,
+            ),
+            Value::Function(FunctionValue::new(
+                RuntimeFunctionId::Nil(NilFunctionId(0)),
+                vec![ParamLocal::nil(NilLocalId(0))],
+            )),
+        );
+        assert_eq!(
+            run_src(
+                r#"
+fn add_one(value: Int) {
+  value + 1
+}
+
+fn get() {
+  add_one
+}
+
+pub fn main() {
+  get
+}
+"#,
+            ),
+            Value::Function(FunctionValue::new(
+                RuntimeFunctionId::Function {
+                    id: FunctionFunctionId::Int(IntFunctionFunctionId(0)),
+                    return_type: FunctionType::new(vec![ValueType::Int], ValueType::Int),
+                },
+                Vec::new(),
+            )),
+        );
+    }
+
+    #[test]
+    fn function_function_projection_returns_typed_function_values() {
         let plan = plan_with_function_function_steps(Vec::new());
 
-        let value = run_int_function_function_call(
-            &plan,
-            &function_function_expr(FunctionFunctionId::Int(IntFunctionFunctionId(0))),
-            &[],
-            &mut Frame::default(),
-        )
-        .expect("call should run");
-        assert_eq!(value.type_().return_(), &ValueType::Int);
-
-        let value = run_string_function_function_call(
-            &plan,
-            &function_function_expr(FunctionFunctionId::String(StringFunctionFunctionId(0))),
-            &[],
-            &mut Frame::default(),
-        )
-        .expect("call should run");
-        assert_eq!(value.type_().return_(), &ValueType::String);
-
-        let value = run_bool_function_function_call(
-            &plan,
-            &function_function_expr(FunctionFunctionId::Bool(BoolFunctionFunctionId(0))),
-            &[],
-            &mut Frame::default(),
-        )
-        .expect("call should run");
-        assert_eq!(value.type_().return_(), &ValueType::Bool);
-
-        let value = run_nil_function_function_call(
-            &plan,
-            &function_function_expr(FunctionFunctionId::Nil(NilFunctionFunctionId(0))),
-            &[],
-            &mut Frame::default(),
-        )
-        .expect("call should run");
-        assert_eq!(value.type_().return_(), &ValueType::Nil);
-
-        let value = run_function_function_function_call(
-            &plan,
-            &function_function_expr(FunctionFunctionId::Function(FunctionFunctionFunctionId(0))),
-            &[],
-            &mut Frame::default(),
-        )
-        .expect("call should run");
         assert_eq!(
-            value.type_().return_(),
-            &ValueType::Function(Box::new(FunctionType::new(Vec::new(), ValueType::Int,))),
+            run_int_function_function_call(
+                &plan,
+                &function_function_expr(FunctionFunctionId::Int(IntFunctionFunctionId(0))),
+                &[],
+                &mut Frame::default(),
+            )
+            .map(|value| value.type_().return_().clone()),
+            Ok(ValueType::Int),
+        );
+        assert_eq!(
+            run_string_function_function_call(
+                &plan,
+                &function_function_expr(FunctionFunctionId::String(StringFunctionFunctionId(0))),
+                &[],
+                &mut Frame::default(),
+            )
+            .map(|value| value.type_().return_().clone()),
+            Ok(ValueType::String),
+        );
+        assert_eq!(
+            run_bool_function_function_call(
+                &plan,
+                &function_function_expr(FunctionFunctionId::Bool(BoolFunctionFunctionId(0))),
+                &[],
+                &mut Frame::default(),
+            )
+            .map(|value| value.type_().return_().clone()),
+            Ok(ValueType::Bool),
+        );
+        assert_eq!(
+            run_nil_function_function_call(
+                &plan,
+                &function_function_expr(FunctionFunctionId::Nil(NilFunctionFunctionId(0))),
+                &[],
+                &mut Frame::default(),
+            )
+            .map(|value| value.type_().return_().clone()),
+            Ok(ValueType::Nil),
+        );
+        assert_eq!(
+            run_function_function_function_call(
+                &plan,
+                &function_function_expr(FunctionFunctionId::Function(FunctionFunctionFunctionId(
+                    0
+                ))),
+                &[],
+                &mut Frame::default(),
+            )
+            .map(|value| value.type_().return_().clone()),
+            Ok(ValueType::Function(Box::new(FunctionType::new(
+                Vec::new(),
+                ValueType::Int,
+            )))),
         );
     }
 

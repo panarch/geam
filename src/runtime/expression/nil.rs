@@ -54,6 +54,15 @@ pub(in crate::runtime) fn eval_nil_expr(
 
 #[cfg(test)]
 mod tests {
+    use super::eval_nil_expr;
+    use crate::plan::{
+        BoolExpr, BoolFunctionExpr, ExecutionPlan, Expr, FunctionFunctionExpr, FunctionFunctionId,
+        FunctionFunctionValue, FunctionId, FunctionPlan, FunctionReturnFamily, FunctionType,
+        IntExpr, IntFunctionExpr, IntFunctionId, NilFunctionExpr, ReturnExpr, Step,
+        StringFunctionFunctionId, ValueType,
+    };
+    use crate::runtime::ExecutionError;
+    use crate::runtime::frame::Frame;
     use crate::runtime::{Value, run_src};
 
     #[test]
@@ -155,5 +164,210 @@ pub fn main() {
             ),
             Value::Nil,
         );
+    }
+
+    #[test]
+    fn eval_nil_expr_local_and_calls() {
+        assert_eq!(
+            run_src(
+                r#"
+fn called() {
+  Nil
+}
+
+fn get_called() {
+  called
+}
+
+pub fn main() {
+  let value = Nil
+  value
+  called()
+  get_called()()
+}
+"#,
+            ),
+            Value::Nil,
+        );
+    }
+
+    #[test]
+    fn eval_nil_expr_propagates_operand_errors() {
+        let plan = plan();
+        let mut frame = Frame::default();
+
+        assert_eq!(
+            eval_nil_expr(
+                &plan,
+                &mut frame,
+                &crate::plan::NilExpr::bool_case(
+                    error_bool_expr(),
+                    crate::plan::NilExpr::value(),
+                    crate::plan::NilExpr::value(),
+                ),
+            ),
+            Err(function_return_family_error_value(
+                FunctionReturnFamily::Bool
+            )),
+        );
+        assert_eq!(
+            eval_nil_expr(
+                &plan,
+                &mut frame,
+                &crate::plan::NilExpr::int_case(
+                    error_int_expr(),
+                    vec![(1.into(), crate::plan::NilExpr::value())],
+                    crate::plan::NilExpr::value(),
+                ),
+            ),
+            Err(function_return_family_error_value(
+                FunctionReturnFamily::Int
+            )),
+        );
+        assert_eq!(
+            eval_nil_expr(
+                &plan,
+                &mut frame,
+                &crate::plan::NilExpr::block(
+                    vec![Step::evaluate(Expr::bool(error_bool_expr()))],
+                    crate::plan::NilExpr::value(),
+                ),
+            ),
+            Err(function_return_family_error_value(
+                FunctionReturnFamily::Bool
+            )),
+        );
+    }
+
+    #[test]
+    fn eval_nil_expr_propagates_return_expression_errors() {
+        let plan = plan();
+        let mut frame = Frame::default();
+
+        assert_eq!(
+            eval_nil_expr(
+                &plan,
+                &mut frame,
+                &crate::plan::NilExpr::bool_case(
+                    BoolExpr::value(true),
+                    error_nil_expr(),
+                    crate::plan::NilExpr::value(),
+                ),
+            ),
+            Err(function_return_family_error_value(
+                FunctionReturnFamily::Nil
+            )),
+        );
+        assert_eq!(
+            eval_nil_expr(
+                &plan,
+                &mut frame,
+                &crate::plan::NilExpr::bool_case(
+                    BoolExpr::value(false),
+                    crate::plan::NilExpr::value(),
+                    error_nil_expr(),
+                ),
+            ),
+            Err(function_return_family_error_value(
+                FunctionReturnFamily::Nil
+            )),
+        );
+        assert_eq!(
+            eval_nil_expr(
+                &plan,
+                &mut frame,
+                &crate::plan::NilExpr::int_case(
+                    IntExpr::value(1.into()),
+                    vec![(1.into(), error_nil_expr())],
+                    crate::plan::NilExpr::value(),
+                ),
+            ),
+            Err(function_return_family_error_value(
+                FunctionReturnFamily::Nil
+            )),
+        );
+        assert_eq!(
+            eval_nil_expr(
+                &plan,
+                &mut frame,
+                &crate::plan::NilExpr::int_case(
+                    IntExpr::value(2.into()),
+                    vec![(1.into(), crate::plan::NilExpr::value())],
+                    error_nil_expr(),
+                ),
+            ),
+            Err(function_return_family_error_value(
+                FunctionReturnFamily::Nil
+            )),
+        );
+        assert_eq!(
+            eval_nil_expr(
+                &plan,
+                &mut frame,
+                &crate::plan::NilExpr::block(Vec::new(), error_nil_expr()),
+            ),
+            Err(function_return_family_error_value(
+                FunctionReturnFamily::Nil
+            )),
+        );
+    }
+
+    fn plan() -> ExecutionPlan {
+        ExecutionPlan::new(
+            "main".into(),
+            FunctionPlan::new(
+                FunctionId::new(0),
+                "main".into(),
+                Vec::new(),
+                Vec::new(),
+                ReturnExpr::int(IntFunctionId(0), IntExpr::value(0.into())),
+            ),
+            Vec::new(),
+        )
+    }
+
+    fn error_bool_expr() -> BoolExpr {
+        BoolExpr::function_call(
+            BoolFunctionExpr::function_call(
+                function_function_expr(),
+                Vec::new(),
+                FunctionType::new(Vec::new(), ValueType::Bool),
+            ),
+            Vec::new(),
+        )
+    }
+
+    fn error_int_expr() -> IntExpr {
+        IntExpr::function_call(
+            IntFunctionExpr::function_call(
+                function_function_expr(),
+                Vec::new(),
+                FunctionType::new(Vec::new(), ValueType::Int),
+            ),
+            Vec::new(),
+        )
+    }
+
+    fn error_nil_expr() -> crate::plan::NilExpr {
+        crate::plan::NilExpr::function_call(
+            NilFunctionExpr::function_call(
+                function_function_expr(),
+                Vec::new(),
+                FunctionType::new(Vec::new(), ValueType::Nil),
+            ),
+            Vec::new(),
+        )
+    }
+
+    fn function_function_expr() -> FunctionFunctionExpr {
+        FunctionFunctionExpr::value(FunctionFunctionValue::new(
+            FunctionFunctionId::String(StringFunctionFunctionId(0)),
+            Vec::new(),
+            FunctionType::new(Vec::new(), ValueType::String),
+        ))
+    }
+
+    fn function_return_family_error_value(expected: FunctionReturnFamily) -> ExecutionError {
+        ExecutionError::function_return_family_mismatch(expected, FunctionReturnFamily::String)
     }
 }

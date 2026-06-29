@@ -47,13 +47,16 @@ fn run_nil(getter: fn() -> fn(Nil) -> Nil) {
 }
 
 pub fn main() {
-  get_int()(1)
-  run_int(get_int, 2)
-  get_bool()(True)
-  run_bool(get_bool, False)
+  let int_ok = get_int()(1) + run_int(get_int, 2) == 3
+  let bool_ok = get_bool()(True) && !run_bool(get_bool, False)
+
   get_nil()(Nil)
   run_nil(get_nil)
-  get_string()("ge") <> run_string(get_string, "am")
+
+  case int_ok && bool_ok {
+    True -> get_string()("ge") <> run_string(get_string, "am")
+    False -> "bad"
+  }
 }
 
 // geam:expect String("geam")
