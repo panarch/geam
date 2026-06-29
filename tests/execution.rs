@@ -1,149 +1,155 @@
 use geam::{FunctionType, Value, ValueType, compile_typed_module, plan_module, run_main};
 
-macro_rules! execution_case {
-    ($name:ident, $fixture:literal) => {
-        #[test]
-        fn $name() {
-            run_fixture($fixture);
-        }
+macro_rules! fixture_cases {
+    ($runner:path, $dir:literal; $($name:ident),+ $(,)?) => {
+        $(
+            #[test]
+            fn $name() {
+                $runner(concat!($dir, "/", stringify!($name), ".gleam"));
+            }
+        )+
     };
 }
 
-macro_rules! rejection_case {
-    ($name:ident, $fixture:literal) => {
-        #[test]
-        fn $name() {
-            reject_fixture($fixture);
-        }
+macro_rules! execution_cases {
+    ($dir:literal; $($name:ident),+ $(,)?) => {
+        fixture_cases!(crate::run_fixture, $dir; $($name),+);
     };
 }
 
-execution_case!(integer_return, "integer_return.gleam");
-execution_case!(integer_arithmetic, "integer_arithmetic.gleam");
-execution_case!(integer_comparison, "integer_comparison.gleam");
-execution_case!(integer_division, "integer_division.gleam");
-execution_case!(let_binding, "let_binding.gleam");
-execution_case!(string_let_binding, "string_let_binding.gleam");
-execution_case!(bool_let_binding, "bool_let_binding.gleam");
-execution_case!(nil_let_binding, "nil_let_binding.gleam");
-execution_case!(expression_steps, "expression_steps.gleam");
-execution_case!(local_function_call, "local_function_call.gleam");
-execution_case!(string_function_call, "string_function_call.gleam");
-execution_case!(bool_function_call, "bool_function_call.gleam");
-execution_case!(nil_function_call, "nil_function_call.gleam");
-execution_case!(string_concatenation, "string_concatenation.gleam");
-execution_case!(bool_value, "bool_value.gleam");
-execution_case!(bool_operators, "bool_operators.gleam");
-execution_case!(short_circuit_block_scope, "short_circuit_block_scope.gleam");
-execution_case!(case_block_scope, "case_block_scope.gleam");
-execution_case!(bool_case, "bool_case.gleam");
-execution_case!(bool_case_fallback, "bool_case_fallback.gleam");
-execution_case!(int_case, "int_case.gleam");
-execution_case!(block_expression, "block_expression.gleam");
-execution_case!(pipeline, "pipeline.gleam");
-execution_case!(function_after_main, "function_after_main.gleam");
-execution_case!(
-    main_returning_int_function,
-    "main_returning_int_function.gleam"
-);
-execution_case!(
-    main_returning_string_function,
-    "main_returning_string_function.gleam"
-);
-execution_case!(
-    main_returning_bool_function,
-    "main_returning_bool_function.gleam"
-);
-execution_case!(
-    main_returning_nil_function,
-    "main_returning_nil_function.gleam"
-);
-execution_case!(
-    main_returning_function_returning_function,
-    "main_returning_function_returning_function.gleam"
-);
-execution_case!(function_value_local, "function_value_local.gleam");
-execution_case!(
-    function_value_argument_callback,
-    "function_value_argument_callback.gleam"
-);
-execution_case!(
-    function_value_argument_higher_order_alias,
-    "function_value_argument_higher_order_alias.gleam"
-);
-execution_case!(
-    function_value_argument_higher_order_return_shapes,
-    "function_value_argument_higher_order_return_shapes.gleam"
-);
-execution_case!(
-    function_value_argument_input_shapes,
-    "function_value_argument_input_shapes.gleam"
-);
-execution_case!(
-    function_value_argument_local_value,
-    "function_value_argument_local_value.gleam"
-);
-execution_case!(
-    function_value_argument_multi_arity,
-    "function_value_argument_multi_arity.gleam"
-);
-execution_case!(
-    function_value_argument_return_shapes,
-    "function_value_argument_return_shapes.gleam"
-);
-execution_case!(
-    function_returning_function_argument,
-    "function_returning_function_argument.gleam"
-);
-execution_case!(
-    function_returning_function_deep,
-    "function_returning_function_deep.gleam"
-);
-execution_case!(
-    function_returning_function_direct_shapes,
-    "function_returning_function_direct_shapes.gleam"
-);
-execution_case!(
-    function_returning_function_recursive,
-    "function_returning_function_recursive.gleam"
-);
-execution_case!(function_value_shadowing, "function_value_shadowing.gleam");
-execution_case!(
-    function_value_block_callee,
-    "function_value_block_callee.gleam"
-);
-execution_case!(
-    function_value_case_callee,
-    "function_value_case_callee.gleam"
-);
-execution_case!(nil_value, "nil_value.gleam");
+macro_rules! rejection_cases {
+    ($dir:literal; $($name:ident),+ $(,)?) => {
+        fixture_cases!(crate::reject_fixture, $dir; $($name),+);
+    };
+}
 
-rejection_case!(reject_top_level_import, "top_level_import.gleam");
-rejection_case!(reject_top_level_constant, "top_level_constant.gleam");
-rejection_case!(reject_top_level_custom_type, "top_level_custom_type.gleam");
-rejection_case!(reject_top_level_type_alias, "top_level_type_alias.gleam");
-rejection_case!(reject_missing_main, "missing_main.gleam");
-rejection_case!(reject_main_with_arguments, "main_with_arguments.gleam");
-rejection_case!(reject_external_function, "external_function.gleam");
-rejection_case!(
-    reject_function_unsupported_return_type,
-    "function_unsupported_return_type.gleam"
-);
-rejection_case!(reject_argument_discard, "argument_discard.gleam");
-rejection_case!(reject_argument_labelled, "argument_labelled.gleam");
-rejection_case!(
-    reject_argument_unsupported_type,
-    "argument_unsupported_type.gleam"
-);
-rejection_case!(
-    reject_function_before_main_unsupported_body,
-    "function_before_main_unsupported_body.gleam"
-);
-rejection_case!(reject_main_unsupported_body, "main_unsupported_body.gleam");
-rejection_case!(
-    reject_function_after_main_unsupported_body,
-    "function_after_main_unsupported_body.gleam"
-);
+mod values {
+    execution_cases!("values";
+        integer_return,
+        bool_value,
+        nil_value,
+    );
+}
+
+mod bindings {
+    execution_cases!("bindings";
+        let_binding,
+        string_let_binding,
+        bool_let_binding,
+        nil_let_binding,
+        expression_steps,
+    );
+}
+
+mod operators {
+    execution_cases!("operators";
+        integer_arithmetic,
+        integer_comparison,
+        integer_division,
+        string_concatenation,
+        bool_operators,
+        short_circuit_block_scope,
+    );
+}
+
+mod control_flow {
+    execution_cases!("control_flow";
+        block_expression,
+        case_block_scope,
+        bool_case,
+        bool_case_fallback,
+        int_case,
+    );
+}
+
+mod pipeline {
+    execution_cases!("pipeline";
+        pipeline,
+    );
+}
+
+mod functions {
+    mod basic {
+        execution_cases!("functions/basic";
+            local_function_call,
+            string_function_call,
+            bool_function_call,
+            nil_function_call,
+            function_after_main,
+        );
+    }
+
+    mod value {
+        execution_cases!("functions/value";
+            main_returning_int_function,
+            main_returning_string_function,
+            main_returning_bool_function,
+            main_returning_nil_function,
+            function_value_local,
+            function_value_block_callee,
+            function_value_case_callee,
+            function_value_shadowing,
+        );
+    }
+
+    mod argument {
+        execution_cases!("functions/argument";
+            function_value_argument_callback,
+            function_value_argument_higher_order_alias,
+            function_value_argument_higher_order_return_shapes,
+            function_value_argument_input_shapes,
+            function_value_argument_local_value,
+            function_value_argument_multi_arity,
+            function_value_argument_return_shapes,
+        );
+    }
+
+    mod returning {
+        execution_cases!("functions/returning";
+            main_returning_function_returning_function,
+            function_returning_function_argument,
+            function_returning_function_deep,
+            function_returning_function_direct_shapes,
+            function_returning_function_recursive,
+        );
+    }
+}
+
+mod rejection {
+    mod top_level {
+        rejection_cases!("top_level";
+            top_level_import,
+            top_level_constant,
+            top_level_custom_type,
+            top_level_type_alias,
+        );
+    }
+
+    mod main {
+        rejection_cases!("main";
+            missing_main,
+            main_with_arguments,
+            main_unsupported_body,
+        );
+    }
+
+    mod function {
+        rejection_cases!("function";
+            external_function,
+            function_unsupported_return_type,
+            function_before_main_unsupported_body,
+            function_after_main_unsupported_body,
+        );
+    }
+
+    mod argument {
+        rejection_cases!("argument";
+            argument_discard,
+            argument_labelled,
+            argument_unsupported_type,
+        );
+    }
+}
 
 fn run_fixture(file_name: &str) {
     let path = format!("tests/fixtures/execution/{file_name}");

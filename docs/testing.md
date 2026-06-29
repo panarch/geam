@@ -7,8 +7,9 @@ The current compiler-boundary and runtime milestones depend on `gleam-core`
 pinned to the upstream baseline recorded in the README. `cargo test` compiles
 that Git dependency as part of the normal suite.
 
-Source-level execution tests live under `tests/fixtures/execution/*.gleam`.
-Each fixture must end with a `// geam:expect ...` line, for example:
+Source-level execution tests live under categorized
+`tests/fixtures/execution/**/*.gleam` paths. Each fixture must end with a
+`// geam:expect ...` line, for example:
 
 ```gleam
 pub fn main() {
@@ -20,6 +21,11 @@ pub fn main() {
 
 The integration runner reads those fixtures through the public Geam API:
 `compile_typed_module -> plan_module -> run_main`.
+
+Source-level rejection fixtures live under categorized
+`tests/fixtures/rejection/**/*.gleam` paths. They are reserved for public
+boundary cases that are clearer as complete Gleam modules than as planner unit
+tests.
 
 ## Commands
 
