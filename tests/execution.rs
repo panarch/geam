@@ -68,6 +68,10 @@ execution_case!(
     "function_returning_function_argument.gleam"
 );
 execution_case!(
+    function_returning_function_deep,
+    "function_returning_function_deep.gleam"
+);
+execution_case!(
     function_returning_function_direct_shapes,
     "function_returning_function_direct_shapes.gleam"
 );
