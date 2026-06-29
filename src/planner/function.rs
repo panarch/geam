@@ -1,4 +1,7 @@
-use crate::plan::{Expr, ExprKind, FunctionPlan, Param, ReturnExpr, ValueType};
+use crate::plan::{
+    Expr, ExprKind, FunctionFunctionId, FunctionPlan, Param, ReturnExpr, RuntimeFunctionId,
+    ValueType,
+};
 use crate::planner::context::{FunctionInfo, PlanContext};
 use crate::planner::error::{
     InvalidFunctionShapeReason, InvalidTypedAstReason, PlanError, UnsupportedFunctionReason,
@@ -42,7 +45,12 @@ pub(super) fn plan_function(
             },
         },
     )?;
-    let return_ = function_return_expr(&name, &info.return_type(), planned.return_)?;
+    let return_ = function_return_expr(
+        &name,
+        &info.return_type(),
+        &info.runtime_id,
+        planned.return_,
+    )?;
 
     Ok(FunctionPlan::new(
         info.id,
@@ -56,18 +64,60 @@ pub(super) fn plan_function(
 fn function_return_expr(
     name: &EcoString,
     expected: &ValueType,
+    runtime_id: &RuntimeFunctionId,
     actual: Expr,
 ) -> Result<ReturnExpr, PlanError> {
-    match (expected, actual.into_kind()) {
-        (ValueType::Int, ExprKind::Int(actual)) => Ok(ReturnExpr::int(actual)),
-        (ValueType::String, ExprKind::String(actual)) => Ok(ReturnExpr::string(actual)),
-        (ValueType::Bool, ExprKind::Bool(actual)) => Ok(ReturnExpr::bool(actual)),
-        (ValueType::Nil, ExprKind::Nil(actual)) => Ok(ReturnExpr::nil(actual)),
-        (ValueType::Function(expected), ExprKind::Function(actual))
-            if expected.as_ref() == actual.type_() =>
-        {
-            Ok(ReturnExpr::function(actual))
+    match (expected, runtime_id, actual.into_kind()) {
+        (ValueType::Int, RuntimeFunctionId::Int(runtime_id), ExprKind::Int(actual)) => {
+            Ok(ReturnExpr::int(*runtime_id, actual))
         }
+        (ValueType::String, RuntimeFunctionId::String(runtime_id), ExprKind::String(actual)) => {
+            Ok(ReturnExpr::string(*runtime_id, actual))
+        }
+        (ValueType::Bool, RuntimeFunctionId::Bool(runtime_id), ExprKind::Bool(actual)) => {
+            Ok(ReturnExpr::bool(*runtime_id, actual))
+        }
+        (ValueType::Nil, RuntimeFunctionId::Nil(runtime_id), ExprKind::Nil(actual)) => {
+            Ok(ReturnExpr::nil(*runtime_id, actual))
+        }
+        (
+            ValueType::Function(expected),
+            RuntimeFunctionId::Function { id, return_type },
+            ExprKind::Function(actual),
+        ) if expected.as_ref() == actual.type_() && expected.as_ref() == return_type => {
+            function_returning_function_expr(name, *id, actual)
+        }
+        _ => Err(PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::FunctionShape {
+                name: name.clone(),
+                reason: InvalidFunctionShapeReason::ReturnTypeMismatch,
+            },
+        }),
+    }
+}
+
+fn function_returning_function_expr(
+    name: &EcoString,
+    runtime_id: FunctionFunctionId,
+    actual: crate::plan::FunctionExpr,
+) -> Result<ReturnExpr, PlanError> {
+    match (runtime_id, actual.into_kind()) {
+        (FunctionFunctionId::Int(runtime_id), crate::plan::FunctionExprKind::Int(actual)) => {
+            Ok(ReturnExpr::int_function(runtime_id, actual))
+        }
+        (FunctionFunctionId::String(runtime_id), crate::plan::FunctionExprKind::String(actual)) => {
+            Ok(ReturnExpr::string_function(runtime_id, actual))
+        }
+        (FunctionFunctionId::Bool(runtime_id), crate::plan::FunctionExprKind::Bool(actual)) => {
+            Ok(ReturnExpr::bool_function(runtime_id, actual))
+        }
+        (FunctionFunctionId::Nil(runtime_id), crate::plan::FunctionExprKind::Nil(actual)) => {
+            Ok(ReturnExpr::nil_function(runtime_id, actual))
+        }
+        (
+            FunctionFunctionId::Function(runtime_id),
+            crate::plan::FunctionExprKind::Function(actual),
+        ) => Ok(ReturnExpr::function_function(runtime_id, actual)),
         _ => Err(PlanError::InvalidTypedAst {
             reason: InvalidTypedAstReason::FunctionShape {
                 name: name.clone(),
@@ -92,7 +142,11 @@ pub(super) fn function_name(function: &TypedFunction) -> Result<EcoString, PlanE
 
 #[cfg(test)]
 mod tests {
-    use crate::plan::{IntFunctionId, IntLocalId, LocalId, RuntimeFunctionId};
+    use crate::plan::{
+        Expr, FunctionExpr, FunctionFunctionId, FunctionType, IntFunctionExpr, IntFunctionId,
+        IntFunctionValue, IntLocalId, LocalId, RuntimeFunctionId, StringFunctionFunctionId,
+        ValueType,
+    };
     use crate::planner::dsl::{
         bool_, bool_arg, call_bool, call_int, call_nil, call_string, function, function_ref, int,
         int_arg, local_bool, local_int, local_nil, local_string, module, nil, nil_arg, string,
@@ -162,6 +216,29 @@ pub fn main() {
         );
 
         assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn reject_margin_function_return_family_mismatch() {
+        assert_eq!(
+            super::function_return_expr(
+                &"main".into(),
+                &ValueType::Function(Box::new(FunctionType::new(Vec::new(), ValueType::Int))),
+                &RuntimeFunctionId::Function {
+                    id: FunctionFunctionId::String(StringFunctionFunctionId(0)),
+                    return_type: FunctionType::new(Vec::new(), ValueType::Int),
+                },
+                Expr::function(FunctionExpr::int(IntFunctionExpr::value(
+                    IntFunctionValue::new(IntFunctionId(0), Vec::new()),
+                ))),
+            ),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::FunctionShape {
+                    name: "main".into(),
+                    reason: InvalidFunctionShapeReason::ReturnTypeMismatch,
+                },
+            }),
+        );
     }
 
     #[test]

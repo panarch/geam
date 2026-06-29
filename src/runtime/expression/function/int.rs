@@ -147,7 +147,7 @@ mod tests {
                 "main".into(),
                 Vec::new(),
                 Vec::new(),
-                ReturnExpr::int(IntExpr::value(1.into())),
+                ReturnExpr::int(IntFunctionId(0), IntExpr::value(1.into())),
             ),
             Vec::new(),
         )

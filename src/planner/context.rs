@@ -354,7 +354,7 @@ impl FunctionInfo {
 }
 
 #[derive(Debug, Default)]
-pub(super) struct FunctionRuntimeIds {
+pub(in crate::planner) struct FunctionRuntimeIds {
     next_int: usize,
     next_string: usize,
     next_bool: usize,
@@ -367,60 +367,82 @@ pub(super) struct FunctionRuntimeIds {
 }
 
 impl FunctionRuntimeIds {
-    pub(super) fn next_int(&mut self) -> RuntimeFunctionId {
-        let id = IntFunctionId(self.next_int);
-        self.next_int += 1;
-        RuntimeFunctionId::Int(id)
-    }
-
-    pub(super) fn next_string(&mut self) -> RuntimeFunctionId {
-        let id = StringFunctionId(self.next_string);
-        self.next_string += 1;
-        RuntimeFunctionId::String(id)
-    }
-
-    pub(super) fn next_bool(&mut self) -> RuntimeFunctionId {
-        let id = BoolFunctionId(self.next_bool);
-        self.next_bool += 1;
-        RuntimeFunctionId::Bool(id)
-    }
-
-    pub(super) fn next_nil(&mut self) -> RuntimeFunctionId {
-        let id = NilFunctionId(self.next_nil);
-        self.next_nil += 1;
-        RuntimeFunctionId::Nil(id)
+    pub(in crate::planner) fn next(&mut self, return_type: &ValueType) -> RuntimeFunctionId {
+        match return_type {
+            ValueType::Int => RuntimeFunctionId::Int(self.next_int_id()),
+            ValueType::String => RuntimeFunctionId::String(self.next_string_id()),
+            ValueType::Bool => RuntimeFunctionId::Bool(self.next_bool_id()),
+            ValueType::Nil => RuntimeFunctionId::Nil(self.next_nil_id()),
+            ValueType::Function(return_type) => self.next_function(return_type.as_ref().clone()),
+        }
     }
 
     pub(super) fn next_function(&mut self, return_type: FunctionType) -> RuntimeFunctionId {
         let id = match return_type.return_() {
-            ValueType::Int => {
-                let id = IntFunctionFunctionId(self.next_int_function);
-                self.next_int_function += 1;
-                FunctionFunctionId::Int(id)
-            }
-            ValueType::String => {
-                let id = StringFunctionFunctionId(self.next_string_function);
-                self.next_string_function += 1;
-                FunctionFunctionId::String(id)
-            }
-            ValueType::Bool => {
-                let id = BoolFunctionFunctionId(self.next_bool_function);
-                self.next_bool_function += 1;
-                FunctionFunctionId::Bool(id)
-            }
-            ValueType::Nil => {
-                let id = NilFunctionFunctionId(self.next_nil_function);
-                self.next_nil_function += 1;
-                FunctionFunctionId::Nil(id)
-            }
+            ValueType::Int => FunctionFunctionId::Int(self.next_int_function_id()),
+            ValueType::String => FunctionFunctionId::String(self.next_string_function_id()),
+            ValueType::Bool => FunctionFunctionId::Bool(self.next_bool_function_id()),
+            ValueType::Nil => FunctionFunctionId::Nil(self.next_nil_function_id()),
             ValueType::Function(_) => {
-                let id = FunctionFunctionFunctionId(self.next_function_function);
-                self.next_function_function += 1;
-                FunctionFunctionId::Function(id)
+                FunctionFunctionId::Function(self.next_function_function_id())
             }
         };
 
         RuntimeFunctionId::Function { id, return_type }
+    }
+
+    pub(in crate::planner) fn next_int_id(&mut self) -> IntFunctionId {
+        let id = IntFunctionId(self.next_int);
+        self.next_int += 1;
+        id
+    }
+
+    pub(in crate::planner) fn next_string_id(&mut self) -> StringFunctionId {
+        let id = StringFunctionId(self.next_string);
+        self.next_string += 1;
+        id
+    }
+
+    pub(in crate::planner) fn next_bool_id(&mut self) -> BoolFunctionId {
+        let id = BoolFunctionId(self.next_bool);
+        self.next_bool += 1;
+        id
+    }
+
+    pub(in crate::planner) fn next_nil_id(&mut self) -> NilFunctionId {
+        let id = NilFunctionId(self.next_nil);
+        self.next_nil += 1;
+        id
+    }
+
+    pub(in crate::planner) fn next_int_function_id(&mut self) -> IntFunctionFunctionId {
+        let id = IntFunctionFunctionId(self.next_int_function);
+        self.next_int_function += 1;
+        id
+    }
+
+    pub(in crate::planner) fn next_string_function_id(&mut self) -> StringFunctionFunctionId {
+        let id = StringFunctionFunctionId(self.next_string_function);
+        self.next_string_function += 1;
+        id
+    }
+
+    pub(in crate::planner) fn next_bool_function_id(&mut self) -> BoolFunctionFunctionId {
+        let id = BoolFunctionFunctionId(self.next_bool_function);
+        self.next_bool_function += 1;
+        id
+    }
+
+    pub(in crate::planner) fn next_nil_function_id(&mut self) -> NilFunctionFunctionId {
+        let id = NilFunctionFunctionId(self.next_nil_function);
+        self.next_nil_function += 1;
+        id
+    }
+
+    pub(in crate::planner) fn next_function_function_id(&mut self) -> FunctionFunctionFunctionId {
+        let id = FunctionFunctionFunctionId(self.next_function_function);
+        self.next_function_function += 1;
+        id
     }
 }
 
@@ -539,18 +561,24 @@ mod tests {
     fn function_runtime_ids_allocate_by_return_type() {
         let mut ids = FunctionRuntimeIds::default();
 
-        assert_eq!(ids.next_int(), RuntimeFunctionId::Int(IntFunctionId(0)));
-        assert_eq!(ids.next_int(), RuntimeFunctionId::Int(IntFunctionId(1)));
         assert_eq!(
-            ids.next_string(),
+            ids.next(&ValueType::Int),
+            RuntimeFunctionId::Int(IntFunctionId(0))
+        );
+        assert_eq!(
+            ids.next(&ValueType::Int),
+            RuntimeFunctionId::Int(IntFunctionId(1))
+        );
+        assert_eq!(
+            ids.next(&ValueType::String),
             RuntimeFunctionId::String(crate::plan::StringFunctionId(0))
         );
         assert_eq!(
-            ids.next_bool(),
+            ids.next(&ValueType::Bool),
             RuntimeFunctionId::Bool(crate::plan::BoolFunctionId(0))
         );
         assert_eq!(
-            ids.next_nil(),
+            ids.next(&ValueType::Nil),
             RuntimeFunctionId::Nil(crate::plan::NilFunctionId(0))
         );
     }

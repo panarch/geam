@@ -55,8 +55,8 @@ pub(in crate::runtime) fn eval_nil_function_expr(
 mod tests {
     use super::eval_nil_function_expr;
     use crate::plan::{
-        BoolExpr, ExecutionPlan, Expr, FunctionId, FunctionPlan, IntExpr, NilFunctionExpr,
-        NilFunctionId, NilFunctionValue, NilLocalId, ParamLocal, ReturnExpr, Step,
+        BoolExpr, ExecutionPlan, Expr, FunctionId, FunctionPlan, IntExpr, IntFunctionId,
+        NilFunctionExpr, NilFunctionId, NilFunctionValue, NilLocalId, ParamLocal, ReturnExpr, Step,
     };
     use crate::runtime::frame::Frame;
 
@@ -158,7 +158,7 @@ mod tests {
                 "main".into(),
                 Vec::new(),
                 Vec::new(),
-                ReturnExpr::int(IntExpr::value(1.into())),
+                ReturnExpr::int(IntFunctionId(0), IntExpr::value(1.into())),
             ),
             Vec::new(),
         )

@@ -4,9 +4,9 @@ use crate::plan::{
     FunctionFunctionId, FunctionFunctionLocalId, FunctionFunctionValue, FunctionType,
     FunctionValue, IntExpr, IntFunctionExpr, IntFunctionFunctionId, IntFunctionId,
     IntFunctionLocalId, IntFunctionValue, IntLocalId, LocalId, NilExpr, NilFunctionExpr,
-    NilFunctionId, NilFunctionLocalId, NilFunctionValue, NilLocalId, ParamLocal, ReturnExpr,
-    RuntimeFunctionId, Step, StringExpr, StringFunctionExpr, StringFunctionId,
-    StringFunctionLocalId, StringFunctionValue, StringLocalId, ValueType,
+    NilFunctionId, NilFunctionLocalId, NilFunctionValue, NilLocalId, ParamLocal, RuntimeFunctionId,
+    Step, StringExpr, StringFunctionExpr, StringFunctionId, StringFunctionLocalId,
+    StringFunctionValue, StringLocalId, ValueType,
 };
 use ecow::EcoString;
 use num_bigint::BigInt;
@@ -707,19 +707,7 @@ impl From<Int> for Expr {
     }
 }
 
-impl From<Int> for ReturnExpr {
-    fn from(value: Int) -> Self {
-        Self::int(value.into())
-    }
-}
-
 impl From<String> for Expr {
-    fn from(value: String) -> Self {
-        Self::string(value.into())
-    }
-}
-
-impl From<String> for ReturnExpr {
     fn from(value: String) -> Self {
         Self::string(value.into())
     }
@@ -731,31 +719,13 @@ impl From<Bool> for Expr {
     }
 }
 
-impl From<Bool> for ReturnExpr {
-    fn from(value: Bool) -> Self {
-        Self::bool(value.into())
-    }
-}
-
 impl From<Nil> for Expr {
     fn from(value: Nil) -> Self {
         Self::nil(value.into())
     }
 }
 
-impl From<Nil> for ReturnExpr {
-    fn from(value: Nil) -> Self {
-        Self::nil(value.into())
-    }
-}
-
 impl From<Function> for Expr {
-    fn from(value: Function) -> Self {
-        Self::function(value.into())
-    }
-}
-
-impl From<Function> for ReturnExpr {
     fn from(value: Function) -> Self {
         Self::function(value.into())
     }

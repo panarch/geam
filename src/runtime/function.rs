@@ -456,7 +456,7 @@ mod tests {
     use crate::plan::{
         BoolExpr, BoolFunctionExpr, BoolFunctionFunctionId, BoolFunctionId, BoolFunctionLocalId,
         BoolFunctionValue, BoolLocalId, CallArg, ExecutionPlan, Expr, FunctionExpr,
-        FunctionFunctionExpr, FunctionFunctionFunctionId, FunctionFunctionId,
+        FunctionExprKind, FunctionFunctionExpr, FunctionFunctionFunctionId, FunctionFunctionId,
         FunctionFunctionLocalId, FunctionFunctionValue, FunctionId, FunctionPlan,
         FunctionReturnFamily, FunctionType, IntExpr, IntFunctionExpr, IntFunctionFunctionId,
         IntFunctionId, IntFunctionLocalId, IntFunctionValue, IntLocalId, NilExpr, NilFunctionExpr,
@@ -1025,23 +1025,23 @@ pub fn main() {
 
         assert_expected_function_got_int(run_main(&plan_with_main(
             steps.clone(),
-            ReturnExpr::int(IntExpr::value(1.into())),
+            ReturnExpr::int(IntFunctionId(0), IntExpr::value(1.into())),
         )));
         assert_expected_function_got_int(run_main(&plan_with_main(
             steps.clone(),
-            ReturnExpr::string(StringExpr::value("geam".into())),
+            ReturnExpr::string(StringFunctionId(0), StringExpr::value("geam".into())),
         )));
         assert_expected_function_got_int(run_main(&plan_with_main(
             steps.clone(),
-            ReturnExpr::bool(BoolExpr::value(true)),
+            ReturnExpr::bool(BoolFunctionId(0), BoolExpr::value(true)),
         )));
         assert_expected_function_got_int(run_main(&plan_with_main(
             steps.clone(),
-            ReturnExpr::nil(NilExpr::value()),
+            ReturnExpr::nil(NilFunctionId(0), NilExpr::value()),
         )));
         assert_expected_function_got_int(run_main(&plan_with_main(
             steps,
-            ReturnExpr::function(function_function_expr_value()),
+            function_return_expr(function_function_expr_value()),
         )));
     }
 
@@ -1425,7 +1425,7 @@ pub fn main() {
                 "main".into(),
                 Vec::new(),
                 Vec::new(),
-                ReturnExpr::int(IntExpr::value(1.into())),
+                ReturnExpr::int(IntFunctionId(0), IntExpr::value(1.into())),
             ),
             vec![
                 function_plan(1, "int_function", steps.clone(), int_function_expr()),
@@ -1473,7 +1473,7 @@ pub fn main() {
                 "main".into(),
                 Vec::new(),
                 steps.clone(),
-                ReturnExpr::int(IntExpr::value(1.into())),
+                ReturnExpr::int(IntFunctionId(0), IntExpr::value(1.into())),
             ),
             vec![
                 FunctionPlan::new(
@@ -1481,21 +1481,21 @@ pub fn main() {
                     "string".into(),
                     Vec::new(),
                     steps.clone(),
-                    ReturnExpr::string(StringExpr::value("geam".into())),
+                    ReturnExpr::string(StringFunctionId(0), StringExpr::value("geam".into())),
                 ),
                 FunctionPlan::new(
                     FunctionId::new(2),
                     "bool".into(),
                     Vec::new(),
                     steps.clone(),
-                    ReturnExpr::bool(BoolExpr::value(true)),
+                    ReturnExpr::bool(BoolFunctionId(0), BoolExpr::value(true)),
                 ),
                 FunctionPlan::new(
                     FunctionId::new(3),
                     "nil".into(),
                     Vec::new(),
                     steps,
-                    ReturnExpr::nil(NilExpr::value()),
+                    ReturnExpr::nil(NilFunctionId(0), NilExpr::value()),
                 ),
             ],
         )
@@ -1512,8 +1512,28 @@ pub fn main() {
             name.into(),
             Vec::new(),
             steps,
-            ReturnExpr::function(return_),
+            function_return_expr(return_),
         )
+    }
+
+    fn function_return_expr(return_: FunctionExpr) -> ReturnExpr {
+        match return_.into_kind() {
+            FunctionExprKind::Int(return_) => {
+                ReturnExpr::int_function(IntFunctionFunctionId(0), return_)
+            }
+            FunctionExprKind::String(return_) => {
+                ReturnExpr::string_function(StringFunctionFunctionId(0), return_)
+            }
+            FunctionExprKind::Bool(return_) => {
+                ReturnExpr::bool_function(BoolFunctionFunctionId(0), return_)
+            }
+            FunctionExprKind::Nil(return_) => {
+                ReturnExpr::nil_function(NilFunctionFunctionId(0), return_)
+            }
+            FunctionExprKind::Function(return_) => {
+                ReturnExpr::function_function(FunctionFunctionFunctionId(0), return_)
+            }
+        }
     }
 
     fn int_function_expr() -> FunctionExpr {
@@ -1558,7 +1578,7 @@ pub fn main() {
                 "main".into(),
                 Vec::new(),
                 Vec::new(),
-                ReturnExpr::int(IntExpr::value(1.into())),
+                ReturnExpr::int(IntFunctionId(0), IntExpr::value(1.into())),
             ),
             Vec::new(),
         )

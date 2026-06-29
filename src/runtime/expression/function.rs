@@ -106,7 +106,10 @@ mod tests {
                 "main".into(),
                 Vec::new(),
                 Vec::new(),
-                crate::plan::ReturnExpr::int(IntExpr::value(1.into())),
+                crate::plan::ReturnExpr::int(
+                    crate::plan::IntFunctionId(0),
+                    IntExpr::value(1.into()),
+                ),
             ),
             Vec::new(),
         )

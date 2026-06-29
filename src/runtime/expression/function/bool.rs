@@ -56,7 +56,7 @@ mod tests {
     use super::eval_bool_function_expr;
     use crate::plan::{
         BoolExpr, BoolFunctionExpr, BoolFunctionId, BoolFunctionValue, BoolLocalId, ExecutionPlan,
-        Expr, FunctionId, FunctionPlan, IntExpr, ParamLocal, ReturnExpr, Step,
+        Expr, FunctionId, FunctionPlan, IntExpr, IntFunctionId, ParamLocal, ReturnExpr, Step,
     };
     use crate::runtime::frame::Frame;
 
@@ -158,7 +158,7 @@ mod tests {
                 "main".into(),
                 Vec::new(),
                 Vec::new(),
-                ReturnExpr::int(IntExpr::value(1.into())),
+                ReturnExpr::int(IntFunctionId(0), IntExpr::value(1.into())),
             ),
             Vec::new(),
         )

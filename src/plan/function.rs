@@ -1,8 +1,11 @@
 use super::FrameLayout;
-use super::expression::{BoolExpr, FunctionExpr, IntExpr, NilExpr, StringExpr};
+use super::expression::{BoolExpr, IntExpr, NilExpr, StringExpr};
 use super::id::{
-    BoolFunctionLocalId, BoolLocalId, FunctionFunctionLocalId, FunctionId, IntFunctionLocalId,
-    IntLocalId, NilFunctionLocalId, NilLocalId, StringFunctionLocalId, StringLocalId,
+    BoolFunctionFunctionId, BoolFunctionId, BoolFunctionLocalId, BoolLocalId,
+    FunctionFunctionFunctionId, FunctionFunctionId, FunctionFunctionLocalId, FunctionId,
+    IntFunctionFunctionId, IntFunctionId, IntFunctionLocalId, IntLocalId, NilFunctionFunctionId,
+    NilFunctionId, NilFunctionLocalId, NilLocalId, RuntimeFunctionId, StringFunctionFunctionId,
+    StringFunctionId, StringFunctionLocalId, StringLocalId,
 };
 use super::step::Step;
 use super::value::{FunctionType, ValueType};
@@ -65,11 +68,42 @@ pub struct ReturnExpr {
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum ReturnExprKind {
-    Int(IntExpr),
-    String(StringExpr),
-    Bool(BoolExpr),
-    Nil(NilExpr),
-    Function(FunctionExpr),
+    Int {
+        runtime_id: IntFunctionId,
+        expression: IntExpr,
+    },
+    String {
+        runtime_id: StringFunctionId,
+        expression: StringExpr,
+    },
+    Bool {
+        runtime_id: BoolFunctionId,
+        expression: BoolExpr,
+    },
+    Nil {
+        runtime_id: NilFunctionId,
+        expression: NilExpr,
+    },
+    IntFunction {
+        runtime_id: IntFunctionFunctionId,
+        expression: super::IntFunctionExpr,
+    },
+    StringFunction {
+        runtime_id: StringFunctionFunctionId,
+        expression: super::StringFunctionExpr,
+    },
+    BoolFunction {
+        runtime_id: BoolFunctionFunctionId,
+        expression: super::BoolFunctionExpr,
+    },
+    NilFunction {
+        runtime_id: NilFunctionFunctionId,
+        expression: super::NilFunctionExpr,
+    },
+    FunctionFunction {
+        runtime_id: FunctionFunctionFunctionId,
+        expression: super::FunctionFunctionExpr,
+    },
 }
 
 impl FunctionPlan {
@@ -118,33 +152,99 @@ impl FunctionPlan {
 }
 
 impl ReturnExpr {
-    pub(crate) fn int(expression: IntExpr) -> Self {
+    pub(crate) fn int(runtime_id: IntFunctionId, expression: IntExpr) -> Self {
         Self {
-            kind: ReturnExprKind::Int(expression),
+            kind: ReturnExprKind::Int {
+                runtime_id,
+                expression,
+            },
         }
     }
 
-    pub(crate) fn string(expression: StringExpr) -> Self {
+    pub(crate) fn string(runtime_id: StringFunctionId, expression: StringExpr) -> Self {
         Self {
-            kind: ReturnExprKind::String(expression),
+            kind: ReturnExprKind::String {
+                runtime_id,
+                expression,
+            },
         }
     }
 
-    pub(crate) fn bool(expression: BoolExpr) -> Self {
+    pub(crate) fn bool(runtime_id: BoolFunctionId, expression: BoolExpr) -> Self {
         Self {
-            kind: ReturnExprKind::Bool(expression),
+            kind: ReturnExprKind::Bool {
+                runtime_id,
+                expression,
+            },
         }
     }
 
-    pub(crate) fn nil(expression: NilExpr) -> Self {
+    pub(crate) fn nil(runtime_id: NilFunctionId, expression: NilExpr) -> Self {
         Self {
-            kind: ReturnExprKind::Nil(expression),
+            kind: ReturnExprKind::Nil {
+                runtime_id,
+                expression,
+            },
         }
     }
 
-    pub(crate) fn function(expression: FunctionExpr) -> Self {
+    pub(crate) fn int_function(
+        runtime_id: IntFunctionFunctionId,
+        expression: super::IntFunctionExpr,
+    ) -> Self {
         Self {
-            kind: ReturnExprKind::Function(expression),
+            kind: ReturnExprKind::IntFunction {
+                runtime_id,
+                expression,
+            },
+        }
+    }
+
+    pub(crate) fn string_function(
+        runtime_id: StringFunctionFunctionId,
+        expression: super::StringFunctionExpr,
+    ) -> Self {
+        Self {
+            kind: ReturnExprKind::StringFunction {
+                runtime_id,
+                expression,
+            },
+        }
+    }
+
+    pub(crate) fn bool_function(
+        runtime_id: BoolFunctionFunctionId,
+        expression: super::BoolFunctionExpr,
+    ) -> Self {
+        Self {
+            kind: ReturnExprKind::BoolFunction {
+                runtime_id,
+                expression,
+            },
+        }
+    }
+
+    pub(crate) fn nil_function(
+        runtime_id: NilFunctionFunctionId,
+        expression: super::NilFunctionExpr,
+    ) -> Self {
+        Self {
+            kind: ReturnExprKind::NilFunction {
+                runtime_id,
+                expression,
+            },
+        }
+    }
+
+    pub(crate) fn function_function(
+        runtime_id: FunctionFunctionFunctionId,
+        expression: super::FunctionFunctionExpr,
+    ) -> Self {
+        Self {
+            kind: ReturnExprKind::FunctionFunction {
+                runtime_id,
+                expression,
+            },
         }
     }
 
@@ -154,13 +254,69 @@ impl ReturnExpr {
 
     pub fn value_type(&self) -> ValueType {
         match self.kind() {
-            ReturnExprKind::Int(_) => ValueType::Int,
-            ReturnExprKind::String(_) => ValueType::String,
-            ReturnExprKind::Bool(_) => ValueType::Bool,
-            ReturnExprKind::Nil(_) => ValueType::Nil,
-            ReturnExprKind::Function(expression) => {
+            ReturnExprKind::Int { .. } => ValueType::Int,
+            ReturnExprKind::String { .. } => ValueType::String,
+            ReturnExprKind::Bool { .. } => ValueType::Bool,
+            ReturnExprKind::Nil { .. } => ValueType::Nil,
+            ReturnExprKind::IntFunction { expression, .. } => {
                 ValueType::Function(Box::new(expression.type_().clone()))
             }
+            ReturnExprKind::StringFunction { expression, .. } => {
+                ValueType::Function(Box::new(expression.type_().clone()))
+            }
+            ReturnExprKind::BoolFunction { expression, .. } => {
+                ValueType::Function(Box::new(expression.type_().clone()))
+            }
+            ReturnExprKind::NilFunction { expression, .. } => {
+                ValueType::Function(Box::new(expression.type_().clone()))
+            }
+            ReturnExprKind::FunctionFunction { expression, .. } => {
+                ValueType::Function(Box::new(expression.type_().clone()))
+            }
+        }
+    }
+
+    pub(crate) fn runtime_id(&self) -> RuntimeFunctionId {
+        match self.kind() {
+            ReturnExprKind::Int { runtime_id, .. } => RuntimeFunctionId::Int(*runtime_id),
+            ReturnExprKind::String { runtime_id, .. } => RuntimeFunctionId::String(*runtime_id),
+            ReturnExprKind::Bool { runtime_id, .. } => RuntimeFunctionId::Bool(*runtime_id),
+            ReturnExprKind::Nil { runtime_id, .. } => RuntimeFunctionId::Nil(*runtime_id),
+            ReturnExprKind::IntFunction {
+                runtime_id,
+                expression,
+            } => RuntimeFunctionId::Function {
+                id: FunctionFunctionId::Int(*runtime_id),
+                return_type: expression.type_().clone(),
+            },
+            ReturnExprKind::StringFunction {
+                runtime_id,
+                expression,
+            } => RuntimeFunctionId::Function {
+                id: FunctionFunctionId::String(*runtime_id),
+                return_type: expression.type_().clone(),
+            },
+            ReturnExprKind::BoolFunction {
+                runtime_id,
+                expression,
+            } => RuntimeFunctionId::Function {
+                id: FunctionFunctionId::Bool(*runtime_id),
+                return_type: expression.type_().clone(),
+            },
+            ReturnExprKind::NilFunction {
+                runtime_id,
+                expression,
+            } => RuntimeFunctionId::Function {
+                id: FunctionFunctionId::Nil(*runtime_id),
+                return_type: expression.type_().clone(),
+            },
+            ReturnExprKind::FunctionFunction {
+                runtime_id,
+                expression,
+            } => RuntimeFunctionId::Function {
+                id: FunctionFunctionId::Function(*runtime_id),
+                return_type: expression.type_().clone(),
+            },
         }
     }
 }
@@ -257,17 +413,21 @@ impl ParamLocal {
 mod tests {
     use super::{FunctionPlan, Param, ParamLocal, ReturnExpr, RuntimeFunction};
     use crate::plan::{
-        BoolExpr, BoolFunctionLocalId, BoolLocalId, FrameLayout, FunctionExpr, FunctionId,
-        FunctionType, FunctionValue, IntExpr, IntFunctionId, IntFunctionLocalId, IntLocalId,
-        NilExpr, NilFunctionLocalId, RuntimeFunctionId, StringExpr, StringFunctionLocalId,
-        ValueType,
+        BoolExpr, BoolFunctionExpr, BoolFunctionFunctionId, BoolFunctionId, BoolFunctionLocalId,
+        BoolFunctionValue, BoolLocalId, FrameLayout, FunctionFunctionExpr,
+        FunctionFunctionFunctionId, FunctionFunctionId, FunctionFunctionValue, FunctionId,
+        FunctionType, IntExpr, IntFunctionExpr, IntFunctionFunctionId, IntFunctionId,
+        IntFunctionLocalId, IntFunctionValue, IntLocalId, NilExpr, NilFunctionExpr,
+        NilFunctionFunctionId, NilFunctionId, NilFunctionLocalId, NilFunctionValue, StringExpr,
+        StringFunctionExpr, StringFunctionFunctionId, StringFunctionId, StringFunctionLocalId,
+        StringFunctionValue, ValueType,
     };
     use num_bigint::BigInt;
 
     #[test]
     fn function_plan_accessors() {
         let param = Param::new(ParamLocal::int(IntLocalId(0)), "x".into());
-        let return_ = ReturnExpr::int(IntExpr::value(BigInt::from(1)));
+        let return_ = ReturnExpr::int(IntFunctionId(0), IntExpr::value(BigInt::from(1)));
         let function = FunctionPlan::new(
             FunctionId::new(0),
             "main".into(),
@@ -283,7 +443,7 @@ mod tests {
         assert_eq!(function.steps(), &[]);
         assert_eq!(
             function.return_(),
-            &ReturnExpr::int(IntExpr::value(BigInt::from(1)))
+            &ReturnExpr::int(IntFunctionId(0), IntExpr::value(BigInt::from(1)))
         );
         assert_eq!(function.frame_layout().ints(), 1);
     }
@@ -291,28 +451,75 @@ mod tests {
     #[test]
     fn return_expr_value_type() {
         assert_eq!(
-            ReturnExpr::int(IntExpr::value(BigInt::from(1))).value_type(),
+            ReturnExpr::int(IntFunctionId(0), IntExpr::value(BigInt::from(1))).value_type(),
             ValueType::Int,
         );
         assert_eq!(
-            ReturnExpr::string(StringExpr::value("geam".into())).value_type(),
+            ReturnExpr::string(
+                crate::plan::StringFunctionId(0),
+                StringExpr::value("geam".into()),
+            )
+            .value_type(),
             ValueType::String,
         );
         assert_eq!(
-            ReturnExpr::bool(BoolExpr::value(true)).value_type(),
+            ReturnExpr::bool(crate::plan::BoolFunctionId(0), BoolExpr::value(true)).value_type(),
             ValueType::Bool,
         );
         assert_eq!(
-            ReturnExpr::nil(NilExpr::value()).value_type(),
+            ReturnExpr::nil(crate::plan::NilFunctionId(0), NilExpr::value()).value_type(),
             ValueType::Nil,
         );
         assert_eq!(
-            ReturnExpr::function(FunctionExpr::value(FunctionValue::new(
-                RuntimeFunctionId::Int(IntFunctionId(0)),
-                Vec::new(),
-            )))
+            ReturnExpr::int_function(
+                IntFunctionFunctionId(0),
+                IntFunctionExpr::value(IntFunctionValue::new(IntFunctionId(0), Vec::new())),
+            )
             .value_type(),
             ValueType::Function(Box::new(FunctionType::new(Vec::new(), ValueType::Int))),
+        );
+        assert_eq!(
+            ReturnExpr::string_function(
+                StringFunctionFunctionId(0),
+                StringFunctionExpr::value(StringFunctionValue::new(
+                    StringFunctionId(0),
+                    Vec::new(),
+                )),
+            )
+            .value_type(),
+            ValueType::Function(Box::new(FunctionType::new(Vec::new(), ValueType::String))),
+        );
+        assert_eq!(
+            ReturnExpr::bool_function(
+                BoolFunctionFunctionId(0),
+                BoolFunctionExpr::value(BoolFunctionValue::new(BoolFunctionId(0), Vec::new())),
+            )
+            .value_type(),
+            ValueType::Function(Box::new(FunctionType::new(Vec::new(), ValueType::Bool))),
+        );
+        assert_eq!(
+            ReturnExpr::nil_function(
+                NilFunctionFunctionId(0),
+                NilFunctionExpr::value(NilFunctionValue::new(NilFunctionId(0), Vec::new())),
+            )
+            .value_type(),
+            ValueType::Function(Box::new(FunctionType::new(Vec::new(), ValueType::Nil))),
+        );
+        let return_type = FunctionType::new(Vec::new(), ValueType::Int);
+        assert_eq!(
+            ReturnExpr::function_function(
+                FunctionFunctionFunctionId(0),
+                FunctionFunctionExpr::value(FunctionFunctionValue::new(
+                    FunctionFunctionId::Int(IntFunctionFunctionId(0)),
+                    Vec::new(),
+                    return_type.clone(),
+                )),
+            )
+            .value_type(),
+            ValueType::Function(Box::new(FunctionType::new(
+                Vec::new(),
+                ValueType::Function(Box::new(return_type)),
+            ))),
         );
     }
 

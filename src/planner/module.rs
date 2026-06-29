@@ -1,6 +1,6 @@
 use crate::plan::{
     ExecutionPlan, FunctionFunctionLocalId, FunctionId, FunctionType, IntFunctionLocalId,
-    ParamLocal, RuntimeFunctionId, ValueType,
+    ParamLocal, ValueType,
 };
 use crate::planner::context::{FunctionInfo, FunctionParam, FunctionRuntimeIds};
 use crate::planner::error::{
@@ -151,7 +151,7 @@ fn function_info(
     seed: &FunctionSeed,
     runtime_ids: &mut FunctionRuntimeIds,
 ) -> FunctionInfo {
-    let runtime_id = runtime_id(&seed.return_type, runtime_ids);
+    let runtime_id = runtime_ids.next(&seed.return_type);
     FunctionInfo {
         id: FunctionId::new(function_index),
         runtime_id,
@@ -173,16 +173,6 @@ fn function_return_type(name: EcoString, type_: &Type) -> Result<ValueType, Plan
         name,
         reason: UnsupportedFunctionReason::UnsupportedReturnType,
     })
-}
-
-fn runtime_id(return_type: &ValueType, runtime_ids: &mut FunctionRuntimeIds) -> RuntimeFunctionId {
-    match return_type {
-        ValueType::Int => runtime_ids.next_int(),
-        ValueType::String => runtime_ids.next_string(),
-        ValueType::Bool => runtime_ids.next_bool(),
-        ValueType::Nil => runtime_ids.next_nil(),
-        ValueType::Function(return_type) => runtime_ids.next_function(return_type.as_ref().clone()),
-    }
 }
 
 fn function_params(

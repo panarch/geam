@@ -144,7 +144,10 @@ impl PartialEq for ExecutionPlan {
 
 #[cfg(test)]
 mod tests {
-    use super::{ExecutionPlan, FunctionId, FunctionPlan, IntExpr, ReturnExpr};
+    use super::{
+        ExecutionPlan, FunctionId, FunctionPlan, IntExpr, IntFunctionId, ReturnExpr,
+        RuntimeFunctionId,
+    };
     use num_bigint::BigInt;
 
     #[test]
@@ -154,14 +157,14 @@ mod tests {
             "main".into(),
             Vec::new(),
             Vec::new(),
-            ReturnExpr::int(IntExpr::value(BigInt::from(1))),
+            ReturnExpr::int(IntFunctionId(0), IntExpr::value(BigInt::from(1))),
         );
         let helper = FunctionPlan::new(
             FunctionId::new(1),
             "helper".into(),
             Vec::new(),
             Vec::new(),
-            ReturnExpr::int(IntExpr::value(BigInt::from(2))),
+            ReturnExpr::int(IntFunctionId(1), IntExpr::value(BigInt::from(2))),
         );
         let plan = ExecutionPlan::new("main".into(), main, vec![helper]);
 
@@ -169,6 +172,38 @@ mod tests {
         assert_eq!(plan.main_function().name(), "main");
         assert_eq!(plan.functions().len(), 1);
         assert_eq!(plan.functions()[0].name(), "helper");
+    }
+
+    #[test]
+    fn execution_plan_runtime_table_uses_return_expr_ids() {
+        let main = FunctionPlan::new(
+            FunctionId::new(0),
+            "main".into(),
+            Vec::new(),
+            Vec::new(),
+            ReturnExpr::int(IntFunctionId(1), IntExpr::value(BigInt::from(11))),
+        );
+        let helper = FunctionPlan::new(
+            FunctionId::new(1),
+            "helper".into(),
+            Vec::new(),
+            Vec::new(),
+            ReturnExpr::int(IntFunctionId(0), IntExpr::value(BigInt::from(10))),
+        );
+        let plan = ExecutionPlan::new("main".into(), main, vec![helper]);
+
+        assert_eq!(
+            plan.main_runtime(),
+            RuntimeFunctionId::Int(IntFunctionId(1))
+        );
+        assert_eq!(
+            plan.int_function(IntFunctionId(0)).return_(),
+            &IntExpr::value(BigInt::from(10)),
+        );
+        assert_eq!(
+            plan.int_function(IntFunctionId(1)).return_(),
+            &IntExpr::value(BigInt::from(11)),
+        );
     }
 
     #[test]
@@ -180,7 +215,7 @@ mod tests {
                 "main".into(),
                 Vec::new(),
                 Vec::new(),
-                ReturnExpr::int(IntExpr::value(BigInt::from(1))),
+                ReturnExpr::int(IntFunctionId(0), IntExpr::value(BigInt::from(1))),
             ),
             Vec::new(),
         );
@@ -190,6 +225,7 @@ mod tests {
         assert!(debug.contains("module"));
         assert!(debug.contains("main"));
         assert!(debug.contains("functions"));
-        assert!(!debug.contains("runtime"));
+        assert!(!debug.contains("runtime:"));
+        assert!(!debug.contains("RuntimePlan"));
     }
 }

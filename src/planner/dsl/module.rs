@@ -1,4 +1,5 @@
 use crate::plan::{ExecutionPlan, FunctionId};
+use crate::planner::context::FunctionRuntimeIds;
 use crate::planner::dsl::function::FunctionDsl;
 use ecow::EcoString;
 
@@ -7,13 +8,15 @@ pub(crate) fn module(
     main: FunctionDsl,
     functions: impl IntoIterator<Item = FunctionDsl>,
 ) -> ExecutionPlan {
+    let mut runtime_ids = FunctionRuntimeIds::default();
+
     ExecutionPlan::new(
         name.into(),
-        main.build(FunctionId::new(0)),
+        main.build(FunctionId::new(0), &mut runtime_ids),
         functions
             .into_iter()
             .enumerate()
-            .map(|(index, function)| function.build(FunctionId::new(index + 1)))
+            .map(|(index, function)| function.build(FunctionId::new(index + 1), &mut runtime_ids))
             .collect(),
     )
 }

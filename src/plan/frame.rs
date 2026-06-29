@@ -191,11 +191,25 @@ impl FrameLayout {
 
     fn include_return_expr(&mut self, expression: &ReturnExpr) {
         match expression.kind() {
-            ReturnExprKind::Int(expression) => self.include_int_expr(expression),
-            ReturnExprKind::String(expression) => self.include_string_expr(expression),
-            ReturnExprKind::Bool(expression) => self.include_bool_expr(expression),
-            ReturnExprKind::Nil(expression) => self.include_nil_expr(expression),
-            ReturnExprKind::Function(expression) => self.include_function_expr(expression),
+            ReturnExprKind::Int { expression, .. } => self.include_int_expr(expression),
+            ReturnExprKind::String { expression, .. } => self.include_string_expr(expression),
+            ReturnExprKind::Bool { expression, .. } => self.include_bool_expr(expression),
+            ReturnExprKind::Nil { expression, .. } => self.include_nil_expr(expression),
+            ReturnExprKind::IntFunction { expression, .. } => {
+                self.include_int_function_expr(expression);
+            }
+            ReturnExprKind::StringFunction { expression, .. } => {
+                self.include_string_function_expr(expression);
+            }
+            ReturnExprKind::BoolFunction { expression, .. } => {
+                self.include_bool_function_expr(expression);
+            }
+            ReturnExprKind::NilFunction { expression, .. } => {
+                self.include_nil_function_expr(expression);
+            }
+            ReturnExprKind::FunctionFunction { expression, .. } => {
+                self.include_function_function_expr(expression);
+            }
         }
     }
 
@@ -646,7 +660,7 @@ mod tests {
                 int_function_expr(),
             ),
         )))];
-        let return_ = ReturnExpr::int(IntExpr::value(0.into()));
+        let return_ = ReturnExpr::int(IntFunctionId(0), IntExpr::value(0.into()));
 
         let layout = FrameLayout::from_function_parts(&[], &steps, &return_);
 
@@ -665,14 +679,17 @@ mod tests {
                 int_function_expr().type_().clone(),
             ),
         )];
-        let return_ = ReturnExpr::int(IntExpr::function_call(
-            IntFunctionExpr::local_get(
-                IntFunctionLocalId(3),
-                "h".into(),
-                int_function_expr().type_().clone(),
+        let return_ = ReturnExpr::int(
+            IntFunctionId(0),
+            IntExpr::function_call(
+                IntFunctionExpr::local_get(
+                    IntFunctionLocalId(3),
+                    "h".into(),
+                    int_function_expr().type_().clone(),
+                ),
+                Vec::new(),
             ),
-            Vec::new(),
-        ));
+        );
 
         let layout = FrameLayout::from_function_parts(&[], &steps, &return_);
 
@@ -704,7 +721,7 @@ mod tests {
                 ),
             ))),
         ];
-        let return_ = ReturnExpr::int(IntExpr::value(0.into()));
+        let return_ = ReturnExpr::int(IntFunctionId(0), IntExpr::value(0.into()));
 
         let layout = FrameLayout::from_function_parts(&[], &steps, &return_);
 
@@ -808,7 +825,7 @@ mod tests {
             ))),
             Step::evaluate(Expr::int(IntExpr::negate(IntExpr::value(1.into())))),
         ];
-        let return_ = ReturnExpr::int(IntExpr::value(0.into()));
+        let return_ = ReturnExpr::int(IntFunctionId(0), IntExpr::value(0.into()));
 
         let layout = FrameLayout::from_function_parts(&[], &steps, &return_);
 
