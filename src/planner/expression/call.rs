@@ -677,7 +677,7 @@ mod tests {
         block_int_function, bool_, bool_case_int_function, call_int, call_int_function, function,
         function_function_ref, function_ref, int, int_arg, int_case_int_function, int_function_arg,
         int_function_call_arg, int_function_ref, let_int_function_step, local_int,
-        local_int_function, module,
+        local_int_function, module, module_with_anonymous,
     };
     use crate::planner::plan_module;
     use crate::planner::support::{compile, compile_minimal_module, dummy_span};
@@ -693,13 +693,23 @@ mod tests {
     };
 
     #[test]
-    fn reject_profile_anonymous_function_call() {
-        assert_eq!(
-            plan_module(compile(r#"pub fn main() { fn(x) { x }(1) }"#)),
-            Err(PlanError::UnsupportedExpression {
-                kind: UnsupportedExpressionKind::AnonymousFunction,
-            }),
+    fn plan_immediate_anonymous_function_call() {
+        let actual = plan_module(compile(r#"pub fn main() { fn(x) { x + 1 }(41) }"#))
+            .expect("source should plan");
+        let expected = module_with_anonymous(
+            "main",
+            function(
+                "main",
+                call_int_function(
+                    int_function_ref(1, [LocalId::Int(IntLocalId(0))]),
+                    [int_function_call_arg(0, int(41))],
+                ),
+            ),
+            [],
+            [function("<anonymous:0>", local_int(0, "x").add_int(int(1))).param_int(0, "x")],
         );
+
+        assert_eq!(actual, expected);
     }
 
     #[test]

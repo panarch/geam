@@ -33,6 +33,8 @@ pub enum InvalidTypedAstReason {
 
 #[derive(Debug, Error, Clone, Copy, PartialEq, Eq)]
 pub enum InvalidFunctionShapeReason {
+    #[error("function argument types do not match signature")]
+    ArgumentTypeMismatch,
     #[error("anonymous functions are not module functions")]
     Anonymous,
     #[error("empty function bodies are not supported")]

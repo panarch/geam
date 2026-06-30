@@ -15,4 +15,4 @@ pub(crate) use expression::{
     not_equal, string, string_arg, string_function_ref,
 };
 pub(crate) use function::function;
-pub(crate) use module::module;
+pub(crate) use module::{module, module_with_anonymous};
