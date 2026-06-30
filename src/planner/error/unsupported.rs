@@ -64,14 +64,16 @@ pub enum UnsupportedPatternKind {
 
 #[derive(Debug, Error, Clone, Copy, PartialEq, Eq)]
 pub enum UnsupportedExpressionKind {
-    #[error("anonymous function")]
-    AnonymousFunction,
     #[error("bit array")]
     BitArray,
+    #[error("capturing closure")]
+    CapturingClosure,
     #[error("echo")]
     Echo,
     #[error("float")]
     Float,
+    #[error("function capture literal")]
+    FunctionCaptureLiteral,
     #[error("list")]
     List,
     #[error("panic")]
@@ -82,6 +84,8 @@ pub enum UnsupportedExpressionKind {
     Tuple,
     #[error("tuple index")]
     TupleIndex,
+    #[error("function literal type is not supported")]
+    UnsupportedFunctionLiteralType,
 }
 
 #[derive(Debug, Error, Clone, Copy, PartialEq, Eq)]

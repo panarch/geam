@@ -1,14 +1,14 @@
 use crate::plan::{
     BoolFunctionFunctionId, BoolFunctionId, BoolFunctionLocalId, BoolLocalId,
     FunctionFunctionFunctionId, FunctionFunctionId, FunctionFunctionLocalId, FunctionId,
-    FunctionType, FunctionValue, IntFunctionFunctionId, IntFunctionId, IntFunctionLocalId,
-    IntLocalId, LocalId, NilFunctionFunctionId, NilFunctionId, NilFunctionLocalId, NilLocalId,
-    ParamLocal, RuntimeFunctionId, StringFunctionFunctionId, StringFunctionId,
-    StringFunctionLocalId, StringLocalId, ValueType,
+    FunctionPlan, FunctionType, FunctionValue, IntFunctionFunctionId, IntFunctionId,
+    IntFunctionLocalId, IntLocalId, LocalId, NilFunctionFunctionId, NilFunctionId,
+    NilFunctionLocalId, NilLocalId, ParamLocal, RuntimeFunctionId, StringFunctionFunctionId,
+    StringFunctionId, StringFunctionLocalId, StringLocalId, ValueType,
 };
 use ecow::EcoString;
 use gleam_core::type_::Type;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 #[derive(Clone)]
 pub(super) struct FunctionInfo {
@@ -27,7 +27,9 @@ pub(super) struct FunctionParam {
 pub(super) struct PlanContext<'a> {
     pub(super) module_name: &'a EcoString,
     functions: &'a HashMap<EcoString, FunctionInfo>,
+    anonymous_functions: &'a mut AnonymousFunctions,
     bindings: HashMap<EcoString, LocalBinding>,
+    outer_binding_names: HashSet<EcoString>,
     next_int_local: usize,
     next_string_local: usize,
     next_bool_local: usize,
@@ -73,11 +75,14 @@ impl<'a> PlanContext<'a> {
     pub(super) fn new(
         module_name: &'a EcoString,
         functions: &'a HashMap<EcoString, FunctionInfo>,
+        anonymous_functions: &'a mut AnonymousFunctions,
     ) -> Self {
         Self {
             module_name,
             functions,
+            anonymous_functions,
             bindings: HashMap::new(),
+            outer_binding_names: HashSet::new(),
             next_int_local: 0,
             next_string_local: 0,
             next_bool_local: 0,
@@ -322,6 +327,48 @@ impl<'a> PlanContext<'a> {
         }
     }
 
+    pub(super) fn anonymous_function_error_name(&self) -> EcoString {
+        self.anonymous_functions.next_name()
+    }
+
+    pub(super) fn allocate_anonymous_function(
+        &mut self,
+        return_type: ValueType,
+        params: Vec<FunctionParam>,
+    ) -> (EcoString, FunctionInfo) {
+        self.anonymous_functions.allocate(return_type, params)
+    }
+
+    pub(super) fn push_anonymous_function(&mut self, function: FunctionPlan) {
+        self.anonymous_functions.push(function);
+    }
+
+    pub(super) fn anonymous_function_context(&mut self) -> PlanContext<'_> {
+        let mut outer_binding_names = self.outer_binding_names.clone();
+        outer_binding_names.extend(self.bindings.keys().cloned());
+
+        PlanContext {
+            module_name: self.module_name,
+            functions: self.functions,
+            anonymous_functions: self.anonymous_functions,
+            bindings: HashMap::new(),
+            outer_binding_names,
+            next_int_local: 0,
+            next_string_local: 0,
+            next_bool_local: 0,
+            next_nil_local: 0,
+            next_int_function_local: 0,
+            next_string_function_local: 0,
+            next_bool_function_local: 0,
+            next_nil_function_local: 0,
+            next_function_function_local: 0,
+        }
+    }
+
+    pub(super) fn is_outer_binding_name(&self, name: &EcoString) -> bool {
+        self.bindings.contains_key(name) || self.outer_binding_names.contains(name)
+    }
+
     pub(super) fn with_local_scope<T, E>(
         &mut self,
         f: impl FnOnce(&mut Self) -> Result<T, E>,
@@ -330,6 +377,63 @@ impl<'a> PlanContext<'a> {
         let result = f(self);
         self.bindings = bindings;
         result
+    }
+}
+
+pub(in crate::planner) struct AnonymousFunctions {
+    next_function_index: usize,
+    next_anonymous_index: usize,
+    runtime_ids: FunctionRuntimeIds,
+    functions: Vec<FunctionPlan>,
+}
+
+impl AnonymousFunctions {
+    pub(in crate::planner) fn new(
+        next_function_index: usize,
+        runtime_ids: FunctionRuntimeIds,
+    ) -> Self {
+        Self {
+            next_function_index,
+            next_anonymous_index: 0,
+            runtime_ids,
+            functions: Vec::new(),
+        }
+    }
+
+    pub(in crate::planner) fn into_functions(self) -> Vec<FunctionPlan> {
+        self.functions
+    }
+
+    fn next_name(&self) -> EcoString {
+        format!("<anonymous:{}>", self.next_anonymous_index).into()
+    }
+
+    fn allocate(
+        &mut self,
+        return_type: ValueType,
+        params: Vec<FunctionParam>,
+    ) -> (EcoString, FunctionInfo) {
+        let name = self.next_name();
+        let runtime_id = self.runtime_ids.next(&return_type);
+        let info = FunctionInfo {
+            id: FunctionId::new(self.next_function_index),
+            runtime_id,
+            return_type,
+            params,
+        };
+        self.next_function_index += 1;
+        self.next_anonymous_index += 1;
+        (name, info)
+    }
+
+    fn push(&mut self, function: FunctionPlan) {
+        self.functions.push(function);
+    }
+}
+
+impl Default for AnonymousFunctions {
+    fn default() -> Self {
+        Self::new(0, FunctionRuntimeIds::default())
     }
 }
 
@@ -474,7 +578,7 @@ impl ValueType {
 #[cfg(test)]
 mod tests {
     use super::FunctionLocalBinding;
-    use super::{FunctionInfo, FunctionRuntimeIds, PlanContext};
+    use super::{AnonymousFunctions, FunctionInfo, FunctionRuntimeIds, PlanContext};
     use crate::plan::{
         FunctionValue, IntFunctionId, IntFunctionLocalId, IntLocalId, LocalId, RuntimeFunctionId,
         ValueType,
@@ -486,7 +590,8 @@ mod tests {
     fn local_scope_restores_names_after_error_without_reusing_ids() {
         let module = EcoString::from("main");
         let functions = HashMap::<EcoString, FunctionInfo>::new();
-        let mut context = PlanContext::new(&module, &functions);
+        let mut anonymous = AnonymousFunctions::default();
+        let mut context = PlanContext::new(&module, &functions, &mut anonymous);
 
         assert_eq!(context.define_int_local("x".into()), IntLocalId(0));
         let result = context.with_local_scope(|context| {
@@ -506,7 +611,8 @@ mod tests {
     fn define_function_local_records_binding() {
         let module = EcoString::from("main");
         let functions = HashMap::<EcoString, FunctionInfo>::new();
-        let mut context = PlanContext::new(&module, &functions);
+        let mut anonymous = AnonymousFunctions::default();
+        let mut context = PlanContext::new(&module, &functions, &mut anonymous);
         let value = function_value();
 
         let local = context.define_int_function_local("f".into(), value.type_());
@@ -525,7 +631,8 @@ mod tests {
     fn function_local_shadows_primitive_binding() {
         let module = EcoString::from("main");
         let functions = HashMap::<EcoString, FunctionInfo>::new();
-        let mut context = PlanContext::new(&module, &functions);
+        let mut anonymous = AnonymousFunctions::default();
+        let mut context = PlanContext::new(&module, &functions, &mut anonymous);
         let value = function_value();
 
         context.define_int_local("f".into());
@@ -545,7 +652,8 @@ mod tests {
     fn primitive_binding_shadows_function_local() {
         let module = EcoString::from("main");
         let functions = HashMap::<EcoString, FunctionInfo>::new();
-        let mut context = PlanContext::new(&module, &functions);
+        let mut anonymous = AnonymousFunctions::default();
+        let mut context = PlanContext::new(&module, &functions, &mut anonymous);
 
         context.define_int_function_local("f".into(), function_value().type_());
         let local = context.define_int_local("f".into());

@@ -1,21 +1,29 @@
 use crate::plan::{
-    Expr, ExprKind, FunctionFunctionId, FunctionPlan, Param, ReturnExpr, RuntimeFunctionId,
+    Expr, ExprKind, FunctionFunctionId, FunctionPlan, Param, ReturnExpr, RuntimeFunctionId, Step,
     ValueType,
 };
-use crate::planner::context::{FunctionInfo, PlanContext};
+use crate::planner::context::{AnonymousFunctions, FunctionInfo, FunctionParam, PlanContext};
 use crate::planner::error::{
     InvalidFunctionShapeReason, InvalidTypedAstReason, PlanError, UnsupportedFunctionReason,
 };
 use crate::planner::statement::plan_steps_and_return;
 use ecow::EcoString;
-use gleam_core::ast::TypedFunction;
+use gleam_core::ast::{TypedFunction, TypedStatement};
 use std::collections::HashMap;
+use vec1::Vec1;
+
+pub(super) struct PlannedFunctionBody {
+    pub(super) params: Vec<Param>,
+    pub(super) steps: Vec<Step>,
+    pub(super) return_: Expr,
+}
 
 pub(super) fn plan_function(
     info: FunctionInfo,
     module_name: &EcoString,
     functions: &HashMap<EcoString, FunctionInfo>,
     function: TypedFunction,
+    anonymous_functions: &mut AnonymousFunctions,
 ) -> Result<FunctionPlan, PlanError> {
     let name = function_name(&function)?;
 
@@ -26,15 +34,8 @@ pub(super) fn plan_function(
         });
     }
 
-    let mut context = PlanContext::new(module_name, functions);
-    let params = info
-        .params
-        .iter()
-        .map(|param| {
-            context.define_existing_param(param.name.clone(), &param.local);
-            Param::new(param.local.clone(), param.name.clone())
-        })
-        .collect();
+    let mut context = PlanContext::new(module_name, functions, anonymous_functions);
+    let params = define_params(&info.params, &mut context);
     let planned = plan_steps_and_return(
         function.body,
         &mut context,
@@ -59,6 +60,52 @@ pub(super) fn plan_function(
         planned.steps,
         return_,
     ))
+}
+
+pub(super) fn plan_anonymous_function_body(
+    params: &[FunctionParam],
+    body: Vec1<TypedStatement>,
+    context: &mut PlanContext<'_>,
+) -> Result<PlannedFunctionBody, PlanError> {
+    let params = define_params(params, context);
+    let planned = crate::planner::statement::plan_non_empty_steps_and_return(body, context)?;
+
+    Ok(PlannedFunctionBody {
+        params,
+        steps: planned.steps,
+        return_: planned.return_,
+    })
+}
+
+pub(super) fn anonymous_function_plan(
+    info: FunctionInfo,
+    name: EcoString,
+    planned: PlannedFunctionBody,
+) -> Result<FunctionPlan, PlanError> {
+    let return_ = function_return_expr(
+        &name,
+        &info.return_type(),
+        &info.runtime_id,
+        planned.return_,
+    )?;
+
+    Ok(FunctionPlan::new(
+        info.id,
+        name,
+        planned.params,
+        planned.steps,
+        return_,
+    ))
+}
+
+fn define_params(params: &[FunctionParam], context: &mut PlanContext<'_>) -> Vec<Param> {
+    params
+        .iter()
+        .map(|param| {
+            context.define_existing_param(param.name.clone(), &param.local);
+            Param::new(param.local.clone(), param.name.clone())
+        })
+        .collect()
 }
 
 fn function_return_expr(
@@ -550,9 +597,16 @@ pub fn main() {
             return_type: ValueType::Int,
             params: Vec::new(),
         };
+        let mut anonymous = crate::planner::context::AnonymousFunctions::default();
 
         assert_eq!(
-            super::plan_function(info, &"main".into(), &Default::default(), function),
+            super::plan_function(
+                info,
+                &"main".into(),
+                &Default::default(),
+                function,
+                &mut anonymous,
+            ),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::FunctionShape {
                     name: "<anonymous>".into(),

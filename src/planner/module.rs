@@ -2,7 +2,9 @@ use crate::plan::{
     ExecutionPlan, FunctionFunctionLocalId, FunctionId, FunctionType, IntFunctionLocalId,
     ParamLocal, ValueType,
 };
-use crate::planner::context::{FunctionInfo, FunctionParam, FunctionRuntimeIds};
+use crate::planner::context::{
+    AnonymousFunctions, FunctionInfo, FunctionParam, FunctionRuntimeIds,
+};
 use crate::planner::error::{
     PlanError, UnsupportedArgumentReason, UnsupportedFunctionReason, UnsupportedTopLevelKind,
 };
@@ -47,23 +49,48 @@ pub fn plan_module(module: TypedModule) -> Result<ExecutionPlan, PlanError> {
         main,
         functions_before_main,
         functions_after_main,
+        mut anonymous_functions,
     } = function_table(&definitions.functions)?;
     let main = validate_main_function(main)?;
     let mut functions = Vec::new();
 
     for function in functions_before_main {
-        let planned = plan_function(function.info, &module_name, &by_name, function.function)?;
+        let planned = plan_function(
+            function.info,
+            &module_name,
+            &by_name,
+            function.function,
+            &mut anonymous_functions,
+        )?;
         functions.push(planned);
     }
 
-    let main = plan_function(main.info, &module_name, &by_name, main.function)?;
+    let main = plan_function(
+        main.info,
+        &module_name,
+        &by_name,
+        main.function,
+        &mut anonymous_functions,
+    )?;
 
     for function in functions_after_main {
-        let planned = plan_function(function.info, &module_name, &by_name, function.function)?;
+        let planned = plan_function(
+            function.info,
+            &module_name,
+            &by_name,
+            function.function,
+            &mut anonymous_functions,
+        )?;
         functions.push(planned);
     }
+    let anonymous_functions = anonymous_functions.into_functions();
 
-    Ok(ExecutionPlan::new(module_name, main, functions))
+    Ok(ExecutionPlan::new_with_anonymous(
+        module_name,
+        main,
+        functions,
+        anonymous_functions,
+    ))
 }
 
 struct FunctionTable {
@@ -71,6 +98,7 @@ struct FunctionTable {
     main: FunctionToPlan,
     functions_before_main: Vec<FunctionToPlan>,
     functions_after_main: Vec<FunctionToPlan>,
+    anonymous_functions: AnonymousFunctions,
 }
 
 struct FunctionToPlan {
@@ -138,11 +166,14 @@ fn function_table(
         }
     }
 
+    let anonymous_functions = AnonymousFunctions::new(next_function_index, runtime_ids);
+
     Ok(FunctionTable {
         by_name,
         main,
         functions_before_main,
         functions_after_main,
+        anonymous_functions,
     })
 }
 
@@ -175,7 +206,7 @@ fn function_return_type(name: EcoString, type_: &Type) -> Result<ValueType, Plan
     })
 }
 
-fn function_params(
+pub(super) fn function_params(
     function_name: EcoString,
     arguments: &[gleam_core::ast::TypedArg],
 ) -> Result<Vec<FunctionParam>, PlanError> {

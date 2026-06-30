@@ -20,12 +20,19 @@ pub(super) struct RuntimePlan {
 }
 
 impl RuntimePlan {
-    pub(super) fn new(main: &FunctionPlan, functions: &[FunctionPlan]) -> Self {
+    pub(super) fn new(
+        main: &FunctionPlan,
+        functions: &[FunctionPlan],
+        anonymous_functions: &[FunctionPlan],
+    ) -> Self {
         let mut runtime = RuntimePlanBuilder::default();
         let main_runtime = main.return_().runtime_id();
         runtime.push(main);
 
         for function in functions {
+            runtime.push(function);
+        }
+        for function in anonymous_functions {
             runtime.push(function);
         }
 

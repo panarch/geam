@@ -113,6 +113,17 @@ mod functions {
             function_returning_function_recursive,
         );
     }
+
+    mod anonymous {
+        execution_cases!("functions/anonymous";
+            anonymous_function_local_call,
+            anonymous_function_immediate_call,
+            anonymous_function_argument,
+            anonymous_function_return_shapes,
+            anonymous_function_returning_function,
+            anonymous_function_main_returning_function,
+        );
+    }
 }
 
 mod rejection {
@@ -147,6 +158,12 @@ mod rejection {
             argument_discard,
             argument_labelled,
             argument_unsupported_type,
+        );
+    }
+
+    mod anonymous {
+        rejection_cases!("anonymous";
+            capturing_closure,
         );
     }
 }
