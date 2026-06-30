@@ -219,7 +219,7 @@ fn int_function_case_clauses(
         let ExprKind::Function(clause) = clause.into_kind() else {
             return Err(branch_return_type_mismatch());
         };
-        let Ok(clause) = clause.into_int() else {
+        let Some(clause) = clause.into_int() else {
             return Err(branch_return_type_mismatch());
         };
         typed_clauses.push((value, clause));
@@ -235,7 +235,7 @@ fn string_function_case_clauses(
         let ExprKind::Function(clause) = clause.into_kind() else {
             return Err(branch_return_type_mismatch());
         };
-        let Ok(clause) = clause.into_string() else {
+        let Some(clause) = clause.into_string() else {
             return Err(branch_return_type_mismatch());
         };
         typed_clauses.push((value, clause));
@@ -251,7 +251,7 @@ fn bool_function_case_clauses(
         let ExprKind::Function(clause) = clause.into_kind() else {
             return Err(branch_return_type_mismatch());
         };
-        let Ok(clause) = clause.into_bool() else {
+        let Some(clause) = clause.into_bool() else {
             return Err(branch_return_type_mismatch());
         };
         typed_clauses.push((value, clause));
@@ -267,7 +267,7 @@ fn nil_function_case_clauses(
         let ExprKind::Function(clause) = clause.into_kind() else {
             return Err(branch_return_type_mismatch());
         };
-        let Ok(clause) = clause.into_nil() else {
+        let Some(clause) = clause.into_nil() else {
             return Err(branch_return_type_mismatch());
         };
         typed_clauses.push((value, clause));
@@ -283,7 +283,7 @@ fn function_function_case_clauses(
         let ExprKind::Function(clause) = clause.into_kind() else {
             return Err(branch_return_type_mismatch());
         };
-        let Ok(clause) = clause.into_function() else {
+        let Some(clause) = clause.into_function() else {
             return Err(branch_return_type_mismatch());
         };
         typed_clauses.push((value, clause));

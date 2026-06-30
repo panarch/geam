@@ -15,7 +15,8 @@ use vec1::Vec1;
 pub(super) struct PlannedFunctionBody {
     pub(super) params: Vec<Param>,
     pub(super) steps: Vec<Step>,
-    pub(super) return_: Expr,
+    pub(super) return_: ReturnExpr,
+    pub(super) captures: Vec<crate::plan::CaptureArg>,
 }
 
 pub(super) fn plan_function(
@@ -63,17 +64,24 @@ pub(super) fn plan_function(
 }
 
 pub(super) fn plan_anonymous_function_body(
+    name: &EcoString,
+    return_type: &ValueType,
+    runtime_id: &RuntimeFunctionId,
     params: &[FunctionParam],
+    captures: Vec<crate::planner::context::CaptureBinding>,
     body: Vec1<TypedStatement>,
     context: &mut PlanContext<'_>,
 ) -> Result<PlannedFunctionBody, PlanError> {
     let params = define_params(params, context);
+    let captures = context.define_captures(captures)?;
     let planned = crate::planner::statement::plan_non_empty_steps_and_return(body, context)?;
+    let return_ = function_return_expr(name, return_type, runtime_id, planned.return_)?;
 
     Ok(PlannedFunctionBody {
         params,
         steps: planned.steps,
-        return_: planned.return_,
+        return_,
+        captures,
     })
 }
 
@@ -81,21 +89,14 @@ pub(super) fn anonymous_function_plan(
     info: FunctionInfo,
     name: EcoString,
     planned: PlannedFunctionBody,
-) -> Result<FunctionPlan, PlanError> {
-    let return_ = function_return_expr(
-        &name,
-        &info.return_type(),
-        &info.runtime_id,
-        planned.return_,
-    )?;
-
-    Ok(FunctionPlan::new(
+) -> FunctionPlan {
+    FunctionPlan::new(
         info.id,
         name,
         planned.params,
         planned.steps,
-        return_,
-    ))
+        planned.return_,
+    )
 }
 
 fn define_params(params: &[FunctionParam], context: &mut PlanContext<'_>) -> Vec<Param> {

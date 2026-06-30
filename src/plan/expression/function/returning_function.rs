@@ -1,6 +1,6 @@
 use crate::plan::{
-    BoolExpr, FunctionFunctionFunctionId, FunctionFunctionLocalId, FunctionFunctionValue,
-    FunctionType, IntExpr, Step,
+    BoolExpr, CaptureArg, FunctionFunctionFunctionId, FunctionFunctionId, FunctionFunctionLocalId,
+    FunctionFunctionValue, FunctionType, IntExpr, ParamLocal, Step,
 };
 use ecow::EcoString;
 use num_bigint::BigInt;
@@ -14,6 +14,12 @@ pub struct FunctionFunctionExpr {
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum FunctionFunctionExprKind {
     Value(FunctionFunctionValue),
+    Closure {
+        runtime_id: FunctionFunctionId,
+        params: Vec<ParamLocal>,
+        captures: Vec<CaptureArg>,
+        return_type: FunctionType,
+    },
     LocalGet {
         local: FunctionFunctionLocalId,
         name: EcoString,
@@ -50,6 +56,24 @@ impl FunctionFunctionExpr {
         Self {
             type_: value.type_(),
             kind: FunctionFunctionExprKind::Value(value),
+        }
+    }
+
+    pub(crate) fn closure(
+        runtime_id: FunctionFunctionId,
+        params: Vec<ParamLocal>,
+        captures: Vec<CaptureArg>,
+        type_: FunctionType,
+        return_type: FunctionType,
+    ) -> Self {
+        Self {
+            type_,
+            kind: FunctionFunctionExprKind::Closure {
+                runtime_id,
+                params,
+                captures,
+                return_type,
+            },
         }
     }
 

@@ -13,6 +13,17 @@ pub(in crate::runtime) fn eval_function_function_expr(
 ) -> Result<FunctionFunctionValue, ExecutionError> {
     match expression.kind() {
         FunctionFunctionExprKind::Value(value) => Ok(value.clone()),
+        FunctionFunctionExprKind::Closure {
+            runtime_id,
+            params,
+            captures,
+            return_type,
+        } => Ok(FunctionFunctionValue::new_with_captures(
+            *runtime_id,
+            params.clone(),
+            function::eval_capture_args(plan, frame, captures)?,
+            return_type.clone(),
+        )),
         FunctionFunctionExprKind::LocalGet { local, .. } => Ok(frame.get_function_function(*local)),
         FunctionFunctionExprKind::Call { function, args, .. } => {
             function::run_function_function_returning_function_call(plan, *function, args, frame)

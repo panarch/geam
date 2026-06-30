@@ -11,6 +11,15 @@ pub(in crate::runtime) fn eval_string_function_expr(
 ) -> Result<StringFunctionValue, ExecutionError> {
     match expression.kind() {
         StringFunctionExprKind::Value(value) => Ok(value.clone()),
+        StringFunctionExprKind::Closure {
+            runtime_id,
+            params,
+            captures,
+        } => Ok(StringFunctionValue::new_with_captures(
+            *runtime_id,
+            params.clone(),
+            function::eval_capture_args(plan, frame, captures)?,
+        )),
         StringFunctionExprKind::LocalGet { local, .. } => Ok(frame.get_string_function(*local)),
         StringFunctionExprKind::Call { function, args, .. } => {
             function::run_string_function_returning_function_call(plan, *function, args, frame)

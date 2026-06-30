@@ -2,8 +2,9 @@ use ecow::EcoString;
 use num_bigint::BigInt;
 
 use super::{
-    BoolFunctionId, FunctionFunctionId, IntFunctionId, NilFunctionId, ParamLocal,
-    RuntimeFunctionId, StringFunctionId,
+    BoolFunctionId, BoolFunctionLocalId, BoolLocalId, FunctionFunctionId, FunctionFunctionLocalId,
+    IntFunctionId, IntFunctionLocalId, IntLocalId, NilFunctionId, NilFunctionLocalId, NilLocalId,
+    ParamLocal, RuntimeFunctionId, StringFunctionId, StringFunctionLocalId, StringLocalId,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -39,31 +40,80 @@ pub(crate) enum FunctionValueKind {
 pub(crate) struct IntFunctionValue {
     runtime_id: IntFunctionId,
     params: Vec<ParamLocal>,
+    captures: Vec<CaptureValue>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct StringFunctionValue {
     runtime_id: StringFunctionId,
     params: Vec<ParamLocal>,
+    captures: Vec<CaptureValue>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct BoolFunctionValue {
     runtime_id: BoolFunctionId,
     params: Vec<ParamLocal>,
+    captures: Vec<CaptureValue>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct NilFunctionValue {
     runtime_id: NilFunctionId,
     params: Vec<ParamLocal>,
+    captures: Vec<CaptureValue>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct FunctionFunctionValue {
     runtime_id: FunctionFunctionId,
     params: Vec<ParamLocal>,
+    captures: Vec<CaptureValue>,
     return_type: FunctionType,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct CaptureValue {
+    kind: CaptureValueKind,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum CaptureValueKind {
+    Int {
+        local: IntLocalId,
+        value: BigInt,
+    },
+    String {
+        local: StringLocalId,
+        value: EcoString,
+    },
+    Bool {
+        local: BoolLocalId,
+        value: bool,
+    },
+    Nil {
+        local: NilLocalId,
+    },
+    IntFunction {
+        local: IntFunctionLocalId,
+        value: IntFunctionValue,
+    },
+    StringFunction {
+        local: StringFunctionLocalId,
+        value: StringFunctionValue,
+    },
+    BoolFunction {
+        local: BoolFunctionLocalId,
+        value: BoolFunctionValue,
+    },
+    NilFunction {
+        local: NilFunctionLocalId,
+        value: NilFunctionValue,
+    },
+    FunctionFunction {
+        local: FunctionFunctionLocalId,
+        value: FunctionFunctionValue,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -98,22 +148,30 @@ impl FunctionType {
 
 impl FunctionValue {
     pub(crate) fn new(runtime_id: RuntimeFunctionId, params: Vec<ParamLocal>) -> Self {
+        Self::new_with_captures(runtime_id, params, Vec::new())
+    }
+
+    pub(crate) fn new_with_captures(
+        runtime_id: RuntimeFunctionId,
+        params: Vec<ParamLocal>,
+        captures: Vec<CaptureValue>,
+    ) -> Self {
         let kind = match runtime_id {
-            RuntimeFunctionId::Int(runtime_id) => {
-                FunctionValueKind::Int(IntFunctionValue::new(runtime_id, params))
-            }
-            RuntimeFunctionId::String(runtime_id) => {
-                FunctionValueKind::String(StringFunctionValue::new(runtime_id, params))
-            }
-            RuntimeFunctionId::Bool(runtime_id) => {
-                FunctionValueKind::Bool(BoolFunctionValue::new(runtime_id, params))
-            }
-            RuntimeFunctionId::Nil(runtime_id) => {
-                FunctionValueKind::Nil(NilFunctionValue::new(runtime_id, params))
-            }
-            RuntimeFunctionId::Function { id, return_type } => {
-                FunctionValueKind::Function(FunctionFunctionValue::new(id, params, return_type))
-            }
+            RuntimeFunctionId::Int(runtime_id) => FunctionValueKind::Int(
+                IntFunctionValue::new_with_captures(runtime_id, params, captures),
+            ),
+            RuntimeFunctionId::String(runtime_id) => FunctionValueKind::String(
+                StringFunctionValue::new_with_captures(runtime_id, params, captures),
+            ),
+            RuntimeFunctionId::Bool(runtime_id) => FunctionValueKind::Bool(
+                BoolFunctionValue::new_with_captures(runtime_id, params, captures),
+            ),
+            RuntimeFunctionId::Nil(runtime_id) => FunctionValueKind::Nil(
+                NilFunctionValue::new_with_captures(runtime_id, params, captures),
+            ),
+            RuntimeFunctionId::Function { id, return_type } => FunctionValueKind::Function(
+                FunctionFunctionValue::new_with_captures(id, params, captures, return_type),
+            ),
         };
 
         Self { kind }
@@ -146,8 +204,21 @@ impl FunctionValue {
 }
 
 impl IntFunctionValue {
+    #[cfg(test)]
     pub(crate) fn new(runtime_id: IntFunctionId, params: Vec<ParamLocal>) -> Self {
-        Self { runtime_id, params }
+        Self::new_with_captures(runtime_id, params, Vec::new())
+    }
+
+    pub(crate) fn new_with_captures(
+        runtime_id: IntFunctionId,
+        params: Vec<ParamLocal>,
+        captures: Vec<CaptureValue>,
+    ) -> Self {
+        Self {
+            runtime_id,
+            params,
+            captures,
+        }
     }
 
     pub(crate) fn type_(&self) -> FunctionType {
@@ -158,6 +229,10 @@ impl IntFunctionValue {
         self.runtime_id
     }
 
+    pub(crate) fn captures(&self) -> &[CaptureValue] {
+        &self.captures
+    }
+
     #[cfg(test)]
     pub(crate) fn params(&self) -> &[ParamLocal] {
         &self.params
@@ -165,8 +240,21 @@ impl IntFunctionValue {
 }
 
 impl StringFunctionValue {
+    #[cfg(test)]
     pub(crate) fn new(runtime_id: StringFunctionId, params: Vec<ParamLocal>) -> Self {
-        Self { runtime_id, params }
+        Self::new_with_captures(runtime_id, params, Vec::new())
+    }
+
+    pub(crate) fn new_with_captures(
+        runtime_id: StringFunctionId,
+        params: Vec<ParamLocal>,
+        captures: Vec<CaptureValue>,
+    ) -> Self {
+        Self {
+            runtime_id,
+            params,
+            captures,
+        }
     }
 
     pub(crate) fn type_(&self) -> FunctionType {
@@ -177,6 +265,10 @@ impl StringFunctionValue {
         self.runtime_id
     }
 
+    pub(crate) fn captures(&self) -> &[CaptureValue] {
+        &self.captures
+    }
+
     #[cfg(test)]
     pub(crate) fn params(&self) -> &[ParamLocal] {
         &self.params
@@ -184,8 +276,21 @@ impl StringFunctionValue {
 }
 
 impl BoolFunctionValue {
+    #[cfg(test)]
     pub(crate) fn new(runtime_id: BoolFunctionId, params: Vec<ParamLocal>) -> Self {
-        Self { runtime_id, params }
+        Self::new_with_captures(runtime_id, params, Vec::new())
+    }
+
+    pub(crate) fn new_with_captures(
+        runtime_id: BoolFunctionId,
+        params: Vec<ParamLocal>,
+        captures: Vec<CaptureValue>,
+    ) -> Self {
+        Self {
+            runtime_id,
+            params,
+            captures,
+        }
     }
 
     pub(crate) fn type_(&self) -> FunctionType {
@@ -196,6 +301,10 @@ impl BoolFunctionValue {
         self.runtime_id
     }
 
+    pub(crate) fn captures(&self) -> &[CaptureValue] {
+        &self.captures
+    }
+
     #[cfg(test)]
     pub(crate) fn params(&self) -> &[ParamLocal] {
         &self.params
@@ -203,8 +312,21 @@ impl BoolFunctionValue {
 }
 
 impl NilFunctionValue {
+    #[cfg(test)]
     pub(crate) fn new(runtime_id: NilFunctionId, params: Vec<ParamLocal>) -> Self {
-        Self { runtime_id, params }
+        Self::new_with_captures(runtime_id, params, Vec::new())
+    }
+
+    pub(crate) fn new_with_captures(
+        runtime_id: NilFunctionId,
+        params: Vec<ParamLocal>,
+        captures: Vec<CaptureValue>,
+    ) -> Self {
+        Self {
+            runtime_id,
+            params,
+            captures,
+        }
     }
 
     pub(crate) fn type_(&self) -> FunctionType {
@@ -215,6 +337,10 @@ impl NilFunctionValue {
         self.runtime_id
     }
 
+    pub(crate) fn captures(&self) -> &[CaptureValue] {
+        &self.captures
+    }
+
     #[cfg(test)]
     pub(crate) fn params(&self) -> &[ParamLocal] {
         &self.params
@@ -222,14 +348,25 @@ impl NilFunctionValue {
 }
 
 impl FunctionFunctionValue {
+    #[cfg(test)]
     pub(crate) fn new(
         runtime_id: FunctionFunctionId,
         params: Vec<ParamLocal>,
         return_type: FunctionType,
     ) -> Self {
+        Self::new_with_captures(runtime_id, params, Vec::new(), return_type)
+    }
+
+    pub(crate) fn new_with_captures(
+        runtime_id: FunctionFunctionId,
+        params: Vec<ParamLocal>,
+        captures: Vec<CaptureValue>,
+        return_type: FunctionType,
+    ) -> Self {
         Self {
             runtime_id,
             params,
+            captures,
             return_type,
         }
     }
@@ -245,9 +382,79 @@ impl FunctionFunctionValue {
         self.runtime_id
     }
 
+    pub(crate) fn captures(&self) -> &[CaptureValue] {
+        &self.captures
+    }
+
     #[cfg(test)]
     pub(crate) fn params(&self) -> &[ParamLocal] {
         &self.params
+    }
+}
+
+impl CaptureValue {
+    pub(crate) fn int(local: IntLocalId, value: BigInt) -> Self {
+        Self {
+            kind: CaptureValueKind::Int { local, value },
+        }
+    }
+
+    pub(crate) fn string(local: StringLocalId, value: EcoString) -> Self {
+        Self {
+            kind: CaptureValueKind::String { local, value },
+        }
+    }
+
+    pub(crate) fn bool(local: BoolLocalId, value: bool) -> Self {
+        Self {
+            kind: CaptureValueKind::Bool { local, value },
+        }
+    }
+
+    pub(crate) fn nil(local: NilLocalId) -> Self {
+        Self {
+            kind: CaptureValueKind::Nil { local },
+        }
+    }
+
+    pub(crate) fn int_function(local: IntFunctionLocalId, value: IntFunctionValue) -> Self {
+        Self {
+            kind: CaptureValueKind::IntFunction { local, value },
+        }
+    }
+
+    pub(crate) fn string_function(
+        local: StringFunctionLocalId,
+        value: StringFunctionValue,
+    ) -> Self {
+        Self {
+            kind: CaptureValueKind::StringFunction { local, value },
+        }
+    }
+
+    pub(crate) fn bool_function(local: BoolFunctionLocalId, value: BoolFunctionValue) -> Self {
+        Self {
+            kind: CaptureValueKind::BoolFunction { local, value },
+        }
+    }
+
+    pub(crate) fn nil_function(local: NilFunctionLocalId, value: NilFunctionValue) -> Self {
+        Self {
+            kind: CaptureValueKind::NilFunction { local, value },
+        }
+    }
+
+    pub(crate) fn function_function(
+        local: FunctionFunctionLocalId,
+        value: FunctionFunctionValue,
+    ) -> Self {
+        Self {
+            kind: CaptureValueKind::FunctionFunction { local, value },
+        }
+    }
+
+    pub(crate) fn kind(&self) -> &CaptureValueKind {
+        &self.kind
     }
 }
 

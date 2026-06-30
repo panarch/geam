@@ -92,38 +92,38 @@ impl FunctionExpr {
         self.kind
     }
 
-    pub(crate) fn into_int(self) -> Result<IntFunctionExpr, Self> {
+    pub(crate) fn into_int(self) -> Option<IntFunctionExpr> {
         match self.kind {
-            FunctionExprKind::Int(expression) => Ok(expression),
-            kind => Err(Self { kind }),
+            FunctionExprKind::Int(expression) => Some(expression),
+            _ => None,
         }
     }
 
-    pub(crate) fn into_string(self) -> Result<StringFunctionExpr, Self> {
+    pub(crate) fn into_string(self) -> Option<StringFunctionExpr> {
         match self.kind {
-            FunctionExprKind::String(expression) => Ok(expression),
-            kind => Err(Self { kind }),
+            FunctionExprKind::String(expression) => Some(expression),
+            _ => None,
         }
     }
 
-    pub(crate) fn into_bool(self) -> Result<BoolFunctionExpr, Self> {
+    pub(crate) fn into_bool(self) -> Option<BoolFunctionExpr> {
         match self.kind {
-            FunctionExprKind::Bool(expression) => Ok(expression),
-            kind => Err(Self { kind }),
+            FunctionExprKind::Bool(expression) => Some(expression),
+            _ => None,
         }
     }
 
-    pub(crate) fn into_nil(self) -> Result<NilFunctionExpr, Self> {
+    pub(crate) fn into_nil(self) -> Option<NilFunctionExpr> {
         match self.kind {
-            FunctionExprKind::Nil(expression) => Ok(expression),
-            kind => Err(Self { kind }),
+            FunctionExprKind::Nil(expression) => Some(expression),
+            _ => None,
         }
     }
 
-    pub(crate) fn into_function(self) -> Result<FunctionFunctionExpr, Self> {
+    pub(crate) fn into_function(self) -> Option<FunctionFunctionExpr> {
         match self.kind {
-            FunctionExprKind::Function(expression) => Ok(expression),
-            kind => Err(Self { kind }),
+            FunctionExprKind::Function(expression) => Some(expression),
+            _ => None,
         }
     }
 }
@@ -201,26 +201,30 @@ mod tests {
 
     #[test]
     fn function_expr_typed_conversions() {
-        assert!(FunctionExpr::int(int_function_value()).into_int().is_ok());
+        assert!(FunctionExpr::int(int_function_value()).into_int().is_some());
         assert!(
             FunctionExpr::string(string_function_value())
                 .into_string()
-                .is_ok()
+                .is_some()
         );
         assert!(
             FunctionExpr::bool(bool_function_value())
                 .into_bool()
-                .is_ok()
+                .is_some()
         );
-        assert!(FunctionExpr::nil(nil_function_value()).into_nil().is_ok());
+        assert!(FunctionExpr::nil(nil_function_value()).into_nil().is_some());
 
         assert!(
             FunctionExpr::int(int_function_value())
                 .into_string()
-                .is_err()
+                .is_none()
         );
-        assert!(FunctionExpr::int(int_function_value()).into_bool().is_err());
-        assert!(FunctionExpr::int(int_function_value()).into_nil().is_err());
+        assert!(
+            FunctionExpr::int(int_function_value())
+                .into_bool()
+                .is_none()
+        );
+        assert!(FunctionExpr::int(int_function_value()).into_nil().is_none());
 
         assert!(matches!(
             FunctionExpr::from(int_function_value()).kind(),

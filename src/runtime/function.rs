@@ -1,8 +1,9 @@
 use crate::plan::{
-    BoolFunctionFunctionId, BoolFunctionId, CallArg, CallArgKind, ExecutionPlan, FrameLayout,
-    FunctionFunctionFunctionId, FunctionFunctionValue, FunctionReturnFamily, FunctionValue,
-    IntFunctionFunctionId, IntFunctionId, NilFunctionFunctionId, NilFunctionId, RuntimeFunctionId,
-    StepKind, StringFunctionFunctionId, StringFunctionId, Value,
+    BoolFunctionFunctionId, BoolFunctionId, CallArg, CallArgKind, CaptureArg, CaptureArgKind,
+    CaptureValue, CaptureValueKind, ExecutionPlan, FrameLayout, FunctionFunctionFunctionId,
+    FunctionFunctionValue, FunctionReturnFamily, FunctionValue, IntFunctionFunctionId,
+    IntFunctionId, NilFunctionFunctionId, NilFunctionId, RuntimeFunctionId, StepKind,
+    StringFunctionFunctionId, StringFunctionId, Value,
 };
 use crate::runtime::ExecutionError;
 use crate::runtime::error::ExecutionResult;
@@ -144,7 +145,29 @@ fn bind_arguments(
     frame_layout: FrameLayout,
 ) -> ExecutionResult<Frame> {
     let mut frame = Frame::new(frame_layout);
+    bind_arguments_into(plan, args, caller_frame, &mut frame)?;
+    Ok(frame)
+}
 
+fn bind_function_value_arguments(
+    plan: &ExecutionPlan,
+    args: &[CallArg],
+    caller_frame: &mut Frame,
+    frame_layout: FrameLayout,
+    captures: &[CaptureValue],
+) -> ExecutionResult<Frame> {
+    let mut frame = Frame::new(frame_layout);
+    bind_captures(&mut frame, captures);
+    bind_arguments_into(plan, args, caller_frame, &mut frame)?;
+    Ok(frame)
+}
+
+fn bind_arguments_into(
+    plan: &ExecutionPlan,
+    args: &[CallArg],
+    caller_frame: &mut Frame,
+    frame: &mut Frame,
+) -> ExecutionResult<()> {
     for arg in args {
         match arg.kind() {
             CallArgKind::Int { local, value } => {
@@ -186,7 +209,77 @@ fn bind_arguments(
         }
     }
 
-    Ok(frame)
+    Ok(())
+}
+
+pub(in crate::runtime) fn eval_capture_args(
+    plan: &ExecutionPlan,
+    frame: &mut Frame,
+    args: &[CaptureArg],
+) -> ExecutionResult<Vec<CaptureValue>> {
+    let mut captures = Vec::with_capacity(args.len());
+    for arg in args {
+        captures.push(match arg.kind() {
+            CaptureArgKind::Int { local, value } => {
+                CaptureValue::int(*local, eval_int_expr(plan, frame, value)?)
+            }
+            CaptureArgKind::String { local, value } => {
+                CaptureValue::string(*local, eval_string_expr(plan, frame, value)?)
+            }
+            CaptureArgKind::Bool { local, value } => {
+                CaptureValue::bool(*local, eval_bool_expr(plan, frame, value)?)
+            }
+            CaptureArgKind::Nil { local, value } => {
+                eval_nil_expr(plan, frame, value)?;
+                CaptureValue::nil(*local)
+            }
+            CaptureArgKind::IntFunction { local, value } => {
+                CaptureValue::int_function(*local, eval_int_function_expr(plan, frame, value)?)
+            }
+            CaptureArgKind::StringFunction { local, value } => CaptureValue::string_function(
+                *local,
+                eval_string_function_expr(plan, frame, value)?,
+            ),
+            CaptureArgKind::BoolFunction { local, value } => {
+                CaptureValue::bool_function(*local, eval_bool_function_expr(plan, frame, value)?)
+            }
+            CaptureArgKind::NilFunction { local, value } => {
+                CaptureValue::nil_function(*local, eval_nil_function_expr(plan, frame, value)?)
+            }
+            CaptureArgKind::FunctionFunction { local, value } => CaptureValue::function_function(
+                *local,
+                eval_function_function_expr(plan, frame, value)?,
+            ),
+        });
+    }
+
+    Ok(captures)
+}
+
+fn bind_captures(frame: &mut Frame, captures: &[CaptureValue]) {
+    for capture in captures {
+        match capture.kind() {
+            CaptureValueKind::Int { local, value } => frame.set_int(*local, value.clone()),
+            CaptureValueKind::String { local, value } => frame.set_string(*local, value.clone()),
+            CaptureValueKind::Bool { local, value } => frame.set_bool(*local, *value),
+            CaptureValueKind::Nil { local } => frame.set_nil(*local),
+            CaptureValueKind::IntFunction { local, value } => {
+                frame.set_int_function(*local, value.clone());
+            }
+            CaptureValueKind::StringFunction { local, value } => {
+                frame.set_string_function(*local, value.clone());
+            }
+            CaptureValueKind::BoolFunction { local, value } => {
+                frame.set_bool_function(*local, value.clone());
+            }
+            CaptureValueKind::NilFunction { local, value } => {
+                frame.set_nil_function(*local, value.clone());
+            }
+            CaptureValueKind::FunctionFunction { local, value } => {
+                frame.set_function_function(*local, value.clone());
+            }
+        }
+    }
 }
 
 pub(in crate::runtime) fn run_int_function_call(
@@ -198,7 +291,8 @@ pub(in crate::runtime) fn run_int_function_call(
     let function = eval_int_function_expr(plan, caller_frame, function)?;
     let runtime_function = plan.int_function(function.runtime_id());
     let frame_layout = runtime_function.frame_layout();
-    let mut frame = bind_arguments(plan, args, caller_frame, frame_layout)?;
+    let mut frame =
+        bind_function_value_arguments(plan, args, caller_frame, frame_layout, function.captures())?;
     execute_steps(plan, runtime_function.steps(), &mut frame)?;
     eval_int_expr(plan, &mut frame, runtime_function.return_())
 }
@@ -212,7 +306,8 @@ pub(in crate::runtime) fn run_string_function_call(
     let function = eval_string_function_expr(plan, caller_frame, function)?;
     let runtime_function = plan.string_function(function.runtime_id());
     let frame_layout = runtime_function.frame_layout();
-    let mut frame = bind_arguments(plan, args, caller_frame, frame_layout)?;
+    let mut frame =
+        bind_function_value_arguments(plan, args, caller_frame, frame_layout, function.captures())?;
     execute_steps(plan, runtime_function.steps(), &mut frame)?;
     eval_string_expr(plan, &mut frame, runtime_function.return_())
 }
@@ -226,7 +321,8 @@ pub(in crate::runtime) fn run_bool_function_call(
     let function = eval_bool_function_expr(plan, caller_frame, function)?;
     let runtime_function = plan.bool_function(function.runtime_id());
     let frame_layout = runtime_function.frame_layout();
-    let mut frame = bind_arguments(plan, args, caller_frame, frame_layout)?;
+    let mut frame =
+        bind_function_value_arguments(plan, args, caller_frame, frame_layout, function.captures())?;
     execute_steps(plan, runtime_function.steps(), &mut frame)?;
     eval_bool_expr(plan, &mut frame, runtime_function.return_())
 }
@@ -240,7 +336,8 @@ pub(in crate::runtime) fn run_nil_function_call(
     let function = eval_nil_function_expr(plan, caller_frame, function)?;
     let runtime_function = plan.nil_function(function.runtime_id());
     let frame_layout = runtime_function.frame_layout();
-    let mut frame = bind_arguments(plan, args, caller_frame, frame_layout)?;
+    let mut frame =
+        bind_function_value_arguments(plan, args, caller_frame, frame_layout, function.captures())?;
     execute_steps(plan, runtime_function.steps(), &mut frame)?;
     eval_nil_expr(plan, &mut frame, runtime_function.return_())
 }
@@ -321,7 +418,8 @@ pub(in crate::runtime) fn run_int_function_function_call(
         ))?;
     let runtime_function = plan.int_function_function(function_id);
     let frame_layout = runtime_function.frame_layout();
-    let mut frame = bind_arguments(plan, args, caller_frame, frame_layout)?;
+    let mut frame =
+        bind_function_value_arguments(plan, args, caller_frame, frame_layout, function.captures())?;
     execute_steps(plan, runtime_function.steps(), &mut frame)?;
     eval_int_function_expr(plan, &mut frame, runtime_function.return_())
 }
@@ -343,7 +441,8 @@ pub(in crate::runtime) fn run_string_function_function_call(
             ))?;
     let runtime_function = plan.string_function_function(function_id);
     let frame_layout = runtime_function.frame_layout();
-    let mut frame = bind_arguments(plan, args, caller_frame, frame_layout)?;
+    let mut frame =
+        bind_function_value_arguments(plan, args, caller_frame, frame_layout, function.captures())?;
     execute_steps(plan, runtime_function.steps(), &mut frame)?;
     eval_string_function_expr(plan, &mut frame, runtime_function.return_())
 }
@@ -364,7 +463,8 @@ pub(in crate::runtime) fn run_bool_function_function_call(
         ))?;
     let runtime_function = plan.bool_function_function(function_id);
     let frame_layout = runtime_function.frame_layout();
-    let mut frame = bind_arguments(plan, args, caller_frame, frame_layout)?;
+    let mut frame =
+        bind_function_value_arguments(plan, args, caller_frame, frame_layout, function.captures())?;
     execute_steps(plan, runtime_function.steps(), &mut frame)?;
     eval_bool_function_expr(plan, &mut frame, runtime_function.return_())
 }
@@ -385,7 +485,8 @@ pub(in crate::runtime) fn run_nil_function_function_call(
         ))?;
     let runtime_function = plan.nil_function_function(function_id);
     let frame_layout = runtime_function.frame_layout();
-    let mut frame = bind_arguments(plan, args, caller_frame, frame_layout)?;
+    let mut frame =
+        bind_function_value_arguments(plan, args, caller_frame, frame_layout, function.captures())?;
     execute_steps(plan, runtime_function.steps(), &mut frame)?;
     eval_nil_function_expr(plan, &mut frame, runtime_function.return_())
 }
@@ -407,7 +508,8 @@ pub(in crate::runtime) fn run_function_function_function_call(
             ))?;
     let runtime_function = plan.function_function_function(function_id);
     let frame_layout = runtime_function.frame_layout();
-    let mut frame = bind_arguments(plan, args, caller_frame, frame_layout)?;
+    let mut frame =
+        bind_function_value_arguments(plan, args, caller_frame, frame_layout, function.captures())?;
     execute_steps(plan, runtime_function.steps(), &mut frame)?;
     eval_function_function_expr(plan, &mut frame, runtime_function.return_())
 }

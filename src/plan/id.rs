@@ -93,6 +93,17 @@ pub struct NilFunctionFunctionId(pub(crate) usize);
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct FunctionFunctionFunctionId(pub(crate) usize);
 
+impl LocalId {
+    pub(crate) fn value_type(self) -> crate::plan::ValueType {
+        match self {
+            Self::Int(_) => crate::plan::ValueType::Int,
+            Self::String(_) => crate::plan::ValueType::String,
+            Self::Bool(_) => crate::plan::ValueType::Bool,
+            Self::Nil(_) => crate::plan::ValueType::Nil,
+        }
+    }
+}
+
 impl FunctionId {
     pub(crate) fn new(index: usize) -> Self {
         Self(index)
