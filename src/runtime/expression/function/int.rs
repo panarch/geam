@@ -11,6 +11,15 @@ pub(in crate::runtime) fn eval_int_function_expr(
 ) -> Result<IntFunctionValue, ExecutionError> {
     match expression.kind() {
         IntFunctionExprKind::Value(value) => Ok(value.clone()),
+        IntFunctionExprKind::Closure {
+            runtime_id,
+            params,
+            captures,
+        } => Ok(IntFunctionValue::new_with_captures(
+            *runtime_id,
+            params.clone(),
+            function::eval_capture_args(plan, frame, captures)?,
+        )),
         IntFunctionExprKind::LocalGet { local, .. } => Ok(frame.get_int_function(*local)),
         IntFunctionExprKind::Call { function, args, .. } => {
             function::run_int_function_returning_function_call(plan, *function, args, frame)

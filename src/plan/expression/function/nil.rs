@@ -1,6 +1,6 @@
 use crate::plan::{
-    BoolExpr, FunctionFunctionExpr, FunctionType, IntExpr, NilFunctionFunctionId,
-    NilFunctionLocalId, NilFunctionValue, Step,
+    BoolExpr, CaptureArg, FunctionFunctionExpr, FunctionType, IntExpr, NilFunctionFunctionId,
+    NilFunctionId, NilFunctionLocalId, NilFunctionValue, ParamLocal, Step,
 };
 use ecow::EcoString;
 use num_bigint::BigInt;
@@ -14,6 +14,11 @@ pub struct NilFunctionExpr {
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum NilFunctionExprKind {
     Value(NilFunctionValue),
+    Closure {
+        runtime_id: NilFunctionId,
+        params: Vec<ParamLocal>,
+        captures: Vec<CaptureArg>,
+    },
     LocalGet {
         local: NilFunctionLocalId,
         name: EcoString,
@@ -49,6 +54,22 @@ impl NilFunctionExpr {
         Self {
             type_: value.type_(),
             kind: NilFunctionExprKind::Value(value),
+        }
+    }
+
+    pub(crate) fn closure(
+        runtime_id: NilFunctionId,
+        params: Vec<ParamLocal>,
+        captures: Vec<CaptureArg>,
+        type_: FunctionType,
+    ) -> Self {
+        Self {
+            type_,
+            kind: NilFunctionExprKind::Closure {
+                runtime_id,
+                params,
+                captures,
+            },
         }
     }
 

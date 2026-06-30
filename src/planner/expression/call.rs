@@ -296,13 +296,17 @@ fn plan_function_value_call(
     context: &mut PlanContext<'_>,
     capture: Option<&CaptureSubstitution>,
 ) -> Result<Expr, PlanError> {
-    let function = match plan_expr(fun, context)?.into_function() {
-        Ok(function) => function,
-        Err(other) => {
-            return Err(invalid_expression_type(
-                InvalidExpressionType::Function,
-                &other,
-            ));
+    let function = {
+        let expression = plan_expr(fun, context)?;
+        let actual = super::expression_type(&expression);
+        match expression.into_function() {
+            Some(function) => function,
+            None => {
+                return Err(invalid_expression_type(
+                    InvalidExpressionType::Function,
+                    actual,
+                ));
+            }
         }
     };
     let function_type = function.type_().clone();
@@ -341,9 +345,10 @@ fn plan_call_args(
     let mut args = Vec::with_capacity(arguments.len());
     for (argument, param) in arguments.into_iter().zip(params) {
         let expression = plan_argument_value(argument.value, capture, context)?;
+        let actual = expression.value_type();
         let arg = match expression.into_call_arg(&param.local) {
-            Ok(arg) => arg,
-            Err(other) => return Err(call_arg_type_mismatch(param.local.value_type(), &other)),
+            Some(arg) => arg,
+            None => return Err(call_arg_type_mismatch(param.local.value_type(), actual)),
         };
         args.push(arg);
     }
@@ -360,9 +365,10 @@ fn plan_function_call_args(
     let mut args = Vec::with_capacity(arguments.len());
     for (argument, local) in arguments.into_iter().zip(&locals) {
         let expression = plan_argument_value(argument.value, capture, context)?;
+        let actual = expression.value_type();
         let arg = match expression.into_call_arg(local) {
-            Ok(arg) => arg,
-            Err(other) => return Err(call_arg_type_mismatch(local.value_type(), &other)),
+            Some(arg) => arg,
+            None => return Err(call_arg_type_mismatch(local.value_type(), actual)),
         };
         args.push(arg);
     }
@@ -449,10 +455,8 @@ fn function_call_param_locals(params: &[ValueType]) -> Vec<ParamLocal> {
         .collect()
 }
 
-fn call_arg_type_mismatch(expected: ValueType, actual: &Expr) -> PlanError {
-    if matches!(expected, ValueType::Function(_))
-        && matches!(actual.value_type(), ValueType::Function(_))
-    {
+fn call_arg_type_mismatch(expected: ValueType, actual: ValueType) -> PlanError {
+    if matches!(expected, ValueType::Function(_)) && matches!(actual, ValueType::Function(_)) {
         PlanError::InvalidTypedAst {
             reason: InvalidTypedAstReason::CallShape {
                 reason: InvalidCallShapeReason::FunctionCallArgumentTypeMismatch,
@@ -592,46 +596,46 @@ fn function_call_expr(
 ) -> Result<Expr, PlanError> {
     match return_type {
         ValueType::Int => match function.into_int() {
-            Ok(function) => Ok(Expr::int(IntExpr::function_call(function, args))),
-            Err(_) => Err(PlanError::InvalidTypedAst {
+            Some(function) => Ok(Expr::int(IntExpr::function_call(function, args))),
+            None => Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::CallShape {
                     reason: InvalidCallShapeReason::FunctionCallReturnTypeMismatch,
                 },
             }),
         },
         ValueType::String => match function.into_string() {
-            Ok(function) => Ok(Expr::string(StringExpr::function_call(function, args))),
-            Err(_) => Err(PlanError::InvalidTypedAst {
+            Some(function) => Ok(Expr::string(StringExpr::function_call(function, args))),
+            None => Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::CallShape {
                     reason: InvalidCallShapeReason::FunctionCallReturnTypeMismatch,
                 },
             }),
         },
         ValueType::Bool => match function.into_bool() {
-            Ok(function) => Ok(Expr::bool(crate::plan::BoolExpr::function_call(
+            Some(function) => Ok(Expr::bool(crate::plan::BoolExpr::function_call(
                 function, args,
             ))),
-            Err(_) => Err(PlanError::InvalidTypedAst {
+            None => Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::CallShape {
                     reason: InvalidCallShapeReason::FunctionCallReturnTypeMismatch,
                 },
             }),
         },
         ValueType::Nil => match function.into_nil() {
-            Ok(function) => Ok(Expr::nil(NilExpr::function_call(function, args))),
-            Err(_) => Err(PlanError::InvalidTypedAst {
+            Some(function) => Ok(Expr::nil(NilExpr::function_call(function, args))),
+            None => Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::CallShape {
                     reason: InvalidCallShapeReason::FunctionCallReturnTypeMismatch,
                 },
             }),
         },
         ValueType::Function(return_type) => match function.into_function() {
-            Ok(function) => Ok(function_returning_function_value_call_expr(
+            Some(function) => Ok(function_returning_function_value_call_expr(
                 function,
                 args,
                 *return_type,
             )),
-            Err(_) => Err(PlanError::InvalidTypedAst {
+            None => Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::CallShape {
                     reason: InvalidCallShapeReason::FunctionCallReturnTypeMismatch,
                 },

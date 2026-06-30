@@ -66,8 +66,6 @@ pub enum UnsupportedPatternKind {
 pub enum UnsupportedExpressionKind {
     #[error("bit array")]
     BitArray,
-    #[error("capturing closure")]
-    CapturingClosure,
     #[error("echo")]
     Echo,
     #[error("float")]

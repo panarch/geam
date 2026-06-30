@@ -1,4 +1,6 @@
-use crate::plan::{Expr, FunctionExpr, FunctionType, ValueType};
+use crate::plan::{
+    CaptureArg, Expr, FunctionExpr, FunctionType, ParamLocal, RuntimeFunctionId, ValueType,
+};
 use crate::planner::context::PlanContext;
 use crate::planner::error::{
     InvalidExpressionShapeKind, InvalidExpressionType, InvalidFunctionShapeReason,
@@ -6,8 +8,13 @@ use crate::planner::error::{
 };
 use crate::planner::function::{anonymous_function_plan, plan_anonymous_function_body};
 use crate::planner::module::function_params;
-use gleam_core::ast::{FunctionLiteralKind, TypedArg, TypedStatement};
-use gleam_core::type_::Type;
+use ecow::EcoString;
+use gleam_core::ast::{
+    FunctionLiteralKind, Pattern, Statement, TypedArg, TypedExpr, TypedPipelineAssignment,
+    TypedStatement,
+};
+use gleam_core::type_::{Type, ValueConstructorVariant};
+use std::collections::HashSet;
 use std::sync::Arc;
 use vec1::Vec1;
 
@@ -20,45 +27,127 @@ pub(super) fn plan_anonymous(
 ) -> Result<Expr, PlanError> {
     match kind {
         FunctionLiteralKind::Anonymous { .. } => {}
-        FunctionLiteralKind::Capture { .. } => {
-            return Err(PlanError::UnsupportedExpression {
-                kind: UnsupportedExpressionKind::FunctionCaptureLiteral,
-            });
-        }
-        FunctionLiteralKind::Use { .. } => {
-            return Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::ExpressionShape {
-                    kind: crate::planner::error::InvalidExpressionShapeKind::Invalid,
-                },
-            });
+        FunctionLiteralKind::Capture { .. } | FunctionLiteralKind::Use { .. } => {
+            return Err(function_literal_kind_error(kind));
         }
     }
 
     let function_type = anonymous_function_type(type_.as_ref())?;
     let error_name = context.anonymous_function_error_name();
     let params = function_params(error_name.clone(), &arguments)?;
-    validate_argument_types(&error_name, &function_type, &params)?;
+    validate_argument_types(&error_name, &function_type, &params).and_then(|()| {
+        plan_anonymous_with_valid_arguments(
+            function_type,
+            error_name,
+            params,
+            arguments,
+            body,
+            context,
+        )
+    })
+}
+
+fn plan_anonymous_with_valid_arguments(
+    function_type: FunctionType,
+    error_name: EcoString,
+    params: Vec<crate::planner::context::FunctionParam>,
+    arguments: Vec<TypedArg>,
+    body: Vec1<TypedStatement>,
+    context: &mut PlanContext<'_>,
+) -> Result<Expr, PlanError> {
+    let free_names = anonymous_free_variables(&arguments, &body);
+    context.capture_bindings(&free_names).and_then(|captures| {
+        plan_anonymous_with_captures(function_type, error_name, params, captures, body, context)
+    })
+}
+
+fn plan_anonymous_with_captures(
+    function_type: FunctionType,
+    error_name: EcoString,
+    params: Vec<crate::planner::context::FunctionParam>,
+    captures: Vec<crate::planner::context::CaptureBinding>,
+    body: Vec1<TypedStatement>,
+    context: &mut PlanContext<'_>,
+) -> Result<Expr, PlanError> {
+    let return_type = function_type.return_().clone();
+    let runtime_id = context.allocate_anonymous_runtime_id(&return_type);
 
     let planned = {
         let mut body_context = context.anonymous_function_context();
-        plan_anonymous_function_body(&params, body, &mut body_context)
+        plan_anonymous_function_body(
+            &error_name,
+            &return_type,
+            &runtime_id,
+            &params,
+            captures,
+            body,
+            &mut body_context,
+        )
     };
 
-    match planned {
-        Ok(planned) => {
-            let (name, info) =
-                context.allocate_anonymous_function(function_type.return_().clone(), params);
-            let value = info.value();
-            let function = anonymous_function_plan(info, name, planned)?;
-            context.push_anonymous_function(function);
-            Ok(Expr::function(FunctionExpr::value(value)))
+    let planned = planned?;
+    let (name, info) = context.allocate_anonymous_function(return_type, params, runtime_id);
+    let value = if planned.captures.is_empty() {
+        FunctionExpr::value(info.value())
+    } else {
+        closure_expr(
+            &info.runtime_id,
+            info.param_locals(),
+            planned.captures.clone(),
+            function_type,
+        )
+    };
+    let function = anonymous_function_plan(info, name, planned);
+    context.push_anonymous_function(function);
+    Ok(Expr::function(value))
+}
+
+fn function_literal_kind_error(kind: FunctionLiteralKind) -> PlanError {
+    let invalid = PlanError::InvalidTypedAst {
+        reason: InvalidTypedAstReason::ExpressionShape {
+            kind: InvalidExpressionShapeKind::Invalid,
+        },
+    };
+
+    kind.is_capture()
+        .then(function_capture_literal_error)
+        .map_or(invalid, |error| error)
+}
+
+fn function_capture_literal_error() -> PlanError {
+    PlanError::UnsupportedExpression {
+        kind: UnsupportedExpressionKind::FunctionCaptureLiteral,
+    }
+}
+
+fn closure_expr(
+    runtime_id: &RuntimeFunctionId,
+    params: Vec<ParamLocal>,
+    captures: Vec<CaptureArg>,
+    type_: FunctionType,
+) -> FunctionExpr {
+    match runtime_id {
+        RuntimeFunctionId::Int(runtime_id) => FunctionExpr::int(
+            crate::plan::IntFunctionExpr::closure(*runtime_id, params, captures, type_),
+        ),
+        RuntimeFunctionId::String(runtime_id) => FunctionExpr::string(
+            crate::plan::StringFunctionExpr::closure(*runtime_id, params, captures, type_),
+        ),
+        RuntimeFunctionId::Bool(runtime_id) => FunctionExpr::bool(
+            crate::plan::BoolFunctionExpr::closure(*runtime_id, params, captures, type_),
+        ),
+        RuntimeFunctionId::Nil(runtime_id) => FunctionExpr::nil(
+            crate::plan::NilFunctionExpr::closure(*runtime_id, params, captures, type_),
+        ),
+        RuntimeFunctionId::Function { id, return_type } => {
+            FunctionExpr::function(crate::plan::FunctionFunctionExpr::closure(
+                *id,
+                params,
+                captures,
+                type_,
+                return_type.clone(),
+            ))
         }
-        Err(PlanError::InvalidTypedAst {
-            reason: InvalidTypedAstReason::UnknownLocal { name },
-        }) if context.is_outer_binding_name(&name) => Err(PlanError::UnsupportedExpression {
-            kind: UnsupportedExpressionKind::CapturingClosure,
-        }),
-        Err(error) => Err(error),
     }
 }
 
@@ -100,6 +189,169 @@ fn anonymous_function_type(type_: &Type) -> Result<FunctionType, PlanError> {
     }
 }
 
+fn anonymous_free_variables(arguments: &[TypedArg], body: &Vec1<TypedStatement>) -> Vec<EcoString> {
+    let mut bound = HashSet::new();
+    for argument in arguments {
+        bound.extend(argument.get_variable_name().cloned());
+    }
+
+    let mut free = FreeVariables::default();
+    collect_statements(body.as_slice(), &mut bound, &mut free);
+    free.names
+}
+
+#[derive(Default)]
+struct FreeVariables {
+    names: Vec<EcoString>,
+    seen: HashSet<EcoString>,
+}
+
+impl FreeVariables {
+    fn record(&mut self, name: &EcoString, bound: &HashSet<EcoString>) {
+        if !bound.contains(name) && self.seen.insert(name.clone()) {
+            self.names.push(name.clone());
+        }
+    }
+}
+
+fn collect_statements(
+    statements: &[TypedStatement],
+    bound: &mut HashSet<EcoString>,
+    free: &mut FreeVariables,
+) {
+    for statement in statements {
+        collect_statement(statement, bound, free);
+    }
+}
+
+fn collect_statement(
+    statement: &TypedStatement,
+    bound: &mut HashSet<EcoString>,
+    free: &mut FreeVariables,
+) {
+    match statement {
+        Statement::Expression(expression) => collect_expr(expression, bound, free),
+        Statement::Assignment(assignment) => {
+            collect_expr(&assignment.value, bound, free);
+            collect_variable_pattern_bound_name(&assignment.pattern, bound);
+        }
+        Statement::Use(_) | Statement::Assert(_) => {}
+    }
+}
+
+fn collect_expr(expression: &TypedExpr, bound: &mut HashSet<EcoString>, free: &mut FreeVariables) {
+    match expression {
+        TypedExpr::Int { .. }
+        | TypedExpr::Float { .. }
+        | TypedExpr::String { .. }
+        | TypedExpr::Invalid { .. } => {}
+        TypedExpr::Var {
+            name, constructor, ..
+        } => {
+            if matches!(
+                constructor.variant,
+                ValueConstructorVariant::LocalVariable { .. }
+            ) {
+                free.record(name, bound);
+            }
+        }
+        TypedExpr::Block { statements, .. } => {
+            let mut block_bound = bound.clone();
+            collect_statements(statements.as_slice(), &mut block_bound, free);
+        }
+        TypedExpr::Pipeline {
+            first_value,
+            assignments,
+            finally,
+            ..
+        } => {
+            let mut pipeline_bound = bound.clone();
+            collect_pipeline_assignment(first_value, &mut pipeline_bound, free);
+            for (assignment, _) in assignments {
+                collect_pipeline_assignment(assignment, &mut pipeline_bound, free);
+            }
+            collect_expr(finally, &mut pipeline_bound, free);
+        }
+        TypedExpr::Fn {
+            arguments, body, ..
+        } => {
+            for name in anonymous_free_variables(arguments, body) {
+                free.record(&name, bound);
+            }
+        }
+        TypedExpr::Call { fun, arguments, .. } => {
+            collect_expr(fun, bound, free);
+            for argument in arguments {
+                collect_expr(&argument.value, bound, free);
+            }
+        }
+        TypedExpr::BinOp { left, right, .. } => {
+            collect_expr(left, bound, free);
+            collect_expr(right, bound, free);
+        }
+        TypedExpr::Case {
+            subjects, clauses, ..
+        } => {
+            for subject in subjects {
+                collect_expr(subject, bound, free);
+            }
+            for clause in clauses {
+                let mut branch_bound = bound.clone();
+                for pattern in &clause.pattern {
+                    collect_variable_pattern_bound_name(pattern, &mut branch_bound);
+                }
+                collect_expr(&clause.then, &mut branch_bound, free);
+            }
+        }
+        TypedExpr::NegateBool { value, .. } | TypedExpr::NegateInt { value, .. } => {
+            collect_expr(value, bound, free);
+        }
+        TypedExpr::List { .. }
+        | TypedExpr::RecordAccess { .. }
+        | TypedExpr::PositionalAccess { .. }
+        | TypedExpr::Tuple { .. }
+        | TypedExpr::TupleIndex { .. }
+        | TypedExpr::Todo { .. }
+        | TypedExpr::Panic { .. }
+        | TypedExpr::Echo { .. }
+        | TypedExpr::BitArray { .. }
+        | TypedExpr::RecordUpdate { .. }
+        | TypedExpr::ModuleSelect { .. } => {}
+    }
+}
+
+fn collect_pipeline_assignment(
+    assignment: &TypedPipelineAssignment,
+    bound: &mut HashSet<EcoString>,
+    free: &mut FreeVariables,
+) {
+    collect_expr(&assignment.value, bound, free);
+    bound.insert(assignment.name.clone());
+}
+
+fn collect_variable_pattern_bound_name(
+    pattern: &Pattern<Arc<Type>>,
+    bound: &mut HashSet<EcoString>,
+) {
+    match pattern {
+        Pattern::Variable { name, .. } => {
+            bound.insert(name.clone());
+        }
+        Pattern::Int { .. }
+        | Pattern::Float { .. }
+        | Pattern::String { .. }
+        | Pattern::Assign { .. }
+        | Pattern::List { .. }
+        | Pattern::Constructor { .. }
+        | Pattern::Tuple { .. }
+        | Pattern::BitArray { .. }
+        | Pattern::StringPrefix { .. }
+        | Pattern::BitArraySize(_)
+        | Pattern::Discard { .. }
+        | Pattern::Invalid { .. } => {}
+    }
+}
+
 fn validate_argument_types(
     name: &ecow::EcoString,
     type_: &FunctionType,
@@ -129,17 +381,23 @@ mod tests {
         LocalId, ParamLocal, RuntimeFunctionId, ValueType,
     };
     use crate::planner::dsl::{
-        call_int, call_int_function, function, function_function_ref, function_ref, int, int_arg,
-        int_function_call_arg, int_function_ref, let_int_function_step, local_int,
+        call_int, call_int_function, capture_int, function, function_function_closure,
+        function_function_ref, function_ref, int, int_arg, int_function_call_arg,
+        int_function_closure, int_function_ref, let_int_function_step, let_int_step, local_int,
         local_int_function, module_with_anonymous,
     };
     use crate::planner::error::{
         InvalidExpressionShapeKind, InvalidExpressionType, InvalidFunctionShapeReason,
-        InvalidTypedAstReason, PlanError, UnsupportedExpressionKind,
+        InvalidPipelineShapeReason, InvalidTypedAstReason, PlanError, UnsupportedArgumentReason,
+        UnsupportedAssignmentKind, UnsupportedExpressionKind, UnsupportedStatementKind,
     };
     use crate::planner::plan_module;
     use crate::planner::support::{compile, dummy_span};
-    use gleam_core::ast::{FunctionLiteralKind, Statement, TypedArg, TypedExpr, TypedModule};
+    use gleam_core::ast::{
+        Constant, FunctionLiteralKind, PipelineAssignmentKind, Statement, TypedArg, TypedExpr,
+        TypedModule, TypedPipelineAssignment, TypedStatement,
+    };
+    use gleam_core::type_::ModuleValueConstructor;
 
     #[test]
     fn plan_non_capturing_anonymous_function() {
@@ -152,6 +410,7 @@ pub fn main() {
 "#,
         ))
         .expect("source should plan");
+        let add_one = int_function_ref(1, [LocalId::Int(IntLocalId(0))]);
         let expected = module_with_anonymous(
             "main",
             function(
@@ -161,11 +420,7 @@ pub fn main() {
                     [int_function_call_arg(0, int(41))],
                 ),
             )
-            .step(let_int_function_step(
-                0,
-                "add_one",
-                int_function_ref(1, [LocalId::Int(IntLocalId(0))]),
-            )),
+            .step(let_int_function_step(0, "add_one", add_one)),
             [],
             [
                 function("<anonymous:0>", local_int(0, "value").add_int(int(1)))
@@ -191,6 +446,7 @@ pub fn main() {
 "#,
         ))
         .expect("source should plan");
+        let wrapped = int_function_ref(2, [LocalId::Int(IntLocalId(0))]);
         let expected = module_with_anonymous(
             "main",
             function(
@@ -200,11 +456,7 @@ pub fn main() {
                     [int_function_call_arg(0, int(41))],
                 ),
             )
-            .step(let_int_function_step(
-                0,
-                "wrapped",
-                int_function_ref(2, [LocalId::Int(IntLocalId(0))]),
-            )),
+            .step(let_int_function_step(0, "wrapped", wrapped)),
             [function("add_one", local_int(0, "value").add_int(int(1))).param_int(0, "value")],
             [function(
                 "<anonymous:0>",
@@ -284,39 +536,71 @@ pub fn main() {
     }
 
     #[test]
-    fn reject_profile_capturing_anonymous_function() {
-        assert_eq!(
-            plan_module(compile(
-                r#"
+    fn plan_capturing_anonymous_function() {
+        let actual = plan_module(compile(
+            r#"
 pub fn main() {
   let value = 1
   fn() { value }
   1
 }
 "#,
-            )),
-            Err(PlanError::UnsupportedExpression {
-                kind: UnsupportedExpressionKind::CapturingClosure,
-            }),
+        ))
+        .expect("source should plan");
+        let expected = module_with_anonymous(
+            "main",
+            function("main", int(1))
+                .step(let_int_step(0, "value", int(1)))
+                .evaluate(int_function_closure(
+                    1,
+                    Vec::<LocalId>::new(),
+                    [capture_int(0, local_int(0, "value"))],
+                )),
+            [],
+            [function("<anonymous:0>", local_int(0, "value"))],
         );
+
+        assert_eq!(actual, expected);
     }
 
     #[test]
-    fn reject_profile_nested_capturing_anonymous_function() {
-        assert_eq!(
-            plan_module(compile(
-                r#"
+    fn plan_nested_capturing_anonymous_function() {
+        let actual = plan_module(compile(
+            r#"
 pub fn main() {
   let value = 1
   fn() { fn() { value } }
   1
 }
 "#,
-            )),
-            Err(PlanError::UnsupportedExpression {
-                kind: UnsupportedExpressionKind::CapturingClosure,
-            }),
+        ))
+        .expect("source should plan");
+        let returned_function_type = FunctionType::new(Vec::new(), ValueType::Int);
+        let expected = module_with_anonymous(
+            "main",
+            function("main", int(1))
+                .step(let_int_step(0, "value", int(1)))
+                .evaluate(function_function_closure(
+                    FunctionFunctionId::Int(IntFunctionFunctionId(0)),
+                    Vec::<ParamLocal>::new(),
+                    [capture_int(0, local_int(0, "value"))],
+                    returned_function_type.clone(),
+                )),
+            [],
+            [
+                function("<anonymous:0>", local_int(0, "value")),
+                function(
+                    "<anonymous:1>",
+                    int_function_closure(
+                        1,
+                        Vec::<LocalId>::new(),
+                        [capture_int(0, local_int(0, "value"))],
+                    ),
+                ),
+            ],
         );
+
+        assert_eq!(actual, expected);
     }
 
     #[test]
@@ -336,6 +620,24 @@ pub fn main() {
             )),
             Err(PlanError::UnsupportedExpression {
                 kind: UnsupportedExpressionKind::FunctionCaptureLiteral,
+            }),
+        );
+    }
+
+    #[test]
+    fn reject_profile_anonymous_function_discard_argument() {
+        assert_eq!(
+            plan_module(compile(
+                r#"
+pub fn main() {
+  fn(_: Int) { 1 }
+  1
+}
+"#,
+            )),
+            Err(PlanError::UnsupportedArgument {
+                function: "<anonymous:0>".into(),
+                reason: UnsupportedArgumentReason::Discard,
             }),
         );
     }
@@ -433,6 +735,138 @@ pub fn main() {
     }
 
     #[test]
+    fn reject_margin_anonymous_function_unknown_capture() {
+        let mut module = compile(
+            r#"
+pub fn main() {
+  let value = 1
+  fn() { value }
+  1
+}
+"#,
+        );
+        module.definitions.functions[0].body.remove(0);
+
+        assert_eq!(
+            plan_module(module),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::UnknownLocal {
+                    name: "value".into(),
+                },
+            }),
+        );
+    }
+
+    #[test]
+    fn reject_margin_anonymous_function_module_select_body() {
+        let mut module = anonymous_function_module();
+        let body = anonymous_function_body_mut(&mut module);
+        body[0] = Statement::Expression(TypedExpr::ModuleSelect {
+            location: dummy_span(),
+            field_start: 0,
+            type_: gleam_core::type_::int(),
+            label: "answer".into(),
+            module_name: "other".into(),
+            module_alias: "other".into(),
+            constructor: ModuleValueConstructor::Constant {
+                literal: Constant::Int {
+                    location: dummy_span(),
+                    value: "1".into(),
+                    int_value: num_bigint::BigInt::from(1),
+                },
+                location: dummy_span(),
+                documentation: None,
+            },
+        });
+
+        assert_eq!(
+            plan_module(module),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionShape {
+                    kind: InvalidExpressionShapeKind::ModuleSelect,
+                },
+            }),
+        );
+    }
+
+    #[test]
+    fn reject_margin_anonymous_function_pipeline_intermediate_shape() {
+        let mut module = anonymous_function_module();
+        let body = anonymous_function_body_mut(&mut module);
+        body[0] = Statement::Expression(TypedExpr::Pipeline {
+            location: dummy_span(),
+            first_value: TypedPipelineAssignment {
+                location: dummy_span(),
+                name: "pipe_0".into(),
+                value: Box::new(super::super::typed_int_expr(1)),
+            },
+            assignments: vec![(
+                TypedPipelineAssignment {
+                    location: dummy_span(),
+                    name: "pipe_1".into(),
+                    value: Box::new(super::super::typed_int_expr(2)),
+                },
+                PipelineAssignmentKind::FirstArgument {
+                    second_argument: None,
+                },
+            )],
+            finally: Box::new(super::super::typed_int_expr(3)),
+            finally_kind: PipelineAssignmentKind::FirstArgument {
+                second_argument: None,
+            },
+        });
+
+        assert_eq!(
+            plan_module(module),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::PipelineShape {
+                    reason: InvalidPipelineShapeReason::NonCallStep,
+                },
+            }),
+        );
+    }
+
+    #[test]
+    fn reject_profile_anonymous_function_assert_statement() {
+        assert_eq!(
+            plan_module(compile(
+                r#"
+pub fn main() {
+  fn() {
+    assert True
+    1
+  }
+  1
+}
+"#,
+            )),
+            Err(PlanError::UnsupportedStatement {
+                kind: UnsupportedStatementKind::Assert,
+            }),
+        );
+    }
+
+    #[test]
+    fn reject_profile_anonymous_function_let_assert_assignment() {
+        assert_eq!(
+            plan_module(compile(
+                r#"
+pub fn main() {
+  fn() {
+    let assert True = True
+    1
+  }
+  1
+}
+"#,
+            )),
+            Err(PlanError::UnsupportedAssignment {
+                kind: UnsupportedAssignmentKind::LetAssert,
+            }),
+        );
+    }
+
+    #[test]
     fn reject_margin_use_function_literal_expression_kind() {
         let mut module = anonymous_function_module();
         let (_, _, kind) = anonymous_function_expression_mut(&mut module);
@@ -458,15 +892,26 @@ pub fn main() {
         let _ = anonymous_function_expression_mut(&mut module);
     }
 
+    #[test]
+    #[should_panic(expected = "expected anonymous function expression statement")]
+    fn anonymous_function_body_mut_panics_on_non_function_statement() {
+        let mut module = compile(r#"pub fn main() { 1 }"#);
+
+        let _ = anonymous_function_body_mut(&mut module);
+    }
+
     fn anonymous_function_module() -> TypedModule {
-        compile(
-            r#"
-pub fn main() {
-  fn(value) { value + 1 }
-  1
-}
-"#,
-        )
+        compile("pub fn main() {\n  fn(value) { value + 1 }\n  1\n}\n")
+    }
+
+    fn anonymous_function_body_mut(module: &mut TypedModule) -> &mut vec1::Vec1<TypedStatement> {
+        let Statement::Expression(TypedExpr::Fn { body, .. }) =
+            &mut module.definitions.functions[0].body[0]
+        else {
+            panic!("expected anonymous function expression statement");
+        };
+
+        body
     }
 
     fn anonymous_function_expression_mut(

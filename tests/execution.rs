@@ -122,6 +122,12 @@ mod functions {
             anonymous_function_return_shapes,
             anonymous_function_returning_function,
             anonymous_function_main_returning_function,
+            capturing_closure_local_call,
+            capturing_closure_block_scope,
+            capturing_closure_nested,
+            capturing_closure_shadowing,
+            capturing_closure_value_families,
+            capturing_closure_return_shapes,
         );
     }
 }
@@ -163,7 +169,11 @@ mod rejection {
 
     mod anonymous {
         rejection_cases!("anonymous";
-            capturing_closure,
+            anonymous_discard_argument,
+            anonymous_unsupported_body,
+            anonymous_unsupported_return_type,
+            function_capture_literal,
+            use_literal,
         );
     }
 }

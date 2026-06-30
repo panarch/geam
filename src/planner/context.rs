@@ -1,14 +1,16 @@
 use crate::plan::{
-    BoolFunctionFunctionId, BoolFunctionId, BoolFunctionLocalId, BoolLocalId,
-    FunctionFunctionFunctionId, FunctionFunctionId, FunctionFunctionLocalId, FunctionId,
-    FunctionPlan, FunctionType, FunctionValue, IntFunctionFunctionId, IntFunctionId,
-    IntFunctionLocalId, IntLocalId, LocalId, NilFunctionFunctionId, NilFunctionId,
-    NilFunctionLocalId, NilLocalId, ParamLocal, RuntimeFunctionId, StringFunctionFunctionId,
+    BoolExpr, BoolFunctionExpr, BoolFunctionFunctionId, BoolFunctionId, BoolFunctionLocalId,
+    BoolLocalId, CaptureArg, FunctionFunctionExpr, FunctionFunctionFunctionId, FunctionFunctionId,
+    FunctionFunctionLocalId, FunctionId, FunctionPlan, FunctionType, FunctionValue, IntExpr,
+    IntFunctionExpr, IntFunctionFunctionId, IntFunctionId, IntFunctionLocalId, IntLocalId, LocalId,
+    NilExpr, NilFunctionExpr, NilFunctionFunctionId, NilFunctionId, NilFunctionLocalId, NilLocalId,
+    ParamLocal, RuntimeFunctionId, StringExpr, StringFunctionExpr, StringFunctionFunctionId,
     StringFunctionId, StringFunctionLocalId, StringLocalId, ValueType,
 };
+use crate::planner::error::{InvalidTypedAstReason, PlanError};
 use ecow::EcoString;
 use gleam_core::type_::Type;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 #[derive(Clone)]
 pub(super) struct FunctionInfo {
@@ -29,7 +31,6 @@ pub(super) struct PlanContext<'a> {
     functions: &'a HashMap<EcoString, FunctionInfo>,
     anonymous_functions: &'a mut AnonymousFunctions,
     bindings: HashMap<EcoString, LocalBinding>,
-    outer_binding_names: HashSet<EcoString>,
     next_int_local: usize,
     next_string_local: usize,
     next_bool_local: usize,
@@ -43,8 +44,13 @@ pub(super) struct PlanContext<'a> {
 
 #[derive(Clone)]
 enum LocalBinding {
-    Primitive { local: LocalId, type_: ValueType },
+    Primitive(LocalId),
     Function(FunctionLocalBinding),
+}
+
+pub(super) struct CaptureBinding {
+    name: EcoString,
+    binding: LocalBinding,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -82,7 +88,6 @@ impl<'a> PlanContext<'a> {
             functions,
             anonymous_functions,
             bindings: HashMap::new(),
-            outer_binding_names: HashSet::new(),
             next_int_local: 0,
             next_string_local: 0,
             next_bool_local: 0,
@@ -95,12 +100,7 @@ impl<'a> PlanContext<'a> {
         }
     }
 
-    pub(super) fn define_existing_local(
-        &mut self,
-        name: EcoString,
-        local: LocalId,
-        type_: ValueType,
-    ) {
+    pub(super) fn define_existing_local(&mut self, name: EcoString, local: LocalId) {
         match local {
             LocalId::Int(local) => {
                 self.next_int_local = self.next_int_local.max(local.0 + 1);
@@ -115,23 +115,22 @@ impl<'a> PlanContext<'a> {
                 self.next_nil_local = self.next_nil_local.max(local.0 + 1);
             }
         }
-        self.bindings
-            .insert(name, LocalBinding::Primitive { local, type_ });
+        self.bindings.insert(name, LocalBinding::Primitive(local));
     }
 
     pub(super) fn define_existing_param(&mut self, name: EcoString, local: &ParamLocal) {
         match local {
             ParamLocal::Int(local) => {
-                self.define_existing_local(name, LocalId::Int(*local), ValueType::Int);
+                self.define_existing_local(name, LocalId::Int(*local));
             }
             ParamLocal::String(local) => {
-                self.define_existing_local(name, LocalId::String(*local), ValueType::String);
+                self.define_existing_local(name, LocalId::String(*local));
             }
             ParamLocal::Bool(local) => {
-                self.define_existing_local(name, LocalId::Bool(*local), ValueType::Bool);
+                self.define_existing_local(name, LocalId::Bool(*local));
             }
             ParamLocal::Nil(local) => {
-                self.define_existing_local(name, LocalId::Nil(*local), ValueType::Nil);
+                self.define_existing_local(name, LocalId::Nil(*local));
             }
             ParamLocal::IntFunction { local, type_ } => {
                 self.next_int_function_local = self.next_int_function_local.max(local.0 + 1);
@@ -260,58 +259,38 @@ impl<'a> PlanContext<'a> {
     pub(super) fn define_int_local(&mut self, name: EcoString) -> IntLocalId {
         let local = IntLocalId(self.next_int_local);
         self.next_int_local += 1;
-        self.bindings.insert(
-            name,
-            LocalBinding::Primitive {
-                local: LocalId::Int(local),
-                type_: ValueType::Int,
-            },
-        );
+        self.bindings
+            .insert(name, LocalBinding::Primitive(LocalId::Int(local)));
         local
     }
 
     pub(super) fn define_string_local(&mut self, name: EcoString) -> StringLocalId {
         let local = StringLocalId(self.next_string_local);
         self.next_string_local += 1;
-        self.bindings.insert(
-            name,
-            LocalBinding::Primitive {
-                local: LocalId::String(local),
-                type_: ValueType::String,
-            },
-        );
+        self.bindings
+            .insert(name, LocalBinding::Primitive(LocalId::String(local)));
         local
     }
 
     pub(super) fn define_bool_local(&mut self, name: EcoString) -> BoolLocalId {
         let local = BoolLocalId(self.next_bool_local);
         self.next_bool_local += 1;
-        self.bindings.insert(
-            name,
-            LocalBinding::Primitive {
-                local: LocalId::Bool(local),
-                type_: ValueType::Bool,
-            },
-        );
+        self.bindings
+            .insert(name, LocalBinding::Primitive(LocalId::Bool(local)));
         local
     }
 
     pub(super) fn define_nil_local(&mut self, name: EcoString) -> NilLocalId {
         let local = NilLocalId(self.next_nil_local);
         self.next_nil_local += 1;
-        self.bindings.insert(
-            name,
-            LocalBinding::Primitive {
-                local: LocalId::Nil(local),
-                type_: ValueType::Nil,
-            },
-        );
+        self.bindings
+            .insert(name, LocalBinding::Primitive(LocalId::Nil(local)));
         local
     }
 
     pub(super) fn lookup_local(&self, name: &EcoString) -> Option<(LocalId, ValueType)> {
         match self.bindings.get(name)? {
-            LocalBinding::Primitive { local, type_ } => Some((*local, type_.clone())),
+            LocalBinding::Primitive(local) => Some((*local, local.value_type())),
             LocalBinding::Function(_) => None,
         }
     }
@@ -323,7 +302,7 @@ impl<'a> PlanContext<'a> {
     pub(super) fn lookup_function_local(&self, name: &EcoString) -> Option<FunctionLocalBinding> {
         match self.bindings.get(name)? {
             LocalBinding::Function(binding) => Some(binding.clone()),
-            LocalBinding::Primitive { .. } => None,
+            LocalBinding::Primitive(_) => None,
         }
     }
 
@@ -335,8 +314,17 @@ impl<'a> PlanContext<'a> {
         &mut self,
         return_type: ValueType,
         params: Vec<FunctionParam>,
+        runtime_id: RuntimeFunctionId,
     ) -> (EcoString, FunctionInfo) {
-        self.anonymous_functions.allocate(return_type, params)
+        self.anonymous_functions
+            .allocate(return_type, params, runtime_id)
+    }
+
+    pub(super) fn allocate_anonymous_runtime_id(
+        &mut self,
+        return_type: &ValueType,
+    ) -> RuntimeFunctionId {
+        self.anonymous_functions.allocate_runtime_id(return_type)
     }
 
     pub(super) fn push_anonymous_function(&mut self, function: FunctionPlan) {
@@ -344,15 +332,11 @@ impl<'a> PlanContext<'a> {
     }
 
     pub(super) fn anonymous_function_context(&mut self) -> PlanContext<'_> {
-        let mut outer_binding_names = self.outer_binding_names.clone();
-        outer_binding_names.extend(self.bindings.keys().cloned());
-
         PlanContext {
             module_name: self.module_name,
             functions: self.functions,
             anonymous_functions: self.anonymous_functions,
             bindings: HashMap::new(),
-            outer_binding_names,
             next_int_local: 0,
             next_string_local: 0,
             next_bool_local: 0,
@@ -365,8 +349,37 @@ impl<'a> PlanContext<'a> {
         }
     }
 
-    pub(super) fn is_outer_binding_name(&self, name: &EcoString) -> bool {
-        self.bindings.contains_key(name) || self.outer_binding_names.contains(name)
+    pub(super) fn capture_bindings(
+        &self,
+        names: &[EcoString],
+    ) -> Result<Vec<CaptureBinding>, PlanError> {
+        names
+            .iter()
+            .map(|name| {
+                let binding =
+                    self.bindings
+                        .get(name)
+                        .cloned()
+                        .ok_or_else(|| PlanError::InvalidTypedAst {
+                            reason: InvalidTypedAstReason::UnknownLocal { name: name.clone() },
+                        })?;
+
+                Ok(CaptureBinding {
+                    name: name.clone(),
+                    binding,
+                })
+            })
+            .collect()
+    }
+
+    pub(super) fn define_captures(
+        &mut self,
+        captures: Vec<CaptureBinding>,
+    ) -> Result<Vec<CaptureArg>, PlanError> {
+        captures
+            .into_iter()
+            .map(|capture| self.define_capture(capture))
+            .collect()
     }
 
     pub(super) fn with_local_scope<T, E>(
@@ -377,6 +390,75 @@ impl<'a> PlanContext<'a> {
         let result = f(self);
         self.bindings = bindings;
         result
+    }
+
+    fn define_capture(&mut self, capture: CaptureBinding) -> Result<CaptureArg, PlanError> {
+        match capture.binding {
+            LocalBinding::Primitive(LocalId::Int(local)) => {
+                let target = self.define_int_local(capture.name.clone());
+                Ok(CaptureArg::int(
+                    target,
+                    IntExpr::local_get(local, capture.name),
+                ))
+            }
+            LocalBinding::Primitive(LocalId::String(local)) => {
+                let target = self.define_string_local(capture.name.clone());
+                Ok(CaptureArg::string(
+                    target,
+                    StringExpr::local_get(local, capture.name),
+                ))
+            }
+            LocalBinding::Primitive(LocalId::Bool(local)) => {
+                let target = self.define_bool_local(capture.name.clone());
+                Ok(CaptureArg::bool(
+                    target,
+                    BoolExpr::local_get(local, capture.name),
+                ))
+            }
+            LocalBinding::Primitive(LocalId::Nil(local)) => {
+                let target = self.define_nil_local(capture.name.clone());
+                Ok(CaptureArg::nil(
+                    target,
+                    NilExpr::local_get(local, capture.name),
+                ))
+            }
+            LocalBinding::Function(FunctionLocalBinding::Int { local, type_ }) => {
+                let target = self.define_int_function_local(capture.name.clone(), type_.clone());
+                Ok(CaptureArg::int_function(
+                    target,
+                    IntFunctionExpr::local_get(local, capture.name, type_),
+                ))
+            }
+            LocalBinding::Function(FunctionLocalBinding::String { local, type_ }) => {
+                let target = self.define_string_function_local(capture.name.clone(), type_.clone());
+                Ok(CaptureArg::string_function(
+                    target,
+                    StringFunctionExpr::local_get(local, capture.name, type_),
+                ))
+            }
+            LocalBinding::Function(FunctionLocalBinding::Bool { local, type_ }) => {
+                let target = self.define_bool_function_local(capture.name.clone(), type_.clone());
+                Ok(CaptureArg::bool_function(
+                    target,
+                    BoolFunctionExpr::local_get(local, capture.name, type_),
+                ))
+            }
+            LocalBinding::Function(FunctionLocalBinding::Nil { local, type_ }) => {
+                let target = self.define_nil_function_local(capture.name.clone(), type_.clone());
+                Ok(CaptureArg::nil_function(
+                    target,
+                    NilFunctionExpr::local_get(local, capture.name, type_),
+                ))
+            }
+            LocalBinding::Function(FunctionLocalBinding::Function { local, type_ }) => {
+                let target =
+                    self.define_function_function_local(capture.name.clone(), type_.clone());
+                Ok(CaptureArg::function_function(
+                    target,
+                    FunctionFunctionExpr::local_get(local, capture.name, type_),
+                ))
+            }
+        }
     }
 }
 
@@ -412,9 +494,9 @@ impl AnonymousFunctions {
         &mut self,
         return_type: ValueType,
         params: Vec<FunctionParam>,
+        runtime_id: RuntimeFunctionId,
     ) -> (EcoString, FunctionInfo) {
         let name = self.next_name();
-        let runtime_id = self.runtime_ids.next(&return_type);
         let info = FunctionInfo {
             id: FunctionId::new(self.next_function_index),
             runtime_id,
@@ -424,6 +506,10 @@ impl AnonymousFunctions {
         self.next_function_index += 1;
         self.next_anonymous_index += 1;
         (name, info)
+    }
+
+    fn allocate_runtime_id(&mut self, return_type: &ValueType) -> RuntimeFunctionId {
+        self.runtime_ids.next(return_type)
     }
 
     fn push(&mut self, function: FunctionPlan) {
@@ -447,13 +533,14 @@ impl FunctionInfo {
     }
 
     pub(super) fn value(&self) -> FunctionValue {
-        FunctionValue::new(
-            self.runtime_id.clone(),
-            self.params
-                .iter()
-                .map(|param| param.local.clone())
-                .collect(),
-        )
+        FunctionValue::new(self.runtime_id.clone(), self.param_locals())
+    }
+
+    pub(super) fn param_locals(&self) -> Vec<ParamLocal> {
+        self.params
+            .iter()
+            .map(|param| param.local.clone())
+            .collect()
     }
 }
 

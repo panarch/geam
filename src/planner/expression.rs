@@ -115,40 +115,49 @@ fn plan_int_expr(
     expression: TypedExpr,
     context: &mut PlanContext<'_>,
 ) -> Result<IntExpr, PlanError> {
-    plan_expr(expression, context)?
+    let expression = plan_expr(expression, context)?;
+    let actual = expression_type(&expression);
+    expression
         .into_int()
-        .map_err(|other| invalid_expression_type(InvalidExpressionType::Int, &other))
+        .ok_or_else(|| invalid_expression_type(InvalidExpressionType::Int, actual))
 }
 
 fn plan_string_expr(
     expression: TypedExpr,
     context: &mut PlanContext<'_>,
 ) -> Result<StringExpr, PlanError> {
-    plan_expr(expression, context)?
+    let expression = plan_expr(expression, context)?;
+    let actual = expression_type(&expression);
+    expression
         .into_string()
-        .map_err(|other| invalid_expression_type(InvalidExpressionType::String, &other))
+        .ok_or_else(|| invalid_expression_type(InvalidExpressionType::String, actual))
 }
 
 fn plan_bool_expr(
     expression: TypedExpr,
     context: &mut PlanContext<'_>,
 ) -> Result<BoolExpr, PlanError> {
-    plan_expr(expression, context)?
+    let expression = plan_expr(expression, context)?;
+    let actual = expression_type(&expression);
+    expression
         .into_bool()
-        .map_err(|other| invalid_expression_type(InvalidExpressionType::Bool, &other))
+        .ok_or_else(|| invalid_expression_type(InvalidExpressionType::Bool, actual))
 }
 
-fn invalid_expression_type(expected: InvalidExpressionType, actual: &Expr) -> PlanError {
+fn invalid_expression_type(
+    expected: InvalidExpressionType,
+    actual: InvalidExpressionType,
+) -> PlanError {
     PlanError::InvalidTypedAst {
-        reason: InvalidTypedAstReason::ExpressionType {
-            expected,
-            actual: expression_type(actual),
-        },
+        reason: InvalidTypedAstReason::ExpressionType { expected, actual },
     }
 }
 
-fn invalid_expression_type_for_value(expected: ValueType, actual: &Expr) -> PlanError {
-    invalid_expression_type(value_type_expression_type(expected), actual)
+fn invalid_expression_type_for_value(expected: ValueType, actual: ValueType) -> PlanError {
+    invalid_expression_type(
+        value_type_expression_type(expected),
+        value_type_expression_type(actual),
+    )
 }
 
 fn expression_type(expression: &Expr) -> InvalidExpressionType {
@@ -234,7 +243,9 @@ pub(in crate::planner::expression) fn typed_prelude_constructor(
 
 #[cfg(test)]
 mod tests {
-    use super::{invalid_expression_type, module_returning_typed_expr, typed_int_expr};
+    use super::{
+        expression_type, invalid_expression_type, module_returning_typed_expr, typed_int_expr,
+    };
     use crate::plan::{Expr, FunctionExpr, FunctionValue, NilFunctionId, RuntimeFunctionId};
     use crate::planner::plan_module;
     use crate::planner::support::{compile, dummy_span, expect_plan_error};
@@ -443,7 +454,7 @@ pub fn main() {
         )));
 
         assert_eq!(
-            invalid_expression_type(InvalidExpressionType::Int, &expression),
+            invalid_expression_type(InvalidExpressionType::Int, expression_type(&expression)),
             PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::ExpressionType {
                     expected: InvalidExpressionType::Int,

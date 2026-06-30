@@ -11,6 +11,15 @@ pub(in crate::runtime) fn eval_nil_function_expr(
 ) -> Result<NilFunctionValue, ExecutionError> {
     match expression.kind() {
         NilFunctionExprKind::Value(value) => Ok(value.clone()),
+        NilFunctionExprKind::Closure {
+            runtime_id,
+            params,
+            captures,
+        } => Ok(NilFunctionValue::new_with_captures(
+            *runtime_id,
+            params.clone(),
+            function::eval_capture_args(plan, frame, captures)?,
+        )),
         NilFunctionExprKind::LocalGet { local, .. } => Ok(frame.get_nil_function(*local)),
         NilFunctionExprKind::Call { function, args, .. } => {
             function::run_nil_function_returning_function_call(plan, *function, args, frame)

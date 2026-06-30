@@ -11,6 +11,15 @@ pub(in crate::runtime) fn eval_bool_function_expr(
 ) -> Result<BoolFunctionValue, ExecutionError> {
     match expression.kind() {
         BoolFunctionExprKind::Value(value) => Ok(value.clone()),
+        BoolFunctionExprKind::Closure {
+            runtime_id,
+            params,
+            captures,
+        } => Ok(BoolFunctionValue::new_with_captures(
+            *runtime_id,
+            params.clone(),
+            function::eval_capture_args(plan, frame, captures)?,
+        )),
         BoolFunctionExprKind::LocalGet { local, .. } => Ok(frame.get_bool_function(*local)),
         BoolFunctionExprKind::Call { function, args, .. } => {
             function::run_bool_function_returning_function_call(plan, *function, args, frame)

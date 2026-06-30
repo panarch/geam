@@ -1,6 +1,6 @@
 use crate::plan::{
     BoolExpr, BoolFunctionExpr, BoolFunctionId, BoolFunctionLocalId, BoolFunctionValue,
-    BoolLocalId, CallArg, Expr, FunctionExpr, FunctionExprKind, FunctionFunctionExpr,
+    BoolLocalId, CallArg, CaptureArg, Expr, FunctionExpr, FunctionExprKind, FunctionFunctionExpr,
     FunctionFunctionId, FunctionFunctionLocalId, FunctionFunctionValue, FunctionType,
     FunctionValue, IntExpr, IntFunctionExpr, IntFunctionFunctionId, IntFunctionId,
     IntFunctionLocalId, IntFunctionValue, IntLocalId, LocalId, NilExpr, NilFunctionExpr,
@@ -81,6 +81,25 @@ pub(crate) fn int_function_ref(
     )))
 }
 
+pub(crate) fn int_function_closure(
+    runtime_id: usize,
+    params: impl IntoIterator<Item = impl IntoParamLocal>,
+    captures: impl IntoIterator<Item = CaptureArg>,
+) -> IntFunction {
+    let params = params
+        .into_iter()
+        .map(IntoParamLocal::into_param_local)
+        .collect::<Vec<_>>();
+    let type_ = FunctionType::from_params(&params, ValueType::Int);
+
+    IntFunction(IntFunctionExpr::closure(
+        IntFunctionId(runtime_id),
+        params,
+        captures.into_iter().collect(),
+        type_,
+    ))
+}
+
 pub(crate) fn string_function_ref(
     runtime_id: usize,
     params: impl IntoIterator<Item = impl IntoParamLocal>,
@@ -145,6 +164,28 @@ pub(crate) fn function_function_ref(
             .collect(),
         return_type,
     )))
+}
+
+pub(crate) fn function_function_closure(
+    runtime_id: FunctionFunctionId,
+    params: impl IntoIterator<Item = impl IntoParamLocal>,
+    captures: impl IntoIterator<Item = CaptureArg>,
+    return_type: FunctionType,
+) -> FunctionFunction {
+    let params = params
+        .into_iter()
+        .map(IntoParamLocal::into_param_local)
+        .collect::<Vec<_>>();
+    let type_ =
+        FunctionType::from_params(&params, ValueType::Function(Box::new(return_type.clone())));
+
+    FunctionFunction(FunctionFunctionExpr::closure(
+        runtime_id,
+        params,
+        captures.into_iter().collect(),
+        type_,
+        return_type,
+    ))
 }
 
 pub(crate) fn local_string_function(
@@ -605,6 +646,10 @@ pub(crate) fn call_int_function(
 
 pub(crate) fn int_arg(local: usize, value: Int) -> CallArg {
     CallArg::int(IntLocalId(local), value.into())
+}
+
+pub(crate) fn capture_int(local: usize, value: Int) -> CaptureArg {
+    CaptureArg::int(IntLocalId(local), value.into())
 }
 
 pub(crate) fn int_function_call_arg(local: usize, value: Int) -> CallArg {

@@ -1,6 +1,6 @@
 use super::expression::{
-    BoolExpr, BoolFunctionExpr, CallArg, Expr, FunctionExpr, FunctionFunctionExpr, IntExpr,
-    IntFunctionExpr, NilExpr, NilFunctionExpr, StringExpr, StringFunctionExpr,
+    BoolExpr, BoolFunctionExpr, CallArg, CaptureArg, Expr, FunctionExpr, FunctionFunctionExpr,
+    IntExpr, IntFunctionExpr, NilExpr, NilFunctionExpr, StringExpr, StringFunctionExpr,
 };
 use super::function::{Param, ParamLocal, ReturnExpr};
 use super::id::{
@@ -9,7 +9,7 @@ use super::id::{
 };
 use super::step::Step;
 use super::{
-    BoolExprKind, BoolFunctionExprKind, CallArgKind, ExprKind, FunctionExprKind,
+    BoolExprKind, BoolFunctionExprKind, CallArgKind, CaptureArgKind, ExprKind, FunctionExprKind,
     FunctionFunctionExprKind, IntExprKind, IntFunctionExprKind, NilExprKind, NilFunctionExprKind,
     ReturnExprKind, StepKind, StringExprKind, StringFunctionExprKind,
 };
@@ -233,6 +233,28 @@ impl FrameLayout {
         }
     }
 
+    fn include_capture_args(&mut self, args: &[CaptureArg]) {
+        for arg in args {
+            match arg.kind() {
+                CaptureArgKind::Int { value, .. } => self.include_int_expr(value),
+                CaptureArgKind::String { value, .. } => self.include_string_expr(value),
+                CaptureArgKind::Bool { value, .. } => self.include_bool_expr(value),
+                CaptureArgKind::Nil { value, .. } => self.include_nil_expr(value),
+                CaptureArgKind::IntFunction { value, .. } => self.include_int_function_expr(value),
+                CaptureArgKind::StringFunction { value, .. } => {
+                    self.include_string_function_expr(value);
+                }
+                CaptureArgKind::BoolFunction { value, .. } => {
+                    self.include_bool_function_expr(value)
+                }
+                CaptureArgKind::NilFunction { value, .. } => self.include_nil_function_expr(value),
+                CaptureArgKind::FunctionFunction { value, .. } => {
+                    self.include_function_function_expr(value);
+                }
+            }
+        }
+    }
+
     fn include_int_expr(&mut self, expression: &IntExpr) {
         match expression.kind() {
             IntExprKind::Value(_) => {}
@@ -421,6 +443,7 @@ impl FrameLayout {
     fn include_int_function_expr(&mut self, expression: &IntFunctionExpr) {
         match expression.kind() {
             IntFunctionExprKind::Value(_) => {}
+            IntFunctionExprKind::Closure { captures, .. } => self.include_capture_args(captures),
             IntFunctionExprKind::LocalGet { local, .. } => self.include_int_function(*local),
             IntFunctionExprKind::Call { args, .. } => self.include_call_args(args),
             IntFunctionExprKind::FunctionCall { function, args, .. } => {
@@ -457,6 +480,7 @@ impl FrameLayout {
     fn include_string_function_expr(&mut self, expression: &StringFunctionExpr) {
         match expression.kind() {
             StringFunctionExprKind::Value(_) => {}
+            StringFunctionExprKind::Closure { captures, .. } => self.include_capture_args(captures),
             StringFunctionExprKind::LocalGet { local, .. } => {
                 self.include_string_function(*local);
             }
@@ -495,6 +519,7 @@ impl FrameLayout {
     fn include_bool_function_expr(&mut self, expression: &BoolFunctionExpr) {
         match expression.kind() {
             BoolFunctionExprKind::Value(_) => {}
+            BoolFunctionExprKind::Closure { captures, .. } => self.include_capture_args(captures),
             BoolFunctionExprKind::LocalGet { local, .. } => self.include_bool_function(*local),
             BoolFunctionExprKind::Call { args, .. } => self.include_call_args(args),
             BoolFunctionExprKind::FunctionCall { function, args, .. } => {
@@ -531,6 +556,7 @@ impl FrameLayout {
     fn include_nil_function_expr(&mut self, expression: &NilFunctionExpr) {
         match expression.kind() {
             NilFunctionExprKind::Value(_) => {}
+            NilFunctionExprKind::Closure { captures, .. } => self.include_capture_args(captures),
             NilFunctionExprKind::LocalGet { local, .. } => self.include_nil_function(*local),
             NilFunctionExprKind::Call { args, .. } => self.include_call_args(args),
             NilFunctionExprKind::FunctionCall { function, args, .. } => {
@@ -567,6 +593,9 @@ impl FrameLayout {
     fn include_function_function_expr(&mut self, expression: &FunctionFunctionExpr) {
         match expression.kind() {
             FunctionFunctionExprKind::Value(_) => {}
+            FunctionFunctionExprKind::Closure { captures, .. } => {
+                self.include_capture_args(captures);
+            }
             FunctionFunctionExprKind::LocalGet { local, .. } => {
                 self.include_function_function(*local);
             }

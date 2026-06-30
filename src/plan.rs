@@ -11,9 +11,10 @@ use ecow::EcoString;
 use std::fmt;
 
 pub(crate) use expression::{
-    BoolCaseBranches, BoolExprKind, BoolFunctionExprKind, CallArgKind, ExprKind, FunctionExprKind,
-    FunctionFunctionExprKind, IntCaseBranches, IntExprKind, IntFunctionExprKind, NilExprKind,
-    NilFunctionExprKind, StringExprKind, StringFunctionExprKind,
+    BoolCaseBranches, BoolExprKind, BoolFunctionExprKind, CallArgKind, CaptureArg,
+    CaptureArgKind, ExprKind, FunctionExprKind, FunctionFunctionExprKind, IntCaseBranches,
+    IntExprKind, IntFunctionExprKind, NilExprKind, NilFunctionExprKind, StringExprKind,
+    StringFunctionExprKind,
 };
 pub use expression::{
     BoolExpr, BoolFunctionExpr, CallArg, Expr, FunctionExpr, FunctionFunctionExpr, IntExpr,
@@ -33,8 +34,8 @@ pub(crate) use id::{FunctionFunctionId, FunctionReturnFamily, RuntimeFunctionId}
 pub use step::Step;
 pub(crate) use step::StepKind;
 pub(crate) use value::{
-    BoolFunctionValue, FunctionFunctionValue, FunctionValueKind, IntFunctionValue,
-    NilFunctionValue, StringFunctionValue,
+    BoolFunctionValue, CaptureValue, CaptureValueKind, FunctionFunctionValue, FunctionValueKind,
+    IntFunctionValue, NilFunctionValue, StringFunctionValue,
 };
 pub use value::{FunctionType, FunctionValue, Value, ValueType};
 
