@@ -678,10 +678,10 @@ mod tests {
         StringFunctionFunctionId, StringFunctionId, ValueType,
     };
     use crate::planner::dsl::{
-        block_int_function, bool_, bool_case_int_function, call_int, call_int_function, function,
+        block_int_function, bool_, bool_case_int_function, call_int_function, function,
         function_function_ref, function_ref, int, int_arg, int_case_int_function, int_function_arg,
-        int_function_call_arg, int_function_ref, let_int_function_step, local_int,
-        local_int_function, module, module_with_anonymous,
+        int_function_call_arg, int_function_ref, int_return_tail_call, let_int_function_step,
+        local_int, local_int_function, module, module_with_anonymous,
     };
     use crate::planner::plan_module;
     use crate::planner::support::{compile, compile_minimal_module, dummy_span};
@@ -794,7 +794,7 @@ pub fn main() {
             "main",
             function(
                 "main",
-                call_int(
+                int_return_tail_call(
                     2,
                     [
                         int_function_arg(0, int_function_ref(1, [LocalId::Int(IntLocalId(0))])),
@@ -842,7 +842,7 @@ pub fn main() {
             "main",
             function(
                 "main",
-                call_int(
+                int_return_tail_call(
                     2,
                     [
                         int_function_arg(

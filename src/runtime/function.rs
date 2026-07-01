@@ -2,8 +2,8 @@ use crate::plan::{
     BoolFunctionFunctionId, BoolFunctionId, CallArg, CallArgKind, CaptureArg, CaptureArgKind,
     CaptureValue, CaptureValueKind, ExecutionPlan, FrameLayout, FunctionFunctionFunctionId,
     FunctionFunctionValue, FunctionReturnFamily, FunctionValue, IntFunctionFunctionId,
-    IntFunctionId, NilFunctionFunctionId, NilFunctionId, RuntimeFunctionId, StepKind,
-    StringFunctionFunctionId, StringFunctionId, Value,
+    IntFunctionId, NilFunctionFunctionId, NilFunctionId, ReturnBody, ReturnBodyKind,
+    RuntimeFunctionId, StepKind, StringFunctionFunctionId, StringFunctionId, Value,
 };
 use crate::runtime::ExecutionError;
 use crate::runtime::error::ExecutionResult;
@@ -44,10 +44,13 @@ pub(super) fn run_int_call(
     args: &[CallArg],
     caller_frame: &mut Frame,
 ) -> ExecutionResult<BigInt> {
-    let function = plan.int_function(function);
-    let mut frame = bind_arguments(plan, args, caller_frame, function.frame_layout())?;
-    execute_steps(plan, function.steps(), &mut frame)?;
-    eval_int_expr(plan, &mut frame, function.return_())
+    let frame = bind_arguments(
+        plan,
+        args,
+        caller_frame,
+        plan.int_function(function).frame_layout(),
+    )?;
+    run_int_loop(plan, function, frame)
 }
 
 pub(super) fn run_string_call(
@@ -56,10 +59,13 @@ pub(super) fn run_string_call(
     args: &[CallArg],
     caller_frame: &mut Frame,
 ) -> ExecutionResult<EcoString> {
-    let function = plan.string_function(function);
-    let mut frame = bind_arguments(plan, args, caller_frame, function.frame_layout())?;
-    execute_steps(plan, function.steps(), &mut frame)?;
-    eval_string_expr(plan, &mut frame, function.return_())
+    let frame = bind_arguments(
+        plan,
+        args,
+        caller_frame,
+        plan.string_function(function).frame_layout(),
+    )?;
+    run_string_loop(plan, function, frame)
 }
 
 pub(super) fn run_bool_call(
@@ -68,10 +74,13 @@ pub(super) fn run_bool_call(
     args: &[CallArg],
     caller_frame: &mut Frame,
 ) -> ExecutionResult<bool> {
-    let function = plan.bool_function(function);
-    let mut frame = bind_arguments(plan, args, caller_frame, function.frame_layout())?;
-    execute_steps(plan, function.steps(), &mut frame)?;
-    eval_bool_expr(plan, &mut frame, function.return_())
+    let frame = bind_arguments(
+        plan,
+        args,
+        caller_frame,
+        plan.bool_function(function).frame_layout(),
+    )?;
+    run_bool_loop(plan, function, frame)
 }
 
 pub(super) fn run_nil_call(
@@ -80,10 +89,285 @@ pub(super) fn run_nil_call(
     args: &[CallArg],
     caller_frame: &mut Frame,
 ) -> ExecutionResult<()> {
-    let function = plan.nil_function(function);
-    let mut frame = bind_arguments(plan, args, caller_frame, function.frame_layout())?;
-    execute_steps(plan, function.steps(), &mut frame)?;
-    eval_nil_expr(plan, &mut frame, function.return_())
+    let frame = bind_arguments(
+        plan,
+        args,
+        caller_frame,
+        plan.nil_function(function).frame_layout(),
+    )?;
+    run_nil_loop(plan, function, frame)
+}
+
+enum ReturnOutcome<'a, Value, Function> {
+    Value(Value),
+    TailCall {
+        function: Function,
+        args: &'a [CallArg],
+    },
+}
+
+fn eval_return_body<'a, Expression, Function, Value>(
+    plan: &ExecutionPlan,
+    frame: &mut Frame,
+    body: &'a ReturnBody<Expression, Function>,
+    eval_expression: fn(&ExecutionPlan, &mut Frame, &Expression) -> ExecutionResult<Value>,
+) -> ExecutionResult<ReturnOutcome<'a, Value, Function>>
+where
+    Function: Copy,
+{
+    match body.kind() {
+        ReturnBodyKind::Expr(expression) => {
+            eval_expression(plan, frame, expression).map(ReturnOutcome::Value)
+        }
+        ReturnBodyKind::TailCall { function, args } => Ok(ReturnOutcome::TailCall {
+            function: *function,
+            args,
+        }),
+        ReturnBodyKind::BoolCase {
+            subject,
+            true_,
+            false_,
+        } => {
+            if eval_bool_expr(plan, frame, subject)? {
+                eval_return_body(plan, frame, true_, eval_expression)
+            } else {
+                eval_return_body(plan, frame, false_, eval_expression)
+            }
+        }
+        ReturnBodyKind::IntCase {
+            subject,
+            clauses,
+            fallback,
+        } => {
+            let subject = eval_int_expr(plan, frame, subject)?;
+            for (pattern, branch) in clauses {
+                if pattern == &subject {
+                    return eval_return_body(plan, frame, branch, eval_expression);
+                }
+            }
+            eval_return_body(plan, frame, fallback, eval_expression)
+        }
+        ReturnBodyKind::Block { steps, return_ } => {
+            execute_steps(plan, steps, frame)?;
+            eval_return_body(plan, frame, return_, eval_expression)
+        }
+    }
+}
+
+fn run_int_loop(
+    plan: &ExecutionPlan,
+    mut function: IntFunctionId,
+    mut frame: Frame,
+) -> ExecutionResult<BigInt> {
+    loop {
+        let runtime_function = plan.int_function(function);
+        execute_steps(plan, runtime_function.steps(), &mut frame)?;
+        let eval = eval_int_expr;
+        let outcome = eval_return_body(plan, &mut frame, runtime_function.return_(), eval)?;
+        match outcome {
+            ReturnOutcome::Value(value) => return Ok(value),
+            ReturnOutcome::TailCall {
+                function: next,
+                args,
+            } => {
+                let frame_layout = plan.int_function(next).frame_layout();
+                frame = bind_arguments(plan, args, &mut frame, frame_layout)?;
+                function = next;
+            }
+        }
+    }
+}
+
+fn run_string_loop(
+    plan: &ExecutionPlan,
+    mut function: StringFunctionId,
+    mut frame: Frame,
+) -> ExecutionResult<EcoString> {
+    loop {
+        let runtime_function = plan.string_function(function);
+        execute_steps(plan, runtime_function.steps(), &mut frame)?;
+        let eval = eval_string_expr;
+        let outcome = eval_return_body(plan, &mut frame, runtime_function.return_(), eval)?;
+        match outcome {
+            ReturnOutcome::Value(value) => return Ok(value),
+            ReturnOutcome::TailCall {
+                function: next,
+                args,
+            } => {
+                let frame_layout = plan.string_function(next).frame_layout();
+                frame = bind_arguments(plan, args, &mut frame, frame_layout)?;
+                function = next;
+            }
+        }
+    }
+}
+
+fn run_bool_loop(
+    plan: &ExecutionPlan,
+    mut function: BoolFunctionId,
+    mut frame: Frame,
+) -> ExecutionResult<bool> {
+    loop {
+        let runtime_function = plan.bool_function(function);
+        execute_steps(plan, runtime_function.steps(), &mut frame)?;
+        let eval = eval_bool_expr;
+        let outcome = eval_return_body(plan, &mut frame, runtime_function.return_(), eval)?;
+        match outcome {
+            ReturnOutcome::Value(value) => return Ok(value),
+            ReturnOutcome::TailCall {
+                function: next,
+                args,
+            } => {
+                let frame_layout = plan.bool_function(next).frame_layout();
+                frame = bind_arguments(plan, args, &mut frame, frame_layout)?;
+                function = next;
+            }
+        }
+    }
+}
+
+fn run_nil_loop(
+    plan: &ExecutionPlan,
+    mut function: NilFunctionId,
+    mut frame: Frame,
+) -> ExecutionResult<()> {
+    loop {
+        let runtime_function = plan.nil_function(function);
+        execute_steps(plan, runtime_function.steps(), &mut frame)?;
+        let eval = eval_nil_expr;
+        let outcome = eval_return_body(plan, &mut frame, runtime_function.return_(), eval)?;
+        match outcome {
+            ReturnOutcome::Value(()) => return Ok(()),
+            ReturnOutcome::TailCall {
+                function: next,
+                args,
+            } => {
+                let frame_layout = plan.nil_function(next).frame_layout();
+                frame = bind_arguments(plan, args, &mut frame, frame_layout)?;
+                function = next;
+            }
+        }
+    }
+}
+
+fn run_int_function_loop(
+    plan: &ExecutionPlan,
+    mut function: IntFunctionFunctionId,
+    mut frame: Frame,
+) -> ExecutionResult<crate::plan::IntFunctionValue> {
+    loop {
+        let runtime_function = plan.int_function_function(function);
+        execute_steps(plan, runtime_function.steps(), &mut frame)?;
+        let eval = eval_int_function_expr;
+        let outcome = eval_return_body(plan, &mut frame, runtime_function.return_(), eval)?;
+        match outcome {
+            ReturnOutcome::Value(value) => return Ok(value),
+            ReturnOutcome::TailCall {
+                function: next,
+                args,
+            } => {
+                let frame_layout = plan.int_function_function(next).frame_layout();
+                frame = bind_arguments(plan, args, &mut frame, frame_layout)?;
+                function = next;
+            }
+        }
+    }
+}
+
+fn run_string_function_loop(
+    plan: &ExecutionPlan,
+    mut function: StringFunctionFunctionId,
+    mut frame: Frame,
+) -> ExecutionResult<crate::plan::StringFunctionValue> {
+    loop {
+        let runtime_function = plan.string_function_function(function);
+        execute_steps(plan, runtime_function.steps(), &mut frame)?;
+        let eval = eval_string_function_expr;
+        let outcome = eval_return_body(plan, &mut frame, runtime_function.return_(), eval)?;
+        match outcome {
+            ReturnOutcome::Value(value) => return Ok(value),
+            ReturnOutcome::TailCall {
+                function: next,
+                args,
+            } => {
+                let frame_layout = plan.string_function_function(next).frame_layout();
+                frame = bind_arguments(plan, args, &mut frame, frame_layout)?;
+                function = next;
+            }
+        }
+    }
+}
+
+fn run_bool_function_loop(
+    plan: &ExecutionPlan,
+    mut function: BoolFunctionFunctionId,
+    mut frame: Frame,
+) -> ExecutionResult<crate::plan::BoolFunctionValue> {
+    loop {
+        let runtime_function = plan.bool_function_function(function);
+        execute_steps(plan, runtime_function.steps(), &mut frame)?;
+        let eval = eval_bool_function_expr;
+        let outcome = eval_return_body(plan, &mut frame, runtime_function.return_(), eval)?;
+        match outcome {
+            ReturnOutcome::Value(value) => return Ok(value),
+            ReturnOutcome::TailCall {
+                function: next,
+                args,
+            } => {
+                let frame_layout = plan.bool_function_function(next).frame_layout();
+                frame = bind_arguments(plan, args, &mut frame, frame_layout)?;
+                function = next;
+            }
+        }
+    }
+}
+
+fn run_nil_function_loop(
+    plan: &ExecutionPlan,
+    mut function: NilFunctionFunctionId,
+    mut frame: Frame,
+) -> ExecutionResult<crate::plan::NilFunctionValue> {
+    loop {
+        let runtime_function = plan.nil_function_function(function);
+        execute_steps(plan, runtime_function.steps(), &mut frame)?;
+        let eval = eval_nil_function_expr;
+        let outcome = eval_return_body(plan, &mut frame, runtime_function.return_(), eval)?;
+        match outcome {
+            ReturnOutcome::Value(value) => return Ok(value),
+            ReturnOutcome::TailCall {
+                function: next,
+                args,
+            } => {
+                let frame_layout = plan.nil_function_function(next).frame_layout();
+                frame = bind_arguments(plan, args, &mut frame, frame_layout)?;
+                function = next;
+            }
+        }
+    }
+}
+
+fn run_function_function_loop(
+    plan: &ExecutionPlan,
+    mut function: FunctionFunctionFunctionId,
+    mut frame: Frame,
+) -> ExecutionResult<FunctionFunctionValue> {
+    loop {
+        let runtime_function = plan.function_function_function(function);
+        execute_steps(plan, runtime_function.steps(), &mut frame)?;
+        let eval = eval_function_function_expr;
+        let outcome = eval_return_body(plan, &mut frame, runtime_function.return_(), eval)?;
+        match outcome {
+            ReturnOutcome::Value(value) => return Ok(value),
+            ReturnOutcome::TailCall {
+                function: next,
+                args,
+            } => {
+                let frame_layout = plan.function_function_function(next).frame_layout();
+                frame = bind_arguments(plan, args, &mut frame, frame_layout)?;
+                function = next;
+            }
+        }
+    }
 }
 
 pub(in crate::runtime) fn execute_steps(
@@ -291,10 +575,9 @@ pub(in crate::runtime) fn run_int_function_call(
     let function = eval_int_function_expr(plan, caller_frame, function)?;
     let runtime_function = plan.int_function(function.runtime_id());
     let frame_layout = runtime_function.frame_layout();
-    let mut frame =
+    let frame =
         bind_function_value_arguments(plan, args, caller_frame, frame_layout, function.captures())?;
-    execute_steps(plan, runtime_function.steps(), &mut frame)?;
-    eval_int_expr(plan, &mut frame, runtime_function.return_())
+    run_int_loop(plan, function.runtime_id(), frame)
 }
 
 pub(in crate::runtime) fn run_string_function_call(
@@ -306,10 +589,9 @@ pub(in crate::runtime) fn run_string_function_call(
     let function = eval_string_function_expr(plan, caller_frame, function)?;
     let runtime_function = plan.string_function(function.runtime_id());
     let frame_layout = runtime_function.frame_layout();
-    let mut frame =
+    let frame =
         bind_function_value_arguments(plan, args, caller_frame, frame_layout, function.captures())?;
-    execute_steps(plan, runtime_function.steps(), &mut frame)?;
-    eval_string_expr(plan, &mut frame, runtime_function.return_())
+    run_string_loop(plan, function.runtime_id(), frame)
 }
 
 pub(in crate::runtime) fn run_bool_function_call(
@@ -321,10 +603,9 @@ pub(in crate::runtime) fn run_bool_function_call(
     let function = eval_bool_function_expr(plan, caller_frame, function)?;
     let runtime_function = plan.bool_function(function.runtime_id());
     let frame_layout = runtime_function.frame_layout();
-    let mut frame =
+    let frame =
         bind_function_value_arguments(plan, args, caller_frame, frame_layout, function.captures())?;
-    execute_steps(plan, runtime_function.steps(), &mut frame)?;
-    eval_bool_expr(plan, &mut frame, runtime_function.return_())
+    run_bool_loop(plan, function.runtime_id(), frame)
 }
 
 pub(in crate::runtime) fn run_nil_function_call(
@@ -336,10 +617,9 @@ pub(in crate::runtime) fn run_nil_function_call(
     let function = eval_nil_function_expr(plan, caller_frame, function)?;
     let runtime_function = plan.nil_function(function.runtime_id());
     let frame_layout = runtime_function.frame_layout();
-    let mut frame =
+    let frame =
         bind_function_value_arguments(plan, args, caller_frame, frame_layout, function.captures())?;
-    execute_steps(plan, runtime_function.steps(), &mut frame)?;
-    eval_nil_expr(plan, &mut frame, runtime_function.return_())
+    run_nil_loop(plan, function.runtime_id(), frame)
 }
 
 pub(in crate::runtime) fn run_int_function_returning_function_call(
@@ -348,10 +628,13 @@ pub(in crate::runtime) fn run_int_function_returning_function_call(
     args: &[CallArg],
     caller_frame: &mut Frame,
 ) -> ExecutionResult<crate::plan::IntFunctionValue> {
-    let function = plan.int_function_function(function);
-    let mut frame = bind_arguments(plan, args, caller_frame, function.frame_layout())?;
-    execute_steps(plan, function.steps(), &mut frame)?;
-    eval_int_function_expr(plan, &mut frame, function.return_())
+    let frame = bind_arguments(
+        plan,
+        args,
+        caller_frame,
+        plan.int_function_function(function).frame_layout(),
+    )?;
+    run_int_function_loop(plan, function, frame)
 }
 
 pub(in crate::runtime) fn run_string_function_returning_function_call(
@@ -360,10 +643,13 @@ pub(in crate::runtime) fn run_string_function_returning_function_call(
     args: &[CallArg],
     caller_frame: &mut Frame,
 ) -> ExecutionResult<crate::plan::StringFunctionValue> {
-    let function = plan.string_function_function(function);
-    let mut frame = bind_arguments(plan, args, caller_frame, function.frame_layout())?;
-    execute_steps(plan, function.steps(), &mut frame)?;
-    eval_string_function_expr(plan, &mut frame, function.return_())
+    let frame = bind_arguments(
+        plan,
+        args,
+        caller_frame,
+        plan.string_function_function(function).frame_layout(),
+    )?;
+    run_string_function_loop(plan, function, frame)
 }
 
 pub(in crate::runtime) fn run_bool_function_returning_function_call(
@@ -372,10 +658,13 @@ pub(in crate::runtime) fn run_bool_function_returning_function_call(
     args: &[CallArg],
     caller_frame: &mut Frame,
 ) -> ExecutionResult<crate::plan::BoolFunctionValue> {
-    let function = plan.bool_function_function(function);
-    let mut frame = bind_arguments(plan, args, caller_frame, function.frame_layout())?;
-    execute_steps(plan, function.steps(), &mut frame)?;
-    eval_bool_function_expr(plan, &mut frame, function.return_())
+    let frame = bind_arguments(
+        plan,
+        args,
+        caller_frame,
+        plan.bool_function_function(function).frame_layout(),
+    )?;
+    run_bool_function_loop(plan, function, frame)
 }
 
 pub(in crate::runtime) fn run_nil_function_returning_function_call(
@@ -384,10 +673,13 @@ pub(in crate::runtime) fn run_nil_function_returning_function_call(
     args: &[CallArg],
     caller_frame: &mut Frame,
 ) -> ExecutionResult<crate::plan::NilFunctionValue> {
-    let function = plan.nil_function_function(function);
-    let mut frame = bind_arguments(plan, args, caller_frame, function.frame_layout())?;
-    execute_steps(plan, function.steps(), &mut frame)?;
-    eval_nil_function_expr(plan, &mut frame, function.return_())
+    let frame = bind_arguments(
+        plan,
+        args,
+        caller_frame,
+        plan.nil_function_function(function).frame_layout(),
+    )?;
+    run_nil_function_loop(plan, function, frame)
 }
 
 pub(in crate::runtime) fn run_function_function_returning_function_call(
@@ -396,10 +688,13 @@ pub(in crate::runtime) fn run_function_function_returning_function_call(
     args: &[CallArg],
     caller_frame: &mut Frame,
 ) -> ExecutionResult<FunctionFunctionValue> {
-    let function = plan.function_function_function(function);
-    let mut frame = bind_arguments(plan, args, caller_frame, function.frame_layout())?;
-    execute_steps(plan, function.steps(), &mut frame)?;
-    eval_function_function_expr(plan, &mut frame, function.return_())
+    let frame = bind_arguments(
+        plan,
+        args,
+        caller_frame,
+        plan.function_function_function(function).frame_layout(),
+    )?;
+    run_function_function_loop(plan, function, frame)
 }
 
 pub(in crate::runtime) fn run_int_function_function_call(
@@ -418,10 +713,9 @@ pub(in crate::runtime) fn run_int_function_function_call(
         ))?;
     let runtime_function = plan.int_function_function(function_id);
     let frame_layout = runtime_function.frame_layout();
-    let mut frame =
+    let frame =
         bind_function_value_arguments(plan, args, caller_frame, frame_layout, function.captures())?;
-    execute_steps(plan, runtime_function.steps(), &mut frame)?;
-    eval_int_function_expr(plan, &mut frame, runtime_function.return_())
+    run_int_function_loop(plan, function_id, frame)
 }
 
 pub(in crate::runtime) fn run_string_function_function_call(
@@ -441,10 +735,9 @@ pub(in crate::runtime) fn run_string_function_function_call(
             ))?;
     let runtime_function = plan.string_function_function(function_id);
     let frame_layout = runtime_function.frame_layout();
-    let mut frame =
+    let frame =
         bind_function_value_arguments(plan, args, caller_frame, frame_layout, function.captures())?;
-    execute_steps(plan, runtime_function.steps(), &mut frame)?;
-    eval_string_function_expr(plan, &mut frame, runtime_function.return_())
+    run_string_function_loop(plan, function_id, frame)
 }
 
 pub(in crate::runtime) fn run_bool_function_function_call(
@@ -463,10 +756,9 @@ pub(in crate::runtime) fn run_bool_function_function_call(
         ))?;
     let runtime_function = plan.bool_function_function(function_id);
     let frame_layout = runtime_function.frame_layout();
-    let mut frame =
+    let frame =
         bind_function_value_arguments(plan, args, caller_frame, frame_layout, function.captures())?;
-    execute_steps(plan, runtime_function.steps(), &mut frame)?;
-    eval_bool_function_expr(plan, &mut frame, runtime_function.return_())
+    run_bool_function_loop(plan, function_id, frame)
 }
 
 pub(in crate::runtime) fn run_nil_function_function_call(
@@ -485,10 +777,9 @@ pub(in crate::runtime) fn run_nil_function_function_call(
         ))?;
     let runtime_function = plan.nil_function_function(function_id);
     let frame_layout = runtime_function.frame_layout();
-    let mut frame =
+    let frame =
         bind_function_value_arguments(plan, args, caller_frame, frame_layout, function.captures())?;
-    execute_steps(plan, runtime_function.steps(), &mut frame)?;
-    eval_nil_function_expr(plan, &mut frame, runtime_function.return_())
+    run_nil_function_loop(plan, function_id, frame)
 }
 
 pub(in crate::runtime) fn run_function_function_function_call(
@@ -508,10 +799,9 @@ pub(in crate::runtime) fn run_function_function_function_call(
             ))?;
     let runtime_function = plan.function_function_function(function_id);
     let frame_layout = runtime_function.frame_layout();
-    let mut frame =
+    let frame =
         bind_function_value_arguments(plan, args, caller_frame, frame_layout, function.captures())?;
-    execute_steps(plan, runtime_function.steps(), &mut frame)?;
-    eval_function_function_expr(plan, &mut frame, runtime_function.return_())
+    run_function_function_loop(plan, function_id, frame)
 }
 fn run_function_returning_function_call(
     plan: &ExecutionPlan,

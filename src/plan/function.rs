@@ -1,5 +1,5 @@
 use super::FrameLayout;
-use super::expression::{BoolExpr, IntExpr, NilExpr, StringExpr};
+use super::expression::{BoolExpr, CallArg, IntExpr, NilExpr, StringExpr};
 use super::id::{
     BoolFunctionFunctionId, BoolFunctionId, BoolFunctionLocalId, BoolLocalId,
     FunctionFunctionFunctionId, FunctionFunctionId, FunctionFunctionLocalId, FunctionId,
@@ -10,6 +10,7 @@ use super::id::{
 use super::step::Step;
 use super::value::{FunctionType, ValueType};
 use ecow::EcoString;
+use num_bigint::BigInt;
 
 #[derive(Debug, PartialEq)]
 pub struct FunctionPlan {
@@ -61,6 +62,46 @@ pub(crate) struct RuntimeFunction<Return> {
     return_: Return,
 }
 
+pub(crate) type IntReturn = ReturnBody<IntExpr, IntFunctionId>;
+pub(crate) type StringReturn = ReturnBody<StringExpr, StringFunctionId>;
+pub(crate) type BoolReturn = ReturnBody<BoolExpr, BoolFunctionId>;
+pub(crate) type NilReturn = ReturnBody<NilExpr, NilFunctionId>;
+pub(crate) type IntFunctionReturn = ReturnBody<super::IntFunctionExpr, IntFunctionFunctionId>;
+pub(crate) type StringFunctionReturn =
+    ReturnBody<super::StringFunctionExpr, StringFunctionFunctionId>;
+pub(crate) type BoolFunctionReturn = ReturnBody<super::BoolFunctionExpr, BoolFunctionFunctionId>;
+pub(crate) type NilFunctionReturn = ReturnBody<super::NilFunctionExpr, NilFunctionFunctionId>;
+pub(crate) type FunctionFunctionReturn =
+    ReturnBody<super::FunctionFunctionExpr, FunctionFunctionFunctionId>;
+
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct ReturnBody<Expression, Function> {
+    kind: ReturnBodyKind<Expression, Function>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) enum ReturnBodyKind<Expression, Function> {
+    Expr(Expression),
+    TailCall {
+        function: Function,
+        args: Vec<CallArg>,
+    },
+    BoolCase {
+        subject: BoolExpr,
+        true_: Box<ReturnBody<Expression, Function>>,
+        false_: Box<ReturnBody<Expression, Function>>,
+    },
+    IntCase {
+        subject: IntExpr,
+        clauses: Vec<(BigInt, ReturnBody<Expression, Function>)>,
+        fallback: Box<ReturnBody<Expression, Function>>,
+    },
+    Block {
+        steps: Vec<Step>,
+        return_: Box<ReturnBody<Expression, Function>>,
+    },
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct ReturnExpr {
     kind: ReturnExprKind,
@@ -70,39 +111,44 @@ pub struct ReturnExpr {
 pub(crate) enum ReturnExprKind {
     Int {
         runtime_id: IntFunctionId,
-        expression: IntExpr,
+        body: IntReturn,
     },
     String {
         runtime_id: StringFunctionId,
-        expression: StringExpr,
+        body: StringReturn,
     },
     Bool {
         runtime_id: BoolFunctionId,
-        expression: BoolExpr,
+        body: BoolReturn,
     },
     Nil {
         runtime_id: NilFunctionId,
-        expression: NilExpr,
+        body: NilReturn,
     },
     IntFunction {
         runtime_id: IntFunctionFunctionId,
-        expression: super::IntFunctionExpr,
+        type_: FunctionType,
+        body: IntFunctionReturn,
     },
     StringFunction {
         runtime_id: StringFunctionFunctionId,
-        expression: super::StringFunctionExpr,
+        type_: FunctionType,
+        body: StringFunctionReturn,
     },
     BoolFunction {
         runtime_id: BoolFunctionFunctionId,
-        expression: super::BoolFunctionExpr,
+        type_: FunctionType,
+        body: BoolFunctionReturn,
     },
     NilFunction {
         runtime_id: NilFunctionFunctionId,
-        expression: super::NilFunctionExpr,
+        type_: FunctionType,
+        body: NilFunctionReturn,
     },
     FunctionFunction {
         runtime_id: FunctionFunctionFunctionId,
-        expression: super::FunctionFunctionExpr,
+        type_: FunctionType,
+        body: FunctionFunctionReturn,
     },
 }
 
@@ -152,98 +198,161 @@ impl FunctionPlan {
 }
 
 impl ReturnExpr {
+    #[cfg(test)]
     pub(crate) fn int(runtime_id: IntFunctionId, expression: IntExpr) -> Self {
+        Self::int_body(runtime_id, ReturnBody::expr(expression))
+    }
+
+    pub(crate) fn int_body(runtime_id: IntFunctionId, body: IntReturn) -> Self {
         Self {
-            kind: ReturnExprKind::Int {
-                runtime_id,
-                expression,
-            },
+            kind: ReturnExprKind::Int { runtime_id, body },
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn string(runtime_id: StringFunctionId, expression: StringExpr) -> Self {
+        Self::string_body(runtime_id, ReturnBody::expr(expression))
+    }
+
+    pub(crate) fn string_body(runtime_id: StringFunctionId, body: StringReturn) -> Self {
         Self {
-            kind: ReturnExprKind::String {
-                runtime_id,
-                expression,
-            },
+            kind: ReturnExprKind::String { runtime_id, body },
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn bool(runtime_id: BoolFunctionId, expression: BoolExpr) -> Self {
+        Self::bool_body(runtime_id, ReturnBody::expr(expression))
+    }
+
+    pub(crate) fn bool_body(runtime_id: BoolFunctionId, body: BoolReturn) -> Self {
         Self {
-            kind: ReturnExprKind::Bool {
-                runtime_id,
-                expression,
-            },
+            kind: ReturnExprKind::Bool { runtime_id, body },
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn nil(runtime_id: NilFunctionId, expression: NilExpr) -> Self {
+        Self::nil_body(runtime_id, ReturnBody::expr(expression))
+    }
+
+    pub(crate) fn nil_body(runtime_id: NilFunctionId, body: NilReturn) -> Self {
         Self {
-            kind: ReturnExprKind::Nil {
-                runtime_id,
-                expression,
-            },
+            kind: ReturnExprKind::Nil { runtime_id, body },
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn int_function(
         runtime_id: IntFunctionFunctionId,
         expression: super::IntFunctionExpr,
     ) -> Self {
+        let type_ = expression.type_().clone();
+        Self::int_function_body(runtime_id, type_, ReturnBody::expr(expression))
+    }
+
+    pub(crate) fn int_function_body(
+        runtime_id: IntFunctionFunctionId,
+        type_: FunctionType,
+        body: IntFunctionReturn,
+    ) -> Self {
         Self {
             kind: ReturnExprKind::IntFunction {
                 runtime_id,
-                expression,
+                type_,
+                body,
             },
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn string_function(
         runtime_id: StringFunctionFunctionId,
         expression: super::StringFunctionExpr,
     ) -> Self {
+        let type_ = expression.type_().clone();
+        Self::string_function_body(runtime_id, type_, ReturnBody::expr(expression))
+    }
+
+    pub(crate) fn string_function_body(
+        runtime_id: StringFunctionFunctionId,
+        type_: FunctionType,
+        body: StringFunctionReturn,
+    ) -> Self {
         Self {
             kind: ReturnExprKind::StringFunction {
                 runtime_id,
-                expression,
+                type_,
+                body,
             },
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn bool_function(
         runtime_id: BoolFunctionFunctionId,
         expression: super::BoolFunctionExpr,
     ) -> Self {
+        let type_ = expression.type_().clone();
+        Self::bool_function_body(runtime_id, type_, ReturnBody::expr(expression))
+    }
+
+    pub(crate) fn bool_function_body(
+        runtime_id: BoolFunctionFunctionId,
+        type_: FunctionType,
+        body: BoolFunctionReturn,
+    ) -> Self {
         Self {
             kind: ReturnExprKind::BoolFunction {
                 runtime_id,
-                expression,
+                type_,
+                body,
             },
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn nil_function(
         runtime_id: NilFunctionFunctionId,
         expression: super::NilFunctionExpr,
     ) -> Self {
+        let type_ = expression.type_().clone();
+        Self::nil_function_body(runtime_id, type_, ReturnBody::expr(expression))
+    }
+
+    pub(crate) fn nil_function_body(
+        runtime_id: NilFunctionFunctionId,
+        type_: FunctionType,
+        body: NilFunctionReturn,
+    ) -> Self {
         Self {
             kind: ReturnExprKind::NilFunction {
                 runtime_id,
-                expression,
+                type_,
+                body,
             },
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn function_function(
         runtime_id: FunctionFunctionFunctionId,
         expression: super::FunctionFunctionExpr,
     ) -> Self {
+        let type_ = expression.type_().clone();
+        Self::function_function_body(runtime_id, type_, ReturnBody::expr(expression))
+    }
+
+    pub(crate) fn function_function_body(
+        runtime_id: FunctionFunctionFunctionId,
+        type_: FunctionType,
+        body: FunctionFunctionReturn,
+    ) -> Self {
         Self {
             kind: ReturnExprKind::FunctionFunction {
                 runtime_id,
-                expression,
+                type_,
+                body,
             },
         }
     }
@@ -258,20 +367,12 @@ impl ReturnExpr {
             ReturnExprKind::String { .. } => ValueType::String,
             ReturnExprKind::Bool { .. } => ValueType::Bool,
             ReturnExprKind::Nil { .. } => ValueType::Nil,
-            ReturnExprKind::IntFunction { expression, .. } => {
-                ValueType::Function(Box::new(expression.type_().clone()))
-            }
-            ReturnExprKind::StringFunction { expression, .. } => {
-                ValueType::Function(Box::new(expression.type_().clone()))
-            }
-            ReturnExprKind::BoolFunction { expression, .. } => {
-                ValueType::Function(Box::new(expression.type_().clone()))
-            }
-            ReturnExprKind::NilFunction { expression, .. } => {
-                ValueType::Function(Box::new(expression.type_().clone()))
-            }
-            ReturnExprKind::FunctionFunction { expression, .. } => {
-                ValueType::Function(Box::new(expression.type_().clone()))
+            ReturnExprKind::IntFunction { type_, .. }
+            | ReturnExprKind::StringFunction { type_, .. }
+            | ReturnExprKind::BoolFunction { type_, .. }
+            | ReturnExprKind::NilFunction { type_, .. }
+            | ReturnExprKind::FunctionFunction { type_, .. } => {
+                ValueType::Function(Box::new(type_.clone()))
             }
         }
     }
@@ -283,41 +384,83 @@ impl ReturnExpr {
             ReturnExprKind::Bool { runtime_id, .. } => RuntimeFunctionId::Bool(*runtime_id),
             ReturnExprKind::Nil { runtime_id, .. } => RuntimeFunctionId::Nil(*runtime_id),
             ReturnExprKind::IntFunction {
-                runtime_id,
-                expression,
+                runtime_id, type_, ..
             } => RuntimeFunctionId::Function {
                 id: FunctionFunctionId::Int(*runtime_id),
-                return_type: expression.type_().clone(),
+                return_type: type_.clone(),
             },
             ReturnExprKind::StringFunction {
-                runtime_id,
-                expression,
+                runtime_id, type_, ..
             } => RuntimeFunctionId::Function {
                 id: FunctionFunctionId::String(*runtime_id),
-                return_type: expression.type_().clone(),
+                return_type: type_.clone(),
             },
             ReturnExprKind::BoolFunction {
-                runtime_id,
-                expression,
+                runtime_id, type_, ..
             } => RuntimeFunctionId::Function {
                 id: FunctionFunctionId::Bool(*runtime_id),
-                return_type: expression.type_().clone(),
+                return_type: type_.clone(),
             },
             ReturnExprKind::NilFunction {
-                runtime_id,
-                expression,
+                runtime_id, type_, ..
             } => RuntimeFunctionId::Function {
                 id: FunctionFunctionId::Nil(*runtime_id),
-                return_type: expression.type_().clone(),
+                return_type: type_.clone(),
             },
             ReturnExprKind::FunctionFunction {
-                runtime_id,
-                expression,
+                runtime_id, type_, ..
             } => RuntimeFunctionId::Function {
                 id: FunctionFunctionId::Function(*runtime_id),
-                return_type: expression.type_().clone(),
+                return_type: type_.clone(),
             },
         }
+    }
+}
+
+impl<Expression, Function> ReturnBody<Expression, Function> {
+    pub(crate) fn expr(expression: Expression) -> Self {
+        Self {
+            kind: ReturnBodyKind::Expr(expression),
+        }
+    }
+
+    pub(crate) fn tail_call(function: Function, args: Vec<CallArg>) -> Self {
+        Self {
+            kind: ReturnBodyKind::TailCall { function, args },
+        }
+    }
+
+    pub(crate) fn bool_case(subject: BoolExpr, true_: Self, false_: Self) -> Self {
+        Self {
+            kind: ReturnBodyKind::BoolCase {
+                subject,
+                true_: Box::new(true_),
+                false_: Box::new(false_),
+            },
+        }
+    }
+
+    pub(crate) fn int_case(subject: IntExpr, clauses: Vec<(BigInt, Self)>, fallback: Self) -> Self {
+        Self {
+            kind: ReturnBodyKind::IntCase {
+                subject,
+                clauses,
+                fallback: Box::new(fallback),
+            },
+        }
+    }
+
+    pub(crate) fn block(steps: Vec<Step>, return_: Self) -> Self {
+        Self {
+            kind: ReturnBodyKind::Block {
+                steps,
+                return_: Box::new(return_),
+            },
+        }
+    }
+
+    pub(crate) fn kind(&self) -> &ReturnBodyKind<Expression, Function> {
+        &self.kind
     }
 }
 

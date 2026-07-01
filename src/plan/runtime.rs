@@ -1,22 +1,23 @@
 use super::{
-    BoolExpr, BoolFunctionExpr, BoolFunctionFunctionId, BoolFunctionId, FunctionFunctionExpr,
-    FunctionFunctionFunctionId, FunctionPlan, IntExpr, IntFunctionExpr, IntFunctionFunctionId,
-    IntFunctionId, NilExpr, NilFunctionExpr, NilFunctionFunctionId, NilFunctionId, RuntimeFunction,
-    RuntimeFunctionId, StringExpr, StringFunctionExpr, StringFunctionFunctionId, StringFunctionId,
+    BoolFunctionFunctionId, BoolFunctionId, BoolFunctionReturn, BoolReturn,
+    FunctionFunctionFunctionId, FunctionFunctionReturn, FunctionPlan, IntFunctionFunctionId,
+    IntFunctionId, IntFunctionReturn, IntReturn, NilFunctionFunctionId, NilFunctionId,
+    NilFunctionReturn, NilReturn, RuntimeFunction, RuntimeFunctionId, StringFunctionFunctionId,
+    StringFunctionId, StringFunctionReturn, StringReturn,
 };
 use crate::plan::ReturnExprKind;
 
 pub(super) struct RuntimePlan {
     main: RuntimeFunctionId,
-    int_functions: Vec<RuntimeFunction<IntExpr>>,
-    string_functions: Vec<RuntimeFunction<StringExpr>>,
-    bool_functions: Vec<RuntimeFunction<BoolExpr>>,
-    nil_functions: Vec<RuntimeFunction<NilExpr>>,
-    int_function_functions: Vec<RuntimeFunction<IntFunctionExpr>>,
-    string_function_functions: Vec<RuntimeFunction<StringFunctionExpr>>,
-    bool_function_functions: Vec<RuntimeFunction<BoolFunctionExpr>>,
-    nil_function_functions: Vec<RuntimeFunction<NilFunctionExpr>>,
-    function_function_functions: Vec<RuntimeFunction<FunctionFunctionExpr>>,
+    int_functions: Vec<RuntimeFunction<IntReturn>>,
+    string_functions: Vec<RuntimeFunction<StringReturn>>,
+    bool_functions: Vec<RuntimeFunction<BoolReturn>>,
+    nil_functions: Vec<RuntimeFunction<NilReturn>>,
+    int_function_functions: Vec<RuntimeFunction<IntFunctionReturn>>,
+    string_function_functions: Vec<RuntimeFunction<StringFunctionReturn>>,
+    bool_function_functions: Vec<RuntimeFunction<BoolFunctionReturn>>,
+    nil_function_functions: Vec<RuntimeFunction<NilFunctionReturn>>,
+    function_function_functions: Vec<RuntimeFunction<FunctionFunctionReturn>>,
 }
 
 impl RuntimePlan {
@@ -43,69 +44,69 @@ impl RuntimePlan {
         self.main.clone()
     }
 
-    pub(super) fn int_function(&self, id: IntFunctionId) -> &RuntimeFunction<IntExpr> {
+    pub(super) fn int_function(&self, id: IntFunctionId) -> &RuntimeFunction<IntReturn> {
         &self.int_functions[id.0]
     }
 
-    pub(super) fn string_function(&self, id: StringFunctionId) -> &RuntimeFunction<StringExpr> {
+    pub(super) fn string_function(&self, id: StringFunctionId) -> &RuntimeFunction<StringReturn> {
         &self.string_functions[id.0]
     }
 
-    pub(super) fn bool_function(&self, id: BoolFunctionId) -> &RuntimeFunction<BoolExpr> {
+    pub(super) fn bool_function(&self, id: BoolFunctionId) -> &RuntimeFunction<BoolReturn> {
         &self.bool_functions[id.0]
     }
 
-    pub(super) fn nil_function(&self, id: NilFunctionId) -> &RuntimeFunction<NilExpr> {
+    pub(super) fn nil_function(&self, id: NilFunctionId) -> &RuntimeFunction<NilReturn> {
         &self.nil_functions[id.0]
     }
 
     pub(super) fn int_function_function(
         &self,
         id: IntFunctionFunctionId,
-    ) -> &RuntimeFunction<IntFunctionExpr> {
+    ) -> &RuntimeFunction<IntFunctionReturn> {
         &self.int_function_functions[id.0]
     }
 
     pub(super) fn string_function_function(
         &self,
         id: StringFunctionFunctionId,
-    ) -> &RuntimeFunction<StringFunctionExpr> {
+    ) -> &RuntimeFunction<StringFunctionReturn> {
         &self.string_function_functions[id.0]
     }
 
     pub(super) fn bool_function_function(
         &self,
         id: BoolFunctionFunctionId,
-    ) -> &RuntimeFunction<BoolFunctionExpr> {
+    ) -> &RuntimeFunction<BoolFunctionReturn> {
         &self.bool_function_functions[id.0]
     }
 
     pub(super) fn nil_function_function(
         &self,
         id: NilFunctionFunctionId,
-    ) -> &RuntimeFunction<NilFunctionExpr> {
+    ) -> &RuntimeFunction<NilFunctionReturn> {
         &self.nil_function_functions[id.0]
     }
 
     pub(super) fn function_function_function(
         &self,
         id: FunctionFunctionFunctionId,
-    ) -> &RuntimeFunction<FunctionFunctionExpr> {
+    ) -> &RuntimeFunction<FunctionFunctionReturn> {
         &self.function_function_functions[id.0]
     }
 }
 
 #[derive(Default)]
 struct RuntimePlanBuilder {
-    int_functions: Vec<(usize, RuntimeFunction<IntExpr>)>,
-    string_functions: Vec<(usize, RuntimeFunction<StringExpr>)>,
-    bool_functions: Vec<(usize, RuntimeFunction<BoolExpr>)>,
-    nil_functions: Vec<(usize, RuntimeFunction<NilExpr>)>,
-    int_function_functions: Vec<(usize, RuntimeFunction<IntFunctionExpr>)>,
-    string_function_functions: Vec<(usize, RuntimeFunction<StringFunctionExpr>)>,
-    bool_function_functions: Vec<(usize, RuntimeFunction<BoolFunctionExpr>)>,
-    nil_function_functions: Vec<(usize, RuntimeFunction<NilFunctionExpr>)>,
-    function_function_functions: Vec<(usize, RuntimeFunction<FunctionFunctionExpr>)>,
+    int_functions: Vec<(usize, RuntimeFunction<IntReturn>)>,
+    string_functions: Vec<(usize, RuntimeFunction<StringReturn>)>,
+    bool_functions: Vec<(usize, RuntimeFunction<BoolReturn>)>,
+    nil_functions: Vec<(usize, RuntimeFunction<NilReturn>)>,
+    int_function_functions: Vec<(usize, RuntimeFunction<IntFunctionReturn>)>,
+    string_function_functions: Vec<(usize, RuntimeFunction<StringFunctionReturn>)>,
+    bool_function_functions: Vec<(usize, RuntimeFunction<BoolFunctionReturn>)>,
+    nil_function_functions: Vec<(usize, RuntimeFunction<NilFunctionReturn>)>,
+    function_function_functions: Vec<(usize, RuntimeFunction<FunctionFunctionReturn>)>,
 }
 
 impl RuntimePlanBuilder {
@@ -131,120 +132,103 @@ impl RuntimePlanBuilder {
 
 fn runtime_function(function: &FunctionPlan, runtime_functions: &mut RuntimePlanBuilder) {
     match function.return_().kind() {
-        ReturnExprKind::Int {
-            runtime_id,
-            expression,
-        } => {
+        ReturnExprKind::Int { runtime_id, body } => {
             runtime_functions.int_functions.push((
                 runtime_id.0,
                 RuntimeFunction::new(
                     function.frame_layout(),
                     function.steps().to_vec(),
-                    expression.clone(),
+                    body.clone(),
                 ),
             ));
         }
-        ReturnExprKind::String {
-            runtime_id,
-            expression,
-        } => {
+        ReturnExprKind::String { runtime_id, body } => {
             runtime_functions.string_functions.push((
                 runtime_id.0,
                 RuntimeFunction::new(
                     function.frame_layout(),
                     function.steps().to_vec(),
-                    expression.clone(),
+                    body.clone(),
                 ),
             ));
         }
-        ReturnExprKind::Bool {
-            runtime_id,
-            expression,
-        } => {
+        ReturnExprKind::Bool { runtime_id, body } => {
             runtime_functions.bool_functions.push((
                 runtime_id.0,
                 RuntimeFunction::new(
                     function.frame_layout(),
                     function.steps().to_vec(),
-                    expression.clone(),
+                    body.clone(),
                 ),
             ));
         }
-        ReturnExprKind::Nil {
-            runtime_id,
-            expression,
-        } => {
+        ReturnExprKind::Nil { runtime_id, body } => {
             runtime_functions.nil_functions.push((
                 runtime_id.0,
                 RuntimeFunction::new(
                     function.frame_layout(),
                     function.steps().to_vec(),
-                    expression.clone(),
+                    body.clone(),
                 ),
             ));
         }
         ReturnExprKind::IntFunction {
-            runtime_id,
-            expression,
+            runtime_id, body, ..
         } => {
             runtime_functions.int_function_functions.push((
                 runtime_id.0,
                 RuntimeFunction::new(
                     function.frame_layout(),
                     function.steps().to_vec(),
-                    expression.clone(),
+                    body.clone(),
                 ),
             ));
         }
         ReturnExprKind::StringFunction {
-            runtime_id,
-            expression,
+            runtime_id, body, ..
         } => {
             runtime_functions.string_function_functions.push((
                 runtime_id.0,
                 RuntimeFunction::new(
                     function.frame_layout(),
                     function.steps().to_vec(),
-                    expression.clone(),
+                    body.clone(),
                 ),
             ));
         }
         ReturnExprKind::BoolFunction {
-            runtime_id,
-            expression,
+            runtime_id, body, ..
         } => {
             runtime_functions.bool_function_functions.push((
                 runtime_id.0,
                 RuntimeFunction::new(
                     function.frame_layout(),
                     function.steps().to_vec(),
-                    expression.clone(),
+                    body.clone(),
                 ),
             ));
         }
         ReturnExprKind::NilFunction {
-            runtime_id,
-            expression,
+            runtime_id, body, ..
         } => {
             runtime_functions.nil_function_functions.push((
                 runtime_id.0,
                 RuntimeFunction::new(
                     function.frame_layout(),
                     function.steps().to_vec(),
-                    expression.clone(),
+                    body.clone(),
                 ),
             ));
         }
         ReturnExprKind::FunctionFunction {
-            runtime_id,
-            expression,
+            runtime_id, body, ..
         } => {
             runtime_functions.function_function_functions.push((
                 runtime_id.0,
                 RuntimeFunction::new(
                     function.frame_layout(),
                     function.steps().to_vec(),
-                    expression.clone(),
+                    body.clone(),
                 ),
             ));
         }

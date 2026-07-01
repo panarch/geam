@@ -56,6 +56,7 @@ mod control_flow {
     execution_cases!("control_flow";
         block_expression,
         case_block_scope,
+        block_case_return_families,
         bool_case,
         bool_case_fallback,
         int_case,
@@ -111,6 +112,17 @@ mod functions {
             function_returning_function_deep,
             function_returning_function_direct_shapes,
             function_returning_function_recursive,
+        );
+    }
+
+    mod tail_call {
+        execution_cases!("functions/tail_call";
+            tail_recursion_int,
+            mutual_tail_recursion_bool,
+            string_nil_tail_recursion,
+            block_case_tail_call,
+            function_returning_tail_call,
+            function_returning_tail_call_families,
         );
     }
 

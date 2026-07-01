@@ -11,18 +11,21 @@ use ecow::EcoString;
 use std::fmt;
 
 pub(crate) use expression::{
-    BoolCaseBranches, BoolExprKind, BoolFunctionExprKind, CallArgKind, CaptureArg,
-    CaptureArgKind, ExprKind, FunctionExprKind, FunctionFunctionExprKind, IntCaseBranches,
-    IntExprKind, IntFunctionExprKind, NilExprKind, NilFunctionExprKind, StringExprKind,
-    StringFunctionExprKind,
+    BoolCaseBranches, BoolExprKind, BoolFunctionExprKind, CallArgKind, CaptureArg, CaptureArgKind,
+    ExprKind, FunctionExprKind, FunctionFunctionExprKind, IntCaseBranches, IntExprKind,
+    IntFunctionExprKind, NilExprKind, NilFunctionExprKind, StringExprKind, StringFunctionExprKind,
 };
 pub use expression::{
     BoolExpr, BoolFunctionExpr, CallArg, Expr, FunctionExpr, FunctionFunctionExpr, IntExpr,
     IntFunctionExpr, NilExpr, NilFunctionExpr, StringExpr, StringFunctionExpr,
 };
 pub(crate) use frame::FrameLayout;
+pub(crate) use function::{
+    BoolFunctionReturn, BoolReturn, FunctionFunctionReturn, IntFunctionReturn, IntReturn,
+    NilFunctionReturn, NilReturn, ParamLocal, ReturnBody, ReturnBodyKind, ReturnExprKind,
+    RuntimeFunction, StringFunctionReturn, StringReturn,
+};
 pub use function::{FunctionPlan, Param, ReturnExpr};
-pub(crate) use function::{ParamLocal, ReturnExprKind, RuntimeFunction};
 pub use id::{
     BoolFunctionFunctionId, BoolFunctionId, BoolFunctionLocalId, BoolLocalId,
     FunctionFunctionFunctionId, FunctionFunctionLocalId, FunctionId, IntFunctionFunctionId,
@@ -91,54 +94,54 @@ impl ExecutionPlan {
         self.runtime.main()
     }
 
-    pub(crate) fn int_function(&self, id: IntFunctionId) -> &RuntimeFunction<IntExpr> {
+    pub(crate) fn int_function(&self, id: IntFunctionId) -> &RuntimeFunction<IntReturn> {
         self.runtime.int_function(id)
     }
 
-    pub(crate) fn string_function(&self, id: StringFunctionId) -> &RuntimeFunction<StringExpr> {
+    pub(crate) fn string_function(&self, id: StringFunctionId) -> &RuntimeFunction<StringReturn> {
         self.runtime.string_function(id)
     }
 
-    pub(crate) fn bool_function(&self, id: BoolFunctionId) -> &RuntimeFunction<BoolExpr> {
+    pub(crate) fn bool_function(&self, id: BoolFunctionId) -> &RuntimeFunction<BoolReturn> {
         self.runtime.bool_function(id)
     }
 
-    pub(crate) fn nil_function(&self, id: NilFunctionId) -> &RuntimeFunction<NilExpr> {
+    pub(crate) fn nil_function(&self, id: NilFunctionId) -> &RuntimeFunction<NilReturn> {
         self.runtime.nil_function(id)
     }
 
     pub(crate) fn int_function_function(
         &self,
         id: IntFunctionFunctionId,
-    ) -> &RuntimeFunction<IntFunctionExpr> {
+    ) -> &RuntimeFunction<IntFunctionReturn> {
         self.runtime.int_function_function(id)
     }
 
     pub(crate) fn string_function_function(
         &self,
         id: StringFunctionFunctionId,
-    ) -> &RuntimeFunction<StringFunctionExpr> {
+    ) -> &RuntimeFunction<StringFunctionReturn> {
         self.runtime.string_function_function(id)
     }
 
     pub(crate) fn bool_function_function(
         &self,
         id: BoolFunctionFunctionId,
-    ) -> &RuntimeFunction<BoolFunctionExpr> {
+    ) -> &RuntimeFunction<BoolFunctionReturn> {
         self.runtime.bool_function_function(id)
     }
 
     pub(crate) fn nil_function_function(
         &self,
         id: NilFunctionFunctionId,
-    ) -> &RuntimeFunction<NilFunctionExpr> {
+    ) -> &RuntimeFunction<NilFunctionReturn> {
         self.runtime.nil_function_function(id)
     }
 
     pub(crate) fn function_function_function(
         &self,
         id: FunctionFunctionFunctionId,
-    ) -> &RuntimeFunction<FunctionFunctionExpr> {
+    ) -> &RuntimeFunction<FunctionFunctionReturn> {
         self.runtime.function_function_function(id)
     }
 }
@@ -167,7 +170,7 @@ impl PartialEq for ExecutionPlan {
 #[cfg(test)]
 mod tests {
     use super::{
-        ExecutionPlan, FunctionId, FunctionPlan, IntExpr, IntFunctionId, ReturnExpr,
+        ExecutionPlan, FunctionId, FunctionPlan, IntExpr, IntFunctionId, ReturnBody, ReturnExpr,
         RuntimeFunctionId,
     };
     use num_bigint::BigInt;
@@ -230,11 +233,11 @@ mod tests {
         );
         assert_eq!(
             plan.int_function(IntFunctionId(0)).return_(),
-            &IntExpr::value(BigInt::from(10)),
+            &ReturnBody::expr(IntExpr::value(BigInt::from(10))),
         );
         assert_eq!(
             plan.int_function(IntFunctionId(1)).return_(),
-            &IntExpr::value(BigInt::from(11)),
+            &ReturnBody::expr(IntExpr::value(BigInt::from(11))),
         );
     }
 

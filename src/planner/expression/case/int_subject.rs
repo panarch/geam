@@ -303,8 +303,9 @@ mod tests {
         RuntimeFunctionId, StringFunctionId, ValueType,
     };
     use crate::planner::dsl::{
-        bool_, function, function_ref, int, int_case_bool, int_case_int, int_case_nil,
-        int_case_string, local_int, module, nil, string,
+        bool_, bool_return_expr, bool_return_int_case, function, function_ref, int,
+        int_return_expr, int_return_int_case, local_int, module, nil, nil_return_expr,
+        nil_return_int_case, string, string_return_expr, string_return_int_case,
     };
     use crate::planner::plan_module;
     use crate::planner::support::{dummy_span, expect_plan_error};
@@ -353,25 +354,43 @@ pub fn nil_case(value: Int) {
         .expect("source should plan");
         let expected = module(
             "main",
-            function("main", int_case_int(int(1), [(1, int(10))], int(0))),
+            function(
+                "main",
+                int_return_int_case(
+                    int(1),
+                    [(1, int_return_expr(int(10)))],
+                    int_return_expr(int(0)),
+                ),
+            ),
             [
                 function(
                     "string_case",
-                    int_case_string(
+                    string_return_int_case(
                         local_int(0, "value"),
-                        [(0, string("zero")), (1, string("one"))],
-                        string("many"),
+                        [
+                            (0, string_return_expr(string("zero"))),
+                            (1, string_return_expr(string("one"))),
+                        ],
+                        string_return_expr(string("many")),
                     ),
                 )
                 .param_int(0, "value"),
                 function(
                     "bool_case",
-                    int_case_bool(local_int(0, "value"), [(1, bool_(true))], bool_(false)),
+                    bool_return_int_case(
+                        local_int(0, "value"),
+                        [(1, bool_return_expr(bool_(true)))],
+                        bool_return_expr(bool_(false)),
+                    ),
                 )
                 .param_int(0, "value"),
                 function(
                     "nil_case",
-                    int_case_nil(local_int(0, "value"), [(1, nil())], nil()),
+                    nil_return_int_case(
+                        local_int(0, "value"),
+                        [(1, nil_return_expr(nil()))],
+                        nil_return_expr(nil()),
+                    ),
                 )
                 .param_int(0, "value"),
             ],
@@ -410,16 +429,27 @@ fn duplicate_literal(value: Int) {
         .expect("source should plan");
         let expected = module(
             "main",
-            function("main", int_case_int(int(1), [(1, int(10))], int(0))),
+            function(
+                "main",
+                int_return_int_case(
+                    int(1),
+                    [(1, int_return_expr(int(10)))],
+                    int_return_expr(int(0)),
+                ),
+            ),
             [
                 function(
                     "fallback_first",
-                    int_case_int(local_int(0, "value"), [], int(0)),
+                    int_return_int_case(local_int(0, "value"), [], int_return_expr(int(0))),
                 )
                 .param_int(0, "value"),
                 function(
                     "duplicate_literal",
-                    int_case_int(local_int(0, "value"), [(1, int(1))], int(0)),
+                    int_return_int_case(
+                        local_int(0, "value"),
+                        [(1, int_return_expr(int(1)))],
+                        int_return_expr(int(0)),
+                    ),
                 )
                 .param_int(0, "value"),
             ],

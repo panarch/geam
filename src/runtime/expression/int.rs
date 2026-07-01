@@ -273,6 +273,22 @@ pub fn main() {
             ),
             int(1),
         );
+
+        assert_eq!(
+            run_src(
+                r#"
+fn one() {
+  1
+}
+
+pub fn main() {
+  let value = one()
+  value
+}
+"#,
+            ),
+            int(1),
+        );
     }
 
     #[test]
@@ -281,10 +297,11 @@ pub fn main() {
             run_src(
                 r#"
 pub fn main() {
-  case True {
+  let value = case True {
     True -> 1
     False -> 0
   }
+  value
 }
 "#,
             ),
@@ -295,10 +312,11 @@ pub fn main() {
             run_src(
                 r#"
 pub fn main() {
-  case False {
+  let value = case False {
     True -> 1
     False -> 0
   }
+  value
 }
 "#,
             ),
@@ -312,10 +330,11 @@ pub fn main() {
             run_src(
                 r#"
 pub fn main() {
-  case 1 {
+  let value = case 1 {
     1 -> 10
     _ -> 0
   }
+  value
 }
 "#,
             ),
@@ -326,10 +345,11 @@ pub fn main() {
             run_src(
                 r#"
 pub fn main() {
-  case 9 {
+  let value = case 9 {
     1 -> 10
     _ -> 0
   }
+  value
 }
 "#,
             ),
@@ -340,10 +360,11 @@ pub fn main() {
             run_src(
                 r#"
 pub fn main() {
-  case 1 {
+  let value = case 1 {
     _ -> 7
     1 -> 10
   }
+  value
 }
 "#,
             ),
@@ -354,11 +375,12 @@ pub fn main() {
             run_src(
                 r#"
 pub fn main() {
-  case 1 {
+  let value = case 1 {
     1 -> 10
     1 -> 20
     _ -> 0
   }
+  value
 }
 "#,
             ),
