@@ -6,3 +6,5 @@ pub fn main() {
   use _ <- with_value
   42
 }
+
+// geam:expect Int(42)

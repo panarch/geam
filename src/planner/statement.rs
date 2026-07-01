@@ -107,9 +107,18 @@ fn plan_assignment(
         }
     }
 
-    let name = plan_variable_pattern(assignment.pattern)?;
+    let pattern = plan_binding_pattern(assignment.pattern)?;
     let value = plan_expr(assignment.value, context)?;
-    plan_variable_runtime_step(name, value, context)
+    match pattern {
+        BindingPattern::Named(name) => plan_variable_runtime_step(name, value, context),
+        BindingPattern::Discard => Ok(Step::evaluate(value)),
+    }
+}
+
+#[derive(Debug, PartialEq, Eq)]
+enum BindingPattern {
+    Named(EcoString),
+    Discard,
 }
 
 pub(in crate::planner) fn plan_variable_runtime_step(
@@ -161,9 +170,10 @@ pub(in crate::planner) fn plan_variable_runtime_step(
     }
 }
 
-fn plan_variable_pattern(pattern: TypedPattern) -> Result<EcoString, PlanError> {
+fn plan_binding_pattern(pattern: TypedPattern) -> Result<BindingPattern, PlanError> {
     match pattern {
-        Pattern::Variable { name, .. } => Ok(name),
+        Pattern::Variable { name, .. } => Ok(BindingPattern::Named(name)),
+        Pattern::Discard { .. } => Ok(BindingPattern::Discard),
         pattern => Err(non_variable_pattern_error(&pattern)),
     }
 }
@@ -189,9 +199,6 @@ fn non_variable_pattern_error(pattern: &TypedPattern) -> PlanError {
         Pattern::Assign { .. } => PlanError::UnsupportedPattern {
             kind: UnsupportedPatternKind::Assign,
         },
-        Pattern::Discard { .. } => PlanError::UnsupportedPattern {
-            kind: UnsupportedPatternKind::Discard,
-        },
         Pattern::Tuple { .. } => PlanError::UnsupportedPattern {
             kind: UnsupportedPatternKind::Tuple,
         },
@@ -204,6 +211,7 @@ fn non_variable_pattern_error(pattern: &TypedPattern) -> PlanError {
         | Pattern::Constructor { .. }
         | Pattern::StringPrefix { .. }
         | Pattern::Invalid { .. }
+        | Pattern::Discard { .. }
         | Pattern::Variable { .. } => PlanError::InvalidTypedAst {
             reason: InvalidTypedAstReason::InvalidPattern,
         },
@@ -218,7 +226,7 @@ fn invalid_use_shape(reason: InvalidUseShapeReason) -> PlanError {
 
 #[cfg(test)]
 mod tests {
-    use super::plan_variable_pattern;
+    use super::{BindingPattern, plan_binding_pattern};
     use crate::plan::{BoolLocalId, IntLocalId, LocalId, NilLocalId, StringLocalId, ValueType};
     use crate::planner::dsl::{
         bool_, bool_case_int_function, bool_function_ref, call_int_function, capture_int, function,
@@ -231,8 +239,8 @@ mod tests {
     use crate::planner::support::{compile, compile_minimal_module, dummy_span, expect_plan_error};
     use crate::planner::{
         InvalidExpressionShapeKind, InvalidExpressionType, InvalidFunctionShapeReason,
-        InvalidTypedAstReason, InvalidUseShapeReason, PlanError, UnsupportedArgumentReason,
-        UnsupportedAssignmentKind, UnsupportedPatternKind, UnsupportedStatementKind,
+        InvalidTypedAstReason, InvalidUseShapeReason, PlanError, UnsupportedAssignmentKind,
+        UnsupportedExpressionKind, UnsupportedPatternKind, UnsupportedStatementKind,
     };
     use gleam_core::analyse::Inferred;
     use gleam_core::ast::{
@@ -263,6 +271,39 @@ pub fn main() {
         );
 
         assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn plan_discard_assignment_evaluates_value() {
+        let actual = plan_module(compile(
+            r#"
+pub fn main() {
+  let _ = 1
+  42
+}
+"#,
+        ))
+        .expect("source should plan");
+        let expected = module("main", function("main", int(42)).evaluate(int(1)), []);
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn reject_profile_discard_assignment_value_is_validated() {
+        assert_eq!(
+            expect_plan_error(
+                r#"
+pub fn main() {
+  let _ = panic
+  42
+}
+"#,
+            ),
+            PlanError::UnsupportedExpression {
+                kind: UnsupportedExpressionKind::Panic,
+            },
+        );
     }
 
     #[test]
@@ -440,6 +481,69 @@ fn pair(callback: fn() -> Int) {
     }
 
     #[test]
+    fn plan_use_syntax_with_discard_assignment() {
+        let actual = plan_module(compile(
+            r#"
+fn with_value(continue: fn(Int) -> Int) {
+  continue(1)
+}
+
+pub fn main() {
+  use _ <- with_value
+  42
+}
+"#,
+        ))
+        .expect("source should plan");
+        let expected = module_with_anonymous(
+            "main",
+            function(
+                "main",
+                int_return_tail_call(
+                    1,
+                    [int_function_arg(
+                        0,
+                        int_function_ref(2, [LocalId::Int(IntLocalId(0))]),
+                    )],
+                ),
+            ),
+            [function(
+                "with_value",
+                call_int_function(
+                    local_int_function(0, "continue", [ValueType::Int]),
+                    [int_function_call_arg(0, int(1))],
+                ),
+            )
+            .param_int_function(0, "continue", [ValueType::Int])],
+            [function("<anonymous:0>", int(42)).discard_int_param(0)],
+        );
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn reject_profile_use_discard_callback_body_is_validated() {
+        assert_eq!(
+            expect_plan_error(
+                r#"
+fn with_value(continue: fn(Int) -> Int) {
+  continue(1)
+}
+
+pub fn main() {
+  use _ <- with_value
+  todo
+  42
+}
+"#,
+            ),
+            PlanError::UnsupportedExpression {
+                kind: UnsupportedExpressionKind::Todo,
+            },
+        );
+    }
+
+    #[test]
     fn plan_use_syntax_with_assignment_and_capture() {
         let actual = plan_module(compile(
             r#"
@@ -487,24 +591,8 @@ pub fn main() {
 
     #[test]
     fn reject_profile_use_assignment_patterns() {
-        let cases = [
-            (
-                r#"
-fn with_value(continue: fn(Int) -> Int) {
-  continue(1)
-}
-
-pub fn main() {
-  use _ <- with_value
-  1
-}
-"#,
-                PlanError::UnsupportedArgument {
-                    function: "<anonymous:0>".into(),
-                    reason: UnsupportedArgumentReason::Discard,
-                },
-            ),
-            (
+        assert_eq!(
+            expect_plan_error(
                 r#"
 fn with_value(continue: fn(Int) -> Int) {
   continue(1)
@@ -515,15 +603,11 @@ pub fn main() {
   alias
 }
 "#,
-                PlanError::UnsupportedPattern {
-                    kind: UnsupportedPatternKind::Assign,
-                },
             ),
-        ];
-
-        for (src, expected) in cases {
-            assert_eq!(expect_plan_error(src), expected);
-        }
+            PlanError::UnsupportedPattern {
+                kind: UnsupportedPatternKind::Assign,
+            },
+        );
     }
 
     #[test]
@@ -763,17 +847,6 @@ pub fn main() {
             (
                 r#"
 pub fn main() {
-  let _ = 1
-  1
-}
-"#,
-                PlanError::UnsupportedPattern {
-                    kind: UnsupportedPatternKind::Discard,
-                },
-            ),
-            (
-                r#"
-pub fn main() {
   let #(a, b) = #(1, 2)
   a
 }
@@ -809,7 +882,18 @@ pub fn main() {
             origin: VariableOrigin::generated(),
         };
 
-        assert_eq!(plan_variable_pattern(variable("x")), Ok("x".into()));
+        assert_eq!(
+            plan_binding_pattern(variable("x")),
+            Ok(BindingPattern::Named("x".into())),
+        );
+        assert_eq!(
+            plan_binding_pattern(Pattern::Discard {
+                location: dummy_span(),
+                name: "_".into(),
+                type_: type_::int(),
+            }),
+            Ok(BindingPattern::Discard),
+        );
 
         let patterns = [
             Pattern::Int {
@@ -867,7 +951,7 @@ pub fn main() {
 
         for pattern in patterns {
             assert_eq!(
-                plan_variable_pattern(pattern),
+                plan_binding_pattern(pattern),
                 Err(PlanError::InvalidTypedAst {
                     reason: InvalidTypedAstReason::InvalidPattern,
                 }),

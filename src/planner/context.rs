@@ -4,8 +4,8 @@ use crate::plan::{
     FunctionFunctionLocalId, FunctionId, FunctionPlan, FunctionType, FunctionValue, IntExpr,
     IntFunctionExpr, IntFunctionFunctionId, IntFunctionId, IntFunctionLocalId, IntLocalId, LocalId,
     NilExpr, NilFunctionExpr, NilFunctionFunctionId, NilFunctionId, NilFunctionLocalId, NilLocalId,
-    ParamLocal, RuntimeFunctionId, StringExpr, StringFunctionExpr, StringFunctionFunctionId,
-    StringFunctionId, StringFunctionLocalId, StringLocalId, ValueType,
+    ParamBinding, ParamLocal, RuntimeFunctionId, StringExpr, StringFunctionExpr,
+    StringFunctionFunctionId, StringFunctionId, StringFunctionLocalId, StringLocalId, ValueType,
 };
 use crate::planner::error::{InvalidTypedAstReason, PlanError};
 use ecow::EcoString;
@@ -23,7 +23,7 @@ pub(super) struct FunctionInfo {
 #[derive(Clone)]
 pub(super) struct FunctionParam {
     pub(super) local: ParamLocal,
-    pub(super) name: EcoString,
+    pub(super) binding: ParamBinding,
 }
 
 pub(super) struct PlanContext<'a> {

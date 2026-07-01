@@ -3,7 +3,7 @@ use crate::plan::{
     Expr, ExprKind, FunctionFunctionExpr, FunctionFunctionExprKind, FunctionFunctionId,
     FunctionFunctionReturn, FunctionPlan, IntExpr, IntExprKind, IntFunctionExpr,
     IntFunctionExprKind, IntFunctionReturn, IntReturn, NilExpr, NilExprKind, NilFunctionExpr,
-    NilFunctionExprKind, NilFunctionReturn, NilReturn, Param, ReturnBody, ReturnExpr,
+    NilFunctionExprKind, NilFunctionReturn, NilReturn, Param, ParamBinding, ReturnBody, ReturnExpr,
     RuntimeFunctionId, Step, StringExpr, StringExprKind, StringFunctionExpr,
     StringFunctionExprKind, StringFunctionReturn, StringReturn, ValueType,
 };
@@ -107,9 +107,12 @@ pub(super) fn anonymous_function_plan(
 fn define_params(params: &[FunctionParam], context: &mut PlanContext<'_>) -> Vec<Param> {
     params
         .iter()
-        .map(|param| {
-            context.define_existing_param(param.name.clone(), &param.local);
-            Param::new(param.local.clone(), param.name.clone())
+        .map(|param| match &param.binding {
+            ParamBinding::Named(name) => {
+                context.define_existing_param(name.clone(), &param.local);
+                Param::named(param.local.clone(), name.clone())
+            }
+            ParamBinding::Discard => Param::discard(param.local.clone()),
         })
         .collect()
 }
@@ -1678,24 +1681,6 @@ pub fn main() -> Int
             PlanError::UnsupportedFunction {
                 name: "main".into(),
                 reason: UnsupportedFunctionReason::External,
-            },
-        );
-
-        assert_eq!(
-            expect_plan_error(
-                r#"
-fn helper(_: Int) {
-  1
-}
-
-pub fn main() {
-  helper(1)
-}
-"#,
-            ),
-            PlanError::UnsupportedArgument {
-                function: "helper".into(),
-                reason: UnsupportedArgumentReason::Discard,
             },
         );
 
