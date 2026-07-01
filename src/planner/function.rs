@@ -991,6 +991,94 @@ pub fn main() {
     }
 
     #[test]
+    fn plan_shadowed_current_function_local_call_stays_function_value_call() {
+        let actual = plan_module(compile(
+            r#"
+pub fn main() {
+  let main = fn() { 0 }
+  main()
+}
+"#,
+        ))
+        .expect("source should plan");
+
+        assert!(matches!(
+            actual.main_function().return_().kind(),
+            ReturnExprKind::Int { body, .. }
+                if matches!(
+                    body.kind(),
+                    ReturnBodyKind::Expr(expression)
+                        if matches!(expression.kind(), IntExprKind::FunctionCall { .. })
+                )
+        ));
+    }
+
+    #[test]
+    fn plan_shadowed_current_function_argument_call_stays_function_value_call() {
+        let actual = plan_module(compile(
+            r#"
+fn one() {
+  1
+}
+
+fn run(run: fn() -> Int) {
+  run()
+}
+
+pub fn main() {
+  run(one)
+}
+"#,
+        ))
+        .expect("source should plan");
+
+        assert!(matches!(
+            function_named(&actual, "run").return_().kind(),
+            ReturnExprKind::Int { body, .. }
+                if matches!(
+                    body.kind(),
+                    ReturnBodyKind::Expr(expression)
+                        if matches!(expression.kind(), IntExprKind::FunctionCall { .. })
+                )
+        ));
+    }
+
+    #[test]
+    fn plan_final_pipeline_direct_call_preserves_tail_call() {
+        let actual = plan_module(compile(
+            r#"
+fn count_down(n: Int, acc: Int) {
+  case n {
+    0 -> acc
+    _ -> count_down(n - 1, acc + 1)
+  }
+}
+
+pub fn main() {
+  1 |> count_down(0)
+}
+"#,
+        ))
+        .expect("source should plan");
+
+        assert!(matches!(
+            actual.main_function().return_().kind(),
+            ReturnExprKind::Int { body, .. }
+                if matches!(
+                    body.kind(),
+                    ReturnBodyKind::Block { return_, .. }
+                        if matches!(
+                            return_.kind(),
+                            ReturnBodyKind::TailCall {
+                                function: IntFunctionId(1),
+                                args,
+                            } if args.len() == 2
+                        )
+                )
+        ));
+    }
+
+    #[test]
     fn plan_main_returning_function_value() {
         let actual = plan_module(compile(
             r#"
