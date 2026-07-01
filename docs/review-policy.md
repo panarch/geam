@@ -114,6 +114,11 @@ Errors make boundaries visible:
   broad `Unsupported*` variant, revisit that variant. Rename or split it if the
   old name also describes behavior that is now supported.
 
+## Import Rules
+
+Do not use wildcard imports or re-exports anywhere. The only exception is a
+parent facade module re-exporting child modules as its intentional surface.
+
 ## Test Rules
 
 Planner test names must identify the source of the case:
