@@ -381,10 +381,10 @@ mod tests {
         LocalId, ParamLocal, RuntimeFunctionId, ValueType,
     };
     use crate::planner::dsl::{
-        call_int, call_int_function, capture_int, function, function_function_closure,
-        function_function_ref, function_ref, int, int_arg, int_function_call_arg,
-        int_function_closure, int_function_ref, let_int_function_step, let_int_step, local_int,
-        local_int_function, module_with_anonymous,
+        call_int_function, capture_int, function, function_function_closure, function_function_ref,
+        function_ref, int, int_arg, int_function_call_arg, int_function_closure, int_function_ref,
+        int_return_tail_call, let_int_function_step, let_int_step, local_int, local_int_function,
+        module_with_anonymous,
     };
     use crate::planner::error::{
         InvalidExpressionShapeKind, InvalidExpressionType, InvalidFunctionShapeReason,
@@ -460,7 +460,7 @@ pub fn main() {
             [function("add_one", local_int(0, "value").add_int(int(1))).param_int(0, "value")],
             [function(
                 "<anonymous:0>",
-                call_int(1, [int_arg(0, local_int(0, "value"))]),
+                int_return_tail_call(1, [int_arg(0, local_int(0, "value"))]),
             )
             .param_int(0, "value")],
         );

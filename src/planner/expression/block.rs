@@ -53,9 +53,10 @@ mod tests {
         RuntimeFunctionId, ValueType,
     };
     use crate::planner::dsl::{
-        block_bool, block_function, block_int, block_nil, block_string, bool_, evaluate_step,
-        function, function_ref, int, let_int_step, let_nil_step, local_bool, local_int, local_nil,
-        local_string, module, nil, string,
+        block_function, block_int, bool_, bool_return_block, bool_return_expr, evaluate_step,
+        function, function_ref, int, int_return_block, int_return_expr, let_int_step, let_nil_step,
+        local_bool, local_int, local_nil, local_string, module, nil, nil_return_block,
+        nil_return_expr, string, string_return_block, string_return_expr,
     };
     use crate::planner::plan_module;
     use crate::planner::support::{compile, expect_plan_error};
@@ -81,10 +82,16 @@ pub fn nil_main() {
         .expect("source should plan");
         let expected = module(
             "main",
-            function("main", block_string([], string("geam"))),
+            function(
+                "main",
+                string_return_block([], string_return_expr(string("geam"))),
+            ),
             [
-                function("bool_main", block_bool([], bool_(true))),
-                function("nil_main", block_nil([], nil())),
+                function(
+                    "bool_main",
+                    bool_return_block([], bool_return_expr(bool_(true))),
+                ),
+                function("nil_main", nil_return_block([], nil_return_expr(nil()))),
             ],
         );
 
@@ -200,7 +207,10 @@ pub fn main() {
         .expect("source should plan");
         let expected = module(
             "main",
-            function("main", block_int([evaluate_step(int(1))], int(2))),
+            function(
+                "main",
+                int_return_block([evaluate_step(int(1))], int_return_expr(int(2))),
+            ),
             [],
         );
 
@@ -224,9 +234,9 @@ pub fn main() {
             "main",
             function(
                 "main",
-                block_int(
+                int_return_block(
                     [let_int_step(0, "x", int(1))],
-                    local_int(0, "x").add_int(int(2)),
+                    int_return_expr(local_int(0, "x").add_int(int(2))),
                 ),
             ),
             [],
@@ -285,11 +295,11 @@ pub fn main() {
             "main",
             function(
                 "main",
-                block_int(
+                int_return_block(
                     [let_int_step(0, "x", int(1))],
-                    block_int(
+                    int_return_block(
                         [let_int_step(1, "y", int(2))],
-                        local_int(0, "x").add_int(local_int(1, "y")),
+                        int_return_expr(local_int(0, "x").add_int(local_int(1, "y"))),
                     ),
                 ),
             ),
@@ -364,7 +374,10 @@ pub fn main() {
             "main",
             function(
                 "main",
-                block_nil([let_nil_step(0, "x", nil())], local_nil(0, "x")),
+                nil_return_block(
+                    [let_nil_step(0, "x", nil())],
+                    nil_return_expr(local_nil(0, "x")),
+                ),
             ),
             [],
         );

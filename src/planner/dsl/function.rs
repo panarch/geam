@@ -1,20 +1,21 @@
 use crate::plan::{
-    BoolExpr, BoolFunctionExpr, BoolFunctionLocalId, BoolLocalId, Expr, FunctionExpr,
-    FunctionExprKind, FunctionFunctionExpr, FunctionFunctionLocalId, FunctionId, FunctionPlan,
-    FunctionType, IntExpr, IntFunctionExpr, IntFunctionLocalId, IntLocalId, NilExpr,
-    NilFunctionExpr, NilFunctionLocalId, NilLocalId, Param, ParamLocal, ReturnExpr, Step,
-    StringExpr, StringFunctionExpr, StringFunctionLocalId, StringLocalId, ValueType,
+    BoolFunctionExpr, BoolFunctionFunctionId, BoolFunctionId, BoolFunctionLocalId,
+    BoolFunctionReturn, BoolLocalId, BoolReturn, CallArg, Expr, FunctionExpr, FunctionExprKind,
+    FunctionFunctionExpr, FunctionFunctionFunctionId, FunctionFunctionLocalId,
+    FunctionFunctionReturn, FunctionId, FunctionPlan, FunctionType, IntFunctionExpr,
+    IntFunctionFunctionId, IntFunctionId, IntFunctionLocalId, IntFunctionReturn, IntLocalId,
+    IntReturn, NilFunctionExpr, NilFunctionFunctionId, NilFunctionId, NilFunctionLocalId,
+    NilFunctionReturn, NilLocalId, NilReturn, Param, ParamLocal, ReturnBody, ReturnExpr, Step,
+    StringFunctionExpr, StringFunctionFunctionId, StringFunctionId, StringFunctionLocalId,
+    StringFunctionReturn, StringLocalId, StringReturn, ValueType,
 };
 use crate::planner::context::FunctionRuntimeIds;
 use crate::planner::dsl::expression::{
     Bool, BoolFunction, Function, FunctionFunction, Int, IntFunction, Nil, NilFunction, String,
     StringFunction,
 };
-use crate::planner::function::{
-    bool_function_return, bool_return, function_function_return, int_function_return, int_return,
-    nil_function_return, nil_return, string_function_return, string_return,
-};
 use ecow::EcoString;
+use num_bigint::BigInt;
 
 pub(crate) struct FunctionDsl {
     name: EcoString,
@@ -24,15 +25,30 @@ pub(crate) struct FunctionDsl {
 }
 
 pub(crate) enum FunctionReturn {
-    Int(IntExpr),
-    String(StringExpr),
-    Bool(BoolExpr),
-    Nil(NilExpr),
-    IntFunction(IntFunctionExpr),
-    StringFunction(StringFunctionExpr),
-    BoolFunction(BoolFunctionExpr),
-    NilFunction(NilFunctionExpr),
-    FunctionFunction(FunctionFunctionExpr),
+    Int(IntReturn),
+    String(StringReturn),
+    Bool(BoolReturn),
+    Nil(NilReturn),
+    IntFunction {
+        type_: FunctionType,
+        body: IntFunctionReturn,
+    },
+    StringFunction {
+        type_: FunctionType,
+        body: StringFunctionReturn,
+    },
+    BoolFunction {
+        type_: FunctionType,
+        body: BoolFunctionReturn,
+    },
+    NilFunction {
+        type_: FunctionType,
+        body: NilFunctionReturn,
+    },
+    FunctionFunction {
+        type_: FunctionType,
+        body: FunctionFunctionReturn,
+    },
 }
 
 pub(crate) fn function(
@@ -231,126 +247,552 @@ impl FunctionDsl {
 impl FunctionReturn {
     fn build(self, runtime_ids: &mut FunctionRuntimeIds) -> ReturnExpr {
         match self {
-            Self::Int(expression) => {
-                ReturnExpr::int_body(runtime_ids.next_int_id(), int_return(expression))
+            Self::Int(body) => ReturnExpr::int_body(runtime_ids.next_int_id(), body),
+            Self::String(body) => ReturnExpr::string_body(runtime_ids.next_string_id(), body),
+            Self::Bool(body) => ReturnExpr::bool_body(runtime_ids.next_bool_id(), body),
+            Self::Nil(body) => ReturnExpr::nil_body(runtime_ids.next_nil_id(), body),
+            Self::IntFunction { type_, body } => {
+                ReturnExpr::int_function_body(runtime_ids.next_int_function_id(), type_, body)
             }
-            Self::String(expression) => {
-                ReturnExpr::string_body(runtime_ids.next_string_id(), string_return(expression))
+            Self::StringFunction { type_, body } => {
+                ReturnExpr::string_function_body(runtime_ids.next_string_function_id(), type_, body)
             }
-            Self::Bool(expression) => {
-                ReturnExpr::bool_body(runtime_ids.next_bool_id(), bool_return(expression))
+            Self::BoolFunction { type_, body } => {
+                ReturnExpr::bool_function_body(runtime_ids.next_bool_function_id(), type_, body)
             }
-            Self::Nil(expression) => {
-                ReturnExpr::nil_body(runtime_ids.next_nil_id(), nil_return(expression))
+            Self::NilFunction { type_, body } => {
+                ReturnExpr::nil_function_body(runtime_ids.next_nil_function_id(), type_, body)
             }
-            Self::IntFunction(expression) => {
-                let type_ = expression.type_().clone();
-                ReturnExpr::int_function_body(
-                    runtime_ids.next_int_function_id(),
-                    type_,
-                    int_function_return(expression),
-                )
-            }
-            Self::StringFunction(expression) => {
-                let type_ = expression.type_().clone();
-                ReturnExpr::string_function_body(
-                    runtime_ids.next_string_function_id(),
-                    type_,
-                    string_function_return(expression),
-                )
-            }
-            Self::BoolFunction(expression) => {
-                let type_ = expression.type_().clone();
-                ReturnExpr::bool_function_body(
-                    runtime_ids.next_bool_function_id(),
-                    type_,
-                    bool_function_return(expression),
-                )
-            }
-            Self::NilFunction(expression) => {
-                let type_ = expression.type_().clone();
-                ReturnExpr::nil_function_body(
-                    runtime_ids.next_nil_function_id(),
-                    type_,
-                    nil_function_return(expression),
-                )
-            }
-            Self::FunctionFunction(expression) => {
-                let type_ = expression.type_().clone();
-                ReturnExpr::function_function_body(
-                    runtime_ids.next_function_function_id(),
-                    type_,
-                    function_function_return(expression),
-                )
-            }
+            Self::FunctionFunction { type_, body } => ReturnExpr::function_function_body(
+                runtime_ids.next_function_function_id(),
+                type_,
+                body,
+            ),
         }
     }
 }
 
 impl From<Int> for FunctionReturn {
     fn from(value: Int) -> Self {
-        Self::Int(value.into())
+        Self::Int(ReturnBody::expr(value.into()))
     }
 }
 
 impl From<String> for FunctionReturn {
     fn from(value: String) -> Self {
-        Self::String(value.into())
+        Self::String(ReturnBody::expr(value.into()))
     }
 }
 
 impl From<Bool> for FunctionReturn {
     fn from(value: Bool) -> Self {
-        Self::Bool(value.into())
+        Self::Bool(ReturnBody::expr(value.into()))
     }
 }
 
 impl From<Nil> for FunctionReturn {
     fn from(value: Nil) -> Self {
-        Self::Nil(value.into())
+        Self::Nil(ReturnBody::expr(value.into()))
     }
 }
 
 impl From<IntFunction> for FunctionReturn {
     fn from(value: IntFunction) -> Self {
-        Self::IntFunction(value.into())
+        let expression = IntFunctionExpr::from(value);
+        Self::IntFunction {
+            type_: expression.type_().clone(),
+            body: ReturnBody::expr(expression),
+        }
     }
 }
 
 impl From<StringFunction> for FunctionReturn {
     fn from(value: StringFunction) -> Self {
-        Self::StringFunction(value.into())
+        let expression = StringFunctionExpr::from(value);
+        Self::StringFunction {
+            type_: expression.type_().clone(),
+            body: ReturnBody::expr(expression),
+        }
     }
 }
 
 impl From<BoolFunction> for FunctionReturn {
     fn from(value: BoolFunction) -> Self {
-        Self::BoolFunction(value.into())
+        let expression = BoolFunctionExpr::from(value);
+        Self::BoolFunction {
+            type_: expression.type_().clone(),
+            body: ReturnBody::expr(expression),
+        }
     }
 }
 
 impl From<NilFunction> for FunctionReturn {
     fn from(value: NilFunction) -> Self {
-        Self::NilFunction(value.into())
+        let expression = NilFunctionExpr::from(value);
+        Self::NilFunction {
+            type_: expression.type_().clone(),
+            body: ReturnBody::expr(expression),
+        }
     }
 }
 
 impl From<FunctionFunction> for FunctionReturn {
     fn from(value: FunctionFunction) -> Self {
-        Self::FunctionFunction(value.into())
+        let expression = FunctionFunctionExpr::from(value);
+        Self::FunctionFunction {
+            type_: expression.type_().clone(),
+            body: ReturnBody::expr(expression),
+        }
     }
 }
 
 impl From<Function> for FunctionReturn {
     fn from(value: Function) -> Self {
         match FunctionExpr::from(value).into_kind() {
-            FunctionExprKind::Int(expression) => Self::IntFunction(expression),
-            FunctionExprKind::String(expression) => Self::StringFunction(expression),
-            FunctionExprKind::Bool(expression) => Self::BoolFunction(expression),
-            FunctionExprKind::Nil(expression) => Self::NilFunction(expression),
-            FunctionExprKind::Function(expression) => Self::FunctionFunction(expression),
+            FunctionExprKind::Int(expression) => Self::IntFunction {
+                type_: expression.type_().clone(),
+                body: ReturnBody::expr(expression),
+            },
+            FunctionExprKind::String(expression) => Self::StringFunction {
+                type_: expression.type_().clone(),
+                body: ReturnBody::expr(expression),
+            },
+            FunctionExprKind::Bool(expression) => Self::BoolFunction {
+                type_: expression.type_().clone(),
+                body: ReturnBody::expr(expression),
+            },
+            FunctionExprKind::Nil(expression) => Self::NilFunction {
+                type_: expression.type_().clone(),
+                body: ReturnBody::expr(expression),
+            },
+            FunctionExprKind::Function(expression) => Self::FunctionFunction {
+                type_: expression.type_().clone(),
+                body: ReturnBody::expr(expression),
+            },
         }
     }
+}
+
+impl From<IntReturn> for FunctionReturn {
+    fn from(value: IntReturn) -> Self {
+        Self::Int(value)
+    }
+}
+
+impl From<StringReturn> for FunctionReturn {
+    fn from(value: StringReturn) -> Self {
+        Self::String(value)
+    }
+}
+
+impl From<BoolReturn> for FunctionReturn {
+    fn from(value: BoolReturn) -> Self {
+        Self::Bool(value)
+    }
+}
+
+impl From<NilReturn> for FunctionReturn {
+    fn from(value: NilReturn) -> Self {
+        Self::Nil(value)
+    }
+}
+
+pub(crate) fn int_return_expr(expression: Int) -> IntReturn {
+    ReturnBody::expr(expression.into())
+}
+
+pub(crate) fn int_return_tail_call(
+    function: usize,
+    args: impl IntoIterator<Item = CallArg>,
+) -> IntReturn {
+    ReturnBody::tail_call(IntFunctionId(function), args.into_iter().collect())
+}
+
+pub(crate) fn int_return_bool_case(
+    subject: Bool,
+    true_: IntReturn,
+    false_: IntReturn,
+) -> IntReturn {
+    ReturnBody::bool_case(subject.into(), true_, false_)
+}
+
+pub(crate) fn int_return_int_case(
+    subject: Int,
+    clauses: impl IntoIterator<Item = (i64, IntReturn)>,
+    fallback: IntReturn,
+) -> IntReturn {
+    ReturnBody::int_case(
+        subject.into(),
+        clauses
+            .into_iter()
+            .map(|(value, branch)| (BigInt::from(value), branch))
+            .collect(),
+        fallback,
+    )
+}
+
+pub(crate) fn int_return_block(
+    steps: impl IntoIterator<Item = Step>,
+    return_: IntReturn,
+) -> IntReturn {
+    ReturnBody::block(steps.into_iter().collect(), return_)
+}
+
+pub(crate) fn bool_return_tail_call(
+    function: usize,
+    args: impl IntoIterator<Item = CallArg>,
+) -> BoolReturn {
+    ReturnBody::tail_call(BoolFunctionId(function), args.into_iter().collect())
+}
+
+pub(crate) fn bool_return_expr(expression: Bool) -> BoolReturn {
+    ReturnBody::expr(expression.into())
+}
+
+pub(crate) fn bool_return_bool_case(
+    subject: Bool,
+    true_: BoolReturn,
+    false_: BoolReturn,
+) -> BoolReturn {
+    ReturnBody::bool_case(subject.into(), true_, false_)
+}
+
+pub(crate) fn bool_return_int_case(
+    subject: Int,
+    clauses: impl IntoIterator<Item = (i64, BoolReturn)>,
+    fallback: BoolReturn,
+) -> BoolReturn {
+    ReturnBody::int_case(
+        subject.into(),
+        clauses
+            .into_iter()
+            .map(|(value, branch)| (BigInt::from(value), branch))
+            .collect(),
+        fallback,
+    )
+}
+
+pub(crate) fn bool_return_block(
+    steps: impl IntoIterator<Item = Step>,
+    return_: BoolReturn,
+) -> BoolReturn {
+    ReturnBody::block(steps.into_iter().collect(), return_)
+}
+
+pub(crate) fn string_return_tail_call(
+    function: usize,
+    args: impl IntoIterator<Item = CallArg>,
+) -> StringReturn {
+    ReturnBody::tail_call(StringFunctionId(function), args.into_iter().collect())
+}
+
+pub(crate) fn string_return_expr(expression: String) -> StringReturn {
+    ReturnBody::expr(expression.into())
+}
+
+pub(crate) fn string_return_bool_case(
+    subject: Bool,
+    true_: StringReturn,
+    false_: StringReturn,
+) -> StringReturn {
+    ReturnBody::bool_case(subject.into(), true_, false_)
+}
+
+pub(crate) fn string_return_int_case(
+    subject: Int,
+    clauses: impl IntoIterator<Item = (i64, StringReturn)>,
+    fallback: StringReturn,
+) -> StringReturn {
+    ReturnBody::int_case(
+        subject.into(),
+        clauses
+            .into_iter()
+            .map(|(value, branch)| (BigInt::from(value), branch))
+            .collect(),
+        fallback,
+    )
+}
+
+pub(crate) fn string_return_block(
+    steps: impl IntoIterator<Item = Step>,
+    return_: StringReturn,
+) -> StringReturn {
+    ReturnBody::block(steps.into_iter().collect(), return_)
+}
+
+pub(crate) fn nil_return_tail_call(
+    function: usize,
+    args: impl IntoIterator<Item = CallArg>,
+) -> NilReturn {
+    ReturnBody::tail_call(NilFunctionId(function), args.into_iter().collect())
+}
+
+pub(crate) fn nil_return_expr(expression: Nil) -> NilReturn {
+    ReturnBody::expr(expression.into())
+}
+
+pub(crate) fn nil_return_bool_case(
+    subject: Bool,
+    true_: NilReturn,
+    false_: NilReturn,
+) -> NilReturn {
+    ReturnBody::bool_case(subject.into(), true_, false_)
+}
+
+pub(crate) fn nil_return_int_case(
+    subject: Int,
+    clauses: impl IntoIterator<Item = (i64, NilReturn)>,
+    fallback: NilReturn,
+) -> NilReturn {
+    ReturnBody::int_case(
+        subject.into(),
+        clauses
+            .into_iter()
+            .map(|(value, branch)| (BigInt::from(value), branch))
+            .collect(),
+        fallback,
+    )
+}
+
+pub(crate) fn nil_return_block(
+    steps: impl IntoIterator<Item = Step>,
+    return_: NilReturn,
+) -> NilReturn {
+    ReturnBody::block(steps.into_iter().collect(), return_)
+}
+
+pub(crate) fn int_function_return_expr(expression: IntFunction) -> IntFunctionReturn {
+    ReturnBody::expr(expression.into())
+}
+
+pub(crate) fn int_function_return_tail_call(
+    function: usize,
+    args: impl IntoIterator<Item = CallArg>,
+) -> IntFunctionReturn {
+    ReturnBody::tail_call(IntFunctionFunctionId(function), args.into_iter().collect())
+}
+
+pub(crate) fn int_function_return_bool_case(
+    subject: Bool,
+    true_: IntFunctionReturn,
+    false_: IntFunctionReturn,
+) -> IntFunctionReturn {
+    ReturnBody::bool_case(subject.into(), true_, false_)
+}
+
+pub(crate) fn int_function_return_int_case(
+    subject: Int,
+    clauses: impl IntoIterator<Item = (i64, IntFunctionReturn)>,
+    fallback: IntFunctionReturn,
+) -> IntFunctionReturn {
+    ReturnBody::int_case(
+        subject.into(),
+        clauses
+            .into_iter()
+            .map(|(value, branch)| (BigInt::from(value), branch))
+            .collect(),
+        fallback,
+    )
+}
+
+pub(crate) fn int_function_return_block(
+    steps: impl IntoIterator<Item = Step>,
+    return_: IntFunctionReturn,
+) -> IntFunctionReturn {
+    ReturnBody::block(steps.into_iter().collect(), return_)
+}
+
+pub(crate) fn return_int_function(type_: FunctionType, body: IntFunctionReturn) -> FunctionReturn {
+    FunctionReturn::IntFunction { type_, body }
+}
+
+pub(crate) fn string_function_return_expr(expression: StringFunction) -> StringFunctionReturn {
+    ReturnBody::expr(expression.into())
+}
+
+pub(crate) fn string_function_return_tail_call(
+    function: usize,
+    args: impl IntoIterator<Item = CallArg>,
+) -> StringFunctionReturn {
+    ReturnBody::tail_call(
+        StringFunctionFunctionId(function),
+        args.into_iter().collect(),
+    )
+}
+
+pub(crate) fn string_function_return_bool_case(
+    subject: Bool,
+    true_: StringFunctionReturn,
+    false_: StringFunctionReturn,
+) -> StringFunctionReturn {
+    ReturnBody::bool_case(subject.into(), true_, false_)
+}
+
+pub(crate) fn string_function_return_int_case(
+    subject: Int,
+    clauses: impl IntoIterator<Item = (i64, StringFunctionReturn)>,
+    fallback: StringFunctionReturn,
+) -> StringFunctionReturn {
+    ReturnBody::int_case(
+        subject.into(),
+        clauses
+            .into_iter()
+            .map(|(value, branch)| (BigInt::from(value), branch))
+            .collect(),
+        fallback,
+    )
+}
+
+pub(crate) fn string_function_return_block(
+    steps: impl IntoIterator<Item = Step>,
+    return_: StringFunctionReturn,
+) -> StringFunctionReturn {
+    ReturnBody::block(steps.into_iter().collect(), return_)
+}
+
+pub(crate) fn return_string_function(
+    type_: FunctionType,
+    body: StringFunctionReturn,
+) -> FunctionReturn {
+    FunctionReturn::StringFunction { type_, body }
+}
+
+pub(crate) fn bool_function_return_expr(expression: BoolFunction) -> BoolFunctionReturn {
+    ReturnBody::expr(expression.into())
+}
+
+pub(crate) fn bool_function_return_tail_call(
+    function: usize,
+    args: impl IntoIterator<Item = CallArg>,
+) -> BoolFunctionReturn {
+    ReturnBody::tail_call(BoolFunctionFunctionId(function), args.into_iter().collect())
+}
+
+pub(crate) fn bool_function_return_bool_case(
+    subject: Bool,
+    true_: BoolFunctionReturn,
+    false_: BoolFunctionReturn,
+) -> BoolFunctionReturn {
+    ReturnBody::bool_case(subject.into(), true_, false_)
+}
+
+pub(crate) fn bool_function_return_int_case(
+    subject: Int,
+    clauses: impl IntoIterator<Item = (i64, BoolFunctionReturn)>,
+    fallback: BoolFunctionReturn,
+) -> BoolFunctionReturn {
+    ReturnBody::int_case(
+        subject.into(),
+        clauses
+            .into_iter()
+            .map(|(value, branch)| (BigInt::from(value), branch))
+            .collect(),
+        fallback,
+    )
+}
+
+pub(crate) fn bool_function_return_block(
+    steps: impl IntoIterator<Item = Step>,
+    return_: BoolFunctionReturn,
+) -> BoolFunctionReturn {
+    ReturnBody::block(steps.into_iter().collect(), return_)
+}
+
+pub(crate) fn return_bool_function(
+    type_: FunctionType,
+    body: BoolFunctionReturn,
+) -> FunctionReturn {
+    FunctionReturn::BoolFunction { type_, body }
+}
+
+pub(crate) fn nil_function_return_expr(expression: NilFunction) -> NilFunctionReturn {
+    ReturnBody::expr(expression.into())
+}
+
+pub(crate) fn nil_function_return_tail_call(
+    function: usize,
+    args: impl IntoIterator<Item = CallArg>,
+) -> NilFunctionReturn {
+    ReturnBody::tail_call(NilFunctionFunctionId(function), args.into_iter().collect())
+}
+
+pub(crate) fn nil_function_return_bool_case(
+    subject: Bool,
+    true_: NilFunctionReturn,
+    false_: NilFunctionReturn,
+) -> NilFunctionReturn {
+    ReturnBody::bool_case(subject.into(), true_, false_)
+}
+
+pub(crate) fn nil_function_return_int_case(
+    subject: Int,
+    clauses: impl IntoIterator<Item = (i64, NilFunctionReturn)>,
+    fallback: NilFunctionReturn,
+) -> NilFunctionReturn {
+    ReturnBody::int_case(
+        subject.into(),
+        clauses
+            .into_iter()
+            .map(|(value, branch)| (BigInt::from(value), branch))
+            .collect(),
+        fallback,
+    )
+}
+
+pub(crate) fn nil_function_return_block(
+    steps: impl IntoIterator<Item = Step>,
+    return_: NilFunctionReturn,
+) -> NilFunctionReturn {
+    ReturnBody::block(steps.into_iter().collect(), return_)
+}
+
+pub(crate) fn return_nil_function(type_: FunctionType, body: NilFunctionReturn) -> FunctionReturn {
+    FunctionReturn::NilFunction { type_, body }
+}
+
+pub(crate) fn function_function_return_expr(
+    expression: FunctionFunction,
+) -> FunctionFunctionReturn {
+    ReturnBody::expr(expression.into())
+}
+
+pub(crate) fn function_function_return_tail_call(
+    function: usize,
+    args: impl IntoIterator<Item = CallArg>,
+) -> FunctionFunctionReturn {
+    ReturnBody::tail_call(
+        FunctionFunctionFunctionId(function),
+        args.into_iter().collect(),
+    )
+}
+
+pub(crate) fn function_function_return_int_case(
+    subject: Int,
+    clauses: impl IntoIterator<Item = (i64, FunctionFunctionReturn)>,
+    fallback: FunctionFunctionReturn,
+) -> FunctionFunctionReturn {
+    ReturnBody::int_case(
+        subject.into(),
+        clauses
+            .into_iter()
+            .map(|(value, branch)| (BigInt::from(value), branch))
+            .collect(),
+        fallback,
+    )
+}
+
+pub(crate) fn function_function_return_block(
+    steps: impl IntoIterator<Item = Step>,
+    return_: FunctionFunctionReturn,
+) -> FunctionFunctionReturn {
+    ReturnBody::block(steps.into_iter().collect(), return_)
+}
+
+pub(crate) fn return_function_function(
+    type_: FunctionType,
+    body: FunctionFunctionReturn,
+) -> FunctionReturn {
+    FunctionReturn::FunctionFunction { type_, body }
 }
 
 #[cfg(test)]

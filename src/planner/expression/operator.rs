@@ -63,7 +63,9 @@ fn unsupported(operator: UnsupportedBinOpKind) -> Result<Expr, PlanError> {
 #[cfg(test)]
 mod tests {
     use super::super::{module_returning_typed_expr, typed_int_expr};
-    use crate::planner::dsl::{call_int, function, int, int_arg, local_bool, local_int, module};
+    use crate::planner::dsl::{
+        function, int, int_arg, int_return_tail_call, local_bool, local_int, module,
+    };
     use crate::planner::plan_module;
     use crate::planner::support::{compile, dummy_span, expect_plan_error};
     use crate::planner::{
@@ -91,7 +93,7 @@ pub fn main() {
         .expect("source should plan");
         let expected = module(
             "main",
-            function("main", call_int(1, [int_arg(0, int(1))])),
+            function("main", int_return_tail_call(1, [int_arg(0, int(1))])),
             [
                 function("negate", local_int(0, "value").negate_int()).param_int(0, "value"),
                 function("invert", local_bool(0, "value").negate_bool()).param_bool(0, "value"),

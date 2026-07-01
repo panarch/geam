@@ -525,18 +525,25 @@ mod tests {
     };
     use crate::planner::context::FunctionInfo;
     use crate::planner::dsl::{
-        block_bool_function, block_function_function, block_int, block_int_function,
-        block_nil_function, block_string_function, bool_, bool_arg, bool_case_bool_function,
-        bool_case_int, bool_case_int_function, bool_case_nil_function, bool_case_string_function,
-        bool_function_ref, call_bool, call_bool_returning_function,
-        call_function_returning_function, call_int, call_int_function, call_int_returning_function,
-        call_nil, call_nil_returning_function, call_string, call_string_returning_function,
-        function, function_function_ref, function_ref, int, int_arg, int_case_bool_function,
-        int_case_function_function, int_case_int, int_case_int_function, int_case_nil_function,
-        int_case_string_function, int_function_arg, int_function_call_arg, int_function_ref,
+        bool_, bool_arg, bool_function_ref, bool_function_return_block,
+        bool_function_return_bool_case, bool_function_return_expr, bool_function_return_int_case,
+        bool_function_return_tail_call, bool_return_tail_call, call_bool, call_int,
+        call_int_function, call_int_returning_function, function, function_function_ref,
+        function_function_return_block, function_function_return_expr,
+        function_function_return_int_case, function_function_return_tail_call, function_ref, int,
+        int_arg, int_function_arg, int_function_call_arg, int_function_ref,
+        int_function_return_block, int_function_return_bool_case, int_function_return_expr,
+        int_function_return_int_case, int_function_return_tail_call, int_return_block,
+        int_return_bool_case, int_return_expr, int_return_int_case, int_return_tail_call,
         let_int_function_step, let_int_step, local_bool, local_int, local_int_function, local_nil,
-        local_string, module, module_with_anonymous, nil, nil_arg, nil_function_ref, string,
-        string_arg, string_function_ref,
+        local_string, module, module_with_anonymous, nil, nil_arg, nil_function_ref,
+        nil_function_return_block, nil_function_return_bool_case, nil_function_return_expr,
+        nil_function_return_int_case, nil_function_return_tail_call, nil_return_tail_call,
+        return_bool_function, return_function_function, return_int_function, return_nil_function,
+        return_string_function, string, string_arg, string_function_ref,
+        string_function_return_block, string_function_return_bool_case,
+        string_function_return_expr, string_function_return_int_case,
+        string_function_return_tail_call, string_return_tail_call,
     };
     use crate::planner::plan_module;
     use crate::planner::support::{compile, compile_minimal_module, expect_plan_error};
@@ -563,7 +570,7 @@ pub fn main() {
             "main",
             function(
                 "main",
-                call_int(1, [int_arg(0, int(1)), int_arg(1, int(2))]),
+                int_return_tail_call(1, [int_arg(0, int(1)), int_arg(1, int(2))]),
             ),
             [
                 function("add", local_int(0, "a").add_int(local_int(1, "b")))
@@ -598,16 +605,16 @@ pub fn main() {
             "main",
             function(
                 "main",
-                call_int(1, [int_arg(0, int(1)), int_arg(1, int(0))]),
+                int_return_tail_call(1, [int_arg(0, int(1)), int_arg(1, int(0))]),
             ),
             [function(
                 "count_down",
-                block_int(
+                int_return_block(
                     [],
-                    int_case_int(
+                    int_return_int_case(
                         local_int(0, "n"),
-                        [(0, local_int(1, "acc"))],
-                        call_int(
+                        [(0, int_return_expr(local_int(1, "acc")))],
+                        int_return_tail_call(
                             1,
                             [
                                 int_arg(0, local_int(0, "n").sub_int(int(1))),
@@ -719,15 +726,23 @@ pub fn main() {
                 function("nil_identity", local_nil(0, "value")).param_nil(0, "value"),
                 function(
                     "get_int",
-                    block_int_function(
-                        [],
-                        int_case_int_function(
-                            local_int(0, "n"),
-                            [(0, int_function_ref(1, [LocalId::Int(IntLocalId(0))]))],
-                            call_int_returning_function(
-                                0,
-                                [int_arg(0, local_int(0, "n").sub_int(int(1)))],
-                                int_to_int.clone(),
+                    return_int_function(
+                        int_to_int.clone(),
+                        int_function_return_block(
+                            [],
+                            int_function_return_int_case(
+                                local_int(0, "n"),
+                                [(
+                                    0,
+                                    int_function_return_expr(int_function_ref(
+                                        1,
+                                        [LocalId::Int(IntLocalId(0))],
+                                    )),
+                                )],
+                                int_function_return_tail_call(
+                                    0,
+                                    [int_arg(0, local_int(0, "n").sub_int(int(1)))],
+                                ),
                             ),
                         ),
                     ),
@@ -735,18 +750,23 @@ pub fn main() {
                 .param_int(0, "n"),
                 function(
                     "get_string",
-                    block_string_function(
-                        [],
-                        int_case_string_function(
-                            local_int(0, "n"),
-                            [(
-                                0,
-                                string_function_ref(0, [LocalId::String(StringLocalId(0))]),
-                            )],
-                            call_string_returning_function(
-                                0,
-                                [int_arg(0, local_int(0, "n").sub_int(int(1)))],
-                                string_to_string.clone(),
+                    return_string_function(
+                        string_to_string.clone(),
+                        string_function_return_block(
+                            [],
+                            string_function_return_int_case(
+                                local_int(0, "n"),
+                                [(
+                                    0,
+                                    string_function_return_expr(string_function_ref(
+                                        0,
+                                        [LocalId::String(StringLocalId(0))],
+                                    )),
+                                )],
+                                string_function_return_tail_call(
+                                    0,
+                                    [int_arg(0, local_int(0, "n").sub_int(int(1)))],
+                                ),
                             ),
                         ),
                     ),
@@ -754,15 +774,23 @@ pub fn main() {
                 .param_int(0, "n"),
                 function(
                     "get_bool",
-                    block_bool_function(
-                        [],
-                        int_case_bool_function(
-                            local_int(0, "n"),
-                            [(0, bool_function_ref(0, [LocalId::Bool(BoolLocalId(0))]))],
-                            call_bool_returning_function(
-                                0,
-                                [int_arg(0, local_int(0, "n").sub_int(int(1)))],
-                                bool_to_bool.clone(),
+                    return_bool_function(
+                        bool_to_bool.clone(),
+                        bool_function_return_block(
+                            [],
+                            bool_function_return_int_case(
+                                local_int(0, "n"),
+                                [(
+                                    0,
+                                    bool_function_return_expr(bool_function_ref(
+                                        0,
+                                        [LocalId::Bool(BoolLocalId(0))],
+                                    )),
+                                )],
+                                bool_function_return_tail_call(
+                                    0,
+                                    [int_arg(0, local_int(0, "n").sub_int(int(1)))],
+                                ),
                             ),
                         ),
                     ),
@@ -770,15 +798,23 @@ pub fn main() {
                 .param_int(0, "n"),
                 function(
                     "get_nil",
-                    block_nil_function(
-                        [],
-                        int_case_nil_function(
-                            local_int(0, "n"),
-                            [(0, nil_function_ref(0, [LocalId::Nil(NilLocalId(0))]))],
-                            call_nil_returning_function(
-                                0,
-                                [int_arg(0, local_int(0, "n").sub_int(int(1)))],
-                                nil_to_nil.clone(),
+                    return_nil_function(
+                        nil_to_nil.clone(),
+                        nil_function_return_block(
+                            [],
+                            nil_function_return_int_case(
+                                local_int(0, "n"),
+                                [(
+                                    0,
+                                    nil_function_return_expr(nil_function_ref(
+                                        0,
+                                        [LocalId::Nil(NilLocalId(0))],
+                                    )),
+                                )],
+                                nil_function_return_tail_call(
+                                    0,
+                                    [int_arg(0, local_int(0, "n").sub_int(int(1)))],
+                                ),
                             ),
                         ),
                     ),
@@ -786,22 +822,24 @@ pub fn main() {
                 .param_int(0, "n"),
                 function(
                     "get_getter",
-                    block_function_function(
-                        [],
-                        int_case_function_function(
-                            local_int(0, "n"),
-                            [(
-                                0,
-                                function_function_ref(
-                                    FunctionFunctionId::Int(IntFunctionFunctionId(0)),
-                                    [LocalId::Int(IntLocalId(0))],
-                                    int_to_int.clone(),
+                    return_function_function(
+                        int_to_int_function.clone(),
+                        function_function_return_block(
+                            [],
+                            function_function_return_int_case(
+                                local_int(0, "n"),
+                                [(
+                                    0,
+                                    function_function_return_expr(function_function_ref(
+                                        FunctionFunctionId::Int(IntFunctionFunctionId(0)),
+                                        [LocalId::Int(IntLocalId(0))],
+                                        int_to_int.clone(),
+                                    )),
+                                )],
+                                function_function_return_tail_call(
+                                    0,
+                                    [int_arg(0, local_int(0, "n").sub_int(int(1)))],
                                 ),
-                            )],
-                            call_function_returning_function(
-                                0,
-                                [int_arg(0, local_int(0, "n").sub_int(int(1)))],
-                                int_to_int_function.clone(),
                             ),
                         ),
                     ),
@@ -884,6 +922,9 @@ pub fn main() {
         ))
         .expect("source should plan");
         let int_to_int = function_type([ValueType::Int], ValueType::Int);
+        let string_to_string = function_type([ValueType::String], ValueType::String);
+        let bool_to_bool = function_type([ValueType::Bool], ValueType::Bool);
+        let nil_to_nil = function_type([ValueType::Nil], ValueType::Nil);
         let expected = module(
             "main",
             function(
@@ -909,37 +950,73 @@ pub fn main() {
                 function("nil_other", nil()).param_nil(0, "value"),
                 function(
                     "choose_int",
-                    bool_case_int_function(
-                        local_bool(0, "flag"),
-                        int_function_ref(1, [LocalId::Int(IntLocalId(0))]),
-                        int_function_ref(2, [LocalId::Int(IntLocalId(0))]),
+                    return_int_function(
+                        int_to_int.clone(),
+                        int_function_return_bool_case(
+                            local_bool(0, "flag"),
+                            int_function_return_expr(int_function_ref(
+                                1,
+                                [LocalId::Int(IntLocalId(0))],
+                            )),
+                            int_function_return_expr(int_function_ref(
+                                2,
+                                [LocalId::Int(IntLocalId(0))],
+                            )),
+                        ),
                     ),
                 )
                 .param_bool(0, "flag"),
                 function(
                     "choose_string",
-                    bool_case_string_function(
-                        local_bool(0, "flag"),
-                        string_function_ref(0, [LocalId::String(StringLocalId(0))]),
-                        string_function_ref(1, [LocalId::String(StringLocalId(0))]),
+                    return_string_function(
+                        string_to_string,
+                        string_function_return_bool_case(
+                            local_bool(0, "flag"),
+                            string_function_return_expr(string_function_ref(
+                                0,
+                                [LocalId::String(StringLocalId(0))],
+                            )),
+                            string_function_return_expr(string_function_ref(
+                                1,
+                                [LocalId::String(StringLocalId(0))],
+                            )),
+                        ),
                     ),
                 )
                 .param_bool(0, "flag"),
                 function(
                     "choose_bool",
-                    bool_case_bool_function(
-                        local_bool(0, "flag"),
-                        bool_function_ref(0, [LocalId::Bool(BoolLocalId(0))]),
-                        bool_function_ref(1, [LocalId::Bool(BoolLocalId(0))]),
+                    return_bool_function(
+                        bool_to_bool,
+                        bool_function_return_bool_case(
+                            local_bool(0, "flag"),
+                            bool_function_return_expr(bool_function_ref(
+                                0,
+                                [LocalId::Bool(BoolLocalId(0))],
+                            )),
+                            bool_function_return_expr(bool_function_ref(
+                                1,
+                                [LocalId::Bool(BoolLocalId(0))],
+                            )),
+                        ),
                     ),
                 )
                 .param_bool(0, "flag"),
                 function(
                     "choose_nil",
-                    bool_case_nil_function(
-                        local_bool(0, "flag"),
-                        nil_function_ref(0, [LocalId::Nil(NilLocalId(0))]),
-                        nil_function_ref(1, [LocalId::Nil(NilLocalId(0))]),
+                    return_nil_function(
+                        nil_to_nil,
+                        nil_function_return_bool_case(
+                            local_bool(0, "flag"),
+                            nil_function_return_expr(nil_function_ref(
+                                0,
+                                [LocalId::Nil(NilLocalId(0))],
+                            )),
+                            nil_function_return_expr(nil_function_ref(
+                                1,
+                                [LocalId::Nil(NilLocalId(0))],
+                            )),
+                        ),
                     ),
                 )
                 .param_bool(0, "flag"),
@@ -976,16 +1053,16 @@ pub fn main() {
         .expect("source should plan");
         let expected = module(
             "main",
-            function("main", call_int(3, [bool_arg(0, bool_(true))])),
+            function("main", int_return_tail_call(3, [bool_arg(0, bool_(true))])),
             [
                 function("positive", local_int(0, "value")).param_int(0, "value"),
                 function("negative", int(0).sub_int(local_int(0, "value"))).param_int(0, "value"),
                 function(
                     "choose",
-                    bool_case_int(
+                    int_return_bool_case(
                         local_bool(0, "flag"),
-                        call_int(1, [int_arg(0, int(1))]),
-                        call_int(2, [int_arg(0, int(1))]),
+                        int_return_tail_call(1, [int_arg(0, int(1))]),
+                        int_return_tail_call(2, [int_arg(0, int(1))]),
                     ),
                 )
                 .param_bool(0, "flag"),
@@ -1054,7 +1131,7 @@ pub fn main() {
             "main",
             function(
                 "main",
-                call_int(
+                int_return_tail_call(
                     2,
                     [int_arg(
                         0,
@@ -1253,7 +1330,7 @@ pub fn main() {
             "main",
             function(
                 "main",
-                call_int(
+                int_return_tail_call(
                     2,
                     [int_function_arg(
                         0,
@@ -1295,17 +1372,20 @@ pub fn main() {
             "main",
             function(
                 "main",
-                block_int(
+                int_return_block(
                     [let_int_step(0, "_pipe", int(1))],
-                    call_int(1, [int_arg(0, local_int(0, "_pipe")), int_arg(1, int(0))]),
+                    int_return_tail_call(
+                        1,
+                        [int_arg(0, local_int(0, "_pipe")), int_arg(1, int(0))],
+                    ),
                 ),
             ),
             [function(
                 "count_down",
-                int_case_int(
+                int_return_int_case(
                     local_int(0, "n"),
-                    [(0, local_int(1, "acc"))],
-                    call_int(
+                    [(0, int_return_expr(local_int(1, "acc")))],
+                    int_return_tail_call(
                         1,
                         [
                             int_arg(0, local_int(0, "n").sub_int(int(1))),
@@ -1508,7 +1588,7 @@ pub fn helper() {
         let expected = module(
             "main",
             function("main", int(1)),
-            [function("helper", call_int(0, []))],
+            [function("helper", int_return_tail_call(0, []))],
         );
 
         assert_eq!(actual, expected);
@@ -1546,13 +1626,19 @@ pub fn nil_main() {
         .expect("source should plan");
         let expected = module(
             "main",
-            function("main", call_string(1, [string_arg(0, string("geam"))])),
+            function(
+                "main",
+                string_return_tail_call(1, [string_arg(0, string("geam"))]),
+            ),
             [
                 function("string_id", local_string(0, "value")).param_string(0, "value"),
                 function("bool_id", local_bool(0, "value")).param_bool(0, "value"),
                 function("nil_id", local_nil(0, "value")).param_nil(0, "value"),
-                function("bool_main", call_bool(0, [bool_arg(0, bool_(true))])),
-                function("nil_main", call_nil(0, [nil_arg(0, nil())])),
+                function(
+                    "bool_main",
+                    bool_return_tail_call(0, [bool_arg(0, bool_(true))]),
+                ),
+                function("nil_main", nil_return_tail_call(0, [nil_arg(0, nil())])),
             ],
         );
 

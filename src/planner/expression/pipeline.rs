@@ -105,10 +105,11 @@ fn invalid_pipeline_shape(reason: InvalidPipelineShapeReason) -> PlanError {
 #[cfg(test)]
 mod tests {
     use crate::planner::dsl::{
-        block_bool, block_int, block_nil, block_string, bool_, bool_arg, call_bool, call_int,
-        call_nil, call_string, function, int, int_arg, let_bool_step, let_int_step, let_nil_step,
-        let_string_step, local_bool, local_int, local_nil, local_string, module, nil, nil_arg,
-        string, string_arg,
+        block_int, bool_, bool_arg, bool_return_block, bool_return_tail_call, call_int, function,
+        int, int_arg, int_return_block, int_return_tail_call, let_bool_step, let_int_step,
+        let_nil_step, let_string_step, local_bool, local_int, local_nil, local_string, module, nil,
+        nil_arg, nil_return_block, nil_return_tail_call, string, string_arg, string_return_block,
+        string_return_tail_call,
     };
     use crate::planner::plan_module;
     use crate::planner::support::{compile, dummy_span, expect_plan_error};
@@ -142,9 +143,9 @@ pub fn main() {
             "main",
             function(
                 "main",
-                block_int(
+                int_return_block(
                     [let_int_step(0, "_pipe", int(1))],
-                    call_int(1, [int_arg(0, local_int(0, "_pipe"))]),
+                    int_return_tail_call(1, [int_arg(0, local_int(0, "_pipe"))]),
                 ),
             ),
             [function("add_one", local_int(0, "value").add_int(int(1))).param_int(0, "value")],
@@ -171,9 +172,12 @@ pub fn main() {
             "main",
             function(
                 "main",
-                block_int(
+                int_return_block(
                     [let_int_step(0, "_pipe", int(1))],
-                    call_int(1, [int_arg(0, local_int(0, "_pipe")), int_arg(1, int(2))]),
+                    int_return_tail_call(
+                        1,
+                        [int_arg(0, local_int(0, "_pipe")), int_arg(1, int(2))],
+                    ),
                 ),
             ),
             [
@@ -208,7 +212,7 @@ pub fn main() {
             "main",
             function(
                 "main",
-                block_int(
+                int_return_block(
                     [
                         let_int_step(0, "_pipe", int(1)),
                         let_int_step(
@@ -217,7 +221,10 @@ pub fn main() {
                             call_int(1, [int_arg(0, local_int(0, "_pipe")), int_arg(1, int(2))]),
                         ),
                     ],
-                    call_int(2, [int_arg(0, local_int(1, "_pipe")), int_arg(1, int(3))]),
+                    int_return_tail_call(
+                        2,
+                        [int_arg(0, local_int(1, "_pipe")), int_arg(1, int(3))],
+                    ),
                 ),
             ),
             [
@@ -258,13 +265,13 @@ pub fn main() {
             "main",
             function(
                 "main",
-                block_int(
+                int_return_block(
                     [let_int_step(
                         1,
                         "_pipe",
                         block_int([let_int_step(0, "x", int(1))], local_int(0, "x")),
                     )],
-                    call_int(1, [int_arg(0, local_int(1, "_pipe"))]),
+                    int_return_tail_call(1, [int_arg(0, local_int(1, "_pipe"))]),
                 ),
             ),
             [function("add_one", local_int(0, "value").add_int(int(1))).param_int(0, "value")],
@@ -291,9 +298,12 @@ pub fn main() {
             "main",
             function(
                 "main",
-                block_int(
+                int_return_block(
                     [let_int_step(0, "_pipe", int(1))],
-                    call_int(1, [int_arg(0, int(10)), int_arg(1, local_int(0, "_pipe"))]),
+                    int_return_tail_call(
+                        1,
+                        [int_arg(0, int(10)), int_arg(1, local_int(0, "_pipe"))],
+                    ),
                 ),
             ),
             [function(
@@ -325,9 +335,9 @@ pub fn main() {
             "main",
             function(
                 "main",
-                block_int(
+                int_return_block(
                     [let_int_step(0, "_pipe", int(1))],
-                    call_int(
+                    int_return_tail_call(
                         1,
                         [
                             int_arg(0, int(10)),
@@ -385,9 +395,9 @@ fn identity_nil(value: Nil) {
             "main",
             function(
                 "main",
-                block_string(
+                string_return_block(
                     [let_string_step(0, "_pipe", string("geam"))],
-                    call_string(1, [string_arg(0, local_string(0, "_pipe"))]),
+                    string_return_tail_call(1, [string_arg(0, local_string(0, "_pipe"))]),
                 ),
             ),
             [
@@ -395,17 +405,17 @@ fn identity_nil(value: Nil) {
                 function("identity_bool", local_bool(0, "value")).param_bool(0, "value"),
                 function(
                     "bool_main",
-                    block_bool(
+                    bool_return_block(
                         [let_bool_step(0, "_pipe", bool_(true))],
-                        call_bool(0, [bool_arg(0, local_bool(0, "_pipe"))]),
+                        bool_return_tail_call(0, [bool_arg(0, local_bool(0, "_pipe"))]),
                     ),
                 ),
                 function("identity_nil", local_nil(0, "value")).param_nil(0, "value"),
                 function(
                     "nil_main",
-                    block_nil(
+                    nil_return_block(
                         [let_nil_step(0, "_pipe", nil())],
-                        call_nil(0, [nil_arg(0, local_nil(0, "_pipe"))]),
+                        nil_return_tail_call(0, [nil_arg(0, local_nil(0, "_pipe"))]),
                     ),
                 ),
             ],

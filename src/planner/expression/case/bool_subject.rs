@@ -185,8 +185,9 @@ mod tests {
         RuntimeFunctionId, StringFunctionId, ValueType,
     };
     use crate::planner::dsl::{
-        bool_, bool_case_bool, bool_case_int, bool_case_nil, bool_case_string, call_bool, function,
-        function_ref, int, local_bool, module, nil, string,
+        bool_, bool_return_bool_case, bool_return_expr, call_bool, function, function_ref, int,
+        int_return_bool_case, int_return_expr, local_bool, module, nil, nil_return_bool_case,
+        nil_return_expr, string, string_return_bool_case, string_return_expr,
     };
     use crate::planner::plan_module;
     use crate::planner::support::{dummy_span, expect_plan_error};
@@ -234,20 +235,39 @@ pub fn nil_case() {
         .expect("source should plan");
         let expected = module(
             "main",
-            function("main", bool_case_int(bool_(true), int(1), int(0))),
+            function(
+                "main",
+                int_return_bool_case(
+                    bool_(true),
+                    int_return_expr(int(1)),
+                    int_return_expr(int(0)),
+                ),
+            ),
             [
                 function(
                     "string_case",
-                    bool_case_string(local_bool(0, "value"), string("yes"), string("no")),
+                    string_return_bool_case(
+                        local_bool(0, "value"),
+                        string_return_expr(string("yes")),
+                        string_return_expr(string("no")),
+                    ),
                 )
                 .param_bool(0, "value"),
                 function(
                     "bool_case",
-                    bool_case_bool(bool_(false).negate_bool(), bool_(false), bool_(true)),
+                    bool_return_bool_case(
+                        bool_(false).negate_bool(),
+                        bool_return_expr(bool_(false)),
+                        bool_return_expr(bool_(true)),
+                    ),
                 ),
                 function(
                     "nil_case",
-                    bool_case_nil(int(1).lt_int(int(2)), nil(), nil()),
+                    nil_return_bool_case(
+                        int(1).lt_int(int(2)),
+                        nil_return_expr(nil()),
+                        nil_return_expr(nil()),
+                    ),
                 ),
             ],
         );
@@ -274,7 +294,14 @@ pub fn main() {
         .expect("source should plan");
         let expected = module(
             "main",
-            function("main", bool_case_int(call_bool(0, []), int(1), int(0))),
+            function(
+                "main",
+                int_return_bool_case(
+                    call_bool(0, []),
+                    int_return_expr(int(1)),
+                    int_return_expr(int(0)),
+                ),
+            ),
             [function("flag", bool_(true))],
         );
 
@@ -332,31 +359,58 @@ fn duplicate_true(value: Bool) {
         .expect("source should plan");
         let expected = module(
             "main",
-            function("main", bool_case_int(bool_(true), int(1), int(0))),
+            function(
+                "main",
+                int_return_bool_case(
+                    bool_(true),
+                    int_return_expr(int(1)),
+                    int_return_expr(int(0)),
+                ),
+            ),
             [
                 function(
                     "false_fallback",
-                    bool_case_int(local_bool(0, "value"), int(1), int(0)),
+                    int_return_bool_case(
+                        local_bool(0, "value"),
+                        int_return_expr(int(1)),
+                        int_return_expr(int(0)),
+                    ),
                 )
                 .param_bool(0, "value"),
                 function(
                     "only_fallback",
-                    bool_case_int(local_bool(0, "value"), int(1), int(1)),
+                    int_return_bool_case(
+                        local_bool(0, "value"),
+                        int_return_expr(int(1)),
+                        int_return_expr(int(1)),
+                    ),
                 )
                 .param_bool(0, "value"),
                 function(
                     "fallback_first",
-                    bool_case_int(local_bool(0, "value"), int(0), int(0)),
+                    int_return_bool_case(
+                        local_bool(0, "value"),
+                        int_return_expr(int(0)),
+                        int_return_expr(int(0)),
+                    ),
                 )
                 .param_bool(0, "value"),
                 function(
                     "redundant_fallback",
-                    bool_case_int(local_bool(0, "value"), int(1), int(0)),
+                    int_return_bool_case(
+                        local_bool(0, "value"),
+                        int_return_expr(int(1)),
+                        int_return_expr(int(0)),
+                    ),
                 )
                 .param_bool(0, "value"),
                 function(
                     "duplicate_true",
-                    bool_case_int(local_bool(0, "value"), int(1), int(0)),
+                    int_return_bool_case(
+                        local_bool(0, "value"),
+                        int_return_expr(int(1)),
+                        int_return_expr(int(0)),
+                    ),
                 )
                 .param_bool(0, "value"),
             ],
