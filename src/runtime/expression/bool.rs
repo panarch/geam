@@ -485,10 +485,11 @@ pub fn main() {
                 r#"
 pub fn main() {
   let value = True
-  case value {
+  let result = case value {
     True -> False
     False -> True
   }
+  result
 }
 "#,
             ),
@@ -500,10 +501,11 @@ pub fn main() {
                 r#"
 pub fn main() {
   let value = False
-  case value {
+  let result = case value {
     True -> False
     False -> True
   }
+  result
 }
 "#,
             ),
@@ -517,10 +519,11 @@ pub fn main() {
             run_src(
                 r#"
 pub fn main() {
-  case 1 {
+  let value = case 1 {
     1 -> True
     _ -> False
   }
+  value
 }
 "#,
             ),
@@ -531,10 +534,11 @@ pub fn main() {
             run_src(
                 r#"
 pub fn main() {
-  case 2 {
+  let value = case 2 {
     1 -> True
     _ -> False
   }
+  value
 }
 "#,
             ),
@@ -548,10 +552,11 @@ pub fn main() {
             run_src(
                 r#"
 pub fn main() {
-  {
+  let value = {
     1
     True
   }
+  value
 }
 "#,
             ),

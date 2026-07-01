@@ -114,6 +114,18 @@ mod functions {
         );
     }
 
+    mod tail_call {
+        execution_cases!("functions/tail_call";
+            tail_recursion_int,
+            mutual_tail_recursion_bool,
+            string_nil_tail_recursion,
+            block_case_tail_call,
+            function_returning_tail_call,
+            function_returning_tail_call_families,
+            return_body_layout_families,
+        );
+    }
+
     mod anonymous {
         execution_cases!("functions/anonymous";
             anonymous_function_local_call,

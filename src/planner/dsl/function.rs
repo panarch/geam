@@ -10,6 +10,10 @@ use crate::planner::dsl::expression::{
     Bool, BoolFunction, Function, FunctionFunction, Int, IntFunction, Nil, NilFunction, String,
     StringFunction,
 };
+use crate::planner::function::{
+    bool_function_return, bool_return, function_function_return, int_function_return, int_return,
+    nil_function_return, nil_return, string_function_return, string_return,
+};
 use ecow::EcoString;
 
 pub(crate) struct FunctionDsl {
@@ -227,26 +231,57 @@ impl FunctionDsl {
 impl FunctionReturn {
     fn build(self, runtime_ids: &mut FunctionRuntimeIds) -> ReturnExpr {
         match self {
-            Self::Int(expression) => ReturnExpr::int(runtime_ids.next_int_id(), expression),
-            Self::String(expression) => {
-                ReturnExpr::string(runtime_ids.next_string_id(), expression)
+            Self::Int(expression) => {
+                ReturnExpr::int_body(runtime_ids.next_int_id(), int_return(expression))
             }
-            Self::Bool(expression) => ReturnExpr::bool(runtime_ids.next_bool_id(), expression),
-            Self::Nil(expression) => ReturnExpr::nil(runtime_ids.next_nil_id(), expression),
+            Self::String(expression) => {
+                ReturnExpr::string_body(runtime_ids.next_string_id(), string_return(expression))
+            }
+            Self::Bool(expression) => {
+                ReturnExpr::bool_body(runtime_ids.next_bool_id(), bool_return(expression))
+            }
+            Self::Nil(expression) => {
+                ReturnExpr::nil_body(runtime_ids.next_nil_id(), nil_return(expression))
+            }
             Self::IntFunction(expression) => {
-                ReturnExpr::int_function(runtime_ids.next_int_function_id(), expression)
+                let type_ = expression.type_().clone();
+                ReturnExpr::int_function_body(
+                    runtime_ids.next_int_function_id(),
+                    type_,
+                    int_function_return(expression),
+                )
             }
             Self::StringFunction(expression) => {
-                ReturnExpr::string_function(runtime_ids.next_string_function_id(), expression)
+                let type_ = expression.type_().clone();
+                ReturnExpr::string_function_body(
+                    runtime_ids.next_string_function_id(),
+                    type_,
+                    string_function_return(expression),
+                )
             }
             Self::BoolFunction(expression) => {
-                ReturnExpr::bool_function(runtime_ids.next_bool_function_id(), expression)
+                let type_ = expression.type_().clone();
+                ReturnExpr::bool_function_body(
+                    runtime_ids.next_bool_function_id(),
+                    type_,
+                    bool_function_return(expression),
+                )
             }
             Self::NilFunction(expression) => {
-                ReturnExpr::nil_function(runtime_ids.next_nil_function_id(), expression)
+                let type_ = expression.type_().clone();
+                ReturnExpr::nil_function_body(
+                    runtime_ids.next_nil_function_id(),
+                    type_,
+                    nil_function_return(expression),
+                )
             }
             Self::FunctionFunction(expression) => {
-                ReturnExpr::function_function(runtime_ids.next_function_function_id(), expression)
+                let type_ = expression.type_().clone();
+                ReturnExpr::function_function_body(
+                    runtime_ids.next_function_function_id(),
+                    type_,
+                    function_function_return(expression),
+                )
             }
         }
     }

@@ -11,7 +11,7 @@ use super::step::Step;
 use super::{
     BoolExprKind, BoolFunctionExprKind, CallArgKind, CaptureArgKind, ExprKind, FunctionExprKind,
     FunctionFunctionExprKind, IntExprKind, IntFunctionExprKind, NilExprKind, NilFunctionExprKind,
-    ReturnExprKind, StepKind, StringExprKind, StringFunctionExprKind,
+    ReturnBodyKind, ReturnExprKind, StepKind, StringExprKind, StringFunctionExprKind,
 };
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -191,24 +191,303 @@ impl FrameLayout {
 
     fn include_return_expr(&mut self, expression: &ReturnExpr) {
         match expression.kind() {
-            ReturnExprKind::Int { expression, .. } => self.include_int_expr(expression),
-            ReturnExprKind::String { expression, .. } => self.include_string_expr(expression),
-            ReturnExprKind::Bool { expression, .. } => self.include_bool_expr(expression),
-            ReturnExprKind::Nil { expression, .. } => self.include_nil_expr(expression),
-            ReturnExprKind::IntFunction { expression, .. } => {
-                self.include_int_function_expr(expression);
+            ReturnExprKind::Int { body, .. } => self.include_int_return(body),
+            ReturnExprKind::String { body, .. } => self.include_string_return(body),
+            ReturnExprKind::Bool { body, .. } => self.include_bool_return(body),
+            ReturnExprKind::Nil { body, .. } => self.include_nil_return(body),
+            ReturnExprKind::IntFunction { body, .. } => {
+                self.include_int_function_return(body);
             }
-            ReturnExprKind::StringFunction { expression, .. } => {
-                self.include_string_function_expr(expression);
+            ReturnExprKind::StringFunction { body, .. } => {
+                self.include_string_function_return(body);
             }
-            ReturnExprKind::BoolFunction { expression, .. } => {
-                self.include_bool_function_expr(expression);
+            ReturnExprKind::BoolFunction { body, .. } => {
+                self.include_bool_function_return(body);
             }
-            ReturnExprKind::NilFunction { expression, .. } => {
-                self.include_nil_function_expr(expression);
+            ReturnExprKind::NilFunction { body, .. } => {
+                self.include_nil_function_return(body);
             }
-            ReturnExprKind::FunctionFunction { expression, .. } => {
-                self.include_function_function_expr(expression);
+            ReturnExprKind::FunctionFunction { body, .. } => {
+                self.include_function_function_return(body);
+            }
+        }
+    }
+
+    fn include_int_return(&mut self, body: &crate::plan::IntReturn) {
+        match body.kind() {
+            ReturnBodyKind::Expr(expression) => self.include_int_expr(expression),
+            ReturnBodyKind::TailCall { args, .. } => self.include_call_args(args),
+            ReturnBodyKind::BoolCase {
+                subject,
+                true_,
+                false_,
+            } => {
+                self.include_bool_expr(subject);
+                self.include_int_return(true_);
+                self.include_int_return(false_);
+            }
+            ReturnBodyKind::IntCase {
+                subject,
+                clauses,
+                fallback,
+            } => {
+                self.include_int_expr(subject);
+                for (_, branch) in clauses {
+                    self.include_int_return(branch);
+                }
+                self.include_int_return(fallback);
+            }
+            ReturnBodyKind::Block { steps, return_ } => {
+                self.include_steps(steps);
+                self.include_int_return(return_);
+            }
+        }
+    }
+
+    fn include_string_return(&mut self, body: &crate::plan::StringReturn) {
+        match body.kind() {
+            ReturnBodyKind::Expr(expression) => self.include_string_expr(expression),
+            ReturnBodyKind::TailCall { args, .. } => self.include_call_args(args),
+            ReturnBodyKind::BoolCase {
+                subject,
+                true_,
+                false_,
+            } => {
+                self.include_bool_expr(subject);
+                self.include_string_return(true_);
+                self.include_string_return(false_);
+            }
+            ReturnBodyKind::IntCase {
+                subject,
+                clauses,
+                fallback,
+            } => {
+                self.include_int_expr(subject);
+                for (_, branch) in clauses {
+                    self.include_string_return(branch);
+                }
+                self.include_string_return(fallback);
+            }
+            ReturnBodyKind::Block { steps, return_ } => {
+                self.include_steps(steps);
+                self.include_string_return(return_);
+            }
+        }
+    }
+
+    fn include_bool_return(&mut self, body: &crate::plan::BoolReturn) {
+        match body.kind() {
+            ReturnBodyKind::Expr(expression) => self.include_bool_expr(expression),
+            ReturnBodyKind::TailCall { args, .. } => self.include_call_args(args),
+            ReturnBodyKind::BoolCase {
+                subject,
+                true_,
+                false_,
+            } => {
+                self.include_bool_expr(subject);
+                self.include_bool_return(true_);
+                self.include_bool_return(false_);
+            }
+            ReturnBodyKind::IntCase {
+                subject,
+                clauses,
+                fallback,
+            } => {
+                self.include_int_expr(subject);
+                for (_, branch) in clauses {
+                    self.include_bool_return(branch);
+                }
+                self.include_bool_return(fallback);
+            }
+            ReturnBodyKind::Block { steps, return_ } => {
+                self.include_steps(steps);
+                self.include_bool_return(return_);
+            }
+        }
+    }
+
+    fn include_nil_return(&mut self, body: &crate::plan::NilReturn) {
+        match body.kind() {
+            ReturnBodyKind::Expr(expression) => self.include_nil_expr(expression),
+            ReturnBodyKind::TailCall { args, .. } => self.include_call_args(args),
+            ReturnBodyKind::BoolCase {
+                subject,
+                true_,
+                false_,
+            } => {
+                self.include_bool_expr(subject);
+                self.include_nil_return(true_);
+                self.include_nil_return(false_);
+            }
+            ReturnBodyKind::IntCase {
+                subject,
+                clauses,
+                fallback,
+            } => {
+                self.include_int_expr(subject);
+                for (_, branch) in clauses {
+                    self.include_nil_return(branch);
+                }
+                self.include_nil_return(fallback);
+            }
+            ReturnBodyKind::Block { steps, return_ } => {
+                self.include_steps(steps);
+                self.include_nil_return(return_);
+            }
+        }
+    }
+
+    fn include_int_function_return(&mut self, body: &crate::plan::IntFunctionReturn) {
+        match body.kind() {
+            ReturnBodyKind::Expr(expression) => self.include_int_function_expr(expression),
+            ReturnBodyKind::TailCall { args, .. } => self.include_call_args(args),
+            ReturnBodyKind::BoolCase {
+                subject,
+                true_,
+                false_,
+            } => {
+                self.include_bool_expr(subject);
+                self.include_int_function_return(true_);
+                self.include_int_function_return(false_);
+            }
+            ReturnBodyKind::IntCase {
+                subject,
+                clauses,
+                fallback,
+            } => {
+                self.include_int_expr(subject);
+                for (_, branch) in clauses {
+                    self.include_int_function_return(branch);
+                }
+                self.include_int_function_return(fallback);
+            }
+            ReturnBodyKind::Block { steps, return_ } => {
+                self.include_steps(steps);
+                self.include_int_function_return(return_);
+            }
+        }
+    }
+
+    fn include_string_function_return(&mut self, body: &crate::plan::StringFunctionReturn) {
+        match body.kind() {
+            ReturnBodyKind::Expr(expression) => self.include_string_function_expr(expression),
+            ReturnBodyKind::TailCall { args, .. } => self.include_call_args(args),
+            ReturnBodyKind::BoolCase {
+                subject,
+                true_,
+                false_,
+            } => {
+                self.include_bool_expr(subject);
+                self.include_string_function_return(true_);
+                self.include_string_function_return(false_);
+            }
+            ReturnBodyKind::IntCase {
+                subject,
+                clauses,
+                fallback,
+            } => {
+                self.include_int_expr(subject);
+                for (_, branch) in clauses {
+                    self.include_string_function_return(branch);
+                }
+                self.include_string_function_return(fallback);
+            }
+            ReturnBodyKind::Block { steps, return_ } => {
+                self.include_steps(steps);
+                self.include_string_function_return(return_);
+            }
+        }
+    }
+
+    fn include_bool_function_return(&mut self, body: &crate::plan::BoolFunctionReturn) {
+        match body.kind() {
+            ReturnBodyKind::Expr(expression) => self.include_bool_function_expr(expression),
+            ReturnBodyKind::TailCall { args, .. } => self.include_call_args(args),
+            ReturnBodyKind::BoolCase {
+                subject,
+                true_,
+                false_,
+            } => {
+                self.include_bool_expr(subject);
+                self.include_bool_function_return(true_);
+                self.include_bool_function_return(false_);
+            }
+            ReturnBodyKind::IntCase {
+                subject,
+                clauses,
+                fallback,
+            } => {
+                self.include_int_expr(subject);
+                for (_, branch) in clauses {
+                    self.include_bool_function_return(branch);
+                }
+                self.include_bool_function_return(fallback);
+            }
+            ReturnBodyKind::Block { steps, return_ } => {
+                self.include_steps(steps);
+                self.include_bool_function_return(return_);
+            }
+        }
+    }
+
+    fn include_nil_function_return(&mut self, body: &crate::plan::NilFunctionReturn) {
+        match body.kind() {
+            ReturnBodyKind::Expr(expression) => self.include_nil_function_expr(expression),
+            ReturnBodyKind::TailCall { args, .. } => self.include_call_args(args),
+            ReturnBodyKind::BoolCase {
+                subject,
+                true_,
+                false_,
+            } => {
+                self.include_bool_expr(subject);
+                self.include_nil_function_return(true_);
+                self.include_nil_function_return(false_);
+            }
+            ReturnBodyKind::IntCase {
+                subject,
+                clauses,
+                fallback,
+            } => {
+                self.include_int_expr(subject);
+                for (_, branch) in clauses {
+                    self.include_nil_function_return(branch);
+                }
+                self.include_nil_function_return(fallback);
+            }
+            ReturnBodyKind::Block { steps, return_ } => {
+                self.include_steps(steps);
+                self.include_nil_function_return(return_);
+            }
+        }
+    }
+
+    fn include_function_function_return(&mut self, body: &crate::plan::FunctionFunctionReturn) {
+        match body.kind() {
+            ReturnBodyKind::Expr(expression) => self.include_function_function_expr(expression),
+            ReturnBodyKind::TailCall { args, .. } => self.include_call_args(args),
+            ReturnBodyKind::BoolCase {
+                subject,
+                true_,
+                false_,
+            } => {
+                self.include_bool_expr(subject);
+                self.include_function_function_return(true_);
+                self.include_function_function_return(false_);
+            }
+            ReturnBodyKind::IntCase {
+                subject,
+                clauses,
+                fallback,
+            } => {
+                self.include_int_expr(subject);
+                for (_, branch) in clauses {
+                    self.include_function_function_return(branch);
+                }
+                self.include_function_function_return(fallback);
+            }
+            ReturnBodyKind::Block { steps, return_ } => {
+                self.include_steps(steps);
+                self.include_function_function_return(return_);
             }
         }
     }
@@ -350,21 +629,14 @@ impl FrameLayout {
                 self.include_call_args(args);
             }
             BoolExprKind::Not(value) => self.include_bool_expr(value),
-            BoolExprKind::LtInt { left, right }
-            | BoolExprKind::LtEqInt { left, right }
-            | BoolExprKind::GtInt { left, right }
-            | BoolExprKind::GtEqInt { left, right } => {
-                self.include_int_expr(left);
-                self.include_int_expr(right);
-            }
-            BoolExprKind::Equal { left, right } | BoolExprKind::NotEqual { left, right } => {
-                self.include_expr(left);
-                self.include_expr(right);
-            }
-            BoolExprKind::And { left, right } | BoolExprKind::Or { left, right } => {
-                self.include_bool_expr(left);
-                self.include_bool_expr(right);
-            }
+            BoolExprKind::LtInt { left, right } => self.include_int_binary_expr(left, right),
+            BoolExprKind::LtEqInt { left, right } => self.include_int_binary_expr(left, right),
+            BoolExprKind::GtInt { left, right } => self.include_int_binary_expr(left, right),
+            BoolExprKind::GtEqInt { left, right } => self.include_int_binary_expr(left, right),
+            BoolExprKind::Equal { left, right } => self.include_binary_expr(left, right),
+            BoolExprKind::NotEqual { left, right } => self.include_binary_expr(left, right),
+            BoolExprKind::And { left, right } => self.include_bool_binary_expr(left, right),
+            BoolExprKind::Or { left, right } => self.include_bool_binary_expr(left, right),
             BoolExprKind::BoolCase {
                 subject,
                 true_,
@@ -390,6 +662,21 @@ impl FrameLayout {
                 self.include_bool_expr(return_);
             }
         }
+    }
+
+    fn include_int_binary_expr(&mut self, left: &IntExpr, right: &IntExpr) {
+        self.include_int_expr(left);
+        self.include_int_expr(right);
+    }
+
+    fn include_binary_expr(&mut self, left: &Expr, right: &Expr) {
+        self.include_expr(left);
+        self.include_expr(right);
+    }
+
+    fn include_bool_binary_expr(&mut self, left: &BoolExpr, right: &BoolExpr) {
+        self.include_bool_expr(left);
+        self.include_bool_expr(right);
     }
 
     fn include_nil_expr(&mut self, expression: &NilExpr) {
@@ -629,268 +916,5 @@ impl FrameLayout {
                 self.include_function_function_expr(return_);
             }
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::FrameLayout;
-    use crate::plan::{
-        BoolExpr, BoolFunctionExpr, BoolFunctionLocalId, BoolFunctionValue, BoolLocalId, Expr,
-        FunctionExpr, IntExpr, IntFunctionExpr, IntFunctionId, IntFunctionLocalId,
-        IntFunctionValue, IntLocalId, NilExpr, NilFunctionExpr, NilFunctionLocalId,
-        NilFunctionValue, NilLocalId, ParamLocal, ReturnExpr, Step, StringExpr, StringFunctionExpr,
-        StringFunctionLocalId, StringFunctionValue, StringLocalId,
-    };
-
-    #[test]
-    fn frame_layout_includes_local_ids() {
-        let mut layout = FrameLayout::default();
-
-        layout.include_local(&ParamLocal::int(IntLocalId(1)));
-        layout.include_local(&ParamLocal::string(StringLocalId(2)));
-        layout.include_local(&ParamLocal::bool(BoolLocalId(3)));
-        layout.include_local(&ParamLocal::nil(NilLocalId(4)));
-        layout.include_int_function(IntFunctionLocalId(5));
-        layout.include_nil_function(NilFunctionLocalId(6));
-
-        assert_eq!(layout.ints(), 2);
-        assert_eq!(layout.strings(), 3);
-        assert_eq!(layout.bools(), 4);
-        assert_eq!(layout.nils(), 5);
-        assert_eq!(layout.int_functions(), 6);
-        assert_eq!(layout.nil_functions(), 7);
-    }
-
-    #[test]
-    fn frame_layout_includes_function_expression_nested_locals() {
-        let nested_block = IntFunctionExpr::block(
-            vec![Step::evaluate(Expr::int(IntExpr::local_get(
-                IntLocalId(4),
-                "value".into(),
-            )))],
-            int_function_expr(),
-        );
-        let nested_case = IntFunctionExpr::int_case(
-            IntExpr::local_get(IntLocalId(3), "subject".into()),
-            vec![(1.into(), nested_block)],
-            int_function_expr(),
-        );
-        let function_case = IntFunctionExpr::bool_case(
-            BoolExpr::local_get(BoolLocalId(2), "flag".into()),
-            int_function_expr(),
-            nested_case,
-        );
-        let steps = vec![Step::evaluate(Expr::function(FunctionExpr::int(
-            IntFunctionExpr::block(
-                vec![Step::evaluate(Expr::function(FunctionExpr::int(
-                    function_case,
-                )))],
-                int_function_expr(),
-            ),
-        )))];
-        let return_ = ReturnExpr::int(IntFunctionId(0), IntExpr::value(0.into()));
-
-        let layout = FrameLayout::from_function_parts(&[], &steps, &return_);
-
-        assert_eq!(layout.ints(), 5);
-        assert_eq!(layout.bools(), 3);
-    }
-
-    #[test]
-    fn frame_layout_includes_function_local_storage() {
-        let steps = vec![Step::let_int_function(
-            IntFunctionLocalId(1),
-            "f".into(),
-            IntFunctionExpr::local_get(
-                IntFunctionLocalId(2),
-                "g".into(),
-                int_function_expr().type_().clone(),
-            ),
-        )];
-        let return_ = ReturnExpr::int(
-            IntFunctionId(0),
-            IntExpr::function_call(
-                IntFunctionExpr::local_get(
-                    IntFunctionLocalId(3),
-                    "h".into(),
-                    int_function_expr().type_().clone(),
-                ),
-                Vec::new(),
-            ),
-        );
-
-        let layout = FrameLayout::from_function_parts(&[], &steps, &return_);
-
-        assert_eq!(layout.int_functions(), 4);
-    }
-
-    #[test]
-    fn frame_layout_includes_function_expression_return_families() {
-        let steps = vec![
-            Step::evaluate(Expr::function(FunctionExpr::string(
-                StringFunctionExpr::local_get(
-                    StringFunctionLocalId(1),
-                    "string".into(),
-                    string_function_expr().type_().clone(),
-                ),
-            ))),
-            Step::evaluate(Expr::function(FunctionExpr::bool(
-                BoolFunctionExpr::local_get(
-                    BoolFunctionLocalId(2),
-                    "bool".into(),
-                    bool_function_expr().type_().clone(),
-                ),
-            ))),
-            Step::evaluate(Expr::function(FunctionExpr::nil(
-                NilFunctionExpr::local_get(
-                    NilFunctionLocalId(3),
-                    "nil".into(),
-                    nil_function_expr().type_().clone(),
-                ),
-            ))),
-        ];
-        let return_ = ReturnExpr::int(IntFunctionId(0), IntExpr::value(0.into()));
-
-        let layout = FrameLayout::from_function_parts(&[], &steps, &return_);
-
-        assert_eq!(layout.string_functions(), 2);
-        assert_eq!(layout.bool_functions(), 3);
-        assert_eq!(layout.nil_functions(), 4);
-    }
-
-    #[test]
-    fn frame_layout_includes_step_and_function_expression_families() {
-        let steps = vec![
-            Step::let_string(
-                StringLocalId(1),
-                "text".into(),
-                StringExpr::block(
-                    Vec::new(),
-                    StringExpr::call(crate::plan::StringFunctionId(0), Vec::new()),
-                ),
-            ),
-            Step::let_bool(
-                BoolLocalId(1),
-                "flag".into(),
-                BoolExpr::block(
-                    Vec::new(),
-                    BoolExpr::equal(
-                        Expr::int(IntExpr::value(1.into())),
-                        Expr::int(IntExpr::value(1.into())),
-                    ),
-                ),
-            ),
-            Step::let_nil(
-                NilLocalId(1),
-                "none".into(),
-                NilExpr::block(
-                    Vec::new(),
-                    NilExpr::call(crate::plan::NilFunctionId(0), Vec::new()),
-                ),
-            ),
-            Step::let_string_function(
-                StringFunctionLocalId(2),
-                "string_fn".into(),
-                StringFunctionExpr::bool_case(
-                    BoolExpr::value(true),
-                    StringFunctionExpr::int_case(
-                        IntExpr::value(1.into()),
-                        vec![(1.into(), string_function_expr())],
-                        string_function_expr(),
-                    ),
-                    StringFunctionExpr::block(Vec::new(), string_function_expr()),
-                ),
-            ),
-            Step::let_bool_function(
-                BoolFunctionLocalId(2),
-                "bool_fn".into(),
-                BoolFunctionExpr::bool_case(
-                    BoolExpr::value(true),
-                    BoolFunctionExpr::int_case(
-                        IntExpr::value(1.into()),
-                        vec![(1.into(), bool_function_expr())],
-                        bool_function_expr(),
-                    ),
-                    BoolFunctionExpr::block(Vec::new(), bool_function_expr()),
-                ),
-            ),
-            Step::let_nil_function(
-                NilFunctionLocalId(2),
-                "nil_fn".into(),
-                NilFunctionExpr::bool_case(
-                    BoolExpr::value(true),
-                    NilFunctionExpr::int_case(
-                        IntExpr::value(1.into()),
-                        vec![(1.into(), nil_function_expr())],
-                        nil_function_expr(),
-                    ),
-                    NilFunctionExpr::block(Vec::new(), nil_function_expr()),
-                ),
-            ),
-            Step::evaluate(Expr::string(StringExpr::function_call(
-                StringFunctionExpr::local_get(
-                    StringFunctionLocalId(3),
-                    "string_fn".into(),
-                    string_function_expr().type_().clone(),
-                ),
-                Vec::new(),
-            ))),
-            Step::evaluate(Expr::bool(BoolExpr::function_call(
-                BoolFunctionExpr::local_get(
-                    BoolFunctionLocalId(3),
-                    "bool_fn".into(),
-                    bool_function_expr().type_().clone(),
-                ),
-                Vec::new(),
-            ))),
-            Step::evaluate(Expr::nil(NilExpr::function_call(
-                NilFunctionExpr::local_get(
-                    NilFunctionLocalId(3),
-                    "nil_fn".into(),
-                    nil_function_expr().type_().clone(),
-                ),
-                Vec::new(),
-            ))),
-            Step::evaluate(Expr::int(IntExpr::negate(IntExpr::value(1.into())))),
-        ];
-        let return_ = ReturnExpr::int(IntFunctionId(0), IntExpr::value(0.into()));
-
-        let layout = FrameLayout::from_function_parts(&[], &steps, &return_);
-
-        assert_eq!(layout.strings(), 2);
-        assert_eq!(layout.bools(), 2);
-        assert_eq!(layout.nils(), 2);
-        assert_eq!(layout.string_functions(), 4);
-        assert_eq!(layout.bool_functions(), 4);
-        assert_eq!(layout.nil_functions(), 4);
-    }
-
-    fn int_function_expr() -> IntFunctionExpr {
-        IntFunctionExpr::value(IntFunctionValue::new(
-            IntFunctionId(0),
-            vec![ParamLocal::int(IntLocalId(0))],
-        ))
-    }
-
-    fn string_function_expr() -> StringFunctionExpr {
-        StringFunctionExpr::value(StringFunctionValue::new(
-            crate::plan::StringFunctionId(0),
-            vec![ParamLocal::string(StringLocalId(0))],
-        ))
-    }
-
-    fn bool_function_expr() -> BoolFunctionExpr {
-        BoolFunctionExpr::value(BoolFunctionValue::new(
-            crate::plan::BoolFunctionId(0),
-            vec![ParamLocal::bool(BoolLocalId(0))],
-        ))
-    }
-
-    fn nil_function_expr() -> NilFunctionExpr {
-        NilFunctionExpr::value(NilFunctionValue::new(
-            crate::plan::NilFunctionId(0),
-            vec![ParamLocal::nil(NilLocalId(0))],
-        ))
     }
 }

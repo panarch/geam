@@ -1,6 +1,11 @@
 use crate::plan::{
-    Expr, ExprKind, FunctionFunctionId, FunctionPlan, Param, ReturnExpr, RuntimeFunctionId, Step,
-    ValueType,
+    BoolExpr, BoolExprKind, BoolFunctionExpr, BoolFunctionExprKind, BoolFunctionReturn, BoolReturn,
+    Expr, ExprKind, FunctionFunctionExpr, FunctionFunctionExprKind, FunctionFunctionId,
+    FunctionFunctionReturn, FunctionPlan, IntExpr, IntExprKind, IntFunctionExpr,
+    IntFunctionExprKind, IntFunctionReturn, IntReturn, NilExpr, NilExprKind, NilFunctionExpr,
+    NilFunctionExprKind, NilFunctionReturn, NilReturn, Param, ReturnBody, ReturnExpr,
+    RuntimeFunctionId, Step, StringExpr, StringExprKind, StringFunctionExpr,
+    StringFunctionExprKind, StringFunctionReturn, StringReturn, ValueType,
 };
 use crate::planner::context::{AnonymousFunctions, FunctionInfo, FunctionParam, PlanContext};
 use crate::planner::error::{
@@ -117,16 +122,16 @@ fn function_return_expr(
 ) -> Result<ReturnExpr, PlanError> {
     match (expected, runtime_id, actual.into_kind()) {
         (ValueType::Int, RuntimeFunctionId::Int(runtime_id), ExprKind::Int(actual)) => {
-            Ok(ReturnExpr::int(*runtime_id, actual))
+            Ok(ReturnExpr::int_body(*runtime_id, int_return(actual)))
         }
         (ValueType::String, RuntimeFunctionId::String(runtime_id), ExprKind::String(actual)) => {
-            Ok(ReturnExpr::string(*runtime_id, actual))
+            Ok(ReturnExpr::string_body(*runtime_id, string_return(actual)))
         }
         (ValueType::Bool, RuntimeFunctionId::Bool(runtime_id), ExprKind::Bool(actual)) => {
-            Ok(ReturnExpr::bool(*runtime_id, actual))
+            Ok(ReturnExpr::bool_body(*runtime_id, bool_return(actual)))
         }
         (ValueType::Nil, RuntimeFunctionId::Nil(runtime_id), ExprKind::Nil(actual)) => {
-            Ok(ReturnExpr::nil(*runtime_id, actual))
+            Ok(ReturnExpr::nil_body(*runtime_id, nil_return(actual)))
         }
         (
             ValueType::Function(expected),
@@ -151,27 +156,347 @@ fn function_returning_function_expr(
 ) -> Result<ReturnExpr, PlanError> {
     match (runtime_id, actual.into_kind()) {
         (FunctionFunctionId::Int(runtime_id), crate::plan::FunctionExprKind::Int(actual)) => {
-            Ok(ReturnExpr::int_function(runtime_id, actual))
+            let type_ = actual.type_().clone();
+            Ok(ReturnExpr::int_function_body(
+                runtime_id,
+                type_,
+                int_function_return(actual),
+            ))
         }
         (FunctionFunctionId::String(runtime_id), crate::plan::FunctionExprKind::String(actual)) => {
-            Ok(ReturnExpr::string_function(runtime_id, actual))
+            let type_ = actual.type_().clone();
+            Ok(ReturnExpr::string_function_body(
+                runtime_id,
+                type_,
+                string_function_return(actual),
+            ))
         }
         (FunctionFunctionId::Bool(runtime_id), crate::plan::FunctionExprKind::Bool(actual)) => {
-            Ok(ReturnExpr::bool_function(runtime_id, actual))
+            let type_ = actual.type_().clone();
+            Ok(ReturnExpr::bool_function_body(
+                runtime_id,
+                type_,
+                bool_function_return(actual),
+            ))
         }
         (FunctionFunctionId::Nil(runtime_id), crate::plan::FunctionExprKind::Nil(actual)) => {
-            Ok(ReturnExpr::nil_function(runtime_id, actual))
+            let type_ = actual.type_().clone();
+            Ok(ReturnExpr::nil_function_body(
+                runtime_id,
+                type_,
+                nil_function_return(actual),
+            ))
         }
         (
             FunctionFunctionId::Function(runtime_id),
             crate::plan::FunctionExprKind::Function(actual),
-        ) => Ok(ReturnExpr::function_function(runtime_id, actual)),
+        ) => {
+            let type_ = actual.type_().clone();
+            Ok(ReturnExpr::function_function_body(
+                runtime_id,
+                type_,
+                function_function_return(actual),
+            ))
+        }
         _ => Err(PlanError::InvalidTypedAst {
             reason: InvalidTypedAstReason::FunctionShape {
                 name: name.clone(),
                 reason: InvalidFunctionShapeReason::ReturnTypeMismatch,
             },
         }),
+    }
+}
+
+pub(in crate::planner) fn int_return(expression: IntExpr) -> IntReturn {
+    match expression.kind() {
+        IntExprKind::Call { function, args } => ReturnBody::tail_call(*function, args.clone()),
+        IntExprKind::BoolCase {
+            subject,
+            true_,
+            false_,
+        } => ReturnBody::bool_case(
+            (**subject).clone(),
+            int_return((**true_).clone()),
+            int_return((**false_).clone()),
+        ),
+        IntExprKind::IntCase {
+            subject,
+            clauses,
+            fallback,
+        } => ReturnBody::int_case(
+            (**subject).clone(),
+            clauses
+                .iter()
+                .map(|(value, branch)| (value.clone(), int_return(branch.clone())))
+                .collect(),
+            int_return((**fallback).clone()),
+        ),
+        IntExprKind::Block { steps, return_ } => {
+            ReturnBody::block(steps.clone(), int_return((**return_).clone()))
+        }
+        _ => ReturnBody::expr(expression),
+    }
+}
+
+pub(in crate::planner) fn string_return(expression: StringExpr) -> StringReturn {
+    match expression.kind() {
+        StringExprKind::Call { function, args } => ReturnBody::tail_call(*function, args.clone()),
+        StringExprKind::BoolCase {
+            subject,
+            true_,
+            false_,
+        } => ReturnBody::bool_case(
+            (**subject).clone(),
+            string_return((**true_).clone()),
+            string_return((**false_).clone()),
+        ),
+        StringExprKind::IntCase {
+            subject,
+            clauses,
+            fallback,
+        } => ReturnBody::int_case(
+            (**subject).clone(),
+            clauses
+                .iter()
+                .map(|(value, branch)| (value.clone(), string_return(branch.clone())))
+                .collect(),
+            string_return((**fallback).clone()),
+        ),
+        StringExprKind::Block { steps, return_ } => {
+            ReturnBody::block(steps.clone(), string_return((**return_).clone()))
+        }
+        _ => ReturnBody::expr(expression),
+    }
+}
+
+pub(in crate::planner) fn bool_return(expression: BoolExpr) -> BoolReturn {
+    match expression.kind() {
+        BoolExprKind::Call { function, args } => ReturnBody::tail_call(*function, args.clone()),
+        BoolExprKind::BoolCase {
+            subject,
+            true_,
+            false_,
+        } => ReturnBody::bool_case(
+            (**subject).clone(),
+            bool_return((**true_).clone()),
+            bool_return((**false_).clone()),
+        ),
+        BoolExprKind::IntCase {
+            subject,
+            clauses,
+            fallback,
+        } => ReturnBody::int_case(
+            (**subject).clone(),
+            clauses
+                .iter()
+                .map(|(value, branch)| (value.clone(), bool_return(branch.clone())))
+                .collect(),
+            bool_return((**fallback).clone()),
+        ),
+        BoolExprKind::Block { steps, return_ } => {
+            ReturnBody::block(steps.clone(), bool_return((**return_).clone()))
+        }
+        _ => ReturnBody::expr(expression),
+    }
+}
+
+pub(in crate::planner) fn nil_return(expression: NilExpr) -> NilReturn {
+    match expression.kind() {
+        NilExprKind::Call { function, args } => ReturnBody::tail_call(*function, args.clone()),
+        NilExprKind::BoolCase {
+            subject,
+            true_,
+            false_,
+        } => ReturnBody::bool_case(
+            (**subject).clone(),
+            nil_return((**true_).clone()),
+            nil_return((**false_).clone()),
+        ),
+        NilExprKind::IntCase {
+            subject,
+            clauses,
+            fallback,
+        } => ReturnBody::int_case(
+            (**subject).clone(),
+            clauses
+                .iter()
+                .map(|(value, branch)| (value.clone(), nil_return(branch.clone())))
+                .collect(),
+            nil_return((**fallback).clone()),
+        ),
+        NilExprKind::Block { steps, return_ } => {
+            ReturnBody::block(steps.clone(), nil_return((**return_).clone()))
+        }
+        _ => ReturnBody::expr(expression),
+    }
+}
+
+pub(in crate::planner) fn int_function_return(expression: IntFunctionExpr) -> IntFunctionReturn {
+    match expression.kind() {
+        IntFunctionExprKind::Call { function, args, .. } => {
+            ReturnBody::tail_call(*function, args.clone())
+        }
+        IntFunctionExprKind::BoolCase {
+            subject,
+            true_,
+            false_,
+        } => ReturnBody::bool_case(
+            (**subject).clone(),
+            int_function_return((**true_).clone()),
+            int_function_return((**false_).clone()),
+        ),
+        IntFunctionExprKind::IntCase {
+            subject,
+            clauses,
+            fallback,
+        } => ReturnBody::int_case(
+            (**subject).clone(),
+            clauses
+                .iter()
+                .map(|(value, branch)| (value.clone(), int_function_return(branch.clone())))
+                .collect(),
+            int_function_return((**fallback).clone()),
+        ),
+        IntFunctionExprKind::Block { steps, return_ } => {
+            ReturnBody::block(steps.clone(), int_function_return((**return_).clone()))
+        }
+        _ => ReturnBody::expr(expression),
+    }
+}
+
+pub(in crate::planner) fn string_function_return(
+    expression: StringFunctionExpr,
+) -> StringFunctionReturn {
+    match expression.kind() {
+        StringFunctionExprKind::Call { function, args, .. } => {
+            ReturnBody::tail_call(*function, args.clone())
+        }
+        StringFunctionExprKind::BoolCase {
+            subject,
+            true_,
+            false_,
+        } => ReturnBody::bool_case(
+            (**subject).clone(),
+            string_function_return((**true_).clone()),
+            string_function_return((**false_).clone()),
+        ),
+        StringFunctionExprKind::IntCase {
+            subject,
+            clauses,
+            fallback,
+        } => ReturnBody::int_case(
+            (**subject).clone(),
+            clauses
+                .iter()
+                .map(|(value, branch)| (value.clone(), string_function_return(branch.clone())))
+                .collect(),
+            string_function_return((**fallback).clone()),
+        ),
+        StringFunctionExprKind::Block { steps, return_ } => {
+            ReturnBody::block(steps.clone(), string_function_return((**return_).clone()))
+        }
+        _ => ReturnBody::expr(expression),
+    }
+}
+
+pub(in crate::planner) fn bool_function_return(expression: BoolFunctionExpr) -> BoolFunctionReturn {
+    match expression.kind() {
+        BoolFunctionExprKind::Call { function, args, .. } => {
+            ReturnBody::tail_call(*function, args.clone())
+        }
+        BoolFunctionExprKind::BoolCase {
+            subject,
+            true_,
+            false_,
+        } => ReturnBody::bool_case(
+            (**subject).clone(),
+            bool_function_return((**true_).clone()),
+            bool_function_return((**false_).clone()),
+        ),
+        BoolFunctionExprKind::IntCase {
+            subject,
+            clauses,
+            fallback,
+        } => ReturnBody::int_case(
+            (**subject).clone(),
+            clauses
+                .iter()
+                .map(|(value, branch)| (value.clone(), bool_function_return(branch.clone())))
+                .collect(),
+            bool_function_return((**fallback).clone()),
+        ),
+        BoolFunctionExprKind::Block { steps, return_ } => {
+            ReturnBody::block(steps.clone(), bool_function_return((**return_).clone()))
+        }
+        _ => ReturnBody::expr(expression),
+    }
+}
+
+pub(in crate::planner) fn nil_function_return(expression: NilFunctionExpr) -> NilFunctionReturn {
+    match expression.kind() {
+        NilFunctionExprKind::Call { function, args, .. } => {
+            ReturnBody::tail_call(*function, args.clone())
+        }
+        NilFunctionExprKind::BoolCase {
+            subject,
+            true_,
+            false_,
+        } => ReturnBody::bool_case(
+            (**subject).clone(),
+            nil_function_return((**true_).clone()),
+            nil_function_return((**false_).clone()),
+        ),
+        NilFunctionExprKind::IntCase {
+            subject,
+            clauses,
+            fallback,
+        } => ReturnBody::int_case(
+            (**subject).clone(),
+            clauses
+                .iter()
+                .map(|(value, branch)| (value.clone(), nil_function_return(branch.clone())))
+                .collect(),
+            nil_function_return((**fallback).clone()),
+        ),
+        NilFunctionExprKind::Block { steps, return_ } => {
+            ReturnBody::block(steps.clone(), nil_function_return((**return_).clone()))
+        }
+        _ => ReturnBody::expr(expression),
+    }
+}
+
+pub(in crate::planner) fn function_function_return(
+    expression: FunctionFunctionExpr,
+) -> FunctionFunctionReturn {
+    match expression.kind() {
+        FunctionFunctionExprKind::Call { function, args, .. } => {
+            ReturnBody::tail_call(*function, args.clone())
+        }
+        FunctionFunctionExprKind::BoolCase {
+            subject,
+            true_,
+            false_,
+        } => ReturnBody::bool_case(
+            (**subject).clone(),
+            function_function_return((**true_).clone()),
+            function_function_return((**false_).clone()),
+        ),
+        FunctionFunctionExprKind::IntCase {
+            subject,
+            clauses,
+            fallback,
+        } => ReturnBody::int_case(
+            (**subject).clone(),
+            clauses
+                .iter()
+                .map(|(value, branch)| (value.clone(), function_function_return(branch.clone())))
+                .collect(),
+            function_function_return((**fallback).clone()),
+        ),
+        FunctionFunctionExprKind::Block { steps, return_ } => {
+            ReturnBody::block(steps.clone(), function_function_return((**return_).clone()))
+        }
+        _ => ReturnBody::expr(expression),
     }
 }
 
@@ -190,13 +515,15 @@ pub(super) fn function_name(function: &TypedFunction) -> Result<EcoString, PlanE
 #[cfg(test)]
 mod tests {
     use crate::plan::{
-        BoolFunctionExpr, BoolFunctionFunctionId, BoolFunctionId, BoolFunctionValue, Expr,
-        FunctionExpr, FunctionFunctionExpr, FunctionFunctionFunctionId, FunctionFunctionId,
-        FunctionFunctionValue, FunctionId, FunctionType, IntFunctionExpr, IntFunctionFunctionId,
+        BoolExprKind, BoolFunctionExpr, BoolFunctionFunctionId, BoolFunctionId, BoolFunctionValue,
+        CallArgKind, ExecutionPlan, Expr, ExprKind, FunctionExpr, FunctionFunctionExpr,
+        FunctionFunctionFunctionId, FunctionFunctionId, FunctionFunctionValue, FunctionId,
+        FunctionPlan, FunctionType, IntExprKind, IntFunctionExpr, IntFunctionFunctionId,
         IntFunctionId, IntFunctionValue, IntLocalId, LocalId, NilFunctionExpr,
-        NilFunctionFunctionId, NilFunctionId, NilFunctionValue, ParamLocal, ReturnExpr,
-        RuntimeFunctionId, StringFunctionExpr, StringFunctionFunctionId, StringFunctionId,
-        StringFunctionValue, ValueType,
+        NilFunctionFunctionId, NilFunctionId, NilFunctionValue, ParamLocal, ReturnBody,
+        ReturnBodyKind, ReturnExpr, ReturnExprKind, RuntimeFunctionId, StepKind,
+        StringFunctionExpr, StringFunctionFunctionId, StringFunctionId, StringFunctionValue,
+        ValueType,
     };
     use crate::planner::context::FunctionInfo;
     use crate::planner::dsl::{
@@ -239,6 +566,428 @@ pub fn main() {
         );
 
         assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn plan_final_direct_call_as_tail_call() {
+        let actual = plan_module(compile(
+            r#"
+fn add(a: Int, b: Int) {
+  a + b
+}
+
+pub fn main() {
+  add(1, 2)
+}
+"#,
+        ))
+        .expect("source should plan");
+
+        assert!(matches!(
+            actual.main_function().return_().kind(),
+            ReturnExprKind::Int { body, .. }
+                if matches!(
+                    body.kind(),
+                    ReturnBodyKind::TailCall {
+                        function: IntFunctionId(1),
+                        args,
+                    } if args.len() == 2
+                )
+        ));
+    }
+
+    #[test]
+    fn plan_block_case_branches_preserve_tail_call() {
+        let actual = plan_module(compile(
+            r#"
+fn count_down(n: Int, acc: Int) {
+  {
+    case n {
+      0 -> acc
+      _ -> count_down(n - 1, acc + 1)
+    }
+  }
+}
+
+pub fn main() {
+  count_down(1, 0)
+}
+"#,
+        ))
+        .expect("source should plan");
+        assert!(matches!(
+            function_named(&actual, "count_down").return_().kind(),
+            ReturnExprKind::Int { body, .. } if block_int_case_fallback_is_tail_call(body)
+        ));
+    }
+
+    #[test]
+    fn plan_function_return_family_block_int_case_fallbacks_as_tail_calls() {
+        let actual = plan_module(compile(
+            r#"
+fn int_identity(value: Int) {
+  value
+}
+
+fn string_identity(value: String) {
+  value
+}
+
+fn bool_identity(value: Bool) {
+  value
+}
+
+fn nil_identity(value: Nil) {
+  value
+}
+
+fn get_int(n: Int) {
+  {
+    case n {
+      0 -> int_identity
+      _ -> get_int(n - 1)
+    }
+  }
+}
+
+fn get_string(n: Int) {
+  {
+    case n {
+      0 -> string_identity
+      _ -> get_string(n - 1)
+    }
+  }
+}
+
+fn get_bool(n: Int) {
+  {
+    case n {
+      0 -> bool_identity
+      _ -> get_bool(n - 1)
+    }
+  }
+}
+
+fn get_nil(n: Int) {
+  {
+    case n {
+      0 -> nil_identity
+      _ -> get_nil(n - 1)
+    }
+  }
+}
+
+fn get_getter(n: Int) {
+  {
+    case n {
+      0 -> get_int
+      _ -> get_getter(n - 1)
+    }
+  }
+}
+
+pub fn main() {
+  get_int(0)(1)
+}
+"#,
+        ))
+        .expect("source should plan");
+
+        assert!(matches!(
+            function_named(&actual, "get_int").return_().kind(),
+            ReturnExprKind::IntFunction { body, .. }
+                if block_int_case_fallback_is_tail_call(body)
+        ));
+        assert!(matches!(
+            function_named(&actual, "get_string").return_().kind(),
+            ReturnExprKind::StringFunction { body, .. }
+                if block_int_case_fallback_is_tail_call(body)
+        ));
+        assert!(matches!(
+            function_named(&actual, "get_bool").return_().kind(),
+            ReturnExprKind::BoolFunction { body, .. }
+                if block_int_case_fallback_is_tail_call(body)
+        ));
+        assert!(matches!(
+            function_named(&actual, "get_nil").return_().kind(),
+            ReturnExprKind::NilFunction { body, .. }
+                if block_int_case_fallback_is_tail_call(body)
+        ));
+        assert!(matches!(
+            function_named(&actual, "get_getter").return_().kind(),
+            ReturnExprKind::FunctionFunction { body, .. }
+                if block_int_case_fallback_is_tail_call(body)
+        ));
+    }
+
+    #[test]
+    fn plan_bool_case_branches_as_tail_calls() {
+        let actual = plan_module(compile(
+            r#"
+fn positive(value: Int) {
+  value
+}
+
+fn negative(value: Int) {
+  0 - value
+}
+
+fn choose(flag: Bool) {
+  case flag {
+    True -> positive(1)
+    False -> negative(1)
+  }
+}
+
+pub fn main() {
+  choose(True)
+}
+"#,
+        ))
+        .expect("source should plan");
+
+        assert!(matches!(
+            function_named(&actual, "choose").return_().kind(),
+            ReturnExprKind::Int { body, .. } if bool_case_branches_are_tail_calls(body)
+        ));
+    }
+
+    fn function_named<'a>(plan: &'a ExecutionPlan, name: &str) -> &'a FunctionPlan {
+        plan.functions()
+            .iter()
+            .find(|function| function.name() == name)
+            .expect("expected function should be planned")
+    }
+
+    fn block_int_case_fallback_is_tail_call<Expression, Function>(
+        body: &ReturnBody<Expression, Function>,
+    ) -> bool {
+        matches!(
+            body.kind(),
+            ReturnBodyKind::Block { return_, .. }
+                if matches!(
+                    return_.kind(),
+                    ReturnBodyKind::IntCase { fallback, .. }
+                        if matches!(fallback.kind(), ReturnBodyKind::TailCall { .. })
+                )
+        )
+    }
+
+    fn bool_case_branches_are_tail_calls<Expression, Function>(
+        body: &ReturnBody<Expression, Function>,
+    ) -> bool {
+        matches!(
+            body.kind(),
+            ReturnBodyKind::BoolCase { true_, false_, .. }
+                if matches!(true_.kind(), ReturnBodyKind::TailCall { .. })
+                    && matches!(false_.kind(), ReturnBodyKind::TailCall { .. })
+        )
+    }
+
+    #[test]
+    fn plan_non_tail_direct_call_stays_expression_call() {
+        let actual = plan_module(compile(
+            r#"
+fn add(a: Int, b: Int) {
+  a + b
+}
+
+pub fn main() {
+  add(1, 2) + 3
+}
+"#,
+        ))
+        .expect("source should plan");
+
+        assert!(matches!(
+            actual.main_function().return_().kind(),
+            ReturnExprKind::Int { body, .. }
+                if matches!(
+                    body.kind(),
+                    ReturnBodyKind::Expr(expression)
+                        if matches!(
+                            expression.kind(),
+                            IntExprKind::Add { left, .. }
+                                if matches!(left.kind(), IntExprKind::Call { .. })
+                        )
+                )
+        ));
+    }
+
+    #[test]
+    fn plan_call_argument_direct_call_stays_expression_call() {
+        let actual = plan_module(compile(
+            r#"
+fn add(a: Int, b: Int) {
+  a + b
+}
+
+fn identity(value: Int) {
+  value
+}
+
+pub fn main() {
+  identity(add(1, 2))
+}
+"#,
+        ))
+        .expect("source should plan");
+
+        assert!(matches!(
+            actual.main_function().return_().kind(),
+            ReturnExprKind::Int { body, .. }
+                if matches!(
+                    body.kind(),
+                    ReturnBodyKind::TailCall {
+                        function: IntFunctionId(2),
+                        args,
+                    } if matches!(
+                        args.as_slice(),
+                        [arg] if matches!(
+                            arg.kind(),
+                            CallArgKind::Int { value, .. } if matches!(
+                                value.kind(),
+                                IntExprKind::Call {
+                                    function: IntFunctionId(1),
+                                    ..
+                                }
+                            )
+                        )
+                    )
+                )
+        ));
+    }
+
+    #[test]
+    fn plan_expression_statement_direct_call_stays_expression_call() {
+        let actual = plan_module(compile(
+            r#"
+fn add(a: Int, b: Int) {
+  a + b
+}
+
+pub fn main() {
+  add(1, 2)
+  3
+}
+"#,
+        ))
+        .expect("source should plan");
+
+        assert!(matches!(
+            actual.main_function().steps(),
+            [
+                step
+            ] if matches!(
+                step.kind(),
+                StepKind::Evaluate(expression)
+                    if matches!(
+                        expression.kind(),
+                        ExprKind::Int(expression) if matches!(
+                            expression.kind(),
+                            IntExprKind::Call {
+                                function: IntFunctionId(1),
+                                ..
+                            }
+                        )
+                    )
+            )
+        ));
+    }
+
+    #[test]
+    fn plan_let_value_direct_call_stays_expression_call() {
+        let actual = plan_module(compile(
+            r#"
+fn add(a: Int, b: Int) {
+  a + b
+}
+
+pub fn main() {
+  let value = add(1, 2)
+  value
+}
+"#,
+        ))
+        .expect("source should plan");
+
+        assert!(matches!(
+            actual.main_function().steps(),
+            [
+                step
+            ] if matches!(
+                step.kind(),
+                StepKind::LetInt { value, .. } if matches!(
+                    value.kind(),
+                    IntExprKind::Call {
+                        function: IntFunctionId(1),
+                        ..
+                    }
+                )
+            )
+        ));
+    }
+
+    #[test]
+    fn plan_short_circuit_rhs_direct_call_stays_expression_call() {
+        let actual = plan_module(compile(
+            r#"
+fn truth() {
+  True
+}
+
+pub fn main() {
+  False && truth()
+}
+"#,
+        ))
+        .expect("source should plan");
+
+        assert!(matches!(
+            actual.main_function().return_().kind(),
+            ReturnExprKind::Bool { body, .. }
+                if matches!(
+                    body.kind(),
+                    ReturnBodyKind::Expr(expression)
+                        if matches!(
+                            expression.kind(),
+                            BoolExprKind::And { right, .. } if matches!(
+                                right.kind(),
+                                BoolExprKind::Call {
+                                    function: BoolFunctionId(1),
+                                    ..
+                                }
+                            )
+                        )
+                )
+        ));
+    }
+
+    #[test]
+    fn plan_final_function_value_call_stays_expression_call() {
+        let actual = plan_module(compile(
+            r#"
+fn add(a: Int, b: Int) {
+  a + b
+}
+
+pub fn main() {
+  let f = add
+  f(1, 2)
+}
+"#,
+        ))
+        .expect("source should plan");
+
+        assert!(matches!(
+            actual.main_function().return_().kind(),
+            ReturnExprKind::Int { body, .. }
+                if matches!(
+                    body.kind(),
+                    ReturnBodyKind::Expr(expression)
+                        if matches!(expression.kind(), IntExprKind::FunctionCall { .. })
+                )
+        ));
     }
 
     #[test]
