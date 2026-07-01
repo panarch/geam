@@ -154,6 +154,9 @@ Test helpers reduce real repetition without hiding the reviewed shape.
 - Name helpers after their fixture role, not their implementation detail.
 - Keep helpers in the nearest module that uses them.
 - Use the crate-internal `planner::dsl` helpers for readable expected plans.
+- Expected-plan DSL is an oracle, not a lowering path: helpers may reduce
+  constructor noise, but must not infer, hide, or call planner lowering for the
+  behavior under test.
 - Keep test-only panic guards visible and covered rather than scattering
   untested inline `panic!` branches.
 
