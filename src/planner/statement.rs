@@ -1,12 +1,14 @@
 use crate::plan::{ExprKind, FunctionExprKind, Step};
 use crate::planner::context::PlanContext;
 use crate::planner::error::{
-    InvalidTypedAstReason, PlanError, UnsupportedAssignmentKind, UnsupportedPatternKind,
-    UnsupportedStatementKind,
+    InvalidTypedAstReason, InvalidUseShapeReason, PlanError, UnsupportedAssignmentKind,
+    UnsupportedPatternKind, UnsupportedStatementKind,
 };
-use crate::planner::expression::plan_expr;
+use crate::planner::expression::{plan_expr, plan_use_call};
 use ecow::EcoString;
-use gleam_core::ast::{AssignmentKind, Pattern, Statement, TypedAssignment, TypedPattern};
+use gleam_core::ast::{
+    AssignmentKind, Pattern, Statement, TypedAssignment, TypedPattern, TypedUseAssignment,
+};
 use vec1::Vec1;
 
 pub(super) struct PlannedStatements {
@@ -52,11 +54,7 @@ fn plan_ordered_steps_and_return(
                 kind: UnsupportedStatementKind::AssignmentAsFinalStatement,
             });
         }
-        Statement::Use(_) => {
-            return Err(PlanError::UnsupportedStatement {
-                kind: UnsupportedStatementKind::Use,
-            });
-        }
+        Statement::Use(use_) => plan_use_statement(use_, context)?,
         Statement::Assert(_) => {
             return Err(PlanError::UnsupportedStatement {
                 kind: UnsupportedStatementKind::AssertAsFinalStatement,
@@ -65,6 +63,14 @@ fn plan_ordered_steps_and_return(
     };
 
     Ok(PlannedStatements { steps, return_ })
+}
+
+fn plan_use_statement(
+    use_: gleam_core::ast::TypedUse,
+    context: &mut PlanContext<'_>,
+) -> Result<crate::plan::Expr, PlanError> {
+    validate_use_assignments(&use_.assignments)?;
+    plan_use_call(*use_.call, context)
 }
 
 pub(super) fn plan_runtime_step(
@@ -158,48 +164,81 @@ pub(in crate::planner) fn plan_variable_runtime_step(
 fn plan_variable_pattern(pattern: TypedPattern) -> Result<EcoString, PlanError> {
     match pattern {
         Pattern::Variable { name, .. } => Ok(name),
-        Pattern::Assign { .. } => Err(PlanError::UnsupportedPattern {
+        pattern => Err(non_variable_pattern_error(&pattern)),
+    }
+}
+
+fn validate_use_assignments(assignments: &[TypedUseAssignment]) -> Result<(), PlanError> {
+    for assignment in assignments {
+        validate_use_assignment_pattern(&assignment.pattern)?;
+    }
+    Ok(())
+}
+
+fn validate_use_assignment_pattern(pattern: &TypedPattern) -> Result<(), PlanError> {
+    match pattern {
+        Pattern::Variable { .. } => Err(invalid_use_shape(
+            InvalidUseShapeReason::UnexpectedVariableAssignment,
+        )),
+        pattern => Err(non_variable_pattern_error(pattern)),
+    }
+}
+
+fn non_variable_pattern_error(pattern: &TypedPattern) -> PlanError {
+    match pattern {
+        Pattern::Assign { .. } => PlanError::UnsupportedPattern {
             kind: UnsupportedPatternKind::Assign,
-        }),
-        Pattern::Discard { .. } => Err(PlanError::UnsupportedPattern {
+        },
+        Pattern::Discard { .. } => PlanError::UnsupportedPattern {
             kind: UnsupportedPatternKind::Discard,
-        }),
-        Pattern::Tuple { .. } => Err(PlanError::UnsupportedPattern {
+        },
+        Pattern::Tuple { .. } => PlanError::UnsupportedPattern {
             kind: UnsupportedPatternKind::Tuple,
-        }),
+        },
         Pattern::Int { .. }
         | Pattern::Float { .. }
         | Pattern::String { .. }
+        | Pattern::BitArray { .. }
         | Pattern::BitArraySize(_)
         | Pattern::List { .. }
         | Pattern::Constructor { .. }
-        | Pattern::BitArray { .. }
         | Pattern::StringPrefix { .. }
-        | Pattern::Invalid { .. } => Err(PlanError::InvalidTypedAst {
+        | Pattern::Invalid { .. }
+        | Pattern::Variable { .. } => PlanError::InvalidTypedAst {
             reason: InvalidTypedAstReason::InvalidPattern,
-        }),
+        },
+    }
+}
+
+fn invalid_use_shape(reason: InvalidUseShapeReason) -> PlanError {
+    PlanError::InvalidTypedAst {
+        reason: InvalidTypedAstReason::UseShape { reason },
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::plan_variable_pattern;
-    use crate::plan::{BoolLocalId, IntLocalId, LocalId, NilLocalId, StringLocalId};
+    use crate::plan::{BoolLocalId, IntLocalId, LocalId, NilLocalId, StringLocalId, ValueType};
     use crate::planner::dsl::{
-        bool_, bool_case_int_function, bool_function_ref, function, int, int_function_ref,
-        let_bool_function_step, let_int_function_step, let_nil_function_step,
-        let_string_function_step, local_bool, local_int, local_nil, local_string, module,
-        nil_function_ref, string_function_ref,
+        bool_, bool_case_int_function, bool_function_ref, call_int_function, capture_int, function,
+        int, int_function_arg, int_function_call_arg, int_function_closure, int_function_ref,
+        int_return_tail_call, let_bool_function_step, let_int_function_step, let_nil_function_step,
+        let_string_function_step, local_bool, local_int, local_int_function, local_nil,
+        local_string, module, module_with_anonymous, nil_function_ref, string_function_ref,
     };
     use crate::planner::plan_module;
     use crate::planner::support::{compile, compile_minimal_module, dummy_span, expect_plan_error};
     use crate::planner::{
-        InvalidTypedAstReason, PlanError, UnsupportedAssignmentKind, UnsupportedPatternKind,
-        UnsupportedStatementKind,
+        InvalidExpressionShapeKind, InvalidExpressionType, InvalidFunctionShapeReason,
+        InvalidTypedAstReason, InvalidUseShapeReason, PlanError, UnsupportedArgumentReason,
+        UnsupportedAssignmentKind, UnsupportedPatternKind, UnsupportedStatementKind,
     };
     use gleam_core::analyse::Inferred;
     use gleam_core::ast::{
-        AssignName, AssignmentKind, BitArraySize, Pattern, Statement, TypedAssignment, TypedExpr,
+        AssignName, AssignmentKind, BitArraySize, CallArg, FunctionLiteralKind,
+        ImplicitCallArgOrigin, Pattern, Statement, TypedAssignment, TypedExpr, TypedModule,
+        TypedUse, UseAssignment,
     };
     use gleam_core::exhaustiveness::CompiledCase;
     use gleam_core::parse::LiteralFloatValue;
@@ -331,23 +370,6 @@ pub fn main() {
     }
 
     #[test]
-    fn reject_profile_tuple_pattern() {
-        assert_eq!(
-            expect_plan_error(
-                r#"
-pub fn main() {
-  let #(a, b) = #(1, 2)
-  a
-}
-"#,
-            ),
-            PlanError::UnsupportedPattern {
-                kind: UnsupportedPatternKind::Tuple,
-            },
-        );
-    }
-
-    #[test]
     fn reject_profile_final_statement_positions() {
         assert_eq!(
             expect_plan_error(
@@ -377,10 +399,9 @@ pub fn main() {
     }
 
     #[test]
-    fn reject_profile_use_syntax() {
-        assert_eq!(
-            expect_plan_error(
-                r#"
+    fn plan_use_syntax() {
+        let actual = plan_module(compile(
+            r#"
 pub fn main() {
   use <- pair
   1
@@ -390,11 +411,285 @@ fn pair(callback: fn() -> Int) {
   callback()
 }
 "#,
+        ))
+        .expect("source should plan");
+        let expected = module_with_anonymous(
+            "main",
+            function(
+                "main",
+                int_return_tail_call(
+                    1,
+                    [int_function_arg(
+                        0,
+                        int_function_ref(2, Vec::<LocalId>::new()),
+                    )],
+                ),
             ),
-            PlanError::UnsupportedStatement {
-                kind: UnsupportedStatementKind::Use,
-            },
+            [function(
+                "pair",
+                call_int_function(
+                    local_int_function(0, "callback", Vec::<ValueType>::new()),
+                    [],
+                ),
+            )
+            .param_int_function(0, "callback", Vec::<ValueType>::new())],
+            [function("<anonymous:0>", int(1))],
         );
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn plan_use_syntax_with_assignment_and_capture() {
+        let actual = plan_module(compile(
+            r#"
+fn with_value(continue: fn(Int) -> Int) {
+  continue(32)
+}
+
+pub fn main() {
+  let base = 10
+  use value <- with_value
+  value + base
+}
+"#,
+        ))
+        .expect("source should plan");
+        let callback = int_function_closure(
+            2,
+            [LocalId::Int(IntLocalId(0))],
+            [capture_int(1, local_int(0, "base"))],
+        );
+        let expected = module_with_anonymous(
+            "main",
+            function(
+                "main",
+                int_return_tail_call(1, [int_function_arg(0, callback)]),
+            )
+            .let_int(0, "base", int(10)),
+            [function(
+                "with_value",
+                call_int_function(
+                    local_int_function(0, "continue", [ValueType::Int]),
+                    [int_function_call_arg(0, int(32))],
+                ),
+            )
+            .param_int_function(0, "continue", [ValueType::Int])],
+            [function(
+                "<anonymous:0>",
+                local_int(0, "value").add_int(local_int(1, "base")),
+            )
+            .param_int(0, "value")],
+        );
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn reject_profile_use_assignment_patterns() {
+        let cases = [
+            (
+                r#"
+fn with_value(continue: fn(Int) -> Int) {
+  continue(1)
+}
+
+pub fn main() {
+  use _ <- with_value
+  1
+}
+"#,
+                PlanError::UnsupportedArgument {
+                    function: "<anonymous:0>".into(),
+                    reason: UnsupportedArgumentReason::Discard,
+                },
+            ),
+            (
+                r#"
+fn with_value(continue: fn(Int) -> Int) {
+  continue(1)
+}
+
+pub fn main() {
+  use value as alias <- with_value
+  alias
+}
+"#,
+                PlanError::UnsupportedPattern {
+                    kind: UnsupportedPatternKind::Assign,
+                },
+            ),
+        ];
+
+        for (src, expected) in cases {
+            assert_eq!(expect_plan_error(src), expected);
+        }
+    }
+
+    #[test]
+    fn reject_margin_use_call_shapes() {
+        let mut non_call_rhs = compile_minimal_module();
+        non_call_rhs.definitions.functions[0].body = vec![Statement::Use(gleam_core::ast::Use {
+            call: Box::new(typed_int_expr(1)),
+            location: dummy_span(),
+            right_hand_side_location: dummy_span(),
+            assignments_location: dummy_span(),
+            assignments: Vec::new(),
+        })];
+        assert_eq!(
+            plan_module(non_call_rhs),
+            Err(invalid_use_shape(InvalidUseShapeReason::NonCallRhs)),
+        );
+
+        let mut missing_callback = compile_use_module();
+        expect_use_call_arguments_mut(&mut missing_callback).pop();
+        assert_eq!(
+            plan_module(missing_callback),
+            Err(invalid_use_shape(InvalidUseShapeReason::MissingCallback)),
+        );
+
+        let mut unexpected_assignment = compile_use_module();
+        expect_final_use_mut(&mut unexpected_assignment)
+            .assignments
+            .push(UseAssignment {
+                location: dummy_span(),
+                pattern: Pattern::Variable {
+                    location: dummy_span(),
+                    name: "value".into(),
+                    type_: type_::int(),
+                    origin: VariableOrigin::generated(),
+                },
+                annotation: None,
+            });
+        assert_eq!(
+            plan_module(unexpected_assignment),
+            Err(invalid_use_shape(
+                InvalidUseShapeReason::UnexpectedVariableAssignment
+            )),
+        );
+
+        let mut labelled_argument = compile_use_with_argument_module();
+        let arguments = expect_use_call_arguments_mut(&mut labelled_argument);
+        arguments[0].label = Some("value".into());
+        assert_eq!(
+            plan_module(labelled_argument),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::CallShape {
+                    reason: crate::planner::InvalidCallShapeReason::LabelledArguments,
+                },
+            }),
+        );
+
+        let mut multiple_callbacks = compile_use_module();
+        let arguments = expect_use_call_arguments_mut(&mut multiple_callbacks);
+        let callback = arguments
+            .last()
+            .expect("use call should have callback")
+            .clone();
+        arguments.push(callback);
+        assert_eq!(
+            plan_module(multiple_callbacks),
+            Err(invalid_use_shape(InvalidUseShapeReason::MultipleCallbacks)),
+        );
+
+        let mut callback_not_last = compile_use_with_argument_module();
+        let arguments = expect_use_call_arguments_mut(&mut callback_not_last);
+        arguments.swap(0, 1);
+        assert_eq!(
+            plan_module(callback_not_last),
+            Err(invalid_use_shape(InvalidUseShapeReason::CallbackNotLast)),
+        );
+
+        let mut unsupported_implicit = compile_use_module();
+        let callback = expect_use_callback_argument_mut(&mut unsupported_implicit);
+        callback.implicit = Some(ImplicitCallArgOrigin::IncorrectArityUse);
+        assert_eq!(
+            plan_module(unsupported_implicit),
+            Err(invalid_use_shape(
+                InvalidUseShapeReason::UnsupportedImplicitArgument
+            )),
+        );
+
+        let mut callback_not_function = compile_use_module();
+        expect_use_callback_argument_mut(&mut callback_not_function).value = typed_int_expr(1);
+        assert_eq!(
+            plan_module(callback_not_function),
+            Err(invalid_use_shape(
+                InvalidUseShapeReason::CallbackNotFunctionLiteral
+            )),
+        );
+
+        let mut callback_literal_kind = compile_use_module();
+        let (_, kind, _) = expect_use_callback_function_mut(&mut callback_literal_kind);
+        *kind = FunctionLiteralKind::Anonymous { head: dummy_span() };
+        assert_eq!(
+            plan_module(callback_literal_kind),
+            Err(invalid_use_shape(
+                InvalidUseShapeReason::CallbackLiteralKindNotUse
+            )),
+        );
+
+        let mut callback_non_function_type = compile_use_module();
+        let (type_, _, _) = expect_use_callback_function_mut(&mut callback_non_function_type);
+        *type_ = type_::int();
+        assert_eq!(
+            plan_module(callback_non_function_type),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionType {
+                    expected: InvalidExpressionType::Function,
+                    actual: InvalidExpressionType::Int,
+                },
+            }),
+        );
+
+        let mut callback_unsupported_function_type = compile_use_module();
+        let (type_, _, _) =
+            expect_use_callback_function_mut(&mut callback_unsupported_function_type);
+        *type_ = type_::list(type_::int());
+        assert_eq!(
+            plan_module(callback_unsupported_function_type),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionShape {
+                    kind: InvalidExpressionShapeKind::Invalid,
+                },
+            }),
+        );
+
+        let mut callback_argument_type = compile_use_module();
+        let (_, _, arguments) = expect_use_callback_function_mut(&mut callback_argument_type);
+        arguments[0].type_ = type_::string();
+        assert_eq!(
+            plan_module(callback_argument_type),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::FunctionShape {
+                    name: "<anonymous:0>".into(),
+                    reason: InvalidFunctionShapeReason::ArgumentTypeMismatch,
+                },
+            }),
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "expected final use statement")]
+    fn expect_final_use_mut_panics_on_expression() {
+        let mut module = compile_minimal_module();
+        expect_final_use_mut(&mut module);
+    }
+
+    #[test]
+    #[should_panic(expected = "expected use call expression")]
+    fn expect_use_call_arguments_mut_panics_on_non_call_rhs() {
+        let mut module = compile_use_module();
+        *expect_final_use_mut(&mut module).call = typed_int_expr(1);
+        expect_use_call_arguments_mut(&mut module);
+    }
+
+    #[test]
+    #[should_panic(expected = "use callback should be a function literal")]
+    fn expect_use_callback_function_mut_panics_on_non_function() {
+        let mut module = compile_use_module();
+        expect_use_callback_argument_mut(&mut module).value = typed_int_expr(1);
+        expect_use_callback_function_mut(&mut module);
     }
 
     #[test]
@@ -516,7 +811,7 @@ pub fn main() {
 
         assert_eq!(plan_variable_pattern(variable("x")), Ok("x".into()));
 
-        let patterns = vec![
+        let patterns = [
             Pattern::Int {
                 location: dummy_span(),
                 value: "1".into(),
@@ -542,6 +837,10 @@ pub fn main() {
                 tail: None,
                 type_: type_::list(type_::int()),
             },
+            Pattern::BitArray {
+                location: dummy_span(),
+                segments: Vec::new(),
+            },
             Pattern::Constructor {
                 location: dummy_span(),
                 name_location: dummy_span(),
@@ -551,10 +850,6 @@ pub fn main() {
                 constructor: Inferred::Unknown,
                 spread: None,
                 type_: type_::int(),
-            },
-            Pattern::BitArray {
-                location: dummy_span(),
-                segments: Vec::new(),
             },
             Pattern::StringPrefix {
                 location: dummy_span(),
@@ -586,6 +881,89 @@ pub fn main() {
             type_: type_::int(),
             value: value.to_string().into(),
             int_value: BigInt::from(value),
+        }
+    }
+
+    fn compile_use_module() -> TypedModule {
+        compile(
+            r#"
+fn with_value(continue: fn(Int) -> Int) {
+  continue(1)
+}
+
+pub fn main() {
+  use value <- with_value
+  value
+}
+"#,
+        )
+    }
+
+    fn compile_use_with_argument_module() -> TypedModule {
+        compile(
+            r#"
+fn with_value(value: Int, continue: fn(Int) -> Int) {
+  continue(value)
+}
+
+pub fn main() {
+  use value <- with_value(1)
+  value
+}
+"#,
+        )
+    }
+
+    fn expect_final_use_mut(module: &mut TypedModule) -> &mut TypedUse {
+        let main = module
+            .definitions
+            .functions
+            .iter_mut()
+            .find(|function| function.name.as_ref().is_some_and(|name| name.1 == "main"))
+            .expect("module should have main");
+        let [Statement::Use(use_)] = main.body.as_mut_slice() else {
+            panic!("expected final use statement");
+        };
+        use_
+    }
+
+    fn expect_use_call_arguments_mut(module: &mut TypedModule) -> &mut Vec<CallArg<TypedExpr>> {
+        let use_ = expect_final_use_mut(module);
+        let TypedExpr::Call { arguments, .. } = use_.call.as_mut() else {
+            panic!("expected use call expression");
+        };
+        arguments
+    }
+
+    fn expect_use_callback_argument_mut(module: &mut TypedModule) -> &mut CallArg<TypedExpr> {
+        expect_use_call_arguments_mut(module)
+            .last_mut()
+            .expect("use call should have callback")
+    }
+
+    fn expect_use_callback_function_mut(
+        module: &mut TypedModule,
+    ) -> (
+        &mut std::sync::Arc<gleam_core::type_::Type>,
+        &mut FunctionLiteralKind,
+        &mut Vec<gleam_core::ast::TypedArg>,
+    ) {
+        let callback = expect_use_callback_argument_mut(module);
+        let TypedExpr::Fn {
+            type_,
+            kind,
+            arguments,
+            ..
+        } = &mut callback.value
+        else {
+            panic!("use callback should be a function literal");
+        };
+        (type_, kind, arguments)
+    }
+
+    fn invalid_use_shape(reason: InvalidUseShapeReason) -> PlanError {
+        PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::UseShape { reason },
         }
     }
 }

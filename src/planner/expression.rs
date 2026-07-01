@@ -111,6 +111,13 @@ pub(super) fn plan_expr(
     }
 }
 
+pub(super) fn plan_use_call(
+    call: TypedExpr,
+    context: &mut PlanContext<'_>,
+) -> Result<Expr, PlanError> {
+    call::plan_use_call(call, context)
+}
+
 fn plan_int_expr(
     expression: TypedExpr,
     context: &mut PlanContext<'_>,
