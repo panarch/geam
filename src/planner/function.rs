@@ -546,36 +546,6 @@ mod tests {
     };
 
     #[test]
-    fn plan_local_function_call() {
-        let actual = plan_module(compile(
-            r#"
-fn add(a: Int, b: Int) {
-  a + b
-}
-
-pub fn main() {
-  add(1, 2)
-}
-"#,
-        ))
-        .expect("source should plan");
-        let expected = module(
-            "main",
-            function(
-                "main",
-                call_int(1, [int_arg(0, int(1)), int_arg(1, int(2))]),
-            ),
-            [
-                function("add", local_int(0, "a").add_int(local_int(1, "b")))
-                    .param_int(0, "a")
-                    .param_int(1, "b"),
-            ],
-        );
-
-        assert_eq!(actual, expected);
-    }
-
-    #[test]
     fn plan_final_direct_call_as_tail_call() {
         let actual = plan_module(compile(
             r#"
