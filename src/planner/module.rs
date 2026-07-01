@@ -1,6 +1,6 @@
 use crate::plan::{
     ExecutionPlan, FunctionFunctionLocalId, FunctionId, FunctionType, IntFunctionLocalId,
-    ParamLocal, ValueType,
+    ParamBinding, ParamLocal, ValueType,
 };
 use crate::planner::context::{
     AnonymousFunctions, FunctionInfo, FunctionParam, FunctionRuntimeIds,
@@ -223,19 +223,16 @@ pub(super) fn function_params(
     arguments
         .iter()
         .map(|argument| {
-            let Some(name) = argument.names.get_variable_name().cloned() else {
-                return Err(PlanError::UnsupportedArgument {
-                    function: function_name.clone(),
-                    reason: UnsupportedArgumentReason::Discard,
-                });
+            let binding = match &argument.names {
+                ArgNames::Named { name, .. } => ParamBinding::Named(name.clone()),
+                ArgNames::Discard { .. } => ParamBinding::Discard,
+                ArgNames::LabelledDiscard { .. } | ArgNames::NamedLabelled { .. } => {
+                    return Err(PlanError::UnsupportedArgument {
+                        function: function_name.clone(),
+                        reason: UnsupportedArgumentReason::Labelled,
+                    });
+                }
             };
-
-            if !matches!(argument.names, ArgNames::Named { .. }) {
-                return Err(PlanError::UnsupportedArgument {
-                    function: function_name.clone(),
-                    reason: UnsupportedArgumentReason::Labelled,
-                });
-            }
 
             let Some(type_) = ValueType::from_gleam(&argument.type_) else {
                 return Err(PlanError::UnsupportedArgument {
@@ -273,7 +270,7 @@ pub(super) fn function_params(
                     &mut next_function_function,
                 ),
             };
-            Ok(FunctionParam { local, name })
+            Ok(FunctionParam { local, binding })
         })
         .collect()
 }
@@ -347,7 +344,8 @@ mod tests {
         LocalId, ParamLocal, RuntimeFunctionId, ValueType,
     };
     use crate::planner::dsl::{
-        call_int_returning_function, function, function_ref, int, local_int, module,
+        call_int_returning_function, function, function_ref, int, int_arg, int_return_tail_call,
+        local_int, module,
     };
     use crate::planner::support::{compile, expect_plan_error};
     use crate::planner::{
@@ -635,6 +633,34 @@ fn getter(callback: fn() -> fn(Int) -> Int) {
     }
 
     #[test]
+    fn plan_discard_function_argument_slots() {
+        let actual = plan_module(compile(
+            r#"
+fn pick(_: Int, value: Int) {
+  value
+}
+
+pub fn main() {
+  pick(1, 42)
+}
+"#,
+        ))
+        .expect("source should plan");
+        let expected = module(
+            "main",
+            function(
+                "main",
+                int_return_tail_call(1, [int_arg(0, int(1)), int_arg(1, int(42))]),
+            ),
+            [function("pick", local_int(1, "value"))
+                .discard_int_param(0)
+                .param_int(1, "value")],
+        );
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
     fn reject_profile_unsupported_function_argument_type() {
         assert_eq!(
             expect_plan_error(
@@ -656,25 +682,7 @@ fn count(values: List(Int)) {
     }
 
     #[test]
-    fn reject_profile_function_argument_name_shape() {
-        assert_eq!(
-            expect_plan_error(
-                r#"
-fn helper(_: Int) {
-  1
-}
-
-pub fn main() {
-  helper(1)
-}
-"#,
-            ),
-            PlanError::UnsupportedArgument {
-                function: "helper".into(),
-                reason: UnsupportedArgumentReason::Discard,
-            },
-        );
-
+    fn reject_profile_labelled_function_argument() {
         assert_eq!(
             expect_plan_error(
                 r#"

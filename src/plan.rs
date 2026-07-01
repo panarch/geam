@@ -25,7 +25,7 @@ pub(crate) use function::{
     NilFunctionReturn, NilReturn, ParamLocal, ReturnBody, ReturnBodyKind, ReturnExprKind,
     RuntimeFunction, StringFunctionReturn, StringReturn,
 };
-pub use function::{FunctionPlan, Param, ReturnExpr};
+pub use function::{FunctionPlan, Param, ParamBinding, ReturnExpr};
 pub use id::{
     BoolFunctionFunctionId, BoolFunctionId, BoolFunctionLocalId, BoolLocalId,
     FunctionFunctionFunctionId, FunctionFunctionLocalId, FunctionId, IntFunctionFunctionId,

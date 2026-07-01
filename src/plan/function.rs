@@ -25,7 +25,13 @@ pub struct FunctionPlan {
 #[derive(Debug, PartialEq)]
 pub struct Param {
     local: ParamLocal,
-    name: EcoString,
+    binding: ParamBinding,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ParamBinding {
+    Named(EcoString),
+    Discard,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -487,12 +493,29 @@ impl<Return> RuntimeFunction<Return> {
 }
 
 impl Param {
-    pub(crate) fn new(local: ParamLocal, name: EcoString) -> Self {
-        Self { local, name }
+    pub(crate) fn named(local: ParamLocal, name: EcoString) -> Self {
+        Self {
+            local,
+            binding: ParamBinding::Named(name),
+        }
     }
 
-    pub fn name(&self) -> &EcoString {
-        &self.name
+    pub(crate) fn discard(local: ParamLocal) -> Self {
+        Self {
+            local,
+            binding: ParamBinding::Discard,
+        }
+    }
+
+    pub fn name(&self) -> Option<&EcoString> {
+        match &self.binding {
+            ParamBinding::Named(name) => Some(name),
+            ParamBinding::Discard => None,
+        }
+    }
+
+    pub fn binding(&self) -> &ParamBinding {
+        &self.binding
     }
 
     pub(crate) fn local(&self) -> &ParamLocal {
@@ -554,7 +577,7 @@ impl ParamLocal {
 
 #[cfg(test)]
 mod tests {
-    use super::{FunctionPlan, Param, ParamLocal, ReturnExpr, RuntimeFunction};
+    use super::{FunctionPlan, Param, ParamBinding, ParamLocal, ReturnExpr, RuntimeFunction};
     use crate::plan::{
         BoolExpr, BoolFunctionExpr, BoolFunctionFunctionId, BoolFunctionId, BoolFunctionLocalId,
         BoolFunctionValue, BoolLocalId, FrameLayout, FunctionFunctionExpr,
@@ -569,7 +592,7 @@ mod tests {
 
     #[test]
     fn function_plan_accessors() {
-        let param = Param::new(ParamLocal::int(IntLocalId(0)), "x".into());
+        let param = Param::named(ParamLocal::int(IntLocalId(0)), "x".into());
         let return_ = ReturnExpr::int(IntFunctionId(0), IntExpr::value(BigInt::from(1)));
         let function = FunctionPlan::new(
             FunctionId::new(0),
@@ -582,7 +605,7 @@ mod tests {
         assert_eq!(function.id(), FunctionId::new(0));
         assert_eq!(function.name(), "main");
         assert_eq!(function.params().len(), 1);
-        assert_eq!(function.params()[0].name(), "x");
+        assert_eq!(function.params()[0].name(), Some(&"x".into()));
         assert_eq!(function.steps(), &[]);
         assert_eq!(
             function.return_(),
@@ -667,10 +690,14 @@ mod tests {
     }
 
     #[test]
-    fn param_name_accessor() {
-        let param = Param::new(ParamLocal::int(IntLocalId(0)), "x".into());
+    fn param_binding_accessors() {
+        let named = Param::named(ParamLocal::int(IntLocalId(0)), "x".into());
+        let discard = Param::discard(ParamLocal::int(IntLocalId(1)));
 
-        assert_eq!(param.name(), "x");
+        assert_eq!(named.name(), Some(&"x".into()));
+        assert_eq!(named.binding(), &ParamBinding::Named("x".into()));
+        assert_eq!(discard.name(), None);
+        assert_eq!(discard.binding(), &ParamBinding::Discard);
     }
 
     #[test]

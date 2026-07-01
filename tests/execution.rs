@@ -34,6 +34,7 @@ mod values {
 mod bindings {
     execution_cases!("bindings";
         let_binding,
+        let_discard_binding,
         string_let_binding,
         bool_let_binding,
         nil_let_binding,
@@ -95,7 +96,10 @@ mod functions {
 
     mod argument {
         execution_cases!("functions/argument";
+            discard_argument,
+            discard_mixed_arguments,
             function_value_argument_callback,
+            function_value_argument_discard,
             function_value_argument_higher_order_alias,
             function_value_argument_higher_order_return_shapes,
             function_value_argument_input_shapes,
@@ -128,6 +132,7 @@ mod functions {
 
     mod anonymous {
         execution_cases!("functions/anonymous";
+            anonymous_discard_argument,
             anonymous_function_local_call,
             anonymous_function_immediate_call,
             anonymous_function_argument,
@@ -147,6 +152,7 @@ mod functions {
         execution_cases!("functions/use";
             use_no_assignment,
             use_value,
+            use_discard_assignment,
             use_multiple_assignments,
             use_nested,
             use_capture,
@@ -186,7 +192,6 @@ mod rejection {
 
     mod argument {
         rejection_cases!("argument";
-            argument_discard,
             argument_labelled,
             argument_unsupported_type,
         );
@@ -194,17 +199,10 @@ mod rejection {
 
     mod anonymous {
         rejection_cases!("anonymous";
-            anonymous_discard_argument,
             anonymous_assert_statement,
             anonymous_unsupported_body,
             anonymous_unsupported_return_type,
             function_capture_literal,
-        );
-    }
-
-    mod use_syntax {
-        rejection_cases!("use";
-            use_discard_assignment,
         );
     }
 }

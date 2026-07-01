@@ -424,8 +424,8 @@ mod tests {
     };
     use crate::planner::error::{
         InvalidExpressionShapeKind, InvalidExpressionType, InvalidFunctionShapeReason,
-        InvalidPipelineShapeReason, InvalidTypedAstReason, PlanError, UnsupportedArgumentReason,
-        UnsupportedAssignmentKind, UnsupportedExpressionKind, UnsupportedStatementKind,
+        InvalidPipelineShapeReason, InvalidTypedAstReason, PlanError, UnsupportedAssignmentKind,
+        UnsupportedExpressionKind, UnsupportedStatementKind,
     };
     use crate::planner::plan_module;
     use crate::planner::support::{compile, dummy_span};
@@ -462,6 +462,27 @@ pub fn main() {
                 function("<anonymous:0>", local_int(0, "value").add_int(int(1)))
                     .param_int(0, "value"),
             ],
+        );
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn plan_anonymous_function_discard_argument() {
+        let actual = plan_module(compile(
+            r#"
+pub fn main() {
+  fn(_: Int) { 1 }
+  42
+}
+"#,
+        ))
+        .expect("source should plan");
+        let expected = module_with_anonymous(
+            "main",
+            function("main", int(42)).evaluate(int_function_ref(1, [LocalId::Int(IntLocalId(0))])),
+            [],
+            [function("<anonymous:0>", int(1)).discard_int_param(0)],
         );
 
         assert_eq!(actual, expected);
@@ -656,24 +677,6 @@ pub fn main() {
             )),
             Err(PlanError::UnsupportedExpression {
                 kind: UnsupportedExpressionKind::FunctionCaptureLiteral,
-            }),
-        );
-    }
-
-    #[test]
-    fn reject_profile_anonymous_function_discard_argument() {
-        assert_eq!(
-            plan_module(compile(
-                r#"
-pub fn main() {
-  fn(_: Int) { 1 }
-  1
-}
-"#,
-            )),
-            Err(PlanError::UnsupportedArgument {
-                function: "<anonymous:0>".into(),
-                reason: UnsupportedArgumentReason::Discard,
             }),
         );
     }

@@ -26,8 +26,6 @@ pub enum UnsupportedFunctionReason {
 
 #[derive(Debug, Error, Clone, Copy, PartialEq, Eq)]
 pub enum UnsupportedArgumentReason {
-    #[error("discard arguments are not supported")]
-    Discard,
     #[error("labelled arguments are not supported")]
     Labelled,
     #[error("argument type is not supported")]
@@ -54,8 +52,6 @@ pub enum UnsupportedAssignmentKind {
 pub enum UnsupportedPatternKind {
     #[error("assign")]
     Assign,
-    #[error("discard")]
-    Discard,
     #[error("tuple")]
     Tuple,
 }

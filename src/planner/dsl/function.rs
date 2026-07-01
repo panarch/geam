@@ -65,13 +65,21 @@ pub(crate) fn function(
 
 impl FunctionDsl {
     pub(crate) fn param_int(mut self, local: usize, name: impl Into<EcoString>) -> Self {
+        self.params.push(Param::named(
+            ParamLocal::int(IntLocalId(local)),
+            name.into(),
+        ));
+        self
+    }
+
+    pub(crate) fn discard_int_param(mut self, local: usize) -> Self {
         self.params
-            .push(Param::new(ParamLocal::int(IntLocalId(local)), name.into()));
+            .push(Param::discard(ParamLocal::int(IntLocalId(local))));
         self
     }
 
     pub(crate) fn param_string(mut self, local: usize, name: impl Into<EcoString>) -> Self {
-        self.params.push(Param::new(
+        self.params.push(Param::named(
             ParamLocal::string(StringLocalId(local)),
             name.into(),
         ));
@@ -79,7 +87,7 @@ impl FunctionDsl {
     }
 
     pub(crate) fn param_bool(mut self, local: usize, name: impl Into<EcoString>) -> Self {
-        self.params.push(Param::new(
+        self.params.push(Param::named(
             ParamLocal::bool(BoolLocalId(local)),
             name.into(),
         ));
@@ -87,8 +95,10 @@ impl FunctionDsl {
     }
 
     pub(crate) fn param_nil(mut self, local: usize, name: impl Into<EcoString>) -> Self {
-        self.params
-            .push(Param::new(ParamLocal::nil(NilLocalId(local)), name.into()));
+        self.params.push(Param::named(
+            ParamLocal::nil(NilLocalId(local)),
+            name.into(),
+        ));
         self
     }
 
@@ -98,7 +108,7 @@ impl FunctionDsl {
         name: impl Into<EcoString>,
         arguments: impl IntoIterator<Item = ValueType>,
     ) -> Self {
-        self.params.push(Param::new(
+        self.params.push(Param::named(
             ParamLocal::int_function(
                 IntFunctionLocalId(local),
                 FunctionType::new(arguments.into_iter().collect(), ValueType::Int),
@@ -114,7 +124,7 @@ impl FunctionDsl {
         name: impl Into<EcoString>,
         arguments: impl IntoIterator<Item = ValueType>,
     ) -> Self {
-        self.params.push(Param::new(
+        self.params.push(Param::named(
             ParamLocal::string_function(
                 StringFunctionLocalId(local),
                 FunctionType::new(arguments.into_iter().collect(), ValueType::String),
@@ -130,7 +140,7 @@ impl FunctionDsl {
         name: impl Into<EcoString>,
         arguments: impl IntoIterator<Item = ValueType>,
     ) -> Self {
-        self.params.push(Param::new(
+        self.params.push(Param::named(
             ParamLocal::bool_function(
                 BoolFunctionLocalId(local),
                 FunctionType::new(arguments.into_iter().collect(), ValueType::Bool),
@@ -146,7 +156,7 @@ impl FunctionDsl {
         name: impl Into<EcoString>,
         arguments: impl IntoIterator<Item = ValueType>,
     ) -> Self {
-        self.params.push(Param::new(
+        self.params.push(Param::named(
             ParamLocal::nil_function(
                 NilFunctionLocalId(local),
                 FunctionType::new(arguments.into_iter().collect(), ValueType::Nil),
@@ -162,7 +172,7 @@ impl FunctionDsl {
         name: impl Into<EcoString>,
         type_: FunctionType,
     ) -> Self {
-        self.params.push(Param::new(
+        self.params.push(Param::named(
             ParamLocal::function_function(FunctionFunctionLocalId(local), type_),
             name.into(),
         ));
