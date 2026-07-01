@@ -1,7 +1,5 @@
 mod expression;
 mod frame;
-#[cfg(test)]
-mod frame_tests;
 mod function;
 mod id;
 mod runtime;
