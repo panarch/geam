@@ -515,21 +515,28 @@ pub(super) fn function_name(function: &TypedFunction) -> Result<EcoString, PlanE
 #[cfg(test)]
 mod tests {
     use crate::plan::{
-        BoolExprKind, BoolFunctionExpr, BoolFunctionFunctionId, BoolFunctionId, BoolFunctionValue,
-        CallArgKind, ExecutionPlan, Expr, ExprKind, FunctionExpr, FunctionFunctionExpr,
-        FunctionFunctionFunctionId, FunctionFunctionId, FunctionFunctionValue, FunctionId,
-        FunctionPlan, FunctionType, IntExprKind, IntFunctionExpr, IntFunctionFunctionId,
+        BoolFunctionExpr, BoolFunctionFunctionId, BoolFunctionId, BoolFunctionValue, BoolLocalId,
+        Expr, FunctionExpr, FunctionFunctionExpr, FunctionFunctionFunctionId, FunctionFunctionId,
+        FunctionFunctionValue, FunctionId, FunctionType, IntFunctionExpr, IntFunctionFunctionId,
         IntFunctionId, IntFunctionValue, IntLocalId, LocalId, NilFunctionExpr,
-        NilFunctionFunctionId, NilFunctionId, NilFunctionValue, ParamLocal, ReturnBody,
-        ReturnBodyKind, ReturnExpr, ReturnExprKind, RuntimeFunctionId, StepKind,
-        StringFunctionExpr, StringFunctionFunctionId, StringFunctionId, StringFunctionValue,
-        ValueType,
+        NilFunctionFunctionId, NilFunctionId, NilFunctionValue, NilLocalId, ParamLocal, ReturnExpr,
+        RuntimeFunctionId, StringFunctionExpr, StringFunctionFunctionId, StringFunctionId,
+        StringFunctionValue, StringLocalId, ValueType,
     };
     use crate::planner::context::FunctionInfo;
     use crate::planner::dsl::{
-        bool_, bool_arg, call_bool, call_int, call_nil, call_string, function, function_ref, int,
-        int_arg, local_bool, local_int, local_nil, local_string, module, nil, nil_arg, string,
-        string_arg,
+        block_bool_function, block_function_function, block_int, block_int_function,
+        block_nil_function, block_string_function, bool_, bool_arg, bool_case_bool_function,
+        bool_case_int, bool_case_int_function, bool_case_nil_function, bool_case_string_function,
+        bool_function_ref, call_bool, call_bool_returning_function,
+        call_function_returning_function, call_int, call_int_function, call_int_returning_function,
+        call_nil, call_nil_returning_function, call_string, call_string_returning_function,
+        function, function_function_ref, function_ref, int, int_arg, int_case_bool_function,
+        int_case_function_function, int_case_int, int_case_int_function, int_case_nil_function,
+        int_case_string_function, int_function_arg, int_function_call_arg, int_function_ref,
+        let_int_function_step, let_int_step, local_bool, local_int, local_int_function, local_nil,
+        local_string, module, module_with_anonymous, nil, nil_arg, nil_function_ref, string,
+        string_arg, string_function_ref,
     };
     use crate::planner::plan_module;
     use crate::planner::support::{compile, compile_minimal_module, expect_plan_error};
@@ -582,18 +589,20 @@ pub fn main() {
 "#,
         ))
         .expect("source should plan");
+        let expected = module(
+            "main",
+            function(
+                "main",
+                call_int(1, [int_arg(0, int(1)), int_arg(1, int(2))]),
+            ),
+            [
+                function("add", local_int(0, "a").add_int(local_int(1, "b")))
+                    .param_int(0, "a")
+                    .param_int(1, "b"),
+            ],
+        );
 
-        assert!(matches!(
-            actual.main_function().return_().kind(),
-            ReturnExprKind::Int { body, .. }
-                if matches!(
-                    body.kind(),
-                    ReturnBodyKind::TailCall {
-                        function: IntFunctionId(1),
-                        args,
-                    } if args.len() == 2
-                )
-        ));
+        assert_eq!(actual, expected);
     }
 
     #[test]
@@ -615,10 +624,34 @@ pub fn main() {
 "#,
         ))
         .expect("source should plan");
-        assert!(matches!(
-            function_named(&actual, "count_down").return_().kind(),
-            ReturnExprKind::Int { body, .. } if block_int_case_fallback_is_tail_call(body)
-        ));
+        let expected = module(
+            "main",
+            function(
+                "main",
+                call_int(1, [int_arg(0, int(1)), int_arg(1, int(0))]),
+            ),
+            [function(
+                "count_down",
+                block_int(
+                    [],
+                    int_case_int(
+                        local_int(0, "n"),
+                        [(0, local_int(1, "acc"))],
+                        call_int(
+                            1,
+                            [
+                                int_arg(0, local_int(0, "n").sub_int(int(1))),
+                                int_arg(1, local_int(1, "acc").add_int(int(1))),
+                            ],
+                        ),
+                    ),
+                ),
+            )
+            .param_int(0, "n")
+            .param_int(1, "acc")],
+        );
+
+        assert_eq!(actual, expected);
     }
 
     #[test]
@@ -692,32 +725,258 @@ pub fn main() {
 "#,
         ))
         .expect("source should plan");
+        let int_to_int = function_type([ValueType::Int], ValueType::Int);
+        let string_to_string = function_type([ValueType::String], ValueType::String);
+        let bool_to_bool = function_type([ValueType::Bool], ValueType::Bool);
+        let nil_to_nil = function_type([ValueType::Nil], ValueType::Nil);
+        let int_to_int_function = function_type(
+            [ValueType::Int],
+            ValueType::Function(Box::new(int_to_int.clone())),
+        );
+        let expected = module(
+            "main",
+            function(
+                "main",
+                call_int_function(
+                    call_int_returning_function(0, [int_arg(0, int(0))], int_to_int.clone()),
+                    [int_function_call_arg(0, int(1))],
+                ),
+            ),
+            [
+                function("int_identity", local_int(0, "value")).param_int(0, "value"),
+                function("string_identity", local_string(0, "value")).param_string(0, "value"),
+                function("bool_identity", local_bool(0, "value")).param_bool(0, "value"),
+                function("nil_identity", local_nil(0, "value")).param_nil(0, "value"),
+                function(
+                    "get_int",
+                    block_int_function(
+                        [],
+                        int_case_int_function(
+                            local_int(0, "n"),
+                            [(0, int_function_ref(1, [LocalId::Int(IntLocalId(0))]))],
+                            call_int_returning_function(
+                                0,
+                                [int_arg(0, local_int(0, "n").sub_int(int(1)))],
+                                int_to_int.clone(),
+                            ),
+                        ),
+                    ),
+                )
+                .param_int(0, "n"),
+                function(
+                    "get_string",
+                    block_string_function(
+                        [],
+                        int_case_string_function(
+                            local_int(0, "n"),
+                            [(
+                                0,
+                                string_function_ref(0, [LocalId::String(StringLocalId(0))]),
+                            )],
+                            call_string_returning_function(
+                                0,
+                                [int_arg(0, local_int(0, "n").sub_int(int(1)))],
+                                string_to_string.clone(),
+                            ),
+                        ),
+                    ),
+                )
+                .param_int(0, "n"),
+                function(
+                    "get_bool",
+                    block_bool_function(
+                        [],
+                        int_case_bool_function(
+                            local_int(0, "n"),
+                            [(0, bool_function_ref(0, [LocalId::Bool(BoolLocalId(0))]))],
+                            call_bool_returning_function(
+                                0,
+                                [int_arg(0, local_int(0, "n").sub_int(int(1)))],
+                                bool_to_bool.clone(),
+                            ),
+                        ),
+                    ),
+                )
+                .param_int(0, "n"),
+                function(
+                    "get_nil",
+                    block_nil_function(
+                        [],
+                        int_case_nil_function(
+                            local_int(0, "n"),
+                            [(0, nil_function_ref(0, [LocalId::Nil(NilLocalId(0))]))],
+                            call_nil_returning_function(
+                                0,
+                                [int_arg(0, local_int(0, "n").sub_int(int(1)))],
+                                nil_to_nil.clone(),
+                            ),
+                        ),
+                    ),
+                )
+                .param_int(0, "n"),
+                function(
+                    "get_getter",
+                    block_function_function(
+                        [],
+                        int_case_function_function(
+                            local_int(0, "n"),
+                            [(
+                                0,
+                                function_function_ref(
+                                    FunctionFunctionId::Int(IntFunctionFunctionId(0)),
+                                    [LocalId::Int(IntLocalId(0))],
+                                    int_to_int.clone(),
+                                ),
+                            )],
+                            call_function_returning_function(
+                                0,
+                                [int_arg(0, local_int(0, "n").sub_int(int(1)))],
+                                int_to_int_function.clone(),
+                            ),
+                        ),
+                    ),
+                )
+                .param_int(0, "n"),
+            ],
+        );
 
-        assert!(matches!(
-            function_named(&actual, "get_int").return_().kind(),
-            ReturnExprKind::IntFunction { body, .. }
-                if block_int_case_fallback_is_tail_call(body)
-        ));
-        assert!(matches!(
-            function_named(&actual, "get_string").return_().kind(),
-            ReturnExprKind::StringFunction { body, .. }
-                if block_int_case_fallback_is_tail_call(body)
-        ));
-        assert!(matches!(
-            function_named(&actual, "get_bool").return_().kind(),
-            ReturnExprKind::BoolFunction { body, .. }
-                if block_int_case_fallback_is_tail_call(body)
-        ));
-        assert!(matches!(
-            function_named(&actual, "get_nil").return_().kind(),
-            ReturnExprKind::NilFunction { body, .. }
-                if block_int_case_fallback_is_tail_call(body)
-        ));
-        assert!(matches!(
-            function_named(&actual, "get_getter").return_().kind(),
-            ReturnExprKind::FunctionFunction { body, .. }
-                if block_int_case_fallback_is_tail_call(body)
-        ));
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn plan_function_return_family_bool_case_branches_as_tail_calls() {
+        let actual = plan_module(compile(
+            r#"
+fn int_identity(value: Int) {
+  value
+}
+
+fn int_increment(value: Int) {
+  value + 1
+}
+
+fn string_identity(value: String) {
+  value
+}
+
+fn string_suffix(value: String) {
+  value <> "!"
+}
+
+fn bool_true(value: Bool) {
+  True
+}
+
+fn bool_false(value: Bool) {
+  False
+}
+
+fn nil_identity(value: Nil) {
+  value
+}
+
+fn nil_other(value: Nil) {
+  Nil
+}
+
+fn choose_int(flag: Bool) {
+  case flag {
+    True -> int_identity
+    False -> int_increment
+  }
+}
+
+fn choose_string(flag: Bool) {
+  case flag {
+    True -> string_identity
+    False -> string_suffix
+  }
+}
+
+fn choose_bool(flag: Bool) {
+  case flag {
+    True -> bool_true
+    False -> bool_false
+  }
+}
+
+fn choose_nil(flag: Bool) {
+  case flag {
+    True -> nil_identity
+    False -> nil_other
+  }
+}
+
+pub fn main() {
+  choose_int(True)(1)
+}
+"#,
+        ))
+        .expect("source should plan");
+        let int_to_int = function_type([ValueType::Int], ValueType::Int);
+        let expected = module(
+            "main",
+            function(
+                "main",
+                call_int_function(
+                    call_int_returning_function(0, [bool_arg(0, bool_(true))], int_to_int.clone()),
+                    [int_function_call_arg(0, int(1))],
+                ),
+            ),
+            [
+                function("int_identity", local_int(0, "value")).param_int(0, "value"),
+                function("int_increment", local_int(0, "value").add_int(int(1)))
+                    .param_int(0, "value"),
+                function("string_identity", local_string(0, "value")).param_string(0, "value"),
+                function(
+                    "string_suffix",
+                    local_string(0, "value").concatenate(string("!")),
+                )
+                .param_string(0, "value"),
+                function("bool_true", bool_(true)).param_bool(0, "value"),
+                function("bool_false", bool_(false)).param_bool(0, "value"),
+                function("nil_identity", local_nil(0, "value")).param_nil(0, "value"),
+                function("nil_other", nil()).param_nil(0, "value"),
+                function(
+                    "choose_int",
+                    bool_case_int_function(
+                        local_bool(0, "flag"),
+                        int_function_ref(1, [LocalId::Int(IntLocalId(0))]),
+                        int_function_ref(2, [LocalId::Int(IntLocalId(0))]),
+                    ),
+                )
+                .param_bool(0, "flag"),
+                function(
+                    "choose_string",
+                    bool_case_string_function(
+                        local_bool(0, "flag"),
+                        string_function_ref(0, [LocalId::String(StringLocalId(0))]),
+                        string_function_ref(1, [LocalId::String(StringLocalId(0))]),
+                    ),
+                )
+                .param_bool(0, "flag"),
+                function(
+                    "choose_bool",
+                    bool_case_bool_function(
+                        local_bool(0, "flag"),
+                        bool_function_ref(0, [LocalId::Bool(BoolLocalId(0))]),
+                        bool_function_ref(1, [LocalId::Bool(BoolLocalId(0))]),
+                    ),
+                )
+                .param_bool(0, "flag"),
+                function(
+                    "choose_nil",
+                    bool_case_nil_function(
+                        local_bool(0, "flag"),
+                        nil_function_ref(0, [LocalId::Nil(NilLocalId(0))]),
+                        nil_function_ref(1, [LocalId::Nil(NilLocalId(0))]),
+                    ),
+                )
+                .param_bool(0, "flag"),
+            ],
+        );
+
+        assert_eq!(actual, expected);
     }
 
     #[test]
@@ -745,43 +1004,32 @@ pub fn main() {
 "#,
         ))
         .expect("source should plan");
-
-        assert!(matches!(
-            function_named(&actual, "choose").return_().kind(),
-            ReturnExprKind::Int { body, .. } if bool_case_branches_are_tail_calls(body)
-        ));
-    }
-
-    fn function_named<'a>(plan: &'a ExecutionPlan, name: &str) -> &'a FunctionPlan {
-        plan.functions()
-            .iter()
-            .find(|function| function.name() == name)
-            .expect("expected function should be planned")
-    }
-
-    fn block_int_case_fallback_is_tail_call<Expression, Function>(
-        body: &ReturnBody<Expression, Function>,
-    ) -> bool {
-        matches!(
-            body.kind(),
-            ReturnBodyKind::Block { return_, .. }
-                if matches!(
-                    return_.kind(),
-                    ReturnBodyKind::IntCase { fallback, .. }
-                        if matches!(fallback.kind(), ReturnBodyKind::TailCall { .. })
+        let expected = module(
+            "main",
+            function("main", call_int(3, [bool_arg(0, bool_(true))])),
+            [
+                function("positive", local_int(0, "value")).param_int(0, "value"),
+                function("negative", int(0).sub_int(local_int(0, "value"))).param_int(0, "value"),
+                function(
+                    "choose",
+                    bool_case_int(
+                        local_bool(0, "flag"),
+                        call_int(1, [int_arg(0, int(1))]),
+                        call_int(2, [int_arg(0, int(1))]),
+                    ),
                 )
-        )
+                .param_bool(0, "flag"),
+            ],
+        );
+
+        assert_eq!(actual, expected);
     }
 
-    fn bool_case_branches_are_tail_calls<Expression, Function>(
-        body: &ReturnBody<Expression, Function>,
-    ) -> bool {
-        matches!(
-            body.kind(),
-            ReturnBodyKind::BoolCase { true_, false_, .. }
-                if matches!(true_.kind(), ReturnBodyKind::TailCall { .. })
-                    && matches!(false_.kind(), ReturnBodyKind::TailCall { .. })
-        )
+    fn function_type(
+        arguments: impl IntoIterator<Item = ValueType>,
+        return_: ValueType,
+    ) -> FunctionType {
+        FunctionType::new(arguments.into_iter().collect(), return_)
     }
 
     #[test]
@@ -798,20 +1046,20 @@ pub fn main() {
 "#,
         ))
         .expect("source should plan");
+        let expected = module(
+            "main",
+            function(
+                "main",
+                call_int(1, [int_arg(0, int(1)), int_arg(1, int(2))]).add_int(int(3)),
+            ),
+            [
+                function("add", local_int(0, "a").add_int(local_int(1, "b")))
+                    .param_int(0, "a")
+                    .param_int(1, "b"),
+            ],
+        );
 
-        assert!(matches!(
-            actual.main_function().return_().kind(),
-            ReturnExprKind::Int { body, .. }
-                if matches!(
-                    body.kind(),
-                    ReturnBodyKind::Expr(expression)
-                        if matches!(
-                            expression.kind(),
-                            IntExprKind::Add { left, .. }
-                                if matches!(left.kind(), IntExprKind::Call { .. })
-                        )
-                )
-        ));
+        assert_eq!(actual, expected);
     }
 
     #[test]
@@ -832,30 +1080,27 @@ pub fn main() {
 "#,
         ))
         .expect("source should plan");
+        let expected = module(
+            "main",
+            function(
+                "main",
+                call_int(
+                    2,
+                    [int_arg(
+                        0,
+                        call_int(1, [int_arg(0, int(1)), int_arg(1, int(2))]),
+                    )],
+                ),
+            ),
+            [
+                function("add", local_int(0, "a").add_int(local_int(1, "b")))
+                    .param_int(0, "a")
+                    .param_int(1, "b"),
+                function("identity", local_int(0, "value")).param_int(0, "value"),
+            ],
+        );
 
-        assert!(matches!(
-            actual.main_function().return_().kind(),
-            ReturnExprKind::Int { body, .. }
-                if matches!(
-                    body.kind(),
-                    ReturnBodyKind::TailCall {
-                        function: IntFunctionId(2),
-                        args,
-                    } if matches!(
-                        args.as_slice(),
-                        [arg] if matches!(
-                            arg.kind(),
-                            CallArgKind::Int { value, .. } if matches!(
-                                value.kind(),
-                                IntExprKind::Call {
-                                    function: IntFunctionId(1),
-                                    ..
-                                }
-                            )
-                        )
-                    )
-                )
-        ));
+        assert_eq!(actual, expected);
     }
 
     #[test]
@@ -873,26 +1118,18 @@ pub fn main() {
 "#,
         ))
         .expect("source should plan");
-
-        assert!(matches!(
-            actual.main_function().steps(),
+        let expected = module(
+            "main",
+            function("main", int(3))
+                .evaluate(call_int(1, [int_arg(0, int(1)), int_arg(1, int(2))])),
             [
-                step
-            ] if matches!(
-                step.kind(),
-                StepKind::Evaluate(expression)
-                    if matches!(
-                        expression.kind(),
-                        ExprKind::Int(expression) if matches!(
-                            expression.kind(),
-                            IntExprKind::Call {
-                                function: IntFunctionId(1),
-                                ..
-                            }
-                        )
-                    )
-            )
-        ));
+                function("add", local_int(0, "a").add_int(local_int(1, "b")))
+                    .param_int(0, "a")
+                    .param_int(1, "b"),
+            ],
+        );
+
+        assert_eq!(actual, expected);
     }
 
     #[test]
@@ -910,22 +1147,21 @@ pub fn main() {
 "#,
         ))
         .expect("source should plan");
-
-        assert!(matches!(
-            actual.main_function().steps(),
+        let expected = module(
+            "main",
+            function("main", local_int(0, "value")).let_int(
+                0,
+                "value",
+                call_int(1, [int_arg(0, int(1)), int_arg(1, int(2))]),
+            ),
             [
-                step
-            ] if matches!(
-                step.kind(),
-                StepKind::LetInt { value, .. } if matches!(
-                    value.kind(),
-                    IntExprKind::Call {
-                        function: IntFunctionId(1),
-                        ..
-                    }
-                )
-            )
-        ));
+                function("add", local_int(0, "a").add_int(local_int(1, "b")))
+                    .param_int(0, "a")
+                    .param_int(1, "b"),
+            ],
+        );
+
+        assert_eq!(actual, expected);
     }
 
     #[test]
@@ -942,25 +1178,13 @@ pub fn main() {
 "#,
         ))
         .expect("source should plan");
+        let expected = module(
+            "main",
+            function("main", bool_(false).and_bool(call_bool(1, []))),
+            [function("truth", bool_(true))],
+        );
 
-        assert!(matches!(
-            actual.main_function().return_().kind(),
-            ReturnExprKind::Bool { body, .. }
-                if matches!(
-                    body.kind(),
-                    ReturnBodyKind::Expr(expression)
-                        if matches!(
-                            expression.kind(),
-                            BoolExprKind::And { right, .. } if matches!(
-                                right.kind(),
-                                BoolExprKind::Call {
-                                    function: BoolFunctionId(1),
-                                    ..
-                                }
-                            )
-                        )
-                )
-        ));
+        assert_eq!(actual, expected);
     }
 
     #[test]
@@ -978,16 +1202,34 @@ pub fn main() {
 "#,
         ))
         .expect("source should plan");
+        let expected = module(
+            "main",
+            function(
+                "main",
+                call_int_function(
+                    local_int_function(0, "f", [ValueType::Int, ValueType::Int]),
+                    [
+                        int_function_call_arg(0, int(1)),
+                        int_function_call_arg(1, int(2)),
+                    ],
+                ),
+            )
+            .step(let_int_function_step(
+                0,
+                "f",
+                int_function_ref(
+                    1,
+                    [LocalId::Int(IntLocalId(0)), LocalId::Int(IntLocalId(1))],
+                ),
+            )),
+            [
+                function("add", local_int(0, "a").add_int(local_int(1, "b")))
+                    .param_int(0, "a")
+                    .param_int(1, "b"),
+            ],
+        );
 
-        assert!(matches!(
-            actual.main_function().return_().kind(),
-            ReturnExprKind::Int { body, .. }
-                if matches!(
-                    body.kind(),
-                    ReturnBodyKind::Expr(expression)
-                        if matches!(expression.kind(), IntExprKind::FunctionCall { .. })
-                )
-        ));
+        assert_eq!(actual, expected);
     }
 
     #[test]
@@ -1001,16 +1243,22 @@ pub fn main() {
 "#,
         ))
         .expect("source should plan");
+        let expected = module_with_anonymous(
+            "main",
+            function(
+                "main",
+                call_int_function(local_int_function(0, "main", Vec::<ValueType>::new()), []),
+            )
+            .step(let_int_function_step(
+                0,
+                "main",
+                int_function_ref(1, Vec::<LocalId>::new()),
+            )),
+            [],
+            [function("<anonymous:0>", int(0))],
+        );
 
-        assert!(matches!(
-            actual.main_function().return_().kind(),
-            ReturnExprKind::Int { body, .. }
-                if matches!(
-                    body.kind(),
-                    ReturnBodyKind::Expr(expression)
-                        if matches!(expression.kind(), IntExprKind::FunctionCall { .. })
-                )
-        ));
+        assert_eq!(actual, expected);
     }
 
     #[test]
@@ -1031,16 +1279,29 @@ pub fn main() {
 "#,
         ))
         .expect("source should plan");
-
-        assert!(matches!(
-            function_named(&actual, "run").return_().kind(),
-            ReturnExprKind::Int { body, .. }
-                if matches!(
-                    body.kind(),
-                    ReturnBodyKind::Expr(expression)
-                        if matches!(expression.kind(), IntExprKind::FunctionCall { .. })
+        let expected = module(
+            "main",
+            function(
+                "main",
+                call_int(
+                    2,
+                    [int_function_arg(
+                        0,
+                        int_function_ref(1, Vec::<LocalId>::new()),
+                    )],
+                ),
+            ),
+            [
+                function("one", int(1)),
+                function(
+                    "run",
+                    call_int_function(local_int_function(0, "run", Vec::<ValueType>::new()), []),
                 )
-        ));
+                .param_int_function(0, "run", Vec::<ValueType>::new()),
+            ],
+        );
+
+        assert_eq!(actual, expected);
     }
 
     #[test]
@@ -1060,22 +1321,34 @@ pub fn main() {
 "#,
         ))
         .expect("source should plan");
+        let expected = module(
+            "main",
+            function(
+                "main",
+                block_int(
+                    [let_int_step(0, "_pipe", int(1))],
+                    call_int(1, [int_arg(0, local_int(0, "_pipe")), int_arg(1, int(0))]),
+                ),
+            ),
+            [function(
+                "count_down",
+                int_case_int(
+                    local_int(0, "n"),
+                    [(0, local_int(1, "acc"))],
+                    call_int(
+                        1,
+                        [
+                            int_arg(0, local_int(0, "n").sub_int(int(1))),
+                            int_arg(1, local_int(1, "acc").add_int(int(1))),
+                        ],
+                    ),
+                ),
+            )
+            .param_int(0, "n")
+            .param_int(1, "acc")],
+        );
 
-        assert!(matches!(
-            actual.main_function().return_().kind(),
-            ReturnExprKind::Int { body, .. }
-                if matches!(
-                    body.kind(),
-                    ReturnBodyKind::Block { return_, .. }
-                        if matches!(
-                            return_.kind(),
-                            ReturnBodyKind::TailCall {
-                                function: IntFunctionId(1),
-                                args,
-                            } if args.len() == 2
-                        )
-                )
-        ));
+        assert_eq!(actual, expected);
     }
 
     #[test]

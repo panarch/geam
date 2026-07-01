@@ -1,11 +1,12 @@
 use crate::plan::{
-    BoolExpr, BoolFunctionExpr, BoolFunctionId, BoolFunctionLocalId, BoolFunctionValue,
-    BoolLocalId, CallArg, CaptureArg, Expr, FunctionExpr, FunctionExprKind, FunctionFunctionExpr,
-    FunctionFunctionId, FunctionFunctionLocalId, FunctionFunctionValue, FunctionType,
-    FunctionValue, IntExpr, IntFunctionExpr, IntFunctionFunctionId, IntFunctionId,
-    IntFunctionLocalId, IntFunctionValue, IntLocalId, LocalId, NilExpr, NilFunctionExpr,
-    NilFunctionId, NilFunctionLocalId, NilFunctionValue, NilLocalId, ParamLocal, RuntimeFunctionId,
-    Step, StringExpr, StringFunctionExpr, StringFunctionId, StringFunctionLocalId,
+    BoolExpr, BoolFunctionExpr, BoolFunctionFunctionId, BoolFunctionId, BoolFunctionLocalId,
+    BoolFunctionValue, BoolLocalId, CallArg, CaptureArg, Expr, FunctionExpr, FunctionExprKind,
+    FunctionFunctionExpr, FunctionFunctionFunctionId, FunctionFunctionId, FunctionFunctionLocalId,
+    FunctionFunctionValue, FunctionType, FunctionValue, IntExpr, IntFunctionExpr,
+    IntFunctionFunctionId, IntFunctionId, IntFunctionLocalId, IntFunctionValue, IntLocalId,
+    LocalId, NilExpr, NilFunctionExpr, NilFunctionFunctionId, NilFunctionId, NilFunctionLocalId,
+    NilFunctionValue, NilLocalId, ParamLocal, RuntimeFunctionId, Step, StringExpr,
+    StringFunctionExpr, StringFunctionFunctionId, StringFunctionId, StringFunctionLocalId,
     StringFunctionValue, StringLocalId, ValueType,
 };
 use ecow::EcoString;
@@ -526,6 +527,36 @@ pub(crate) fn block_int_function(
     ))
 }
 
+pub(crate) fn block_string_function(
+    steps: impl IntoIterator<Item = Step>,
+    return_: StringFunction,
+) -> StringFunction {
+    StringFunction(StringFunctionExpr::block(
+        steps.into_iter().collect(),
+        return_.into(),
+    ))
+}
+
+pub(crate) fn block_bool_function(
+    steps: impl IntoIterator<Item = Step>,
+    return_: BoolFunction,
+) -> BoolFunction {
+    BoolFunction(BoolFunctionExpr::block(
+        steps.into_iter().collect(),
+        return_.into(),
+    ))
+}
+
+pub(crate) fn block_nil_function(
+    steps: impl IntoIterator<Item = Step>,
+    return_: NilFunction,
+) -> NilFunction {
+    NilFunction(NilFunctionExpr::block(
+        steps.into_iter().collect(),
+        return_.into(),
+    ))
+}
+
 pub(crate) fn let_int_step(local: usize, name: impl Into<EcoString>, value: Int) -> Step {
     Step::let_int(IntLocalId(local), name.into(), value.into())
 }
@@ -629,6 +660,54 @@ pub(crate) fn call_int_returning_function(
 ) -> IntFunction {
     IntFunction(IntFunctionExpr::call(
         IntFunctionFunctionId(function),
+        args.into_iter().collect(),
+        return_type,
+    ))
+}
+
+pub(crate) fn call_string_returning_function(
+    function: usize,
+    args: impl IntoIterator<Item = CallArg>,
+    return_type: FunctionType,
+) -> StringFunction {
+    StringFunction(StringFunctionExpr::call(
+        StringFunctionFunctionId(function),
+        args.into_iter().collect(),
+        return_type,
+    ))
+}
+
+pub(crate) fn call_bool_returning_function(
+    function: usize,
+    args: impl IntoIterator<Item = CallArg>,
+    return_type: FunctionType,
+) -> BoolFunction {
+    BoolFunction(BoolFunctionExpr::call(
+        BoolFunctionFunctionId(function),
+        args.into_iter().collect(),
+        return_type,
+    ))
+}
+
+pub(crate) fn call_nil_returning_function(
+    function: usize,
+    args: impl IntoIterator<Item = CallArg>,
+    return_type: FunctionType,
+) -> NilFunction {
+    NilFunction(NilFunctionExpr::call(
+        NilFunctionFunctionId(function),
+        args.into_iter().collect(),
+        return_type,
+    ))
+}
+
+pub(crate) fn call_function_returning_function(
+    function: usize,
+    args: impl IntoIterator<Item = CallArg>,
+    return_type: FunctionType,
+) -> FunctionFunction {
+    FunctionFunction(FunctionFunctionExpr::call(
+        FunctionFunctionFunctionId(function),
         args.into_iter().collect(),
         return_type,
     ))

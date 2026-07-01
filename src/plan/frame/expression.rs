@@ -200,7 +200,10 @@ impl FrameLayout {
 #[cfg(test)]
 mod tests {
     use super::FrameLayout;
-    use crate::plan::{BoolExpr, Expr, IntExpr, IntFunctionId, IntLocalId, ReturnExpr, Step};
+    use crate::plan::{
+        BoolExpr, BoolLocalId, Expr, IntExpr, IntFunctionId, IntLocalId, NilExpr, NilLocalId,
+        ReturnExpr, Step, StringExpr, StringLocalId,
+    };
 
     #[test]
     fn frame_layout_includes_bool_operator_families() {
@@ -231,5 +234,91 @@ mod tests {
         let layout = FrameLayout::from_function_parts(&[], &steps, &return_);
 
         assert_eq!(layout.ints(), 9);
+    }
+
+    #[test]
+    fn frame_layout_includes_primitive_case_and_block_families() {
+        let steps = vec![
+            Step::evaluate(Expr::int(IntExpr::bool_case(
+                BoolExpr::local_get(BoolLocalId(6), "int_bool_case_subject".into()),
+                IntExpr::local_get(IntLocalId(7), "int_bool_true".into()),
+                IntExpr::local_get(IntLocalId(8), "int_bool_false".into()),
+            ))),
+            Step::evaluate(Expr::int(IntExpr::int_case(
+                IntExpr::local_get(IntLocalId(9), "int_case_subject".into()),
+                vec![
+                    (
+                        0.into(),
+                        IntExpr::local_get(IntLocalId(10), "int_branch_zero".into()),
+                    ),
+                    (
+                        1.into(),
+                        IntExpr::local_get(IntLocalId(11), "int_branch_one".into()),
+                    ),
+                ],
+                IntExpr::local_get(IntLocalId(12), "int_fallback".into()),
+            ))),
+            Step::evaluate(Expr::string(StringExpr::bool_case(
+                BoolExpr::local_get(BoolLocalId(0), "string_case_subject".into()),
+                StringExpr::local_get(StringLocalId(1), "string_true".into()),
+                StringExpr::local_get(StringLocalId(2), "string_false".into()),
+            ))),
+            Step::evaluate(Expr::string(StringExpr::int_case(
+                IntExpr::local_get(IntLocalId(13), "string_case_subject".into()),
+                vec![
+                    (
+                        0.into(),
+                        StringExpr::local_get(StringLocalId(3), "string_branch_zero".into()),
+                    ),
+                    (
+                        1.into(),
+                        StringExpr::local_get(StringLocalId(4), "string_branch_one".into()),
+                    ),
+                ],
+                StringExpr::local_get(StringLocalId(5), "string_fallback".into()),
+            ))),
+            Step::evaluate(Expr::bool(BoolExpr::int_case(
+                IntExpr::local_get(IntLocalId(3), "bool_case_subject".into()),
+                vec![(
+                    0.into(),
+                    BoolExpr::local_get(BoolLocalId(4), "bool_branch".into()),
+                )],
+                BoolExpr::local_get(BoolLocalId(5), "bool_fallback".into()),
+            ))),
+            Step::evaluate(Expr::nil(NilExpr::bool_case(
+                BoolExpr::local_get(BoolLocalId(7), "nil_bool_case_subject".into()),
+                NilExpr::local_get(NilLocalId(1), "nil_bool_true".into()),
+                NilExpr::local_get(NilLocalId(2), "nil_bool_false".into()),
+            ))),
+            Step::evaluate(Expr::nil(NilExpr::int_case(
+                IntExpr::local_get(IntLocalId(14), "nil_case_subject".into()),
+                vec![
+                    (
+                        0.into(),
+                        NilExpr::local_get(NilLocalId(3), "nil_branch_zero".into()),
+                    ),
+                    (
+                        1.into(),
+                        NilExpr::local_get(NilLocalId(4), "nil_branch_one".into()),
+                    ),
+                ],
+                NilExpr::local_get(NilLocalId(5), "nil_fallback".into()),
+            ))),
+            Step::evaluate(Expr::nil(NilExpr::block(
+                vec![Step::evaluate(Expr::int(IntExpr::local_get(
+                    IntLocalId(6),
+                    "nil_block_step".into(),
+                )))],
+                NilExpr::local_get(NilLocalId(0), "nil_return".into()),
+            ))),
+        ];
+        let return_ = ReturnExpr::int(IntFunctionId(0), IntExpr::value(0.into()));
+
+        let layout = FrameLayout::from_function_parts(&[], &steps, &return_);
+
+        assert_eq!(layout.ints(), 15);
+        assert_eq!(layout.strings(), 6);
+        assert_eq!(layout.bools(), 8);
+        assert_eq!(layout.nils(), 6);
     }
 }

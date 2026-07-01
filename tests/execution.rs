@@ -56,6 +56,7 @@ mod control_flow {
     execution_cases!("control_flow";
         block_expression,
         case_block_scope,
+        block_case_return_families,
         bool_case,
         bool_case_fallback,
         int_case,
@@ -122,7 +123,6 @@ mod functions {
             block_case_tail_call,
             function_returning_tail_call,
             function_returning_tail_call_families,
-            return_body_layout_families,
         );
     }
 
