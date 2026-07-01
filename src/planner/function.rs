@@ -852,7 +852,7 @@ pub fn main() {
     }
 
     #[test]
-    fn plan_function_return_family_bool_case_branches_as_tail_calls() {
+    fn plan_function_return_family_bool_case_branches() {
         let actual = plan_module(compile(
             r#"
 fn int_identity(value: Int) {
