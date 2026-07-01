@@ -27,6 +27,8 @@ pub enum InvalidTypedAstReason {
     CaseShape { reason: InvalidCaseShapeReason },
     #[error("pipeline shape: {reason}")]
     PipelineShape { reason: InvalidPipelineShapeReason },
+    #[error("use shape: {reason}")]
+    UseShape { reason: InvalidUseShapeReason },
     #[error("unknown local variable: {name}")]
     UnknownLocal { name: EcoString },
 }
@@ -141,6 +143,26 @@ pub enum InvalidPipelineShapeReason {
     MultiplePipeArguments,
     #[error("non-call pipeline step")]
     NonCallStep,
+    #[error("unsupported implicit argument")]
+    UnsupportedImplicitArgument,
+}
+
+#[derive(Debug, Error, Clone, Copy, PartialEq, Eq)]
+pub enum InvalidUseShapeReason {
+    #[error("callback literal kind is not use")]
+    CallbackLiteralKindNotUse,
+    #[error("callback is not the last argument")]
+    CallbackNotLast,
+    #[error("callback argument is not a function literal")]
+    CallbackNotFunctionLiteral,
+    #[error("missing callback")]
+    MissingCallback,
+    #[error("multiple callbacks")]
+    MultipleCallbacks,
+    #[error("non-call use right hand side")]
+    NonCallRhs,
+    #[error("unexpected variable use assignment")]
+    UnexpectedVariableAssignment,
     #[error("unsupported implicit argument")]
     UnsupportedImplicitArgument,
 }

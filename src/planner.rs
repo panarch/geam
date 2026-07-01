@@ -10,10 +10,10 @@ mod statement;
 pub use error::{
     InvalidCallShapeReason, InvalidCaseShapeReason, InvalidExpressionShapeKind,
     InvalidExpressionType, InvalidFunctionShapeReason, InvalidPipelineShapeReason,
-    InvalidTypedAstReason, PlanError, UnsupportedArgumentReason, UnsupportedAssignmentKind,
-    UnsupportedBinOpKind, UnsupportedCaseReason, UnsupportedExpressionKind,
-    UnsupportedFunctionReason, UnsupportedPatternKind, UnsupportedPipelineReason,
-    UnsupportedStatementKind, UnsupportedTopLevelKind,
+    InvalidTypedAstReason, InvalidUseShapeReason, PlanError, UnsupportedArgumentReason,
+    UnsupportedAssignmentKind, UnsupportedBinOpKind, UnsupportedCaseReason,
+    UnsupportedExpressionKind, UnsupportedFunctionReason, UnsupportedPatternKind,
+    UnsupportedPipelineReason, UnsupportedStatementKind, UnsupportedTopLevelKind,
 };
 pub use module::plan_module;
 

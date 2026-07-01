@@ -142,6 +142,19 @@ mod functions {
             capturing_closure_return_shapes,
         );
     }
+
+    mod use_syntax {
+        execution_cases!("functions/use";
+            use_no_assignment,
+            use_value,
+            use_multiple_assignments,
+            use_nested,
+            use_capture,
+            use_block_scope,
+            use_function_value_provider,
+            use_inside_anonymous_function,
+        );
+    }
 }
 
 mod rejection {
@@ -182,10 +195,16 @@ mod rejection {
     mod anonymous {
         rejection_cases!("anonymous";
             anonymous_discard_argument,
+            anonymous_assert_statement,
             anonymous_unsupported_body,
             anonymous_unsupported_return_type,
             function_capture_literal,
-            use_literal,
+        );
+    }
+
+    mod use_syntax {
+        rejection_cases!("use";
+            use_discard_assignment,
         );
     }
 }

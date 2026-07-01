@@ -6,7 +6,7 @@ use crate::plan::{
 use crate::planner::context::{FunctionInfo, FunctionParam, PlanContext};
 use crate::planner::error::{
     InvalidCallShapeReason, InvalidExpressionType, InvalidPipelineShapeReason,
-    InvalidTypedAstReason, PlanError, UnsupportedPipelineReason,
+    InvalidTypedAstReason, InvalidUseShapeReason, PlanError, UnsupportedPipelineReason,
 };
 use ecow::EcoString;
 use gleam_core::ast::{
@@ -45,8 +45,35 @@ pub(super) fn plan_call(
         arguments,
         context,
         None,
+        CallArgumentMode::Normal,
         FunctionValueCallMode::Allow,
     )
+}
+
+pub(super) fn plan_use_call(
+    call: TypedExpr,
+    context: &mut PlanContext<'_>,
+) -> Result<Expr, PlanError> {
+    match call {
+        TypedExpr::Call {
+            type_,
+            fun,
+            arguments,
+            ..
+        } => {
+            validate_use_call_arguments(&arguments)?;
+            plan_call_expression(
+                type_,
+                *fun,
+                arguments,
+                context,
+                None,
+                CallArgumentMode::Use,
+                FunctionValueCallMode::Allow,
+            )
+        }
+        _ => Err(invalid_use_shape(InvalidUseShapeReason::NonCallRhs)),
+    }
 }
 
 pub(super) fn plan_pipeline_direct_call(
@@ -63,6 +90,7 @@ pub(super) fn plan_pipeline_direct_call(
         arguments,
         context,
         None,
+        CallArgumentMode::Normal,
         FunctionValueCallMode::Reject,
     )
 }
@@ -135,6 +163,7 @@ pub(super) fn plan_pipeline_hole_call(
             name: capture_name,
             value: pipe_value,
         }),
+        CallArgumentMode::Normal,
         FunctionValueCallMode::Reject,
     )
 }
@@ -193,12 +222,19 @@ enum FunctionValueCallMode {
     Reject,
 }
 
+#[derive(Clone, Copy)]
+enum CallArgumentMode {
+    Normal,
+    Use,
+}
+
 fn plan_call_expression(
     type_: Arc<Type>,
     fun: TypedExpr,
     arguments: Vec<GleamCallArg<TypedExpr>>,
     context: &mut PlanContext<'_>,
     capture: Option<&CaptureSubstitution>,
+    call_argument_mode: CallArgumentMode,
     function_value_call_mode: FunctionValueCallMode,
 ) -> Result<Expr, PlanError> {
     if let TypedExpr::Var { constructor, .. } = &fun {
@@ -220,7 +256,14 @@ fn plan_call_expression(
                             reason: InvalidCallShapeReason::MissingCurrentModuleFunction,
                         },
                     })?;
-                return plan_direct_function_call(type_, function, arguments, context, capture);
+                return plan_direct_function_call(
+                    type_,
+                    function,
+                    arguments,
+                    context,
+                    capture,
+                    call_argument_mode,
+                );
             }
             ValueConstructorVariant::ModuleConstant { .. } => {
                 return Err(PlanError::InvalidTypedAst {
@@ -253,7 +296,7 @@ fn plan_call_expression(
         });
     }
 
-    plan_function_value_call(type_, fun, arguments, context, capture)
+    plan_function_value_call(type_, fun, arguments, context, capture, call_argument_mode)
 }
 
 fn plan_direct_function_call(
@@ -262,6 +305,7 @@ fn plan_direct_function_call(
     arguments: Vec<GleamCallArg<TypedExpr>>,
     context: &mut PlanContext<'_>,
     capture: Option<&CaptureSubstitution>,
+    call_argument_mode: CallArgumentMode,
 ) -> Result<Expr, PlanError> {
     if function.arity() != arguments.len() {
         return Err(PlanError::InvalidTypedAst {
@@ -284,7 +328,13 @@ fn plan_direct_function_call(
             },
         });
     }
-    let args = plan_call_args(arguments, &function.params, context, capture)?;
+    let args = plan_call_args(
+        arguments,
+        &function.params,
+        context,
+        capture,
+        call_argument_mode,
+    )?;
 
     Ok(call_expr(function_id, args))
 }
@@ -295,6 +345,7 @@ fn plan_function_value_call(
     arguments: Vec<GleamCallArg<TypedExpr>>,
     context: &mut PlanContext<'_>,
     capture: Option<&CaptureSubstitution>,
+    call_argument_mode: CallArgumentMode,
 ) -> Result<Expr, PlanError> {
     let function = {
         let expression = plan_expr(fun, context)?;
@@ -330,8 +381,13 @@ fn plan_function_value_call(
         });
     }
 
-    let args =
-        plan_function_call_args(arguments, function_type.argument_types(), context, capture)?;
+    let args = plan_function_call_args(
+        arguments,
+        function_type.argument_types(),
+        context,
+        capture,
+        call_argument_mode,
+    )?;
 
     function_call_expr(function, args, return_type)
 }
@@ -341,10 +397,11 @@ fn plan_call_args(
     params: &[FunctionParam],
     context: &mut PlanContext<'_>,
     capture: Option<&CaptureSubstitution>,
+    call_argument_mode: CallArgumentMode,
 ) -> Result<Vec<CallArg>, PlanError> {
     let mut args = Vec::with_capacity(arguments.len());
     for (argument, param) in arguments.into_iter().zip(params) {
-        let expression = plan_argument_value(argument.value, capture, context)?;
+        let expression = plan_argument_value(argument, capture, context, call_argument_mode)?;
         let actual = expression.value_type();
         let arg = match expression.into_call_arg(&param.local) {
             Some(arg) => arg,
@@ -360,11 +417,12 @@ fn plan_function_call_args(
     params: &[ValueType],
     context: &mut PlanContext<'_>,
     capture: Option<&CaptureSubstitution>,
+    call_argument_mode: CallArgumentMode,
 ) -> Result<Vec<CallArg>, PlanError> {
     let locals = function_call_param_locals(params);
     let mut args = Vec::with_capacity(arguments.len());
     for (argument, local) in arguments.into_iter().zip(&locals) {
-        let expression = plan_argument_value(argument.value, capture, context)?;
+        let expression = plan_argument_value(argument, capture, context, call_argument_mode)?;
         let actual = expression.value_type();
         let arg = match expression.into_call_arg(local) {
             Some(arg) => arg,
@@ -468,17 +526,89 @@ fn call_arg_type_mismatch(expected: ValueType, actual: ValueType) -> PlanError {
 }
 
 fn plan_argument_value(
-    argument: TypedExpr,
+    argument: GleamCallArg<TypedExpr>,
     capture: Option<&CaptureSubstitution>,
     context: &mut PlanContext<'_>,
+    call_argument_mode: CallArgumentMode,
 ) -> Result<Expr, PlanError> {
+    if matches!(call_argument_mode, CallArgumentMode::Use)
+        && matches!(argument.implicit, Some(ImplicitCallArgOrigin::Use))
+    {
+        return plan_use_callback_argument(argument.value, context);
+    }
+
     if let Some(capture) = capture
-        && is_capture_local(&argument, &capture.name)
+        && is_capture_local(&argument.value, &capture.name)
     {
         return Ok(capture.value.clone());
     }
 
-    plan_expr(argument, context)
+    plan_expr(argument.value, context)
+}
+
+fn plan_use_callback_argument(
+    argument: TypedExpr,
+    context: &mut PlanContext<'_>,
+) -> Result<Expr, PlanError> {
+    match argument {
+        TypedExpr::Fn {
+            type_,
+            kind: FunctionLiteralKind::Use { .. },
+            arguments,
+            body,
+            ..
+        } => super::function::plan_use_callback(type_, arguments, body, context),
+        TypedExpr::Fn { .. } => Err(invalid_use_shape(
+            InvalidUseShapeReason::CallbackLiteralKindNotUse,
+        )),
+        _ => Err(invalid_use_shape(
+            InvalidUseShapeReason::CallbackNotFunctionLiteral,
+        )),
+    }
+}
+
+fn validate_use_call_arguments(arguments: &[GleamCallArg<TypedExpr>]) -> Result<(), PlanError> {
+    if arguments.iter().any(|argument| argument.label.is_some()) {
+        return Err(PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::CallShape {
+                reason: InvalidCallShapeReason::LabelledArguments,
+            },
+        });
+    }
+
+    let mut callback_index = None;
+    for (index, argument) in arguments.iter().enumerate() {
+        match argument.implicit {
+            None => {}
+            Some(ImplicitCallArgOrigin::Use) => {
+                if callback_index.replace(index).is_some() {
+                    return Err(invalid_use_shape(InvalidUseShapeReason::MultipleCallbacks));
+                }
+            }
+            Some(
+                ImplicitCallArgOrigin::Pipe
+                | ImplicitCallArgOrigin::PatternFieldSpread
+                | ImplicitCallArgOrigin::IncorrectArityUse
+                | ImplicitCallArgOrigin::RecordUpdate,
+            ) => {
+                return Err(invalid_use_shape(
+                    InvalidUseShapeReason::UnsupportedImplicitArgument,
+                ));
+            }
+        }
+    }
+
+    match callback_index {
+        Some(index) if index + 1 == arguments.len() => Ok(()),
+        Some(_) => Err(invalid_use_shape(InvalidUseShapeReason::CallbackNotLast)),
+        None => Err(invalid_use_shape(InvalidUseShapeReason::MissingCallback)),
+    }
+}
+
+fn invalid_use_shape(reason: InvalidUseShapeReason) -> PlanError {
+    PlanError::InvalidTypedAst {
+        reason: InvalidTypedAstReason::UseShape { reason },
+    }
 }
 
 fn count_capture_arguments(

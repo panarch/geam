@@ -7,7 +7,7 @@ mod unsupported;
 pub use invalid::{
     InvalidCallShapeReason, InvalidCaseShapeReason, InvalidExpressionShapeKind,
     InvalidExpressionType, InvalidFunctionShapeReason, InvalidPipelineShapeReason,
-    InvalidTypedAstReason,
+    InvalidTypedAstReason, InvalidUseShapeReason,
 };
 pub use unsupported::{
     UnsupportedArgumentReason, UnsupportedAssignmentKind, UnsupportedBinOpKind,

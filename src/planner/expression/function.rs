@@ -47,6 +47,27 @@ pub(super) fn plan_anonymous(
     })
 }
 
+pub(super) fn plan_use_callback(
+    type_: Arc<Type>,
+    arguments: Vec<TypedArg>,
+    body: Vec1<TypedStatement>,
+    context: &mut PlanContext<'_>,
+) -> Result<Expr, PlanError> {
+    let function_type = anonymous_function_type(type_.as_ref())?;
+    let error_name = context.anonymous_function_error_name();
+    let params = function_params(error_name.clone(), &arguments)?;
+    validate_argument_types(&error_name, &function_type, &params).and_then(|()| {
+        plan_anonymous_with_valid_arguments(
+            function_type,
+            error_name,
+            params,
+            arguments,
+            body,
+            context,
+        )
+    })
+}
+
 fn plan_anonymous_with_valid_arguments(
     function_type: FunctionType,
     error_name: EcoString,
@@ -178,14 +199,20 @@ fn anonymous_function_type(type_: &Type) -> Result<FunctionType, PlanError> {
                 actual: InvalidExpressionType::Nil,
             },
         }),
-        None if type_.fn_types().is_some() => Err(PlanError::UnsupportedExpression {
+        None => Err(anonymous_function_type_error(type_)),
+    }
+}
+
+fn anonymous_function_type_error(type_: &Type) -> PlanError {
+    match type_.fn_types() {
+        Some(_) => PlanError::UnsupportedExpression {
             kind: UnsupportedExpressionKind::UnsupportedFunctionLiteralType,
-        }),
-        None => Err(PlanError::InvalidTypedAst {
+        },
+        None => PlanError::InvalidTypedAst {
             reason: InvalidTypedAstReason::ExpressionShape {
                 kind: InvalidExpressionShapeKind::Invalid,
             },
-        }),
+        },
     }
 }
 
@@ -195,18 +222,24 @@ fn anonymous_free_variables(arguments: &[TypedArg], body: &Vec1<TypedStatement>)
         bound.extend(argument.get_variable_name().cloned());
     }
 
-    let mut free = FreeVariables::default();
+    let mut free = FreeVariables::new();
     collect_statements(body.as_slice(), &mut bound, &mut free);
     free.names
 }
 
-#[derive(Default)]
 struct FreeVariables {
     names: Vec<EcoString>,
     seen: HashSet<EcoString>,
 }
 
 impl FreeVariables {
+    fn new() -> Self {
+        Self {
+            names: Vec::new(),
+            seen: HashSet::new(),
+        }
+    }
+
     fn record(&mut self, name: &EcoString, bound: &HashSet<EcoString>) {
         if !bound.contains(name) && self.seen.insert(name.clone()) {
             self.names.push(name.clone());
@@ -235,7 +268,10 @@ fn collect_statement(
             collect_expr(&assignment.value, bound, free);
             collect_variable_pattern_bound_name(&assignment.pattern, bound);
         }
-        Statement::Use(_) | Statement::Assert(_) => {}
+        Statement::Use(use_) => {
+            collect_expr(&use_.call, bound, free);
+        }
+        Statement::Assert(_) => {}
     }
 }
 
