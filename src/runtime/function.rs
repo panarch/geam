@@ -98,20 +98,20 @@ pub(super) fn run_nil_call(
     run_nil_loop(plan, function, frame)
 }
 
-enum ReturnOutcome<Value, Function> {
+enum ReturnOutcome<'a, Value, Function> {
     Value(Value),
     TailCall {
         function: Function,
-        args: Vec<CallArg>,
+        args: &'a [CallArg],
     },
 }
 
-fn eval_return_body<Expression, Function, Value>(
+fn eval_return_body<'a, Expression, Function, Value>(
     plan: &ExecutionPlan,
     frame: &mut Frame,
-    body: &ReturnBody<Expression, Function>,
+    body: &'a ReturnBody<Expression, Function>,
     eval_expression: fn(&ExecutionPlan, &mut Frame, &Expression) -> ExecutionResult<Value>,
-) -> ExecutionResult<ReturnOutcome<Value, Function>>
+) -> ExecutionResult<ReturnOutcome<'a, Value, Function>>
 where
     Function: Copy,
 {
@@ -121,7 +121,7 @@ where
         }
         ReturnBodyKind::TailCall { function, args } => Ok(ReturnOutcome::TailCall {
             function: *function,
-            args: args.clone(),
+            args,
         }),
         ReturnBodyKind::BoolCase {
             subject,
@@ -171,7 +171,7 @@ fn run_int_loop(
                 args,
             } => {
                 let frame_layout = plan.int_function(next).frame_layout();
-                frame = bind_arguments(plan, &args, &mut frame, frame_layout)?;
+                frame = bind_arguments(plan, args, &mut frame, frame_layout)?;
                 function = next;
             }
         }
@@ -195,7 +195,7 @@ fn run_string_loop(
                 args,
             } => {
                 let frame_layout = plan.string_function(next).frame_layout();
-                frame = bind_arguments(plan, &args, &mut frame, frame_layout)?;
+                frame = bind_arguments(plan, args, &mut frame, frame_layout)?;
                 function = next;
             }
         }
@@ -219,7 +219,7 @@ fn run_bool_loop(
                 args,
             } => {
                 let frame_layout = plan.bool_function(next).frame_layout();
-                frame = bind_arguments(plan, &args, &mut frame, frame_layout)?;
+                frame = bind_arguments(plan, args, &mut frame, frame_layout)?;
                 function = next;
             }
         }
@@ -243,7 +243,7 @@ fn run_nil_loop(
                 args,
             } => {
                 let frame_layout = plan.nil_function(next).frame_layout();
-                frame = bind_arguments(plan, &args, &mut frame, frame_layout)?;
+                frame = bind_arguments(plan, args, &mut frame, frame_layout)?;
                 function = next;
             }
         }
@@ -267,7 +267,7 @@ fn run_int_function_loop(
                 args,
             } => {
                 let frame_layout = plan.int_function_function(next).frame_layout();
-                frame = bind_arguments(plan, &args, &mut frame, frame_layout)?;
+                frame = bind_arguments(plan, args, &mut frame, frame_layout)?;
                 function = next;
             }
         }
@@ -291,7 +291,7 @@ fn run_string_function_loop(
                 args,
             } => {
                 let frame_layout = plan.string_function_function(next).frame_layout();
-                frame = bind_arguments(plan, &args, &mut frame, frame_layout)?;
+                frame = bind_arguments(plan, args, &mut frame, frame_layout)?;
                 function = next;
             }
         }
@@ -315,7 +315,7 @@ fn run_bool_function_loop(
                 args,
             } => {
                 let frame_layout = plan.bool_function_function(next).frame_layout();
-                frame = bind_arguments(plan, &args, &mut frame, frame_layout)?;
+                frame = bind_arguments(plan, args, &mut frame, frame_layout)?;
                 function = next;
             }
         }
@@ -339,7 +339,7 @@ fn run_nil_function_loop(
                 args,
             } => {
                 let frame_layout = plan.nil_function_function(next).frame_layout();
-                frame = bind_arguments(plan, &args, &mut frame, frame_layout)?;
+                frame = bind_arguments(plan, args, &mut frame, frame_layout)?;
                 function = next;
             }
         }
@@ -363,7 +363,7 @@ fn run_function_function_loop(
                 args,
             } => {
                 let frame_layout = plan.function_function_function(next).frame_layout();
-                frame = bind_arguments(plan, &args, &mut frame, frame_layout)?;
+                frame = bind_arguments(plan, args, &mut frame, frame_layout)?;
                 function = next;
             }
         }
