@@ -1,20 +1,30 @@
+mod bind;
+mod return_body;
+mod steps;
+
+pub(in crate::runtime) use bind::eval_capture_args;
+pub(in crate::runtime) use steps::execute_steps;
+
 use crate::plan::{
-    BoolFunctionFunctionId, BoolFunctionId, CallArg, CallArgKind, CaptureArg, CaptureArgKind,
-    CaptureValue, CaptureValueKind, ExecutionPlan, FrameLayout, FunctionFunctionFunctionId,
+    BoolFunctionFunctionId, BoolFunctionId, CallArg, ExecutionPlan, FunctionFunctionFunctionId,
     FunctionFunctionValue, FunctionReturnFamily, FunctionValue, IntFunctionFunctionId,
-    IntFunctionId, NilFunctionFunctionId, NilFunctionId, ReturnBody, ReturnBodyKind,
-    RuntimeFunctionId, StepKind, StringFunctionFunctionId, StringFunctionId, Value,
+    IntFunctionId, NilFunctionFunctionId, NilFunctionId, RuntimeFunctionId,
+    StringFunctionFunctionId, StringFunctionId, Value,
 };
 use crate::runtime::ExecutionError;
 use crate::runtime::error::ExecutionResult;
 use crate::runtime::expression::{
-    eval_bool_expr, eval_bool_function_expr, eval_expr, eval_function_function_expr, eval_int_expr,
-    eval_int_function_expr, eval_nil_expr, eval_nil_function_expr, eval_string_expr,
-    eval_string_function_expr,
+    eval_bool_function_expr, eval_function_function_expr, eval_int_function_expr,
+    eval_nil_function_expr, eval_string_function_expr,
 };
 use crate::runtime::frame::Frame;
+use bind::{bind_arguments, bind_function_value_arguments};
 use ecow::EcoString;
 use num_bigint::BigInt;
+use return_body::{
+    run_bool_function_loop, run_bool_loop, run_function_function_loop, run_int_function_loop,
+    run_int_loop, run_nil_function_loop, run_nil_loop, run_string_function_loop, run_string_loop,
+};
 
 pub(super) fn run_main(plan: &ExecutionPlan) -> ExecutionResult<Value> {
     let mut caller_frame = Frame::default();
@@ -96,487 +106,6 @@ pub(super) fn run_nil_call(
         plan.nil_function(function).frame_layout(),
     )?;
     run_nil_loop(plan, function, frame)
-}
-
-enum ReturnOutcome<'a, Value, Function> {
-    Value(Value),
-    TailCall {
-        function: Function,
-        args: &'a [CallArg],
-    },
-}
-
-fn eval_return_body<'a, Expression, Function, Value>(
-    plan: &ExecutionPlan,
-    frame: &mut Frame,
-    body: &'a ReturnBody<Expression, Function>,
-    eval_expression: fn(&ExecutionPlan, &mut Frame, &Expression) -> ExecutionResult<Value>,
-) -> ExecutionResult<ReturnOutcome<'a, Value, Function>>
-where
-    Function: Copy,
-{
-    match body.kind() {
-        ReturnBodyKind::Expr(expression) => {
-            eval_expression(plan, frame, expression).map(ReturnOutcome::Value)
-        }
-        ReturnBodyKind::TailCall { function, args } => Ok(ReturnOutcome::TailCall {
-            function: *function,
-            args,
-        }),
-        ReturnBodyKind::BoolCase {
-            subject,
-            true_,
-            false_,
-        } => {
-            if eval_bool_expr(plan, frame, subject)? {
-                eval_return_body(plan, frame, true_, eval_expression)
-            } else {
-                eval_return_body(plan, frame, false_, eval_expression)
-            }
-        }
-        ReturnBodyKind::IntCase {
-            subject,
-            clauses,
-            fallback,
-        } => {
-            let subject = eval_int_expr(plan, frame, subject)?;
-            for (pattern, branch) in clauses {
-                if pattern == &subject {
-                    return eval_return_body(plan, frame, branch, eval_expression);
-                }
-            }
-            eval_return_body(plan, frame, fallback, eval_expression)
-        }
-        ReturnBodyKind::StringCase {
-            subject,
-            clauses,
-            fallback,
-        } => {
-            let subject = eval_string_expr(plan, frame, subject)?;
-            for (pattern, branch) in clauses {
-                if pattern == &subject {
-                    return eval_return_body(plan, frame, branch, eval_expression);
-                }
-            }
-            eval_return_body(plan, frame, fallback, eval_expression)
-        }
-        ReturnBodyKind::Block { steps, return_ } => {
-            execute_steps(plan, steps, frame)?;
-            eval_return_body(plan, frame, return_, eval_expression)
-        }
-    }
-}
-
-fn run_int_loop(
-    plan: &ExecutionPlan,
-    mut function: IntFunctionId,
-    mut frame: Frame,
-) -> ExecutionResult<BigInt> {
-    loop {
-        let runtime_function = plan.int_function(function);
-        execute_steps(plan, runtime_function.steps(), &mut frame)?;
-        let eval = eval_int_expr;
-        let outcome = eval_return_body(plan, &mut frame, runtime_function.return_(), eval)?;
-        match outcome {
-            ReturnOutcome::Value(value) => return Ok(value),
-            ReturnOutcome::TailCall {
-                function: next,
-                args,
-            } => {
-                let frame_layout = plan.int_function(next).frame_layout();
-                frame = bind_arguments(plan, args, &mut frame, frame_layout)?;
-                function = next;
-            }
-        }
-    }
-}
-
-fn run_string_loop(
-    plan: &ExecutionPlan,
-    mut function: StringFunctionId,
-    mut frame: Frame,
-) -> ExecutionResult<EcoString> {
-    loop {
-        let runtime_function = plan.string_function(function);
-        execute_steps(plan, runtime_function.steps(), &mut frame)?;
-        let eval = eval_string_expr;
-        let outcome = eval_return_body(plan, &mut frame, runtime_function.return_(), eval)?;
-        match outcome {
-            ReturnOutcome::Value(value) => return Ok(value),
-            ReturnOutcome::TailCall {
-                function: next,
-                args,
-            } => {
-                let frame_layout = plan.string_function(next).frame_layout();
-                frame = bind_arguments(plan, args, &mut frame, frame_layout)?;
-                function = next;
-            }
-        }
-    }
-}
-
-fn run_bool_loop(
-    plan: &ExecutionPlan,
-    mut function: BoolFunctionId,
-    mut frame: Frame,
-) -> ExecutionResult<bool> {
-    loop {
-        let runtime_function = plan.bool_function(function);
-        execute_steps(plan, runtime_function.steps(), &mut frame)?;
-        let eval = eval_bool_expr;
-        let outcome = eval_return_body(plan, &mut frame, runtime_function.return_(), eval)?;
-        match outcome {
-            ReturnOutcome::Value(value) => return Ok(value),
-            ReturnOutcome::TailCall {
-                function: next,
-                args,
-            } => {
-                let frame_layout = plan.bool_function(next).frame_layout();
-                frame = bind_arguments(plan, args, &mut frame, frame_layout)?;
-                function = next;
-            }
-        }
-    }
-}
-
-fn run_nil_loop(
-    plan: &ExecutionPlan,
-    mut function: NilFunctionId,
-    mut frame: Frame,
-) -> ExecutionResult<()> {
-    loop {
-        let runtime_function = plan.nil_function(function);
-        execute_steps(plan, runtime_function.steps(), &mut frame)?;
-        let eval = eval_nil_expr;
-        let outcome = eval_return_body(plan, &mut frame, runtime_function.return_(), eval)?;
-        match outcome {
-            ReturnOutcome::Value(()) => return Ok(()),
-            ReturnOutcome::TailCall {
-                function: next,
-                args,
-            } => {
-                let frame_layout = plan.nil_function(next).frame_layout();
-                frame = bind_arguments(plan, args, &mut frame, frame_layout)?;
-                function = next;
-            }
-        }
-    }
-}
-
-fn run_int_function_loop(
-    plan: &ExecutionPlan,
-    mut function: IntFunctionFunctionId,
-    mut frame: Frame,
-) -> ExecutionResult<crate::plan::IntFunctionValue> {
-    loop {
-        let runtime_function = plan.int_function_function(function);
-        execute_steps(plan, runtime_function.steps(), &mut frame)?;
-        let eval = eval_int_function_expr;
-        let outcome = eval_return_body(plan, &mut frame, runtime_function.return_(), eval)?;
-        match outcome {
-            ReturnOutcome::Value(value) => return Ok(value),
-            ReturnOutcome::TailCall {
-                function: next,
-                args,
-            } => {
-                let frame_layout = plan.int_function_function(next).frame_layout();
-                frame = bind_arguments(plan, args, &mut frame, frame_layout)?;
-                function = next;
-            }
-        }
-    }
-}
-
-fn run_string_function_loop(
-    plan: &ExecutionPlan,
-    mut function: StringFunctionFunctionId,
-    mut frame: Frame,
-) -> ExecutionResult<crate::plan::StringFunctionValue> {
-    loop {
-        let runtime_function = plan.string_function_function(function);
-        execute_steps(plan, runtime_function.steps(), &mut frame)?;
-        let eval = eval_string_function_expr;
-        let outcome = eval_return_body(plan, &mut frame, runtime_function.return_(), eval)?;
-        match outcome {
-            ReturnOutcome::Value(value) => return Ok(value),
-            ReturnOutcome::TailCall {
-                function: next,
-                args,
-            } => {
-                let frame_layout = plan.string_function_function(next).frame_layout();
-                frame = bind_arguments(plan, args, &mut frame, frame_layout)?;
-                function = next;
-            }
-        }
-    }
-}
-
-fn run_bool_function_loop(
-    plan: &ExecutionPlan,
-    mut function: BoolFunctionFunctionId,
-    mut frame: Frame,
-) -> ExecutionResult<crate::plan::BoolFunctionValue> {
-    loop {
-        let runtime_function = plan.bool_function_function(function);
-        execute_steps(plan, runtime_function.steps(), &mut frame)?;
-        let eval = eval_bool_function_expr;
-        let outcome = eval_return_body(plan, &mut frame, runtime_function.return_(), eval)?;
-        match outcome {
-            ReturnOutcome::Value(value) => return Ok(value),
-            ReturnOutcome::TailCall {
-                function: next,
-                args,
-            } => {
-                let frame_layout = plan.bool_function_function(next).frame_layout();
-                frame = bind_arguments(plan, args, &mut frame, frame_layout)?;
-                function = next;
-            }
-        }
-    }
-}
-
-fn run_nil_function_loop(
-    plan: &ExecutionPlan,
-    mut function: NilFunctionFunctionId,
-    mut frame: Frame,
-) -> ExecutionResult<crate::plan::NilFunctionValue> {
-    loop {
-        let runtime_function = plan.nil_function_function(function);
-        execute_steps(plan, runtime_function.steps(), &mut frame)?;
-        let eval = eval_nil_function_expr;
-        let outcome = eval_return_body(plan, &mut frame, runtime_function.return_(), eval)?;
-        match outcome {
-            ReturnOutcome::Value(value) => return Ok(value),
-            ReturnOutcome::TailCall {
-                function: next,
-                args,
-            } => {
-                let frame_layout = plan.nil_function_function(next).frame_layout();
-                frame = bind_arguments(plan, args, &mut frame, frame_layout)?;
-                function = next;
-            }
-        }
-    }
-}
-
-fn run_function_function_loop(
-    plan: &ExecutionPlan,
-    mut function: FunctionFunctionFunctionId,
-    mut frame: Frame,
-) -> ExecutionResult<FunctionFunctionValue> {
-    loop {
-        let runtime_function = plan.function_function_function(function);
-        execute_steps(plan, runtime_function.steps(), &mut frame)?;
-        let eval = eval_function_function_expr;
-        let outcome = eval_return_body(plan, &mut frame, runtime_function.return_(), eval)?;
-        match outcome {
-            ReturnOutcome::Value(value) => return Ok(value),
-            ReturnOutcome::TailCall {
-                function: next,
-                args,
-            } => {
-                let frame_layout = plan.function_function_function(next).frame_layout();
-                frame = bind_arguments(plan, args, &mut frame, frame_layout)?;
-                function = next;
-            }
-        }
-    }
-}
-
-pub(in crate::runtime) fn execute_steps(
-    plan: &ExecutionPlan,
-    steps: &[crate::plan::Step],
-    frame: &mut Frame,
-) -> ExecutionResult<()> {
-    for step in steps {
-        match step.kind() {
-            StepKind::LetInt { local, value, .. } => {
-                let value = eval_int_expr(plan, frame, value)?;
-                frame.set_int(*local, value);
-            }
-            StepKind::LetString { local, value, .. } => {
-                let value = eval_string_expr(plan, frame, value)?;
-                frame.set_string(*local, value);
-            }
-            StepKind::LetBool { local, value, .. } => {
-                let value = eval_bool_expr(plan, frame, value)?;
-                frame.set_bool(*local, value);
-            }
-            StepKind::LetNil { local, value, .. } => {
-                eval_nil_expr(plan, frame, value)?;
-                frame.set_nil(*local);
-            }
-            StepKind::LetIntFunction { local, value, .. } => {
-                let value = eval_int_function_expr(plan, frame, value)?;
-                frame.set_int_function(*local, value);
-            }
-            StepKind::LetStringFunction { local, value, .. } => {
-                let value = eval_string_function_expr(plan, frame, value)?;
-                frame.set_string_function(*local, value);
-            }
-            StepKind::LetBoolFunction { local, value, .. } => {
-                let value = eval_bool_function_expr(plan, frame, value)?;
-                frame.set_bool_function(*local, value);
-            }
-            StepKind::LetNilFunction { local, value, .. } => {
-                let value = eval_nil_function_expr(plan, frame, value)?;
-                frame.set_nil_function(*local, value);
-            }
-            StepKind::LetFunctionFunction { local, value, .. } => {
-                let value = eval_function_function_expr(plan, frame, value)?;
-                frame.set_function_function(*local, value);
-            }
-            StepKind::Evaluate(expression) => {
-                let _ = eval_expr(plan, frame, expression)?;
-            }
-        }
-    }
-
-    Ok(())
-}
-
-fn bind_arguments(
-    plan: &ExecutionPlan,
-    args: &[CallArg],
-    caller_frame: &mut Frame,
-    frame_layout: FrameLayout,
-) -> ExecutionResult<Frame> {
-    let mut frame = Frame::new(frame_layout);
-    bind_arguments_into(plan, args, caller_frame, &mut frame)?;
-    Ok(frame)
-}
-
-fn bind_function_value_arguments(
-    plan: &ExecutionPlan,
-    args: &[CallArg],
-    caller_frame: &mut Frame,
-    frame_layout: FrameLayout,
-    captures: &[CaptureValue],
-) -> ExecutionResult<Frame> {
-    let mut frame = Frame::new(frame_layout);
-    bind_captures(&mut frame, captures);
-    bind_arguments_into(plan, args, caller_frame, &mut frame)?;
-    Ok(frame)
-}
-
-fn bind_arguments_into(
-    plan: &ExecutionPlan,
-    args: &[CallArg],
-    caller_frame: &mut Frame,
-    frame: &mut Frame,
-) -> ExecutionResult<()> {
-    for arg in args {
-        match arg.kind() {
-            CallArgKind::Int { local, value } => {
-                let value = eval_int_expr(plan, caller_frame, value)?;
-                frame.set_int(*local, value);
-            }
-            CallArgKind::String { local, value } => {
-                let value = eval_string_expr(plan, caller_frame, value)?;
-                frame.set_string(*local, value);
-            }
-            CallArgKind::Bool { local, value } => {
-                let value = eval_bool_expr(plan, caller_frame, value)?;
-                frame.set_bool(*local, value);
-            }
-            CallArgKind::Nil { local, value } => {
-                eval_nil_expr(plan, caller_frame, value)?;
-                frame.set_nil(*local);
-            }
-            CallArgKind::IntFunction { local, value } => {
-                let value = eval_int_function_expr(plan, caller_frame, value)?;
-                frame.set_int_function(*local, value);
-            }
-            CallArgKind::StringFunction { local, value } => {
-                let value = eval_string_function_expr(plan, caller_frame, value)?;
-                frame.set_string_function(*local, value);
-            }
-            CallArgKind::BoolFunction { local, value } => {
-                let value = eval_bool_function_expr(plan, caller_frame, value)?;
-                frame.set_bool_function(*local, value);
-            }
-            CallArgKind::NilFunction { local, value } => {
-                let value = eval_nil_function_expr(plan, caller_frame, value)?;
-                frame.set_nil_function(*local, value);
-            }
-            CallArgKind::FunctionFunction { local, value } => {
-                let value = eval_function_function_expr(plan, caller_frame, value)?;
-                frame.set_function_function(*local, value);
-            }
-        }
-    }
-
-    Ok(())
-}
-
-pub(in crate::runtime) fn eval_capture_args(
-    plan: &ExecutionPlan,
-    frame: &mut Frame,
-    args: &[CaptureArg],
-) -> ExecutionResult<Vec<CaptureValue>> {
-    let mut captures = Vec::with_capacity(args.len());
-    for arg in args {
-        captures.push(match arg.kind() {
-            CaptureArgKind::Int { local, value } => {
-                CaptureValue::int(*local, eval_int_expr(plan, frame, value)?)
-            }
-            CaptureArgKind::String { local, value } => {
-                CaptureValue::string(*local, eval_string_expr(plan, frame, value)?)
-            }
-            CaptureArgKind::Bool { local, value } => {
-                CaptureValue::bool(*local, eval_bool_expr(plan, frame, value)?)
-            }
-            CaptureArgKind::Nil { local, value } => {
-                eval_nil_expr(plan, frame, value)?;
-                CaptureValue::nil(*local)
-            }
-            CaptureArgKind::IntFunction { local, value } => {
-                CaptureValue::int_function(*local, eval_int_function_expr(plan, frame, value)?)
-            }
-            CaptureArgKind::StringFunction { local, value } => CaptureValue::string_function(
-                *local,
-                eval_string_function_expr(plan, frame, value)?,
-            ),
-            CaptureArgKind::BoolFunction { local, value } => {
-                CaptureValue::bool_function(*local, eval_bool_function_expr(plan, frame, value)?)
-            }
-            CaptureArgKind::NilFunction { local, value } => {
-                CaptureValue::nil_function(*local, eval_nil_function_expr(plan, frame, value)?)
-            }
-            CaptureArgKind::FunctionFunction { local, value } => CaptureValue::function_function(
-                *local,
-                eval_function_function_expr(plan, frame, value)?,
-            ),
-        });
-    }
-
-    Ok(captures)
-}
-
-fn bind_captures(frame: &mut Frame, captures: &[CaptureValue]) {
-    for capture in captures {
-        match capture.kind() {
-            CaptureValueKind::Int { local, value } => frame.set_int(*local, value.clone()),
-            CaptureValueKind::String { local, value } => frame.set_string(*local, value.clone()),
-            CaptureValueKind::Bool { local, value } => frame.set_bool(*local, *value),
-            CaptureValueKind::Nil { local } => frame.set_nil(*local),
-            CaptureValueKind::IntFunction { local, value } => {
-                frame.set_int_function(*local, value.clone());
-            }
-            CaptureValueKind::StringFunction { local, value } => {
-                frame.set_string_function(*local, value.clone());
-            }
-            CaptureValueKind::BoolFunction { local, value } => {
-                frame.set_bool_function(*local, value.clone());
-            }
-            CaptureValueKind::NilFunction { local, value } => {
-                frame.set_nil_function(*local, value.clone());
-            }
-            CaptureValueKind::FunctionFunction { local, value } => {
-                frame.set_function_function(*local, value.clone());
-            }
-        }
-    }
 }
 
 pub(in crate::runtime) fn run_int_function_call(
@@ -849,7 +378,7 @@ fn run_function_returning_function_call(
 #[cfg(test)]
 mod tests {
     use super::{
-        execute_steps, run_bool_call, run_bool_function_call, run_bool_function_function_call,
+        run_bool_call, run_bool_function_call, run_bool_function_function_call,
         run_bool_function_returning_function_call, run_function_function_function_call,
         run_function_function_returning_function_call, run_int_call, run_int_function_call,
         run_int_function_function_call, run_int_function_returning_function_call, run_main,
@@ -858,16 +387,15 @@ mod tests {
         run_string_function_function_call, run_string_function_returning_function_call,
     };
     use crate::plan::{
-        BoolExpr, BoolFunctionExpr, BoolFunctionFunctionId, BoolFunctionId, BoolFunctionLocalId,
-        BoolFunctionValue, BoolLocalId, CallArg, ExecutionPlan, Expr, FunctionExpr,
-        FunctionExprKind, FunctionFunctionExpr, FunctionFunctionFunctionId, FunctionFunctionId,
+        BoolExpr, BoolFunctionExpr, BoolFunctionFunctionId, BoolFunctionId, BoolFunctionValue,
+        BoolLocalId, CallArg, ExecutionPlan, Expr, FunctionExpr, FunctionExprKind,
+        FunctionFunctionExpr, FunctionFunctionFunctionId, FunctionFunctionId,
         FunctionFunctionLocalId, FunctionFunctionValue, FunctionId, FunctionPlan,
         FunctionReturnFamily, FunctionType, FunctionValue, IntExpr, IntFunctionExpr,
-        IntFunctionFunctionId, IntFunctionId, IntFunctionLocalId, IntFunctionValue, IntLocalId,
-        NilExpr, NilFunctionExpr, NilFunctionFunctionId, NilFunctionId, NilFunctionLocalId,
-        NilFunctionValue, NilLocalId, ParamLocal, ReturnExpr, RuntimeFunctionId, Step, StringExpr,
-        StringFunctionExpr, StringFunctionFunctionId, StringFunctionId, StringFunctionLocalId,
-        StringFunctionValue, StringLocalId, ValueType,
+        IntFunctionFunctionId, IntFunctionId, IntFunctionValue, IntLocalId, NilExpr,
+        NilFunctionExpr, NilFunctionFunctionId, NilFunctionId, NilFunctionValue, NilLocalId,
+        ParamLocal, ReturnExpr, RuntimeFunctionId, Step, StringExpr, StringFunctionExpr,
+        StringFunctionFunctionId, StringFunctionId, StringFunctionValue, StringLocalId, ValueType,
     };
     use crate::runtime::frame::Frame;
     use crate::runtime::{ExecutionError, Value, run_src};
@@ -1144,6 +672,153 @@ pub fn main() {
     }
 
     #[test]
+    fn primitive_function_call_returns_values() {
+        let plan = primitive_function_plan();
+
+        assert_eq!(
+            run_int_call(&plan, IntFunctionId(0), &[], &mut Frame::default()),
+            Ok(1.into()),
+        );
+        assert_eq!(
+            run_string_call(&plan, StringFunctionId(0), &[], &mut Frame::default()),
+            Ok("geam".into()),
+        );
+        assert_eq!(
+            run_bool_call(&plan, BoolFunctionId(0), &[], &mut Frame::default()),
+            Ok(true),
+        );
+        assert_eq!(
+            run_nil_call(&plan, NilFunctionId(0), &[], &mut Frame::default()),
+            Ok(()),
+        );
+    }
+
+    #[test]
+    fn direct_function_returning_function_call_returns_function_values() {
+        let plan = plan_with_function_function_steps(Vec::new());
+
+        assert_eq!(
+            run_int_function_returning_function_call(
+                &plan,
+                IntFunctionFunctionId(0),
+                &[],
+                &mut Frame::default(),
+            )
+            .map(|value| value.type_().return_().clone()),
+            Ok(ValueType::Int),
+        );
+        assert_eq!(
+            run_string_function_returning_function_call(
+                &plan,
+                StringFunctionFunctionId(0),
+                &[],
+                &mut Frame::default(),
+            )
+            .map(|value| value.type_().return_().clone()),
+            Ok(ValueType::String),
+        );
+        assert_eq!(
+            run_bool_function_returning_function_call(
+                &plan,
+                BoolFunctionFunctionId(0),
+                &[],
+                &mut Frame::default(),
+            )
+            .map(|value| value.type_().return_().clone()),
+            Ok(ValueType::Bool),
+        );
+        assert_eq!(
+            run_nil_function_returning_function_call(
+                &plan,
+                NilFunctionFunctionId(0),
+                &[],
+                &mut Frame::default(),
+            )
+            .map(|value| value.type_().return_().clone()),
+            Ok(ValueType::Nil),
+        );
+        assert_eq!(
+            run_function_function_returning_function_call(
+                &plan,
+                FunctionFunctionFunctionId(0),
+                &[],
+                &mut Frame::default(),
+            )
+            .map(|value| value.type_().return_().clone()),
+            Ok(ValueType::Function(Box::new(FunctionType::new(
+                Vec::new(),
+                ValueType::Int,
+            )))),
+        );
+    }
+
+    #[test]
+    fn primitive_function_calls_propagate_frame_binding_errors() {
+        let plan = primitive_function_plan();
+
+        assert_expected_function_got_int(run_int_call(
+            &plan,
+            IntFunctionId(0),
+            &[failing_function_function_arg()],
+            &mut Frame::default(),
+        ));
+        assert_expected_function_got_int(run_string_call(
+            &plan,
+            StringFunctionId(0),
+            &[failing_function_function_arg()],
+            &mut Frame::default(),
+        ));
+        assert_expected_function_got_int(run_bool_call(
+            &plan,
+            BoolFunctionId(0),
+            &[failing_function_function_arg()],
+            &mut Frame::default(),
+        ));
+        assert_expected_function_got_int(run_nil_call(
+            &plan,
+            NilFunctionId(0),
+            &[failing_function_function_arg()],
+            &mut Frame::default(),
+        ));
+    }
+
+    #[test]
+    fn function_returning_function_calls_propagate_frame_binding_errors() {
+        let plan = plan_with_function_function_steps(Vec::new());
+
+        assert_expected_function_got_int(run_int_function_returning_function_call(
+            &plan,
+            IntFunctionFunctionId(0),
+            &[failing_function_function_arg()],
+            &mut Frame::default(),
+        ));
+        assert_expected_function_got_int(run_string_function_returning_function_call(
+            &plan,
+            StringFunctionFunctionId(0),
+            &[failing_function_function_arg()],
+            &mut Frame::default(),
+        ));
+        assert_expected_function_got_int(run_bool_function_returning_function_call(
+            &plan,
+            BoolFunctionFunctionId(0),
+            &[failing_function_function_arg()],
+            &mut Frame::default(),
+        ));
+        assert_expected_function_got_int(run_nil_function_returning_function_call(
+            &plan,
+            NilFunctionFunctionId(0),
+            &[failing_function_function_arg()],
+            &mut Frame::default(),
+        ));
+        assert_expected_function_got_int(run_function_function_returning_function_call(
+            &plan,
+            FunctionFunctionFunctionId(0),
+            &[failing_function_function_arg()],
+            &mut Frame::default(),
+        ));
+    }
+
+    #[test]
     fn function_function_call_propagates_callee_evaluation_error() {
         let plan = plan();
         let expression = failing_function_function_expr();
@@ -1181,78 +856,6 @@ pub fn main() {
     }
 
     #[test]
-    fn function_function_call_propagates_argument_binding_error() {
-        let plan = plan_with_function_function_steps(Vec::new());
-
-        assert_expected_function_got_int(run_int_function_function_call(
-            &plan,
-            &function_function_expr(FunctionFunctionId::Int(IntFunctionFunctionId(0))),
-            &[failing_function_function_arg()],
-            &mut Frame::default(),
-        ));
-        assert_expected_function_got_int(run_string_function_function_call(
-            &plan,
-            &function_function_expr(FunctionFunctionId::String(StringFunctionFunctionId(0))),
-            &[failing_function_function_arg()],
-            &mut Frame::default(),
-        ));
-        assert_expected_function_got_int(run_bool_function_function_call(
-            &plan,
-            &function_function_expr(FunctionFunctionId::Bool(BoolFunctionFunctionId(0))),
-            &[failing_function_function_arg()],
-            &mut Frame::default(),
-        ));
-        assert_expected_function_got_int(run_nil_function_function_call(
-            &plan,
-            &function_function_expr(FunctionFunctionId::Nil(NilFunctionFunctionId(0))),
-            &[failing_function_function_arg()],
-            &mut Frame::default(),
-        ));
-        assert_expected_function_got_int(run_function_function_function_call(
-            &plan,
-            &function_function_expr(FunctionFunctionId::Function(FunctionFunctionFunctionId(0))),
-            &[failing_function_function_arg()],
-            &mut Frame::default(),
-        ));
-    }
-
-    #[test]
-    fn function_function_call_propagates_step_error() {
-        let plan = plan_with_function_function_steps(vec![failing_step()]);
-
-        assert_expected_function_got_int(run_int_function_function_call(
-            &plan,
-            &function_function_expr(FunctionFunctionId::Int(IntFunctionFunctionId(0))),
-            &[],
-            &mut Frame::default(),
-        ));
-        assert_expected_function_got_int(run_string_function_function_call(
-            &plan,
-            &function_function_expr(FunctionFunctionId::String(StringFunctionFunctionId(0))),
-            &[],
-            &mut Frame::default(),
-        ));
-        assert_expected_function_got_int(run_bool_function_function_call(
-            &plan,
-            &function_function_expr(FunctionFunctionId::Bool(BoolFunctionFunctionId(0))),
-            &[],
-            &mut Frame::default(),
-        ));
-        assert_expected_function_got_int(run_nil_function_function_call(
-            &plan,
-            &function_function_expr(FunctionFunctionId::Nil(NilFunctionFunctionId(0))),
-            &[],
-            &mut Frame::default(),
-        ));
-        assert_expected_function_got_int(run_function_function_function_call(
-            &plan,
-            &function_function_expr(FunctionFunctionId::Function(FunctionFunctionFunctionId(0))),
-            &[],
-            &mut Frame::default(),
-        ));
-    }
-
-    #[test]
     fn run_main_propagates_function_body_error_by_return_family() {
         let steps = vec![failing_step()];
 
@@ -1276,102 +879,6 @@ pub fn main() {
             steps,
             function_return_expr(function_function_expr_value()),
         )));
-    }
-
-    #[test]
-    fn primitive_function_call_propagates_argument_binding_error() {
-        let plan = primitive_function_plan();
-
-        assert_expected_function_got_int(run_int_call(
-            &plan,
-            IntFunctionId(0),
-            &[failing_function_function_arg()],
-            &mut Frame::default(),
-        ));
-        assert_expected_function_got_int(run_string_call(
-            &plan,
-            StringFunctionId(0),
-            &[failing_function_function_arg()],
-            &mut Frame::default(),
-        ));
-        assert_expected_function_got_int(run_bool_call(
-            &plan,
-            BoolFunctionId(0),
-            &[failing_function_function_arg()],
-            &mut Frame::default(),
-        ));
-        assert_expected_function_got_int(run_nil_call(
-            &plan,
-            NilFunctionId(0),
-            &[failing_function_function_arg()],
-            &mut Frame::default(),
-        ));
-    }
-
-    #[test]
-    fn primitive_function_call_propagates_typed_argument_evaluation_errors() {
-        let plan = primitive_function_plan();
-
-        let cases = [
-            CallArg::int(IntLocalId(0), failing_int_expr()),
-            CallArg::string(StringLocalId(0), failing_string_expr()),
-            CallArg::bool(BoolLocalId(0), failing_bool_expr()),
-            CallArg::nil(NilLocalId(0), failing_nil_expr()),
-            CallArg::int_function(IntFunctionLocalId(0), failing_int_function_expr()),
-            CallArg::string_function(StringFunctionLocalId(0), failing_string_function_expr()),
-            CallArg::bool_function(BoolFunctionLocalId(0), failing_bool_function_expr()),
-            CallArg::nil_function(NilFunctionLocalId(0), failing_nil_function_expr()),
-        ];
-
-        for arg in cases {
-            assert_expected_function_got_int(run_int_call(
-                &plan,
-                IntFunctionId(0),
-                &[arg],
-                &mut Frame::default(),
-            ));
-        }
-    }
-
-    #[test]
-    fn execute_steps_propagates_let_value_evaluation_errors() {
-        let plan = plan();
-
-        let steps = [
-            Step::let_int(IntLocalId(0), "x".into(), failing_int_expr()),
-            Step::let_string(StringLocalId(0), "x".into(), failing_string_expr()),
-            Step::let_bool(BoolLocalId(0), "x".into(), failing_bool_expr()),
-            Step::let_nil(NilLocalId(0), "x".into(), failing_nil_expr()),
-            Step::let_int_function(
-                IntFunctionLocalId(0),
-                "x".into(),
-                failing_int_function_expr(),
-            ),
-            Step::let_string_function(
-                StringFunctionLocalId(0),
-                "x".into(),
-                failing_string_function_expr(),
-            ),
-            Step::let_bool_function(
-                BoolFunctionLocalId(0),
-                "x".into(),
-                failing_bool_function_expr(),
-            ),
-            Step::let_nil_function(
-                NilFunctionLocalId(0),
-                "x".into(),
-                failing_nil_function_expr(),
-            ),
-            Step::let_function_function(
-                FunctionFunctionLocalId(0),
-                "x".into(),
-                failing_function_function_expr(),
-            ),
-        ];
-
-        for step in steps {
-            assert_expected_function_got_int(execute_steps(&plan, &[step], &mut Frame::default()));
-        }
     }
 
     #[test]
@@ -1420,138 +927,6 @@ pub fn main() {
         ));
     }
 
-    #[test]
-    fn primitive_function_value_call_propagates_argument_binding_error() {
-        let plan = primitive_function_plan();
-
-        assert_expected_function_got_int(run_int_function_call(
-            &plan,
-            &IntFunctionExpr::value(IntFunctionValue::new(IntFunctionId(0), Vec::new())),
-            &[failing_function_function_arg()],
-            &mut Frame::default(),
-        ));
-        assert_expected_function_got_int(run_string_function_call(
-            &plan,
-            &StringFunctionExpr::value(StringFunctionValue::new(StringFunctionId(0), Vec::new())),
-            &[failing_function_function_arg()],
-            &mut Frame::default(),
-        ));
-        assert_expected_function_got_int(run_bool_function_call(
-            &plan,
-            &BoolFunctionExpr::value(BoolFunctionValue::new(BoolFunctionId(0), Vec::new())),
-            &[failing_function_function_arg()],
-            &mut Frame::default(),
-        ));
-        assert_expected_function_got_int(run_nil_function_call(
-            &plan,
-            &NilFunctionExpr::value(NilFunctionValue::new(NilFunctionId(0), Vec::new())),
-            &[failing_function_function_arg()],
-            &mut Frame::default(),
-        ));
-    }
-
-    #[test]
-    fn primitive_function_value_call_propagates_step_error() {
-        let plan = primitive_function_plan_with_steps(vec![failing_step()]);
-
-        assert_expected_function_got_int(run_int_function_call(
-            &plan,
-            &IntFunctionExpr::value(IntFunctionValue::new(IntFunctionId(0), Vec::new())),
-            &[],
-            &mut Frame::default(),
-        ));
-        assert_expected_function_got_int(run_string_function_call(
-            &plan,
-            &StringFunctionExpr::value(StringFunctionValue::new(StringFunctionId(0), Vec::new())),
-            &[],
-            &mut Frame::default(),
-        ));
-        assert_expected_function_got_int(run_bool_function_call(
-            &plan,
-            &BoolFunctionExpr::value(BoolFunctionValue::new(BoolFunctionId(0), Vec::new())),
-            &[],
-            &mut Frame::default(),
-        ));
-        assert_expected_function_got_int(run_nil_function_call(
-            &plan,
-            &NilFunctionExpr::value(NilFunctionValue::new(NilFunctionId(0), Vec::new())),
-            &[],
-            &mut Frame::default(),
-        ));
-    }
-
-    #[test]
-    fn function_returning_function_call_propagates_argument_binding_error() {
-        let plan = plan_with_function_function_steps(Vec::new());
-
-        assert_expected_function_got_int(run_int_function_returning_function_call(
-            &plan,
-            IntFunctionFunctionId(0),
-            &[failing_function_function_arg()],
-            &mut Frame::default(),
-        ));
-        assert_expected_function_got_int(run_string_function_returning_function_call(
-            &plan,
-            StringFunctionFunctionId(0),
-            &[failing_function_function_arg()],
-            &mut Frame::default(),
-        ));
-        assert_expected_function_got_int(run_bool_function_returning_function_call(
-            &plan,
-            BoolFunctionFunctionId(0),
-            &[failing_function_function_arg()],
-            &mut Frame::default(),
-        ));
-        assert_expected_function_got_int(run_nil_function_returning_function_call(
-            &plan,
-            NilFunctionFunctionId(0),
-            &[failing_function_function_arg()],
-            &mut Frame::default(),
-        ));
-        assert_expected_function_got_int(run_function_function_returning_function_call(
-            &plan,
-            FunctionFunctionFunctionId(0),
-            &[failing_function_function_arg()],
-            &mut Frame::default(),
-        ));
-    }
-
-    #[test]
-    fn function_returning_function_call_propagates_step_error() {
-        let plan = plan_with_function_function_steps(vec![failing_step()]);
-
-        assert_expected_function_got_int(run_int_function_returning_function_call(
-            &plan,
-            IntFunctionFunctionId(0),
-            &[],
-            &mut Frame::default(),
-        ));
-        assert_expected_function_got_int(run_string_function_returning_function_call(
-            &plan,
-            StringFunctionFunctionId(0),
-            &[],
-            &mut Frame::default(),
-        ));
-        assert_expected_function_got_int(run_bool_function_returning_function_call(
-            &plan,
-            BoolFunctionFunctionId(0),
-            &[],
-            &mut Frame::default(),
-        ));
-        assert_expected_function_got_int(run_nil_function_returning_function_call(
-            &plan,
-            NilFunctionFunctionId(0),
-            &[],
-            &mut Frame::default(),
-        ));
-        assert_expected_function_got_int(run_function_function_returning_function_call(
-            &plan,
-            FunctionFunctionFunctionId(0),
-            &[],
-            &mut Frame::default(),
-        ));
-    }
-
     fn assert_expected_function_got_int<T>(actual: Result<T, ExecutionError>) {
         assert_function_return_family_mismatch(
             actual,
@@ -1594,54 +969,6 @@ pub fn main() {
 
     fn failing_function_function_arg() -> CallArg {
         CallArg::function_function(FunctionFunctionLocalId(0), failing_function_function_expr())
-    }
-
-    fn failing_int_expr() -> IntExpr {
-        IntExpr::function_call(failing_int_function_expr(), Vec::new())
-    }
-
-    fn failing_string_expr() -> StringExpr {
-        StringExpr::function_call(failing_string_function_expr(), Vec::new())
-    }
-
-    fn failing_bool_expr() -> BoolExpr {
-        BoolExpr::function_call(failing_bool_function_expr(), Vec::new())
-    }
-
-    fn failing_nil_expr() -> NilExpr {
-        NilExpr::function_call(failing_nil_function_expr(), Vec::new())
-    }
-
-    fn failing_int_function_expr() -> IntFunctionExpr {
-        IntFunctionExpr::function_call(
-            failing_function_function_expr(),
-            Vec::new(),
-            FunctionType::new(Vec::new(), ValueType::Int),
-        )
-    }
-
-    fn failing_string_function_expr() -> StringFunctionExpr {
-        StringFunctionExpr::function_call(
-            failing_function_function_expr(),
-            Vec::new(),
-            FunctionType::new(Vec::new(), ValueType::String),
-        )
-    }
-
-    fn failing_bool_function_expr() -> BoolFunctionExpr {
-        BoolFunctionExpr::function_call(
-            failing_function_function_expr(),
-            Vec::new(),
-            FunctionType::new(Vec::new(), ValueType::Bool),
-        )
-    }
-
-    fn failing_nil_function_expr() -> NilFunctionExpr {
-        NilFunctionExpr::function_call(
-            failing_function_function_expr(),
-            Vec::new(),
-            FunctionType::new(Vec::new(), ValueType::Nil),
-        )
     }
 
     fn failing_step() -> Step {
