@@ -119,6 +119,12 @@ Errors make boundaries visible:
 Do not use wildcard imports or re-exports anywhere. The only exception is a
 parent facade module re-exporting child modules as its intentional surface.
 
+## Module Split Rules
+
+Child modules must not become shared utility surfaces for sibling modules. If
+sibling modules need a helper, keep it in the parent facade or in a child module
+that owns that helper's domain.
+
 ## Test Rules
 
 Planner test names must identify the source of the case:
