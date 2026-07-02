@@ -2,7 +2,8 @@ use super::FunctionDsl;
 use crate::plan::{
     BoolFunctionLocalId, BoolLocalId, FloatFunctionLocalId, FloatLocalId, FunctionFunctionLocalId,
     FunctionType, IntFunctionLocalId, IntLocalId, NilFunctionLocalId, NilLocalId, Param,
-    ParamLocal, StringFunctionLocalId, StringLocalId, ValueType,
+    ParamLocal, StringFunctionLocalId, StringLocalId, TupleFunctionLocalId, TupleLocalId,
+    ValueType,
 };
 use ecow::EcoString;
 
@@ -48,6 +49,19 @@ impl FunctionDsl {
     pub(crate) fn param_nil(mut self, local: usize, name: impl Into<EcoString>) -> Self {
         self.params.push(Param::named(
             ParamLocal::nil(NilLocalId(local)),
+            name.into(),
+        ));
+        self
+    }
+
+    pub(crate) fn param_tuple(
+        mut self,
+        local: usize,
+        name: impl Into<EcoString>,
+        type_: impl IntoIterator<Item = ValueType>,
+    ) -> Self {
+        self.params.push(Param::named(
+            ParamLocal::tuple(TupleLocalId(local), type_.into_iter().collect()),
             name.into(),
         ));
         self
@@ -133,6 +147,26 @@ impl FunctionDsl {
         self
     }
 
+    pub(crate) fn param_tuple_function(
+        mut self,
+        local: usize,
+        name: impl Into<EcoString>,
+        arguments: impl IntoIterator<Item = ValueType>,
+        return_type: impl IntoIterator<Item = ValueType>,
+    ) -> Self {
+        self.params.push(Param::named(
+            ParamLocal::tuple_function(
+                TupleFunctionLocalId(local),
+                FunctionType::new(
+                    arguments.into_iter().collect(),
+                    ValueType::Tuple(return_type.into_iter().collect()),
+                ),
+            ),
+            name.into(),
+        ));
+        self
+    }
+
     pub(crate) fn param_function_function(
         mut self,
         local: usize,
@@ -149,14 +183,24 @@ impl FunctionDsl {
 
 #[cfg(test)]
 mod tests {
-    use crate::plan::{FloatFunctionLocalId, FloatLocalId, FunctionType, ParamLocal, ValueType};
+    use crate::plan::{
+        FloatFunctionLocalId, FloatLocalId, FunctionType, ParamLocal, TupleFunctionLocalId,
+        TupleLocalId, ValueType,
+    };
     use crate::planner::dsl::function;
 
     #[test]
     fn float_param_helpers_build_float_local_shapes() {
         let function = function("main", crate::planner::dsl::int(1))
             .param_float(0, "value")
-            .param_float_function(0, "callback", [ValueType::Float]);
+            .param_tuple(0, "pair", [ValueType::Int])
+            .param_float_function(0, "callback", [ValueType::Float])
+            .param_tuple_function(
+                0,
+                "tuple_callback",
+                [ValueType::Tuple(vec![ValueType::Int])],
+                [ValueType::String],
+            );
 
         assert_eq!(
             function.params[0].local(),
@@ -164,9 +208,23 @@ mod tests {
         );
         assert_eq!(
             function.params[1].local(),
+            &ParamLocal::tuple(TupleLocalId(0), vec![ValueType::Int]),
+        );
+        assert_eq!(
+            function.params[2].local(),
             &ParamLocal::float_function(
                 FloatFunctionLocalId(0),
                 FunctionType::new(vec![ValueType::Float], ValueType::Float),
+            ),
+        );
+        assert_eq!(
+            function.params[3].local(),
+            &ParamLocal::tuple_function(
+                TupleFunctionLocalId(0),
+                FunctionType::new(
+                    vec![ValueType::Tuple(vec![ValueType::Int])],
+                    ValueType::Tuple(vec![ValueType::String]),
+                ),
             ),
         );
     }

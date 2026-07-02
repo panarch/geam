@@ -36,6 +36,12 @@ behavior, or a source-visible semantic difference.
 cannot encode in the current plan shape. Adding a new `ExecutionError`
 constructor or invariant kind requires explicit design review.
 
+Tuple projection has one approved execution invariant:
+`ExecutionError::tuple_index_family_mismatch`. It is only for typed tuple-index
+plan evaluation when the runtime tuple value lacks the planner-selected element
+or that element has a different value family. Tuple index validation, profile
+boundaries, and typed-AST margins remain planner responsibilities.
+
 ## Plan Construction Rules
 
 Plan construction is not a validation layer. Reaching an `ExecutionPlan` or plan

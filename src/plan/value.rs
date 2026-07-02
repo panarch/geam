@@ -5,7 +5,8 @@ use super::{
     BoolFunctionId, BoolFunctionLocalId, BoolLocalId, FloatFunctionId, FloatFunctionLocalId,
     FloatLocalId, FunctionFunctionId, FunctionFunctionLocalId, IntFunctionId, IntFunctionLocalId,
     IntLocalId, NilFunctionId, NilFunctionLocalId, NilLocalId, ParamLocal, RuntimeFunctionId,
-    StringFunctionId, StringFunctionLocalId, StringLocalId,
+    StringFunctionId, StringFunctionLocalId, StringLocalId, TupleFunctionId, TupleFunctionLocalId,
+    TupleLocalId,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -15,6 +16,7 @@ pub enum ValueType {
     String,
     Bool,
     Nil,
+    Tuple(Vec<ValueType>),
     Function(Box<FunctionType>),
 }
 
@@ -36,6 +38,7 @@ pub(crate) enum FunctionValueKind {
     String(StringFunctionValue),
     Bool(BoolFunctionValue),
     Nil(NilFunctionValue),
+    Tuple(TupleFunctionValue),
     Function(FunctionFunctionValue),
 }
 
@@ -75,6 +78,14 @@ pub(crate) struct NilFunctionValue {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub(crate) struct TupleFunctionValue {
+    runtime_id: TupleFunctionId,
+    params: Vec<ParamLocal>,
+    captures: Vec<CaptureValue>,
+    return_type: Vec<ValueType>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub(crate) struct FunctionFunctionValue {
     runtime_id: FunctionFunctionId,
     params: Vec<ParamLocal>,
@@ -108,6 +119,10 @@ pub(crate) enum CaptureValueKind {
     Nil {
         local: NilLocalId,
     },
+    Tuple {
+        local: TupleLocalId,
+        value: Vec<Value>,
+    },
     IntFunction {
         local: IntFunctionLocalId,
         value: IntFunctionValue,
@@ -128,6 +143,10 @@ pub(crate) enum CaptureValueKind {
         local: NilFunctionLocalId,
         value: NilFunctionValue,
     },
+    TupleFunction {
+        local: TupleFunctionLocalId,
+        value: TupleFunctionValue,
+    },
     FunctionFunction {
         local: FunctionFunctionLocalId,
         value: FunctionFunctionValue,
@@ -141,7 +160,22 @@ pub enum Value {
     String(EcoString),
     Bool(bool),
     Nil,
+    Tuple(Vec<Value>),
     Function(FunctionValue),
+}
+
+impl Value {
+    pub fn value_type(&self) -> ValueType {
+        match self {
+            Self::Int(_) => ValueType::Int,
+            Self::Float(_) => ValueType::Float,
+            Self::String(_) => ValueType::String,
+            Self::Bool(_) => ValueType::Bool,
+            Self::Nil => ValueType::Nil,
+            Self::Tuple(values) => ValueType::Tuple(values.iter().map(Self::value_type).collect()),
+            Self::Function(value) => ValueType::Function(Box::new(value.type_())),
+        }
+    }
 }
 
 impl FunctionType {
@@ -191,6 +225,9 @@ impl FunctionValue {
             RuntimeFunctionId::Nil(runtime_id) => FunctionValueKind::Nil(
                 NilFunctionValue::new_with_captures(runtime_id, params, captures),
             ),
+            RuntimeFunctionId::Tuple { id, return_type } => FunctionValueKind::Tuple(
+                TupleFunctionValue::new_with_captures(id, params, captures, return_type),
+            ),
             RuntimeFunctionId::Function { id, return_type } => FunctionValueKind::Function(
                 FunctionFunctionValue::new_with_captures(id, params, captures, return_type),
             ),
@@ -206,6 +243,7 @@ impl FunctionValue {
             FunctionValueKind::String(value) => value.type_(),
             FunctionValueKind::Bool(value) => value.type_(),
             FunctionValueKind::Nil(value) => value.type_(),
+            FunctionValueKind::Tuple(value) => value.type_(),
             FunctionValueKind::Function(value) => value.type_(),
         }
     }
@@ -222,6 +260,7 @@ impl FunctionValue {
             FunctionValueKind::String(value) => value.params(),
             FunctionValueKind::Bool(value) => value.params(),
             FunctionValueKind::Nil(value) => value.params(),
+            FunctionValueKind::Tuple(value) => value.params(),
             FunctionValueKind::Function(value) => value.params(),
         }
     }
@@ -407,6 +446,48 @@ impl NilFunctionValue {
     }
 }
 
+impl TupleFunctionValue {
+    #[cfg(test)]
+    pub(crate) fn new(
+        runtime_id: TupleFunctionId,
+        params: Vec<ParamLocal>,
+        return_type: Vec<ValueType>,
+    ) -> Self {
+        Self::new_with_captures(runtime_id, params, Vec::new(), return_type)
+    }
+
+    pub(crate) fn new_with_captures(
+        runtime_id: TupleFunctionId,
+        params: Vec<ParamLocal>,
+        captures: Vec<CaptureValue>,
+        return_type: Vec<ValueType>,
+    ) -> Self {
+        Self {
+            runtime_id,
+            params,
+            captures,
+            return_type,
+        }
+    }
+
+    pub(crate) fn type_(&self) -> FunctionType {
+        FunctionType::from_params(&self.params, ValueType::Tuple(self.return_type.clone()))
+    }
+
+    pub(crate) fn runtime_id(&self) -> TupleFunctionId {
+        self.runtime_id
+    }
+
+    pub(crate) fn captures(&self) -> &[CaptureValue] {
+        &self.captures
+    }
+
+    #[cfg(test)]
+    pub(crate) fn params(&self) -> &[ParamLocal] {
+        &self.params
+    }
+}
+
 impl FunctionFunctionValue {
     #[cfg(test)]
     pub(crate) fn new(
@@ -483,6 +564,12 @@ impl CaptureValue {
         }
     }
 
+    pub(crate) fn tuple(local: TupleLocalId, value: Vec<Value>) -> Self {
+        Self {
+            kind: CaptureValueKind::Tuple { local, value },
+        }
+    }
+
     pub(crate) fn int_function(local: IntFunctionLocalId, value: IntFunctionValue) -> Self {
         Self {
             kind: CaptureValueKind::IntFunction { local, value },
@@ -513,6 +600,12 @@ impl CaptureValue {
     pub(crate) fn nil_function(local: NilFunctionLocalId, value: NilFunctionValue) -> Self {
         Self {
             kind: CaptureValueKind::NilFunction { local, value },
+        }
+    }
+
+    pub(crate) fn tuple_function(local: TupleFunctionLocalId, value: TupleFunctionValue) -> Self {
+        Self {
+            kind: CaptureValueKind::TupleFunction { local, value },
         }
     }
 
@@ -570,6 +663,14 @@ impl From<NilFunctionValue> for FunctionValue {
     }
 }
 
+impl From<TupleFunctionValue> for FunctionValue {
+    fn from(value: TupleFunctionValue) -> Self {
+        Self {
+            kind: FunctionValueKind::Tuple(value),
+        }
+    }
+}
+
 impl From<FunctionFunctionValue> for FunctionValue {
     fn from(value: FunctionFunctionValue) -> Self {
         Self {
@@ -583,14 +684,26 @@ mod tests {
     use super::{
         BoolFunctionValue, CaptureValue, CaptureValueKind, FloatFunctionValue,
         FunctionFunctionValue, FunctionType, FunctionValue, IntFunctionValue, NilFunctionValue,
-        StringFunctionValue, ValueType,
+        StringFunctionValue, TupleFunctionValue, Value, ValueType,
     };
     use crate::plan::{
         BoolFunctionId, BoolFunctionLocalId, BoolLocalId, FloatFunctionId, FloatFunctionLocalId,
         FloatLocalId, FunctionFunctionId, FunctionValueKind, IntFunctionFunctionId, IntFunctionId,
         IntLocalId, NilFunctionId, NilLocalId, ParamLocal, RuntimeFunctionId, StringFunctionId,
-        StringLocalId,
+        StringLocalId, TupleFunctionId, TupleFunctionLocalId, TupleLocalId,
     };
+
+    #[test]
+    fn value_type_preserves_tuple_element_families() {
+        assert_eq!(Value::Float(1.0).value_type(), ValueType::Float);
+        assert_eq!(Value::String("one".into()).value_type(), ValueType::String);
+        assert_eq!(Value::Bool(true).value_type(), ValueType::Bool);
+        assert_eq!(Value::Nil.value_type(), ValueType::Nil);
+        assert_eq!(
+            Value::Tuple(vec![Value::Int(1.into()), Value::String("one".into())]).value_type(),
+            ValueType::Tuple(vec![ValueType::Int, ValueType::String]),
+        );
+    }
 
     #[test]
     fn function_value_accepts_matching_shape() {
@@ -623,6 +736,8 @@ mod tests {
             StringFunctionValue::new(StringFunctionId(0), Vec::new()).into();
         let bool: FunctionValue = BoolFunctionValue::new(BoolFunctionId(0), Vec::new()).into();
         let nil: FunctionValue = NilFunctionValue::new(NilFunctionId(0), Vec::new()).into();
+        let tuple: FunctionValue =
+            TupleFunctionValue::new(TupleFunctionId(0), Vec::new(), vec![ValueType::Int]).into();
         let function: FunctionValue = FunctionFunctionValue::new(
             FunctionFunctionId::Int(IntFunctionFunctionId(0)),
             Vec::new(),
@@ -635,6 +750,10 @@ mod tests {
         assert_eq!(string.type_().return_(), &ValueType::String);
         assert_eq!(bool.type_().return_(), &ValueType::Bool);
         assert_eq!(nil.type_().return_(), &ValueType::Nil);
+        assert_eq!(
+            tuple.type_().return_(),
+            &ValueType::Tuple(vec![ValueType::Int])
+        );
         assert!(matches!(function.type_().return_(), ValueType::Function(_)));
     }
 
@@ -649,7 +768,9 @@ mod tests {
                 string_param(0),
                 bool_param(0),
                 nil_param(0),
+                tuple_param(0),
                 ParamLocal::float_function(FloatFunctionLocalId(0), argument_function.clone()),
+                ParamLocal::tuple_function(TupleFunctionLocalId(0), argument_function.clone()),
                 ParamLocal::bool_function(BoolFunctionLocalId(0), argument_function.clone()),
             ],
         );
@@ -663,6 +784,8 @@ mod tests {
                     ValueType::String,
                     ValueType::Bool,
                     ValueType::Nil,
+                    ValueType::Tuple(vec![ValueType::Int]),
+                    ValueType::Function(Box::new(argument_function.clone())),
                     ValueType::Function(Box::new(argument_function.clone())),
                     ValueType::Function(Box::new(argument_function)),
                 ],
@@ -703,6 +826,13 @@ mod tests {
         );
         let bool = FunctionValue::new(RuntimeFunctionId::Bool(BoolFunctionId(0)), params.clone());
         let nil = FunctionValue::new(RuntimeFunctionId::Nil(NilFunctionId(0)), params.clone());
+        let tuple = FunctionValue::new(
+            RuntimeFunctionId::Tuple {
+                id: TupleFunctionId(0),
+                return_type: vec![ValueType::Int],
+            },
+            params.clone(),
+        );
         let function = FunctionValue::new(
             RuntimeFunctionId::Function {
                 id: FunctionFunctionId::Int(IntFunctionFunctionId(0)),
@@ -716,6 +846,7 @@ mod tests {
         assert_eq!(string.params(), params);
         assert_eq!(bool.params(), params);
         assert_eq!(nil.params(), params);
+        assert_eq!(tuple.params(), params);
         assert_eq!(function.params(), params);
         assert!(matches!(int.kind(), FunctionValueKind::Int(_)));
     }
@@ -730,6 +861,25 @@ mod tests {
         assert!(matches!(
             value.kind(),
             CaptureValueKind::FloatFunction { .. }
+        ));
+    }
+
+    #[test]
+    fn capture_value_preserves_tuple_shapes() {
+        let tuple = CaptureValue::tuple(TupleLocalId(0), vec![Value::Int(1.into())]);
+        assert!(matches!(tuple.kind(), CaptureValueKind::Tuple { .. }));
+
+        let function = CaptureValue::tuple_function(
+            TupleFunctionLocalId(0),
+            TupleFunctionValue::new(
+                TupleFunctionId(0),
+                vec![tuple_param(0)],
+                vec![ValueType::Int],
+            ),
+        );
+        assert!(matches!(
+            function.kind(),
+            CaptureValueKind::TupleFunction { .. }
         ));
     }
 
@@ -751,5 +901,9 @@ mod tests {
 
     fn nil_param(index: usize) -> ParamLocal {
         ParamLocal::nil(NilLocalId(index))
+    }
+
+    fn tuple_param(index: usize) -> ParamLocal {
+        ParamLocal::tuple(TupleLocalId(index), vec![ValueType::Int])
     }
 }

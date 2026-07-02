@@ -1,4 +1,4 @@
-use super::{BoolExpr, CallArg, FloatExpr, IntFunctionExpr, StringExpr};
+use super::{BoolExpr, CallArg, FloatExpr, IntFunctionExpr, StringExpr, TupleExpr};
 use crate::plan::{IntFunctionId, IntLocalId, Step};
 use ecow::EcoString;
 use num_bigint::BigInt;
@@ -22,6 +22,10 @@ pub(crate) enum IntExprKind {
     FunctionCall {
         function: Box<IntFunctionExpr>,
         args: Vec<CallArg>,
+    },
+    TupleIndex {
+        tuple: Box<TupleExpr>,
+        index: usize,
     },
     Add {
         left: Box<IntExpr>,
@@ -94,6 +98,15 @@ impl IntExpr {
             kind: IntExprKind::FunctionCall {
                 function: Box::new(function),
                 args,
+            },
+        }
+    }
+
+    pub(crate) fn tuple_index(tuple: TupleExpr, index: usize) -> Self {
+        Self {
+            kind: IntExprKind::TupleIndex {
+                tuple: Box::new(tuple),
+                index,
             },
         }
     }
@@ -238,6 +251,17 @@ mod tests {
         assert!(matches!(
             IntExpr::function_call(function_expr(), Vec::new()).kind(),
             IntExprKind::FunctionCall { .. }
+        ));
+        assert!(matches!(
+            IntExpr::tuple_index(
+                crate::plan::TupleExpr::value(
+                    vec![Expr::int(IntExpr::value(1.into()))],
+                    vec![crate::plan::ValueType::Int],
+                ),
+                0,
+            )
+            .kind(),
+            IntExprKind::TupleIndex { .. }
         ));
         assert!(matches!(
             IntExpr::int_case(

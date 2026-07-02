@@ -9,13 +9,15 @@ use crate::plan::{
     BoolFunctionFunctionId, BoolFunctionId, CallArg, ExecutionPlan, FloatFunctionFunctionId,
     FloatFunctionId, FunctionFunctionFunctionId, FunctionFunctionValue, FunctionReturnFamily,
     FunctionValue, IntFunctionFunctionId, IntFunctionId, NilFunctionFunctionId, NilFunctionId,
-    RuntimeFunctionId, StringFunctionFunctionId, StringFunctionId, Value,
+    RuntimeFunctionId, StringFunctionFunctionId, StringFunctionId, TupleFunctionFunctionId,
+    TupleFunctionId, Value,
 };
 use crate::runtime::ExecutionError;
 use crate::runtime::error::ExecutionResult;
 use crate::runtime::expression::{
     eval_bool_function_expr, eval_float_function_expr, eval_function_function_expr,
     eval_int_function_expr, eval_nil_function_expr, eval_string_function_expr,
+    eval_tuple_function_expr,
 };
 use crate::runtime::frame::Frame;
 use bind::{bind_arguments, bind_function_value_arguments};
@@ -24,7 +26,8 @@ use num_bigint::BigInt;
 use return_body::{
     run_bool_function_loop, run_bool_loop, run_float_function_loop, run_float_loop,
     run_function_function_loop, run_int_function_loop, run_int_loop, run_nil_function_loop,
-    run_nil_loop, run_string_function_loop, run_string_loop,
+    run_nil_loop, run_string_function_loop, run_string_loop, run_tuple_function_loop,
+    run_tuple_loop,
 };
 
 pub(super) fn run_main(plan: &ExecutionPlan) -> ExecutionResult<Value> {
@@ -44,6 +47,9 @@ pub(super) fn run_main(plan: &ExecutionPlan) -> ExecutionResult<Value> {
         }
         RuntimeFunctionId::Nil(function) => {
             run_nil_call(plan, function, &[], &mut caller_frame).map(|_| Value::Nil)
+        }
+        RuntimeFunctionId::Tuple { id, .. } => {
+            run_tuple_call(plan, id, &[], &mut caller_frame).map(Value::Tuple)
         }
         RuntimeFunctionId::Function { id, .. } => {
             run_function_returning_function_call(plan, id, &[], &mut caller_frame)
@@ -127,6 +133,21 @@ pub(super) fn run_nil_call(
     run_nil_loop(plan, function, frame)
 }
 
+pub(super) fn run_tuple_call(
+    plan: &ExecutionPlan,
+    function: TupleFunctionId,
+    args: &[CallArg],
+    caller_frame: &mut Frame,
+) -> ExecutionResult<Vec<Value>> {
+    let frame = bind_arguments(
+        plan,
+        args,
+        caller_frame,
+        plan.tuple_function(function).frame_layout(),
+    )?;
+    run_tuple_loop(plan, function, frame)
+}
+
 pub(in crate::runtime) fn run_int_function_call(
     plan: &ExecutionPlan,
     function: &crate::plan::IntFunctionExpr,
@@ -195,6 +216,20 @@ pub(in crate::runtime) fn run_nil_function_call(
     let frame =
         bind_function_value_arguments(plan, args, caller_frame, frame_layout, function.captures())?;
     run_nil_loop(plan, function.runtime_id(), frame)
+}
+
+pub(in crate::runtime) fn run_tuple_function_call(
+    plan: &ExecutionPlan,
+    function: &crate::plan::TupleFunctionExpr,
+    args: &[CallArg],
+    caller_frame: &mut Frame,
+) -> ExecutionResult<Vec<Value>> {
+    let function = eval_tuple_function_expr(plan, caller_frame, function)?;
+    let runtime_function = plan.tuple_function(function.runtime_id());
+    let frame_layout = runtime_function.frame_layout();
+    let frame =
+        bind_function_value_arguments(plan, args, caller_frame, frame_layout, function.captures())?;
+    run_tuple_loop(plan, function.runtime_id(), frame)
 }
 
 pub(in crate::runtime) fn run_int_function_returning_function_call(
@@ -270,6 +305,21 @@ pub(in crate::runtime) fn run_nil_function_returning_function_call(
         plan.nil_function_function(function).frame_layout(),
     )?;
     run_nil_function_loop(plan, function, frame)
+}
+
+pub(in crate::runtime) fn run_tuple_function_returning_function_call(
+    plan: &ExecutionPlan,
+    function: TupleFunctionFunctionId,
+    args: &[CallArg],
+    caller_frame: &mut Frame,
+) -> ExecutionResult<crate::plan::TupleFunctionValue> {
+    let frame = bind_arguments(
+        plan,
+        args,
+        caller_frame,
+        plan.tuple_function_function(function).frame_layout(),
+    )?;
+    run_tuple_function_loop(plan, function, frame)
 }
 
 pub(in crate::runtime) fn run_function_function_returning_function_call(
@@ -393,6 +443,27 @@ pub(in crate::runtime) fn run_nil_function_function_call(
     run_nil_function_loop(plan, function_id, frame)
 }
 
+pub(in crate::runtime) fn run_tuple_function_function_call(
+    plan: &ExecutionPlan,
+    function: &crate::plan::FunctionFunctionExpr,
+    args: &[CallArg],
+    caller_frame: &mut Frame,
+) -> ExecutionResult<crate::plan::TupleFunctionValue> {
+    let function = eval_function_function_expr(plan, caller_frame, function)?;
+    let runtime_id = function.runtime_id();
+    let function_id = runtime_id
+        .tuple()
+        .ok_or(ExecutionError::function_return_family_mismatch(
+            FunctionReturnFamily::Tuple,
+            runtime_id.family(),
+        ))?;
+    let runtime_function = plan.tuple_function_function(function_id);
+    let frame_layout = runtime_function.frame_layout();
+    let frame =
+        bind_function_value_arguments(plan, args, caller_frame, frame_layout, function.captures())?;
+    run_tuple_function_loop(plan, function_id, frame)
+}
+
 pub(in crate::runtime) fn run_function_function_function_call(
     plan: &ExecutionPlan,
     function: &crate::plan::FunctionFunctionExpr,
@@ -441,6 +512,10 @@ fn run_function_returning_function_call(
             run_nil_function_returning_function_call(plan, function, args, caller_frame)
                 .map(Into::into)
         }
+        crate::plan::FunctionFunctionId::Tuple(function) => {
+            run_tuple_function_returning_function_call(plan, function, args, caller_frame)
+                .map(Into::into)
+        }
         crate::plan::FunctionFunctionId::Function(function) => {
             run_function_function_returning_function_call(plan, function, args, caller_frame)
                 .map(Into::into)
@@ -460,6 +535,8 @@ mod tests {
         run_nil_call, run_nil_function_call, run_nil_function_function_call,
         run_nil_function_returning_function_call, run_string_call, run_string_function_call,
         run_string_function_function_call, run_string_function_returning_function_call,
+        run_tuple_call, run_tuple_function_call, run_tuple_function_function_call,
+        run_tuple_function_returning_function_call,
     };
     use crate::plan::{
         BoolExpr, BoolFunctionExpr, BoolFunctionFunctionId, BoolFunctionId, BoolFunctionValue,
@@ -471,7 +548,8 @@ mod tests {
         IntFunctionFunctionId, IntFunctionId, IntFunctionValue, IntLocalId, NilExpr,
         NilFunctionExpr, NilFunctionFunctionId, NilFunctionId, NilFunctionValue, NilLocalId,
         ParamLocal, ReturnExpr, RuntimeFunctionId, Step, StringExpr, StringFunctionExpr,
-        StringFunctionFunctionId, StringFunctionId, StringFunctionValue, StringLocalId, ValueType,
+        StringFunctionFunctionId, StringFunctionId, StringFunctionValue, StringLocalId, TupleExpr,
+        TupleFunctionExpr, TupleFunctionFunctionId, TupleFunctionId, TupleFunctionValue, ValueType,
     };
     use crate::runtime::frame::Frame;
     use crate::runtime::{ExecutionError, Value, run_src};
@@ -528,6 +606,16 @@ mod tests {
                 &mut Frame::default(),
             ),
             FunctionReturnFamily::Nil,
+            FunctionReturnFamily::Int,
+        );
+        assert_function_return_family_mismatch(
+            run_tuple_function_function_call(
+                &plan,
+                &function_function_expr(FunctionFunctionId::Int(IntFunctionFunctionId(0))),
+                &[],
+                &mut Frame::default(),
+            ),
+            FunctionReturnFamily::Tuple,
             FunctionReturnFamily::Int,
         );
         assert_expected_function_got_int(run_function_function_function_call(
@@ -777,6 +865,16 @@ pub fn main() {
             Ok(ValueType::Nil),
         );
         assert_eq!(
+            run_tuple_function_function_call(
+                &plan,
+                &function_function_expr(FunctionFunctionId::Tuple(TupleFunctionFunctionId(0))),
+                &[],
+                &mut Frame::default(),
+            )
+            .map(|value| value.type_().return_().clone()),
+            Ok(ValueType::Tuple(vec![ValueType::Int])),
+        );
+        assert_eq!(
             run_function_function_function_call(
                 &plan,
                 &function_function_expr(FunctionFunctionId::Function(FunctionFunctionFunctionId(
@@ -816,6 +914,10 @@ pub fn main() {
         assert_eq!(
             run_nil_call(&plan, NilFunctionId(0), &[], &mut Frame::default()),
             Ok(()),
+        );
+        assert_eq!(
+            run_tuple_call(&plan, TupleFunctionId(0), &[], &mut Frame::default()),
+            Ok(vec![Value::Int(1.into())]),
         );
     }
 
@@ -884,6 +986,26 @@ pub fn main() {
             Ok(ValueType::Nil),
         );
         assert_eq!(
+            run_tuple_function_returning_function_call(
+                &plan,
+                TupleFunctionFunctionId(0),
+                &[],
+                &mut Frame::default(),
+            )
+            .map(|value| value.type_().return_().clone()),
+            Ok(ValueType::Tuple(vec![ValueType::Int])),
+        );
+        assert_eq!(
+            run_function_returning_function_call(
+                &plan,
+                FunctionFunctionId::Tuple(TupleFunctionFunctionId(0)),
+                &[],
+                &mut Frame::default(),
+            )
+            .map(|value| value.type_().return_().clone()),
+            Ok(ValueType::Tuple(vec![ValueType::Int])),
+        );
+        assert_eq!(
             run_function_function_returning_function_call(
                 &plan,
                 FunctionFunctionFunctionId(0),
@@ -932,6 +1054,12 @@ pub fn main() {
             &[failing_function_function_arg()],
             &mut Frame::default(),
         ));
+        assert_expected_function_got_int(run_tuple_call(
+            &plan,
+            TupleFunctionId(0),
+            &[failing_function_function_arg()],
+            &mut Frame::default(),
+        ));
     }
 
     #[test]
@@ -965,6 +1093,12 @@ pub fn main() {
         assert_expected_function_got_int(run_nil_function_returning_function_call(
             &plan,
             NilFunctionFunctionId(0),
+            &[failing_function_function_arg()],
+            &mut Frame::default(),
+        ));
+        assert_expected_function_got_int(run_tuple_function_returning_function_call(
+            &plan,
+            TupleFunctionFunctionId(0),
             &[failing_function_function_arg()],
             &mut Frame::default(),
         ));
@@ -1005,6 +1139,12 @@ pub fn main() {
             &[],
             &mut Frame::default(),
         ));
+        assert_expected_function_got_int(run_tuple_function_function_call(
+            &plan,
+            &expression,
+            &[],
+            &mut Frame::default(),
+        ));
         assert_expected_function_got_int(run_function_function_function_call(
             &plan,
             &expression,
@@ -1032,6 +1172,16 @@ pub fn main() {
         assert_expected_function_got_int(run_main(&plan_with_main(
             steps.clone(),
             ReturnExpr::nil(NilFunctionId(0), NilExpr::value()),
+        )));
+        assert_expected_function_got_int(run_main(&plan_with_main(
+            steps.clone(),
+            ReturnExpr::tuple(
+                TupleFunctionId(0),
+                TupleExpr::value(
+                    vec![Expr::int(IntExpr::value(1.into()))],
+                    vec![ValueType::Int],
+                ),
+            ),
         )));
         assert_expected_function_got_int(run_main(&plan_with_main(
             steps,
@@ -1089,6 +1239,16 @@ pub fn main() {
                 failing_function_function_expr(),
                 Vec::new(),
                 FunctionType::new(Vec::new(), ValueType::Nil),
+            ),
+            &[],
+            &mut Frame::default(),
+        ));
+        assert_expected_function_got_int(run_tuple_function_call(
+            &plan,
+            &TupleFunctionExpr::function_call(
+                failing_function_function_expr(),
+                Vec::new(),
+                FunctionType::new(Vec::new(), ValueType::Tuple(vec![ValueType::Int])),
             ),
             &[],
             &mut Frame::default(),
@@ -1161,8 +1321,9 @@ pub fn main() {
                 function_plan(3, "float_function", steps.clone(), float_function_expr()),
                 function_plan(4, "bool_function", steps.clone(), bool_function_expr()),
                 function_plan(5, "nil_function", steps.clone(), nil_function_expr()),
+                function_plan(6, "tuple_function", steps.clone(), tuple_function_expr()),
                 function_plan(
-                    6,
+                    7,
                     "function_function",
                     steps,
                     function_function_expr_value(),
@@ -1233,6 +1394,19 @@ pub fn main() {
                     steps,
                     ReturnExpr::nil(NilFunctionId(0), NilExpr::value()),
                 ),
+                FunctionPlan::new(
+                    FunctionId::new(5),
+                    "tuple".into(),
+                    Vec::new(),
+                    Vec::new(),
+                    ReturnExpr::tuple(
+                        TupleFunctionId(0),
+                        TupleExpr::value(
+                            vec![Expr::int(IntExpr::value(1.into()))],
+                            vec![ValueType::Int],
+                        ),
+                    ),
+                ),
             ],
         )
     }
@@ -1268,6 +1442,9 @@ pub fn main() {
             }
             FunctionExprKind::Nil(return_) => {
                 ReturnExpr::nil_function(NilFunctionFunctionId(0), return_)
+            }
+            FunctionExprKind::Tuple(return_) => {
+                ReturnExpr::tuple_function(TupleFunctionFunctionId(0), return_)
             }
             FunctionExprKind::Function(return_) => {
                 ReturnExpr::function_function(FunctionFunctionFunctionId(0), return_)
@@ -1307,6 +1484,14 @@ pub fn main() {
         FunctionExpr::nil(NilFunctionExpr::value(NilFunctionValue::new(
             NilFunctionId(0),
             Vec::new(),
+        )))
+    }
+
+    fn tuple_function_expr() -> FunctionExpr {
+        FunctionExpr::tuple(TupleFunctionExpr::value(TupleFunctionValue::new(
+            TupleFunctionId(0),
+            Vec::new(),
+            vec![ValueType::Int],
         )))
     }
 

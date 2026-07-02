@@ -1,4 +1,4 @@
-use super::{BoolExpr, CallArg, FloatExpr, IntExpr, StringFunctionExpr};
+use super::{BoolExpr, CallArg, FloatExpr, IntExpr, StringFunctionExpr, TupleExpr};
 use crate::plan::{Step, StringFunctionId, StringLocalId};
 use ecow::EcoString;
 use num_bigint::BigInt;
@@ -22,6 +22,10 @@ pub(crate) enum StringExprKind {
     FunctionCall {
         function: Box<StringFunctionExpr>,
         args: Vec<CallArg>,
+    },
+    TupleIndex {
+        tuple: Box<TupleExpr>,
+        index: usize,
     },
     Concatenate {
         left: Box<StringExpr>,
@@ -77,6 +81,15 @@ impl StringExpr {
             kind: StringExprKind::FunctionCall {
                 function: Box::new(function),
                 args,
+            },
+        }
+    }
+
+    pub(crate) fn tuple_index(tuple: TupleExpr, index: usize) -> Self {
+        Self {
+            kind: StringExprKind::TupleIndex {
+                tuple: Box::new(tuple),
+                index,
             },
         }
     }
@@ -179,6 +192,17 @@ mod tests {
         assert!(matches!(
             StringExpr::function_call(function_expr(), Vec::new()).kind(),
             StringExprKind::FunctionCall { .. }
+        ));
+        assert!(matches!(
+            StringExpr::tuple_index(
+                crate::plan::TupleExpr::value(
+                    vec![Expr::string(StringExpr::value("geam".into()))],
+                    vec![crate::plan::ValueType::String],
+                ),
+                0,
+            )
+            .kind(),
+            StringExprKind::TupleIndex { .. }
         ));
         assert!(matches!(
             StringExpr::int_case(

@@ -1,7 +1,10 @@
-use crate::plan::{ExecutionPlan, FloatFunctionExpr, FloatFunctionExprKind, FloatFunctionValue};
+use crate::plan::{
+    ExecutionPlan, FloatFunctionExpr, FloatFunctionExprKind, FloatFunctionValue, FunctionValueKind,
+    Value, ValueType,
+};
 use crate::runtime::ExecutionError;
 use crate::runtime::expression::{
-    eval_bool_expr, eval_float_expr, eval_int_expr, eval_string_expr,
+    eval_bool_expr, eval_float_expr, eval_int_expr, eval_string_expr, project_tuple_expr,
 };
 use crate::runtime::frame::Frame;
 use crate::runtime::function;
@@ -31,6 +34,26 @@ pub(in crate::runtime) fn eval_float_function_expr(
             args,
             ..
         } => function::run_float_function_function_call(plan, callee, args, frame),
+        FloatFunctionExprKind::TupleIndex {
+            tuple,
+            index,
+            type_,
+        } => {
+            let expected = ValueType::Function(Box::new(type_.clone()));
+            let value = project_tuple_expr(plan, frame, tuple, *index, expected.clone())?;
+            let actual = value.value_type();
+            match value {
+                Value::Function(function) => match function.kind() {
+                    FunctionValueKind::Float(value) => Ok(value.clone()),
+                    _ => Err(ExecutionError::tuple_index_family_mismatch(
+                        expected, actual,
+                    )),
+                },
+                _ => Err(ExecutionError::tuple_index_family_mismatch(
+                    expected, actual,
+                )),
+            }
+        }
         FloatFunctionExprKind::BoolCase {
             subject,
             true_,
@@ -94,10 +117,10 @@ mod tests {
     use crate::plan::{
         BoolExpr, BoolFunctionExpr, CaptureArg, ExecutionPlan, Expr, FloatExpr, FloatFunctionExpr,
         FloatFunctionFunctionId, FloatFunctionId, FloatFunctionLocalId, FloatFunctionValue,
-        FloatLocalId, FunctionFunctionExpr, FunctionFunctionId, FunctionFunctionValue, FunctionId,
-        FunctionPlan, FunctionReturnFamily, FunctionType, IntExpr, IntFunctionExpr, IntFunctionId,
-        ParamLocal, ReturnExpr, Step, StringExpr, StringFunctionExpr, StringFunctionFunctionId,
-        ValueType,
+        FloatLocalId, FunctionExpr, FunctionFunctionExpr, FunctionFunctionId,
+        FunctionFunctionValue, FunctionId, FunctionPlan, FunctionReturnFamily, FunctionType,
+        IntExpr, IntFunctionExpr, IntFunctionId, ParamLocal, ReturnExpr, Step, StringExpr,
+        StringFunctionExpr, StringFunctionFunctionId, TupleExpr, ValueType,
     };
     use crate::runtime::ExecutionError;
     use crate::runtime::frame::Frame;
@@ -325,6 +348,66 @@ mod tests {
                 )),
             );
         }
+    }
+
+    #[test]
+    fn eval_float_function_tuple_index() {
+        let plan = plan();
+        let mut frame = Frame::default();
+        let tuple = TupleExpr::value(
+            vec![Expr::function(FunctionExpr::float(function_value()))],
+            vec![ValueType::Function(Box::new(type_()))],
+        );
+
+        assert_eq!(
+            eval_float_function_expr(
+                &plan,
+                &mut frame,
+                &FloatFunctionExpr::tuple_index(tuple, 0, type_()),
+            )
+            .expect("expression should evaluate")
+            .runtime_id(),
+            FloatFunctionId(0),
+        );
+
+        let mismatch_type = FunctionType::new(Vec::new(), ValueType::String);
+        let tuple = TupleExpr::value(
+            vec![Expr::function(FunctionExpr::string(
+                StringFunctionExpr::value(crate::plan::StringFunctionValue::new(
+                    crate::plan::StringFunctionId(0),
+                    Vec::new(),
+                )),
+            ))],
+            vec![ValueType::Function(Box::new(mismatch_type.clone()))],
+        );
+
+        assert_eq!(
+            eval_float_function_expr(
+                &plan,
+                &mut frame,
+                &FloatFunctionExpr::tuple_index(tuple, 0, type_()),
+            ),
+            Err(ExecutionError::tuple_index_family_mismatch(
+                ValueType::Function(Box::new(type_())),
+                ValueType::Function(Box::new(mismatch_type)),
+            )),
+        );
+
+        let tuple = TupleExpr::value(
+            vec![Expr::int(IntExpr::value(1.into()))],
+            vec![ValueType::Int],
+        );
+        assert_eq!(
+            eval_float_function_expr(
+                &plan,
+                &mut frame,
+                &FloatFunctionExpr::tuple_index(tuple, 0, type_()),
+            ),
+            Err(ExecutionError::tuple_index_family_mismatch(
+                ValueType::Function(Box::new(type_())),
+                ValueType::Int,
+            )),
+        );
     }
 
     fn plan() -> ExecutionPlan {

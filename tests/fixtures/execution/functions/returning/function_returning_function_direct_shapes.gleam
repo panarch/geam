@@ -14,6 +14,10 @@ fn nil_identity(value: Nil) {
   value
 }
 
+fn tuple_identity(value: #(Int, String)) {
+  value
+}
+
 fn get_int() {
   int_identity
 }
@@ -28,6 +32,10 @@ fn get_bool() {
 
 fn get_nil() {
   nil_identity
+}
+
+fn get_tuple() {
+  tuple_identity
 }
 
 fn run_int(getter: fn() -> fn(Int) -> Int, value: Int) {
@@ -46,14 +54,19 @@ fn run_nil(getter: fn() -> fn(Nil) -> Nil) {
   getter()(Nil)
 }
 
+fn run_tuple(getter: fn() -> fn(#(Int, String)) -> #(Int, String), value: #(Int, String)) {
+  getter()(value)
+}
+
 pub fn main() {
   let int_ok = get_int()(1) + run_int(get_int, 2) == 3
   let bool_ok = get_bool()(True) && !run_bool(get_bool, False)
+  let tuple_ok = get_tuple()(#(2, "ok")).0 + run_tuple(get_tuple, #(3, "ok")).0 == 5
 
   get_nil()(Nil)
   run_nil(get_nil)
 
-  case int_ok && bool_ok {
+  case int_ok && bool_ok && tuple_ok {
     True -> get_string()("ge") <> run_string(get_string, "am")
     False -> "bad"
   }

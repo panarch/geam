@@ -1,7 +1,7 @@
 use crate::plan::{
     BoolExpr, CaptureArg, FloatExpr, FunctionFunctionFunctionId, FunctionFunctionId,
     FunctionFunctionLocalId, FunctionFunctionValue, FunctionType, IntExpr, ParamLocal, Step,
-    StringExpr,
+    StringExpr, TupleExpr,
 };
 use ecow::EcoString;
 use num_bigint::BigInt;
@@ -34,6 +34,11 @@ pub(crate) enum FunctionFunctionExprKind {
     FunctionCall {
         function: Box<FunctionFunctionExpr>,
         args: Vec<crate::plan::CallArg>,
+        type_: FunctionType,
+    },
+    TupleIndex {
+        tuple: Box<TupleExpr>,
+        index: usize,
         type_: FunctionType,
     },
     BoolCase {
@@ -124,6 +129,17 @@ impl FunctionFunctionExpr {
             kind: FunctionFunctionExprKind::FunctionCall {
                 function: Box::new(function),
                 args,
+                type_,
+            },
+        }
+    }
+
+    pub(crate) fn tuple_index(tuple: TupleExpr, index: usize, type_: FunctionType) -> Self {
+        Self {
+            type_: type_.clone(),
+            kind: FunctionFunctionExprKind::TupleIndex {
+                tuple: Box::new(tuple),
+                index,
                 type_,
             },
         }
@@ -242,6 +258,10 @@ mod tests {
             FunctionFunctionExprKind::FunctionCall { .. },
         ));
         assert!(matches!(
+            FunctionFunctionExpr::tuple_index(tuple_expr(), 0, function_type()).kind(),
+            FunctionFunctionExprKind::TupleIndex { .. },
+        ));
+        assert!(matches!(
             FunctionFunctionExpr::int_case(
                 IntExpr::value(1.into()),
                 vec![(1.into(), function_value())],
@@ -298,6 +318,15 @@ mod tests {
                 vec![ValueType::Int],
                 ValueType::Int,
             ))),
+        )
+    }
+
+    fn tuple_expr() -> crate::plan::TupleExpr {
+        crate::plan::TupleExpr::value(
+            vec![Expr::function(crate::plan::FunctionExpr::function(
+                function_value(),
+            ))],
+            vec![ValueType::Function(Box::new(function_type()))],
         )
     }
 }

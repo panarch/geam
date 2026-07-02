@@ -4,13 +4,14 @@ use crate::plan::{
     BoolFunctionFunctionId, BoolFunctionId, CallArg, ExecutionPlan, FloatFunctionFunctionId,
     FloatFunctionId, FunctionFunctionFunctionId, FunctionFunctionValue, IntFunctionFunctionId,
     IntFunctionId, NilFunctionFunctionId, NilFunctionId, ReturnBody, ReturnBodyKind,
-    StringFunctionFunctionId, StringFunctionId,
+    StringFunctionFunctionId, StringFunctionId, TupleFunctionFunctionId, TupleFunctionId, Value,
 };
 use crate::runtime::error::ExecutionResult;
 use crate::runtime::expression::{
     eval_bool_expr, eval_bool_function_expr, eval_float_expr, eval_float_function_expr,
     eval_function_function_expr, eval_int_expr, eval_int_function_expr, eval_nil_expr,
-    eval_nil_function_expr, eval_string_expr, eval_string_function_expr,
+    eval_nil_function_expr, eval_string_expr, eval_string_function_expr, eval_tuple_expr,
+    eval_tuple_function_expr,
 };
 use crate::runtime::frame::Frame;
 use ecow::EcoString;
@@ -218,6 +219,30 @@ pub(super) fn run_nil_loop(
     }
 }
 
+pub(super) fn run_tuple_loop(
+    plan: &ExecutionPlan,
+    mut function: TupleFunctionId,
+    mut frame: Frame,
+) -> ExecutionResult<Vec<Value>> {
+    loop {
+        let runtime_function = plan.tuple_function(function);
+        execute_steps(plan, runtime_function.steps(), &mut frame)?;
+        let eval = eval_tuple_expr;
+        let outcome = eval_return_body(plan, &mut frame, runtime_function.return_(), eval)?;
+        match outcome {
+            ReturnOutcome::Value(value) => return Ok(value),
+            ReturnOutcome::TailCall {
+                function: next,
+                args,
+            } => {
+                let frame_layout = plan.tuple_function(next).frame_layout();
+                frame = bind_arguments(plan, args, &mut frame, frame_layout)?;
+                function = next;
+            }
+        }
+    }
+}
+
 pub(super) fn run_int_function_loop(
     plan: &ExecutionPlan,
     mut function: IntFunctionFunctionId,
@@ -338,6 +363,30 @@ pub(super) fn run_nil_function_loop(
     }
 }
 
+pub(super) fn run_tuple_function_loop(
+    plan: &ExecutionPlan,
+    mut function: TupleFunctionFunctionId,
+    mut frame: Frame,
+) -> ExecutionResult<crate::plan::TupleFunctionValue> {
+    loop {
+        let runtime_function = plan.tuple_function_function(function);
+        execute_steps(plan, runtime_function.steps(), &mut frame)?;
+        let eval = eval_tuple_function_expr;
+        let outcome = eval_return_body(plan, &mut frame, runtime_function.return_(), eval)?;
+        match outcome {
+            ReturnOutcome::Value(value) => return Ok(value),
+            ReturnOutcome::TailCall {
+                function: next,
+                args,
+            } => {
+                let frame_layout = plan.tuple_function_function(next).frame_layout();
+                frame = bind_arguments(plan, args, &mut frame, frame_layout)?;
+                function = next;
+            }
+        }
+    }
+}
+
 pub(super) fn run_function_function_loop(
     plan: &ExecutionPlan,
     mut function: FunctionFunctionFunctionId,
@@ -367,7 +416,8 @@ mod tests {
     use super::{
         run_bool_function_loop, run_bool_loop, run_float_function_loop, run_float_loop,
         run_function_function_loop, run_int_function_loop, run_int_loop, run_nil_function_loop,
-        run_nil_loop, run_string_function_loop, run_string_loop,
+        run_nil_loop, run_string_function_loop, run_string_loop, run_tuple_function_loop,
+        run_tuple_loop,
     };
     use crate::plan::{
         BoolExpr, BoolFunctionExpr, BoolFunctionFunctionId, BoolFunctionId, BoolFunctionValue,
@@ -378,7 +428,8 @@ mod tests {
         IntFunctionFunctionId, IntFunctionId, IntFunctionValue, NilExpr, NilFunctionExpr,
         NilFunctionFunctionId, NilFunctionId, NilFunctionValue, ReturnBody, ReturnExpr, Step,
         StringExpr, StringFunctionExpr, StringFunctionFunctionId, StringFunctionId,
-        StringFunctionValue, ValueType,
+        StringFunctionValue, TupleExpr, TupleFunctionExpr, TupleFunctionFunctionId,
+        TupleFunctionId, TupleFunctionValue, ValueType,
     };
     use crate::runtime::ExecutionError;
     use crate::runtime::frame::Frame;
@@ -400,6 +451,11 @@ mod tests {
         ));
         assert_expected_function_got_int(run_bool_loop(&plan, BoolFunctionId(0), Frame::default()));
         assert_expected_function_got_int(run_nil_loop(&plan, NilFunctionId(0), Frame::default()));
+        assert_expected_function_got_int(run_tuple_loop(
+            &plan,
+            TupleFunctionId(0),
+            Frame::default(),
+        ));
     }
 
     #[test]
@@ -429,6 +485,11 @@ mod tests {
         assert_expected_function_got_int(run_nil_function_loop(
             &plan,
             NilFunctionFunctionId(0),
+            Frame::default(),
+        ));
+        assert_expected_function_got_int(run_tuple_function_loop(
+            &plan,
+            TupleFunctionFunctionId(0),
             Frame::default(),
         ));
         assert_expected_function_got_int(run_function_function_loop(
@@ -494,8 +555,9 @@ mod tests {
                 function_plan(3, "float_function", steps.clone(), float_function_expr()),
                 function_plan(4, "bool_function", steps.clone(), bool_function_expr()),
                 function_plan(5, "nil_function", steps.clone(), nil_function_expr()),
+                function_plan(6, "tuple_function", steps.clone(), tuple_function_expr()),
                 function_plan(
-                    6,
+                    7,
                     "function_function",
                     steps,
                     function_function_expr_value(),
@@ -540,8 +602,21 @@ mod tests {
                     FunctionId::new(4),
                     "nil".into(),
                     Vec::new(),
-                    steps,
+                    steps.clone(),
                     ReturnExpr::nil(NilFunctionId(0), NilExpr::value()),
+                ),
+                FunctionPlan::new(
+                    FunctionId::new(5),
+                    "tuple".into(),
+                    Vec::new(),
+                    steps,
+                    ReturnExpr::tuple(
+                        TupleFunctionId(0),
+                        TupleExpr::value(
+                            vec![Expr::int(IntExpr::value(1.into()))],
+                            vec![ValueType::Int],
+                        ),
+                    ),
                 ),
             ],
         )
@@ -618,6 +693,9 @@ mod tests {
             FunctionExprKind::Nil(return_) => {
                 ReturnExpr::nil_function(NilFunctionFunctionId(0), return_)
             }
+            FunctionExprKind::Tuple(return_) => {
+                ReturnExpr::tuple_function(TupleFunctionFunctionId(0), return_)
+            }
             FunctionExprKind::Function(return_) => {
                 ReturnExpr::function_function(FunctionFunctionFunctionId(0), return_)
             }
@@ -664,6 +742,14 @@ mod tests {
         FunctionExpr::nil(NilFunctionExpr::value(NilFunctionValue::new(
             NilFunctionId(0),
             Vec::new(),
+        )))
+    }
+
+    fn tuple_function_expr() -> FunctionExpr {
+        FunctionExpr::tuple(TupleFunctionExpr::value(TupleFunctionValue::new(
+            TupleFunctionId(0),
+            Vec::new(),
+            vec![ValueType::Int],
         )))
     }
 

@@ -1,5 +1,5 @@
-use super::{eval_expr, eval_float_expr, eval_int_expr, eval_string_expr};
-use crate::plan::{BoolExpr, BoolExprKind, ExecutionPlan};
+use super::{eval_expr, eval_float_expr, eval_int_expr, eval_string_expr, project_tuple_expr};
+use crate::plan::{BoolExpr, BoolExprKind, ExecutionPlan, Value, ValueType};
 use crate::runtime::ExecutionError;
 use crate::runtime::frame::Frame;
 use crate::runtime::function;
@@ -17,6 +17,15 @@ pub(in crate::runtime) fn eval_bool_expr(
         }
         BoolExprKind::FunctionCall { function, args } => {
             function::run_bool_function_call(plan, function, args, frame)
+        }
+        BoolExprKind::TupleIndex { tuple, index } => {
+            match project_tuple_expr(plan, frame, tuple, *index, ValueType::Bool)? {
+                Value::Bool(value) => Ok(value),
+                other => Err(ExecutionError::tuple_index_family_mismatch(
+                    ValueType::Bool,
+                    other.value_type(),
+                )),
+            }
         }
         BoolExprKind::Not(value) => Ok(!eval_bool_expr(plan, frame, value)?),
         BoolExprKind::LtInt { left, right } => {
@@ -135,7 +144,7 @@ mod tests {
         BoolExpr, BoolFunctionExpr, ExecutionPlan, Expr, FloatExpr, FloatFunctionExpr,
         FunctionFunctionExpr, FunctionFunctionId, FunctionFunctionValue, FunctionId, FunctionPlan,
         FunctionReturnFamily, FunctionType, IntExpr, IntFunctionExpr, IntFunctionId, ReturnExpr,
-        Step, StringExpr, StringFunctionExpr, StringFunctionFunctionId, ValueType,
+        Step, StringExpr, StringFunctionExpr, StringFunctionFunctionId, TupleExpr, ValueType,
     };
     use crate::runtime::ExecutionError;
     use crate::runtime::frame::Frame;
@@ -144,6 +153,33 @@ mod tests {
 
     thread_local! {
         static RIGHT_CALLED: Cell<bool> = const { Cell::new(false) };
+    }
+
+    #[test]
+    fn tuple_index_family_mismatch_returns_error() {
+        let plan = crate::runtime::plan_src("pub fn main() { True }");
+        let mut frame = Frame::default();
+        let tuple = TupleExpr::value(
+            vec![Expr::string(StringExpr::value("one".into()))],
+            vec![ValueType::String],
+        );
+
+        assert_eq!(
+            eval_bool_expr(&plan, &mut frame, &BoolExpr::tuple_index(tuple, 0)),
+            Err(ExecutionError::tuple_index_family_mismatch(
+                ValueType::Bool,
+                ValueType::String,
+            )),
+        );
+
+        let tuple = TupleExpr::value(
+            vec![Expr::bool(BoolExpr::value(true))],
+            vec![ValueType::Bool],
+        );
+        assert_eq!(
+            eval_bool_expr(&plan, &mut frame, &BoolExpr::tuple_index(tuple, 0)),
+            Ok(true),
+        );
     }
 
     #[test]

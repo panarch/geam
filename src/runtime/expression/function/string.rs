@@ -1,7 +1,10 @@
-use crate::plan::{ExecutionPlan, StringFunctionExpr, StringFunctionExprKind, StringFunctionValue};
+use crate::plan::{
+    ExecutionPlan, FunctionValueKind, StringFunctionExpr, StringFunctionExprKind,
+    StringFunctionValue, Value, ValueType,
+};
 use crate::runtime::ExecutionError;
 use crate::runtime::expression::{
-    eval_bool_expr, eval_float_expr, eval_int_expr, eval_string_expr,
+    eval_bool_expr, eval_float_expr, eval_int_expr, eval_string_expr, project_tuple_expr,
 };
 use crate::runtime::frame::Frame;
 use crate::runtime::function;
@@ -31,6 +34,26 @@ pub(in crate::runtime) fn eval_string_function_expr(
             args,
             ..
         } => function::run_string_function_function_call(plan, callee, args, frame),
+        StringFunctionExprKind::TupleIndex {
+            tuple,
+            index,
+            type_,
+        } => {
+            let expected = ValueType::Function(Box::new(type_.clone()));
+            let value = project_tuple_expr(plan, frame, tuple, *index, expected.clone())?;
+            let actual = value.value_type();
+            match value {
+                Value::Function(function) => match function.kind() {
+                    FunctionValueKind::String(value) => Ok(value.clone()),
+                    _ => Err(ExecutionError::tuple_index_family_mismatch(
+                        expected, actual,
+                    )),
+                },
+                _ => Err(ExecutionError::tuple_index_family_mismatch(
+                    expected, actual,
+                )),
+            }
+        }
         StringFunctionExprKind::BoolCase {
             subject,
             true_,
@@ -92,11 +115,89 @@ pub(in crate::runtime) fn eval_string_function_expr(
 mod tests {
     use super::eval_string_function_expr;
     use crate::plan::{
-        BoolExpr, ExecutionPlan, Expr, FloatExpr, FunctionId, FunctionPlan, IntExpr, IntFunctionId,
-        ParamLocal, ReturnExpr, Step, StringFunctionExpr, StringFunctionId, StringFunctionValue,
-        StringLocalId,
+        BoolExpr, BoolFunctionExpr, BoolFunctionId, BoolFunctionValue, CaptureArg, ExecutionPlan,
+        Expr, FloatExpr, FunctionExpr, FunctionFunctionExpr, FunctionFunctionId,
+        FunctionFunctionValue, FunctionId, FunctionPlan, FunctionType, IntExpr, IntFunctionId,
+        ParamLocal, ReturnExpr, Step, StringExpr, StringFunctionExpr, StringFunctionFunctionId,
+        StringFunctionId, StringFunctionLocalId, StringFunctionValue, StringLocalId, TupleExpr,
+        ValueType,
     };
+    use crate::runtime::ExecutionError;
     use crate::runtime::frame::Frame;
+
+    #[test]
+    fn eval_string_function_local_closure_call_function_call_and_block() {
+        let plan = plan();
+        let mut frame = Frame::default();
+        frame.set_string_function(StringFunctionLocalId(0), function_runtime_value());
+
+        assert_eq!(
+            eval_string_function_expr(
+                &plan,
+                &mut frame,
+                &StringFunctionExpr::local_get(StringFunctionLocalId(0), "value".into(), type_(),),
+            )
+            .expect("expression should evaluate")
+            .runtime_id(),
+            StringFunctionId(0),
+        );
+        assert_eq!(
+            eval_string_function_expr(
+                &plan,
+                &mut frame,
+                &StringFunctionExpr::closure(
+                    StringFunctionId(0),
+                    vec![ParamLocal::string(StringLocalId(0))],
+                    Vec::new(),
+                    type_(),
+                ),
+            )
+            .expect("expression should evaluate")
+            .runtime_id(),
+            StringFunctionId(0),
+        );
+        assert_eq!(
+            eval_string_function_expr(
+                &plan,
+                &mut frame,
+                &StringFunctionExpr::call(StringFunctionFunctionId(0), Vec::new(), type_()),
+            )
+            .expect("expression should evaluate")
+            .runtime_id(),
+            StringFunctionId(0),
+        );
+        assert_eq!(
+            eval_string_function_expr(
+                &plan,
+                &mut frame,
+                &StringFunctionExpr::function_call(
+                    FunctionFunctionExpr::value(FunctionFunctionValue::new(
+                        FunctionFunctionId::String(StringFunctionFunctionId(0)),
+                        Vec::new(),
+                        type_(),
+                    )),
+                    Vec::new(),
+                    type_(),
+                ),
+            )
+            .expect("expression should evaluate")
+            .runtime_id(),
+            StringFunctionId(0),
+        );
+        assert_eq!(
+            eval_string_function_expr(
+                &plan,
+                &mut frame,
+                &StringFunctionExpr::block(
+                    vec![Step::evaluate(Expr::int(IntExpr::value(1.into())))],
+                    function_value(),
+                ),
+            )
+            .expect("expression should evaluate")
+            .runtime_id(),
+            StringFunctionId(0),
+        );
+    }
 
     #[test]
     fn eval_string_function_bool_case_branches() {
@@ -169,6 +270,41 @@ mod tests {
     }
 
     #[test]
+    fn eval_string_function_string_case_branches() {
+        let plan = plan();
+        let mut frame = Frame::default();
+
+        assert_eq!(
+            eval_string_function_expr(
+                &plan,
+                &mut frame,
+                &StringFunctionExpr::string_case(
+                    StringExpr::value("hit".into()),
+                    vec![("hit".into(), function_value())],
+                    other_function_value(),
+                ),
+            )
+            .expect("expression should evaluate")
+            .runtime_id(),
+            StringFunctionId(0),
+        );
+        assert_eq!(
+            eval_string_function_expr(
+                &plan,
+                &mut frame,
+                &StringFunctionExpr::string_case(
+                    StringExpr::value("miss".into()),
+                    vec![("hit".into(), other_function_value())],
+                    function_value(),
+                ),
+            )
+            .expect("expression should evaluate")
+            .runtime_id(),
+            StringFunctionId(0),
+        );
+    }
+
+    #[test]
     fn eval_string_function_float_case_branches() {
         let plan = plan();
         let mut frame = Frame::default();
@@ -223,6 +359,120 @@ mod tests {
         );
     }
 
+    #[test]
+    fn eval_string_function_expr_propagates_operand_errors() {
+        assert_tuple_index_error(
+            ValueType::String,
+            StringFunctionExpr::closure(
+                StringFunctionId(0),
+                vec![ParamLocal::string(StringLocalId(0))],
+                vec![CaptureArg::string(StringLocalId(0), error_string_expr())],
+                type_(),
+            ),
+        );
+        assert_function_tuple_index_error(StringFunctionExpr::tuple_index(
+            empty_tuple(),
+            0,
+            type_(),
+        ));
+        assert_tuple_index_error(
+            ValueType::Bool,
+            StringFunctionExpr::bool_case(
+                error_bool_expr(),
+                function_value(),
+                other_function_value(),
+            ),
+        );
+        assert_tuple_index_error(
+            ValueType::Int,
+            StringFunctionExpr::int_case(
+                error_int_expr(),
+                vec![(1.into(), function_value())],
+                other_function_value(),
+            ),
+        );
+        assert_tuple_index_error(
+            ValueType::String,
+            StringFunctionExpr::string_case(
+                error_string_expr(),
+                vec![("hit".into(), function_value())],
+                other_function_value(),
+            ),
+        );
+        assert_tuple_index_error(
+            ValueType::Float,
+            StringFunctionExpr::float_case(
+                error_float_expr(),
+                vec![(1.0, function_value())],
+                other_function_value(),
+            ),
+        );
+        assert_tuple_index_error(
+            ValueType::String,
+            StringFunctionExpr::block(
+                vec![Step::evaluate(Expr::string(error_string_expr()))],
+                function_value(),
+            ),
+        );
+    }
+
+    #[test]
+    fn eval_string_function_tuple_index() {
+        let plan = plan();
+        let mut frame = Frame::default();
+        let tuple = TupleExpr::value(
+            vec![Expr::function(FunctionExpr::string(function_value()))],
+            vec![ValueType::Function(Box::new(type_()))],
+        );
+
+        assert_eq!(
+            eval_string_function_expr(
+                &plan,
+                &mut frame,
+                &StringFunctionExpr::tuple_index(tuple, 0, type_()),
+            )
+            .expect("expression should evaluate")
+            .runtime_id(),
+            StringFunctionId(0),
+        );
+
+        let mismatch_type = FunctionType::new(Vec::new(), ValueType::Bool);
+        let tuple = TupleExpr::value(
+            vec![Expr::function(FunctionExpr::bool(BoolFunctionExpr::value(
+                BoolFunctionValue::new(BoolFunctionId(0), Vec::new()),
+            )))],
+            vec![ValueType::Function(Box::new(mismatch_type.clone()))],
+        );
+
+        assert_eq!(
+            eval_string_function_expr(
+                &plan,
+                &mut frame,
+                &StringFunctionExpr::tuple_index(tuple, 0, type_()),
+            ),
+            Err(ExecutionError::tuple_index_family_mismatch(
+                ValueType::Function(Box::new(type_())),
+                ValueType::Function(Box::new(mismatch_type)),
+            )),
+        );
+
+        let tuple = TupleExpr::value(
+            vec![Expr::int(IntExpr::value(1.into()))],
+            vec![ValueType::Int],
+        );
+        assert_eq!(
+            eval_string_function_expr(
+                &plan,
+                &mut frame,
+                &StringFunctionExpr::tuple_index(tuple, 0, type_()),
+            ),
+            Err(ExecutionError::tuple_index_family_mismatch(
+                ValueType::Function(Box::new(type_())),
+                ValueType::Int,
+            )),
+        );
+    }
+
     fn plan() -> ExecutionPlan {
         ExecutionPlan::new(
             "main".into(),
@@ -233,15 +483,25 @@ mod tests {
                 Vec::new(),
                 ReturnExpr::int(IntFunctionId(0), IntExpr::value(1.into())),
             ),
-            Vec::new(),
+            vec![FunctionPlan::new(
+                FunctionId::new(1),
+                "get_string_value".into(),
+                Vec::new(),
+                Vec::new(),
+                ReturnExpr::string_function(StringFunctionFunctionId(0), function_value()),
+            )],
         )
     }
 
     fn function_value() -> StringFunctionExpr {
-        StringFunctionExpr::value(StringFunctionValue::new(
+        StringFunctionExpr::value(function_runtime_value())
+    }
+
+    fn function_runtime_value() -> StringFunctionValue {
+        StringFunctionValue::new(
             StringFunctionId(0),
             vec![ParamLocal::string(StringLocalId(0))],
-        ))
+        )
     }
 
     fn other_function_value() -> StringFunctionExpr {
@@ -249,5 +509,53 @@ mod tests {
             StringFunctionId(1),
             vec![ParamLocal::string(StringLocalId(0))],
         ))
+    }
+
+    fn type_() -> FunctionType {
+        FunctionType::new(vec![ValueType::String], ValueType::String)
+    }
+
+    fn assert_tuple_index_error(expected: ValueType, expression: StringFunctionExpr) {
+        let plan = plan();
+        let mut frame = Frame::default();
+
+        assert_eq!(
+            eval_string_function_expr(&plan, &mut frame, &expression),
+            Err(tuple_index_error(expected)),
+        );
+    }
+
+    fn assert_function_tuple_index_error(expression: StringFunctionExpr) {
+        let plan = plan();
+        let mut frame = Frame::default();
+
+        assert_eq!(
+            eval_string_function_expr(&plan, &mut frame, &expression),
+            Err(tuple_index_error(ValueType::Function(Box::new(type_())))),
+        );
+    }
+
+    fn tuple_index_error(expected: ValueType) -> ExecutionError {
+        ExecutionError::tuple_index_family_mismatch(expected, ValueType::Tuple(Vec::new()))
+    }
+
+    fn empty_tuple() -> TupleExpr {
+        TupleExpr::value(Vec::new(), Vec::new())
+    }
+
+    fn error_bool_expr() -> BoolExpr {
+        BoolExpr::tuple_index(empty_tuple(), 0)
+    }
+
+    fn error_int_expr() -> IntExpr {
+        IntExpr::tuple_index(empty_tuple(), 0)
+    }
+
+    fn error_string_expr() -> StringExpr {
+        StringExpr::tuple_index(empty_tuple(), 0)
+    }
+
+    fn error_float_expr() -> FloatExpr {
+        FloatExpr::tuple_index(empty_tuple(), 0)
     }
 }

@@ -5,7 +5,7 @@ mod primitive;
 use crate::plan::{
     BoolFunctionReturn, BoolReturn, FloatFunctionReturn, FloatReturn, FunctionFunctionReturn,
     FunctionType, IntFunctionReturn, IntReturn, NilFunctionReturn, NilReturn, ReturnExpr,
-    StringFunctionReturn, StringReturn,
+    StringFunctionReturn, StringReturn, TupleFunctionReturn, TupleReturn, ValueType,
 };
 use crate::planner::context::FunctionRuntimeIds;
 
@@ -18,6 +18,10 @@ pub(crate) enum FunctionReturn {
     Float(FloatReturn),
     Bool(BoolReturn),
     Nil(NilReturn),
+    Tuple {
+        type_: Vec<ValueType>,
+        body: TupleReturn,
+    },
     IntFunction {
         type_: FunctionType,
         body: IntFunctionReturn,
@@ -38,6 +42,10 @@ pub(crate) enum FunctionReturn {
         type_: FunctionType,
         body: NilFunctionReturn,
     },
+    TupleFunction {
+        type_: FunctionType,
+        body: TupleFunctionReturn,
+    },
     FunctionFunction {
         type_: FunctionType,
         body: FunctionFunctionReturn,
@@ -52,6 +60,9 @@ impl FunctionReturn {
             Self::Float(body) => ReturnExpr::float_body(runtime_ids.next_float_id(), body),
             Self::Bool(body) => ReturnExpr::bool_body(runtime_ids.next_bool_id(), body),
             Self::Nil(body) => ReturnExpr::nil_body(runtime_ids.next_nil_id(), body),
+            Self::Tuple { type_, body } => {
+                ReturnExpr::tuple_body(runtime_ids.next_tuple_id(), type_, body)
+            }
             Self::IntFunction { type_, body } => {
                 ReturnExpr::int_function_body(runtime_ids.next_int_function_id(), type_, body)
             }
@@ -67,6 +78,9 @@ impl FunctionReturn {
             Self::NilFunction { type_, body } => {
                 ReturnExpr::nil_function_body(runtime_ids.next_nil_function_id(), type_, body)
             }
+            Self::TupleFunction { type_, body } => {
+                ReturnExpr::tuple_function_body(runtime_ids.next_tuple_function_id(), type_, body)
+            }
             Self::FunctionFunction { type_, body } => ReturnExpr::function_function_body(
                 runtime_ids.next_function_function_id(),
                 type_,
@@ -80,15 +94,17 @@ impl FunctionReturn {
 mod tests {
     use super::FunctionReturn;
     use crate::plan::{
-        BoolFunctionFunctionId, BoolFunctionId, FloatFunctionFunctionId, FloatFunctionId,
+        BoolFunctionFunctionId, BoolFunctionId, Expr, FloatFunctionFunctionId, FloatFunctionId,
         FunctionFunctionFunctionId, FunctionFunctionId, FunctionType, IntFunctionFunctionId,
         IntFunctionId, NilFunctionFunctionId, NilFunctionId, ParamLocal, ReturnExprKind,
-        StringFunctionFunctionId, StringFunctionId, ValueType,
+        StringFunctionFunctionId, StringFunctionId, TupleFunctionFunctionId, TupleFunctionId,
+        ValueType,
     };
     use crate::planner::context::FunctionRuntimeIds;
     use crate::planner::dsl::expression::{
         bool_, bool_function_ref, float, float_function_ref, function_function_ref, int,
-        int_function_ref, nil, nil_function_ref, string, string_function_ref,
+        int_function_ref, nil, nil_function_ref, string, string_function_ref, tuple,
+        tuple_function_ref,
     };
 
     #[test]
@@ -136,6 +152,15 @@ mod tests {
                 ..
             },
         ));
+        assert!(matches!(
+            FunctionReturn::from(tuple([Expr::from(int(1))]))
+                .build(&mut runtime_ids)
+                .kind(),
+            ReturnExprKind::Tuple {
+                runtime_id: TupleFunctionId(0),
+                ..
+            },
+        ));
 
         assert!(matches!(
             FunctionReturn::from(int_function_ref(0, Vec::<ParamLocal>::new()))
@@ -179,6 +204,19 @@ mod tests {
                 .kind(),
             ReturnExprKind::NilFunction {
                 runtime_id: NilFunctionFunctionId(0),
+                ..
+            },
+        ));
+        assert!(matches!(
+            FunctionReturn::from(tuple_function_ref(
+                0,
+                Vec::<ParamLocal>::new(),
+                [ValueType::Int],
+            ))
+            .build(&mut runtime_ids)
+            .kind(),
+            ReturnExprKind::TupleFunction {
+                runtime_id: TupleFunctionFunctionId(0),
                 ..
             },
         ));

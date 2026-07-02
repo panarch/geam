@@ -1,4 +1,4 @@
-use super::{CallArgumentMode, CaptureSubstitution};
+use super::CaptureSubstitution;
 use crate::plan::{CallArg, Expr, FunctionExpr, FunctionFunctionExpr, ValueType};
 use crate::planner::context::PlanContext;
 use crate::planner::error::{
@@ -14,7 +14,6 @@ pub(super) fn plan_function_value_call(
     arguments: Vec<GleamCallArg<TypedExpr>>,
     context: &mut PlanContext<'_>,
     capture: Option<&CaptureSubstitution>,
-    call_argument_mode: CallArgumentMode,
 ) -> Result<Expr, PlanError> {
     let function = {
         let expression = super::super::plan_expr(fun, context)?;
@@ -55,7 +54,6 @@ pub(super) fn plan_function_value_call(
         function_type.argument_types(),
         context,
         capture,
-        call_argument_mode,
     )?;
 
     function_call_expr(function, args, return_type)
@@ -94,6 +92,14 @@ fn function_call_expr(
         ValueType::Nil => match function.into_nil() {
             Some(function) => Ok(Expr::nil(crate::plan::NilExpr::function_call(
                 function, args,
+            ))),
+            None => Err(function_call_return_type_mismatch()),
+        },
+        ValueType::Tuple(return_type) => match function.into_tuple() {
+            Some(function) => Ok(Expr::tuple(crate::plan::TupleExpr::function_call(
+                function,
+                args,
+                return_type,
             ))),
             None => Err(function_call_return_type_mismatch()),
         },
@@ -137,6 +143,9 @@ fn function_returning_function_value_call_expr(
         ValueType::Nil => Expr::function(FunctionExpr::nil(
             crate::plan::NilFunctionExpr::function_call(function, args, return_type),
         )),
+        ValueType::Tuple(_) => Expr::function(FunctionExpr::tuple(
+            crate::plan::TupleFunctionExpr::function_call(function, args, return_type),
+        )),
         ValueType::Function(_) => Expr::function(FunctionExpr::function(
             FunctionFunctionExpr::function_call(function, args, return_type),
         )),
@@ -150,17 +159,17 @@ mod tests {
         function_returning_function_value_call_expr,
     };
     use crate::plan::{
-        BoolFunctionFunctionId, BoolFunctionId, FloatFunctionFunctionId, FloatFunctionId,
+        BoolFunctionFunctionId, BoolFunctionId, Expr, FloatFunctionFunctionId, FloatFunctionId,
         FunctionExpr, FunctionFunctionExpr, FunctionFunctionFunctionId, FunctionFunctionId,
         FunctionType, IntFunctionFunctionId, IntLocalId, LocalId, NilFunctionFunctionId,
         NilFunctionId, ParamLocal, RuntimeFunctionId, StringFunctionFunctionId, StringFunctionId,
-        ValueType,
+        TupleFunctionFunctionId, TupleFunctionId, TupleLocalId, ValueType,
     };
     use crate::planner::dsl::{
         block_int_function, bool_, bool_case_int_function, call_int_function, function,
         function_function_ref, function_ref, int, int_case_int_function, int_function_call_arg,
-        int_function_ref, let_int_function_step, local_int, local_int_function, module,
-        module_with_anonymous,
+        int_function_ref, let_int_function_step, local_int, local_int_function, local_tuple,
+        module, module_with_anonymous, string, tuple, tuple_arg, tuple_function_ref,
     };
     use crate::planner::expression::call::support::expect_call_statement_mut;
     use crate::planner::expression::{typed_int_expr, typed_string_expr};
@@ -392,6 +401,50 @@ pub fn main() {
                 ),
             ),
             [add_one, add_ten],
+        );
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn plan_function_value_call_tuple_argument() {
+        let actual = plan_module(compile(
+            r#"
+fn tuple_score(pair: #(Int, String)) {
+  pair.0
+}
+
+pub fn main() {
+  let function = tuple_score
+  function(#(41, "ok"))
+}
+"#,
+        ))
+        .expect("source should plan");
+        let pair_type = vec![ValueType::Int, ValueType::String];
+        let pair_param = ParamLocal::tuple(TupleLocalId(0), pair_type.clone());
+        let expected = module(
+            "main",
+            function(
+                "main",
+                call_int_function(
+                    local_int_function(0, "function", [ValueType::Tuple(pair_type.clone())]),
+                    [tuple_arg(
+                        0,
+                        tuple([Expr::from(int(41)), Expr::from(string("ok"))]),
+                    )],
+                ),
+            )
+            .step(let_int_function_step(
+                0,
+                "function",
+                int_function_ref(1, [pair_param.clone()]),
+            )),
+            [function(
+                "tuple_score",
+                local_tuple(0, "pair", pair_type.clone()).index_int(0),
+            )
+            .param_tuple(0, "pair", pair_type)],
         );
 
         assert_eq!(actual, expected);
@@ -730,6 +783,22 @@ pub fn main() {
             .value_type(),
             ValueType::Nil,
         );
+        assert_eq!(
+            function_call_expr(
+                FunctionExpr::from(function_ref(
+                    RuntimeFunctionId::Tuple {
+                        id: TupleFunctionId(0),
+                        return_type: vec![ValueType::Int],
+                    },
+                    Vec::<ParamLocal>::new(),
+                )),
+                Vec::new(),
+                ValueType::Tuple(vec![ValueType::Int]),
+            )
+            .expect("tuple function call")
+            .value_type(),
+            ValueType::Tuple(vec![ValueType::Int]),
+        );
 
         let returned_function_type = FunctionType::new(vec![ValueType::Int], ValueType::Int);
         assert_eq!(
@@ -770,6 +839,13 @@ pub fn main() {
             (
                 FunctionFunctionId::Nil(NilFunctionFunctionId(0)),
                 FunctionType::new(vec![ValueType::Nil], ValueType::Nil),
+            ),
+            (
+                FunctionFunctionId::Tuple(TupleFunctionFunctionId(0)),
+                FunctionType::new(
+                    vec![ValueType::Tuple(vec![ValueType::Int])],
+                    ValueType::Tuple(vec![ValueType::Int]),
+                ),
             ),
             (
                 FunctionFunctionId::Function(FunctionFunctionFunctionId(0)),
@@ -844,6 +920,26 @@ pub fn main() {
                 FunctionExpr::from(int_function_ref(0, Vec::<ParamLocal>::new())),
                 Vec::new(),
                 ValueType::Nil,
+            ),
+            Err(function_call_return_type_mismatch()),
+        );
+        assert_eq!(
+            function_call_expr(
+                FunctionExpr::from(int_function_ref(0, Vec::<ParamLocal>::new())),
+                Vec::new(),
+                ValueType::Tuple(vec![ValueType::Int]),
+            ),
+            Err(function_call_return_type_mismatch()),
+        );
+        assert_eq!(
+            function_call_expr(
+                FunctionExpr::from(tuple_function_ref(
+                    0,
+                    Vec::<ParamLocal>::new(),
+                    [ValueType::Int],
+                )),
+                Vec::new(),
+                ValueType::Int,
             ),
             Err(function_call_return_type_mismatch()),
         );

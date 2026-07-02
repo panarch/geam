@@ -1,4 +1,4 @@
-use super::{CallArgumentMode, CaptureSubstitution, FunctionValueCallMode};
+use super::{CaptureSubstitution, FunctionValueCallMode};
 use crate::plan::Expr;
 use crate::planner::context::PlanContext;
 use crate::planner::error::{
@@ -23,14 +23,13 @@ pub(super) fn plan_use_call(
             arguments,
             ..
         } => {
-            validate_use_call_arguments(&arguments)?;
+            let arguments = normalize_use_call_arguments(arguments)?;
             super::plan_call_expression(
                 type_,
                 *fun,
                 arguments,
                 context,
                 None,
-                CallArgumentMode::Use,
                 FunctionValueCallMode::Allow,
             )
         }
@@ -52,7 +51,6 @@ pub(super) fn plan_pipeline_direct_call(
         arguments,
         context,
         None,
-        CallArgumentMode::Normal,
         FunctionValueCallMode::Reject,
     )
 }
@@ -107,7 +105,6 @@ pub(super) fn plan_pipeline_hole_call(
             name: capture_name,
             value: pipe_value,
         }),
-        CallArgumentMode::Normal,
         FunctionValueCallMode::Reject,
     )
 }
@@ -147,7 +144,9 @@ fn pipeline_hole_body_call(
     }
 }
 
-fn validate_use_call_arguments(arguments: &[GleamCallArg<TypedExpr>]) -> Result<(), PlanError> {
+fn normalize_use_call_arguments(
+    mut arguments: Vec<GleamCallArg<TypedExpr>>,
+) -> Result<Vec<GleamCallArg<TypedExpr>>, PlanError> {
     if arguments.iter().any(|argument| argument.label.is_some()) {
         return Err(PlanError::InvalidTypedAst {
             reason: InvalidTypedAstReason::CallShape {
@@ -180,13 +179,36 @@ fn validate_use_call_arguments(arguments: &[GleamCallArg<TypedExpr>]) -> Result<
         }
     }
 
-    match callback_index {
-        Some(index) if index + 1 == arguments.len() => Ok(()),
+    let callback_index = match callback_index {
+        Some(index) if index + 1 == arguments.len() => index,
         Some(_) => Err(super::invalid_use_shape(
             InvalidUseShapeReason::CallbackNotLast,
-        )),
+        ))?,
         None => Err(super::invalid_use_shape(
             InvalidUseShapeReason::MissingCallback,
+        ))?,
+    };
+
+    let callback = &mut arguments[callback_index];
+    callback.implicit = None;
+    normalize_use_callback(&mut callback.value)?;
+
+    Ok(arguments)
+}
+
+fn normalize_use_callback(callback: &mut TypedExpr) -> Result<(), PlanError> {
+    match callback {
+        TypedExpr::Fn { kind, .. } => match kind {
+            FunctionLiteralKind::Use { location } => {
+                *kind = FunctionLiteralKind::Anonymous { head: *location };
+                Ok(())
+            }
+            FunctionLiteralKind::Anonymous { .. } | FunctionLiteralKind::Capture { .. } => Err(
+                super::invalid_use_shape(InvalidUseShapeReason::CallbackLiteralKindNotUse),
+            ),
+        },
+        _ => Err(super::invalid_use_shape(
+            InvalidUseShapeReason::CallbackNotFunctionLiteral,
         )),
     }
 }

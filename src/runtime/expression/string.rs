@@ -1,5 +1,5 @@
-use super::{eval_bool_expr, eval_float_expr, eval_int_expr};
-use crate::plan::{ExecutionPlan, StringExpr, StringExprKind};
+use super::{eval_bool_expr, eval_float_expr, eval_int_expr, project_tuple_expr};
+use crate::plan::{ExecutionPlan, StringExpr, StringExprKind, Value, ValueType};
 use crate::runtime::ExecutionError;
 use crate::runtime::frame::Frame;
 use crate::runtime::function;
@@ -18,6 +18,15 @@ pub(in crate::runtime) fn eval_string_expr(
         }
         StringExprKind::FunctionCall { function, args } => {
             function::run_string_function_call(plan, function, args, frame)
+        }
+        StringExprKind::TupleIndex { tuple, index } => {
+            match project_tuple_expr(plan, frame, tuple, *index, ValueType::String)? {
+                Value::String(value) => Ok(value),
+                other => Err(ExecutionError::tuple_index_family_mismatch(
+                    ValueType::String,
+                    other.value_type(),
+                )),
+            }
         }
         StringExprKind::Concatenate { left, right } => Ok(format!(
             "{}{}",
@@ -86,14 +95,42 @@ pub(in crate::runtime) fn eval_string_expr(
 mod tests {
     use super::eval_string_expr;
     use crate::plan::{
-        BoolExpr, BoolFunctionExpr, ExecutionPlan, Expr, FunctionFunctionExpr, FunctionFunctionId,
-        FunctionFunctionValue, FunctionId, FunctionPlan, FunctionReturnFamily, FunctionType,
-        IntExpr, IntFunctionExpr, IntFunctionId, ReturnExpr, Step, StringExpr, StringFunctionExpr,
-        StringFunctionFunctionId, ValueType,
+        BoolExpr, BoolFunctionExpr, ExecutionPlan, Expr, FloatExpr, FunctionFunctionExpr,
+        FunctionFunctionId, FunctionFunctionValue, FunctionId, FunctionPlan, FunctionReturnFamily,
+        FunctionType, IntExpr, IntFunctionExpr, IntFunctionId, ReturnExpr, Step, StringExpr,
+        StringFunctionExpr, StringFunctionFunctionId, TupleExpr, ValueType,
     };
     use crate::runtime::ExecutionError;
     use crate::runtime::frame::Frame;
     use crate::runtime::{Value, run_src};
+
+    #[test]
+    fn tuple_index_family_mismatch_returns_error() {
+        let plan = crate::runtime::plan_src(r#"pub fn main() { "one" }"#);
+        let mut frame = Frame::default();
+        let tuple = TupleExpr::value(
+            vec![Expr::string(StringExpr::value("one".into()))],
+            vec![ValueType::String],
+        );
+
+        assert_eq!(
+            eval_string_expr(&plan, &mut frame, &StringExpr::tuple_index(tuple, 0)),
+            Ok("one".into()),
+        );
+
+        let tuple = TupleExpr::value(
+            vec![Expr::int(IntExpr::value(1.into()))],
+            vec![ValueType::Int],
+        );
+
+        assert_eq!(
+            eval_string_expr(&plan, &mut frame, &StringExpr::tuple_index(tuple, 0)),
+            Err(ExecutionError::tuple_index_family_mismatch(
+                ValueType::String,
+                ValueType::Int,
+            )),
+        );
+    }
 
     #[test]
     fn eval_string_concatenation() {
@@ -344,6 +381,36 @@ pub fn main() {
             eval_string_expr(
                 &plan,
                 &mut frame,
+                &crate::plan::StringExpr::string_case(
+                    error_string_expr(),
+                    vec![("one".into(), crate::plan::StringExpr::value("one".into()))],
+                    crate::plan::StringExpr::value("other".into()),
+                ),
+            ),
+            Err(function_return_family_error_value(
+                FunctionReturnFamily::String,
+                FunctionReturnFamily::Bool,
+            )),
+        );
+        assert_eq!(
+            eval_string_expr(
+                &plan,
+                &mut frame,
+                &crate::plan::StringExpr::float_case(
+                    error_float_expr(),
+                    vec![(1.0, crate::plan::StringExpr::value("one".into()))],
+                    crate::plan::StringExpr::value("other".into()),
+                ),
+            ),
+            Err(ExecutionError::tuple_index_family_mismatch(
+                ValueType::Float,
+                ValueType::Tuple(Vec::new()),
+            )),
+        );
+        assert_eq!(
+            eval_string_expr(
+                &plan,
+                &mut frame,
                 &crate::plan::StringExpr::block(
                     vec![Step::evaluate(Expr::bool(error_bool_expr()))],
                     crate::plan::StringExpr::value("return".into()),
@@ -479,6 +546,10 @@ pub fn main() {
             ),
             Vec::new(),
         )
+    }
+
+    fn error_float_expr() -> FloatExpr {
+        FloatExpr::tuple_index(TupleExpr::value(Vec::new(), Vec::new()), 0)
     }
 
     fn string_function_function_expr() -> FunctionFunctionExpr {

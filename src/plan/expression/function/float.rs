@@ -1,7 +1,7 @@
 use crate::plan::{
     BoolExpr, CaptureArg, FloatExpr, FloatFunctionFunctionId, FloatFunctionId,
     FloatFunctionLocalId, FloatFunctionValue, FunctionFunctionExpr, FunctionType, IntExpr,
-    ParamLocal, Step, StringExpr,
+    ParamLocal, Step, StringExpr, TupleExpr,
 };
 use ecow::EcoString;
 use num_bigint::BigInt;
@@ -32,6 +32,11 @@ pub(crate) enum FloatFunctionExprKind {
     FunctionCall {
         function: Box<FunctionFunctionExpr>,
         args: Vec<crate::plan::CallArg>,
+        type_: FunctionType,
+    },
+    TupleIndex {
+        tuple: Box<TupleExpr>,
+        index: usize,
         type_: FunctionType,
     },
     BoolCase {
@@ -120,6 +125,17 @@ impl FloatFunctionExpr {
             kind: FloatFunctionExprKind::FunctionCall {
                 function: Box::new(function),
                 args,
+                type_,
+            },
+        }
+    }
+
+    pub(crate) fn tuple_index(tuple: TupleExpr, index: usize, type_: FunctionType) -> Self {
+        Self {
+            type_: type_.clone(),
+            kind: FloatFunctionExprKind::TupleIndex {
+                tuple: Box::new(tuple),
+                index,
                 type_,
             },
         }
@@ -247,6 +263,10 @@ mod tests {
             FloatFunctionExprKind::FunctionCall { .. }
         ));
         assert!(matches!(
+            FloatFunctionExpr::tuple_index(tuple_expr(), 0, float_function_type()).kind(),
+            FloatFunctionExprKind::TupleIndex { .. }
+        ));
+        assert!(matches!(
             FloatFunctionExpr::float_case(
                 FloatExpr::value(1.0),
                 vec![(1.0, float_function_value())],
@@ -309,5 +329,14 @@ mod tests {
             Vec::new(),
             float_function_type(),
         ))
+    }
+
+    fn tuple_expr() -> crate::plan::TupleExpr {
+        crate::plan::TupleExpr::value(
+            vec![Expr::function(crate::plan::FunctionExpr::float(
+                float_function_value(),
+            ))],
+            vec![ValueType::Function(Box::new(float_function_type()))],
+        )
     }
 }

@@ -1,7 +1,7 @@
-use super::{CallArgumentMode, CaptureSubstitution};
+use super::CaptureSubstitution;
 use crate::plan::{
     BoolExpr, CallArg, Expr, FloatExpr, FunctionExpr, FunctionFunctionExpr, IntExpr, NilExpr,
-    RuntimeFunctionId, StringExpr, ValueType,
+    RuntimeFunctionId, StringExpr, TupleExpr, TupleFunctionExpr, ValueType,
 };
 use crate::planner::context::{FunctionInfo, PlanContext};
 use crate::planner::error::{InvalidCallShapeReason, InvalidTypedAstReason, PlanError};
@@ -15,7 +15,6 @@ pub(super) fn plan_direct_function_call(
     arguments: Vec<GleamCallArg<TypedExpr>>,
     context: &mut PlanContext<'_>,
     capture: Option<&CaptureSubstitution>,
-    call_argument_mode: CallArgumentMode,
 ) -> Result<Expr, PlanError> {
     if function.arity() != arguments.len() {
         return Err(PlanError::InvalidTypedAst {
@@ -38,13 +37,7 @@ pub(super) fn plan_direct_function_call(
             },
         });
     }
-    let args = super::argument::plan_call_args(
-        arguments,
-        &function.params,
-        context,
-        capture,
-        call_argument_mode,
-    )?;
+    let args = super::argument::plan_call_args(arguments, &function.params, context, capture)?;
 
     Ok(call_expr(function_id, args))
 }
@@ -56,6 +49,9 @@ fn call_expr(function: RuntimeFunctionId, args: Vec<CallArg>) -> Expr {
         RuntimeFunctionId::Float(function) => Expr::float(FloatExpr::call(function, args)),
         RuntimeFunctionId::Bool(function) => Expr::bool(BoolExpr::call(function, args)),
         RuntimeFunctionId::Nil(function) => Expr::nil(NilExpr::call(function, args)),
+        RuntimeFunctionId::Tuple { id, return_type } => {
+            Expr::tuple(TupleExpr::call(id, args, return_type))
+        }
         RuntimeFunctionId::Function { id, return_type } => {
             function_returning_function_call_expr(id, args, return_type)
         }
@@ -82,6 +78,9 @@ fn function_returning_function_call_expr(
         )),
         crate::plan::FunctionFunctionId::Nil(function) => Expr::function(FunctionExpr::nil(
             crate::plan::NilFunctionExpr::call(function, args, return_type),
+        )),
+        crate::plan::FunctionFunctionId::Tuple(function) => Expr::function(FunctionExpr::tuple(
+            TupleFunctionExpr::call(function, args, return_type),
         )),
         crate::plan::FunctionFunctionId::Function(function) => Expr::function(
             FunctionExpr::function(FunctionFunctionExpr::call(function, args, return_type)),
@@ -253,7 +252,7 @@ pub fn main() {
         let (type_, _, _) = expect_call_statement_mut(
             &mut unsupported_return_type_call.definitions.functions[1].body[0],
         );
-        *type_ = type_::tuple(vec![type_::int()]);
+        *type_ = type_::list(type_::int());
         assert_eq!(
             plan_module(unsupported_return_type_call),
             Err(PlanError::InvalidTypedAst {

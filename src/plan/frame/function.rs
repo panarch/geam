@@ -3,7 +3,7 @@ use crate::plan::{
     BoolFunctionExpr, BoolFunctionExprKind, FloatFunctionExpr, FloatFunctionExprKind, FunctionExpr,
     FunctionExprKind, FunctionFunctionExpr, FunctionFunctionExprKind, IntFunctionExpr,
     IntFunctionExprKind, NilFunctionExpr, NilFunctionExprKind, StringFunctionExpr,
-    StringFunctionExprKind,
+    StringFunctionExprKind, TupleFunctionExpr, TupleFunctionExprKind,
 };
 
 impl FrameLayout {
@@ -14,6 +14,7 @@ impl FrameLayout {
             FunctionExprKind::Float(expression) => self.include_float_function_expr(expression),
             FunctionExprKind::Bool(expression) => self.include_bool_function_expr(expression),
             FunctionExprKind::Nil(expression) => self.include_nil_function_expr(expression),
+            FunctionExprKind::Tuple(expression) => self.include_tuple_function_expr(expression),
             FunctionExprKind::Function(expression) => {
                 self.include_function_function_expr(expression);
             }
@@ -33,6 +34,7 @@ impl FrameLayout {
                 self.include_function_function_expr(function);
                 self.include_call_args(args);
             }
+            IntFunctionExprKind::TupleIndex { tuple, .. } => self.include_tuple_expr(tuple),
             IntFunctionExprKind::BoolCase {
                 subject,
                 true_,
@@ -95,6 +97,7 @@ impl FrameLayout {
                 self.include_function_function_expr(function);
                 self.include_call_args(args);
             }
+            FloatFunctionExprKind::TupleIndex { tuple, .. } => self.include_tuple_expr(tuple),
             FloatFunctionExprKind::BoolCase {
                 subject,
                 true_,
@@ -159,6 +162,7 @@ impl FrameLayout {
                 self.include_function_function_expr(function);
                 self.include_call_args(args);
             }
+            StringFunctionExprKind::TupleIndex { tuple, .. } => self.include_tuple_expr(tuple),
             StringFunctionExprKind::BoolCase {
                 subject,
                 true_,
@@ -221,6 +225,7 @@ impl FrameLayout {
                 self.include_function_function_expr(function);
                 self.include_call_args(args);
             }
+            BoolFunctionExprKind::TupleIndex { tuple, .. } => self.include_tuple_expr(tuple),
             BoolFunctionExprKind::BoolCase {
                 subject,
                 true_,
@@ -283,6 +288,7 @@ impl FrameLayout {
                 self.include_function_function_expr(function);
                 self.include_call_args(args);
             }
+            NilFunctionExprKind::TupleIndex { tuple, .. } => self.include_tuple_expr(tuple),
             NilFunctionExprKind::BoolCase {
                 subject,
                 true_,
@@ -349,6 +355,7 @@ impl FrameLayout {
                 self.include_function_function_expr(function);
                 self.include_call_args(args);
             }
+            FunctionFunctionExprKind::TupleIndex { tuple, .. } => self.include_tuple_expr(tuple),
             FunctionFunctionExprKind::BoolCase {
                 subject,
                 true_,
@@ -397,6 +404,69 @@ impl FrameLayout {
             }
         }
     }
+
+    pub(in crate::plan::frame) fn include_tuple_function_expr(
+        &mut self,
+        expression: &TupleFunctionExpr,
+    ) {
+        match expression.kind() {
+            TupleFunctionExprKind::Value(_) => {}
+            TupleFunctionExprKind::Closure { captures, .. } => self.include_capture_args(captures),
+            TupleFunctionExprKind::LocalGet { local, .. } => self.include_tuple_function(*local),
+            TupleFunctionExprKind::Call { args, .. } => self.include_call_args(args),
+            TupleFunctionExprKind::FunctionCall { function, args, .. } => {
+                self.include_function_function_expr(function);
+                self.include_call_args(args);
+            }
+            TupleFunctionExprKind::TupleIndex { tuple, .. } => self.include_tuple_expr(tuple),
+            TupleFunctionExprKind::BoolCase {
+                subject,
+                true_,
+                false_,
+            } => {
+                self.include_bool_expr(subject);
+                self.include_tuple_function_expr(true_);
+                self.include_tuple_function_expr(false_);
+            }
+            TupleFunctionExprKind::IntCase {
+                subject,
+                clauses,
+                fallback,
+            } => {
+                self.include_int_expr(subject);
+                for (_, branch) in clauses {
+                    self.include_tuple_function_expr(branch);
+                }
+                self.include_tuple_function_expr(fallback);
+            }
+            TupleFunctionExprKind::StringCase {
+                subject,
+                clauses,
+                fallback,
+            } => {
+                self.include_string_expr(subject);
+                for (_, branch) in clauses {
+                    self.include_tuple_function_expr(branch);
+                }
+                self.include_tuple_function_expr(fallback);
+            }
+            TupleFunctionExprKind::FloatCase {
+                subject,
+                clauses,
+                fallback,
+            } => {
+                self.include_float_expr(subject);
+                for (_, branch) in clauses {
+                    self.include_tuple_function_expr(branch);
+                }
+                self.include_tuple_function_expr(fallback);
+            }
+            TupleFunctionExprKind::Block { steps, return_ } => {
+                self.include_steps(steps);
+                self.include_tuple_function_expr(return_);
+            }
+        }
+    }
 }
 
 #[cfg(test)]
@@ -408,7 +478,8 @@ mod tests {
         FunctionFunctionExpr, FunctionFunctionId, FunctionFunctionLocalId, FunctionType, IntExpr,
         IntFunctionExpr, IntFunctionFunctionId, IntFunctionId, IntFunctionLocalId, IntLocalId,
         NilFunctionExpr, NilFunctionId, NilFunctionLocalId, ReturnExpr, Step, StringExpr,
-        StringFunctionExpr, StringFunctionId, StringFunctionLocalId, ValueType,
+        StringFunctionExpr, StringFunctionId, StringFunctionLocalId, TupleExpr, TupleFunctionExpr,
+        TupleFunctionFunctionId, TupleFunctionId, TupleFunctionLocalId, TupleLocalId, ValueType,
     };
 
     #[test]
@@ -702,6 +773,161 @@ mod tests {
     }
 
     #[test]
+    fn frame_layout_includes_tuple_function_expression_families() {
+        let tuple_function_type = tuple_function_type();
+        let tuple_function_callee_type = FunctionType::new(
+            vec![ValueType::Int],
+            ValueType::Function(Box::new(tuple_function_type.clone())),
+        );
+        let tuple_type = tuple_type();
+        let steps = vec![
+            Step::evaluate(Expr::function(FunctionExpr::tuple(
+                TupleFunctionExpr::closure(
+                    TupleFunctionId(1),
+                    Vec::new(),
+                    vec![CaptureArg::int(
+                        IntLocalId(10),
+                        IntExpr::local_get(IntLocalId(10), "closure_capture".into()),
+                    )],
+                    tuple_function_type.clone(),
+                    tuple_type.clone(),
+                ),
+            ))),
+            Step::evaluate(Expr::function(FunctionExpr::tuple(
+                TupleFunctionExpr::local_get(
+                    TupleFunctionLocalId(2),
+                    "local_function".into(),
+                    tuple_function_type.clone(),
+                ),
+            ))),
+            Step::evaluate(Expr::function(FunctionExpr::tuple(
+                TupleFunctionExpr::call(
+                    TupleFunctionFunctionId(0),
+                    vec![CallArg::int(
+                        IntLocalId(0),
+                        IntExpr::local_get(IntLocalId(11), "direct_arg".into()),
+                    )],
+                    tuple_function_type.clone(),
+                ),
+            ))),
+            Step::evaluate(Expr::function(FunctionExpr::tuple(
+                TupleFunctionExpr::function_call(
+                    FunctionFunctionExpr::local_get(
+                        FunctionFunctionLocalId(3),
+                        "callee".into(),
+                        tuple_function_callee_type,
+                    ),
+                    vec![CallArg::int(
+                        IntLocalId(0),
+                        IntExpr::local_get(IntLocalId(12), "function_arg".into()),
+                    )],
+                    tuple_function_type.clone(),
+                ),
+            ))),
+            Step::evaluate(Expr::function(FunctionExpr::tuple(
+                TupleFunctionExpr::tuple_index(
+                    TupleExpr::local_get(TupleLocalId(1), "tuple".into(), tuple_type.clone()),
+                    0,
+                    tuple_function_type.clone(),
+                ),
+            ))),
+            Step::evaluate(Expr::function(FunctionExpr::tuple(
+                TupleFunctionExpr::bool_case(
+                    BoolExpr::local_get(crate::plan::BoolLocalId(4), "flag".into()),
+                    TupleFunctionExpr::local_get(
+                        TupleFunctionLocalId(5),
+                        "true_branch".into(),
+                        tuple_function_type.clone(),
+                    ),
+                    TupleFunctionExpr::local_get(
+                        TupleFunctionLocalId(6),
+                        "false_branch".into(),
+                        tuple_function_type.clone(),
+                    ),
+                ),
+            ))),
+            Step::evaluate(Expr::function(FunctionExpr::tuple(
+                TupleFunctionExpr::int_case(
+                    IntExpr::local_get(IntLocalId(13), "int_subject".into()),
+                    vec![(
+                        1.into(),
+                        TupleFunctionExpr::local_get(
+                            TupleFunctionLocalId(7),
+                            "int_branch".into(),
+                            tuple_function_type.clone(),
+                        ),
+                    )],
+                    TupleFunctionExpr::local_get(
+                        TupleFunctionLocalId(8),
+                        "int_fallback".into(),
+                        tuple_function_type.clone(),
+                    ),
+                ),
+            ))),
+            Step::evaluate(Expr::function(FunctionExpr::tuple(
+                TupleFunctionExpr::string_case(
+                    StringExpr::local_get(crate::plan::StringLocalId(9), "string_subject".into()),
+                    vec![(
+                        "hit".into(),
+                        TupleFunctionExpr::local_get(
+                            TupleFunctionLocalId(10),
+                            "string_branch".into(),
+                            tuple_function_type.clone(),
+                        ),
+                    )],
+                    TupleFunctionExpr::local_get(
+                        TupleFunctionLocalId(11),
+                        "string_fallback".into(),
+                        tuple_function_type.clone(),
+                    ),
+                ),
+            ))),
+            Step::evaluate(Expr::function(FunctionExpr::tuple(
+                TupleFunctionExpr::float_case(
+                    FloatExpr::local_get(crate::plan::FloatLocalId(2), "float_subject".into()),
+                    vec![(
+                        1.0,
+                        TupleFunctionExpr::local_get(
+                            TupleFunctionLocalId(12),
+                            "float_branch".into(),
+                            tuple_function_type.clone(),
+                        ),
+                    )],
+                    TupleFunctionExpr::local_get(
+                        TupleFunctionLocalId(13),
+                        "float_fallback".into(),
+                        tuple_function_type.clone(),
+                    ),
+                ),
+            ))),
+            Step::evaluate(Expr::function(FunctionExpr::tuple(
+                TupleFunctionExpr::block(
+                    vec![Step::evaluate(Expr::int(IntExpr::local_get(
+                        IntLocalId(14),
+                        "block_step".into(),
+                    )))],
+                    TupleFunctionExpr::local_get(
+                        TupleFunctionLocalId(14),
+                        "block_return".into(),
+                        tuple_function_type,
+                    ),
+                ),
+            ))),
+        ];
+        let return_ = ReturnExpr::int(IntFunctionId(0), IntExpr::value(0.into()));
+
+        let layout = FrameLayout::from_function_parts(&[], &steps, &return_);
+
+        assert_eq!(layout.ints(), 15);
+        assert_eq!(layout.floats(), 3);
+        assert_eq!(layout.strings(), 10);
+        assert_eq!(layout.bools(), 5);
+        assert_eq!(layout.tuples(), 2);
+        assert_eq!(layout.function_functions(), 4);
+        assert_eq!(layout.tuple_functions(), 15);
+    }
+
+    #[test]
     fn frame_layout_includes_function_expression_float_case_families() {
         let int_function_type = super::super::test_helpers::int_function_expr()
             .type_()
@@ -911,5 +1137,13 @@ mod tests {
         assert_eq!(layout.ints(), 6);
         assert_eq!(layout.strings(), 7);
         assert_eq!(layout.float_functions(), 14);
+    }
+
+    fn tuple_type() -> Vec<ValueType> {
+        vec![ValueType::Int, ValueType::String]
+    }
+
+    fn tuple_function_type() -> FunctionType {
+        FunctionType::new(vec![ValueType::Int], ValueType::Tuple(tuple_type()))
     }
 }

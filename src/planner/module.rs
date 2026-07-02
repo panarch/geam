@@ -215,12 +215,8 @@ pub(super) fn function_params(
     let mut next_string = 0;
     let mut next_bool = 0;
     let mut next_nil = 0;
-    let mut next_int_function = 0;
-    let mut next_float_function = 0;
-    let mut next_string_function = 0;
-    let mut next_bool_function = 0;
-    let mut next_nil_function = 0;
-    let mut next_function_function = 0;
+    let mut next_tuple = 0;
+    let mut function_locals = FunctionParamLocalCounters::default();
 
     arguments
         .iter()
@@ -268,76 +264,87 @@ pub(super) fn function_params(
                     next_nil += 1;
                     local
                 }
-                ValueType::Function(type_) => function_param_local(
-                    type_,
-                    &mut next_int_function,
-                    &mut next_float_function,
-                    &mut next_string_function,
-                    &mut next_bool_function,
-                    &mut next_nil_function,
-                    &mut next_function_function,
-                ),
+                ValueType::Tuple(type_) => {
+                    let local =
+                        ParamLocal::tuple(crate::plan::TupleLocalId(next_tuple), type_.clone());
+                    next_tuple += 1;
+                    local
+                }
+                ValueType::Function(type_) => function_locals.next(type_),
             };
             Ok(FunctionParam { local, binding })
         })
         .collect()
 }
 
-fn function_param_local(
-    type_: &FunctionType,
-    next_int_function: &mut usize,
-    next_float_function: &mut usize,
-    next_string_function: &mut usize,
-    next_bool_function: &mut usize,
-    next_nil_function: &mut usize,
-    next_function_function: &mut usize,
-) -> ParamLocal {
-    match type_.return_() {
-        ValueType::Int => {
-            let local =
-                ParamLocal::int_function(IntFunctionLocalId(*next_int_function), type_.clone());
-            *next_int_function += 1;
-            local
-        }
-        ValueType::Float => {
-            let local = ParamLocal::float_function(
-                crate::plan::FloatFunctionLocalId(*next_float_function),
-                type_.clone(),
-            );
-            *next_float_function += 1;
-            local
-        }
-        ValueType::String => {
-            let local = ParamLocal::string_function(
-                crate::plan::StringFunctionLocalId(*next_string_function),
-                type_.clone(),
-            );
-            *next_string_function += 1;
-            local
-        }
-        ValueType::Bool => {
-            let local = ParamLocal::bool_function(
-                crate::plan::BoolFunctionLocalId(*next_bool_function),
-                type_.clone(),
-            );
-            *next_bool_function += 1;
-            local
-        }
-        ValueType::Nil => {
-            let local = ParamLocal::nil_function(
-                crate::plan::NilFunctionLocalId(*next_nil_function),
-                type_.clone(),
-            );
-            *next_nil_function += 1;
-            local
-        }
-        ValueType::Function(_) => {
-            let local = ParamLocal::function_function(
-                FunctionFunctionLocalId(*next_function_function),
-                type_.clone(),
-            );
-            *next_function_function += 1;
-            local
+#[derive(Default)]
+struct FunctionParamLocalCounters {
+    next_int: usize,
+    next_float: usize,
+    next_string: usize,
+    next_bool: usize,
+    next_nil: usize,
+    next_tuple: usize,
+    next_function: usize,
+}
+
+impl FunctionParamLocalCounters {
+    fn next(&mut self, type_: &FunctionType) -> ParamLocal {
+        match type_.return_() {
+            ValueType::Int => {
+                let local =
+                    ParamLocal::int_function(IntFunctionLocalId(self.next_int), type_.clone());
+                self.next_int += 1;
+                local
+            }
+            ValueType::Float => {
+                let local = ParamLocal::float_function(
+                    crate::plan::FloatFunctionLocalId(self.next_float),
+                    type_.clone(),
+                );
+                self.next_float += 1;
+                local
+            }
+            ValueType::String => {
+                let local = ParamLocal::string_function(
+                    crate::plan::StringFunctionLocalId(self.next_string),
+                    type_.clone(),
+                );
+                self.next_string += 1;
+                local
+            }
+            ValueType::Bool => {
+                let local = ParamLocal::bool_function(
+                    crate::plan::BoolFunctionLocalId(self.next_bool),
+                    type_.clone(),
+                );
+                self.next_bool += 1;
+                local
+            }
+            ValueType::Nil => {
+                let local = ParamLocal::nil_function(
+                    crate::plan::NilFunctionLocalId(self.next_nil),
+                    type_.clone(),
+                );
+                self.next_nil += 1;
+                local
+            }
+            ValueType::Tuple(_) => {
+                let local = ParamLocal::tuple_function(
+                    crate::plan::TupleFunctionLocalId(self.next_tuple),
+                    type_.clone(),
+                );
+                self.next_tuple += 1;
+                local
+            }
+            ValueType::Function(_) => {
+                let local = ParamLocal::function_function(
+                    FunctionFunctionLocalId(self.next_function),
+                    type_.clone(),
+                );
+                self.next_function += 1;
+                local
+            }
         }
     }
 }
@@ -620,6 +627,10 @@ fn higher(callback: fn(fn(Int) -> Int) -> Int) {
 fn getter(callback: fn() -> fn(Int) -> Int) {
   1
 }
+
+fn tuple_getter(callback: fn(#(Int)) -> #(String)) {
+  1
+}
 "#,
         ))
         .expect("source should plan");
@@ -642,6 +653,12 @@ fn getter(callback: fn() -> fn(Int) -> Int) {
                         Vec::new(),
                         ValueType::Function(Box::new(returned_function_type)),
                     ),
+                ),
+                function("tuple_getter", int(1)).param_tuple_function(
+                    0,
+                    "callback",
+                    [ValueType::Tuple(vec![ValueType::Int])],
+                    [ValueType::String],
                 ),
             ],
         );

@@ -14,18 +14,20 @@ pub(crate) use expression::{
     BoolCaseBranches, BoolExprKind, BoolFunctionExprKind, CallArgKind, CaptureArg, CaptureArgKind,
     ExprKind, FloatCaseBranches, FloatExprKind, FloatFunctionExprKind, FunctionExprKind,
     FunctionFunctionExprKind, IntCaseBranches, IntExprKind, IntFunctionExprKind, NilExprKind,
-    NilFunctionExprKind, StringCaseBranches, StringExprKind, StringFunctionExprKind,
+    NilFunctionExprKind, StringCaseBranches, StringExprKind, StringFunctionExprKind, TupleExprKind,
+    TupleFunctionExprKind,
 };
 pub use expression::{
     BoolExpr, BoolFunctionExpr, CallArg, Expr, FloatExpr, FloatFunctionExpr, FunctionExpr,
     FunctionFunctionExpr, IntExpr, IntFunctionExpr, NilExpr, NilFunctionExpr, StringExpr,
-    StringFunctionExpr,
+    StringFunctionExpr, TupleExpr, TupleFunctionExpr,
 };
 pub(crate) use frame::FrameLayout;
 pub(crate) use function::{
     BoolFunctionReturn, BoolReturn, FloatFunctionReturn, FloatReturn, FunctionFunctionReturn,
     IntFunctionReturn, IntReturn, NilFunctionReturn, NilReturn, ParamLocal, ReturnBody,
     ReturnBodyKind, ReturnExprKind, RuntimeFunction, StringFunctionReturn, StringReturn,
+    TupleFunctionReturn, TupleReturn,
 };
 pub use function::{FunctionPlan, Param, ParamBinding, ReturnExpr};
 pub use id::{
@@ -34,14 +36,15 @@ pub use id::{
     FunctionFunctionFunctionId, FunctionFunctionLocalId, FunctionId, IntFunctionFunctionId,
     IntFunctionId, IntFunctionLocalId, IntLocalId, LocalId, NilFunctionFunctionId, NilFunctionId,
     NilFunctionLocalId, NilLocalId, StringFunctionFunctionId, StringFunctionId,
-    StringFunctionLocalId, StringLocalId,
+    StringFunctionLocalId, StringLocalId, TupleFunctionFunctionId, TupleFunctionId,
+    TupleFunctionLocalId, TupleLocalId,
 };
 pub(crate) use id::{FunctionFunctionId, FunctionReturnFamily, RuntimeFunctionId};
 pub use step::Step;
 pub(crate) use step::StepKind;
 pub(crate) use value::{
     BoolFunctionValue, CaptureValue, CaptureValueKind, FloatFunctionValue, FunctionFunctionValue,
-    FunctionValueKind, IntFunctionValue, NilFunctionValue, StringFunctionValue,
+    FunctionValueKind, IntFunctionValue, NilFunctionValue, StringFunctionValue, TupleFunctionValue,
 };
 pub use value::{FunctionType, FunctionValue, Value, ValueType};
 
@@ -117,6 +120,10 @@ impl ExecutionPlan {
         self.runtime.nil_function(id)
     }
 
+    pub(crate) fn tuple_function(&self, id: TupleFunctionId) -> &RuntimeFunction<TupleReturn> {
+        self.runtime.tuple_function(id)
+    }
+
     pub(crate) fn int_function_function(
         &self,
         id: IntFunctionFunctionId,
@@ -150,6 +157,13 @@ impl ExecutionPlan {
         id: NilFunctionFunctionId,
     ) -> &RuntimeFunction<NilFunctionReturn> {
         self.runtime.nil_function_function(id)
+    }
+
+    pub(crate) fn tuple_function_function(
+        &self,
+        id: TupleFunctionFunctionId,
+    ) -> &RuntimeFunction<TupleFunctionReturn> {
+        self.runtime.tuple_function_function(id)
     }
 
     pub(crate) fn function_function_function(

@@ -281,6 +281,62 @@ impl FrameLayout {
         }
     }
 
+    pub(in crate::plan::frame) fn include_tuple_function_return(
+        &mut self,
+        body: &crate::plan::TupleFunctionReturn,
+    ) {
+        match body.kind() {
+            ReturnBodyKind::Expr(expression) => self.include_tuple_function_expr(expression),
+            ReturnBodyKind::TailCall { args, .. } => self.include_call_args(args),
+            ReturnBodyKind::BoolCase {
+                subject,
+                true_,
+                false_,
+            } => {
+                self.include_bool_expr(subject);
+                self.include_tuple_function_return(true_);
+                self.include_tuple_function_return(false_);
+            }
+            ReturnBodyKind::IntCase {
+                subject,
+                clauses,
+                fallback,
+            } => {
+                self.include_int_expr(subject);
+                for (_, branch) in clauses {
+                    self.include_tuple_function_return(branch);
+                }
+                self.include_tuple_function_return(fallback);
+            }
+            ReturnBodyKind::FloatCase {
+                subject,
+                clauses,
+                fallback,
+            } => {
+                self.include_float_expr(subject);
+                for (_, branch) in clauses {
+                    self.include_tuple_function_return(branch);
+                }
+                self.include_tuple_function_return(fallback);
+            }
+            ReturnBodyKind::StringCase {
+                subject,
+                clauses,
+                fallback,
+            } => {
+                self.include_string_expr(subject);
+                for (_, branch) in clauses {
+                    self.include_tuple_function_return(branch);
+                }
+                self.include_tuple_function_return(fallback);
+            }
+            ReturnBodyKind::Block { steps, return_ } => {
+                self.include_steps(steps);
+                self.include_tuple_function_return(return_);
+            }
+        }
+    }
+
     pub(in crate::plan::frame) fn include_function_function_return(
         &mut self,
         body: &crate::plan::FunctionFunctionReturn,

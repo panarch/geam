@@ -129,6 +129,10 @@ fn string_case_expr(
             clauses: nil_case_clauses(clauses)?,
             fallback,
         },
+        ExprKind::Tuple(fallback) => StringCaseBranches::Tuple {
+            clauses: tuple_case_clauses(clauses)?,
+            fallback,
+        },
         ExprKind::Function(fallback) => function_case_branches(clauses, fallback)?,
     };
 
@@ -200,6 +204,19 @@ fn nil_case_clauses(
     Ok(typed_clauses)
 }
 
+fn tuple_case_clauses(
+    clauses: Vec<(EcoString, Expr)>,
+) -> Result<Vec<(EcoString, crate::plan::TupleExpr)>, PlanError> {
+    let mut typed_clauses = Vec::with_capacity(clauses.len());
+    for (value, clause) in clauses {
+        let ExprKind::Tuple(clause) = clause.into_kind() else {
+            return Err(branch_return_type_mismatch());
+        };
+        typed_clauses.push((value, clause));
+    }
+    Ok(typed_clauses)
+}
+
 fn function_case_branches(
     clauses: Vec<(EcoString, Expr)>,
     fallback: crate::plan::FunctionExpr,
@@ -223,6 +240,10 @@ fn function_case_branches(
         }),
         crate::plan::FunctionExprKind::Nil(fallback) => Ok(StringCaseBranches::NilFunction {
             clauses: nil_function_case_clauses(clauses)?,
+            fallback,
+        }),
+        crate::plan::FunctionExprKind::Tuple(fallback) => Ok(StringCaseBranches::TupleFunction {
+            clauses: tuple_function_case_clauses(clauses)?,
             fallback,
         }),
         crate::plan::FunctionExprKind::Function(fallback) => {
@@ -307,6 +328,22 @@ fn nil_function_case_clauses(
             return Err(branch_return_type_mismatch());
         };
         let Some(clause) = clause.into_nil() else {
+            return Err(branch_return_type_mismatch());
+        };
+        typed_clauses.push((value, clause));
+    }
+    Ok(typed_clauses)
+}
+
+fn tuple_function_case_clauses(
+    clauses: Vec<(EcoString, Expr)>,
+) -> Result<Vec<(EcoString, crate::plan::TupleFunctionExpr)>, PlanError> {
+    let mut typed_clauses = Vec::with_capacity(clauses.len());
+    for (value, clause) in clauses {
+        let ExprKind::Function(clause) = clause.into_kind() else {
+            return Err(branch_return_type_mismatch());
+        };
+        let Some(clause) = clause.into_tuple() else {
             return Err(branch_return_type_mismatch());
         };
         typed_clauses.push((value, clause));
@@ -996,6 +1033,18 @@ pub fn main() {
         );
         assert_eq!(
             super::nil_function_case_clauses(vec![("one".into(), int_function_ref_expr(0))]),
+            Err(case_branch_return_type_mismatch()),
+        );
+        assert_eq!(
+            super::tuple_case_clauses(vec![("one".into(), Expr::from(int(1)))]),
+            Err(case_branch_return_type_mismatch()),
+        );
+        assert_eq!(
+            super::tuple_function_case_clauses(vec![("one".into(), Expr::from(int(1)))]),
+            Err(case_branch_return_type_mismatch()),
+        );
+        assert_eq!(
+            super::tuple_function_case_clauses(vec![("one".into(), int_function_ref_expr(0))]),
             Err(case_branch_return_type_mismatch()),
         );
         assert_eq!(

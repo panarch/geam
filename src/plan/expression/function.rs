@@ -4,17 +4,18 @@ mod int;
 mod nil;
 mod returning_function;
 mod string;
+mod tuple;
 
 use crate::plan::{FunctionType, FunctionValue, FunctionValueKind};
 
 pub use self::{
     bool::BoolFunctionExpr, float::FloatFunctionExpr, int::IntFunctionExpr, nil::NilFunctionExpr,
-    returning_function::FunctionFunctionExpr, string::StringFunctionExpr,
+    returning_function::FunctionFunctionExpr, string::StringFunctionExpr, tuple::TupleFunctionExpr,
 };
 pub(crate) use self::{
     bool::BoolFunctionExprKind, float::FloatFunctionExprKind, int::IntFunctionExprKind,
     nil::NilFunctionExprKind, returning_function::FunctionFunctionExprKind,
-    string::StringFunctionExprKind,
+    string::StringFunctionExprKind, tuple::TupleFunctionExprKind,
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -29,6 +30,7 @@ pub(crate) enum FunctionExprKind {
     Float(FloatFunctionExpr),
     Bool(BoolFunctionExpr),
     Nil(NilFunctionExpr),
+    Tuple(TupleFunctionExpr),
     Function(FunctionFunctionExpr),
 }
 
@@ -42,6 +44,7 @@ impl FunctionExpr {
             FunctionValueKind::Float(value) => Self::float(FloatFunctionExpr::value(value.clone())),
             FunctionValueKind::Bool(value) => Self::bool(BoolFunctionExpr::value(value.clone())),
             FunctionValueKind::Nil(value) => Self::nil(NilFunctionExpr::value(value.clone())),
+            FunctionValueKind::Tuple(value) => Self::tuple(TupleFunctionExpr::value(value.clone())),
             FunctionValueKind::Function(value) => {
                 Self::function(FunctionFunctionExpr::value(value.clone()))
             }
@@ -78,6 +81,12 @@ impl FunctionExpr {
         }
     }
 
+    pub(crate) fn tuple(expression: TupleFunctionExpr) -> Self {
+        Self {
+            kind: FunctionExprKind::Tuple(expression),
+        }
+    }
+
     pub(crate) fn function(expression: FunctionFunctionExpr) -> Self {
         Self {
             kind: FunctionExprKind::Function(expression),
@@ -91,6 +100,7 @@ impl FunctionExpr {
             FunctionExprKind::Float(expression) => expression.type_(),
             FunctionExprKind::Bool(expression) => expression.type_(),
             FunctionExprKind::Nil(expression) => expression.type_(),
+            FunctionExprKind::Tuple(expression) => expression.type_(),
             FunctionExprKind::Function(expression) => expression.type_(),
         }
     }
@@ -138,6 +148,13 @@ impl FunctionExpr {
         }
     }
 
+    pub(crate) fn into_tuple(self) -> Option<TupleFunctionExpr> {
+        match self.kind {
+            FunctionExprKind::Tuple(expression) => Some(expression),
+            _ => None,
+        }
+    }
+
     pub(crate) fn into_function(self) -> Option<FunctionFunctionExpr> {
         match self.kind {
             FunctionExprKind::Function(expression) => Some(expression),
@@ -176,6 +193,12 @@ impl From<NilFunctionExpr> for FunctionExpr {
     }
 }
 
+impl From<TupleFunctionExpr> for FunctionExpr {
+    fn from(expression: TupleFunctionExpr) -> Self {
+        Self::tuple(expression)
+    }
+}
+
 impl From<FunctionFunctionExpr> for FunctionExpr {
     fn from(expression: FunctionFunctionExpr) -> Self {
         Self::function(expression)
@@ -186,13 +209,13 @@ impl From<FunctionFunctionExpr> for FunctionExpr {
 mod tests {
     use super::{
         BoolFunctionExpr, FloatFunctionExpr, FunctionExpr, FunctionExprKind, FunctionFunctionExpr,
-        IntFunctionExpr, NilFunctionExpr, StringFunctionExpr,
+        IntFunctionExpr, NilFunctionExpr, StringFunctionExpr, TupleFunctionExpr,
     };
     use crate::plan::{
         BoolFunctionId, BoolFunctionValue, FloatFunctionId, FloatFunctionValue, FunctionFunctionId,
         FunctionFunctionValue, FunctionType, FunctionValue, IntFunctionFunctionId, IntFunctionId,
         IntFunctionValue, NilFunctionId, NilFunctionValue, ParamLocal, RuntimeFunctionId,
-        StringFunctionId, StringFunctionValue, ValueType,
+        StringFunctionId, StringFunctionValue, TupleFunctionId, TupleFunctionValue, ValueType,
     };
 
     #[test]
@@ -222,6 +245,10 @@ mod tests {
             FunctionExprKind::Nil(_)
         ));
         assert!(matches!(
+            FunctionExpr::tuple(tuple_function_value()).kind(),
+            FunctionExprKind::Tuple(_)
+        ));
+        assert!(matches!(
             FunctionExpr::function(function_function_value()).kind(),
             FunctionExprKind::Function(_)
         ));
@@ -246,6 +273,11 @@ mod tests {
                 .is_some()
         );
         assert!(FunctionExpr::nil(nil_function_value()).into_nil().is_some());
+        assert!(
+            FunctionExpr::tuple(tuple_function_value())
+                .into_tuple()
+                .is_some()
+        );
 
         assert!(
             FunctionExpr::int(int_function_value())
@@ -263,6 +295,11 @@ mod tests {
                 .is_none()
         );
         assert!(FunctionExpr::int(int_function_value()).into_nil().is_none());
+        assert!(
+            FunctionExpr::int(int_function_value())
+                .into_tuple()
+                .is_none()
+        );
 
         assert!(matches!(
             FunctionExpr::from(int_function_value()).kind(),
@@ -283,6 +320,10 @@ mod tests {
         assert!(matches!(
             FunctionExpr::from(nil_function_value()).kind(),
             FunctionExprKind::Nil(_),
+        ));
+        assert!(matches!(
+            FunctionExpr::from(tuple_function_value()).kind(),
+            FunctionExprKind::Tuple(_),
         ));
         assert!(matches!(
             FunctionExpr::from(function_function_value()).kind(),
@@ -329,6 +370,17 @@ mod tests {
         NilFunctionExpr::value(NilFunctionValue::new(
             NilFunctionId(0),
             vec![ParamLocal::nil(crate::plan::NilLocalId(0))],
+        ))
+    }
+
+    fn tuple_function_value() -> TupleFunctionExpr {
+        TupleFunctionExpr::value(TupleFunctionValue::new(
+            TupleFunctionId(0),
+            vec![ParamLocal::tuple(
+                crate::plan::TupleLocalId(0),
+                vec![ValueType::Int],
+            )],
+            vec![ValueType::Int],
         ))
     }
 
