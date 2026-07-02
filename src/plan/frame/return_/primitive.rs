@@ -25,6 +25,17 @@ impl FrameLayout {
                 }
                 self.include_int_return(fallback);
             }
+            ReturnBodyKind::StringCase {
+                subject,
+                clauses,
+                fallback,
+            } => {
+                self.include_string_expr(subject);
+                for (_, branch) in clauses {
+                    self.include_int_return(branch);
+                }
+                self.include_int_return(fallback);
+            }
             ReturnBodyKind::Block { steps, return_ } => {
                 self.include_steps(steps);
                 self.include_int_return(return_);
@@ -54,6 +65,17 @@ impl FrameLayout {
                 fallback,
             } => {
                 self.include_int_expr(subject);
+                for (_, branch) in clauses {
+                    self.include_string_return(branch);
+                }
+                self.include_string_return(fallback);
+            }
+            ReturnBodyKind::StringCase {
+                subject,
+                clauses,
+                fallback,
+            } => {
+                self.include_string_expr(subject);
                 for (_, branch) in clauses {
                     self.include_string_return(branch);
                 }
@@ -90,6 +112,17 @@ impl FrameLayout {
                 }
                 self.include_bool_return(fallback);
             }
+            ReturnBodyKind::StringCase {
+                subject,
+                clauses,
+                fallback,
+            } => {
+                self.include_string_expr(subject);
+                for (_, branch) in clauses {
+                    self.include_bool_return(branch);
+                }
+                self.include_bool_return(fallback);
+            }
             ReturnBodyKind::Block { steps, return_ } => {
                 self.include_steps(steps);
                 self.include_bool_return(return_);
@@ -116,6 +149,17 @@ impl FrameLayout {
                 fallback,
             } => {
                 self.include_int_expr(subject);
+                for (_, branch) in clauses {
+                    self.include_nil_return(branch);
+                }
+                self.include_nil_return(fallback);
+            }
+            ReturnBodyKind::StringCase {
+                subject,
+                clauses,
+                fallback,
+            } => {
+                self.include_string_expr(subject);
                 for (_, branch) in clauses {
                     self.include_nil_return(branch);
                 }

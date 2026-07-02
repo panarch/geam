@@ -1,4 +1,4 @@
-use super::eval_bool_expr;
+use super::{eval_bool_expr, eval_string_expr};
 use crate::plan::{ExecutionPlan, IntExpr, IntExprKind};
 use crate::runtime::ExecutionError;
 use crate::runtime::frame::Frame;
@@ -54,6 +54,19 @@ pub(in crate::runtime) fn eval_int_expr(
             fallback,
         } => {
             let subject = eval_int_expr(plan, frame, subject)?;
+            for (pattern, branch) in clauses {
+                if pattern == &subject {
+                    return eval_int_expr(plan, frame, branch);
+                }
+            }
+            eval_int_expr(plan, frame, fallback)
+        }
+        IntExprKind::StringCase {
+            subject,
+            clauses,
+            fallback,
+        } => {
+            let subject = eval_string_expr(plan, frame, subject)?;
             for (pattern, branch) in clauses {
                 if pattern == &subject {
                     return eval_int_expr(plan, frame, branch);
@@ -385,6 +398,39 @@ pub fn main() {
 "#,
             ),
             int(10),
+        );
+    }
+
+    #[test]
+    fn eval_string_case_int() {
+        assert_eq!(
+            run_src(
+                r#"
+pub fn main() {
+  let value = case "one" {
+    "one" -> 10
+    _ -> 0
+  }
+  value
+}
+"#,
+            ),
+            int(10),
+        );
+
+        assert_eq!(
+            run_src(
+                r#"
+pub fn main() {
+  let value = case "many" {
+    "one" -> 10
+    _ -> 0
+  }
+  value
+}
+"#,
+            ),
+            int(0),
         );
     }
 

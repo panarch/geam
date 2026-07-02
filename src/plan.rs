@@ -13,7 +13,8 @@ use std::fmt;
 pub(crate) use expression::{
     BoolCaseBranches, BoolExprKind, BoolFunctionExprKind, CallArgKind, CaptureArg, CaptureArgKind,
     ExprKind, FunctionExprKind, FunctionFunctionExprKind, IntCaseBranches, IntExprKind,
-    IntFunctionExprKind, NilExprKind, NilFunctionExprKind, StringExprKind, StringFunctionExprKind,
+    IntFunctionExprKind, NilExprKind, NilFunctionExprKind, StringCaseBranches, StringExprKind,
+    StringFunctionExprKind,
 };
 pub use expression::{
     BoolExpr, BoolFunctionExpr, CallArg, Expr, FunctionExpr, FunctionFunctionExpr, IntExpr,

@@ -2,7 +2,7 @@ use crate::plan::{
     ExecutionPlan, FunctionFunctionExpr, FunctionFunctionExprKind, FunctionFunctionValue,
 };
 use crate::runtime::ExecutionError;
-use crate::runtime::expression::{eval_bool_expr, eval_int_expr};
+use crate::runtime::expression::{eval_bool_expr, eval_int_expr, eval_string_expr};
 use crate::runtime::frame::Frame;
 use crate::runtime::function;
 
@@ -50,6 +50,19 @@ pub(in crate::runtime) fn eval_function_function_expr(
             fallback,
         } => {
             let subject = eval_int_expr(plan, frame, subject)?;
+            for (pattern, branch) in clauses {
+                if pattern == &subject {
+                    return eval_function_function_expr(plan, frame, branch);
+                }
+            }
+            eval_function_function_expr(plan, frame, fallback)
+        }
+        FunctionFunctionExprKind::StringCase {
+            subject,
+            clauses,
+            fallback,
+        } => {
+            let subject = eval_string_expr(plan, frame, subject)?;
             for (pattern, branch) in clauses {
                 if pattern == &subject {
                     return eval_function_function_expr(plan, frame, branch);

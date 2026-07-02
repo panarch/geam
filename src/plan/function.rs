@@ -102,6 +102,11 @@ pub(crate) enum ReturnBodyKind<Expression, Function> {
         clauses: Vec<(BigInt, ReturnBody<Expression, Function>)>,
         fallback: Box<ReturnBody<Expression, Function>>,
     },
+    StringCase {
+        subject: StringExpr,
+        clauses: Vec<(EcoString, ReturnBody<Expression, Function>)>,
+        fallback: Box<ReturnBody<Expression, Function>>,
+    },
     Block {
         steps: Vec<Step>,
         return_: Box<ReturnBody<Expression, Function>>,
@@ -449,6 +454,20 @@ impl<Expression, Function> ReturnBody<Expression, Function> {
     pub(crate) fn int_case(subject: IntExpr, clauses: Vec<(BigInt, Self)>, fallback: Self) -> Self {
         Self {
             kind: ReturnBodyKind::IntCase {
+                subject,
+                clauses,
+                fallback: Box::new(fallback),
+            },
+        }
+    }
+
+    pub(crate) fn string_case(
+        subject: StringExpr,
+        clauses: Vec<(EcoString, Self)>,
+        fallback: Self,
+    ) -> Self {
+        Self {
+            kind: ReturnBodyKind::StringCase {
                 subject,
                 clauses,
                 fallback: Box::new(fallback),

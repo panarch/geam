@@ -234,6 +234,18 @@ pub(in crate::planner) fn int_return(expression: IntExpr) -> IntReturn {
                 .collect(),
             int_return((**fallback).clone()),
         ),
+        IntExprKind::StringCase {
+            subject,
+            clauses,
+            fallback,
+        } => ReturnBody::string_case(
+            (**subject).clone(),
+            clauses
+                .iter()
+                .map(|(value, branch)| (value.clone(), int_return(branch.clone())))
+                .collect(),
+            int_return((**fallback).clone()),
+        ),
         IntExprKind::Block { steps, return_ } => {
             ReturnBody::block(steps.clone(), int_return((**return_).clone()))
         }
@@ -258,6 +270,18 @@ pub(in crate::planner) fn string_return(expression: StringExpr) -> StringReturn 
             clauses,
             fallback,
         } => ReturnBody::int_case(
+            (**subject).clone(),
+            clauses
+                .iter()
+                .map(|(value, branch)| (value.clone(), string_return(branch.clone())))
+                .collect(),
+            string_return((**fallback).clone()),
+        ),
+        StringExprKind::StringCase {
+            subject,
+            clauses,
+            fallback,
+        } => ReturnBody::string_case(
             (**subject).clone(),
             clauses
                 .iter()
@@ -296,6 +320,18 @@ pub(in crate::planner) fn bool_return(expression: BoolExpr) -> BoolReturn {
                 .collect(),
             bool_return((**fallback).clone()),
         ),
+        BoolExprKind::StringCase {
+            subject,
+            clauses,
+            fallback,
+        } => ReturnBody::string_case(
+            (**subject).clone(),
+            clauses
+                .iter()
+                .map(|(value, branch)| (value.clone(), bool_return(branch.clone())))
+                .collect(),
+            bool_return((**fallback).clone()),
+        ),
         BoolExprKind::Block { steps, return_ } => {
             ReturnBody::block(steps.clone(), bool_return((**return_).clone()))
         }
@@ -320,6 +356,18 @@ pub(in crate::planner) fn nil_return(expression: NilExpr) -> NilReturn {
             clauses,
             fallback,
         } => ReturnBody::int_case(
+            (**subject).clone(),
+            clauses
+                .iter()
+                .map(|(value, branch)| (value.clone(), nil_return(branch.clone())))
+                .collect(),
+            nil_return((**fallback).clone()),
+        ),
+        NilExprKind::StringCase {
+            subject,
+            clauses,
+            fallback,
+        } => ReturnBody::string_case(
             (**subject).clone(),
             clauses
                 .iter()
@@ -353,6 +401,18 @@ pub(in crate::planner) fn int_function_return(expression: IntFunctionExpr) -> In
             clauses,
             fallback,
         } => ReturnBody::int_case(
+            (**subject).clone(),
+            clauses
+                .iter()
+                .map(|(value, branch)| (value.clone(), int_function_return(branch.clone())))
+                .collect(),
+            int_function_return((**fallback).clone()),
+        ),
+        IntFunctionExprKind::StringCase {
+            subject,
+            clauses,
+            fallback,
+        } => ReturnBody::string_case(
             (**subject).clone(),
             clauses
                 .iter()
@@ -395,6 +455,18 @@ pub(in crate::planner) fn string_function_return(
                 .collect(),
             string_function_return((**fallback).clone()),
         ),
+        StringFunctionExprKind::StringCase {
+            subject,
+            clauses,
+            fallback,
+        } => ReturnBody::string_case(
+            (**subject).clone(),
+            clauses
+                .iter()
+                .map(|(value, branch)| (value.clone(), string_function_return(branch.clone())))
+                .collect(),
+            string_function_return((**fallback).clone()),
+        ),
         StringFunctionExprKind::Block { steps, return_ } => {
             ReturnBody::block(steps.clone(), string_function_return((**return_).clone()))
         }
@@ -428,6 +500,18 @@ pub(in crate::planner) fn bool_function_return(expression: BoolFunctionExpr) -> 
                 .collect(),
             bool_function_return((**fallback).clone()),
         ),
+        BoolFunctionExprKind::StringCase {
+            subject,
+            clauses,
+            fallback,
+        } => ReturnBody::string_case(
+            (**subject).clone(),
+            clauses
+                .iter()
+                .map(|(value, branch)| (value.clone(), bool_function_return(branch.clone())))
+                .collect(),
+            bool_function_return((**fallback).clone()),
+        ),
         BoolFunctionExprKind::Block { steps, return_ } => {
             ReturnBody::block(steps.clone(), bool_function_return((**return_).clone()))
         }
@@ -454,6 +538,18 @@ pub(in crate::planner) fn nil_function_return(expression: NilFunctionExpr) -> Ni
             clauses,
             fallback,
         } => ReturnBody::int_case(
+            (**subject).clone(),
+            clauses
+                .iter()
+                .map(|(value, branch)| (value.clone(), nil_function_return(branch.clone())))
+                .collect(),
+            nil_function_return((**fallback).clone()),
+        ),
+        NilFunctionExprKind::StringCase {
+            subject,
+            clauses,
+            fallback,
+        } => ReturnBody::string_case(
             (**subject).clone(),
             clauses
                 .iter()
@@ -496,6 +592,18 @@ pub(in crate::planner) fn function_function_return(
                 .collect(),
             function_function_return((**fallback).clone()),
         ),
+        FunctionFunctionExprKind::StringCase {
+            subject,
+            clauses,
+            fallback,
+        } => ReturnBody::string_case(
+            (**subject).clone(),
+            clauses
+                .iter()
+                .map(|(value, branch)| (value.clone(), function_function_return(branch.clone())))
+                .collect(),
+            function_function_return((**fallback).clone()),
+        ),
         FunctionFunctionExprKind::Block { steps, return_ } => {
             ReturnBody::block(steps.clone(), function_function_return((**return_).clone()))
         }
@@ -530,22 +638,24 @@ mod tests {
     use crate::planner::dsl::{
         bool_, bool_arg, bool_function_ref, bool_function_return_block,
         bool_function_return_bool_case, bool_function_return_expr, bool_function_return_int_case,
-        bool_function_return_tail_call, bool_return_tail_call, call_bool, call_int,
-        call_int_function, call_int_returning_function, function, function_function_ref,
-        function_function_return_block, function_function_return_expr,
-        function_function_return_int_case, function_function_return_tail_call, function_ref, int,
-        int_arg, int_function_arg, int_function_call_arg, int_function_ref,
-        int_function_return_block, int_function_return_bool_case, int_function_return_expr,
-        int_function_return_int_case, int_function_return_tail_call, int_return_block,
+        bool_function_return_string_case, bool_function_return_tail_call, bool_return_tail_call,
+        call_bool, call_int, call_int_function, call_int_returning_function, function,
+        function_function_ref, function_function_return_block, function_function_return_expr,
+        function_function_return_int_case, function_function_return_string_case,
+        function_function_return_tail_call, function_ref, int, int_arg, int_function_arg,
+        int_function_call_arg, int_function_ref, int_function_return_block,
+        int_function_return_bool_case, int_function_return_expr, int_function_return_int_case,
+        int_function_return_string_case, int_function_return_tail_call, int_return_block,
         int_return_bool_case, int_return_expr, int_return_int_case, int_return_tail_call,
         let_int_function_step, let_int_step, local_bool, local_int, local_int_function, local_nil,
         local_string, module, module_with_anonymous, nil, nil_arg, nil_function_ref,
         nil_function_return_block, nil_function_return_bool_case, nil_function_return_expr,
-        nil_function_return_int_case, nil_function_return_tail_call, nil_return_tail_call,
-        return_bool_function, return_function_function, return_int_function, return_nil_function,
-        return_string_function, string, string_arg, string_function_ref,
-        string_function_return_block, string_function_return_bool_case,
-        string_function_return_expr, string_function_return_int_case,
+        nil_function_return_int_case, nil_function_return_string_case,
+        nil_function_return_tail_call, nil_return_tail_call, return_bool_function,
+        return_function_function, return_int_function, return_nil_function, return_string_function,
+        string, string_arg, string_function_ref, string_function_return_block,
+        string_function_return_bool_case, string_function_return_expr,
+        string_function_return_int_case, string_function_return_string_case,
         string_function_return_tail_call, string_return_tail_call,
     };
     use crate::planner::plan_module;
@@ -1023,6 +1133,246 @@ pub fn main() {
                     ),
                 )
                 .param_bool(0, "flag"),
+            ],
+        );
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn plan_function_return_family_string_case_branches() {
+        let actual = plan_module(compile(
+            r#"
+fn int_identity(value: Int) {
+  value
+}
+
+fn int_increment(value: Int) {
+  value + 1
+}
+
+fn string_identity(value: String) {
+  value
+}
+
+fn string_suffix(value: String) {
+  value <> "!"
+}
+
+fn bool_true(value: Bool) {
+  True
+}
+
+fn bool_false(value: Bool) {
+  False
+}
+
+fn nil_identity(value: Nil) {
+  value
+}
+
+fn nil_other(value: Nil) {
+  Nil
+}
+
+fn choose_int(key: String) {
+  case key {
+    "one" -> int_identity
+    _ -> int_increment
+  }
+}
+
+fn choose_string(key: String) {
+  case key {
+    "one" -> string_identity
+    _ -> string_suffix
+  }
+}
+
+fn choose_bool(key: String) {
+  case key {
+    "one" -> bool_true
+    _ -> bool_false
+  }
+}
+
+fn choose_nil(key: String) {
+  case key {
+    "one" -> nil_identity
+    _ -> nil_other
+  }
+}
+
+fn choose_increment(key: String) {
+  int_increment
+}
+
+fn choose_getter(key: String) {
+  case key {
+    "one" -> choose_int
+    _ -> choose_increment
+  }
+}
+
+pub fn main() {
+  choose_int("one")(1)
+}
+"#,
+        ))
+        .expect("source should plan");
+        let int_to_int = function_type([ValueType::Int], ValueType::Int);
+        let string_to_string = function_type([ValueType::String], ValueType::String);
+        let bool_to_bool = function_type([ValueType::Bool], ValueType::Bool);
+        let nil_to_nil = function_type([ValueType::Nil], ValueType::Nil);
+        let string_to_int_function = function_type(
+            [ValueType::String],
+            ValueType::Function(Box::new(int_to_int.clone())),
+        );
+        let expected = module(
+            "main",
+            function(
+                "main",
+                call_int_function(
+                    call_int_returning_function(
+                        0,
+                        [string_arg(0, string("one"))],
+                        int_to_int.clone(),
+                    ),
+                    [int_function_call_arg(0, int(1))],
+                ),
+            ),
+            [
+                function("int_identity", local_int(0, "value")).param_int(0, "value"),
+                function("int_increment", local_int(0, "value").add_int(int(1)))
+                    .param_int(0, "value"),
+                function("string_identity", local_string(0, "value")).param_string(0, "value"),
+                function(
+                    "string_suffix",
+                    local_string(0, "value").concatenate(string("!")),
+                )
+                .param_string(0, "value"),
+                function("bool_true", bool_(true)).param_bool(0, "value"),
+                function("bool_false", bool_(false)).param_bool(0, "value"),
+                function("nil_identity", local_nil(0, "value")).param_nil(0, "value"),
+                function("nil_other", nil()).param_nil(0, "value"),
+                function(
+                    "choose_int",
+                    return_int_function(
+                        int_to_int.clone(),
+                        int_function_return_string_case(
+                            local_string(0, "key"),
+                            [(
+                                "one",
+                                int_function_return_expr(int_function_ref(
+                                    1,
+                                    [LocalId::Int(IntLocalId(0))],
+                                )),
+                            )],
+                            int_function_return_expr(int_function_ref(
+                                2,
+                                [LocalId::Int(IntLocalId(0))],
+                            )),
+                        ),
+                    ),
+                )
+                .param_string(0, "key"),
+                function(
+                    "choose_string",
+                    return_string_function(
+                        string_to_string,
+                        string_function_return_string_case(
+                            local_string(0, "key"),
+                            [(
+                                "one",
+                                string_function_return_expr(string_function_ref(
+                                    0,
+                                    [LocalId::String(StringLocalId(0))],
+                                )),
+                            )],
+                            string_function_return_expr(string_function_ref(
+                                1,
+                                [LocalId::String(StringLocalId(0))],
+                            )),
+                        ),
+                    ),
+                )
+                .param_string(0, "key"),
+                function(
+                    "choose_bool",
+                    return_bool_function(
+                        bool_to_bool,
+                        bool_function_return_string_case(
+                            local_string(0, "key"),
+                            [(
+                                "one",
+                                bool_function_return_expr(bool_function_ref(
+                                    0,
+                                    [LocalId::Bool(BoolLocalId(0))],
+                                )),
+                            )],
+                            bool_function_return_expr(bool_function_ref(
+                                1,
+                                [LocalId::Bool(BoolLocalId(0))],
+                            )),
+                        ),
+                    ),
+                )
+                .param_string(0, "key"),
+                function(
+                    "choose_nil",
+                    return_nil_function(
+                        nil_to_nil,
+                        nil_function_return_string_case(
+                            local_string(0, "key"),
+                            [(
+                                "one",
+                                nil_function_return_expr(nil_function_ref(
+                                    0,
+                                    [LocalId::Nil(NilLocalId(0))],
+                                )),
+                            )],
+                            nil_function_return_expr(nil_function_ref(
+                                1,
+                                [LocalId::Nil(NilLocalId(0))],
+                            )),
+                        ),
+                    ),
+                )
+                .param_string(0, "key"),
+                function(
+                    "choose_increment",
+                    return_int_function(
+                        int_to_int.clone(),
+                        int_function_return_expr(int_function_ref(
+                            2,
+                            [LocalId::Int(IntLocalId(0))],
+                        )),
+                    ),
+                )
+                .param_string(0, "key"),
+                function(
+                    "choose_getter",
+                    return_function_function(
+                        string_to_int_function,
+                        function_function_return_string_case(
+                            local_string(0, "key"),
+                            [(
+                                "one",
+                                function_function_return_expr(function_function_ref(
+                                    FunctionFunctionId::Int(IntFunctionFunctionId(0)),
+                                    [LocalId::String(StringLocalId(0))],
+                                    int_to_int.clone(),
+                                )),
+                            )],
+                            function_function_return_expr(function_function_ref(
+                                FunctionFunctionId::Int(IntFunctionFunctionId(1)),
+                                [LocalId::String(StringLocalId(0))],
+                                int_to_int,
+                            )),
+                        ),
+                    ),
+                )
+                .param_string(0, "key"),
             ],
         );
 

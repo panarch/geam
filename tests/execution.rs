@@ -56,12 +56,22 @@ mod operators {
 mod control_flow {
     execution_cases!("control_flow";
         block_expression,
-        case_block_scope,
-        block_case_return_families,
-        bool_case,
-        bool_case_fallback,
-        int_case,
     );
+
+    mod case {
+        execution_cases!("control_flow/case";
+            block_case_return_families,
+            bool_case,
+            bool_case_fallback,
+            case_block_scope,
+            int_case,
+            string_literal_case,
+            string_case_ordering,
+            string_case_return_families,
+            string_case_function_values,
+            string_case_function_returns,
+        );
+    }
 }
 
 mod pipeline {

@@ -53,6 +53,17 @@ impl FrameLayout {
                 }
                 self.include_int_expr(fallback);
             }
+            IntExprKind::StringCase {
+                subject,
+                clauses,
+                fallback,
+            } => {
+                self.include_string_expr(subject);
+                for (_, branch) in clauses {
+                    self.include_int_expr(branch);
+                }
+                self.include_int_expr(fallback);
+            }
             IntExprKind::Block { steps, return_ } => {
                 self.include_steps(steps);
                 self.include_int_expr(return_);
@@ -88,6 +99,17 @@ impl FrameLayout {
                 fallback,
             } => {
                 self.include_int_expr(subject);
+                for (_, branch) in clauses {
+                    self.include_string_expr(branch);
+                }
+                self.include_string_expr(fallback);
+            }
+            StringExprKind::StringCase {
+                subject,
+                clauses,
+                fallback,
+            } => {
+                self.include_string_expr(subject);
                 for (_, branch) in clauses {
                     self.include_string_expr(branch);
                 }
@@ -133,6 +155,17 @@ impl FrameLayout {
                 fallback,
             } => {
                 self.include_int_expr(subject);
+                for (_, branch) in clauses {
+                    self.include_bool_expr(branch);
+                }
+                self.include_bool_expr(fallback);
+            }
+            BoolExprKind::StringCase {
+                subject,
+                clauses,
+                fallback,
+            } => {
+                self.include_string_expr(subject);
                 for (_, branch) in clauses {
                     self.include_bool_expr(branch);
                 }
@@ -184,6 +217,17 @@ impl FrameLayout {
                 fallback,
             } => {
                 self.include_int_expr(subject);
+                for (_, branch) in clauses {
+                    self.include_nil_expr(branch);
+                }
+                self.include_nil_expr(fallback);
+            }
+            NilExprKind::StringCase {
+                subject,
+                clauses,
+                fallback,
+            } => {
+                self.include_string_expr(subject);
                 for (_, branch) in clauses {
                     self.include_nil_expr(branch);
                 }
@@ -258,6 +302,20 @@ mod tests {
                 ],
                 IntExpr::local_get(IntLocalId(12), "int_fallback".into()),
             ))),
+            Step::evaluate(Expr::int(IntExpr::string_case(
+                StringExpr::local_get(StringLocalId(6), "int_string_case_subject".into()),
+                vec![
+                    (
+                        "one".into(),
+                        IntExpr::local_get(IntLocalId(15), "int_string_branch_one".into()),
+                    ),
+                    (
+                        "two".into(),
+                        IntExpr::local_get(IntLocalId(16), "int_string_branch_two".into()),
+                    ),
+                ],
+                IntExpr::local_get(IntLocalId(17), "int_string_fallback".into()),
+            ))),
             Step::evaluate(Expr::string(StringExpr::bool_case(
                 BoolExpr::local_get(BoolLocalId(0), "string_case_subject".into()),
                 StringExpr::local_get(StringLocalId(1), "string_true".into()),
@@ -277,6 +335,20 @@ mod tests {
                 ],
                 StringExpr::local_get(StringLocalId(5), "string_fallback".into()),
             ))),
+            Step::evaluate(Expr::string(StringExpr::string_case(
+                StringExpr::local_get(StringLocalId(7), "string_string_case_subject".into()),
+                vec![
+                    (
+                        "one".into(),
+                        StringExpr::local_get(StringLocalId(8), "string_string_branch_one".into()),
+                    ),
+                    (
+                        "two".into(),
+                        StringExpr::local_get(StringLocalId(9), "string_string_branch_two".into()),
+                    ),
+                ],
+                StringExpr::local_get(StringLocalId(10), "string_string_fallback".into()),
+            ))),
             Step::evaluate(Expr::bool(BoolExpr::int_case(
                 IntExpr::local_get(IntLocalId(3), "bool_case_subject".into()),
                 vec![(
@@ -284,6 +356,20 @@ mod tests {
                     BoolExpr::local_get(BoolLocalId(4), "bool_branch".into()),
                 )],
                 BoolExpr::local_get(BoolLocalId(5), "bool_fallback".into()),
+            ))),
+            Step::evaluate(Expr::bool(BoolExpr::string_case(
+                StringExpr::local_get(StringLocalId(11), "bool_string_case_subject".into()),
+                vec![
+                    (
+                        "one".into(),
+                        BoolExpr::local_get(BoolLocalId(8), "bool_string_branch_one".into()),
+                    ),
+                    (
+                        "two".into(),
+                        BoolExpr::local_get(BoolLocalId(9), "bool_string_branch_two".into()),
+                    ),
+                ],
+                BoolExpr::local_get(BoolLocalId(10), "bool_string_fallback".into()),
             ))),
             Step::evaluate(Expr::nil(NilExpr::bool_case(
                 BoolExpr::local_get(BoolLocalId(7), "nil_bool_case_subject".into()),
@@ -304,6 +390,20 @@ mod tests {
                 ],
                 NilExpr::local_get(NilLocalId(5), "nil_fallback".into()),
             ))),
+            Step::evaluate(Expr::nil(NilExpr::string_case(
+                StringExpr::local_get(StringLocalId(12), "nil_string_case_subject".into()),
+                vec![
+                    (
+                        "one".into(),
+                        NilExpr::local_get(NilLocalId(6), "nil_string_branch_one".into()),
+                    ),
+                    (
+                        "two".into(),
+                        NilExpr::local_get(NilLocalId(7), "nil_string_branch_two".into()),
+                    ),
+                ],
+                NilExpr::local_get(NilLocalId(8), "nil_string_fallback".into()),
+            ))),
             Step::evaluate(Expr::nil(NilExpr::block(
                 vec![Step::evaluate(Expr::int(IntExpr::local_get(
                     IntLocalId(6),
@@ -316,9 +416,9 @@ mod tests {
 
         let layout = FrameLayout::from_function_parts(&[], &steps, &return_);
 
-        assert_eq!(layout.ints(), 15);
-        assert_eq!(layout.strings(), 6);
-        assert_eq!(layout.bools(), 8);
-        assert_eq!(layout.nils(), 6);
+        assert_eq!(layout.ints(), 18);
+        assert_eq!(layout.strings(), 13);
+        assert_eq!(layout.bools(), 11);
+        assert_eq!(layout.nils(), 9);
     }
 }

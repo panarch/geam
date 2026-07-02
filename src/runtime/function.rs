@@ -147,6 +147,19 @@ where
             }
             eval_return_body(plan, frame, fallback, eval_expression)
         }
+        ReturnBodyKind::StringCase {
+            subject,
+            clauses,
+            fallback,
+        } => {
+            let subject = eval_string_expr(plan, frame, subject)?;
+            for (pattern, branch) in clauses {
+                if pattern == &subject {
+                    return eval_return_body(plan, frame, branch, eval_expression);
+                }
+            }
+            eval_return_body(plan, frame, fallback, eval_expression)
+        }
         ReturnBodyKind::Block { steps, return_ } => {
             execute_steps(plan, steps, frame)?;
             eval_return_body(plan, frame, return_, eval_expression)

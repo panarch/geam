@@ -1,6 +1,6 @@
 use crate::plan::{
     BoolExpr, CaptureArg, FunctionFunctionExpr, FunctionType, IntExpr, IntFunctionFunctionId,
-    IntFunctionId, IntFunctionLocalId, IntFunctionValue, ParamLocal, Step,
+    IntFunctionId, IntFunctionLocalId, IntFunctionValue, ParamLocal, Step, StringExpr,
 };
 use ecow::EcoString;
 use num_bigint::BigInt;
@@ -41,6 +41,11 @@ pub(crate) enum IntFunctionExprKind {
     IntCase {
         subject: Box<IntExpr>,
         clauses: Vec<(BigInt, IntFunctionExpr)>,
+        fallback: Box<IntFunctionExpr>,
+    },
+    StringCase {
+        subject: Box<StringExpr>,
+        clauses: Vec<(EcoString, IntFunctionExpr)>,
         fallback: Box<IntFunctionExpr>,
     },
     Block {
@@ -137,6 +142,21 @@ impl IntFunctionExpr {
         Self {
             type_: fallback.type_.clone(),
             kind: IntFunctionExprKind::IntCase {
+                subject: Box::new(subject),
+                clauses,
+                fallback: Box::new(fallback),
+            },
+        }
+    }
+
+    pub(crate) fn string_case(
+        subject: StringExpr,
+        clauses: Vec<(EcoString, IntFunctionExpr)>,
+        fallback: IntFunctionExpr,
+    ) -> Self {
+        Self {
+            type_: fallback.type_.clone(),
+            kind: IntFunctionExprKind::StringCase {
                 subject: Box::new(subject),
                 clauses,
                 fallback: Box::new(fallback),

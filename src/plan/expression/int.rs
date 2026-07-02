@@ -1,4 +1,4 @@
-use super::{BoolExpr, CallArg, IntFunctionExpr};
+use super::{BoolExpr, CallArg, IntFunctionExpr, StringExpr};
 use crate::plan::{IntFunctionId, IntLocalId, Step};
 use ecow::EcoString;
 use num_bigint::BigInt;
@@ -52,6 +52,11 @@ pub(crate) enum IntExprKind {
     IntCase {
         subject: Box<IntExpr>,
         clauses: Vec<(BigInt, IntExpr)>,
+        fallback: Box<IntExpr>,
+    },
+    StringCase {
+        subject: Box<StringExpr>,
+        clauses: Vec<(EcoString, IntExpr)>,
         fallback: Box<IntExpr>,
     },
     Block {
@@ -163,6 +168,20 @@ impl IntExpr {
         }
     }
 
+    pub(crate) fn string_case(
+        subject: StringExpr,
+        clauses: Vec<(EcoString, IntExpr)>,
+        fallback: IntExpr,
+    ) -> Self {
+        Self {
+            kind: IntExprKind::StringCase {
+                subject: Box::new(subject),
+                clauses,
+                fallback: Box::new(fallback),
+            },
+        }
+    }
+
     pub(crate) fn block(steps: Vec<Step>, return_: IntExpr) -> Self {
         Self {
             kind: IntExprKind::Block {
@@ -209,6 +228,15 @@ mod tests {
             )
             .kind(),
             IntExprKind::IntCase { .. }
+        ));
+        assert!(matches!(
+            IntExpr::string_case(
+                crate::plan::StringExpr::value("a".into()),
+                vec![("a".into(), IntExpr::value(10.into()))],
+                IntExpr::value(0.into())
+            )
+            .kind(),
+            IntExprKind::StringCase { .. }
         ));
         assert!(matches!(
             IntExpr::block(
