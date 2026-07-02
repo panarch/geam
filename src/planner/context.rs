@@ -7,7 +7,8 @@ use crate::plan::{
     IntFunctionId, IntFunctionLocalId, IntLocalId, LocalId, NilExpr, NilFunctionExpr,
     NilFunctionFunctionId, NilFunctionId, NilFunctionLocalId, NilLocalId, ParamBinding, ParamLocal,
     RuntimeFunctionId, StringExpr, StringFunctionExpr, StringFunctionFunctionId, StringFunctionId,
-    StringFunctionLocalId, StringLocalId, ValueType,
+    StringFunctionLocalId, StringLocalId, TupleExpr, TupleFunctionExpr, TupleFunctionFunctionId,
+    TupleFunctionId, TupleFunctionLocalId, TupleLocalId, ValueType,
 };
 use crate::planner::error::{InvalidTypedAstReason, PlanError};
 use ecow::EcoString;
@@ -38,17 +39,23 @@ pub(super) struct PlanContext<'a> {
     next_string_local: usize,
     next_bool_local: usize,
     next_nil_local: usize,
+    next_tuple_local: usize,
     next_int_function_local: usize,
     next_float_function_local: usize,
     next_string_function_local: usize,
     next_bool_function_local: usize,
     next_nil_function_local: usize,
+    next_tuple_function_local: usize,
     next_function_function_local: usize,
 }
 
 #[derive(Clone)]
 enum LocalBinding {
     Primitive(LocalId),
+    Tuple {
+        local: TupleLocalId,
+        type_: Vec<ValueType>,
+    },
     Function(FunctionLocalBinding),
 }
 
@@ -79,6 +86,10 @@ pub(super) enum FunctionLocalBinding {
         local: NilFunctionLocalId,
         type_: FunctionType,
     },
+    Tuple {
+        local: TupleFunctionLocalId,
+        type_: FunctionType,
+    },
     Function {
         local: FunctionFunctionLocalId,
         type_: FunctionType,
@@ -101,11 +112,13 @@ impl<'a> PlanContext<'a> {
             next_string_local: 0,
             next_bool_local: 0,
             next_nil_local: 0,
+            next_tuple_local: 0,
             next_int_function_local: 0,
             next_float_function_local: 0,
             next_string_function_local: 0,
             next_bool_function_local: 0,
             next_nil_function_local: 0,
+            next_tuple_function_local: 0,
             next_function_function_local: 0,
         }
     }
@@ -147,6 +160,16 @@ impl<'a> PlanContext<'a> {
             }
             ParamLocal::Nil(local) => {
                 self.define_existing_local(name, LocalId::Nil(*local));
+            }
+            ParamLocal::Tuple { local, type_ } => {
+                self.next_tuple_local = self.next_tuple_local.max(local.0 + 1);
+                self.bindings.insert(
+                    name,
+                    LocalBinding::Tuple {
+                        local: *local,
+                        type_: type_.clone(),
+                    },
+                );
             }
             ParamLocal::IntFunction { local, type_ } => {
                 self.next_int_function_local = self.next_int_function_local.max(local.0 + 1);
@@ -193,6 +216,16 @@ impl<'a> PlanContext<'a> {
                 self.bindings.insert(
                     name,
                     LocalBinding::Function(FunctionLocalBinding::Nil {
+                        local: *local,
+                        type_: type_.clone(),
+                    }),
+                );
+            }
+            ParamLocal::TupleFunction { local, type_ } => {
+                self.next_tuple_function_local = self.next_tuple_function_local.max(local.0 + 1);
+                self.bindings.insert(
+                    name,
+                    LocalBinding::Function(FunctionLocalBinding::Tuple {
                         local: *local,
                         type_: type_.clone(),
                     }),
@@ -282,6 +315,20 @@ impl<'a> PlanContext<'a> {
         local
     }
 
+    pub(super) fn define_tuple_function_local(
+        &mut self,
+        name: EcoString,
+        type_: FunctionType,
+    ) -> TupleFunctionLocalId {
+        let local = TupleFunctionLocalId(self.next_tuple_function_local);
+        self.next_tuple_function_local += 1;
+        self.bindings.insert(
+            name,
+            LocalBinding::Function(FunctionLocalBinding::Tuple { local, type_ }),
+        );
+        local
+    }
+
     pub(super) fn define_function_function_local(
         &mut self,
         name: EcoString,
@@ -336,10 +383,33 @@ impl<'a> PlanContext<'a> {
         local
     }
 
+    pub(super) fn define_tuple_local(
+        &mut self,
+        name: EcoString,
+        type_: Vec<ValueType>,
+    ) -> TupleLocalId {
+        let local = TupleLocalId(self.next_tuple_local);
+        self.next_tuple_local += 1;
+        self.bindings
+            .insert(name, LocalBinding::Tuple { local, type_ });
+        local
+    }
+
     pub(super) fn lookup_local(&self, name: &EcoString) -> Option<(LocalId, ValueType)> {
         match self.bindings.get(name)? {
             LocalBinding::Primitive(local) => Some((*local, local.value_type())),
+            LocalBinding::Tuple { .. } => None,
             LocalBinding::Function(_) => None,
+        }
+    }
+
+    pub(super) fn lookup_tuple_local(
+        &self,
+        name: &EcoString,
+    ) -> Option<(TupleLocalId, Vec<ValueType>)> {
+        match self.bindings.get(name)? {
+            LocalBinding::Tuple { local, type_ } => Some((*local, type_.clone())),
+            LocalBinding::Primitive(_) | LocalBinding::Function(_) => None,
         }
     }
 
@@ -350,7 +420,7 @@ impl<'a> PlanContext<'a> {
     pub(super) fn lookup_function_local(&self, name: &EcoString) -> Option<FunctionLocalBinding> {
         match self.bindings.get(name)? {
             LocalBinding::Function(binding) => Some(binding.clone()),
-            LocalBinding::Primitive(_) => None,
+            LocalBinding::Primitive(_) | LocalBinding::Tuple { .. } => None,
         }
     }
 
@@ -390,11 +460,13 @@ impl<'a> PlanContext<'a> {
             next_string_local: 0,
             next_bool_local: 0,
             next_nil_local: 0,
+            next_tuple_local: 0,
             next_int_function_local: 0,
             next_float_function_local: 0,
             next_string_function_local: 0,
             next_bool_function_local: 0,
             next_nil_function_local: 0,
+            next_tuple_function_local: 0,
             next_function_function_local: 0,
         }
     }
@@ -479,6 +551,13 @@ impl<'a> PlanContext<'a> {
                     NilExpr::local_get(local, capture.name),
                 ))
             }
+            LocalBinding::Tuple { local, type_ } => {
+                let target = self.define_tuple_local(capture.name.clone(), type_.clone());
+                Ok(CaptureArg::tuple(
+                    target,
+                    TupleExpr::local_get(local, capture.name, type_),
+                ))
+            }
             LocalBinding::Function(FunctionLocalBinding::Int { local, type_ }) => {
                 let target = self.define_int_function_local(capture.name.clone(), type_.clone());
                 Ok(CaptureArg::int_function(
@@ -512,6 +591,13 @@ impl<'a> PlanContext<'a> {
                 Ok(CaptureArg::nil_function(
                     target,
                     NilFunctionExpr::local_get(local, capture.name, type_),
+                ))
+            }
+            LocalBinding::Function(FunctionLocalBinding::Tuple { local, type_ }) => {
+                let target = self.define_tuple_function_local(capture.name.clone(), type_.clone());
+                Ok(CaptureArg::tuple_function(
+                    target,
+                    TupleFunctionExpr::local_get(local, capture.name, type_),
                 ))
             }
             LocalBinding::Function(FunctionLocalBinding::Function { local, type_ }) => {
@@ -615,11 +701,13 @@ pub(in crate::planner) struct FunctionRuntimeIds {
     next_string: usize,
     next_bool: usize,
     next_nil: usize,
+    next_tuple: usize,
     next_int_function: usize,
     next_float_function: usize,
     next_string_function: usize,
     next_bool_function: usize,
     next_nil_function: usize,
+    next_tuple_function: usize,
     next_function_function: usize,
 }
 
@@ -631,6 +719,10 @@ impl FunctionRuntimeIds {
             ValueType::String => RuntimeFunctionId::String(self.next_string_id()),
             ValueType::Bool => RuntimeFunctionId::Bool(self.next_bool_id()),
             ValueType::Nil => RuntimeFunctionId::Nil(self.next_nil_id()),
+            ValueType::Tuple(return_type) => RuntimeFunctionId::Tuple {
+                id: self.next_tuple_id(),
+                return_type: return_type.clone(),
+            },
             ValueType::Function(return_type) => self.next_function(return_type.as_ref().clone()),
         }
     }
@@ -642,6 +734,7 @@ impl FunctionRuntimeIds {
             ValueType::String => FunctionFunctionId::String(self.next_string_function_id()),
             ValueType::Bool => FunctionFunctionId::Bool(self.next_bool_function_id()),
             ValueType::Nil => FunctionFunctionId::Nil(self.next_nil_function_id()),
+            ValueType::Tuple(_) => FunctionFunctionId::Tuple(self.next_tuple_function_id()),
             ValueType::Function(_) => {
                 FunctionFunctionId::Function(self.next_function_function_id())
             }
@@ -680,6 +773,12 @@ impl FunctionRuntimeIds {
         id
     }
 
+    pub(in crate::planner) fn next_tuple_id(&mut self) -> TupleFunctionId {
+        let id = TupleFunctionId(self.next_tuple);
+        self.next_tuple += 1;
+        id
+    }
+
     pub(in crate::planner) fn next_int_function_id(&mut self) -> IntFunctionFunctionId {
         let id = IntFunctionFunctionId(self.next_int_function);
         self.next_int_function += 1;
@@ -710,6 +809,12 @@ impl FunctionRuntimeIds {
         id
     }
 
+    pub(in crate::planner) fn next_tuple_function_id(&mut self) -> TupleFunctionFunctionId {
+        let id = TupleFunctionFunctionId(self.next_tuple_function);
+        self.next_tuple_function += 1;
+        id
+    }
+
     pub(in crate::planner) fn next_function_function_id(&mut self) -> FunctionFunctionFunctionId {
         let id = FunctionFunctionFunctionId(self.next_function_function);
         self.next_function_function += 1;
@@ -729,6 +834,12 @@ impl ValueType {
             Some(Self::Bool)
         } else if type_.is_nil() {
             Some(Self::Nil)
+        } else if let Some(elements) = type_.tuple_types() {
+            let elements = elements
+                .iter()
+                .map(|element| Self::from_gleam(element.as_ref()))
+                .collect::<Option<Vec<_>>>()?;
+            Some(Self::Tuple(elements))
         } else if let Some((arguments, return_)) = type_.fn_types() {
             let arguments = arguments
                 .iter()
@@ -749,10 +860,14 @@ mod tests {
     use super::FunctionLocalBinding;
     use super::{AnonymousFunctions, FunctionInfo, FunctionRuntimeIds, PlanContext};
     use crate::plan::{
-        CaptureArgKind, FloatFunctionId, FloatFunctionLocalId, FunctionType, FunctionValue,
-        IntFunctionId, IntFunctionLocalId, IntLocalId, LocalId, RuntimeFunctionId, ValueType,
+        BoolFunctionExpr, BoolFunctionLocalId, CaptureArg, FloatFunctionExpr, FloatFunctionId,
+        FloatFunctionLocalId, FunctionFunctionExpr, FunctionFunctionLocalId, FunctionType,
+        FunctionValue, IntFunctionId, IntFunctionLocalId, IntLocalId, LocalId, NilFunctionExpr,
+        NilFunctionLocalId, ParamLocal, RuntimeFunctionId, StringFunctionExpr,
+        StringFunctionLocalId, TupleFunctionExpr, TupleFunctionLocalId, TupleLocalId, ValueType,
     };
     use ecow::EcoString;
+    use gleam_core::type_;
     use std::collections::HashMap;
 
     #[test]
@@ -794,6 +909,148 @@ mod tests {
             })
         );
         assert_eq!(context.lookup_local(&"f".into()), None);
+    }
+
+    #[test]
+    fn define_existing_param_records_tuple_function_binding() {
+        let module = EcoString::from("main");
+        let functions = HashMap::<EcoString, FunctionInfo>::new();
+        let mut anonymous = AnonymousFunctions::default();
+        let mut context = PlanContext::new(&module, &functions, &mut anonymous);
+        let type_ = FunctionType::new(vec![ValueType::Int], ValueType::Tuple(vec![ValueType::Int]));
+
+        context.define_existing_param(
+            "f".into(),
+            &ParamLocal::tuple_function(TupleFunctionLocalId(2), type_.clone()),
+        );
+
+        assert_eq!(
+            context.lookup_function_local(&"f".into()),
+            Some(FunctionLocalBinding::Tuple {
+                local: TupleFunctionLocalId(2),
+                type_: type_.clone(),
+            }),
+        );
+        assert_eq!(context.define_tuple_function_local("g".into(), type_).0, 3);
+    }
+
+    #[test]
+    fn define_existing_param_records_tuple_and_function_family_bindings() {
+        let module = EcoString::from("main");
+        let functions = HashMap::<EcoString, FunctionInfo>::new();
+        let mut anonymous = AnonymousFunctions::default();
+        let mut context = PlanContext::new(&module, &functions, &mut anonymous);
+        let tuple_type = vec![ValueType::Int];
+        let string_type = FunctionType::new(Vec::new(), ValueType::String);
+        let float_type = FunctionType::new(Vec::new(), ValueType::Float);
+        let bool_type = FunctionType::new(Vec::new(), ValueType::Bool);
+        let nil_type = FunctionType::new(Vec::new(), ValueType::Nil);
+        let function_type = FunctionType::new(
+            Vec::new(),
+            ValueType::Function(Box::new(FunctionType::new(Vec::new(), ValueType::Int))),
+        );
+
+        context.define_existing_param(
+            "tuple".into(),
+            &ParamLocal::tuple(TupleLocalId(2), tuple_type.clone()),
+        );
+        context.define_existing_param(
+            "string_fn".into(),
+            &ParamLocal::string_function(StringFunctionLocalId(3), string_type.clone()),
+        );
+        context.define_existing_param(
+            "float_fn".into(),
+            &ParamLocal::float_function(FloatFunctionLocalId(4), float_type.clone()),
+        );
+        context.define_existing_param(
+            "bool_fn".into(),
+            &ParamLocal::bool_function(BoolFunctionLocalId(5), bool_type.clone()),
+        );
+        context.define_existing_param(
+            "nil_fn".into(),
+            &ParamLocal::nil_function(NilFunctionLocalId(6), nil_type.clone()),
+        );
+        context.define_existing_param(
+            "function_fn".into(),
+            &ParamLocal::function_function(FunctionFunctionLocalId(7), function_type.clone()),
+        );
+
+        assert_eq!(
+            context.lookup_tuple_local(&"tuple".into()),
+            Some((TupleLocalId(2), tuple_type.clone())),
+        );
+        assert_eq!(
+            context.lookup_function_local(&"string_fn".into()),
+            Some(FunctionLocalBinding::String {
+                local: StringFunctionLocalId(3),
+                type_: string_type.clone(),
+            }),
+        );
+        assert_eq!(
+            context.lookup_function_local(&"float_fn".into()),
+            Some(FunctionLocalBinding::Float {
+                local: FloatFunctionLocalId(4),
+                type_: float_type.clone(),
+            }),
+        );
+        assert_eq!(
+            context.lookup_function_local(&"bool_fn".into()),
+            Some(FunctionLocalBinding::Bool {
+                local: BoolFunctionLocalId(5),
+                type_: bool_type.clone(),
+            }),
+        );
+        assert_eq!(
+            context.lookup_function_local(&"nil_fn".into()),
+            Some(FunctionLocalBinding::Nil {
+                local: NilFunctionLocalId(6),
+                type_: nil_type.clone(),
+            }),
+        );
+        assert_eq!(
+            context.lookup_function_local(&"function_fn".into()),
+            Some(FunctionLocalBinding::Function {
+                local: FunctionFunctionLocalId(7),
+                type_: function_type.clone(),
+            }),
+        );
+
+        assert_eq!(
+            context
+                .define_tuple_local("next_tuple".into(), tuple_type)
+                .0,
+            3
+        );
+        assert_eq!(
+            context
+                .define_string_function_local("next_string_fn".into(), string_type)
+                .0,
+            4,
+        );
+        assert_eq!(
+            context
+                .define_float_function_local("next_float_fn".into(), float_type)
+                .0,
+            5,
+        );
+        assert_eq!(
+            context
+                .define_bool_function_local("next_bool_fn".into(), bool_type)
+                .0,
+            6,
+        );
+        assert_eq!(
+            context
+                .define_nil_function_local("next_nil_fn".into(), nil_type)
+                .0,
+            7,
+        );
+        assert_eq!(
+            context
+                .define_function_function_local("next_function_fn".into(), function_type)
+                .0,
+            8,
+        );
     }
 
     #[test]
@@ -842,17 +1099,119 @@ mod tests {
         let mut context = PlanContext::new(&module, &functions, &mut anonymous);
         let type_ = FunctionType::new(vec![ValueType::Float], ValueType::Float);
 
-        context.define_float_function_local("f".into(), type_);
+        context.define_float_function_local("f".into(), type_.clone());
         let captures = context.capture_bindings(&[EcoString::from("f")]).unwrap();
         let captures = context.define_captures(captures).unwrap();
 
-        assert!(matches!(
-            captures[0].kind(),
-            CaptureArgKind::FloatFunction {
-                local: FloatFunctionLocalId(1),
-                ..
-            },
-        ));
+        assert_eq!(
+            captures[0],
+            CaptureArg::float_function(
+                FloatFunctionLocalId(1),
+                FloatFunctionExpr::local_get(FloatFunctionLocalId(0), "f".into(), type_),
+            ),
+        );
+    }
+
+    #[test]
+    fn define_captures_records_tuple_function_binding() {
+        let module = EcoString::from("main");
+        let functions = HashMap::<EcoString, FunctionInfo>::new();
+        let mut anonymous = AnonymousFunctions::default();
+        let mut context = PlanContext::new(&module, &functions, &mut anonymous);
+        let type_ = FunctionType::new(vec![ValueType::Int], ValueType::Tuple(vec![ValueType::Int]));
+
+        context.define_tuple_function_local("f".into(), type_.clone());
+        let captures = context.capture_bindings(&[EcoString::from("f")]).unwrap();
+        let captures = context.define_captures(captures).unwrap();
+
+        assert_eq!(
+            captures[0],
+            CaptureArg::tuple_function(
+                TupleFunctionLocalId(1),
+                TupleFunctionExpr::local_get(TupleFunctionLocalId(0), "f".into(), type_),
+            ),
+        );
+    }
+
+    #[test]
+    fn define_captures_records_remaining_function_families() {
+        let module = EcoString::from("main");
+        let functions = HashMap::<EcoString, FunctionInfo>::new();
+        let mut anonymous = AnonymousFunctions::default();
+        let mut context = PlanContext::new(&module, &functions, &mut anonymous);
+        let string_type = FunctionType::new(Vec::new(), ValueType::String);
+        let bool_type = FunctionType::new(Vec::new(), ValueType::Bool);
+        let nil_type = FunctionType::new(Vec::new(), ValueType::Nil);
+        let function_type = FunctionType::new(
+            Vec::new(),
+            ValueType::Function(Box::new(FunctionType::new(Vec::new(), ValueType::Int))),
+        );
+
+        context.define_string_function_local("string_fn".into(), string_type.clone());
+        context.define_bool_function_local("bool_fn".into(), bool_type.clone());
+        context.define_nil_function_local("nil_fn".into(), nil_type.clone());
+        context.define_function_function_local("function_fn".into(), function_type.clone());
+        let captures = context
+            .capture_bindings(&[
+                "string_fn".into(),
+                "bool_fn".into(),
+                "nil_fn".into(),
+                "function_fn".into(),
+            ])
+            .unwrap();
+        let captures = context.define_captures(captures).unwrap();
+
+        assert_eq!(
+            captures,
+            vec![
+                CaptureArg::string_function(
+                    StringFunctionLocalId(1),
+                    StringFunctionExpr::local_get(
+                        StringFunctionLocalId(0),
+                        "string_fn".into(),
+                        string_type,
+                    ),
+                ),
+                CaptureArg::bool_function(
+                    BoolFunctionLocalId(1),
+                    BoolFunctionExpr::local_get(
+                        BoolFunctionLocalId(0),
+                        "bool_fn".into(),
+                        bool_type
+                    ),
+                ),
+                CaptureArg::nil_function(
+                    NilFunctionLocalId(1),
+                    NilFunctionExpr::local_get(NilFunctionLocalId(0), "nil_fn".into(), nil_type),
+                ),
+                CaptureArg::function_function(
+                    FunctionFunctionLocalId(1),
+                    FunctionFunctionExpr::local_get(
+                        FunctionFunctionLocalId(0),
+                        "function_fn".into(),
+                        function_type,
+                    ),
+                ),
+            ],
+        );
+    }
+
+    #[test]
+    fn value_type_rejects_function_with_unsupported_return_type() {
+        assert_eq!(
+            ValueType::from_gleam(type_::fn_(Vec::new(), type_::list(type_::int())).as_ref()),
+            None,
+        );
+        assert_eq!(
+            ValueType::from_gleam(
+                type_::fn_(vec![type_::list(type_::int())], type_::int()).as_ref()
+            ),
+            None,
+        );
+        assert_eq!(
+            ValueType::from_gleam(type_::tuple(vec![type_::list(type_::int())]).as_ref()),
+            None,
+        );
     }
 
     #[test]

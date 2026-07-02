@@ -1,7 +1,7 @@
-use super::{Bool, Float, Int, Nil, String};
+use super::{Bool, Float, Int, Nil, String, Tuple};
 use crate::plan::{
     BoolExpr, BoolLocalId, FloatExpr, FloatLocalId, IntExpr, IntLocalId, NilExpr, NilLocalId,
-    StringExpr, StringLocalId,
+    StringExpr, StringLocalId, TupleExpr, TupleLocalId, ValueType,
 };
 use ecow::EcoString;
 
@@ -25,10 +25,25 @@ pub(crate) fn local_nil(index: usize, name: impl Into<EcoString>) -> Nil {
     Nil(NilExpr::local_get(NilLocalId(index), name.into()))
 }
 
+pub(crate) fn local_tuple(
+    index: usize,
+    name: impl Into<EcoString>,
+    type_: impl IntoIterator<Item = ValueType>,
+) -> Tuple {
+    Tuple(TupleExpr::local_get(
+        TupleLocalId(index),
+        name.into(),
+        type_.into_iter().collect(),
+    ))
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{local_bool, local_float, local_int, local_nil, local_string};
-    use crate::plan::{BoolExprKind, FloatExprKind, IntExprKind, NilExprKind, StringExprKind};
+    use super::{local_bool, local_float, local_int, local_nil, local_string, local_tuple};
+    use crate::plan::{
+        BoolExprKind, FloatExprKind, IntExprKind, NilExprKind, StringExprKind, TupleExprKind,
+        ValueType,
+    };
 
     #[test]
     fn local_helpers_build_local_get_shapes() {
@@ -51,6 +66,10 @@ mod tests {
         assert!(matches!(
             local_nil(0, "x").0.kind(),
             NilExprKind::LocalGet { .. },
+        ));
+        assert!(matches!(
+            local_tuple(0, "x", [ValueType::Int]).0.kind(),
+            TupleExprKind::LocalGet { .. },
         ));
     }
 }

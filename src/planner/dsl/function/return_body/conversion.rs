@@ -2,11 +2,11 @@ use super::FunctionReturn;
 use crate::plan::{
     BoolFunctionExpr, BoolReturn, FloatFunctionExpr, FloatReturn, FunctionExpr, FunctionExprKind,
     FunctionFunctionExpr, IntFunctionExpr, IntReturn, NilFunctionExpr, NilReturn, ReturnBody,
-    StringFunctionExpr, StringReturn,
+    StringFunctionExpr, StringReturn, TupleFunctionExpr, TupleReturn,
 };
 use crate::planner::dsl::expression::{
     Bool, BoolFunction, Float, FloatFunction, Function, FunctionFunction, Int, IntFunction, Nil,
-    NilFunction, String, StringFunction,
+    NilFunction, String, StringFunction, Tuple, TupleFunction,
 };
 
 impl From<Int> for FunctionReturn {
@@ -36,6 +36,16 @@ impl From<Bool> for FunctionReturn {
 impl From<Nil> for FunctionReturn {
     fn from(value: Nil) -> Self {
         Self::Nil(ReturnBody::expr(value.into()))
+    }
+}
+
+impl From<Tuple> for FunctionReturn {
+    fn from(value: Tuple) -> Self {
+        let expression = crate::plan::TupleExpr::from(value);
+        Self::Tuple {
+            type_: expression.type_().to_vec(),
+            body: TupleReturn::expr(expression),
+        }
     }
 }
 
@@ -89,6 +99,16 @@ impl From<NilFunction> for FunctionReturn {
     }
 }
 
+impl From<TupleFunction> for FunctionReturn {
+    fn from(value: TupleFunction) -> Self {
+        let expression = TupleFunctionExpr::from(value);
+        Self::TupleFunction {
+            type_: expression.type_().clone(),
+            body: ReturnBody::expr(expression),
+        }
+    }
+}
+
 impl From<FunctionFunction> for FunctionReturn {
     fn from(value: FunctionFunction) -> Self {
         let expression = FunctionFunctionExpr::from(value);
@@ -119,6 +139,10 @@ impl From<Function> for FunctionReturn {
                 body: ReturnBody::expr(expression),
             },
             FunctionExprKind::Nil(expression) => Self::NilFunction {
+                type_: expression.type_().clone(),
+                body: ReturnBody::expr(expression),
+            },
+            FunctionExprKind::Tuple(expression) => Self::TupleFunction {
                 type_: expression.type_().clone(),
                 body: ReturnBody::expr(expression),
             },
@@ -164,13 +188,13 @@ impl From<NilReturn> for FunctionReturn {
 mod tests {
     use super::FunctionReturn;
     use crate::plan::{
-        BoolFunctionId, BoolReturn, FunctionFunctionId, FunctionType, IntFunctionFunctionId,
+        BoolFunctionId, BoolReturn, Expr, FunctionFunctionId, FunctionType, IntFunctionFunctionId,
         IntFunctionId, IntReturn, NilFunctionId, NilReturn, ParamLocal, ReturnBodyKind,
-        RuntimeFunctionId, StringFunctionId, StringReturn, ValueType,
+        RuntimeFunctionId, StringFunctionId, StringReturn, TupleFunctionId, ValueType,
     };
     use crate::planner::dsl::expression::{
         bool_, bool_function_ref, function_function_ref, function_ref, int, int_function_ref, nil,
-        nil_function_ref, string, string_function_ref,
+        nil_function_ref, string, string_function_ref, tuple, tuple_function_ref,
     };
 
     #[test]
@@ -191,6 +215,10 @@ mod tests {
             FunctionReturn::from(nil()),
             FunctionReturn::Nil(_),
         ));
+        assert!(matches!(
+            FunctionReturn::from(tuple([Expr::from(int(1))])),
+            FunctionReturn::Tuple { .. },
+        ));
     }
 
     #[test]
@@ -210,6 +238,14 @@ mod tests {
         assert!(matches!(
             FunctionReturn::from(nil_function_ref(0, Vec::<ParamLocal>::new())),
             FunctionReturn::NilFunction { .. },
+        ));
+        assert!(matches!(
+            FunctionReturn::from(tuple_function_ref(
+                0,
+                Vec::<ParamLocal>::new(),
+                [ValueType::Int],
+            )),
+            FunctionReturn::TupleFunction { .. },
         ));
         assert!(matches!(
             FunctionReturn::from(function_function_ref(
@@ -250,6 +286,16 @@ mod tests {
                 Vec::<ParamLocal>::new(),
             )),
             FunctionReturn::NilFunction { .. },
+        ));
+        assert!(matches!(
+            FunctionReturn::from(function_ref(
+                RuntimeFunctionId::Tuple {
+                    id: TupleFunctionId(0),
+                    return_type: vec![ValueType::Int],
+                },
+                Vec::<ParamLocal>::new(),
+            )),
+            FunctionReturn::TupleFunction { .. },
         ));
         assert!(matches!(
             FunctionReturn::from(function_ref(

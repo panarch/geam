@@ -42,7 +42,6 @@ pub(super) fn plan_call(
         arguments,
         context,
         None,
-        CallArgumentMode::Normal,
         FunctionValueCallMode::Allow,
     )
 }
@@ -78,12 +77,6 @@ enum FunctionValueCallMode {
     Reject,
 }
 
-#[derive(Clone, Copy)]
-enum CallArgumentMode {
-    Normal,
-    Use,
-}
-
 struct CaptureSubstitution {
     name: EcoString,
     value: Expr,
@@ -116,7 +109,6 @@ fn plan_call_expression(
     arguments: Vec<GleamCallArg<TypedExpr>>,
     context: &mut PlanContext<'_>,
     capture: Option<&CaptureSubstitution>,
-    call_argument_mode: CallArgumentMode,
     function_value_call_mode: FunctionValueCallMode,
 ) -> Result<Expr, PlanError> {
     if let TypedExpr::Var { constructor, .. } = &fun {
@@ -139,12 +131,7 @@ fn plan_call_expression(
                         },
                     })?;
                 return direct::plan_direct_function_call(
-                    type_,
-                    function,
-                    arguments,
-                    context,
-                    capture,
-                    call_argument_mode,
+                    type_, function, arguments, context, capture,
                 );
             }
             ValueConstructorVariant::ModuleConstant { .. } => {
@@ -178,14 +165,7 @@ fn plan_call_expression(
         });
     }
 
-    function_value::plan_function_value_call(
-        type_,
-        fun,
-        arguments,
-        context,
-        capture,
-        call_argument_mode,
-    )
+    function_value::plan_function_value_call(type_, fun, arguments, context, capture)
 }
 
 #[cfg(test)]

@@ -6,7 +6,10 @@ mod operator;
 mod pipeline;
 mod var;
 
-use crate::plan::{BoolExpr, Expr, FloatExpr, IntExpr, StringExpr, ValueType};
+use crate::plan::{
+    BoolExpr, Expr, FloatExpr, FunctionExpr, FunctionFunctionExpr, FunctionType, IntExpr,
+    StringExpr, TupleExpr, ValueType,
+};
 use crate::planner::context::PlanContext;
 use crate::planner::error::{
     InvalidExpressionShapeKind, InvalidExpressionType, InvalidTypedAstReason, PlanError,
@@ -42,6 +45,15 @@ pub(super) fn plan_expr(
         TypedExpr::NegateInt { value, .. } => operator::plan_negate_int(*value, context),
         TypedExpr::NegateBool { value, .. } => operator::plan_negate_bool(*value, context),
         TypedExpr::Block { statements, .. } => block::plan(statements, context),
+        TypedExpr::Tuple {
+            type_, elements, ..
+        } => plan_tuple(type_, elements, context),
+        TypedExpr::TupleIndex {
+            type_,
+            index,
+            tuple,
+            ..
+        } => plan_tuple_index(type_, index, *tuple, context),
         TypedExpr::Pipeline {
             first_value,
             assignments,
@@ -80,12 +92,6 @@ pub(super) fn plan_expr(
                 kind: InvalidExpressionShapeKind::ModuleSelect,
             },
         }),
-        TypedExpr::Tuple { .. } => Err(PlanError::UnsupportedExpression {
-            kind: UnsupportedExpressionKind::Tuple,
-        }),
-        TypedExpr::TupleIndex { .. } => Err(PlanError::UnsupportedExpression {
-            kind: UnsupportedExpressionKind::TupleIndex,
-        }),
         TypedExpr::Todo { .. } => Err(PlanError::UnsupportedExpression {
             kind: UnsupportedExpressionKind::Todo,
         }),
@@ -108,6 +114,126 @@ pub(super) fn plan_expr(
                 kind: InvalidExpressionShapeKind::Invalid,
             },
         }),
+    }
+}
+
+fn plan_tuple(
+    type_: std::sync::Arc<gleam_core::type_::Type>,
+    elements: Vec<TypedExpr>,
+    context: &mut PlanContext<'_>,
+) -> Result<Expr, PlanError> {
+    let planned_elements = elements
+        .into_iter()
+        .map(|element| plan_expr(element, context))
+        .collect::<Result<Vec<_>, _>>()?;
+    let actual_type = planned_elements
+        .iter()
+        .map(Expr::value_type)
+        .collect::<Vec<_>>();
+    let expected_type = match ValueType::from_gleam(type_.as_ref()) {
+        Some(ValueType::Tuple(type_)) => type_,
+        Some(actual) => {
+            return Err(invalid_expression_type_for_value(
+                ValueType::Tuple(actual_type),
+                actual,
+            ));
+        }
+        None => {
+            return Err(invalid_expression_type(
+                InvalidExpressionType::Tuple,
+                InvalidExpressionType::Unsupported,
+            ));
+        }
+    };
+
+    if expected_type != actual_type {
+        return Err(invalid_expression_type_for_value(
+            ValueType::Tuple(expected_type),
+            ValueType::Tuple(actual_type),
+        ));
+    }
+
+    Ok(Expr::tuple(TupleExpr::value(
+        planned_elements,
+        expected_type,
+    )))
+}
+
+fn plan_tuple_index(
+    type_: std::sync::Arc<gleam_core::type_::Type>,
+    index: u64,
+    tuple: TypedExpr,
+    context: &mut PlanContext<'_>,
+) -> Result<Expr, PlanError> {
+    #[cfg(target_pointer_width = "64")]
+    let index = index as usize;
+    #[cfg(not(target_pointer_width = "64"))]
+    let index = usize::try_from(index).map_err(|_| PlanError::InvalidTypedAst {
+        reason: InvalidTypedAstReason::ExpressionType {
+            expected: InvalidExpressionType::Tuple,
+            actual: InvalidExpressionType::Tuple,
+        },
+    })?;
+    let tuple = plan_expr(tuple, context)?;
+    let actual = expression_type(&tuple);
+    let tuple = tuple
+        .into_tuple()
+        .ok_or_else(|| invalid_expression_type(InvalidExpressionType::Tuple, actual))?;
+    let expected = ValueType::from_gleam(type_.as_ref()).ok_or_else(|| {
+        invalid_expression_type(
+            InvalidExpressionType::Unsupported,
+            InvalidExpressionType::Tuple,
+        )
+    })?;
+    let actual = tuple.type_().get(index).cloned().ok_or_else(|| {
+        invalid_expression_type_for_value(expected.clone(), ValueType::Tuple(vec![]))
+    })?;
+    if actual != expected {
+        return Err(invalid_expression_type_for_value(expected.clone(), actual));
+    }
+
+    tuple_index_expr(tuple, index, expected)
+}
+
+fn tuple_index_expr(
+    tuple: TupleExpr,
+    index: usize,
+    return_type: ValueType,
+) -> Result<Expr, PlanError> {
+    match return_type {
+        ValueType::Int => Ok(Expr::int(IntExpr::tuple_index(tuple, index))),
+        ValueType::String => Ok(Expr::string(StringExpr::tuple_index(tuple, index))),
+        ValueType::Float => Ok(Expr::float(FloatExpr::tuple_index(tuple, index))),
+        ValueType::Bool => Ok(Expr::bool(BoolExpr::tuple_index(tuple, index))),
+        ValueType::Nil => Ok(Expr::nil(crate::plan::NilExpr::tuple_index(tuple, index))),
+        ValueType::Tuple(type_) => Ok(Expr::tuple(TupleExpr::tuple_index(tuple, index, type_))),
+        ValueType::Function(type_) => Ok(tuple_index_function_expr(tuple, index, *type_)),
+    }
+}
+
+fn tuple_index_function_expr(tuple: TupleExpr, index: usize, type_: FunctionType) -> Expr {
+    match type_.return_() {
+        ValueType::Int => Expr::function(FunctionExpr::int(
+            crate::plan::IntFunctionExpr::tuple_index(tuple, index, type_),
+        )),
+        ValueType::String => Expr::function(FunctionExpr::string(
+            crate::plan::StringFunctionExpr::tuple_index(tuple, index, type_),
+        )),
+        ValueType::Float => Expr::function(FunctionExpr::float(
+            crate::plan::FloatFunctionExpr::tuple_index(tuple, index, type_),
+        )),
+        ValueType::Bool => Expr::function(FunctionExpr::bool(
+            crate::plan::BoolFunctionExpr::tuple_index(tuple, index, type_),
+        )),
+        ValueType::Nil => Expr::function(FunctionExpr::nil(
+            crate::plan::NilFunctionExpr::tuple_index(tuple, index, type_),
+        )),
+        ValueType::Tuple(_) => Expr::function(FunctionExpr::tuple(
+            crate::plan::TupleFunctionExpr::tuple_index(tuple, index, type_),
+        )),
+        ValueType::Function(_) => Expr::function(FunctionExpr::function(
+            FunctionFunctionExpr::tuple_index(tuple, index, type_),
+        )),
     }
 }
 
@@ -185,6 +311,7 @@ fn expression_type(expression: &Expr) -> InvalidExpressionType {
         ValueType::Float => InvalidExpressionType::Float,
         ValueType::Bool => InvalidExpressionType::Bool,
         ValueType::Nil => InvalidExpressionType::Nil,
+        ValueType::Tuple(_) => InvalidExpressionType::Tuple,
         ValueType::Function(_) => InvalidExpressionType::Function,
     }
 }
@@ -196,6 +323,7 @@ fn value_type_expression_type(type_: ValueType) -> InvalidExpressionType {
         ValueType::Float => InvalidExpressionType::Float,
         ValueType::Bool => InvalidExpressionType::Bool,
         ValueType::Nil => InvalidExpressionType::Nil,
+        ValueType::Tuple(_) => InvalidExpressionType::Tuple,
         ValueType::Function(_) => InvalidExpressionType::Function,
     }
 }
@@ -227,6 +355,18 @@ pub(in crate::planner::expression) fn typed_string_expr(value: &str) -> TypedExp
         location: crate::planner::support::dummy_span(),
         type_: gleam_core::type_::string(),
         value: value.into(),
+    }
+}
+
+#[cfg(test)]
+pub(in crate::planner::expression) fn typed_tuple_expr(
+    type_: std::sync::Arc<gleam_core::type_::Type>,
+    elements: Vec<TypedExpr>,
+) -> TypedExpr {
+    TypedExpr::Tuple {
+        location: crate::planner::support::dummy_span(),
+        type_,
+        elements,
     }
 }
 
@@ -265,7 +405,7 @@ pub(in crate::planner::expression) fn typed_prelude_constructor(
 mod tests {
     use super::{
         expression_type, invalid_expression_type, invalid_expression_type_for_value,
-        module_returning_typed_expr, typed_int_expr, typed_string_expr,
+        module_returning_typed_expr, typed_int_expr, typed_string_expr, typed_tuple_expr,
     };
     use crate::plan::{
         Expr, FunctionExpr, FunctionValue, NilFunctionId, RuntimeFunctionId, ValueType,
@@ -294,23 +434,6 @@ pub fn main() {
 "#,
                 PlanError::UnsupportedExpression {
                     kind: UnsupportedExpressionKind::List,
-                },
-            ),
-            (
-                r#"
-pub fn main() {
-  #(1, 2)
-  1
-}
-"#,
-                PlanError::UnsupportedExpression {
-                    kind: UnsupportedExpressionKind::Tuple,
-                },
-            ),
-            (
-                r#"pub fn main() { #(1, 2).0 }"#,
-                PlanError::UnsupportedExpression {
-                    kind: UnsupportedExpressionKind::TupleIndex,
                 },
             ),
             (
@@ -461,6 +584,32 @@ pub fn main() {
     }
 
     #[test]
+    fn reject_margin_plan_expr_error_propagates_through_typed_expression_helpers() {
+        let module_name = "main".into();
+        let functions = HashMap::new();
+        let mut anonymous = AnonymousFunctions::default();
+        let mut context = PlanContext::new(&module_name, &functions, &mut anonymous);
+        let expected = PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::ExpressionShape {
+                kind: InvalidExpressionShapeKind::Invalid,
+            },
+        };
+
+        assert_eq!(
+            super::plan_int_expr(invalid_expr(type_::int()), &mut context),
+            Err(expected.clone()),
+        );
+        assert_eq!(
+            super::plan_string_expr(invalid_expr(type_::string()), &mut context),
+            Err(expected.clone()),
+        );
+        assert_eq!(
+            super::plan_float_expr(invalid_expr(type_::float()), &mut context),
+            Err(expected),
+        );
+    }
+
+    #[test]
     fn reject_margin_function_expression_type() {
         let expression = Expr::function(FunctionExpr::value(FunctionValue::new(
             RuntimeFunctionId::Nil(NilFunctionId(0)),
@@ -488,6 +637,230 @@ pub fn main() {
     }
 
     #[test]
+    fn plan_tuple_index_result_families() {
+        let cases = [
+            r#"
+fn add_one(value: Int) {
+  value + 1
+}
+
+pub fn main() {
+  let values = #(True, Nil, add_one)
+  values.0
+}
+"#,
+            r#"
+fn text(value: String) {
+  value
+}
+
+pub fn main() {
+  let values = #(text)
+  values.0
+}
+"#,
+            r#"
+fn number(value: Float) {
+  value
+}
+
+pub fn main() {
+  let values = #(number)
+  values.0
+}
+"#,
+            r#"
+fn flag(value: Bool) {
+  value
+}
+
+pub fn main() {
+  let values = #(flag)
+  values.0
+}
+"#,
+            r#"
+fn unit(value: Nil) {
+  value
+}
+
+pub fn main() {
+  let values = #(unit)
+  values.0
+}
+"#,
+            r#"
+fn tuple(value: Int) {
+  #(value)
+}
+
+pub fn main() {
+  let values = #(tuple)
+  values.0
+}
+"#,
+            r#"
+fn add_one(value: Int) {
+  value + 1
+}
+
+fn get() {
+  add_one
+}
+
+pub fn main() {
+  let values = #(get)
+  values.0
+}
+"#,
+            r#"
+pub fn main() {
+  let values = #(Nil)
+  values.0
+}
+"#,
+        ];
+
+        for src in cases {
+            assert!(plan_module(compile(src)).is_ok());
+        }
+    }
+
+    #[test]
+    fn reject_margin_tuple_expression_shapes() {
+        let tuple_int = type_::tuple(vec![type_::int()]);
+        let cases = [
+            (
+                TypedExpr::Tuple {
+                    location: dummy_span(),
+                    type_: type_::int(),
+                    elements: vec![typed_int_expr(1)],
+                },
+                PlanError::InvalidTypedAst {
+                    reason: InvalidTypedAstReason::ExpressionType {
+                        expected: InvalidExpressionType::Tuple,
+                        actual: InvalidExpressionType::Int,
+                    },
+                },
+            ),
+            (
+                TypedExpr::Tuple {
+                    location: dummy_span(),
+                    type_: type_::tuple(vec![type_::list(type_::int())]),
+                    elements: vec![typed_int_expr(1)],
+                },
+                PlanError::InvalidTypedAst {
+                    reason: InvalidTypedAstReason::ExpressionType {
+                        expected: InvalidExpressionType::Tuple,
+                        actual: InvalidExpressionType::Unsupported,
+                    },
+                },
+            ),
+            (
+                TypedExpr::Tuple {
+                    location: dummy_span(),
+                    type_: type_::tuple(vec![type_::string()]),
+                    elements: vec![typed_int_expr(1)],
+                },
+                PlanError::InvalidTypedAst {
+                    reason: InvalidTypedAstReason::ExpressionType {
+                        expected: InvalidExpressionType::Tuple,
+                        actual: InvalidExpressionType::Tuple,
+                    },
+                },
+            ),
+            (
+                TypedExpr::Tuple {
+                    location: dummy_span(),
+                    type_: type_::tuple(vec![type_::int()]),
+                    elements: vec![invalid_expr(type_::int())],
+                },
+                PlanError::InvalidTypedAst {
+                    reason: InvalidTypedAstReason::ExpressionShape {
+                        kind: InvalidExpressionShapeKind::Invalid,
+                    },
+                },
+            ),
+            (
+                TypedExpr::TupleIndex {
+                    location: dummy_span(),
+                    type_: type_::int(),
+                    index: 0,
+                    tuple: Box::new(typed_int_expr(1)),
+                },
+                PlanError::InvalidTypedAst {
+                    reason: InvalidTypedAstReason::ExpressionType {
+                        expected: InvalidExpressionType::Tuple,
+                        actual: InvalidExpressionType::Int,
+                    },
+                },
+            ),
+            (
+                TypedExpr::TupleIndex {
+                    location: dummy_span(),
+                    type_: type_::list(type_::int()),
+                    index: 0,
+                    tuple: Box::new(typed_tuple_expr(tuple_int.clone(), vec![typed_int_expr(1)])),
+                },
+                PlanError::InvalidTypedAst {
+                    reason: InvalidTypedAstReason::ExpressionType {
+                        expected: InvalidExpressionType::Unsupported,
+                        actual: InvalidExpressionType::Tuple,
+                    },
+                },
+            ),
+            (
+                TypedExpr::TupleIndex {
+                    location: dummy_span(),
+                    type_: type_::int(),
+                    index: 1,
+                    tuple: Box::new(typed_tuple_expr(tuple_int.clone(), vec![typed_int_expr(1)])),
+                },
+                PlanError::InvalidTypedAst {
+                    reason: InvalidTypedAstReason::ExpressionType {
+                        expected: InvalidExpressionType::Int,
+                        actual: InvalidExpressionType::Tuple,
+                    },
+                },
+            ),
+            (
+                TypedExpr::TupleIndex {
+                    location: dummy_span(),
+                    type_: type_::string(),
+                    index: 0,
+                    tuple: Box::new(typed_tuple_expr(tuple_int, vec![typed_int_expr(1)])),
+                },
+                PlanError::InvalidTypedAst {
+                    reason: InvalidTypedAstReason::ExpressionType {
+                        expected: InvalidExpressionType::String,
+                        actual: InvalidExpressionType::Int,
+                    },
+                },
+            ),
+            (
+                TypedExpr::TupleIndex {
+                    location: dummy_span(),
+                    type_: type_::int(),
+                    index: 0,
+                    tuple: Box::new(invalid_expr(type_::tuple(vec![type_::int()]))),
+                },
+                PlanError::InvalidTypedAst {
+                    reason: InvalidTypedAstReason::ExpressionShape {
+                        kind: InvalidExpressionShapeKind::Invalid,
+                    },
+                },
+            ),
+        ];
+
+        for (expression, expected) in cases {
+            assert_eq!(
+                plan_module(module_returning_typed_expr(expression)),
+                Err(expected)
+            );
+        }
+    }
+
+    #[test]
     fn reject_margin_float_expression_type_direct() {
         let module_name = "main".into();
         let functions = HashMap::new();
@@ -503,5 +876,13 @@ pub fn main() {
                 },
             }),
         );
+    }
+
+    fn invalid_expr(type_: std::sync::Arc<type_::Type>) -> TypedExpr {
+        TypedExpr::Invalid {
+            location: dummy_span(),
+            type_,
+            extra_information: None,
+        }
     }
 }

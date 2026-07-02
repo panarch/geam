@@ -138,6 +138,9 @@ fn bool_case_expr(subject: BoolExpr, true_: Expr, false_: Expr) -> Result<Expr, 
         }
         (ExprKind::Bool(true_), ExprKind::Bool(false_)) => BoolCaseBranches::Bool { true_, false_ },
         (ExprKind::Nil(true_), ExprKind::Nil(false_)) => BoolCaseBranches::Nil { true_, false_ },
+        (ExprKind::Tuple(true_), ExprKind::Tuple(false_)) => {
+            BoolCaseBranches::Tuple { true_, false_ }
+        }
         (ExprKind::Function(true_), ExprKind::Function(false_)) => {
             bool_function_case_branches(true_, false_)?
         }
@@ -174,6 +177,10 @@ fn bool_function_case_branches(
         (crate::plan::FunctionExprKind::Nil(true_), crate::plan::FunctionExprKind::Nil(false_)) => {
             Ok(BoolCaseBranches::NilFunction { true_, false_ })
         }
+        (
+            crate::plan::FunctionExprKind::Tuple(true_),
+            crate::plan::FunctionExprKind::Tuple(false_),
+        ) => Ok(BoolCaseBranches::TupleFunction { true_, false_ }),
         (
             crate::plan::FunctionExprKind::Function(true_),
             crate::plan::FunctionExprKind::Function(false_),

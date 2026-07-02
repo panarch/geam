@@ -6,7 +6,8 @@ use crate::plan::{
     IntFunctionExpr, IntFunctionExprKind, IntFunctionReturn, IntReturn, NilExpr, NilExprKind,
     NilFunctionExpr, NilFunctionExprKind, NilFunctionReturn, NilReturn, ReturnBody, ReturnExpr,
     RuntimeFunctionId, StringExpr, StringExprKind, StringFunctionExpr, StringFunctionExprKind,
-    StringFunctionReturn, StringReturn, ValueType,
+    StringFunctionReturn, StringReturn, TupleExpr, TupleExprKind, TupleFunctionExpr,
+    TupleFunctionExprKind, TupleFunctionReturn, TupleReturn, ValueType,
 };
 use crate::planner::error::{InvalidFunctionShapeReason, InvalidTypedAstReason, PlanError};
 use ecow::EcoString;
@@ -33,6 +34,15 @@ pub(super) fn function_return_expr(
         (ValueType::Nil, RuntimeFunctionId::Nil(runtime_id), ExprKind::Nil(actual)) => {
             Ok(ReturnExpr::nil_body(*runtime_id, nil_return(actual)))
         }
+        (
+            ValueType::Tuple(expected),
+            RuntimeFunctionId::Tuple { id, return_type },
+            ExprKind::Tuple(actual),
+        ) if expected == actual.type_() && expected == return_type => Ok(ReturnExpr::tuple_body(
+            *id,
+            expected.clone(),
+            tuple_return(actual),
+        )),
         (
             ValueType::Function(expected),
             RuntimeFunctionId::Function { id, return_type },
@@ -93,6 +103,14 @@ fn function_returning_function_expr(
                 runtime_id,
                 type_,
                 nil_function_return(actual),
+            ))
+        }
+        (FunctionFunctionId::Tuple(runtime_id), FunctionExprKind::Tuple(actual)) => {
+            let type_ = actual.type_().clone();
+            Ok(ReturnExpr::tuple_function_body(
+                runtime_id,
+                type_,
+                tuple_function_return(actual),
             ))
         }
         (FunctionFunctionId::Function(runtime_id), FunctionExprKind::Function(actual)) => {
@@ -387,6 +405,61 @@ fn float_return(expression: FloatExpr) -> FloatReturn {
     }
 }
 
+fn tuple_return(expression: TupleExpr) -> TupleReturn {
+    match expression.kind() {
+        TupleExprKind::Call { function, args } => ReturnBody::tail_call(*function, args.clone()),
+        TupleExprKind::BoolCase {
+            subject,
+            true_,
+            false_,
+        } => ReturnBody::bool_case(
+            (**subject).clone(),
+            tuple_return((**true_).clone()),
+            tuple_return((**false_).clone()),
+        ),
+        TupleExprKind::IntCase {
+            subject,
+            clauses,
+            fallback,
+        } => ReturnBody::int_case(
+            (**subject).clone(),
+            clauses
+                .iter()
+                .map(|(value, branch)| (value.clone(), tuple_return(branch.clone())))
+                .collect(),
+            tuple_return((**fallback).clone()),
+        ),
+        TupleExprKind::StringCase {
+            subject,
+            clauses,
+            fallback,
+        } => ReturnBody::string_case(
+            (**subject).clone(),
+            clauses
+                .iter()
+                .map(|(value, branch)| (value.clone(), tuple_return(branch.clone())))
+                .collect(),
+            tuple_return((**fallback).clone()),
+        ),
+        TupleExprKind::FloatCase {
+            subject,
+            clauses,
+            fallback,
+        } => ReturnBody::float_case(
+            (**subject).clone(),
+            clauses
+                .iter()
+                .map(|(value, branch)| (*value, tuple_return(branch.clone())))
+                .collect(),
+            tuple_return((**fallback).clone()),
+        ),
+        TupleExprKind::Block { steps, return_ } => {
+            ReturnBody::block(steps.clone(), tuple_return((**return_).clone()))
+        }
+        _ => ReturnBody::expr(expression),
+    }
+}
+
 fn int_function_return(expression: IntFunctionExpr) -> IntFunctionReturn {
     match expression.kind() {
         IntFunctionExprKind::Call { function, args, .. } => {
@@ -667,6 +740,63 @@ fn nil_function_return(expression: NilFunctionExpr) -> NilFunctionReturn {
         ),
         NilFunctionExprKind::Block { steps, return_ } => {
             ReturnBody::block(steps.clone(), nil_function_return((**return_).clone()))
+        }
+        _ => ReturnBody::expr(expression),
+    }
+}
+
+fn tuple_function_return(expression: TupleFunctionExpr) -> TupleFunctionReturn {
+    match expression.kind() {
+        TupleFunctionExprKind::Call { function, args, .. } => {
+            ReturnBody::tail_call(*function, args.clone())
+        }
+        TupleFunctionExprKind::BoolCase {
+            subject,
+            true_,
+            false_,
+        } => ReturnBody::bool_case(
+            (**subject).clone(),
+            tuple_function_return((**true_).clone()),
+            tuple_function_return((**false_).clone()),
+        ),
+        TupleFunctionExprKind::IntCase {
+            subject,
+            clauses,
+            fallback,
+        } => ReturnBody::int_case(
+            (**subject).clone(),
+            clauses
+                .iter()
+                .map(|(value, branch)| (value.clone(), tuple_function_return(branch.clone())))
+                .collect(),
+            tuple_function_return((**fallback).clone()),
+        ),
+        TupleFunctionExprKind::StringCase {
+            subject,
+            clauses,
+            fallback,
+        } => ReturnBody::string_case(
+            (**subject).clone(),
+            clauses
+                .iter()
+                .map(|(value, branch)| (value.clone(), tuple_function_return(branch.clone())))
+                .collect(),
+            tuple_function_return((**fallback).clone()),
+        ),
+        TupleFunctionExprKind::FloatCase {
+            subject,
+            clauses,
+            fallback,
+        } => ReturnBody::float_case(
+            (**subject).clone(),
+            clauses
+                .iter()
+                .map(|(value, branch)| (*value, tuple_function_return(branch.clone())))
+                .collect(),
+            tuple_function_return((**fallback).clone()),
+        ),
+        TupleFunctionExprKind::Block { steps, return_ } => {
+            ReturnBody::block(steps.clone(), tuple_function_return((**return_).clone()))
         }
         _ => ReturnBody::expr(expression),
     }

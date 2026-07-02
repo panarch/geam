@@ -1,7 +1,7 @@
 use crate::plan::{
     BoolExpr, BoolFunctionExpr, Expr, ExprKind, FloatExpr, FloatFunctionExpr, FunctionExpr,
     FunctionExprKind, FunctionFunctionExpr, IntExpr, IntFunctionExpr, NilExpr, NilFunctionExpr,
-    Step, StringExpr, StringFunctionExpr,
+    Step, StringExpr, StringFunctionExpr, TupleExpr, TupleFunctionExpr,
 };
 use crate::planner::context::PlanContext;
 use crate::planner::error::PlanError;
@@ -27,6 +27,7 @@ pub(super) fn block_expr(steps: Vec<Step>, return_: Expr) -> Expr {
         ExprKind::Float(return_) => Expr::float(FloatExpr::block(steps, return_)),
         ExprKind::Bool(return_) => Expr::bool(BoolExpr::block(steps, return_)),
         ExprKind::Nil(return_) => Expr::nil(NilExpr::block(steps, return_)),
+        ExprKind::Tuple(return_) => Expr::tuple(TupleExpr::block(steps, return_)),
         ExprKind::Function(return_) => match return_.into_kind() {
             FunctionExprKind::Int(return_) => {
                 Expr::function(FunctionExpr::int(IntFunctionExpr::block(steps, return_)))
@@ -43,6 +44,9 @@ pub(super) fn block_expr(steps: Vec<Step>, return_: Expr) -> Expr {
             FunctionExprKind::Nil(return_) => {
                 Expr::function(FunctionExpr::nil(NilFunctionExpr::block(steps, return_)))
             }
+            FunctionExprKind::Tuple(return_) => Expr::function(FunctionExpr::tuple(
+                TupleFunctionExpr::block(steps, return_),
+            )),
             FunctionExprKind::Function(return_) => Expr::function(FunctionExpr::function(
                 FunctionFunctionExpr::block(steps, return_),
             )),

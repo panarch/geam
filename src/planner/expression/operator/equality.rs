@@ -32,13 +32,23 @@ fn reject_function_equality(
     right: &Expr,
     operator: UnsupportedBinOpKind,
 ) -> Result<(), PlanError> {
-    if matches!(left.value_type(), ValueType::Function(_))
-        || matches!(right.value_type(), ValueType::Function(_))
-    {
+    if contains_function_value(&left.value_type()) || contains_function_value(&right.value_type()) {
         return Err(PlanError::UnsupportedBinOp { operator });
     }
 
     Ok(())
+}
+
+fn contains_function_value(type_: &ValueType) -> bool {
+    match type_ {
+        ValueType::Function(_) => true,
+        ValueType::Tuple(elements) => elements.iter().any(contains_function_value),
+        ValueType::Int
+        | ValueType::Float
+        | ValueType::String
+        | ValueType::Bool
+        | ValueType::Nil => false,
+    }
 }
 
 #[cfg(test)]
@@ -98,6 +108,42 @@ fn add_one(value: Int) {
 
 pub fn main() {
   add_one != add_one
+}
+"#,
+            ),
+            PlanError::UnsupportedBinOp {
+                operator: UnsupportedBinOpKind::NotEqFunction,
+            },
+        );
+    }
+
+    #[test]
+    fn reject_profile_tuple_equality_containing_function_value() {
+        assert_eq!(
+            expect_plan_error(
+                r#"
+fn add_one(value: Int) {
+  value + 1
+}
+
+pub fn main() {
+  #(1, add_one) == #(1, add_one)
+}
+"#,
+            ),
+            PlanError::UnsupportedBinOp {
+                operator: UnsupportedBinOpKind::EqFunction,
+            },
+        );
+        assert_eq!(
+            expect_plan_error(
+                r#"
+fn add_one(value: Int) {
+  value + 1
+}
+
+pub fn main() {
+  #(#(add_one)) != #(#(add_one))
 }
 "#,
             ),

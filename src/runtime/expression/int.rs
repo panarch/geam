@@ -1,5 +1,5 @@
-use super::{eval_bool_expr, eval_float_expr, eval_string_expr};
-use crate::plan::{ExecutionPlan, IntExpr, IntExprKind};
+use super::{eval_bool_expr, eval_float_expr, eval_string_expr, project_tuple_expr};
+use crate::plan::{ExecutionPlan, IntExpr, IntExprKind, Value, ValueType};
 use crate::runtime::ExecutionError;
 use crate::runtime::frame::Frame;
 use crate::runtime::function;
@@ -18,6 +18,15 @@ pub(in crate::runtime) fn eval_int_expr(
         }
         IntExprKind::FunctionCall { function, args } => {
             function::run_int_function_call(plan, function, args, frame)
+        }
+        IntExprKind::TupleIndex { tuple, index } => {
+            match project_tuple_expr(plan, frame, tuple, *index, ValueType::Int)? {
+                Value::Int(value) => Ok(value),
+                other => Err(ExecutionError::tuple_index_family_mismatch(
+                    ValueType::Int,
+                    other.value_type(),
+                )),
+            }
         }
         IntExprKind::Add { left, right } => {
             Ok(eval_int_expr(plan, frame, left)? + eval_int_expr(plan, frame, right)?)
@@ -114,7 +123,39 @@ fn eval_remainder_int(left: BigInt, right: BigInt) -> BigInt {
 
 #[cfg(test)]
 mod tests {
+    use super::eval_int_expr;
+    use crate::plan::{BoolExpr, Expr, FloatExpr, IntExpr, Step, StringExpr, TupleExpr, ValueType};
+    use crate::runtime::ExecutionError;
+    use crate::runtime::frame::Frame;
     use crate::runtime::{int, run_src};
+
+    #[test]
+    fn tuple_index_family_mismatch_returns_error() {
+        let plan = crate::runtime::plan_src("pub fn main() { 1 }");
+        let mut frame = Frame::default();
+        let tuple = TupleExpr::value(
+            vec![Expr::int(IntExpr::value(1.into()))],
+            vec![ValueType::Int],
+        );
+
+        assert_eq!(
+            eval_int_expr(&plan, &mut frame, &IntExpr::tuple_index(tuple, 0)),
+            Ok(1.into()),
+        );
+
+        let tuple = TupleExpr::value(
+            vec![Expr::string(StringExpr::value("one".into()))],
+            vec![ValueType::String],
+        );
+
+        assert_eq!(
+            eval_int_expr(&plan, &mut frame, &IntExpr::tuple_index(tuple, 0)),
+            Err(ExecutionError::tuple_index_family_mismatch(
+                ValueType::Int,
+                ValueType::String,
+            )),
+        );
+    }
 
     #[test]
     fn eval_integer_arithmetic() {
@@ -514,5 +555,123 @@ pub fn main() {
             ),
             int(1),
         );
+    }
+
+    #[test]
+    fn eval_int_expr_propagates_operand_errors() {
+        let plan = crate::runtime::plan_src("pub fn main() { 1 }");
+        let mut frame = Frame::default();
+
+        for (expression, expected) in [
+            (
+                IntExpr::add(error_int_expr(), IntExpr::value(1.into())),
+                ValueType::Int,
+            ),
+            (
+                IntExpr::add(IntExpr::value(1.into()), error_int_expr()),
+                ValueType::Int,
+            ),
+            (
+                IntExpr::sub(error_int_expr(), IntExpr::value(1.into())),
+                ValueType::Int,
+            ),
+            (
+                IntExpr::sub(IntExpr::value(1.into()), error_int_expr()),
+                ValueType::Int,
+            ),
+            (
+                IntExpr::mult(error_int_expr(), IntExpr::value(1.into())),
+                ValueType::Int,
+            ),
+            (
+                IntExpr::mult(IntExpr::value(1.into()), error_int_expr()),
+                ValueType::Int,
+            ),
+            (
+                IntExpr::div(error_int_expr(), IntExpr::value(1.into())),
+                ValueType::Int,
+            ),
+            (
+                IntExpr::div(IntExpr::value(1.into()), error_int_expr()),
+                ValueType::Int,
+            ),
+            (
+                IntExpr::remainder(error_int_expr(), IntExpr::value(1.into())),
+                ValueType::Int,
+            ),
+            (
+                IntExpr::remainder(IntExpr::value(1.into()), error_int_expr()),
+                ValueType::Int,
+            ),
+            (IntExpr::negate(error_int_expr()), ValueType::Int),
+            (
+                IntExpr::bool_case(
+                    error_bool_expr(),
+                    IntExpr::value(1.into()),
+                    IntExpr::value(0.into()),
+                ),
+                ValueType::Bool,
+            ),
+            (
+                IntExpr::int_case(
+                    error_int_expr(),
+                    vec![(1.into(), IntExpr::value(1.into()))],
+                    IntExpr::value(0.into()),
+                ),
+                ValueType::Int,
+            ),
+            (
+                IntExpr::string_case(
+                    error_string_expr(),
+                    vec![("one".into(), IntExpr::value(1.into()))],
+                    IntExpr::value(0.into()),
+                ),
+                ValueType::String,
+            ),
+            (
+                IntExpr::float_case(
+                    error_float_expr(),
+                    vec![(1.0, IntExpr::value(1.into()))],
+                    IntExpr::value(0.into()),
+                ),
+                ValueType::Float,
+            ),
+            (
+                IntExpr::block(
+                    vec![Step::evaluate(Expr::bool(error_bool_expr()))],
+                    IntExpr::value(1.into()),
+                ),
+                ValueType::Bool,
+            ),
+        ] {
+            assert_eq!(
+                eval_int_expr(&plan, &mut frame, &expression),
+                Err(tuple_index_error(expected)),
+            );
+        }
+    }
+
+    fn error_int_expr() -> IntExpr {
+        IntExpr::tuple_index(empty_tuple(), 0)
+    }
+
+    fn error_bool_expr() -> BoolExpr {
+        BoolExpr::tuple_index(empty_tuple(), 0)
+    }
+
+    fn error_string_expr() -> StringExpr {
+        StringExpr::tuple_index(empty_tuple(), 0)
+    }
+
+    fn error_float_expr() -> FloatExpr {
+        FloatExpr::tuple_index(empty_tuple(), 0)
+    }
+
+    fn empty_tuple() -> TupleExpr {
+        TupleExpr::value(Vec::new(), Vec::new())
+    }
+
+    fn tuple_index_error(expected: ValueType) -> ExecutionError {
+        ExecutionError::tuple_index_family_mismatch(expected, ValueType::Tuple(Vec::new()))
     }
 }

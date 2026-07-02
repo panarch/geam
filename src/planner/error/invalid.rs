@@ -67,6 +67,8 @@ pub enum InvalidExpressionShapeKind {
 
 #[derive(Debug, Error, Clone, Copy, PartialEq, Eq)]
 pub enum InvalidExpressionType {
+    #[error("unsupported")]
+    Unsupported,
     #[error("Int")]
     Int,
     #[error("String")]
@@ -77,6 +79,8 @@ pub enum InvalidExpressionType {
     Bool,
     #[error("Nil")]
     Nil,
+    #[error("Tuple")]
+    Tuple,
     #[error("Function")]
     Function,
 }

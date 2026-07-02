@@ -1,10 +1,11 @@
 use super::{
     Bool, BoolFunction, Float, FloatFunction, Int, IntFunction, Nil, NilFunction, String,
-    StringFunction,
+    StringFunction, Tuple,
 };
 use crate::plan::{
     BoolFunctionLocalId, BoolLocalId, Expr, FloatFunctionLocalId, FloatLocalId, IntFunctionLocalId,
     IntLocalId, NilFunctionLocalId, NilLocalId, Step, StringFunctionLocalId, StringLocalId,
+    TupleLocalId,
 };
 use ecow::EcoString;
 
@@ -26,6 +27,10 @@ pub(crate) fn let_bool_step(local: usize, name: impl Into<EcoString>, value: Boo
 
 pub(crate) fn let_nil_step(local: usize, name: impl Into<EcoString>, value: Nil) -> Step {
     Step::let_nil(NilLocalId(local), name.into(), value.into())
+}
+
+pub(crate) fn let_tuple_step(local: usize, name: impl Into<EcoString>, value: Tuple) -> Step {
+    Step::let_tuple(TupleLocalId(local), name.into(), value.into())
 }
 
 pub(crate) fn let_int_function_step(
@@ -77,12 +82,13 @@ mod tests {
     use super::{
         evaluate_step, let_bool_function_step, let_bool_step, let_float_function_step,
         let_float_step, let_int_function_step, let_int_step, let_nil_function_step, let_nil_step,
-        let_string_function_step, let_string_step,
+        let_string_function_step, let_string_step, let_tuple_step,
     };
+    use crate::plan::Expr;
     use crate::plan::StepKind;
     use crate::planner::dsl::expression::{
         bool_, bool_function_ref, float, float_function_ref, int, int_function_ref, nil,
-        nil_function_ref, string, string_function_ref,
+        nil_function_ref, string, string_function_ref, tuple,
     };
 
     #[test]
@@ -106,6 +112,15 @@ mod tests {
         assert!(matches!(
             let_nil_step(0, "x", nil()).kind(),
             StepKind::LetNil { .. },
+        ));
+        assert!(matches!(
+            let_tuple_step(
+                0,
+                "x",
+                tuple([Expr::from(int(1)), Expr::from(string("one"))])
+            )
+            .kind(),
+            StepKind::LetTuple { .. },
         ));
         assert!(matches!(
             let_int_function_step(

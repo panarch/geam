@@ -1,5 +1,5 @@
-use super::{eval_bool_expr, eval_float_expr, eval_int_expr, eval_string_expr};
-use crate::plan::{ExecutionPlan, NilExpr, NilExprKind};
+use super::{eval_bool_expr, eval_float_expr, eval_int_expr, eval_string_expr, project_tuple_expr};
+use crate::plan::{ExecutionPlan, NilExpr, NilExprKind, Value, ValueType};
 use crate::runtime::ExecutionError;
 use crate::runtime::frame::Frame;
 use crate::runtime::function;
@@ -20,6 +20,15 @@ pub(in crate::runtime) fn eval_nil_expr(
         }
         NilExprKind::FunctionCall { function, args } => {
             function::run_nil_function_call(plan, function, args, frame)
+        }
+        NilExprKind::TupleIndex { tuple, index } => {
+            match project_tuple_expr(plan, frame, tuple, *index, ValueType::Nil)? {
+                Value::Nil => Ok(()),
+                other => Err(ExecutionError::tuple_index_family_mismatch(
+                    ValueType::Nil,
+                    other.value_type(),
+                )),
+            }
         }
         NilExprKind::BoolCase {
             subject,
@@ -84,12 +93,36 @@ mod tests {
     use crate::plan::{
         BoolExpr, BoolFunctionExpr, ExecutionPlan, Expr, FunctionFunctionExpr, FunctionFunctionId,
         FunctionFunctionValue, FunctionId, FunctionPlan, FunctionReturnFamily, FunctionType,
-        IntExpr, IntFunctionExpr, IntFunctionId, NilFunctionExpr, ReturnExpr, Step,
-        StringFunctionFunctionId, ValueType,
+        IntExpr, IntFunctionExpr, IntFunctionId, NilExpr, NilFunctionExpr, ReturnExpr, Step,
+        StringFunctionFunctionId, TupleExpr, ValueType,
     };
     use crate::runtime::ExecutionError;
     use crate::runtime::frame::Frame;
     use crate::runtime::{Value, run_src};
+
+    #[test]
+    fn tuple_index_family_mismatch_returns_error() {
+        let plan = crate::runtime::plan_src("pub fn main() { Nil }");
+        let mut frame = Frame::default();
+        let tuple = TupleExpr::value(
+            vec![Expr::int(IntExpr::value(1.into()))],
+            vec![ValueType::Int],
+        );
+
+        assert_eq!(
+            eval_nil_expr(&plan, &mut frame, &NilExpr::tuple_index(tuple, 0)),
+            Err(ExecutionError::tuple_index_family_mismatch(
+                ValueType::Nil,
+                ValueType::Int,
+            )),
+        );
+
+        let tuple = TupleExpr::value(vec![Expr::nil(NilExpr::value())], vec![ValueType::Nil]);
+        assert_eq!(
+            eval_nil_expr(&plan, &mut frame, &NilExpr::tuple_index(tuple, 0)),
+            Ok(()),
+        );
+    }
 
     #[test]
     fn eval_nil_value() {

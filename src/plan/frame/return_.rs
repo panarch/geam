@@ -12,6 +12,7 @@ impl FrameLayout {
             ReturnExprKind::String { body, .. } => self.include_string_return(body),
             ReturnExprKind::Bool { body, .. } => self.include_bool_return(body),
             ReturnExprKind::Nil { body, .. } => self.include_nil_return(body),
+            ReturnExprKind::Tuple { body, .. } => self.include_tuple_return(body),
             ReturnExprKind::IntFunction { body, .. } => {
                 self.include_int_function_return(body);
             }
@@ -26,6 +27,9 @@ impl FrameLayout {
             }
             ReturnExprKind::NilFunction { body, .. } => {
                 self.include_nil_function_return(body);
+            }
+            ReturnExprKind::TupleFunction { body, .. } => {
+                self.include_tuple_function_return(body);
             }
             ReturnExprKind::FunctionFunction { body, .. } => {
                 self.include_function_function_return(body);

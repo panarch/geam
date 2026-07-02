@@ -1,5 +1,5 @@
-use super::{eval_bool_expr, eval_int_expr, eval_string_expr};
-use crate::plan::{ExecutionPlan, FloatExpr, FloatExprKind};
+use super::{eval_bool_expr, eval_int_expr, eval_string_expr, project_tuple_expr};
+use crate::plan::{ExecutionPlan, FloatExpr, FloatExprKind, Value, ValueType};
 use crate::runtime::ExecutionError;
 use crate::runtime::frame::Frame;
 use crate::runtime::function;
@@ -17,6 +17,15 @@ pub(in crate::runtime) fn eval_float_expr(
         }
         FloatExprKind::FunctionCall { function, args } => {
             function::run_float_function_call(plan, function, args, frame)
+        }
+        FloatExprKind::TupleIndex { tuple, index } => {
+            match project_tuple_expr(plan, frame, tuple, *index, ValueType::Float)? {
+                Value::Float(value) => Ok(value),
+                other => Err(ExecutionError::tuple_index_family_mismatch(
+                    ValueType::Float,
+                    other.value_type(),
+                )),
+            }
         }
         FloatExprKind::Add { left, right } => {
             Ok(eval_float_expr(plan, frame, left)? + eval_float_expr(plan, frame, right)?)
@@ -102,10 +111,38 @@ mod tests {
         FloatFunctionId, FloatLocalId, FrameLayout, FunctionFunctionExpr, FunctionFunctionId,
         FunctionFunctionValue, FunctionId, FunctionPlan, FunctionReturnFamily, FunctionType,
         IntExpr, IntFunctionExpr, ReturnExpr, Step, StringExpr, StringFunctionExpr,
-        StringFunctionFunctionId, ValueType,
+        StringFunctionFunctionId, TupleExpr, ValueType,
     };
     use crate::runtime::ExecutionError;
     use crate::runtime::frame::Frame;
+
+    #[test]
+    fn tuple_index_family_mismatch_returns_error() {
+        let plan = crate::runtime::plan_src("pub fn main() { 1.0 }");
+        let mut frame = Frame::default();
+        let tuple = TupleExpr::value(
+            vec![Expr::float(FloatExpr::value(1.5))],
+            vec![ValueType::Float],
+        );
+
+        assert_eq!(
+            eval_float_expr(&plan, &mut frame, &FloatExpr::tuple_index(tuple, 0)),
+            Ok(1.5),
+        );
+
+        let tuple = TupleExpr::value(
+            vec![Expr::string(StringExpr::value("one".into()))],
+            vec![ValueType::String],
+        );
+
+        assert_eq!(
+            eval_float_expr(&plan, &mut frame, &FloatExpr::tuple_index(tuple, 0)),
+            Err(ExecutionError::tuple_index_family_mismatch(
+                ValueType::Float,
+                ValueType::String,
+            )),
+        );
+    }
 
     #[test]
     fn eval_float_division_by_zero_returns_zero() {

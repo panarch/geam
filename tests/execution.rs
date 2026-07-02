@@ -27,6 +27,7 @@ mod values {
     execution_cases!("values";
         integer_return,
         float_value,
+        tuple_value,
         bool_value,
         nil_value,
     );
@@ -37,6 +38,7 @@ mod bindings {
         let_binding,
         let_discard_binding,
         float_let_binding,
+        tuple_let_binding,
         string_let_binding,
         bool_let_binding,
         nil_let_binding,
@@ -52,6 +54,7 @@ mod operators {
         float_arithmetic,
         float_comparison,
         float_division,
+        tuple_equality,
         string_concatenation,
         bool_operators,
         short_circuit_block_scope,
@@ -78,6 +81,8 @@ mod control_flow {
             string_case_return_families,
             string_case_function_values,
             string_case_function_returns,
+            tuple_projection_case,
+            tuple_case_return_families,
         );
     }
 }
@@ -86,6 +91,7 @@ mod pipeline {
     execution_cases!("pipeline";
         pipeline,
         float_pipeline,
+        tuple_pipeline,
     );
 }
 
@@ -95,6 +101,7 @@ mod functions {
             local_function_call,
             string_function_call,
             float_function_call,
+            tuple_function_call,
             bool_function_call,
             nil_function_call,
             function_after_main,
@@ -112,6 +119,7 @@ mod functions {
             function_value_case_callee,
             float_function_value_shapes,
             float_function_value_expressions,
+            tuple_function_value_projection,
             function_value_expression_steps,
             function_value_shadowing,
         );
@@ -150,6 +158,7 @@ mod functions {
             mutual_tail_recursion_bool,
             string_nil_tail_recursion,
             float_tail_recursion,
+            tuple_tail_recursion,
             block_case_tail_call,
             function_returning_tail_call,
             function_returning_tail_call_families,
@@ -172,6 +181,7 @@ mod functions {
             capturing_closure_nested,
             capturing_closure_shadowing,
             capturing_closure_value_families,
+            capturing_closure_tuple,
             capturing_closure_return_shapes,
         );
     }
@@ -185,6 +195,7 @@ mod functions {
             use_nested,
             use_capture,
             use_float_value,
+            use_tuple_value,
             use_block_scope,
             use_function_value_provider,
             use_inside_anonymous_function,
@@ -276,6 +287,14 @@ fn render_value(value: &Value) -> String {
         Value::String(value) => format!("String({value:?})"),
         Value::Bool(value) => format!("Bool({value})"),
         Value::Nil => "Nil".into(),
+        Value::Tuple(values) => format!(
+            "Tuple([{}])",
+            values
+                .iter()
+                .map(render_value)
+                .collect::<Vec<_>>()
+                .join(", ")
+        ),
         Value::Function(function) => {
             let type_ = function.type_();
             format!("Function({})", render_function_type(&type_))
@@ -301,6 +320,14 @@ fn render_value_type(type_: &ValueType) -> String {
         ValueType::String => "String".into(),
         ValueType::Bool => "Bool".into(),
         ValueType::Nil => "Nil".into(),
+        ValueType::Tuple(elements) => format!(
+            "#({})",
+            elements
+                .iter()
+                .map(render_value_type)
+                .collect::<Vec<_>>()
+                .join(", ")
+        ),
         ValueType::Function(type_) => render_function_type(type_),
     }
 }

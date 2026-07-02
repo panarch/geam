@@ -1,12 +1,13 @@
 use super::FrameLayout;
-use super::expression::{BoolExpr, CallArg, FloatExpr, IntExpr, NilExpr, StringExpr};
+use super::expression::{BoolExpr, CallArg, FloatExpr, IntExpr, NilExpr, StringExpr, TupleExpr};
 use super::id::{
     BoolFunctionFunctionId, BoolFunctionId, BoolFunctionLocalId, BoolLocalId,
     FloatFunctionFunctionId, FloatFunctionId, FloatFunctionLocalId, FloatLocalId,
     FunctionFunctionFunctionId, FunctionFunctionId, FunctionFunctionLocalId, FunctionId,
     IntFunctionFunctionId, IntFunctionId, IntFunctionLocalId, IntLocalId, NilFunctionFunctionId,
     NilFunctionId, NilFunctionLocalId, NilLocalId, RuntimeFunctionId, StringFunctionFunctionId,
-    StringFunctionId, StringFunctionLocalId, StringLocalId,
+    StringFunctionId, StringFunctionLocalId, StringLocalId, TupleFunctionFunctionId,
+    TupleFunctionId, TupleFunctionLocalId, TupleLocalId,
 };
 use super::step::Step;
 use super::value::{FunctionType, ValueType};
@@ -42,6 +43,10 @@ pub(crate) enum ParamLocal {
     String(StringLocalId),
     Bool(BoolLocalId),
     Nil(NilLocalId),
+    Tuple {
+        local: TupleLocalId,
+        type_: Vec<ValueType>,
+    },
     IntFunction {
         local: IntFunctionLocalId,
         type_: FunctionType,
@@ -62,6 +67,10 @@ pub(crate) enum ParamLocal {
         local: NilFunctionLocalId,
         type_: FunctionType,
     },
+    TupleFunction {
+        local: TupleFunctionLocalId,
+        type_: FunctionType,
+    },
     FunctionFunction {
         local: FunctionFunctionLocalId,
         type_: FunctionType,
@@ -79,12 +88,14 @@ pub(crate) type FloatReturn = ReturnBody<FloatExpr, FloatFunctionId>;
 pub(crate) type StringReturn = ReturnBody<StringExpr, StringFunctionId>;
 pub(crate) type BoolReturn = ReturnBody<BoolExpr, BoolFunctionId>;
 pub(crate) type NilReturn = ReturnBody<NilExpr, NilFunctionId>;
+pub(crate) type TupleReturn = ReturnBody<TupleExpr, TupleFunctionId>;
 pub(crate) type IntFunctionReturn = ReturnBody<super::IntFunctionExpr, IntFunctionFunctionId>;
 pub(crate) type FloatFunctionReturn = ReturnBody<super::FloatFunctionExpr, FloatFunctionFunctionId>;
 pub(crate) type StringFunctionReturn =
     ReturnBody<super::StringFunctionExpr, StringFunctionFunctionId>;
 pub(crate) type BoolFunctionReturn = ReturnBody<super::BoolFunctionExpr, BoolFunctionFunctionId>;
 pub(crate) type NilFunctionReturn = ReturnBody<super::NilFunctionExpr, NilFunctionFunctionId>;
+pub(crate) type TupleFunctionReturn = ReturnBody<super::TupleFunctionExpr, TupleFunctionFunctionId>;
 pub(crate) type FunctionFunctionReturn =
     ReturnBody<super::FunctionFunctionExpr, FunctionFunctionFunctionId>;
 
@@ -153,6 +164,11 @@ pub(crate) enum ReturnExprKind {
         runtime_id: NilFunctionId,
         body: NilReturn,
     },
+    Tuple {
+        runtime_id: TupleFunctionId,
+        type_: Vec<ValueType>,
+        body: TupleReturn,
+    },
     IntFunction {
         runtime_id: IntFunctionFunctionId,
         type_: FunctionType,
@@ -177,6 +193,11 @@ pub(crate) enum ReturnExprKind {
         runtime_id: NilFunctionFunctionId,
         type_: FunctionType,
         body: NilFunctionReturn,
+    },
+    TupleFunction {
+        runtime_id: TupleFunctionFunctionId,
+        type_: FunctionType,
+        body: TupleFunctionReturn,
     },
     FunctionFunction {
         runtime_id: FunctionFunctionFunctionId,
@@ -283,6 +304,26 @@ impl ReturnExpr {
     pub(crate) fn nil_body(runtime_id: NilFunctionId, body: NilReturn) -> Self {
         Self {
             kind: ReturnExprKind::Nil { runtime_id, body },
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn tuple(runtime_id: TupleFunctionId, expression: TupleExpr) -> Self {
+        let type_ = expression.type_().to_vec();
+        Self::tuple_body(runtime_id, type_, ReturnBody::expr(expression))
+    }
+
+    pub(crate) fn tuple_body(
+        runtime_id: TupleFunctionId,
+        type_: Vec<ValueType>,
+        body: TupleReturn,
+    ) -> Self {
+        Self {
+            kind: ReturnExprKind::Tuple {
+                runtime_id,
+                type_,
+                body,
+            },
         }
     }
 
@@ -402,6 +443,29 @@ impl ReturnExpr {
     }
 
     #[cfg(test)]
+    pub(crate) fn tuple_function(
+        runtime_id: TupleFunctionFunctionId,
+        expression: super::TupleFunctionExpr,
+    ) -> Self {
+        let type_ = expression.type_().clone();
+        Self::tuple_function_body(runtime_id, type_, ReturnBody::expr(expression))
+    }
+
+    pub(crate) fn tuple_function_body(
+        runtime_id: TupleFunctionFunctionId,
+        type_: FunctionType,
+        body: TupleFunctionReturn,
+    ) -> Self {
+        Self {
+            kind: ReturnExprKind::TupleFunction {
+                runtime_id,
+                type_,
+                body,
+            },
+        }
+    }
+
+    #[cfg(test)]
     pub(crate) fn function_function(
         runtime_id: FunctionFunctionFunctionId,
         expression: super::FunctionFunctionExpr,
@@ -435,11 +499,13 @@ impl ReturnExpr {
             ReturnExprKind::String { .. } => ValueType::String,
             ReturnExprKind::Bool { .. } => ValueType::Bool,
             ReturnExprKind::Nil { .. } => ValueType::Nil,
+            ReturnExprKind::Tuple { type_, .. } => ValueType::Tuple(type_.clone()),
             ReturnExprKind::IntFunction { type_, .. }
             | ReturnExprKind::FloatFunction { type_, .. }
             | ReturnExprKind::StringFunction { type_, .. }
             | ReturnExprKind::BoolFunction { type_, .. }
             | ReturnExprKind::NilFunction { type_, .. }
+            | ReturnExprKind::TupleFunction { type_, .. }
             | ReturnExprKind::FunctionFunction { type_, .. } => {
                 ValueType::Function(Box::new(type_.clone()))
             }
@@ -453,6 +519,12 @@ impl ReturnExpr {
             ReturnExprKind::String { runtime_id, .. } => RuntimeFunctionId::String(*runtime_id),
             ReturnExprKind::Bool { runtime_id, .. } => RuntimeFunctionId::Bool(*runtime_id),
             ReturnExprKind::Nil { runtime_id, .. } => RuntimeFunctionId::Nil(*runtime_id),
+            ReturnExprKind::Tuple {
+                runtime_id, type_, ..
+            } => RuntimeFunctionId::Tuple {
+                id: *runtime_id,
+                return_type: type_.clone(),
+            },
             ReturnExprKind::IntFunction {
                 runtime_id, type_, ..
             } => RuntimeFunctionId::Function {
@@ -481,6 +553,12 @@ impl ReturnExpr {
                 runtime_id, type_, ..
             } => RuntimeFunctionId::Function {
                 id: FunctionFunctionId::Nil(*runtime_id),
+                return_type: type_.clone(),
+            },
+            ReturnExprKind::TupleFunction {
+                runtime_id, type_, ..
+            } => RuntimeFunctionId::Function {
+                id: FunctionFunctionId::Tuple(*runtime_id),
                 return_type: type_.clone(),
             },
             ReturnExprKind::FunctionFunction {
@@ -642,6 +720,10 @@ impl ParamLocal {
         Self::Nil(local)
     }
 
+    pub(crate) fn tuple(local: TupleLocalId, type_: Vec<ValueType>) -> Self {
+        Self::Tuple { local, type_ }
+    }
+
     pub(crate) fn int_function(local: IntFunctionLocalId, type_: FunctionType) -> Self {
         Self::IntFunction { local, type_ }
     }
@@ -662,6 +744,10 @@ impl ParamLocal {
         Self::NilFunction { local, type_ }
     }
 
+    pub(crate) fn tuple_function(local: TupleFunctionLocalId, type_: FunctionType) -> Self {
+        Self::TupleFunction { local, type_ }
+    }
+
     pub(crate) fn function_function(local: FunctionFunctionLocalId, type_: FunctionType) -> Self {
         Self::FunctionFunction { local, type_ }
     }
@@ -673,11 +759,13 @@ impl ParamLocal {
             Self::String(_) => ValueType::String,
             Self::Bool(_) => ValueType::Bool,
             Self::Nil(_) => ValueType::Nil,
+            Self::Tuple { type_, .. } => ValueType::Tuple(type_.clone()),
             Self::IntFunction { type_, .. }
             | Self::FloatFunction { type_, .. }
             | Self::StringFunction { type_, .. }
             | Self::BoolFunction { type_, .. }
             | Self::NilFunction { type_, .. }
+            | Self::TupleFunction { type_, .. }
             | Self::FunctionFunction { type_, .. } => ValueType::Function(Box::new(type_.clone())),
         }
     }
@@ -695,7 +783,9 @@ mod tests {
         IntFunctionFunctionId, IntFunctionId, IntFunctionLocalId, IntFunctionValue, IntLocalId,
         NilExpr, NilFunctionExpr, NilFunctionFunctionId, NilFunctionId, NilFunctionLocalId,
         NilFunctionValue, StringExpr, StringFunctionExpr, StringFunctionFunctionId,
-        StringFunctionId, StringFunctionLocalId, StringFunctionValue, ValueType,
+        StringFunctionId, StringFunctionLocalId, StringFunctionValue, TupleExpr, TupleFunctionExpr,
+        TupleFunctionFunctionId, TupleFunctionId, TupleFunctionLocalId, TupleFunctionValue,
+        ValueType,
     };
     use num_bigint::BigInt;
 
@@ -750,6 +840,17 @@ mod tests {
             ValueType::Nil,
         );
         assert_eq!(
+            ReturnExpr::tuple(
+                TupleFunctionId(0),
+                TupleExpr::value(
+                    vec![crate::plan::Expr::int(IntExpr::value(BigInt::from(1)))],
+                    vec![ValueType::Int],
+                ),
+            )
+            .value_type(),
+            ValueType::Tuple(vec![ValueType::Int]),
+        );
+        assert_eq!(
             ReturnExpr::int_function(
                 IntFunctionFunctionId(0),
                 IntFunctionExpr::value(IntFunctionValue::new(IntFunctionId(0), Vec::new())),
@@ -791,6 +892,21 @@ mod tests {
             )
             .value_type(),
             ValueType::Function(Box::new(FunctionType::new(Vec::new(), ValueType::Nil))),
+        );
+        assert_eq!(
+            ReturnExpr::tuple_function(
+                TupleFunctionFunctionId(0),
+                TupleFunctionExpr::value(TupleFunctionValue::new(
+                    TupleFunctionId(0),
+                    Vec::new(),
+                    vec![ValueType::Int],
+                )),
+            )
+            .value_type(),
+            ValueType::Function(Box::new(FunctionType::new(
+                Vec::new(),
+                ValueType::Tuple(vec![ValueType::Int]),
+            ))),
         );
         let return_type = FunctionType::new(Vec::new(), ValueType::Int);
         assert_eq!(
@@ -893,6 +1009,20 @@ mod tests {
             ValueType::Function(Box::new(FunctionType::new(
                 vec![ValueType::Nil],
                 ValueType::Nil,
+            ))),
+        );
+        assert_eq!(
+            ParamLocal::tuple_function(
+                TupleFunctionLocalId(0),
+                FunctionType::new(
+                    vec![ValueType::Tuple(vec![ValueType::Int])],
+                    ValueType::Tuple(vec![ValueType::String]),
+                ),
+            )
+            .value_type(),
+            ValueType::Function(Box::new(FunctionType::new(
+                vec![ValueType::Tuple(vec![ValueType::Int])],
+                ValueType::Tuple(vec![ValueType::String]),
             ))),
         );
     }

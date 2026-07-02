@@ -4,6 +4,7 @@ mod int;
 mod nil;
 mod returning_function;
 mod string;
+mod tuple;
 
 use crate::plan::{ExecutionPlan, FunctionExpr, FunctionExprKind, FunctionValue};
 use crate::runtime::ExecutionError;
@@ -12,7 +13,7 @@ use crate::runtime::frame::Frame;
 pub(in crate::runtime) use self::{
     bool::eval_bool_function_expr, float::eval_float_function_expr, int::eval_int_function_expr,
     nil::eval_nil_function_expr, returning_function::eval_function_function_expr,
-    string::eval_string_function_expr,
+    string::eval_string_function_expr, tuple::eval_tuple_function_expr,
 };
 
 pub(in crate::runtime) fn eval_function_expr(
@@ -35,6 +36,9 @@ pub(in crate::runtime) fn eval_function_expr(
         }
         FunctionExprKind::Nil(expression) => {
             Ok(eval_nil_function_expr(plan, frame, expression)?.into())
+        }
+        FunctionExprKind::Tuple(expression) => {
+            Ok(eval_tuple_function_expr(plan, frame, expression)?.into())
         }
         FunctionExprKind::Function(expression) => {
             Ok(eval_function_function_expr(plan, frame, expression)?.into())

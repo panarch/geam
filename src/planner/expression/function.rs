@@ -35,37 +35,8 @@ pub(super) fn plan_anonymous(
     let function_type = anonymous_function_type(type_.as_ref())?;
     let error_name = context.anonymous_function_error_name();
     let params = function_params(error_name.clone(), &arguments)?;
-    validate_argument_types(&error_name, &function_type, &params).and_then(|()| {
-        plan_anonymous_with_valid_arguments(
-            function_type,
-            error_name,
-            params,
-            arguments,
-            body,
-            context,
-        )
-    })
-}
-
-pub(super) fn plan_use_callback(
-    type_: Arc<Type>,
-    arguments: Vec<TypedArg>,
-    body: Vec1<TypedStatement>,
-    context: &mut PlanContext<'_>,
-) -> Result<Expr, PlanError> {
-    let function_type = anonymous_function_type(type_.as_ref())?;
-    let error_name = context.anonymous_function_error_name();
-    let params = function_params(error_name.clone(), &arguments)?;
-    validate_argument_types(&error_name, &function_type, &params).and_then(|()| {
-        plan_anonymous_with_valid_arguments(
-            function_type,
-            error_name,
-            params,
-            arguments,
-            body,
-            context,
-        )
-    })
+    validate_argument_types(&error_name, &function_type, &params)?;
+    plan_anonymous_with_valid_arguments(function_type, error_name, params, arguments, body, context)
 }
 
 fn plan_anonymous_with_valid_arguments(
@@ -77,9 +48,8 @@ fn plan_anonymous_with_valid_arguments(
     context: &mut PlanContext<'_>,
 ) -> Result<Expr, PlanError> {
     let free_names = anonymous_free_variables(&arguments, &body);
-    context.capture_bindings(&free_names).and_then(|captures| {
-        plan_anonymous_with_captures(function_type, error_name, params, captures, body, context)
-    })
+    let captures = context.capture_bindings(&free_names)?;
+    plan_anonymous_with_captures(function_type, error_name, params, captures, body, context)
 }
 
 fn plan_anonymous_with_captures(
@@ -163,6 +133,15 @@ fn closure_expr(
         RuntimeFunctionId::Nil(runtime_id) => FunctionExpr::nil(
             crate::plan::NilFunctionExpr::closure(*runtime_id, params, captures, type_),
         ),
+        RuntimeFunctionId::Tuple { id, return_type } => {
+            FunctionExpr::tuple(crate::plan::TupleFunctionExpr::closure(
+                *id,
+                params,
+                captures,
+                type_,
+                return_type.clone(),
+            ))
+        }
         RuntimeFunctionId::Function { id, return_type } => {
             FunctionExpr::function(crate::plan::FunctionFunctionExpr::closure(
                 *id,
@@ -208,6 +187,12 @@ fn anonymous_function_type(type_: &Type) -> Result<FunctionType, PlanError> {
                 actual: InvalidExpressionType::Nil,
             },
         }),
+        Some(ValueType::Tuple(_)) => Err(PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::ExpressionType {
+                expected: InvalidExpressionType::Function,
+                actual: InvalidExpressionType::Tuple,
+            },
+        }),
         None => Err(anonymous_function_type_error(type_)),
     }
 }
@@ -250,7 +235,11 @@ impl FreeVariables {
     }
 
     fn record(&mut self, name: &EcoString, bound: &HashSet<EcoString>) {
-        if !bound.contains(name) && self.seen.insert(name.clone()) {
+        if bound.contains(name) {
+            return;
+        }
+
+        if self.seen.insert(name.clone()) {
             self.names.push(name.clone());
         }
     }
@@ -351,11 +340,17 @@ fn collect_expr(expression: &TypedExpr, bound: &mut HashSet<EcoString>, free: &m
         TypedExpr::NegateBool { value, .. } | TypedExpr::NegateInt { value, .. } => {
             collect_expr(value, bound, free);
         }
+        TypedExpr::Tuple { elements, .. } => {
+            for element in elements {
+                collect_expr(element, bound, free);
+            }
+        }
+        TypedExpr::TupleIndex { tuple, .. } => {
+            collect_expr(tuple, bound, free);
+        }
         TypedExpr::List { .. }
         | TypedExpr::RecordAccess { .. }
         | TypedExpr::PositionalAccess { .. }
-        | TypedExpr::Tuple { .. }
-        | TypedExpr::TupleIndex { .. }
         | TypedExpr::Todo { .. }
         | TypedExpr::Panic { .. }
         | TypedExpr::Echo { .. }
@@ -422,14 +417,15 @@ fn validate_argument_types(
 #[cfg(test)]
 mod tests {
     use crate::plan::{
-        FunctionFunctionId, FunctionType, IntFunctionFunctionId, IntFunctionId, IntLocalId,
-        LocalId, ParamLocal, RuntimeFunctionId, ValueType,
+        Expr, FunctionFunctionId, FunctionType, IntFunctionFunctionId, IntFunctionId, IntLocalId,
+        LocalId, ParamLocal, RuntimeFunctionId, TupleFunctionId, ValueType,
     };
     use crate::planner::dsl::{
-        call_int_function, capture_int, function, function_function_closure, function_function_ref,
-        function_ref, int, int_arg, int_function_call_arg, int_function_closure, int_function_ref,
-        int_return_tail_call, let_int_function_step, let_int_step, local_int, local_int_function,
-        module_with_anonymous,
+        call_int_function, capture_int, capture_tuple, function, function_function_closure,
+        function_function_ref, function_ref, int, int_arg, int_function_call_arg,
+        int_function_closure, int_function_ref, int_return_tail_call, let_int_function_step,
+        let_int_step, let_tuple_step, local_int, local_int_function, local_tuple,
+        module_with_anonymous, string, tuple, tuple_function_closure,
     };
     use crate::planner::error::{
         InvalidExpressionShapeKind, InvalidExpressionType, InvalidFunctionShapeReason,
@@ -439,8 +435,8 @@ mod tests {
     use crate::planner::plan_module;
     use crate::planner::support::{compile, dummy_span};
     use gleam_core::ast::{
-        Constant, FunctionLiteralKind, PipelineAssignmentKind, Statement, TypedArg, TypedExpr,
-        TypedModule, TypedPipelineAssignment, TypedStatement,
+        ArgNames, Constant, FunctionLiteralKind, PipelineAssignmentKind, Statement, TypedArg,
+        TypedExpr, TypedModule, TypedPipelineAssignment, TypedStatement,
     };
     use gleam_core::type_::ModuleValueConstructor;
 
@@ -670,6 +666,130 @@ pub fn main() {
     }
 
     #[test]
+    fn anonymous_free_variables_include_use_callback_call() {
+        assert_eq!(
+            anonymous_function_free_variables(
+                r#"
+fn with_value(value: Int, continue: fn(Int) -> Int) {
+  continue(value)
+}
+
+pub fn main() {
+  let use_value = 1
+  fn() {
+    use captured <- with_value(use_value)
+    captured
+  }
+  1
+}
+"#,
+            ),
+            vec!["use_value".to_string()],
+        );
+    }
+
+    #[test]
+    fn anonymous_free_variables_include_supported_expression_shapes() {
+        assert_eq!(
+            anonymous_function_free_variables(
+                r#"
+pub fn main() {
+  let block_value = 1
+  let case_subject = True
+  let pattern_source = 2
+  let case_value = 3
+  let negate_int_value = 4
+  let negate_bool_value = True
+  let tuple_value = #(5, 6)
+  fn() {
+    {
+      block_value
+    }
+    case case_subject {
+      True -> {
+        let branch_local = pattern_source
+        branch_local
+      }
+      False -> case_value
+    }
+    case !negate_bool_value {
+      True -> 0
+      False -> 1
+    }
+    -negate_int_value
+    tuple_value.0
+  }
+  1
+}
+"#,
+            ),
+            vec![
+                "block_value".to_string(),
+                "case_subject".to_string(),
+                "pattern_source".to_string(),
+                "case_value".to_string(),
+                "negate_bool_value".to_string(),
+                "negate_int_value".to_string(),
+                "tuple_value".to_string(),
+            ],
+        );
+    }
+
+    #[test]
+    fn closure_expr_preserves_tuple_return_family() {
+        let return_type = vec![ValueType::Int];
+        let expression = super::closure_expr(
+            &RuntimeFunctionId::Tuple {
+                id: TupleFunctionId(0),
+                return_type: return_type.clone(),
+            },
+            Vec::<ParamLocal>::new(),
+            Vec::new(),
+            FunctionType::new(Vec::new(), ValueType::Tuple(return_type.clone())),
+        );
+
+        assert_eq!(
+            expression.type_(),
+            &FunctionType::new(Vec::new(), ValueType::Tuple(return_type)),
+        );
+    }
+
+    #[test]
+    fn plan_tuple_returning_capturing_anonymous_function() {
+        let actual = plan_module(compile(
+            r#"
+pub fn main() {
+  let pair = #(1, "one")
+  fn() { pair }
+}
+"#,
+        ))
+        .expect("source should plan");
+        let pair_type = [ValueType::Int, ValueType::String];
+        let expected = module_with_anonymous(
+            "main",
+            function(
+                "main",
+                tuple_function_closure(
+                    0,
+                    Vec::<LocalId>::new(),
+                    [capture_tuple(0, local_tuple(0, "pair", pair_type.clone()))],
+                    pair_type.clone(),
+                ),
+            )
+            .step(let_tuple_step(
+                0,
+                "pair",
+                tuple([Expr::from(int(1)), Expr::from(string("one"))]),
+            )),
+            [],
+            [function("<anonymous:0>", local_tuple(0, "pair", pair_type))],
+        );
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
     fn reject_profile_function_capture_literal() {
         assert_eq!(
             plan_module(compile(
@@ -715,6 +835,10 @@ pub fn main() {
             (gleam_core::type_::float(), InvalidExpressionType::Float),
             (gleam_core::type_::bool(), InvalidExpressionType::Bool),
             (gleam_core::type_::nil(), InvalidExpressionType::Nil),
+            (
+                gleam_core::type_::tuple(vec![gleam_core::type_::int()]),
+                InvalidExpressionType::Tuple,
+            ),
         ] {
             let mut module = anonymous_function_module();
             let (expression_type, _, _) = anonymous_function_expression_mut(&mut module);
@@ -745,6 +869,21 @@ pub fn main() {
                     name: "<anonymous:0>".into(),
                     reason: InvalidFunctionShapeReason::ArgumentTypeMismatch,
                 },
+            }),
+        );
+    }
+
+    #[test]
+    fn reject_margin_anonymous_function_param_shape_error_propagates() {
+        let mut module = anonymous_function_module();
+        let (_, arguments, _) = anonymous_function_expression_mut(&mut module);
+        arguments[0] = labelled_arg();
+
+        assert_eq!(
+            plan_module(module),
+            Err(PlanError::UnsupportedArgument {
+                function: "<anonymous:0>".into(),
+                reason: crate::planner::UnsupportedArgumentReason::Labelled,
             }),
         );
     }
@@ -981,5 +1120,44 @@ pub fn main() {
         };
 
         (type_, arguments, kind)
+    }
+
+    fn labelled_arg() -> TypedArg {
+        TypedArg {
+            names: ArgNames::NamedLabelled {
+                label: "label".into(),
+                label_location: dummy_span(),
+                name: "value".into(),
+                name_location: dummy_span(),
+            },
+            location: dummy_span(),
+            annotation: None,
+            type_: gleam_core::type_::int(),
+        }
+    }
+
+    fn anonymous_function_free_variables(src: &str) -> Vec<String> {
+        let module = compile(src);
+        let function = module
+            .definitions
+            .functions
+            .last()
+            .expect("main function should exist");
+        let (arguments, body) = function
+            .body
+            .iter()
+            .find_map(|statement| match statement {
+                Statement::Expression(TypedExpr::Fn {
+                    arguments, body, ..
+                }) => Some((arguments, body)),
+                _ => None,
+            })
+            .expect("expected anonymous function expression statement");
+
+        let mut names = Vec::new();
+        for name in super::anonymous_free_variables(arguments, body) {
+            names.push(name.to_string());
+        }
+        names
     }
 }

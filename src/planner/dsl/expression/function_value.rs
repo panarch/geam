@@ -1,6 +1,6 @@
 use super::{
     BoolFunction, FloatFunction, Function, FunctionFunction, IntFunction, IntoParamLocal,
-    IntoValueType, NilFunction, StringFunction,
+    IntoValueType, NilFunction, StringFunction, TupleFunction,
 };
 use crate::plan::{
     BoolFunctionExpr, BoolFunctionId, BoolFunctionLocalId, BoolFunctionValue, CaptureArg,
@@ -9,7 +9,8 @@ use crate::plan::{
     FunctionType, FunctionValue, IntFunctionExpr, IntFunctionId, IntFunctionLocalId,
     IntFunctionValue, NilFunctionExpr, NilFunctionId, NilFunctionLocalId, NilFunctionValue,
     RuntimeFunctionId, StringFunctionExpr, StringFunctionId, StringFunctionLocalId,
-    StringFunctionValue, ValueType,
+    StringFunctionValue, TupleFunctionExpr, TupleFunctionId, TupleFunctionLocalId,
+    TupleFunctionValue, ValueType,
 };
 use ecow::EcoString;
 
@@ -129,6 +130,49 @@ pub(crate) fn nil_function_ref(
     )))
 }
 
+pub(crate) fn tuple_function_ref(
+    runtime_id: usize,
+    params: impl IntoIterator<Item = impl IntoParamLocal>,
+    return_type: impl IntoIterator<Item = impl IntoValueType>,
+) -> TupleFunction {
+    TupleFunction(TupleFunctionExpr::value(TupleFunctionValue::new(
+        TupleFunctionId(runtime_id),
+        params
+            .into_iter()
+            .map(IntoParamLocal::into_param_local)
+            .collect(),
+        return_type
+            .into_iter()
+            .map(IntoValueType::into_value_type)
+            .collect(),
+    )))
+}
+
+pub(crate) fn tuple_function_closure(
+    runtime_id: usize,
+    params: impl IntoIterator<Item = impl IntoParamLocal>,
+    captures: impl IntoIterator<Item = CaptureArg>,
+    return_type: impl IntoIterator<Item = impl IntoValueType>,
+) -> TupleFunction {
+    let params = params
+        .into_iter()
+        .map(IntoParamLocal::into_param_local)
+        .collect::<Vec<_>>();
+    let return_type = return_type
+        .into_iter()
+        .map(IntoValueType::into_value_type)
+        .collect::<Vec<_>>();
+    let type_ = FunctionType::from_params(&params, ValueType::Tuple(return_type.clone()));
+
+    TupleFunction(TupleFunctionExpr::closure(
+        TupleFunctionId(runtime_id),
+        params,
+        captures.into_iter().collect(),
+        type_,
+        return_type,
+    ))
+}
+
 pub(crate) fn local_int_function(
     local: usize,
     name: impl Into<EcoString>,
@@ -226,6 +270,27 @@ pub(crate) fn local_nil_function(
     ))
 }
 
+pub(crate) fn local_tuple_function(
+    local: usize,
+    name: impl Into<EcoString>,
+    params: impl IntoIterator<Item = impl IntoValueType>,
+    return_type: impl IntoIterator<Item = impl IntoValueType>,
+) -> TupleFunction {
+    TupleFunction(TupleFunctionExpr::local_get(
+        TupleFunctionLocalId(local),
+        name.into(),
+        function_type(
+            params,
+            ValueType::Tuple(
+                return_type
+                    .into_iter()
+                    .map(IntoValueType::into_value_type)
+                    .collect(),
+            ),
+        ),
+    ))
+}
+
 pub(crate) fn local_function_function(
     local: usize,
     name: impl Into<EcoString>,
@@ -277,13 +342,14 @@ mod tests {
         bool_function_ref, float_function_closure, float_function_ref, function_function_closure,
         function_function_ref, function_ref, int_function_closure, int_function_ref,
         local_bool_function, local_float_function, local_function_function, local_int_function,
-        local_nil_function, local_string_function, nil_function_ref, string_function_ref,
+        local_nil_function, local_string_function, local_tuple_function, nil_function_ref,
+        string_function_ref, tuple_function_closure, tuple_function_ref,
     };
     use crate::plan::{
         BoolFunctionExprKind, Expr, ExprKind, FloatFunctionExprKind, FunctionExpr,
         FunctionExprKind, FunctionFunctionId, FunctionType, IntFunctionExprKind,
         IntFunctionFunctionId, NilFunctionExprKind, ParamLocal, RuntimeFunctionId,
-        StringFunctionExprKind, ValueType,
+        StringFunctionExprKind, TupleFunctionExprKind, ValueType,
     };
     use crate::planner::dsl::expression::{Function, float, int};
 
@@ -325,6 +391,15 @@ mod tests {
             Expr::from(nil_function_ref(
                 0,
                 [crate::plan::LocalId::Nil(crate::plan::NilLocalId(0))],
+            ))
+            .kind(),
+            ExprKind::Function(_),
+        ));
+        assert!(matches!(
+            Expr::from(tuple_function_ref(
+                0,
+                [crate::plan::LocalId::Int(crate::plan::IntLocalId(0))],
+                [ValueType::Int, ValueType::String],
             ))
             .kind(),
             ExprKind::Function(_),
@@ -399,6 +474,17 @@ mod tests {
             .kind(),
             NilFunctionExprKind::LocalGet { .. },
         ));
+        assert!(matches!(
+            local_tuple_function(
+                0,
+                "f",
+                [ValueType::Int],
+                [ValueType::Int, ValueType::String]
+            )
+            .0
+            .kind(),
+            TupleFunctionExprKind::LocalGet { .. },
+        ));
         assert_eq!(
             local_function_function(
                 0,
@@ -459,6 +545,20 @@ mod tests {
                     vec![ValueType::Int],
                     ValueType::Int,
                 ))),
+            ),
+        );
+        assert_eq!(
+            tuple_function_closure(
+                0,
+                [ParamLocal::int(crate::plan::IntLocalId(0))],
+                [crate::planner::dsl::expression::capture_int(0, int(1))],
+                [ValueType::Int, ValueType::String],
+            )
+            .0
+            .type_(),
+            &FunctionType::new(
+                vec![ValueType::Int],
+                ValueType::Tuple(vec![ValueType::Int, ValueType::String]),
             ),
         );
     }

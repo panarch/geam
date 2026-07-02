@@ -4,7 +4,8 @@ use super::{
     FunctionFunctionFunctionId, FunctionFunctionReturn, FunctionPlan, IntFunctionFunctionId,
     IntFunctionId, IntFunctionReturn, IntReturn, NilFunctionFunctionId, NilFunctionId,
     NilFunctionReturn, NilReturn, RuntimeFunction, RuntimeFunctionId, StringFunctionFunctionId,
-    StringFunctionId, StringFunctionReturn, StringReturn,
+    StringFunctionId, StringFunctionReturn, StringReturn, TupleFunctionFunctionId, TupleFunctionId,
+    TupleFunctionReturn, TupleReturn,
 };
 use crate::plan::ReturnExprKind;
 
@@ -15,11 +16,13 @@ pub(super) struct RuntimePlan {
     string_functions: Vec<RuntimeFunction<StringReturn>>,
     bool_functions: Vec<RuntimeFunction<BoolReturn>>,
     nil_functions: Vec<RuntimeFunction<NilReturn>>,
+    tuple_functions: Vec<RuntimeFunction<TupleReturn>>,
     int_function_functions: Vec<RuntimeFunction<IntFunctionReturn>>,
     float_function_functions: Vec<RuntimeFunction<FloatFunctionReturn>>,
     string_function_functions: Vec<RuntimeFunction<StringFunctionReturn>>,
     bool_function_functions: Vec<RuntimeFunction<BoolFunctionReturn>>,
     nil_function_functions: Vec<RuntimeFunction<NilFunctionReturn>>,
+    tuple_function_functions: Vec<RuntimeFunction<TupleFunctionReturn>>,
     function_function_functions: Vec<RuntimeFunction<FunctionFunctionReturn>>,
 }
 
@@ -67,6 +70,10 @@ impl RuntimePlan {
         &self.nil_functions[id.0]
     }
 
+    pub(super) fn tuple_function(&self, id: TupleFunctionId) -> &RuntimeFunction<TupleReturn> {
+        &self.tuple_functions[id.0]
+    }
+
     pub(super) fn int_function_function(
         &self,
         id: IntFunctionFunctionId,
@@ -102,6 +109,13 @@ impl RuntimePlan {
         &self.nil_function_functions[id.0]
     }
 
+    pub(super) fn tuple_function_function(
+        &self,
+        id: TupleFunctionFunctionId,
+    ) -> &RuntimeFunction<TupleFunctionReturn> {
+        &self.tuple_function_functions[id.0]
+    }
+
     pub(super) fn function_function_function(
         &self,
         id: FunctionFunctionFunctionId,
@@ -117,11 +131,13 @@ struct RuntimePlanBuilder {
     string_functions: Vec<(usize, RuntimeFunction<StringReturn>)>,
     bool_functions: Vec<(usize, RuntimeFunction<BoolReturn>)>,
     nil_functions: Vec<(usize, RuntimeFunction<NilReturn>)>,
+    tuple_functions: Vec<(usize, RuntimeFunction<TupleReturn>)>,
     int_function_functions: Vec<(usize, RuntimeFunction<IntFunctionReturn>)>,
     float_function_functions: Vec<(usize, RuntimeFunction<FloatFunctionReturn>)>,
     string_function_functions: Vec<(usize, RuntimeFunction<StringFunctionReturn>)>,
     bool_function_functions: Vec<(usize, RuntimeFunction<BoolFunctionReturn>)>,
     nil_function_functions: Vec<(usize, RuntimeFunction<NilFunctionReturn>)>,
+    tuple_function_functions: Vec<(usize, RuntimeFunction<TupleFunctionReturn>)>,
     function_function_functions: Vec<(usize, RuntimeFunction<FunctionFunctionReturn>)>,
 }
 
@@ -138,11 +154,13 @@ impl RuntimePlanBuilder {
             string_functions: sort_functions(self.string_functions),
             bool_functions: sort_functions(self.bool_functions),
             nil_functions: sort_functions(self.nil_functions),
+            tuple_functions: sort_functions(self.tuple_functions),
             int_function_functions: sort_functions(self.int_function_functions),
             float_function_functions: sort_functions(self.float_function_functions),
             string_function_functions: sort_functions(self.string_function_functions),
             bool_function_functions: sort_functions(self.bool_function_functions),
             nil_function_functions: sort_functions(self.nil_function_functions),
+            tuple_function_functions: sort_functions(self.tuple_function_functions),
             function_function_functions: sort_functions(self.function_function_functions),
         }
     }
@@ -192,6 +210,18 @@ fn runtime_function(function: &FunctionPlan, runtime_functions: &mut RuntimePlan
         }
         ReturnExprKind::Nil { runtime_id, body } => {
             runtime_functions.nil_functions.push((
+                runtime_id.0,
+                RuntimeFunction::new(
+                    function.frame_layout(),
+                    function.steps().to_vec(),
+                    body.clone(),
+                ),
+            ));
+        }
+        ReturnExprKind::Tuple {
+            runtime_id, body, ..
+        } => {
+            runtime_functions.tuple_functions.push((
                 runtime_id.0,
                 RuntimeFunction::new(
                     function.frame_layout(),
@@ -252,6 +282,18 @@ fn runtime_function(function: &FunctionPlan, runtime_functions: &mut RuntimePlan
             runtime_id, body, ..
         } => {
             runtime_functions.nil_function_functions.push((
+                runtime_id.0,
+                RuntimeFunction::new(
+                    function.frame_layout(),
+                    function.steps().to_vec(),
+                    body.clone(),
+                ),
+            ));
+        }
+        ReturnExprKind::TupleFunction {
+            runtime_id, body, ..
+        } => {
+            runtime_functions.tuple_function_functions.push((
                 runtime_id.0,
                 RuntimeFunction::new(
                     function.frame_layout(),

@@ -1,7 +1,7 @@
 use crate::plan::{
     BoolExpr, BoolFunctionFunctionId, BoolFunctionId, BoolFunctionLocalId, BoolFunctionValue,
     CaptureArg, FloatExpr, FunctionFunctionExpr, FunctionType, IntExpr, ParamLocal, Step,
-    StringExpr,
+    StringExpr, TupleExpr,
 };
 use ecow::EcoString;
 use num_bigint::BigInt;
@@ -32,6 +32,11 @@ pub(crate) enum BoolFunctionExprKind {
     FunctionCall {
         function: Box<FunctionFunctionExpr>,
         args: Vec<crate::plan::CallArg>,
+        type_: FunctionType,
+    },
+    TupleIndex {
+        tuple: Box<TupleExpr>,
+        index: usize,
         type_: FunctionType,
     },
     BoolCase {
@@ -120,6 +125,17 @@ impl BoolFunctionExpr {
             kind: BoolFunctionExprKind::FunctionCall {
                 function: Box::new(function),
                 args,
+                type_,
+            },
+        }
+    }
+
+    pub(crate) fn tuple_index(tuple: TupleExpr, index: usize, type_: FunctionType) -> Self {
+        Self {
+            type_: type_.clone(),
+            kind: BoolFunctionExprKind::TupleIndex {
+                tuple: Box::new(tuple),
+                index,
                 type_,
             },
         }
@@ -229,6 +245,10 @@ mod tests {
             BoolFunctionExprKind::FunctionCall { .. },
         ));
         assert!(matches!(
+            BoolFunctionExpr::tuple_index(tuple_expr(), 0, function_type()).kind(),
+            BoolFunctionExprKind::TupleIndex { .. },
+        ));
+        assert!(matches!(
             BoolFunctionExpr::bool_case(BoolExpr::value(true), function_value(), function_value(),)
                 .kind(),
             BoolFunctionExprKind::BoolCase { .. },
@@ -283,5 +303,14 @@ mod tests {
             Vec::new(),
             function_type(),
         ))
+    }
+
+    fn tuple_expr() -> crate::plan::TupleExpr {
+        crate::plan::TupleExpr::value(
+            vec![Expr::function(crate::plan::FunctionExpr::bool(
+                function_value(),
+            ))],
+            vec![ValueType::Function(Box::new(function_type()))],
+        )
     }
 }

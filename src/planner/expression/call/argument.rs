@@ -1,23 +1,18 @@
-use super::{CallArgumentMode, CaptureSubstitution};
-use crate::plan::{CallArg, Expr, ParamLocal, ValueType};
+use super::CaptureSubstitution;
+use crate::plan::{CallArg, Expr, ParamLocal, TupleFunctionLocalId, TupleLocalId, ValueType};
 use crate::planner::context::{FunctionParam, PlanContext};
-use crate::planner::error::{
-    InvalidCallShapeReason, InvalidTypedAstReason, InvalidUseShapeReason, PlanError,
-};
-use gleam_core::ast::{
-    CallArg as GleamCallArg, FunctionLiteralKind, ImplicitCallArgOrigin, TypedExpr,
-};
+use crate::planner::error::{InvalidCallShapeReason, InvalidTypedAstReason, PlanError};
+use gleam_core::ast::{CallArg as GleamCallArg, TypedExpr};
 
 pub(super) fn plan_call_args(
     arguments: Vec<GleamCallArg<TypedExpr>>,
     params: &[FunctionParam],
     context: &mut PlanContext<'_>,
     capture: Option<&CaptureSubstitution>,
-    call_argument_mode: CallArgumentMode,
 ) -> Result<Vec<CallArg>, PlanError> {
     let mut args = Vec::with_capacity(arguments.len());
     for (argument, param) in arguments.into_iter().zip(params) {
-        let expression = plan_argument_value(argument, capture, context, call_argument_mode)?;
+        let expression = plan_argument_value(argument, capture, context)?;
         let actual = expression.value_type();
         let arg = match expression.into_call_arg(&param.local) {
             Some(arg) => arg,
@@ -33,12 +28,11 @@ pub(super) fn plan_function_call_args(
     params: &[ValueType],
     context: &mut PlanContext<'_>,
     capture: Option<&CaptureSubstitution>,
-    call_argument_mode: CallArgumentMode,
 ) -> Result<Vec<CallArg>, PlanError> {
     let locals = function_call_param_locals(params);
     let mut args = Vec::with_capacity(arguments.len());
     for (argument, local) in arguments.into_iter().zip(&locals) {
-        let expression = plan_argument_value(argument, capture, context, call_argument_mode)?;
+        let expression = plan_argument_value(argument, capture, context)?;
         let actual = expression.value_type();
         let arg = match expression.into_call_arg(local) {
             Some(arg) => arg,
@@ -55,11 +49,13 @@ fn function_call_param_locals(params: &[ValueType]) -> Vec<ParamLocal> {
     let mut next_float = 0;
     let mut next_bool = 0;
     let mut next_nil = 0;
+    let mut next_tuple = 0;
     let mut next_int_function = 0;
     let mut next_string_function = 0;
     let mut next_float_function = 0;
     let mut next_bool_function = 0;
     let mut next_nil_function = 0;
+    let mut next_tuple_function = 0;
     let mut next_function_function = 0;
 
     params
@@ -88,6 +84,11 @@ fn function_call_param_locals(params: &[ValueType]) -> Vec<ParamLocal> {
             ValueType::Nil => {
                 let local = ParamLocal::nil(crate::plan::NilLocalId(next_nil));
                 next_nil += 1;
+                local
+            }
+            ValueType::Tuple(type_) => {
+                let local = ParamLocal::tuple(TupleLocalId(next_tuple), type_.clone());
+                next_tuple += 1;
                 local
             }
             ValueType::Function(type_) => match type_.return_() {
@@ -131,6 +132,14 @@ fn function_call_param_locals(params: &[ValueType]) -> Vec<ParamLocal> {
                     next_nil_function += 1;
                     local
                 }
+                ValueType::Tuple(_) => {
+                    let local = ParamLocal::tuple_function(
+                        TupleFunctionLocalId(next_tuple_function),
+                        type_.as_ref().clone(),
+                    );
+                    next_tuple_function += 1;
+                    local
+                }
                 ValueType::Function(_) => {
                     let local = ParamLocal::function_function(
                         crate::plan::FunctionFunctionLocalId(next_function_function),
@@ -160,14 +169,7 @@ fn plan_argument_value(
     argument: GleamCallArg<TypedExpr>,
     capture: Option<&CaptureSubstitution>,
     context: &mut PlanContext<'_>,
-    call_argument_mode: CallArgumentMode,
 ) -> Result<Expr, PlanError> {
-    if matches!(call_argument_mode, CallArgumentMode::Use)
-        && matches!(argument.implicit, Some(ImplicitCallArgOrigin::Use))
-    {
-        return plan_use_callback_argument(argument.value, context);
-    }
-
     if let Some(capture) = capture
         && super::is_capture_local(&argument.value, &capture.name)
     {
@@ -175,27 +177,6 @@ fn plan_argument_value(
     }
 
     super::super::plan_expr(argument.value, context)
-}
-
-fn plan_use_callback_argument(
-    argument: TypedExpr,
-    context: &mut PlanContext<'_>,
-) -> Result<Expr, PlanError> {
-    match argument {
-        TypedExpr::Fn {
-            type_,
-            kind: FunctionLiteralKind::Use { .. },
-            arguments,
-            body,
-            ..
-        } => super::super::function::plan_use_callback(type_, arguments, body, context),
-        TypedExpr::Fn { .. } => Err(super::invalid_use_shape(
-            InvalidUseShapeReason::CallbackLiteralKindNotUse,
-        )),
-        _ => Err(super::invalid_use_shape(
-            InvalidUseShapeReason::CallbackNotFunctionLiteral,
-        )),
-    }
 }
 
 #[cfg(test)]
@@ -234,6 +215,10 @@ mod tests {
                     ValueType::Nil,
                 ))),
                 ValueType::Function(Box::new(FunctionType::new(
+                    vec![ValueType::Tuple(vec![ValueType::Int])],
+                    ValueType::Tuple(vec![ValueType::Int]),
+                ))),
+                ValueType::Function(Box::new(FunctionType::new(
                     Vec::new(),
                     ValueType::Function(Box::new(FunctionType::new(Vec::new(), ValueType::Int,))),
                 ))),
@@ -264,6 +249,13 @@ mod tests {
                 ParamLocal::nil_function(
                     crate::plan::NilFunctionLocalId(0),
                     FunctionType::new(vec![ValueType::Nil], ValueType::Nil),
+                ),
+                ParamLocal::tuple_function(
+                    crate::plan::TupleFunctionLocalId(0),
+                    FunctionType::new(
+                        vec![ValueType::Tuple(vec![ValueType::Int])],
+                        ValueType::Tuple(vec![ValueType::Int]),
+                    ),
                 ),
                 ParamLocal::function_function(
                     crate::plan::FunctionFunctionLocalId(0),

@@ -1,4 +1,4 @@
-use super::{Bool, Float, Int, String};
+use super::{Bool, Float, Int, String, Tuple};
 use crate::plan::{BoolExpr, Expr, FloatExpr, IntExpr, StringExpr};
 
 pub(crate) fn equal(left: impl Into<Expr>, right: impl Into<Expr>) -> Bool {
@@ -91,6 +91,12 @@ impl String {
     }
 }
 
+impl Tuple {
+    pub(crate) fn index_int(self, index: usize) -> Int {
+        Int(IntExpr::tuple_index(self.into(), index))
+    }
+}
+
 impl Bool {
     pub(crate) fn and_bool(self, right: Self) -> Self {
         Self(BoolExpr::and(self.into(), right.into()))
@@ -108,8 +114,8 @@ impl Bool {
 #[cfg(test)]
 mod tests {
     use super::{equal, not_equal};
-    use crate::plan::{BoolExprKind, FloatExprKind, IntExprKind, StringExprKind};
-    use crate::planner::dsl::expression::{bool_, float, int, string};
+    use crate::plan::{BoolExprKind, FloatExprKind, IntExprKind, StringExprKind, ValueType};
+    use crate::planner::dsl::expression::{bool_, float, int, local_tuple, string};
 
     #[test]
     fn int_operator_helpers_build_operator_shapes() {
@@ -220,6 +226,17 @@ mod tests {
         assert!(matches!(
             string("a").concatenate(string("b")).0.kind(),
             StringExprKind::Concatenate { .. },
+        ));
+    }
+
+    #[test]
+    fn tuple_projection_helpers_build_projection_shapes() {
+        assert!(matches!(
+            local_tuple(0, "pair", [ValueType::Int])
+                .index_int(0)
+                .0
+                .kind(),
+            IntExprKind::TupleIndex { .. },
         ));
     }
 }

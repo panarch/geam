@@ -18,8 +18,16 @@ fn nil_value() {
   Nil
 }
 
+fn tuple_value() {
+  #(1, "value")
+}
+
 fn get_int_value() {
   int_value
+}
+
+fn get_tuple_value() {
+  tuple_value
 }
 
 pub fn main() {
@@ -28,7 +36,9 @@ pub fn main() {
   float_value
   bool_value
   nil_value
+  tuple_value
   get_int_value
+  get_tuple_value
 
   1
 }

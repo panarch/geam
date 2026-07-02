@@ -36,6 +36,10 @@ behavior, or a source-visible semantic difference.
 cannot encode in the current plan shape. Adding a new `ExecutionError`
 constructor or invariant kind requires explicit design review.
 
+Tuple element projection may add a narrow `ExecutionError` invariant only after
+the planner preserves the tuple element types in the plan and selects a typed
+expression family for the projected result.
+
 ## Plan Construction Rules
 
 Plan construction is not a validation layer. Reaching an `ExecutionPlan` or plan

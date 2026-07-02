@@ -70,10 +70,6 @@ pub enum UnsupportedExpressionKind {
     Panic,
     #[error("todo")]
     Todo,
-    #[error("tuple")]
-    Tuple,
-    #[error("tuple index")]
-    TupleIndex,
     #[error("function literal type is not supported")]
     UnsupportedFunctionLiteralType,
 }

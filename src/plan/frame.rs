@@ -8,7 +8,7 @@ use super::function::{Param, ParamLocal, ReturnExpr};
 use super::id::{
     BoolFunctionLocalId, BoolLocalId, FloatFunctionLocalId, FloatLocalId, FunctionFunctionLocalId,
     IntFunctionLocalId, IntLocalId, NilFunctionLocalId, NilLocalId, StringFunctionLocalId,
-    StringLocalId,
+    StringLocalId, TupleFunctionLocalId, TupleLocalId,
 };
 use super::step::Step;
 
@@ -19,11 +19,13 @@ pub(crate) struct FrameLayout {
     strings: usize,
     bools: usize,
     nils: usize,
+    tuples: usize,
     int_functions: usize,
     float_functions: usize,
     string_functions: usize,
     bool_functions: usize,
     nil_functions: usize,
+    tuple_functions: usize,
     function_functions: usize,
 }
 
@@ -51,11 +53,13 @@ impl FrameLayout {
             ParamLocal::String(local) => self.include_string(*local),
             ParamLocal::Bool(local) => self.include_bool(*local),
             ParamLocal::Nil(local) => self.include_nil(*local),
+            ParamLocal::Tuple { local, .. } => self.include_tuple(*local),
             ParamLocal::IntFunction { local, .. } => self.include_int_function(*local),
             ParamLocal::FloatFunction { local, .. } => self.include_float_function(*local),
             ParamLocal::StringFunction { local, .. } => self.include_string_function(*local),
             ParamLocal::BoolFunction { local, .. } => self.include_bool_function(*local),
             ParamLocal::NilFunction { local, .. } => self.include_nil_function(*local),
+            ParamLocal::TupleFunction { local, .. } => self.include_tuple_function(*local),
             ParamLocal::FunctionFunction { local, .. } => self.include_function_function(*local),
         }
     }
@@ -80,6 +84,10 @@ impl FrameLayout {
         self.nils = self.nils.max(local.0 + 1);
     }
 
+    pub(crate) fn include_tuple(&mut self, local: TupleLocalId) {
+        self.tuples = self.tuples.max(local.0 + 1);
+    }
+
     pub(crate) fn include_int_function(&mut self, local: IntFunctionLocalId) {
         self.int_functions = self.int_functions.max(local.0 + 1);
     }
@@ -98,6 +106,10 @@ impl FrameLayout {
 
     pub(crate) fn include_nil_function(&mut self, local: NilFunctionLocalId) {
         self.nil_functions = self.nil_functions.max(local.0 + 1);
+    }
+
+    pub(crate) fn include_tuple_function(&mut self, local: TupleFunctionLocalId) {
+        self.tuple_functions = self.tuple_functions.max(local.0 + 1);
     }
 
     pub(crate) fn include_function_function(&mut self, local: FunctionFunctionLocalId) {
@@ -125,6 +137,10 @@ impl FrameLayout {
         self.nils
     }
 
+    pub(crate) fn tuples(self) -> usize {
+        self.tuples
+    }
+
     pub(crate) fn int_functions(self) -> usize {
         self.int_functions
     }
@@ -143,6 +159,10 @@ impl FrameLayout {
 
     pub(crate) fn nil_functions(self) -> usize {
         self.nil_functions
+    }
+
+    pub(crate) fn tuple_functions(self) -> usize {
+        self.tuple_functions
     }
 
     pub(crate) fn function_functions(self) -> usize {
@@ -208,7 +228,8 @@ mod tests {
     use super::FrameLayout;
     use crate::plan::{
         BoolLocalId, FloatFunctionLocalId, FloatLocalId, IntFunctionLocalId, IntLocalId,
-        NilFunctionLocalId, NilLocalId, ParamLocal, StringLocalId,
+        NilFunctionLocalId, NilLocalId, ParamLocal, StringLocalId, TupleFunctionLocalId,
+        TupleLocalId, ValueType,
     };
 
     #[test]
@@ -219,7 +240,7 @@ mod tests {
         assert_eq!(layout, cloned);
         assert_eq!(
             format!("{layout:?}"),
-            "FrameLayout { ints: 0, floats: 0, strings: 0, bools: 0, nils: 0, int_functions: 0, float_functions: 0, string_functions: 0, bool_functions: 0, nil_functions: 0, function_functions: 0 }",
+            "FrameLayout { ints: 0, floats: 0, strings: 0, bools: 0, nils: 0, tuples: 0, int_functions: 0, float_functions: 0, string_functions: 0, bool_functions: 0, nil_functions: 0, tuple_functions: 0, function_functions: 0 }",
         );
     }
 
@@ -236,17 +257,24 @@ mod tests {
         layout.include_local(&ParamLocal::string(StringLocalId(2)));
         layout.include_local(&ParamLocal::bool(BoolLocalId(3)));
         layout.include_local(&ParamLocal::nil(NilLocalId(4)));
+        layout.include_local(&ParamLocal::tuple(TupleLocalId(5), vec![ValueType::Int]));
         layout.include_int_function(IntFunctionLocalId(5));
         layout.include_float_function(FloatFunctionLocalId(6));
         layout.include_nil_function(NilFunctionLocalId(7));
+        layout.include_local(&ParamLocal::tuple_function(
+            TupleFunctionLocalId(8),
+            crate::plan::FunctionType::new(Vec::new(), ValueType::Tuple(vec![ValueType::Int])),
+        ));
 
         assert_eq!(layout.ints(), 2);
         assert_eq!(layout.floats(), 3);
         assert_eq!(layout.strings(), 3);
         assert_eq!(layout.bools(), 4);
         assert_eq!(layout.nils(), 5);
+        assert_eq!(layout.tuples(), 6);
         assert_eq!(layout.int_functions(), 6);
         assert_eq!(layout.float_functions(), 7);
         assert_eq!(layout.nil_functions(), 8);
+        assert_eq!(layout.tuple_functions(), 9);
     }
 }

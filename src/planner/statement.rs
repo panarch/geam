@@ -147,6 +147,10 @@ pub(in crate::planner) fn plan_variable_runtime_step(
             let local = context.define_nil_local(name.clone());
             Ok(Step::let_nil(local, name, value))
         }
+        ExprKind::Tuple(value) => {
+            let local = context.define_tuple_local(name.clone(), value.type_().to_vec());
+            Ok(Step::let_tuple(local, name, value))
+        }
         ExprKind::Function(value) => Ok(match value.into_kind() {
             FunctionExprKind::Int(value) => {
                 let local = context.define_int_function_local(name.clone(), value.type_().clone());
@@ -169,6 +173,11 @@ pub(in crate::planner) fn plan_variable_runtime_step(
             FunctionExprKind::Nil(value) => {
                 let local = context.define_nil_function_local(name.clone(), value.type_().clone());
                 Step::let_nil_function(local, name, value)
+            }
+            FunctionExprKind::Tuple(value) => {
+                let local =
+                    context.define_tuple_function_local(name.clone(), value.type_().clone());
+                Step::let_tuple_function(local, name, value)
             }
             FunctionExprKind::Function(value) => {
                 let local =

@@ -1,11 +1,11 @@
 use super::{
     Bool, BoolFunction, Float, FloatFunction, Int, IntFunction, Nil, NilFunction, String,
-    StringFunction,
+    StringFunction, Tuple, TupleFunction,
 };
 use crate::plan::{
     BoolFunctionLocalId, BoolLocalId, CallArg, CaptureArg, FloatFunctionLocalId, FloatLocalId,
     IntFunctionLocalId, IntLocalId, NilFunctionLocalId, NilLocalId, StringFunctionLocalId,
-    StringLocalId,
+    StringLocalId, TupleFunctionLocalId, TupleLocalId,
 };
 
 pub(crate) fn int_arg(local: usize, value: Int) -> CallArg {
@@ -60,16 +60,29 @@ pub(crate) fn nil_function_arg(local: usize, value: NilFunction) -> CallArg {
     CallArg::nil_function(NilFunctionLocalId(local), value.into())
 }
 
+pub(crate) fn tuple_arg(local: usize, value: Tuple) -> CallArg {
+    CallArg::tuple(TupleLocalId(local), value.into())
+}
+
+pub(crate) fn capture_tuple(local: usize, value: Tuple) -> CaptureArg {
+    CaptureArg::tuple(TupleLocalId(local), value.into())
+}
+
+pub(crate) fn tuple_function_arg(local: usize, value: TupleFunction) -> CallArg {
+    CallArg::tuple_function(TupleFunctionLocalId(local), value.into())
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
-        bool_arg, bool_function_arg, float_arg, float_function_arg, int_arg, int_function_arg,
-        int_function_call_arg, nil_arg, nil_function_arg, string_arg, string_function_arg,
+        bool_arg, bool_function_arg, capture_tuple, float_arg, float_function_arg, int_arg,
+        int_function_arg, int_function_call_arg, nil_arg, nil_function_arg, string_arg,
+        string_function_arg, tuple_arg, tuple_function_arg,
     };
-    use crate::plan::{CallArgKind, ParamLocal};
+    use crate::plan::{CallArgKind, CaptureArgKind, Expr, ParamLocal};
     use crate::planner::dsl::expression::{
         bool_, bool_function_ref, float, float_function_ref, int, int_function_ref, nil,
-        nil_function_ref, string, string_function_ref,
+        nil_function_ref, string, string_function_ref, tuple, tuple_function_ref,
     };
 
     #[test]
@@ -111,6 +124,22 @@ mod tests {
         assert!(matches!(
             nil_function_arg(0, nil_function_ref(0, Vec::<ParamLocal>::new())).kind(),
             CallArgKind::NilFunction { .. },
+        ));
+        assert!(matches!(
+            tuple_arg(0, tuple([Expr::from(int(1)), Expr::from(string("one"))])).kind(),
+            CallArgKind::Tuple { .. },
+        ));
+        assert!(matches!(
+            capture_tuple(0, tuple([Expr::from(int(1)), Expr::from(string("one"))])).kind(),
+            CaptureArgKind::Tuple { .. },
+        ));
+        assert!(matches!(
+            tuple_function_arg(
+                0,
+                tuple_function_ref(0, Vec::<ParamLocal>::new(), [crate::plan::ValueType::Int]),
+            )
+            .kind(),
+            CallArgKind::TupleFunction { .. },
         ));
     }
 }

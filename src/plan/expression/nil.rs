@@ -1,4 +1,4 @@
-use super::{BoolExpr, CallArg, FloatExpr, IntExpr, NilFunctionExpr, StringExpr};
+use super::{BoolExpr, CallArg, FloatExpr, IntExpr, NilFunctionExpr, StringExpr, TupleExpr};
 use crate::plan::{NilFunctionId, NilLocalId, Step};
 use ecow::EcoString;
 use num_bigint::BigInt;
@@ -22,6 +22,10 @@ pub(crate) enum NilExprKind {
     FunctionCall {
         function: Box<NilFunctionExpr>,
         args: Vec<CallArg>,
+    },
+    TupleIndex {
+        tuple: Box<TupleExpr>,
+        index: usize,
     },
     BoolCase {
         subject: Box<BoolExpr>,
@@ -73,6 +77,15 @@ impl NilExpr {
             kind: NilExprKind::FunctionCall {
                 function: Box::new(function),
                 args,
+            },
+        }
+    }
+
+    pub(crate) fn tuple_index(tuple: TupleExpr, index: usize) -> Self {
+        Self {
+            kind: NilExprKind::TupleIndex {
+                tuple: Box::new(tuple),
+                index,
             },
         }
     }
@@ -154,6 +167,17 @@ mod tests {
         assert!(matches!(
             NilExpr::function_call(function_expr(), Vec::new()).kind(),
             NilExprKind::FunctionCall { .. }
+        ));
+        assert!(matches!(
+            NilExpr::tuple_index(
+                crate::plan::TupleExpr::value(
+                    vec![Expr::nil(NilExpr::value())],
+                    vec![crate::plan::ValueType::Nil],
+                ),
+                0,
+            )
+            .kind(),
+            NilExprKind::TupleIndex { .. }
         ));
         assert!(matches!(
             NilExpr::bool_case(BoolExpr::value(true), NilExpr::value(), NilExpr::value()).kind(),

@@ -1,5 +1,5 @@
-use super::{Bool, Float, Int, Nil, String};
-use crate::plan::{BoolExpr, FloatExpr, IntExpr, NilExpr, StringExpr};
+use super::{Bool, Float, Int, Nil, String, Tuple};
+use crate::plan::{BoolExpr, Expr, FloatExpr, IntExpr, NilExpr, StringExpr, TupleExpr};
 use ecow::EcoString;
 use num_bigint::BigInt;
 
@@ -23,9 +23,16 @@ pub(crate) fn nil() -> Nil {
     Nil(NilExpr::value())
 }
 
+pub(crate) fn tuple(elements: impl IntoIterator<Item = impl Into<Expr>>) -> Tuple {
+    let elements = elements.into_iter().map(Into::into).collect::<Vec<_>>();
+    let type_ = elements.iter().map(Expr::value_type).collect();
+
+    Tuple(TupleExpr::value(elements, type_))
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{bool_, float, int, nil, string};
+    use super::{bool_, float, int, nil, string, tuple};
     use crate::plan::{Expr, ExprKind};
 
     #[test]
@@ -38,5 +45,9 @@ mod tests {
         assert!(matches!(Expr::from(float(1.0)).kind(), ExprKind::Float(_)));
         assert!(matches!(Expr::from(bool_(true)).kind(), ExprKind::Bool(_)));
         assert!(matches!(Expr::from(nil()).kind(), ExprKind::Nil(_)));
+        assert!(matches!(
+            Expr::from(tuple([Expr::from(int(1)), Expr::from(string("one"))])).kind(),
+            ExprKind::Tuple(_),
+        ));
     }
 }

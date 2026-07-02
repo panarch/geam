@@ -10,6 +10,7 @@ impl FrameLayout {
                 CallArgKind::Float { value, .. } => self.include_float_expr(value),
                 CallArgKind::Bool { value, .. } => self.include_bool_expr(value),
                 CallArgKind::Nil { value, .. } => self.include_nil_expr(value),
+                CallArgKind::Tuple { value, .. } => self.include_tuple_expr(value),
                 CallArgKind::IntFunction { value, .. } => self.include_int_function_expr(value),
                 CallArgKind::StringFunction { value, .. } => {
                     self.include_string_function_expr(value);
@@ -19,6 +20,9 @@ impl FrameLayout {
                 }
                 CallArgKind::BoolFunction { value, .. } => self.include_bool_function_expr(value),
                 CallArgKind::NilFunction { value, .. } => self.include_nil_function_expr(value),
+                CallArgKind::TupleFunction { value, .. } => {
+                    self.include_tuple_function_expr(value);
+                }
                 CallArgKind::FunctionFunction { value, .. } => {
                     self.include_function_function_expr(value);
                 }
@@ -34,6 +38,7 @@ impl FrameLayout {
                 CaptureArgKind::Float { value, .. } => self.include_float_expr(value),
                 CaptureArgKind::Bool { value, .. } => self.include_bool_expr(value),
                 CaptureArgKind::Nil { value, .. } => self.include_nil_expr(value),
+                CaptureArgKind::Tuple { value, .. } => self.include_tuple_expr(value),
                 CaptureArgKind::IntFunction { value, .. } => self.include_int_function_expr(value),
                 CaptureArgKind::StringFunction { value, .. } => {
                     self.include_string_function_expr(value);
@@ -45,6 +50,9 @@ impl FrameLayout {
                     self.include_bool_function_expr(value)
                 }
                 CaptureArgKind::NilFunction { value, .. } => self.include_nil_function_expr(value),
+                CaptureArgKind::TupleFunction { value, .. } => {
+                    self.include_tuple_function_expr(value);
+                }
                 CaptureArgKind::FunctionFunction { value, .. } => {
                     self.include_function_function_expr(value);
                 }
@@ -61,7 +69,8 @@ mod tests {
         FloatFunctionExpr, FloatFunctionLocalId, FloatLocalId, FunctionExpr, FunctionFunctionExpr,
         FunctionFunctionId, FunctionFunctionLocalId, IntExpr, IntFunctionFunctionId, IntFunctionId,
         IntFunctionLocalId, ReturnExpr, Step, StringExpr, StringFunctionExpr,
-        StringFunctionLocalId, StringLocalId,
+        StringFunctionLocalId, StringLocalId, TupleExpr, TupleFunctionExpr, TupleFunctionLocalId,
+        TupleLocalId, ValueType,
     };
 
     #[test]
@@ -115,6 +124,18 @@ mod tests {
                                 .clone(),
                         ),
                     ),
+                    CallArg::tuple(
+                        TupleLocalId(1),
+                        TupleExpr::local_get(TupleLocalId(1), "tuple_arg".into(), tuple_type()),
+                    ),
+                    CallArg::tuple_function(
+                        TupleFunctionLocalId(1),
+                        TupleFunctionExpr::local_get(
+                            TupleFunctionLocalId(1),
+                            "tuple_function_arg".into(),
+                            tuple_function_type(),
+                        ),
+                    ),
                     CallArg::function_function(
                         FunctionFunctionLocalId(1),
                         FunctionFunctionExpr::local_get(
@@ -150,6 +171,14 @@ mod tests {
                             crate::plan::NilExpr::local_get(
                                 crate::plan::NilLocalId(17),
                                 "nil_capture".into(),
+                            ),
+                        ),
+                        CaptureArg::tuple(
+                            TupleLocalId(2),
+                            TupleExpr::local_get(
+                                TupleLocalId(2),
+                                "tuple_capture".into(),
+                                tuple_type(),
                             ),
                         ),
                         CaptureArg::int_function(
@@ -200,6 +229,14 @@ mod tests {
                                     .clone(),
                             ),
                         ),
+                        CaptureArg::tuple_function(
+                            TupleFunctionLocalId(2),
+                            TupleFunctionExpr::local_get(
+                                TupleFunctionLocalId(2),
+                                "tuple_function_capture".into(),
+                                tuple_function_type(),
+                            ),
+                        ),
                         CaptureArg::function_function(
                             FunctionFunctionLocalId(2),
                             FunctionFunctionExpr::local_get(
@@ -228,5 +265,18 @@ mod tests {
         assert_eq!(layout.int_functions(), 19);
         assert_eq!(layout.float_functions(), 22);
         assert_eq!(layout.floats(), 21);
+        assert_eq!(layout.tuples(), 3);
+        assert_eq!(layout.tuple_functions(), 3);
+    }
+
+    fn tuple_type() -> Vec<ValueType> {
+        vec![ValueType::Int]
+    }
+
+    fn tuple_function_type() -> crate::plan::FunctionType {
+        crate::plan::FunctionType::new(
+            vec![ValueType::Tuple(tuple_type())],
+            ValueType::Tuple(tuple_type()),
+        )
     }
 }

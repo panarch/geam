@@ -1,7 +1,7 @@
 use crate::plan::{
     BoolExpr, CaptureArg, FloatExpr, FunctionFunctionExpr, FunctionType, IntExpr,
     IntFunctionFunctionId, IntFunctionId, IntFunctionLocalId, IntFunctionValue, ParamLocal, Step,
-    StringExpr,
+    StringExpr, TupleExpr,
 };
 use ecow::EcoString;
 use num_bigint::BigInt;
@@ -32,6 +32,11 @@ pub(crate) enum IntFunctionExprKind {
     FunctionCall {
         function: Box<FunctionFunctionExpr>,
         args: Vec<crate::plan::CallArg>,
+        type_: FunctionType,
+    },
+    TupleIndex {
+        tuple: Box<TupleExpr>,
+        index: usize,
         type_: FunctionType,
     },
     BoolCase {
@@ -120,6 +125,17 @@ impl IntFunctionExpr {
             kind: IntFunctionExprKind::FunctionCall {
                 function: Box::new(function),
                 args,
+                type_,
+            },
+        }
+    }
+
+    pub(crate) fn tuple_index(tuple: TupleExpr, index: usize, type_: FunctionType) -> Self {
+        Self {
+            type_: type_.clone(),
+            kind: IntFunctionExprKind::TupleIndex {
+                tuple: Box::new(tuple),
+                index,
                 type_,
             },
         }
@@ -238,6 +254,10 @@ mod tests {
             IntFunctionExprKind::FunctionCall { .. }
         ));
         assert!(matches!(
+            IntFunctionExpr::tuple_index(tuple_expr(), 0, int_function_type()).kind(),
+            IntFunctionExprKind::TupleIndex { .. }
+        ));
+        assert!(matches!(
             IntFunctionExpr::int_case(
                 IntExpr::value(1.into()),
                 vec![(1.into(), int_function_value())],
@@ -309,5 +329,14 @@ mod tests {
             Vec::new(),
             int_function_type(),
         ))
+    }
+
+    fn tuple_expr() -> crate::plan::TupleExpr {
+        crate::plan::TupleExpr::value(
+            vec![Expr::function(crate::plan::FunctionExpr::int(
+                int_function_value(),
+            ))],
+            vec![ValueType::Function(Box::new(int_function_type()))],
+        )
     }
 }

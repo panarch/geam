@@ -1,11 +1,11 @@
 use super::{
     Bool, BoolFunction, Float, FloatFunction, Function, FunctionFunction, Int, IntFunction,
-    IntoParamLocal, IntoValueType, Nil, NilFunction, String, StringFunction,
+    IntoParamLocal, IntoValueType, Nil, NilFunction, String, StringFunction, Tuple, TupleFunction,
 };
 use crate::plan::{
     BoolExpr, BoolFunctionExpr, Expr, FloatExpr, FloatFunctionExpr, FunctionExpr,
     FunctionFunctionExpr, IntExpr, IntFunctionExpr, LocalId, NilExpr, NilFunctionExpr, ParamLocal,
-    StringExpr, StringFunctionExpr, ValueType,
+    StringExpr, StringFunctionExpr, TupleExpr, TupleFunctionExpr, ValueType,
 };
 
 impl From<Int> for Expr {
@@ -35,6 +35,12 @@ impl From<Bool> for Expr {
 impl From<Nil> for Expr {
     fn from(value: Nil) -> Self {
         Self::nil(value.into())
+    }
+}
+
+impl From<Tuple> for Expr {
+    fn from(value: Tuple) -> Self {
+        Self::tuple(value.into())
     }
 }
 
@@ -70,6 +76,12 @@ impl From<Bool> for BoolExpr {
 
 impl From<Nil> for NilExpr {
     fn from(value: Nil) -> Self {
+        value.0
+    }
+}
+
+impl From<Tuple> for TupleExpr {
+    fn from(value: Tuple) -> Self {
         value.0
     }
 }
@@ -164,6 +176,30 @@ impl From<NilFunction> for Expr {
     }
 }
 
+impl From<TupleFunction> for TupleFunctionExpr {
+    fn from(value: TupleFunction) -> Self {
+        value.0
+    }
+}
+
+impl From<TupleFunction> for Function {
+    fn from(value: TupleFunction) -> Self {
+        Function(FunctionExpr::tuple(value.into()))
+    }
+}
+
+impl From<TupleFunction> for Expr {
+    fn from(value: TupleFunction) -> Self {
+        Self::function(FunctionExpr::tuple(value.into()))
+    }
+}
+
+impl From<TupleFunction> for FunctionExpr {
+    fn from(value: TupleFunction) -> Self {
+        FunctionExpr::tuple(value.into())
+    }
+}
+
 impl From<FunctionFunction> for Function {
     fn from(value: FunctionFunction) -> Self {
         Function(FunctionExpr::function(value.into()))
@@ -239,7 +275,7 @@ mod tests {
     };
     use crate::planner::dsl::expression::{
         Function, bool_, float, float_function_ref, function_function_ref, int, int_function_ref,
-        nil, string,
+        nil, string, tuple, tuple_function_ref,
     };
 
     #[test]
@@ -278,6 +314,10 @@ mod tests {
         assert!(matches!(Expr::from(bool_(true)).kind(), ExprKind::Bool(_)));
         assert!(matches!(Expr::from(nil()).kind(), ExprKind::Nil(_)));
         assert!(matches!(
+            Expr::from(tuple([Expr::from(int(1)), Expr::from(string("one"))])).kind(),
+            ExprKind::Tuple(_),
+        ));
+        assert!(matches!(
             Expr::from(int_function_ref(0, Vec::<ParamLocal>::new())).kind(),
             ExprKind::Function(_),
         ));
@@ -290,12 +330,30 @@ mod tests {
             FunctionExprKind::Float(_),
         ));
         assert!(matches!(
+            FunctionExpr::from(tuple_function_ref(
+                0,
+                Vec::<ParamLocal>::new(),
+                [ValueType::Int],
+            ))
+            .kind(),
+            FunctionExprKind::Tuple(_),
+        ));
+        assert!(matches!(
             FunctionExpr::from(Function::from(float_function_ref(
                 0,
                 Vec::<ParamLocal>::new()
             )))
             .kind(),
             FunctionExprKind::Float(_),
+        ));
+        assert!(matches!(
+            FunctionExpr::from(Function::from(tuple_function_ref(
+                0,
+                Vec::<ParamLocal>::new(),
+                [ValueType::Int],
+            )))
+            .kind(),
+            FunctionExprKind::Tuple(_),
         ));
         assert!(matches!(
             FunctionExpr::from(Function::from(function_function_ref(

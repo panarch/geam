@@ -1,11 +1,12 @@
 use super::expression::{
     BoolExpr, BoolFunctionExpr, Expr, FloatExpr, FloatFunctionExpr, FunctionFunctionExpr, IntExpr,
-    IntFunctionExpr, NilExpr, NilFunctionExpr, StringExpr, StringFunctionExpr,
+    IntFunctionExpr, NilExpr, NilFunctionExpr, StringExpr, StringFunctionExpr, TupleExpr,
+    TupleFunctionExpr,
 };
 use super::id::{
     BoolFunctionLocalId, BoolLocalId, FloatFunctionLocalId, FloatLocalId, FunctionFunctionLocalId,
     IntFunctionLocalId, IntLocalId, NilFunctionLocalId, NilLocalId, StringFunctionLocalId,
-    StringLocalId,
+    StringLocalId, TupleFunctionLocalId, TupleLocalId,
 };
 use ecow::EcoString;
 
@@ -41,6 +42,11 @@ pub(crate) enum StepKind {
         name: EcoString,
         value: NilExpr,
     },
+    LetTuple {
+        local: TupleLocalId,
+        name: EcoString,
+        value: TupleExpr,
+    },
     LetIntFunction {
         local: IntFunctionLocalId,
         name: EcoString,
@@ -65,6 +71,11 @@ pub(crate) enum StepKind {
         local: NilFunctionLocalId,
         name: EcoString,
         value: NilFunctionExpr,
+    },
+    LetTupleFunction {
+        local: TupleFunctionLocalId,
+        name: EcoString,
+        value: TupleFunctionExpr,
     },
     LetFunctionFunction {
         local: FunctionFunctionLocalId,
@@ -102,6 +113,12 @@ impl Step {
     pub(crate) fn let_nil(local: NilLocalId, name: EcoString, value: NilExpr) -> Self {
         Self {
             kind: StepKind::LetNil { local, name, value },
+        }
+    }
+
+    pub(crate) fn let_tuple(local: TupleLocalId, name: EcoString, value: TupleExpr) -> Self {
+        Self {
+            kind: StepKind::LetTuple { local, name, value },
         }
     }
 
@@ -152,6 +169,16 @@ impl Step {
     ) -> Self {
         Self {
             kind: StepKind::LetNilFunction { local, name, value },
+        }
+    }
+
+    pub(crate) fn let_tuple_function(
+        local: TupleFunctionLocalId,
+        name: EcoString,
+        value: TupleFunctionExpr,
+    ) -> Self {
+        Self {
+            kind: StepKind::LetTupleFunction { local, name, value },
         }
     }
 

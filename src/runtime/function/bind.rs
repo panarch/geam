@@ -6,7 +6,8 @@ use crate::runtime::error::ExecutionResult;
 use crate::runtime::expression::{
     eval_bool_expr, eval_bool_function_expr, eval_float_expr, eval_float_function_expr,
     eval_function_function_expr, eval_int_expr, eval_int_function_expr, eval_nil_expr,
-    eval_nil_function_expr, eval_string_expr, eval_string_function_expr,
+    eval_nil_function_expr, eval_string_expr, eval_string_function_expr, eval_tuple_expr,
+    eval_tuple_function_expr,
 };
 use crate::runtime::frame::Frame;
 
@@ -62,6 +63,10 @@ fn bind_arguments_into(
                 eval_nil_expr(plan, caller_frame, value)?;
                 frame.set_nil(*local);
             }
+            CallArgKind::Tuple { local, value } => {
+                let value = eval_tuple_expr(plan, caller_frame, value)?;
+                frame.set_tuple(*local, value);
+            }
             CallArgKind::IntFunction { local, value } => {
                 let value = eval_int_function_expr(plan, caller_frame, value)?;
                 frame.set_int_function(*local, value);
@@ -81,6 +86,10 @@ fn bind_arguments_into(
             CallArgKind::NilFunction { local, value } => {
                 let value = eval_nil_function_expr(plan, caller_frame, value)?;
                 frame.set_nil_function(*local, value);
+            }
+            CallArgKind::TupleFunction { local, value } => {
+                let value = eval_tuple_function_expr(plan, caller_frame, value)?;
+                frame.set_tuple_function(*local, value);
             }
             CallArgKind::FunctionFunction { local, value } => {
                 let value = eval_function_function_expr(plan, caller_frame, value)?;
@@ -116,6 +125,9 @@ pub(in crate::runtime) fn eval_capture_args(
                 eval_nil_expr(plan, frame, value)?;
                 CaptureValue::nil(*local)
             }
+            CaptureArgKind::Tuple { local, value } => {
+                CaptureValue::tuple(*local, eval_tuple_expr(plan, frame, value)?)
+            }
             CaptureArgKind::IntFunction { local, value } => {
                 CaptureValue::int_function(*local, eval_int_function_expr(plan, frame, value)?)
             }
@@ -131,6 +143,9 @@ pub(in crate::runtime) fn eval_capture_args(
             }
             CaptureArgKind::NilFunction { local, value } => {
                 CaptureValue::nil_function(*local, eval_nil_function_expr(plan, frame, value)?)
+            }
+            CaptureArgKind::TupleFunction { local, value } => {
+                CaptureValue::tuple_function(*local, eval_tuple_function_expr(plan, frame, value)?)
             }
             CaptureArgKind::FunctionFunction { local, value } => CaptureValue::function_function(
                 *local,
@@ -150,6 +165,7 @@ fn bind_captures(frame: &mut Frame, captures: &[CaptureValue]) {
             CaptureValueKind::Float { local, value } => frame.set_float(*local, *value),
             CaptureValueKind::Bool { local, value } => frame.set_bool(*local, *value),
             CaptureValueKind::Nil { local } => frame.set_nil(*local),
+            CaptureValueKind::Tuple { local, value } => frame.set_tuple(*local, value.clone()),
             CaptureValueKind::IntFunction { local, value } => {
                 frame.set_int_function(*local, value.clone());
             }
@@ -165,6 +181,9 @@ fn bind_captures(frame: &mut Frame, captures: &[CaptureValue]) {
             CaptureValueKind::NilFunction { local, value } => {
                 frame.set_nil_function(*local, value.clone());
             }
+            CaptureValueKind::TupleFunction { local, value } => {
+                frame.set_tuple_function(*local, value.clone());
+            }
             CaptureValueKind::FunctionFunction { local, value } => {
                 frame.set_function_function(*local, value.clone());
             }
@@ -176,14 +195,16 @@ fn bind_captures(frame: &mut Frame, captures: &[CaptureValue]) {
 mod tests {
     use super::{bind_arguments, bind_function_value_arguments, eval_capture_args};
     use crate::plan::{
-        BoolExpr, BoolFunctionExpr, BoolFunctionLocalId, BoolLocalId, CallArg, CaptureArg,
-        ExecutionPlan, FloatFunctionExpr, FloatFunctionId, FloatFunctionLocalId,
-        FloatFunctionValue, FrameLayout, FunctionFunctionExpr, FunctionFunctionId,
-        FunctionFunctionLocalId, FunctionFunctionValue, FunctionId, FunctionPlan,
-        FunctionReturnFamily, FunctionType, IntExpr, IntFunctionExpr, IntFunctionFunctionId,
-        IntFunctionLocalId, IntLocalId, NilExpr, NilFunctionExpr, NilFunctionLocalId, NilLocalId,
-        ReturnExpr, StringExpr, StringFunctionExpr, StringFunctionLocalId, StringLocalId,
-        ValueType,
+        BoolExpr, BoolFunctionExpr, BoolFunctionId, BoolFunctionLocalId, BoolFunctionValue,
+        BoolLocalId, CallArg, CaptureArg, CaptureValue, ExecutionPlan, Expr, FloatExpr,
+        FloatFunctionExpr, FloatFunctionId, FloatFunctionLocalId, FloatFunctionValue, FloatLocalId,
+        FrameLayout, FunctionFunctionExpr, FunctionFunctionId, FunctionFunctionLocalId,
+        FunctionFunctionValue, FunctionId, FunctionPlan, FunctionReturnFamily, FunctionType,
+        IntExpr, IntFunctionExpr, IntFunctionFunctionId, IntFunctionId, IntFunctionLocalId,
+        IntFunctionValue, IntLocalId, NilExpr, NilFunctionExpr, NilFunctionId, NilFunctionLocalId,
+        NilFunctionValue, NilLocalId, ReturnExpr, StringExpr, StringFunctionExpr, StringFunctionId,
+        StringFunctionLocalId, StringFunctionValue, StringLocalId, TupleExpr, TupleFunctionExpr,
+        TupleFunctionId, TupleFunctionLocalId, TupleFunctionValue, TupleLocalId, Value, ValueType,
     };
     use crate::runtime::ExecutionError;
     use crate::runtime::frame::Frame;
@@ -195,13 +216,16 @@ mod tests {
         let cases = [
             CallArg::int(IntLocalId(0), failing_int_expr()),
             CallArg::string(StringLocalId(0), failing_string_expr()),
+            CallArg::float(FloatLocalId(0), failing_float_expr()),
             CallArg::bool(BoolLocalId(0), failing_bool_expr()),
             CallArg::nil(NilLocalId(0), failing_nil_expr()),
+            CallArg::tuple(TupleLocalId(0), failing_tuple_expr()),
             CallArg::int_function(IntFunctionLocalId(0), failing_int_function_expr()),
             CallArg::string_function(StringFunctionLocalId(0), failing_string_function_expr()),
             CallArg::float_function(FloatFunctionLocalId(0), failing_float_function_expr()),
             CallArg::bool_function(BoolFunctionLocalId(0), failing_bool_function_expr()),
             CallArg::nil_function(NilFunctionLocalId(0), failing_nil_function_expr()),
+            CallArg::tuple_function(TupleFunctionLocalId(0), failing_tuple_function_expr()),
             CallArg::function_function(
                 FunctionFunctionLocalId(0),
                 failing_function_function_expr(),
@@ -219,15 +243,154 @@ mod tests {
     }
 
     #[test]
+    fn bind_arguments_evaluates_and_binds_all_value_families() {
+        let plan = plan();
+        let frame = bind_arguments(
+            &plan,
+            &[
+                CallArg::int(IntLocalId(0), IntExpr::value(1.into())),
+                CallArg::string(StringLocalId(0), StringExpr::value("one".into())),
+                CallArg::float(FloatLocalId(0), FloatExpr::value(1.5)),
+                CallArg::bool(BoolLocalId(0), BoolExpr::value(true)),
+                CallArg::nil(NilLocalId(0), NilExpr::value()),
+                CallArg::tuple(TupleLocalId(0), tuple_expr()),
+                CallArg::int_function(IntFunctionLocalId(0), int_function_expr()),
+                CallArg::string_function(StringFunctionLocalId(0), string_function_expr()),
+                CallArg::float_function(FloatFunctionLocalId(0), float_function_expr()),
+                CallArg::bool_function(BoolFunctionLocalId(0), bool_function_expr()),
+                CallArg::nil_function(NilFunctionLocalId(0), nil_function_expr()),
+                CallArg::tuple_function(TupleFunctionLocalId(0), tuple_function_expr()),
+                CallArg::function_function(FunctionFunctionLocalId(0), function_function_expr()),
+            ],
+            &mut Frame::default(),
+            all_family_layout(),
+        )
+        .expect("arguments should bind");
+
+        assert_eq!(frame.get_int(IntLocalId(0)), 1.into());
+        assert_eq!(frame.get_string(StringLocalId(0)), "one");
+        assert_eq!(frame.get_float(FloatLocalId(0)), 1.5);
+        assert!(frame.get_bool(BoolLocalId(0)));
+        assert_eq!(frame.get_nil(NilLocalId(0)), ());
+        assert_eq!(frame.get_tuple(TupleLocalId(0)), vec![Value::Int(1.into())]);
+        assert_eq!(
+            frame.get_int_function(IntFunctionLocalId(0)).runtime_id(),
+            IntFunctionId(0),
+        );
+        assert_eq!(
+            frame
+                .get_string_function(StringFunctionLocalId(0))
+                .runtime_id(),
+            StringFunctionId(0),
+        );
+        assert_eq!(
+            frame
+                .get_float_function(FloatFunctionLocalId(0))
+                .runtime_id(),
+            FloatFunctionId(0),
+        );
+        assert_eq!(
+            frame.get_bool_function(BoolFunctionLocalId(0)).runtime_id(),
+            BoolFunctionId(0),
+        );
+        assert_eq!(
+            frame.get_nil_function(NilFunctionLocalId(0)).runtime_id(),
+            NilFunctionId(0),
+        );
+        assert_eq!(
+            frame
+                .get_tuple_function(TupleFunctionLocalId(0))
+                .runtime_id(),
+            TupleFunctionId(0),
+        );
+        assert_eq!(
+            frame
+                .get_function_function(FunctionFunctionLocalId(0))
+                .runtime_id(),
+            FunctionFunctionId::Int(IntFunctionFunctionId(0)),
+        );
+    }
+
+    #[test]
+    fn tuple_function_arguments_are_evaluated_and_bound() {
+        let plan = plan();
+        let frame = bind_arguments(
+            &plan,
+            &[CallArg::tuple_function(
+                TupleFunctionLocalId(0),
+                tuple_function_expr(),
+            )],
+            &mut Frame::default(),
+            FrameLayout::default(),
+        )
+        .expect("arguments should bind");
+
+        assert_eq!(
+            frame
+                .get_tuple_function(TupleFunctionLocalId(0))
+                .runtime_id(),
+            TupleFunctionId(0),
+        );
+    }
+
+    #[test]
+    fn bind_function_value_arguments_propagates_argument_evaluation_errors_after_captures() {
+        let plan = plan();
+        let captures = [CaptureValue::int(IntLocalId(1), 10.into())];
+        let mut frame_layout = FrameLayout::default();
+        frame_layout.include_int(IntLocalId(1));
+
+        assert_expected_function_got_int(bind_function_value_arguments(
+            &plan,
+            &[CallArg::int(IntLocalId(0), failing_int_expr())],
+            &mut Frame::default(),
+            frame_layout,
+            &captures,
+        ));
+    }
+
+    #[test]
+    fn eval_capture_args_propagates_typed_argument_evaluation_errors() {
+        let plan = plan();
+
+        let cases = [
+            CaptureArg::int(IntLocalId(0), failing_int_expr()),
+            CaptureArg::string(StringLocalId(0), failing_string_expr()),
+            CaptureArg::float(FloatLocalId(0), failing_float_expr()),
+            CaptureArg::bool(BoolLocalId(0), failing_bool_expr()),
+            CaptureArg::nil(NilLocalId(0), failing_nil_expr()),
+            CaptureArg::tuple(TupleLocalId(0), failing_tuple_expr()),
+            CaptureArg::int_function(IntFunctionLocalId(0), failing_int_function_expr()),
+            CaptureArg::string_function(StringFunctionLocalId(0), failing_string_function_expr()),
+            CaptureArg::float_function(FloatFunctionLocalId(0), failing_float_function_expr()),
+            CaptureArg::bool_function(BoolFunctionLocalId(0), failing_bool_function_expr()),
+            CaptureArg::nil_function(NilFunctionLocalId(0), failing_nil_function_expr()),
+            CaptureArg::tuple_function(TupleFunctionLocalId(0), failing_tuple_function_expr()),
+            CaptureArg::function_function(
+                FunctionFunctionLocalId(0),
+                failing_function_function_expr(),
+            ),
+        ];
+
+        for arg in cases {
+            assert_expected_function_got_int(eval_capture_args(
+                &plan,
+                &mut Frame::default(),
+                &[arg],
+            ));
+        }
+    }
+
+    #[test]
     fn float_function_captures_are_evaluated_and_bound() {
         let plan = plan();
         let captures = eval_capture_args(
             &plan,
             &mut Frame::default(),
-            &[CaptureArg::float_function(
-                FloatFunctionLocalId(0),
-                float_function_expr(),
-            )],
+            &[
+                CaptureArg::float_function(FloatFunctionLocalId(0), float_function_expr()),
+                CaptureArg::tuple_function(TupleFunctionLocalId(0), tuple_function_expr()),
+            ],
         )
         .expect("capture args should evaluate");
         let frame = bind_function_value_arguments(
@@ -244,6 +407,85 @@ mod tests {
                 .get_float_function(FloatFunctionLocalId(0))
                 .runtime_id(),
             FloatFunctionId(0),
+        );
+        assert_eq!(
+            frame
+                .get_tuple_function(TupleFunctionLocalId(0))
+                .runtime_id(),
+            TupleFunctionId(0),
+        );
+    }
+
+    #[test]
+    fn bind_function_value_arguments_binds_all_capture_families() {
+        let plan = plan();
+        let frame = bind_function_value_arguments(
+            &plan,
+            &[],
+            &mut Frame::default(),
+            all_family_layout(),
+            &[
+                CaptureValue::int(IntLocalId(0), 1.into()),
+                CaptureValue::string(StringLocalId(0), "one".into()),
+                CaptureValue::float(FloatLocalId(0), 1.5),
+                CaptureValue::bool(BoolLocalId(0), true),
+                CaptureValue::nil(NilLocalId(0)),
+                CaptureValue::tuple(TupleLocalId(0), vec![Value::Int(1.into())]),
+                CaptureValue::int_function(IntFunctionLocalId(0), int_function_value()),
+                CaptureValue::string_function(StringFunctionLocalId(0), string_function_value()),
+                CaptureValue::float_function(FloatFunctionLocalId(0), float_function_value()),
+                CaptureValue::bool_function(BoolFunctionLocalId(0), bool_function_value()),
+                CaptureValue::nil_function(NilFunctionLocalId(0), nil_function_value()),
+                CaptureValue::tuple_function(TupleFunctionLocalId(0), tuple_function_value()),
+                CaptureValue::function_function(
+                    FunctionFunctionLocalId(0),
+                    function_function_value(),
+                ),
+            ],
+        )
+        .expect("captures should bind");
+
+        assert_eq!(frame.get_int(IntLocalId(0)), 1.into());
+        assert_eq!(frame.get_string(StringLocalId(0)), "one");
+        assert_eq!(frame.get_float(FloatLocalId(0)), 1.5);
+        assert!(frame.get_bool(BoolLocalId(0)));
+        assert_eq!(frame.get_nil(NilLocalId(0)), ());
+        assert_eq!(frame.get_tuple(TupleLocalId(0)), vec![Value::Int(1.into())]);
+        assert_eq!(
+            frame.get_int_function(IntFunctionLocalId(0)).runtime_id(),
+            IntFunctionId(0),
+        );
+        assert_eq!(
+            frame
+                .get_string_function(StringFunctionLocalId(0))
+                .runtime_id(),
+            StringFunctionId(0),
+        );
+        assert_eq!(
+            frame
+                .get_float_function(FloatFunctionLocalId(0))
+                .runtime_id(),
+            FloatFunctionId(0),
+        );
+        assert_eq!(
+            frame.get_bool_function(BoolFunctionLocalId(0)).runtime_id(),
+            BoolFunctionId(0),
+        );
+        assert_eq!(
+            frame.get_nil_function(NilFunctionLocalId(0)).runtime_id(),
+            NilFunctionId(0),
+        );
+        assert_eq!(
+            frame
+                .get_tuple_function(TupleFunctionLocalId(0))
+                .runtime_id(),
+            TupleFunctionId(0),
+        );
+        assert_eq!(
+            frame
+                .get_function_function(FunctionFunctionLocalId(0))
+                .runtime_id(),
+            FunctionFunctionId::Int(IntFunctionFunctionId(0)),
         );
     }
 
@@ -282,12 +524,47 @@ mod tests {
         StringExpr::function_call(failing_string_function_expr(), Vec::new())
     }
 
+    fn failing_float_expr() -> FloatExpr {
+        FloatExpr::function_call(failing_float_function_expr(), Vec::new())
+    }
+
     fn failing_bool_expr() -> BoolExpr {
         BoolExpr::function_call(failing_bool_function_expr(), Vec::new())
     }
 
     fn failing_nil_expr() -> NilExpr {
         NilExpr::function_call(failing_nil_function_expr(), Vec::new())
+    }
+
+    fn failing_tuple_expr() -> TupleExpr {
+        TupleExpr::function_call(
+            failing_tuple_function_expr(),
+            Vec::new(),
+            vec![ValueType::Int],
+        )
+    }
+
+    fn tuple_expr() -> TupleExpr {
+        TupleExpr::value(
+            vec![Expr::int(IntExpr::value(1.into()))],
+            vec![ValueType::Int],
+        )
+    }
+
+    fn int_function_expr() -> IntFunctionExpr {
+        IntFunctionExpr::value(int_function_value())
+    }
+
+    fn int_function_value() -> IntFunctionValue {
+        IntFunctionValue::new(IntFunctionId(0), Vec::new())
+    }
+
+    fn string_function_expr() -> StringFunctionExpr {
+        StringFunctionExpr::value(string_function_value())
+    }
+
+    fn string_function_value() -> StringFunctionValue {
+        StringFunctionValue::new(StringFunctionId(0), Vec::new())
     }
 
     fn failing_int_function_expr() -> IntFunctionExpr {
@@ -315,7 +592,11 @@ mod tests {
     }
 
     fn float_function_expr() -> FloatFunctionExpr {
-        FloatFunctionExpr::value(FloatFunctionValue::new(FloatFunctionId(0), Vec::new()))
+        FloatFunctionExpr::value(float_function_value())
+    }
+
+    fn float_function_value() -> FloatFunctionValue {
+        FloatFunctionValue::new(FloatFunctionId(0), Vec::new())
     }
 
     fn failing_bool_function_expr() -> BoolFunctionExpr {
@@ -326,12 +607,74 @@ mod tests {
         )
     }
 
+    fn bool_function_expr() -> BoolFunctionExpr {
+        BoolFunctionExpr::value(bool_function_value())
+    }
+
+    fn bool_function_value() -> BoolFunctionValue {
+        BoolFunctionValue::new(BoolFunctionId(0), Vec::new())
+    }
+
     fn failing_nil_function_expr() -> NilFunctionExpr {
         NilFunctionExpr::function_call(
             failing_function_function_expr(),
             Vec::new(),
             FunctionType::new(Vec::new(), ValueType::Nil),
         )
+    }
+
+    fn nil_function_expr() -> NilFunctionExpr {
+        NilFunctionExpr::value(nil_function_value())
+    }
+
+    fn nil_function_value() -> NilFunctionValue {
+        NilFunctionValue::new(NilFunctionId(0), Vec::new())
+    }
+
+    fn failing_tuple_function_expr() -> TupleFunctionExpr {
+        TupleFunctionExpr::function_call(
+            failing_function_function_expr(),
+            Vec::new(),
+            FunctionType::new(Vec::new(), ValueType::Tuple(vec![ValueType::Int])),
+        )
+    }
+
+    fn tuple_function_expr() -> TupleFunctionExpr {
+        TupleFunctionExpr::value(tuple_function_value())
+    }
+
+    fn tuple_function_value() -> TupleFunctionValue {
+        TupleFunctionValue::new(TupleFunctionId(0), Vec::new(), vec![ValueType::Int])
+    }
+
+    fn function_function_expr() -> FunctionFunctionExpr {
+        FunctionFunctionExpr::value(function_function_value())
+    }
+
+    fn function_function_value() -> FunctionFunctionValue {
+        FunctionFunctionValue::new(
+            FunctionFunctionId::Int(IntFunctionFunctionId(0)),
+            Vec::new(),
+            FunctionType::new(Vec::new(), ValueType::Int),
+        )
+    }
+
+    fn all_family_layout() -> FrameLayout {
+        let mut layout = FrameLayout::default();
+        layout.include_int(IntLocalId(0));
+        layout.include_string(StringLocalId(0));
+        layout.include_float(FloatLocalId(0));
+        layout.include_bool(BoolLocalId(0));
+        layout.include_nil(NilLocalId(0));
+        layout.include_tuple(TupleLocalId(0));
+        layout.include_int_function(IntFunctionLocalId(0));
+        layout.include_string_function(StringFunctionLocalId(0));
+        layout.include_float_function(FloatFunctionLocalId(0));
+        layout.include_bool_function(BoolFunctionLocalId(0));
+        layout.include_nil_function(NilFunctionLocalId(0));
+        layout.include_tuple_function(TupleFunctionLocalId(0));
+        layout.include_function_function(FunctionFunctionLocalId(0));
+        layout
     }
 
     fn plan() -> ExecutionPlan {
