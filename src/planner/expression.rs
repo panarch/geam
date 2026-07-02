@@ -408,9 +408,17 @@ mod tests {
         module_returning_typed_expr, typed_int_expr, typed_string_expr, typed_tuple_expr,
     };
     use crate::plan::{
-        Expr, FunctionExpr, FunctionValue, NilFunctionId, RuntimeFunctionId, ValueType,
+        BoolLocalId, Expr, FunctionExpr, FunctionFunctionId, FunctionType, FunctionValue,
+        IntFunctionFunctionId, IntLocalId, NilFunctionId, NilLocalId, ParamLocal,
+        RuntimeFunctionId, StringLocalId, ValueType,
     };
     use crate::planner::context::{AnonymousFunctions, PlanContext};
+    use crate::planner::dsl::{
+        bool_, bool_function_ref, float, float_function_ref, function, function_function_ref, int,
+        int_function_ref, let_tuple_step, local_bool, local_float, local_int, local_nil,
+        local_string, local_tuple, module, nil, nil_function_ref, string, string_function_ref,
+        tuple, tuple_function_ref,
+    };
     use crate::planner::plan_module;
     use crate::planner::support::{compile, dummy_span, expect_plan_error};
     use crate::planner::{
@@ -605,6 +613,10 @@ pub fn main() {
         );
         assert_eq!(
             super::plan_float_expr(invalid_expr(type_::float()), &mut context),
+            Err(expected.clone()),
+        );
+        assert_eq!(
+            super::plan_bool_expr(invalid_expr(type_::bool()), &mut context),
             Err(expected),
         );
     }
@@ -638,7 +650,7 @@ pub fn main() {
 
     #[test]
     fn plan_tuple_index_result_families() {
-        let cases = [
+        assert_tuple_index_plan(
             r#"
 fn add_one(value: Int) {
   value + 1
@@ -649,6 +661,138 @@ pub fn main() {
   values.0
 }
 "#,
+            module(
+                "main",
+                function(
+                    "main",
+                    local_tuple(
+                        0,
+                        "values",
+                        [
+                            ValueType::Bool,
+                            ValueType::Nil,
+                            ValueType::Function(Box::new(int_to_int_type())),
+                        ],
+                    )
+                    .index_bool(0),
+                )
+                .step(let_tuple_step(
+                    0,
+                    "values",
+                    tuple([
+                        Expr::from(bool_(true)),
+                        Expr::from(nil()),
+                        Expr::from(int_function_ref(0, [ParamLocal::int(IntLocalId(0))])),
+                    ]),
+                )),
+                [
+                    function("add_one", local_int(0, "value").add_int(int(1)))
+                        .param_int(0, "value"),
+                ],
+            ),
+        );
+
+        assert_tuple_index_plan(
+            r#"
+pub fn main() {
+  let values = #("ok")
+  values.0
+}
+"#,
+            module(
+                "main",
+                function(
+                    "main",
+                    local_tuple(0, "values", [ValueType::String]).index_string(0),
+                )
+                .step(let_tuple_step(
+                    0,
+                    "values",
+                    tuple([Expr::from(string("ok"))]),
+                )),
+                [],
+            ),
+        );
+
+        assert_tuple_index_plan(
+            r#"
+pub fn main() {
+  let values = #(1.5)
+  values.0
+}
+"#,
+            module(
+                "main",
+                function(
+                    "main",
+                    local_tuple(0, "values", [ValueType::Float]).index_float(0),
+                )
+                .step(let_tuple_step(0, "values", tuple([Expr::from(float(1.5))]))),
+                [],
+            ),
+        );
+
+        assert_tuple_index_plan(
+            r#"
+pub fn main() {
+  let values = #(#(1))
+  values.0
+}
+"#,
+            module(
+                "main",
+                function(
+                    "main",
+                    local_tuple(0, "values", [ValueType::Tuple(vec![ValueType::Int])])
+                        .index_tuple(0, [ValueType::Int]),
+                )
+                .step(let_tuple_step(
+                    0,
+                    "values",
+                    tuple([Expr::from(tuple([Expr::from(int(1))]))]),
+                )),
+                [],
+            ),
+        );
+
+        assert_tuple_index_plan(
+            r#"
+fn add_one(value: Int) {
+  value + 1
+}
+
+pub fn main() {
+  let values = #(add_one)
+  values.0
+}
+"#,
+            module(
+                "main",
+                function(
+                    "main",
+                    local_tuple(
+                        0,
+                        "values",
+                        [ValueType::Function(Box::new(int_to_int_type()))],
+                    )
+                    .index_int_function(0, [ValueType::Int]),
+                )
+                .step(let_tuple_step(
+                    0,
+                    "values",
+                    tuple([Expr::from(int_function_ref(
+                        0,
+                        [ParamLocal::int(IntLocalId(0))],
+                    ))]),
+                )),
+                [
+                    function("add_one", local_int(0, "value").add_int(int(1)))
+                        .param_int(0, "value"),
+                ],
+            ),
+        );
+
+        assert_tuple_index_plan(
             r#"
 fn text(value: String) {
   value
@@ -659,6 +803,30 @@ pub fn main() {
   values.0
 }
 "#,
+            module(
+                "main",
+                function(
+                    "main",
+                    local_tuple(
+                        0,
+                        "values",
+                        [ValueType::Function(Box::new(string_to_string_type()))],
+                    )
+                    .index_string_function(0, [ValueType::String]),
+                )
+                .step(let_tuple_step(
+                    0,
+                    "values",
+                    tuple([Expr::from(string_function_ref(
+                        0,
+                        [ParamLocal::string(StringLocalId(0))],
+                    ))]),
+                )),
+                [function("text", local_string(0, "value")).param_string(0, "value")],
+            ),
+        );
+
+        assert_tuple_index_plan(
             r#"
 fn number(value: Float) {
   value
@@ -669,6 +837,30 @@ pub fn main() {
   values.0
 }
 "#,
+            module(
+                "main",
+                function(
+                    "main",
+                    local_tuple(
+                        0,
+                        "values",
+                        [ValueType::Function(Box::new(float_to_float_type()))],
+                    )
+                    .index_float_function(0, [ValueType::Float]),
+                )
+                .step(let_tuple_step(
+                    0,
+                    "values",
+                    tuple([Expr::from(float_function_ref(
+                        0,
+                        [ParamLocal::float(crate::plan::FloatLocalId(0))],
+                    ))]),
+                )),
+                [function("number", local_float(0, "value")).param_float(0, "value")],
+            ),
+        );
+
+        assert_tuple_index_plan(
             r#"
 fn flag(value: Bool) {
   value
@@ -679,6 +871,30 @@ pub fn main() {
   values.0
 }
 "#,
+            module(
+                "main",
+                function(
+                    "main",
+                    local_tuple(
+                        0,
+                        "values",
+                        [ValueType::Function(Box::new(bool_to_bool_type()))],
+                    )
+                    .index_bool_function(0, [ValueType::Bool]),
+                )
+                .step(let_tuple_step(
+                    0,
+                    "values",
+                    tuple([Expr::from(bool_function_ref(
+                        0,
+                        [ParamLocal::bool(BoolLocalId(0))],
+                    ))]),
+                )),
+                [function("flag", local_bool(0, "value")).param_bool(0, "value")],
+            ),
+        );
+
+        assert_tuple_index_plan(
             r#"
 fn unit(value: Nil) {
   value
@@ -689,6 +905,30 @@ pub fn main() {
   values.0
 }
 "#,
+            module(
+                "main",
+                function(
+                    "main",
+                    local_tuple(
+                        0,
+                        "values",
+                        [ValueType::Function(Box::new(nil_to_nil_type()))],
+                    )
+                    .index_nil_function(0, [ValueType::Nil]),
+                )
+                .step(let_tuple_step(
+                    0,
+                    "values",
+                    tuple([Expr::from(nil_function_ref(
+                        0,
+                        [ParamLocal::nil(NilLocalId(0))],
+                    ))]),
+                )),
+                [function("unit", local_nil(0, "value")).param_nil(0, "value")],
+            ),
+        );
+
+        assert_tuple_index_plan(
             r#"
 fn tuple(value: Int) {
   #(value)
@@ -699,6 +939,38 @@ pub fn main() {
   values.0
 }
 "#,
+            module(
+                "main",
+                function(
+                    "main",
+                    local_tuple(
+                        0,
+                        "values",
+                        [ValueType::Function(Box::new(int_to_tuple_type()))],
+                    )
+                    .index_tuple_function(
+                        0,
+                        [ValueType::Int],
+                        [ValueType::Int],
+                    ),
+                )
+                .step(let_tuple_step(
+                    0,
+                    "values",
+                    tuple([Expr::from(tuple_function_ref(
+                        0,
+                        [ParamLocal::int(IntLocalId(0))],
+                        [ValueType::Int],
+                    ))]),
+                )),
+                [
+                    function("tuple", tuple([Expr::from(local_int(0, "value"))]))
+                        .param_int(0, "value"),
+                ],
+            ),
+        );
+
+        assert_tuple_index_plan(
             r#"
 fn add_one(value: Int) {
   value + 1
@@ -713,17 +985,81 @@ pub fn main() {
   values.0
 }
 "#,
+            module(
+                "main",
+                function(
+                    "main",
+                    local_tuple(0, "values", [ValueType::Function(Box::new(getter_type()))])
+                        .index_function_function(0, Vec::<ValueType>::new(), int_to_int_type()),
+                )
+                .step(let_tuple_step(
+                    0,
+                    "values",
+                    tuple([Expr::from(function_function_ref(
+                        FunctionFunctionId::Int(IntFunctionFunctionId(0)),
+                        Vec::<ParamLocal>::new(),
+                        int_to_int_type(),
+                    ))]),
+                )),
+                [
+                    function("add_one", local_int(0, "value").add_int(int(1)))
+                        .param_int(0, "value"),
+                    function("get", int_function_ref(0, [ParamLocal::int(IntLocalId(0))])),
+                ],
+            ),
+        );
+
+        assert_tuple_index_plan(
             r#"
 pub fn main() {
   let values = #(Nil)
   values.0
 }
 "#,
-        ];
+            module(
+                "main",
+                function(
+                    "main",
+                    local_tuple(0, "values", [ValueType::Nil]).index_nil(0),
+                )
+                .step(let_tuple_step(0, "values", tuple([Expr::from(nil())]))),
+                [],
+            ),
+        );
+    }
 
-        for src in cases {
-            assert!(plan_module(compile(src)).is_ok());
-        }
+    fn assert_tuple_index_plan(src: &str, expected: crate::plan::ExecutionPlan) {
+        let actual = plan_module(compile(src)).expect("source should plan");
+
+        assert_eq!(actual, expected);
+    }
+
+    fn int_to_int_type() -> FunctionType {
+        FunctionType::new(vec![ValueType::Int], ValueType::Int)
+    }
+
+    fn string_to_string_type() -> FunctionType {
+        FunctionType::new(vec![ValueType::String], ValueType::String)
+    }
+
+    fn float_to_float_type() -> FunctionType {
+        FunctionType::new(vec![ValueType::Float], ValueType::Float)
+    }
+
+    fn bool_to_bool_type() -> FunctionType {
+        FunctionType::new(vec![ValueType::Bool], ValueType::Bool)
+    }
+
+    fn nil_to_nil_type() -> FunctionType {
+        FunctionType::new(vec![ValueType::Nil], ValueType::Nil)
+    }
+
+    fn int_to_tuple_type() -> FunctionType {
+        FunctionType::new(vec![ValueType::Int], ValueType::Tuple(vec![ValueType::Int]))
+    }
+
+    fn getter_type() -> FunctionType {
+        FunctionType::new(Vec::new(), ValueType::Function(Box::new(int_to_int_type())))
     }
 
     #[test]
