@@ -6,24 +6,25 @@ pub(in crate::runtime) use bind::eval_capture_args;
 pub(in crate::runtime) use steps::execute_steps;
 
 use crate::plan::{
-    BoolFunctionFunctionId, BoolFunctionId, CallArg, ExecutionPlan, FunctionFunctionFunctionId,
-    FunctionFunctionValue, FunctionReturnFamily, FunctionValue, IntFunctionFunctionId,
-    IntFunctionId, NilFunctionFunctionId, NilFunctionId, RuntimeFunctionId,
-    StringFunctionFunctionId, StringFunctionId, Value,
+    BoolFunctionFunctionId, BoolFunctionId, CallArg, ExecutionPlan, FloatFunctionFunctionId,
+    FloatFunctionId, FunctionFunctionFunctionId, FunctionFunctionValue, FunctionReturnFamily,
+    FunctionValue, IntFunctionFunctionId, IntFunctionId, NilFunctionFunctionId, NilFunctionId,
+    RuntimeFunctionId, StringFunctionFunctionId, StringFunctionId, Value,
 };
 use crate::runtime::ExecutionError;
 use crate::runtime::error::ExecutionResult;
 use crate::runtime::expression::{
-    eval_bool_function_expr, eval_function_function_expr, eval_int_function_expr,
-    eval_nil_function_expr, eval_string_function_expr,
+    eval_bool_function_expr, eval_float_function_expr, eval_function_function_expr,
+    eval_int_function_expr, eval_nil_function_expr, eval_string_function_expr,
 };
 use crate::runtime::frame::Frame;
 use bind::{bind_arguments, bind_function_value_arguments};
 use ecow::EcoString;
 use num_bigint::BigInt;
 use return_body::{
-    run_bool_function_loop, run_bool_loop, run_function_function_loop, run_int_function_loop,
-    run_int_loop, run_nil_function_loop, run_nil_loop, run_string_function_loop, run_string_loop,
+    run_bool_function_loop, run_bool_loop, run_float_function_loop, run_float_loop,
+    run_function_function_loop, run_int_function_loop, run_int_loop, run_nil_function_loop,
+    run_nil_loop, run_string_function_loop, run_string_loop,
 };
 
 pub(super) fn run_main(plan: &ExecutionPlan) -> ExecutionResult<Value> {
@@ -31,6 +32,9 @@ pub(super) fn run_main(plan: &ExecutionPlan) -> ExecutionResult<Value> {
     match plan.main_runtime() {
         RuntimeFunctionId::Int(function) => {
             run_int_call(plan, function, &[], &mut caller_frame).map(Value::Int)
+        }
+        RuntimeFunctionId::Float(function) => {
+            run_float_call(plan, function, &[], &mut caller_frame).map(Value::Float)
         }
         RuntimeFunctionId::String(function) => {
             run_string_call(plan, function, &[], &mut caller_frame).map(Value::String)
@@ -61,6 +65,21 @@ pub(super) fn run_int_call(
         plan.int_function(function).frame_layout(),
     )?;
     run_int_loop(plan, function, frame)
+}
+
+pub(super) fn run_float_call(
+    plan: &ExecutionPlan,
+    function: FloatFunctionId,
+    args: &[CallArg],
+    caller_frame: &mut Frame,
+) -> ExecutionResult<f64> {
+    let frame = bind_arguments(
+        plan,
+        args,
+        caller_frame,
+        plan.float_function(function).frame_layout(),
+    )?;
+    run_float_loop(plan, function, frame)
 }
 
 pub(super) fn run_string_call(
@@ -136,6 +155,20 @@ pub(in crate::runtime) fn run_string_function_call(
     run_string_loop(plan, function.runtime_id(), frame)
 }
 
+pub(in crate::runtime) fn run_float_function_call(
+    plan: &ExecutionPlan,
+    function: &crate::plan::FloatFunctionExpr,
+    args: &[CallArg],
+    caller_frame: &mut Frame,
+) -> ExecutionResult<f64> {
+    let function = eval_float_function_expr(plan, caller_frame, function)?;
+    let runtime_function = plan.float_function(function.runtime_id());
+    let frame_layout = runtime_function.frame_layout();
+    let frame =
+        bind_function_value_arguments(plan, args, caller_frame, frame_layout, function.captures())?;
+    run_float_loop(plan, function.runtime_id(), frame)
+}
+
 pub(in crate::runtime) fn run_bool_function_call(
     plan: &ExecutionPlan,
     function: &crate::plan::BoolFunctionExpr,
@@ -177,6 +210,21 @@ pub(in crate::runtime) fn run_int_function_returning_function_call(
         plan.int_function_function(function).frame_layout(),
     )?;
     run_int_function_loop(plan, function, frame)
+}
+
+pub(in crate::runtime) fn run_float_function_returning_function_call(
+    plan: &ExecutionPlan,
+    function: FloatFunctionFunctionId,
+    args: &[CallArg],
+    caller_frame: &mut Frame,
+) -> ExecutionResult<crate::plan::FloatFunctionValue> {
+    let frame = bind_arguments(
+        plan,
+        args,
+        caller_frame,
+        plan.float_function_function(function).frame_layout(),
+    )?;
+    run_float_function_loop(plan, function, frame)
 }
 
 pub(in crate::runtime) fn run_string_function_returning_function_call(
@@ -258,6 +306,27 @@ pub(in crate::runtime) fn run_int_function_function_call(
     let frame =
         bind_function_value_arguments(plan, args, caller_frame, frame_layout, function.captures())?;
     run_int_function_loop(plan, function_id, frame)
+}
+
+pub(in crate::runtime) fn run_float_function_function_call(
+    plan: &ExecutionPlan,
+    function: &crate::plan::FunctionFunctionExpr,
+    args: &[CallArg],
+    caller_frame: &mut Frame,
+) -> ExecutionResult<crate::plan::FloatFunctionValue> {
+    let function = eval_function_function_expr(plan, caller_frame, function)?;
+    let runtime_id = function.runtime_id();
+    let function_id = runtime_id
+        .float()
+        .ok_or(ExecutionError::function_return_family_mismatch(
+            FunctionReturnFamily::Float,
+            runtime_id.family(),
+        ))?;
+    let runtime_function = plan.float_function_function(function_id);
+    let frame_layout = runtime_function.frame_layout();
+    let frame =
+        bind_function_value_arguments(plan, args, caller_frame, frame_layout, function.captures())?;
+    run_float_function_loop(plan, function_id, frame)
 }
 
 pub(in crate::runtime) fn run_string_function_function_call(
@@ -356,6 +425,10 @@ fn run_function_returning_function_call(
             run_int_function_returning_function_call(plan, function, args, caller_frame)
                 .map(Into::into)
         }
+        crate::plan::FunctionFunctionId::Float(function) => {
+            run_float_function_returning_function_call(plan, function, args, caller_frame)
+                .map(Into::into)
+        }
         crate::plan::FunctionFunctionId::String(function) => {
             run_string_function_returning_function_call(plan, function, args, caller_frame)
                 .map(Into::into)
@@ -379,8 +452,10 @@ fn run_function_returning_function_call(
 mod tests {
     use super::{
         run_bool_call, run_bool_function_call, run_bool_function_function_call,
-        run_bool_function_returning_function_call, run_function_function_function_call,
-        run_function_function_returning_function_call, run_int_call, run_int_function_call,
+        run_bool_function_returning_function_call, run_float_call, run_float_function_call,
+        run_float_function_function_call, run_float_function_returning_function_call,
+        run_function_function_function_call, run_function_function_returning_function_call,
+        run_function_returning_function_call, run_int_call, run_int_function_call,
         run_int_function_function_call, run_int_function_returning_function_call, run_main,
         run_nil_call, run_nil_function_call, run_nil_function_function_call,
         run_nil_function_returning_function_call, run_string_call, run_string_function_call,
@@ -388,8 +463,9 @@ mod tests {
     };
     use crate::plan::{
         BoolExpr, BoolFunctionExpr, BoolFunctionFunctionId, BoolFunctionId, BoolFunctionValue,
-        BoolLocalId, CallArg, ExecutionPlan, Expr, FunctionExpr, FunctionExprKind,
-        FunctionFunctionExpr, FunctionFunctionFunctionId, FunctionFunctionId,
+        BoolLocalId, CallArg, ExecutionPlan, Expr, FloatExpr, FloatFunctionExpr,
+        FloatFunctionFunctionId, FloatFunctionId, FloatFunctionValue, FunctionExpr,
+        FunctionExprKind, FunctionFunctionExpr, FunctionFunctionFunctionId, FunctionFunctionId,
         FunctionFunctionLocalId, FunctionFunctionValue, FunctionId, FunctionPlan,
         FunctionReturnFamily, FunctionType, FunctionValue, IntExpr, IntFunctionExpr,
         IntFunctionFunctionId, IntFunctionId, IntFunctionValue, IntLocalId, NilExpr,
@@ -422,6 +498,16 @@ mod tests {
                 &mut Frame::default(),
             ),
             FunctionReturnFamily::String,
+            FunctionReturnFamily::Int,
+        );
+        assert_function_return_family_mismatch(
+            run_float_function_function_call(
+                &plan,
+                &function_function_expr(FunctionFunctionId::Int(IntFunctionFunctionId(0))),
+                &[],
+                &mut Frame::default(),
+            ),
+            FunctionReturnFamily::Float,
             FunctionReturnFamily::Int,
         );
         assert_function_return_family_mismatch(
@@ -465,6 +551,10 @@ fn string_identity(value: String) {
   value
 }
 
+fn float_identity(value: Float) {
+  value
+}
+
 fn bool_identity(value: Bool) {
   value
 }
@@ -479,6 +569,10 @@ fn get_int() {
 
 fn get_string() {
   string_identity
+}
+
+fn get_float() {
+  float_identity
 }
 
 fn get_bool() {
@@ -499,11 +593,12 @@ fn get_get_get_int() {
 
 pub fn main() {
   let int_ok = get_int()(1) + get_get_get_int()()()(2) == 3
+  let float_ok = get_float()(1.5) == 1.5
   let bool_ok = get_bool()(True)
 
   get_nil()(Nil)
 
-  case int_ok && bool_ok {
+  case int_ok && float_ok && bool_ok {
     True -> get_string()("ge") <> get_string()("am")
     False -> "bad"
   }
@@ -548,6 +643,23 @@ pub fn main() {
             Value::Function(FunctionValue::new(
                 RuntimeFunctionId::String(StringFunctionId(0)),
                 vec![ParamLocal::string(StringLocalId(0))],
+            )),
+        );
+        assert_eq!(
+            run_src(
+                r#"
+fn identity(value: Float) {
+  value
+}
+
+pub fn main() {
+  identity
+}
+"#,
+            ),
+            Value::Function(FunctionValue::new(
+                RuntimeFunctionId::Float(FloatFunctionId(0)),
+                vec![ParamLocal::float(crate::plan::FloatLocalId(0))],
             )),
         );
         assert_eq!(
@@ -635,6 +747,16 @@ pub fn main() {
             Ok(ValueType::String),
         );
         assert_eq!(
+            run_float_function_function_call(
+                &plan,
+                &function_function_expr(FunctionFunctionId::Float(FloatFunctionFunctionId(0))),
+                &[],
+                &mut Frame::default(),
+            )
+            .map(|value| value.type_().return_().clone()),
+            Ok(ValueType::Float),
+        );
+        assert_eq!(
             run_bool_function_function_call(
                 &plan,
                 &function_function_expr(FunctionFunctionId::Bool(BoolFunctionFunctionId(0))),
@@ -684,6 +806,10 @@ pub fn main() {
             Ok("geam".into()),
         );
         assert_eq!(
+            run_float_call(&plan, FloatFunctionId(0), &[], &mut Frame::default()),
+            Ok(1.5),
+        );
+        assert_eq!(
             run_bool_call(&plan, BoolFunctionId(0), &[], &mut Frame::default()),
             Ok(true),
         );
@@ -716,6 +842,26 @@ pub fn main() {
             )
             .map(|value| value.type_().return_().clone()),
             Ok(ValueType::String),
+        );
+        assert_eq!(
+            run_float_function_returning_function_call(
+                &plan,
+                FloatFunctionFunctionId(0),
+                &[],
+                &mut Frame::default(),
+            )
+            .map(|value| value.type_().return_().clone()),
+            Ok(ValueType::Float),
+        );
+        assert_eq!(
+            run_function_returning_function_call(
+                &plan,
+                FunctionFunctionId::Float(FloatFunctionFunctionId(0)),
+                &[],
+                &mut Frame::default(),
+            )
+            .map(|value| value.type_().return_().clone()),
+            Ok(ValueType::Float),
         );
         assert_eq!(
             run_bool_function_returning_function_call(
@@ -768,6 +914,12 @@ pub fn main() {
             &[failing_function_function_arg()],
             &mut Frame::default(),
         ));
+        assert_expected_function_got_int(run_float_call(
+            &plan,
+            FloatFunctionId(0),
+            &[failing_function_function_arg()],
+            &mut Frame::default(),
+        ));
         assert_expected_function_got_int(run_bool_call(
             &plan,
             BoolFunctionId(0),
@@ -795,6 +947,12 @@ pub fn main() {
         assert_expected_function_got_int(run_string_function_returning_function_call(
             &plan,
             StringFunctionFunctionId(0),
+            &[failing_function_function_arg()],
+            &mut Frame::default(),
+        ));
+        assert_expected_function_got_int(run_float_function_returning_function_call(
+            &plan,
+            FloatFunctionFunctionId(0),
             &[failing_function_function_arg()],
             &mut Frame::default(),
         ));
@@ -905,6 +1063,16 @@ pub fn main() {
             &[],
             &mut Frame::default(),
         ));
+        assert_expected_function_got_int(run_float_function_call(
+            &plan,
+            &FloatFunctionExpr::function_call(
+                failing_function_function_expr(),
+                Vec::new(),
+                FunctionType::new(Vec::new(), ValueType::Float),
+            ),
+            &[],
+            &mut Frame::default(),
+        ));
         assert_expected_function_got_int(run_bool_function_call(
             &plan,
             &BoolFunctionExpr::function_call(
@@ -990,10 +1158,11 @@ pub fn main() {
             vec![
                 function_plan(1, "int_function", steps.clone(), int_function_expr()),
                 function_plan(2, "string_function", steps.clone(), string_function_expr()),
-                function_plan(3, "bool_function", steps.clone(), bool_function_expr()),
-                function_plan(4, "nil_function", steps.clone(), nil_function_expr()),
+                function_plan(3, "float_function", steps.clone(), float_function_expr()),
+                function_plan(4, "bool_function", steps.clone(), bool_function_expr()),
+                function_plan(5, "nil_function", steps.clone(), nil_function_expr()),
                 function_plan(
-                    5,
+                    6,
                     "function_function",
                     steps,
                     function_function_expr_value(),
@@ -1045,13 +1214,20 @@ pub fn main() {
                 ),
                 FunctionPlan::new(
                     FunctionId::new(2),
+                    "float".into(),
+                    Vec::new(),
+                    steps.clone(),
+                    ReturnExpr::float(FloatFunctionId(0), FloatExpr::value(1.5)),
+                ),
+                FunctionPlan::new(
+                    FunctionId::new(3),
                     "bool".into(),
                     Vec::new(),
                     steps.clone(),
                     ReturnExpr::bool(BoolFunctionId(0), BoolExpr::value(true)),
                 ),
                 FunctionPlan::new(
-                    FunctionId::new(3),
+                    FunctionId::new(4),
                     "nil".into(),
                     Vec::new(),
                     steps,
@@ -1084,6 +1260,9 @@ pub fn main() {
             FunctionExprKind::String(return_) => {
                 ReturnExpr::string_function(StringFunctionFunctionId(0), return_)
             }
+            FunctionExprKind::Float(return_) => {
+                ReturnExpr::float_function(FloatFunctionFunctionId(0), return_)
+            }
             FunctionExprKind::Bool(return_) => {
                 ReturnExpr::bool_function(BoolFunctionFunctionId(0), return_)
             }
@@ -1106,6 +1285,13 @@ pub fn main() {
     fn string_function_expr() -> FunctionExpr {
         FunctionExpr::string(StringFunctionExpr::value(StringFunctionValue::new(
             StringFunctionId(0),
+            Vec::new(),
+        )))
+    }
+
+    fn float_function_expr() -> FunctionExpr {
+        FunctionExpr::float(FloatFunctionExpr::value(FloatFunctionValue::new(
+            FloatFunctionId(0),
             Vec::new(),
         )))
     }

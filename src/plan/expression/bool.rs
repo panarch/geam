@@ -1,4 +1,4 @@
-use super::{BoolFunctionExpr, CallArg, Expr, IntExpr, StringExpr};
+use super::{BoolFunctionExpr, CallArg, Expr, FloatExpr, IntExpr, StringExpr};
 use crate::plan::{BoolFunctionId, BoolLocalId, Step};
 use ecow::EcoString;
 use num_bigint::BigInt;
@@ -40,6 +40,22 @@ pub(crate) enum BoolExprKind {
         left: Box<IntExpr>,
         right: Box<IntExpr>,
     },
+    LtFloat {
+        left: Box<FloatExpr>,
+        right: Box<FloatExpr>,
+    },
+    LtEqFloat {
+        left: Box<FloatExpr>,
+        right: Box<FloatExpr>,
+    },
+    GtFloat {
+        left: Box<FloatExpr>,
+        right: Box<FloatExpr>,
+    },
+    GtEqFloat {
+        left: Box<FloatExpr>,
+        right: Box<FloatExpr>,
+    },
     Equal {
         left: Box<Expr>,
         right: Box<Expr>,
@@ -69,6 +85,11 @@ pub(crate) enum BoolExprKind {
     StringCase {
         subject: Box<StringExpr>,
         clauses: Vec<(EcoString, BoolExpr)>,
+        fallback: Box<BoolExpr>,
+    },
+    FloatCase {
+        subject: Box<FloatExpr>,
+        clauses: Vec<(f64, BoolExpr)>,
         fallback: Box<BoolExpr>,
     },
     Block {
@@ -141,6 +162,42 @@ impl BoolExpr {
     pub(crate) fn gte_int(left: IntExpr, right: IntExpr) -> Self {
         Self {
             kind: BoolExprKind::GtEqInt {
+                left: Box::new(left),
+                right: Box::new(right),
+            },
+        }
+    }
+
+    pub(crate) fn lt_float(left: FloatExpr, right: FloatExpr) -> Self {
+        Self {
+            kind: BoolExprKind::LtFloat {
+                left: Box::new(left),
+                right: Box::new(right),
+            },
+        }
+    }
+
+    pub(crate) fn lte_float(left: FloatExpr, right: FloatExpr) -> Self {
+        Self {
+            kind: BoolExprKind::LtEqFloat {
+                left: Box::new(left),
+                right: Box::new(right),
+            },
+        }
+    }
+
+    pub(crate) fn gt_float(left: FloatExpr, right: FloatExpr) -> Self {
+        Self {
+            kind: BoolExprKind::GtFloat {
+                left: Box::new(left),
+                right: Box::new(right),
+            },
+        }
+    }
+
+    pub(crate) fn gte_float(left: FloatExpr, right: FloatExpr) -> Self {
+        Self {
+            kind: BoolExprKind::GtEqFloat {
                 left: Box::new(left),
                 right: Box::new(right),
             },
@@ -221,6 +278,20 @@ impl BoolExpr {
         }
     }
 
+    pub(crate) fn float_case(
+        subject: FloatExpr,
+        clauses: Vec<(f64, BoolExpr)>,
+        fallback: BoolExpr,
+    ) -> Self {
+        Self {
+            kind: BoolExprKind::FloatCase {
+                subject: Box::new(subject),
+                clauses,
+                fallback: Box::new(fallback),
+            },
+        }
+    }
+
     pub(crate) fn block(steps: Vec<Step>, return_: BoolExpr) -> Self {
         Self {
             kind: BoolExprKind::Block {
@@ -276,6 +347,23 @@ mod tests {
             )
             .kind(),
             BoolExprKind::StringCase { .. }
+        ));
+        assert!(matches!(
+            BoolExpr::float_case(
+                crate::plan::FloatExpr::value(1.0),
+                vec![(1.0, BoolExpr::value(true))],
+                BoolExpr::value(false)
+            )
+            .kind(),
+            BoolExprKind::FloatCase { .. }
+        ));
+        assert!(matches!(
+            BoolExpr::lt_float(
+                crate::plan::FloatExpr::value(1.0),
+                crate::plan::FloatExpr::value(2.0)
+            )
+            .kind(),
+            BoolExprKind::LtFloat { .. }
         ));
         assert!(matches!(
             BoolExpr::and(BoolExpr::value(true), BoolExpr::value(false)).kind(),

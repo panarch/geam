@@ -6,7 +6,7 @@ mod operator;
 mod pipeline;
 mod var;
 
-use crate::plan::{BoolExpr, Expr, IntExpr, StringExpr, ValueType};
+use crate::plan::{BoolExpr, Expr, FloatExpr, IntExpr, StringExpr, ValueType};
 use crate::planner::context::PlanContext;
 use crate::planner::error::{
     InvalidExpressionShapeKind, InvalidExpressionType, InvalidTypedAstReason, PlanError,
@@ -21,6 +21,9 @@ pub(super) fn plan_expr(
     match expression {
         TypedExpr::Int { int_value, .. } => Ok(Expr::int(IntExpr::value(int_value))),
         TypedExpr::String { value, .. } => Ok(Expr::string(StringExpr::value(value))),
+        TypedExpr::Float { float_value, .. } => {
+            Ok(Expr::float(FloatExpr::value(float_value.value())))
+        }
         TypedExpr::Var {
             constructor, name, ..
         } => var::plan_var(name, constructor, context),
@@ -38,9 +41,6 @@ pub(super) fn plan_expr(
         } => operator::plan_bin_op(operator, *left, *right, context),
         TypedExpr::NegateInt { value, .. } => operator::plan_negate_int(*value, context),
         TypedExpr::NegateBool { value, .. } => operator::plan_negate_bool(*value, context),
-        TypedExpr::Float { .. } => Err(PlanError::UnsupportedExpression {
-            kind: UnsupportedExpressionKind::Float,
-        }),
         TypedExpr::Block { statements, .. } => block::plan(statements, context),
         TypedExpr::Pipeline {
             first_value,
@@ -140,6 +140,17 @@ fn plan_string_expr(
         .ok_or_else(|| invalid_expression_type(InvalidExpressionType::String, actual))
 }
 
+fn plan_float_expr(
+    expression: TypedExpr,
+    context: &mut PlanContext<'_>,
+) -> Result<FloatExpr, PlanError> {
+    let expression = plan_expr(expression, context)?;
+    let actual = expression_type(&expression);
+    expression
+        .into_float()
+        .ok_or_else(|| invalid_expression_type(InvalidExpressionType::Float, actual))
+}
+
 fn plan_bool_expr(
     expression: TypedExpr,
     context: &mut PlanContext<'_>,
@@ -171,6 +182,7 @@ fn expression_type(expression: &Expr) -> InvalidExpressionType {
     match expression.value_type() {
         ValueType::Int => InvalidExpressionType::Int,
         ValueType::String => InvalidExpressionType::String,
+        ValueType::Float => InvalidExpressionType::Float,
         ValueType::Bool => InvalidExpressionType::Bool,
         ValueType::Nil => InvalidExpressionType::Nil,
         ValueType::Function(_) => InvalidExpressionType::Function,
@@ -181,6 +193,7 @@ fn value_type_expression_type(type_: ValueType) -> InvalidExpressionType {
     match type_ {
         ValueType::Int => InvalidExpressionType::Int,
         ValueType::String => InvalidExpressionType::String,
+        ValueType::Float => InvalidExpressionType::Float,
         ValueType::Bool => InvalidExpressionType::Bool,
         ValueType::Nil => InvalidExpressionType::Nil,
         ValueType::Function(_) => InvalidExpressionType::Function,
@@ -251,9 +264,13 @@ pub(in crate::planner::expression) fn typed_prelude_constructor(
 #[cfg(test)]
 mod tests {
     use super::{
-        expression_type, invalid_expression_type, module_returning_typed_expr, typed_int_expr,
+        expression_type, invalid_expression_type, invalid_expression_type_for_value,
+        module_returning_typed_expr, typed_int_expr, typed_string_expr,
     };
-    use crate::plan::{Expr, FunctionExpr, FunctionValue, NilFunctionId, RuntimeFunctionId};
+    use crate::plan::{
+        Expr, FunctionExpr, FunctionValue, NilFunctionId, RuntimeFunctionId, ValueType,
+    };
+    use crate::planner::context::{AnonymousFunctions, PlanContext};
     use crate::planner::plan_module;
     use crate::planner::support::{compile, dummy_span, expect_plan_error};
     use crate::planner::{
@@ -263,21 +280,11 @@ mod tests {
     use gleam_core::ast::{Constant, TypedExpr};
     use gleam_core::type_::{self, ModuleValueConstructor};
     use num_bigint::BigInt;
+    use std::collections::HashMap;
 
     #[test]
     fn reject_profile_expression_variants() {
         let cases = [
-            (
-                r#"
-pub fn main() {
-  1.0
-  1
-}
-"#,
-                PlanError::UnsupportedExpression {
-                    kind: UnsupportedExpressionKind::Float,
-                },
-            ),
             (
                 r#"
 pub fn main() {
@@ -468,6 +475,33 @@ pub fn main() {
                     actual: InvalidExpressionType::Function,
                 },
             },
+        );
+        assert_eq!(
+            invalid_expression_type_for_value(ValueType::Float, ValueType::Int),
+            PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionType {
+                    expected: InvalidExpressionType::Float,
+                    actual: InvalidExpressionType::Int,
+                },
+            },
+        );
+    }
+
+    #[test]
+    fn reject_margin_float_expression_type_direct() {
+        let module_name = "main".into();
+        let functions = HashMap::new();
+        let mut anonymous = AnonymousFunctions::default();
+        let mut context = PlanContext::new(&module_name, &functions, &mut anonymous);
+
+        assert_eq!(
+            super::plan_float_expr(typed_string_expr("not float"), &mut context),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionType {
+                    expected: InvalidExpressionType::Float,
+                    actual: InvalidExpressionType::String,
+                },
+            }),
         );
     }
 }

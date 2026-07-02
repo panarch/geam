@@ -2,14 +2,16 @@ use ecow::EcoString;
 use num_bigint::BigInt;
 
 use super::{
-    BoolFunctionId, BoolFunctionLocalId, BoolLocalId, FunctionFunctionId, FunctionFunctionLocalId,
-    IntFunctionId, IntFunctionLocalId, IntLocalId, NilFunctionId, NilFunctionLocalId, NilLocalId,
-    ParamLocal, RuntimeFunctionId, StringFunctionId, StringFunctionLocalId, StringLocalId,
+    BoolFunctionId, BoolFunctionLocalId, BoolLocalId, FloatFunctionId, FloatFunctionLocalId,
+    FloatLocalId, FunctionFunctionId, FunctionFunctionLocalId, IntFunctionId, IntFunctionLocalId,
+    IntLocalId, NilFunctionId, NilFunctionLocalId, NilLocalId, ParamLocal, RuntimeFunctionId,
+    StringFunctionId, StringFunctionLocalId, StringLocalId,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ValueType {
     Int,
+    Float,
     String,
     Bool,
     Nil,
@@ -22,49 +24,57 @@ pub struct FunctionType {
     return_: Box<ValueType>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct FunctionValue {
     kind: FunctionValueKind,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub(crate) enum FunctionValueKind {
     Int(IntFunctionValue),
+    Float(FloatFunctionValue),
     String(StringFunctionValue),
     Bool(BoolFunctionValue),
     Nil(NilFunctionValue),
     Function(FunctionFunctionValue),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub(crate) struct IntFunctionValue {
     runtime_id: IntFunctionId,
     params: Vec<ParamLocal>,
     captures: Vec<CaptureValue>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct FloatFunctionValue {
+    runtime_id: FloatFunctionId,
+    params: Vec<ParamLocal>,
+    captures: Vec<CaptureValue>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub(crate) struct StringFunctionValue {
     runtime_id: StringFunctionId,
     params: Vec<ParamLocal>,
     captures: Vec<CaptureValue>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub(crate) struct BoolFunctionValue {
     runtime_id: BoolFunctionId,
     params: Vec<ParamLocal>,
     captures: Vec<CaptureValue>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub(crate) struct NilFunctionValue {
     runtime_id: NilFunctionId,
     params: Vec<ParamLocal>,
     captures: Vec<CaptureValue>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub(crate) struct FunctionFunctionValue {
     runtime_id: FunctionFunctionId,
     params: Vec<ParamLocal>,
@@ -72,16 +82,20 @@ pub(crate) struct FunctionFunctionValue {
     return_type: FunctionType,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub(crate) struct CaptureValue {
     kind: CaptureValueKind,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub(crate) enum CaptureValueKind {
     Int {
         local: IntLocalId,
         value: BigInt,
+    },
+    Float {
+        local: FloatLocalId,
+        value: f64,
     },
     String {
         local: StringLocalId,
@@ -97,6 +111,10 @@ pub(crate) enum CaptureValueKind {
     IntFunction {
         local: IntFunctionLocalId,
         value: IntFunctionValue,
+    },
+    FloatFunction {
+        local: FloatFunctionLocalId,
+        value: FloatFunctionValue,
     },
     StringFunction {
         local: StringFunctionLocalId,
@@ -116,9 +134,10 @@ pub(crate) enum CaptureValueKind {
     },
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Value {
     Int(BigInt),
+    Float(f64),
     String(EcoString),
     Bool(bool),
     Nil,
@@ -160,6 +179,9 @@ impl FunctionValue {
             RuntimeFunctionId::Int(runtime_id) => FunctionValueKind::Int(
                 IntFunctionValue::new_with_captures(runtime_id, params, captures),
             ),
+            RuntimeFunctionId::Float(runtime_id) => FunctionValueKind::Float(
+                FloatFunctionValue::new_with_captures(runtime_id, params, captures),
+            ),
             RuntimeFunctionId::String(runtime_id) => FunctionValueKind::String(
                 StringFunctionValue::new_with_captures(runtime_id, params, captures),
             ),
@@ -180,6 +202,7 @@ impl FunctionValue {
     pub fn type_(&self) -> FunctionType {
         match &self.kind {
             FunctionValueKind::Int(value) => value.type_(),
+            FunctionValueKind::Float(value) => value.type_(),
             FunctionValueKind::String(value) => value.type_(),
             FunctionValueKind::Bool(value) => value.type_(),
             FunctionValueKind::Nil(value) => value.type_(),
@@ -195,6 +218,7 @@ impl FunctionValue {
     pub(crate) fn params(&self) -> &[ParamLocal] {
         match &self.kind {
             FunctionValueKind::Int(value) => value.params(),
+            FunctionValueKind::Float(value) => value.params(),
             FunctionValueKind::String(value) => value.params(),
             FunctionValueKind::Bool(value) => value.params(),
             FunctionValueKind::Nil(value) => value.params(),
@@ -226,6 +250,42 @@ impl IntFunctionValue {
     }
 
     pub(crate) fn runtime_id(&self) -> IntFunctionId {
+        self.runtime_id
+    }
+
+    pub(crate) fn captures(&self) -> &[CaptureValue] {
+        &self.captures
+    }
+
+    #[cfg(test)]
+    pub(crate) fn params(&self) -> &[ParamLocal] {
+        &self.params
+    }
+}
+
+impl FloatFunctionValue {
+    #[cfg(test)]
+    pub(crate) fn new(runtime_id: FloatFunctionId, params: Vec<ParamLocal>) -> Self {
+        Self::new_with_captures(runtime_id, params, Vec::new())
+    }
+
+    pub(crate) fn new_with_captures(
+        runtime_id: FloatFunctionId,
+        params: Vec<ParamLocal>,
+        captures: Vec<CaptureValue>,
+    ) -> Self {
+        Self {
+            runtime_id,
+            params,
+            captures,
+        }
+    }
+
+    pub(crate) fn type_(&self) -> FunctionType {
+        FunctionType::from_params(&self.params, ValueType::Float)
+    }
+
+    pub(crate) fn runtime_id(&self) -> FloatFunctionId {
         self.runtime_id
     }
 
@@ -399,6 +459,12 @@ impl CaptureValue {
         }
     }
 
+    pub(crate) fn float(local: FloatLocalId, value: f64) -> Self {
+        Self {
+            kind: CaptureValueKind::Float { local, value },
+        }
+    }
+
     pub(crate) fn string(local: StringLocalId, value: EcoString) -> Self {
         Self {
             kind: CaptureValueKind::String { local, value },
@@ -420,6 +486,12 @@ impl CaptureValue {
     pub(crate) fn int_function(local: IntFunctionLocalId, value: IntFunctionValue) -> Self {
         Self {
             kind: CaptureValueKind::IntFunction { local, value },
+        }
+    }
+
+    pub(crate) fn float_function(local: FloatFunctionLocalId, value: FloatFunctionValue) -> Self {
+        Self {
+            kind: CaptureValueKind::FloatFunction { local, value },
         }
     }
 
@@ -466,6 +538,14 @@ impl From<IntFunctionValue> for FunctionValue {
     }
 }
 
+impl From<FloatFunctionValue> for FunctionValue {
+    fn from(value: FloatFunctionValue) -> Self {
+        Self {
+            kind: FunctionValueKind::Float(value),
+        }
+    }
+}
+
 impl From<StringFunctionValue> for FunctionValue {
     fn from(value: StringFunctionValue) -> Self {
         Self {
@@ -501,13 +581,15 @@ impl From<FunctionFunctionValue> for FunctionValue {
 #[cfg(test)]
 mod tests {
     use super::{
-        BoolFunctionValue, FunctionFunctionValue, FunctionType, FunctionValue, IntFunctionValue,
-        NilFunctionValue, StringFunctionValue, ValueType,
+        BoolFunctionValue, CaptureValue, CaptureValueKind, FloatFunctionValue,
+        FunctionFunctionValue, FunctionType, FunctionValue, IntFunctionValue, NilFunctionValue,
+        StringFunctionValue, ValueType,
     };
     use crate::plan::{
-        BoolFunctionId, BoolFunctionLocalId, BoolLocalId, FunctionFunctionId, FunctionValueKind,
-        IntFunctionFunctionId, IntFunctionId, IntLocalId, NilFunctionId, NilLocalId, ParamLocal,
-        RuntimeFunctionId, StringFunctionId, StringLocalId,
+        BoolFunctionId, BoolFunctionLocalId, BoolLocalId, FloatFunctionId, FloatFunctionLocalId,
+        FloatLocalId, FunctionFunctionId, FunctionValueKind, IntFunctionFunctionId, IntFunctionId,
+        IntLocalId, NilFunctionId, NilLocalId, ParamLocal, RuntimeFunctionId, StringFunctionId,
+        StringLocalId,
     };
 
     #[test]
@@ -536,6 +618,7 @@ mod tests {
     #[test]
     fn function_value_conversions_preserve_return_family() {
         let int: FunctionValue = IntFunctionValue::new(IntFunctionId(0), Vec::new()).into();
+        let float: FunctionValue = FloatFunctionValue::new(FloatFunctionId(0), Vec::new()).into();
         let string: FunctionValue =
             StringFunctionValue::new(StringFunctionId(0), Vec::new()).into();
         let bool: FunctionValue = BoolFunctionValue::new(BoolFunctionId(0), Vec::new()).into();
@@ -548,6 +631,7 @@ mod tests {
         .into();
 
         assert_eq!(int.type_().return_(), &ValueType::Int);
+        assert_eq!(float.type_().return_(), &ValueType::Float);
         assert_eq!(string.type_().return_(), &ValueType::String);
         assert_eq!(bool.type_().return_(), &ValueType::Bool);
         assert_eq!(nil.type_().return_(), &ValueType::Nil);
@@ -561,9 +645,11 @@ mod tests {
             RuntimeFunctionId::Int(IntFunctionId(0)),
             vec![
                 int_param(0),
+                float_param(0),
                 string_param(0),
                 bool_param(0),
                 nil_param(0),
+                ParamLocal::float_function(FloatFunctionLocalId(0), argument_function.clone()),
                 ParamLocal::bool_function(BoolFunctionLocalId(0), argument_function.clone()),
             ],
         );
@@ -573,9 +659,11 @@ mod tests {
             FunctionType::new(
                 vec![
                     ValueType::Int,
+                    ValueType::Float,
                     ValueType::String,
                     ValueType::Bool,
                     ValueType::Nil,
+                    ValueType::Function(Box::new(argument_function.clone())),
                     ValueType::Function(Box::new(argument_function)),
                 ],
                 ValueType::Int,
@@ -607,6 +695,8 @@ mod tests {
     fn function_value_preserves_exact_parameter_slots() {
         let params = vec![int_param(2), bool_param(1)];
         let int = FunctionValue::new(RuntimeFunctionId::Int(IntFunctionId(0)), params.clone());
+        let float =
+            FunctionValue::new(RuntimeFunctionId::Float(FloatFunctionId(0)), params.clone());
         let string = FunctionValue::new(
             RuntimeFunctionId::String(StringFunctionId(0)),
             params.clone(),
@@ -622,11 +712,25 @@ mod tests {
         );
 
         assert_eq!(int.params(), params);
+        assert_eq!(float.params(), params);
         assert_eq!(string.params(), params);
         assert_eq!(bool.params(), params);
         assert_eq!(nil.params(), params);
         assert_eq!(function.params(), params);
         assert!(matches!(int.kind(), FunctionValueKind::Int(_)));
+    }
+
+    #[test]
+    fn capture_value_preserves_float_function_shape() {
+        let value = CaptureValue::float_function(
+            FloatFunctionLocalId(0),
+            FloatFunctionValue::new(FloatFunctionId(0), vec![float_param(0)]),
+        );
+
+        assert!(matches!(
+            value.kind(),
+            CaptureValueKind::FloatFunction { .. }
+        ));
     }
 
     fn int_param(index: usize) -> ParamLocal {
@@ -635,6 +739,10 @@ mod tests {
 
     fn string_param(index: usize) -> ParamLocal {
         ParamLocal::string(StringLocalId(index))
+    }
+
+    fn float_param(index: usize) -> ParamLocal {
+        ParamLocal::float(FloatLocalId(index))
     }
 
     fn bool_param(index: usize) -> ParamLocal {

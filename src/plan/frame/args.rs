@@ -7,11 +7,15 @@ impl FrameLayout {
             match arg.kind() {
                 CallArgKind::Int { value, .. } => self.include_int_expr(value),
                 CallArgKind::String { value, .. } => self.include_string_expr(value),
+                CallArgKind::Float { value, .. } => self.include_float_expr(value),
                 CallArgKind::Bool { value, .. } => self.include_bool_expr(value),
                 CallArgKind::Nil { value, .. } => self.include_nil_expr(value),
                 CallArgKind::IntFunction { value, .. } => self.include_int_function_expr(value),
                 CallArgKind::StringFunction { value, .. } => {
                     self.include_string_function_expr(value);
+                }
+                CallArgKind::FloatFunction { value, .. } => {
+                    self.include_float_function_expr(value);
                 }
                 CallArgKind::BoolFunction { value, .. } => self.include_bool_function_expr(value),
                 CallArgKind::NilFunction { value, .. } => self.include_nil_function_expr(value),
@@ -27,11 +31,15 @@ impl FrameLayout {
             match arg.kind() {
                 CaptureArgKind::Int { value, .. } => self.include_int_expr(value),
                 CaptureArgKind::String { value, .. } => self.include_string_expr(value),
+                CaptureArgKind::Float { value, .. } => self.include_float_expr(value),
                 CaptureArgKind::Bool { value, .. } => self.include_bool_expr(value),
                 CaptureArgKind::Nil { value, .. } => self.include_nil_expr(value),
                 CaptureArgKind::IntFunction { value, .. } => self.include_int_function_expr(value),
                 CaptureArgKind::StringFunction { value, .. } => {
                     self.include_string_function_expr(value);
+                }
+                CaptureArgKind::FloatFunction { value, .. } => {
+                    self.include_float_function_expr(value);
                 }
                 CaptureArgKind::BoolFunction { value, .. } => {
                     self.include_bool_function_expr(value)
@@ -49,10 +57,11 @@ impl FrameLayout {
 mod tests {
     use super::FrameLayout;
     use crate::plan::{
-        BoolExpr, BoolFunctionExpr, BoolFunctionLocalId, CallArg, CaptureArg, Expr, FunctionExpr,
-        FunctionFunctionExpr, FunctionFunctionId, FunctionFunctionLocalId, IntExpr,
-        IntFunctionFunctionId, IntFunctionId, IntFunctionLocalId, ReturnExpr, Step, StringExpr,
-        StringFunctionExpr, StringFunctionLocalId, StringLocalId,
+        BoolExpr, BoolFunctionExpr, BoolFunctionLocalId, CallArg, CaptureArg, Expr, FloatExpr,
+        FloatFunctionExpr, FloatFunctionLocalId, FloatLocalId, FunctionExpr, FunctionFunctionExpr,
+        FunctionFunctionId, FunctionFunctionLocalId, IntExpr, IntFunctionFunctionId, IntFunctionId,
+        IntFunctionLocalId, ReturnExpr, Step, StringExpr, StringFunctionExpr,
+        StringFunctionLocalId, StringLocalId,
     };
 
     #[test]
@@ -72,6 +81,16 @@ mod tests {
                             StringFunctionLocalId(7),
                             "string_function_arg".into(),
                             super::super::test_helpers::string_function_expr()
+                                .type_()
+                                .clone(),
+                        ),
+                    ),
+                    CallArg::float_function(
+                        FloatFunctionLocalId(1),
+                        FloatFunctionExpr::local_get(
+                            FloatFunctionLocalId(19),
+                            "float_function_arg".into(),
+                            super::super::test_helpers::float_function_expr()
                                 .type_()
                                 .clone(),
                         ),
@@ -115,6 +134,10 @@ mod tests {
                             StringLocalId(3),
                             StringExpr::local_get(StringLocalId(15), "string_capture".into()),
                         ),
+                        CaptureArg::float(
+                            FloatLocalId(3),
+                            FloatExpr::local_get(FloatLocalId(20), "float_capture".into()),
+                        ),
                         CaptureArg::bool(
                             crate::plan::BoolLocalId(3),
                             BoolExpr::local_get(
@@ -143,6 +166,16 @@ mod tests {
                                 StringFunctionLocalId(11),
                                 "string_function_capture".into(),
                                 super::super::test_helpers::string_function_expr()
+                                    .type_()
+                                    .clone(),
+                            ),
+                        ),
+                        CaptureArg::float_function(
+                            FloatFunctionLocalId(2),
+                            FloatFunctionExpr::local_get(
+                                FloatFunctionLocalId(21),
+                                "float_function_capture".into(),
+                                super::super::test_helpers::float_function_expr()
                                     .type_()
                                     .clone(),
                             ),
@@ -193,5 +226,7 @@ mod tests {
         assert_eq!(layout.bools(), 17);
         assert_eq!(layout.nils(), 18);
         assert_eq!(layout.int_functions(), 19);
+        assert_eq!(layout.float_functions(), 22);
+        assert_eq!(layout.floats(), 21);
     }
 }

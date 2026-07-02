@@ -1,11 +1,13 @@
 use crate::plan::{
     BoolExpr, BoolFunctionExpr, BoolFunctionFunctionId, BoolFunctionId, BoolFunctionLocalId,
-    BoolLocalId, CaptureArg, FunctionFunctionExpr, FunctionFunctionFunctionId, FunctionFunctionId,
-    FunctionFunctionLocalId, FunctionId, FunctionPlan, FunctionType, FunctionValue, IntExpr,
-    IntFunctionExpr, IntFunctionFunctionId, IntFunctionId, IntFunctionLocalId, IntLocalId, LocalId,
-    NilExpr, NilFunctionExpr, NilFunctionFunctionId, NilFunctionId, NilFunctionLocalId, NilLocalId,
-    ParamBinding, ParamLocal, RuntimeFunctionId, StringExpr, StringFunctionExpr,
-    StringFunctionFunctionId, StringFunctionId, StringFunctionLocalId, StringLocalId, ValueType,
+    BoolLocalId, CaptureArg, FloatExpr, FloatFunctionExpr, FloatFunctionFunctionId,
+    FloatFunctionId, FloatFunctionLocalId, FloatLocalId, FunctionFunctionExpr,
+    FunctionFunctionFunctionId, FunctionFunctionId, FunctionFunctionLocalId, FunctionId,
+    FunctionPlan, FunctionType, FunctionValue, IntExpr, IntFunctionExpr, IntFunctionFunctionId,
+    IntFunctionId, IntFunctionLocalId, IntLocalId, LocalId, NilExpr, NilFunctionExpr,
+    NilFunctionFunctionId, NilFunctionId, NilFunctionLocalId, NilLocalId, ParamBinding, ParamLocal,
+    RuntimeFunctionId, StringExpr, StringFunctionExpr, StringFunctionFunctionId, StringFunctionId,
+    StringFunctionLocalId, StringLocalId, ValueType,
 };
 use crate::planner::error::{InvalidTypedAstReason, PlanError};
 use ecow::EcoString;
@@ -32,10 +34,12 @@ pub(super) struct PlanContext<'a> {
     anonymous_functions: &'a mut AnonymousFunctions,
     bindings: HashMap<EcoString, LocalBinding>,
     next_int_local: usize,
+    next_float_local: usize,
     next_string_local: usize,
     next_bool_local: usize,
     next_nil_local: usize,
     next_int_function_local: usize,
+    next_float_function_local: usize,
     next_string_function_local: usize,
     next_bool_function_local: usize,
     next_nil_function_local: usize,
@@ -61,6 +65,10 @@ pub(super) enum FunctionLocalBinding {
     },
     String {
         local: StringFunctionLocalId,
+        type_: FunctionType,
+    },
+    Float {
+        local: FloatFunctionLocalId,
         type_: FunctionType,
     },
     Bool {
@@ -89,10 +97,12 @@ impl<'a> PlanContext<'a> {
             anonymous_functions,
             bindings: HashMap::new(),
             next_int_local: 0,
+            next_float_local: 0,
             next_string_local: 0,
             next_bool_local: 0,
             next_nil_local: 0,
             next_int_function_local: 0,
+            next_float_function_local: 0,
             next_string_function_local: 0,
             next_bool_function_local: 0,
             next_nil_function_local: 0,
@@ -104,6 +114,9 @@ impl<'a> PlanContext<'a> {
         match local {
             LocalId::Int(local) => {
                 self.next_int_local = self.next_int_local.max(local.0 + 1);
+            }
+            LocalId::Float(local) => {
+                self.next_float_local = self.next_float_local.max(local.0 + 1);
             }
             LocalId::String(local) => {
                 self.next_string_local = self.next_string_local.max(local.0 + 1);
@@ -123,6 +136,9 @@ impl<'a> PlanContext<'a> {
             ParamLocal::Int(local) => {
                 self.define_existing_local(name, LocalId::Int(*local));
             }
+            ParamLocal::Float(local) => {
+                self.define_existing_local(name, LocalId::Float(*local));
+            }
             ParamLocal::String(local) => {
                 self.define_existing_local(name, LocalId::String(*local));
             }
@@ -137,6 +153,16 @@ impl<'a> PlanContext<'a> {
                 self.bindings.insert(
                     name,
                     LocalBinding::Function(FunctionLocalBinding::Int {
+                        local: *local,
+                        type_: type_.clone(),
+                    }),
+                );
+            }
+            ParamLocal::FloatFunction { local, type_ } => {
+                self.next_float_function_local = self.next_float_function_local.max(local.0 + 1);
+                self.bindings.insert(
+                    name,
+                    LocalBinding::Function(FunctionLocalBinding::Float {
                         local: *local,
                         type_: type_.clone(),
                     }),
@@ -214,6 +240,20 @@ impl<'a> PlanContext<'a> {
         local
     }
 
+    pub(super) fn define_float_function_local(
+        &mut self,
+        name: EcoString,
+        type_: FunctionType,
+    ) -> FloatFunctionLocalId {
+        let local = FloatFunctionLocalId(self.next_float_function_local);
+        self.next_float_function_local += 1;
+        self.bindings.insert(
+            name,
+            LocalBinding::Function(FunctionLocalBinding::Float { local, type_ }),
+        );
+        local
+    }
+
     pub(super) fn define_bool_function_local(
         &mut self,
         name: EcoString,
@@ -269,6 +309,14 @@ impl<'a> PlanContext<'a> {
         self.next_string_local += 1;
         self.bindings
             .insert(name, LocalBinding::Primitive(LocalId::String(local)));
+        local
+    }
+
+    pub(super) fn define_float_local(&mut self, name: EcoString) -> FloatLocalId {
+        let local = FloatLocalId(self.next_float_local);
+        self.next_float_local += 1;
+        self.bindings
+            .insert(name, LocalBinding::Primitive(LocalId::Float(local)));
         local
     }
 
@@ -338,10 +386,12 @@ impl<'a> PlanContext<'a> {
             anonymous_functions: self.anonymous_functions,
             bindings: HashMap::new(),
             next_int_local: 0,
+            next_float_local: 0,
             next_string_local: 0,
             next_bool_local: 0,
             next_nil_local: 0,
             next_int_function_local: 0,
+            next_float_function_local: 0,
             next_string_function_local: 0,
             next_bool_function_local: 0,
             next_nil_function_local: 0,
@@ -401,6 +451,13 @@ impl<'a> PlanContext<'a> {
                     IntExpr::local_get(local, capture.name),
                 ))
             }
+            LocalBinding::Primitive(LocalId::Float(local)) => {
+                let target = self.define_float_local(capture.name.clone());
+                Ok(CaptureArg::float(
+                    target,
+                    FloatExpr::local_get(local, capture.name),
+                ))
+            }
             LocalBinding::Primitive(LocalId::String(local)) => {
                 let target = self.define_string_local(capture.name.clone());
                 Ok(CaptureArg::string(
@@ -427,6 +484,13 @@ impl<'a> PlanContext<'a> {
                 Ok(CaptureArg::int_function(
                     target,
                     IntFunctionExpr::local_get(local, capture.name, type_),
+                ))
+            }
+            LocalBinding::Function(FunctionLocalBinding::Float { local, type_ }) => {
+                let target = self.define_float_function_local(capture.name.clone(), type_.clone());
+                Ok(CaptureArg::float_function(
+                    target,
+                    FloatFunctionExpr::local_get(local, capture.name, type_),
                 ))
             }
             LocalBinding::Function(FunctionLocalBinding::String { local, type_ }) => {
@@ -547,10 +611,12 @@ impl FunctionInfo {
 #[derive(Debug, Default)]
 pub(in crate::planner) struct FunctionRuntimeIds {
     next_int: usize,
+    next_float: usize,
     next_string: usize,
     next_bool: usize,
     next_nil: usize,
     next_int_function: usize,
+    next_float_function: usize,
     next_string_function: usize,
     next_bool_function: usize,
     next_nil_function: usize,
@@ -561,6 +627,7 @@ impl FunctionRuntimeIds {
     pub(in crate::planner) fn next(&mut self, return_type: &ValueType) -> RuntimeFunctionId {
         match return_type {
             ValueType::Int => RuntimeFunctionId::Int(self.next_int_id()),
+            ValueType::Float => RuntimeFunctionId::Float(self.next_float_id()),
             ValueType::String => RuntimeFunctionId::String(self.next_string_id()),
             ValueType::Bool => RuntimeFunctionId::Bool(self.next_bool_id()),
             ValueType::Nil => RuntimeFunctionId::Nil(self.next_nil_id()),
@@ -571,6 +638,7 @@ impl FunctionRuntimeIds {
     pub(super) fn next_function(&mut self, return_type: FunctionType) -> RuntimeFunctionId {
         let id = match return_type.return_() {
             ValueType::Int => FunctionFunctionId::Int(self.next_int_function_id()),
+            ValueType::Float => FunctionFunctionId::Float(self.next_float_function_id()),
             ValueType::String => FunctionFunctionId::String(self.next_string_function_id()),
             ValueType::Bool => FunctionFunctionId::Bool(self.next_bool_function_id()),
             ValueType::Nil => FunctionFunctionId::Nil(self.next_nil_function_id()),
@@ -591,6 +659,12 @@ impl FunctionRuntimeIds {
     pub(in crate::planner) fn next_string_id(&mut self) -> StringFunctionId {
         let id = StringFunctionId(self.next_string);
         self.next_string += 1;
+        id
+    }
+
+    pub(in crate::planner) fn next_float_id(&mut self) -> FloatFunctionId {
+        let id = FloatFunctionId(self.next_float);
+        self.next_float += 1;
         id
     }
 
@@ -618,6 +692,12 @@ impl FunctionRuntimeIds {
         id
     }
 
+    pub(in crate::planner) fn next_float_function_id(&mut self) -> FloatFunctionFunctionId {
+        let id = FloatFunctionFunctionId(self.next_float_function);
+        self.next_float_function += 1;
+        id
+    }
+
     pub(in crate::planner) fn next_bool_function_id(&mut self) -> BoolFunctionFunctionId {
         let id = BoolFunctionFunctionId(self.next_bool_function);
         self.next_bool_function += 1;
@@ -641,6 +721,8 @@ impl ValueType {
     pub(super) fn from_gleam(type_: &Type) -> Option<Self> {
         if type_.is_int() {
             Some(Self::Int)
+        } else if type_.is_float() {
+            Some(Self::Float)
         } else if type_.is_string() {
             Some(Self::String)
         } else if type_.is_bool() {
@@ -667,8 +749,8 @@ mod tests {
     use super::FunctionLocalBinding;
     use super::{AnonymousFunctions, FunctionInfo, FunctionRuntimeIds, PlanContext};
     use crate::plan::{
-        FunctionValue, IntFunctionId, IntFunctionLocalId, IntLocalId, LocalId, RuntimeFunctionId,
-        ValueType,
+        CaptureArgKind, FloatFunctionId, FloatFunctionLocalId, FunctionType, FunctionValue,
+        IntFunctionId, IntFunctionLocalId, IntLocalId, LocalId, RuntimeFunctionId, ValueType,
     };
     use ecow::EcoString;
     use std::collections::HashMap;
@@ -753,6 +835,27 @@ mod tests {
     }
 
     #[test]
+    fn define_captures_records_float_function_binding() {
+        let module = EcoString::from("main");
+        let functions = HashMap::<EcoString, FunctionInfo>::new();
+        let mut anonymous = AnonymousFunctions::default();
+        let mut context = PlanContext::new(&module, &functions, &mut anonymous);
+        let type_ = FunctionType::new(vec![ValueType::Float], ValueType::Float);
+
+        context.define_float_function_local("f".into(), type_);
+        let captures = context.capture_bindings(&[EcoString::from("f")]).unwrap();
+        let captures = context.define_captures(captures).unwrap();
+
+        assert!(matches!(
+            captures[0].kind(),
+            CaptureArgKind::FloatFunction {
+                local: FloatFunctionLocalId(1),
+                ..
+            },
+        ));
+    }
+
+    #[test]
     fn function_runtime_ids_allocate_by_return_type() {
         let mut ids = FunctionRuntimeIds::default();
 
@@ -763,6 +866,10 @@ mod tests {
         assert_eq!(
             ids.next(&ValueType::Int),
             RuntimeFunctionId::Int(IntFunctionId(1))
+        );
+        assert_eq!(
+            ids.next(&ValueType::Float),
+            RuntimeFunctionId::Float(FloatFunctionId(0))
         );
         assert_eq!(
             ids.next(&ValueType::String),

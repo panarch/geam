@@ -1,12 +1,12 @@
 use super::FunctionReturn;
 use crate::plan::{
-    BoolFunctionExpr, BoolReturn, FunctionExpr, FunctionExprKind, FunctionFunctionExpr,
-    IntFunctionExpr, IntReturn, NilFunctionExpr, NilReturn, ReturnBody, StringFunctionExpr,
-    StringReturn,
+    BoolFunctionExpr, BoolReturn, FloatFunctionExpr, FloatReturn, FunctionExpr, FunctionExprKind,
+    FunctionFunctionExpr, IntFunctionExpr, IntReturn, NilFunctionExpr, NilReturn, ReturnBody,
+    StringFunctionExpr, StringReturn,
 };
 use crate::planner::dsl::expression::{
-    Bool, BoolFunction, Function, FunctionFunction, Int, IntFunction, Nil, NilFunction, String,
-    StringFunction,
+    Bool, BoolFunction, Float, FloatFunction, Function, FunctionFunction, Int, IntFunction, Nil,
+    NilFunction, String, StringFunction,
 };
 
 impl From<Int> for FunctionReturn {
@@ -18,6 +18,12 @@ impl From<Int> for FunctionReturn {
 impl From<String> for FunctionReturn {
     fn from(value: String) -> Self {
         Self::String(ReturnBody::expr(value.into()))
+    }
+}
+
+impl From<Float> for FunctionReturn {
+    fn from(value: Float) -> Self {
+        Self::Float(ReturnBody::expr(value.into()))
     }
 }
 
@@ -47,6 +53,16 @@ impl From<StringFunction> for FunctionReturn {
     fn from(value: StringFunction) -> Self {
         let expression = StringFunctionExpr::from(value);
         Self::StringFunction {
+            type_: expression.type_().clone(),
+            body: ReturnBody::expr(expression),
+        }
+    }
+}
+
+impl From<FloatFunction> for FunctionReturn {
+    fn from(value: FloatFunction) -> Self {
+        let expression = FloatFunctionExpr::from(value);
+        Self::FloatFunction {
             type_: expression.type_().clone(),
             body: ReturnBody::expr(expression),
         }
@@ -94,6 +110,10 @@ impl From<Function> for FunctionReturn {
                 type_: expression.type_().clone(),
                 body: ReturnBody::expr(expression),
             },
+            FunctionExprKind::Float(expression) => Self::FloatFunction {
+                type_: expression.type_().clone(),
+                body: ReturnBody::expr(expression),
+            },
             FunctionExprKind::Bool(expression) => Self::BoolFunction {
                 type_: expression.type_().clone(),
                 body: ReturnBody::expr(expression),
@@ -119,6 +139,12 @@ impl From<IntReturn> for FunctionReturn {
 impl From<StringReturn> for FunctionReturn {
     fn from(value: StringReturn) -> Self {
         Self::String(value)
+    }
+}
+
+impl From<FloatReturn> for FunctionReturn {
+    fn from(value: FloatReturn) -> Self {
+        Self::Float(value)
     }
 }
 

@@ -4,9 +4,9 @@ use crate::plan::{
 };
 use crate::runtime::error::ExecutionResult;
 use crate::runtime::expression::{
-    eval_bool_expr, eval_bool_function_expr, eval_function_function_expr, eval_int_expr,
-    eval_int_function_expr, eval_nil_expr, eval_nil_function_expr, eval_string_expr,
-    eval_string_function_expr,
+    eval_bool_expr, eval_bool_function_expr, eval_float_expr, eval_float_function_expr,
+    eval_function_function_expr, eval_int_expr, eval_int_function_expr, eval_nil_expr,
+    eval_nil_function_expr, eval_string_expr, eval_string_function_expr,
 };
 use crate::runtime::frame::Frame;
 
@@ -50,6 +50,10 @@ fn bind_arguments_into(
                 let value = eval_string_expr(plan, caller_frame, value)?;
                 frame.set_string(*local, value);
             }
+            CallArgKind::Float { local, value } => {
+                let value = eval_float_expr(plan, caller_frame, value)?;
+                frame.set_float(*local, value);
+            }
             CallArgKind::Bool { local, value } => {
                 let value = eval_bool_expr(plan, caller_frame, value)?;
                 frame.set_bool(*local, value);
@@ -65,6 +69,10 @@ fn bind_arguments_into(
             CallArgKind::StringFunction { local, value } => {
                 let value = eval_string_function_expr(plan, caller_frame, value)?;
                 frame.set_string_function(*local, value);
+            }
+            CallArgKind::FloatFunction { local, value } => {
+                let value = eval_float_function_expr(plan, caller_frame, value)?;
+                frame.set_float_function(*local, value);
             }
             CallArgKind::BoolFunction { local, value } => {
                 let value = eval_bool_function_expr(plan, caller_frame, value)?;
@@ -98,6 +106,9 @@ pub(in crate::runtime) fn eval_capture_args(
             CaptureArgKind::String { local, value } => {
                 CaptureValue::string(*local, eval_string_expr(plan, frame, value)?)
             }
+            CaptureArgKind::Float { local, value } => {
+                CaptureValue::float(*local, eval_float_expr(plan, frame, value)?)
+            }
             CaptureArgKind::Bool { local, value } => {
                 CaptureValue::bool(*local, eval_bool_expr(plan, frame, value)?)
             }
@@ -112,6 +123,9 @@ pub(in crate::runtime) fn eval_capture_args(
                 *local,
                 eval_string_function_expr(plan, frame, value)?,
             ),
+            CaptureArgKind::FloatFunction { local, value } => {
+                CaptureValue::float_function(*local, eval_float_function_expr(plan, frame, value)?)
+            }
             CaptureArgKind::BoolFunction { local, value } => {
                 CaptureValue::bool_function(*local, eval_bool_function_expr(plan, frame, value)?)
             }
@@ -133,6 +147,7 @@ fn bind_captures(frame: &mut Frame, captures: &[CaptureValue]) {
         match capture.kind() {
             CaptureValueKind::Int { local, value } => frame.set_int(*local, value.clone()),
             CaptureValueKind::String { local, value } => frame.set_string(*local, value.clone()),
+            CaptureValueKind::Float { local, value } => frame.set_float(*local, *value),
             CaptureValueKind::Bool { local, value } => frame.set_bool(*local, *value),
             CaptureValueKind::Nil { local } => frame.set_nil(*local),
             CaptureValueKind::IntFunction { local, value } => {
@@ -140,6 +155,9 @@ fn bind_captures(frame: &mut Frame, captures: &[CaptureValue]) {
             }
             CaptureValueKind::StringFunction { local, value } => {
                 frame.set_string_function(*local, value.clone());
+            }
+            CaptureValueKind::FloatFunction { local, value } => {
+                frame.set_float_function(*local, value.clone());
             }
             CaptureValueKind::BoolFunction { local, value } => {
                 frame.set_bool_function(*local, value.clone());
@@ -156,14 +174,16 @@ fn bind_captures(frame: &mut Frame, captures: &[CaptureValue]) {
 
 #[cfg(test)]
 mod tests {
-    use super::bind_arguments;
+    use super::{bind_arguments, bind_function_value_arguments, eval_capture_args};
     use crate::plan::{
-        BoolExpr, BoolFunctionExpr, BoolFunctionLocalId, BoolLocalId, CallArg, ExecutionPlan,
-        FrameLayout, FunctionFunctionExpr, FunctionFunctionId, FunctionFunctionLocalId,
-        FunctionFunctionValue, FunctionId, FunctionPlan, FunctionReturnFamily, FunctionType,
-        IntExpr, IntFunctionExpr, IntFunctionFunctionId, IntFunctionLocalId, IntLocalId, NilExpr,
-        NilFunctionExpr, NilFunctionLocalId, NilLocalId, ReturnExpr, StringExpr,
-        StringFunctionExpr, StringFunctionLocalId, StringLocalId, ValueType,
+        BoolExpr, BoolFunctionExpr, BoolFunctionLocalId, BoolLocalId, CallArg, CaptureArg,
+        ExecutionPlan, FloatFunctionExpr, FloatFunctionId, FloatFunctionLocalId,
+        FloatFunctionValue, FrameLayout, FunctionFunctionExpr, FunctionFunctionId,
+        FunctionFunctionLocalId, FunctionFunctionValue, FunctionId, FunctionPlan,
+        FunctionReturnFamily, FunctionType, IntExpr, IntFunctionExpr, IntFunctionFunctionId,
+        IntFunctionLocalId, IntLocalId, NilExpr, NilFunctionExpr, NilFunctionLocalId, NilLocalId,
+        ReturnExpr, StringExpr, StringFunctionExpr, StringFunctionLocalId, StringLocalId,
+        ValueType,
     };
     use crate::runtime::ExecutionError;
     use crate::runtime::frame::Frame;
@@ -179,6 +199,7 @@ mod tests {
             CallArg::nil(NilLocalId(0), failing_nil_expr()),
             CallArg::int_function(IntFunctionLocalId(0), failing_int_function_expr()),
             CallArg::string_function(StringFunctionLocalId(0), failing_string_function_expr()),
+            CallArg::float_function(FloatFunctionLocalId(0), failing_float_function_expr()),
             CallArg::bool_function(BoolFunctionLocalId(0), failing_bool_function_expr()),
             CallArg::nil_function(NilFunctionLocalId(0), failing_nil_function_expr()),
             CallArg::function_function(
@@ -195,6 +216,35 @@ mod tests {
                 FrameLayout::default(),
             ));
         }
+    }
+
+    #[test]
+    fn float_function_captures_are_evaluated_and_bound() {
+        let plan = plan();
+        let captures = eval_capture_args(
+            &plan,
+            &mut Frame::default(),
+            &[CaptureArg::float_function(
+                FloatFunctionLocalId(0),
+                float_function_expr(),
+            )],
+        )
+        .expect("capture args should evaluate");
+        let frame = bind_function_value_arguments(
+            &plan,
+            &[],
+            &mut Frame::default(),
+            FrameLayout::default(),
+            &captures,
+        )
+        .expect("captures should bind");
+
+        assert_eq!(
+            frame
+                .get_float_function(FloatFunctionLocalId(0))
+                .runtime_id(),
+            FloatFunctionId(0),
+        );
     }
 
     fn assert_expected_function_got_int<T>(actual: Result<T, ExecutionError>) {
@@ -254,6 +304,18 @@ mod tests {
             Vec::new(),
             FunctionType::new(Vec::new(), ValueType::String),
         )
+    }
+
+    fn failing_float_function_expr() -> FloatFunctionExpr {
+        FloatFunctionExpr::function_call(
+            failing_function_function_expr(),
+            Vec::new(),
+            FunctionType::new(Vec::new(), ValueType::Float),
+        )
+    }
+
+    fn float_function_expr() -> FloatFunctionExpr {
+        FloatFunctionExpr::value(FloatFunctionValue::new(FloatFunctionId(0), Vec::new()))
     }
 
     fn failing_bool_function_expr() -> BoolFunctionExpr {

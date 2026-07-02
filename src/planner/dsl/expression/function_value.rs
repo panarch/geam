@@ -1,14 +1,15 @@
 use super::{
-    BoolFunction, Function, FunctionFunction, IntFunction, IntoParamLocal, IntoValueType,
-    NilFunction, StringFunction,
+    BoolFunction, FloatFunction, Function, FunctionFunction, IntFunction, IntoParamLocal,
+    IntoValueType, NilFunction, StringFunction,
 };
 use crate::plan::{
     BoolFunctionExpr, BoolFunctionId, BoolFunctionLocalId, BoolFunctionValue, CaptureArg,
-    FunctionExpr, FunctionFunctionExpr, FunctionFunctionId, FunctionFunctionLocalId,
-    FunctionFunctionValue, FunctionType, FunctionValue, IntFunctionExpr, IntFunctionId,
-    IntFunctionLocalId, IntFunctionValue, NilFunctionExpr, NilFunctionId, NilFunctionLocalId,
-    NilFunctionValue, RuntimeFunctionId, StringFunctionExpr, StringFunctionId,
-    StringFunctionLocalId, StringFunctionValue, ValueType,
+    FloatFunctionExpr, FloatFunctionId, FloatFunctionLocalId, FloatFunctionValue, FunctionExpr,
+    FunctionFunctionExpr, FunctionFunctionId, FunctionFunctionLocalId, FunctionFunctionValue,
+    FunctionType, FunctionValue, IntFunctionExpr, IntFunctionId, IntFunctionLocalId,
+    IntFunctionValue, NilFunctionExpr, NilFunctionId, NilFunctionLocalId, NilFunctionValue,
+    RuntimeFunctionId, StringFunctionExpr, StringFunctionId, StringFunctionLocalId,
+    StringFunctionValue, ValueType,
 };
 use ecow::EcoString;
 
@@ -68,6 +69,38 @@ pub(crate) fn string_function_ref(
             .map(IntoParamLocal::into_param_local)
             .collect(),
     )))
+}
+
+pub(crate) fn float_function_ref(
+    runtime_id: usize,
+    params: impl IntoIterator<Item = impl IntoParamLocal>,
+) -> FloatFunction {
+    FloatFunction(FloatFunctionExpr::value(FloatFunctionValue::new(
+        FloatFunctionId(runtime_id),
+        params
+            .into_iter()
+            .map(IntoParamLocal::into_param_local)
+            .collect(),
+    )))
+}
+
+pub(crate) fn float_function_closure(
+    runtime_id: usize,
+    params: impl IntoIterator<Item = impl IntoParamLocal>,
+    captures: impl IntoIterator<Item = CaptureArg>,
+) -> FloatFunction {
+    let params = params
+        .into_iter()
+        .map(IntoParamLocal::into_param_local)
+        .collect::<Vec<_>>();
+    let type_ = FunctionType::from_params(&params, ValueType::Float);
+
+    FloatFunction(FloatFunctionExpr::closure(
+        FloatFunctionId(runtime_id),
+        params,
+        captures.into_iter().collect(),
+        type_,
+    ))
 }
 
 pub(crate) fn bool_function_ref(
@@ -157,6 +190,18 @@ pub(crate) fn local_string_function(
     ))
 }
 
+pub(crate) fn local_float_function(
+    local: usize,
+    name: impl Into<EcoString>,
+    params: impl IntoIterator<Item = impl IntoValueType>,
+) -> FloatFunction {
+    FloatFunction(FloatFunctionExpr::local_get(
+        FloatFunctionLocalId(local),
+        name.into(),
+        float_function_type(params),
+    ))
+}
+
 pub(crate) fn local_bool_function(
     local: usize,
     name: impl Into<EcoString>,
@@ -201,6 +246,10 @@ fn string_function_type(params: impl IntoIterator<Item = impl IntoValueType>) ->
     function_type(params, ValueType::String)
 }
 
+fn float_function_type(params: impl IntoIterator<Item = impl IntoValueType>) -> FunctionType {
+    function_type(params, ValueType::Float)
+}
+
 fn bool_function_type(params: impl IntoIterator<Item = impl IntoValueType>) -> FunctionType {
     function_type(params, ValueType::Bool)
 }
@@ -225,17 +274,18 @@ fn function_type(
 #[cfg(test)]
 mod tests {
     use super::{
-        bool_function_ref, function_function_closure, function_function_ref, function_ref,
-        int_function_closure, int_function_ref, local_bool_function, local_function_function,
-        local_int_function, local_nil_function, local_string_function, nil_function_ref,
-        string_function_ref,
+        bool_function_ref, float_function_closure, float_function_ref, function_function_closure,
+        function_function_ref, function_ref, int_function_closure, int_function_ref,
+        local_bool_function, local_float_function, local_function_function, local_int_function,
+        local_nil_function, local_string_function, nil_function_ref, string_function_ref,
     };
     use crate::plan::{
-        BoolFunctionExprKind, Expr, ExprKind, FunctionExpr, FunctionExprKind, FunctionFunctionId,
-        FunctionType, IntFunctionExprKind, IntFunctionFunctionId, NilFunctionExprKind, ParamLocal,
-        RuntimeFunctionId, StringFunctionExprKind, ValueType,
+        BoolFunctionExprKind, Expr, ExprKind, FloatFunctionExprKind, FunctionExpr,
+        FunctionExprKind, FunctionFunctionId, FunctionType, IntFunctionExprKind,
+        IntFunctionFunctionId, NilFunctionExprKind, ParamLocal, RuntimeFunctionId,
+        StringFunctionExprKind, ValueType,
     };
-    use crate::planner::dsl::expression::{Function, int};
+    use crate::planner::dsl::expression::{Function, float, int};
 
     #[test]
     fn function_ref_helpers_build_function_values() {
@@ -251,6 +301,14 @@ mod tests {
             Expr::from(string_function_ref(
                 0,
                 [crate::plan::LocalId::String(crate::plan::StringLocalId(0))],
+            ))
+            .kind(),
+            ExprKind::Function(_),
+        ));
+        assert!(matches!(
+            Expr::from(float_function_ref(
+                0,
+                [crate::plan::LocalId::Float(crate::plan::FloatLocalId(0))],
             ))
             .kind(),
             ExprKind::Function(_),
@@ -312,6 +370,16 @@ mod tests {
             StringFunctionExprKind::LocalGet { .. },
         ));
         assert!(matches!(
+            local_float_function(
+                0,
+                "f",
+                [crate::plan::LocalId::Float(crate::plan::FloatLocalId(0))],
+            )
+            .0
+            .kind(),
+            FloatFunctionExprKind::LocalGet { .. },
+        ));
+        assert!(matches!(
             local_bool_function(
                 0,
                 "f",
@@ -362,6 +430,19 @@ mod tests {
                 .0
                 .type_(),
             &FunctionType::new(vec![ValueType::Int], ValueType::Int),
+        );
+        assert_eq!(
+            float_function_closure(
+                0,
+                [ParamLocal::float(crate::plan::FloatLocalId(0))],
+                [crate::planner::dsl::expression::capture_float(
+                    0,
+                    float(1.0)
+                )],
+            )
+            .0
+            .type_(),
+            &FunctionType::new(vec![ValueType::Float], ValueType::Float),
         );
         assert_eq!(
             function_function_closure(

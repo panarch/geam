@@ -1,6 +1,6 @@
 use super::{CallArgumentMode, CaptureSubstitution};
 use crate::plan::{
-    BoolExpr, CallArg, Expr, FunctionExpr, FunctionFunctionExpr, IntExpr, NilExpr,
+    BoolExpr, CallArg, Expr, FloatExpr, FunctionExpr, FunctionFunctionExpr, IntExpr, NilExpr,
     RuntimeFunctionId, StringExpr, ValueType,
 };
 use crate::planner::context::{FunctionInfo, PlanContext};
@@ -53,6 +53,7 @@ fn call_expr(function: RuntimeFunctionId, args: Vec<CallArg>) -> Expr {
     match function {
         RuntimeFunctionId::Int(function) => Expr::int(IntExpr::call(function, args)),
         RuntimeFunctionId::String(function) => Expr::string(StringExpr::call(function, args)),
+        RuntimeFunctionId::Float(function) => Expr::float(FloatExpr::call(function, args)),
         RuntimeFunctionId::Bool(function) => Expr::bool(BoolExpr::call(function, args)),
         RuntimeFunctionId::Nil(function) => Expr::nil(NilExpr::call(function, args)),
         RuntimeFunctionId::Function { id, return_type } => {
@@ -72,6 +73,9 @@ fn function_returning_function_call_expr(
         )),
         crate::plan::FunctionFunctionId::String(function) => Expr::function(FunctionExpr::string(
             crate::plan::StringFunctionExpr::call(function, args, return_type),
+        )),
+        crate::plan::FunctionFunctionId::Float(function) => Expr::function(FunctionExpr::float(
+            crate::plan::FloatFunctionExpr::call(function, args, return_type),
         )),
         crate::plan::FunctionFunctionId::Bool(function) => Expr::function(FunctionExpr::bool(
             crate::plan::BoolFunctionExpr::call(function, args, return_type),

@@ -26,6 +26,7 @@ macro_rules! rejection_cases {
 mod values {
     execution_cases!("values";
         integer_return,
+        float_value,
         bool_value,
         nil_value,
     );
@@ -35,6 +36,7 @@ mod bindings {
     execution_cases!("bindings";
         let_binding,
         let_discard_binding,
+        float_let_binding,
         string_let_binding,
         bool_let_binding,
         nil_let_binding,
@@ -47,6 +49,9 @@ mod operators {
         integer_arithmetic,
         integer_comparison,
         integer_division,
+        float_arithmetic,
+        float_comparison,
+        float_division,
         string_concatenation,
         bool_operators,
         short_circuit_block_scope,
@@ -64,6 +69,9 @@ mod control_flow {
             bool_case,
             bool_case_fallback,
             case_block_scope,
+            float_case,
+            float_case_function_values,
+            float_case_return_families,
             int_case,
             string_literal_case,
             string_case_ordering,
@@ -77,6 +85,7 @@ mod control_flow {
 mod pipeline {
     execution_cases!("pipeline";
         pipeline,
+        float_pipeline,
     );
 }
 
@@ -85,6 +94,7 @@ mod functions {
         execution_cases!("functions/basic";
             local_function_call,
             string_function_call,
+            float_function_call,
             bool_function_call,
             nil_function_call,
             function_after_main,
@@ -100,6 +110,9 @@ mod functions {
             function_value_local,
             function_value_block_callee,
             function_value_case_callee,
+            float_function_value_shapes,
+            float_function_value_expressions,
+            function_value_expression_steps,
             function_value_shadowing,
         );
     }
@@ -110,6 +123,7 @@ mod functions {
             discard_mixed_arguments,
             function_value_argument_callback,
             function_value_argument_discard,
+            function_value_argument_float,
             function_value_argument_higher_order_alias,
             function_value_argument_higher_order_return_shapes,
             function_value_argument_input_shapes,
@@ -125,6 +139,7 @@ mod functions {
             function_returning_function_argument,
             function_returning_function_deep,
             function_returning_function_direct_shapes,
+            function_returning_float_function,
             function_returning_function_recursive,
         );
     }
@@ -134,6 +149,7 @@ mod functions {
             tail_recursion_int,
             mutual_tail_recursion_bool,
             string_nil_tail_recursion,
+            float_tail_recursion,
             block_case_tail_call,
             function_returning_tail_call,
             function_returning_tail_call_families,
@@ -148,8 +164,10 @@ mod functions {
             anonymous_function_argument,
             anonymous_function_return_shapes,
             anonymous_function_returning_function,
+            anonymous_float_function,
             anonymous_function_main_returning_function,
             capturing_closure_local_call,
+            capturing_closure_float,
             capturing_closure_block_scope,
             capturing_closure_nested,
             capturing_closure_shadowing,
@@ -166,6 +184,7 @@ mod functions {
             use_multiple_assignments,
             use_nested,
             use_capture,
+            use_float_value,
             use_block_scope,
             use_function_value_provider,
             use_inside_anonymous_function,
@@ -253,6 +272,7 @@ fn expected_text(src: &str) -> &str {
 fn render_value(value: &Value) -> String {
     match value {
         Value::Int(value) => format!("Int({value})"),
+        Value::Float(value) => format!("Float({value:?})"),
         Value::String(value) => format!("String({value:?})"),
         Value::Bool(value) => format!("Bool({value})"),
         Value::Nil => "Nil".into(),
@@ -277,6 +297,7 @@ fn render_function_type(type_: &FunctionType) -> String {
 fn render_value_type(type_: &ValueType) -> String {
     match type_ {
         ValueType::Int => "Int".into(),
+        ValueType::Float => "Float".into(),
         ValueType::String => "String".into(),
         ValueType::Bool => "Bool".into(),
         ValueType::Nil => "Nil".into(),

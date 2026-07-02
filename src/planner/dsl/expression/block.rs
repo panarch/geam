@@ -1,7 +1,8 @@
-use super::{Bool, Function, FunctionFunction, Int, IntFunction, Nil, String};
+use super::{Bool, Float, Function, FunctionFunction, Int, IntFunction, Nil, String};
 use crate::plan::{
-    BoolExpr, BoolFunctionExpr, FunctionExpr, FunctionExprKind, FunctionFunctionExpr, IntExpr,
-    IntFunctionExpr, NilExpr, NilFunctionExpr, Step, StringExpr, StringFunctionExpr,
+    BoolExpr, BoolFunctionExpr, FloatExpr, FloatFunctionExpr, FunctionExpr, FunctionExprKind,
+    FunctionFunctionExpr, IntExpr, IntFunctionExpr, NilExpr, NilFunctionExpr, Step, StringExpr,
+    StringFunctionExpr,
 };
 
 pub(crate) fn block_int(steps: impl IntoIterator<Item = Step>, return_: Int) -> Int {
@@ -10,6 +11,13 @@ pub(crate) fn block_int(steps: impl IntoIterator<Item = Step>, return_: Int) -> 
 
 pub(crate) fn block_string(steps: impl IntoIterator<Item = Step>, return_: String) -> String {
     String(StringExpr::block(
+        steps.into_iter().collect(),
+        return_.into(),
+    ))
+}
+
+pub(crate) fn block_float(steps: impl IntoIterator<Item = Step>, return_: Float) -> Float {
+    Float(FloatExpr::block(
         steps.into_iter().collect(),
         return_.into(),
     ))
@@ -28,6 +36,9 @@ pub(crate) fn block_function(steps: Vec<Step>, return_: Function) -> Function {
         FunctionExprKind::Int(return_) => FunctionExpr::int(IntFunctionExpr::block(steps, return_)),
         FunctionExprKind::String(return_) => {
             FunctionExpr::string(StringFunctionExpr::block(steps, return_))
+        }
+        FunctionExprKind::Float(return_) => {
+            FunctionExpr::float(FloatFunctionExpr::block(steps, return_))
         }
         FunctionExprKind::Bool(return_) => {
             FunctionExpr::bool(BoolFunctionExpr::block(steps, return_))
@@ -62,18 +73,18 @@ pub(crate) fn block_int_function(
 #[cfg(test)]
 mod tests {
     use super::{
-        block_bool, block_function, block_function_function, block_int, block_int_function,
-        block_nil, block_string,
+        block_bool, block_float, block_function, block_function_function, block_int,
+        block_int_function, block_nil, block_string,
     };
     use crate::plan::{
-        BoolExprKind, FunctionExpr, FunctionExprKind, FunctionFunctionId, FunctionType,
-        IntExprKind, IntFunctionExprKind, IntFunctionFunctionId, NilExprKind, ParamLocal,
-        RuntimeFunctionId, StringExprKind, ValueType,
+        BoolExprKind, FloatExprKind, FunctionExpr, FunctionExprKind, FunctionFunctionId,
+        FunctionType, IntExprKind, IntFunctionExprKind, IntFunctionFunctionId, NilExprKind,
+        ParamLocal, RuntimeFunctionId, StringExprKind, ValueType,
     };
     use crate::planner::dsl::expression::{
-        Function, bool_, function_function_ref, function_ref, int, int_function_ref, let_bool_step,
-        let_int_step, let_nil_step, let_string_step, local_bool, local_int, local_nil,
-        local_string, nil, string,
+        Function, bool_, float, function_function_ref, function_ref, int, int_function_ref,
+        let_bool_step, let_int_step, let_nil_step, let_string_step, local_bool, local_int,
+        local_nil, local_string, nil, string,
     };
 
     #[test]
@@ -89,6 +100,10 @@ mod tests {
                 .0
                 .kind(),
             StringExprKind::Block { .. },
+        ));
+        assert!(matches!(
+            block_float([], float(1.0)).0.kind(),
+            FloatExprKind::Block { .. },
         ));
         assert!(matches!(
             block_bool([let_bool_step(0, "x", bool_(true))], local_bool(0, "x"))
@@ -127,6 +142,17 @@ mod tests {
             ))
             .kind(),
             FunctionExprKind::String(_),
+        ));
+        assert!(matches!(
+            FunctionExpr::from(block_function(
+                vec![],
+                function_ref(
+                    RuntimeFunctionId::Float(crate::plan::FloatFunctionId(0)),
+                    [crate::plan::LocalId::Float(crate::plan::FloatLocalId(0))],
+                ),
+            ))
+            .kind(),
+            FunctionExprKind::Float(_),
         ));
         assert!(matches!(
             FunctionExpr::from(block_function(

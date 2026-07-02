@@ -211,10 +211,12 @@ pub(super) fn function_params(
     arguments: &[gleam_core::ast::TypedArg],
 ) -> Result<Vec<FunctionParam>, PlanError> {
     let mut next_int = 0;
+    let mut next_float = 0;
     let mut next_string = 0;
     let mut next_bool = 0;
     let mut next_nil = 0;
     let mut next_int_function = 0;
+    let mut next_float_function = 0;
     let mut next_string_function = 0;
     let mut next_bool_function = 0;
     let mut next_nil_function = 0;
@@ -246,6 +248,11 @@ pub(super) fn function_params(
                     next_int += 1;
                     local
                 }
+                ValueType::Float => {
+                    let local = ParamLocal::float(crate::plan::FloatLocalId(next_float));
+                    next_float += 1;
+                    local
+                }
                 ValueType::String => {
                     let local = ParamLocal::string(crate::plan::StringLocalId(next_string));
                     next_string += 1;
@@ -264,6 +271,7 @@ pub(super) fn function_params(
                 ValueType::Function(type_) => function_param_local(
                     type_,
                     &mut next_int_function,
+                    &mut next_float_function,
                     &mut next_string_function,
                     &mut next_bool_function,
                     &mut next_nil_function,
@@ -278,6 +286,7 @@ pub(super) fn function_params(
 fn function_param_local(
     type_: &FunctionType,
     next_int_function: &mut usize,
+    next_float_function: &mut usize,
     next_string_function: &mut usize,
     next_bool_function: &mut usize,
     next_nil_function: &mut usize,
@@ -288,6 +297,14 @@ fn function_param_local(
             let local =
                 ParamLocal::int_function(IntFunctionLocalId(*next_int_function), type_.clone());
             *next_int_function += 1;
+            local
+        }
+        ValueType::Float => {
+            let local = ParamLocal::float_function(
+                crate::plan::FloatFunctionLocalId(*next_float_function),
+                type_.clone(),
+            );
+            *next_float_function += 1;
             local
         }
         ValueType::String => {

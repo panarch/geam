@@ -1,7 +1,8 @@
 use super::FrameLayout;
-use super::expression::{BoolExpr, CallArg, IntExpr, NilExpr, StringExpr};
+use super::expression::{BoolExpr, CallArg, FloatExpr, IntExpr, NilExpr, StringExpr};
 use super::id::{
     BoolFunctionFunctionId, BoolFunctionId, BoolFunctionLocalId, BoolLocalId,
+    FloatFunctionFunctionId, FloatFunctionId, FloatFunctionLocalId, FloatLocalId,
     FunctionFunctionFunctionId, FunctionFunctionId, FunctionFunctionLocalId, FunctionId,
     IntFunctionFunctionId, IntFunctionId, IntFunctionLocalId, IntLocalId, NilFunctionFunctionId,
     NilFunctionId, NilFunctionLocalId, NilLocalId, RuntimeFunctionId, StringFunctionFunctionId,
@@ -37,11 +38,16 @@ pub enum ParamBinding {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum ParamLocal {
     Int(IntLocalId),
+    Float(FloatLocalId),
     String(StringLocalId),
     Bool(BoolLocalId),
     Nil(NilLocalId),
     IntFunction {
         local: IntFunctionLocalId,
+        type_: FunctionType,
+    },
+    FloatFunction {
+        local: FloatFunctionLocalId,
         type_: FunctionType,
     },
     StringFunction {
@@ -69,10 +75,12 @@ pub(crate) struct RuntimeFunction<Return> {
 }
 
 pub(crate) type IntReturn = ReturnBody<IntExpr, IntFunctionId>;
+pub(crate) type FloatReturn = ReturnBody<FloatExpr, FloatFunctionId>;
 pub(crate) type StringReturn = ReturnBody<StringExpr, StringFunctionId>;
 pub(crate) type BoolReturn = ReturnBody<BoolExpr, BoolFunctionId>;
 pub(crate) type NilReturn = ReturnBody<NilExpr, NilFunctionId>;
 pub(crate) type IntFunctionReturn = ReturnBody<super::IntFunctionExpr, IntFunctionFunctionId>;
+pub(crate) type FloatFunctionReturn = ReturnBody<super::FloatFunctionExpr, FloatFunctionFunctionId>;
 pub(crate) type StringFunctionReturn =
     ReturnBody<super::StringFunctionExpr, StringFunctionFunctionId>;
 pub(crate) type BoolFunctionReturn = ReturnBody<super::BoolFunctionExpr, BoolFunctionFunctionId>;
@@ -102,6 +110,11 @@ pub(crate) enum ReturnBodyKind<Expression, Function> {
         clauses: Vec<(BigInt, ReturnBody<Expression, Function>)>,
         fallback: Box<ReturnBody<Expression, Function>>,
     },
+    FloatCase {
+        subject: FloatExpr,
+        clauses: Vec<(f64, ReturnBody<Expression, Function>)>,
+        fallback: Box<ReturnBody<Expression, Function>>,
+    },
     StringCase {
         subject: StringExpr,
         clauses: Vec<(EcoString, ReturnBody<Expression, Function>)>,
@@ -124,6 +137,10 @@ pub(crate) enum ReturnExprKind {
         runtime_id: IntFunctionId,
         body: IntReturn,
     },
+    Float {
+        runtime_id: FloatFunctionId,
+        body: FloatReturn,
+    },
     String {
         runtime_id: StringFunctionId,
         body: StringReturn,
@@ -140,6 +157,11 @@ pub(crate) enum ReturnExprKind {
         runtime_id: IntFunctionFunctionId,
         type_: FunctionType,
         body: IntFunctionReturn,
+    },
+    FloatFunction {
+        runtime_id: FloatFunctionFunctionId,
+        type_: FunctionType,
+        body: FloatFunctionReturn,
     },
     StringFunction {
         runtime_id: StringFunctionFunctionId,
@@ -221,6 +243,17 @@ impl ReturnExpr {
     }
 
     #[cfg(test)]
+    pub(crate) fn float(runtime_id: FloatFunctionId, expression: FloatExpr) -> Self {
+        Self::float_body(runtime_id, ReturnBody::expr(expression))
+    }
+
+    pub(crate) fn float_body(runtime_id: FloatFunctionId, body: FloatReturn) -> Self {
+        Self {
+            kind: ReturnExprKind::Float { runtime_id, body },
+        }
+    }
+
+    #[cfg(test)]
     pub(crate) fn string(runtime_id: StringFunctionId, expression: StringExpr) -> Self {
         Self::string_body(runtime_id, ReturnBody::expr(expression))
     }
@@ -269,6 +302,29 @@ impl ReturnExpr {
     ) -> Self {
         Self {
             kind: ReturnExprKind::IntFunction {
+                runtime_id,
+                type_,
+                body,
+            },
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn float_function(
+        runtime_id: FloatFunctionFunctionId,
+        expression: super::FloatFunctionExpr,
+    ) -> Self {
+        let type_ = expression.type_().clone();
+        Self::float_function_body(runtime_id, type_, ReturnBody::expr(expression))
+    }
+
+    pub(crate) fn float_function_body(
+        runtime_id: FloatFunctionFunctionId,
+        type_: FunctionType,
+        body: FloatFunctionReturn,
+    ) -> Self {
+        Self {
+            kind: ReturnExprKind::FloatFunction {
                 runtime_id,
                 type_,
                 body,
@@ -375,10 +431,12 @@ impl ReturnExpr {
     pub fn value_type(&self) -> ValueType {
         match self.kind() {
             ReturnExprKind::Int { .. } => ValueType::Int,
+            ReturnExprKind::Float { .. } => ValueType::Float,
             ReturnExprKind::String { .. } => ValueType::String,
             ReturnExprKind::Bool { .. } => ValueType::Bool,
             ReturnExprKind::Nil { .. } => ValueType::Nil,
             ReturnExprKind::IntFunction { type_, .. }
+            | ReturnExprKind::FloatFunction { type_, .. }
             | ReturnExprKind::StringFunction { type_, .. }
             | ReturnExprKind::BoolFunction { type_, .. }
             | ReturnExprKind::NilFunction { type_, .. }
@@ -391,6 +449,7 @@ impl ReturnExpr {
     pub(crate) fn runtime_id(&self) -> RuntimeFunctionId {
         match self.kind() {
             ReturnExprKind::Int { runtime_id, .. } => RuntimeFunctionId::Int(*runtime_id),
+            ReturnExprKind::Float { runtime_id, .. } => RuntimeFunctionId::Float(*runtime_id),
             ReturnExprKind::String { runtime_id, .. } => RuntimeFunctionId::String(*runtime_id),
             ReturnExprKind::Bool { runtime_id, .. } => RuntimeFunctionId::Bool(*runtime_id),
             ReturnExprKind::Nil { runtime_id, .. } => RuntimeFunctionId::Nil(*runtime_id),
@@ -398,6 +457,12 @@ impl ReturnExpr {
                 runtime_id, type_, ..
             } => RuntimeFunctionId::Function {
                 id: FunctionFunctionId::Int(*runtime_id),
+                return_type: type_.clone(),
+            },
+            ReturnExprKind::FloatFunction {
+                runtime_id, type_, ..
+            } => RuntimeFunctionId::Function {
+                id: FunctionFunctionId::Float(*runtime_id),
                 return_type: type_.clone(),
             },
             ReturnExprKind::StringFunction {
@@ -454,6 +519,20 @@ impl<Expression, Function> ReturnBody<Expression, Function> {
     pub(crate) fn int_case(subject: IntExpr, clauses: Vec<(BigInt, Self)>, fallback: Self) -> Self {
         Self {
             kind: ReturnBodyKind::IntCase {
+                subject,
+                clauses,
+                fallback: Box::new(fallback),
+            },
+        }
+    }
+
+    pub(crate) fn float_case(
+        subject: FloatExpr,
+        clauses: Vec<(f64, Self)>,
+        fallback: Self,
+    ) -> Self {
+        Self {
+            kind: ReturnBodyKind::FloatCase {
                 subject,
                 clauses,
                 fallback: Box::new(fallback),
@@ -547,6 +626,10 @@ impl ParamLocal {
         Self::Int(local)
     }
 
+    pub(crate) fn float(local: FloatLocalId) -> Self {
+        Self::Float(local)
+    }
+
     pub(crate) fn string(local: StringLocalId) -> Self {
         Self::String(local)
     }
@@ -561,6 +644,10 @@ impl ParamLocal {
 
     pub(crate) fn int_function(local: IntFunctionLocalId, type_: FunctionType) -> Self {
         Self::IntFunction { local, type_ }
+    }
+
+    pub(crate) fn float_function(local: FloatFunctionLocalId, type_: FunctionType) -> Self {
+        Self::FloatFunction { local, type_ }
     }
 
     pub(crate) fn string_function(local: StringFunctionLocalId, type_: FunctionType) -> Self {
@@ -582,10 +669,12 @@ impl ParamLocal {
     pub(crate) fn value_type(&self) -> ValueType {
         match self {
             Self::Int(_) => ValueType::Int,
+            Self::Float(_) => ValueType::Float,
             Self::String(_) => ValueType::String,
             Self::Bool(_) => ValueType::Bool,
             Self::Nil(_) => ValueType::Nil,
             Self::IntFunction { type_, .. }
+            | Self::FloatFunction { type_, .. }
             | Self::StringFunction { type_, .. }
             | Self::BoolFunction { type_, .. }
             | Self::NilFunction { type_, .. }
@@ -599,13 +688,14 @@ mod tests {
     use super::{FunctionPlan, Param, ParamBinding, ParamLocal, ReturnExpr, RuntimeFunction};
     use crate::plan::{
         BoolExpr, BoolFunctionExpr, BoolFunctionFunctionId, BoolFunctionId, BoolFunctionLocalId,
-        BoolFunctionValue, BoolLocalId, FrameLayout, FunctionFunctionExpr,
-        FunctionFunctionFunctionId, FunctionFunctionId, FunctionFunctionValue, FunctionId,
-        FunctionType, IntExpr, IntFunctionExpr, IntFunctionFunctionId, IntFunctionId,
-        IntFunctionLocalId, IntFunctionValue, IntLocalId, NilExpr, NilFunctionExpr,
-        NilFunctionFunctionId, NilFunctionId, NilFunctionLocalId, NilFunctionValue, StringExpr,
-        StringFunctionExpr, StringFunctionFunctionId, StringFunctionId, StringFunctionLocalId,
-        StringFunctionValue, ValueType,
+        BoolFunctionValue, BoolLocalId, FloatExpr, FloatFunctionExpr, FloatFunctionFunctionId,
+        FloatFunctionId, FloatFunctionLocalId, FloatFunctionValue, FloatLocalId, FrameLayout,
+        FunctionFunctionExpr, FunctionFunctionFunctionId, FunctionFunctionId,
+        FunctionFunctionValue, FunctionId, FunctionType, IntExpr, IntFunctionExpr,
+        IntFunctionFunctionId, IntFunctionId, IntFunctionLocalId, IntFunctionValue, IntLocalId,
+        NilExpr, NilFunctionExpr, NilFunctionFunctionId, NilFunctionId, NilFunctionLocalId,
+        NilFunctionValue, StringExpr, StringFunctionExpr, StringFunctionFunctionId,
+        StringFunctionId, StringFunctionLocalId, StringFunctionValue, ValueType,
     };
     use num_bigint::BigInt;
 
@@ -648,6 +738,10 @@ mod tests {
             ValueType::String,
         );
         assert_eq!(
+            ReturnExpr::float(FloatFunctionId(0), FloatExpr::value(1.0)).value_type(),
+            ValueType::Float,
+        );
+        assert_eq!(
             ReturnExpr::bool(crate::plan::BoolFunctionId(0), BoolExpr::value(true)).value_type(),
             ValueType::Bool,
         );
@@ -673,6 +767,14 @@ mod tests {
             )
             .value_type(),
             ValueType::Function(Box::new(FunctionType::new(Vec::new(), ValueType::String))),
+        );
+        assert_eq!(
+            ReturnExpr::float_function(
+                FloatFunctionFunctionId(0),
+                FloatFunctionExpr::value(FloatFunctionValue::new(FloatFunctionId(0), Vec::new())),
+            )
+            .value_type(),
+            ValueType::Function(Box::new(FunctionType::new(Vec::new(), ValueType::Float))),
         );
         assert_eq!(
             ReturnExpr::bool_function(
@@ -727,6 +829,10 @@ mod tests {
             ValueType::String,
         );
         assert_eq!(
+            ParamLocal::float(FloatLocalId(0)).value_type(),
+            ValueType::Float,
+        );
+        assert_eq!(
             ParamLocal::bool(BoolLocalId(0)).value_type(),
             ValueType::Bool,
         );
@@ -754,6 +860,17 @@ mod tests {
             ValueType::Function(Box::new(FunctionType::new(
                 vec![ValueType::String],
                 ValueType::String,
+            ))),
+        );
+        assert_eq!(
+            ParamLocal::float_function(
+                FloatFunctionLocalId(0),
+                FunctionType::new(vec![ValueType::Float], ValueType::Float),
+            )
+            .value_type(),
+            ValueType::Function(Box::new(FunctionType::new(
+                vec![ValueType::Float],
+                ValueType::Float,
             ))),
         );
         assert_eq!(

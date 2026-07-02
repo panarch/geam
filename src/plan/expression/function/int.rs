@@ -1,6 +1,7 @@
 use crate::plan::{
-    BoolExpr, CaptureArg, FunctionFunctionExpr, FunctionType, IntExpr, IntFunctionFunctionId,
-    IntFunctionId, IntFunctionLocalId, IntFunctionValue, ParamLocal, Step, StringExpr,
+    BoolExpr, CaptureArg, FloatExpr, FunctionFunctionExpr, FunctionType, IntExpr,
+    IntFunctionFunctionId, IntFunctionId, IntFunctionLocalId, IntFunctionValue, ParamLocal, Step,
+    StringExpr,
 };
 use ecow::EcoString;
 use num_bigint::BigInt;
@@ -46,6 +47,11 @@ pub(crate) enum IntFunctionExprKind {
     StringCase {
         subject: Box<StringExpr>,
         clauses: Vec<(EcoString, IntFunctionExpr)>,
+        fallback: Box<IntFunctionExpr>,
+    },
+    FloatCase {
+        subject: Box<FloatExpr>,
+        clauses: Vec<(f64, IntFunctionExpr)>,
         fallback: Box<IntFunctionExpr>,
     },
     Block {
@@ -164,6 +170,21 @@ impl IntFunctionExpr {
         }
     }
 
+    pub(crate) fn float_case(
+        subject: FloatExpr,
+        clauses: Vec<(f64, IntFunctionExpr)>,
+        fallback: IntFunctionExpr,
+    ) -> Self {
+        Self {
+            type_: fallback.type_.clone(),
+            kind: IntFunctionExprKind::FloatCase {
+                subject: Box::new(subject),
+                clauses,
+                fallback: Box::new(fallback),
+            },
+        }
+    }
+
     pub(crate) fn block(steps: Vec<Step>, return_: IntFunctionExpr) -> Self {
         Self {
             type_: return_.type_.clone(),
@@ -224,6 +245,15 @@ mod tests {
             )
             .kind(),
             IntFunctionExprKind::IntCase { .. }
+        ));
+        assert!(matches!(
+            IntFunctionExpr::float_case(
+                crate::plan::FloatExpr::value(1.0),
+                vec![(1.0, int_function_value())],
+                int_function_value(),
+            )
+            .kind(),
+            IntFunctionExprKind::FloatCase { .. }
         ));
         assert!(matches!(
             IntFunctionExpr::block(

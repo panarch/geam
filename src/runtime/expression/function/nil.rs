@@ -1,6 +1,8 @@
 use crate::plan::{ExecutionPlan, NilFunctionExpr, NilFunctionExprKind, NilFunctionValue};
 use crate::runtime::ExecutionError;
-use crate::runtime::expression::{eval_bool_expr, eval_int_expr, eval_string_expr};
+use crate::runtime::expression::{
+    eval_bool_expr, eval_float_expr, eval_int_expr, eval_string_expr,
+};
 use crate::runtime::frame::Frame;
 use crate::runtime::function;
 
@@ -66,6 +68,19 @@ pub(in crate::runtime) fn eval_nil_function_expr(
             }
             eval_nil_function_expr(plan, frame, fallback)
         }
+        NilFunctionExprKind::FloatCase {
+            subject,
+            clauses,
+            fallback,
+        } => {
+            let subject = eval_float_expr(plan, frame, subject)?;
+            for (pattern, branch) in clauses {
+                if pattern == &subject {
+                    return eval_nil_function_expr(plan, frame, branch);
+                }
+            }
+            eval_nil_function_expr(plan, frame, fallback)
+        }
         NilFunctionExprKind::Block { steps, return_ } => {
             function::execute_steps(plan, steps, frame)?;
             eval_nil_function_expr(plan, frame, return_)
@@ -77,7 +92,7 @@ pub(in crate::runtime) fn eval_nil_function_expr(
 mod tests {
     use super::eval_nil_function_expr;
     use crate::plan::{
-        BoolExpr, ExecutionPlan, Expr, FunctionId, FunctionPlan, IntExpr, IntFunctionId,
+        BoolExpr, ExecutionPlan, Expr, FloatExpr, FunctionId, FunctionPlan, IntExpr, IntFunctionId,
         NilFunctionExpr, NilFunctionId, NilFunctionValue, NilLocalId, ParamLocal, ReturnExpr, Step,
     };
     use crate::runtime::frame::Frame;
@@ -143,6 +158,41 @@ mod tests {
                 &NilFunctionExpr::int_case(
                     IntExpr::value(2.into()),
                     vec![(1.into(), other_function_value())],
+                    function_value(),
+                ),
+            )
+            .expect("expression should evaluate")
+            .runtime_id(),
+            NilFunctionId(0),
+        );
+    }
+
+    #[test]
+    fn eval_nil_function_float_case_branches() {
+        let plan = plan();
+        let mut frame = Frame::default();
+
+        assert_eq!(
+            eval_nil_function_expr(
+                &plan,
+                &mut frame,
+                &NilFunctionExpr::float_case(
+                    FloatExpr::value(1.0),
+                    vec![(1.0, function_value())],
+                    other_function_value(),
+                ),
+            )
+            .expect("expression should evaluate")
+            .runtime_id(),
+            NilFunctionId(0),
+        );
+        assert_eq!(
+            eval_nil_function_expr(
+                &plan,
+                &mut frame,
+                &NilFunctionExpr::float_case(
+                    FloatExpr::value(2.0),
+                    vec![(1.0, other_function_value())],
                     function_value(),
                 ),
             )

@@ -1,4 +1,4 @@
-use super::{eval_expr, eval_int_expr, eval_string_expr};
+use super::{eval_expr, eval_float_expr, eval_int_expr, eval_string_expr};
 use crate::plan::{BoolExpr, BoolExprKind, ExecutionPlan};
 use crate::runtime::ExecutionError;
 use crate::runtime::frame::Frame;
@@ -30,6 +30,18 @@ pub(in crate::runtime) fn eval_bool_expr(
         }
         BoolExprKind::GtEqInt { left, right } => {
             Ok(eval_int_expr(plan, frame, left)? >= eval_int_expr(plan, frame, right)?)
+        }
+        BoolExprKind::LtFloat { left, right } => {
+            Ok(eval_float_expr(plan, frame, left)? < eval_float_expr(plan, frame, right)?)
+        }
+        BoolExprKind::LtEqFloat { left, right } => {
+            Ok(eval_float_expr(plan, frame, left)? <= eval_float_expr(plan, frame, right)?)
+        }
+        BoolExprKind::GtFloat { left, right } => {
+            Ok(eval_float_expr(plan, frame, left)? > eval_float_expr(plan, frame, right)?)
+        }
+        BoolExprKind::GtEqFloat { left, right } => {
+            Ok(eval_float_expr(plan, frame, left)? >= eval_float_expr(plan, frame, right)?)
         }
         BoolExprKind::Equal { left, right } => {
             Ok(eval_expr(plan, frame, left)? == eval_expr(plan, frame, right)?)
@@ -82,6 +94,19 @@ pub(in crate::runtime) fn eval_bool_expr(
             }
             eval_bool_expr(plan, frame, fallback)
         }
+        BoolExprKind::FloatCase {
+            subject,
+            clauses,
+            fallback,
+        } => {
+            let subject = eval_float_expr(plan, frame, subject)?;
+            for (pattern, branch) in clauses {
+                if pattern == &subject {
+                    return eval_bool_expr(plan, frame, branch);
+                }
+            }
+            eval_bool_expr(plan, frame, fallback)
+        }
         BoolExprKind::Block { steps, return_ } => {
             function::execute_steps(plan, steps, frame)?;
             eval_bool_expr(plan, frame, return_)
@@ -107,10 +132,10 @@ fn eval_or(
 mod tests {
     use super::{eval_and, eval_bool_expr, eval_or};
     use crate::plan::{
-        BoolExpr, BoolFunctionExpr, ExecutionPlan, Expr, FunctionFunctionExpr, FunctionFunctionId,
-        FunctionFunctionValue, FunctionId, FunctionPlan, FunctionReturnFamily, FunctionType,
-        IntExpr, IntFunctionExpr, IntFunctionId, ReturnExpr, Step, StringFunctionFunctionId,
-        ValueType,
+        BoolExpr, BoolFunctionExpr, ExecutionPlan, Expr, FloatExpr, FloatFunctionExpr,
+        FunctionFunctionExpr, FunctionFunctionId, FunctionFunctionValue, FunctionId, FunctionPlan,
+        FunctionReturnFamily, FunctionType, IntExpr, IntFunctionExpr, IntFunctionId, ReturnExpr,
+        Step, StringExpr, StringFunctionExpr, StringFunctionFunctionId, ValueType,
     };
     use crate::runtime::ExecutionError;
     use crate::runtime::frame::Frame;
@@ -271,6 +296,39 @@ pub fn main() {
     }
 
     #[test]
+    fn eval_float_case_bool() {
+        assert_eq!(
+            run_src(
+                r#"
+pub fn main() {
+  let value = case 1.0 {
+    1.0 -> True
+    _ -> False
+  }
+  value
+}
+"#,
+            ),
+            Value::Bool(true),
+        );
+
+        assert_eq!(
+            run_src(
+                r#"
+pub fn main() {
+  let value = case 2.0 {
+    1.0 -> True
+    _ -> False
+  }
+  value
+}
+"#,
+            ),
+            Value::Bool(false),
+        );
+    }
+
+    #[test]
     fn eval_and_short_circuits_false_left() {
         reset_called();
         let actual = eval_and(false, mark_called_true_result).expect("and should evaluate");
@@ -359,9 +417,216 @@ pub fn main() {
             eval_bool_expr(
                 &plan,
                 &mut frame,
+                &BoolExpr::lt_int(IntExpr::value(1.into()), error_int_expr()),
+            ),
+            Err(function_return_family_error_value(
+                FunctionReturnFamily::Int,
+                FunctionReturnFamily::String,
+            )),
+        );
+        assert_eq!(
+            eval_bool_expr(
+                &plan,
+                &mut frame,
+                &BoolExpr::lte_int(error_int_expr(), IntExpr::value(1.into())),
+            ),
+            Err(function_return_family_error_value(
+                FunctionReturnFamily::Int,
+                FunctionReturnFamily::String,
+            )),
+        );
+        assert_eq!(
+            eval_bool_expr(
+                &plan,
+                &mut frame,
+                &BoolExpr::lte_int(IntExpr::value(1.into()), error_int_expr()),
+            ),
+            Err(function_return_family_error_value(
+                FunctionReturnFamily::Int,
+                FunctionReturnFamily::String,
+            )),
+        );
+        assert_eq!(
+            eval_bool_expr(
+                &plan,
+                &mut frame,
+                &BoolExpr::gt_int(error_int_expr(), IntExpr::value(1.into())),
+            ),
+            Err(function_return_family_error_value(
+                FunctionReturnFamily::Int,
+                FunctionReturnFamily::String,
+            )),
+        );
+        assert_eq!(
+            eval_bool_expr(
+                &plan,
+                &mut frame,
+                &BoolExpr::gt_int(IntExpr::value(1.into()), error_int_expr()),
+            ),
+            Err(function_return_family_error_value(
+                FunctionReturnFamily::Int,
+                FunctionReturnFamily::String,
+            )),
+        );
+        assert_eq!(
+            eval_bool_expr(
+                &plan,
+                &mut frame,
+                &BoolExpr::gte_int(error_int_expr(), IntExpr::value(1.into())),
+            ),
+            Err(function_return_family_error_value(
+                FunctionReturnFamily::Int,
+                FunctionReturnFamily::String,
+            )),
+        );
+        assert_eq!(
+            eval_bool_expr(
+                &plan,
+                &mut frame,
+                &BoolExpr::gte_int(IntExpr::value(1.into()), error_int_expr()),
+            ),
+            Err(function_return_family_error_value(
+                FunctionReturnFamily::Int,
+                FunctionReturnFamily::String,
+            )),
+        );
+        assert_eq!(
+            eval_bool_expr(
+                &plan,
+                &mut frame,
+                &BoolExpr::lt_float(error_float_expr(), FloatExpr::value(1.0)),
+            ),
+            Err(function_return_family_error_value(
+                FunctionReturnFamily::Float,
+                FunctionReturnFamily::String,
+            )),
+        );
+        assert_eq!(
+            eval_bool_expr(
+                &plan,
+                &mut frame,
+                &BoolExpr::lt_float(FloatExpr::value(1.0), error_float_expr()),
+            ),
+            Err(function_return_family_error_value(
+                FunctionReturnFamily::Float,
+                FunctionReturnFamily::String,
+            )),
+        );
+        assert_eq!(
+            eval_bool_expr(
+                &plan,
+                &mut frame,
+                &BoolExpr::lte_float(error_float_expr(), FloatExpr::value(1.0)),
+            ),
+            Err(function_return_family_error_value(
+                FunctionReturnFamily::Float,
+                FunctionReturnFamily::String,
+            )),
+        );
+        assert_eq!(
+            eval_bool_expr(
+                &plan,
+                &mut frame,
+                &BoolExpr::lte_float(FloatExpr::value(1.0), error_float_expr()),
+            ),
+            Err(function_return_family_error_value(
+                FunctionReturnFamily::Float,
+                FunctionReturnFamily::String,
+            )),
+        );
+        assert_eq!(
+            eval_bool_expr(
+                &plan,
+                &mut frame,
+                &BoolExpr::gt_float(error_float_expr(), FloatExpr::value(1.0)),
+            ),
+            Err(function_return_family_error_value(
+                FunctionReturnFamily::Float,
+                FunctionReturnFamily::String,
+            )),
+        );
+        assert_eq!(
+            eval_bool_expr(
+                &plan,
+                &mut frame,
+                &BoolExpr::gt_float(FloatExpr::value(1.0), error_float_expr()),
+            ),
+            Err(function_return_family_error_value(
+                FunctionReturnFamily::Float,
+                FunctionReturnFamily::String,
+            )),
+        );
+        assert_eq!(
+            eval_bool_expr(
+                &plan,
+                &mut frame,
+                &BoolExpr::gte_float(error_float_expr(), FloatExpr::value(1.0)),
+            ),
+            Err(function_return_family_error_value(
+                FunctionReturnFamily::Float,
+                FunctionReturnFamily::String,
+            )),
+        );
+        assert_eq!(
+            eval_bool_expr(
+                &plan,
+                &mut frame,
+                &BoolExpr::gte_float(FloatExpr::value(1.0), error_float_expr()),
+            ),
+            Err(function_return_family_error_value(
+                FunctionReturnFamily::Float,
+                FunctionReturnFamily::String,
+            )),
+        );
+        assert_eq!(
+            eval_bool_expr(
+                &plan,
+                &mut frame,
                 &BoolExpr::equal(
                     Expr::bool(error_bool_expr()),
                     Expr::bool(BoolExpr::value(true))
+                ),
+            ),
+            Err(function_return_family_error_value(
+                FunctionReturnFamily::Bool,
+                FunctionReturnFamily::String,
+            )),
+        );
+        assert_eq!(
+            eval_bool_expr(
+                &plan,
+                &mut frame,
+                &BoolExpr::equal(
+                    Expr::bool(BoolExpr::value(true)),
+                    Expr::bool(error_bool_expr()),
+                ),
+            ),
+            Err(function_return_family_error_value(
+                FunctionReturnFamily::Bool,
+                FunctionReturnFamily::String,
+            )),
+        );
+        assert_eq!(
+            eval_bool_expr(
+                &plan,
+                &mut frame,
+                &BoolExpr::not_equal(
+                    Expr::bool(error_bool_expr()),
+                    Expr::bool(BoolExpr::value(true)),
+                ),
+            ),
+            Err(function_return_family_error_value(
+                FunctionReturnFamily::Bool,
+                FunctionReturnFamily::String,
+            )),
+        );
+        assert_eq!(
+            eval_bool_expr(
+                &plan,
+                &mut frame,
+                &BoolExpr::not_equal(
+                    Expr::bool(BoolExpr::value(true)),
+                    Expr::bool(error_bool_expr()),
                 ),
             ),
             Err(function_return_family_error_value(
@@ -377,6 +642,36 @@ pub fn main() {
             ),
             Err(function_return_family_error_value(
                 FunctionReturnFamily::Bool,
+                FunctionReturnFamily::String,
+            )),
+        );
+        assert_eq!(
+            eval_bool_expr(
+                &plan,
+                &mut frame,
+                &BoolExpr::string_case(
+                    error_string_expr(),
+                    vec![("hit".into(), BoolExpr::value(true))],
+                    BoolExpr::value(false),
+                ),
+            ),
+            Err(function_return_family_error_value(
+                FunctionReturnFamily::String,
+                FunctionReturnFamily::Int,
+            )),
+        );
+        assert_eq!(
+            eval_bool_expr(
+                &plan,
+                &mut frame,
+                &BoolExpr::float_case(
+                    error_float_expr(),
+                    vec![(1.0, BoolExpr::value(true))],
+                    BoolExpr::value(false),
+                ),
+            ),
+            Err(function_return_family_error_value(
+                FunctionReturnFamily::Float,
                 FunctionReturnFamily::String,
             )),
         );
@@ -511,6 +806,32 @@ pub fn main() {
                 function_function_expr(),
                 Vec::new(),
                 FunctionType::new(Vec::new(), ValueType::Int),
+            ),
+            Vec::new(),
+        )
+    }
+
+    fn error_string_expr() -> StringExpr {
+        StringExpr::function_call(
+            StringFunctionExpr::function_call(
+                FunctionFunctionExpr::value(FunctionFunctionValue::new(
+                    FunctionFunctionId::Int(crate::plan::IntFunctionFunctionId(0)),
+                    Vec::new(),
+                    FunctionType::new(Vec::new(), ValueType::Int),
+                )),
+                Vec::new(),
+                FunctionType::new(Vec::new(), ValueType::String),
+            ),
+            Vec::new(),
+        )
+    }
+
+    fn error_float_expr() -> FloatExpr {
+        FloatExpr::function_call(
+            FloatFunctionExpr::function_call(
+                function_function_expr(),
+                Vec::new(),
+                FunctionType::new(Vec::new(), ValueType::Float),
             ),
             Vec::new(),
         )

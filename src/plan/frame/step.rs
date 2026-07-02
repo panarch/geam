@@ -14,6 +14,10 @@ impl FrameLayout {
                 self.include_int_expr(value);
                 self.include_int(*local);
             }
+            StepKind::LetFloat { local, value, .. } => {
+                self.include_float_expr(value);
+                self.include_float(*local);
+            }
             StepKind::LetString { local, value, .. } => {
                 self.include_string_expr(value);
                 self.include_string(*local);
@@ -29,6 +33,10 @@ impl FrameLayout {
             StepKind::LetIntFunction { local, value, .. } => {
                 self.include_int_function_expr(value);
                 self.include_int_function(*local);
+            }
+            StepKind::LetFloatFunction { local, value, .. } => {
+                self.include_float_function_expr(value);
+                self.include_float_function(*local);
             }
             StepKind::LetStringFunction { local, value, .. } => {
                 self.include_string_function_expr(value);

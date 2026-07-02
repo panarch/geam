@@ -1,5 +1,5 @@
 use crate::plan::{
-    BoolExpr, CaptureArg, FunctionFunctionExpr, FunctionType, IntExpr, ParamLocal, Step,
+    BoolExpr, CaptureArg, FloatExpr, FunctionFunctionExpr, FunctionType, IntExpr, ParamLocal, Step,
     StringExpr, StringFunctionFunctionId, StringFunctionId, StringFunctionLocalId,
     StringFunctionValue,
 };
@@ -47,6 +47,11 @@ pub(crate) enum StringFunctionExprKind {
     StringCase {
         subject: Box<StringExpr>,
         clauses: Vec<(EcoString, StringFunctionExpr)>,
+        fallback: Box<StringFunctionExpr>,
+    },
+    FloatCase {
+        subject: Box<FloatExpr>,
+        clauses: Vec<(f64, StringFunctionExpr)>,
         fallback: Box<StringFunctionExpr>,
     },
     Block {
@@ -165,6 +170,21 @@ impl StringFunctionExpr {
         }
     }
 
+    pub(crate) fn float_case(
+        subject: FloatExpr,
+        clauses: Vec<(f64, StringFunctionExpr)>,
+        fallback: StringFunctionExpr,
+    ) -> Self {
+        Self {
+            type_: fallback.type_.clone(),
+            kind: StringFunctionExprKind::FloatCase {
+                subject: Box::new(subject),
+                clauses,
+                fallback: Box::new(fallback),
+            },
+        }
+    }
+
     pub(crate) fn block(steps: Vec<Step>, return_: StringFunctionExpr) -> Self {
         Self {
             type_: return_.type_.clone(),
@@ -231,6 +251,15 @@ mod tests {
             )
             .kind(),
             StringFunctionExprKind::IntCase { .. },
+        ));
+        assert!(matches!(
+            StringFunctionExpr::float_case(
+                crate::plan::FloatExpr::value(1.0),
+                vec![(1.0, function_value())],
+                function_value(),
+            )
+            .kind(),
+            StringFunctionExprKind::FloatCase { .. },
         ));
         assert!(matches!(
             StringFunctionExpr::block(

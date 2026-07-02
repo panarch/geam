@@ -1,6 +1,7 @@
 use crate::plan::{
-    BoolExpr, BoolFunctionExpr, Expr, FunctionExpr, FunctionFunctionExpr, IntExpr, IntFunctionExpr,
-    LocalId, NilExpr, NilFunctionExpr, StringExpr, StringFunctionExpr, ValueType,
+    BoolExpr, BoolFunctionExpr, Expr, FloatExpr, FloatFunctionExpr, FunctionExpr,
+    FunctionFunctionExpr, IntExpr, IntFunctionExpr, LocalId, NilExpr, NilFunctionExpr, StringExpr,
+    StringFunctionExpr, ValueType,
 };
 use crate::planner::context::{FunctionLocalBinding, PlanContext};
 use crate::planner::error::{InvalidExpressionShapeKind, InvalidTypedAstReason, PlanError};
@@ -87,6 +88,9 @@ fn function_local_get(binding: FunctionLocalBinding, name: EcoString) -> Expr {
         FunctionLocalBinding::String { local, type_ } => Expr::function(FunctionExpr::string(
             StringFunctionExpr::local_get(local, name, type_),
         )),
+        FunctionLocalBinding::Float { local, type_ } => Expr::function(FunctionExpr::float(
+            FloatFunctionExpr::local_get(local, name, type_),
+        )),
         FunctionLocalBinding::Bool { local, type_ } => Expr::function(FunctionExpr::bool(
             BoolFunctionExpr::local_get(local, name, type_),
         )),
@@ -102,6 +106,9 @@ fn function_local_get(binding: FunctionLocalBinding, name: EcoString) -> Expr {
 fn local_get(local: LocalId, name: EcoString, type_: ValueType) -> Result<Expr, PlanError> {
     match (local, type_) {
         (LocalId::Int(local), ValueType::Int) => Ok(Expr::int(IntExpr::local_get(local, name))),
+        (LocalId::Float(local), ValueType::Float) => {
+            Ok(Expr::float(FloatExpr::local_get(local, name)))
+        }
         (LocalId::String(local), ValueType::String) => {
             Ok(Expr::string(StringExpr::local_get(local, name)))
         }
@@ -124,7 +131,7 @@ mod tests {
     };
     use crate::planner::dsl::{
         bool_, call_int_function, function, function_ref, int, int_function_call_arg, local_bool,
-        local_int, local_int_function, local_nil, local_string, module, nil,
+        local_float, local_int, local_int_function, local_nil, local_string, module, nil,
     };
     use crate::planner::plan_module;
     use crate::planner::support::compile;
@@ -149,6 +156,10 @@ pub fn string_id(value: String) {
   value
 }
 
+pub fn float_id(value: Float) {
+  value
+}
+
 pub fn bool_id(value: Bool) {
   value
 }
@@ -165,6 +176,7 @@ pub fn nil_id(value: Nil) {
             [
                 function("int_id", local_int(0, "value")).param_int(0, "value"),
                 function("string_id", local_string(0, "value")).param_string(0, "value"),
+                function("float_id", local_float(0, "value")).param_float(0, "value"),
                 function("bool_id", local_bool(0, "value")).param_bool(0, "value"),
                 function("nil_id", local_nil(0, "value")).param_nil(0, "value"),
             ],

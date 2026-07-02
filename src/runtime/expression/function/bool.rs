@@ -1,6 +1,8 @@
 use crate::plan::{BoolFunctionExpr, BoolFunctionExprKind, BoolFunctionValue, ExecutionPlan};
 use crate::runtime::ExecutionError;
-use crate::runtime::expression::{eval_bool_expr, eval_int_expr, eval_string_expr};
+use crate::runtime::expression::{
+    eval_bool_expr, eval_float_expr, eval_int_expr, eval_string_expr,
+};
 use crate::runtime::frame::Frame;
 use crate::runtime::function;
 
@@ -66,6 +68,19 @@ pub(in crate::runtime) fn eval_bool_function_expr(
             }
             eval_bool_function_expr(plan, frame, fallback)
         }
+        BoolFunctionExprKind::FloatCase {
+            subject,
+            clauses,
+            fallback,
+        } => {
+            let subject = eval_float_expr(plan, frame, subject)?;
+            for (pattern, branch) in clauses {
+                if pattern == &subject {
+                    return eval_bool_function_expr(plan, frame, branch);
+                }
+            }
+            eval_bool_function_expr(plan, frame, fallback)
+        }
         BoolFunctionExprKind::Block { steps, return_ } => {
             function::execute_steps(plan, steps, frame)?;
             eval_bool_function_expr(plan, frame, return_)
@@ -78,7 +93,8 @@ mod tests {
     use super::eval_bool_function_expr;
     use crate::plan::{
         BoolExpr, BoolFunctionExpr, BoolFunctionId, BoolFunctionValue, BoolLocalId, ExecutionPlan,
-        Expr, FunctionId, FunctionPlan, IntExpr, IntFunctionId, ParamLocal, ReturnExpr, Step,
+        Expr, FloatExpr, FunctionId, FunctionPlan, IntExpr, IntFunctionId, ParamLocal, ReturnExpr,
+        Step,
     };
     use crate::runtime::frame::Frame;
 
@@ -143,6 +159,41 @@ mod tests {
                 &BoolFunctionExpr::int_case(
                     IntExpr::value(2.into()),
                     vec![(1.into(), other_function_value())],
+                    function_value(),
+                ),
+            )
+            .expect("expression should evaluate")
+            .runtime_id(),
+            BoolFunctionId(0),
+        );
+    }
+
+    #[test]
+    fn eval_bool_function_float_case_branches() {
+        let plan = plan();
+        let mut frame = Frame::default();
+
+        assert_eq!(
+            eval_bool_function_expr(
+                &plan,
+                &mut frame,
+                &BoolFunctionExpr::float_case(
+                    FloatExpr::value(1.0),
+                    vec![(1.0, function_value())],
+                    other_function_value(),
+                ),
+            )
+            .expect("expression should evaluate")
+            .runtime_id(),
+            BoolFunctionId(0),
+        );
+        assert_eq!(
+            eval_bool_function_expr(
+                &plan,
+                &mut frame,
+                &BoolFunctionExpr::float_case(
+                    FloatExpr::value(2.0),
+                    vec![(1.0, other_function_value())],
                     function_value(),
                 ),
             )

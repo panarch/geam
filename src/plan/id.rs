@@ -1,6 +1,7 @@
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LocalId {
     Int(IntLocalId),
+    Float(FloatLocalId),
     String(StringLocalId),
     Bool(BoolLocalId),
     Nil(NilLocalId),
@@ -8,6 +9,9 @@ pub enum LocalId {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct IntLocalId(pub(crate) usize);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct FloatLocalId(pub(crate) usize);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct StringLocalId(pub(crate) usize);
@@ -20,6 +24,9 @@ pub struct NilLocalId(pub(crate) usize);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct IntFunctionLocalId(pub(crate) usize);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct FloatFunctionLocalId(pub(crate) usize);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct StringFunctionLocalId(pub(crate) usize);
@@ -39,6 +46,7 @@ pub struct FunctionId(usize);
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum RuntimeFunctionId {
     Int(IntFunctionId),
+    Float(FloatFunctionId),
     String(StringFunctionId),
     Bool(BoolFunctionId),
     Nil(NilFunctionId),
@@ -52,6 +60,9 @@ pub(crate) enum RuntimeFunctionId {
 pub struct IntFunctionId(pub(crate) usize);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct FloatFunctionId(pub(crate) usize);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct StringFunctionId(pub(crate) usize);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -63,6 +74,7 @@ pub struct NilFunctionId(pub(crate) usize);
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum FunctionFunctionId {
     Int(IntFunctionFunctionId),
+    Float(FloatFunctionFunctionId),
     String(StringFunctionFunctionId),
     Bool(BoolFunctionFunctionId),
     Nil(NilFunctionFunctionId),
@@ -72,6 +84,7 @@ pub(crate) enum FunctionFunctionId {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum FunctionReturnFamily {
     Int,
+    Float,
     String,
     Bool,
     Nil,
@@ -80,6 +93,9 @@ pub(crate) enum FunctionReturnFamily {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct IntFunctionFunctionId(pub(crate) usize);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct FloatFunctionFunctionId(pub(crate) usize);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct StringFunctionFunctionId(pub(crate) usize);
@@ -97,6 +113,7 @@ impl LocalId {
     pub(crate) fn value_type(self) -> crate::plan::ValueType {
         match self {
             Self::Int(_) => crate::plan::ValueType::Int,
+            Self::Float(_) => crate::plan::ValueType::Float,
             Self::String(_) => crate::plan::ValueType::String,
             Self::Bool(_) => crate::plan::ValueType::Bool,
             Self::Nil(_) => crate::plan::ValueType::Nil,
@@ -119,6 +136,7 @@ impl FunctionFunctionId {
     pub(crate) fn family(self) -> FunctionReturnFamily {
         match self {
             Self::Int(_) => FunctionReturnFamily::Int,
+            Self::Float(_) => FunctionReturnFamily::Float,
             Self::String(_) => FunctionReturnFamily::String,
             Self::Bool(_) => FunctionReturnFamily::Bool,
             Self::Nil(_) => FunctionReturnFamily::Nil,
@@ -136,6 +154,13 @@ impl FunctionFunctionId {
     pub(crate) fn string(self) -> Option<StringFunctionFunctionId> {
         match self {
             Self::String(id) => Some(id),
+            _ => None,
+        }
+    }
+
+    pub(crate) fn float(self) -> Option<FloatFunctionFunctionId> {
+        match self {
+            Self::Float(id) => Some(id),
             _ => None,
         }
     }
@@ -166,6 +191,7 @@ impl std::fmt::Display for FunctionReturnFamily {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Int => f.write_str("Int"),
+            Self::Float => f.write_str("Float"),
             Self::String => f.write_str("String"),
             Self::Bool => f.write_str("Bool"),
             Self::Nil => f.write_str("Nil"),
@@ -177,10 +203,10 @@ impl std::fmt::Display for FunctionReturnFamily {
 #[cfg(test)]
 mod tests {
     use super::{
-        BoolFunctionFunctionId, BoolFunctionLocalId, FunctionFunctionFunctionId,
-        FunctionFunctionId, FunctionFunctionLocalId, FunctionId, IntFunctionFunctionId,
-        IntFunctionLocalId, NilFunctionFunctionId, NilFunctionLocalId, StringFunctionFunctionId,
-        StringFunctionLocalId,
+        BoolFunctionFunctionId, BoolFunctionLocalId, FloatFunctionFunctionId, FloatFunctionLocalId,
+        FunctionFunctionFunctionId, FunctionFunctionId, FunctionFunctionLocalId, FunctionId,
+        IntFunctionFunctionId, IntFunctionLocalId, NilFunctionFunctionId, NilFunctionLocalId,
+        StringFunctionFunctionId, StringFunctionLocalId,
     };
 
     #[test]
@@ -193,6 +219,10 @@ mod tests {
         assert_eq!(
             format!("{:?}", IntFunctionLocalId(3)),
             "IntFunctionLocalId(3)"
+        );
+        assert_eq!(
+            format!("{:?}", FloatFunctionLocalId(3)),
+            "FloatFunctionLocalId(3)"
         );
         assert_eq!(
             format!("{:?}", StringFunctionLocalId(3)),
@@ -217,6 +247,10 @@ mod tests {
         assert_eq!(
             FunctionFunctionId::Int(IntFunctionFunctionId(1)).int(),
             Some(IntFunctionFunctionId(1)),
+        );
+        assert_eq!(
+            FunctionFunctionId::Float(FloatFunctionFunctionId(6)).float(),
+            Some(FloatFunctionFunctionId(6)),
         );
         assert_eq!(
             FunctionFunctionId::String(StringFunctionFunctionId(2)).string(),
@@ -247,6 +281,10 @@ mod tests {
             None,
         );
         assert_eq!(
+            FunctionFunctionId::Int(IntFunctionFunctionId(1)).float(),
+            None,
+        );
+        assert_eq!(
             FunctionFunctionId::Int(IntFunctionFunctionId(1)).bool(),
             None,
         );
@@ -265,6 +303,10 @@ mod tests {
         assert_eq!(
             FunctionFunctionId::Int(IntFunctionFunctionId(1)).family(),
             super::FunctionReturnFamily::Int,
+        );
+        assert_eq!(
+            FunctionFunctionId::Float(FloatFunctionFunctionId(1)).family(),
+            super::FunctionReturnFamily::Float,
         );
         assert_eq!(
             FunctionFunctionId::String(StringFunctionFunctionId(1)).family(),
@@ -287,6 +329,7 @@ mod tests {
     #[test]
     fn function_return_family_display() {
         assert_eq!(super::FunctionReturnFamily::Int.to_string(), "Int");
+        assert_eq!(super::FunctionReturnFamily::Float.to_string(), "Float");
         assert_eq!(super::FunctionReturnFamily::String.to_string(), "String");
         assert_eq!(super::FunctionReturnFamily::Bool.to_string(), "Bool");
         assert_eq!(super::FunctionReturnFamily::Nil.to_string(), "Nil");

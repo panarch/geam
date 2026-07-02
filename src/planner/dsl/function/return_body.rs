@@ -3,8 +3,9 @@ mod function;
 mod primitive;
 
 use crate::plan::{
-    BoolFunctionReturn, BoolReturn, FunctionFunctionReturn, FunctionType, IntFunctionReturn,
-    IntReturn, NilFunctionReturn, NilReturn, ReturnExpr, StringFunctionReturn, StringReturn,
+    BoolFunctionReturn, BoolReturn, FloatFunctionReturn, FloatReturn, FunctionFunctionReturn,
+    FunctionType, IntFunctionReturn, IntReturn, NilFunctionReturn, NilReturn, ReturnExpr,
+    StringFunctionReturn, StringReturn,
 };
 use crate::planner::context::FunctionRuntimeIds;
 
@@ -14,6 +15,7 @@ pub(crate) use primitive::*;
 pub(crate) enum FunctionReturn {
     Int(IntReturn),
     String(StringReturn),
+    Float(FloatReturn),
     Bool(BoolReturn),
     Nil(NilReturn),
     IntFunction {
@@ -23,6 +25,10 @@ pub(crate) enum FunctionReturn {
     StringFunction {
         type_: FunctionType,
         body: StringFunctionReturn,
+    },
+    FloatFunction {
+        type_: FunctionType,
+        body: FloatFunctionReturn,
     },
     BoolFunction {
         type_: FunctionType,
@@ -43,6 +49,7 @@ impl FunctionReturn {
         match self {
             Self::Int(body) => ReturnExpr::int_body(runtime_ids.next_int_id(), body),
             Self::String(body) => ReturnExpr::string_body(runtime_ids.next_string_id(), body),
+            Self::Float(body) => ReturnExpr::float_body(runtime_ids.next_float_id(), body),
             Self::Bool(body) => ReturnExpr::bool_body(runtime_ids.next_bool_id(), body),
             Self::Nil(body) => ReturnExpr::nil_body(runtime_ids.next_nil_id(), body),
             Self::IntFunction { type_, body } => {
@@ -50,6 +57,9 @@ impl FunctionReturn {
             }
             Self::StringFunction { type_, body } => {
                 ReturnExpr::string_function_body(runtime_ids.next_string_function_id(), type_, body)
+            }
+            Self::FloatFunction { type_, body } => {
+                ReturnExpr::float_function_body(runtime_ids.next_float_function_id(), type_, body)
             }
             Self::BoolFunction { type_, body } => {
                 ReturnExpr::bool_function_body(runtime_ids.next_bool_function_id(), type_, body)
@@ -70,14 +80,15 @@ impl FunctionReturn {
 mod tests {
     use super::FunctionReturn;
     use crate::plan::{
-        BoolFunctionFunctionId, BoolFunctionId, FunctionFunctionFunctionId, FunctionFunctionId,
-        FunctionType, IntFunctionFunctionId, IntFunctionId, NilFunctionFunctionId, NilFunctionId,
-        ParamLocal, ReturnExprKind, StringFunctionFunctionId, StringFunctionId, ValueType,
+        BoolFunctionFunctionId, BoolFunctionId, FloatFunctionFunctionId, FloatFunctionId,
+        FunctionFunctionFunctionId, FunctionFunctionId, FunctionType, IntFunctionFunctionId,
+        IntFunctionId, NilFunctionFunctionId, NilFunctionId, ParamLocal, ReturnExprKind,
+        StringFunctionFunctionId, StringFunctionId, ValueType,
     };
     use crate::planner::context::FunctionRuntimeIds;
     use crate::planner::dsl::expression::{
-        bool_, bool_function_ref, function_function_ref, int, int_function_ref, nil,
-        nil_function_ref, string, string_function_ref,
+        bool_, bool_function_ref, float, float_function_ref, function_function_ref, int,
+        int_function_ref, nil, nil_function_ref, string, string_function_ref,
     };
 
     #[test]
@@ -97,6 +108,15 @@ mod tests {
                 .kind(),
             ReturnExprKind::String {
                 runtime_id: StringFunctionId(0),
+                ..
+            },
+        ));
+        assert!(matches!(
+            FunctionReturn::from(float(1.5))
+                .build(&mut runtime_ids)
+                .kind(),
+            ReturnExprKind::Float {
+                runtime_id: FloatFunctionId(0),
                 ..
             },
         ));
@@ -132,6 +152,15 @@ mod tests {
                 .kind(),
             ReturnExprKind::StringFunction {
                 runtime_id: StringFunctionFunctionId(0),
+                ..
+            },
+        ));
+        assert!(matches!(
+            FunctionReturn::from(float_function_ref(0, Vec::<ParamLocal>::new()))
+                .build(&mut runtime_ids)
+                .kind(),
+            ReturnExprKind::FloatFunction {
+                runtime_id: FloatFunctionFunctionId(0),
                 ..
             },
         ));

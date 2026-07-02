@@ -1,6 +1,7 @@
 use crate::plan::{
     BoolExpr, BoolFunctionFunctionId, BoolFunctionId, BoolFunctionLocalId, BoolFunctionValue,
-    CaptureArg, FunctionFunctionExpr, FunctionType, IntExpr, ParamLocal, Step, StringExpr,
+    CaptureArg, FloatExpr, FunctionFunctionExpr, FunctionType, IntExpr, ParamLocal, Step,
+    StringExpr,
 };
 use ecow::EcoString;
 use num_bigint::BigInt;
@@ -46,6 +47,11 @@ pub(crate) enum BoolFunctionExprKind {
     StringCase {
         subject: Box<StringExpr>,
         clauses: Vec<(EcoString, BoolFunctionExpr)>,
+        fallback: Box<BoolFunctionExpr>,
+    },
+    FloatCase {
+        subject: Box<FloatExpr>,
+        clauses: Vec<(f64, BoolFunctionExpr)>,
         fallback: Box<BoolFunctionExpr>,
     },
     Block {
@@ -164,6 +170,21 @@ impl BoolFunctionExpr {
         }
     }
 
+    pub(crate) fn float_case(
+        subject: FloatExpr,
+        clauses: Vec<(f64, BoolFunctionExpr)>,
+        fallback: BoolFunctionExpr,
+    ) -> Self {
+        Self {
+            type_: fallback.type_.clone(),
+            kind: BoolFunctionExprKind::FloatCase {
+                subject: Box::new(subject),
+                clauses,
+                fallback: Box::new(fallback),
+            },
+        }
+    }
+
     pub(crate) fn block(steps: Vec<Step>, return_: BoolFunctionExpr) -> Self {
         Self {
             type_: return_.type_.clone(),
@@ -220,6 +241,15 @@ mod tests {
             )
             .kind(),
             BoolFunctionExprKind::IntCase { .. },
+        ));
+        assert!(matches!(
+            BoolFunctionExpr::float_case(
+                crate::plan::FloatExpr::value(1.0),
+                vec![(1.0, function_value())],
+                function_value(),
+            )
+            .kind(),
+            BoolFunctionExprKind::FloatCase { .. },
         ));
         assert!(matches!(
             BoolFunctionExpr::block(

@@ -1,4 +1,5 @@
 mod bool;
+mod float;
 mod int;
 mod nil;
 mod returning_function;
@@ -7,12 +8,13 @@ mod string;
 use crate::plan::{FunctionType, FunctionValue, FunctionValueKind};
 
 pub use self::{
-    bool::BoolFunctionExpr, int::IntFunctionExpr, nil::NilFunctionExpr,
+    bool::BoolFunctionExpr, float::FloatFunctionExpr, int::IntFunctionExpr, nil::NilFunctionExpr,
     returning_function::FunctionFunctionExpr, string::StringFunctionExpr,
 };
 pub(crate) use self::{
-    bool::BoolFunctionExprKind, int::IntFunctionExprKind, nil::NilFunctionExprKind,
-    returning_function::FunctionFunctionExprKind, string::StringFunctionExprKind,
+    bool::BoolFunctionExprKind, float::FloatFunctionExprKind, int::IntFunctionExprKind,
+    nil::NilFunctionExprKind, returning_function::FunctionFunctionExprKind,
+    string::StringFunctionExprKind,
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -24,6 +26,7 @@ pub struct FunctionExpr {
 pub(crate) enum FunctionExprKind {
     Int(IntFunctionExpr),
     String(StringFunctionExpr),
+    Float(FloatFunctionExpr),
     Bool(BoolFunctionExpr),
     Nil(NilFunctionExpr),
     Function(FunctionFunctionExpr),
@@ -36,6 +39,7 @@ impl FunctionExpr {
             FunctionValueKind::String(value) => {
                 Self::string(StringFunctionExpr::value(value.clone()))
             }
+            FunctionValueKind::Float(value) => Self::float(FloatFunctionExpr::value(value.clone())),
             FunctionValueKind::Bool(value) => Self::bool(BoolFunctionExpr::value(value.clone())),
             FunctionValueKind::Nil(value) => Self::nil(NilFunctionExpr::value(value.clone())),
             FunctionValueKind::Function(value) => {
@@ -53,6 +57,12 @@ impl FunctionExpr {
     pub(crate) fn string(expression: StringFunctionExpr) -> Self {
         Self {
             kind: FunctionExprKind::String(expression),
+        }
+    }
+
+    pub(crate) fn float(expression: FloatFunctionExpr) -> Self {
+        Self {
+            kind: FunctionExprKind::Float(expression),
         }
     }
 
@@ -78,6 +88,7 @@ impl FunctionExpr {
         match &self.kind {
             FunctionExprKind::Int(expression) => expression.type_(),
             FunctionExprKind::String(expression) => expression.type_(),
+            FunctionExprKind::Float(expression) => expression.type_(),
             FunctionExprKind::Bool(expression) => expression.type_(),
             FunctionExprKind::Nil(expression) => expression.type_(),
             FunctionExprKind::Function(expression) => expression.type_(),
@@ -102,6 +113,13 @@ impl FunctionExpr {
     pub(crate) fn into_string(self) -> Option<StringFunctionExpr> {
         match self.kind {
             FunctionExprKind::String(expression) => Some(expression),
+            _ => None,
+        }
+    }
+
+    pub(crate) fn into_float(self) -> Option<FloatFunctionExpr> {
+        match self.kind {
+            FunctionExprKind::Float(expression) => Some(expression),
             _ => None,
         }
     }
@@ -140,6 +158,12 @@ impl From<StringFunctionExpr> for FunctionExpr {
     }
 }
 
+impl From<FloatFunctionExpr> for FunctionExpr {
+    fn from(expression: FloatFunctionExpr) -> Self {
+        Self::float(expression)
+    }
+}
+
 impl From<BoolFunctionExpr> for FunctionExpr {
     fn from(expression: BoolFunctionExpr) -> Self {
         Self::bool(expression)
@@ -161,14 +185,14 @@ impl From<FunctionFunctionExpr> for FunctionExpr {
 #[cfg(test)]
 mod tests {
     use super::{
-        BoolFunctionExpr, FunctionExpr, FunctionExprKind, FunctionFunctionExpr, IntFunctionExpr,
-        NilFunctionExpr, StringFunctionExpr,
+        BoolFunctionExpr, FloatFunctionExpr, FunctionExpr, FunctionExprKind, FunctionFunctionExpr,
+        IntFunctionExpr, NilFunctionExpr, StringFunctionExpr,
     };
     use crate::plan::{
-        BoolFunctionId, BoolFunctionValue, FunctionFunctionId, FunctionFunctionValue, FunctionType,
-        FunctionValue, IntFunctionFunctionId, IntFunctionId, IntFunctionValue, NilFunctionId,
-        NilFunctionValue, ParamLocal, RuntimeFunctionId, StringFunctionId, StringFunctionValue,
-        ValueType,
+        BoolFunctionId, BoolFunctionValue, FloatFunctionId, FloatFunctionValue, FunctionFunctionId,
+        FunctionFunctionValue, FunctionType, FunctionValue, IntFunctionFunctionId, IntFunctionId,
+        IntFunctionValue, NilFunctionId, NilFunctionValue, ParamLocal, RuntimeFunctionId,
+        StringFunctionId, StringFunctionValue, ValueType,
     };
 
     #[test]
@@ -184,6 +208,10 @@ mod tests {
         assert!(matches!(
             FunctionExpr::string(string_function_value()).kind(),
             FunctionExprKind::String(_)
+        ));
+        assert!(matches!(
+            FunctionExpr::float(float_function_value()).kind(),
+            FunctionExprKind::Float(_)
         ));
         assert!(matches!(
             FunctionExpr::bool(bool_function_value()).kind(),
@@ -208,6 +236,11 @@ mod tests {
                 .is_some()
         );
         assert!(
+            FunctionExpr::float(float_function_value())
+                .into_float()
+                .is_some()
+        );
+        assert!(
             FunctionExpr::bool(bool_function_value())
                 .into_bool()
                 .is_some()
@@ -217,6 +250,11 @@ mod tests {
         assert!(
             FunctionExpr::int(int_function_value())
                 .into_string()
+                .is_none()
+        );
+        assert!(
+            FunctionExpr::int(int_function_value())
+                .into_float()
                 .is_none()
         );
         assert!(
@@ -233,6 +271,10 @@ mod tests {
         assert!(matches!(
             FunctionExpr::from(string_function_value()).kind(),
             FunctionExprKind::String(_),
+        ));
+        assert!(matches!(
+            FunctionExpr::from(float_function_value()).kind(),
+            FunctionExprKind::Float(_),
         ));
         assert!(matches!(
             FunctionExpr::from(bool_function_value()).kind(),
@@ -266,6 +308,13 @@ mod tests {
         StringFunctionExpr::value(StringFunctionValue::new(
             StringFunctionId(0),
             vec![ParamLocal::string(crate::plan::StringLocalId(0))],
+        ))
+    }
+
+    fn float_function_value() -> FloatFunctionExpr {
+        FloatFunctionExpr::value(FloatFunctionValue::new(
+            FloatFunctionId(0),
+            vec![ParamLocal::float(crate::plan::FloatLocalId(0))],
         ))
     }
 

@@ -1,10 +1,11 @@
 use super::{
-    Bool, BoolFunction, Function, FunctionFunction, Int, IntFunction, IntoParamLocal,
-    IntoValueType, Nil, NilFunction, String, StringFunction,
+    Bool, BoolFunction, Float, FloatFunction, Function, FunctionFunction, Int, IntFunction,
+    IntoParamLocal, IntoValueType, Nil, NilFunction, String, StringFunction,
 };
 use crate::plan::{
-    BoolExpr, BoolFunctionExpr, Expr, FunctionExpr, FunctionFunctionExpr, IntExpr, IntFunctionExpr,
-    LocalId, NilExpr, NilFunctionExpr, ParamLocal, StringExpr, StringFunctionExpr, ValueType,
+    BoolExpr, BoolFunctionExpr, Expr, FloatExpr, FloatFunctionExpr, FunctionExpr,
+    FunctionFunctionExpr, IntExpr, IntFunctionExpr, LocalId, NilExpr, NilFunctionExpr, ParamLocal,
+    StringExpr, StringFunctionExpr, ValueType,
 };
 
 impl From<Int> for Expr {
@@ -16,6 +17,12 @@ impl From<Int> for Expr {
 impl From<String> for Expr {
     fn from(value: String) -> Self {
         Self::string(value.into())
+    }
+}
+
+impl From<Float> for Expr {
+    fn from(value: Float) -> Self {
+        Self::float(value.into())
     }
 }
 
@@ -45,6 +52,12 @@ impl From<Int> for IntExpr {
 
 impl From<String> for StringExpr {
     fn from(value: String) -> Self {
+        value.0
+    }
+}
+
+impl From<Float> for FloatExpr {
+    fn from(value: Float) -> Self {
         value.0
     }
 }
@@ -97,9 +110,33 @@ impl From<StringFunction> for StringFunctionExpr {
     }
 }
 
+impl From<FloatFunction> for FloatFunctionExpr {
+    fn from(value: FloatFunction) -> Self {
+        value.0
+    }
+}
+
 impl From<StringFunction> for Expr {
     fn from(value: StringFunction) -> Self {
         Self::function(FunctionExpr::string(value.into()))
+    }
+}
+
+impl From<FloatFunction> for Function {
+    fn from(value: FloatFunction) -> Self {
+        Function(FunctionExpr::float(value.into()))
+    }
+}
+
+impl From<FloatFunction> for Expr {
+    fn from(value: FloatFunction) -> Self {
+        Self::function(FunctionExpr::float(value.into()))
+    }
+}
+
+impl From<FloatFunction> for FunctionExpr {
+    fn from(value: FloatFunction) -> Self {
+        FunctionExpr::float(value.into())
     }
 }
 
@@ -162,6 +199,7 @@ impl IntoValueType for LocalId {
         match self {
             LocalId::Int(_) => ValueType::Int,
             LocalId::String(_) => ValueType::String,
+            LocalId::Float(_) => ValueType::Float,
             LocalId::Bool(_) => ValueType::Bool,
             LocalId::Nil(_) => ValueType::Nil,
         }
@@ -179,6 +217,7 @@ impl IntoParamLocal for LocalId {
         match self {
             LocalId::Int(local) => ParamLocal::int(local),
             LocalId::String(local) => ParamLocal::string(local),
+            LocalId::Float(local) => ParamLocal::float(local),
             LocalId::Bool(local) => ParamLocal::bool(local),
             LocalId::Nil(local) => ParamLocal::nil(local),
         }
@@ -199,7 +238,8 @@ mod tests {
         IntFunctionFunctionId, ParamLocal, ValueType,
     };
     use crate::planner::dsl::expression::{
-        Function, bool_, function_function_ref, int, int_function_ref, nil, string,
+        Function, bool_, float, float_function_ref, function_function_ref, int, int_function_ref,
+        nil, string,
     };
 
     #[test]
@@ -214,8 +254,16 @@ mod tests {
             ValueType::Int,
         );
         assert_eq!(
+            crate::plan::LocalId::Float(crate::plan::FloatLocalId(0)).into_value_type(),
+            ValueType::Float,
+        );
+        assert_eq!(
             crate::plan::LocalId::Int(crate::plan::IntLocalId(0)).into_param_local(),
             ParamLocal::int(crate::plan::IntLocalId(0)),
+        );
+        assert_eq!(
+            crate::plan::LocalId::Float(crate::plan::FloatLocalId(0)).into_param_local(),
+            ParamLocal::float(crate::plan::FloatLocalId(0)),
         );
     }
 
@@ -226,6 +274,7 @@ mod tests {
             Expr::from(string("a")).kind(),
             ExprKind::String(_)
         ));
+        assert!(matches!(Expr::from(float(1.5)).kind(), ExprKind::Float(_)));
         assert!(matches!(Expr::from(bool_(true)).kind(), ExprKind::Bool(_)));
         assert!(matches!(Expr::from(nil()).kind(), ExprKind::Nil(_)));
         assert!(matches!(
@@ -235,6 +284,18 @@ mod tests {
         assert!(matches!(
             FunctionExpr::from(int_function_ref(0, Vec::<ParamLocal>::new())).kind(),
             FunctionExprKind::Int(_),
+        ));
+        assert!(matches!(
+            FunctionExpr::from(float_function_ref(0, Vec::<ParamLocal>::new())).kind(),
+            FunctionExprKind::Float(_),
+        ));
+        assert!(matches!(
+            FunctionExpr::from(Function::from(float_function_ref(
+                0,
+                Vec::<ParamLocal>::new()
+            )))
+            .kind(),
+            FunctionExprKind::Float(_),
         ));
         assert!(matches!(
             FunctionExpr::from(Function::from(function_function_ref(
