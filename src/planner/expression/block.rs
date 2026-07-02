@@ -1,7 +1,7 @@
 use crate::plan::{
-    BoolExpr, BoolFunctionExpr, Expr, ExprKind, FunctionExpr, FunctionExprKind,
-    FunctionFunctionExpr, IntExpr, IntFunctionExpr, NilExpr, NilFunctionExpr, Step, StringExpr,
-    StringFunctionExpr,
+    BoolExpr, BoolFunctionExpr, Expr, ExprKind, FloatExpr, FloatFunctionExpr, FunctionExpr,
+    FunctionExprKind, FunctionFunctionExpr, IntExpr, IntFunctionExpr, NilExpr, NilFunctionExpr,
+    Step, StringExpr, StringFunctionExpr,
 };
 use crate::planner::context::PlanContext;
 use crate::planner::error::PlanError;
@@ -24,6 +24,7 @@ pub(super) fn block_expr(steps: Vec<Step>, return_: Expr) -> Expr {
     match return_.into_kind() {
         ExprKind::Int(return_) => Expr::int(IntExpr::block(steps, return_)),
         ExprKind::String(return_) => Expr::string(StringExpr::block(steps, return_)),
+        ExprKind::Float(return_) => Expr::float(FloatExpr::block(steps, return_)),
         ExprKind::Bool(return_) => Expr::bool(BoolExpr::block(steps, return_)),
         ExprKind::Nil(return_) => Expr::nil(NilExpr::block(steps, return_)),
         ExprKind::Function(return_) => match return_.into_kind() {
@@ -32,6 +33,9 @@ pub(super) fn block_expr(steps: Vec<Step>, return_: Expr) -> Expr {
             }
             FunctionExprKind::String(return_) => Expr::function(FunctionExpr::string(
                 StringFunctionExpr::block(steps, return_),
+            )),
+            FunctionExprKind::Float(return_) => Expr::function(FunctionExpr::float(
+                FloatFunctionExpr::block(steps, return_),
             )),
             FunctionExprKind::Bool(return_) => {
                 Expr::function(FunctionExpr::bool(BoolFunctionExpr::block(steps, return_)))
@@ -54,9 +58,10 @@ mod tests {
     };
     use crate::planner::dsl::{
         block_function, block_int, bool_, bool_return_block, bool_return_expr, evaluate_step,
-        function, function_ref, int, int_return_block, int_return_expr, let_int_step, let_nil_step,
-        local_bool, local_int, local_nil, local_string, module, nil, nil_return_block,
-        nil_return_expr, string, string_return_block, string_return_expr,
+        float, float_return_block, float_return_expr, function, function_ref, int,
+        int_return_block, int_return_expr, let_int_step, let_nil_step, local_bool, local_float,
+        local_int, local_nil, local_string, module, nil, nil_return_block, nil_return_expr, string,
+        string_return_block, string_return_expr,
     };
     use crate::planner::plan_module;
     use crate::planner::support::{compile, expect_plan_error};
@@ -72,6 +77,10 @@ pub fn main() {
 
 pub fn bool_main() {
   { True }
+}
+
+pub fn float_main() {
+  { 1.5 }
 }
 
 pub fn nil_main() {
@@ -90,6 +99,10 @@ pub fn nil_main() {
                 function(
                     "bool_main",
                     bool_return_block([], bool_return_expr(bool_(true))),
+                ),
+                function(
+                    "float_main",
+                    float_return_block([], float_return_expr(float(1.5))),
                 ),
                 function("nil_main", nil_return_block([], nil_return_expr(nil()))),
             ],
@@ -110,6 +123,10 @@ fn string_identity(value: String) {
   value
 }
 
+fn float_identity(value: Float) {
+  value
+}
+
 fn bool_identity(value: Bool) {
   value
 }
@@ -125,6 +142,7 @@ fn get_identity() {
 pub fn main() {
   { identity }
   { string_identity }
+  { float_identity }
   { bool_identity }
   { nil_identity }
   { get_identity }
@@ -148,6 +166,13 @@ pub fn main() {
                     function_ref(
                         RuntimeFunctionId::String(crate::plan::StringFunctionId(0)),
                         [LocalId::String(crate::plan::StringLocalId(0))],
+                    ),
+                ))
+                .evaluate(block_function(
+                    vec![],
+                    function_ref(
+                        RuntimeFunctionId::Float(crate::plan::FloatFunctionId(0)),
+                        [LocalId::Float(crate::plan::FloatLocalId(0))],
                     ),
                 ))
                 .evaluate(block_function(
@@ -177,6 +202,7 @@ pub fn main() {
             [
                 function("identity", local_int(0, "value")).param_int(0, "value"),
                 function("string_identity", local_string(0, "value")).param_string(0, "value"),
+                function("float_identity", local_float(0, "value")).param_float(0, "value"),
                 function("bool_identity", local_bool(0, "value")).param_bool(0, "value"),
                 function("nil_identity", local_nil(0, "value")).param_nil(0, "value"),
                 function(

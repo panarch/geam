@@ -1,5 +1,5 @@
-use super::{Bool, Int, Nil, String};
-use crate::plan::{BoolExpr, IntExpr, NilExpr, StringExpr};
+use super::{Bool, Float, Int, Nil, String};
+use crate::plan::{BoolExpr, FloatExpr, IntExpr, NilExpr, StringExpr};
 use ecow::EcoString;
 use num_bigint::BigInt;
 
@@ -9,6 +9,10 @@ pub(crate) fn int(value: i64) -> Int {
 
 pub(crate) fn string(value: impl Into<EcoString>) -> String {
     String(StringExpr::value(value.into()))
+}
+
+pub(crate) fn float(value: f64) -> Float {
+    Float(FloatExpr::value(value))
 }
 
 pub(crate) fn bool_(value: bool) -> Bool {
@@ -21,7 +25,7 @@ pub(crate) fn nil() -> Nil {
 
 #[cfg(test)]
 mod tests {
-    use super::{bool_, int, nil, string};
+    use super::{bool_, float, int, nil, string};
     use crate::plan::{Expr, ExprKind};
 
     #[test]
@@ -31,6 +35,7 @@ mod tests {
             Expr::from(string("a")).kind(),
             ExprKind::String(_),
         ));
+        assert!(matches!(Expr::from(float(1.0)).kind(), ExprKind::Float(_)));
         assert!(matches!(Expr::from(bool_(true)).kind(), ExprKind::Bool(_)));
         assert!(matches!(Expr::from(nil()).kind(), ExprKind::Nil(_)));
     }

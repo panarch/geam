@@ -25,6 +25,17 @@ impl FrameLayout {
                 }
                 self.include_int_return(fallback);
             }
+            ReturnBodyKind::FloatCase {
+                subject,
+                clauses,
+                fallback,
+            } => {
+                self.include_float_expr(subject);
+                for (_, branch) in clauses {
+                    self.include_int_return(branch);
+                }
+                self.include_int_return(fallback);
+            }
             ReturnBodyKind::StringCase {
                 subject,
                 clauses,
@@ -39,6 +50,59 @@ impl FrameLayout {
             ReturnBodyKind::Block { steps, return_ } => {
                 self.include_steps(steps);
                 self.include_int_return(return_);
+            }
+        }
+    }
+
+    pub(in crate::plan::frame) fn include_float_return(&mut self, body: &crate::plan::FloatReturn) {
+        match body.kind() {
+            ReturnBodyKind::Expr(expression) => self.include_float_expr(expression),
+            ReturnBodyKind::TailCall { args, .. } => self.include_call_args(args),
+            ReturnBodyKind::BoolCase {
+                subject,
+                true_,
+                false_,
+            } => {
+                self.include_bool_expr(subject);
+                self.include_float_return(true_);
+                self.include_float_return(false_);
+            }
+            ReturnBodyKind::IntCase {
+                subject,
+                clauses,
+                fallback,
+            } => {
+                self.include_int_expr(subject);
+                for (_, branch) in clauses {
+                    self.include_float_return(branch);
+                }
+                self.include_float_return(fallback);
+            }
+            ReturnBodyKind::FloatCase {
+                subject,
+                clauses,
+                fallback,
+            } => {
+                self.include_float_expr(subject);
+                for (_, branch) in clauses {
+                    self.include_float_return(branch);
+                }
+                self.include_float_return(fallback);
+            }
+            ReturnBodyKind::StringCase {
+                subject,
+                clauses,
+                fallback,
+            } => {
+                self.include_string_expr(subject);
+                for (_, branch) in clauses {
+                    self.include_float_return(branch);
+                }
+                self.include_float_return(fallback);
+            }
+            ReturnBodyKind::Block { steps, return_ } => {
+                self.include_steps(steps);
+                self.include_float_return(return_);
             }
         }
     }
@@ -65,6 +129,17 @@ impl FrameLayout {
                 fallback,
             } => {
                 self.include_int_expr(subject);
+                for (_, branch) in clauses {
+                    self.include_string_return(branch);
+                }
+                self.include_string_return(fallback);
+            }
+            ReturnBodyKind::FloatCase {
+                subject,
+                clauses,
+                fallback,
+            } => {
+                self.include_float_expr(subject);
                 for (_, branch) in clauses {
                     self.include_string_return(branch);
                 }
@@ -112,6 +187,17 @@ impl FrameLayout {
                 }
                 self.include_bool_return(fallback);
             }
+            ReturnBodyKind::FloatCase {
+                subject,
+                clauses,
+                fallback,
+            } => {
+                self.include_float_expr(subject);
+                for (_, branch) in clauses {
+                    self.include_bool_return(branch);
+                }
+                self.include_bool_return(fallback);
+            }
             ReturnBodyKind::StringCase {
                 subject,
                 clauses,
@@ -154,6 +240,17 @@ impl FrameLayout {
                 }
                 self.include_nil_return(fallback);
             }
+            ReturnBodyKind::FloatCase {
+                subject,
+                clauses,
+                fallback,
+            } => {
+                self.include_float_expr(subject);
+                for (_, branch) in clauses {
+                    self.include_nil_return(branch);
+                }
+                self.include_nil_return(fallback);
+            }
             ReturnBodyKind::StringCase {
                 subject,
                 clauses,
@@ -176,8 +273,9 @@ impl FrameLayout {
 #[cfg(test)]
 mod tests {
     use crate::plan::{
-        BoolExpr, BoolLocalId, CallArg, Expr, FrameLayout, IntExpr, IntFunctionId, IntLocalId,
-        NilExpr, NilLocalId, ReturnBody, ReturnExpr, Step, StringExpr, StringLocalId,
+        BoolExpr, BoolLocalId, CallArg, Expr, FloatExpr, FloatLocalId, FrameLayout, IntExpr,
+        IntFunctionId, IntLocalId, NilExpr, NilLocalId, ReturnBody, ReturnExpr, Step, StringExpr,
+        StringLocalId,
     };
 
     #[test]
@@ -252,6 +350,103 @@ mod tests {
         assert_eq!(layout.ints(), 22);
         assert_eq!(layout.bools(), 21);
         assert_eq!(layout.strings(), 23);
+
+        let float_return = ReturnExpr::float_body(
+            crate::plan::FloatFunctionId(0),
+            ReturnBody::block(
+                vec![Step::evaluate(Expr::int(IntExpr::local_get(
+                    IntLocalId(26),
+                    "float_step".into(),
+                )))],
+                ReturnBody::bool_case(
+                    BoolExpr::local_get(BoolLocalId(26), "float_flag".into()),
+                    ReturnBody::int_case(
+                        IntExpr::local_get(IntLocalId(27), "float_subject".into()),
+                        vec![(
+                            1.into(),
+                            ReturnBody::expr(FloatExpr::local_get(
+                                FloatLocalId(20),
+                                "float_hit".into(),
+                            )),
+                        )],
+                        ReturnBody::expr(FloatExpr::local_get(
+                            FloatLocalId(21),
+                            "float_fallback".into(),
+                        )),
+                    ),
+                    ReturnBody::string_case(
+                        StringExpr::local_get(StringLocalId(23), "float_string_subject".into()),
+                        vec![(
+                            "one".into(),
+                            ReturnBody::expr(FloatExpr::local_get(
+                                FloatLocalId(22),
+                                "float_string_hit".into(),
+                            )),
+                        )],
+                        ReturnBody::expr(FloatExpr::local_get(
+                            FloatLocalId(23),
+                            "float_string_fallback".into(),
+                        )),
+                    ),
+                ),
+            ),
+        );
+        let layout = FrameLayout::from_function_parts(&[], &[], &float_return);
+        assert_eq!(layout.ints(), 28);
+        assert_eq!(layout.floats(), 24);
+        assert_eq!(layout.bools(), 27);
+        assert_eq!(layout.strings(), 24);
+
+        let int_float_case_return = ReturnExpr::int_body(
+            IntFunctionId(2),
+            ReturnBody::float_case(
+                FloatExpr::local_get(FloatLocalId(24), "int_float_subject".into()),
+                vec![(
+                    1.0,
+                    ReturnBody::expr(IntExpr::local_get(IntLocalId(28), "int_float_hit".into())),
+                )],
+                ReturnBody::expr(IntExpr::local_get(
+                    IntLocalId(29),
+                    "int_float_fallback".into(),
+                )),
+            ),
+        );
+        let layout = FrameLayout::from_function_parts(&[], &[], &int_float_case_return);
+        assert_eq!(layout.ints(), 30);
+        assert_eq!(layout.floats(), 25);
+
+        let float_case_return = ReturnExpr::float_body(
+            crate::plan::FloatFunctionId(1),
+            ReturnBody::float_case(
+                FloatExpr::local_get(FloatLocalId(24), "float_case_subject".into()),
+                vec![(
+                    1.0,
+                    ReturnBody::expr(FloatExpr::local_get(
+                        FloatLocalId(25),
+                        "float_case_hit".into(),
+                    )),
+                )],
+                ReturnBody::expr(FloatExpr::local_get(
+                    FloatLocalId(26),
+                    "float_case_fallback".into(),
+                )),
+            ),
+        );
+        let layout = FrameLayout::from_function_parts(&[], &[], &float_case_return);
+        assert_eq!(layout.floats(), 27);
+
+        let float_tail_return = ReturnExpr::float_body(
+            crate::plan::FloatFunctionId(2),
+            ReturnBody::tail_call(
+                crate::plan::FloatFunctionId(3),
+                vec![CallArg::float(
+                    FloatLocalId(27),
+                    FloatExpr::local_get(FloatLocalId(28), "float_tail_arg".into()),
+                )],
+            ),
+        );
+        let layout = FrameLayout::from_function_parts(&[], &[], &float_tail_return);
+        assert_eq!(layout.floats(), 29);
 
         let bool_return = ReturnExpr::bool_body(
             crate::plan::BoolFunctionId(0),

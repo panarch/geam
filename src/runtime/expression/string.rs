@@ -1,4 +1,4 @@
-use super::{eval_bool_expr, eval_int_expr};
+use super::{eval_bool_expr, eval_float_expr, eval_int_expr};
 use crate::plan::{ExecutionPlan, StringExpr, StringExprKind};
 use crate::runtime::ExecutionError;
 use crate::runtime::frame::Frame;
@@ -55,6 +55,19 @@ pub(in crate::runtime) fn eval_string_expr(
             fallback,
         } => {
             let subject = eval_string_expr(plan, frame, subject)?;
+            for (pattern, branch) in clauses {
+                if pattern == &subject {
+                    return eval_string_expr(plan, frame, branch);
+                }
+            }
+            eval_string_expr(plan, frame, fallback)
+        }
+        StringExprKind::FloatCase {
+            subject,
+            clauses,
+            fallback,
+        } => {
+            let subject = eval_float_expr(plan, frame, subject)?;
             for (pattern, branch) in clauses {
                 if pattern == &subject {
                     return eval_string_expr(plan, frame, branch);
@@ -181,6 +194,39 @@ pub fn main() {
 pub fn main() {
   let value = case "many" {
     "one" -> "one"
+    _ -> "other"
+  }
+  value
+}
+"#,
+            ),
+            Value::String("other".into()),
+        );
+    }
+
+    #[test]
+    fn eval_float_case_string() {
+        assert_eq!(
+            run_src(
+                r#"
+pub fn main() {
+  let value = case 1.0 {
+    1.0 -> "one"
+    _ -> "other"
+  }
+  value
+}
+"#,
+            ),
+            Value::String("one".into()),
+        );
+
+        assert_eq!(
+            run_src(
+                r#"
+pub fn main() {
+  let value = case 2.0 {
+    1.0 -> "one"
     _ -> "other"
   }
   value

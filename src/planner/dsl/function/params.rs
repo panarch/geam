@@ -1,8 +1,8 @@
 use super::FunctionDsl;
 use crate::plan::{
-    BoolFunctionLocalId, BoolLocalId, FunctionFunctionLocalId, FunctionType, IntFunctionLocalId,
-    IntLocalId, NilFunctionLocalId, NilLocalId, Param, ParamLocal, StringFunctionLocalId,
-    StringLocalId, ValueType,
+    BoolFunctionLocalId, BoolLocalId, FloatFunctionLocalId, FloatLocalId, FunctionFunctionLocalId,
+    FunctionType, IntFunctionLocalId, IntLocalId, NilFunctionLocalId, NilLocalId, Param,
+    ParamLocal, StringFunctionLocalId, StringLocalId, ValueType,
 };
 use ecow::EcoString;
 
@@ -24,6 +24,14 @@ impl FunctionDsl {
     pub(crate) fn param_string(mut self, local: usize, name: impl Into<EcoString>) -> Self {
         self.params.push(Param::named(
             ParamLocal::string(StringLocalId(local)),
+            name.into(),
+        ));
+        self
+    }
+
+    pub(crate) fn param_float(mut self, local: usize, name: impl Into<EcoString>) -> Self {
+        self.params.push(Param::named(
+            ParamLocal::float(FloatLocalId(local)),
             name.into(),
         ));
         self
@@ -77,6 +85,22 @@ impl FunctionDsl {
         self
     }
 
+    pub(crate) fn param_float_function(
+        mut self,
+        local: usize,
+        name: impl Into<EcoString>,
+        arguments: impl IntoIterator<Item = ValueType>,
+    ) -> Self {
+        self.params.push(Param::named(
+            ParamLocal::float_function(
+                FloatFunctionLocalId(local),
+                FunctionType::new(arguments.into_iter().collect(), ValueType::Float),
+            ),
+            name.into(),
+        ));
+        self
+    }
+
     pub(crate) fn param_bool_function(
         mut self,
         local: usize,
@@ -120,5 +144,30 @@ impl FunctionDsl {
             name.into(),
         ));
         self
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::plan::{FloatFunctionLocalId, FloatLocalId, FunctionType, ParamLocal, ValueType};
+    use crate::planner::dsl::function;
+
+    #[test]
+    fn float_param_helpers_build_float_local_shapes() {
+        let function = function("main", crate::planner::dsl::int(1))
+            .param_float(0, "value")
+            .param_float_function(0, "callback", [ValueType::Float]);
+
+        assert_eq!(
+            function.params[0].local(),
+            &ParamLocal::float(FloatLocalId(0)),
+        );
+        assert_eq!(
+            function.params[1].local(),
+            &ParamLocal::float_function(
+                FloatFunctionLocalId(0),
+                FunctionType::new(vec![ValueType::Float], ValueType::Float),
+            ),
+        );
     }
 }

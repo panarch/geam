@@ -1,6 +1,8 @@
 use crate::plan::{ExecutionPlan, IntFunctionExpr, IntFunctionExprKind, IntFunctionValue};
 use crate::runtime::ExecutionError;
-use crate::runtime::expression::{eval_bool_expr, eval_int_expr, eval_string_expr};
+use crate::runtime::expression::{
+    eval_bool_expr, eval_float_expr, eval_int_expr, eval_string_expr,
+};
 use crate::runtime::frame::Frame;
 use crate::runtime::function;
 
@@ -66,6 +68,19 @@ pub(in crate::runtime) fn eval_int_function_expr(
             }
             eval_int_function_expr(plan, frame, fallback)
         }
+        IntFunctionExprKind::FloatCase {
+            subject,
+            clauses,
+            fallback,
+        } => {
+            let subject = eval_float_expr(plan, frame, subject)?;
+            for (pattern, branch) in clauses {
+                if pattern == &subject {
+                    return eval_int_function_expr(plan, frame, branch);
+                }
+            }
+            eval_int_function_expr(plan, frame, fallback)
+        }
         IntFunctionExprKind::Block { steps, return_ } => {
             function::execute_steps(plan, steps, frame)?;
             eval_int_function_expr(plan, frame, return_)
@@ -77,8 +92,8 @@ pub(in crate::runtime) fn eval_int_function_expr(
 mod tests {
     use super::eval_int_function_expr;
     use crate::plan::{
-        BoolExpr, ExecutionPlan, Expr, FunctionId, FunctionPlan, IntExpr, IntFunctionExpr,
-        IntFunctionId, IntFunctionValue, IntLocalId, ParamLocal, ReturnExpr, Step,
+        BoolExpr, ExecutionPlan, Expr, FloatExpr, FunctionId, FunctionPlan, IntExpr,
+        IntFunctionExpr, IntFunctionId, IntFunctionValue, IntLocalId, ParamLocal, ReturnExpr, Step,
     };
     use crate::runtime::frame::Frame;
 
@@ -136,6 +151,37 @@ mod tests {
             &IntFunctionExpr::int_case(
                 IntExpr::value(2.into()),
                 vec![(1.into(), other_function_value())],
+                function_value(),
+            ),
+        )
+        .expect("expression should evaluate");
+
+        assert_eq!(function.runtime_id(), IntFunctionId(0));
+    }
+
+    #[test]
+    fn eval_int_function_float_case_branches() {
+        let plan = plan();
+        let mut frame = Frame::default();
+        let function = eval_int_function_expr(
+            &plan,
+            &mut frame,
+            &IntFunctionExpr::float_case(
+                FloatExpr::value(1.0),
+                vec![(1.0, function_value())],
+                other_function_value(),
+            ),
+        )
+        .expect("expression should evaluate");
+
+        assert_eq!(function.runtime_id(), IntFunctionId(0));
+
+        let function = eval_int_function_expr(
+            &plan,
+            &mut frame,
+            &IntFunctionExpr::float_case(
+                FloatExpr::value(2.0),
+                vec![(1.0, other_function_value())],
                 function_value(),
             ),
         )

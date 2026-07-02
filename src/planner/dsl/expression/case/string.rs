@@ -1,10 +1,10 @@
 use crate::plan::{
-    BoolExpr, BoolFunctionExpr, FunctionFunctionExpr, IntExpr, IntFunctionExpr, NilExpr,
-    NilFunctionExpr, StringExpr, StringFunctionExpr,
+    BoolExpr, BoolFunctionExpr, FloatExpr, FloatFunctionExpr, FunctionFunctionExpr, IntExpr,
+    IntFunctionExpr, NilExpr, NilFunctionExpr, StringExpr, StringFunctionExpr,
 };
 use crate::planner::dsl::expression::{
-    Bool, BoolFunction, FunctionFunction, Int, IntFunction, Nil, NilFunction, String,
-    StringFunction,
+    Bool, BoolFunction, Float, FloatFunction, FunctionFunction, Int, IntFunction, Nil, NilFunction,
+    String, StringFunction,
 };
 
 pub(crate) fn string_case_int(
@@ -28,6 +28,21 @@ pub(crate) fn string_case_string(
     fallback: String,
 ) -> String {
     String(StringExpr::string_case(
+        subject.into(),
+        clauses
+            .into_iter()
+            .map(|(value, branch)| (value.into(), branch.into()))
+            .collect(),
+        fallback.into(),
+    ))
+}
+
+pub(crate) fn string_case_float(
+    subject: String,
+    clauses: impl IntoIterator<Item = (&'static str, Float)>,
+    fallback: Float,
+) -> Float {
+    Float(FloatExpr::string_case(
         subject.into(),
         clauses
             .into_iter()
@@ -97,6 +112,21 @@ pub(crate) fn string_case_string_function(
     ))
 }
 
+pub(crate) fn string_case_float_function(
+    subject: String,
+    clauses: impl IntoIterator<Item = (&'static str, FloatFunction)>,
+    fallback: FloatFunction,
+) -> FloatFunction {
+    FloatFunction(FloatFunctionExpr::string_case(
+        subject.into(),
+        clauses
+            .into_iter()
+            .map(|(value, branch)| (value.into(), branch.into()))
+            .collect(),
+        fallback.into(),
+    ))
+}
+
 pub(crate) fn string_case_bool_function(
     subject: String,
     clauses: impl IntoIterator<Item = (&'static str, BoolFunction)>,
@@ -145,18 +175,19 @@ pub(crate) fn string_case_function_function(
 #[cfg(test)]
 mod tests {
     use super::{
-        string_case_bool, string_case_bool_function, string_case_function_function,
-        string_case_int, string_case_int_function, string_case_nil, string_case_nil_function,
-        string_case_string, string_case_string_function,
+        string_case_bool, string_case_bool_function, string_case_float, string_case_float_function,
+        string_case_function_function, string_case_int, string_case_int_function, string_case_nil,
+        string_case_nil_function, string_case_string, string_case_string_function,
     };
     use crate::plan::{
-        BoolExprKind, BoolFunctionExprKind, FunctionFunctionId, FunctionType, IntExprKind,
-        IntFunctionExprKind, IntFunctionFunctionId, NilExprKind, NilFunctionExprKind, ParamLocal,
-        StringExprKind, StringFunctionExprKind, ValueType,
+        BoolExprKind, BoolFunctionExprKind, FloatExprKind, FloatFunctionExprKind,
+        FunctionFunctionId, FunctionType, IntExprKind, IntFunctionExprKind, IntFunctionFunctionId,
+        NilExprKind, NilFunctionExprKind, ParamLocal, StringExprKind, StringFunctionExprKind,
+        ValueType,
     };
     use crate::planner::dsl::expression::{
-        bool_, bool_function_ref, function_function_ref, int, int_function_ref, nil,
-        nil_function_ref, string, string_function_ref,
+        bool_, bool_function_ref, float, float_function_ref, function_function_ref, int,
+        int_function_ref, nil, nil_function_ref, string, string_function_ref,
     };
 
     #[test]
@@ -172,6 +203,12 @@ mod tests {
                 .0
                 .kind(),
             StringExprKind::StringCase { .. },
+        ));
+        assert!(matches!(
+            string_case_float(string("key"), [("one", float(1.0))], float(0.0))
+                .0
+                .kind(),
+            FloatExprKind::StringCase { .. },
         ));
         assert!(matches!(
             string_case_bool(string("key"), [("one", bool_(true))], bool_(false))
@@ -204,6 +241,16 @@ mod tests {
             .0
             .kind(),
             StringFunctionExprKind::StringCase { .. },
+        ));
+        assert!(matches!(
+            string_case_float_function(
+                string("key"),
+                [("one", float_function_ref(0, Vec::<ParamLocal>::new()))],
+                float_function_ref(1, Vec::<ParamLocal>::new()),
+            )
+            .0
+            .kind(),
+            FloatFunctionExprKind::StringCase { .. },
         ));
         assert!(matches!(
             string_case_bool_function(

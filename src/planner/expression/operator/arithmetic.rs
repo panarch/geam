@@ -1,4 +1,4 @@
-use crate::plan::{Expr, IntExpr};
+use crate::plan::{Expr, FloatExpr, IntExpr};
 use crate::planner::context::PlanContext;
 use crate::planner::error::PlanError;
 use gleam_core::ast::TypedExpr;
@@ -14,6 +14,17 @@ pub(super) fn add(
     )))
 }
 
+pub(super) fn add_float(
+    left: TypedExpr,
+    right: TypedExpr,
+    context: &mut PlanContext<'_>,
+) -> Result<Expr, PlanError> {
+    Ok(Expr::float(FloatExpr::add(
+        super::super::plan_float_expr(left, context)?,
+        super::super::plan_float_expr(right, context)?,
+    )))
+}
+
 pub(super) fn sub(
     left: TypedExpr,
     right: TypedExpr,
@@ -22,6 +33,17 @@ pub(super) fn sub(
     Ok(Expr::int(IntExpr::sub(
         super::super::plan_int_expr(left, context)?,
         super::super::plan_int_expr(right, context)?,
+    )))
+}
+
+pub(super) fn sub_float(
+    left: TypedExpr,
+    right: TypedExpr,
+    context: &mut PlanContext<'_>,
+) -> Result<Expr, PlanError> {
+    Ok(Expr::float(FloatExpr::sub(
+        super::super::plan_float_expr(left, context)?,
+        super::super::plan_float_expr(right, context)?,
     )))
 }
 
@@ -36,6 +58,17 @@ pub(super) fn mult(
     )))
 }
 
+pub(super) fn mult_float(
+    left: TypedExpr,
+    right: TypedExpr,
+    context: &mut PlanContext<'_>,
+) -> Result<Expr, PlanError> {
+    Ok(Expr::float(FloatExpr::mult(
+        super::super::plan_float_expr(left, context)?,
+        super::super::plan_float_expr(right, context)?,
+    )))
+}
+
 pub(super) fn div(
     left: TypedExpr,
     right: TypedExpr,
@@ -44,6 +77,17 @@ pub(super) fn div(
     Ok(Expr::int(IntExpr::div(
         super::super::plan_int_expr(left, context)?,
         super::super::plan_int_expr(right, context)?,
+    )))
+}
+
+pub(super) fn div_float(
+    left: TypedExpr,
+    right: TypedExpr,
+    context: &mut PlanContext<'_>,
+) -> Result<Expr, PlanError> {
+    Ok(Expr::float(FloatExpr::div(
+        super::super::plan_float_expr(left, context)?,
+        super::super::plan_float_expr(right, context)?,
     )))
 }
 
@@ -63,7 +107,7 @@ mod tests {
     use super::super::super::{
         module_returning_typed_expr, typed_int_expr, typed_prelude_constructor, typed_string_expr,
     };
-    use crate::planner::dsl::{function, int, module};
+    use crate::planner::dsl::{float, function, int, module};
     use crate::planner::plan_module;
     use crate::planner::support::{compile, dummy_span};
     use crate::planner::{InvalidExpressionType, InvalidTypedAstReason, PlanError};
@@ -104,6 +148,41 @@ pub fn remainder() {
                 function("mult", int(3).mult_int(int(2))),
                 function("div", int(11).div_int(int(3))),
                 function("remainder", int(11).remainder_int(int(3))),
+            ],
+        );
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn plan_float_arithmetic() {
+        let actual = plan_module(compile(
+            r#"
+pub fn main() {
+  1.0 +. 2.0
+}
+
+pub fn sub() {
+  3.0 -. 2.0
+}
+
+pub fn mult() {
+  3.0 *. 2.0
+}
+
+pub fn div() {
+  11.0 /. 2.0
+}
+"#,
+        ))
+        .expect("source should plan");
+        let expected = module(
+            "main",
+            function("main", float(1.0).add_float(float(2.0))),
+            [
+                function("sub", float(3.0).sub_float(float(2.0))),
+                function("mult", float(3.0).mult_float(float(2.0))),
+                function("div", float(11.0).div_float(float(2.0))),
             ],
         );
 

@@ -62,8 +62,6 @@ pub enum UnsupportedExpressionKind {
     BitArray,
     #[error("echo")]
     Echo,
-    #[error("float")]
-    Float,
     #[error("function capture literal")]
     FunctionCaptureLiteral,
     #[error("list")]
@@ -82,26 +80,10 @@ pub enum UnsupportedExpressionKind {
 
 #[derive(Debug, Error, Clone, Copy, PartialEq, Eq)]
 pub enum UnsupportedBinOpKind {
-    #[error("add float")]
-    AddFloat,
-    #[error("div float")]
-    DivFloat,
     #[error("equal function")]
     EqFunction,
-    #[error("gt float")]
-    GtFloat,
-    #[error("gte float")]
-    GtEqFloat,
-    #[error("lt float")]
-    LtFloat,
-    #[error("lte float")]
-    LtEqFloat,
-    #[error("mult float")]
-    MultFloat,
     #[error("not equal function")]
     NotEqFunction,
-    #[error("sub float")]
-    SubFloat,
 }
 
 #[derive(Debug, Error, Clone, Copy, PartialEq, Eq)]

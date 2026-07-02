@@ -1,7 +1,8 @@
 use crate::plan::{
-    BoolFunctionLocalId, BoolFunctionValue, BoolLocalId, FrameLayout, FunctionFunctionLocalId,
-    FunctionFunctionValue, IntFunctionLocalId, IntFunctionValue, IntLocalId, NilFunctionLocalId,
-    NilFunctionValue, NilLocalId, StringFunctionLocalId, StringFunctionValue, StringLocalId,
+    BoolFunctionLocalId, BoolFunctionValue, BoolLocalId, FloatFunctionLocalId, FloatFunctionValue,
+    FloatLocalId, FrameLayout, FunctionFunctionLocalId, FunctionFunctionValue, IntFunctionLocalId,
+    IntFunctionValue, IntLocalId, NilFunctionLocalId, NilFunctionValue, NilLocalId,
+    StringFunctionLocalId, StringFunctionValue, StringLocalId,
 };
 use ecow::EcoString;
 use num_bigint::BigInt;
@@ -9,9 +10,11 @@ use std::collections::HashMap;
 
 pub(super) struct Frame {
     ints: Vec<BigInt>,
+    floats: Vec<f64>,
     strings: Vec<EcoString>,
     bools: Vec<bool>,
     int_functions: HashMap<IntFunctionLocalId, IntFunctionValue>,
+    float_functions: HashMap<FloatFunctionLocalId, FloatFunctionValue>,
     string_functions: HashMap<StringFunctionLocalId, StringFunctionValue>,
     bool_functions: HashMap<BoolFunctionLocalId, BoolFunctionValue>,
     nil_functions: HashMap<NilFunctionLocalId, NilFunctionValue>,
@@ -22,9 +25,11 @@ impl Frame {
     pub(super) fn new(layout: FrameLayout) -> Self {
         Self {
             ints: vec![BigInt::from(0); layout.ints()],
+            floats: vec![0.0; layout.floats()],
             strings: vec![EcoString::default(); layout.strings()],
             bools: vec![false; layout.bools()],
             int_functions: HashMap::with_capacity(layout.int_functions()),
+            float_functions: HashMap::with_capacity(layout.float_functions()),
             string_functions: HashMap::with_capacity(layout.string_functions()),
             bool_functions: HashMap::with_capacity(layout.bool_functions()),
             nil_functions: HashMap::with_capacity(layout.nil_functions()),
@@ -38,6 +43,14 @@ impl Frame {
 
     pub(super) fn get_int(&self, local: IntLocalId) -> BigInt {
         self.ints[local.0].clone()
+    }
+
+    pub(super) fn set_float(&mut self, local: FloatLocalId, value: f64) {
+        set_slot(&mut self.floats, local.0, value);
+    }
+
+    pub(super) fn get_float(&self, local: FloatLocalId) -> f64 {
+        self.floats[local.0]
     }
 
     pub(super) fn set_string(&mut self, local: StringLocalId, value: EcoString) {
@@ -66,6 +79,18 @@ impl Frame {
 
     pub(super) fn get_int_function(&self, local: IntFunctionLocalId) -> IntFunctionValue {
         self.int_functions[&local].clone()
+    }
+
+    pub(super) fn set_float_function(
+        &mut self,
+        local: FloatFunctionLocalId,
+        value: FloatFunctionValue,
+    ) {
+        self.float_functions.insert(local, value);
+    }
+
+    pub(super) fn get_float_function(&self, local: FloatFunctionLocalId) -> FloatFunctionValue {
+        self.float_functions[&local].clone()
     }
 
     pub(super) fn set_string_function(

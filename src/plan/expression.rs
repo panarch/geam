@@ -1,5 +1,6 @@
 mod bool;
 mod case;
+mod float;
 mod function;
 mod int;
 mod nil;
@@ -7,17 +8,21 @@ mod string;
 
 use super::function::ParamLocal;
 use super::id::{
-    BoolFunctionLocalId, BoolLocalId, FunctionFunctionLocalId, IntFunctionLocalId, IntLocalId,
-    NilFunctionLocalId, NilLocalId, StringFunctionLocalId, StringLocalId,
+    BoolFunctionLocalId, BoolLocalId, FloatFunctionLocalId, FloatLocalId, FunctionFunctionLocalId,
+    IntFunctionLocalId, IntLocalId, NilFunctionLocalId, NilLocalId, StringFunctionLocalId,
+    StringLocalId,
 };
 use super::value::{Value, ValueType};
 
-pub(crate) use self::case::{BoolCaseBranches, IntCaseBranches, StringCaseBranches};
+pub(crate) use self::case::{
+    BoolCaseBranches, FloatCaseBranches, IntCaseBranches, StringCaseBranches,
+};
 pub use self::{
     bool::BoolExpr,
+    float::FloatExpr,
     function::{
-        BoolFunctionExpr, FunctionExpr, FunctionFunctionExpr, IntFunctionExpr, NilFunctionExpr,
-        StringFunctionExpr,
+        BoolFunctionExpr, FloatFunctionExpr, FunctionExpr, FunctionFunctionExpr, IntFunctionExpr,
+        NilFunctionExpr, StringFunctionExpr,
     },
     int::IntExpr,
     nil::NilExpr,
@@ -25,9 +30,10 @@ pub use self::{
 };
 pub(crate) use self::{
     bool::BoolExprKind,
+    float::FloatExprKind,
     function::{
-        BoolFunctionExprKind, FunctionExprKind, FunctionFunctionExprKind, IntFunctionExprKind,
-        NilFunctionExprKind, StringFunctionExprKind,
+        BoolFunctionExprKind, FloatFunctionExprKind, FunctionExprKind, FunctionFunctionExprKind,
+        IntFunctionExprKind, NilFunctionExprKind, StringFunctionExprKind,
     },
     int::IntExprKind,
     nil::NilExprKind,
@@ -43,6 +49,7 @@ pub struct Expr {
 pub(crate) enum ExprKind {
     Int(IntExpr),
     String(StringExpr),
+    Float(FloatExpr),
     Bool(BoolExpr),
     Nil(NilExpr),
     Function(FunctionExpr),
@@ -63,6 +70,10 @@ pub(crate) enum CallArgKind {
         local: StringLocalId,
         value: StringExpr,
     },
+    Float {
+        local: FloatLocalId,
+        value: FloatExpr,
+    },
     Bool {
         local: BoolLocalId,
         value: BoolExpr,
@@ -78,6 +89,10 @@ pub(crate) enum CallArgKind {
     StringFunction {
         local: StringFunctionLocalId,
         value: StringFunctionExpr,
+    },
+    FloatFunction {
+        local: FloatFunctionLocalId,
+        value: FloatFunctionExpr,
     },
     BoolFunction {
         local: BoolFunctionLocalId,
@@ -108,6 +123,10 @@ pub(crate) enum CaptureArgKind {
         local: StringLocalId,
         value: StringExpr,
     },
+    Float {
+        local: FloatLocalId,
+        value: FloatExpr,
+    },
     Bool {
         local: BoolLocalId,
         value: BoolExpr,
@@ -123,6 +142,10 @@ pub(crate) enum CaptureArgKind {
     StringFunction {
         local: StringFunctionLocalId,
         value: StringFunctionExpr,
+    },
+    FloatFunction {
+        local: FloatFunctionLocalId,
+        value: FloatFunctionExpr,
     },
     BoolFunction {
         local: BoolFunctionLocalId,
@@ -148,6 +171,12 @@ impl Expr {
     pub(crate) fn string(expression: StringExpr) -> Self {
         Self {
             kind: ExprKind::String(expression),
+        }
+    }
+
+    pub(crate) fn float(expression: FloatExpr) -> Self {
+        Self {
+            kind: ExprKind::Float(expression),
         }
     }
 
@@ -177,6 +206,9 @@ impl Expr {
             BoolCaseBranches::String { true_, false_ } => {
                 Self::string(StringExpr::bool_case(subject, true_, false_))
             }
+            BoolCaseBranches::Float { true_, false_ } => {
+                Self::float(FloatExpr::bool_case(subject, true_, false_))
+            }
             BoolCaseBranches::Bool { true_, false_ } => {
                 Self::bool(BoolExpr::bool_case(subject, true_, false_))
             }
@@ -188,6 +220,9 @@ impl Expr {
             )),
             BoolCaseBranches::StringFunction { true_, false_ } => Self::function(
                 FunctionExpr::string(StringFunctionExpr::bool_case(subject, true_, false_)),
+            ),
+            BoolCaseBranches::FloatFunction { true_, false_ } => Self::function(
+                FunctionExpr::float(FloatFunctionExpr::bool_case(subject, true_, false_)),
             ),
             BoolCaseBranches::BoolFunction { true_, false_ } => Self::function(FunctionExpr::bool(
                 BoolFunctionExpr::bool_case(subject, true_, false_),
@@ -209,6 +244,9 @@ impl Expr {
             IntCaseBranches::String { clauses, fallback } => {
                 Self::string(StringExpr::int_case(subject, clauses, fallback))
             }
+            IntCaseBranches::Float { clauses, fallback } => {
+                Self::float(FloatExpr::int_case(subject, clauses, fallback))
+            }
             IntCaseBranches::Bool { clauses, fallback } => {
                 Self::bool(BoolExpr::int_case(subject, clauses, fallback))
             }
@@ -220,6 +258,9 @@ impl Expr {
             ),
             IntCaseBranches::StringFunction { clauses, fallback } => Self::function(
                 FunctionExpr::string(StringFunctionExpr::int_case(subject, clauses, fallback)),
+            ),
+            IntCaseBranches::FloatFunction { clauses, fallback } => Self::function(
+                FunctionExpr::float(FloatFunctionExpr::int_case(subject, clauses, fallback)),
             ),
             IntCaseBranches::BoolFunction { clauses, fallback } => Self::function(
                 FunctionExpr::bool(BoolFunctionExpr::int_case(subject, clauses, fallback)),
@@ -241,6 +282,9 @@ impl Expr {
             StringCaseBranches::String { clauses, fallback } => {
                 Self::string(StringExpr::string_case(subject, clauses, fallback))
             }
+            StringCaseBranches::Float { clauses, fallback } => {
+                Self::float(FloatExpr::string_case(subject, clauses, fallback))
+            }
             StringCaseBranches::Bool { clauses, fallback } => {
                 Self::bool(BoolExpr::string_case(subject, clauses, fallback))
             }
@@ -253,6 +297,9 @@ impl Expr {
             StringCaseBranches::StringFunction { clauses, fallback } => Self::function(
                 FunctionExpr::string(StringFunctionExpr::string_case(subject, clauses, fallback)),
             ),
+            StringCaseBranches::FloatFunction { clauses, fallback } => Self::function(
+                FunctionExpr::float(FloatFunctionExpr::string_case(subject, clauses, fallback)),
+            ),
             StringCaseBranches::BoolFunction { clauses, fallback } => Self::function(
                 FunctionExpr::bool(BoolFunctionExpr::string_case(subject, clauses, fallback)),
             ),
@@ -261,6 +308,46 @@ impl Expr {
             ),
             StringCaseBranches::FunctionFunction { clauses, fallback } => {
                 Self::function(FunctionExpr::function(FunctionFunctionExpr::string_case(
+                    subject, clauses, fallback,
+                )))
+            }
+        }
+    }
+
+    pub(crate) fn float_case(subject: FloatExpr, branches: FloatCaseBranches) -> Self {
+        match branches {
+            FloatCaseBranches::Int { clauses, fallback } => {
+                Self::int(IntExpr::float_case(subject, clauses, fallback))
+            }
+            FloatCaseBranches::String { clauses, fallback } => {
+                Self::string(StringExpr::float_case(subject, clauses, fallback))
+            }
+            FloatCaseBranches::Float { clauses, fallback } => {
+                Self::float(FloatExpr::float_case(subject, clauses, fallback))
+            }
+            FloatCaseBranches::Bool { clauses, fallback } => {
+                Self::bool(BoolExpr::float_case(subject, clauses, fallback))
+            }
+            FloatCaseBranches::Nil { clauses, fallback } => {
+                Self::nil(NilExpr::float_case(subject, clauses, fallback))
+            }
+            FloatCaseBranches::IntFunction { clauses, fallback } => Self::function(
+                FunctionExpr::int(IntFunctionExpr::float_case(subject, clauses, fallback)),
+            ),
+            FloatCaseBranches::StringFunction { clauses, fallback } => Self::function(
+                FunctionExpr::string(StringFunctionExpr::float_case(subject, clauses, fallback)),
+            ),
+            FloatCaseBranches::FloatFunction { clauses, fallback } => Self::function(
+                FunctionExpr::float(FloatFunctionExpr::float_case(subject, clauses, fallback)),
+            ),
+            FloatCaseBranches::BoolFunction { clauses, fallback } => Self::function(
+                FunctionExpr::bool(BoolFunctionExpr::float_case(subject, clauses, fallback)),
+            ),
+            FloatCaseBranches::NilFunction { clauses, fallback } => Self::function(
+                FunctionExpr::nil(NilFunctionExpr::float_case(subject, clauses, fallback)),
+            ),
+            FloatCaseBranches::FunctionFunction { clauses, fallback } => {
+                Self::function(FunctionExpr::function(FunctionFunctionExpr::float_case(
                     subject, clauses, fallback,
                 )))
             }
@@ -285,6 +372,13 @@ impl Expr {
     pub(crate) fn into_string(self) -> Option<StringExpr> {
         match self.kind {
             ExprKind::String(expression) => Some(expression),
+            _ => None,
+        }
+    }
+
+    pub(crate) fn into_float(self) -> Option<FloatExpr> {
+        match self.kind {
+            ExprKind::Float(expression) => Some(expression),
             _ => None,
         }
     }
@@ -315,6 +409,7 @@ impl Expr {
         match self.kind() {
             ExprKind::Int(_) => ValueType::Int,
             ExprKind::String(_) => ValueType::String,
+            ExprKind::Float(_) => ValueType::Float,
             ExprKind::Bool(_) => ValueType::Bool,
             ExprKind::Nil(_) => ValueType::Nil,
             ExprKind::Function(expression) => {
@@ -328,6 +423,9 @@ impl Expr {
             (ParamLocal::Int(local), ExprKind::Int(value)) => Some(CallArg::int(*local, value)),
             (ParamLocal::String(local), ExprKind::String(value)) => {
                 Some(CallArg::string(*local, value))
+            }
+            (ParamLocal::Float(local), ExprKind::Float(value)) => {
+                Some(CallArg::float(*local, value))
             }
             (ParamLocal::Bool(local), ExprKind::Bool(value)) => Some(CallArg::bool(*local, value)),
             (ParamLocal::Nil(local), ExprKind::Nil(value)) => Some(CallArg::nil(*local, value)),
@@ -349,6 +447,15 @@ impl Expr {
             ) if value.type_() == expected => value
                 .into_string()
                 .map(|value| CallArg::string_function(*local, value)),
+            (
+                ParamLocal::FloatFunction {
+                    local,
+                    type_: expected,
+                },
+                ExprKind::Function(value),
+            ) if value.type_() == expected => value
+                .into_float()
+                .map(|value| CallArg::float_function(*local, value)),
             (
                 ParamLocal::BoolFunction {
                     local,
@@ -394,6 +501,12 @@ impl CallArg {
         }
     }
 
+    pub(crate) fn float(local: FloatLocalId, value: FloatExpr) -> Self {
+        Self {
+            kind: CallArgKind::Float { local, value },
+        }
+    }
+
     pub(crate) fn bool(local: BoolLocalId, value: BoolExpr) -> Self {
         Self {
             kind: CallArgKind::Bool { local, value },
@@ -415,6 +528,12 @@ impl CallArg {
     pub(crate) fn string_function(local: StringFunctionLocalId, value: StringFunctionExpr) -> Self {
         Self {
             kind: CallArgKind::StringFunction { local, value },
+        }
+    }
+
+    pub(crate) fn float_function(local: FloatFunctionLocalId, value: FloatFunctionExpr) -> Self {
+        Self {
+            kind: CallArgKind::FloatFunction { local, value },
         }
     }
 
@@ -457,6 +576,12 @@ impl CaptureArg {
         }
     }
 
+    pub(crate) fn float(local: FloatLocalId, value: FloatExpr) -> Self {
+        Self {
+            kind: CaptureArgKind::Float { local, value },
+        }
+    }
+
     pub(crate) fn bool(local: BoolLocalId, value: BoolExpr) -> Self {
         Self {
             kind: CaptureArgKind::Bool { local, value },
@@ -478,6 +603,12 @@ impl CaptureArg {
     pub(crate) fn string_function(local: StringFunctionLocalId, value: StringFunctionExpr) -> Self {
         Self {
             kind: CaptureArgKind::StringFunction { local, value },
+        }
+    }
+
+    pub(crate) fn float_function(local: FloatFunctionLocalId, value: FloatFunctionExpr) -> Self {
+        Self {
+            kind: CaptureArgKind::FloatFunction { local, value },
         }
     }
 
@@ -512,6 +643,7 @@ impl From<Value> for Expr {
         match value {
             Value::Int(value) => Self::int(IntExpr::value(value)),
             Value::String(value) => Self::string(StringExpr::value(value)),
+            Value::Float(value) => Self::float(FloatExpr::value(value)),
             Value::Bool(value) => Self::bool(BoolExpr::value(value)),
             Value::Nil => Self::nil(NilExpr::value()),
             Value::Function(value) => Self::function(FunctionExpr::value(value)),
@@ -522,14 +654,16 @@ impl From<Value> for Expr {
 #[cfg(test)]
 mod tests {
     use super::{
-        BoolCaseBranches, BoolExpr, BoolFunctionExpr, CallArg, Expr, FunctionExpr,
-        FunctionFunctionExpr, IntCaseBranches, IntExpr, IntFunctionExpr, NilExpr, NilFunctionExpr,
-        StringExpr, StringFunctionExpr,
+        BoolCaseBranches, BoolExpr, BoolFunctionExpr, CallArg, Expr, FloatCaseBranches, FloatExpr,
+        FloatFunctionExpr, FunctionExpr, FunctionFunctionExpr, IntCaseBranches, IntExpr,
+        IntFunctionExpr, NilExpr, NilFunctionExpr, StringCaseBranches, StringExpr,
+        StringFunctionExpr,
     };
     use crate::plan::{
-        BoolFunctionId, BoolFunctionValue, BoolLocalId, FunctionFunctionId, FunctionFunctionValue,
-        FunctionType, FunctionValue, IntFunctionFunctionId, IntFunctionId, IntFunctionValue,
-        IntLocalId, NilFunctionId, NilFunctionValue, NilLocalId, ParamLocal, RuntimeFunctionId,
+        BoolFunctionId, BoolFunctionValue, BoolLocalId, FloatFunctionId, FloatFunctionLocalId,
+        FloatFunctionValue, FloatLocalId, FunctionFunctionId, FunctionFunctionValue, FunctionType,
+        FunctionValue, IntFunctionFunctionId, IntFunctionId, IntFunctionValue, IntLocalId,
+        NilFunctionId, NilFunctionValue, NilLocalId, ParamLocal, RuntimeFunctionId,
         StringFunctionId, StringFunctionValue, StringLocalId, Value, ValueType,
     };
     use num_bigint::BigInt;
@@ -543,6 +677,10 @@ mod tests {
         assert_eq!(
             Expr::string(StringExpr::value("geam".into())),
             Expr::from(Value::String("geam".into()))
+        );
+        assert_eq!(
+            Expr::float(FloatExpr::value(1.5)),
+            Expr::from(Value::Float(1.5))
         );
         assert_eq!(
             Expr::bool(BoolExpr::value(true)),
@@ -583,6 +721,20 @@ mod tests {
                 BoolExpr::value(true),
                 StringExpr::value("yes".into()),
                 StringExpr::value("no".into()),
+            )),
+        );
+        assert_eq!(
+            Expr::bool_case(
+                BoolExpr::value(true),
+                BoolCaseBranches::Float {
+                    true_: FloatExpr::value(1.5),
+                    false_: FloatExpr::value(0.5),
+                },
+            ),
+            Expr::float(FloatExpr::bool_case(
+                BoolExpr::value(true),
+                FloatExpr::value(1.5),
+                FloatExpr::value(0.5),
             )),
         );
         assert_eq!(
@@ -639,6 +791,20 @@ mod tests {
                 BoolExpr::value(true),
                 string_function_expr(),
                 string_function_expr(),
+            ))),
+        );
+        assert_eq!(
+            Expr::bool_case(
+                BoolExpr::value(true),
+                BoolCaseBranches::FloatFunction {
+                    true_: float_function_expr(),
+                    false_: float_function_expr(),
+                },
+            ),
+            Expr::function(FunctionExpr::float(FloatFunctionExpr::bool_case(
+                BoolExpr::value(true),
+                float_function_expr(),
+                float_function_expr(),
             ))),
         );
         assert_eq!(
@@ -704,6 +870,20 @@ mod tests {
         assert_eq!(
             Expr::int_case(
                 IntExpr::value(BigInt::from(1)),
+                IntCaseBranches::Float {
+                    clauses: vec![(BigInt::from(1), FloatExpr::value(1.5))],
+                    fallback: FloatExpr::value(0.5),
+                },
+            ),
+            Expr::float(FloatExpr::int_case(
+                IntExpr::value(BigInt::from(1)),
+                vec![(BigInt::from(1), FloatExpr::value(1.5))],
+                FloatExpr::value(0.5),
+            )),
+        );
+        assert_eq!(
+            Expr::int_case(
+                IntExpr::value(BigInt::from(1)),
                 IntCaseBranches::Bool {
                     clauses: vec![(BigInt::from(1), BoolExpr::value(true))],
                     fallback: BoolExpr::value(false),
@@ -760,6 +940,20 @@ mod tests {
         assert_eq!(
             Expr::int_case(
                 IntExpr::value(BigInt::from(1)),
+                IntCaseBranches::FloatFunction {
+                    clauses: vec![(BigInt::from(1), float_function_expr())],
+                    fallback: float_function_expr(),
+                },
+            ),
+            Expr::function(FunctionExpr::float(FloatFunctionExpr::int_case(
+                IntExpr::value(BigInt::from(1)),
+                vec![(BigInt::from(1), float_function_expr())],
+                float_function_expr(),
+            ))),
+        );
+        assert_eq!(
+            Expr::int_case(
+                IntExpr::value(BigInt::from(1)),
                 IntCaseBranches::BoolFunction {
                     clauses: vec![(BigInt::from(1), bool_function_expr())],
                     fallback: bool_function_expr(),
@@ -788,6 +982,196 @@ mod tests {
     }
 
     #[test]
+    fn expr_float_case_shapes() {
+        assert_eq!(
+            Expr::float_case(
+                FloatExpr::value(1.0),
+                FloatCaseBranches::Int {
+                    clauses: vec![(1.0, IntExpr::value(BigInt::from(10)))],
+                    fallback: IntExpr::value(BigInt::from(0)),
+                },
+            ),
+            Expr::int(IntExpr::float_case(
+                FloatExpr::value(1.0),
+                vec![(1.0, IntExpr::value(BigInt::from(10)))],
+                IntExpr::value(BigInt::from(0)),
+            )),
+        );
+        assert_eq!(
+            Expr::float_case(
+                FloatExpr::value(1.0),
+                FloatCaseBranches::String {
+                    clauses: vec![(1.0, StringExpr::value("one".into()))],
+                    fallback: StringExpr::value("other".into()),
+                },
+            ),
+            Expr::string(StringExpr::float_case(
+                FloatExpr::value(1.0),
+                vec![(1.0, StringExpr::value("one".into()))],
+                StringExpr::value("other".into()),
+            )),
+        );
+        assert_eq!(
+            Expr::float_case(
+                FloatExpr::value(1.0),
+                FloatCaseBranches::Float {
+                    clauses: vec![(1.0, FloatExpr::value(1.5))],
+                    fallback: FloatExpr::value(0.5),
+                },
+            ),
+            Expr::float(FloatExpr::float_case(
+                FloatExpr::value(1.0),
+                vec![(1.0, FloatExpr::value(1.5))],
+                FloatExpr::value(0.5),
+            )),
+        );
+        assert_eq!(
+            Expr::float_case(
+                FloatExpr::value(1.0),
+                FloatCaseBranches::Bool {
+                    clauses: vec![(1.0, BoolExpr::value(true))],
+                    fallback: BoolExpr::value(false),
+                },
+            ),
+            Expr::bool(BoolExpr::float_case(
+                FloatExpr::value(1.0),
+                vec![(1.0, BoolExpr::value(true))],
+                BoolExpr::value(false),
+            )),
+        );
+        assert_eq!(
+            Expr::float_case(
+                FloatExpr::value(1.0),
+                FloatCaseBranches::Nil {
+                    clauses: vec![(1.0, NilExpr::value())],
+                    fallback: NilExpr::value(),
+                },
+            ),
+            Expr::nil(NilExpr::float_case(
+                FloatExpr::value(1.0),
+                vec![(1.0, NilExpr::value())],
+                NilExpr::value(),
+            )),
+        );
+        assert_eq!(
+            Expr::float_case(
+                FloatExpr::value(1.0),
+                FloatCaseBranches::IntFunction {
+                    clauses: vec![(1.0, int_function_expr())],
+                    fallback: int_function_expr(),
+                },
+            ),
+            Expr::function(FunctionExpr::int(IntFunctionExpr::float_case(
+                FloatExpr::value(1.0),
+                vec![(1.0, int_function_expr())],
+                int_function_expr(),
+            ))),
+        );
+        assert_eq!(
+            Expr::float_case(
+                FloatExpr::value(1.0),
+                FloatCaseBranches::StringFunction {
+                    clauses: vec![(1.0, string_function_expr())],
+                    fallback: string_function_expr(),
+                },
+            ),
+            Expr::function(FunctionExpr::string(StringFunctionExpr::float_case(
+                FloatExpr::value(1.0),
+                vec![(1.0, string_function_expr())],
+                string_function_expr(),
+            ))),
+        );
+        assert_eq!(
+            Expr::float_case(
+                FloatExpr::value(1.0),
+                FloatCaseBranches::FloatFunction {
+                    clauses: vec![(1.0, float_function_expr())],
+                    fallback: float_function_expr(),
+                },
+            ),
+            Expr::function(FunctionExpr::float(FloatFunctionExpr::float_case(
+                FloatExpr::value(1.0),
+                vec![(1.0, float_function_expr())],
+                float_function_expr(),
+            ))),
+        );
+        assert_eq!(
+            Expr::float_case(
+                FloatExpr::value(1.0),
+                FloatCaseBranches::BoolFunction {
+                    clauses: vec![(1.0, bool_function_expr())],
+                    fallback: bool_function_expr(),
+                },
+            ),
+            Expr::function(FunctionExpr::bool(BoolFunctionExpr::float_case(
+                FloatExpr::value(1.0),
+                vec![(1.0, bool_function_expr())],
+                bool_function_expr(),
+            ))),
+        );
+        assert_eq!(
+            Expr::float_case(
+                FloatExpr::value(1.0),
+                FloatCaseBranches::NilFunction {
+                    clauses: vec![(1.0, nil_function_expr())],
+                    fallback: nil_function_expr(),
+                },
+            ),
+            Expr::function(FunctionExpr::nil(NilFunctionExpr::float_case(
+                FloatExpr::value(1.0),
+                vec![(1.0, nil_function_expr())],
+                nil_function_expr(),
+            ))),
+        );
+        assert_eq!(
+            Expr::float_case(
+                FloatExpr::value(1.0),
+                FloatCaseBranches::FunctionFunction {
+                    clauses: vec![(1.0, function_function_expr())],
+                    fallback: function_function_expr(),
+                },
+            ),
+            Expr::function(FunctionExpr::function(FunctionFunctionExpr::float_case(
+                FloatExpr::value(1.0),
+                vec![(1.0, function_function_expr())],
+                function_function_expr(),
+            ))),
+        );
+    }
+
+    #[test]
+    fn expr_string_case_shapes() {
+        assert_eq!(
+            Expr::string_case(
+                StringExpr::value("one".into()),
+                StringCaseBranches::Float {
+                    clauses: vec![("one".into(), FloatExpr::value(1.5))],
+                    fallback: FloatExpr::value(0.5),
+                },
+            ),
+            Expr::float(FloatExpr::string_case(
+                StringExpr::value("one".into()),
+                vec![("one".into(), FloatExpr::value(1.5))],
+                FloatExpr::value(0.5),
+            )),
+        );
+        assert_eq!(
+            Expr::string_case(
+                StringExpr::value("one".into()),
+                StringCaseBranches::FloatFunction {
+                    clauses: vec![("one".into(), float_function_expr())],
+                    fallback: float_function_expr(),
+                },
+            ),
+            Expr::function(FunctionExpr::float(FloatFunctionExpr::string_case(
+                StringExpr::value("one".into()),
+                vec![("one".into(), float_function_expr())],
+                float_function_expr(),
+            ))),
+        );
+    }
+
+    #[test]
     fn expr_value_type() {
         assert_eq!(
             Expr::from(Value::Int(BigInt::from(1))).value_type(),
@@ -797,6 +1181,7 @@ mod tests {
             Expr::from(Value::String("geam".into())).value_type(),
             ValueType::String,
         );
+        assert_eq!(Expr::from(Value::Float(1.5)).value_type(), ValueType::Float);
         assert_eq!(Expr::from(Value::Bool(true)).value_type(), ValueType::Bool);
         assert_eq!(Expr::from(Value::Nil).value_type(), ValueType::Nil);
         assert_eq!(
@@ -815,6 +1200,11 @@ mod tests {
             Expr::from(Value::String("geam".into())).into_string(),
             Some(StringExpr::value("geam".into())),
         );
+        assert_eq!(
+            Expr::from(Value::Float(1.5)).into_float(),
+            Some(FloatExpr::value(1.5)),
+        );
+        assert_eq!(Expr::from(Value::Int(BigInt::from(1))).into_float(), None);
         assert_eq!(
             Expr::from(Value::Bool(true)).into_bool(),
             Some(BoolExpr::value(true)),
@@ -848,6 +1238,10 @@ mod tests {
             )),
         );
         assert_eq!(
+            Expr::float(FloatExpr::value(1.5)).into_call_arg(&ParamLocal::float(FloatLocalId(0))),
+            Some(CallArg::float(FloatLocalId(0), FloatExpr::value(1.5))),
+        );
+        assert_eq!(
             Expr::bool(BoolExpr::value(true)).into_call_arg(&ParamLocal::bool(BoolLocalId(0))),
             Some(CallArg::bool(BoolLocalId(0), BoolExpr::value(true))),
         );
@@ -877,6 +1271,18 @@ mod tests {
             Some(CallArg::string_function(
                 crate::plan::StringFunctionLocalId(0),
                 string_function_expr(),
+            )),
+        );
+        assert_eq!(
+            Expr::function(FunctionExpr::float(float_function_expr())).into_call_arg(
+                &ParamLocal::float_function(
+                    FloatFunctionLocalId(0),
+                    FunctionType::new(vec![ValueType::Float], ValueType::Float),
+                )
+            ),
+            Some(CallArg::float_function(
+                FloatFunctionLocalId(0),
+                float_function_expr(),
             )),
         );
         assert_eq!(
@@ -995,6 +1401,13 @@ mod tests {
         StringFunctionExpr::value(StringFunctionValue::new(
             StringFunctionId(0),
             vec![ParamLocal::string(StringLocalId(0))],
+        ))
+    }
+
+    fn float_function_expr() -> FloatFunctionExpr {
+        FloatFunctionExpr::value(FloatFunctionValue::new(
+            FloatFunctionId(0),
+            vec![ParamLocal::float(FloatLocalId(0))],
         ))
     }
 

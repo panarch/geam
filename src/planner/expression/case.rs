@@ -1,4 +1,5 @@
 mod bool_subject;
+mod float_subject;
 mod int_subject;
 mod string_subject;
 
@@ -33,6 +34,9 @@ pub(super) fn plan_case(
     }
     if subject.type_().is_string() {
         return string_subject::plan(type_, subject, clauses, context);
+    }
+    if subject.type_().is_float() {
+        return float_subject::plan(type_, subject, clauses, context);
     }
 
     Err(unsupported_case(
@@ -179,10 +183,6 @@ mod tests {
     fn reject_profile_case_expressions() {
         let cases = [
             (
-                r#"pub fn main() { case 1.1 { _ -> 3 } }"#,
-                UnsupportedCaseReason::UnsupportedSubjectType,
-            ),
-            (
                 r#"
 pub fn main() {
   case True, False {
@@ -208,6 +208,10 @@ pub fn main() {
             (
                 r#"pub fn main() { case True { True | False -> 1 } }"#,
                 UnsupportedCaseReason::AlternativePatterns,
+            ),
+            (
+                r#"pub fn main() { case #(1, 2) { _ -> 1 } }"#,
+                UnsupportedCaseReason::UnsupportedSubjectType,
             ),
         ];
 

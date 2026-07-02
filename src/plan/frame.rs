@@ -6,18 +6,21 @@ mod step;
 
 use super::function::{Param, ParamLocal, ReturnExpr};
 use super::id::{
-    BoolFunctionLocalId, BoolLocalId, FunctionFunctionLocalId, IntFunctionLocalId, IntLocalId,
-    NilFunctionLocalId, NilLocalId, StringFunctionLocalId, StringLocalId,
+    BoolFunctionLocalId, BoolLocalId, FloatFunctionLocalId, FloatLocalId, FunctionFunctionLocalId,
+    IntFunctionLocalId, IntLocalId, NilFunctionLocalId, NilLocalId, StringFunctionLocalId,
+    StringLocalId,
 };
 use super::step::Step;
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub(crate) struct FrameLayout {
     ints: usize,
+    floats: usize,
     strings: usize,
     bools: usize,
     nils: usize,
     int_functions: usize,
+    float_functions: usize,
     string_functions: usize,
     bool_functions: usize,
     nil_functions: usize,
@@ -44,10 +47,12 @@ impl FrameLayout {
     pub(crate) fn include_local(&mut self, local: &ParamLocal) {
         match local {
             ParamLocal::Int(local) => self.include_int(*local),
+            ParamLocal::Float(local) => self.include_float(*local),
             ParamLocal::String(local) => self.include_string(*local),
             ParamLocal::Bool(local) => self.include_bool(*local),
             ParamLocal::Nil(local) => self.include_nil(*local),
             ParamLocal::IntFunction { local, .. } => self.include_int_function(*local),
+            ParamLocal::FloatFunction { local, .. } => self.include_float_function(*local),
             ParamLocal::StringFunction { local, .. } => self.include_string_function(*local),
             ParamLocal::BoolFunction { local, .. } => self.include_bool_function(*local),
             ParamLocal::NilFunction { local, .. } => self.include_nil_function(*local),
@@ -57,6 +62,10 @@ impl FrameLayout {
 
     pub(crate) fn include_int(&mut self, local: IntLocalId) {
         self.ints = self.ints.max(local.0 + 1);
+    }
+
+    pub(crate) fn include_float(&mut self, local: FloatLocalId) {
+        self.floats = self.floats.max(local.0 + 1);
     }
 
     pub(crate) fn include_string(&mut self, local: StringLocalId) {
@@ -73,6 +82,10 @@ impl FrameLayout {
 
     pub(crate) fn include_int_function(&mut self, local: IntFunctionLocalId) {
         self.int_functions = self.int_functions.max(local.0 + 1);
+    }
+
+    pub(crate) fn include_float_function(&mut self, local: FloatFunctionLocalId) {
+        self.float_functions = self.float_functions.max(local.0 + 1);
     }
 
     pub(crate) fn include_string_function(&mut self, local: StringFunctionLocalId) {
@@ -95,6 +108,10 @@ impl FrameLayout {
         self.ints
     }
 
+    pub(crate) fn floats(self) -> usize {
+        self.floats
+    }
+
     pub(crate) fn strings(self) -> usize {
         self.strings
     }
@@ -110,6 +127,10 @@ impl FrameLayout {
 
     pub(crate) fn int_functions(self) -> usize {
         self.int_functions
+    }
+
+    pub(crate) fn float_functions(self) -> usize {
+        self.float_functions
     }
 
     pub(crate) fn string_functions(self) -> usize {
@@ -132,10 +153,11 @@ impl FrameLayout {
 #[cfg(test)]
 pub(super) mod test_helpers {
     use crate::plan::{
-        BoolFunctionExpr, BoolFunctionId, BoolFunctionValue, BoolLocalId, FunctionType,
-        IntFunctionExpr, IntFunctionId, IntFunctionValue, IntLocalId, NilFunctionExpr,
-        NilFunctionId, NilFunctionValue, NilLocalId, ParamLocal, StringFunctionExpr,
-        StringFunctionId, StringFunctionValue, StringLocalId, ValueType,
+        BoolFunctionExpr, BoolFunctionId, BoolFunctionValue, BoolLocalId, FloatFunctionExpr,
+        FloatFunctionId, FloatFunctionValue, FloatLocalId, FunctionType, IntFunctionExpr,
+        IntFunctionId, IntFunctionValue, IntLocalId, NilFunctionExpr, NilFunctionId,
+        NilFunctionValue, NilLocalId, ParamLocal, StringFunctionExpr, StringFunctionId,
+        StringFunctionValue, StringLocalId, ValueType,
     };
 
     pub(super) fn int_function_expr() -> IntFunctionExpr {
@@ -149,6 +171,13 @@ pub(super) mod test_helpers {
         StringFunctionExpr::value(StringFunctionValue::new(
             StringFunctionId(0),
             vec![ParamLocal::string(StringLocalId(0))],
+        ))
+    }
+
+    pub(super) fn float_function_expr() -> FloatFunctionExpr {
+        FloatFunctionExpr::value(FloatFunctionValue::new(
+            FloatFunctionId(0),
+            vec![ParamLocal::float(FloatLocalId(0))],
         ))
     }
 
@@ -178,8 +207,8 @@ pub(super) mod test_helpers {
 mod tests {
     use super::FrameLayout;
     use crate::plan::{
-        BoolLocalId, IntFunctionLocalId, IntLocalId, NilFunctionLocalId, NilLocalId, ParamLocal,
-        StringLocalId,
+        BoolLocalId, FloatFunctionLocalId, FloatLocalId, IntFunctionLocalId, IntLocalId,
+        NilFunctionLocalId, NilLocalId, ParamLocal, StringLocalId,
     };
 
     #[test]
@@ -190,7 +219,7 @@ mod tests {
         assert_eq!(layout, cloned);
         assert_eq!(
             format!("{layout:?}"),
-            "FrameLayout { ints: 0, strings: 0, bools: 0, nils: 0, int_functions: 0, string_functions: 0, bool_functions: 0, nil_functions: 0, function_functions: 0 }",
+            "FrameLayout { ints: 0, floats: 0, strings: 0, bools: 0, nils: 0, int_functions: 0, float_functions: 0, string_functions: 0, bool_functions: 0, nil_functions: 0, function_functions: 0 }",
         );
     }
 
@@ -203,17 +232,21 @@ mod tests {
         let mut layout = FrameLayout::default();
 
         layout.include_local(&ParamLocal::int(IntLocalId(1)));
+        layout.include_local(&ParamLocal::float(FloatLocalId(2)));
         layout.include_local(&ParamLocal::string(StringLocalId(2)));
         layout.include_local(&ParamLocal::bool(BoolLocalId(3)));
         layout.include_local(&ParamLocal::nil(NilLocalId(4)));
         layout.include_int_function(IntFunctionLocalId(5));
-        layout.include_nil_function(NilFunctionLocalId(6));
+        layout.include_float_function(FloatFunctionLocalId(6));
+        layout.include_nil_function(NilFunctionLocalId(7));
 
         assert_eq!(layout.ints(), 2);
+        assert_eq!(layout.floats(), 3);
         assert_eq!(layout.strings(), 3);
         assert_eq!(layout.bools(), 4);
         assert_eq!(layout.nils(), 5);
         assert_eq!(layout.int_functions(), 6);
-        assert_eq!(layout.nil_functions(), 7);
+        assert_eq!(layout.float_functions(), 7);
+        assert_eq!(layout.nil_functions(), 8);
     }
 }

@@ -1,15 +1,16 @@
 use super::bind::bind_arguments;
 use super::steps::execute_steps;
 use crate::plan::{
-    BoolFunctionFunctionId, BoolFunctionId, CallArg, ExecutionPlan, FunctionFunctionFunctionId,
-    FunctionFunctionValue, IntFunctionFunctionId, IntFunctionId, NilFunctionFunctionId,
-    NilFunctionId, ReturnBody, ReturnBodyKind, StringFunctionFunctionId, StringFunctionId,
+    BoolFunctionFunctionId, BoolFunctionId, CallArg, ExecutionPlan, FloatFunctionFunctionId,
+    FloatFunctionId, FunctionFunctionFunctionId, FunctionFunctionValue, IntFunctionFunctionId,
+    IntFunctionId, NilFunctionFunctionId, NilFunctionId, ReturnBody, ReturnBodyKind,
+    StringFunctionFunctionId, StringFunctionId,
 };
 use crate::runtime::error::ExecutionResult;
 use crate::runtime::expression::{
-    eval_bool_expr, eval_bool_function_expr, eval_function_function_expr, eval_int_expr,
-    eval_int_function_expr, eval_nil_expr, eval_nil_function_expr, eval_string_expr,
-    eval_string_function_expr,
+    eval_bool_expr, eval_bool_function_expr, eval_float_expr, eval_float_function_expr,
+    eval_function_function_expr, eval_int_expr, eval_int_function_expr, eval_nil_expr,
+    eval_nil_function_expr, eval_string_expr, eval_string_function_expr,
 };
 use crate::runtime::frame::Frame;
 use ecow::EcoString;
@@ -64,6 +65,19 @@ where
             }
             eval_return_body(plan, frame, fallback, eval_expression)
         }
+        ReturnBodyKind::FloatCase {
+            subject,
+            clauses,
+            fallback,
+        } => {
+            let subject = eval_float_expr(plan, frame, subject)?;
+            for (pattern, branch) in clauses {
+                if pattern == &subject {
+                    return eval_return_body(plan, frame, branch, eval_expression);
+                }
+            }
+            eval_return_body(plan, frame, fallback, eval_expression)
+        }
         ReturnBodyKind::StringCase {
             subject,
             clauses,
@@ -101,6 +115,30 @@ pub(super) fn run_int_loop(
                 args,
             } => {
                 let frame_layout = plan.int_function(next).frame_layout();
+                frame = bind_arguments(plan, args, &mut frame, frame_layout)?;
+                function = next;
+            }
+        }
+    }
+}
+
+pub(super) fn run_float_loop(
+    plan: &ExecutionPlan,
+    mut function: FloatFunctionId,
+    mut frame: Frame,
+) -> ExecutionResult<f64> {
+    loop {
+        let runtime_function = plan.float_function(function);
+        execute_steps(plan, runtime_function.steps(), &mut frame)?;
+        let eval = eval_float_expr;
+        let outcome = eval_return_body(plan, &mut frame, runtime_function.return_(), eval)?;
+        match outcome {
+            ReturnOutcome::Value(value) => return Ok(value),
+            ReturnOutcome::TailCall {
+                function: next,
+                args,
+            } => {
+                let frame_layout = plan.float_function(next).frame_layout();
                 frame = bind_arguments(plan, args, &mut frame, frame_layout)?;
                 function = next;
             }
@@ -197,6 +235,30 @@ pub(super) fn run_int_function_loop(
                 args,
             } => {
                 let frame_layout = plan.int_function_function(next).frame_layout();
+                frame = bind_arguments(plan, args, &mut frame, frame_layout)?;
+                function = next;
+            }
+        }
+    }
+}
+
+pub(super) fn run_float_function_loop(
+    plan: &ExecutionPlan,
+    mut function: FloatFunctionFunctionId,
+    mut frame: Frame,
+) -> ExecutionResult<crate::plan::FloatFunctionValue> {
+    loop {
+        let runtime_function = plan.float_function_function(function);
+        execute_steps(plan, runtime_function.steps(), &mut frame)?;
+        let eval = eval_float_function_expr;
+        let outcome = eval_return_body(plan, &mut frame, runtime_function.return_(), eval)?;
+        match outcome {
+            ReturnOutcome::Value(value) => return Ok(value),
+            ReturnOutcome::TailCall {
+                function: next,
+                args,
+            } => {
+                let frame_layout = plan.float_function_function(next).frame_layout();
                 frame = bind_arguments(plan, args, &mut frame, frame_layout)?;
                 function = next;
             }
@@ -303,19 +365,20 @@ pub(super) fn run_function_function_loop(
 #[cfg(test)]
 mod tests {
     use super::{
-        run_bool_function_loop, run_bool_loop, run_function_function_loop, run_int_function_loop,
-        run_int_loop, run_nil_function_loop, run_nil_loop, run_string_function_loop,
-        run_string_loop,
+        run_bool_function_loop, run_bool_loop, run_float_function_loop, run_float_loop,
+        run_function_function_loop, run_int_function_loop, run_int_loop, run_nil_function_loop,
+        run_nil_loop, run_string_function_loop, run_string_loop,
     };
     use crate::plan::{
         BoolExpr, BoolFunctionExpr, BoolFunctionFunctionId, BoolFunctionId, BoolFunctionValue,
-        ExecutionPlan, Expr, FunctionExpr, FunctionExprKind, FunctionFunctionExpr,
+        ExecutionPlan, Expr, FloatExpr, FloatFunctionExpr, FloatFunctionFunctionId,
+        FloatFunctionId, FloatFunctionValue, FunctionExpr, FunctionExprKind, FunctionFunctionExpr,
         FunctionFunctionFunctionId, FunctionFunctionId, FunctionFunctionValue, FunctionId,
         FunctionPlan, FunctionReturnFamily, FunctionType, IntExpr, IntFunctionExpr,
         IntFunctionFunctionId, IntFunctionId, IntFunctionValue, NilExpr, NilFunctionExpr,
-        NilFunctionFunctionId, NilFunctionId, NilFunctionValue, ReturnExpr, Step, StringExpr,
-        StringFunctionExpr, StringFunctionFunctionId, StringFunctionId, StringFunctionValue,
-        ValueType,
+        NilFunctionFunctionId, NilFunctionId, NilFunctionValue, ReturnBody, ReturnExpr, Step,
+        StringExpr, StringFunctionExpr, StringFunctionFunctionId, StringFunctionId,
+        StringFunctionValue, ValueType,
     };
     use crate::runtime::ExecutionError;
     use crate::runtime::frame::Frame;
@@ -328,6 +391,11 @@ mod tests {
         assert_expected_function_got_int(run_string_loop(
             &plan,
             StringFunctionId(0),
+            Frame::default(),
+        ));
+        assert_expected_function_got_int(run_float_loop(
+            &plan,
+            FloatFunctionId(0),
             Frame::default(),
         ));
         assert_expected_function_got_int(run_bool_loop(&plan, BoolFunctionId(0), Frame::default()));
@@ -348,6 +416,11 @@ mod tests {
             StringFunctionFunctionId(0),
             Frame::default(),
         ));
+        assert_expected_function_got_int(run_float_function_loop(
+            &plan,
+            FloatFunctionFunctionId(0),
+            Frame::default(),
+        ));
         assert_expected_function_got_int(run_bool_function_loop(
             &plan,
             BoolFunctionFunctionId(0),
@@ -363,6 +436,17 @@ mod tests {
             FunctionFunctionFunctionId(0),
             Frame::default(),
         ));
+    }
+
+    #[test]
+    fn float_function_return_loop_follows_tail_call() {
+        let plan = float_function_tail_call_plan();
+
+        assert_eq!(
+            run_float_function_loop(&plan, FloatFunctionFunctionId(0), Frame::default())
+                .map(|value| value.runtime_id()),
+            Ok(FloatFunctionId(0)),
+        );
     }
 
     fn assert_expected_function_got_int<T>(actual: Result<T, ExecutionError>) {
@@ -407,10 +491,11 @@ mod tests {
             vec![
                 function_plan(1, "int_function", steps.clone(), int_function_expr()),
                 function_plan(2, "string_function", steps.clone(), string_function_expr()),
-                function_plan(3, "bool_function", steps.clone(), bool_function_expr()),
-                function_plan(4, "nil_function", steps.clone(), nil_function_expr()),
+                function_plan(3, "float_function", steps.clone(), float_function_expr()),
+                function_plan(4, "bool_function", steps.clone(), bool_function_expr()),
+                function_plan(5, "nil_function", steps.clone(), nil_function_expr()),
                 function_plan(
-                    5,
+                    6,
                     "function_function",
                     steps,
                     function_function_expr_value(),
@@ -439,17 +524,63 @@ mod tests {
                 ),
                 FunctionPlan::new(
                     FunctionId::new(2),
+                    "float".into(),
+                    Vec::new(),
+                    steps.clone(),
+                    ReturnExpr::float(FloatFunctionId(0), FloatExpr::value(1.5)),
+                ),
+                FunctionPlan::new(
+                    FunctionId::new(3),
                     "bool".into(),
                     Vec::new(),
                     steps.clone(),
                     ReturnExpr::bool(BoolFunctionId(0), BoolExpr::value(true)),
                 ),
                 FunctionPlan::new(
-                    FunctionId::new(3),
+                    FunctionId::new(4),
                     "nil".into(),
                     Vec::new(),
                     steps,
                     ReturnExpr::nil(NilFunctionId(0), NilExpr::value()),
+                ),
+            ],
+        )
+    }
+
+    fn float_function_tail_call_plan() -> ExecutionPlan {
+        ExecutionPlan::new(
+            "main".into(),
+            FunctionPlan::new(
+                FunctionId::new(0),
+                "main".into(),
+                Vec::new(),
+                Vec::new(),
+                ReturnExpr::int(IntFunctionId(0), IntExpr::value(1.into())),
+            ),
+            vec![
+                FunctionPlan::new(
+                    FunctionId::new(1),
+                    "tail".into(),
+                    Vec::new(),
+                    Vec::new(),
+                    ReturnExpr::float_function_body(
+                        FloatFunctionFunctionId(0),
+                        FunctionType::new(Vec::new(), ValueType::Float),
+                        ReturnBody::tail_call(FloatFunctionFunctionId(1), Vec::new()),
+                    ),
+                ),
+                FunctionPlan::new(
+                    FunctionId::new(2),
+                    "done".into(),
+                    Vec::new(),
+                    Vec::new(),
+                    ReturnExpr::float_function(
+                        FloatFunctionFunctionId(1),
+                        FloatFunctionExpr::value(FloatFunctionValue::new(
+                            FloatFunctionId(0),
+                            Vec::new(),
+                        )),
+                    ),
                 ),
             ],
         )
@@ -477,6 +608,9 @@ mod tests {
             }
             FunctionExprKind::String(return_) => {
                 ReturnExpr::string_function(StringFunctionFunctionId(0), return_)
+            }
+            FunctionExprKind::Float(return_) => {
+                ReturnExpr::float_function(FloatFunctionFunctionId(0), return_)
             }
             FunctionExprKind::Bool(return_) => {
                 ReturnExpr::bool_function(BoolFunctionFunctionId(0), return_)
@@ -508,6 +642,13 @@ mod tests {
     fn string_function_expr() -> FunctionExpr {
         FunctionExpr::string(StringFunctionExpr::value(StringFunctionValue::new(
             StringFunctionId(0),
+            Vec::new(),
+        )))
+    }
+
+    fn float_function_expr() -> FunctionExpr {
+        FunctionExpr::float(FloatFunctionExpr::value(FloatFunctionValue::new(
+            FloatFunctionId(0),
             Vec::new(),
         )))
     }

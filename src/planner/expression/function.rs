@@ -154,6 +154,9 @@ fn closure_expr(
         RuntimeFunctionId::String(runtime_id) => FunctionExpr::string(
             crate::plan::StringFunctionExpr::closure(*runtime_id, params, captures, type_),
         ),
+        RuntimeFunctionId::Float(runtime_id) => FunctionExpr::float(
+            crate::plan::FloatFunctionExpr::closure(*runtime_id, params, captures, type_),
+        ),
         RuntimeFunctionId::Bool(runtime_id) => FunctionExpr::bool(
             crate::plan::BoolFunctionExpr::closure(*runtime_id, params, captures, type_),
         ),
@@ -185,6 +188,12 @@ fn anonymous_function_type(type_: &Type) -> Result<FunctionType, PlanError> {
             reason: InvalidTypedAstReason::ExpressionType {
                 expected: InvalidExpressionType::Function,
                 actual: InvalidExpressionType::String,
+            },
+        }),
+        Some(ValueType::Float) => Err(PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::ExpressionType {
+                expected: InvalidExpressionType::Function,
+                actual: InvalidExpressionType::Float,
             },
         }),
         Some(ValueType::Bool) => Err(PlanError::InvalidTypedAst {
@@ -703,6 +712,7 @@ pub fn main() {
         for (type_, actual) in [
             (gleam_core::type_::int(), InvalidExpressionType::Int),
             (gleam_core::type_::string(), InvalidExpressionType::String),
+            (gleam_core::type_::float(), InvalidExpressionType::Float),
             (gleam_core::type_::bool(), InvalidExpressionType::Bool),
             (gleam_core::type_::nil(), InvalidExpressionType::Nil),
         ] {

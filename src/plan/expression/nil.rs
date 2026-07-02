@@ -1,4 +1,4 @@
-use super::{BoolExpr, CallArg, IntExpr, NilFunctionExpr, StringExpr};
+use super::{BoolExpr, CallArg, FloatExpr, IntExpr, NilFunctionExpr, StringExpr};
 use crate::plan::{NilFunctionId, NilLocalId, Step};
 use ecow::EcoString;
 use num_bigint::BigInt;
@@ -36,6 +36,11 @@ pub(crate) enum NilExprKind {
     StringCase {
         subject: Box<StringExpr>,
         clauses: Vec<(EcoString, NilExpr)>,
+        fallback: Box<NilExpr>,
+    },
+    FloatCase {
+        subject: Box<FloatExpr>,
+        clauses: Vec<(f64, NilExpr)>,
         fallback: Box<NilExpr>,
     },
     Block {
@@ -110,6 +115,20 @@ impl NilExpr {
         }
     }
 
+    pub(crate) fn float_case(
+        subject: FloatExpr,
+        clauses: Vec<(f64, NilExpr)>,
+        fallback: NilExpr,
+    ) -> Self {
+        Self {
+            kind: NilExprKind::FloatCase {
+                subject: Box::new(subject),
+                clauses,
+                fallback: Box::new(fallback),
+            },
+        }
+    }
+
     pub(crate) fn block(steps: Vec<Step>, return_: NilExpr) -> Self {
         Self {
             kind: NilExprKind::Block {
@@ -157,6 +176,15 @@ mod tests {
             )
             .kind(),
             NilExprKind::StringCase { .. }
+        ));
+        assert!(matches!(
+            NilExpr::float_case(
+                crate::plan::FloatExpr::value(1.0),
+                vec![(1.0, NilExpr::value())],
+                NilExpr::value()
+            )
+            .kind(),
+            NilExprKind::FloatCase { .. }
         ));
         assert!(matches!(
             NilExpr::block(

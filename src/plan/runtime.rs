@@ -1,5 +1,6 @@
 use super::{
     BoolFunctionFunctionId, BoolFunctionId, BoolFunctionReturn, BoolReturn,
+    FloatFunctionFunctionId, FloatFunctionId, FloatFunctionReturn, FloatReturn,
     FunctionFunctionFunctionId, FunctionFunctionReturn, FunctionPlan, IntFunctionFunctionId,
     IntFunctionId, IntFunctionReturn, IntReturn, NilFunctionFunctionId, NilFunctionId,
     NilFunctionReturn, NilReturn, RuntimeFunction, RuntimeFunctionId, StringFunctionFunctionId,
@@ -10,10 +11,12 @@ use crate::plan::ReturnExprKind;
 pub(super) struct RuntimePlan {
     main: RuntimeFunctionId,
     int_functions: Vec<RuntimeFunction<IntReturn>>,
+    float_functions: Vec<RuntimeFunction<FloatReturn>>,
     string_functions: Vec<RuntimeFunction<StringReturn>>,
     bool_functions: Vec<RuntimeFunction<BoolReturn>>,
     nil_functions: Vec<RuntimeFunction<NilReturn>>,
     int_function_functions: Vec<RuntimeFunction<IntFunctionReturn>>,
+    float_function_functions: Vec<RuntimeFunction<FloatFunctionReturn>>,
     string_function_functions: Vec<RuntimeFunction<StringFunctionReturn>>,
     bool_function_functions: Vec<RuntimeFunction<BoolFunctionReturn>>,
     nil_function_functions: Vec<RuntimeFunction<NilFunctionReturn>>,
@@ -48,6 +51,10 @@ impl RuntimePlan {
         &self.int_functions[id.0]
     }
 
+    pub(super) fn float_function(&self, id: FloatFunctionId) -> &RuntimeFunction<FloatReturn> {
+        &self.float_functions[id.0]
+    }
+
     pub(super) fn string_function(&self, id: StringFunctionId) -> &RuntimeFunction<StringReturn> {
         &self.string_functions[id.0]
     }
@@ -65,6 +72,13 @@ impl RuntimePlan {
         id: IntFunctionFunctionId,
     ) -> &RuntimeFunction<IntFunctionReturn> {
         &self.int_function_functions[id.0]
+    }
+
+    pub(super) fn float_function_function(
+        &self,
+        id: FloatFunctionFunctionId,
+    ) -> &RuntimeFunction<FloatFunctionReturn> {
+        &self.float_function_functions[id.0]
     }
 
     pub(super) fn string_function_function(
@@ -99,10 +113,12 @@ impl RuntimePlan {
 #[derive(Default)]
 struct RuntimePlanBuilder {
     int_functions: Vec<(usize, RuntimeFunction<IntReturn>)>,
+    float_functions: Vec<(usize, RuntimeFunction<FloatReturn>)>,
     string_functions: Vec<(usize, RuntimeFunction<StringReturn>)>,
     bool_functions: Vec<(usize, RuntimeFunction<BoolReturn>)>,
     nil_functions: Vec<(usize, RuntimeFunction<NilReturn>)>,
     int_function_functions: Vec<(usize, RuntimeFunction<IntFunctionReturn>)>,
+    float_function_functions: Vec<(usize, RuntimeFunction<FloatFunctionReturn>)>,
     string_function_functions: Vec<(usize, RuntimeFunction<StringFunctionReturn>)>,
     bool_function_functions: Vec<(usize, RuntimeFunction<BoolFunctionReturn>)>,
     nil_function_functions: Vec<(usize, RuntimeFunction<NilFunctionReturn>)>,
@@ -118,10 +134,12 @@ impl RuntimePlanBuilder {
         RuntimePlan {
             main,
             int_functions: sort_functions(self.int_functions),
+            float_functions: sort_functions(self.float_functions),
             string_functions: sort_functions(self.string_functions),
             bool_functions: sort_functions(self.bool_functions),
             nil_functions: sort_functions(self.nil_functions),
             int_function_functions: sort_functions(self.int_function_functions),
+            float_function_functions: sort_functions(self.float_function_functions),
             string_function_functions: sort_functions(self.string_function_functions),
             bool_function_functions: sort_functions(self.bool_function_functions),
             nil_function_functions: sort_functions(self.nil_function_functions),
@@ -134,6 +152,16 @@ fn runtime_function(function: &FunctionPlan, runtime_functions: &mut RuntimePlan
     match function.return_().kind() {
         ReturnExprKind::Int { runtime_id, body } => {
             runtime_functions.int_functions.push((
+                runtime_id.0,
+                RuntimeFunction::new(
+                    function.frame_layout(),
+                    function.steps().to_vec(),
+                    body.clone(),
+                ),
+            ));
+        }
+        ReturnExprKind::Float { runtime_id, body } => {
+            runtime_functions.float_functions.push((
                 runtime_id.0,
                 RuntimeFunction::new(
                     function.frame_layout(),
@@ -176,6 +204,18 @@ fn runtime_function(function: &FunctionPlan, runtime_functions: &mut RuntimePlan
             runtime_id, body, ..
         } => {
             runtime_functions.int_function_functions.push((
+                runtime_id.0,
+                RuntimeFunction::new(
+                    function.frame_layout(),
+                    function.steps().to_vec(),
+                    body.clone(),
+                ),
+            ));
+        }
+        ReturnExprKind::FloatFunction {
+            runtime_id, body, ..
+        } => {
+            runtime_functions.float_function_functions.push((
                 runtime_id.0,
                 RuntimeFunction::new(
                     function.frame_layout(),

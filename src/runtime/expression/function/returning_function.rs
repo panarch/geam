@@ -2,7 +2,9 @@ use crate::plan::{
     ExecutionPlan, FunctionFunctionExpr, FunctionFunctionExprKind, FunctionFunctionValue,
 };
 use crate::runtime::ExecutionError;
-use crate::runtime::expression::{eval_bool_expr, eval_int_expr, eval_string_expr};
+use crate::runtime::expression::{
+    eval_bool_expr, eval_float_expr, eval_int_expr, eval_string_expr,
+};
 use crate::runtime::frame::Frame;
 use crate::runtime::function;
 
@@ -70,6 +72,19 @@ pub(in crate::runtime) fn eval_function_function_expr(
             }
             eval_function_function_expr(plan, frame, fallback)
         }
+        FunctionFunctionExprKind::FloatCase {
+            subject,
+            clauses,
+            fallback,
+        } => {
+            let subject = eval_float_expr(plan, frame, subject)?;
+            for (pattern, branch) in clauses {
+                if pattern == &subject {
+                    return eval_function_function_expr(plan, frame, branch);
+                }
+            }
+            eval_function_function_expr(plan, frame, fallback)
+        }
         FunctionFunctionExprKind::Block { steps, return_ } => {
             function::execute_steps(plan, steps, frame)?;
             eval_function_function_expr(plan, frame, return_)
@@ -79,9 +94,13 @@ pub(in crate::runtime) fn eval_function_function_expr(
 
 #[cfg(test)]
 mod tests {
+    use super::eval_function_function_expr;
     use crate::plan::{
-        FunctionFunctionId, FunctionFunctionValue, FunctionType, IntFunctionFunctionId, ValueType,
+        ExecutionPlan, FloatExpr, FunctionFunctionExpr, FunctionFunctionId, FunctionFunctionValue,
+        FunctionId, FunctionPlan, FunctionType, IntExpr, IntFunctionFunctionId, IntFunctionId,
+        ReturnExpr, ValueType,
     };
+    use crate::runtime::frame::Frame;
     use crate::runtime::{Value, run_src};
 
     #[test]
@@ -285,6 +304,99 @@ pub fn main() {
     }
 
     #[test]
+    fn eval_function_function_float_case_branches() {
+        assert_returns_function_returning_int(
+            r#"
+fn add_one(value: Int) {
+  value + 1
+}
+
+fn add_two(value: Int) {
+  value + 2
+}
+
+fn get() {
+  add_one
+}
+
+fn get_other() {
+  add_two
+}
+
+pub fn main() {
+  case 1.0 {
+    1.0 -> get
+    _ -> get_other
+  }
+}
+"#,
+        );
+
+        assert_returns_function_returning_int(
+            r#"
+fn add_one(value: Int) {
+  value + 1
+}
+
+fn add_two(value: Int) {
+  value + 2
+}
+
+fn get() {
+  add_one
+}
+
+fn get_other() {
+  add_two
+}
+
+pub fn main() {
+  case 2.0 {
+    1.0 -> get_other
+    _ -> get
+  }
+}
+"#,
+        );
+    }
+
+    #[test]
+    fn eval_function_function_float_case_branches_direct() {
+        let plan = plan();
+        let mut frame = Frame::default();
+
+        let function = eval_function_function_expr(
+            &plan,
+            &mut frame,
+            &FunctionFunctionExpr::float_case(
+                FloatExpr::value(1.0),
+                vec![(1.0, function_function_value())],
+                other_function_function_value(),
+            ),
+        )
+        .expect("expression should evaluate");
+        assert_eq!(
+            function.runtime_id(),
+            FunctionFunctionId::Int(IntFunctionFunctionId(0))
+        );
+
+        let function = eval_function_function_expr(
+            &plan,
+            &mut frame,
+            &FunctionFunctionExpr::float_case(
+                FloatExpr::value(2.0),
+                vec![(1.0, other_function_function_value())],
+                function_function_value(),
+            ),
+        )
+        .expect("expression should evaluate");
+        assert_eq!(
+            function.runtime_id(),
+            FunctionFunctionId::Int(IntFunctionFunctionId(0))
+        );
+    }
+
+    #[test]
     fn eval_function_function_block() {
         assert_returns_function_returning_int(
             r#"
@@ -322,5 +434,35 @@ pub fn main() {
 
     fn returned_int_function_type() -> FunctionType {
         FunctionType::new(vec![ValueType::Int], ValueType::Int)
+    }
+
+    fn function_function_value() -> FunctionFunctionExpr {
+        FunctionFunctionExpr::value(FunctionFunctionValue::new(
+            FunctionFunctionId::Int(IntFunctionFunctionId(0)),
+            Vec::new(),
+            returned_int_function_type(),
+        ))
+    }
+
+    fn other_function_function_value() -> FunctionFunctionExpr {
+        FunctionFunctionExpr::value(FunctionFunctionValue::new(
+            FunctionFunctionId::Int(IntFunctionFunctionId(1)),
+            Vec::new(),
+            returned_int_function_type(),
+        ))
+    }
+
+    fn plan() -> ExecutionPlan {
+        ExecutionPlan::new(
+            "main".into(),
+            FunctionPlan::new(
+                FunctionId::new(0),
+                "main".into(),
+                Vec::new(),
+                Vec::new(),
+                ReturnExpr::int(IntFunctionId(0), IntExpr::value(0.into())),
+            ),
+            Vec::new(),
+        )
     }
 }

@@ -1,10 +1,11 @@
 use super::expression::{
-    BoolExpr, BoolFunctionExpr, Expr, FunctionFunctionExpr, IntExpr, IntFunctionExpr, NilExpr,
-    NilFunctionExpr, StringExpr, StringFunctionExpr,
+    BoolExpr, BoolFunctionExpr, Expr, FloatExpr, FloatFunctionExpr, FunctionFunctionExpr, IntExpr,
+    IntFunctionExpr, NilExpr, NilFunctionExpr, StringExpr, StringFunctionExpr,
 };
 use super::id::{
-    BoolFunctionLocalId, BoolLocalId, FunctionFunctionLocalId, IntFunctionLocalId, IntLocalId,
-    NilFunctionLocalId, NilLocalId, StringFunctionLocalId, StringLocalId,
+    BoolFunctionLocalId, BoolLocalId, FloatFunctionLocalId, FloatLocalId, FunctionFunctionLocalId,
+    IntFunctionLocalId, IntLocalId, NilFunctionLocalId, NilLocalId, StringFunctionLocalId,
+    StringLocalId,
 };
 use ecow::EcoString;
 
@@ -19,6 +20,11 @@ pub(crate) enum StepKind {
         local: IntLocalId,
         name: EcoString,
         value: IntExpr,
+    },
+    LetFloat {
+        local: FloatLocalId,
+        name: EcoString,
+        value: FloatExpr,
     },
     LetString {
         local: StringLocalId,
@@ -39,6 +45,11 @@ pub(crate) enum StepKind {
         local: IntFunctionLocalId,
         name: EcoString,
         value: IntFunctionExpr,
+    },
+    LetFloatFunction {
+        local: FloatFunctionLocalId,
+        name: EcoString,
+        value: FloatFunctionExpr,
     },
     LetStringFunction {
         local: StringFunctionLocalId,
@@ -70,6 +81,12 @@ impl Step {
         }
     }
 
+    pub(crate) fn let_float(local: FloatLocalId, name: EcoString, value: FloatExpr) -> Self {
+        Self {
+            kind: StepKind::LetFloat { local, name, value },
+        }
+    }
+
     pub(crate) fn let_string(local: StringLocalId, name: EcoString, value: StringExpr) -> Self {
         Self {
             kind: StepKind::LetString { local, name, value },
@@ -95,6 +112,16 @@ impl Step {
     ) -> Self {
         Self {
             kind: StepKind::LetIntFunction { local, name, value },
+        }
+    }
+
+    pub(crate) fn let_float_function(
+        local: FloatFunctionLocalId,
+        name: EcoString,
+        value: FloatFunctionExpr,
+    ) -> Self {
+        Self {
+            kind: StepKind::LetFloatFunction { local, name, value },
         }
     }
 

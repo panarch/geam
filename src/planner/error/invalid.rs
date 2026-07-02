@@ -71,6 +71,8 @@ pub enum InvalidExpressionType {
     Int,
     #[error("String")]
     String,
+    #[error("Float")]
+    Float,
     #[error("Bool")]
     Bool,
     #[error("Nil")]

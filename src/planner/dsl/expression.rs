@@ -20,13 +20,16 @@ pub(crate) use step::*;
 pub(crate) use value::*;
 
 use crate::plan::{
-    BoolExpr, BoolFunctionExpr, FunctionExpr, FunctionFunctionExpr, IntExpr, IntFunctionExpr,
-    NilExpr, NilFunctionExpr, ParamLocal, StringExpr, StringFunctionExpr, ValueType,
+    BoolExpr, BoolFunctionExpr, FloatExpr, FloatFunctionExpr, FunctionExpr, FunctionFunctionExpr,
+    IntExpr, IntFunctionExpr, NilExpr, NilFunctionExpr, ParamLocal, StringExpr, StringFunctionExpr,
+    ValueType,
 };
 
 pub(crate) struct Int(IntExpr);
 
 pub(crate) struct String(StringExpr);
+
+pub(crate) struct Float(FloatExpr);
 
 pub(crate) struct Bool(BoolExpr);
 
@@ -37,6 +40,8 @@ pub(crate) struct Function(FunctionExpr);
 pub(crate) struct IntFunction(IntFunctionExpr);
 
 pub(crate) struct StringFunction(StringFunctionExpr);
+
+pub(crate) struct FloatFunction(FloatFunctionExpr);
 
 pub(crate) struct BoolFunction(BoolFunctionExpr);
 

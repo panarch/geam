@@ -115,6 +115,10 @@ fn int_case_expr(
             clauses: string_case_clauses(clauses)?,
             fallback,
         },
+        ExprKind::Float(fallback) => IntCaseBranches::Float {
+            clauses: float_case_clauses(clauses)?,
+            fallback,
+        },
         ExprKind::Bool(fallback) => IntCaseBranches::Bool {
             clauses: bool_case_clauses(clauses)?,
             fallback,
@@ -148,6 +152,19 @@ fn string_case_clauses(
     let mut typed_clauses = Vec::with_capacity(clauses.len());
     for (value, clause) in clauses {
         let ExprKind::String(clause) = clause.into_kind() else {
+            return Err(branch_return_type_mismatch());
+        };
+        typed_clauses.push((value, clause));
+    }
+    Ok(typed_clauses)
+}
+
+fn float_case_clauses(
+    clauses: Vec<(BigInt, Expr)>,
+) -> Result<Vec<(BigInt, crate::plan::FloatExpr)>, PlanError> {
+    let mut typed_clauses = Vec::with_capacity(clauses.len());
+    for (value, clause) in clauses {
+        let ExprKind::Float(clause) = clause.into_kind() else {
             return Err(branch_return_type_mismatch());
         };
         typed_clauses.push((value, clause));
@@ -194,6 +211,10 @@ fn function_case_branches(
             clauses: string_function_case_clauses(clauses)?,
             fallback,
         }),
+        crate::plan::FunctionExprKind::Float(fallback) => Ok(IntCaseBranches::FloatFunction {
+            clauses: float_function_case_clauses(clauses)?,
+            fallback,
+        }),
         crate::plan::FunctionExprKind::Bool(fallback) => Ok(IntCaseBranches::BoolFunction {
             clauses: bool_function_case_clauses(clauses)?,
             fallback,
@@ -236,6 +257,22 @@ fn string_function_case_clauses(
             return Err(branch_return_type_mismatch());
         };
         let Some(clause) = clause.into_string() else {
+            return Err(branch_return_type_mismatch());
+        };
+        typed_clauses.push((value, clause));
+    }
+    Ok(typed_clauses)
+}
+
+fn float_function_case_clauses(
+    clauses: Vec<(BigInt, Expr)>,
+) -> Result<Vec<(BigInt, crate::plan::FloatFunctionExpr)>, PlanError> {
+    let mut typed_clauses = Vec::with_capacity(clauses.len());
+    for (value, clause) in clauses {
+        let ExprKind::Function(clause) = clause.into_kind() else {
+            return Err(branch_return_type_mismatch());
+        };
+        let Some(clause) = clause.into_float() else {
             return Err(branch_return_type_mismatch());
         };
         typed_clauses.push((value, clause));
@@ -298,20 +335,20 @@ fn branch_return_type_mismatch() -> PlanError {
 #[cfg(test)]
 mod tests {
     use crate::plan::{
-        BoolFunctionId, Expr, FunctionExpr, FunctionFunctionId, FunctionType, IntFunctionExpr,
-        IntFunctionFunctionId, IntFunctionId, IntLocalId, LocalId, NilFunctionId,
-        RuntimeFunctionId, StringFunctionId, ValueType,
+        BoolFunctionId, Expr, FloatExpr, FloatFunctionId, FunctionExpr, FunctionFunctionId,
+        FunctionType, IntCaseBranches, IntFunctionExpr, IntFunctionFunctionId, IntFunctionId,
+        IntLocalId, LocalId, NilFunctionId, RuntimeFunctionId, StringFunctionId, ValueType,
     };
     use crate::planner::dsl::{
-        bool_, bool_return_expr, bool_return_int_case, function, function_ref, int,
+        bool_, bool_return_expr, bool_return_int_case, float, function, function_ref, int,
         int_return_expr, int_return_int_case, local_int, module, nil, nil_return_expr,
         nil_return_int_case, string, string_return_expr, string_return_int_case,
     };
     use crate::planner::plan_module;
     use crate::planner::support::{dummy_span, expect_plan_error};
     use crate::planner::{
-        InvalidCaseShapeReason, InvalidTypedAstReason, PlanError, UnsupportedCaseReason,
-        UnsupportedExpressionKind,
+        InvalidCaseShapeReason, InvalidExpressionType, InvalidTypedAstReason, PlanError,
+        UnsupportedCaseReason, UnsupportedExpressionKind,
     };
     use gleam_core::ast::{Pattern, TypedModule};
     use gleam_core::type_::{self, error::VariableOrigin};
@@ -417,6 +454,13 @@ fn fallback_first(value: Int) {
   }
 }
 
+fn fallback_then_fallback(value: Int) {
+  case value {
+    _ -> 0
+    _ -> 1
+  }
+}
+
 fn duplicate_literal(value: Int) {
   case value {
     1 -> 1
@@ -440,6 +484,11 @@ fn duplicate_literal(value: Int) {
             [
                 function(
                     "fallback_first",
+                    int_return_int_case(local_int(0, "value"), [], int_return_expr(int(0))),
+                )
+                .param_int(0, "value"),
+                function(
+                    "fallback_then_fallback",
                     int_return_int_case(local_int(0, "value"), [], int_return_expr(int(0))),
                 )
                 .param_int(0, "value"),
@@ -495,6 +544,14 @@ fn duplicate_literal(value: Int) {
             Err(case_branch_return_type_mismatch()),
         );
         assert_eq!(
+            super::float_function_case_clauses(vec![(BigInt::from(1), Expr::from(int(1)))]),
+            Err(case_branch_return_type_mismatch()),
+        );
+        assert_eq!(
+            super::float_function_case_clauses(vec![(BigInt::from(1), int_function_ref_expr(0))]),
+            Err(case_branch_return_type_mismatch()),
+        );
+        assert_eq!(
             super::bool_function_case_clauses(vec![(BigInt::from(1), Expr::from(int(1)))]),
             Err(case_branch_return_type_mismatch()),
         );
@@ -525,7 +582,22 @@ fn duplicate_literal(value: Int) {
 
     #[test]
     fn plan_int_case_function_branch_return_families_direct() {
-        assert!(matches!(
+        assert_eq!(
+            super::int_case_expr(
+                int(1).into(),
+                vec![(BigInt::from(1), float(1.0).into())],
+                float(0.0).into(),
+            ),
+            Ok(Expr::int_case(
+                int(1).into(),
+                IntCaseBranches::Float {
+                    clauses: vec![(BigInt::from(1), FloatExpr::value(1.0))],
+                    fallback: FloatExpr::value(0.0),
+                },
+            )),
+        );
+
+        assert_eq!(
             super::function_case_branches(
                 vec![(BigInt::from(1), string_function_ref_expr(0))],
                 FunctionExpr::from(function_ref(
@@ -533,9 +605,49 @@ fn duplicate_literal(value: Int) {
                     [LocalId::String(crate::plan::StringLocalId(0))],
                 )),
             ),
-            Ok(crate::plan::IntCaseBranches::StringFunction { .. }),
-        ));
-        assert!(matches!(
+            Ok(IntCaseBranches::StringFunction {
+                clauses: vec![(
+                    BigInt::from(1),
+                    string_function_ref_expr(0)
+                        .into_function()
+                        .expect("function expression")
+                        .into_string()
+                        .expect("string function expression"),
+                )],
+                fallback: FunctionExpr::from(function_ref(
+                    RuntimeFunctionId::String(StringFunctionId(1)),
+                    [LocalId::String(crate::plan::StringLocalId(0))],
+                ))
+                .into_string()
+                .expect("string function expression"),
+            }),
+        );
+        assert_eq!(
+            super::function_case_branches(
+                vec![(BigInt::from(1), float_function_ref_expr(0))],
+                FunctionExpr::from(function_ref(
+                    RuntimeFunctionId::Float(FloatFunctionId(1)),
+                    [LocalId::Float(crate::plan::FloatLocalId(0))],
+                )),
+            ),
+            Ok(IntCaseBranches::FloatFunction {
+                clauses: vec![(
+                    BigInt::from(1),
+                    float_function_ref_expr(0)
+                        .into_function()
+                        .expect("function expression")
+                        .into_float()
+                        .expect("float function expression"),
+                )],
+                fallback: FunctionExpr::from(function_ref(
+                    RuntimeFunctionId::Float(FloatFunctionId(1)),
+                    [LocalId::Float(crate::plan::FloatLocalId(0))],
+                ))
+                .into_float()
+                .expect("float function expression"),
+            }),
+        );
+        assert_eq!(
             super::function_case_branches(
                 vec![(BigInt::from(1), bool_function_ref_expr(0))],
                 FunctionExpr::from(function_ref(
@@ -543,9 +655,24 @@ fn duplicate_literal(value: Int) {
                     [LocalId::Bool(crate::plan::BoolLocalId(0))],
                 )),
             ),
-            Ok(crate::plan::IntCaseBranches::BoolFunction { .. }),
-        ));
-        assert!(matches!(
+            Ok(IntCaseBranches::BoolFunction {
+                clauses: vec![(
+                    BigInt::from(1),
+                    bool_function_ref_expr(0)
+                        .into_function()
+                        .expect("function expression")
+                        .into_bool()
+                        .expect("bool function expression"),
+                )],
+                fallback: FunctionExpr::from(function_ref(
+                    RuntimeFunctionId::Bool(BoolFunctionId(1)),
+                    [LocalId::Bool(crate::plan::BoolLocalId(0))],
+                ))
+                .into_bool()
+                .expect("bool function expression"),
+            }),
+        );
+        assert_eq!(
             super::function_case_branches(
                 vec![(BigInt::from(1), nil_function_ref_expr(0))],
                 FunctionExpr::from(function_ref(
@@ -553,17 +680,46 @@ fn duplicate_literal(value: Int) {
                     [LocalId::Nil(crate::plan::NilLocalId(0))],
                 )),
             ),
-            Ok(crate::plan::IntCaseBranches::NilFunction { .. }),
-        ));
-        assert!(matches!(
+            Ok(IntCaseBranches::NilFunction {
+                clauses: vec![(
+                    BigInt::from(1),
+                    nil_function_ref_expr(0)
+                        .into_function()
+                        .expect("function expression")
+                        .into_nil()
+                        .expect("nil function expression"),
+                )],
+                fallback: FunctionExpr::from(function_ref(
+                    RuntimeFunctionId::Nil(NilFunctionId(1)),
+                    [LocalId::Nil(crate::plan::NilLocalId(0))],
+                ))
+                .into_nil()
+                .expect("nil function expression"),
+            }),
+        );
+        assert_eq!(
             super::function_case_branches(
                 vec![(BigInt::from(1), function_function_ref_expr(0))],
                 function_function_ref_expr(1)
                     .into_function()
                     .expect("function expression"),
             ),
-            Ok(crate::plan::IntCaseBranches::FunctionFunction { .. }),
-        ));
+            Ok(IntCaseBranches::FunctionFunction {
+                clauses: vec![(
+                    BigInt::from(1),
+                    function_function_ref_expr(0)
+                        .into_function()
+                        .expect("function expression")
+                        .into_function()
+                        .expect("function-returning function expression"),
+                )],
+                fallback: function_function_ref_expr(1)
+                    .into_function()
+                    .expect("function expression")
+                    .into_function()
+                    .expect("function-returning function expression"),
+            }),
+        );
     }
 
     #[test]
@@ -579,6 +735,10 @@ fn duplicate_literal(value: Int) {
             ),
             (
                 r#"pub fn main() { case 1 { value as alias -> 1 } }"#,
+                UnsupportedCaseReason::AssignPattern,
+            ),
+            (
+                r#"pub fn main() { case 1 { _ as alias -> 1 } }"#,
                 UnsupportedCaseReason::AssignPattern,
             ),
         ];
@@ -745,6 +905,28 @@ pub fn main() {
     }
 
     #[test]
+    fn reject_margin_int_case_subject_type_mismatch() {
+        let mut module = compile_int_case_module();
+        let (_, subjects, _) =
+            super::super::expect_case_statement_mut(&mut module.definitions.functions[0].body[0]);
+        subjects[0] = gleam_core::ast::TypedExpr::String {
+            location: dummy_span(),
+            type_: type_::int(),
+            value: "not int".into(),
+        };
+
+        assert_eq!(
+            plan_module(module),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionType {
+                    expected: InvalidExpressionType::Int,
+                    actual: InvalidExpressionType::String,
+                },
+            }),
+        );
+    }
+
+    #[test]
     fn reject_margin_int_case_expr_type_mismatch() {
         assert_eq!(
             super::int_case_expr(
@@ -760,6 +942,14 @@ pub fn main() {
                 int(1).into(),
                 vec![(BigInt::from(1), int(10).into())],
                 string("other").into(),
+            ),
+            Err(case_branch_return_type_mismatch()),
+        );
+        assert_eq!(
+            super::int_case_expr(
+                int(1).into(),
+                vec![(BigInt::from(1), int(10).into())],
+                float(1.0).into(),
             ),
             Err(case_branch_return_type_mismatch()),
         );
@@ -819,6 +1009,14 @@ pub fn main() {
         function_ref(
             RuntimeFunctionId::String(StringFunctionId(id)),
             [LocalId::String(crate::plan::StringLocalId(0))],
+        )
+        .into()
+    }
+
+    fn float_function_ref_expr(id: usize) -> crate::plan::Expr {
+        function_ref(
+            RuntimeFunctionId::Float(FloatFunctionId(id)),
+            [LocalId::Float(crate::plan::FloatLocalId(0))],
         )
         .into()
     }

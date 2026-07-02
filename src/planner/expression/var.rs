@@ -1,6 +1,7 @@
 use crate::plan::{
-    BoolExpr, BoolFunctionExpr, Expr, FunctionExpr, FunctionFunctionExpr, IntExpr, IntFunctionExpr,
-    LocalId, NilExpr, NilFunctionExpr, StringExpr, StringFunctionExpr, ValueType,
+    BoolExpr, BoolFunctionExpr, Expr, FloatExpr, FloatFunctionExpr, FunctionExpr,
+    FunctionFunctionExpr, IntExpr, IntFunctionExpr, LocalId, NilExpr, NilFunctionExpr, StringExpr,
+    StringFunctionExpr, ValueType,
 };
 use crate::planner::context::{FunctionLocalBinding, PlanContext};
 use crate::planner::error::{InvalidExpressionShapeKind, InvalidTypedAstReason, PlanError};
@@ -87,6 +88,9 @@ fn function_local_get(binding: FunctionLocalBinding, name: EcoString) -> Expr {
         FunctionLocalBinding::String { local, type_ } => Expr::function(FunctionExpr::string(
             StringFunctionExpr::local_get(local, name, type_),
         )),
+        FunctionLocalBinding::Float { local, type_ } => Expr::function(FunctionExpr::float(
+            FloatFunctionExpr::local_get(local, name, type_),
+        )),
         FunctionLocalBinding::Bool { local, type_ } => Expr::function(FunctionExpr::bool(
             BoolFunctionExpr::local_get(local, name, type_),
         )),
@@ -102,6 +106,9 @@ fn function_local_get(binding: FunctionLocalBinding, name: EcoString) -> Expr {
 fn local_get(local: LocalId, name: EcoString, type_: ValueType) -> Result<Expr, PlanError> {
     match (local, type_) {
         (LocalId::Int(local), ValueType::Int) => Ok(Expr::int(IntExpr::local_get(local, name))),
+        (LocalId::Float(local), ValueType::Float) => {
+            Ok(Expr::float(FloatExpr::local_get(local, name)))
+        }
         (LocalId::String(local), ValueType::String) => {
             Ok(Expr::string(StringExpr::local_get(local, name)))
         }

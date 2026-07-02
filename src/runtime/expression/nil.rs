@@ -1,4 +1,4 @@
-use super::{eval_bool_expr, eval_int_expr, eval_string_expr};
+use super::{eval_bool_expr, eval_float_expr, eval_int_expr, eval_string_expr};
 use crate::plan::{ExecutionPlan, NilExpr, NilExprKind};
 use crate::runtime::ExecutionError;
 use crate::runtime::frame::Frame;
@@ -51,6 +51,19 @@ pub(in crate::runtime) fn eval_nil_expr(
             fallback,
         } => {
             let subject = eval_string_expr(plan, frame, subject)?;
+            for (pattern, branch) in clauses {
+                if pattern == &subject {
+                    return eval_nil_expr(plan, frame, branch);
+                }
+            }
+            eval_nil_expr(plan, frame, fallback)
+        }
+        NilExprKind::FloatCase {
+            subject,
+            clauses,
+            fallback,
+        } => {
+            let subject = eval_float_expr(plan, frame, subject)?;
             for (pattern, branch) in clauses {
                 if pattern == &subject {
                     return eval_nil_expr(plan, frame, branch);
@@ -355,6 +368,39 @@ pub fn main() {
             Err(function_return_family_error_value(
                 FunctionReturnFamily::Nil
             )),
+        );
+    }
+
+    #[test]
+    fn eval_float_case_nil() {
+        assert_eq!(
+            run_src(
+                r#"
+pub fn main() {
+  let value = case 1.0 {
+    1.0 -> Nil
+    _ -> Nil
+  }
+  value
+}
+"#,
+            ),
+            Value::Nil,
+        );
+
+        assert_eq!(
+            run_src(
+                r#"
+pub fn main() {
+  let value = case 2.0 {
+    1.0 -> Nil
+    _ -> Nil
+  }
+  value
+}
+"#,
+            ),
+            Value::Nil,
         );
     }
 

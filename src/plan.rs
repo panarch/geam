@@ -12,23 +12,25 @@ use std::fmt;
 
 pub(crate) use expression::{
     BoolCaseBranches, BoolExprKind, BoolFunctionExprKind, CallArgKind, CaptureArg, CaptureArgKind,
-    ExprKind, FunctionExprKind, FunctionFunctionExprKind, IntCaseBranches, IntExprKind,
-    IntFunctionExprKind, NilExprKind, NilFunctionExprKind, StringCaseBranches, StringExprKind,
-    StringFunctionExprKind,
+    ExprKind, FloatCaseBranches, FloatExprKind, FloatFunctionExprKind, FunctionExprKind,
+    FunctionFunctionExprKind, IntCaseBranches, IntExprKind, IntFunctionExprKind, NilExprKind,
+    NilFunctionExprKind, StringCaseBranches, StringExprKind, StringFunctionExprKind,
 };
 pub use expression::{
-    BoolExpr, BoolFunctionExpr, CallArg, Expr, FunctionExpr, FunctionFunctionExpr, IntExpr,
-    IntFunctionExpr, NilExpr, NilFunctionExpr, StringExpr, StringFunctionExpr,
+    BoolExpr, BoolFunctionExpr, CallArg, Expr, FloatExpr, FloatFunctionExpr, FunctionExpr,
+    FunctionFunctionExpr, IntExpr, IntFunctionExpr, NilExpr, NilFunctionExpr, StringExpr,
+    StringFunctionExpr,
 };
 pub(crate) use frame::FrameLayout;
 pub(crate) use function::{
-    BoolFunctionReturn, BoolReturn, FunctionFunctionReturn, IntFunctionReturn, IntReturn,
-    NilFunctionReturn, NilReturn, ParamLocal, ReturnBody, ReturnBodyKind, ReturnExprKind,
-    RuntimeFunction, StringFunctionReturn, StringReturn,
+    BoolFunctionReturn, BoolReturn, FloatFunctionReturn, FloatReturn, FunctionFunctionReturn,
+    IntFunctionReturn, IntReturn, NilFunctionReturn, NilReturn, ParamLocal, ReturnBody,
+    ReturnBodyKind, ReturnExprKind, RuntimeFunction, StringFunctionReturn, StringReturn,
 };
 pub use function::{FunctionPlan, Param, ParamBinding, ReturnExpr};
 pub use id::{
     BoolFunctionFunctionId, BoolFunctionId, BoolFunctionLocalId, BoolLocalId,
+    FloatFunctionFunctionId, FloatFunctionId, FloatFunctionLocalId, FloatLocalId,
     FunctionFunctionFunctionId, FunctionFunctionLocalId, FunctionId, IntFunctionFunctionId,
     IntFunctionId, IntFunctionLocalId, IntLocalId, LocalId, NilFunctionFunctionId, NilFunctionId,
     NilFunctionLocalId, NilLocalId, StringFunctionFunctionId, StringFunctionId,
@@ -38,8 +40,8 @@ pub(crate) use id::{FunctionFunctionId, FunctionReturnFamily, RuntimeFunctionId}
 pub use step::Step;
 pub(crate) use step::StepKind;
 pub(crate) use value::{
-    BoolFunctionValue, CaptureValue, CaptureValueKind, FunctionFunctionValue, FunctionValueKind,
-    IntFunctionValue, NilFunctionValue, StringFunctionValue,
+    BoolFunctionValue, CaptureValue, CaptureValueKind, FloatFunctionValue, FunctionFunctionValue,
+    FunctionValueKind, IntFunctionValue, NilFunctionValue, StringFunctionValue,
 };
 pub use value::{FunctionType, FunctionValue, Value, ValueType};
 
@@ -99,6 +101,10 @@ impl ExecutionPlan {
         self.runtime.int_function(id)
     }
 
+    pub(crate) fn float_function(&self, id: FloatFunctionId) -> &RuntimeFunction<FloatReturn> {
+        self.runtime.float_function(id)
+    }
+
     pub(crate) fn string_function(&self, id: StringFunctionId) -> &RuntimeFunction<StringReturn> {
         self.runtime.string_function(id)
     }
@@ -116,6 +122,13 @@ impl ExecutionPlan {
         id: IntFunctionFunctionId,
     ) -> &RuntimeFunction<IntFunctionReturn> {
         self.runtime.int_function_function(id)
+    }
+
+    pub(crate) fn float_function_function(
+        &self,
+        id: FloatFunctionFunctionId,
+    ) -> &RuntimeFunction<FloatFunctionReturn> {
+        self.runtime.float_function_function(id)
     }
 
     pub(crate) fn string_function_function(

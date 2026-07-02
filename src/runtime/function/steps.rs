@@ -1,9 +1,9 @@
 use crate::plan::{ExecutionPlan, StepKind};
 use crate::runtime::error::ExecutionResult;
 use crate::runtime::expression::{
-    eval_bool_expr, eval_bool_function_expr, eval_expr, eval_function_function_expr, eval_int_expr,
-    eval_int_function_expr, eval_nil_expr, eval_nil_function_expr, eval_string_expr,
-    eval_string_function_expr,
+    eval_bool_expr, eval_bool_function_expr, eval_expr, eval_float_expr, eval_float_function_expr,
+    eval_function_function_expr, eval_int_expr, eval_int_function_expr, eval_nil_expr,
+    eval_nil_function_expr, eval_string_expr, eval_string_function_expr,
 };
 use crate::runtime::frame::Frame;
 
@@ -22,6 +22,10 @@ pub(in crate::runtime) fn execute_steps(
                 let value = eval_string_expr(plan, frame, value)?;
                 frame.set_string(*local, value);
             }
+            StepKind::LetFloat { local, value, .. } => {
+                let value = eval_float_expr(plan, frame, value)?;
+                frame.set_float(*local, value);
+            }
             StepKind::LetBool { local, value, .. } => {
                 let value = eval_bool_expr(plan, frame, value)?;
                 frame.set_bool(*local, value);
@@ -37,6 +41,10 @@ pub(in crate::runtime) fn execute_steps(
             StepKind::LetStringFunction { local, value, .. } => {
                 let value = eval_string_function_expr(plan, frame, value)?;
                 frame.set_string_function(*local, value);
+            }
+            StepKind::LetFloatFunction { local, value, .. } => {
+                let value = eval_float_function_expr(plan, frame, value)?;
+                frame.set_float_function(*local, value);
             }
             StepKind::LetBoolFunction { local, value, .. } => {
                 let value = eval_bool_function_expr(plan, frame, value)?;

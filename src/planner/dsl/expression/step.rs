@@ -1,7 +1,10 @@
-use super::{Bool, BoolFunction, Int, IntFunction, Nil, NilFunction, String, StringFunction};
+use super::{
+    Bool, BoolFunction, Float, FloatFunction, Int, IntFunction, Nil, NilFunction, String,
+    StringFunction,
+};
 use crate::plan::{
-    BoolFunctionLocalId, BoolLocalId, Expr, IntFunctionLocalId, IntLocalId, NilFunctionLocalId,
-    NilLocalId, Step, StringFunctionLocalId, StringLocalId,
+    BoolFunctionLocalId, BoolLocalId, Expr, FloatFunctionLocalId, FloatLocalId, IntFunctionLocalId,
+    IntLocalId, NilFunctionLocalId, NilLocalId, Step, StringFunctionLocalId, StringLocalId,
 };
 use ecow::EcoString;
 
@@ -11,6 +14,10 @@ pub(crate) fn let_int_step(local: usize, name: impl Into<EcoString>, value: Int)
 
 pub(crate) fn let_string_step(local: usize, name: impl Into<EcoString>, value: String) -> Step {
     Step::let_string(StringLocalId(local), name.into(), value.into())
+}
+
+pub(crate) fn let_float_step(local: usize, name: impl Into<EcoString>, value: Float) -> Step {
+    Step::let_float(FloatLocalId(local), name.into(), value.into())
 }
 
 pub(crate) fn let_bool_step(local: usize, name: impl Into<EcoString>, value: Bool) -> Step {
@@ -37,6 +44,14 @@ pub(crate) fn let_string_function_step(
     Step::let_string_function(StringFunctionLocalId(local), name.into(), value.into())
 }
 
+pub(crate) fn let_float_function_step(
+    local: usize,
+    name: impl Into<EcoString>,
+    value: FloatFunction,
+) -> Step {
+    Step::let_float_function(FloatFunctionLocalId(local), name.into(), value.into())
+}
+
 pub(crate) fn let_bool_function_step(
     local: usize,
     name: impl Into<EcoString>,
@@ -60,13 +75,14 @@ pub(crate) fn evaluate_step(value: impl Into<Expr>) -> Step {
 #[cfg(test)]
 mod tests {
     use super::{
-        evaluate_step, let_bool_function_step, let_bool_step, let_int_function_step, let_int_step,
-        let_nil_function_step, let_nil_step, let_string_function_step, let_string_step,
+        evaluate_step, let_bool_function_step, let_bool_step, let_float_function_step,
+        let_float_step, let_int_function_step, let_int_step, let_nil_function_step, let_nil_step,
+        let_string_function_step, let_string_step,
     };
     use crate::plan::StepKind;
     use crate::planner::dsl::expression::{
-        bool_, bool_function_ref, int, int_function_ref, nil, nil_function_ref, string,
-        string_function_ref,
+        bool_, bool_function_ref, float, float_function_ref, int, int_function_ref, nil,
+        nil_function_ref, string, string_function_ref,
     };
 
     #[test]
@@ -78,6 +94,10 @@ mod tests {
         assert!(matches!(
             let_string_step(0, "x", string("a")).kind(),
             StepKind::LetString { .. },
+        ));
+        assert!(matches!(
+            let_float_step(0, "x", float(1.0)).kind(),
+            StepKind::LetFloat { .. },
         ));
         assert!(matches!(
             let_bool_step(0, "x", bool_(true)).kind(),
@@ -107,6 +127,18 @@ mod tests {
             )
             .kind(),
             StepKind::LetStringFunction { .. },
+        ));
+        assert!(matches!(
+            let_float_function_step(
+                0,
+                "f",
+                float_function_ref(
+                    0,
+                    [crate::plan::LocalId::Float(crate::plan::FloatLocalId(0))]
+                ),
+            )
+            .kind(),
+            StepKind::LetFloatFunction { .. },
         ));
         assert!(matches!(
             let_bool_function_step(

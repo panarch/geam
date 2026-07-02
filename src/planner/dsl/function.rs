@@ -43,14 +43,14 @@ impl FunctionDsl {
 mod tests {
     use super::function;
     use crate::plan::{
-        BoolFunctionId, FunctionFunctionId, FunctionId, FunctionType, IntFunctionFunctionId,
-        IntFunctionId, NilFunctionId, ParamLocal, RuntimeFunctionId, Step, StepKind,
-        StringFunctionId, ValueType,
+        BoolFunctionId, FloatFunctionId, FunctionFunctionId, FunctionId, FunctionType,
+        IntFunctionFunctionId, IntFunctionId, NilFunctionId, ParamLocal, RuntimeFunctionId, Step,
+        StepKind, StringFunctionId, ValueType,
     };
     use crate::planner::context::FunctionRuntimeIds;
     use crate::planner::dsl::expression::{
-        bool_, bool_function_ref, function_function_ref, function_ref, int, int_function_ref, nil,
-        nil_function_ref, string, string_function_ref,
+        bool_, bool_function_ref, float_function_ref, function_function_ref, function_ref, int,
+        int_function_ref, nil, nil_function_ref, string, string_function_ref,
     };
 
     #[test]
@@ -59,10 +59,12 @@ mod tests {
         let function = function("main", int(1))
             .param_int(0, "a")
             .param_string(0, "b")
+            .param_float(0, "float")
             .param_bool(0, "c")
             .param_nil(0, "d")
             .param_int_function(0, "f", [ValueType::Int])
             .param_string_function(0, "g", [ValueType::String])
+            .param_float_function(0, "float_function", [ValueType::Float])
             .param_bool_function(0, "h", [ValueType::Bool])
             .param_nil_function(0, "i", [ValueType::Nil])
             .param_function_function(
@@ -100,7 +102,7 @@ mod tests {
             .build(FunctionId::new(0), &mut runtime_ids);
 
         assert_eq!(function.name(), "main");
-        assert_eq!(function.params().len(), 9);
+        assert_eq!(function.params().len(), 11);
         assert_eq!(function.steps().len(), 7);
         assert!(matches!(
             function.steps()[0].kind(),
@@ -116,10 +118,12 @@ mod tests {
             .build(FunctionId::new(0), &mut runtime_ids);
         let string_return = function("string", string_function_ref(0, Vec::<ParamLocal>::new()))
             .build(FunctionId::new(1), &mut runtime_ids);
-        let bool_return = function("bool", bool_function_ref(0, Vec::<ParamLocal>::new()))
+        let float_return = function("float", float_function_ref(0, Vec::<ParamLocal>::new()))
             .build(FunctionId::new(2), &mut runtime_ids);
-        let nil_return = function("nil", nil_function_ref(0, Vec::<ParamLocal>::new()))
+        let bool_return = function("bool", bool_function_ref(0, Vec::<ParamLocal>::new()))
             .build(FunctionId::new(3), &mut runtime_ids);
+        let nil_return = function("nil", nil_function_ref(0, Vec::<ParamLocal>::new()))
+            .build(FunctionId::new(4), &mut runtime_ids);
         let return_type = FunctionType::new(Vec::new(), ValueType::Int);
         let function_return = function(
             "function",
@@ -129,7 +133,7 @@ mod tests {
                 return_type.clone(),
             ),
         )
-        .build(FunctionId::new(4), &mut runtime_ids);
+        .build(FunctionId::new(5), &mut runtime_ids);
 
         assert_eq!(
             int_return.return_().runtime_id(),
@@ -143,6 +147,13 @@ mod tests {
             RuntimeFunctionId::Function {
                 id: FunctionFunctionId::String(crate::plan::StringFunctionFunctionId(0)),
                 return_type: FunctionType::new(Vec::new(), ValueType::String),
+            },
+        );
+        assert_eq!(
+            float_return.return_().runtime_id(),
+            RuntimeFunctionId::Function {
+                id: FunctionFunctionId::Float(crate::plan::FloatFunctionFunctionId(0)),
+                return_type: FunctionType::new(Vec::new(), ValueType::Float),
             },
         );
         assert_eq!(
@@ -190,6 +201,14 @@ mod tests {
             ),
         )
         .build(FunctionId::new(1), &mut runtime_ids);
+        let float_return = function(
+            "float",
+            function_ref(
+                RuntimeFunctionId::Float(FloatFunctionId(0)),
+                Vec::<ParamLocal>::new(),
+            ),
+        )
+        .build(FunctionId::new(2), &mut runtime_ids);
         let bool_return = function(
             "bool",
             function_ref(
@@ -197,7 +216,7 @@ mod tests {
                 Vec::<ParamLocal>::new(),
             ),
         )
-        .build(FunctionId::new(2), &mut runtime_ids);
+        .build(FunctionId::new(3), &mut runtime_ids);
         let nil_return = function(
             "nil",
             function_ref(
@@ -205,7 +224,7 @@ mod tests {
                 Vec::<ParamLocal>::new(),
             ),
         )
-        .build(FunctionId::new(3), &mut runtime_ids);
+        .build(FunctionId::new(4), &mut runtime_ids);
         let function_return = function(
             "function",
             function_ref(
@@ -216,7 +235,7 @@ mod tests {
                 Vec::<ParamLocal>::new(),
             ),
         )
-        .build(FunctionId::new(4), &mut runtime_ids);
+        .build(FunctionId::new(5), &mut runtime_ids);
 
         assert_eq!(
             int_return.return_().runtime_id(),
@@ -230,6 +249,13 @@ mod tests {
             RuntimeFunctionId::Function {
                 id: FunctionFunctionId::String(crate::plan::StringFunctionFunctionId(0)),
                 return_type: FunctionType::new(Vec::new(), ValueType::String),
+            },
+        );
+        assert_eq!(
+            float_return.return_().runtime_id(),
+            RuntimeFunctionId::Function {
+                id: FunctionFunctionId::Float(crate::plan::FloatFunctionFunctionId(0)),
+                return_type: FunctionType::new(Vec::new(), ValueType::Float),
             },
         );
         assert_eq!(

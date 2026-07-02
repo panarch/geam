@@ -49,6 +49,9 @@ The Geam wrapper parses source text, inserts Gleam's prelude interface, assigns
 the caller-provided module name, and runs `ModuleAnalyzerConstructor::infer_module`
 to produce a Gleam `TypedModule`.
 
+Runtime behavior decisions that start after this compiler boundary are recorded
+in [runtime-semantics.md](runtime-semantics.md).
+
 ## Geam Boundary
 
 Geam intentionally does not define a source AST or source-language compiler. Its

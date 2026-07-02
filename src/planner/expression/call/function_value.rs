@@ -79,6 +79,12 @@ fn function_call_expr(
             ))),
             None => Err(function_call_return_type_mismatch()),
         },
+        ValueType::Float => match function.into_float() {
+            Some(function) => Ok(Expr::float(crate::plan::FloatExpr::function_call(
+                function, args,
+            ))),
+            None => Err(function_call_return_type_mismatch()),
+        },
         ValueType::Bool => match function.into_bool() {
             Some(function) => Ok(Expr::bool(crate::plan::BoolExpr::function_call(
                 function, args,
@@ -122,6 +128,9 @@ fn function_returning_function_value_call_expr(
         ValueType::String => Expr::function(FunctionExpr::string(
             crate::plan::StringFunctionExpr::function_call(function, args, return_type),
         )),
+        ValueType::Float => Expr::function(FunctionExpr::float(
+            crate::plan::FloatFunctionExpr::function_call(function, args, return_type),
+        )),
         ValueType::Bool => Expr::function(FunctionExpr::bool(
             crate::plan::BoolFunctionExpr::function_call(function, args, return_type),
         )),
@@ -141,10 +150,11 @@ mod tests {
         function_returning_function_value_call_expr,
     };
     use crate::plan::{
-        BoolFunctionFunctionId, BoolFunctionId, FunctionExpr, FunctionFunctionExpr,
-        FunctionFunctionFunctionId, FunctionFunctionId, FunctionType, IntFunctionFunctionId,
-        IntLocalId, LocalId, NilFunctionFunctionId, NilFunctionId, ParamLocal, RuntimeFunctionId,
-        StringFunctionFunctionId, StringFunctionId, ValueType,
+        BoolFunctionFunctionId, BoolFunctionId, FloatFunctionFunctionId, FloatFunctionId,
+        FunctionExpr, FunctionFunctionExpr, FunctionFunctionFunctionId, FunctionFunctionId,
+        FunctionType, IntFunctionFunctionId, IntLocalId, LocalId, NilFunctionFunctionId,
+        NilFunctionId, ParamLocal, RuntimeFunctionId, StringFunctionFunctionId, StringFunctionId,
+        ValueType,
     };
     use crate::planner::dsl::{
         block_int_function, bool_, bool_case_int_function, call_int_function, function,
@@ -684,6 +694,19 @@ pub fn main() {
         assert_eq!(
             function_call_expr(
                 FunctionExpr::from(function_ref(
+                    RuntimeFunctionId::Float(FloatFunctionId(0)),
+                    Vec::<ParamLocal>::new(),
+                )),
+                Vec::new(),
+                ValueType::Float,
+            )
+            .expect("float function call")
+            .value_type(),
+            ValueType::Float,
+        );
+        assert_eq!(
+            function_call_expr(
+                FunctionExpr::from(function_ref(
                     RuntimeFunctionId::Bool(BoolFunctionId(0)),
                     Vec::<ParamLocal>::new(),
                 )),
@@ -735,6 +758,10 @@ pub fn main() {
             (
                 FunctionFunctionId::String(StringFunctionFunctionId(0)),
                 FunctionType::new(vec![ValueType::String], ValueType::String),
+            ),
+            (
+                FunctionFunctionId::Float(FloatFunctionFunctionId(0)),
+                FunctionType::new(vec![ValueType::Float], ValueType::Float),
             ),
             (
                 FunctionFunctionId::Bool(BoolFunctionFunctionId(0)),
@@ -793,6 +820,14 @@ pub fn main() {
                 FunctionExpr::from(int_function_ref(0, Vec::<ParamLocal>::new())),
                 Vec::new(),
                 ValueType::String,
+            ),
+            Err(function_call_return_type_mismatch()),
+        );
+        assert_eq!(
+            function_call_expr(
+                FunctionExpr::from(int_function_ref(0, Vec::<ParamLocal>::new())),
+                Vec::new(),
+                ValueType::Float,
             ),
             Err(function_call_return_type_mismatch()),
         );

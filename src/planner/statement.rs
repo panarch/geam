@@ -135,6 +135,10 @@ pub(in crate::planner) fn plan_variable_runtime_step(
             let local = context.define_string_local(name.clone());
             Ok(Step::let_string(local, name, value))
         }
+        ExprKind::Float(value) => {
+            let local = context.define_float_local(name.clone());
+            Ok(Step::let_float(local, name, value))
+        }
         ExprKind::Bool(value) => {
             let local = context.define_bool_local(name.clone());
             Ok(Step::let_bool(local, name, value))
@@ -152,6 +156,11 @@ pub(in crate::planner) fn plan_variable_runtime_step(
                 let local =
                     context.define_string_function_local(name.clone(), value.type_().clone());
                 Step::let_string_function(local, name, value)
+            }
+            FunctionExprKind::Float(value) => {
+                let local =
+                    context.define_float_function_local(name.clone(), value.type_().clone());
+                Step::let_float_function(local, name, value)
             }
             FunctionExprKind::Bool(value) => {
                 let local = context.define_bool_function_local(name.clone(), value.type_().clone());

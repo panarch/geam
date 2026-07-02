@@ -7,7 +7,7 @@ mod string;
 use super::{plan_bool_expr, plan_int_expr};
 use crate::plan::{BoolExpr, Expr, IntExpr};
 use crate::planner::context::PlanContext;
-use crate::planner::error::{PlanError, UnsupportedBinOpKind};
+use crate::planner::error::PlanError;
 use gleam_core::ast::{BinOp as GleamBinOp, TypedExpr};
 
 pub(super) fn plan_bin_op(
@@ -31,14 +31,14 @@ pub(super) fn plan_bin_op(
         GleamBinOp::Concatenate => string::concatenate(left, right, context),
         GleamBinOp::And => boolean::and(left, right, context),
         GleamBinOp::Or => boolean::or(left, right, context),
-        GleamBinOp::LtFloat => unsupported(UnsupportedBinOpKind::LtFloat),
-        GleamBinOp::LtEqFloat => unsupported(UnsupportedBinOpKind::LtEqFloat),
-        GleamBinOp::GtEqFloat => unsupported(UnsupportedBinOpKind::GtEqFloat),
-        GleamBinOp::GtFloat => unsupported(UnsupportedBinOpKind::GtFloat),
-        GleamBinOp::AddFloat => unsupported(UnsupportedBinOpKind::AddFloat),
-        GleamBinOp::SubFloat => unsupported(UnsupportedBinOpKind::SubFloat),
-        GleamBinOp::MultFloat => unsupported(UnsupportedBinOpKind::MultFloat),
-        GleamBinOp::DivFloat => unsupported(UnsupportedBinOpKind::DivFloat),
+        GleamBinOp::LtFloat => ordering::lt_float(left, right, context),
+        GleamBinOp::LtEqFloat => ordering::lte_float(left, right, context),
+        GleamBinOp::GtEqFloat => ordering::gte_float(left, right, context),
+        GleamBinOp::GtFloat => ordering::gt_float(left, right, context),
+        GleamBinOp::AddFloat => arithmetic::add_float(left, right, context),
+        GleamBinOp::SubFloat => arithmetic::sub_float(left, right, context),
+        GleamBinOp::MultFloat => arithmetic::mult_float(left, right, context),
+        GleamBinOp::DivFloat => arithmetic::div_float(left, right, context),
     }
 }
 
@@ -56,10 +56,6 @@ pub(super) fn plan_negate_bool(
     Ok(Expr::bool(BoolExpr::not(plan_bool_expr(value, context)?)))
 }
 
-fn unsupported(operator: UnsupportedBinOpKind) -> Result<Expr, PlanError> {
-    Err(PlanError::UnsupportedBinOp { operator })
-}
-
 #[cfg(test)]
 mod tests {
     use super::super::{module_returning_typed_expr, typed_int_expr};
@@ -67,10 +63,8 @@ mod tests {
         function, int, int_arg, int_return_tail_call, local_bool, local_int, module,
     };
     use crate::planner::plan_module;
-    use crate::planner::support::{compile, dummy_span, expect_plan_error};
-    use crate::planner::{
-        InvalidExpressionType, InvalidTypedAstReason, PlanError, UnsupportedBinOpKind,
-    };
+    use crate::planner::support::{compile, dummy_span};
+    use crate::planner::{InvalidExpressionType, InvalidTypedAstReason, PlanError};
     use gleam_core::ast::TypedExpr;
 
     #[test]
@@ -117,70 +111,5 @@ pub fn main() {
                 },
             }),
         );
-    }
-
-    #[test]
-    fn reject_profile_binary_operators() {
-        let cases = [
-            (
-                r#"pub fn main() { 1.0 <. 2.0 }"#,
-                UnsupportedBinOpKind::LtFloat,
-            ),
-            (
-                r#"pub fn main() { 1.0 <=. 2.0 }"#,
-                UnsupportedBinOpKind::LtEqFloat,
-            ),
-            (
-                r#"pub fn main() { 1.0 >=. 2.0 }"#,
-                UnsupportedBinOpKind::GtEqFloat,
-            ),
-            (
-                r#"pub fn main() { 1.0 >. 2.0 }"#,
-                UnsupportedBinOpKind::GtFloat,
-            ),
-            (
-                r#"
-pub fn main() {
-  1.0 +. 2.0
-  1
-}
-"#,
-                UnsupportedBinOpKind::AddFloat,
-            ),
-            (
-                r#"
-pub fn main() {
-  1.0 -. 2.0
-  1
-}
-"#,
-                UnsupportedBinOpKind::SubFloat,
-            ),
-            (
-                r#"
-pub fn main() {
-  1.0 *. 2.0
-  1
-}
-"#,
-                UnsupportedBinOpKind::MultFloat,
-            ),
-            (
-                r#"
-pub fn main() {
-  1.0 /. 2.0
-  1
-}
-"#,
-                UnsupportedBinOpKind::DivFloat,
-            ),
-        ];
-
-        for (src, expected) in cases {
-            assert_eq!(
-                expect_plan_error(src),
-                PlanError::UnsupportedBinOp { operator: expected },
-            );
-        }
     }
 }

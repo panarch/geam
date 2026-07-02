@@ -1,4 +1,5 @@
 mod bool;
+mod float;
 mod int;
 mod nil;
 mod returning_function;
@@ -9,8 +10,9 @@ use crate::runtime::ExecutionError;
 use crate::runtime::frame::Frame;
 
 pub(in crate::runtime) use self::{
-    bool::eval_bool_function_expr, int::eval_int_function_expr, nil::eval_nil_function_expr,
-    returning_function::eval_function_function_expr, string::eval_string_function_expr,
+    bool::eval_bool_function_expr, float::eval_float_function_expr, int::eval_int_function_expr,
+    nil::eval_nil_function_expr, returning_function::eval_function_function_expr,
+    string::eval_string_function_expr,
 };
 
 pub(in crate::runtime) fn eval_function_expr(
@@ -24,6 +26,9 @@ pub(in crate::runtime) fn eval_function_expr(
         }
         FunctionExprKind::String(expression) => {
             Ok(eval_string_function_expr(plan, frame, expression)?.into())
+        }
+        FunctionExprKind::Float(expression) => {
+            Ok(eval_float_function_expr(plan, frame, expression)?.into())
         }
         FunctionExprKind::Bool(expression) => {
             Ok(eval_bool_function_expr(plan, frame, expression)?.into())
@@ -41,9 +46,9 @@ pub(in crate::runtime) fn eval_function_expr(
 mod tests {
     use super::eval_function_expr;
     use crate::plan::{
-        BoolFunctionId, FunctionExpr, FunctionPlan, FunctionType, FunctionValue, IntExpr,
-        IntFunctionId, IntLocalId, NilFunctionId, NilLocalId, ParamLocal, RuntimeFunctionId,
-        StringFunctionId, StringLocalId, ValueType,
+        BoolFunctionId, FloatFunctionId, FloatLocalId, FunctionExpr, FunctionPlan, FunctionType,
+        FunctionValue, IntExpr, IntFunctionId, IntLocalId, NilFunctionId, NilLocalId, ParamLocal,
+        RuntimeFunctionId, StringFunctionId, StringLocalId, ValueType,
     };
     use crate::runtime::frame::Frame;
 
@@ -73,6 +78,17 @@ mod tests {
             .type_()
             .return_(),
             &ValueType::String,
+        );
+        assert_eq!(
+            eval_function_expr(
+                &plan,
+                &mut frame,
+                &FunctionExpr::value(float_function_value())
+            )
+            .expect("expression should evaluate")
+            .type_()
+            .return_(),
+            &ValueType::Float,
         );
         assert_eq!(
             eval_function_expr(
@@ -136,6 +152,13 @@ mod tests {
         FunctionValue::new(
             RuntimeFunctionId::String(StringFunctionId(0)),
             vec![ParamLocal::string(StringLocalId(0))],
+        )
+    }
+
+    fn float_function_value() -> FunctionValue {
+        FunctionValue::new(
+            RuntimeFunctionId::Float(FloatFunctionId(0)),
+            vec![ParamLocal::float(FloatLocalId(0))],
         )
     }
 

@@ -1,10 +1,10 @@
 use crate::plan::{
-    BoolExpr, BoolFunctionExpr, FunctionFunctionExpr, IntExpr, IntFunctionExpr, NilExpr,
-    NilFunctionExpr, StringExpr, StringFunctionExpr,
+    BoolExpr, BoolFunctionExpr, FloatExpr, FloatFunctionExpr, FunctionFunctionExpr, IntExpr,
+    IntFunctionExpr, NilExpr, NilFunctionExpr, StringExpr, StringFunctionExpr,
 };
 use crate::planner::dsl::expression::{
-    Bool, BoolFunction, FunctionFunction, Int, IntFunction, Nil, NilFunction, String,
-    StringFunction,
+    Bool, BoolFunction, Float, FloatFunction, FunctionFunction, Int, IntFunction, Nil, NilFunction,
+    String, StringFunction,
 };
 
 pub(crate) fn bool_case_int(subject: Bool, true_: Int, false_: Int) -> Int {
@@ -17,6 +17,14 @@ pub(crate) fn bool_case_int(subject: Bool, true_: Int, false_: Int) -> Int {
 
 pub(crate) fn bool_case_string(subject: Bool, true_: String, false_: String) -> String {
     String(StringExpr::bool_case(
+        subject.into(),
+        true_.into(),
+        false_.into(),
+    ))
+}
+
+pub(crate) fn bool_case_float(subject: Bool, true_: Float, false_: Float) -> Float {
+    Float(FloatExpr::bool_case(
         subject.into(),
         true_.into(),
         false_.into(),
@@ -63,6 +71,18 @@ pub(crate) fn bool_case_string_function(
     ))
 }
 
+pub(crate) fn bool_case_float_function(
+    subject: Bool,
+    true_: FloatFunction,
+    false_: FloatFunction,
+) -> FloatFunction {
+    FloatFunction(FloatFunctionExpr::bool_case(
+        subject.into(),
+        true_.into(),
+        false_.into(),
+    ))
+}
+
 pub(crate) fn bool_case_bool_function(
     subject: Bool,
     true_: BoolFunction,
@@ -102,18 +122,19 @@ pub(crate) fn bool_case_function_function(
 #[cfg(test)]
 mod tests {
     use super::{
-        bool_case_bool, bool_case_bool_function, bool_case_function_function, bool_case_int,
-        bool_case_int_function, bool_case_nil, bool_case_nil_function, bool_case_string,
-        bool_case_string_function,
+        bool_case_bool, bool_case_bool_function, bool_case_float, bool_case_float_function,
+        bool_case_function_function, bool_case_int, bool_case_int_function, bool_case_nil,
+        bool_case_nil_function, bool_case_string, bool_case_string_function,
     };
     use crate::plan::{
-        BoolExprKind, BoolFunctionExprKind, FunctionFunctionId, FunctionType, IntExprKind,
-        IntFunctionExprKind, IntFunctionFunctionId, NilExprKind, NilFunctionExprKind, ParamLocal,
-        StringExprKind, StringFunctionExprKind, ValueType,
+        BoolExprKind, BoolFunctionExprKind, FloatExprKind, FloatFunctionExprKind,
+        FunctionFunctionId, FunctionType, IntExprKind, IntFunctionExprKind, IntFunctionFunctionId,
+        NilExprKind, NilFunctionExprKind, ParamLocal, StringExprKind, StringFunctionExprKind,
+        ValueType,
     };
     use crate::planner::dsl::expression::{
-        bool_, bool_function_ref, function_function_ref, int, int_function_ref, nil,
-        nil_function_ref, string, string_function_ref,
+        bool_, bool_function_ref, float, float_function_ref, function_function_ref, int,
+        int_function_ref, nil, nil_function_ref, string, string_function_ref,
     };
 
     #[test]
@@ -127,6 +148,12 @@ mod tests {
                 .0
                 .kind(),
             StringExprKind::BoolCase { .. },
+        ));
+        assert!(matches!(
+            bool_case_float(bool_(true), float(1.0), float(0.0))
+                .0
+                .kind(),
+            FloatExprKind::BoolCase { .. },
         ));
         assert!(matches!(
             bool_case_bool(bool_(true), bool_(true), bool_(false))
@@ -157,6 +184,16 @@ mod tests {
             .0
             .kind(),
             StringFunctionExprKind::BoolCase { .. },
+        ));
+        assert!(matches!(
+            bool_case_float_function(
+                bool_(true),
+                float_function_ref(0, Vec::<ParamLocal>::new()),
+                float_function_ref(1, Vec::<ParamLocal>::new()),
+            )
+            .0
+            .kind(),
+            FloatFunctionExprKind::BoolCase { .. },
         ));
         assert!(matches!(
             bool_case_bool_function(

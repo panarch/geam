@@ -133,6 +133,9 @@ fn bool_case_expr(subject: BoolExpr, true_: Expr, false_: Expr) -> Result<Expr, 
         (ExprKind::String(true_), ExprKind::String(false_)) => {
             BoolCaseBranches::String { true_, false_ }
         }
+        (ExprKind::Float(true_), ExprKind::Float(false_)) => {
+            BoolCaseBranches::Float { true_, false_ }
+        }
         (ExprKind::Bool(true_), ExprKind::Bool(false_)) => BoolCaseBranches::Bool { true_, false_ },
         (ExprKind::Nil(true_), ExprKind::Nil(false_)) => BoolCaseBranches::Nil { true_, false_ },
         (ExprKind::Function(true_), ExprKind::Function(false_)) => {
@@ -161,6 +164,10 @@ fn bool_function_case_branches(
             crate::plan::FunctionExprKind::String(false_),
         ) => Ok(BoolCaseBranches::StringFunction { true_, false_ }),
         (
+            crate::plan::FunctionExprKind::Float(true_),
+            crate::plan::FunctionExprKind::Float(false_),
+        ) => Ok(BoolCaseBranches::FloatFunction { true_, false_ }),
+        (
             crate::plan::FunctionExprKind::Bool(true_),
             crate::plan::FunctionExprKind::Bool(false_),
         ) => Ok(BoolCaseBranches::BoolFunction { true_, false_ }),
@@ -180,9 +187,9 @@ fn bool_function_case_branches(
 #[cfg(test)]
 mod tests {
     use crate::plan::{
-        BoolExpr, BoolFunctionId, Expr, FunctionExpr, FunctionFunctionId, FunctionType,
-        IntFunctionFunctionId, IntFunctionId, IntLocalId, LocalId, NilFunctionId,
-        RuntimeFunctionId, StringFunctionId, ValueType,
+        BoolExpr, BoolFunctionId, Expr, FloatExpr, FloatFunctionId, FunctionExpr,
+        FunctionFunctionId, FunctionType, IntFunctionFunctionId, IntFunctionId, IntLocalId,
+        LocalId, NilFunctionId, RuntimeFunctionId, StringFunctionId, ValueType,
     };
     use crate::planner::dsl::{
         bool_, bool_return_bool_case, bool_return_expr, call_bool, function, function_ref, int,
@@ -192,8 +199,8 @@ mod tests {
     use crate::planner::plan_module;
     use crate::planner::support::{dummy_span, expect_plan_error};
     use crate::planner::{
-        InvalidCaseShapeReason, InvalidTypedAstReason, PlanError, UnsupportedCaseReason,
-        UnsupportedExpressionKind,
+        InvalidCaseShapeReason, InvalidExpressionType, InvalidTypedAstReason, PlanError,
+        UnsupportedCaseReason, UnsupportedExpressionKind,
     };
     use gleam_core::ast::Pattern;
     use gleam_core::type_::{self, error::VariableOrigin};
@@ -461,6 +468,21 @@ fn duplicate_true(value: Bool) {
 
     #[test]
     fn plan_bool_case_function_branch_return_families_direct() {
+        assert_eq!(
+            super::bool_case_expr(
+                BoolExpr::value(true),
+                Expr::float(FloatExpr::value(1.0)),
+                Expr::float(FloatExpr::value(0.0)),
+            ),
+            Ok(Expr::bool_case(
+                BoolExpr::value(true),
+                super::BoolCaseBranches::Float {
+                    true_: FloatExpr::value(1.0),
+                    false_: FloatExpr::value(0.0),
+                },
+            )),
+        );
+
         let string_branches = super::bool_function_case_branches(
             FunctionExpr::from(function_ref(
                 RuntimeFunctionId::String(StringFunctionId(0)),
@@ -477,6 +499,25 @@ fn duplicate_true(value: Bool) {
             ValueType::Function(Box::new(FunctionType::new(
                 vec![ValueType::String],
                 ValueType::String,
+            ))),
+        );
+
+        let float_branches = super::bool_function_case_branches(
+            FunctionExpr::from(function_ref(
+                RuntimeFunctionId::Float(FloatFunctionId(0)),
+                [LocalId::Float(crate::plan::FloatLocalId(0))],
+            )),
+            FunctionExpr::from(function_ref(
+                RuntimeFunctionId::Float(FloatFunctionId(1)),
+                [LocalId::Float(crate::plan::FloatLocalId(0))],
+            )),
+        )
+        .expect("float function branches");
+        assert_eq!(
+            Expr::bool_case(BoolExpr::value(true), float_branches).value_type(),
+            ValueType::Function(Box::new(FunctionType::new(
+                vec![ValueType::Float],
+                ValueType::Float,
             ))),
         );
 
@@ -802,6 +843,28 @@ pub fn main() {
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::CaseShape {
                     reason: InvalidCaseShapeReason::MissingFalsePattern,
+                },
+            }),
+        );
+    }
+
+    #[test]
+    fn reject_margin_bool_case_subject_type_mismatch() {
+        let mut module = super::super::compile_bool_case_module();
+        let (_, subjects, _) =
+            super::super::expect_case_statement_mut(&mut module.definitions.functions[0].body[0]);
+        subjects[0] = gleam_core::ast::TypedExpr::String {
+            location: dummy_span(),
+            type_: type_::bool(),
+            value: "not bool".into(),
+        };
+
+        assert_eq!(
+            plan_module(module),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionType {
+                    expected: InvalidExpressionType::Bool,
+                    actual: InvalidExpressionType::String,
                 },
             }),
         );
