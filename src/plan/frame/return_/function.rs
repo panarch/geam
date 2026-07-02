@@ -28,6 +28,17 @@ impl FrameLayout {
                 }
                 self.include_int_function_return(fallback);
             }
+            ReturnBodyKind::StringCase {
+                subject,
+                clauses,
+                fallback,
+            } => {
+                self.include_string_expr(subject);
+                for (_, branch) in clauses {
+                    self.include_int_function_return(branch);
+                }
+                self.include_int_function_return(fallback);
+            }
             ReturnBodyKind::Block { steps, return_ } => {
                 self.include_steps(steps);
                 self.include_int_function_return(return_);
@@ -57,6 +68,17 @@ impl FrameLayout {
                 fallback,
             } => {
                 self.include_int_expr(subject);
+                for (_, branch) in clauses {
+                    self.include_string_function_return(branch);
+                }
+                self.include_string_function_return(fallback);
+            }
+            ReturnBodyKind::StringCase {
+                subject,
+                clauses,
+                fallback,
+            } => {
+                self.include_string_expr(subject);
                 for (_, branch) in clauses {
                     self.include_string_function_return(branch);
                 }
@@ -96,6 +118,17 @@ impl FrameLayout {
                 }
                 self.include_bool_function_return(fallback);
             }
+            ReturnBodyKind::StringCase {
+                subject,
+                clauses,
+                fallback,
+            } => {
+                self.include_string_expr(subject);
+                for (_, branch) in clauses {
+                    self.include_bool_function_return(branch);
+                }
+                self.include_bool_function_return(fallback);
+            }
             ReturnBodyKind::Block { steps, return_ } => {
                 self.include_steps(steps);
                 self.include_bool_function_return(return_);
@@ -125,6 +158,17 @@ impl FrameLayout {
                 fallback,
             } => {
                 self.include_int_expr(subject);
+                for (_, branch) in clauses {
+                    self.include_nil_function_return(branch);
+                }
+                self.include_nil_function_return(fallback);
+            }
+            ReturnBodyKind::StringCase {
+                subject,
+                clauses,
+                fallback,
+            } => {
+                self.include_string_expr(subject);
                 for (_, branch) in clauses {
                     self.include_nil_function_return(branch);
                 }
@@ -164,6 +208,17 @@ impl FrameLayout {
                 }
                 self.include_function_function_return(fallback);
             }
+            ReturnBodyKind::StringCase {
+                subject,
+                clauses,
+                fallback,
+            } => {
+                self.include_string_expr(subject);
+                for (_, branch) in clauses {
+                    self.include_function_function_return(branch);
+                }
+                self.include_function_function_return(fallback);
+            }
             ReturnBodyKind::Block { steps, return_ } => {
                 self.include_steps(steps);
                 self.include_function_function_return(return_);
@@ -178,8 +233,8 @@ mod tests {
         BoolExpr, BoolFunctionExpr, BoolFunctionFunctionId, BoolFunctionLocalId, BoolLocalId, Expr,
         FrameLayout, FunctionFunctionExpr, FunctionFunctionFunctionId, FunctionFunctionLocalId,
         IntExpr, IntFunctionFunctionId, IntFunctionLocalId, IntLocalId, NilFunctionExpr,
-        NilFunctionFunctionId, NilFunctionLocalId, ReturnBody, ReturnExpr, Step,
-        StringFunctionExpr, StringFunctionFunctionId, StringFunctionLocalId,
+        NilFunctionFunctionId, NilFunctionLocalId, ReturnBody, ReturnExpr, Step, StringExpr,
+        StringFunctionExpr, StringFunctionFunctionId, StringFunctionLocalId, StringLocalId,
     };
 
     #[test]
@@ -387,5 +442,155 @@ mod tests {
         assert_eq!(layout.ints(), 27);
         assert_eq!(layout.bools(), 9);
         assert_eq!(layout.function_functions(), 6);
+    }
+
+    #[test]
+    fn frame_layout_includes_function_return_body_string_case_families() {
+        let int_function_return = ReturnExpr::int_function_body(
+            IntFunctionFunctionId(0),
+            super::super::super::test_helpers::int_function_expr()
+                .type_()
+                .clone(),
+            ReturnBody::string_case(
+                StringExpr::local_get(StringLocalId(0), "int_function_subject".into()),
+                vec![(
+                    "one".into(),
+                    ReturnBody::expr(crate::plan::IntFunctionExpr::local_get(
+                        IntFunctionLocalId(1),
+                        "int_function_branch".into(),
+                        super::super::super::test_helpers::int_function_expr()
+                            .type_()
+                            .clone(),
+                    )),
+                )],
+                ReturnBody::expr(crate::plan::IntFunctionExpr::local_get(
+                    IntFunctionLocalId(2),
+                    "int_function_fallback".into(),
+                    super::super::super::test_helpers::int_function_expr()
+                        .type_()
+                        .clone(),
+                )),
+            ),
+        );
+        let layout = FrameLayout::from_function_parts(&[], &[], &int_function_return);
+        assert_eq!(layout.strings(), 1);
+        assert_eq!(layout.int_functions(), 3);
+
+        let string_function_return = ReturnExpr::string_function_body(
+            StringFunctionFunctionId(0),
+            super::super::super::test_helpers::string_function_expr()
+                .type_()
+                .clone(),
+            ReturnBody::string_case(
+                StringExpr::local_get(StringLocalId(1), "string_function_subject".into()),
+                vec![(
+                    "one".into(),
+                    ReturnBody::expr(StringFunctionExpr::local_get(
+                        StringFunctionLocalId(3),
+                        "string_function_branch".into(),
+                        super::super::super::test_helpers::string_function_expr()
+                            .type_()
+                            .clone(),
+                    )),
+                )],
+                ReturnBody::expr(StringFunctionExpr::local_get(
+                    StringFunctionLocalId(4),
+                    "string_function_fallback".into(),
+                    super::super::super::test_helpers::string_function_expr()
+                        .type_()
+                        .clone(),
+                )),
+            ),
+        );
+        let layout = FrameLayout::from_function_parts(&[], &[], &string_function_return);
+        assert_eq!(layout.strings(), 2);
+        assert_eq!(layout.string_functions(), 5);
+
+        let bool_function_return = ReturnExpr::bool_function_body(
+            BoolFunctionFunctionId(0),
+            super::super::super::test_helpers::bool_function_expr()
+                .type_()
+                .clone(),
+            ReturnBody::string_case(
+                StringExpr::local_get(StringLocalId(2), "bool_function_subject".into()),
+                vec![(
+                    "one".into(),
+                    ReturnBody::expr(BoolFunctionExpr::local_get(
+                        BoolFunctionLocalId(5),
+                        "bool_function_branch".into(),
+                        super::super::super::test_helpers::bool_function_expr()
+                            .type_()
+                            .clone(),
+                    )),
+                )],
+                ReturnBody::expr(BoolFunctionExpr::local_get(
+                    BoolFunctionLocalId(6),
+                    "bool_function_fallback".into(),
+                    super::super::super::test_helpers::bool_function_expr()
+                        .type_()
+                        .clone(),
+                )),
+            ),
+        );
+        let layout = FrameLayout::from_function_parts(&[], &[], &bool_function_return);
+        assert_eq!(layout.strings(), 3);
+        assert_eq!(layout.bool_functions(), 7);
+
+        let nil_function_return = ReturnExpr::nil_function_body(
+            NilFunctionFunctionId(0),
+            super::super::super::test_helpers::nil_function_expr()
+                .type_()
+                .clone(),
+            ReturnBody::string_case(
+                StringExpr::local_get(StringLocalId(3), "nil_function_subject".into()),
+                vec![(
+                    "one".into(),
+                    ReturnBody::expr(NilFunctionExpr::local_get(
+                        NilFunctionLocalId(7),
+                        "nil_function_branch".into(),
+                        super::super::super::test_helpers::nil_function_expr()
+                            .type_()
+                            .clone(),
+                    )),
+                )],
+                ReturnBody::expr(NilFunctionExpr::local_get(
+                    NilFunctionLocalId(8),
+                    "nil_function_fallback".into(),
+                    super::super::super::test_helpers::nil_function_expr()
+                        .type_()
+                        .clone(),
+                )),
+            ),
+        );
+        let layout = FrameLayout::from_function_parts(&[], &[], &nil_function_return);
+        assert_eq!(layout.strings(), 4);
+        assert_eq!(layout.nil_functions(), 9);
+
+        let function_function_type = super::super::super::test_helpers::int_function_expr()
+            .type_()
+            .clone();
+        let function_function_return = ReturnExpr::function_function_body(
+            FunctionFunctionFunctionId(0),
+            function_function_type.clone(),
+            ReturnBody::string_case(
+                StringExpr::local_get(StringLocalId(4), "function_function_subject".into()),
+                vec![(
+                    "one".into(),
+                    ReturnBody::expr(FunctionFunctionExpr::local_get(
+                        FunctionFunctionLocalId(9),
+                        "function_function_branch".into(),
+                        function_function_type.clone(),
+                    )),
+                )],
+                ReturnBody::expr(FunctionFunctionExpr::local_get(
+                    FunctionFunctionLocalId(10),
+                    "function_function_fallback".into(),
+                    function_function_type,
+                )),
+            ),
+        );
+        let layout = FrameLayout::from_function_parts(&[], &[], &function_function_return);
+        assert_eq!(layout.strings(), 5);
+        assert_eq!(layout.function_functions(), 11);
     }
 }

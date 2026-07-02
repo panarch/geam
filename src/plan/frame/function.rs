@@ -51,6 +51,17 @@ impl FrameLayout {
                 }
                 self.include_int_function_expr(fallback);
             }
+            IntFunctionExprKind::StringCase {
+                subject,
+                clauses,
+                fallback,
+            } => {
+                self.include_string_expr(subject);
+                for (_, branch) in clauses {
+                    self.include_int_function_expr(branch);
+                }
+                self.include_int_function_expr(fallback);
+            }
             IntFunctionExprKind::Block { steps, return_ } => {
                 self.include_steps(steps);
                 self.include_int_function_expr(return_);
@@ -88,6 +99,17 @@ impl FrameLayout {
                 fallback,
             } => {
                 self.include_int_expr(subject);
+                for (_, branch) in clauses {
+                    self.include_string_function_expr(branch);
+                }
+                self.include_string_function_expr(fallback);
+            }
+            StringFunctionExprKind::StringCase {
+                subject,
+                clauses,
+                fallback,
+            } => {
+                self.include_string_expr(subject);
                 for (_, branch) in clauses {
                     self.include_string_function_expr(branch);
                 }
@@ -133,6 +155,17 @@ impl FrameLayout {
                 }
                 self.include_bool_function_expr(fallback);
             }
+            BoolFunctionExprKind::StringCase {
+                subject,
+                clauses,
+                fallback,
+            } => {
+                self.include_string_expr(subject);
+                for (_, branch) in clauses {
+                    self.include_bool_function_expr(branch);
+                }
+                self.include_bool_function_expr(fallback);
+            }
             BoolFunctionExprKind::Block { steps, return_ } => {
                 self.include_steps(steps);
                 self.include_bool_function_expr(return_);
@@ -168,6 +201,17 @@ impl FrameLayout {
                 fallback,
             } => {
                 self.include_int_expr(subject);
+                for (_, branch) in clauses {
+                    self.include_nil_function_expr(branch);
+                }
+                self.include_nil_function_expr(fallback);
+            }
+            NilFunctionExprKind::StringCase {
+                subject,
+                clauses,
+                fallback,
+            } => {
+                self.include_string_expr(subject);
                 for (_, branch) in clauses {
                     self.include_nil_function_expr(branch);
                 }
@@ -212,6 +256,17 @@ impl FrameLayout {
                 fallback,
             } => {
                 self.include_int_expr(subject);
+                for (_, branch) in clauses {
+                    self.include_function_function_expr(branch);
+                }
+                self.include_function_function_expr(fallback);
+            }
+            FunctionFunctionExprKind::StringCase {
+                subject,
+                clauses,
+                fallback,
+            } => {
+                self.include_string_expr(subject);
                 for (_, branch) in clauses {
                     self.include_function_function_expr(branch);
                 }

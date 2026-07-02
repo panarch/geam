@@ -12,7 +12,7 @@ use super::id::{
 };
 use super::value::{Value, ValueType};
 
-pub(crate) use self::case::{BoolCaseBranches, IntCaseBranches};
+pub(crate) use self::case::{BoolCaseBranches, IntCaseBranches, StringCaseBranches};
 pub use self::{
     bool::BoolExpr,
     function::{
@@ -230,6 +230,40 @@ impl Expr {
             IntCaseBranches::FunctionFunction { clauses, fallback } => Self::function(
                 FunctionExpr::function(FunctionFunctionExpr::int_case(subject, clauses, fallback)),
             ),
+        }
+    }
+
+    pub(crate) fn string_case(subject: StringExpr, branches: StringCaseBranches) -> Self {
+        match branches {
+            StringCaseBranches::Int { clauses, fallback } => {
+                Self::int(IntExpr::string_case(subject, clauses, fallback))
+            }
+            StringCaseBranches::String { clauses, fallback } => {
+                Self::string(StringExpr::string_case(subject, clauses, fallback))
+            }
+            StringCaseBranches::Bool { clauses, fallback } => {
+                Self::bool(BoolExpr::string_case(subject, clauses, fallback))
+            }
+            StringCaseBranches::Nil { clauses, fallback } => {
+                Self::nil(NilExpr::string_case(subject, clauses, fallback))
+            }
+            StringCaseBranches::IntFunction { clauses, fallback } => Self::function(
+                FunctionExpr::int(IntFunctionExpr::string_case(subject, clauses, fallback)),
+            ),
+            StringCaseBranches::StringFunction { clauses, fallback } => Self::function(
+                FunctionExpr::string(StringFunctionExpr::string_case(subject, clauses, fallback)),
+            ),
+            StringCaseBranches::BoolFunction { clauses, fallback } => Self::function(
+                FunctionExpr::bool(BoolFunctionExpr::string_case(subject, clauses, fallback)),
+            ),
+            StringCaseBranches::NilFunction { clauses, fallback } => Self::function(
+                FunctionExpr::nil(NilFunctionExpr::string_case(subject, clauses, fallback)),
+            ),
+            StringCaseBranches::FunctionFunction { clauses, fallback } => {
+                Self::function(FunctionExpr::function(FunctionFunctionExpr::string_case(
+                    subject, clauses, fallback,
+                )))
+            }
         }
     }
 

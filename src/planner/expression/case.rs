@@ -1,5 +1,6 @@
 mod bool_subject;
 mod int_subject;
+mod string_subject;
 
 use crate::plan::{Expr, ValueType};
 use crate::planner::context::PlanContext;
@@ -29,6 +30,9 @@ pub(super) fn plan_case(
     }
     if subject.type_().is_int() {
         return int_subject::plan(type_, subject, clauses, context);
+    }
+    if subject.type_().is_string() {
+        return string_subject::plan(type_, subject, clauses, context);
     }
 
     Err(unsupported_case(
@@ -175,6 +179,10 @@ mod tests {
     fn reject_profile_case_expressions() {
         let cases = [
             (
+                r#"pub fn main() { case 1.1 { _ -> 3 } }"#,
+                UnsupportedCaseReason::UnsupportedSubjectType,
+            ),
+            (
                 r#"
 pub fn main() {
   case True, False {
@@ -184,10 +192,6 @@ pub fn main() {
 }
 "#,
                 UnsupportedCaseReason::MultipleSubjects,
-            ),
-            (
-                r#"pub fn main() { case "x" { _ -> 3 } }"#,
-                UnsupportedCaseReason::UnsupportedSubjectType,
             ),
             (
                 r#"

@@ -1,4 +1,4 @@
-use super::{BoolFunctionExpr, CallArg, Expr, IntExpr};
+use super::{BoolFunctionExpr, CallArg, Expr, IntExpr, StringExpr};
 use crate::plan::{BoolFunctionId, BoolLocalId, Step};
 use ecow::EcoString;
 use num_bigint::BigInt;
@@ -64,6 +64,11 @@ pub(crate) enum BoolExprKind {
     IntCase {
         subject: Box<IntExpr>,
         clauses: Vec<(BigInt, BoolExpr)>,
+        fallback: Box<BoolExpr>,
+    },
+    StringCase {
+        subject: Box<StringExpr>,
+        clauses: Vec<(EcoString, BoolExpr)>,
         fallback: Box<BoolExpr>,
     },
     Block {
@@ -202,6 +207,20 @@ impl BoolExpr {
         }
     }
 
+    pub(crate) fn string_case(
+        subject: StringExpr,
+        clauses: Vec<(EcoString, BoolExpr)>,
+        fallback: BoolExpr,
+    ) -> Self {
+        Self {
+            kind: BoolExprKind::StringCase {
+                subject: Box::new(subject),
+                clauses,
+                fallback: Box::new(fallback),
+            },
+        }
+    }
+
     pub(crate) fn block(steps: Vec<Step>, return_: BoolExpr) -> Self {
         Self {
             kind: BoolExprKind::Block {
@@ -248,6 +267,15 @@ mod tests {
             )
             .kind(),
             BoolExprKind::IntCase { .. }
+        ));
+        assert!(matches!(
+            BoolExpr::string_case(
+                crate::plan::StringExpr::value("a".into()),
+                vec![("a".into(), BoolExpr::value(true))],
+                BoolExpr::value(false)
+            )
+            .kind(),
+            BoolExprKind::StringCase { .. }
         ));
         assert!(matches!(
             BoolExpr::and(BoolExpr::value(true), BoolExpr::value(false)).kind(),

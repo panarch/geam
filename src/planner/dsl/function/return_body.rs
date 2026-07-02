@@ -227,6 +227,21 @@ pub(crate) fn int_return_int_case(
     )
 }
 
+pub(crate) fn int_return_string_case(
+    subject: String,
+    clauses: impl IntoIterator<Item = (&'static str, IntReturn)>,
+    fallback: IntReturn,
+) -> IntReturn {
+    ReturnBody::string_case(
+        subject.into(),
+        clauses
+            .into_iter()
+            .map(|(value, branch)| (value.into(), branch))
+            .collect(),
+        fallback,
+    )
+}
+
 pub(crate) fn int_return_block(
     steps: impl IntoIterator<Item = Step>,
     return_: IntReturn,
@@ -263,6 +278,21 @@ pub(crate) fn bool_return_int_case(
         clauses
             .into_iter()
             .map(|(value, branch)| (BigInt::from(value), branch))
+            .collect(),
+        fallback,
+    )
+}
+
+pub(crate) fn bool_return_string_case(
+    subject: String,
+    clauses: impl IntoIterator<Item = (&'static str, BoolReturn)>,
+    fallback: BoolReturn,
+) -> BoolReturn {
+    ReturnBody::string_case(
+        subject.into(),
+        clauses
+            .into_iter()
+            .map(|(value, branch)| (value.into(), branch))
             .collect(),
         fallback,
     )
@@ -309,6 +339,21 @@ pub(crate) fn string_return_int_case(
     )
 }
 
+pub(crate) fn string_return_string_case(
+    subject: String,
+    clauses: impl IntoIterator<Item = (&'static str, StringReturn)>,
+    fallback: StringReturn,
+) -> StringReturn {
+    ReturnBody::string_case(
+        subject.into(),
+        clauses
+            .into_iter()
+            .map(|(value, branch)| (value.into(), branch))
+            .collect(),
+        fallback,
+    )
+}
+
 pub(crate) fn string_return_block(
     steps: impl IntoIterator<Item = Step>,
     return_: StringReturn,
@@ -350,6 +395,21 @@ pub(crate) fn nil_return_int_case(
     )
 }
 
+pub(crate) fn nil_return_string_case(
+    subject: String,
+    clauses: impl IntoIterator<Item = (&'static str, NilReturn)>,
+    fallback: NilReturn,
+) -> NilReturn {
+    ReturnBody::string_case(
+        subject.into(),
+        clauses
+            .into_iter()
+            .map(|(value, branch)| (value.into(), branch))
+            .collect(),
+        fallback,
+    )
+}
+
 pub(crate) fn nil_return_block(
     steps: impl IntoIterator<Item = Step>,
     return_: NilReturn,
@@ -386,6 +446,21 @@ pub(crate) fn int_function_return_int_case(
         clauses
             .into_iter()
             .map(|(value, branch)| (BigInt::from(value), branch))
+            .collect(),
+        fallback,
+    )
+}
+
+pub(crate) fn int_function_return_string_case(
+    subject: String,
+    clauses: impl IntoIterator<Item = (&'static str, IntFunctionReturn)>,
+    fallback: IntFunctionReturn,
+) -> IntFunctionReturn {
+    ReturnBody::string_case(
+        subject.into(),
+        clauses
+            .into_iter()
+            .map(|(value, branch)| (value.into(), branch))
             .collect(),
         fallback,
     )
@@ -439,6 +514,21 @@ pub(crate) fn string_function_return_int_case(
     )
 }
 
+pub(crate) fn string_function_return_string_case(
+    subject: String,
+    clauses: impl IntoIterator<Item = (&'static str, StringFunctionReturn)>,
+    fallback: StringFunctionReturn,
+) -> StringFunctionReturn {
+    ReturnBody::string_case(
+        subject.into(),
+        clauses
+            .into_iter()
+            .map(|(value, branch)| (value.into(), branch))
+            .collect(),
+        fallback,
+    )
+}
+
 pub(crate) fn string_function_return_block(
     steps: impl IntoIterator<Item = Step>,
     return_: StringFunctionReturn,
@@ -482,6 +572,21 @@ pub(crate) fn bool_function_return_int_case(
         clauses
             .into_iter()
             .map(|(value, branch)| (BigInt::from(value), branch))
+            .collect(),
+        fallback,
+    )
+}
+
+pub(crate) fn bool_function_return_string_case(
+    subject: String,
+    clauses: impl IntoIterator<Item = (&'static str, BoolFunctionReturn)>,
+    fallback: BoolFunctionReturn,
+) -> BoolFunctionReturn {
+    ReturnBody::string_case(
+        subject.into(),
+        clauses
+            .into_iter()
+            .map(|(value, branch)| (value.into(), branch))
             .collect(),
         fallback,
     )
@@ -535,6 +640,21 @@ pub(crate) fn nil_function_return_int_case(
     )
 }
 
+pub(crate) fn nil_function_return_string_case(
+    subject: String,
+    clauses: impl IntoIterator<Item = (&'static str, NilFunctionReturn)>,
+    fallback: NilFunctionReturn,
+) -> NilFunctionReturn {
+    ReturnBody::string_case(
+        subject.into(),
+        clauses
+            .into_iter()
+            .map(|(value, branch)| (value.into(), branch))
+            .collect(),
+        fallback,
+    )
+}
+
 pub(crate) fn nil_function_return_block(
     steps: impl IntoIterator<Item = Step>,
     return_: NilFunctionReturn,
@@ -577,6 +697,21 @@ pub(crate) fn function_function_return_int_case(
     )
 }
 
+pub(crate) fn function_function_return_string_case(
+    subject: String,
+    clauses: impl IntoIterator<Item = (&'static str, FunctionFunctionReturn)>,
+    fallback: FunctionFunctionReturn,
+) -> FunctionFunctionReturn {
+    ReturnBody::string_case(
+        subject.into(),
+        clauses
+            .into_iter()
+            .map(|(value, branch)| (value.into(), branch))
+            .collect(),
+        fallback,
+    )
+}
+
 pub(crate) fn function_function_return_block(
     steps: impl IntoIterator<Item = Step>,
     return_: FunctionFunctionReturn,
@@ -589,4 +724,100 @@ pub(crate) fn return_function_function(
     body: FunctionFunctionReturn,
 ) -> FunctionReturn {
     FunctionReturn::FunctionFunction { type_, body }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        bool_function_return_expr, bool_function_return_string_case, function_function_return_expr,
+        function_function_return_string_case, int_function_return_expr,
+        int_function_return_string_case, nil_function_return_expr, nil_function_return_string_case,
+        string_function_return_expr, string_function_return_string_case,
+    };
+    use crate::plan::{
+        FunctionFunctionFunctionId, FunctionFunctionId, FunctionType, IntFunctionFunctionId,
+        ParamLocal, ReturnBodyKind, ValueType,
+    };
+    use crate::planner::dsl::expression::{
+        bool_function_ref, function_function_ref, int_function_ref, nil_function_ref, string,
+        string_function_ref,
+    };
+
+    #[test]
+    fn function_return_string_case_helpers_build_return_body_shapes() {
+        assert!(matches!(
+            int_function_return_string_case(
+                string("key"),
+                [(
+                    "one",
+                    int_function_return_expr(int_function_ref(0, Vec::<ParamLocal>::new())),
+                )],
+                int_function_return_expr(int_function_ref(1, Vec::<ParamLocal>::new())),
+            )
+            .kind(),
+            ReturnBodyKind::StringCase { .. },
+        ));
+        assert!(matches!(
+            string_function_return_string_case(
+                string("key"),
+                [(
+                    "one",
+                    string_function_return_expr(string_function_ref(0, Vec::<ParamLocal>::new())),
+                )],
+                string_function_return_expr(string_function_ref(1, Vec::<ParamLocal>::new())),
+            )
+            .kind(),
+            ReturnBodyKind::StringCase { .. },
+        ));
+        assert!(matches!(
+            bool_function_return_string_case(
+                string("key"),
+                [(
+                    "one",
+                    bool_function_return_expr(bool_function_ref(0, Vec::<ParamLocal>::new())),
+                )],
+                bool_function_return_expr(bool_function_ref(1, Vec::<ParamLocal>::new())),
+            )
+            .kind(),
+            ReturnBodyKind::StringCase { .. },
+        ));
+        assert!(matches!(
+            nil_function_return_string_case(
+                string("key"),
+                [(
+                    "one",
+                    nil_function_return_expr(nil_function_ref(0, Vec::<ParamLocal>::new())),
+                )],
+                nil_function_return_expr(nil_function_ref(1, Vec::<ParamLocal>::new())),
+            )
+            .kind(),
+            ReturnBodyKind::StringCase { .. },
+        ));
+
+        let returned_function_type = FunctionType::new(vec![ValueType::Int], ValueType::Int);
+
+        assert!(matches!(
+            function_function_return_string_case(
+                string("key"),
+                [(
+                    "one",
+                    function_function_return_expr(function_function_ref(
+                        FunctionFunctionId::Int(IntFunctionFunctionId(0)),
+                        Vec::<ParamLocal>::new(),
+                        returned_function_type.clone(),
+                    )),
+                )],
+                function_function_return_expr(function_function_ref(
+                    FunctionFunctionId::Function(FunctionFunctionFunctionId(1)),
+                    Vec::<ParamLocal>::new(),
+                    FunctionType::new(
+                        Vec::new(),
+                        ValueType::Function(Box::new(returned_function_type)),
+                    ),
+                )),
+            )
+            .kind(),
+            ReturnBodyKind::StringCase { .. },
+        ));
+    }
 }

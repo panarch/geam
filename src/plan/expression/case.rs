@@ -2,6 +2,7 @@ use super::{
     BoolExpr, BoolFunctionExpr, FunctionFunctionExpr, IntExpr, IntFunctionExpr, NilExpr,
     NilFunctionExpr, StringExpr, StringFunctionExpr,
 };
+use ecow::EcoString;
 use num_bigint::BigInt;
 
 pub(crate) enum BoolCaseBranches {
@@ -78,6 +79,45 @@ pub(crate) enum IntCaseBranches {
     },
     FunctionFunction {
         clauses: Vec<(BigInt, FunctionFunctionExpr)>,
+        fallback: FunctionFunctionExpr,
+    },
+}
+
+pub(crate) enum StringCaseBranches {
+    Int {
+        clauses: Vec<(EcoString, IntExpr)>,
+        fallback: IntExpr,
+    },
+    String {
+        clauses: Vec<(EcoString, StringExpr)>,
+        fallback: StringExpr,
+    },
+    Bool {
+        clauses: Vec<(EcoString, BoolExpr)>,
+        fallback: BoolExpr,
+    },
+    Nil {
+        clauses: Vec<(EcoString, NilExpr)>,
+        fallback: NilExpr,
+    },
+    IntFunction {
+        clauses: Vec<(EcoString, IntFunctionExpr)>,
+        fallback: IntFunctionExpr,
+    },
+    StringFunction {
+        clauses: Vec<(EcoString, StringFunctionExpr)>,
+        fallback: StringFunctionExpr,
+    },
+    BoolFunction {
+        clauses: Vec<(EcoString, BoolFunctionExpr)>,
+        fallback: BoolFunctionExpr,
+    },
+    NilFunction {
+        clauses: Vec<(EcoString, NilFunctionExpr)>,
+        fallback: NilFunctionExpr,
+    },
+    FunctionFunction {
+        clauses: Vec<(EcoString, FunctionFunctionExpr)>,
         fallback: FunctionFunctionExpr,
     },
 }

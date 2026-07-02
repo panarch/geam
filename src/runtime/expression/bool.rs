@@ -1,4 +1,4 @@
-use super::{eval_expr, eval_int_expr};
+use super::{eval_expr, eval_int_expr, eval_string_expr};
 use crate::plan::{BoolExpr, BoolExprKind, ExecutionPlan};
 use crate::runtime::ExecutionError;
 use crate::runtime::frame::Frame;
@@ -62,6 +62,19 @@ pub(in crate::runtime) fn eval_bool_expr(
             fallback,
         } => {
             let subject = eval_int_expr(plan, frame, subject)?;
+            for (pattern, branch) in clauses {
+                if pattern == &subject {
+                    return eval_bool_expr(plan, frame, branch);
+                }
+            }
+            eval_bool_expr(plan, frame, fallback)
+        }
+        BoolExprKind::StringCase {
+            subject,
+            clauses,
+            fallback,
+        } => {
+            let subject = eval_string_expr(plan, frame, subject)?;
             for (pattern, branch) in clauses {
                 if pattern == &subject {
                     return eval_bool_expr(plan, frame, branch);
@@ -217,6 +230,39 @@ pub fn main() {
                 r#"
 pub fn main() {
   False || False
+}
+"#,
+            ),
+            Value::Bool(false),
+        );
+    }
+
+    #[test]
+    fn eval_string_case_bool() {
+        assert_eq!(
+            run_src(
+                r#"
+pub fn main() {
+  let value = case "yes" {
+    "yes" -> True
+    _ -> False
+  }
+  value
+}
+"#,
+            ),
+            Value::Bool(true),
+        );
+
+        assert_eq!(
+            run_src(
+                r#"
+pub fn main() {
+  let value = case "no" {
+    "yes" -> True
+    _ -> False
+  }
+  value
 }
 "#,
             ),

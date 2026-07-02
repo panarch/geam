@@ -49,6 +49,19 @@ pub(in crate::runtime) fn eval_string_expr(
             }
             eval_string_expr(plan, frame, fallback)
         }
+        StringExprKind::StringCase {
+            subject,
+            clauses,
+            fallback,
+        } => {
+            let subject = eval_string_expr(plan, frame, subject)?;
+            for (pattern, branch) in clauses {
+                if pattern == &subject {
+                    return eval_string_expr(plan, frame, branch);
+                }
+            }
+            eval_string_expr(plan, frame, fallback)
+        }
         StringExprKind::Block { steps, return_ } => {
             function::execute_steps(plan, steps, frame)?;
             eval_string_expr(plan, frame, return_)
@@ -138,6 +151,39 @@ pub fn main() {
     1 -> "one"
     _ -> "other"
   }
+}
+"#,
+            ),
+            Value::String("other".into()),
+        );
+    }
+
+    #[test]
+    fn eval_string_case_string() {
+        assert_eq!(
+            run_src(
+                r#"
+pub fn main() {
+  let value = case "one" {
+    "one" -> "one"
+    _ -> "other"
+  }
+  value
+}
+"#,
+            ),
+            Value::String("one".into()),
+        );
+
+        assert_eq!(
+            run_src(
+                r#"
+pub fn main() {
+  let value = case "many" {
+    "one" -> "one"
+    _ -> "other"
+  }
+  value
 }
 "#,
             ),

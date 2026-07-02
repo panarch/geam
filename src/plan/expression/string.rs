@@ -37,6 +37,11 @@ pub(crate) enum StringExprKind {
         clauses: Vec<(BigInt, StringExpr)>,
         fallback: Box<StringExpr>,
     },
+    StringCase {
+        subject: Box<StringExpr>,
+        clauses: Vec<(EcoString, StringExpr)>,
+        fallback: Box<StringExpr>,
+    },
     Block {
         steps: Vec<Step>,
         return_: Box<StringExpr>,
@@ -104,6 +109,20 @@ impl StringExpr {
         }
     }
 
+    pub(crate) fn string_case(
+        subject: StringExpr,
+        clauses: Vec<(EcoString, StringExpr)>,
+        fallback: StringExpr,
+    ) -> Self {
+        Self {
+            kind: StringExprKind::StringCase {
+                subject: Box::new(subject),
+                clauses,
+                fallback: Box::new(fallback),
+            },
+        }
+    }
+
     pub(crate) fn block(steps: Vec<Step>, return_: StringExpr) -> Self {
         Self {
             kind: StringExprKind::Block {
@@ -150,6 +169,15 @@ mod tests {
             )
             .kind(),
             StringExprKind::IntCase { .. }
+        ));
+        assert!(matches!(
+            StringExpr::string_case(
+                StringExpr::value("a".into()),
+                vec![("a".into(), StringExpr::value("hit".into()))],
+                StringExpr::value("miss".into())
+            )
+            .kind(),
+            StringExprKind::StringCase { .. }
         ));
         assert!(matches!(
             StringExpr::block(
