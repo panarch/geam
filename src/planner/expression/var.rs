@@ -131,7 +131,7 @@ mod tests {
     };
     use crate::planner::dsl::{
         bool_, call_int_function, function, function_ref, int, int_function_call_arg, local_bool,
-        local_int, local_int_function, local_nil, local_string, module, nil,
+        local_float, local_int, local_int_function, local_nil, local_string, module, nil,
     };
     use crate::planner::plan_module;
     use crate::planner::support::compile;
@@ -156,6 +156,10 @@ pub fn string_id(value: String) {
   value
 }
 
+pub fn float_id(value: Float) {
+  value
+}
+
 pub fn bool_id(value: Bool) {
   value
 }
@@ -172,6 +176,7 @@ pub fn nil_id(value: Nil) {
             [
                 function("int_id", local_int(0, "value")).param_int(0, "value"),
                 function("string_id", local_string(0, "value")).param_string(0, "value"),
+                function("float_id", local_float(0, "value")).param_float(0, "value"),
                 function("bool_id", local_bool(0, "value")).param_bool(0, "value"),
                 function("nil_id", local_nil(0, "value")).param_nil(0, "value"),
             ],

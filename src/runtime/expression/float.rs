@@ -109,8 +109,8 @@ mod tests {
 
     #[test]
     fn eval_float_division_by_zero_returns_zero() {
-        assert_eq!(eval_div_float(1.5, 0.0), 0.0);
-        assert_eq!(eval_div_float(1.5, -0.0), 0.0);
+        assert_eq!(eval_div_float(1.5, 0.0).to_bits(), 0.0f64.to_bits());
+        assert_eq!(eval_div_float(1.5, -0.0).to_bits(), 0.0f64.to_bits());
         assert_eq!(eval_div_float(3.0, 2.0), 1.5);
     }
 

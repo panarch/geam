@@ -155,36 +155,45 @@ fn set_slot<T>(slots: &mut [T], index: usize, value: T) {
 mod tests {
     use super::Frame;
     use crate::plan::{
-        BoolFunctionId, BoolFunctionLocalId, BoolFunctionValue, BoolLocalId, FrameLayout,
-        IntFunctionId, IntFunctionLocalId, IntFunctionValue, IntLocalId, NilFunctionId,
-        NilFunctionLocalId, NilFunctionValue, NilLocalId, ParamLocal, StringFunctionId,
-        StringFunctionLocalId, StringFunctionValue, StringLocalId,
+        BoolFunctionId, BoolFunctionLocalId, BoolFunctionValue, BoolLocalId, FloatFunctionId,
+        FloatFunctionLocalId, FloatFunctionValue, FloatLocalId, FrameLayout, IntFunctionId,
+        IntFunctionLocalId, IntFunctionValue, IntLocalId, NilFunctionId, NilFunctionLocalId,
+        NilFunctionValue, NilLocalId, ParamLocal, StringFunctionId, StringFunctionLocalId,
+        StringFunctionValue, StringLocalId,
     };
     use num_bigint::BigInt;
 
     #[test]
     fn frame_set_and_get_local() {
-        let frame = frame_with_layout(1, 1, 1, 1);
+        let frame = frame_with_layout(1, 1, 1, 1, 1);
         let mut frame = frame;
         let int_function = int_function_value();
+        let float_function = float_function_value();
         let string_function = string_function_value();
         let bool_function = bool_function_value();
         let nil_function = nil_function_value();
 
         frame.set_int(IntLocalId(0), int(1));
+        frame.set_float(FloatLocalId(0), 1.5);
         frame.set_string(StringLocalId(0), "geam".into());
         frame.set_bool(BoolLocalId(0), true);
         frame.set_nil(NilLocalId(0));
         frame.set_int_function(IntFunctionLocalId(0), int_function.clone());
+        frame.set_float_function(FloatFunctionLocalId(0), float_function.clone());
         frame.set_string_function(StringFunctionLocalId(0), string_function.clone());
         frame.set_bool_function(BoolFunctionLocalId(0), bool_function.clone());
         frame.set_nil_function(NilFunctionLocalId(0), nil_function.clone());
 
         assert_eq!(frame.get_int(IntLocalId(0)), int(1));
+        assert_eq!(frame.get_float(FloatLocalId(0)), 1.5);
         assert_eq!(frame.get_string(StringLocalId(0)), "geam");
         assert!(frame.get_bool(BoolLocalId(0)));
         assert_eq!(frame.get_nil(NilLocalId(0)), ());
         assert_eq!(frame.get_int_function(IntFunctionLocalId(0)), int_function);
+        assert_eq!(
+            frame.get_float_function(FloatFunctionLocalId(0)),
+            float_function,
+        );
         assert_eq!(
             frame.get_string_function(StringFunctionLocalId(0)),
             string_function,
@@ -198,24 +207,42 @@ mod tests {
 
     #[test]
     fn frame_set_overwrites_local() {
-        let mut frame = frame_with_layout(1, 0, 0, 0);
+        let mut frame = frame_with_layout(1, 1, 0, 0, 0);
 
         frame.set_int(IntLocalId(0), int(1));
         frame.set_int(IntLocalId(0), int(2));
+        frame.set_float(FloatLocalId(0), 1.0);
+        frame.set_float(FloatLocalId(0), 2.0);
         frame.set_int_function(IntFunctionLocalId(0), int_function_value());
         frame.set_int_function(IntFunctionLocalId(0), other_int_function_value());
+        frame.set_float_function(FloatFunctionLocalId(0), float_function_value());
+        frame.set_float_function(FloatFunctionLocalId(0), other_float_function_value());
 
         assert_eq!(frame.get_int(IntLocalId(0)), int(2));
+        assert_eq!(frame.get_float(FloatLocalId(0)), 2.0);
         assert_eq!(
             frame.get_int_function(IntFunctionLocalId(0)),
             other_int_function_value(),
         );
+        assert_eq!(
+            frame.get_float_function(FloatFunctionLocalId(0)),
+            other_float_function_value(),
+        );
     }
 
-    fn frame_with_layout(ints: usize, strings: usize, bools: usize, nils: usize) -> Frame {
+    fn frame_with_layout(
+        ints: usize,
+        floats: usize,
+        strings: usize,
+        bools: usize,
+        nils: usize,
+    ) -> Frame {
         let mut layout = FrameLayout::default();
         if ints > 0 {
             layout.include_int(IntLocalId(ints - 1));
+        }
+        if floats > 0 {
+            layout.include_float(FloatLocalId(floats - 1));
         }
         if strings > 0 {
             layout.include_string(StringLocalId(strings - 1));
@@ -227,6 +254,7 @@ mod tests {
             layout.include_nil(NilLocalId(nils - 1));
         }
         layout.include_int_function(IntFunctionLocalId(0));
+        layout.include_float_function(FloatFunctionLocalId(0));
         layout.include_string_function(StringFunctionLocalId(0));
         layout.include_bool_function(BoolFunctionLocalId(0));
         layout.include_nil_function(NilFunctionLocalId(0));
@@ -243,6 +271,14 @@ mod tests {
 
     fn other_int_function_value() -> IntFunctionValue {
         IntFunctionValue::new(IntFunctionId(1), vec![ParamLocal::int(IntLocalId(0))])
+    }
+
+    fn float_function_value() -> FloatFunctionValue {
+        FloatFunctionValue::new(FloatFunctionId(0), vec![ParamLocal::float(FloatLocalId(0))])
+    }
+
+    fn other_float_function_value() -> FloatFunctionValue {
+        FloatFunctionValue::new(FloatFunctionId(1), vec![ParamLocal::float(FloatLocalId(0))])
     }
 
     fn string_function_value() -> StringFunctionValue {
