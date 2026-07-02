@@ -80,14 +80,15 @@ impl FunctionReturn {
 mod tests {
     use super::FunctionReturn;
     use crate::plan::{
-        BoolFunctionFunctionId, BoolFunctionId, FunctionFunctionFunctionId, FunctionFunctionId,
-        FunctionType, IntFunctionFunctionId, IntFunctionId, NilFunctionFunctionId, NilFunctionId,
-        ParamLocal, ReturnExprKind, StringFunctionFunctionId, StringFunctionId, ValueType,
+        BoolFunctionFunctionId, BoolFunctionId, FloatFunctionFunctionId, FloatFunctionId,
+        FunctionFunctionFunctionId, FunctionFunctionId, FunctionType, IntFunctionFunctionId,
+        IntFunctionId, NilFunctionFunctionId, NilFunctionId, ParamLocal, ReturnExprKind,
+        StringFunctionFunctionId, StringFunctionId, ValueType,
     };
     use crate::planner::context::FunctionRuntimeIds;
     use crate::planner::dsl::expression::{
-        bool_, bool_function_ref, function_function_ref, int, int_function_ref, nil,
-        nil_function_ref, string, string_function_ref,
+        bool_, bool_function_ref, float, float_function_ref, function_function_ref, int,
+        int_function_ref, nil, nil_function_ref, string, string_function_ref,
     };
 
     #[test]
@@ -107,6 +108,15 @@ mod tests {
                 .kind(),
             ReturnExprKind::String {
                 runtime_id: StringFunctionId(0),
+                ..
+            },
+        ));
+        assert!(matches!(
+            FunctionReturn::from(float(1.5))
+                .build(&mut runtime_ids)
+                .kind(),
+            ReturnExprKind::Float {
+                runtime_id: FloatFunctionId(0),
                 ..
             },
         ));
@@ -142,6 +152,15 @@ mod tests {
                 .kind(),
             ReturnExprKind::StringFunction {
                 runtime_id: StringFunctionFunctionId(0),
+                ..
+            },
+        ));
+        assert!(matches!(
+            FunctionReturn::from(float_function_ref(0, Vec::<ParamLocal>::new()))
+                .build(&mut runtime_ids)
+                .kind(),
+            ReturnExprKind::FloatFunction {
+                runtime_id: FloatFunctionFunctionId(0),
                 ..
             },
         ));
