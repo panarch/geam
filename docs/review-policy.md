@@ -36,9 +36,11 @@ behavior, or a source-visible semantic difference.
 cannot encode in the current plan shape. Adding a new `ExecutionError`
 constructor or invariant kind requires explicit design review.
 
-Tuple element projection may add a narrow `ExecutionError` invariant only after
-the planner preserves the tuple element types in the plan and selects a typed
-expression family for the projected result.
+Tuple projection has one approved execution invariant:
+`ExecutionError::tuple_index_family_mismatch`. It is only for typed tuple-index
+plan evaluation when the runtime tuple value lacks the planner-selected element
+or that element has a different value family. Tuple index validation, profile
+boundaries, and typed-AST margins remain planner responsibilities.
 
 ## Plan Construction Rules
 
