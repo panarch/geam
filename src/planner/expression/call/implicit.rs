@@ -2,8 +2,7 @@ use super::CaptureSubstitution;
 use crate::plan::Expr;
 use crate::planner::context::PlanContext;
 use crate::planner::error::{
-    InvalidCallShapeReason, InvalidPipelineShapeReason, InvalidTypedAstReason,
-    InvalidUseShapeReason, PlanError,
+    InvalidPipelineShapeReason, InvalidTypedAstReason, InvalidUseShapeReason, PlanError,
 };
 use ecow::EcoString;
 use gleam_core::ast::{
@@ -63,13 +62,6 @@ pub(super) fn plan_pipeline_hole_call(
     let (fun, arguments) = pipeline_hole_body_call(body.next())?;
     if body.next().is_some() {
         return Err(invalid_hole_capture());
-    }
-    if arguments.iter().any(|argument| argument.label.is_some()) {
-        return Err(PlanError::InvalidTypedAst {
-            reason: InvalidTypedAstReason::PipelineShape {
-                reason: InvalidPipelineShapeReason::LabelledArguments,
-            },
-        });
     }
     if arguments.iter().any(|argument| argument.implicit.is_some()) {
         return Err(PlanError::InvalidTypedAst {
@@ -132,14 +124,6 @@ fn pipeline_hole_body_call(
 fn normalize_use_call_arguments(
     mut arguments: Vec<GleamCallArg<TypedExpr>>,
 ) -> Result<Vec<GleamCallArg<TypedExpr>>, PlanError> {
-    if arguments.iter().any(|argument| argument.label.is_some()) {
-        return Err(PlanError::InvalidTypedAst {
-            reason: InvalidTypedAstReason::CallShape {
-                reason: InvalidCallShapeReason::LabelledArguments,
-            },
-        });
-    }
-
     let mut callback_index = None;
     for (index, argument) in arguments.iter().enumerate() {
         match argument.implicit {
@@ -209,14 +193,6 @@ fn count_capture_arguments(
 }
 
 fn pipe_argument(arguments: &[GleamCallArg<TypedExpr>]) -> Result<&TypedExpr, PlanError> {
-    if arguments.iter().any(|argument| argument.label.is_some()) {
-        return Err(PlanError::InvalidTypedAst {
-            reason: InvalidTypedAstReason::PipelineShape {
-                reason: InvalidPipelineShapeReason::LabelledArguments,
-            },
-        });
-    }
-
     let mut pipe_argument = None;
     for argument in arguments {
         match argument.implicit {

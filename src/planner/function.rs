@@ -160,8 +160,7 @@ mod tests {
     use crate::planner::plan_module;
     use crate::planner::support::{compile, compile_minimal_module, expect_plan_error};
     use crate::planner::{
-        InvalidFunctionShapeReason, InvalidTypedAstReason, PlanError, UnsupportedArgumentReason,
-        UnsupportedFunctionReason,
+        InvalidFunctionShapeReason, InvalidTypedAstReason, PlanError, UnsupportedFunctionReason,
     };
 
     #[test]
@@ -1357,24 +1356,31 @@ pub fn nil_main() {
     }
 
     #[test]
-    fn reject_profile_labelled_arguments() {
-        assert_eq!(
-            expect_plan_error(
-                r#"
-fn identity(value value: Int) {
+    fn plan_labelled_discard_argument_preserves_param_slot() {
+        let actual = plan_module(compile(
+            r#"
+fn pick(ignored _: Int, value value: Int) {
   value
 }
 
 pub fn main() {
-  identity(1)
+  pick(value: 2, ignored: 1)
 }
 "#,
+        ))
+        .expect("source should plan");
+        let expected = module(
+            "main",
+            function(
+                "main",
+                int_return_tail_call(1, [int_arg(0, int(1)), int_arg(1, int(2))]),
             ),
-            PlanError::UnsupportedArgument {
-                function: "identity".into(),
-                reason: UnsupportedArgumentReason::Labelled,
-            },
+            [function("pick", local_int(1, "value"))
+                .discard_int_param(0)
+                .param_int(1, "value")],
         );
+
+        assert_eq!(actual, expected);
     }
 
     #[test]

@@ -24,8 +24,6 @@ pub enum UnsupportedFunctionReason {
 
 #[derive(Debug, Error, Clone, Copy, PartialEq, Eq)]
 pub enum UnsupportedArgumentReason {
-    #[error("labelled arguments are not supported")]
-    Labelled,
     #[error("argument type is not supported")]
     UnsupportedType,
 }

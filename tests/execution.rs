@@ -114,6 +114,8 @@ mod pipeline {
         float_pipeline,
         tuple_pipeline,
         list_pipeline,
+        labelled_argument,
+        labelled_hole_argument,
         function_value_call,
         anonymous_function_call,
         function_value_hole_call,
@@ -158,6 +160,9 @@ mod functions {
         execution_cases!("functions/argument";
             discard_argument,
             discard_mixed_arguments,
+            labelled_argument,
+            labelled_argument_call,
+            labelled_discard_argument,
             function_value_argument_callback,
             function_value_argument_discard,
             function_value_argument_float,
@@ -210,6 +215,7 @@ mod functions {
             anonymous_list_function,
             anonymous_function_main_returning_function,
             function_capture_literal,
+            function_capture_labelled_argument,
             function_capture_literal_first_argument,
             function_capture_literal_closure,
             function_capture_literal_local_function_value,
@@ -230,6 +236,7 @@ mod functions {
         execution_cases!("functions/use";
             use_no_assignment,
             use_value,
+            use_labelled_argument,
             use_discard_assignment,
             use_multiple_assignments,
             use_nested,
@@ -265,7 +272,6 @@ mod rejection {
 
     mod functions {
         rejection_cases!("functions";
-            labelled_argument,
             generic_function,
             unsupported_argument_type,
             unsupported_function_argument_type,

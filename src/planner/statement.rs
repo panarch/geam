@@ -374,10 +374,11 @@ mod tests {
     use crate::plan::{BoolLocalId, IntLocalId, LocalId, NilLocalId, StringLocalId, ValueType};
     use crate::planner::dsl::{
         bool_, bool_case_int_function, bool_function_ref, call_int_function, capture_int, function,
-        int, int_function_arg, int_function_call_arg, int_function_closure, int_function_ref,
-        int_return_tail_call, let_bool_function_step, let_int_function_step, let_nil_function_step,
-        let_string_function_step, local_bool, local_int, local_int_function, local_nil,
-        local_string, module, module_with_anonymous, nil_function_ref, string_function_ref,
+        int, int_arg, int_function_arg, int_function_call_arg, int_function_closure,
+        int_function_ref, int_return_tail_call, let_bool_function_step, let_int_function_step,
+        let_nil_function_step, let_string_function_step, local_bool, local_int, local_int_function,
+        local_nil, local_string, module, module_with_anonymous, nil_function_ref,
+        string_function_ref,
     };
     use crate::planner::plan_module;
     use crate::planner::support::{compile, compile_minimal_module, dummy_span, expect_plan_error};
@@ -765,6 +766,51 @@ pub fn main() {
                 local_int(0, "value").add_int(local_int(1, "base")),
             )
             .param_int(0, "value")],
+        );
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn plan_use_syntax_with_labelled_provider_argument() {
+        let actual = plan_module(compile(
+            r#"
+fn with_value(value value: Int, continue continue: fn(Int) -> Int) {
+  continue(value)
+}
+
+pub fn main() {
+  use value <- with_value(value: 41)
+  value + 1
+}
+"#,
+        ))
+        .expect("source should plan");
+        let expected = module_with_anonymous(
+            "main",
+            function(
+                "main",
+                int_return_tail_call(
+                    1,
+                    [
+                        int_arg(0, int(41)),
+                        int_function_arg(0, int_function_ref(2, [LocalId::Int(IntLocalId(0))])),
+                    ],
+                ),
+            ),
+            [function(
+                "with_value",
+                call_int_function(
+                    local_int_function(0, "continue", [ValueType::Int]),
+                    [int_function_call_arg(0, local_int(0, "value"))],
+                ),
+            )
+            .param_int(0, "value")
+            .param_int_function(0, "continue", [ValueType::Int])],
+            [
+                function("<anonymous:0>", local_int(0, "value").add_int(int(1)))
+                    .param_int(0, "value"),
+            ],
         );
 
         assert_eq!(actual, expected);

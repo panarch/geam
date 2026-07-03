@@ -41,6 +41,8 @@ pub enum InvalidFunctionShapeReason {
     Anonymous,
     #[error("empty function bodies are not supported")]
     EmptyBody,
+    #[error("labelled function argument")]
+    LabelledArgument,
     #[error("function return type does not match body")]
     ReturnTypeMismatch,
 }
@@ -145,8 +147,6 @@ pub enum InvalidCaseShapeReason {
 pub enum InvalidPipelineShapeReason {
     #[error("invalid hole capture")]
     InvalidHoleCapture,
-    #[error("labelled arguments")]
-    LabelledArguments,
     #[error("missing pipe argument")]
     MissingPipeArgument,
     #[error("multiple pipe arguments")]

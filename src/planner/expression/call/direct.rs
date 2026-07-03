@@ -4,7 +4,7 @@ use crate::plan::{
     ListFunctionExpr, NilExpr, RuntimeFunctionId, StringExpr, TupleExpr, TupleFunctionExpr,
     ValueType,
 };
-use crate::planner::context::{FunctionInfo, PlanContext};
+use crate::planner::context::{FunctionInfo, FunctionParam, PlanContext};
 use crate::planner::error::{InvalidCallShapeReason, InvalidTypedAstReason, PlanError};
 use gleam_core::ast::{CallArg as GleamCallArg, TypedExpr};
 use gleam_core::type_::Type;
@@ -38,9 +38,29 @@ pub(super) fn plan_direct_function_call(
             },
         });
     }
+    validate_argument_labels(&arguments, &function.params)?;
     let args = super::argument::plan_call_args(arguments, &function.params, context, capture)?;
 
     Ok(call_expr(function_id, args))
+}
+
+fn validate_argument_labels(
+    arguments: &[GleamCallArg<TypedExpr>],
+    params: &[FunctionParam],
+) -> Result<(), PlanError> {
+    for (argument, param) in arguments.iter().zip(params) {
+        if let Some(label) = &argument.label
+            && param.label.as_ref() != Some(label)
+        {
+            return Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::CallShape {
+                    reason: InvalidCallShapeReason::LabelledArguments,
+                },
+            });
+        }
+    }
+
+    Ok(())
 }
 
 fn call_expr(function: RuntimeFunctionId, args: Vec<CallArg>) -> Expr {
@@ -221,6 +241,36 @@ pub fn main() {
     }
 
     #[test]
+    fn plan_labelled_direct_call_uses_function_param_order() {
+        let actual = plan_module(compile(
+            r#"
+fn add(to base: Int, value amount: Int) {
+  base + amount
+}
+
+pub fn main() {
+  add(value: 2, to: 40)
+}
+"#,
+        ))
+        .expect("source should plan");
+        let expected = module(
+            "main",
+            function(
+                "main",
+                int_return_tail_call(1, [int_arg(0, int(40)), int_arg(1, int(2))]),
+            ),
+            [
+                function("add", local_int(0, "base").add_int(local_int(1, "amount")))
+                    .param_int(0, "base")
+                    .param_int(1, "amount"),
+            ],
+        );
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
     fn reject_margin_direct_local_function_call_shapes() {
         let mut arity_mismatch_call = compile(
             r#"
@@ -351,6 +401,29 @@ pub fn main() {
             typed_int_expr(1),
             InvalidExpressionType::Nil,
             InvalidExpressionType::Int,
+        );
+
+        let mut wrong_label_call = compile(
+            r#"
+fn add(to base: Int, value amount: Int) {
+  base + amount
+}
+
+pub fn main() {
+  add(to: 1, value: 2)
+}
+"#,
+        );
+        let (_, _, arguments) =
+            expect_call_statement_mut(&mut wrong_label_call.definitions.functions[1].body[0]);
+        arguments[0].label = Some("wrong".into());
+        assert_eq!(
+            plan_module(wrong_label_call),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::CallShape {
+                    reason: InvalidCallShapeReason::LabelledArguments,
+                },
+            }),
         );
     }
 
