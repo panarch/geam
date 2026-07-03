@@ -114,8 +114,8 @@ mod tests {
     use crate::planner::plan_module;
     use crate::planner::support::{compile, dummy_span, expect_plan_error};
     use crate::planner::{
-        InvalidCallShapeReason, InvalidPipelineShapeReason, InvalidTypedAstReason, PlanError,
-        UnsupportedExpressionKind, UnsupportedPipelineReason,
+        InvalidCallShapeReason, InvalidExpressionType, InvalidPipelineShapeReason,
+        InvalidTypedAstReason, PlanError, UnsupportedExpressionKind, UnsupportedPipelineReason,
     };
     use gleam_core::ast::{
         ArgNames, CallArg, FunctionLiteralKind, ImplicitCallArgOrigin, PipelineAssignmentKind,
@@ -613,8 +613,11 @@ pub fn main() {
         pipe_argument.value = typed_list_expr();
         assert_eq!(
             plan_module(unsupported_pipe_value),
-            Err(PlanError::UnsupportedExpression {
-                kind: UnsupportedExpressionKind::List,
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionType {
+                    expected: InvalidExpressionType::Int,
+                    actual: InvalidExpressionType::List,
+                },
             }),
         );
 

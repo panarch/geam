@@ -1,12 +1,12 @@
 use super::expression::{
     BoolExpr, BoolFunctionExpr, Expr, FloatExpr, FloatFunctionExpr, FunctionFunctionExpr, IntExpr,
-    IntFunctionExpr, NilExpr, NilFunctionExpr, StringExpr, StringFunctionExpr, TupleExpr,
-    TupleFunctionExpr,
+    IntFunctionExpr, ListExpr, ListFunctionExpr, NilExpr, NilFunctionExpr, StringExpr,
+    StringFunctionExpr, TupleExpr, TupleFunctionExpr,
 };
 use super::id::{
     BoolFunctionLocalId, BoolLocalId, FloatFunctionLocalId, FloatLocalId, FunctionFunctionLocalId,
-    IntFunctionLocalId, IntLocalId, NilFunctionLocalId, NilLocalId, StringFunctionLocalId,
-    StringLocalId, TupleFunctionLocalId, TupleLocalId,
+    IntFunctionLocalId, IntLocalId, ListFunctionLocalId, ListLocalId, NilFunctionLocalId,
+    NilLocalId, StringFunctionLocalId, StringLocalId, TupleFunctionLocalId, TupleLocalId,
 };
 use ecow::EcoString;
 
@@ -47,6 +47,11 @@ pub(crate) enum StepKind {
         name: EcoString,
         value: TupleExpr,
     },
+    LetList {
+        local: ListLocalId,
+        name: EcoString,
+        value: ListExpr,
+    },
     LetIntFunction {
         local: IntFunctionLocalId,
         name: EcoString,
@@ -76,6 +81,11 @@ pub(crate) enum StepKind {
         local: TupleFunctionLocalId,
         name: EcoString,
         value: TupleFunctionExpr,
+    },
+    LetListFunction {
+        local: ListFunctionLocalId,
+        name: EcoString,
+        value: ListFunctionExpr,
     },
     LetFunctionFunction {
         local: FunctionFunctionLocalId,
@@ -119,6 +129,12 @@ impl Step {
     pub(crate) fn let_tuple(local: TupleLocalId, name: EcoString, value: TupleExpr) -> Self {
         Self {
             kind: StepKind::LetTuple { local, name, value },
+        }
+    }
+
+    pub(crate) fn let_list(local: ListLocalId, name: EcoString, value: ListExpr) -> Self {
+        Self {
+            kind: StepKind::LetList { local, name, value },
         }
     }
 
@@ -179,6 +195,16 @@ impl Step {
     ) -> Self {
         Self {
             kind: StepKind::LetTupleFunction { local, name, value },
+        }
+    }
+
+    pub(crate) fn let_list_function(
+        local: ListFunctionLocalId,
+        name: EcoString,
+        value: ListFunctionExpr,
+    ) -> Self {
+        Self {
+            kind: StepKind::LetListFunction { local, name, value },
         }
     }
 

@@ -81,6 +81,8 @@ pub enum InvalidExpressionType {
     Nil,
     #[error("Tuple")]
     Tuple,
+    #[error("List")]
+    List,
     #[error("Function")]
     Function,
 }

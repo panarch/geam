@@ -1,7 +1,7 @@
-use super::{Bool, Float, Int, Nil, String, Tuple};
+use super::{Bool, Float, Int, List, Nil, String, Tuple};
 use crate::plan::{
-    BoolExpr, BoolLocalId, FloatExpr, FloatLocalId, IntExpr, IntLocalId, NilExpr, NilLocalId,
-    StringExpr, StringLocalId, TupleExpr, TupleLocalId, ValueType,
+    BoolExpr, BoolLocalId, FloatExpr, FloatLocalId, IntExpr, IntLocalId, ListExpr, ListLocalId,
+    NilExpr, NilLocalId, StringExpr, StringLocalId, TupleExpr, TupleLocalId, ValueType,
 };
 use ecow::EcoString;
 
@@ -37,12 +37,26 @@ pub(crate) fn local_tuple(
     ))
 }
 
+pub(crate) fn local_list(
+    index: usize,
+    name: impl Into<EcoString>,
+    element_type: ValueType,
+) -> List {
+    List(ListExpr::local_get(
+        ListLocalId(index),
+        name.into(),
+        element_type,
+    ))
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{local_bool, local_float, local_int, local_nil, local_string, local_tuple};
+    use super::{
+        local_bool, local_float, local_int, local_list, local_nil, local_string, local_tuple,
+    };
     use crate::plan::{
-        BoolExprKind, FloatExprKind, IntExprKind, NilExprKind, StringExprKind, TupleExprKind,
-        ValueType,
+        BoolExprKind, FloatExprKind, IntExprKind, ListExprKind, NilExprKind, StringExprKind,
+        TupleExprKind, ValueType,
     };
 
     #[test]
@@ -70,6 +84,10 @@ mod tests {
         assert!(matches!(
             local_tuple(0, "x", [ValueType::Int]).0.kind(),
             TupleExprKind::LocalGet { .. },
+        ));
+        assert!(matches!(
+            local_list(0, "x", ValueType::Int).0.kind(),
+            ListExprKind::LocalGet { .. },
         ));
     }
 }

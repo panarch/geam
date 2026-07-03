@@ -1395,8 +1395,8 @@ pub fn main() -> Int
         assert_eq!(
             expect_plan_error(
                 r#"
-pub fn main() {
-  [1]
+pub fn main() -> BitArray {
+  <<>>
 }
 "#,
             ),

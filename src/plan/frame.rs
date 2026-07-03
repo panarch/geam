@@ -7,8 +7,8 @@ mod step;
 use super::function::{Param, ParamLocal, ReturnExpr};
 use super::id::{
     BoolFunctionLocalId, BoolLocalId, FloatFunctionLocalId, FloatLocalId, FunctionFunctionLocalId,
-    IntFunctionLocalId, IntLocalId, NilFunctionLocalId, NilLocalId, StringFunctionLocalId,
-    StringLocalId, TupleFunctionLocalId, TupleLocalId,
+    IntFunctionLocalId, IntLocalId, ListFunctionLocalId, ListLocalId, NilFunctionLocalId,
+    NilLocalId, StringFunctionLocalId, StringLocalId, TupleFunctionLocalId, TupleLocalId,
 };
 use super::step::Step;
 
@@ -20,12 +20,14 @@ pub(crate) struct FrameLayout {
     bools: usize,
     nils: usize,
     tuples: usize,
+    lists: usize,
     int_functions: usize,
     float_functions: usize,
     string_functions: usize,
     bool_functions: usize,
     nil_functions: usize,
     tuple_functions: usize,
+    list_functions: usize,
     function_functions: usize,
 }
 
@@ -54,12 +56,14 @@ impl FrameLayout {
             ParamLocal::Bool(local) => self.include_bool(*local),
             ParamLocal::Nil(local) => self.include_nil(*local),
             ParamLocal::Tuple { local, .. } => self.include_tuple(*local),
+            ParamLocal::List { local, .. } => self.include_list(*local),
             ParamLocal::IntFunction { local, .. } => self.include_int_function(*local),
             ParamLocal::FloatFunction { local, .. } => self.include_float_function(*local),
             ParamLocal::StringFunction { local, .. } => self.include_string_function(*local),
             ParamLocal::BoolFunction { local, .. } => self.include_bool_function(*local),
             ParamLocal::NilFunction { local, .. } => self.include_nil_function(*local),
             ParamLocal::TupleFunction { local, .. } => self.include_tuple_function(*local),
+            ParamLocal::ListFunction { local, .. } => self.include_list_function(*local),
             ParamLocal::FunctionFunction { local, .. } => self.include_function_function(*local),
         }
     }
@@ -88,6 +92,10 @@ impl FrameLayout {
         self.tuples = self.tuples.max(local.0 + 1);
     }
 
+    pub(crate) fn include_list(&mut self, local: ListLocalId) {
+        self.lists = self.lists.max(local.0 + 1);
+    }
+
     pub(crate) fn include_int_function(&mut self, local: IntFunctionLocalId) {
         self.int_functions = self.int_functions.max(local.0 + 1);
     }
@@ -110,6 +118,10 @@ impl FrameLayout {
 
     pub(crate) fn include_tuple_function(&mut self, local: TupleFunctionLocalId) {
         self.tuple_functions = self.tuple_functions.max(local.0 + 1);
+    }
+
+    pub(crate) fn include_list_function(&mut self, local: ListFunctionLocalId) {
+        self.list_functions = self.list_functions.max(local.0 + 1);
     }
 
     pub(crate) fn include_function_function(&mut self, local: FunctionFunctionLocalId) {
@@ -141,6 +153,10 @@ impl FrameLayout {
         self.tuples
     }
 
+    pub(crate) fn lists(self) -> usize {
+        self.lists
+    }
+
     pub(crate) fn int_functions(self) -> usize {
         self.int_functions
     }
@@ -163,6 +179,10 @@ impl FrameLayout {
 
     pub(crate) fn tuple_functions(self) -> usize {
         self.tuple_functions
+    }
+
+    pub(crate) fn list_functions(self) -> usize {
+        self.list_functions
     }
 
     pub(crate) fn function_functions(self) -> usize {
@@ -240,7 +260,7 @@ mod tests {
         assert_eq!(layout, cloned);
         assert_eq!(
             format!("{layout:?}"),
-            "FrameLayout { ints: 0, floats: 0, strings: 0, bools: 0, nils: 0, tuples: 0, int_functions: 0, float_functions: 0, string_functions: 0, bool_functions: 0, nil_functions: 0, tuple_functions: 0, function_functions: 0 }",
+            "FrameLayout { ints: 0, floats: 0, strings: 0, bools: 0, nils: 0, tuples: 0, lists: 0, int_functions: 0, float_functions: 0, string_functions: 0, bool_functions: 0, nil_functions: 0, tuple_functions: 0, list_functions: 0, function_functions: 0 }",
         );
     }
 

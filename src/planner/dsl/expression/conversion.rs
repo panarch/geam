@@ -1,11 +1,13 @@
 use super::{
     Bool, BoolFunction, Float, FloatFunction, Function, FunctionFunction, Int, IntFunction,
-    IntoParamLocal, IntoValueType, Nil, NilFunction, String, StringFunction, Tuple, TupleFunction,
+    IntoParamLocal, IntoValueType, List, ListFunction, Nil, NilFunction, String, StringFunction,
+    Tuple, TupleFunction,
 };
 use crate::plan::{
     BoolExpr, BoolFunctionExpr, Expr, FloatExpr, FloatFunctionExpr, FunctionExpr,
-    FunctionFunctionExpr, IntExpr, IntFunctionExpr, LocalId, NilExpr, NilFunctionExpr, ParamLocal,
-    StringExpr, StringFunctionExpr, TupleExpr, TupleFunctionExpr, ValueType,
+    FunctionFunctionExpr, IntExpr, IntFunctionExpr, ListExpr, ListFunctionExpr, LocalId, NilExpr,
+    NilFunctionExpr, ParamLocal, StringExpr, StringFunctionExpr, TupleExpr, TupleFunctionExpr,
+    ValueType,
 };
 
 impl From<Int> for Expr {
@@ -41,6 +43,12 @@ impl From<Nil> for Expr {
 impl From<Tuple> for Expr {
     fn from(value: Tuple) -> Self {
         Self::tuple(value.into())
+    }
+}
+
+impl From<List> for Expr {
+    fn from(value: List) -> Self {
+        Self::list(value.into())
     }
 }
 
@@ -82,6 +90,12 @@ impl From<Nil> for NilExpr {
 
 impl From<Tuple> for TupleExpr {
     fn from(value: Tuple) -> Self {
+        value.0
+    }
+}
+
+impl From<List> for ListExpr {
+    fn from(value: List) -> Self {
         value.0
     }
 }
@@ -182,9 +196,33 @@ impl From<TupleFunction> for TupleFunctionExpr {
     }
 }
 
+impl From<ListFunction> for ListFunctionExpr {
+    fn from(value: ListFunction) -> Self {
+        value.0
+    }
+}
+
 impl From<TupleFunction> for Function {
     fn from(value: TupleFunction) -> Self {
         Function(FunctionExpr::tuple(value.into()))
+    }
+}
+
+impl From<ListFunction> for Function {
+    fn from(value: ListFunction) -> Self {
+        Function(FunctionExpr::list(value.into()))
+    }
+}
+
+impl From<ListFunction> for Expr {
+    fn from(value: ListFunction) -> Self {
+        Self::function(FunctionExpr::list(value.into()))
+    }
+}
+
+impl From<ListFunction> for FunctionExpr {
+    fn from(value: ListFunction) -> Self {
+        FunctionExpr::list(value.into())
     }
 }
 
@@ -275,7 +313,7 @@ mod tests {
     };
     use crate::planner::dsl::expression::{
         Function, bool_, float, float_function_ref, function_function_ref, int, int_function_ref,
-        nil, string, tuple, tuple_function_ref,
+        list, list_function_ref, nil, string, tuple, tuple_function_ref,
     };
 
     #[test]
@@ -318,7 +356,20 @@ mod tests {
             ExprKind::Tuple(_),
         ));
         assert!(matches!(
+            Expr::from(list([int(1)], ValueType::Int)).kind(),
+            ExprKind::List(_),
+        ));
+        assert!(matches!(
             Expr::from(int_function_ref(0, Vec::<ParamLocal>::new())).kind(),
+            ExprKind::Function(_),
+        ));
+        assert!(matches!(
+            Expr::from(list_function_ref(
+                0,
+                Vec::<ParamLocal>::new(),
+                ValueType::Int
+            ))
+            .kind(),
             ExprKind::Function(_),
         ));
         assert!(matches!(
@@ -339,6 +390,15 @@ mod tests {
             FunctionExprKind::Tuple(_),
         ));
         assert!(matches!(
+            FunctionExpr::from(list_function_ref(
+                0,
+                Vec::<ParamLocal>::new(),
+                ValueType::Int
+            ))
+            .kind(),
+            FunctionExprKind::List(_),
+        ));
+        assert!(matches!(
             FunctionExpr::from(Function::from(float_function_ref(
                 0,
                 Vec::<ParamLocal>::new()
@@ -354,6 +414,15 @@ mod tests {
             )))
             .kind(),
             FunctionExprKind::Tuple(_),
+        ));
+        assert!(matches!(
+            FunctionExpr::from(Function::from(list_function_ref(
+                0,
+                Vec::<ParamLocal>::new(),
+                ValueType::Int,
+            )))
+            .kind(),
+            FunctionExprKind::List(_),
         ));
         assert!(matches!(
             FunctionExpr::from(Function::from(function_function_ref(

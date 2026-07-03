@@ -2,6 +2,6 @@ pub fn main() {
   1
 }
 
-fn values() {
-  [1]
+fn values() -> BitArray {
+  <<>>
 }

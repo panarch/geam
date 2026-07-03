@@ -8,16 +8,16 @@ pub(in crate::runtime) use steps::execute_steps;
 use crate::plan::{
     BoolFunctionFunctionId, BoolFunctionId, CallArg, ExecutionPlan, FloatFunctionFunctionId,
     FloatFunctionId, FunctionFunctionFunctionId, FunctionFunctionValue, FunctionReturnFamily,
-    FunctionValue, IntFunctionFunctionId, IntFunctionId, NilFunctionFunctionId, NilFunctionId,
-    RuntimeFunctionId, StringFunctionFunctionId, StringFunctionId, TupleFunctionFunctionId,
-    TupleFunctionId, Value,
+    FunctionValue, IntFunctionFunctionId, IntFunctionId, ListFunctionFunctionId, ListFunctionId,
+    NilFunctionFunctionId, NilFunctionId, RuntimeFunctionId, StringFunctionFunctionId,
+    StringFunctionId, TupleFunctionFunctionId, TupleFunctionId, Value,
 };
 use crate::runtime::ExecutionError;
 use crate::runtime::error::ExecutionResult;
 use crate::runtime::expression::{
     eval_bool_function_expr, eval_float_function_expr, eval_function_function_expr,
-    eval_int_function_expr, eval_nil_function_expr, eval_string_function_expr,
-    eval_tuple_function_expr,
+    eval_int_function_expr, eval_list_function_expr, eval_nil_function_expr,
+    eval_string_function_expr, eval_tuple_function_expr,
 };
 use crate::runtime::frame::Frame;
 use bind::{bind_arguments, bind_function_value_arguments};
@@ -25,9 +25,9 @@ use ecow::EcoString;
 use num_bigint::BigInt;
 use return_body::{
     run_bool_function_loop, run_bool_loop, run_float_function_loop, run_float_loop,
-    run_function_function_loop, run_int_function_loop, run_int_loop, run_nil_function_loop,
-    run_nil_loop, run_string_function_loop, run_string_loop, run_tuple_function_loop,
-    run_tuple_loop,
+    run_function_function_loop, run_int_function_loop, run_int_loop, run_list_function_loop,
+    run_list_loop, run_nil_function_loop, run_nil_loop, run_string_function_loop, run_string_loop,
+    run_tuple_function_loop, run_tuple_loop,
 };
 
 pub(super) fn run_main(plan: &ExecutionPlan) -> ExecutionResult<Value> {
@@ -50,6 +50,9 @@ pub(super) fn run_main(plan: &ExecutionPlan) -> ExecutionResult<Value> {
         }
         RuntimeFunctionId::Tuple { id, .. } => {
             run_tuple_call(plan, id, &[], &mut caller_frame).map(Value::Tuple)
+        }
+        RuntimeFunctionId::List { id, .. } => {
+            run_list_call(plan, id, &[], &mut caller_frame).map(Value::List)
         }
         RuntimeFunctionId::Function { id, .. } => {
             run_function_returning_function_call(plan, id, &[], &mut caller_frame)
@@ -148,6 +151,21 @@ pub(super) fn run_tuple_call(
     run_tuple_loop(plan, function, frame)
 }
 
+pub(super) fn run_list_call(
+    plan: &ExecutionPlan,
+    function: ListFunctionId,
+    args: &[CallArg],
+    caller_frame: &mut Frame,
+) -> ExecutionResult<crate::plan::ListValue> {
+    let frame = bind_arguments(
+        plan,
+        args,
+        caller_frame,
+        plan.list_function(function).frame_layout(),
+    )?;
+    run_list_loop(plan, function, frame)
+}
+
 pub(in crate::runtime) fn run_int_function_call(
     plan: &ExecutionPlan,
     function: &crate::plan::IntFunctionExpr,
@@ -230,6 +248,20 @@ pub(in crate::runtime) fn run_tuple_function_call(
     let frame =
         bind_function_value_arguments(plan, args, caller_frame, frame_layout, function.captures())?;
     run_tuple_loop(plan, function.runtime_id(), frame)
+}
+
+pub(in crate::runtime) fn run_list_function_call(
+    plan: &ExecutionPlan,
+    function: &crate::plan::ListFunctionExpr,
+    args: &[CallArg],
+    caller_frame: &mut Frame,
+) -> ExecutionResult<crate::plan::ListValue> {
+    let function = eval_list_function_expr(plan, caller_frame, function)?;
+    let runtime_function = plan.list_function(function.runtime_id());
+    let frame_layout = runtime_function.frame_layout();
+    let frame =
+        bind_function_value_arguments(plan, args, caller_frame, frame_layout, function.captures())?;
+    run_list_loop(plan, function.runtime_id(), frame)
 }
 
 pub(in crate::runtime) fn run_int_function_returning_function_call(
@@ -320,6 +352,21 @@ pub(in crate::runtime) fn run_tuple_function_returning_function_call(
         plan.tuple_function_function(function).frame_layout(),
     )?;
     run_tuple_function_loop(plan, function, frame)
+}
+
+pub(in crate::runtime) fn run_list_function_returning_function_call(
+    plan: &ExecutionPlan,
+    function: ListFunctionFunctionId,
+    args: &[CallArg],
+    caller_frame: &mut Frame,
+) -> ExecutionResult<crate::plan::ListFunctionValue> {
+    let frame = bind_arguments(
+        plan,
+        args,
+        caller_frame,
+        plan.list_function_function(function).frame_layout(),
+    )?;
+    run_list_function_loop(plan, function, frame)
 }
 
 pub(in crate::runtime) fn run_function_function_returning_function_call(
@@ -464,6 +511,27 @@ pub(in crate::runtime) fn run_tuple_function_function_call(
     run_tuple_function_loop(plan, function_id, frame)
 }
 
+pub(in crate::runtime) fn run_list_function_function_call(
+    plan: &ExecutionPlan,
+    function: &crate::plan::FunctionFunctionExpr,
+    args: &[CallArg],
+    caller_frame: &mut Frame,
+) -> ExecutionResult<crate::plan::ListFunctionValue> {
+    let function = eval_function_function_expr(plan, caller_frame, function)?;
+    let runtime_id = function.runtime_id();
+    let function_id = runtime_id
+        .list()
+        .ok_or(ExecutionError::function_return_family_mismatch(
+            FunctionReturnFamily::List,
+            runtime_id.family(),
+        ))?;
+    let runtime_function = plan.list_function_function(function_id);
+    let frame_layout = runtime_function.frame_layout();
+    let frame =
+        bind_function_value_arguments(plan, args, caller_frame, frame_layout, function.captures())?;
+    run_list_function_loop(plan, function_id, frame)
+}
+
 pub(in crate::runtime) fn run_function_function_function_call(
     plan: &ExecutionPlan,
     function: &crate::plan::FunctionFunctionExpr,
@@ -516,6 +584,10 @@ fn run_function_returning_function_call(
             run_tuple_function_returning_function_call(plan, function, args, caller_frame)
                 .map(Into::into)
         }
+        crate::plan::FunctionFunctionId::List(function) => {
+            run_list_function_returning_function_call(plan, function, args, caller_frame)
+                .map(Into::into)
+        }
         crate::plan::FunctionFunctionId::Function(function) => {
             run_function_function_returning_function_call(plan, function, args, caller_frame)
                 .map(Into::into)
@@ -531,12 +603,13 @@ mod tests {
         run_float_function_function_call, run_float_function_returning_function_call,
         run_function_function_function_call, run_function_function_returning_function_call,
         run_function_returning_function_call, run_int_call, run_int_function_call,
-        run_int_function_function_call, run_int_function_returning_function_call, run_main,
-        run_nil_call, run_nil_function_call, run_nil_function_function_call,
-        run_nil_function_returning_function_call, run_string_call, run_string_function_call,
-        run_string_function_function_call, run_string_function_returning_function_call,
-        run_tuple_call, run_tuple_function_call, run_tuple_function_function_call,
-        run_tuple_function_returning_function_call,
+        run_int_function_function_call, run_int_function_returning_function_call, run_list_call,
+        run_list_function_call, run_list_function_function_call,
+        run_list_function_returning_function_call, run_main, run_nil_call, run_nil_function_call,
+        run_nil_function_function_call, run_nil_function_returning_function_call, run_string_call,
+        run_string_function_call, run_string_function_function_call,
+        run_string_function_returning_function_call, run_tuple_call, run_tuple_function_call,
+        run_tuple_function_function_call, run_tuple_function_returning_function_call,
     };
     use crate::plan::{
         BoolExpr, BoolFunctionExpr, BoolFunctionFunctionId, BoolFunctionId, BoolFunctionValue,
@@ -545,11 +618,13 @@ mod tests {
         FunctionExprKind, FunctionFunctionExpr, FunctionFunctionFunctionId, FunctionFunctionId,
         FunctionFunctionLocalId, FunctionFunctionValue, FunctionId, FunctionPlan,
         FunctionReturnFamily, FunctionType, FunctionValue, IntExpr, IntFunctionExpr,
-        IntFunctionFunctionId, IntFunctionId, IntFunctionValue, IntLocalId, NilExpr,
-        NilFunctionExpr, NilFunctionFunctionId, NilFunctionId, NilFunctionValue, NilLocalId,
-        ParamLocal, ReturnExpr, RuntimeFunctionId, Step, StringExpr, StringFunctionExpr,
-        StringFunctionFunctionId, StringFunctionId, StringFunctionValue, StringLocalId, TupleExpr,
-        TupleFunctionExpr, TupleFunctionFunctionId, TupleFunctionId, TupleFunctionValue, ValueType,
+        IntFunctionFunctionId, IntFunctionId, IntFunctionValue, IntLocalId, ListExpr,
+        ListFunctionExpr, ListFunctionFunctionId, ListFunctionId, ListFunctionValue, ListValue,
+        NilExpr, NilFunctionExpr, NilFunctionFunctionId, NilFunctionId, NilFunctionValue,
+        NilLocalId, ParamLocal, ReturnBody, ReturnExpr, RuntimeFunctionId, Step, StringExpr,
+        StringFunctionExpr, StringFunctionFunctionId, StringFunctionId, StringFunctionValue,
+        StringLocalId, TupleExpr, TupleFunctionExpr, TupleFunctionFunctionId, TupleFunctionId,
+        TupleFunctionValue, ValueType,
     };
     use crate::runtime::frame::Frame;
     use crate::runtime::{ExecutionError, Value, run_src};
@@ -618,6 +693,16 @@ mod tests {
             FunctionReturnFamily::Tuple,
             FunctionReturnFamily::Int,
         );
+        assert_function_return_family_mismatch(
+            run_list_function_function_call(
+                &plan,
+                &function_function_expr(FunctionFunctionId::Int(IntFunctionFunctionId(0))),
+                &[],
+                &mut Frame::default(),
+            ),
+            FunctionReturnFamily::List,
+            FunctionReturnFamily::Int,
+        );
         assert_expected_function_got_int(run_function_function_function_call(
             &plan,
             &function_function_expr(FunctionFunctionId::Int(IntFunctionFunctionId(0))),
@@ -671,6 +756,14 @@ fn get_nil() {
   nil_identity
 }
 
+fn get_list() {
+  list_identity
+}
+
+fn list_identity(value: List(Int)) {
+  value
+}
+
 fn get_get_int() {
   get_int
 }
@@ -683,10 +776,11 @@ pub fn main() {
   let int_ok = get_int()(1) + get_get_get_int()()()(2) == 3
   let float_ok = get_float()(1.5) == 1.5
   let bool_ok = get_bool()(True)
+  let list_ok = get_list()([1]) == [1]
 
   get_nil()(Nil)
 
-  case int_ok && float_ok && bool_ok {
+  case int_ok && float_ok && bool_ok && list_ok {
     True -> get_string()("ge") <> get_string()("am")
     False -> "bad"
   }
@@ -787,6 +881,29 @@ pub fn main() {
         assert_eq!(
             run_src(
                 r#"
+fn identity(value: List(Int)) {
+  value
+}
+
+pub fn main() {
+  identity
+}
+"#,
+            ),
+            Value::Function(FunctionValue::new(
+                RuntimeFunctionId::List {
+                    id: ListFunctionId(0),
+                    return_type: Box::new(ValueType::Int),
+                },
+                vec![ParamLocal::list(
+                    crate::plan::ListLocalId(0),
+                    ValueType::Int
+                )],
+            )),
+        );
+        assert_eq!(
+            run_src(
+                r#"
 fn add_one(value: Int) {
   value + 1
 }
@@ -875,6 +992,16 @@ pub fn main() {
             Ok(ValueType::Tuple(vec![ValueType::Int])),
         );
         assert_eq!(
+            run_list_function_function_call(
+                &plan,
+                &function_function_expr(FunctionFunctionId::List(ListFunctionFunctionId(0))),
+                &[],
+                &mut Frame::default(),
+            )
+            .map(|value| value.type_().return_().clone()),
+            Ok(ValueType::List(Box::new(ValueType::Int))),
+        );
+        assert_eq!(
             run_function_function_function_call(
                 &plan,
                 &function_function_expr(FunctionFunctionId::Function(FunctionFunctionFunctionId(
@@ -918,6 +1045,10 @@ pub fn main() {
         assert_eq!(
             run_tuple_call(&plan, TupleFunctionId(0), &[], &mut Frame::default()),
             Ok(vec![Value::Int(1.into())]),
+        );
+        assert_eq!(
+            run_list_call(&plan, ListFunctionId(0), &[], &mut Frame::default()),
+            Ok(ListValue::new(ValueType::Int, vec![Value::Int(1.into())])),
         );
     }
 
@@ -996,6 +1127,26 @@ pub fn main() {
             Ok(ValueType::Tuple(vec![ValueType::Int])),
         );
         assert_eq!(
+            run_list_function_returning_function_call(
+                &plan,
+                ListFunctionFunctionId(0),
+                &[],
+                &mut Frame::default(),
+            )
+            .map(|value| value.type_().return_().clone()),
+            Ok(ValueType::List(Box::new(ValueType::Int))),
+        );
+        assert_eq!(
+            run_function_returning_function_call(
+                &plan,
+                FunctionFunctionId::List(ListFunctionFunctionId(0)),
+                &[],
+                &mut Frame::default(),
+            )
+            .map(|value| value.type_().return_().clone()),
+            Ok(ValueType::List(Box::new(ValueType::Int))),
+        );
+        assert_eq!(
             run_function_returning_function_call(
                 &plan,
                 FunctionFunctionId::Tuple(TupleFunctionFunctionId(0)),
@@ -1060,6 +1211,12 @@ pub fn main() {
             &[failing_function_function_arg()],
             &mut Frame::default(),
         ));
+        assert_expected_function_got_int(run_list_call(
+            &plan,
+            ListFunctionId(0),
+            &[failing_function_function_arg()],
+            &mut Frame::default(),
+        ));
     }
 
     #[test]
@@ -1099,6 +1256,12 @@ pub fn main() {
         assert_expected_function_got_int(run_tuple_function_returning_function_call(
             &plan,
             TupleFunctionFunctionId(0),
+            &[failing_function_function_arg()],
+            &mut Frame::default(),
+        ));
+        assert_expected_function_got_int(run_list_function_returning_function_call(
+            &plan,
+            ListFunctionFunctionId(0),
             &[failing_function_function_arg()],
             &mut Frame::default(),
         ));
@@ -1145,6 +1308,12 @@ pub fn main() {
             &[],
             &mut Frame::default(),
         ));
+        assert_expected_function_got_int(run_list_function_function_call(
+            &plan,
+            &expression,
+            &[],
+            &mut Frame::default(),
+        ));
         assert_expected_function_got_int(run_function_function_function_call(
             &plan,
             &expression,
@@ -1181,6 +1350,17 @@ pub fn main() {
                     vec![Expr::int(IntExpr::value(1.into()))],
                     vec![ValueType::Int],
                 ),
+            ),
+        )));
+        assert_expected_function_got_int(run_main(&plan_with_main(
+            steps.clone(),
+            ReturnExpr::list_body(
+                ListFunctionId(0),
+                ValueType::Int,
+                ReturnBody::expr(ListExpr::value(
+                    vec![Expr::int(IntExpr::value(1.into()))],
+                    ValueType::Int,
+                )),
             ),
         )));
         assert_expected_function_got_int(run_main(&plan_with_main(
@@ -1249,6 +1429,16 @@ pub fn main() {
                 failing_function_function_expr(),
                 Vec::new(),
                 FunctionType::new(Vec::new(), ValueType::Tuple(vec![ValueType::Int])),
+            ),
+            &[],
+            &mut Frame::default(),
+        ));
+        assert_expected_function_got_int(run_list_function_call(
+            &plan,
+            &ListFunctionExpr::function_call(
+                failing_function_function_expr(),
+                Vec::new(),
+                FunctionType::new(Vec::new(), ValueType::List(Box::new(ValueType::Int))),
             ),
             &[],
             &mut Frame::default(),
@@ -1322,8 +1512,9 @@ pub fn main() {
                 function_plan(4, "bool_function", steps.clone(), bool_function_expr()),
                 function_plan(5, "nil_function", steps.clone(), nil_function_expr()),
                 function_plan(6, "tuple_function", steps.clone(), tuple_function_expr()),
+                function_plan(7, "list_function", steps.clone(), list_function_expr()),
                 function_plan(
-                    7,
+                    8,
                     "function_function",
                     steps,
                     function_function_expr_value(),
@@ -1391,20 +1582,34 @@ pub fn main() {
                     FunctionId::new(4),
                     "nil".into(),
                     Vec::new(),
-                    steps,
+                    steps.clone(),
                     ReturnExpr::nil(NilFunctionId(0), NilExpr::value()),
                 ),
                 FunctionPlan::new(
                     FunctionId::new(5),
                     "tuple".into(),
                     Vec::new(),
-                    Vec::new(),
+                    steps.clone(),
                     ReturnExpr::tuple(
                         TupleFunctionId(0),
                         TupleExpr::value(
                             vec![Expr::int(IntExpr::value(1.into()))],
                             vec![ValueType::Int],
                         ),
+                    ),
+                ),
+                FunctionPlan::new(
+                    FunctionId::new(6),
+                    "list".into(),
+                    Vec::new(),
+                    steps,
+                    ReturnExpr::list_body(
+                        ListFunctionId(0),
+                        ValueType::Int,
+                        ReturnBody::expr(ListExpr::value(
+                            vec![Expr::int(IntExpr::value(1.into()))],
+                            ValueType::Int,
+                        )),
                     ),
                 ),
             ],
@@ -1445,6 +1650,9 @@ pub fn main() {
             }
             FunctionExprKind::Tuple(return_) => {
                 ReturnExpr::tuple_function(TupleFunctionFunctionId(0), return_)
+            }
+            FunctionExprKind::List(return_) => {
+                ReturnExpr::list_function(crate::plan::ListFunctionFunctionId(0), return_)
             }
             FunctionExprKind::Function(return_) => {
                 ReturnExpr::function_function(FunctionFunctionFunctionId(0), return_)
@@ -1492,6 +1700,14 @@ pub fn main() {
             TupleFunctionId(0),
             Vec::new(),
             vec![ValueType::Int],
+        )))
+    }
+
+    fn list_function_expr() -> FunctionExpr {
+        FunctionExpr::list(ListFunctionExpr::value(ListFunctionValue::new(
+            ListFunctionId(0),
+            Vec::new(),
+            ValueType::Int,
         )))
     }
 

@@ -1,7 +1,7 @@
 use super::{
     BoolExpr, BoolFunctionExpr, FloatExpr, FloatFunctionExpr, FunctionFunctionExpr, IntExpr,
-    IntFunctionExpr, NilExpr, NilFunctionExpr, StringExpr, StringFunctionExpr, TupleExpr,
-    TupleFunctionExpr,
+    IntFunctionExpr, ListExpr, ListFunctionExpr, NilExpr, NilFunctionExpr, StringExpr,
+    StringFunctionExpr, TupleExpr, TupleFunctionExpr,
 };
 use ecow::EcoString;
 use num_bigint::BigInt;
@@ -32,6 +32,10 @@ pub(crate) enum BoolCaseBranches {
         true_: TupleExpr,
         false_: TupleExpr,
     },
+    List {
+        true_: ListExpr,
+        false_: ListExpr,
+    },
     IntFunction {
         true_: IntFunctionExpr,
         false_: IntFunctionExpr,
@@ -55,6 +59,10 @@ pub(crate) enum BoolCaseBranches {
     TupleFunction {
         true_: TupleFunctionExpr,
         false_: TupleFunctionExpr,
+    },
+    ListFunction {
+        true_: ListFunctionExpr,
+        false_: ListFunctionExpr,
     },
     FunctionFunction {
         true_: FunctionFunctionExpr,
@@ -88,6 +96,10 @@ pub(crate) enum IntCaseBranches {
         clauses: Vec<(BigInt, TupleExpr)>,
         fallback: TupleExpr,
     },
+    List {
+        clauses: Vec<(BigInt, ListExpr)>,
+        fallback: ListExpr,
+    },
     IntFunction {
         clauses: Vec<(BigInt, IntFunctionExpr)>,
         fallback: IntFunctionExpr,
@@ -111,6 +123,10 @@ pub(crate) enum IntCaseBranches {
     TupleFunction {
         clauses: Vec<(BigInt, TupleFunctionExpr)>,
         fallback: TupleFunctionExpr,
+    },
+    ListFunction {
+        clauses: Vec<(BigInt, ListFunctionExpr)>,
+        fallback: ListFunctionExpr,
     },
     FunctionFunction {
         clauses: Vec<(BigInt, FunctionFunctionExpr)>,
@@ -144,6 +160,10 @@ pub(crate) enum StringCaseBranches {
         clauses: Vec<(EcoString, TupleExpr)>,
         fallback: TupleExpr,
     },
+    List {
+        clauses: Vec<(EcoString, ListExpr)>,
+        fallback: ListExpr,
+    },
     IntFunction {
         clauses: Vec<(EcoString, IntFunctionExpr)>,
         fallback: IntFunctionExpr,
@@ -167,6 +187,10 @@ pub(crate) enum StringCaseBranches {
     TupleFunction {
         clauses: Vec<(EcoString, TupleFunctionExpr)>,
         fallback: TupleFunctionExpr,
+    },
+    ListFunction {
+        clauses: Vec<(EcoString, ListFunctionExpr)>,
+        fallback: ListFunctionExpr,
     },
     FunctionFunction {
         clauses: Vec<(EcoString, FunctionFunctionExpr)>,
@@ -200,6 +224,10 @@ pub(crate) enum FloatCaseBranches {
         clauses: Vec<(f64, TupleExpr)>,
         fallback: TupleExpr,
     },
+    List {
+        clauses: Vec<(f64, ListExpr)>,
+        fallback: ListExpr,
+    },
     IntFunction {
         clauses: Vec<(f64, IntFunctionExpr)>,
         fallback: IntFunctionExpr,
@@ -223,6 +251,10 @@ pub(crate) enum FloatCaseBranches {
     TupleFunction {
         clauses: Vec<(f64, TupleFunctionExpr)>,
         fallback: TupleFunctionExpr,
+    },
+    ListFunction {
+        clauses: Vec<(f64, ListFunctionExpr)>,
+        fallback: ListFunctionExpr,
     },
     FunctionFunction {
         clauses: Vec<(f64, FunctionFunctionExpr)>,

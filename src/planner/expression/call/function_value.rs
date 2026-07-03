@@ -103,6 +103,14 @@ fn function_call_expr(
             ))),
             None => Err(function_call_return_type_mismatch()),
         },
+        ValueType::List(return_type) => match function.into_list() {
+            Some(function) => Ok(Expr::list(crate::plan::ListExpr::function_call(
+                function,
+                args,
+                *return_type,
+            ))),
+            None => Err(function_call_return_type_mismatch()),
+        },
         ValueType::Function(return_type) => match function.into_function() {
             Some(function) => Ok(function_returning_function_value_call_expr(
                 function,
@@ -145,6 +153,9 @@ fn function_returning_function_value_call_expr(
         )),
         ValueType::Tuple(_) => Expr::function(FunctionExpr::tuple(
             crate::plan::TupleFunctionExpr::function_call(function, args, return_type),
+        )),
+        ValueType::List(_) => Expr::function(FunctionExpr::list(
+            crate::plan::ListFunctionExpr::function_call(function, args, return_type),
         )),
         ValueType::Function(_) => Expr::function(FunctionExpr::function(
             FunctionFunctionExpr::function_call(function, args, return_type),
@@ -522,7 +533,7 @@ pub fn main() {
         let (type_, _, _) = expect_call_statement_mut(
             &mut unsupported_return_type_call.definitions.functions[1].body[1],
         );
-        *type_ = type_::list(type_::int());
+        *type_ = type_::bit_array();
         assert_eq!(
             plan_module(unsupported_return_type_call),
             Err(PlanError::InvalidTypedAst {
@@ -799,6 +810,22 @@ pub fn main() {
             .value_type(),
             ValueType::Tuple(vec![ValueType::Int]),
         );
+        assert_eq!(
+            function_call_expr(
+                FunctionExpr::from(function_ref(
+                    RuntimeFunctionId::List {
+                        id: crate::plan::ListFunctionId(0),
+                        return_type: Box::new(ValueType::Int),
+                    },
+                    Vec::<ParamLocal>::new(),
+                )),
+                Vec::new(),
+                ValueType::List(Box::new(ValueType::Int)),
+            )
+            .expect("list function call")
+            .value_type(),
+            ValueType::List(Box::new(ValueType::Int)),
+        );
 
         let returned_function_type = FunctionType::new(vec![ValueType::Int], ValueType::Int);
         assert_eq!(
@@ -845,6 +872,13 @@ pub fn main() {
                 FunctionType::new(
                     vec![ValueType::Tuple(vec![ValueType::Int])],
                     ValueType::Tuple(vec![ValueType::Int]),
+                ),
+            ),
+            (
+                FunctionFunctionId::List(crate::plan::ListFunctionFunctionId(0)),
+                FunctionType::new(
+                    vec![ValueType::List(Box::new(ValueType::Int))],
+                    ValueType::List(Box::new(ValueType::Int)),
                 ),
             ),
             (
@@ -948,6 +982,14 @@ pub fn main() {
                 FunctionExpr::from(int_function_ref(0, Vec::<ParamLocal>::new())),
                 Vec::new(),
                 ValueType::Function(Box::new(FunctionType::new(Vec::new(), ValueType::Int))),
+            ),
+            Err(function_call_return_type_mismatch()),
+        );
+        assert_eq!(
+            function_call_expr(
+                FunctionExpr::from(int_function_ref(0, Vec::<ParamLocal>::new())),
+                Vec::new(),
+                ValueType::List(Box::new(ValueType::Int)),
             ),
             Err(function_call_return_type_mismatch()),
         );

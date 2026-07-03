@@ -4,9 +4,9 @@ use num_bigint::BigInt;
 use super::{
     BoolFunctionId, BoolFunctionLocalId, BoolLocalId, FloatFunctionId, FloatFunctionLocalId,
     FloatLocalId, FunctionFunctionId, FunctionFunctionLocalId, IntFunctionId, IntFunctionLocalId,
-    IntLocalId, NilFunctionId, NilFunctionLocalId, NilLocalId, ParamLocal, RuntimeFunctionId,
-    StringFunctionId, StringFunctionLocalId, StringLocalId, TupleFunctionId, TupleFunctionLocalId,
-    TupleLocalId,
+    IntLocalId, ListFunctionId, ListFunctionLocalId, ListLocalId, NilFunctionId,
+    NilFunctionLocalId, NilLocalId, ParamLocal, RuntimeFunctionId, StringFunctionId,
+    StringFunctionLocalId, StringLocalId, TupleFunctionId, TupleFunctionLocalId, TupleLocalId,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -17,6 +17,7 @@ pub enum ValueType {
     Bool,
     Nil,
     Tuple(Vec<ValueType>),
+    List(Box<ValueType>),
     Function(Box<FunctionType>),
 }
 
@@ -32,6 +33,12 @@ pub struct FunctionValue {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct ListValue {
+    element_type: Box<ValueType>,
+    values: Vec<Value>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub(crate) enum FunctionValueKind {
     Int(IntFunctionValue),
     Float(FloatFunctionValue),
@@ -39,6 +46,7 @@ pub(crate) enum FunctionValueKind {
     Bool(BoolFunctionValue),
     Nil(NilFunctionValue),
     Tuple(TupleFunctionValue),
+    List(ListFunctionValue),
     Function(FunctionFunctionValue),
 }
 
@@ -86,6 +94,14 @@ pub(crate) struct TupleFunctionValue {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub(crate) struct ListFunctionValue {
+    runtime_id: ListFunctionId,
+    params: Vec<ParamLocal>,
+    captures: Vec<CaptureValue>,
+    return_type: ValueType,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub(crate) struct FunctionFunctionValue {
     runtime_id: FunctionFunctionId,
     params: Vec<ParamLocal>,
@@ -123,6 +139,10 @@ pub(crate) enum CaptureValueKind {
         local: TupleLocalId,
         value: Vec<Value>,
     },
+    List {
+        local: ListLocalId,
+        value: ListValue,
+    },
     IntFunction {
         local: IntFunctionLocalId,
         value: IntFunctionValue,
@@ -147,6 +167,10 @@ pub(crate) enum CaptureValueKind {
         local: TupleFunctionLocalId,
         value: TupleFunctionValue,
     },
+    ListFunction {
+        local: ListFunctionLocalId,
+        value: ListFunctionValue,
+    },
     FunctionFunction {
         local: FunctionFunctionLocalId,
         value: FunctionFunctionValue,
@@ -161,6 +185,7 @@ pub enum Value {
     Bool(bool),
     Nil,
     Tuple(Vec<Value>),
+    List(ListValue),
     Function(FunctionValue),
 }
 
@@ -173,8 +198,26 @@ impl Value {
             Self::Bool(_) => ValueType::Bool,
             Self::Nil => ValueType::Nil,
             Self::Tuple(values) => ValueType::Tuple(values.iter().map(Self::value_type).collect()),
+            Self::List(value) => ValueType::List(Box::new(value.element_type().clone())),
             Self::Function(value) => ValueType::Function(Box::new(value.type_())),
         }
+    }
+}
+
+impl ListValue {
+    pub fn new(element_type: ValueType, values: Vec<Value>) -> Self {
+        Self {
+            element_type: Box::new(element_type),
+            values,
+        }
+    }
+
+    pub fn element_type(&self) -> &ValueType {
+        &self.element_type
+    }
+
+    pub fn values(&self) -> &[Value] {
+        &self.values
     }
 }
 
@@ -228,6 +271,9 @@ impl FunctionValue {
             RuntimeFunctionId::Tuple { id, return_type } => FunctionValueKind::Tuple(
                 TupleFunctionValue::new_with_captures(id, params, captures, return_type),
             ),
+            RuntimeFunctionId::List { id, return_type } => FunctionValueKind::List(
+                ListFunctionValue::new_with_captures(id, params, captures, *return_type),
+            ),
             RuntimeFunctionId::Function { id, return_type } => FunctionValueKind::Function(
                 FunctionFunctionValue::new_with_captures(id, params, captures, return_type),
             ),
@@ -244,6 +290,7 @@ impl FunctionValue {
             FunctionValueKind::Bool(value) => value.type_(),
             FunctionValueKind::Nil(value) => value.type_(),
             FunctionValueKind::Tuple(value) => value.type_(),
+            FunctionValueKind::List(value) => value.type_(),
             FunctionValueKind::Function(value) => value.type_(),
         }
     }
@@ -261,6 +308,7 @@ impl FunctionValue {
             FunctionValueKind::Bool(value) => value.params(),
             FunctionValueKind::Nil(value) => value.params(),
             FunctionValueKind::Tuple(value) => value.params(),
+            FunctionValueKind::List(value) => value.params(),
             FunctionValueKind::Function(value) => value.params(),
         }
     }
@@ -488,6 +536,51 @@ impl TupleFunctionValue {
     }
 }
 
+impl ListFunctionValue {
+    #[cfg(test)]
+    pub(crate) fn new(
+        runtime_id: ListFunctionId,
+        params: Vec<ParamLocal>,
+        return_type: ValueType,
+    ) -> Self {
+        Self::new_with_captures(runtime_id, params, Vec::new(), return_type)
+    }
+
+    pub(crate) fn new_with_captures(
+        runtime_id: ListFunctionId,
+        params: Vec<ParamLocal>,
+        captures: Vec<CaptureValue>,
+        return_type: ValueType,
+    ) -> Self {
+        Self {
+            runtime_id,
+            params,
+            captures,
+            return_type,
+        }
+    }
+
+    pub(crate) fn type_(&self) -> FunctionType {
+        FunctionType::from_params(
+            &self.params,
+            ValueType::List(Box::new(self.return_type.clone())),
+        )
+    }
+
+    pub(crate) fn runtime_id(&self) -> ListFunctionId {
+        self.runtime_id
+    }
+
+    pub(crate) fn captures(&self) -> &[CaptureValue] {
+        &self.captures
+    }
+
+    #[cfg(test)]
+    pub(crate) fn params(&self) -> &[ParamLocal] {
+        &self.params
+    }
+}
+
 impl FunctionFunctionValue {
     #[cfg(test)]
     pub(crate) fn new(
@@ -570,6 +663,12 @@ impl CaptureValue {
         }
     }
 
+    pub(crate) fn list(local: ListLocalId, value: ListValue) -> Self {
+        Self {
+            kind: CaptureValueKind::List { local, value },
+        }
+    }
+
     pub(crate) fn int_function(local: IntFunctionLocalId, value: IntFunctionValue) -> Self {
         Self {
             kind: CaptureValueKind::IntFunction { local, value },
@@ -606,6 +705,12 @@ impl CaptureValue {
     pub(crate) fn tuple_function(local: TupleFunctionLocalId, value: TupleFunctionValue) -> Self {
         Self {
             kind: CaptureValueKind::TupleFunction { local, value },
+        }
+    }
+
+    pub(crate) fn list_function(local: ListFunctionLocalId, value: ListFunctionValue) -> Self {
+        Self {
+            kind: CaptureValueKind::ListFunction { local, value },
         }
     }
 
@@ -671,6 +776,14 @@ impl From<TupleFunctionValue> for FunctionValue {
     }
 }
 
+impl From<ListFunctionValue> for FunctionValue {
+    fn from(value: ListFunctionValue) -> Self {
+        Self {
+            kind: FunctionValueKind::List(value),
+        }
+    }
+}
+
 impl From<FunctionFunctionValue> for FunctionValue {
     fn from(value: FunctionFunctionValue) -> Self {
         Self {
@@ -683,14 +796,15 @@ impl From<FunctionFunctionValue> for FunctionValue {
 mod tests {
     use super::{
         BoolFunctionValue, CaptureValue, CaptureValueKind, FloatFunctionValue,
-        FunctionFunctionValue, FunctionType, FunctionValue, IntFunctionValue, NilFunctionValue,
-        StringFunctionValue, TupleFunctionValue, Value, ValueType,
+        FunctionFunctionValue, FunctionType, FunctionValue, IntFunctionValue, ListFunctionValue,
+        ListValue, NilFunctionValue, StringFunctionValue, TupleFunctionValue, Value, ValueType,
     };
     use crate::plan::{
         BoolFunctionId, BoolFunctionLocalId, BoolLocalId, FloatFunctionId, FloatFunctionLocalId,
         FloatLocalId, FunctionFunctionId, FunctionValueKind, IntFunctionFunctionId, IntFunctionId,
-        IntLocalId, NilFunctionId, NilLocalId, ParamLocal, RuntimeFunctionId, StringFunctionId,
-        StringLocalId, TupleFunctionId, TupleFunctionLocalId, TupleLocalId,
+        IntLocalId, ListFunctionId, ListFunctionLocalId, ListLocalId, NilFunctionId, NilLocalId,
+        ParamLocal, RuntimeFunctionId, StringFunctionId, StringLocalId, TupleFunctionId,
+        TupleFunctionLocalId, TupleLocalId,
     };
 
     #[test]
@@ -702,6 +816,10 @@ mod tests {
         assert_eq!(
             Value::Tuple(vec![Value::Int(1.into()), Value::String("one".into())]).value_type(),
             ValueType::Tuple(vec![ValueType::Int, ValueType::String]),
+        );
+        assert_eq!(
+            Value::List(ListValue::new(ValueType::Int, vec![Value::Int(1.into())])).value_type(),
+            ValueType::List(Box::new(ValueType::Int)),
         );
     }
 
@@ -738,6 +856,8 @@ mod tests {
         let nil: FunctionValue = NilFunctionValue::new(NilFunctionId(0), Vec::new()).into();
         let tuple: FunctionValue =
             TupleFunctionValue::new(TupleFunctionId(0), Vec::new(), vec![ValueType::Int]).into();
+        let list: FunctionValue =
+            ListFunctionValue::new(ListFunctionId(0), Vec::new(), ValueType::Int).into();
         let function: FunctionValue = FunctionFunctionValue::new(
             FunctionFunctionId::Int(IntFunctionFunctionId(0)),
             Vec::new(),
@@ -754,6 +874,10 @@ mod tests {
             tuple.type_().return_(),
             &ValueType::Tuple(vec![ValueType::Int])
         );
+        assert_eq!(
+            list.type_().return_(),
+            &ValueType::List(Box::new(ValueType::Int)),
+        );
         assert!(matches!(function.type_().return_(), ValueType::Function(_)));
     }
 
@@ -769,8 +893,10 @@ mod tests {
                 bool_param(0),
                 nil_param(0),
                 tuple_param(0),
+                list_param(0),
                 ParamLocal::float_function(FloatFunctionLocalId(0), argument_function.clone()),
                 ParamLocal::tuple_function(TupleFunctionLocalId(0), argument_function.clone()),
+                ParamLocal::list_function(ListFunctionLocalId(0), argument_function.clone()),
                 ParamLocal::bool_function(BoolFunctionLocalId(0), argument_function.clone()),
             ],
         );
@@ -785,6 +911,8 @@ mod tests {
                     ValueType::Bool,
                     ValueType::Nil,
                     ValueType::Tuple(vec![ValueType::Int]),
+                    ValueType::List(Box::new(ValueType::Int)),
+                    ValueType::Function(Box::new(argument_function.clone())),
                     ValueType::Function(Box::new(argument_function.clone())),
                     ValueType::Function(Box::new(argument_function.clone())),
                     ValueType::Function(Box::new(argument_function)),
@@ -833,6 +961,13 @@ mod tests {
             },
             params.clone(),
         );
+        let list = FunctionValue::new(
+            RuntimeFunctionId::List {
+                id: ListFunctionId(0),
+                return_type: Box::new(ValueType::Int),
+            },
+            params.clone(),
+        );
         let function = FunctionValue::new(
             RuntimeFunctionId::Function {
                 id: FunctionFunctionId::Int(IntFunctionFunctionId(0)),
@@ -847,6 +982,7 @@ mod tests {
         assert_eq!(bool.params(), params);
         assert_eq!(nil.params(), params);
         assert_eq!(tuple.params(), params);
+        assert_eq!(list.params(), params);
         assert_eq!(function.params(), params);
         assert!(matches!(int.kind(), FunctionValueKind::Int(_)));
     }
@@ -883,6 +1019,24 @@ mod tests {
         ));
     }
 
+    #[test]
+    fn capture_value_preserves_list_shapes() {
+        let list = CaptureValue::list(
+            ListLocalId(0),
+            ListValue::new(ValueType::Int, vec![Value::Int(1.into())]),
+        );
+        assert!(matches!(list.kind(), CaptureValueKind::List { .. }));
+
+        let function = CaptureValue::list_function(
+            ListFunctionLocalId(0),
+            ListFunctionValue::new(ListFunctionId(0), vec![list_param(0)], ValueType::Int),
+        );
+        assert!(matches!(
+            function.kind(),
+            CaptureValueKind::ListFunction { .. }
+        ));
+    }
+
     fn int_param(index: usize) -> ParamLocal {
         ParamLocal::int(IntLocalId(index))
     }
@@ -905,5 +1059,9 @@ mod tests {
 
     fn tuple_param(index: usize) -> ParamLocal {
         ParamLocal::tuple(TupleLocalId(index), vec![ValueType::Int])
+    }
+
+    fn list_param(index: usize) -> ParamLocal {
+        ParamLocal::list(ListLocalId(index), ValueType::Int)
     }
 }

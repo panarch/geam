@@ -54,6 +54,8 @@ pub enum UnsupportedPatternKind {
     Assign,
     #[error("tuple")]
     Tuple,
+    #[error("list")]
+    List,
 }
 
 #[derive(Debug, Error, Clone, Copy, PartialEq, Eq)]
@@ -64,8 +66,10 @@ pub enum UnsupportedExpressionKind {
     Echo,
     #[error("function capture literal")]
     FunctionCaptureLiteral,
-    #[error("list")]
-    List,
+    #[error("list spread")]
+    ListSpread,
+    #[error("list element type is not supported")]
+    UnsupportedListElementType,
     #[error("panic")]
     Panic,
     #[error("todo")]

@@ -2,9 +2,9 @@ use crate::plan::{ExecutionPlan, StepKind};
 use crate::runtime::error::ExecutionResult;
 use crate::runtime::expression::{
     eval_bool_expr, eval_bool_function_expr, eval_expr, eval_float_expr, eval_float_function_expr,
-    eval_function_function_expr, eval_int_expr, eval_int_function_expr, eval_nil_expr,
-    eval_nil_function_expr, eval_string_expr, eval_string_function_expr, eval_tuple_expr,
-    eval_tuple_function_expr,
+    eval_function_function_expr, eval_int_expr, eval_int_function_expr, eval_list_expr,
+    eval_list_function_expr, eval_nil_expr, eval_nil_function_expr, eval_string_expr,
+    eval_string_function_expr, eval_tuple_expr, eval_tuple_function_expr,
 };
 use crate::runtime::frame::Frame;
 
@@ -39,6 +39,10 @@ pub(in crate::runtime) fn execute_steps(
                 let value = eval_tuple_expr(plan, frame, value)?;
                 frame.set_tuple(*local, value);
             }
+            StepKind::LetList { local, value, .. } => {
+                let value = eval_list_expr(plan, frame, value)?;
+                frame.set_list(*local, value);
+            }
             StepKind::LetIntFunction { local, value, .. } => {
                 let value = eval_int_function_expr(plan, frame, value)?;
                 frame.set_int_function(*local, value);
@@ -62,6 +66,10 @@ pub(in crate::runtime) fn execute_steps(
             StepKind::LetTupleFunction { local, value, .. } => {
                 let value = eval_tuple_function_expr(plan, frame, value)?;
                 frame.set_tuple_function(*local, value);
+            }
+            StepKind::LetListFunction { local, value, .. } => {
+                let value = eval_list_function_expr(plan, frame, value)?;
+                frame.set_list_function(*local, value);
             }
             StepKind::LetFunctionFunction { local, value, .. } => {
                 let value = eval_function_function_expr(plan, frame, value)?;

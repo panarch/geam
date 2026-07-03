@@ -25,6 +25,9 @@ pub struct NilLocalId(pub(crate) usize);
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TupleLocalId(pub(crate) usize);
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ListLocalId(pub(crate) usize);
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct IntFunctionLocalId(pub(crate) usize);
 
@@ -44,6 +47,9 @@ pub struct NilFunctionLocalId(pub(crate) usize);
 pub struct TupleFunctionLocalId(pub(crate) usize);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct ListFunctionLocalId(pub(crate) usize);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct FunctionFunctionLocalId(pub(crate) usize);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -59,6 +65,10 @@ pub(crate) enum RuntimeFunctionId {
     Tuple {
         id: TupleFunctionId,
         return_type: Vec<crate::plan::ValueType>,
+    },
+    List {
+        id: ListFunctionId,
+        return_type: Box<crate::plan::ValueType>,
     },
     Function {
         id: FunctionFunctionId,
@@ -85,6 +95,9 @@ pub struct NilFunctionId(pub(crate) usize);
 pub struct TupleFunctionId(pub(crate) usize);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ListFunctionId(pub(crate) usize);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum FunctionFunctionId {
     Int(IntFunctionFunctionId),
     Float(FloatFunctionFunctionId),
@@ -92,6 +105,7 @@ pub(crate) enum FunctionFunctionId {
     Bool(BoolFunctionFunctionId),
     Nil(NilFunctionFunctionId),
     Tuple(TupleFunctionFunctionId),
+    List(ListFunctionFunctionId),
     Function(FunctionFunctionFunctionId),
 }
 
@@ -103,6 +117,7 @@ pub(crate) enum FunctionReturnFamily {
     Bool,
     Nil,
     Tuple,
+    List,
     Function,
 }
 
@@ -123,6 +138,9 @@ pub struct NilFunctionFunctionId(pub(crate) usize);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TupleFunctionFunctionId(pub(crate) usize);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ListFunctionFunctionId(pub(crate) usize);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct FunctionFunctionFunctionId(pub(crate) usize);
@@ -159,6 +177,7 @@ impl FunctionFunctionId {
             Self::Bool(_) => FunctionReturnFamily::Bool,
             Self::Nil(_) => FunctionReturnFamily::Nil,
             Self::Tuple(_) => FunctionReturnFamily::Tuple,
+            Self::List(_) => FunctionReturnFamily::List,
             Self::Function(_) => FunctionReturnFamily::Function,
         }
     }
@@ -205,6 +224,13 @@ impl FunctionFunctionId {
         }
     }
 
+    pub(crate) fn list(self) -> Option<ListFunctionFunctionId> {
+        match self {
+            Self::List(id) => Some(id),
+            _ => None,
+        }
+    }
+
     pub(crate) fn function(self) -> Option<FunctionFunctionFunctionId> {
         match self {
             Self::Function(id) => Some(id),
@@ -222,6 +248,7 @@ impl std::fmt::Display for FunctionReturnFamily {
             Self::Bool => f.write_str("Bool"),
             Self::Nil => f.write_str("Nil"),
             Self::Tuple => f.write_str("Tuple"),
+            Self::List => f.write_str("List"),
             Self::Function => f.write_str("Function"),
         }
     }
@@ -232,9 +259,9 @@ mod tests {
     use super::{
         BoolFunctionFunctionId, BoolFunctionLocalId, FloatFunctionFunctionId, FloatFunctionLocalId,
         FunctionFunctionFunctionId, FunctionFunctionId, FunctionFunctionLocalId, FunctionId,
-        IntFunctionFunctionId, IntFunctionLocalId, NilFunctionFunctionId, NilFunctionLocalId,
-        StringFunctionFunctionId, StringFunctionLocalId, TupleFunctionFunctionId,
-        TupleFunctionLocalId,
+        IntFunctionFunctionId, IntFunctionLocalId, ListFunctionFunctionId, ListFunctionLocalId,
+        NilFunctionFunctionId, NilFunctionLocalId, StringFunctionFunctionId, StringFunctionLocalId,
+        TupleFunctionFunctionId, TupleFunctionLocalId,
     };
 
     #[test]
@@ -269,6 +296,10 @@ mod tests {
             "TupleFunctionLocalId(3)"
         );
         assert_eq!(
+            format!("{:?}", ListFunctionLocalId(3)),
+            "ListFunctionLocalId(3)"
+        );
+        assert_eq!(
             format!("{:?}", FunctionFunctionLocalId(3)),
             "FunctionFunctionLocalId(3)"
         );
@@ -301,6 +332,10 @@ mod tests {
             Some(TupleFunctionFunctionId(5)),
         );
         assert_eq!(
+            FunctionFunctionId::List(ListFunctionFunctionId(6)).list(),
+            Some(ListFunctionFunctionId(6)),
+        );
+        assert_eq!(
             FunctionFunctionId::Function(FunctionFunctionFunctionId(6)).function(),
             Some(FunctionFunctionFunctionId(6)),
         );
@@ -330,6 +365,10 @@ mod tests {
         );
         assert_eq!(
             FunctionFunctionId::Int(IntFunctionFunctionId(1)).tuple(),
+            None,
+        );
+        assert_eq!(
+            FunctionFunctionId::Int(IntFunctionFunctionId(1)).list(),
             None,
         );
         assert_eq!(
@@ -365,6 +404,10 @@ mod tests {
             super::FunctionReturnFamily::Tuple,
         );
         assert_eq!(
+            FunctionFunctionId::List(ListFunctionFunctionId(1)).family(),
+            super::FunctionReturnFamily::List,
+        );
+        assert_eq!(
             FunctionFunctionId::Function(FunctionFunctionFunctionId(1)).family(),
             super::FunctionReturnFamily::Function,
         );
@@ -378,6 +421,7 @@ mod tests {
         assert_eq!(super::FunctionReturnFamily::Bool.to_string(), "Bool");
         assert_eq!(super::FunctionReturnFamily::Nil.to_string(), "Nil");
         assert_eq!(super::FunctionReturnFamily::Tuple.to_string(), "Tuple");
+        assert_eq!(super::FunctionReturnFamily::List.to_string(), "List");
         assert_eq!(
             super::FunctionReturnFamily::Function.to_string(),
             "Function"

@@ -1,8 +1,10 @@
+use super::FunctionReturn;
 use crate::plan::{
     BoolFunctionId, BoolReturn, CallArg, FloatFunctionId, FloatReturn, IntFunctionId, IntReturn,
-    NilFunctionId, NilReturn, ReturnBody, Step, StringFunctionId, StringReturn,
+    ListFunctionId, ListReturn, NilFunctionId, NilReturn, ReturnBody, Step, StringFunctionId,
+    StringReturn, ValueType,
 };
-use crate::planner::dsl::expression::{Bool, Float, Int, Nil, String};
+use crate::planner::dsl::expression::{Bool, Float, Int, List, Nil, String};
 use num_bigint::BigInt;
 
 pub(crate) fn int_return_expr(expression: Int) -> IntReturn {
@@ -261,6 +263,74 @@ pub(crate) fn string_return_block(
     ReturnBody::block(steps.into_iter().collect(), return_)
 }
 
+pub(crate) fn list_return_tail_call(
+    function: usize,
+    args: impl IntoIterator<Item = CallArg>,
+) -> ListReturn {
+    ReturnBody::tail_call(ListFunctionId(function), args.into_iter().collect())
+}
+
+pub(crate) fn list_return_expr(expression: List) -> ListReturn {
+    ReturnBody::expr(expression.into())
+}
+
+pub(crate) fn list_return_bool_case(
+    subject: Bool,
+    true_: ListReturn,
+    false_: ListReturn,
+) -> ListReturn {
+    ReturnBody::bool_case(subject.into(), true_, false_)
+}
+
+pub(crate) fn list_return_int_case(
+    subject: Int,
+    clauses: impl IntoIterator<Item = (i64, ListReturn)>,
+    fallback: ListReturn,
+) -> ListReturn {
+    ReturnBody::int_case(
+        subject.into(),
+        clauses
+            .into_iter()
+            .map(|(value, branch)| (BigInt::from(value), branch))
+            .collect(),
+        fallback,
+    )
+}
+
+pub(crate) fn list_return_string_case(
+    subject: String,
+    clauses: impl IntoIterator<Item = (&'static str, ListReturn)>,
+    fallback: ListReturn,
+) -> ListReturn {
+    ReturnBody::string_case(
+        subject.into(),
+        clauses
+            .into_iter()
+            .map(|(value, branch)| (value.into(), branch))
+            .collect(),
+        fallback,
+    )
+}
+
+pub(crate) fn list_return_float_case(
+    subject: Float,
+    clauses: impl IntoIterator<Item = (f64, ListReturn)>,
+    fallback: ListReturn,
+) -> ListReturn {
+    ReturnBody::float_case(subject.into(), clauses.into_iter().collect(), fallback)
+}
+
+pub(crate) fn list_return_block(
+    steps: impl IntoIterator<Item = Step>,
+    return_: ListReturn,
+) -> ListReturn {
+    ReturnBody::block(steps.into_iter().collect(), return_)
+}
+
+pub(crate) fn return_list(element_type: ValueType, body: ListReturn) -> FunctionReturn {
+    FunctionReturn::List { element_type, body }
+}
+
 pub(crate) fn nil_return_tail_call(
     function: usize,
     args: impl IntoIterator<Item = CallArg>,
@@ -333,13 +403,15 @@ mod tests {
         float_return_bool_case, float_return_expr, float_return_float_case, float_return_int_case,
         float_return_string_case, float_return_tail_call, int_return_block, int_return_bool_case,
         int_return_expr, int_return_float_case, int_return_int_case, int_return_string_case,
-        int_return_tail_call, nil_return_block, nil_return_bool_case, nil_return_expr,
+        int_return_tail_call, list_return_block, list_return_bool_case, list_return_expr,
+        list_return_float_case, list_return_int_case, list_return_string_case,
+        list_return_tail_call, nil_return_block, nil_return_bool_case, nil_return_expr,
         nil_return_float_case, nil_return_int_case, nil_return_string_case, nil_return_tail_call,
         string_return_block, string_return_bool_case, string_return_expr, string_return_float_case,
         string_return_int_case, string_return_string_case, string_return_tail_call,
     };
     use crate::plan::{CallArg, ReturnBodyKind, Step};
-    use crate::planner::dsl::expression::{bool_, float, int, nil, string};
+    use crate::planner::dsl::expression::{bool_, float, int, list, nil, string};
 
     #[test]
     fn primitive_return_expr_helpers_build_expr_shapes() {
@@ -361,6 +433,10 @@ mod tests {
         ));
         assert!(matches!(
             nil_return_expr(nil()).kind(),
+            ReturnBodyKind::Expr(_),
+        ));
+        assert!(matches!(
+            list_return_expr(list([int(1)], crate::plan::ValueType::Int)).kind(),
             ReturnBodyKind::Expr(_),
         ));
     }
@@ -385,6 +461,10 @@ mod tests {
         ));
         assert!(matches!(
             nil_return_tail_call(0, Vec::<CallArg>::new()).kind(),
+            ReturnBodyKind::TailCall { .. },
+        ));
+        assert!(matches!(
+            list_return_tail_call(0, Vec::<CallArg>::new()).kind(),
             ReturnBodyKind::TailCall { .. },
         ));
     }
@@ -432,6 +512,15 @@ mod tests {
                 .kind(),
             ReturnBodyKind::BoolCase { .. },
         ));
+        assert!(matches!(
+            list_return_bool_case(
+                bool_(true),
+                list_return_expr(list([int(1)], crate::plan::ValueType::Int)),
+                list_return_expr(list([int(0)], crate::plan::ValueType::Int)),
+            )
+            .kind(),
+            ReturnBodyKind::BoolCase { .. },
+        ));
 
         assert!(matches!(
             int_return_int_case(
@@ -474,6 +563,18 @@ mod tests {
                 int(1),
                 [(1, nil_return_expr(nil()))],
                 nil_return_expr(nil())
+            )
+            .kind(),
+            ReturnBodyKind::IntCase { .. },
+        ));
+        assert!(matches!(
+            list_return_int_case(
+                int(1),
+                [(
+                    1,
+                    list_return_expr(list([int(1)], crate::plan::ValueType::Int))
+                )],
+                list_return_expr(list([int(0)], crate::plan::ValueType::Int)),
             )
             .kind(),
             ReturnBodyKind::IntCase { .. },
@@ -552,6 +653,18 @@ mod tests {
             ReturnBodyKind::StringCase { .. },
         ));
         assert!(matches!(
+            list_return_string_case(
+                string("key"),
+                [(
+                    "one",
+                    list_return_expr(list([int(1)], crate::plan::ValueType::Int))
+                )],
+                list_return_expr(list([int(0)], crate::plan::ValueType::Int)),
+            )
+            .kind(),
+            ReturnBodyKind::StringCase { .. },
+        ));
+        assert!(matches!(
             nil_return_float_case(
                 float(1.0),
                 [(1.0, nil_return_expr(nil()))],
@@ -565,6 +678,18 @@ mod tests {
                 float(1.0),
                 [(1.0, float_return_expr(float(1.0)))],
                 float_return_expr(float(0.0)),
+            )
+            .kind(),
+            ReturnBodyKind::FloatCase { .. },
+        ));
+        assert!(matches!(
+            list_return_float_case(
+                float(1.0),
+                [(
+                    1.0,
+                    list_return_expr(list([int(1)], crate::plan::ValueType::Int))
+                )],
+                list_return_expr(list([int(0)], crate::plan::ValueType::Int)),
             )
             .kind(),
             ReturnBodyKind::FloatCase { .. },
@@ -593,6 +718,14 @@ mod tests {
         ));
         assert!(matches!(
             nil_return_block([step], nil_return_expr(nil())).kind(),
+            ReturnBodyKind::Block { .. },
+        ));
+        assert!(matches!(
+            list_return_block(
+                Vec::<Step>::new(),
+                list_return_expr(list([int(1)], crate::plan::ValueType::Int)),
+            )
+            .kind(),
             ReturnBodyKind::Block { .. },
         ));
     }

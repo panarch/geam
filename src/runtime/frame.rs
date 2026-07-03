@@ -1,9 +1,9 @@
 use crate::plan::{
     BoolFunctionLocalId, BoolFunctionValue, BoolLocalId, FloatFunctionLocalId, FloatFunctionValue,
     FloatLocalId, FrameLayout, FunctionFunctionLocalId, FunctionFunctionValue, IntFunctionLocalId,
-    IntFunctionValue, IntLocalId, NilFunctionLocalId, NilFunctionValue, NilLocalId,
-    StringFunctionLocalId, StringFunctionValue, StringLocalId, TupleFunctionLocalId,
-    TupleFunctionValue, TupleLocalId, Value,
+    IntFunctionValue, IntLocalId, ListFunctionLocalId, ListFunctionValue, ListLocalId, ListValue,
+    NilFunctionLocalId, NilFunctionValue, NilLocalId, StringFunctionLocalId, StringFunctionValue,
+    StringLocalId, TupleFunctionLocalId, TupleFunctionValue, TupleLocalId, Value, ValueType,
 };
 use ecow::EcoString;
 use num_bigint::BigInt;
@@ -15,12 +15,14 @@ pub(super) struct Frame {
     strings: Vec<EcoString>,
     bools: Vec<bool>,
     tuples: Vec<Vec<Value>>,
+    lists: Vec<ListValue>,
     int_functions: HashMap<IntFunctionLocalId, IntFunctionValue>,
     float_functions: HashMap<FloatFunctionLocalId, FloatFunctionValue>,
     string_functions: HashMap<StringFunctionLocalId, StringFunctionValue>,
     bool_functions: HashMap<BoolFunctionLocalId, BoolFunctionValue>,
     nil_functions: HashMap<NilFunctionLocalId, NilFunctionValue>,
     tuple_functions: HashMap<TupleFunctionLocalId, TupleFunctionValue>,
+    list_functions: HashMap<ListFunctionLocalId, ListFunctionValue>,
     function_functions: HashMap<FunctionFunctionLocalId, FunctionFunctionValue>,
 }
 
@@ -32,12 +34,14 @@ impl Frame {
             strings: vec![EcoString::default(); layout.strings()],
             bools: vec![false; layout.bools()],
             tuples: vec![Vec::new(); layout.tuples()],
+            lists: vec![ListValue::new(ValueType::Nil, Vec::new()); layout.lists()],
             int_functions: HashMap::with_capacity(layout.int_functions()),
             float_functions: HashMap::with_capacity(layout.float_functions()),
             string_functions: HashMap::with_capacity(layout.string_functions()),
             bool_functions: HashMap::with_capacity(layout.bool_functions()),
             nil_functions: HashMap::with_capacity(layout.nil_functions()),
             tuple_functions: HashMap::with_capacity(layout.tuple_functions()),
+            list_functions: HashMap::with_capacity(layout.list_functions()),
             function_functions: HashMap::with_capacity(layout.function_functions()),
         }
     }
@@ -84,6 +88,14 @@ impl Frame {
 
     pub(super) fn get_tuple(&self, local: TupleLocalId) -> Vec<Value> {
         self.tuples[local.0].clone()
+    }
+
+    pub(super) fn set_list(&mut self, local: ListLocalId, value: ListValue) {
+        set_slot(&mut self.lists, local.0, value);
+    }
+
+    pub(super) fn get_list(&self, local: ListLocalId) -> ListValue {
+        self.lists[local.0].clone()
     }
 
     pub(super) fn set_int_function(&mut self, local: IntFunctionLocalId, value: IntFunctionValue) {
@@ -148,6 +160,18 @@ impl Frame {
 
     pub(super) fn get_tuple_function(&self, local: TupleFunctionLocalId) -> TupleFunctionValue {
         self.tuple_functions[&local].clone()
+    }
+
+    pub(super) fn set_list_function(
+        &mut self,
+        local: ListFunctionLocalId,
+        value: ListFunctionValue,
+    ) {
+        self.list_functions.insert(local, value);
+    }
+
+    pub(super) fn get_list_function(&self, local: ListFunctionLocalId) -> ListFunctionValue {
+        self.list_functions[&local].clone()
     }
 
     pub(super) fn set_function_function(

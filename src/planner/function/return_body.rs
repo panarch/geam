@@ -3,7 +3,8 @@ use crate::plan::{
     Expr, ExprKind, FloatExpr, FloatExprKind, FloatFunctionExpr, FloatFunctionExprKind,
     FloatFunctionReturn, FloatReturn, FunctionExpr, FunctionExprKind, FunctionFunctionExpr,
     FunctionFunctionExprKind, FunctionFunctionId, FunctionFunctionReturn, IntExpr, IntExprKind,
-    IntFunctionExpr, IntFunctionExprKind, IntFunctionReturn, IntReturn, NilExpr, NilExprKind,
+    IntFunctionExpr, IntFunctionExprKind, IntFunctionReturn, IntReturn, ListExpr, ListExprKind,
+    ListFunctionExpr, ListFunctionExprKind, ListFunctionReturn, ListReturn, NilExpr, NilExprKind,
     NilFunctionExpr, NilFunctionExprKind, NilFunctionReturn, NilReturn, ReturnBody, ReturnExpr,
     RuntimeFunctionId, StringExpr, StringExprKind, StringFunctionExpr, StringFunctionExprKind,
     StringFunctionReturn, StringReturn, TupleExpr, TupleExprKind, TupleFunctionExpr,
@@ -43,6 +44,13 @@ pub(super) fn function_return_expr(
             expected.clone(),
             tuple_return(actual),
         )),
+        (
+            ValueType::List(expected),
+            RuntimeFunctionId::List { id, return_type },
+            ExprKind::List(actual),
+        ) if expected.as_ref() == actual.element_type() && expected == return_type => Ok(
+            ReturnExpr::list_body(*id, expected.as_ref().clone(), list_return(actual)),
+        ),
         (
             ValueType::Function(expected),
             RuntimeFunctionId::Function { id, return_type },
@@ -111,6 +119,14 @@ fn function_returning_function_expr(
                 runtime_id,
                 type_,
                 tuple_function_return(actual),
+            ))
+        }
+        (FunctionFunctionId::List(runtime_id), FunctionExprKind::List(actual)) => {
+            let type_ = actual.type_().clone();
+            Ok(ReturnExpr::list_function_body(
+                runtime_id,
+                type_,
+                list_function_return(actual),
             ))
         }
         (FunctionFunctionId::Function(runtime_id), FunctionExprKind::Function(actual)) => {
@@ -460,6 +476,61 @@ fn tuple_return(expression: TupleExpr) -> TupleReturn {
     }
 }
 
+fn list_return(expression: ListExpr) -> ListReturn {
+    match expression.kind() {
+        ListExprKind::Call { function, args } => ReturnBody::tail_call(*function, args.clone()),
+        ListExprKind::BoolCase {
+            subject,
+            true_,
+            false_,
+        } => ReturnBody::bool_case(
+            (**subject).clone(),
+            list_return((**true_).clone()),
+            list_return((**false_).clone()),
+        ),
+        ListExprKind::IntCase {
+            subject,
+            clauses,
+            fallback,
+        } => ReturnBody::int_case(
+            (**subject).clone(),
+            clauses
+                .iter()
+                .map(|(value, branch)| (value.clone(), list_return(branch.clone())))
+                .collect(),
+            list_return((**fallback).clone()),
+        ),
+        ListExprKind::StringCase {
+            subject,
+            clauses,
+            fallback,
+        } => ReturnBody::string_case(
+            (**subject).clone(),
+            clauses
+                .iter()
+                .map(|(value, branch)| (value.clone(), list_return(branch.clone())))
+                .collect(),
+            list_return((**fallback).clone()),
+        ),
+        ListExprKind::FloatCase {
+            subject,
+            clauses,
+            fallback,
+        } => ReturnBody::float_case(
+            (**subject).clone(),
+            clauses
+                .iter()
+                .map(|(value, branch)| (*value, list_return(branch.clone())))
+                .collect(),
+            list_return((**fallback).clone()),
+        ),
+        ListExprKind::Block { steps, return_ } => {
+            ReturnBody::block(steps.clone(), list_return((**return_).clone()))
+        }
+        _ => ReturnBody::expr(expression),
+    }
+}
+
 fn int_function_return(expression: IntFunctionExpr) -> IntFunctionReturn {
     match expression.kind() {
         IntFunctionExprKind::Call { function, args, .. } => {
@@ -802,6 +873,63 @@ fn tuple_function_return(expression: TupleFunctionExpr) -> TupleFunctionReturn {
     }
 }
 
+fn list_function_return(expression: ListFunctionExpr) -> ListFunctionReturn {
+    match expression.kind() {
+        ListFunctionExprKind::Call { function, args, .. } => {
+            ReturnBody::tail_call(*function, args.clone())
+        }
+        ListFunctionExprKind::BoolCase {
+            subject,
+            true_,
+            false_,
+        } => ReturnBody::bool_case(
+            (**subject).clone(),
+            list_function_return((**true_).clone()),
+            list_function_return((**false_).clone()),
+        ),
+        ListFunctionExprKind::IntCase {
+            subject,
+            clauses,
+            fallback,
+        } => ReturnBody::int_case(
+            (**subject).clone(),
+            clauses
+                .iter()
+                .map(|(value, branch)| (value.clone(), list_function_return(branch.clone())))
+                .collect(),
+            list_function_return((**fallback).clone()),
+        ),
+        ListFunctionExprKind::StringCase {
+            subject,
+            clauses,
+            fallback,
+        } => ReturnBody::string_case(
+            (**subject).clone(),
+            clauses
+                .iter()
+                .map(|(value, branch)| (value.clone(), list_function_return(branch.clone())))
+                .collect(),
+            list_function_return((**fallback).clone()),
+        ),
+        ListFunctionExprKind::FloatCase {
+            subject,
+            clauses,
+            fallback,
+        } => ReturnBody::float_case(
+            (**subject).clone(),
+            clauses
+                .iter()
+                .map(|(value, branch)| (*value, list_function_return(branch.clone())))
+                .collect(),
+            list_function_return((**fallback).clone()),
+        ),
+        ListFunctionExprKind::Block { steps, return_ } => {
+            ReturnBody::block(steps.clone(), list_function_return((**return_).clone()))
+        }
+        _ => ReturnBody::expr(expression),
+    }
+}
+
 fn function_function_return(expression: FunctionFunctionExpr) -> FunctionFunctionReturn {
     match expression.kind() {
         FunctionFunctionExprKind::Call { function, args, .. } => {
@@ -867,10 +995,11 @@ mod tests {
         Expr, FloatExpr, FloatFunctionExpr, FloatFunctionFunctionId, FloatFunctionId,
         FloatFunctionValue, FunctionExpr, FunctionFunctionExpr, FunctionFunctionFunctionId,
         FunctionFunctionId, FunctionFunctionValue, FunctionType, IntExpr, IntFunctionExpr,
-        IntFunctionFunctionId, IntFunctionId, IntFunctionValue, IntLocalId, NilExpr,
-        NilFunctionExpr, NilFunctionFunctionId, NilFunctionId, NilFunctionValue, ParamLocal,
-        ReturnBody, ReturnExpr, RuntimeFunctionId, StringExpr, StringFunctionExpr,
-        StringFunctionFunctionId, StringFunctionId, StringFunctionValue, ValueType,
+        IntFunctionFunctionId, IntFunctionId, IntFunctionValue, IntLocalId, ListFunctionExpr,
+        ListFunctionFunctionId, ListFunctionId, ListFunctionValue, NilExpr, NilFunctionExpr,
+        NilFunctionFunctionId, NilFunctionId, NilFunctionValue, ParamLocal, ReturnBody, ReturnExpr,
+        RuntimeFunctionId, StringExpr, StringFunctionExpr, StringFunctionFunctionId,
+        StringFunctionId, StringFunctionValue, ValueType,
     };
     use crate::planner::{InvalidFunctionShapeReason, InvalidTypedAstReason, PlanError};
     use num_bigint::BigInt;
@@ -1516,6 +1645,140 @@ mod tests {
         );
     }
 
+    #[test]
+    fn function_return_expr_preserves_list_function_return_body_shapes() {
+        let value_type = ValueType::Function(Box::new(list_function_type()));
+        let runtime_id = RuntimeFunctionId::Function {
+            id: FunctionFunctionId::List(ListFunctionFunctionId(0)),
+            return_type: list_function_type(),
+        };
+
+        assert_eq!(
+            function_return_expr(
+                &"list_function_tail_call".into(),
+                &value_type,
+                &runtime_id,
+                Expr::function(FunctionExpr::list(ListFunctionExpr::call(
+                    ListFunctionFunctionId(0),
+                    Vec::new(),
+                    list_function_type(),
+                ))),
+            ),
+            Ok(ReturnExpr::list_function_body(
+                ListFunctionFunctionId(0),
+                list_function_type(),
+                ReturnBody::tail_call(ListFunctionFunctionId(0), Vec::new()),
+            )),
+        );
+        assert_eq!(
+            function_return_expr(
+                &"list_function_bool_case".into(),
+                &value_type,
+                &runtime_id,
+                Expr::function(FunctionExpr::list(ListFunctionExpr::bool_case(
+                    BoolExpr::value(true),
+                    list_function_value(),
+                    list_function_value(),
+                ))),
+            ),
+            Ok(ReturnExpr::list_function_body(
+                ListFunctionFunctionId(0),
+                list_function_type(),
+                ReturnBody::bool_case(
+                    BoolExpr::value(true),
+                    ReturnBody::expr(list_function_value()),
+                    ReturnBody::expr(list_function_value()),
+                ),
+            )),
+        );
+        assert_eq!(
+            function_return_expr(
+                &"list_function_int_case".into(),
+                &value_type,
+                &runtime_id,
+                Expr::function(FunctionExpr::list(ListFunctionExpr::int_case(
+                    IntExpr::value(BigInt::from(1)),
+                    vec![(BigInt::from(1), list_function_value())],
+                    list_function_value(),
+                ))),
+            ),
+            Ok(ReturnExpr::list_function_body(
+                ListFunctionFunctionId(0),
+                list_function_type(),
+                ReturnBody::int_case(
+                    IntExpr::value(BigInt::from(1)),
+                    vec![(BigInt::from(1), ReturnBody::expr(list_function_value()))],
+                    ReturnBody::expr(list_function_value()),
+                ),
+            )),
+        );
+        assert_eq!(
+            function_return_expr(
+                &"list_function_string_case".into(),
+                &value_type,
+                &runtime_id,
+                Expr::function(FunctionExpr::list(ListFunctionExpr::string_case(
+                    StringExpr::value("one".into()),
+                    vec![("one".into(), list_function_value())],
+                    list_function_value(),
+                ))),
+            ),
+            Ok(ReturnExpr::list_function_body(
+                ListFunctionFunctionId(0),
+                list_function_type(),
+                ReturnBody::string_case(
+                    StringExpr::value("one".into()),
+                    vec![("one".into(), ReturnBody::expr(list_function_value()))],
+                    ReturnBody::expr(list_function_value()),
+                ),
+            )),
+        );
+        assert_eq!(
+            function_return_expr(
+                &"list_function_float_case".into(),
+                &value_type,
+                &runtime_id,
+                Expr::function(FunctionExpr::list(ListFunctionExpr::float_case(
+                    FloatExpr::value(1.0),
+                    vec![(1.0, list_function_value())],
+                    list_function_value(),
+                ))),
+            ),
+            Ok(ReturnExpr::list_function_body(
+                ListFunctionFunctionId(0),
+                list_function_type(),
+                ReturnBody::float_case(
+                    FloatExpr::value(1.0),
+                    vec![(1.0, ReturnBody::expr(list_function_value()))],
+                    ReturnBody::expr(list_function_value()),
+                ),
+            )),
+        );
+        assert_eq!(
+            function_return_expr(
+                &"list_function_block".into(),
+                &value_type,
+                &runtime_id,
+                Expr::function(FunctionExpr::list(ListFunctionExpr::block(
+                    vec![crate::plan::Step::evaluate(Expr::float(FloatExpr::value(
+                        1.0,
+                    )))],
+                    list_function_value(),
+                ))),
+            ),
+            Ok(ReturnExpr::list_function_body(
+                ListFunctionFunctionId(0),
+                list_function_type(),
+                ReturnBody::block(
+                    vec![crate::plan::Step::evaluate(Expr::float(FloatExpr::value(
+                        1.0,
+                    )))],
+                    ReturnBody::expr(list_function_value()),
+                ),
+            )),
+        );
+    }
+
     fn int_float_case() -> IntExpr {
         IntExpr::float_case(
             FloatExpr::value(1.0),
@@ -1624,6 +1887,13 @@ mod tests {
         FunctionType::new(vec![ValueType::Float], ValueType::Nil)
     }
 
+    fn list_function_type() -> FunctionType {
+        FunctionType::new(
+            vec![ValueType::Float],
+            ValueType::List(Box::new(ValueType::Float)),
+        )
+    }
+
     fn int_function_value() -> IntFunctionExpr {
         IntFunctionExpr::value(IntFunctionValue::new(
             IntFunctionId(0),
@@ -1656,6 +1926,14 @@ mod tests {
         NilFunctionExpr::value(NilFunctionValue::new(
             NilFunctionId(0),
             vec![ParamLocal::float(crate::plan::FloatLocalId(0))],
+        ))
+    }
+
+    fn list_function_value() -> ListFunctionExpr {
+        ListFunctionExpr::value(ListFunctionValue::new(
+            ListFunctionId(0),
+            vec![ParamLocal::float(crate::plan::FloatLocalId(0))],
+            ValueType::Float,
         ))
     }
 

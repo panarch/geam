@@ -44,13 +44,14 @@ mod tests {
     use super::function;
     use crate::plan::{
         BoolFunctionId, FloatFunctionId, FunctionFunctionId, FunctionId, FunctionType,
-        IntFunctionFunctionId, IntFunctionId, NilFunctionId, ParamLocal, RuntimeFunctionId, Step,
-        StepKind, StringFunctionId, ValueType,
+        IntFunctionFunctionId, IntFunctionId, ListFunctionId, NilFunctionId, ParamLocal,
+        RuntimeFunctionId, Step, StepKind, StringFunctionId, ValueType,
     };
     use crate::planner::context::FunctionRuntimeIds;
     use crate::planner::dsl::expression::{
         bool_, bool_function_ref, float_function_ref, function_function_ref, function_ref, int,
-        int_function_ref, nil, nil_function_ref, string, string_function_ref,
+        int_function_ref, list, list_function_ref, nil, nil_function_ref, string,
+        string_function_ref,
     };
 
     #[test]
@@ -114,16 +115,23 @@ mod tests {
     #[test]
     fn function_dsl_return_function_families() {
         let mut runtime_ids = FunctionRuntimeIds::default();
-        let int_return = function("int", int_function_ref(0, Vec::<ParamLocal>::new()))
+        let list_value_return = function("list_value", list([int(1)], ValueType::Int))
             .build(FunctionId::new(0), &mut runtime_ids);
-        let string_return = function("string", string_function_ref(0, Vec::<ParamLocal>::new()))
+        let int_return = function("int", int_function_ref(0, Vec::<ParamLocal>::new()))
             .build(FunctionId::new(1), &mut runtime_ids);
-        let float_return = function("float", float_function_ref(0, Vec::<ParamLocal>::new()))
+        let string_return = function("string", string_function_ref(0, Vec::<ParamLocal>::new()))
             .build(FunctionId::new(2), &mut runtime_ids);
-        let bool_return = function("bool", bool_function_ref(0, Vec::<ParamLocal>::new()))
+        let float_return = function("float", float_function_ref(0, Vec::<ParamLocal>::new()))
             .build(FunctionId::new(3), &mut runtime_ids);
-        let nil_return = function("nil", nil_function_ref(0, Vec::<ParamLocal>::new()))
+        let bool_return = function("bool", bool_function_ref(0, Vec::<ParamLocal>::new()))
             .build(FunctionId::new(4), &mut runtime_ids);
+        let nil_return = function("nil", nil_function_ref(0, Vec::<ParamLocal>::new()))
+            .build(FunctionId::new(5), &mut runtime_ids);
+        let list_return = function(
+            "list",
+            list_function_ref(0, Vec::<ParamLocal>::new(), ValueType::Int),
+        )
+        .build(FunctionId::new(6), &mut runtime_ids);
         let return_type = FunctionType::new(Vec::new(), ValueType::Int);
         let function_return = function(
             "function",
@@ -133,8 +141,15 @@ mod tests {
                 return_type.clone(),
             ),
         )
-        .build(FunctionId::new(5), &mut runtime_ids);
+        .build(FunctionId::new(7), &mut runtime_ids);
 
+        assert_eq!(
+            list_value_return.return_().runtime_id(),
+            RuntimeFunctionId::List {
+                id: ListFunctionId(0),
+                return_type: Box::new(ValueType::Int),
+            },
+        );
         assert_eq!(
             int_return.return_().runtime_id(),
             RuntimeFunctionId::Function {
@@ -168,6 +183,16 @@ mod tests {
             RuntimeFunctionId::Function {
                 id: FunctionFunctionId::Nil(crate::plan::NilFunctionFunctionId(0)),
                 return_type: FunctionType::new(Vec::new(), ValueType::Nil),
+            },
+        );
+        assert_eq!(
+            list_return.return_().runtime_id(),
+            RuntimeFunctionId::Function {
+                id: FunctionFunctionId::List(crate::plan::ListFunctionFunctionId(0)),
+                return_type: FunctionType::new(
+                    Vec::new(),
+                    ValueType::List(Box::new(ValueType::Int)),
+                ),
             },
         );
         assert_eq!(
@@ -225,6 +250,17 @@ mod tests {
             ),
         )
         .build(FunctionId::new(4), &mut runtime_ids);
+        let list_return = function(
+            "list",
+            function_ref(
+                RuntimeFunctionId::List {
+                    id: ListFunctionId(0),
+                    return_type: Box::new(ValueType::Int),
+                },
+                Vec::<ParamLocal>::new(),
+            ),
+        )
+        .build(FunctionId::new(5), &mut runtime_ids);
         let function_return = function(
             "function",
             function_ref(
@@ -235,7 +271,7 @@ mod tests {
                 Vec::<ParamLocal>::new(),
             ),
         )
-        .build(FunctionId::new(5), &mut runtime_ids);
+        .build(FunctionId::new(6), &mut runtime_ids);
 
         assert_eq!(
             int_return.return_().runtime_id(),
@@ -270,6 +306,16 @@ mod tests {
             RuntimeFunctionId::Function {
                 id: FunctionFunctionId::Nil(crate::plan::NilFunctionFunctionId(0)),
                 return_type: FunctionType::new(Vec::new(), ValueType::Nil),
+            },
+        );
+        assert_eq!(
+            list_return.return_().runtime_id(),
+            RuntimeFunctionId::Function {
+                id: FunctionFunctionId::List(crate::plan::ListFunctionFunctionId(0)),
+                return_type: FunctionType::new(
+                    Vec::new(),
+                    ValueType::List(Box::new(ValueType::Int)),
+                ),
             },
         );
         assert_eq!(

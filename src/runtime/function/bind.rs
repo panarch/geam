@@ -5,9 +5,9 @@ use crate::plan::{
 use crate::runtime::error::ExecutionResult;
 use crate::runtime::expression::{
     eval_bool_expr, eval_bool_function_expr, eval_float_expr, eval_float_function_expr,
-    eval_function_function_expr, eval_int_expr, eval_int_function_expr, eval_nil_expr,
-    eval_nil_function_expr, eval_string_expr, eval_string_function_expr, eval_tuple_expr,
-    eval_tuple_function_expr,
+    eval_function_function_expr, eval_int_expr, eval_int_function_expr, eval_list_expr,
+    eval_list_function_expr, eval_nil_expr, eval_nil_function_expr, eval_string_expr,
+    eval_string_function_expr, eval_tuple_expr, eval_tuple_function_expr,
 };
 use crate::runtime::frame::Frame;
 
@@ -67,6 +67,10 @@ fn bind_arguments_into(
                 let value = eval_tuple_expr(plan, caller_frame, value)?;
                 frame.set_tuple(*local, value);
             }
+            CallArgKind::List { local, value } => {
+                let value = eval_list_expr(plan, caller_frame, value)?;
+                frame.set_list(*local, value);
+            }
             CallArgKind::IntFunction { local, value } => {
                 let value = eval_int_function_expr(plan, caller_frame, value)?;
                 frame.set_int_function(*local, value);
@@ -90,6 +94,10 @@ fn bind_arguments_into(
             CallArgKind::TupleFunction { local, value } => {
                 let value = eval_tuple_function_expr(plan, caller_frame, value)?;
                 frame.set_tuple_function(*local, value);
+            }
+            CallArgKind::ListFunction { local, value } => {
+                let value = eval_list_function_expr(plan, caller_frame, value)?;
+                frame.set_list_function(*local, value);
             }
             CallArgKind::FunctionFunction { local, value } => {
                 let value = eval_function_function_expr(plan, caller_frame, value)?;
@@ -128,6 +136,9 @@ pub(in crate::runtime) fn eval_capture_args(
             CaptureArgKind::Tuple { local, value } => {
                 CaptureValue::tuple(*local, eval_tuple_expr(plan, frame, value)?)
             }
+            CaptureArgKind::List { local, value } => {
+                CaptureValue::list(*local, eval_list_expr(plan, frame, value)?)
+            }
             CaptureArgKind::IntFunction { local, value } => {
                 CaptureValue::int_function(*local, eval_int_function_expr(plan, frame, value)?)
             }
@@ -146,6 +157,9 @@ pub(in crate::runtime) fn eval_capture_args(
             }
             CaptureArgKind::TupleFunction { local, value } => {
                 CaptureValue::tuple_function(*local, eval_tuple_function_expr(plan, frame, value)?)
+            }
+            CaptureArgKind::ListFunction { local, value } => {
+                CaptureValue::list_function(*local, eval_list_function_expr(plan, frame, value)?)
             }
             CaptureArgKind::FunctionFunction { local, value } => CaptureValue::function_function(
                 *local,
@@ -166,6 +180,7 @@ fn bind_captures(frame: &mut Frame, captures: &[CaptureValue]) {
             CaptureValueKind::Bool { local, value } => frame.set_bool(*local, *value),
             CaptureValueKind::Nil { local } => frame.set_nil(*local),
             CaptureValueKind::Tuple { local, value } => frame.set_tuple(*local, value.clone()),
+            CaptureValueKind::List { local, value } => frame.set_list(*local, value.clone()),
             CaptureValueKind::IntFunction { local, value } => {
                 frame.set_int_function(*local, value.clone());
             }
@@ -184,6 +199,9 @@ fn bind_captures(frame: &mut Frame, captures: &[CaptureValue]) {
             CaptureValueKind::TupleFunction { local, value } => {
                 frame.set_tuple_function(*local, value.clone());
             }
+            CaptureValueKind::ListFunction { local, value } => {
+                frame.set_list_function(*local, value.clone());
+            }
             CaptureValueKind::FunctionFunction { local, value } => {
                 frame.set_function_function(*local, value.clone());
             }
@@ -201,10 +219,12 @@ mod tests {
         FrameLayout, FunctionFunctionExpr, FunctionFunctionId, FunctionFunctionLocalId,
         FunctionFunctionValue, FunctionId, FunctionPlan, FunctionReturnFamily, FunctionType,
         IntExpr, IntFunctionExpr, IntFunctionFunctionId, IntFunctionId, IntFunctionLocalId,
-        IntFunctionValue, IntLocalId, NilExpr, NilFunctionExpr, NilFunctionId, NilFunctionLocalId,
-        NilFunctionValue, NilLocalId, ReturnExpr, StringExpr, StringFunctionExpr, StringFunctionId,
-        StringFunctionLocalId, StringFunctionValue, StringLocalId, TupleExpr, TupleFunctionExpr,
-        TupleFunctionId, TupleFunctionLocalId, TupleFunctionValue, TupleLocalId, Value, ValueType,
+        IntFunctionValue, IntLocalId, ListExpr, ListFunctionExpr, ListFunctionId,
+        ListFunctionLocalId, ListFunctionValue, ListLocalId, ListValue, NilExpr, NilFunctionExpr,
+        NilFunctionId, NilFunctionLocalId, NilFunctionValue, NilLocalId, ReturnExpr, StringExpr,
+        StringFunctionExpr, StringFunctionId, StringFunctionLocalId, StringFunctionValue,
+        StringLocalId, TupleExpr, TupleFunctionExpr, TupleFunctionId, TupleFunctionLocalId,
+        TupleFunctionValue, TupleLocalId, Value, ValueType,
     };
     use crate::runtime::ExecutionError;
     use crate::runtime::frame::Frame;
@@ -220,12 +240,14 @@ mod tests {
             CallArg::bool(BoolLocalId(0), failing_bool_expr()),
             CallArg::nil(NilLocalId(0), failing_nil_expr()),
             CallArg::tuple(TupleLocalId(0), failing_tuple_expr()),
+            CallArg::list(ListLocalId(0), failing_list_expr()),
             CallArg::int_function(IntFunctionLocalId(0), failing_int_function_expr()),
             CallArg::string_function(StringFunctionLocalId(0), failing_string_function_expr()),
             CallArg::float_function(FloatFunctionLocalId(0), failing_float_function_expr()),
             CallArg::bool_function(BoolFunctionLocalId(0), failing_bool_function_expr()),
             CallArg::nil_function(NilFunctionLocalId(0), failing_nil_function_expr()),
             CallArg::tuple_function(TupleFunctionLocalId(0), failing_tuple_function_expr()),
+            CallArg::list_function(ListFunctionLocalId(0), failing_list_function_expr()),
             CallArg::function_function(
                 FunctionFunctionLocalId(0),
                 failing_function_function_expr(),
@@ -254,12 +276,14 @@ mod tests {
                 CallArg::bool(BoolLocalId(0), BoolExpr::value(true)),
                 CallArg::nil(NilLocalId(0), NilExpr::value()),
                 CallArg::tuple(TupleLocalId(0), tuple_expr()),
+                CallArg::list(ListLocalId(0), list_expr()),
                 CallArg::int_function(IntFunctionLocalId(0), int_function_expr()),
                 CallArg::string_function(StringFunctionLocalId(0), string_function_expr()),
                 CallArg::float_function(FloatFunctionLocalId(0), float_function_expr()),
                 CallArg::bool_function(BoolFunctionLocalId(0), bool_function_expr()),
                 CallArg::nil_function(NilFunctionLocalId(0), nil_function_expr()),
                 CallArg::tuple_function(TupleFunctionLocalId(0), tuple_function_expr()),
+                CallArg::list_function(ListFunctionLocalId(0), list_function_expr()),
                 CallArg::function_function(FunctionFunctionLocalId(0), function_function_expr()),
             ],
             &mut Frame::default(),
@@ -273,6 +297,10 @@ mod tests {
         assert!(frame.get_bool(BoolLocalId(0)));
         assert_eq!(frame.get_nil(NilLocalId(0)), ());
         assert_eq!(frame.get_tuple(TupleLocalId(0)), vec![Value::Int(1.into())]);
+        assert_eq!(
+            frame.get_list(ListLocalId(0)),
+            ListValue::new(ValueType::Int, vec![Value::Int(1.into())]),
+        );
         assert_eq!(
             frame.get_int_function(IntFunctionLocalId(0)).runtime_id(),
             IntFunctionId(0),
@@ -302,6 +330,10 @@ mod tests {
                 .get_tuple_function(TupleFunctionLocalId(0))
                 .runtime_id(),
             TupleFunctionId(0),
+        );
+        assert_eq!(
+            frame.get_list_function(ListFunctionLocalId(0)).runtime_id(),
+            ListFunctionId(0),
         );
         assert_eq!(
             frame
@@ -360,12 +392,14 @@ mod tests {
             CaptureArg::bool(BoolLocalId(0), failing_bool_expr()),
             CaptureArg::nil(NilLocalId(0), failing_nil_expr()),
             CaptureArg::tuple(TupleLocalId(0), failing_tuple_expr()),
+            CaptureArg::list(ListLocalId(0), failing_list_expr()),
             CaptureArg::int_function(IntFunctionLocalId(0), failing_int_function_expr()),
             CaptureArg::string_function(StringFunctionLocalId(0), failing_string_function_expr()),
             CaptureArg::float_function(FloatFunctionLocalId(0), failing_float_function_expr()),
             CaptureArg::bool_function(BoolFunctionLocalId(0), failing_bool_function_expr()),
             CaptureArg::nil_function(NilFunctionLocalId(0), failing_nil_function_expr()),
             CaptureArg::tuple_function(TupleFunctionLocalId(0), failing_tuple_function_expr()),
+            CaptureArg::list_function(ListFunctionLocalId(0), failing_list_function_expr()),
             CaptureArg::function_function(
                 FunctionFunctionLocalId(0),
                 failing_function_function_expr(),
@@ -390,6 +424,7 @@ mod tests {
             &[
                 CaptureArg::float_function(FloatFunctionLocalId(0), float_function_expr()),
                 CaptureArg::tuple_function(TupleFunctionLocalId(0), tuple_function_expr()),
+                CaptureArg::list_function(ListFunctionLocalId(0), list_function_expr()),
             ],
         )
         .expect("capture args should evaluate");
@@ -414,6 +449,10 @@ mod tests {
                 .runtime_id(),
             TupleFunctionId(0),
         );
+        assert_eq!(
+            frame.get_list_function(ListFunctionLocalId(0)).runtime_id(),
+            ListFunctionId(0),
+        );
     }
 
     #[test]
@@ -431,12 +470,17 @@ mod tests {
                 CaptureValue::bool(BoolLocalId(0), true),
                 CaptureValue::nil(NilLocalId(0)),
                 CaptureValue::tuple(TupleLocalId(0), vec![Value::Int(1.into())]),
+                CaptureValue::list(
+                    ListLocalId(0),
+                    ListValue::new(ValueType::Int, vec![Value::Int(1.into())]),
+                ),
                 CaptureValue::int_function(IntFunctionLocalId(0), int_function_value()),
                 CaptureValue::string_function(StringFunctionLocalId(0), string_function_value()),
                 CaptureValue::float_function(FloatFunctionLocalId(0), float_function_value()),
                 CaptureValue::bool_function(BoolFunctionLocalId(0), bool_function_value()),
                 CaptureValue::nil_function(NilFunctionLocalId(0), nil_function_value()),
                 CaptureValue::tuple_function(TupleFunctionLocalId(0), tuple_function_value()),
+                CaptureValue::list_function(ListFunctionLocalId(0), list_function_value()),
                 CaptureValue::function_function(
                     FunctionFunctionLocalId(0),
                     function_function_value(),
@@ -451,6 +495,10 @@ mod tests {
         assert!(frame.get_bool(BoolLocalId(0)));
         assert_eq!(frame.get_nil(NilLocalId(0)), ());
         assert_eq!(frame.get_tuple(TupleLocalId(0)), vec![Value::Int(1.into())]);
+        assert_eq!(
+            frame.get_list(ListLocalId(0)),
+            ListValue::new(ValueType::Int, vec![Value::Int(1.into())]),
+        );
         assert_eq!(
             frame.get_int_function(IntFunctionLocalId(0)).runtime_id(),
             IntFunctionId(0),
@@ -480,6 +528,10 @@ mod tests {
                 .get_tuple_function(TupleFunctionLocalId(0))
                 .runtime_id(),
             TupleFunctionId(0),
+        );
+        assert_eq!(
+            frame.get_list_function(ListFunctionLocalId(0)).runtime_id(),
+            ListFunctionId(0),
         );
         assert_eq!(
             frame
@@ -544,11 +596,19 @@ mod tests {
         )
     }
 
+    fn failing_list_expr() -> ListExpr {
+        ListExpr::function_call(failing_list_function_expr(), Vec::new(), ValueType::Int)
+    }
+
     fn tuple_expr() -> TupleExpr {
         TupleExpr::value(
             vec![Expr::int(IntExpr::value(1.into()))],
             vec![ValueType::Int],
         )
+    }
+
+    fn list_expr() -> ListExpr {
+        ListExpr::value(vec![Expr::int(IntExpr::value(1.into()))], ValueType::Int)
     }
 
     fn int_function_expr() -> IntFunctionExpr {
@@ -639,12 +699,28 @@ mod tests {
         )
     }
 
+    fn failing_list_function_expr() -> ListFunctionExpr {
+        ListFunctionExpr::function_call(
+            failing_function_function_expr(),
+            Vec::new(),
+            FunctionType::new(Vec::new(), ValueType::List(Box::new(ValueType::Int))),
+        )
+    }
+
     fn tuple_function_expr() -> TupleFunctionExpr {
         TupleFunctionExpr::value(tuple_function_value())
     }
 
     fn tuple_function_value() -> TupleFunctionValue {
         TupleFunctionValue::new(TupleFunctionId(0), Vec::new(), vec![ValueType::Int])
+    }
+
+    fn list_function_expr() -> ListFunctionExpr {
+        ListFunctionExpr::value(list_function_value())
+    }
+
+    fn list_function_value() -> ListFunctionValue {
+        ListFunctionValue::new(ListFunctionId(0), Vec::new(), ValueType::Int)
     }
 
     fn function_function_expr() -> FunctionFunctionExpr {
@@ -667,12 +743,14 @@ mod tests {
         layout.include_bool(BoolLocalId(0));
         layout.include_nil(NilLocalId(0));
         layout.include_tuple(TupleLocalId(0));
+        layout.include_list(ListLocalId(0));
         layout.include_int_function(IntFunctionLocalId(0));
         layout.include_string_function(StringFunctionLocalId(0));
         layout.include_float_function(FloatFunctionLocalId(0));
         layout.include_bool_function(BoolFunctionLocalId(0));
         layout.include_nil_function(NilFunctionLocalId(0));
         layout.include_tuple_function(TupleFunctionLocalId(0));
+        layout.include_list_function(ListFunctionLocalId(0));
         layout.include_function_function(FunctionFunctionLocalId(0));
         layout
     }

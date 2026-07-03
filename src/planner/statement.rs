@@ -151,6 +151,10 @@ pub(in crate::planner) fn plan_variable_runtime_step(
             let local = context.define_tuple_local(name.clone(), value.type_().to_vec());
             Ok(Step::let_tuple(local, name, value))
         }
+        ExprKind::List(value) => {
+            let local = context.define_list_local(name.clone(), value.element_type().clone());
+            Ok(Step::let_list(local, name, value))
+        }
         ExprKind::Function(value) => Ok(match value.into_kind() {
             FunctionExprKind::Int(value) => {
                 let local = context.define_int_function_local(name.clone(), value.type_().clone());
@@ -178,6 +182,10 @@ pub(in crate::planner) fn plan_variable_runtime_step(
                 let local =
                     context.define_tuple_function_local(name.clone(), value.type_().clone());
                 Step::let_tuple_function(local, name, value)
+            }
+            FunctionExprKind::List(value) => {
+                let local = context.define_list_function_local(name.clone(), value.type_().clone());
+                Step::let_list_function(local, name, value)
             }
             FunctionExprKind::Function(value) => {
                 let local =
@@ -220,12 +228,14 @@ fn non_variable_pattern_error(pattern: &TypedPattern) -> PlanError {
         Pattern::Tuple { .. } => PlanError::UnsupportedPattern {
             kind: UnsupportedPatternKind::Tuple,
         },
+        Pattern::List { .. } => PlanError::UnsupportedPattern {
+            kind: UnsupportedPatternKind::List,
+        },
         Pattern::Int { .. }
         | Pattern::Float { .. }
         | Pattern::String { .. }
         | Pattern::BitArray { .. }
         | Pattern::BitArraySize(_)
-        | Pattern::List { .. }
         | Pattern::Constructor { .. }
         | Pattern::StringPrefix { .. }
         | Pattern::Invalid { .. }
@@ -256,9 +266,9 @@ mod tests {
     use crate::planner::plan_module;
     use crate::planner::support::{compile, compile_minimal_module, dummy_span, expect_plan_error};
     use crate::planner::{
-        InvalidExpressionShapeKind, InvalidExpressionType, InvalidFunctionShapeReason,
-        InvalidTypedAstReason, InvalidUseShapeReason, PlanError, UnsupportedAssignmentKind,
-        UnsupportedExpressionKind, UnsupportedPatternKind, UnsupportedStatementKind,
+        InvalidExpressionType, InvalidFunctionShapeReason, InvalidTypedAstReason,
+        InvalidUseShapeReason, PlanError, UnsupportedAssignmentKind, UnsupportedExpressionKind,
+        UnsupportedPatternKind, UnsupportedStatementKind,
     };
     use gleam_core::analyse::Inferred;
     use gleam_core::ast::{
@@ -626,6 +636,23 @@ pub fn main() {
                 kind: UnsupportedPatternKind::Assign,
             },
         );
+        assert_eq!(
+            expect_plan_error(
+                r#"
+fn with_values(continue: fn(List(Int)) -> List(Int)) {
+  continue([1])
+}
+
+pub fn main() {
+  use [..rest] <- with_values
+  rest
+}
+"#,
+            ),
+            PlanError::UnsupportedPattern {
+                kind: UnsupportedPatternKind::List,
+            },
+        );
     }
 
     #[test]
@@ -751,8 +778,9 @@ pub fn main() {
         assert_eq!(
             plan_module(callback_unsupported_function_type),
             Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::ExpressionShape {
-                    kind: InvalidExpressionShapeKind::Invalid,
+                reason: InvalidTypedAstReason::ExpressionType {
+                    expected: InvalidExpressionType::Function,
+                    actual: InvalidExpressionType::List,
                 },
             }),
         );
@@ -884,6 +912,17 @@ pub fn main() {
                     kind: UnsupportedPatternKind::Assign,
                 },
             ),
+            (
+                r#"
+pub fn main() {
+  let [..rest] = [1]
+  rest
+}
+"#,
+                PlanError::UnsupportedPattern {
+                    kind: UnsupportedPatternKind::List,
+                },
+            ),
         ];
 
         for (src, expected) in cases {
@@ -933,12 +972,6 @@ pub fn main() {
                 value: "1".into(),
                 int_value: BigInt::from(1),
             }),
-            Pattern::List {
-                location: dummy_span(),
-                elements: vec![variable("x")],
-                tail: None,
-                type_: type_::list(type_::int()),
-            },
             Pattern::BitArray {
                 location: dummy_span(),
                 segments: Vec::new(),

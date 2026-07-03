@@ -1,5 +1,8 @@
 use super::CaptureSubstitution;
-use crate::plan::{CallArg, Expr, ParamLocal, TupleFunctionLocalId, TupleLocalId, ValueType};
+use crate::plan::{
+    CallArg, Expr, ListFunctionLocalId, ListLocalId, ParamLocal, TupleFunctionLocalId,
+    TupleLocalId, ValueType,
+};
 use crate::planner::context::{FunctionParam, PlanContext};
 use crate::planner::error::{InvalidCallShapeReason, InvalidTypedAstReason, PlanError};
 use gleam_core::ast::{CallArg as GleamCallArg, TypedExpr};
@@ -50,12 +53,14 @@ fn function_call_param_locals(params: &[ValueType]) -> Vec<ParamLocal> {
     let mut next_bool = 0;
     let mut next_nil = 0;
     let mut next_tuple = 0;
+    let mut next_list = 0;
     let mut next_int_function = 0;
     let mut next_string_function = 0;
     let mut next_float_function = 0;
     let mut next_bool_function = 0;
     let mut next_nil_function = 0;
     let mut next_tuple_function = 0;
+    let mut next_list_function = 0;
     let mut next_function_function = 0;
 
     params
@@ -89,6 +94,11 @@ fn function_call_param_locals(params: &[ValueType]) -> Vec<ParamLocal> {
             ValueType::Tuple(type_) => {
                 let local = ParamLocal::tuple(TupleLocalId(next_tuple), type_.clone());
                 next_tuple += 1;
+                local
+            }
+            ValueType::List(element_type) => {
+                let local = ParamLocal::list(ListLocalId(next_list), element_type.as_ref().clone());
+                next_list += 1;
                 local
             }
             ValueType::Function(type_) => match type_.return_() {
@@ -138,6 +148,14 @@ fn function_call_param_locals(params: &[ValueType]) -> Vec<ParamLocal> {
                         type_.as_ref().clone(),
                     );
                     next_tuple_function += 1;
+                    local
+                }
+                ValueType::List(_) => {
+                    let local = ParamLocal::list_function(
+                        ListFunctionLocalId(next_list_function),
+                        type_.as_ref().clone(),
+                    );
+                    next_list_function += 1;
                     local
                 }
                 ValueType::Function(_) => {
@@ -219,6 +237,10 @@ mod tests {
                     ValueType::Tuple(vec![ValueType::Int]),
                 ))),
                 ValueType::Function(Box::new(FunctionType::new(
+                    vec![ValueType::List(Box::new(ValueType::Int))],
+                    ValueType::List(Box::new(ValueType::Int)),
+                ))),
+                ValueType::Function(Box::new(FunctionType::new(
                     Vec::new(),
                     ValueType::Function(Box::new(FunctionType::new(Vec::new(), ValueType::Int,))),
                 ))),
@@ -255,6 +277,13 @@ mod tests {
                     FunctionType::new(
                         vec![ValueType::Tuple(vec![ValueType::Int])],
                         ValueType::Tuple(vec![ValueType::Int]),
+                    ),
+                ),
+                ParamLocal::list_function(
+                    crate::plan::ListFunctionLocalId(0),
+                    FunctionType::new(
+                        vec![ValueType::List(Box::new(ValueType::Int))],
+                        ValueType::List(Box::new(ValueType::Int)),
                     ),
                 ),
                 ParamLocal::function_function(

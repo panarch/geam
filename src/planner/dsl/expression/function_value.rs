@@ -1,16 +1,16 @@
 use super::{
     BoolFunction, FloatFunction, Function, FunctionFunction, IntFunction, IntoParamLocal,
-    IntoValueType, NilFunction, StringFunction, TupleFunction,
+    IntoValueType, ListFunction, NilFunction, StringFunction, TupleFunction,
 };
 use crate::plan::{
     BoolFunctionExpr, BoolFunctionId, BoolFunctionLocalId, BoolFunctionValue, CaptureArg,
     FloatFunctionExpr, FloatFunctionId, FloatFunctionLocalId, FloatFunctionValue, FunctionExpr,
     FunctionFunctionExpr, FunctionFunctionId, FunctionFunctionLocalId, FunctionFunctionValue,
     FunctionType, FunctionValue, IntFunctionExpr, IntFunctionId, IntFunctionLocalId,
-    IntFunctionValue, NilFunctionExpr, NilFunctionId, NilFunctionLocalId, NilFunctionValue,
-    RuntimeFunctionId, StringFunctionExpr, StringFunctionId, StringFunctionLocalId,
-    StringFunctionValue, TupleFunctionExpr, TupleFunctionId, TupleFunctionLocalId,
-    TupleFunctionValue, ValueType,
+    IntFunctionValue, ListFunctionExpr, ListFunctionId, ListFunctionLocalId, ListFunctionValue,
+    NilFunctionExpr, NilFunctionId, NilFunctionLocalId, NilFunctionValue, RuntimeFunctionId,
+    StringFunctionExpr, StringFunctionId, StringFunctionLocalId, StringFunctionValue,
+    TupleFunctionExpr, TupleFunctionId, TupleFunctionLocalId, TupleFunctionValue, ValueType,
 };
 use ecow::EcoString;
 
@@ -148,6 +148,21 @@ pub(crate) fn tuple_function_ref(
     )))
 }
 
+pub(crate) fn list_function_ref(
+    runtime_id: usize,
+    params: impl IntoIterator<Item = impl IntoParamLocal>,
+    return_type: impl IntoValueType,
+) -> ListFunction {
+    ListFunction(ListFunctionExpr::value(ListFunctionValue::new(
+        ListFunctionId(runtime_id),
+        params
+            .into_iter()
+            .map(IntoParamLocal::into_param_local)
+            .collect(),
+        return_type.into_value_type(),
+    )))
+}
+
 pub(crate) fn tuple_function_closure(
     runtime_id: usize,
     params: impl IntoIterator<Item = impl IntoParamLocal>,
@@ -166,6 +181,28 @@ pub(crate) fn tuple_function_closure(
 
     TupleFunction(TupleFunctionExpr::closure(
         TupleFunctionId(runtime_id),
+        params,
+        captures.into_iter().collect(),
+        type_,
+        return_type,
+    ))
+}
+
+pub(crate) fn list_function_closure(
+    runtime_id: usize,
+    params: impl IntoIterator<Item = impl IntoParamLocal>,
+    captures: impl IntoIterator<Item = CaptureArg>,
+    return_type: impl IntoValueType,
+) -> ListFunction {
+    let params = params
+        .into_iter()
+        .map(IntoParamLocal::into_param_local)
+        .collect::<Vec<_>>();
+    let return_type = return_type.into_value_type();
+    let type_ = FunctionType::from_params(&params, ValueType::List(Box::new(return_type.clone())));
+
+    ListFunction(ListFunctionExpr::closure(
+        ListFunctionId(runtime_id),
         params,
         captures.into_iter().collect(),
         type_,
@@ -291,6 +328,22 @@ pub(crate) fn local_tuple_function(
     ))
 }
 
+pub(crate) fn local_list_function(
+    local: usize,
+    name: impl Into<EcoString>,
+    params: impl IntoIterator<Item = impl IntoValueType>,
+    return_type: impl IntoValueType,
+) -> ListFunction {
+    ListFunction(ListFunctionExpr::local_get(
+        ListFunctionLocalId(local),
+        name.into(),
+        function_type(
+            params,
+            ValueType::List(Box::new(return_type.into_value_type())),
+        ),
+    ))
+}
+
 pub(crate) fn local_function_function(
     local: usize,
     name: impl Into<EcoString>,
@@ -341,15 +394,16 @@ mod tests {
     use super::{
         bool_function_ref, float_function_closure, float_function_ref, function_function_closure,
         function_function_ref, function_ref, int_function_closure, int_function_ref,
-        local_bool_function, local_float_function, local_function_function, local_int_function,
-        local_nil_function, local_string_function, local_tuple_function, nil_function_ref,
-        string_function_ref, tuple_function_closure, tuple_function_ref,
+        list_function_closure, list_function_ref, local_bool_function, local_float_function,
+        local_function_function, local_int_function, local_list_function, local_nil_function,
+        local_string_function, local_tuple_function, nil_function_ref, string_function_ref,
+        tuple_function_closure, tuple_function_ref,
     };
     use crate::plan::{
         BoolFunctionExprKind, Expr, ExprKind, FloatFunctionExprKind, FunctionExpr,
         FunctionExprKind, FunctionFunctionId, FunctionType, IntFunctionExprKind,
-        IntFunctionFunctionId, NilFunctionExprKind, ParamLocal, RuntimeFunctionId,
-        StringFunctionExprKind, TupleFunctionExprKind, ValueType,
+        IntFunctionFunctionId, ListFunctionExprKind, NilFunctionExprKind, ParamLocal,
+        RuntimeFunctionId, StringFunctionExprKind, TupleFunctionExprKind, ValueType,
     };
     use crate::planner::dsl::expression::{Function, float, int};
 
@@ -400,6 +454,15 @@ mod tests {
                 0,
                 [crate::plan::LocalId::Int(crate::plan::IntLocalId(0))],
                 [ValueType::Int, ValueType::String],
+            ))
+            .kind(),
+            ExprKind::Function(_),
+        ));
+        assert!(matches!(
+            Expr::from(list_function_ref(
+                0,
+                [crate::plan::LocalId::Int(crate::plan::IntLocalId(0))],
+                ValueType::Int,
             ))
             .kind(),
             ExprKind::Function(_),
@@ -485,6 +548,12 @@ mod tests {
             .kind(),
             TupleFunctionExprKind::LocalGet { .. },
         ));
+        assert!(matches!(
+            local_list_function(0, "f", [ValueType::Int], ValueType::String)
+                .0
+                .kind(),
+            ListFunctionExprKind::LocalGet { .. },
+        ));
         assert_eq!(
             local_function_function(
                 0,
@@ -559,6 +628,20 @@ mod tests {
             &FunctionType::new(
                 vec![ValueType::Int],
                 ValueType::Tuple(vec![ValueType::Int, ValueType::String]),
+            ),
+        );
+        assert_eq!(
+            list_function_closure(
+                0,
+                [ParamLocal::int(crate::plan::IntLocalId(0))],
+                [crate::planner::dsl::expression::capture_int(0, int(1))],
+                ValueType::String,
+            )
+            .0
+            .type_(),
+            &FunctionType::new(
+                vec![ValueType::Int],
+                ValueType::List(Box::new(ValueType::String)),
             ),
         );
     }
