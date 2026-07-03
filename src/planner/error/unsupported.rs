@@ -38,8 +38,6 @@ pub enum UnsupportedStatementKind {
     Assert,
     #[error("assert as final statement")]
     AssertAsFinalStatement,
-    #[error("assignment as final statement")]
-    AssignmentAsFinalStatement,
 }
 
 #[derive(Debug, Error, Clone, Copy, PartialEq, Eq)]

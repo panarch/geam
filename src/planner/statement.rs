@@ -1,4 +1,8 @@
-use crate::plan::{ExprKind, FunctionExprKind, Step};
+use crate::plan::{
+    BoolExpr, BoolFunctionExpr, Expr, ExprKind, FloatExpr, FloatFunctionExpr, FunctionExpr,
+    FunctionExprKind, FunctionFunctionExpr, IntExpr, IntFunctionExpr, ListExpr, ListFunctionExpr,
+    NilExpr, NilFunctionExpr, Step, StringExpr, StringFunctionExpr, TupleExpr, TupleFunctionExpr,
+};
 use crate::planner::context::PlanContext;
 use crate::planner::error::{
     InvalidTypedAstReason, InvalidUseShapeReason, PlanError, UnsupportedAssignmentKind,
@@ -49,10 +53,10 @@ fn plan_ordered_steps_and_return(
 
     let return_ = match last_statement {
         Statement::Expression(expression) => plan_expr(expression, context)?,
-        Statement::Assignment(_) => {
-            return Err(PlanError::UnsupportedStatement {
-                kind: UnsupportedStatementKind::AssignmentAsFinalStatement,
-            });
+        Statement::Assignment(assignment) => {
+            let planned = plan_final_assignment(*assignment, context)?;
+            steps.extend(planned.steps);
+            planned.return_
         }
         Statement::Use(use_) => plan_use_statement(use_, context)?,
         Statement::Assert(_) => {
@@ -93,6 +97,42 @@ fn plan_assignment(
     assignment: TypedAssignment,
     context: &mut PlanContext<'_>,
 ) -> Result<Step, PlanError> {
+    let (pattern, value) = plan_assignment_parts(assignment, context)?;
+    match pattern {
+        BindingPattern::Named(name) => plan_variable_runtime_step(name, value, context),
+        BindingPattern::Discard => Ok(Step::evaluate(value)),
+    }
+}
+
+struct PlannedFinalAssignment {
+    steps: Vec<Step>,
+    return_: Expr,
+}
+
+fn plan_final_assignment(
+    assignment: TypedAssignment,
+    context: &mut PlanContext<'_>,
+) -> Result<PlannedFinalAssignment, PlanError> {
+    let (pattern, value) = plan_assignment_parts(assignment, context)?;
+    Ok(match pattern {
+        BindingPattern::Named(name) => {
+            let (step, return_) = plan_variable_runtime_step_and_return(name, value, context);
+            PlannedFinalAssignment {
+                steps: vec![step],
+                return_,
+            }
+        }
+        BindingPattern::Discard => PlannedFinalAssignment {
+            steps: Vec::new(),
+            return_: value,
+        },
+    })
+}
+
+fn plan_assignment_parts(
+    assignment: TypedAssignment,
+    context: &mut PlanContext<'_>,
+) -> Result<(BindingPattern, Expr), PlanError> {
     match assignment.kind {
         AssignmentKind::Let => {}
         AssignmentKind::Generated => {
@@ -109,10 +149,7 @@ fn plan_assignment(
 
     let pattern = plan_binding_pattern(assignment.pattern)?;
     let value = plan_expr(assignment.value, context)?;
-    match pattern {
-        BindingPattern::Named(name) => plan_variable_runtime_step(name, value, context),
-        BindingPattern::Discard => Ok(Step::evaluate(value)),
-    }
+    Ok((pattern, value))
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -126,73 +163,152 @@ pub(in crate::planner) fn plan_variable_runtime_step(
     value: crate::plan::Expr,
     context: &mut PlanContext<'_>,
 ) -> Result<Step, PlanError> {
+    Ok(plan_variable_runtime_step_and_return(name, value, context).0)
+}
+
+fn plan_variable_runtime_step_and_return(
+    name: EcoString,
+    value: crate::plan::Expr,
+    context: &mut PlanContext<'_>,
+) -> (Step, Expr) {
     match value.into_kind() {
         ExprKind::Int(value) => {
             let local = context.define_int_local(name.clone());
-            Ok(Step::let_int(local, name, value))
+            (
+                Step::let_int(local, name.clone(), value),
+                Expr::int(IntExpr::local_get(local, name)),
+            )
         }
         ExprKind::String(value) => {
             let local = context.define_string_local(name.clone());
-            Ok(Step::let_string(local, name, value))
+            (
+                Step::let_string(local, name.clone(), value),
+                Expr::string(StringExpr::local_get(local, name)),
+            )
         }
         ExprKind::Float(value) => {
             let local = context.define_float_local(name.clone());
-            Ok(Step::let_float(local, name, value))
+            (
+                Step::let_float(local, name.clone(), value),
+                Expr::float(FloatExpr::local_get(local, name)),
+            )
         }
         ExprKind::Bool(value) => {
             let local = context.define_bool_local(name.clone());
-            Ok(Step::let_bool(local, name, value))
+            (
+                Step::let_bool(local, name.clone(), value),
+                Expr::bool(BoolExpr::local_get(local, name)),
+            )
         }
         ExprKind::Nil(value) => {
             let local = context.define_nil_local(name.clone());
-            Ok(Step::let_nil(local, name, value))
+            (
+                Step::let_nil(local, name.clone(), value),
+                Expr::nil(NilExpr::local_get(local, name)),
+            )
         }
         ExprKind::Tuple(value) => {
             let local = context.define_tuple_local(name.clone(), value.type_().to_vec());
-            Ok(Step::let_tuple(local, name, value))
+            let type_ = value.type_().to_vec();
+            (
+                Step::let_tuple(local, name.clone(), value),
+                Expr::tuple(TupleExpr::local_get(local, name, type_)),
+            )
         }
         ExprKind::List(value) => {
             let local = context.define_list_local(name.clone(), value.element_type().clone());
-            Ok(Step::let_list(local, name, value))
+            let element_type = value.element_type().clone();
+            (
+                Step::let_list(local, name.clone(), value),
+                Expr::list(ListExpr::local_get(local, name, element_type)),
+            )
         }
-        ExprKind::Function(value) => Ok(match value.into_kind() {
+        ExprKind::Function(value) => match value.into_kind() {
             FunctionExprKind::Int(value) => {
                 let local = context.define_int_function_local(name.clone(), value.type_().clone());
-                Step::let_int_function(local, name, value)
+                let type_ = value.type_().clone();
+                (
+                    Step::let_int_function(local, name.clone(), value),
+                    Expr::function(FunctionExpr::int(IntFunctionExpr::local_get(
+                        local, name, type_,
+                    ))),
+                )
             }
             FunctionExprKind::String(value) => {
                 let local =
                     context.define_string_function_local(name.clone(), value.type_().clone());
-                Step::let_string_function(local, name, value)
+                let type_ = value.type_().clone();
+                (
+                    Step::let_string_function(local, name.clone(), value),
+                    Expr::function(FunctionExpr::string(StringFunctionExpr::local_get(
+                        local, name, type_,
+                    ))),
+                )
             }
             FunctionExprKind::Float(value) => {
                 let local =
                     context.define_float_function_local(name.clone(), value.type_().clone());
-                Step::let_float_function(local, name, value)
+                let type_ = value.type_().clone();
+                (
+                    Step::let_float_function(local, name.clone(), value),
+                    Expr::function(FunctionExpr::float(FloatFunctionExpr::local_get(
+                        local, name, type_,
+                    ))),
+                )
             }
             FunctionExprKind::Bool(value) => {
                 let local = context.define_bool_function_local(name.clone(), value.type_().clone());
-                Step::let_bool_function(local, name, value)
+                let type_ = value.type_().clone();
+                (
+                    Step::let_bool_function(local, name.clone(), value),
+                    Expr::function(FunctionExpr::bool(BoolFunctionExpr::local_get(
+                        local, name, type_,
+                    ))),
+                )
             }
             FunctionExprKind::Nil(value) => {
                 let local = context.define_nil_function_local(name.clone(), value.type_().clone());
-                Step::let_nil_function(local, name, value)
+                let type_ = value.type_().clone();
+                (
+                    Step::let_nil_function(local, name.clone(), value),
+                    Expr::function(FunctionExpr::nil(NilFunctionExpr::local_get(
+                        local, name, type_,
+                    ))),
+                )
             }
             FunctionExprKind::Tuple(value) => {
                 let local =
                     context.define_tuple_function_local(name.clone(), value.type_().clone());
-                Step::let_tuple_function(local, name, value)
+                let type_ = value.type_().clone();
+                (
+                    Step::let_tuple_function(local, name.clone(), value),
+                    Expr::function(FunctionExpr::tuple(TupleFunctionExpr::local_get(
+                        local, name, type_,
+                    ))),
+                )
             }
             FunctionExprKind::List(value) => {
                 let local = context.define_list_function_local(name.clone(), value.type_().clone());
-                Step::let_list_function(local, name, value)
+                let type_ = value.type_().clone();
+                (
+                    Step::let_list_function(local, name.clone(), value),
+                    Expr::function(FunctionExpr::list(ListFunctionExpr::local_get(
+                        local, name, type_,
+                    ))),
+                )
             }
             FunctionExprKind::Function(value) => {
                 let local =
                     context.define_function_function_local(name.clone(), value.type_().clone());
-                Step::let_function_function(local, name, value)
+                let type_ = value.type_().clone();
+                (
+                    Step::let_function_function(local, name.clone(), value),
+                    Expr::function(FunctionExpr::function(FunctionFunctionExpr::local_get(
+                        local, name, type_,
+                    ))),
+                )
             }
-        }),
+        },
     }
 }
 
@@ -439,20 +555,57 @@ pub fn main() {
     }
 
     #[test]
-    fn reject_profile_final_statement_positions() {
-        assert_eq!(
-            expect_plan_error(
-                r#"
+    fn plan_final_assignment_returns_assigned_value_from_binding_step() {
+        let actual = plan_module(compile(
+            r#"
 pub fn main() {
   let x = 1
 }
 "#,
-            ),
-            PlanError::UnsupportedStatement {
-                kind: UnsupportedStatementKind::AssignmentAsFinalStatement,
-            },
+        ))
+        .expect("source should plan");
+        let expected = module(
+            "main",
+            function("main", local_int(0, "x")).let_int(0, "x", int(1)),
+            [],
         );
 
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn plan_final_discard_assignment_returns_assigned_value_without_binding_step() {
+        let actual = plan_module(compile(
+            r#"
+pub fn main() {
+  let _ = 1
+}
+"#,
+        ))
+        .expect("source should plan");
+        let expected = module("main", function("main", int(1)), []);
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn reject_profile_final_assignment_value_is_validated() {
+        assert_eq!(
+            expect_plan_error(
+                r#"
+pub fn main() {
+  let x = echo 1
+}
+"#,
+            ),
+            PlanError::UnsupportedExpression {
+                kind: UnsupportedExpressionKind::Echo,
+            },
+        );
+    }
+
+    #[test]
+    fn reject_profile_final_assert_statement() {
         assert_eq!(
             expect_plan_error(
                 r#"

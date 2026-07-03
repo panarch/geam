@@ -49,6 +49,13 @@ mod bindings {
     );
 }
 
+mod statements {
+    execution_cases!("statements";
+        final_assignment,
+        final_discard_assignment,
+    );
+}
+
 mod operators {
     execution_cases!("operators";
         integer_arithmetic,
@@ -237,6 +244,7 @@ mod rejection {
 
     mod entrypoint {
         rejection_cases!("entrypoint";
+            empty_body,
             missing_main,
             main_with_arguments,
             unsupported_body,
@@ -284,7 +292,6 @@ mod rejection {
     mod statements {
         rejection_cases!("statements";
             assert_statement,
-            final_assignment,
             final_assert,
         );
     }

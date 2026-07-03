@@ -6,11 +6,12 @@ use crate::planner::context::{
     AnonymousFunctions, FunctionInfo, FunctionParam, FunctionRuntimeIds,
 };
 use crate::planner::error::{
-    PlanError, UnsupportedArgumentReason, UnsupportedFunctionReason, UnsupportedTopLevelKind,
+    PlanError, UnsupportedArgumentReason, UnsupportedExpressionKind, UnsupportedFunctionReason,
+    UnsupportedTopLevelKind,
 };
 use crate::planner::function::{function_name, plan_function};
 use ecow::EcoString;
-use gleam_core::ast::{ArgNames, TypedFunction, TypedModule};
+use gleam_core::ast::{ArgNames, Statement, TypedExpr, TypedFunction, TypedModule};
 use gleam_core::type_::Type;
 use std::collections::HashMap;
 
@@ -113,6 +114,7 @@ fn function_table(
 
     for function in functions {
         let name = function_name(function)?;
+        reject_todo_body(function)?;
         let return_type = function_return_type(name.clone(), &function.return_type)?;
         let params = function_params(name.clone(), &function.arguments)?;
         seeds.push(FunctionSeed {
@@ -204,6 +206,19 @@ fn function_return_type(name: EcoString, type_: &Type) -> Result<ValueType, Plan
         name,
         reason: UnsupportedFunctionReason::UnsupportedReturnType,
     })
+}
+
+fn reject_todo_body(function: &TypedFunction) -> Result<(), PlanError> {
+    if matches!(
+        function.body.as_slice(),
+        [Statement::Expression(TypedExpr::Todo { .. })]
+    ) {
+        return Err(PlanError::UnsupportedExpression {
+            kind: UnsupportedExpressionKind::Todo,
+        });
+    }
+
+    Ok(())
 }
 
 pub(super) fn function_params(
@@ -458,6 +473,21 @@ pub fn main(value: Int) {
             PlanError::UnsupportedFunction {
                 name: "main".into(),
                 reason: UnsupportedFunctionReason::MainWithArguments,
+            },
+        );
+    }
+
+    #[test]
+    fn reject_profile_empty_source_body_is_todo() {
+        assert_eq!(
+            expect_plan_error(
+                r#"
+pub fn main() {
+}
+"#,
+            ),
+            PlanError::UnsupportedExpression {
+                kind: UnsupportedExpressionKind::Todo,
             },
         );
     }
