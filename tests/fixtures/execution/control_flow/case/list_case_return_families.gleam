@@ -1,8 +1,13 @@
 pub fn main() {
-  case 1 {
-    1 -> ["one"]
-    _ -> ["many"]
-  }
+  #(
+    case 1 {
+      1 -> ["one"]
+      _ -> ["many"]
+    } == ["one"],
+    string_case("one") == [1],
+    bool_case(True) == [1.0],
+    float_case(1.0) == [True],
+  )
 }
 
 pub fn string_case(value: String) {
@@ -26,4 +31,4 @@ pub fn float_case(value: Float) {
   }
 }
 
-// geam:expect List(String)([String("one")])
+// geam:expect Tuple([Bool(true), Bool(true), Bool(true), Bool(true)])

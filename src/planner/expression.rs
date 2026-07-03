@@ -179,19 +179,25 @@ fn plan_list(
         .map(|element| plan_expr(element, context))
         .collect::<Result<Vec<_>, _>>()?;
 
-    let expected_element_type = match ValueType::from_gleam(type_.as_ref()) {
-        Some(ValueType::List(type_)) => *type_,
-        Some(actual) => {
-            return Err(invalid_expression_type_for_value(
+    let Some(list_element_type) = type_.list_type() else {
+        return match ValueType::from_gleam(type_.as_ref()) {
+            Some(actual) => Err(invalid_expression_type_for_value(
                 ValueType::List(Box::new(ValueType::Nil)),
                 actual,
-            ));
-        }
-        None => {
-            return Err(invalid_expression_type(
+            )),
+            None => Err(invalid_expression_type(
                 InvalidExpressionType::List,
                 InvalidExpressionType::Unsupported,
-            ));
+            )),
+        };
+    };
+
+    let expected_element_type = match ValueType::from_gleam(list_element_type.as_ref()) {
+        Some(type_) => type_,
+        None => {
+            return Err(PlanError::UnsupportedExpression {
+                kind: UnsupportedExpressionKind::UnsupportedListElementType,
+            });
         }
     };
 
@@ -512,6 +518,17 @@ pub fn main() {
 "#,
                 PlanError::UnsupportedExpression {
                     kind: UnsupportedExpressionKind::BitArray,
+                },
+            ),
+            (
+                r#"
+pub fn main() {
+  let values: List(BitArray) = []
+  1
+}
+"#,
+                PlanError::UnsupportedExpression {
+                    kind: UnsupportedExpressionKind::UnsupportedListElementType,
                 },
             ),
             (
@@ -1418,7 +1435,7 @@ pub fn main() {
             (
                 TypedExpr::List {
                     location: dummy_span(),
-                    type_: type_::list(type_::bit_array()),
+                    type_: type_::bit_array(),
                     elements: vec![typed_int_expr(1)],
                     tail: None,
                 },

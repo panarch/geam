@@ -68,6 +68,8 @@ pub enum UnsupportedExpressionKind {
     FunctionCaptureLiteral,
     #[error("list spread")]
     ListSpread,
+    #[error("list element type is not supported")]
+    UnsupportedListElementType,
     #[error("panic")]
     Panic,
     #[error("todo")]
