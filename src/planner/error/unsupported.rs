@@ -8,8 +8,6 @@ pub enum UnsupportedTopLevelKind {
     Constant,
     #[error("custom type")]
     CustomType,
-    #[error("type alias")]
-    TypeAlias,
 }
 
 #[derive(Debug, Error, Clone, Copy, PartialEq, Eq)]

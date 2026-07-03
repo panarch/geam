@@ -21,7 +21,6 @@ pub fn plan_module(module: TypedModule) -> Result<ExecutionPlan, PlanError> {
     let imports = definitions.imports.len();
     let constants = definitions.constants.len();
     let custom_types = definitions.custom_types.len();
-    let type_aliases = definitions.type_aliases.len();
 
     if imports != 0 {
         return Err(PlanError::UnsupportedTopLevel {
@@ -36,11 +35,6 @@ pub fn plan_module(module: TypedModule) -> Result<ExecutionPlan, PlanError> {
     if custom_types != 0 {
         return Err(PlanError::UnsupportedTopLevel {
             kind: UnsupportedTopLevelKind::CustomType,
-        });
-    }
-    if type_aliases != 0 {
-        return Err(PlanError::UnsupportedTopLevel {
-            kind: UnsupportedTopLevelKind::TypeAlias,
         });
     }
 
@@ -426,6 +420,32 @@ pub fn main() {
     }
 
     #[test]
+    fn plan_type_alias_function_signature_as_underlying_type() {
+        let actual = plan_module(compile(
+            r#"
+pub type UserId =
+  Int
+
+fn identity(value: UserId) -> UserId {
+  value
+}
+
+pub fn main() {
+  identity(41)
+}
+"#,
+        ))
+        .expect("source should plan");
+        let expected = module(
+            "main",
+            function("main", int_return_tail_call(1, [int_arg(0, int(41))])),
+            [function("identity", local_int(0, "value")).param_int(0, "value")],
+        );
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
     fn reject_profile_constant_definition() {
         assert_eq!(
             expect_plan_error(
@@ -764,6 +784,30 @@ fn count(values: BitArray) {
     }
 
     #[test]
+    fn reject_profile_type_alias_resolved_to_unsupported_argument_type() {
+        assert_eq!(
+            expect_plan_error(
+                r#"
+pub type Bits =
+  BitArray
+
+pub fn main() {
+  1
+}
+
+fn count(values: Bits) {
+  1
+}
+"#,
+            ),
+            PlanError::UnsupportedArgument {
+                function: "count".into(),
+                reason: UnsupportedArgumentReason::UnsupportedType,
+            },
+        );
+    }
+
+    #[test]
     fn reject_profile_labelled_function_argument() {
         assert_eq!(
             expect_plan_error(
@@ -811,20 +855,6 @@ pub fn main() {
 "#,
             PlanError::UnsupportedTopLevel {
                 kind: UnsupportedTopLevelKind::CustomType,
-            },
-        );
-
-        assert_plan_error(
-            r#"
-pub type UserId =
-  Int
-
-pub fn main() {
-  1
-}
-"#,
-            PlanError::UnsupportedTopLevel {
-                kind: UnsupportedTopLevelKind::TypeAlias,
             },
         );
     }

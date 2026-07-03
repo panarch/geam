@@ -35,6 +35,15 @@ mod values {
     );
 }
 
+mod module_items {
+    execution_cases!("module_items";
+        type_alias,
+        type_alias_function_signature,
+        type_alias_compound_signature,
+        type_alias_generic_signature,
+    );
+}
+
 mod bindings {
     execution_cases!("bindings";
         let_binding,
@@ -241,7 +250,6 @@ mod rejection {
             import,
             constant,
             custom_type,
-            type_alias,
             external_function,
         );
     }
