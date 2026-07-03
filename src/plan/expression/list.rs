@@ -12,6 +12,10 @@ pub struct ListExpr {
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum ListExprKind {
     Value(Vec<super::Expr>),
+    Spread {
+        elements: Vec<super::Expr>,
+        tail: Box<ListExpr>,
+    },
     LocalGet {
         local: ListLocalId,
         name: EcoString,
@@ -59,6 +63,20 @@ impl ListExpr {
         Self {
             element_type: Box::new(element_type),
             kind: ListExprKind::Value(elements),
+        }
+    }
+
+    pub(crate) fn spread(
+        elements: Vec<super::Expr>,
+        tail: ListExpr,
+        element_type: ValueType,
+    ) -> Self {
+        Self {
+            element_type: Box::new(element_type),
+            kind: ListExprKind::Spread {
+                elements,
+                tail: Box::new(tail),
+            },
         }
     }
 
@@ -191,6 +209,15 @@ mod tests {
     fn list_expr_kind_accessors() {
         assert!(matches!(list_value().kind(), ListExprKind::Value(_)));
         assert!(matches!(
+            ListExpr::spread(
+                vec![Expr::int(IntExpr::value(0.into()))],
+                list_value(),
+                element_type()
+            )
+            .kind(),
+            ListExprKind::Spread { .. }
+        ));
+        assert!(matches!(
             ListExpr::local_get(ListLocalId(0), "values".into(), element_type()).kind(),
             ListExprKind::LocalGet { .. }
         ));
@@ -250,6 +277,15 @@ mod tests {
     #[test]
     fn list_expr_element_type() {
         assert_eq!(list_value().element_type(), &element_type());
+        assert_eq!(
+            ListExpr::spread(
+                vec![Expr::int(IntExpr::value(0.into()))],
+                list_value(),
+                element_type()
+            )
+            .element_type(),
+            &element_type(),
+        );
         assert_eq!(
             ListExpr::bool_case(BoolExpr::value(true), list_value(), list_value()).element_type(),
             &element_type(),

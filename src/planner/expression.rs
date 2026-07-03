@@ -168,12 +168,6 @@ fn plan_list(
     tail: Option<TypedExpr>,
     context: &mut PlanContext<'_>,
 ) -> Result<Expr, PlanError> {
-    if tail.is_some() {
-        return Err(PlanError::UnsupportedExpression {
-            kind: UnsupportedExpressionKind::ListSpread,
-        });
-    }
-
     let planned_elements = elements
         .into_iter()
         .map(|element| plan_expr(element, context))
@@ -211,8 +205,32 @@ fn plan_list(
         }
     }
 
-    Ok(Expr::list(ListExpr::value(
+    let Some(tail) = tail else {
+        return Ok(Expr::list(ListExpr::value(
+            planned_elements,
+            expected_element_type,
+        )));
+    };
+
+    let tail = plan_expr(tail, context)?;
+    let actual = tail.value_type();
+    let tail = tail.into_list().ok_or_else(|| {
+        invalid_expression_type_for_value(
+            ValueType::List(Box::new(expected_element_type.clone())),
+            actual,
+        )
+    })?;
+
+    if tail.element_type() != &expected_element_type {
+        return Err(invalid_expression_type_for_value(
+            ValueType::List(Box::new(expected_element_type.clone())),
+            ValueType::List(Box::new(tail.element_type().clone())),
+        ));
+    }
+
+    Ok(Expr::list(ListExpr::spread(
         planned_elements,
+        tail,
         expected_element_type,
     )))
 }
@@ -479,9 +497,9 @@ mod tests {
     use crate::planner::context::{AnonymousFunctions, PlanContext};
     use crate::planner::dsl::{
         bool_, bool_function_ref, float, float_function_ref, function, function_function_ref, int,
-        int_function_ref, let_list_step, let_tuple_step, list, list_function_ref, local_bool,
-        local_float, local_int, local_list, local_nil, local_string, local_tuple, module, nil,
-        nil_function_ref, string, string_function_ref, tuple, tuple_function_ref,
+        int_function_ref, let_list_step, let_tuple_step, list, list_function_ref, list_spread,
+        local_bool, local_float, local_int, local_list, local_nil, local_string, local_tuple,
+        module, nil, nil_function_ref, string, string_function_ref, tuple, tuple_function_ref,
     };
     use crate::planner::plan_module;
     use crate::planner::support::{compile, dummy_span, expect_plan_error};
@@ -497,18 +515,6 @@ mod tests {
     #[test]
     fn reject_profile_expression_variants() {
         let cases = [
-            (
-                r#"
-pub fn main() {
-  let rest = [2, 3]
-  [1, ..rest]
-  1
-}
-"#,
-                PlanError::UnsupportedExpression {
-                    kind: UnsupportedExpressionKind::ListSpread,
-                },
-            ),
             (
                 r#"
 pub fn main() {
@@ -1255,6 +1261,37 @@ pub fn main() {
     }
 
     #[test]
+    fn plan_list_spread_literal_shape() {
+        assert_eq!(
+            plan_module(compile(
+                r#"
+pub fn main() {
+  let rest = [2, 3]
+  [1, ..rest]
+}
+"#,
+            )),
+            Ok(module(
+                "main",
+                function(
+                    "main",
+                    list_spread(
+                        [int(1)],
+                        local_list(0, "rest", ValueType::Int),
+                        ValueType::Int
+                    ),
+                )
+                .step(let_list_step(
+                    0,
+                    "rest",
+                    list([int(2), int(3)], ValueType::Int),
+                )),
+                [],
+            )),
+        );
+    }
+
+    #[test]
     fn reject_margin_tuple_expression_shapes() {
         let tuple_int = type_::tuple(vec![type_::int()]);
         let cases = [
@@ -1470,6 +1507,39 @@ pub fn main() {
                 PlanError::InvalidTypedAst {
                     reason: InvalidTypedAstReason::ExpressionShape {
                         kind: InvalidExpressionShapeKind::Invalid,
+                    },
+                },
+            ),
+            (
+                TypedExpr::List {
+                    location: dummy_span(),
+                    type_: type_::list(type_::int()),
+                    elements: vec![typed_int_expr(1)],
+                    tail: Some(Box::new(typed_int_expr(2))),
+                },
+                PlanError::InvalidTypedAst {
+                    reason: InvalidTypedAstReason::ExpressionType {
+                        expected: InvalidExpressionType::List,
+                        actual: InvalidExpressionType::Int,
+                    },
+                },
+            ),
+            (
+                TypedExpr::List {
+                    location: dummy_span(),
+                    type_: type_::list(type_::int()),
+                    elements: vec![typed_int_expr(1)],
+                    tail: Some(Box::new(TypedExpr::List {
+                        location: dummy_span(),
+                        type_: type_::list(type_::string()),
+                        elements: vec![typed_string_expr("two")],
+                        tail: None,
+                    })),
+                },
+                PlanError::InvalidTypedAst {
+                    reason: InvalidTypedAstReason::ExpressionType {
+                        expected: InvalidExpressionType::List,
+                        actual: InvalidExpressionType::List,
                     },
                 },
             ),

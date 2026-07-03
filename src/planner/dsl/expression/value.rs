@@ -41,9 +41,21 @@ pub(crate) fn list(
     ))
 }
 
+pub(crate) fn list_spread(
+    elements: impl IntoIterator<Item = impl Into<Expr>>,
+    tail: List,
+    element_type: ValueType,
+) -> List {
+    List(ListExpr::spread(
+        elements.into_iter().map(Into::into).collect(),
+        tail.into(),
+        element_type,
+    ))
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{bool_, float, int, list, nil, string, tuple};
+    use super::{bool_, float, int, list, list_spread, nil, string, tuple};
     use crate::plan::ValueType;
     use crate::plan::{Expr, ExprKind};
 
@@ -63,6 +75,15 @@ mod tests {
         ));
         assert!(matches!(
             Expr::from(list([int(1)], ValueType::Int)).kind(),
+            ExprKind::List(_),
+        ));
+        assert!(matches!(
+            Expr::from(list_spread(
+                [int(1)],
+                list([int(2)], ValueType::Int),
+                ValueType::Int,
+            ))
+            .kind(),
             ExprKind::List(_),
         ));
     }

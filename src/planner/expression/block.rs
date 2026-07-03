@@ -407,15 +407,14 @@ pub fn main() {
                 r#"
 pub fn main() {
   {
-    let rest = [2]
-    [1, ..rest]
+    panic
     1
   }
 }
 "#,
             ),
             PlanError::UnsupportedExpression {
-                kind: UnsupportedExpressionKind::ListSpread,
+                kind: UnsupportedExpressionKind::Panic,
             },
         );
     }
@@ -431,15 +430,14 @@ fn add_one(value: Int) {
 
 pub fn main() {
   {
-    let rest = [2]
-    [1, ..rest]
+    panic
     add_one
   }
 }
 "#,
             ),
             PlanError::UnsupportedExpression {
-                kind: UnsupportedExpressionKind::ListSpread,
+                kind: UnsupportedExpressionKind::Panic,
             },
         );
     }

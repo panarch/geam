@@ -840,8 +840,7 @@ pub fn main() {
   case 1.0 {
     1.0 -> 1
     1.0 -> {
-      let rest = [2]
-      [1, ..rest]
+      panic
       2
     }
     _ -> 0
@@ -850,7 +849,7 @@ pub fn main() {
 "#,
             ),
             PlanError::UnsupportedExpression {
-                kind: UnsupportedExpressionKind::ListSpread,
+                kind: UnsupportedExpressionKind::Panic,
             },
         );
     }

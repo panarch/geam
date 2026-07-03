@@ -437,6 +437,12 @@ impl FrameLayout {
                     self.include_expr(element);
                 }
             }
+            ListExprKind::Spread { elements, tail } => {
+                for element in elements {
+                    self.include_expr(element);
+                }
+                self.include_list_expr(tail);
+            }
             ListExprKind::LocalGet { local, .. } => self.include_list(*local),
             ListExprKind::Call { args, .. } => self.include_call_args(args),
             ListExprKind::FunctionCall { function, args } => {
@@ -936,6 +942,14 @@ mod tests {
                 ))],
                 list_type(),
             ))),
+            Step::evaluate(Expr::list(ListExpr::spread(
+                vec![Expr::int(IntExpr::local_get(
+                    IntLocalId(3),
+                    "spread_element".into(),
+                ))],
+                ListExpr::local_get(ListLocalId(13), "spread_tail".into(), list_type()),
+                list_type(),
+            ))),
             Step::evaluate(Expr::list(ListExpr::local_get(
                 ListLocalId(0),
                 "local".into(),
@@ -1014,11 +1028,11 @@ mod tests {
 
         let layout = FrameLayout::from_function_parts(&[], &steps, &return_);
 
-        assert_eq!(layout.ints(), 3);
+        assert_eq!(layout.ints(), 4);
         assert_eq!(layout.floats(), 1);
         assert_eq!(layout.strings(), 1);
         assert_eq!(layout.bools(), 1);
-        assert_eq!(layout.lists(), 13);
+        assert_eq!(layout.lists(), 14);
         assert_eq!(layout.list_functions(), 1);
     }
 
