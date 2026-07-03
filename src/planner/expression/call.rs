@@ -7,7 +7,6 @@ use crate::plan::Expr;
 use crate::planner::context::PlanContext;
 use crate::planner::error::{
     InvalidCallShapeReason, InvalidTypedAstReason, InvalidUseShapeReason, PlanError,
-    UnsupportedPipelineReason,
 };
 use ecow::EcoString;
 use gleam_core::ast::{CallArg as GleamCallArg, TypedExpr};
@@ -36,14 +35,7 @@ pub(super) fn plan_call(
         });
     }
 
-    plan_call_expression(
-        type_,
-        fun,
-        arguments,
-        context,
-        None,
-        FunctionValueCallMode::Allow,
-    )
+    plan_call_expression(type_, fun, arguments, context, None)
 }
 
 pub(super) fn plan_use_call(
@@ -69,12 +61,6 @@ pub(super) fn plan_pipeline_hole_call(
     context: &mut PlanContext<'_>,
 ) -> Result<Expr, PlanError> {
     implicit::plan_pipeline_hole_call(type_, fun, arguments, context)
-}
-
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum FunctionValueCallMode {
-    Allow,
-    Reject,
 }
 
 struct CaptureSubstitution {
@@ -109,7 +95,6 @@ fn plan_call_expression(
     arguments: Vec<GleamCallArg<TypedExpr>>,
     context: &mut PlanContext<'_>,
     capture: Option<&CaptureSubstitution>,
-    function_value_call_mode: FunctionValueCallMode,
 ) -> Result<Expr, PlanError> {
     if let TypedExpr::Var { constructor, .. } = &fun {
         match &constructor.variant {
@@ -157,12 +142,6 @@ fn plan_call_expression(
             }
             ValueConstructorVariant::LocalVariable { .. } => {}
         }
-    }
-
-    if function_value_call_mode == FunctionValueCallMode::Reject {
-        return Err(PlanError::UnsupportedPipeline {
-            reason: UnsupportedPipelineReason::FunctionValueCall,
-        });
     }
 
     function_value::plan_function_value_call(type_, fun, arguments, context, capture)

@@ -106,6 +106,4 @@ pub enum UnsupportedCaseReason {
 pub enum UnsupportedPipelineReason {
     #[error("echo")]
     Echo,
-    #[error("function value pipeline calls are not supported")]
-    FunctionValueCall,
 }
