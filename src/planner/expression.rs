@@ -174,6 +174,11 @@ fn plan_list(
         });
     }
 
+    let planned_elements = elements
+        .into_iter()
+        .map(|element| plan_expr(element, context))
+        .collect::<Result<Vec<_>, _>>()?;
+
     let expected_element_type = match ValueType::from_gleam(type_.as_ref()) {
         Some(ValueType::List(type_)) => *type_,
         Some(actual) => {
@@ -189,10 +194,6 @@ fn plan_list(
             ));
         }
     };
-    let planned_elements = elements
-        .into_iter()
-        .map(|element| plan_expr(element, context))
-        .collect::<Result<Vec<_>, _>>()?;
 
     for element in &planned_elements {
         let actual = element.value_type();
@@ -500,6 +501,17 @@ pub fn main() {
 "#,
                 PlanError::UnsupportedExpression {
                     kind: UnsupportedExpressionKind::ListSpread,
+                },
+            ),
+            (
+                r#"
+pub fn main() {
+  let values = [<<>>]
+  1
+}
+"#,
+                PlanError::UnsupportedExpression {
+                    kind: UnsupportedExpressionKind::BitArray,
                 },
             ),
             (

@@ -1392,6 +1392,8 @@ mod tests {
 
     #[test]
     fn value_type_rejects_unsupported_recursive_member_types() {
+        assert_eq!(ValueType::from_gleam(type_::generic_var(0).as_ref()), None);
+        assert_eq!(ValueType::from_gleam(type_::unbound_var(0).as_ref()), None);
         assert_eq!(
             ValueType::from_gleam(type_::tuple(vec![type_::bit_array()]).as_ref()),
             None,

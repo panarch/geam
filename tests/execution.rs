@@ -222,7 +222,6 @@ mod rejection {
     mod control_flow {
         rejection_cases!("control_flow";
             block_function_unsupported_expression,
-            block_unsupported_expression,
         );
     }
 
