@@ -1,10 +1,11 @@
 use super::{
-    Bool, Float, Function, FunctionFunction, Int, IntFunction, Nil, String, TupleFunction,
+    Bool, Float, Function, FunctionFunction, Int, IntFunction, List, ListFunction, Nil, String,
+    TupleFunction,
 };
 use crate::plan::{
     BoolExpr, BoolFunctionExpr, FloatExpr, FloatFunctionExpr, FunctionExpr, FunctionExprKind,
-    FunctionFunctionExpr, IntExpr, IntFunctionExpr, NilExpr, NilFunctionExpr, Step, StringExpr,
-    StringFunctionExpr, TupleFunctionExpr,
+    FunctionFunctionExpr, IntExpr, IntFunctionExpr, ListExpr, ListFunctionExpr, NilExpr,
+    NilFunctionExpr, Step, StringExpr, StringFunctionExpr, TupleFunctionExpr,
 };
 
 pub(crate) fn block_int(steps: impl IntoIterator<Item = Step>, return_: Int) -> Int {
@@ -33,6 +34,10 @@ pub(crate) fn block_nil(steps: impl IntoIterator<Item = Step>, return_: Nil) -> 
     Nil(NilExpr::block(steps.into_iter().collect(), return_.into()))
 }
 
+pub(crate) fn block_list(steps: impl IntoIterator<Item = Step>, return_: List) -> List {
+    List(ListExpr::block(steps.into_iter().collect(), return_.into()))
+}
+
 pub(crate) fn block_function(steps: Vec<Step>, return_: Function) -> Function {
     Function(match FunctionExpr::from(return_).into_kind() {
         FunctionExprKind::Int(return_) => FunctionExpr::int(IntFunctionExpr::block(steps, return_)),
@@ -49,6 +54,9 @@ pub(crate) fn block_function(steps: Vec<Step>, return_: Function) -> Function {
         FunctionExprKind::Tuple(return_) => {
             FunctionExpr::tuple(TupleFunctionExpr::block(steps, return_))
         }
+        FunctionExprKind::List(return_) => {
+            FunctionExpr::list(ListFunctionExpr::block(steps, return_))
+        }
         FunctionExprKind::Function(return_) => {
             FunctionExpr::function(FunctionFunctionExpr::block(steps, return_))
         }
@@ -60,6 +68,16 @@ pub(crate) fn block_tuple_function(
     return_: TupleFunction,
 ) -> TupleFunction {
     TupleFunction(TupleFunctionExpr::block(
+        steps.into_iter().collect(),
+        return_.into(),
+    ))
+}
+
+pub(crate) fn block_list_function(
+    steps: impl IntoIterator<Item = Step>,
+    return_: ListFunction,
+) -> ListFunction {
+    ListFunction(ListFunctionExpr::block(
         steps.into_iter().collect(),
         return_.into(),
     ))
@@ -89,17 +107,19 @@ pub(crate) fn block_int_function(
 mod tests {
     use super::{
         block_bool, block_float, block_function, block_function_function, block_int,
-        block_int_function, block_nil, block_string, block_tuple_function,
+        block_int_function, block_list, block_list_function, block_nil, block_string,
+        block_tuple_function,
     };
     use crate::plan::{
         BoolExprKind, FloatExprKind, FunctionExpr, FunctionExprKind, FunctionFunctionId,
-        FunctionType, IntExprKind, IntFunctionExprKind, IntFunctionFunctionId, NilExprKind,
-        ParamLocal, RuntimeFunctionId, StringExprKind, TupleFunctionExprKind, ValueType,
+        FunctionType, IntExprKind, IntFunctionExprKind, IntFunctionFunctionId, ListExprKind,
+        ListFunctionExprKind, NilExprKind, ParamLocal, RuntimeFunctionId, StringExprKind,
+        TupleFunctionExprKind, ValueType,
     };
     use crate::planner::dsl::expression::{
         Function, bool_, float, function_function_ref, function_ref, int, int_function_ref,
-        let_bool_step, let_int_step, let_nil_step, let_string_step, local_bool, local_int,
-        local_nil, local_string, nil, string, tuple_function_ref,
+        let_bool_step, let_int_step, let_nil_step, let_string_step, list, list_function_ref,
+        local_bool, local_int, local_nil, local_string, nil, string, tuple_function_ref,
     };
 
     #[test]
@@ -131,6 +151,10 @@ mod tests {
                 .0
                 .kind(),
             NilExprKind::Block { .. },
+        ));
+        assert!(matches!(
+            block_list([], list([int(1)], ValueType::Int)).0.kind(),
+            ListExprKind::Block { .. },
         ));
     }
 
@@ -203,6 +227,18 @@ mod tests {
             .kind(),
             FunctionExprKind::Tuple(_),
         ));
+        assert!(matches!(
+            FunctionExpr::from(block_function(
+                vec![],
+                Function::from(list_function_ref(
+                    0,
+                    Vec::<ParamLocal>::new(),
+                    ValueType::Int
+                )),
+            ))
+            .kind(),
+            FunctionExprKind::List(_),
+        ));
         let returned_function_type = FunctionType::new(vec![ValueType::Int], ValueType::Int);
         assert!(matches!(
             FunctionExpr::from(block_function(
@@ -237,6 +273,15 @@ mod tests {
             .0
             .kind(),
             TupleFunctionExprKind::Block { .. },
+        ));
+        assert!(matches!(
+            block_list_function(
+                [],
+                list_function_ref(0, Vec::<ParamLocal>::new(), ValueType::Int)
+            )
+            .0
+            .kind(),
+            ListFunctionExprKind::Block { .. },
         ));
         assert_eq!(
             block_function_function(

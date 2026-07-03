@@ -1,7 +1,7 @@
 use crate::plan::{
     BoolExpr, BoolFunctionExpr, Expr, FloatExpr, FloatFunctionExpr, FunctionExpr,
-    FunctionFunctionExpr, IntExpr, IntFunctionExpr, LocalId, NilExpr, NilFunctionExpr, StringExpr,
-    StringFunctionExpr, TupleExpr, TupleFunctionExpr, ValueType,
+    FunctionFunctionExpr, IntExpr, IntFunctionExpr, ListExpr, ListFunctionExpr, LocalId, NilExpr,
+    NilFunctionExpr, StringExpr, StringFunctionExpr, TupleExpr, TupleFunctionExpr, ValueType,
 };
 use crate::planner::context::{FunctionLocalBinding, PlanContext};
 use crate::planner::error::{InvalidExpressionShapeKind, InvalidTypedAstReason, PlanError};
@@ -20,6 +20,9 @@ pub(super) fn plan_var(
             }
             if let Some((local, type_)) = context.lookup_tuple_local(&name) {
                 return Ok(Expr::tuple(TupleExpr::local_get(local, name, type_)));
+            }
+            if let Some((local, element_type)) = context.lookup_list_local(&name) {
+                return Ok(Expr::list(ListExpr::local_get(local, name, element_type)));
             }
             if let Some(binding) = context.lookup_function_local(&name) {
                 return Ok(function_local_get(binding, name));
@@ -102,6 +105,9 @@ fn function_local_get(binding: FunctionLocalBinding, name: EcoString) -> Expr {
         )),
         FunctionLocalBinding::Tuple { local, type_ } => Expr::function(FunctionExpr::tuple(
             TupleFunctionExpr::local_get(local, name, type_),
+        )),
+        FunctionLocalBinding::List { local, type_ } => Expr::function(FunctionExpr::list(
+            ListFunctionExpr::local_get(local, name, type_),
         )),
         FunctionLocalBinding::Function { local, type_ } => Expr::function(FunctionExpr::function(
             FunctionFunctionExpr::local_get(local, name, type_),

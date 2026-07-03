@@ -28,6 +28,7 @@ mod values {
         integer_return,
         float_value,
         tuple_value,
+        list_value,
         bool_value,
         nil_value,
     );
@@ -39,6 +40,7 @@ mod bindings {
         let_discard_binding,
         float_let_binding,
         tuple_let_binding,
+        list_let_binding,
         string_let_binding,
         bool_let_binding,
         nil_let_binding,
@@ -55,6 +57,7 @@ mod operators {
         float_comparison,
         float_division,
         tuple_equality,
+        list_equality,
         string_concatenation,
         bool_operators,
         short_circuit_block_scope,
@@ -83,6 +86,7 @@ mod control_flow {
             string_case_function_returns,
             tuple_projection_case,
             tuple_case_return_families,
+            list_case_return_families,
         );
     }
 }
@@ -92,6 +96,7 @@ mod pipeline {
         pipeline,
         float_pipeline,
         tuple_pipeline,
+        list_pipeline,
     );
 }
 
@@ -102,6 +107,7 @@ mod functions {
             string_function_call,
             float_function_call,
             tuple_function_call,
+            list_function_call,
             bool_function_call,
             nil_function_call,
             function_after_main,
@@ -120,6 +126,7 @@ mod functions {
             float_function_value_shapes,
             float_function_value_expressions,
             tuple_function_value_projection,
+            list_function_value,
             function_value_expression_steps,
             function_value_shadowing,
         );
@@ -132,6 +139,8 @@ mod functions {
             function_value_argument_callback,
             function_value_argument_discard,
             function_value_argument_float,
+            list_function_argument,
+            list_function_value_argument,
             function_value_argument_higher_order_alias,
             function_value_argument_higher_order_return_shapes,
             function_value_argument_input_shapes,
@@ -148,6 +157,7 @@ mod functions {
             function_returning_function_deep,
             function_returning_function_direct_shapes,
             function_returning_float_function,
+            function_returning_list_function,
             function_returning_function_recursive,
         );
     }
@@ -159,6 +169,7 @@ mod functions {
             string_nil_tail_recursion,
             float_tail_recursion,
             tuple_tail_recursion,
+            list_tail_recursion,
             block_case_tail_call,
             function_returning_tail_call,
             function_returning_tail_call_families,
@@ -174,15 +185,18 @@ mod functions {
             anonymous_function_return_shapes,
             anonymous_function_returning_function,
             anonymous_float_function,
+            anonymous_list_function,
             anonymous_function_main_returning_function,
             capturing_closure_local_call,
             capturing_closure_float,
+            capturing_closure_list,
             capturing_closure_block_scope,
             capturing_closure_nested,
             capturing_closure_shadowing,
             capturing_closure_value_families,
             capturing_closure_tuple,
             capturing_closure_return_shapes,
+            capturing_closure_list_function,
         );
     }
 
@@ -196,6 +210,7 @@ mod functions {
             use_capture,
             use_float_value,
             use_tuple_value,
+            use_list_value,
             use_block_scope,
             use_function_value_provider,
             use_inside_anonymous_function,
@@ -204,6 +219,13 @@ mod functions {
 }
 
 mod rejection {
+    mod control_flow {
+        rejection_cases!("control_flow";
+            block_function_unsupported_expression,
+            block_unsupported_expression,
+        );
+    }
+
     mod top_level {
         rejection_cases!("top_level";
             top_level_import,
@@ -225,6 +247,8 @@ mod rejection {
         rejection_cases!("function";
             external_function,
             function_unsupported_return_type,
+            function_unsupported_tuple_return_type,
+            function_unsupported_list_return_type,
             function_before_main_unsupported_body,
             function_after_main_unsupported_body,
         );
@@ -234,6 +258,7 @@ mod rejection {
         rejection_cases!("argument";
             argument_labelled,
             argument_unsupported_type,
+            argument_unsupported_function_type,
         );
     }
 
@@ -295,6 +320,16 @@ fn render_value(value: &Value) -> String {
                 .collect::<Vec<_>>()
                 .join(", ")
         ),
+        Value::List(value) => format!(
+            "List({})([{}])",
+            render_value_type(value.element_type()),
+            value
+                .values()
+                .iter()
+                .map(render_value)
+                .collect::<Vec<_>>()
+                .join(", ")
+        ),
         Value::Function(function) => {
             let type_ = function.type_();
             format!("Function({})", render_function_type(&type_))
@@ -328,6 +363,7 @@ fn render_value_type(type_: &ValueType) -> String {
                 .collect::<Vec<_>>()
                 .join(", ")
         ),
+        ValueType::List(element) => format!("List({})", render_value_type(element)),
         ValueType::Function(type_) => render_function_type(type_),
     }
 }

@@ -11,6 +11,7 @@ impl FrameLayout {
                 CallArgKind::Bool { value, .. } => self.include_bool_expr(value),
                 CallArgKind::Nil { value, .. } => self.include_nil_expr(value),
                 CallArgKind::Tuple { value, .. } => self.include_tuple_expr(value),
+                CallArgKind::List { value, .. } => self.include_list_expr(value),
                 CallArgKind::IntFunction { value, .. } => self.include_int_function_expr(value),
                 CallArgKind::StringFunction { value, .. } => {
                     self.include_string_function_expr(value);
@@ -22,6 +23,9 @@ impl FrameLayout {
                 CallArgKind::NilFunction { value, .. } => self.include_nil_function_expr(value),
                 CallArgKind::TupleFunction { value, .. } => {
                     self.include_tuple_function_expr(value);
+                }
+                CallArgKind::ListFunction { value, .. } => {
+                    self.include_list_function_expr(value);
                 }
                 CallArgKind::FunctionFunction { value, .. } => {
                     self.include_function_function_expr(value);
@@ -39,6 +43,7 @@ impl FrameLayout {
                 CaptureArgKind::Bool { value, .. } => self.include_bool_expr(value),
                 CaptureArgKind::Nil { value, .. } => self.include_nil_expr(value),
                 CaptureArgKind::Tuple { value, .. } => self.include_tuple_expr(value),
+                CaptureArgKind::List { value, .. } => self.include_list_expr(value),
                 CaptureArgKind::IntFunction { value, .. } => self.include_int_function_expr(value),
                 CaptureArgKind::StringFunction { value, .. } => {
                     self.include_string_function_expr(value);
@@ -52,6 +57,9 @@ impl FrameLayout {
                 CaptureArgKind::NilFunction { value, .. } => self.include_nil_function_expr(value),
                 CaptureArgKind::TupleFunction { value, .. } => {
                     self.include_tuple_function_expr(value);
+                }
+                CaptureArgKind::ListFunction { value, .. } => {
+                    self.include_list_function_expr(value);
                 }
                 CaptureArgKind::FunctionFunction { value, .. } => {
                     self.include_function_function_expr(value);
@@ -68,9 +76,9 @@ mod tests {
         BoolExpr, BoolFunctionExpr, BoolFunctionLocalId, CallArg, CaptureArg, Expr, FloatExpr,
         FloatFunctionExpr, FloatFunctionLocalId, FloatLocalId, FunctionExpr, FunctionFunctionExpr,
         FunctionFunctionId, FunctionFunctionLocalId, IntExpr, IntFunctionFunctionId, IntFunctionId,
-        IntFunctionLocalId, ReturnExpr, Step, StringExpr, StringFunctionExpr,
-        StringFunctionLocalId, StringLocalId, TupleExpr, TupleFunctionExpr, TupleFunctionLocalId,
-        TupleLocalId, ValueType,
+        IntFunctionLocalId, ListExpr, ListFunctionExpr, ListFunctionLocalId, ListLocalId,
+        ReturnExpr, Step, StringExpr, StringFunctionExpr, StringFunctionLocalId, StringLocalId,
+        TupleExpr, TupleFunctionExpr, TupleFunctionLocalId, TupleLocalId, ValueType,
     };
 
     #[test]
@@ -134,6 +142,18 @@ mod tests {
                             TupleFunctionLocalId(1),
                             "tuple_function_arg".into(),
                             tuple_function_type(),
+                        ),
+                    ),
+                    CallArg::list(
+                        ListLocalId(1),
+                        ListExpr::local_get(ListLocalId(4), "list_arg".into(), list_type()),
+                    ),
+                    CallArg::list_function(
+                        ListFunctionLocalId(1),
+                        ListFunctionExpr::local_get(
+                            ListFunctionLocalId(4),
+                            "list_function_arg".into(),
+                            list_function_type(),
                         ),
                     ),
                     CallArg::function_function(
@@ -237,6 +257,18 @@ mod tests {
                                 tuple_function_type(),
                             ),
                         ),
+                        CaptureArg::list(
+                            ListLocalId(2),
+                            ListExpr::local_get(ListLocalId(5), "list_capture".into(), list_type()),
+                        ),
+                        CaptureArg::list_function(
+                            ListFunctionLocalId(2),
+                            ListFunctionExpr::local_get(
+                                ListFunctionLocalId(5),
+                                "list_function_capture".into(),
+                                list_function_type(),
+                            ),
+                        ),
                         CaptureArg::function_function(
                             FunctionFunctionLocalId(2),
                             FunctionFunctionExpr::local_get(
@@ -267,6 +299,8 @@ mod tests {
         assert_eq!(layout.floats(), 21);
         assert_eq!(layout.tuples(), 3);
         assert_eq!(layout.tuple_functions(), 3);
+        assert_eq!(layout.lists(), 6);
+        assert_eq!(layout.list_functions(), 6);
     }
 
     fn tuple_type() -> Vec<ValueType> {
@@ -277,6 +311,17 @@ mod tests {
         crate::plan::FunctionType::new(
             vec![ValueType::Tuple(tuple_type())],
             ValueType::Tuple(tuple_type()),
+        )
+    }
+
+    fn list_type() -> ValueType {
+        ValueType::Int
+    }
+
+    fn list_function_type() -> crate::plan::FunctionType {
+        crate::plan::FunctionType::new(
+            vec![ValueType::List(Box::new(list_type()))],
+            ValueType::List(Box::new(list_type())),
         )
     }
 }

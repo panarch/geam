@@ -43,6 +43,7 @@ fn contains_function_value(type_: &ValueType) -> bool {
     match type_ {
         ValueType::Function(_) => true,
         ValueType::Tuple(elements) => elements.iter().any(contains_function_value),
+        ValueType::List(element) => contains_function_value(element),
         ValueType::Int
         | ValueType::Float
         | ValueType::String
@@ -144,6 +145,42 @@ fn add_one(value: Int) {
 
 pub fn main() {
   #(#(add_one)) != #(#(add_one))
+}
+"#,
+            ),
+            PlanError::UnsupportedBinOp {
+                operator: UnsupportedBinOpKind::NotEqFunction,
+            },
+        );
+    }
+
+    #[test]
+    fn reject_profile_list_equality_containing_function_value() {
+        assert_eq!(
+            expect_plan_error(
+                r#"
+fn add_one(value: Int) {
+  value + 1
+}
+
+pub fn main() {
+  [add_one] == [add_one]
+}
+"#,
+            ),
+            PlanError::UnsupportedBinOp {
+                operator: UnsupportedBinOpKind::EqFunction,
+            },
+        );
+        assert_eq!(
+            expect_plan_error(
+                r#"
+fn add_one(value: Int) {
+  value + 1
+}
+
+pub fn main() {
+  [[add_one]] != [[add_one]]
 }
 "#,
             ),

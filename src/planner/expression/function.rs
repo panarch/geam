@@ -142,6 +142,15 @@ fn closure_expr(
                 return_type.clone(),
             ))
         }
+        RuntimeFunctionId::List { id, return_type } => {
+            FunctionExpr::list(crate::plan::ListFunctionExpr::closure(
+                *id,
+                params,
+                captures,
+                type_,
+                *return_type.clone(),
+            ))
+        }
         RuntimeFunctionId::Function { id, return_type } => {
             FunctionExpr::function(crate::plan::FunctionFunctionExpr::closure(
                 *id,
@@ -191,6 +200,12 @@ fn anonymous_function_type(type_: &Type) -> Result<FunctionType, PlanError> {
             reason: InvalidTypedAstReason::ExpressionType {
                 expected: InvalidExpressionType::Function,
                 actual: InvalidExpressionType::Tuple,
+            },
+        }),
+        Some(ValueType::List(_)) => Err(PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::ExpressionType {
+                expected: InvalidExpressionType::Function,
+                actual: InvalidExpressionType::List,
             },
         }),
         None => Err(anonymous_function_type_error(type_)),
@@ -348,8 +363,15 @@ fn collect_expr(expression: &TypedExpr, bound: &mut HashSet<EcoString>, free: &m
         TypedExpr::TupleIndex { tuple, .. } => {
             collect_expr(tuple, bound, free);
         }
-        TypedExpr::List { .. }
-        | TypedExpr::RecordAccess { .. }
+        TypedExpr::List { elements, tail, .. } => {
+            for element in elements {
+                collect_expr(element, bound, free);
+            }
+            if let Some(tail) = tail {
+                collect_expr(tail, bound, free);
+            }
+        }
+        TypedExpr::RecordAccess { .. }
         | TypedExpr::PositionalAccess { .. }
         | TypedExpr::Todo { .. }
         | TypedExpr::Panic { .. }
@@ -701,6 +723,7 @@ pub fn main() {
   let negate_int_value = 4
   let negate_bool_value = True
   let tuple_value = #(5, 6)
+  let list_tail_value = [7]
   fn() {
     {
       block_value
@@ -718,6 +741,7 @@ pub fn main() {
     }
     -negate_int_value
     tuple_value.0
+    [0, ..list_tail_value]
   }
   1
 }
@@ -731,6 +755,7 @@ pub fn main() {
                 "negate_bool_value".to_string(),
                 "negate_int_value".to_string(),
                 "tuple_value".to_string(),
+                "list_tail_value".to_string(),
             ],
         );
     }
@@ -816,7 +841,7 @@ pub fn main() {
             plan_module(compile(
                 r#"
 pub fn main() {
-  fn(value) { [value] }
+  fn() { <<>> }
   1
 }
 "#,
@@ -914,6 +939,20 @@ pub fn main() {
 
         assert_eq!(
             plan_module(module),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionType {
+                    expected: InvalidExpressionType::Function,
+                    actual: InvalidExpressionType::List,
+                },
+            }),
+        );
+
+        let mut invalid_shape = anonymous_function_module();
+        let (type_, _, _) = anonymous_function_expression_mut(&mut invalid_shape);
+        *type_ = gleam_core::type_::bit_array();
+
+        assert_eq!(
+            plan_module(invalid_shape),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::ExpressionShape {
                     kind: InvalidExpressionShapeKind::Invalid,

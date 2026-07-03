@@ -133,6 +133,10 @@ fn string_case_expr(
             clauses: tuple_case_clauses(clauses)?,
             fallback,
         },
+        ExprKind::List(fallback) => StringCaseBranches::List {
+            clauses: list_case_clauses(clauses)?,
+            fallback,
+        },
         ExprKind::Function(fallback) => function_case_branches(clauses, fallback)?,
     };
 
@@ -217,6 +221,19 @@ fn tuple_case_clauses(
     Ok(typed_clauses)
 }
 
+fn list_case_clauses(
+    clauses: Vec<(EcoString, Expr)>,
+) -> Result<Vec<(EcoString, crate::plan::ListExpr)>, PlanError> {
+    let mut typed_clauses = Vec::with_capacity(clauses.len());
+    for (value, clause) in clauses {
+        let ExprKind::List(clause) = clause.into_kind() else {
+            return Err(branch_return_type_mismatch());
+        };
+        typed_clauses.push((value, clause));
+    }
+    Ok(typed_clauses)
+}
+
 fn function_case_branches(
     clauses: Vec<(EcoString, Expr)>,
     fallback: crate::plan::FunctionExpr,
@@ -244,6 +261,10 @@ fn function_case_branches(
         }),
         crate::plan::FunctionExprKind::Tuple(fallback) => Ok(StringCaseBranches::TupleFunction {
             clauses: tuple_function_case_clauses(clauses)?,
+            fallback,
+        }),
+        crate::plan::FunctionExprKind::List(fallback) => Ok(StringCaseBranches::ListFunction {
+            clauses: list_function_case_clauses(clauses)?,
             fallback,
         }),
         crate::plan::FunctionExprKind::Function(fallback) => {
@@ -351,6 +372,22 @@ fn tuple_function_case_clauses(
     Ok(typed_clauses)
 }
 
+fn list_function_case_clauses(
+    clauses: Vec<(EcoString, Expr)>,
+) -> Result<Vec<(EcoString, crate::plan::ListFunctionExpr)>, PlanError> {
+    let mut typed_clauses = Vec::with_capacity(clauses.len());
+    for (value, clause) in clauses {
+        let ExprKind::Function(clause) = clause.into_kind() else {
+            return Err(branch_return_type_mismatch());
+        };
+        let Some(clause) = clause.into_list() else {
+            return Err(branch_return_type_mismatch());
+        };
+        typed_clauses.push((value, clause));
+    }
+    Ok(typed_clauses)
+}
+
 fn function_function_case_clauses(
     clauses: Vec<(EcoString, Expr)>,
 ) -> Result<Vec<(EcoString, crate::plan::FunctionFunctionExpr)>, PlanError> {
@@ -375,14 +412,15 @@ fn branch_return_type_mismatch() -> PlanError {
 mod tests {
     use crate::plan::{
         BoolFunctionId, Expr, FloatExpr, FloatFunctionId, FunctionExpr, FunctionFunctionId,
-        FunctionType, IntFunctionExpr, IntFunctionFunctionId, IntFunctionId, IntLocalId, LocalId,
-        NilFunctionId, RuntimeFunctionId, StringCaseBranches, StringFunctionId, StringLocalId,
-        ValueType,
+        FunctionType, IntFunctionExpr, IntFunctionFunctionId, IntFunctionId, IntLocalId,
+        ListFunctionId, LocalId, NilFunctionId, RuntimeFunctionId, StringCaseBranches,
+        StringFunctionId, StringLocalId, TupleFunctionId, ValueType,
     };
     use crate::planner::dsl::{
         bool_, bool_return_expr, bool_return_string_case, float, function, function_ref, int,
-        int_return_expr, int_return_string_case, local_string, module, nil, nil_return_expr,
-        nil_return_string_case, string, string_return_expr, string_return_string_case,
+        int_return_expr, int_return_string_case, list, list_return_expr, list_return_string_case,
+        local_string, module, nil, nil_return_expr, nil_return_string_case, return_list, string,
+        string_return_expr, string_return_string_case, tuple,
     };
     use crate::planner::plan_module;
     use crate::planner::support::{dummy_span, expect_plan_error};
@@ -426,6 +464,13 @@ pub fn nil_case(value: String) {
     _ -> Nil
   }
 }
+
+pub fn list_case(value: String) {
+  case value {
+    "one" -> [1]
+    _ -> [0]
+  }
+}
 "#,
         ))
         .expect("source should plan");
@@ -467,6 +512,18 @@ pub fn nil_case(value: String) {
                         local_string(0, "value"),
                         [("nil", nil_return_expr(nil()))],
                         nil_return_expr(nil()),
+                    ),
+                )
+                .param_string(0, "value"),
+                function(
+                    "list_case",
+                    return_list(
+                        ValueType::Int,
+                        list_return_string_case(
+                            local_string(0, "value"),
+                            [("one", list_return_expr(list([int(1)], ValueType::Int)))],
+                            list_return_expr(list([int(0)], ValueType::Int)),
+                        ),
                     ),
                 )
                 .param_string(0, "value"),
@@ -600,6 +657,10 @@ fn duplicate_literal(value: String) {
                 r#"pub fn main() { case "prefix one" { "prefix " <> rest -> 1 _ -> 0 } }"#,
                 UnsupportedCaseReason::StringPrefixPattern,
             ),
+            (
+                r#"pub fn main() { case "one" { "one" if True -> 1 _ -> 0 } }"#,
+                UnsupportedCaseReason::Guard,
+            ),
         ];
 
         for (src, reason) in cases {
@@ -619,7 +680,8 @@ pub fn main() {
   case "one" {
     "one" -> 1
     "one" -> {
-      [1]
+      let rest = [2]
+      [1, ..rest]
       2
     }
     _ -> 0
@@ -628,7 +690,7 @@ pub fn main() {
 "#,
             ),
             PlanError::UnsupportedExpression {
-                kind: UnsupportedExpressionKind::List,
+                kind: UnsupportedExpressionKind::ListSpread,
             },
         );
     }
@@ -750,6 +812,34 @@ pub fn main() {
             }),
         );
 
+        let mut empty_pattern = compile_string_case_module();
+        let (_, _, clauses) = super::super::expect_case_statement_mut(
+            &mut empty_pattern.definitions.functions[0].body[0],
+        );
+        clauses[0].pattern.clear();
+        assert_eq!(
+            plan_module(empty_pattern),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::CaseShape {
+                    reason: InvalidCaseShapeReason::PatternSubjectCountMismatch,
+                },
+            }),
+        );
+
+        let mut case_type_mismatch = compile_string_case_module();
+        let (case_type, _, _) = super::super::expect_case_statement_mut(
+            &mut case_type_mismatch.definitions.functions[0].body[0],
+        );
+        *case_type = type_::bool();
+        assert_eq!(
+            plan_module(case_type_mismatch),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::CaseShape {
+                    reason: InvalidCaseShapeReason::BranchReturnTypeMismatch,
+                },
+            }),
+        );
+
         let mut missing_fallback_pattern = compile_string_case_module();
         let (_, _, clauses) = super::super::expect_case_statement_mut(
             &mut missing_fallback_pattern.definitions.functions[0].body[0],
@@ -757,6 +847,44 @@ pub fn main() {
         clauses.pop();
         assert_eq!(
             plan_module(missing_fallback_pattern),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::CaseShape {
+                    reason: InvalidCaseShapeReason::MissingFallbackPattern,
+                },
+            }),
+        );
+
+        let mut missing_function_fallback_pattern = crate::planner::support::compile(
+            r#"
+pub fn main() {
+  let function = case "one" {
+    "one" -> return_value
+    _ -> return_value
+  }
+  function("value")
+}
+
+fn return_value(value: String) {
+  value
+}
+"#,
+        );
+        let body = missing_function_fallback_pattern
+            .definitions
+            .functions
+            .iter_mut()
+            .find(|function| {
+                function
+                    .name
+                    .as_ref()
+                    .is_some_and(|(_, name)| name == "main")
+            })
+            .map(|function| &mut function.body)
+            .expect("expected main function");
+        let (_, _, clauses) = super::super::expect_assignment_case_statement_mut(&mut body[0]);
+        clauses.pop();
+        assert_eq!(
+            plan_module(missing_function_fallback_pattern),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::CaseShape {
                     reason: InvalidCaseShapeReason::MissingFallbackPattern,
@@ -830,6 +958,24 @@ pub fn main() {
                 string("one").into(),
                 vec![("one".into(), int(10).into())],
                 nil().into(),
+            ),
+            Err(case_branch_return_type_mismatch()),
+        );
+
+        assert_eq!(
+            super::string_case_expr(
+                string("one").into(),
+                vec![("one".into(), int(10).into())],
+                Expr::from(tuple([Expr::from(int(0))])),
+            ),
+            Err(case_branch_return_type_mismatch()),
+        );
+
+        assert_eq!(
+            super::string_case_expr(
+                string("one").into(),
+                vec![("one".into(), int(10).into())],
+                Expr::from(list([int(0)], ValueType::Int)),
             ),
             Err(case_branch_return_type_mismatch()),
         );
@@ -978,6 +1124,37 @@ pub fn main() {
         );
         assert_eq!(
             super::function_case_branches(
+                vec![("one".into(), list_function_ref_expr(0))],
+                FunctionExpr::from(function_ref(
+                    RuntimeFunctionId::List {
+                        id: ListFunctionId(1),
+                        return_type: Box::new(ValueType::Int),
+                    },
+                    [LocalId::Int(IntLocalId(0))],
+                )),
+            ),
+            Ok(StringCaseBranches::ListFunction {
+                clauses: vec![(
+                    "one".into(),
+                    list_function_ref_expr(0)
+                        .into_function()
+                        .expect("function expression")
+                        .into_list()
+                        .expect("list function expression"),
+                )],
+                fallback: FunctionExpr::from(function_ref(
+                    RuntimeFunctionId::List {
+                        id: ListFunctionId(1),
+                        return_type: Box::new(ValueType::Int),
+                    },
+                    [LocalId::Int(IntLocalId(0))],
+                ))
+                .into_list()
+                .expect("list function expression"),
+            }),
+        );
+        assert_eq!(
+            super::function_case_branches(
                 vec![("one".into(), function_function_ref_expr(0))],
                 function_function_ref_expr(1)
                     .into_function()
@@ -1040,11 +1217,23 @@ pub fn main() {
             Err(case_branch_return_type_mismatch()),
         );
         assert_eq!(
+            super::list_case_clauses(vec![("one".into(), Expr::from(int(1)))]),
+            Err(case_branch_return_type_mismatch()),
+        );
+        assert_eq!(
             super::tuple_function_case_clauses(vec![("one".into(), Expr::from(int(1)))]),
             Err(case_branch_return_type_mismatch()),
         );
         assert_eq!(
             super::tuple_function_case_clauses(vec![("one".into(), int_function_ref_expr(0))]),
+            Err(case_branch_return_type_mismatch()),
+        );
+        assert_eq!(
+            super::list_function_case_clauses(vec![("one".into(), Expr::from(int(1)))]),
+            Err(case_branch_return_type_mismatch()),
+        );
+        assert_eq!(
+            super::list_function_case_clauses(vec![("one".into(), int_function_ref_expr(0))]),
             Err(case_branch_return_type_mismatch()),
         );
         assert_eq!(
@@ -1055,6 +1244,15 @@ pub fn main() {
             super::function_function_case_clauses(vec![("one".into(), int_function_ref_expr(0))]),
             Err(case_branch_return_type_mismatch()),
         );
+
+        assert_string_function_case_branch_mismatch(int_function_ref_expr(1));
+        assert_string_function_case_branch_mismatch(string_function_ref_expr(1));
+        assert_string_function_case_branch_mismatch(float_function_ref_expr(1));
+        assert_string_function_case_branch_mismatch(bool_function_ref_expr(1));
+        assert_string_function_case_branch_mismatch(nil_function_ref_expr(1));
+        assert_string_function_case_branch_mismatch(tuple_function_ref_expr(1));
+        assert_string_function_case_branch_mismatch(list_function_ref_expr(1));
+        assert_string_function_case_branch_mismatch(function_function_ref_expr(1));
     }
 
     fn int_function_ref_expr(id: usize) -> crate::plan::Expr {
@@ -1097,6 +1295,28 @@ pub fn main() {
         .into()
     }
 
+    fn list_function_ref_expr(id: usize) -> crate::plan::Expr {
+        function_ref(
+            RuntimeFunctionId::List {
+                id: ListFunctionId(id),
+                return_type: Box::new(ValueType::Int),
+            },
+            [LocalId::Int(IntLocalId(0))],
+        )
+        .into()
+    }
+
+    fn tuple_function_ref_expr(id: usize) -> crate::plan::Expr {
+        function_ref(
+            RuntimeFunctionId::Tuple {
+                id: TupleFunctionId(id),
+                return_type: vec![ValueType::Int],
+            },
+            [LocalId::Int(IntLocalId(0))],
+        )
+        .into()
+    }
+
     fn function_function_ref_expr(id: usize) -> crate::plan::Expr {
         function_ref(
             RuntimeFunctionId::Function {
@@ -1106,6 +1326,16 @@ pub fn main() {
             Vec::<LocalId>::new(),
         )
         .into()
+    }
+
+    fn assert_string_function_case_branch_mismatch(fallback: crate::plan::Expr) {
+        assert_eq!(
+            super::function_case_branches(
+                vec![("one".into(), Expr::from(int(1)))],
+                fallback.into_function().expect("function expression"),
+            ),
+            Err(case_branch_return_type_mismatch()),
+        );
     }
 
     fn case_branch_return_type_mismatch() -> PlanError {

@@ -1,11 +1,11 @@
 use super::{
-    Bool, BoolFunction, Float, FloatFunction, Int, IntFunction, Nil, NilFunction, String,
+    Bool, BoolFunction, Float, FloatFunction, Int, IntFunction, List, Nil, NilFunction, String,
     StringFunction, Tuple,
 };
 use crate::plan::{
     BoolFunctionLocalId, BoolLocalId, Expr, FloatFunctionLocalId, FloatLocalId, IntFunctionLocalId,
-    IntLocalId, NilFunctionLocalId, NilLocalId, Step, StringFunctionLocalId, StringLocalId,
-    TupleLocalId,
+    IntLocalId, ListLocalId, NilFunctionLocalId, NilLocalId, Step, StringFunctionLocalId,
+    StringLocalId, TupleLocalId,
 };
 use ecow::EcoString;
 
@@ -31,6 +31,10 @@ pub(crate) fn let_nil_step(local: usize, name: impl Into<EcoString>, value: Nil)
 
 pub(crate) fn let_tuple_step(local: usize, name: impl Into<EcoString>, value: Tuple) -> Step {
     Step::let_tuple(TupleLocalId(local), name.into(), value.into())
+}
+
+pub(crate) fn let_list_step(local: usize, name: impl Into<EcoString>, value: List) -> Step {
+    Step::let_list(ListLocalId(local), name.into(), value.into())
 }
 
 pub(crate) fn let_int_function_step(
@@ -81,13 +85,13 @@ pub(crate) fn evaluate_step(value: impl Into<Expr>) -> Step {
 mod tests {
     use super::{
         evaluate_step, let_bool_function_step, let_bool_step, let_float_function_step,
-        let_float_step, let_int_function_step, let_int_step, let_nil_function_step, let_nil_step,
-        let_string_function_step, let_string_step, let_tuple_step,
+        let_float_step, let_int_function_step, let_int_step, let_list_step, let_nil_function_step,
+        let_nil_step, let_string_function_step, let_string_step, let_tuple_step,
     };
     use crate::plan::Expr;
     use crate::plan::StepKind;
     use crate::planner::dsl::expression::{
-        bool_, bool_function_ref, float, float_function_ref, int, int_function_ref, nil,
+        bool_, bool_function_ref, float, float_function_ref, int, int_function_ref, list, nil,
         nil_function_ref, string, string_function_ref, tuple,
     };
 
@@ -121,6 +125,10 @@ mod tests {
             )
             .kind(),
             StepKind::LetTuple { .. },
+        ));
+        assert!(matches!(
+            let_list_step(0, "x", list([int(1)], crate::plan::ValueType::Int)).kind(),
+            StepKind::LetList { .. },
         ));
         assert!(matches!(
             let_int_function_step(

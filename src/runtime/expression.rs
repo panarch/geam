@@ -2,6 +2,7 @@ mod bool;
 mod float;
 mod function;
 mod int;
+mod list;
 mod nil;
 mod string;
 mod tuple;
@@ -15,10 +16,11 @@ pub(super) use self::{
     float::eval_float_expr,
     function::{
         eval_bool_function_expr, eval_float_function_expr, eval_function_expr,
-        eval_function_function_expr, eval_int_function_expr, eval_nil_function_expr,
-        eval_string_function_expr, eval_tuple_function_expr,
+        eval_function_function_expr, eval_int_function_expr, eval_list_function_expr,
+        eval_nil_function_expr, eval_string_function_expr, eval_tuple_function_expr,
     },
     int::eval_int_expr,
+    list::eval_list_expr,
     nil::eval_nil_expr,
     string::eval_string_expr,
     tuple::{eval_tuple_expr, project_tuple_expr},
@@ -41,6 +43,7 @@ pub(super) fn eval_expr(
             Ok(Value::Nil)
         }
         ExprKind::Tuple(expression) => Ok(Value::Tuple(eval_tuple_expr(plan, frame, expression)?)),
+        ExprKind::List(expression) => Ok(Value::List(eval_list_expr(plan, frame, expression)?)),
         ExprKind::Function(expression) => {
             let value = eval_function_expr(plan, frame, expression)?;
             Ok(Value::Function(value))

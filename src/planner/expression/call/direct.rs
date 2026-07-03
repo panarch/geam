@@ -1,7 +1,8 @@
 use super::CaptureSubstitution;
 use crate::plan::{
-    BoolExpr, CallArg, Expr, FloatExpr, FunctionExpr, FunctionFunctionExpr, IntExpr, NilExpr,
-    RuntimeFunctionId, StringExpr, TupleExpr, TupleFunctionExpr, ValueType,
+    BoolExpr, CallArg, Expr, FloatExpr, FunctionExpr, FunctionFunctionExpr, IntExpr, ListExpr,
+    ListFunctionExpr, NilExpr, RuntimeFunctionId, StringExpr, TupleExpr, TupleFunctionExpr,
+    ValueType,
 };
 use crate::planner::context::{FunctionInfo, PlanContext};
 use crate::planner::error::{InvalidCallShapeReason, InvalidTypedAstReason, PlanError};
@@ -52,6 +53,9 @@ fn call_expr(function: RuntimeFunctionId, args: Vec<CallArg>) -> Expr {
         RuntimeFunctionId::Tuple { id, return_type } => {
             Expr::tuple(TupleExpr::call(id, args, return_type))
         }
+        RuntimeFunctionId::List { id, return_type } => {
+            Expr::list(ListExpr::call(id, args, *return_type))
+        }
         RuntimeFunctionId::Function { id, return_type } => {
             function_returning_function_call_expr(id, args, return_type)
         }
@@ -81,6 +85,9 @@ fn function_returning_function_call_expr(
         )),
         crate::plan::FunctionFunctionId::Tuple(function) => Expr::function(FunctionExpr::tuple(
             TupleFunctionExpr::call(function, args, return_type),
+        )),
+        crate::plan::FunctionFunctionId::List(function) => Expr::function(FunctionExpr::list(
+            ListFunctionExpr::call(function, args, return_type),
         )),
         crate::plan::FunctionFunctionId::Function(function) => Expr::function(
             FunctionExpr::function(FunctionFunctionExpr::call(function, args, return_type)),
@@ -252,7 +259,7 @@ pub fn main() {
         let (type_, _, _) = expect_call_statement_mut(
             &mut unsupported_return_type_call.definitions.functions[1].body[0],
         );
-        *type_ = type_::list(type_::int());
+        *type_ = type_::bit_array();
         assert_eq!(
             plan_module(unsupported_return_type_call),
             Err(PlanError::InvalidTypedAst {

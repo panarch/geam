@@ -21,8 +21,8 @@ pub(crate) use value::*;
 
 use crate::plan::{
     BoolExpr, BoolFunctionExpr, FloatExpr, FloatFunctionExpr, FunctionExpr, FunctionFunctionExpr,
-    IntExpr, IntFunctionExpr, NilExpr, NilFunctionExpr, ParamLocal, StringExpr, StringFunctionExpr,
-    TupleExpr, TupleFunctionExpr, ValueType,
+    IntExpr, IntFunctionExpr, ListExpr, ListFunctionExpr, NilExpr, NilFunctionExpr, ParamLocal,
+    StringExpr, StringFunctionExpr, TupleExpr, TupleFunctionExpr, ValueType,
 };
 
 pub(crate) struct Int(IntExpr);
@@ -37,6 +37,8 @@ pub(crate) struct Nil(NilExpr);
 
 pub(crate) struct Tuple(TupleExpr);
 
+pub(crate) struct List(ListExpr);
+
 pub(crate) struct Function(FunctionExpr);
 
 pub(crate) struct IntFunction(IntFunctionExpr);
@@ -50,6 +52,8 @@ pub(crate) struct BoolFunction(BoolFunctionExpr);
 pub(crate) struct NilFunction(NilFunctionExpr);
 
 pub(crate) struct TupleFunction(TupleFunctionExpr);
+
+pub(crate) struct ListFunction(ListFunctionExpr);
 
 pub(crate) struct FunctionFunction(FunctionFunctionExpr);
 

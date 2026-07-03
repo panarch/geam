@@ -213,6 +213,10 @@ pub fn main() {
                 r#"pub fn main() { case #(1, 2) { _ -> 1 } }"#,
                 UnsupportedCaseReason::UnsupportedSubjectType,
             ),
+            (
+                r#"pub fn main() { case [1, 2] { _ -> 1 } }"#,
+                UnsupportedCaseReason::UnsupportedSubjectType,
+            ),
         ];
 
         for (src, reason) in cases {
@@ -232,7 +236,8 @@ pub fn main() {
   case True {
     _ -> 1
     True -> {
-      [1]
+      let rest = [2]
+      [1, ..rest]
       2
     }
   }
@@ -240,7 +245,7 @@ pub fn main() {
 "#,
             ),
             PlanError::UnsupportedExpression {
-                kind: UnsupportedExpressionKind::List,
+                kind: UnsupportedExpressionKind::ListSpread,
             },
         );
 
@@ -251,7 +256,8 @@ pub fn main() {
   case 1 {
     _ -> 1
     1 -> {
-      [1]
+      let rest = [2]
+      [1, ..rest]
       2
     }
   }
@@ -259,7 +265,7 @@ pub fn main() {
 "#,
             ),
             PlanError::UnsupportedExpression {
-                kind: UnsupportedExpressionKind::List,
+                kind: UnsupportedExpressionKind::ListSpread,
             },
         );
     }

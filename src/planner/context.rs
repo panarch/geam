@@ -4,16 +4,19 @@ use crate::plan::{
     FloatFunctionId, FloatFunctionLocalId, FloatLocalId, FunctionFunctionExpr,
     FunctionFunctionFunctionId, FunctionFunctionId, FunctionFunctionLocalId, FunctionId,
     FunctionPlan, FunctionType, FunctionValue, IntExpr, IntFunctionExpr, IntFunctionFunctionId,
-    IntFunctionId, IntFunctionLocalId, IntLocalId, LocalId, NilExpr, NilFunctionExpr,
-    NilFunctionFunctionId, NilFunctionId, NilFunctionLocalId, NilLocalId, ParamBinding, ParamLocal,
-    RuntimeFunctionId, StringExpr, StringFunctionExpr, StringFunctionFunctionId, StringFunctionId,
-    StringFunctionLocalId, StringLocalId, TupleExpr, TupleFunctionExpr, TupleFunctionFunctionId,
-    TupleFunctionId, TupleFunctionLocalId, TupleLocalId, ValueType,
+    IntFunctionId, IntFunctionLocalId, IntLocalId, ListExpr, ListFunctionExpr,
+    ListFunctionFunctionId, ListFunctionId, ListFunctionLocalId, ListLocalId, LocalId, NilExpr,
+    NilFunctionExpr, NilFunctionFunctionId, NilFunctionId, NilFunctionLocalId, NilLocalId,
+    ParamBinding, ParamLocal, RuntimeFunctionId, StringExpr, StringFunctionExpr,
+    StringFunctionFunctionId, StringFunctionId, StringFunctionLocalId, StringLocalId, TupleExpr,
+    TupleFunctionExpr, TupleFunctionFunctionId, TupleFunctionId, TupleFunctionLocalId,
+    TupleLocalId, ValueType,
 };
 use crate::planner::error::{InvalidTypedAstReason, PlanError};
 use ecow::EcoString;
-use gleam_core::type_::Type;
+use gleam_core::type_::{Type, TypeVar};
 use std::collections::HashMap;
+use std::ops::Deref;
 
 #[derive(Clone)]
 pub(super) struct FunctionInfo {
@@ -40,12 +43,14 @@ pub(super) struct PlanContext<'a> {
     next_bool_local: usize,
     next_nil_local: usize,
     next_tuple_local: usize,
+    next_list_local: usize,
     next_int_function_local: usize,
     next_float_function_local: usize,
     next_string_function_local: usize,
     next_bool_function_local: usize,
     next_nil_function_local: usize,
     next_tuple_function_local: usize,
+    next_list_function_local: usize,
     next_function_function_local: usize,
 }
 
@@ -55,6 +60,10 @@ enum LocalBinding {
     Tuple {
         local: TupleLocalId,
         type_: Vec<ValueType>,
+    },
+    List {
+        local: ListLocalId,
+        element_type: ValueType,
     },
     Function(FunctionLocalBinding),
 }
@@ -90,6 +99,10 @@ pub(super) enum FunctionLocalBinding {
         local: TupleFunctionLocalId,
         type_: FunctionType,
     },
+    List {
+        local: ListFunctionLocalId,
+        type_: FunctionType,
+    },
     Function {
         local: FunctionFunctionLocalId,
         type_: FunctionType,
@@ -113,12 +126,14 @@ impl<'a> PlanContext<'a> {
             next_bool_local: 0,
             next_nil_local: 0,
             next_tuple_local: 0,
+            next_list_local: 0,
             next_int_function_local: 0,
             next_float_function_local: 0,
             next_string_function_local: 0,
             next_bool_function_local: 0,
             next_nil_function_local: 0,
             next_tuple_function_local: 0,
+            next_list_function_local: 0,
             next_function_function_local: 0,
         }
     }
@@ -168,6 +183,19 @@ impl<'a> PlanContext<'a> {
                     LocalBinding::Tuple {
                         local: *local,
                         type_: type_.clone(),
+                    },
+                );
+            }
+            ParamLocal::List {
+                local,
+                element_type,
+            } => {
+                self.next_list_local = self.next_list_local.max(local.0 + 1);
+                self.bindings.insert(
+                    name,
+                    LocalBinding::List {
+                        local: *local,
+                        element_type: element_type.clone(),
                     },
                 );
             }
@@ -226,6 +254,16 @@ impl<'a> PlanContext<'a> {
                 self.bindings.insert(
                     name,
                     LocalBinding::Function(FunctionLocalBinding::Tuple {
+                        local: *local,
+                        type_: type_.clone(),
+                    }),
+                );
+            }
+            ParamLocal::ListFunction { local, type_ } => {
+                self.next_list_function_local = self.next_list_function_local.max(local.0 + 1);
+                self.bindings.insert(
+                    name,
+                    LocalBinding::Function(FunctionLocalBinding::List {
                         local: *local,
                         type_: type_.clone(),
                     }),
@@ -329,6 +367,20 @@ impl<'a> PlanContext<'a> {
         local
     }
 
+    pub(super) fn define_list_function_local(
+        &mut self,
+        name: EcoString,
+        type_: FunctionType,
+    ) -> ListFunctionLocalId {
+        let local = ListFunctionLocalId(self.next_list_function_local);
+        self.next_list_function_local += 1;
+        self.bindings.insert(
+            name,
+            LocalBinding::Function(FunctionLocalBinding::List { local, type_ }),
+        );
+        local
+    }
+
     pub(super) fn define_function_function_local(
         &mut self,
         name: EcoString,
@@ -395,10 +447,27 @@ impl<'a> PlanContext<'a> {
         local
     }
 
+    pub(super) fn define_list_local(
+        &mut self,
+        name: EcoString,
+        element_type: ValueType,
+    ) -> ListLocalId {
+        let local = ListLocalId(self.next_list_local);
+        self.next_list_local += 1;
+        self.bindings.insert(
+            name,
+            LocalBinding::List {
+                local,
+                element_type,
+            },
+        );
+        local
+    }
+
     pub(super) fn lookup_local(&self, name: &EcoString) -> Option<(LocalId, ValueType)> {
         match self.bindings.get(name)? {
             LocalBinding::Primitive(local) => Some((*local, local.value_type())),
-            LocalBinding::Tuple { .. } => None,
+            LocalBinding::Tuple { .. } | LocalBinding::List { .. } => None,
             LocalBinding::Function(_) => None,
         }
     }
@@ -409,7 +478,21 @@ impl<'a> PlanContext<'a> {
     ) -> Option<(TupleLocalId, Vec<ValueType>)> {
         match self.bindings.get(name)? {
             LocalBinding::Tuple { local, type_ } => Some((*local, type_.clone())),
-            LocalBinding::Primitive(_) | LocalBinding::Function(_) => None,
+            LocalBinding::Primitive(_) | LocalBinding::List { .. } | LocalBinding::Function(_) => {
+                None
+            }
+        }
+    }
+
+    pub(super) fn lookup_list_local(&self, name: &EcoString) -> Option<(ListLocalId, ValueType)> {
+        match self.bindings.get(name)? {
+            LocalBinding::List {
+                local,
+                element_type,
+            } => Some((*local, element_type.clone())),
+            LocalBinding::Primitive(_) | LocalBinding::Tuple { .. } | LocalBinding::Function(_) => {
+                None
+            }
         }
     }
 
@@ -420,7 +503,9 @@ impl<'a> PlanContext<'a> {
     pub(super) fn lookup_function_local(&self, name: &EcoString) -> Option<FunctionLocalBinding> {
         match self.bindings.get(name)? {
             LocalBinding::Function(binding) => Some(binding.clone()),
-            LocalBinding::Primitive(_) | LocalBinding::Tuple { .. } => None,
+            LocalBinding::Primitive(_) | LocalBinding::Tuple { .. } | LocalBinding::List { .. } => {
+                None
+            }
         }
     }
 
@@ -461,12 +546,14 @@ impl<'a> PlanContext<'a> {
             next_bool_local: 0,
             next_nil_local: 0,
             next_tuple_local: 0,
+            next_list_local: 0,
             next_int_function_local: 0,
             next_float_function_local: 0,
             next_string_function_local: 0,
             next_bool_function_local: 0,
             next_nil_function_local: 0,
             next_tuple_function_local: 0,
+            next_list_function_local: 0,
             next_function_function_local: 0,
         }
     }
@@ -558,6 +645,16 @@ impl<'a> PlanContext<'a> {
                     TupleExpr::local_get(local, capture.name, type_),
                 ))
             }
+            LocalBinding::List {
+                local,
+                element_type,
+            } => {
+                let target = self.define_list_local(capture.name.clone(), element_type.clone());
+                Ok(CaptureArg::list(
+                    target,
+                    ListExpr::local_get(local, capture.name, element_type),
+                ))
+            }
             LocalBinding::Function(FunctionLocalBinding::Int { local, type_ }) => {
                 let target = self.define_int_function_local(capture.name.clone(), type_.clone());
                 Ok(CaptureArg::int_function(
@@ -598,6 +695,13 @@ impl<'a> PlanContext<'a> {
                 Ok(CaptureArg::tuple_function(
                     target,
                     TupleFunctionExpr::local_get(local, capture.name, type_),
+                ))
+            }
+            LocalBinding::Function(FunctionLocalBinding::List { local, type_ }) => {
+                let target = self.define_list_function_local(capture.name.clone(), type_.clone());
+                Ok(CaptureArg::list_function(
+                    target,
+                    ListFunctionExpr::local_get(local, capture.name, type_),
                 ))
             }
             LocalBinding::Function(FunctionLocalBinding::Function { local, type_ }) => {
@@ -702,12 +806,14 @@ pub(in crate::planner) struct FunctionRuntimeIds {
     next_bool: usize,
     next_nil: usize,
     next_tuple: usize,
+    next_list: usize,
     next_int_function: usize,
     next_float_function: usize,
     next_string_function: usize,
     next_bool_function: usize,
     next_nil_function: usize,
     next_tuple_function: usize,
+    next_list_function: usize,
     next_function_function: usize,
 }
 
@@ -723,6 +829,10 @@ impl FunctionRuntimeIds {
                 id: self.next_tuple_id(),
                 return_type: return_type.clone(),
             },
+            ValueType::List(return_type) => RuntimeFunctionId::List {
+                id: self.next_list_id(),
+                return_type: return_type.clone(),
+            },
             ValueType::Function(return_type) => self.next_function(return_type.as_ref().clone()),
         }
     }
@@ -735,6 +845,7 @@ impl FunctionRuntimeIds {
             ValueType::Bool => FunctionFunctionId::Bool(self.next_bool_function_id()),
             ValueType::Nil => FunctionFunctionId::Nil(self.next_nil_function_id()),
             ValueType::Tuple(_) => FunctionFunctionId::Tuple(self.next_tuple_function_id()),
+            ValueType::List(_) => FunctionFunctionId::List(self.next_list_function_id()),
             ValueType::Function(_) => {
                 FunctionFunctionId::Function(self.next_function_function_id())
             }
@@ -779,6 +890,12 @@ impl FunctionRuntimeIds {
         id
     }
 
+    pub(in crate::planner) fn next_list_id(&mut self) -> ListFunctionId {
+        let id = ListFunctionId(self.next_list);
+        self.next_list += 1;
+        id
+    }
+
     pub(in crate::planner) fn next_int_function_id(&mut self) -> IntFunctionFunctionId {
         let id = IntFunctionFunctionId(self.next_int_function);
         self.next_int_function += 1;
@@ -815,6 +932,12 @@ impl FunctionRuntimeIds {
         id
     }
 
+    pub(in crate::planner) fn next_list_function_id(&mut self) -> ListFunctionFunctionId {
+        let id = ListFunctionFunctionId(self.next_list_function);
+        self.next_list_function += 1;
+        id
+    }
+
     pub(in crate::planner) fn next_function_function_id(&mut self) -> FunctionFunctionFunctionId {
         let id = FunctionFunctionFunctionId(self.next_function_function);
         self.next_function_function += 1;
@@ -824,6 +947,13 @@ impl FunctionRuntimeIds {
 
 impl ValueType {
     pub(super) fn from_gleam(type_: &Type) -> Option<Self> {
+        if let Type::Var { type_ } = type_ {
+            return match type_.borrow().deref() {
+                TypeVar::Link { type_ } => Self::from_gleam(type_.as_ref()),
+                TypeVar::Unbound { .. } | TypeVar::Generic { .. } => None,
+            };
+        }
+
         if type_.is_int() {
             Some(Self::Int)
         } else if type_.is_float() {
@@ -840,6 +970,9 @@ impl ValueType {
                 .map(|element| Self::from_gleam(element.as_ref()))
                 .collect::<Option<Vec<_>>>()?;
             Some(Self::Tuple(elements))
+        } else if let Some(element) = type_.list_type() {
+            let element = Self::from_gleam(element.as_ref())?;
+            Some(Self::List(Box::new(element)))
         } else if let Some((arguments, return_)) = type_.fn_types() {
             let arguments = arguments
                 .iter()
@@ -862,9 +995,10 @@ mod tests {
     use crate::plan::{
         BoolFunctionExpr, BoolFunctionLocalId, CaptureArg, FloatFunctionExpr, FloatFunctionId,
         FloatFunctionLocalId, FunctionFunctionExpr, FunctionFunctionLocalId, FunctionType,
-        FunctionValue, IntFunctionId, IntFunctionLocalId, IntLocalId, LocalId, NilFunctionExpr,
-        NilFunctionLocalId, ParamLocal, RuntimeFunctionId, StringFunctionExpr,
-        StringFunctionLocalId, TupleFunctionExpr, TupleFunctionLocalId, TupleLocalId, ValueType,
+        FunctionValue, IntFunctionId, IntFunctionLocalId, IntLocalId, ListExpr, ListFunctionExpr,
+        ListFunctionLocalId, ListLocalId, LocalId, NilFunctionExpr, NilFunctionLocalId, ParamLocal,
+        RuntimeFunctionId, StringFunctionExpr, StringFunctionLocalId, TupleFunctionExpr,
+        TupleFunctionLocalId, TupleLocalId, ValueType,
     };
     use ecow::EcoString;
     use gleam_core::type_;
@@ -1134,6 +1268,40 @@ mod tests {
     }
 
     #[test]
+    fn define_captures_records_list_bindings() {
+        let module = EcoString::from("main");
+        let functions = HashMap::<EcoString, FunctionInfo>::new();
+        let mut anonymous = AnonymousFunctions::default();
+        let mut context = PlanContext::new(&module, &functions, &mut anonymous);
+        let element_type = ValueType::Int;
+        let function_type = FunctionType::new(
+            vec![ValueType::List(Box::new(element_type.clone()))],
+            ValueType::List(Box::new(element_type.clone())),
+        );
+
+        context.define_list_local("values".into(), element_type.clone());
+        context.define_list_function_local("f".into(), function_type.clone());
+        let captures = context
+            .capture_bindings(&[EcoString::from("values"), EcoString::from("f")])
+            .unwrap();
+        let captures = context.define_captures(captures).unwrap();
+
+        assert_eq!(
+            captures,
+            vec![
+                CaptureArg::list(
+                    ListLocalId(1),
+                    ListExpr::local_get(ListLocalId(0), "values".into(), element_type),
+                ),
+                CaptureArg::list_function(
+                    ListFunctionLocalId(1),
+                    ListFunctionExpr::local_get(ListFunctionLocalId(0), "f".into(), function_type),
+                ),
+            ],
+        );
+    }
+
+    #[test]
     fn define_captures_records_remaining_function_families() {
         let module = EcoString::from("main");
         let functions = HashMap::<EcoString, FunctionInfo>::new();
@@ -1197,19 +1365,47 @@ mod tests {
     }
 
     #[test]
-    fn value_type_rejects_function_with_unsupported_return_type() {
+    fn value_type_converts_recursive_list_types() {
         assert_eq!(
             ValueType::from_gleam(type_::fn_(Vec::new(), type_::list(type_::int())).as_ref()),
-            None,
+            Some(ValueType::Function(Box::new(FunctionType::new(
+                Vec::new(),
+                ValueType::List(Box::new(ValueType::Int)),
+            )))),
         );
         assert_eq!(
             ValueType::from_gleam(
                 type_::fn_(vec![type_::list(type_::int())], type_::int()).as_ref()
             ),
-            None,
+            Some(ValueType::Function(Box::new(FunctionType::new(
+                vec![ValueType::List(Box::new(ValueType::Int))],
+                ValueType::Int,
+            )))),
         );
         assert_eq!(
             ValueType::from_gleam(type_::tuple(vec![type_::list(type_::int())]).as_ref()),
+            Some(ValueType::Tuple(vec![ValueType::List(Box::new(
+                ValueType::Int
+            ))])),
+        );
+    }
+
+    #[test]
+    fn value_type_rejects_unsupported_recursive_member_types() {
+        assert_eq!(
+            ValueType::from_gleam(type_::tuple(vec![type_::bit_array()]).as_ref()),
+            None,
+        );
+        assert_eq!(
+            ValueType::from_gleam(type_::list(type_::bit_array()).as_ref()),
+            None,
+        );
+        assert_eq!(
+            ValueType::from_gleam(type_::fn_(vec![type_::bit_array()], type_::int()).as_ref()),
+            None,
+        );
+        assert_eq!(
+            ValueType::from_gleam(type_::fn_(Vec::new(), type_::bit_array()).as_ref()),
             None,
         );
     }

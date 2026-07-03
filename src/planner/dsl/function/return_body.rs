@@ -4,8 +4,9 @@ mod primitive;
 
 use crate::plan::{
     BoolFunctionReturn, BoolReturn, FloatFunctionReturn, FloatReturn, FunctionFunctionReturn,
-    FunctionType, IntFunctionReturn, IntReturn, NilFunctionReturn, NilReturn, ReturnExpr,
-    StringFunctionReturn, StringReturn, TupleFunctionReturn, TupleReturn, ValueType,
+    FunctionType, IntFunctionReturn, IntReturn, ListFunctionReturn, ListReturn, NilFunctionReturn,
+    NilReturn, ReturnExpr, StringFunctionReturn, StringReturn, TupleFunctionReturn, TupleReturn,
+    ValueType,
 };
 use crate::planner::context::FunctionRuntimeIds;
 
@@ -21,6 +22,10 @@ pub(crate) enum FunctionReturn {
     Tuple {
         type_: Vec<ValueType>,
         body: TupleReturn,
+    },
+    List {
+        element_type: ValueType,
+        body: ListReturn,
     },
     IntFunction {
         type_: FunctionType,
@@ -46,6 +51,10 @@ pub(crate) enum FunctionReturn {
         type_: FunctionType,
         body: TupleFunctionReturn,
     },
+    ListFunction {
+        type_: FunctionType,
+        body: ListFunctionReturn,
+    },
     FunctionFunction {
         type_: FunctionType,
         body: FunctionFunctionReturn,
@@ -62,6 +71,9 @@ impl FunctionReturn {
             Self::Nil(body) => ReturnExpr::nil_body(runtime_ids.next_nil_id(), body),
             Self::Tuple { type_, body } => {
                 ReturnExpr::tuple_body(runtime_ids.next_tuple_id(), type_, body)
+            }
+            Self::List { element_type, body } => {
+                ReturnExpr::list_body(runtime_ids.next_list_id(), element_type, body)
             }
             Self::IntFunction { type_, body } => {
                 ReturnExpr::int_function_body(runtime_ids.next_int_function_id(), type_, body)
@@ -80,6 +92,9 @@ impl FunctionReturn {
             }
             Self::TupleFunction { type_, body } => {
                 ReturnExpr::tuple_function_body(runtime_ids.next_tuple_function_id(), type_, body)
+            }
+            Self::ListFunction { type_, body } => {
+                ReturnExpr::list_function_body(runtime_ids.next_list_function_id(), type_, body)
             }
             Self::FunctionFunction { type_, body } => ReturnExpr::function_function_body(
                 runtime_ids.next_function_function_id(),

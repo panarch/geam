@@ -2,6 +2,6 @@ pub fn main() {
   1
 }
 
-fn count(values: List(Int)) {
+fn count(values: BitArray) {
   1
 }

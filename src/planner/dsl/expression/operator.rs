@@ -1,11 +1,11 @@
 use super::{
     Bool, BoolFunction, Float, FloatFunction, FunctionFunction, Int, IntFunction, IntoValueType,
-    Nil, NilFunction, String, StringFunction, Tuple, TupleFunction,
+    List, ListFunction, Nil, NilFunction, String, StringFunction, Tuple, TupleFunction,
 };
 use crate::plan::{
     BoolExpr, BoolFunctionExpr, Expr, FloatExpr, FloatFunctionExpr, FunctionFunctionExpr,
-    FunctionType, IntExpr, IntFunctionExpr, NilExpr, NilFunctionExpr, StringExpr,
-    StringFunctionExpr, TupleExpr, TupleFunctionExpr, ValueType,
+    FunctionType, IntExpr, IntFunctionExpr, ListExpr, ListFunctionExpr, NilExpr, NilFunctionExpr,
+    StringExpr, StringFunctionExpr, TupleExpr, TupleFunctionExpr, ValueType,
 };
 
 pub(crate) fn equal(left: impl Into<Expr>, right: impl Into<Expr>) -> Bool {
@@ -134,6 +134,14 @@ impl Tuple {
         ))
     }
 
+    pub(crate) fn index_list(self, index: usize, element_type: impl IntoValueType) -> List {
+        List(ListExpr::tuple_index(
+            self.into(),
+            index,
+            element_type.into_value_type(),
+        ))
+    }
+
     pub(crate) fn index_int_function(
         self,
         index: usize,
@@ -218,6 +226,25 @@ impl Tuple {
         ))
     }
 
+    pub(crate) fn index_list_function(
+        self,
+        index: usize,
+        params: impl IntoIterator<Item = impl IntoValueType>,
+        return_type: impl IntoValueType,
+    ) -> ListFunction {
+        ListFunction(ListFunctionExpr::tuple_index(
+            self.into(),
+            index,
+            FunctionType::new(
+                params
+                    .into_iter()
+                    .map(IntoValueType::into_value_type)
+                    .collect(),
+                ValueType::List(Box::new(return_type.into_value_type())),
+            ),
+        ))
+    }
+
     pub(crate) fn index_function_function(
         self,
         index: usize,
@@ -270,9 +297,9 @@ mod tests {
     use super::{equal, not_equal};
     use crate::plan::{
         BoolExprKind, BoolFunctionExprKind, FloatExprKind, FloatFunctionExprKind,
-        FunctionFunctionExprKind, FunctionType, IntExprKind, IntFunctionExprKind, NilExprKind,
-        NilFunctionExprKind, StringExprKind, StringFunctionExprKind, TupleExprKind,
-        TupleFunctionExprKind, ValueType,
+        FunctionFunctionExprKind, FunctionType, IntExprKind, IntFunctionExprKind, ListExprKind,
+        ListFunctionExprKind, NilExprKind, NilFunctionExprKind, StringExprKind,
+        StringFunctionExprKind, TupleExprKind, TupleFunctionExprKind, ValueType,
     };
     use crate::planner::dsl::expression::{bool_, float, int, local_tuple, string};
 
@@ -433,6 +460,13 @@ mod tests {
             TupleExprKind::TupleIndex { .. },
         ));
         assert!(matches!(
+            local_tuple(0, "pair", [ValueType::List(Box::new(ValueType::Int))])
+                .index_list(0, ValueType::Int)
+                .0
+                .kind(),
+            ListExprKind::TupleIndex { .. },
+        ));
+        assert!(matches!(
             local_tuple(
                 0,
                 "pair",
@@ -500,6 +534,20 @@ mod tests {
             .0
             .kind(),
             TupleFunctionExprKind::TupleIndex { .. },
+        ));
+        assert!(matches!(
+            local_tuple(
+                0,
+                "pair",
+                [function_value_type(
+                    [ValueType::Int],
+                    ValueType::List(Box::new(ValueType::Int))
+                )]
+            )
+            .index_list_function(0, [ValueType::Int], ValueType::Int)
+            .0
+            .kind(),
+            ListFunctionExprKind::TupleIndex { .. },
         ));
         assert!(matches!(
             local_tuple(

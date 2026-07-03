@@ -3,6 +3,7 @@ mod case;
 mod float;
 mod function;
 mod int;
+mod list;
 mod nil;
 mod string;
 mod tuple;
@@ -10,8 +11,8 @@ mod tuple;
 use super::function::ParamLocal;
 use super::id::{
     BoolFunctionLocalId, BoolLocalId, FloatFunctionLocalId, FloatLocalId, FunctionFunctionLocalId,
-    IntFunctionLocalId, IntLocalId, NilFunctionLocalId, NilLocalId, StringFunctionLocalId,
-    StringLocalId, TupleFunctionLocalId, TupleLocalId,
+    IntFunctionLocalId, IntLocalId, ListFunctionLocalId, ListLocalId, NilFunctionLocalId,
+    NilLocalId, StringFunctionLocalId, StringLocalId, TupleFunctionLocalId, TupleLocalId,
 };
 use super::value::{Value, ValueType};
 
@@ -23,9 +24,10 @@ pub use self::{
     float::FloatExpr,
     function::{
         BoolFunctionExpr, FloatFunctionExpr, FunctionExpr, FunctionFunctionExpr, IntFunctionExpr,
-        NilFunctionExpr, StringFunctionExpr, TupleFunctionExpr,
+        ListFunctionExpr, NilFunctionExpr, StringFunctionExpr, TupleFunctionExpr,
     },
     int::IntExpr,
+    list::ListExpr,
     nil::NilExpr,
     string::StringExpr,
     tuple::TupleExpr,
@@ -35,9 +37,11 @@ pub(crate) use self::{
     float::FloatExprKind,
     function::{
         BoolFunctionExprKind, FloatFunctionExprKind, FunctionExprKind, FunctionFunctionExprKind,
-        IntFunctionExprKind, NilFunctionExprKind, StringFunctionExprKind, TupleFunctionExprKind,
+        IntFunctionExprKind, ListFunctionExprKind, NilFunctionExprKind, StringFunctionExprKind,
+        TupleFunctionExprKind,
     },
     int::IntExprKind,
+    list::ListExprKind,
     nil::NilExprKind,
     string::StringExprKind,
     tuple::TupleExprKind,
@@ -56,6 +60,7 @@ pub(crate) enum ExprKind {
     Bool(BoolExpr),
     Nil(NilExpr),
     Tuple(TupleExpr),
+    List(ListExpr),
     Function(FunctionExpr),
 }
 
@@ -90,6 +95,10 @@ pub(crate) enum CallArgKind {
         local: TupleLocalId,
         value: TupleExpr,
     },
+    List {
+        local: ListLocalId,
+        value: ListExpr,
+    },
     IntFunction {
         local: IntFunctionLocalId,
         value: IntFunctionExpr,
@@ -113,6 +122,10 @@ pub(crate) enum CallArgKind {
     TupleFunction {
         local: TupleFunctionLocalId,
         value: TupleFunctionExpr,
+    },
+    ListFunction {
+        local: ListFunctionLocalId,
+        value: ListFunctionExpr,
     },
     FunctionFunction {
         local: FunctionFunctionLocalId,
@@ -151,6 +164,10 @@ pub(crate) enum CaptureArgKind {
         local: TupleLocalId,
         value: TupleExpr,
     },
+    List {
+        local: ListLocalId,
+        value: ListExpr,
+    },
     IntFunction {
         local: IntFunctionLocalId,
         value: IntFunctionExpr,
@@ -174,6 +191,10 @@ pub(crate) enum CaptureArgKind {
     TupleFunction {
         local: TupleFunctionLocalId,
         value: TupleFunctionExpr,
+    },
+    ListFunction {
+        local: ListFunctionLocalId,
+        value: ListFunctionExpr,
     },
     FunctionFunction {
         local: FunctionFunctionLocalId,
@@ -218,6 +239,12 @@ impl Expr {
         }
     }
 
+    pub(crate) fn list(expression: ListExpr) -> Self {
+        Self {
+            kind: ExprKind::List(expression),
+        }
+    }
+
     pub(crate) fn function(expression: FunctionExpr) -> Self {
         Self {
             kind: ExprKind::Function(expression),
@@ -244,6 +271,9 @@ impl Expr {
             BoolCaseBranches::Tuple { true_, false_ } => {
                 Self::tuple(TupleExpr::bool_case(subject, true_, false_))
             }
+            BoolCaseBranches::List { true_, false_ } => {
+                Self::list(ListExpr::bool_case(subject, true_, false_))
+            }
             BoolCaseBranches::IntFunction { true_, false_ } => Self::function(FunctionExpr::int(
                 IntFunctionExpr::bool_case(subject, true_, false_),
             )),
@@ -262,6 +292,9 @@ impl Expr {
             BoolCaseBranches::TupleFunction { true_, false_ } => Self::function(
                 FunctionExpr::tuple(TupleFunctionExpr::bool_case(subject, true_, false_)),
             ),
+            BoolCaseBranches::ListFunction { true_, false_ } => Self::function(FunctionExpr::list(
+                ListFunctionExpr::bool_case(subject, true_, false_),
+            )),
             BoolCaseBranches::FunctionFunction { true_, false_ } => Self::function(
                 FunctionExpr::function(FunctionFunctionExpr::bool_case(subject, true_, false_)),
             ),
@@ -288,6 +321,9 @@ impl Expr {
             IntCaseBranches::Tuple { clauses, fallback } => {
                 Self::tuple(TupleExpr::int_case(subject, clauses, fallback))
             }
+            IntCaseBranches::List { clauses, fallback } => {
+                Self::list(ListExpr::int_case(subject, clauses, fallback))
+            }
             IntCaseBranches::IntFunction { clauses, fallback } => Self::function(
                 FunctionExpr::int(IntFunctionExpr::int_case(subject, clauses, fallback)),
             ),
@@ -305,6 +341,9 @@ impl Expr {
             ),
             IntCaseBranches::TupleFunction { clauses, fallback } => Self::function(
                 FunctionExpr::tuple(TupleFunctionExpr::int_case(subject, clauses, fallback)),
+            ),
+            IntCaseBranches::ListFunction { clauses, fallback } => Self::function(
+                FunctionExpr::list(ListFunctionExpr::int_case(subject, clauses, fallback)),
             ),
             IntCaseBranches::FunctionFunction { clauses, fallback } => Self::function(
                 FunctionExpr::function(FunctionFunctionExpr::int_case(subject, clauses, fallback)),
@@ -332,6 +371,9 @@ impl Expr {
             StringCaseBranches::Tuple { clauses, fallback } => {
                 Self::tuple(TupleExpr::string_case(subject, clauses, fallback))
             }
+            StringCaseBranches::List { clauses, fallback } => {
+                Self::list(ListExpr::string_case(subject, clauses, fallback))
+            }
             StringCaseBranches::IntFunction { clauses, fallback } => Self::function(
                 FunctionExpr::int(IntFunctionExpr::string_case(subject, clauses, fallback)),
             ),
@@ -349,6 +391,9 @@ impl Expr {
             ),
             StringCaseBranches::TupleFunction { clauses, fallback } => Self::function(
                 FunctionExpr::tuple(TupleFunctionExpr::string_case(subject, clauses, fallback)),
+            ),
+            StringCaseBranches::ListFunction { clauses, fallback } => Self::function(
+                FunctionExpr::list(ListFunctionExpr::string_case(subject, clauses, fallback)),
             ),
             StringCaseBranches::FunctionFunction { clauses, fallback } => {
                 Self::function(FunctionExpr::function(FunctionFunctionExpr::string_case(
@@ -378,6 +423,9 @@ impl Expr {
             FloatCaseBranches::Tuple { clauses, fallback } => {
                 Self::tuple(TupleExpr::float_case(subject, clauses, fallback))
             }
+            FloatCaseBranches::List { clauses, fallback } => {
+                Self::list(ListExpr::float_case(subject, clauses, fallback))
+            }
             FloatCaseBranches::IntFunction { clauses, fallback } => Self::function(
                 FunctionExpr::int(IntFunctionExpr::float_case(subject, clauses, fallback)),
             ),
@@ -395,6 +443,9 @@ impl Expr {
             ),
             FloatCaseBranches::TupleFunction { clauses, fallback } => Self::function(
                 FunctionExpr::tuple(TupleFunctionExpr::float_case(subject, clauses, fallback)),
+            ),
+            FloatCaseBranches::ListFunction { clauses, fallback } => Self::function(
+                FunctionExpr::list(ListFunctionExpr::float_case(subject, clauses, fallback)),
             ),
             FloatCaseBranches::FunctionFunction { clauses, fallback } => {
                 Self::function(FunctionExpr::function(FunctionFunctionExpr::float_case(
@@ -447,6 +498,14 @@ impl Expr {
         }
     }
 
+    #[cfg(test)]
+    pub(crate) fn into_list(self) -> Option<ListExpr> {
+        match self.kind {
+            ExprKind::List(expression) => Some(expression),
+            _ => None,
+        }
+    }
+
     pub(crate) fn into_function(self) -> Option<FunctionExpr> {
         match self.kind {
             ExprKind::Function(expression) => Some(expression),
@@ -470,6 +529,9 @@ impl Expr {
             ExprKind::Bool(_) => ValueType::Bool,
             ExprKind::Nil(_) => ValueType::Nil,
             ExprKind::Tuple(expression) => ValueType::Tuple(expression.type_().to_vec()),
+            ExprKind::List(expression) => {
+                ValueType::List(Box::new(expression.element_type().clone()))
+            }
             ExprKind::Function(expression) => {
                 ValueType::Function(Box::new(expression.type_().clone()))
             }
@@ -494,6 +556,13 @@ impl Expr {
                 },
                 ExprKind::Tuple(value),
             ) if value.type_() == expected => Some(CallArg::tuple(*local, value)),
+            (
+                ParamLocal::List {
+                    local,
+                    element_type: expected,
+                },
+                ExprKind::List(value),
+            ) if value.element_type() == expected => Some(CallArg::list(*local, value)),
             (
                 ParamLocal::IntFunction {
                     local,
@@ -549,6 +618,15 @@ impl Expr {
                 .into_tuple()
                 .map(|value| CallArg::tuple_function(*local, value)),
             (
+                ParamLocal::ListFunction {
+                    local,
+                    type_: expected,
+                },
+                ExprKind::Function(value),
+            ) if value.type_() == expected => value
+                .into_list()
+                .map(|value| CallArg::list_function(*local, value)),
+            (
                 ParamLocal::FunctionFunction {
                     local,
                     type_: expected,
@@ -599,6 +677,12 @@ impl CallArg {
         }
     }
 
+    pub(crate) fn list(local: ListLocalId, value: ListExpr) -> Self {
+        Self {
+            kind: CallArgKind::List { local, value },
+        }
+    }
+
     pub(crate) fn int_function(local: IntFunctionLocalId, value: IntFunctionExpr) -> Self {
         Self {
             kind: CallArgKind::IntFunction { local, value },
@@ -632,6 +716,12 @@ impl CallArg {
     pub(crate) fn tuple_function(local: TupleFunctionLocalId, value: TupleFunctionExpr) -> Self {
         Self {
             kind: CallArgKind::TupleFunction { local, value },
+        }
+    }
+
+    pub(crate) fn list_function(local: ListFunctionLocalId, value: ListFunctionExpr) -> Self {
+        Self {
+            kind: CallArgKind::ListFunction { local, value },
         }
     }
 
@@ -686,6 +776,12 @@ impl CaptureArg {
         }
     }
 
+    pub(crate) fn list(local: ListLocalId, value: ListExpr) -> Self {
+        Self {
+            kind: CaptureArgKind::List { local, value },
+        }
+    }
+
     pub(crate) fn int_function(local: IntFunctionLocalId, value: IntFunctionExpr) -> Self {
         Self {
             kind: CaptureArgKind::IntFunction { local, value },
@@ -722,6 +818,12 @@ impl CaptureArg {
         }
     }
 
+    pub(crate) fn list_function(local: ListFunctionLocalId, value: ListFunctionExpr) -> Self {
+        Self {
+            kind: CaptureArgKind::ListFunction { local, value },
+        }
+    }
+
     pub(crate) fn function_function(
         local: FunctionFunctionLocalId,
         value: FunctionFunctionExpr,
@@ -748,6 +850,10 @@ impl From<Value> for Expr {
                 value.iter().cloned().map(Self::from).collect(),
                 value.iter().map(Value::value_type).collect(),
             )),
+            Value::List(value) => Self::list(ListExpr::value(
+                value.values().iter().cloned().map(Self::from).collect(),
+                value.element_type().clone(),
+            )),
             Value::Function(value) => Self::function(FunctionExpr::value(value)),
         }
     }
@@ -758,13 +864,14 @@ mod tests {
     use super::{
         BoolCaseBranches, BoolExpr, BoolFunctionExpr, CallArg, Expr, FloatCaseBranches, FloatExpr,
         FloatFunctionExpr, FunctionExpr, FunctionFunctionExpr, IntCaseBranches, IntExpr,
-        IntFunctionExpr, NilExpr, NilFunctionExpr, StringCaseBranches, StringExpr,
-        StringFunctionExpr, TupleExpr, TupleFunctionExpr,
+        IntFunctionExpr, ListExpr, ListFunctionExpr, NilExpr, NilFunctionExpr, StringCaseBranches,
+        StringExpr, StringFunctionExpr, TupleExpr, TupleFunctionExpr,
     };
     use crate::plan::{
         BoolFunctionId, BoolFunctionValue, BoolLocalId, FloatFunctionId, FloatFunctionLocalId,
         FloatFunctionValue, FloatLocalId, FunctionFunctionId, FunctionFunctionValue, FunctionType,
         FunctionValue, IntFunctionFunctionId, IntFunctionId, IntFunctionValue, IntLocalId,
+        ListFunctionId, ListFunctionLocalId, ListFunctionValue, ListLocalId, ListValue,
         NilFunctionId, NilFunctionValue, NilLocalId, ParamLocal, RuntimeFunctionId,
         StringFunctionId, StringFunctionValue, StringLocalId, TupleFunctionId,
         TupleFunctionLocalId, TupleFunctionValue, TupleLocalId, Value, ValueType,
@@ -796,6 +903,16 @@ mod tests {
                 vec![ValueType::Int],
             )),
             Expr::from(Value::Tuple(vec![Value::Int(BigInt::from(1))])),
+        );
+        assert_eq!(
+            Expr::list(ListExpr::value(
+                vec![Expr::int(IntExpr::value(BigInt::from(1)))],
+                ValueType::Int,
+            )),
+            Expr::from(Value::List(ListValue::new(
+                ValueType::Int,
+                vec![Value::Int(BigInt::from(1))],
+            ))),
         );
         assert_eq!(
             Expr::function(FunctionExpr::value(function_value())),
@@ -878,6 +995,20 @@ mod tests {
         assert_eq!(
             Expr::bool_case(
                 BoolExpr::value(true),
+                BoolCaseBranches::List {
+                    true_: list_expr(),
+                    false_: list_expr(),
+                },
+            ),
+            Expr::list(ListExpr::bool_case(
+                BoolExpr::value(true),
+                list_expr(),
+                list_expr(),
+            )),
+        );
+        assert_eq!(
+            Expr::bool_case(
+                BoolExpr::value(true),
                 BoolCaseBranches::IntFunction {
                     true_: int_function_expr(),
                     false_: int_function_expr(),
@@ -929,6 +1060,20 @@ mod tests {
                 BoolExpr::value(true),
                 bool_function_expr(),
                 bool_function_expr(),
+            ))),
+        );
+        assert_eq!(
+            Expr::bool_case(
+                BoolExpr::value(true),
+                BoolCaseBranches::ListFunction {
+                    true_: list_function_expr(),
+                    false_: list_function_expr(),
+                },
+            ),
+            Expr::function(FunctionExpr::list(ListFunctionExpr::bool_case(
+                BoolExpr::value(true),
+                list_function_expr(),
+                list_function_expr(),
             ))),
         );
         assert_eq!(
@@ -1022,6 +1167,20 @@ mod tests {
         assert_eq!(
             Expr::int_case(
                 IntExpr::value(BigInt::from(1)),
+                IntCaseBranches::List {
+                    clauses: vec![(BigInt::from(1), list_expr())],
+                    fallback: list_expr(),
+                },
+            ),
+            Expr::list(ListExpr::int_case(
+                IntExpr::value(BigInt::from(1)),
+                vec![(BigInt::from(1), list_expr())],
+                list_expr(),
+            )),
+        );
+        assert_eq!(
+            Expr::int_case(
+                IntExpr::value(BigInt::from(1)),
                 IntCaseBranches::IntFunction {
                     clauses: vec![(BigInt::from(1), int_function_expr())],
                     fallback: int_function_expr(),
@@ -1073,6 +1232,20 @@ mod tests {
                 IntExpr::value(BigInt::from(1)),
                 vec![(BigInt::from(1), bool_function_expr())],
                 bool_function_expr(),
+            ))),
+        );
+        assert_eq!(
+            Expr::int_case(
+                IntExpr::value(BigInt::from(1)),
+                IntCaseBranches::ListFunction {
+                    clauses: vec![(BigInt::from(1), list_function_expr())],
+                    fallback: list_function_expr(),
+                },
+            ),
+            Expr::function(FunctionExpr::list(ListFunctionExpr::int_case(
+                IntExpr::value(BigInt::from(1)),
+                vec![(BigInt::from(1), list_function_expr())],
+                list_function_expr(),
             ))),
         );
         assert_eq!(
@@ -1166,6 +1339,20 @@ mod tests {
         assert_eq!(
             Expr::float_case(
                 FloatExpr::value(1.0),
+                FloatCaseBranches::List {
+                    clauses: vec![(1.0, list_expr())],
+                    fallback: list_expr(),
+                },
+            ),
+            Expr::list(ListExpr::float_case(
+                FloatExpr::value(1.0),
+                vec![(1.0, list_expr())],
+                list_expr(),
+            )),
+        );
+        assert_eq!(
+            Expr::float_case(
+                FloatExpr::value(1.0),
                 FloatCaseBranches::IntFunction {
                     clauses: vec![(1.0, int_function_expr())],
                     fallback: int_function_expr(),
@@ -1236,6 +1423,20 @@ mod tests {
         assert_eq!(
             Expr::float_case(
                 FloatExpr::value(1.0),
+                FloatCaseBranches::ListFunction {
+                    clauses: vec![(1.0, list_function_expr())],
+                    fallback: list_function_expr(),
+                },
+            ),
+            Expr::function(FunctionExpr::list(ListFunctionExpr::float_case(
+                FloatExpr::value(1.0),
+                vec![(1.0, list_function_expr())],
+                list_function_expr(),
+            ))),
+        );
+        assert_eq!(
+            Expr::float_case(
+                FloatExpr::value(1.0),
                 FloatCaseBranches::FunctionFunction {
                     clauses: vec![(1.0, function_function_expr())],
                     fallback: function_function_expr(),
@@ -1264,6 +1465,34 @@ mod tests {
                 vec![("one".into(), FloatExpr::value(1.5))],
                 FloatExpr::value(0.5),
             )),
+        );
+        assert_eq!(
+            Expr::string_case(
+                StringExpr::value("one".into()),
+                StringCaseBranches::List {
+                    clauses: vec![("one".into(), list_expr())],
+                    fallback: list_expr(),
+                },
+            ),
+            Expr::list(ListExpr::string_case(
+                StringExpr::value("one".into()),
+                vec![("one".into(), list_expr())],
+                list_expr(),
+            )),
+        );
+        assert_eq!(
+            Expr::string_case(
+                StringExpr::value("one".into()),
+                StringCaseBranches::ListFunction {
+                    clauses: vec![("one".into(), list_function_expr())],
+                    fallback: list_function_expr(),
+                },
+            ),
+            Expr::function(FunctionExpr::list(ListFunctionExpr::string_case(
+                StringExpr::value("one".into()),
+                vec![("one".into(), list_function_expr())],
+                list_function_expr(),
+            ))),
         );
         assert_eq!(
             Expr::string_case(
@@ -1299,6 +1528,14 @@ mod tests {
             ValueType::Tuple(vec![ValueType::Int]),
         );
         assert_eq!(
+            Expr::from(Value::List(ListValue::new(
+                ValueType::Int,
+                vec![Value::Int(BigInt::from(1))],
+            )))
+            .value_type(),
+            ValueType::List(Box::new(ValueType::Int)),
+        );
+        assert_eq!(
             Expr::from(Value::Function(function_value())).value_type(),
             ValueType::Function(Box::new(function_type())),
         );
@@ -1331,6 +1568,18 @@ mod tests {
                 vec![ValueType::Int],
             )),
         );
+        assert_eq!(
+            Expr::from(Value::List(ListValue::new(
+                ValueType::Int,
+                vec![Value::Int(BigInt::from(1))],
+            )))
+            .into_list(),
+            Some(ListExpr::value(
+                vec![Expr::int(IntExpr::value(BigInt::from(1)))],
+                ValueType::Int,
+            )),
+        );
+        assert_eq!(Expr::from(Value::Int(BigInt::from(1))).into_list(), None);
         assert_eq!(Expr::from(Value::Nil).into_int(), None);
         assert_eq!(Expr::from(Value::Int(BigInt::from(1))).into_nil(), None);
         assert_eq!(
@@ -1379,6 +1628,11 @@ mod tests {
                     vec![ValueType::Int],
                 ),
             )),
+        );
+        assert_eq!(
+            Expr::list(list_expr())
+                .into_call_arg(&ParamLocal::list(ListLocalId(0), ValueType::Int)),
+            Some(CallArg::list(ListLocalId(0), list_expr())),
         );
         assert_eq!(
             Expr::function(FunctionExpr::value(function_value())).into_call_arg(
@@ -1447,6 +1701,15 @@ mod tests {
             Some(CallArg::tuple_function(
                 TupleFunctionLocalId(0),
                 tuple_function_expr(),
+            )),
+        );
+        assert_eq!(
+            Expr::function(FunctionExpr::list(list_function_expr())).into_call_arg(
+                &ParamLocal::list_function(ListFunctionLocalId(0), list_function_type())
+            ),
+            Some(CallArg::list_function(
+                ListFunctionLocalId(0),
+                list_function_expr(),
             )),
         );
         assert_eq!(
@@ -1582,11 +1845,26 @@ mod tests {
         ))
     }
 
+    fn list_expr() -> ListExpr {
+        ListExpr::value(
+            vec![Expr::int(IntExpr::value(BigInt::from(1)))],
+            ValueType::Int,
+        )
+    }
+
     fn tuple_function_expr() -> TupleFunctionExpr {
         TupleFunctionExpr::value(TupleFunctionValue::new(
             TupleFunctionId(0),
             vec![ParamLocal::tuple(TupleLocalId(0), vec![ValueType::Int])],
             vec![ValueType::Int],
+        ))
+    }
+
+    fn list_function_expr() -> ListFunctionExpr {
+        ListFunctionExpr::value(ListFunctionValue::new(
+            ListFunctionId(0),
+            vec![ParamLocal::list(ListLocalId(0), ValueType::Int)],
+            ValueType::Int,
         ))
     }
 
@@ -1634,6 +1912,13 @@ mod tests {
         FunctionType::new(
             vec![ValueType::Tuple(vec![ValueType::Int])],
             ValueType::Tuple(vec![ValueType::Int]),
+        )
+    }
+
+    fn list_function_type() -> FunctionType {
+        FunctionType::new(
+            vec![ValueType::List(Box::new(ValueType::Int))],
+            ValueType::List(Box::new(ValueType::Int)),
         )
     }
 

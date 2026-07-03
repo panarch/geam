@@ -1,12 +1,13 @@
 use super::FunctionReturn;
 use crate::plan::{
     BoolFunctionExpr, BoolReturn, FloatFunctionExpr, FloatReturn, FunctionExpr, FunctionExprKind,
-    FunctionFunctionExpr, IntFunctionExpr, IntReturn, NilFunctionExpr, NilReturn, ReturnBody,
-    StringFunctionExpr, StringReturn, TupleFunctionExpr, TupleReturn,
+    FunctionFunctionExpr, IntFunctionExpr, IntReturn, ListFunctionExpr, ListReturn,
+    NilFunctionExpr, NilReturn, ReturnBody, StringFunctionExpr, StringReturn, TupleFunctionExpr,
+    TupleReturn,
 };
 use crate::planner::dsl::expression::{
-    Bool, BoolFunction, Float, FloatFunction, Function, FunctionFunction, Int, IntFunction, Nil,
-    NilFunction, String, StringFunction, Tuple, TupleFunction,
+    Bool, BoolFunction, Float, FloatFunction, Function, FunctionFunction, Int, IntFunction, List,
+    ListFunction, Nil, NilFunction, String, StringFunction, Tuple, TupleFunction,
 };
 
 impl From<Int> for FunctionReturn {
@@ -45,6 +46,16 @@ impl From<Tuple> for FunctionReturn {
         Self::Tuple {
             type_: expression.type_().to_vec(),
             body: TupleReturn::expr(expression),
+        }
+    }
+}
+
+impl From<List> for FunctionReturn {
+    fn from(value: List) -> Self {
+        let expression = crate::plan::ListExpr::from(value);
+        Self::List {
+            element_type: expression.element_type().clone(),
+            body: ListReturn::expr(expression),
         }
     }
 }
@@ -109,6 +120,16 @@ impl From<TupleFunction> for FunctionReturn {
     }
 }
 
+impl From<ListFunction> for FunctionReturn {
+    fn from(value: ListFunction) -> Self {
+        let expression = ListFunctionExpr::from(value);
+        Self::ListFunction {
+            type_: expression.type_().clone(),
+            body: ReturnBody::expr(expression),
+        }
+    }
+}
+
 impl From<FunctionFunction> for FunctionReturn {
     fn from(value: FunctionFunction) -> Self {
         let expression = FunctionFunctionExpr::from(value);
@@ -143,6 +164,10 @@ impl From<Function> for FunctionReturn {
                 body: ReturnBody::expr(expression),
             },
             FunctionExprKind::Tuple(expression) => Self::TupleFunction {
+                type_: expression.type_().clone(),
+                body: ReturnBody::expr(expression),
+            },
+            FunctionExprKind::List(expression) => Self::ListFunction {
                 type_: expression.type_().clone(),
                 body: ReturnBody::expr(expression),
             },

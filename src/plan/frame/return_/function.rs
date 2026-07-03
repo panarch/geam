@@ -337,6 +337,62 @@ impl FrameLayout {
         }
     }
 
+    pub(in crate::plan::frame) fn include_list_function_return(
+        &mut self,
+        body: &crate::plan::ListFunctionReturn,
+    ) {
+        match body.kind() {
+            ReturnBodyKind::Expr(expression) => self.include_list_function_expr(expression),
+            ReturnBodyKind::TailCall { args, .. } => self.include_call_args(args),
+            ReturnBodyKind::BoolCase {
+                subject,
+                true_,
+                false_,
+            } => {
+                self.include_bool_expr(subject);
+                self.include_list_function_return(true_);
+                self.include_list_function_return(false_);
+            }
+            ReturnBodyKind::IntCase {
+                subject,
+                clauses,
+                fallback,
+            } => {
+                self.include_int_expr(subject);
+                for (_, branch) in clauses {
+                    self.include_list_function_return(branch);
+                }
+                self.include_list_function_return(fallback);
+            }
+            ReturnBodyKind::FloatCase {
+                subject,
+                clauses,
+                fallback,
+            } => {
+                self.include_float_expr(subject);
+                for (_, branch) in clauses {
+                    self.include_list_function_return(branch);
+                }
+                self.include_list_function_return(fallback);
+            }
+            ReturnBodyKind::StringCase {
+                subject,
+                clauses,
+                fallback,
+            } => {
+                self.include_string_expr(subject);
+                for (_, branch) in clauses {
+                    self.include_list_function_return(branch);
+                }
+                self.include_list_function_return(fallback);
+            }
+            ReturnBodyKind::Block { steps, return_ } => {
+                self.include_steps(steps);
+                self.include_list_function_return(return_);
+            }
+        }
+    }
+
     pub(in crate::plan::frame) fn include_function_function_return(
         &mut self,
         body: &crate::plan::FunctionFunctionReturn,
@@ -397,12 +453,14 @@ impl FrameLayout {
 #[cfg(test)]
 mod tests {
     use crate::plan::{
-        BoolExpr, BoolFunctionExpr, BoolFunctionFunctionId, BoolFunctionLocalId, BoolLocalId, Expr,
-        FloatExpr, FloatFunctionExpr, FloatFunctionFunctionId, FloatFunctionLocalId, FloatLocalId,
-        FrameLayout, FunctionFunctionExpr, FunctionFunctionFunctionId, FunctionFunctionLocalId,
-        IntExpr, IntFunctionFunctionId, IntFunctionLocalId, IntLocalId, NilFunctionExpr,
+        BoolExpr, BoolFunctionExpr, BoolFunctionFunctionId, BoolFunctionLocalId, BoolLocalId,
+        CallArg, Expr, FloatExpr, FloatFunctionExpr, FloatFunctionFunctionId, FloatFunctionLocalId,
+        FloatLocalId, FrameLayout, FunctionFunctionExpr, FunctionFunctionFunctionId,
+        FunctionFunctionLocalId, FunctionType, IntExpr, IntFunctionFunctionId, IntFunctionLocalId,
+        IntLocalId, ListFunctionExpr, ListFunctionFunctionId, ListFunctionLocalId, NilFunctionExpr,
         NilFunctionFunctionId, NilFunctionLocalId, ReturnBody, ReturnExpr, Step, StringExpr,
         StringFunctionExpr, StringFunctionFunctionId, StringFunctionLocalId, StringLocalId,
+        ValueType,
     };
 
     #[test]
@@ -1011,5 +1069,105 @@ mod tests {
         let layout = FrameLayout::from_function_parts(&[], &[], &function_function_return);
         assert_eq!(layout.floats(), 6);
         assert_eq!(layout.function_functions(), 13);
+    }
+
+    #[test]
+    fn frame_layout_includes_list_function_return_body_families() {
+        let type_ = list_function_type();
+        let list_function_return = ReturnExpr::list_function_body(
+            ListFunctionFunctionId(0),
+            type_.clone(),
+            ReturnBody::block(
+                vec![Step::evaluate(Expr::int(IntExpr::local_get(
+                    IntLocalId(0),
+                    "block_step".into(),
+                )))],
+                ReturnBody::bool_case(
+                    BoolExpr::local_get(BoolLocalId(0), "flag".into()),
+                    ReturnBody::int_case(
+                        IntExpr::local_get(IntLocalId(1), "int_subject".into()),
+                        vec![(
+                            1.into(),
+                            ReturnBody::tail_call(
+                                ListFunctionFunctionId(1),
+                                vec![CallArg::int(
+                                    IntLocalId(0),
+                                    IntExpr::local_get(IntLocalId(2), "tail_arg".into()),
+                                )],
+                            ),
+                        )],
+                        ReturnBody::expr(ListFunctionExpr::local_get(
+                            ListFunctionLocalId(1),
+                            "int_fallback".into(),
+                            type_.clone(),
+                        )),
+                    ),
+                    ReturnBody::expr(ListFunctionExpr::local_get(
+                        ListFunctionLocalId(2),
+                        "false_branch".into(),
+                        type_.clone(),
+                    )),
+                ),
+            ),
+        );
+        let layout = FrameLayout::from_function_parts(&[], &[], &list_function_return);
+        assert_eq!(layout.ints(), 3);
+        assert_eq!(layout.bools(), 1);
+        assert_eq!(layout.list_functions(), 3);
+
+        let string_case_return = ReturnExpr::list_function_body(
+            ListFunctionFunctionId(0),
+            type_.clone(),
+            ReturnBody::string_case(
+                StringExpr::local_get(StringLocalId(0), "string_subject".into()),
+                vec![(
+                    "hit".into(),
+                    ReturnBody::expr(ListFunctionExpr::local_get(
+                        ListFunctionLocalId(3),
+                        "string_branch".into(),
+                        type_.clone(),
+                    )),
+                )],
+                ReturnBody::expr(ListFunctionExpr::local_get(
+                    ListFunctionLocalId(4),
+                    "string_fallback".into(),
+                    type_.clone(),
+                )),
+            ),
+        );
+        let layout = FrameLayout::from_function_parts(&[], &[], &string_case_return);
+        assert_eq!(layout.strings(), 1);
+        assert_eq!(layout.list_functions(), 5);
+
+        let float_case_return = ReturnExpr::list_function_body(
+            ListFunctionFunctionId(0),
+            type_.clone(),
+            ReturnBody::float_case(
+                FloatExpr::local_get(FloatLocalId(0), "float_subject".into()),
+                vec![(
+                    1.0,
+                    ReturnBody::expr(ListFunctionExpr::local_get(
+                        ListFunctionLocalId(5),
+                        "float_branch".into(),
+                        type_.clone(),
+                    )),
+                )],
+                ReturnBody::expr(ListFunctionExpr::local_get(
+                    ListFunctionLocalId(6),
+                    "float_fallback".into(),
+                    type_,
+                )),
+            ),
+        );
+        let layout = FrameLayout::from_function_parts(&[], &[], &float_case_return);
+        assert_eq!(layout.floats(), 1);
+        assert_eq!(layout.list_functions(), 7);
+    }
+
+    fn list_function_type() -> FunctionType {
+        FunctionType::new(
+            vec![ValueType::Int],
+            ValueType::List(Box::new(ValueType::Int)),
+        )
     }
 }

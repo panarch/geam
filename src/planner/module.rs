@@ -216,6 +216,7 @@ pub(super) fn function_params(
     let mut next_bool = 0;
     let mut next_nil = 0;
     let mut next_tuple = 0;
+    let mut next_list = 0;
     let mut function_locals = FunctionParamLocalCounters::default();
 
     arguments
@@ -270,6 +271,14 @@ pub(super) fn function_params(
                     next_tuple += 1;
                     local
                 }
+                ValueType::List(element_type) => {
+                    let local = ParamLocal::list(
+                        crate::plan::ListLocalId(next_list),
+                        element_type.as_ref().clone(),
+                    );
+                    next_list += 1;
+                    local
+                }
                 ValueType::Function(type_) => function_locals.next(type_),
             };
             Ok(FunctionParam { local, binding })
@@ -285,6 +294,7 @@ struct FunctionParamLocalCounters {
     next_bool: usize,
     next_nil: usize,
     next_tuple: usize,
+    next_list: usize,
     next_function: usize,
 }
 
@@ -335,6 +345,14 @@ impl FunctionParamLocalCounters {
                     type_.clone(),
                 );
                 self.next_tuple += 1;
+                local
+            }
+            ValueType::List(_) => {
+                let local = ParamLocal::list_function(
+                    crate::plan::ListFunctionLocalId(self.next_list),
+                    type_.clone(),
+                );
+                self.next_list += 1;
                 local
             }
             ValueType::Function(_) => {
@@ -449,8 +467,8 @@ pub fn main(value: Int) {
         assert_eq!(
             expect_plan_error(
                 r#"
-fn values() {
-  [1]
+fn values() -> BitArray {
+  <<>>
 }
 
 pub fn main() {
@@ -474,8 +492,8 @@ pub fn main() {
   1
 }
 
-fn values() {
-  [1]
+fn values() -> BitArray {
+  <<>>
 }
 "#,
             ),
@@ -703,7 +721,7 @@ pub fn main() {
   1
 }
 
-fn count(values: List(Int)) {
+fn count(values: BitArray) {
   1
 }
 "#,

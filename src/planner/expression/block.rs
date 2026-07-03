@@ -1,7 +1,7 @@
 use crate::plan::{
     BoolExpr, BoolFunctionExpr, Expr, ExprKind, FloatExpr, FloatFunctionExpr, FunctionExpr,
-    FunctionExprKind, FunctionFunctionExpr, IntExpr, IntFunctionExpr, NilExpr, NilFunctionExpr,
-    Step, StringExpr, StringFunctionExpr, TupleExpr, TupleFunctionExpr,
+    FunctionExprKind, FunctionFunctionExpr, IntExpr, IntFunctionExpr, ListExpr, ListFunctionExpr,
+    NilExpr, NilFunctionExpr, Step, StringExpr, StringFunctionExpr, TupleExpr, TupleFunctionExpr,
 };
 use crate::planner::context::PlanContext;
 use crate::planner::error::PlanError;
@@ -15,7 +15,6 @@ pub(super) fn plan(
 ) -> Result<Expr, PlanError> {
     context.with_local_scope(|context| {
         let planned = plan_non_empty_steps_and_return(statements, context)?;
-
         Ok(block_expr(planned.steps, planned.return_))
     })
 }
@@ -28,6 +27,7 @@ pub(super) fn block_expr(steps: Vec<Step>, return_: Expr) -> Expr {
         ExprKind::Bool(return_) => Expr::bool(BoolExpr::block(steps, return_)),
         ExprKind::Nil(return_) => Expr::nil(NilExpr::block(steps, return_)),
         ExprKind::Tuple(return_) => Expr::tuple(TupleExpr::block(steps, return_)),
+        ExprKind::List(return_) => Expr::list(ListExpr::block(steps, return_)),
         ExprKind::Function(return_) => match return_.into_kind() {
             FunctionExprKind::Int(return_) => {
                 Expr::function(FunctionExpr::int(IntFunctionExpr::block(steps, return_)))
@@ -47,6 +47,9 @@ pub(super) fn block_expr(steps: Vec<Step>, return_: Expr) -> Expr {
             FunctionExprKind::Tuple(return_) => Expr::function(FunctionExpr::tuple(
                 TupleFunctionExpr::block(steps, return_),
             )),
+            FunctionExprKind::List(return_) => {
+                Expr::function(FunctionExpr::list(ListFunctionExpr::block(steps, return_)))
+            }
             FunctionExprKind::Function(return_) => Expr::function(FunctionExpr::function(
                 FunctionFunctionExpr::block(steps, return_),
             )),
@@ -63,9 +66,10 @@ mod tests {
     use crate::planner::dsl::{
         block_function, block_int, bool_, bool_return_block, bool_return_expr, evaluate_step,
         float, float_return_block, float_return_expr, function, function_ref, int,
-        int_return_block, int_return_expr, let_int_step, let_nil_step, local_bool, local_float,
-        local_int, local_nil, local_string, module, nil, nil_return_block, nil_return_expr, string,
-        string_return_block, string_return_expr,
+        int_return_block, int_return_expr, let_int_step, let_nil_step, list, list_return_block,
+        list_return_expr, local_bool, local_float, local_int, local_nil, local_string, module, nil,
+        nil_return_block, nil_return_expr, return_list, string, string_return_block,
+        string_return_expr,
     };
     use crate::planner::plan_module;
     use crate::planner::support::{compile, expect_plan_error};
@@ -90,6 +94,10 @@ pub fn float_main() {
 pub fn nil_main() {
   { Nil }
 }
+
+pub fn list_main() {
+  { [1] }
+}
 "#,
         ))
         .expect("source should plan");
@@ -109,6 +117,13 @@ pub fn nil_main() {
                     float_return_block([], float_return_expr(float(1.5))),
                 ),
                 function("nil_main", nil_return_block([], nil_return_expr(nil()))),
+                function(
+                    "list_main",
+                    return_list(
+                        ValueType::Int,
+                        list_return_block([], list_return_expr(list([int(1)], ValueType::Int))),
+                    ),
+                ),
             ],
         );
 
@@ -143,6 +158,10 @@ fn get_identity() {
   identity
 }
 
+fn values(value: Int) {
+  [value]
+}
+
 pub fn main() {
   { identity }
   { string_identity }
@@ -150,6 +169,7 @@ pub fn main() {
   { bool_identity }
   { nil_identity }
   { get_identity }
+  { values }
   1
 }
 "#,
@@ -202,6 +222,16 @@ pub fn main() {
                         },
                         Vec::<LocalId>::new(),
                     ),
+                ))
+                .evaluate(block_function(
+                    vec![],
+                    function_ref(
+                        RuntimeFunctionId::List {
+                            id: crate::plan::ListFunctionId(0),
+                            return_type: Box::new(ValueType::Int),
+                        },
+                        [LocalId::Int(crate::plan::IntLocalId(0))],
+                    ),
                 )),
             [
                 function("identity", local_int(0, "value")).param_int(0, "value"),
@@ -216,6 +246,8 @@ pub fn main() {
                         [LocalId::Int(crate::plan::IntLocalId(0))],
                     ),
                 ),
+                function("values", list([local_int(0, "value")], ValueType::Int))
+                    .param_int(0, "value"),
             ],
         );
 
@@ -375,14 +407,39 @@ pub fn main() {
                 r#"
 pub fn main() {
   {
-    [1]
+    let rest = [2]
+    [1, ..rest]
     1
   }
 }
 "#,
             ),
             PlanError::UnsupportedExpression {
-                kind: UnsupportedExpressionKind::List,
+                kind: UnsupportedExpressionKind::ListSpread,
+            },
+        );
+    }
+
+    #[test]
+    fn reject_profile_unsupported_expression_inside_function_valued_block() {
+        assert_eq!(
+            expect_plan_error(
+                r#"
+fn add_one(value: Int) {
+  value + 1
+}
+
+pub fn main() {
+  {
+    let rest = [2]
+    [1, ..rest]
+    add_one
+  }
+}
+"#,
+            ),
+            PlanError::UnsupportedExpression {
+                kind: UnsupportedExpressionKind::ListSpread,
             },
         );
     }

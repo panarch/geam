@@ -2,8 +2,9 @@ use super::FrameLayout;
 use crate::plan::{
     BoolFunctionExpr, BoolFunctionExprKind, FloatFunctionExpr, FloatFunctionExprKind, FunctionExpr,
     FunctionExprKind, FunctionFunctionExpr, FunctionFunctionExprKind, IntFunctionExpr,
-    IntFunctionExprKind, NilFunctionExpr, NilFunctionExprKind, StringFunctionExpr,
-    StringFunctionExprKind, TupleFunctionExpr, TupleFunctionExprKind,
+    IntFunctionExprKind, ListFunctionExpr, ListFunctionExprKind, NilFunctionExpr,
+    NilFunctionExprKind, StringFunctionExpr, StringFunctionExprKind, TupleFunctionExpr,
+    TupleFunctionExprKind,
 };
 
 impl FrameLayout {
@@ -15,6 +16,7 @@ impl FrameLayout {
             FunctionExprKind::Bool(expression) => self.include_bool_function_expr(expression),
             FunctionExprKind::Nil(expression) => self.include_nil_function_expr(expression),
             FunctionExprKind::Tuple(expression) => self.include_tuple_function_expr(expression),
+            FunctionExprKind::List(expression) => self.include_list_function_expr(expression),
             FunctionExprKind::Function(expression) => {
                 self.include_function_function_expr(expression);
             }
@@ -467,6 +469,69 @@ impl FrameLayout {
             }
         }
     }
+
+    pub(in crate::plan::frame) fn include_list_function_expr(
+        &mut self,
+        expression: &ListFunctionExpr,
+    ) {
+        match expression.kind() {
+            ListFunctionExprKind::Value(_) => {}
+            ListFunctionExprKind::Closure { captures, .. } => self.include_capture_args(captures),
+            ListFunctionExprKind::LocalGet { local, .. } => self.include_list_function(*local),
+            ListFunctionExprKind::Call { args, .. } => self.include_call_args(args),
+            ListFunctionExprKind::FunctionCall { function, args, .. } => {
+                self.include_function_function_expr(function);
+                self.include_call_args(args);
+            }
+            ListFunctionExprKind::TupleIndex { tuple, .. } => self.include_tuple_expr(tuple),
+            ListFunctionExprKind::BoolCase {
+                subject,
+                true_,
+                false_,
+            } => {
+                self.include_bool_expr(subject);
+                self.include_list_function_expr(true_);
+                self.include_list_function_expr(false_);
+            }
+            ListFunctionExprKind::IntCase {
+                subject,
+                clauses,
+                fallback,
+            } => {
+                self.include_int_expr(subject);
+                for (_, branch) in clauses {
+                    self.include_list_function_expr(branch);
+                }
+                self.include_list_function_expr(fallback);
+            }
+            ListFunctionExprKind::StringCase {
+                subject,
+                clauses,
+                fallback,
+            } => {
+                self.include_string_expr(subject);
+                for (_, branch) in clauses {
+                    self.include_list_function_expr(branch);
+                }
+                self.include_list_function_expr(fallback);
+            }
+            ListFunctionExprKind::FloatCase {
+                subject,
+                clauses,
+                fallback,
+            } => {
+                self.include_float_expr(subject);
+                for (_, branch) in clauses {
+                    self.include_list_function_expr(branch);
+                }
+                self.include_list_function_expr(fallback);
+            }
+            ListFunctionExprKind::Block { steps, return_ } => {
+                self.include_steps(steps);
+                self.include_list_function_expr(return_);
+            }
+        }
+    }
 }
 
 #[cfg(test)]
@@ -477,6 +542,7 @@ mod tests {
         FloatExpr, FloatFunctionExpr, FloatFunctionId, FloatFunctionLocalId, FunctionExpr,
         FunctionFunctionExpr, FunctionFunctionId, FunctionFunctionLocalId, FunctionType, IntExpr,
         IntFunctionExpr, IntFunctionFunctionId, IntFunctionId, IntFunctionLocalId, IntLocalId,
+        ListFunctionExpr, ListFunctionFunctionId, ListFunctionId, ListFunctionLocalId,
         NilFunctionExpr, NilFunctionId, NilFunctionLocalId, ReturnExpr, Step, StringExpr,
         StringFunctionExpr, StringFunctionId, StringFunctionLocalId, TupleExpr, TupleFunctionExpr,
         TupleFunctionFunctionId, TupleFunctionId, TupleFunctionLocalId, TupleLocalId, ValueType,
@@ -928,6 +994,160 @@ mod tests {
     }
 
     #[test]
+    fn frame_layout_includes_list_function_expression_families() {
+        let list_function_type = list_function_type();
+        let list_function_callee_type = FunctionType::new(
+            vec![ValueType::Int],
+            ValueType::Function(Box::new(list_function_type.clone())),
+        );
+        let steps = vec![
+            Step::evaluate(Expr::function(FunctionExpr::list(
+                ListFunctionExpr::closure(
+                    ListFunctionId(0),
+                    Vec::new(),
+                    vec![CaptureArg::int(
+                        IntLocalId(0),
+                        IntExpr::local_get(IntLocalId(15), "closure_capture".into()),
+                    )],
+                    list_function_type.clone(),
+                    list_type(),
+                ),
+            ))),
+            Step::evaluate(Expr::function(FunctionExpr::list(
+                ListFunctionExpr::local_get(
+                    ListFunctionLocalId(0),
+                    "local_function".into(),
+                    list_function_type.clone(),
+                ),
+            ))),
+            Step::evaluate(Expr::function(FunctionExpr::list(ListFunctionExpr::call(
+                ListFunctionFunctionId(0),
+                vec![CallArg::int(
+                    IntLocalId(0),
+                    IntExpr::local_get(IntLocalId(16), "direct_arg".into()),
+                )],
+                list_function_type.clone(),
+            )))),
+            Step::evaluate(Expr::function(FunctionExpr::list(
+                ListFunctionExpr::function_call(
+                    FunctionFunctionExpr::local_get(
+                        FunctionFunctionLocalId(0),
+                        "callee".into(),
+                        list_function_callee_type,
+                    ),
+                    vec![CallArg::int(
+                        IntLocalId(0),
+                        IntExpr::local_get(IntLocalId(17), "function_arg".into()),
+                    )],
+                    list_function_type.clone(),
+                ),
+            ))),
+            Step::evaluate(Expr::function(FunctionExpr::list(
+                ListFunctionExpr::tuple_index(
+                    TupleExpr::local_get(
+                        TupleLocalId(0),
+                        "tuple".into(),
+                        vec![ValueType::Function(Box::new(list_function_type.clone()))],
+                    ),
+                    0,
+                    list_function_type.clone(),
+                ),
+            ))),
+            Step::evaluate(Expr::function(FunctionExpr::list(
+                ListFunctionExpr::bool_case(
+                    BoolExpr::local_get(crate::plan::BoolLocalId(0), "flag".into()),
+                    ListFunctionExpr::local_get(
+                        ListFunctionLocalId(1),
+                        "true_branch".into(),
+                        list_function_type.clone(),
+                    ),
+                    ListFunctionExpr::local_get(
+                        ListFunctionLocalId(2),
+                        "false_branch".into(),
+                        list_function_type.clone(),
+                    ),
+                ),
+            ))),
+            Step::evaluate(Expr::function(FunctionExpr::list(
+                ListFunctionExpr::int_case(
+                    IntExpr::local_get(IntLocalId(18), "int_subject".into()),
+                    vec![(
+                        1.into(),
+                        ListFunctionExpr::local_get(
+                            ListFunctionLocalId(3),
+                            "int_branch".into(),
+                            list_function_type.clone(),
+                        ),
+                    )],
+                    ListFunctionExpr::local_get(
+                        ListFunctionLocalId(4),
+                        "int_fallback".into(),
+                        list_function_type.clone(),
+                    ),
+                ),
+            ))),
+            Step::evaluate(Expr::function(FunctionExpr::list(
+                ListFunctionExpr::string_case(
+                    StringExpr::local_get(crate::plan::StringLocalId(0), "string_subject".into()),
+                    vec![(
+                        "hit".into(),
+                        ListFunctionExpr::local_get(
+                            ListFunctionLocalId(5),
+                            "string_branch".into(),
+                            list_function_type.clone(),
+                        ),
+                    )],
+                    ListFunctionExpr::local_get(
+                        ListFunctionLocalId(6),
+                        "string_fallback".into(),
+                        list_function_type.clone(),
+                    ),
+                ),
+            ))),
+            Step::evaluate(Expr::function(FunctionExpr::list(
+                ListFunctionExpr::float_case(
+                    FloatExpr::local_get(crate::plan::FloatLocalId(0), "float_subject".into()),
+                    vec![(
+                        1.0,
+                        ListFunctionExpr::local_get(
+                            ListFunctionLocalId(7),
+                            "float_branch".into(),
+                            list_function_type.clone(),
+                        ),
+                    )],
+                    ListFunctionExpr::local_get(
+                        ListFunctionLocalId(8),
+                        "float_fallback".into(),
+                        list_function_type.clone(),
+                    ),
+                ),
+            ))),
+            Step::evaluate(Expr::function(FunctionExpr::list(ListFunctionExpr::block(
+                vec![Step::evaluate(Expr::int(IntExpr::local_get(
+                    IntLocalId(19),
+                    "block_step".into(),
+                )))],
+                ListFunctionExpr::local_get(
+                    ListFunctionLocalId(9),
+                    "block_return".into(),
+                    list_function_type,
+                ),
+            )))),
+        ];
+        let return_ = ReturnExpr::int(IntFunctionId(0), IntExpr::value(0.into()));
+
+        let layout = FrameLayout::from_function_parts(&[], &steps, &return_);
+
+        assert_eq!(layout.ints(), 20);
+        assert_eq!(layout.floats(), 1);
+        assert_eq!(layout.strings(), 1);
+        assert_eq!(layout.bools(), 1);
+        assert_eq!(layout.tuples(), 1);
+        assert_eq!(layout.function_functions(), 1);
+        assert_eq!(layout.list_functions(), 10);
+    }
+
+    #[test]
     fn frame_layout_includes_function_expression_float_case_families() {
         let int_function_type = super::super::test_helpers::int_function_expr()
             .type_()
@@ -1145,5 +1365,13 @@ mod tests {
 
     fn tuple_function_type() -> FunctionType {
         FunctionType::new(vec![ValueType::Int], ValueType::Tuple(tuple_type()))
+    }
+
+    fn list_type() -> ValueType {
+        ValueType::Int
+    }
+
+    fn list_function_type() -> FunctionType {
+        FunctionType::new(vec![ValueType::Int], ValueType::List(Box::new(list_type())))
     }
 }

@@ -1,7 +1,8 @@
 use super::FrameLayout;
 use crate::plan::{
     BoolExpr, BoolExprKind, Expr, ExprKind, FloatExpr, FloatExprKind, IntExpr, IntExprKind,
-    NilExpr, NilExprKind, StringExpr, StringExprKind, TupleExpr, TupleExprKind,
+    ListExpr, ListExprKind, NilExpr, NilExprKind, StringExpr, StringExprKind, TupleExpr,
+    TupleExprKind,
 };
 
 impl FrameLayout {
@@ -13,6 +14,7 @@ impl FrameLayout {
             ExprKind::Bool(expression) => self.include_bool_expr(expression),
             ExprKind::Nil(expression) => self.include_nil_expr(expression),
             ExprKind::Tuple(expression) => self.include_tuple_expr(expression),
+            ExprKind::List(expression) => self.include_list_expr(expression),
             ExprKind::Function(expression) => self.include_function_expr(expression),
         }
     }
@@ -427,6 +429,69 @@ impl FrameLayout {
             }
         }
     }
+
+    pub(in crate::plan::frame) fn include_list_expr(&mut self, expression: &ListExpr) {
+        match expression.kind() {
+            ListExprKind::Value(elements) => {
+                for element in elements {
+                    self.include_expr(element);
+                }
+            }
+            ListExprKind::LocalGet { local, .. } => self.include_list(*local),
+            ListExprKind::Call { args, .. } => self.include_call_args(args),
+            ListExprKind::FunctionCall { function, args } => {
+                self.include_list_function_expr(function);
+                self.include_call_args(args);
+            }
+            ListExprKind::TupleIndex { tuple, .. } => self.include_tuple_expr(tuple),
+            ListExprKind::BoolCase {
+                subject,
+                true_,
+                false_,
+            } => {
+                self.include_bool_expr(subject);
+                self.include_list_expr(true_);
+                self.include_list_expr(false_);
+            }
+            ListExprKind::IntCase {
+                subject,
+                clauses,
+                fallback,
+            } => {
+                self.include_int_expr(subject);
+                for (_, branch) in clauses {
+                    self.include_list_expr(branch);
+                }
+                self.include_list_expr(fallback);
+            }
+            ListExprKind::StringCase {
+                subject,
+                clauses,
+                fallback,
+            } => {
+                self.include_string_expr(subject);
+                for (_, branch) in clauses {
+                    self.include_list_expr(branch);
+                }
+                self.include_list_expr(fallback);
+            }
+            ListExprKind::FloatCase {
+                subject,
+                clauses,
+                fallback,
+            } => {
+                self.include_float_expr(subject);
+                for (_, branch) in clauses {
+                    self.include_list_expr(branch);
+                }
+                self.include_list_expr(fallback);
+            }
+            ListExprKind::Block { steps, return_ } => {
+                self.include_steps(steps);
+                self.include_list_expr(return_);
+            }
+        }
+    }
 }
 
 #[cfg(test)]
@@ -434,8 +499,9 @@ mod tests {
     use super::FrameLayout;
     use crate::plan::{
         BoolExpr, BoolLocalId, CallArg, Expr, FloatExpr, FloatFunctionId, FloatFunctionLocalId,
-        FloatLocalId, FunctionType, IntExpr, IntFunctionId, IntLocalId, NilExpr, NilLocalId,
-        ReturnExpr, Step, StringExpr, StringLocalId, TupleExpr, TupleFunctionExpr, TupleFunctionId,
+        FloatLocalId, FunctionType, IntExpr, IntFunctionId, IntLocalId, ListExpr, ListFunctionExpr,
+        ListFunctionId, ListFunctionLocalId, ListLocalId, NilExpr, NilLocalId, ReturnExpr, Step,
+        StringExpr, StringLocalId, TupleExpr, TupleFunctionExpr, TupleFunctionId,
         TupleFunctionLocalId, TupleLocalId, ValueType,
     };
 
@@ -860,6 +926,102 @@ mod tests {
         assert_eq!(layout.tuple_functions(), 1);
     }
 
+    #[test]
+    fn frame_layout_includes_list_expression_families() {
+        let steps = vec![
+            Step::evaluate(Expr::list(ListExpr::value(
+                vec![Expr::int(IntExpr::local_get(
+                    IntLocalId(0),
+                    "value_element".into(),
+                ))],
+                list_type(),
+            ))),
+            Step::evaluate(Expr::list(ListExpr::local_get(
+                ListLocalId(0),
+                "local".into(),
+                list_type(),
+            ))),
+            Step::evaluate(Expr::list(ListExpr::call(
+                ListFunctionId(0),
+                vec![CallArg::list(
+                    ListLocalId(0),
+                    ListExpr::local_get(ListLocalId(1), "call_arg".into(), list_type()),
+                )],
+                list_type(),
+            ))),
+            Step::evaluate(Expr::list(ListExpr::function_call(
+                ListFunctionExpr::local_get(
+                    ListFunctionLocalId(0),
+                    "callee".into(),
+                    list_function_type(),
+                ),
+                vec![CallArg::list(
+                    ListLocalId(1),
+                    ListExpr::local_get(ListLocalId(2), "function_call_arg".into(), list_type()),
+                )],
+                list_type(),
+            ))),
+            Step::evaluate(Expr::list(ListExpr::tuple_index(
+                TupleExpr::value(
+                    vec![Expr::list(ListExpr::local_get(
+                        ListLocalId(3),
+                        "tuple_element".into(),
+                        list_type(),
+                    ))],
+                    vec![ValueType::List(Box::new(list_type()))],
+                ),
+                0,
+                list_type(),
+            ))),
+            Step::evaluate(Expr::list(ListExpr::bool_case(
+                BoolExpr::local_get(BoolLocalId(0), "bool_subject".into()),
+                ListExpr::local_get(ListLocalId(4), "bool_true".into(), list_type()),
+                ListExpr::local_get(ListLocalId(5), "bool_false".into(), list_type()),
+            ))),
+            Step::evaluate(Expr::list(ListExpr::int_case(
+                IntExpr::local_get(IntLocalId(1), "int_subject".into()),
+                vec![(
+                    1.into(),
+                    ListExpr::local_get(ListLocalId(6), "int_branch".into(), list_type()),
+                )],
+                ListExpr::local_get(ListLocalId(7), "int_fallback".into(), list_type()),
+            ))),
+            Step::evaluate(Expr::list(ListExpr::string_case(
+                StringExpr::local_get(StringLocalId(0), "string_subject".into()),
+                vec![(
+                    "hit".into(),
+                    ListExpr::local_get(ListLocalId(8), "string_branch".into(), list_type()),
+                )],
+                ListExpr::local_get(ListLocalId(9), "string_fallback".into(), list_type()),
+            ))),
+            Step::evaluate(Expr::list(ListExpr::float_case(
+                FloatExpr::local_get(FloatLocalId(0), "float_subject".into()),
+                vec![(
+                    1.0,
+                    ListExpr::local_get(ListLocalId(10), "float_branch".into(), list_type()),
+                )],
+                ListExpr::local_get(ListLocalId(11), "float_fallback".into(), list_type()),
+            ))),
+            Step::evaluate(Expr::list(ListExpr::block(
+                vec![Step::evaluate(Expr::int(IntExpr::local_get(
+                    IntLocalId(2),
+                    "block_step".into(),
+                )))],
+                ListExpr::local_get(ListLocalId(12), "block_return".into(), list_type()),
+            ))),
+        ];
+        let return_ = ReturnExpr::int(IntFunctionId(0), IntExpr::value(0.into()));
+
+        let layout = FrameLayout::from_function_parts(&[], &steps, &return_);
+
+        assert_eq!(layout.ints(), 3);
+        assert_eq!(layout.floats(), 1);
+        assert_eq!(layout.strings(), 1);
+        assert_eq!(layout.bools(), 1);
+        assert_eq!(layout.lists(), 13);
+        assert_eq!(layout.list_functions(), 1);
+    }
+
     fn tuple_type() -> Vec<ValueType> {
         vec![ValueType::Int]
     }
@@ -868,6 +1030,17 @@ mod tests {
         FunctionType::new(
             vec![ValueType::Tuple(tuple_type())],
             ValueType::Tuple(tuple_type()),
+        )
+    }
+
+    fn list_type() -> ValueType {
+        ValueType::Int
+    }
+
+    fn list_function_type() -> FunctionType {
+        FunctionType::new(
+            vec![ValueType::List(Box::new(list_type()))],
+            ValueType::List(Box::new(list_type())),
         )
     }
 }

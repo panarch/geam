@@ -141,6 +141,7 @@ fn bool_case_expr(subject: BoolExpr, true_: Expr, false_: Expr) -> Result<Expr, 
         (ExprKind::Tuple(true_), ExprKind::Tuple(false_)) => {
             BoolCaseBranches::Tuple { true_, false_ }
         }
+        (ExprKind::List(true_), ExprKind::List(false_)) => BoolCaseBranches::List { true_, false_ },
         (ExprKind::Function(true_), ExprKind::Function(false_)) => {
             bool_function_case_branches(true_, false_)?
         }
@@ -182,6 +183,10 @@ fn bool_function_case_branches(
             crate::plan::FunctionExprKind::Tuple(false_),
         ) => Ok(BoolCaseBranches::TupleFunction { true_, false_ }),
         (
+            crate::plan::FunctionExprKind::List(true_),
+            crate::plan::FunctionExprKind::List(false_),
+        ) => Ok(BoolCaseBranches::ListFunction { true_, false_ }),
+        (
             crate::plan::FunctionExprKind::Function(true_),
             crate::plan::FunctionExprKind::Function(false_),
         ) => Ok(BoolCaseBranches::FunctionFunction { true_, false_ }),
@@ -196,12 +201,13 @@ mod tests {
     use crate::plan::{
         BoolExpr, BoolFunctionId, Expr, FloatExpr, FloatFunctionId, FunctionExpr,
         FunctionFunctionId, FunctionType, IntFunctionFunctionId, IntFunctionId, IntLocalId,
-        LocalId, NilFunctionId, RuntimeFunctionId, StringFunctionId, ValueType,
+        ListFunctionId, LocalId, NilFunctionId, RuntimeFunctionId, StringFunctionId, ValueType,
     };
     use crate::planner::dsl::{
         bool_, bool_return_bool_case, bool_return_expr, call_bool, function, function_ref, int,
-        int_return_bool_case, int_return_expr, local_bool, module, nil, nil_return_bool_case,
-        nil_return_expr, string, string_return_bool_case, string_return_expr,
+        int_return_bool_case, int_return_expr, list, list_return_bool_case, list_return_expr,
+        local_bool, module, nil, nil_return_bool_case, nil_return_expr, return_list, string,
+        string_return_bool_case, string_return_expr,
     };
     use crate::planner::plan_module;
     use crate::planner::support::{dummy_span, expect_plan_error};
@@ -244,6 +250,13 @@ pub fn nil_case() {
     False -> Nil
   }
 }
+
+pub fn list_case(value: Bool) {
+  case value {
+    True -> [1]
+    False -> [0]
+  }
+}
 "#,
         ))
         .expect("source should plan");
@@ -283,6 +296,18 @@ pub fn nil_case() {
                         nil_return_expr(nil()),
                     ),
                 ),
+                function(
+                    "list_case",
+                    return_list(
+                        ValueType::Int,
+                        list_return_bool_case(
+                            local_bool(0, "value"),
+                            list_return_expr(list([int(1)], ValueType::Int)),
+                            list_return_expr(list([int(0)], ValueType::Int)),
+                        ),
+                    ),
+                )
+                .param_bool(0, "value"),
             ],
         );
 
@@ -566,6 +591,31 @@ fn duplicate_true(value: Bool) {
             ))),
         );
 
+        let list_branches = super::bool_function_case_branches(
+            FunctionExpr::from(function_ref(
+                RuntimeFunctionId::List {
+                    id: ListFunctionId(0),
+                    return_type: Box::new(ValueType::Int),
+                },
+                [LocalId::Int(crate::plan::IntLocalId(0))],
+            )),
+            FunctionExpr::from(function_ref(
+                RuntimeFunctionId::List {
+                    id: ListFunctionId(1),
+                    return_type: Box::new(ValueType::Int),
+                },
+                [LocalId::Int(crate::plan::IntLocalId(0))],
+            )),
+        )
+        .expect("list function branches");
+        assert_eq!(
+            Expr::bool_case(BoolExpr::value(true), list_branches).value_type(),
+            ValueType::Function(Box::new(FunctionType::new(
+                vec![ValueType::Int],
+                ValueType::List(Box::new(ValueType::Int)),
+            ))),
+        );
+
         let returned_function_type = FunctionType::new(vec![ValueType::Int], ValueType::Int);
         let function_branches = super::bool_function_case_branches(
             FunctionExpr::from(function_ref(
@@ -655,6 +705,30 @@ pub fn main() {
             ),
             PlanError::UnsupportedExpression {
                 kind: UnsupportedExpressionKind::Todo,
+            },
+        );
+    }
+
+    #[test]
+    fn reject_margin_bool_case_function_branch_missing_pattern() {
+        assert_eq!(
+            expect_plan_error(
+                r#"
+fn add_one(value: Int) {
+  value + 1
+}
+
+pub fn main() {
+  case False {
+    False -> add_one
+  }
+}
+"#,
+            ),
+            PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::CaseShape {
+                    reason: InvalidCaseShapeReason::MissingTruePattern,
+                },
             },
         );
     }

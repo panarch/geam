@@ -1,4 +1,4 @@
 pub fn main() {
-  fn(value) { [value] }
+  fn() { <<>> }
   1
 }
