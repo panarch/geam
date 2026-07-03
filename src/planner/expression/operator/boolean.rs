@@ -69,15 +69,14 @@ pub fn or_op() {
                 r#"
 pub fn main() {
   False && {
-    let rest = [1]
-    [0, ..rest]
+    panic
     True
   }
 }
 "#,
             ),
             PlanError::UnsupportedExpression {
-                kind: UnsupportedExpressionKind::ListSpread,
+                kind: UnsupportedExpressionKind::Panic,
             },
         );
         assert_eq!(
@@ -85,15 +84,14 @@ pub fn main() {
                 r#"
 pub fn main() {
   True || {
-    let rest = [1]
-    [0, ..rest]
+    panic
     False
   }
 }
 "#,
             ),
             PlanError::UnsupportedExpression {
-                kind: UnsupportedExpressionKind::ListSpread,
+                kind: UnsupportedExpressionKind::Panic,
             },
         );
     }

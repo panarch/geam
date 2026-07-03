@@ -357,7 +357,6 @@ impl Expr {
         }
     }
 
-    #[cfg(test)]
     pub(crate) fn into_list(self) -> Option<ListExpr> {
         match self.kind {
             ExprKind::List(expression) => Some(expression),

@@ -29,6 +29,7 @@ mod values {
         float_value,
         tuple_value,
         list_value,
+        list_spread,
         bool_value,
         nil_value,
     );
@@ -127,6 +128,7 @@ mod functions {
             float_function_value_expressions,
             tuple_function_value_projection,
             list_function_value,
+            function_value_block_list_spread,
             function_value_expression_steps,
             function_value_shadowing,
         );
@@ -263,9 +265,7 @@ mod rejection {
             echo,
             bit_array,
             result_constructor,
-            list_spread,
             unsupported_list_element_type,
-            function_value_block_list_spread,
         );
     }
 

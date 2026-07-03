@@ -9,3 +9,5 @@ pub fn main() {
     add_one
   }
 }
+
+// geam:expect Function(fn(Int) -> Int)

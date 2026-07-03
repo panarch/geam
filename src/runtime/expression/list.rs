@@ -17,6 +17,15 @@ pub(in crate::runtime) fn eval_list_expr(
             }
             Ok(ListValue::new(expression.element_type().clone(), values))
         }
+        ListExprKind::Spread { elements, tail } => {
+            let mut values = Vec::with_capacity(elements.len());
+            for element in elements {
+                values.push(super::eval_expr(plan, frame, element)?);
+            }
+            values.extend(eval_list_expr(plan, frame, tail)?.values().iter().cloned());
+
+            Ok(ListValue::new(expression.element_type().clone(), values))
+        }
         ListExprKind::LocalGet { local, .. } => Ok(frame.get_list(*local)),
         ListExprKind::Call { function, args } => {
             function::run_list_call(plan, *function, args, frame)
@@ -128,6 +137,40 @@ mod tests {
                 &ListExpr::call(ListFunctionId(0), Vec::new(), element_type()),
             ),
             Ok(list_value(1)),
+        );
+    }
+
+    #[test]
+    fn eval_list_expr_evaluates_spread_prefix_before_tail() {
+        let plan = plan();
+        let mut frame = Frame::default();
+
+        assert_eq!(
+            eval_list_expr(
+                &plan,
+                &mut frame,
+                &ListExpr::spread(
+                    vec![Expr::int(IntExpr::value(0.into()))],
+                    list_expr(1),
+                    element_type(),
+                ),
+            ),
+            Ok(ListValue::new(
+                element_type(),
+                vec![Value::Int(0.into()), Value::Int(1.into())],
+            )),
+        );
+        assert_eq!(
+            eval_list_expr(
+                &plan,
+                &mut frame,
+                &ListExpr::spread(
+                    vec![Expr::int(error_int_expr())],
+                    error_list_expr(),
+                    element_type(),
+                ),
+            ),
+            Err(tuple_index_error(ValueType::Int)),
         );
     }
 
@@ -292,6 +335,18 @@ mod tests {
             (
                 ListExpr::value(vec![Expr::int(error_int_expr())], element_type()),
                 ValueType::Int,
+            ),
+            (
+                ListExpr::spread(
+                    vec![Expr::int(error_int_expr())],
+                    list_expr(1),
+                    element_type(),
+                ),
+                ValueType::Int,
+            ),
+            (
+                ListExpr::spread(Vec::new(), error_list_expr(), element_type()),
+                ValueType::List(Box::new(element_type())),
             ),
             (
                 ListExpr::bool_case(error_bool_expr(), list_expr(1), list_expr(2)),

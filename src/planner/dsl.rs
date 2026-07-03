@@ -10,7 +10,7 @@ pub(crate) use expression::{
     int_case_int_function, int_function_arg, int_function_call_arg, int_function_closure,
     int_function_ref, let_bool_function_step, let_bool_step, let_int_function_step, let_int_step,
     let_list_step, let_nil_function_step, let_nil_step, let_string_function_step, let_string_step,
-    let_tuple_step, list, list_function_ref, local_bool, local_float, local_int,
+    let_tuple_step, list, list_function_ref, list_spread, local_bool, local_float, local_int,
     local_int_function, local_list, local_nil, local_string, local_tuple, nil, nil_arg,
     nil_function_ref, not_equal, string, string_arg, string_function_ref, tuple, tuple_arg,
     tuple_function_closure, tuple_function_ref,

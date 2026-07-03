@@ -66,8 +66,6 @@ pub enum UnsupportedExpressionKind {
     Echo,
     #[error("function capture literal")]
     FunctionCaptureLiteral,
-    #[error("list spread")]
-    ListSpread,
     #[error("list element type is not supported")]
     UnsupportedListElementType,
     #[error("panic")]
