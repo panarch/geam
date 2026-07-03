@@ -636,6 +636,23 @@ pub fn main() {
                 kind: UnsupportedPatternKind::Assign,
             },
         );
+        assert_eq!(
+            expect_plan_error(
+                r#"
+fn with_values(continue: fn(List(Int)) -> List(Int)) {
+  continue([1])
+}
+
+pub fn main() {
+  use [..rest] <- with_values
+  rest
+}
+"#,
+            ),
+            PlanError::UnsupportedPattern {
+                kind: UnsupportedPatternKind::List,
+            },
+        );
     }
 
     #[test]
@@ -895,6 +912,17 @@ pub fn main() {
                     kind: UnsupportedPatternKind::Assign,
                 },
             ),
+            (
+                r#"
+pub fn main() {
+  let [..rest] = [1]
+  rest
+}
+"#,
+                PlanError::UnsupportedPattern {
+                    kind: UnsupportedPatternKind::List,
+                },
+            ),
         ];
 
         for (src, expected) in cases {
@@ -922,18 +950,6 @@ pub fn main() {
                 type_: type_::int(),
             }),
             Ok(BindingPattern::Discard),
-        );
-
-        assert_eq!(
-            plan_binding_pattern(Pattern::List {
-                location: dummy_span(),
-                elements: vec![variable("x")],
-                tail: None,
-                type_: type_::list(type_::int()),
-            }),
-            Err(PlanError::UnsupportedPattern {
-                kind: UnsupportedPatternKind::List,
-            }),
         );
 
         let patterns = [

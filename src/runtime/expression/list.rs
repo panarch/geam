@@ -104,7 +104,7 @@ mod tests {
     use num_bigint::BigInt;
 
     #[test]
-    fn eval_list_expr_direct_case_and_block_paths() {
+    fn eval_list_expr_evaluates_value_local_and_direct_call() {
         let plan = plan();
         let mut frame = frame();
         frame.set_list(ListLocalId(0), list_value(1));
@@ -129,6 +129,13 @@ mod tests {
             ),
             Ok(list_value(1)),
         );
+    }
+
+    #[test]
+    fn eval_list_expr_selects_case_branches() {
+        let plan = plan();
+        let mut frame = Frame::default();
+
         assert_eq!(
             eval_list_expr(
                 &plan,
@@ -217,13 +224,24 @@ mod tests {
             ),
             Ok(list_value(1)),
         );
+    }
+
+    #[test]
+    fn eval_list_expr_executes_block_steps_before_return() {
+        let plan = plan();
+        let mut frame = frame();
+
         assert_eq!(
             eval_list_expr(
                 &plan,
                 &mut frame,
                 &ListExpr::block(
-                    vec![Step::evaluate(Expr::int(IntExpr::value(0.into())))],
-                    list_expr(1),
+                    vec![Step::let_list(
+                        ListLocalId(0),
+                        "values".into(),
+                        list_expr(1)
+                    )],
+                    ListExpr::local_get(ListLocalId(0), "values".into(), element_type()),
                 ),
             ),
             Ok(list_value(1)),
