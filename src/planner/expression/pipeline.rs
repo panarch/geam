@@ -104,11 +104,14 @@ fn invalid_pipeline_shape(reason: InvalidPipelineShapeReason) -> PlanError {
 
 #[cfg(test)]
 mod tests {
+    use crate::plan::{IntLocalId, LocalId};
     use crate::planner::dsl::{
-        block_int, bool_, bool_arg, bool_return_block, bool_return_tail_call, call_int, function,
-        int, int_arg, int_return_block, int_return_tail_call, let_bool_step, let_int_step,
-        let_nil_step, let_string_step, local_bool, local_int, local_nil, local_string, module, nil,
-        nil_arg, nil_return_block, nil_return_tail_call, string, string_arg, string_return_block,
+        block_int, bool_, bool_arg, bool_return_block, bool_return_tail_call, call_int,
+        call_int_function, function, int, int_arg, int_function_call_arg, int_function_ref,
+        int_return_block, int_return_expr, int_return_tail_call, let_bool_step,
+        let_int_function_step, let_int_step, let_nil_step, let_string_step, local_bool, local_int,
+        local_int_function, local_nil, local_string, module, module_with_anonymous, nil, nil_arg,
+        nil_return_block, nil_return_tail_call, string, string_arg, string_return_block,
         string_return_tail_call,
     };
     use crate::planner::plan_module;
@@ -318,6 +321,110 @@ pub fn main() {
     }
 
     #[test]
+    fn plan_pipeline_function_value_call_shape() {
+        let actual = plan_module(compile(
+            r#"
+fn add_one(value: Int) {
+  value + 1
+}
+
+pub fn main() {
+  let f = add_one
+  1 |> f
+}
+"#,
+        ))
+        .expect("source should plan");
+        let expected = module(
+            "main",
+            function(
+                "main",
+                int_return_block(
+                    [let_int_step(0, "_pipe", int(1))],
+                    int_return_expr(call_int_function(
+                        local_int_function(0, "f", [LocalId::Int(IntLocalId(0))]),
+                        [int_function_call_arg(0, local_int(0, "_pipe"))],
+                    )),
+                ),
+            )
+            .step(let_int_function_step(
+                0,
+                "f",
+                int_function_ref(1, [LocalId::Int(IntLocalId(0))]),
+            )),
+            [function("add_one", local_int(0, "value").add_int(int(1))).param_int(0, "value")],
+        );
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn plan_pipeline_anonymous_function_value_call_shape() {
+        let actual = plan_module(compile(r#"pub fn main() { 1 |> fn(value) { value } }"#))
+            .expect("source should plan");
+        let expected = module_with_anonymous(
+            "main",
+            function(
+                "main",
+                int_return_block(
+                    [let_int_step(0, "_pipe", int(1))],
+                    int_return_expr(call_int_function(
+                        int_function_ref(1, [LocalId::Int(IntLocalId(0))]),
+                        [int_function_call_arg(0, local_int(0, "_pipe"))],
+                    )),
+                ),
+            ),
+            [],
+            [function("<anonymous:0>", local_int(0, "value")).param_int(0, "value")],
+        );
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn plan_pipeline_function_value_hole_call_shape() {
+        let actual = plan_module(compile(
+            r#"
+fn subtract(left: Int, right: Int) {
+  left - right
+}
+
+pub fn main() {
+  let f = subtract
+  1 |> f(10, _)
+}
+"#,
+        ))
+        .expect("source should plan");
+        let params = [LocalId::Int(IntLocalId(0)), LocalId::Int(IntLocalId(1))];
+        let expected = module(
+            "main",
+            function(
+                "main",
+                int_return_block(
+                    [let_int_step(0, "_pipe", int(1))],
+                    int_return_expr(call_int_function(
+                        local_int_function(0, "f", params),
+                        [
+                            int_function_call_arg(0, int(10)),
+                            int_function_call_arg(1, local_int(0, "_pipe")),
+                        ],
+                    )),
+                ),
+            )
+            .step(let_int_function_step(0, "f", int_function_ref(1, params))),
+            [function(
+                "subtract",
+                local_int(0, "left").sub_int(local_int(1, "right")),
+            )
+            .param_int(0, "left")
+            .param_int(1, "right")],
+        );
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
     fn plan_pipeline_middle_explicit_hole() {
         let actual = plan_module(compile(
             r#"
@@ -430,24 +537,6 @@ fn identity_nil(value: Nil) {
             expect_plan_error(r#"pub fn main() { 1 |> echo }"#),
             PlanError::UnsupportedPipeline {
                 reason: UnsupportedPipelineReason::Echo,
-            },
-        );
-        assert_eq!(
-            expect_plan_error(r#"pub fn main() { 1 |> fn(x) { x } }"#),
-            PlanError::UnsupportedPipeline {
-                reason: UnsupportedPipelineReason::FunctionValueCall,
-            },
-        );
-        assert_eq!(
-            expect_plan_error(
-                r#"
-pub fn main() {
-  1 |> fn(right) { fn(left) { left + right } }(2)
-}
-"#,
-            ),
-            PlanError::UnsupportedPipeline {
-                reason: UnsupportedPipelineReason::FunctionValueCall,
             },
         );
         assert_eq!(

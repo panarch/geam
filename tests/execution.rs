@@ -98,6 +98,10 @@ mod pipeline {
         float_pipeline,
         tuple_pipeline,
         list_pipeline,
+        function_value_call,
+        anonymous_function_call,
+        function_value_hole_call,
+        function_returning_function_call,
     );
 }
 
@@ -313,8 +317,6 @@ mod rejection {
     mod pipeline {
         rejection_cases!("pipeline";
             echo,
-            anonymous_function_call,
-            function_value_call,
         );
     }
 }

@@ -1,4 +1,4 @@
-use super::{CaptureSubstitution, FunctionValueCallMode};
+use super::CaptureSubstitution;
 use crate::plan::Expr;
 use crate::planner::context::PlanContext;
 use crate::planner::error::{
@@ -24,14 +24,7 @@ pub(super) fn plan_use_call(
             ..
         } => {
             let arguments = normalize_use_call_arguments(arguments)?;
-            super::plan_call_expression(
-                type_,
-                *fun,
-                arguments,
-                context,
-                None,
-                FunctionValueCallMode::Allow,
-            )
+            super::plan_call_expression(type_, *fun, arguments, context, None)
         }
         _ => Err(super::invalid_use_shape(InvalidUseShapeReason::NonCallRhs)),
     }
@@ -45,14 +38,7 @@ pub(super) fn plan_pipeline_direct_call(
 ) -> Result<Expr, PlanError> {
     pipe_argument(&arguments)?;
 
-    super::plan_call_expression(
-        type_,
-        fun,
-        arguments,
-        context,
-        None,
-        FunctionValueCallMode::Reject,
-    )
+    super::plan_call_expression(type_, fun, arguments, context, None)
 }
 
 pub(super) fn plan_pipeline_hole_call(
@@ -105,7 +91,6 @@ pub(super) fn plan_pipeline_hole_call(
             name: capture_name,
             value: pipe_value,
         }),
-        FunctionValueCallMode::Reject,
     )
 }
 
