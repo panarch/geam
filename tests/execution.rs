@@ -200,6 +200,10 @@ mod functions {
             anonymous_float_function,
             anonymous_list_function,
             anonymous_function_main_returning_function,
+            function_capture_literal,
+            function_capture_literal_first_argument,
+            function_capture_literal_closure,
+            function_capture_literal_local_function_value,
             capturing_closure_local_call,
             capturing_closure_float,
             capturing_closure_list,
@@ -266,7 +270,6 @@ mod rejection {
             anonymous_unsupported_body,
             anonymous_unsupported_argument_type,
             anonymous_unsupported_return_type,
-            function_capture_literal,
         );
     }
 

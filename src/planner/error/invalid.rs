@@ -49,6 +49,8 @@ pub enum InvalidFunctionShapeReason {
 pub enum InvalidExpressionShapeKind {
     #[error("invalid")]
     Invalid,
+    #[error("function capture literal")]
+    FunctionCaptureLiteral,
     #[error("module select")]
     ModuleSelect,
     #[error("module constant")]

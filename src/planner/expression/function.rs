@@ -11,8 +11,11 @@ use crate::planner::error::{
 use crate::planner::function::{anonymous_function_plan, plan_anonymous_function_body};
 use crate::planner::module::function_params;
 use ecow::EcoString;
-use gleam_core::ast::{FunctionLiteralKind, TypedArg, TypedStatement};
-use gleam_core::type_::Type;
+use gleam_core::ast::{
+    CAPTURE_VARIABLE, CallArg as GleamCallArg, FunctionLiteralKind, Statement, TypedArg, TypedExpr,
+    TypedStatement,
+};
+use gleam_core::type_::{Type, ValueConstructorVariant};
 use std::sync::Arc;
 use vec1::Vec1;
 
@@ -25,8 +28,11 @@ pub(super) fn plan_anonymous(
 ) -> Result<Expr, PlanError> {
     match kind {
         FunctionLiteralKind::Anonymous { .. } => {}
-        FunctionLiteralKind::Capture { .. } | FunctionLiteralKind::Use { .. } => {
-            return Err(function_literal_kind_error(kind));
+        FunctionLiteralKind::Capture { .. } => {
+            validate_capture_literal(&arguments, &body)?;
+        }
+        FunctionLiteralKind::Use { .. } => {
+            return Err(invalid_function_literal_kind_error());
         }
     }
 
@@ -91,21 +97,64 @@ fn plan_anonymous_with_captures(
     Ok(Expr::function(value))
 }
 
-fn function_literal_kind_error(kind: FunctionLiteralKind) -> PlanError {
-    let invalid = PlanError::InvalidTypedAst {
+fn validate_capture_literal(
+    arguments: &[TypedArg],
+    body: &Vec1<TypedStatement>,
+) -> Result<(), PlanError> {
+    let [argument] = arguments else {
+        return Err(invalid_capture_literal_shape());
+    };
+
+    if argument.get_variable_name().map(|name| name.as_str()) != Some(CAPTURE_VARIABLE) {
+        return Err(invalid_capture_literal_shape());
+    }
+
+    let [Statement::Expression(TypedExpr::Call { arguments, .. })] = body.as_slice() else {
+        return Err(invalid_capture_literal_shape());
+    };
+
+    if count_capture_literal_arguments(arguments) == 1 {
+        Ok(())
+    } else {
+        Err(invalid_capture_literal_shape())
+    }
+}
+
+fn count_capture_literal_arguments(arguments: &[GleamCallArg<TypedExpr>]) -> usize {
+    arguments
+        .iter()
+        .filter(|argument| is_capture_literal_local(&argument.value))
+        .count()
+}
+
+fn is_capture_literal_local(expression: &TypedExpr) -> bool {
+    matches!(
+        expression,
+        TypedExpr::Var {
+            name,
+            constructor,
+            ..
+        } if name.as_str() == CAPTURE_VARIABLE
+            && matches!(
+                constructor.variant,
+                ValueConstructorVariant::LocalVariable { .. }
+            )
+    )
+}
+
+fn invalid_function_literal_kind_error() -> PlanError {
+    PlanError::InvalidTypedAst {
         reason: InvalidTypedAstReason::ExpressionShape {
             kind: InvalidExpressionShapeKind::Invalid,
         },
-    };
-
-    kind.is_capture()
-        .then(function_capture_literal_error)
-        .map_or(invalid, |error| error)
+    }
 }
 
-fn function_capture_literal_error() -> PlanError {
-    PlanError::UnsupportedExpression {
-        kind: UnsupportedExpressionKind::FunctionCaptureLiteral,
+fn invalid_capture_literal_shape() -> PlanError {
+    PlanError::InvalidTypedAst {
+        reason: InvalidTypedAstReason::ExpressionShape {
+            kind: InvalidExpressionShapeKind::FunctionCaptureLiteral,
+        },
     }
 }
 
@@ -266,8 +315,9 @@ mod tests {
     use crate::planner::plan_module;
     use crate::planner::support::{compile, dummy_span};
     use gleam_core::ast::{
-        ArgNames, Constant, FunctionLiteralKind, PipelineAssignmentKind, Statement, TypedArg,
-        TypedExpr, TypedModule, TypedPipelineAssignment, TypedStatement,
+        ArgNames, CAPTURE_VARIABLE, CallArg as GleamCallArg, Constant, FunctionLiteralKind,
+        PipelineAssignmentKind, Statement, TypedArg, TypedExpr, TypedModule,
+        TypedPipelineAssignment, TypedStatement,
     };
     use gleam_core::type_::ModuleValueConstructor;
 
@@ -551,10 +601,9 @@ pub fn main() {
     }
 
     #[test]
-    fn reject_profile_function_capture_literal() {
-        assert_eq!(
-            plan_module(compile(
-                r#"
+    fn plan_function_capture_literal() {
+        let actual = plan_module(compile(
+            r#"
 fn add(left: Int, right: Int) {
   left + right
 }
@@ -564,11 +613,91 @@ pub fn main() {
   add_one(41)
 }
 "#,
-            )),
-            Err(PlanError::UnsupportedExpression {
-                kind: UnsupportedExpressionKind::FunctionCaptureLiteral,
-            }),
+        ))
+        .expect("source should plan");
+        let add_one = int_function_ref(2, [LocalId::Int(IntLocalId(0))]);
+        let expected = module_with_anonymous(
+            "main",
+            function(
+                "main",
+                call_int_function(
+                    local_int_function(0, "add_one", [LocalId::Int(IntLocalId(0))]),
+                    [int_function_call_arg(0, int(41))],
+                ),
+            )
+            .step(let_int_function_step(0, "add_one", add_one)),
+            [
+                function("add", local_int(0, "left").add_int(local_int(1, "right")))
+                    .param_int(0, "left")
+                    .param_int(1, "right"),
+            ],
+            [function(
+                "<anonymous:0>",
+                int_return_tail_call(
+                    1,
+                    [
+                        int_arg(0, int(1)),
+                        int_arg(1, local_int(0, CAPTURE_VARIABLE)),
+                    ],
+                ),
+            )
+            .param_int(0, CAPTURE_VARIABLE)],
         );
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn plan_function_capture_literal_with_closure_capture() {
+        let actual = plan_module(compile(
+            r#"
+fn add(left: Int, right: Int) {
+  left + right
+}
+
+pub fn main() {
+  let base = 1
+  let add_base = add(base, _)
+  add_base(41)
+}
+"#,
+        ))
+        .expect("source should plan");
+        let add_base = int_function_closure(
+            2,
+            [LocalId::Int(IntLocalId(0))],
+            [capture_int(1, local_int(0, "base"))],
+        );
+        let expected = module_with_anonymous(
+            "main",
+            function(
+                "main",
+                call_int_function(
+                    local_int_function(0, "add_base", [LocalId::Int(IntLocalId(0))]),
+                    [int_function_call_arg(0, int(41))],
+                ),
+            )
+            .step(let_int_step(0, "base", int(1)))
+            .step(let_int_function_step(0, "add_base", add_base)),
+            [
+                function("add", local_int(0, "left").add_int(local_int(1, "right")))
+                    .param_int(0, "left")
+                    .param_int(1, "right"),
+            ],
+            [function(
+                "<anonymous:0>",
+                int_return_tail_call(
+                    1,
+                    [
+                        int_arg(0, local_int(1, "base")),
+                        int_arg(1, local_int(0, CAPTURE_VARIABLE)),
+                    ],
+                ),
+            )
+            .param_int(0, CAPTURE_VARIABLE)],
+        );
+
+        assert_eq!(actual, expected);
     }
 
     #[test]
@@ -848,6 +977,92 @@ pub fn main() {
     }
 
     #[test]
+    fn reject_margin_function_capture_literal_argument_shape() {
+        for mutate in [
+            |arguments: &mut Vec<TypedArg>, _: &mut vec1::Vec1<TypedStatement>| {
+                arguments.push(arguments[0].clone());
+            },
+            |arguments: &mut Vec<TypedArg>, _: &mut vec1::Vec1<TypedStatement>| {
+                arguments[0].names = ArgNames::Named {
+                    name: "other".into(),
+                    location: dummy_span(),
+                };
+            },
+        ] {
+            let mut module = function_capture_literal_module();
+            let (arguments, body, _) = function_capture_literal_expression_mut(&mut module);
+            mutate(arguments, body);
+
+            assert_eq!(
+                plan_module(module),
+                Err(invalid_function_capture_literal_shape()),
+            );
+        }
+    }
+
+    #[test]
+    fn reject_margin_function_capture_literal_body_shape() {
+        for mutate in [
+            |_: &mut Vec<TypedArg>, body: &mut vec1::Vec1<TypedStatement>| {
+                body[0] = Statement::Expression(super::super::typed_int_expr(1));
+            },
+            |_: &mut Vec<TypedArg>, body: &mut vec1::Vec1<TypedStatement>| {
+                let arguments = function_capture_literal_body_call_args_mut(body);
+                let capture_index = capture_argument_index(arguments);
+                arguments[capture_index].value = super::super::typed_int_expr(1);
+            },
+            |_: &mut Vec<TypedArg>, body: &mut vec1::Vec1<TypedStatement>| {
+                let arguments = function_capture_literal_body_call_args_mut(body);
+                let capture = arguments[capture_argument_index(arguments)].clone();
+                arguments.push(capture);
+            },
+            |_: &mut Vec<TypedArg>, body: &mut vec1::Vec1<TypedStatement>| {
+                let arguments = function_capture_literal_body_call_args_mut(body);
+                let capture_index = capture_argument_index(arguments);
+                if let TypedExpr::Var { constructor, .. } = &mut arguments[capture_index].value {
+                    constructor.variant = gleam_core::type_::ValueConstructorVariant::Record {
+                        name: "Capture".into(),
+                        arity: 1,
+                        field_map: None,
+                        location: dummy_span(),
+                        module: "main".into(),
+                        variants_count: 1,
+                        variant_index: 0,
+                        documentation: None,
+                    };
+                }
+            },
+        ] {
+            let mut module = function_capture_literal_module();
+            let (arguments, body, _) = function_capture_literal_expression_mut(&mut module);
+            mutate(arguments, body);
+
+            assert_eq!(
+                plan_module(module),
+                Err(invalid_function_capture_literal_shape()),
+            );
+        }
+    }
+
+    #[test]
+    #[should_panic(expected = "expected function capture literal expression statement")]
+    fn function_capture_literal_expression_mut_panics_on_non_function_statement() {
+        let mut module = compile(r#"pub fn main() { 1 }"#);
+
+        let _ = function_capture_literal_expression_mut(&mut module);
+    }
+
+    #[test]
+    #[should_panic(expected = "expected function capture literal call body")]
+    fn function_capture_literal_body_call_args_mut_panics_on_non_call_body() {
+        let mut module = function_capture_literal_module();
+        let (_, body, _) = function_capture_literal_expression_mut(&mut module);
+        body[0] = Statement::Expression(super::super::typed_int_expr(1));
+
+        let _ = function_capture_literal_body_call_args_mut(body);
+    }
+
+    #[test]
     #[should_panic(expected = "expected anonymous function expression statement")]
     fn anonymous_function_expression_mut_panics_on_non_function_statement() {
         let mut module = compile(r#"pub fn main() { 1 }"#);
@@ -865,6 +1080,20 @@ pub fn main() {
 
     fn anonymous_function_module() -> TypedModule {
         compile("pub fn main() {\n  fn(value) { value + 1 }\n  1\n}\n")
+    }
+
+    fn function_capture_literal_module() -> TypedModule {
+        compile(
+            r#"
+fn add(left: Int, right: Int) {
+  left + right
+}
+
+pub fn main() {
+  add(1, _)
+}
+"#,
+        )
     }
 
     fn anonymous_function_body_mut(module: &mut TypedModule) -> &mut vec1::Vec1<TypedStatement> {
@@ -895,6 +1124,76 @@ pub fn main() {
         };
 
         (type_, arguments, kind)
+    }
+
+    fn function_capture_literal_expression_mut(
+        module: &mut TypedModule,
+    ) -> (
+        &mut Vec<TypedArg>,
+        &mut vec1::Vec1<TypedStatement>,
+        &mut FunctionLiteralKind,
+    ) {
+        let main = module
+            .definitions
+            .functions
+            .iter_mut()
+            .find(|function| {
+                function
+                    .name
+                    .as_ref()
+                    .is_some_and(|(_, name)| name == "main")
+            })
+            .expect("expected main function");
+
+        let Statement::Expression(TypedExpr::Fn {
+            arguments,
+            body,
+            kind,
+            ..
+        }) = &mut main.body[0]
+        else {
+            panic!("expected function capture literal expression statement");
+        };
+
+        (arguments, body, kind)
+    }
+
+    fn function_capture_literal_body_call_args_mut(
+        body: &mut vec1::Vec1<TypedStatement>,
+    ) -> &mut Vec<GleamCallArg<TypedExpr>> {
+        let (_, arguments) = function_capture_literal_body_call_parts_mut(body);
+
+        arguments
+    }
+
+    fn function_capture_literal_body_call_parts_mut(
+        body: &mut vec1::Vec1<TypedStatement>,
+    ) -> (&mut Box<TypedExpr>, &mut Vec<GleamCallArg<TypedExpr>>) {
+        assert_eq!(
+            body.len(),
+            1,
+            "expected single capture literal body statement"
+        );
+        let Statement::Expression(TypedExpr::Call { fun, arguments, .. }) = &mut body[0] else {
+            panic!("expected function capture literal call body");
+        };
+
+        (fun, arguments)
+    }
+
+    fn capture_argument_index(arguments: &[GleamCallArg<TypedExpr>]) -> usize {
+        arguments
+            .iter()
+            .position(|argument: &GleamCallArg<TypedExpr>| argument.is_capture_hole())
+            .expect("expected capture literal argument")
+    }
+
+    fn invalid_function_capture_literal_shape() -> PlanError {
+        PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::ExpressionShape {
+                kind: InvalidExpressionShapeKind::FunctionCaptureLiteral,
+            },
+        }
     }
 
     fn labelled_arg() -> TypedArg {
