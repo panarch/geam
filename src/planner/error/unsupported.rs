@@ -62,8 +62,6 @@ pub enum UnsupportedExpressionKind {
     BitArray,
     #[error("echo")]
     Echo,
-    #[error("function capture literal")]
-    FunctionCaptureLiteral,
     #[error("list element type is not supported")]
     UnsupportedListElementType,
     #[error("panic")]
