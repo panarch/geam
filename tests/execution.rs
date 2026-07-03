@@ -219,54 +219,102 @@ mod functions {
 }
 
 mod rejection {
-    mod control_flow {
-        rejection_cases!("control_flow";
-            block_function_unsupported_expression,
+    mod module_items {
+        rejection_cases!("module_items";
+            import,
+            constant,
+            custom_type,
+            type_alias,
+            external_function,
         );
     }
 
-    mod top_level {
-        rejection_cases!("top_level";
-            top_level_import,
-            top_level_constant,
-            top_level_custom_type,
-            top_level_type_alias,
-        );
-    }
-
-    mod main {
-        rejection_cases!("main";
+    mod entrypoint {
+        rejection_cases!("entrypoint";
             missing_main,
             main_with_arguments,
-            main_unsupported_body,
+            unsupported_body,
         );
     }
 
-    mod function {
-        rejection_cases!("function";
-            external_function,
-            function_unsupported_return_type,
-            function_unsupported_tuple_return_type,
-            function_unsupported_list_return_type,
-            function_before_main_unsupported_body,
-            function_after_main_unsupported_body,
-        );
-    }
-
-    mod argument {
-        rejection_cases!("argument";
-            argument_labelled,
-            argument_unsupported_type,
-            argument_unsupported_function_type,
-        );
-    }
-
-    mod anonymous {
-        rejection_cases!("anonymous";
+    mod functions {
+        rejection_cases!("functions";
+            labelled_argument,
+            generic_function,
+            unsupported_argument_type,
+            unsupported_function_argument_type,
+            unsupported_return_type,
+            unsupported_tuple_return_type,
+            unsupported_list_return_type,
+            unsupported_body_before_main,
+            unsupported_body_after_main,
             anonymous_assert_statement,
             anonymous_unsupported_body,
+            anonymous_unsupported_argument_type,
             anonymous_unsupported_return_type,
             function_capture_literal,
+        );
+    }
+
+    mod expressions {
+        rejection_cases!("expressions";
+            todo,
+            panic,
+            echo,
+            bit_array,
+            result_constructor,
+            list_spread,
+            unsupported_list_element_type,
+            function_value_block_list_spread,
+        );
+    }
+
+    mod operators {
+        rejection_cases!("operators";
+            function_equality,
+            tuple_function_equality,
+            list_function_equality,
+        );
+    }
+
+    mod statements {
+        rejection_cases!("statements";
+            assert_statement,
+            final_assignment,
+            final_assert,
+        );
+    }
+
+    mod patterns {
+        rejection_cases!("patterns";
+            tuple_assignment,
+            pattern_alias_assignment,
+            list_assignment,
+            use_pattern_alias_assignment,
+            use_list_assignment,
+            let_assert,
+        );
+    }
+
+    mod case_patterns {
+        rejection_cases!("case_patterns";
+            guard,
+            alternative_patterns,
+            multiple_subjects,
+            variable_pattern,
+            tuple_pattern,
+            string_prefix_pattern,
+            list_pattern,
+            pattern_alias,
+            unsupported_subject_type,
+        );
+    }
+
+    mod pipeline {
+        rejection_cases!("pipeline";
+            echo,
+            anonymous_function_call,
+            function_value_call,
         );
     }
 }
