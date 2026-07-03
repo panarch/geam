@@ -6,8 +6,8 @@ use crate::planner::context::{
     AnonymousFunctions, FunctionInfo, FunctionParam, FunctionRuntimeIds,
 };
 use crate::planner::error::{
-    PlanError, UnsupportedArgumentReason, UnsupportedExpressionKind, UnsupportedFunctionReason,
-    UnsupportedTopLevelKind,
+    InvalidFunctionShapeReason, InvalidTypedAstReason, PlanError, UnsupportedArgumentReason,
+    UnsupportedExpressionKind, UnsupportedFunctionReason, UnsupportedTopLevelKind,
 };
 use crate::planner::function::{function_name, plan_function};
 use ecow::EcoString;
@@ -110,7 +110,7 @@ fn function_table(
         let name = function_name(function)?;
         reject_todo_body(function)?;
         let return_type = function_return_type(name.clone(), &function.return_type)?;
-        let params = function_params(name.clone(), &function.arguments)?;
+        let params = function_params(name.clone(), &function.arguments, ParamLabelPolicy::Allow)?;
         seeds.push(FunctionSeed {
             name,
             function: function.clone(),
@@ -218,6 +218,7 @@ fn reject_todo_body(function: &TypedFunction) -> Result<(), PlanError> {
 pub(super) fn function_params(
     function_name: EcoString,
     arguments: &[gleam_core::ast::TypedArg],
+    label_policy: ParamLabelPolicy,
 ) -> Result<Vec<FunctionParam>, PlanError> {
     let mut next_int = 0;
     let mut next_float = 0;
@@ -231,13 +232,25 @@ pub(super) fn function_params(
     arguments
         .iter()
         .map(|argument| {
-            let binding = match &argument.names {
-                ArgNames::Named { name, .. } => ParamBinding::Named(name.clone()),
-                ArgNames::Discard { .. } => ParamBinding::Discard,
-                ArgNames::LabelledDiscard { .. } | ArgNames::NamedLabelled { .. } => {
-                    return Err(PlanError::UnsupportedArgument {
-                        function: function_name.clone(),
-                        reason: UnsupportedArgumentReason::Labelled,
+            let (binding, label) = match &argument.names {
+                ArgNames::Named { name, .. } => (ParamBinding::Named(name.clone()), None),
+                ArgNames::Discard { .. } => (ParamBinding::Discard, None),
+                ArgNames::NamedLabelled { label, name, .. }
+                    if label_policy == ParamLabelPolicy::Allow =>
+                {
+                    (ParamBinding::Named(name.clone()), Some(label.clone()))
+                }
+                ArgNames::LabelledDiscard { label, .. }
+                    if label_policy == ParamLabelPolicy::Allow =>
+                {
+                    (ParamBinding::Discard, Some(label.clone()))
+                }
+                ArgNames::NamedLabelled { .. } | ArgNames::LabelledDiscard { .. } => {
+                    return Err(PlanError::InvalidTypedAst {
+                        reason: InvalidTypedAstReason::FunctionShape {
+                            name: function_name.clone(),
+                            reason: InvalidFunctionShapeReason::LabelledArgument,
+                        },
                     });
                 }
             };
@@ -290,9 +303,19 @@ pub(super) fn function_params(
                 }
                 ValueType::Function(type_) => function_locals.next(type_),
             };
-            Ok(FunctionParam { local, binding })
+            Ok(FunctionParam {
+                local,
+                binding,
+                label,
+            })
         })
         .collect()
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(super) enum ParamLabelPolicy {
+    Allow,
+    Reject,
 }
 
 #[derive(Default)]
@@ -808,24 +831,26 @@ fn count(values: Bits) {
     }
 
     #[test]
-    fn reject_profile_labelled_function_argument() {
-        assert_eq!(
-            expect_plan_error(
-                r#"
-fn identity(value value: Int) {
-  value
+    fn plan_labelled_function_argument_uses_local_name() {
+        let actual = plan_module(compile(
+            r#"
+fn identity(value local: Int) {
+  local
 }
 
 pub fn main() {
-  identity(1)
+  identity(value: 1)
 }
 "#,
-            ),
-            PlanError::UnsupportedArgument {
-                function: "identity".into(),
-                reason: UnsupportedArgumentReason::Labelled,
-            },
+        ))
+        .expect("source should plan");
+        let expected = module(
+            "main",
+            function("main", int_return_tail_call(1, [int_arg(0, int(1))])),
+            [function("identity", local_int(0, "local")).param_int(0, "local")],
         );
+
+        assert_eq!(actual, expected);
     }
 
     #[test]

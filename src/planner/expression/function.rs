@@ -9,7 +9,7 @@ use crate::planner::error::{
     InvalidTypedAstReason, PlanError, UnsupportedExpressionKind,
 };
 use crate::planner::function::{anonymous_function_plan, plan_anonymous_function_body};
-use crate::planner::module::function_params;
+use crate::planner::module::{ParamLabelPolicy, function_params};
 use ecow::EcoString;
 use gleam_core::ast::{
     CAPTURE_VARIABLE, CallArg as GleamCallArg, FunctionLiteralKind, Statement, TypedArg, TypedExpr,
@@ -38,7 +38,7 @@ pub(super) fn plan_anonymous(
 
     let function_type = anonymous_function_type(type_.as_ref())?;
     let error_name = context.anonymous_function_error_name();
-    let params = function_params(error_name.clone(), &arguments)?;
+    let params = function_params(error_name.clone(), &arguments, ParamLabelPolicy::Reject)?;
     validate_argument_types(&error_name, &function_type, &params)?;
     plan_anonymous_with_valid_arguments(function_type, error_name, params, arguments, body, context)
 }
@@ -648,6 +648,53 @@ pub fn main() {
     }
 
     #[test]
+    fn plan_function_capture_labelled_argument() {
+        let actual = plan_module(compile(
+            r#"
+fn add(to base: Int, value amount: Int) {
+  base + amount
+}
+
+pub fn main() {
+  let add_one = add(to: 1, value: _)
+  add_one(41)
+}
+"#,
+        ))
+        .expect("source should plan");
+        let add_one = int_function_ref(2, [LocalId::Int(IntLocalId(0))]);
+        let expected = module_with_anonymous(
+            "main",
+            function(
+                "main",
+                call_int_function(
+                    local_int_function(0, "add_one", [LocalId::Int(IntLocalId(0))]),
+                    [int_function_call_arg(0, int(41))],
+                ),
+            )
+            .step(let_int_function_step(0, "add_one", add_one)),
+            [
+                function("add", local_int(0, "base").add_int(local_int(1, "amount")))
+                    .param_int(0, "base")
+                    .param_int(1, "amount"),
+            ],
+            [function(
+                "<anonymous:0>",
+                int_return_tail_call(
+                    1,
+                    [
+                        int_arg(0, int(1)),
+                        int_arg(1, local_int(0, CAPTURE_VARIABLE)),
+                    ],
+                ),
+            )
+            .param_int(0, CAPTURE_VARIABLE)],
+        );
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
     fn plan_function_capture_literal_with_closure_capture() {
         let actual = plan_module(compile(
             r#"
@@ -771,9 +818,11 @@ pub fn main() {
 
         assert_eq!(
             plan_module(module),
-            Err(PlanError::UnsupportedArgument {
-                function: "<anonymous:0>".into(),
-                reason: crate::planner::UnsupportedArgumentReason::Labelled,
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::FunctionShape {
+                    name: "<anonymous:0>".into(),
+                    reason: InvalidFunctionShapeReason::LabelledArgument,
+                },
             }),
         );
     }

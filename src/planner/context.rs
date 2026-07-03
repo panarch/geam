@@ -30,6 +30,7 @@ pub(super) struct FunctionInfo {
 pub(super) struct FunctionParam {
     pub(super) local: ParamLocal,
     pub(super) binding: ParamBinding,
+    pub(super) label: Option<EcoString>,
 }
 
 pub(super) struct PlanContext<'a> {

@@ -321,6 +321,78 @@ pub fn main() {
     }
 
     #[test]
+    fn plan_pipeline_labelled_direct_call_uses_function_param_order() {
+        let actual = plan_module(compile(
+            r#"
+fn add(to base: Int, value amount: Int) {
+  base + amount
+}
+
+pub fn main() {
+  2 |> add(to: 40)
+}
+"#,
+        ))
+        .expect("source should plan");
+        let expected = module(
+            "main",
+            function(
+                "main",
+                int_return_block(
+                    [let_int_step(0, "_pipe", int(2))],
+                    int_return_tail_call(
+                        1,
+                        [int_arg(0, int(40)), int_arg(1, local_int(0, "_pipe"))],
+                    ),
+                ),
+            ),
+            [
+                function("add", local_int(0, "base").add_int(local_int(1, "amount")))
+                    .param_int(0, "base")
+                    .param_int(1, "amount"),
+            ],
+        );
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn plan_pipeline_labelled_hole_call_uses_hole_position() {
+        let actual = plan_module(compile(
+            r#"
+fn add(to base: Int, value amount: Int) {
+  base + amount
+}
+
+pub fn main() {
+  2 |> add(to: 40, value: _)
+}
+"#,
+        ))
+        .expect("source should plan");
+        let expected = module(
+            "main",
+            function(
+                "main",
+                int_return_block(
+                    [let_int_step(0, "_pipe", int(2))],
+                    int_return_tail_call(
+                        1,
+                        [int_arg(0, int(40)), int_arg(1, local_int(0, "_pipe"))],
+                    ),
+                ),
+            ),
+            [
+                function("add", local_int(0, "base").add_int(local_int(1, "amount")))
+                    .param_int(0, "base")
+                    .param_int(1, "amount"),
+            ],
+        );
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
     fn plan_pipeline_function_value_call_shape() {
         let actual = plan_module(compile(
             r#"
@@ -642,7 +714,7 @@ pub fn main() {
     }
 
     #[test]
-    fn reject_margin_pipeline_labelled_arguments() {
+    fn reject_margin_pipeline_labelled_argument_reaches_call_boundary() {
         let mut labelled_argument = compile_pipeline_module();
         let (_, _, finally, _) =
             expect_pipeline_statement_mut(&mut labelled_argument.definitions.functions[1].body[0]);
@@ -650,9 +722,11 @@ pub fn main() {
         arguments[0].label = Some("value".into());
         assert_eq!(
             plan_module(labelled_argument),
-            Err(invalid_pipeline_shape(
-                InvalidPipelineShapeReason::LabelledArguments,
-            )),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::CallShape {
+                    reason: InvalidCallShapeReason::LabelledArguments,
+                },
+            }),
         );
     }
 
@@ -769,19 +843,6 @@ pub fn main() {
             plan_module(extra_body_statement),
             Err(invalid_pipeline_shape(
                 InvalidPipelineShapeReason::InvalidHoleCapture,
-            )),
-        );
-
-        let mut labelled_inner_argument = compile_hole_pipeline_module();
-        let (_, _, body) = expect_pipeline_hole_capture_mut(
-            &mut labelled_inner_argument.definitions.functions[1].body[0],
-        );
-        let arguments = expect_call_arguments_mut(expect_expression_statement_mut(&mut body[0]));
-        arguments[0].label = Some("left".into());
-        assert_eq!(
-            plan_module(labelled_inner_argument),
-            Err(invalid_pipeline_shape(
-                InvalidPipelineShapeReason::LabelledArguments,
             )),
         );
 

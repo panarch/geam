@@ -15,6 +15,14 @@ pub(super) fn plan_function_value_call(
     context: &mut PlanContext<'_>,
     capture: Option<&CaptureSubstitution>,
 ) -> Result<Expr, PlanError> {
+    if arguments.iter().any(|argument| argument.label.is_some()) {
+        return Err(PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::CallShape {
+                reason: InvalidCallShapeReason::LabelledArguments,
+            },
+        });
+    }
+
     let function = {
         let expression = super::super::plan_expr(fun, context)?;
         let actual = super::super::expression_type(&expression);
@@ -614,6 +622,30 @@ pub fn main() {
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::CallShape {
                     reason: InvalidCallShapeReason::FunctionCallArityMismatch,
+                },
+            }),
+        );
+
+        let mut labelled_argument_call = compile(
+            r#"
+fn add_one(value: Int) {
+  value + 1
+}
+
+pub fn main() {
+  let function = add_one
+  function(1)
+}
+"#,
+        );
+        let (_, _, arguments) =
+            expect_call_statement_mut(&mut labelled_argument_call.definitions.functions[1].body[1]);
+        arguments[0].label = Some("value".into());
+        assert_eq!(
+            plan_module(labelled_argument_call),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::CallShape {
+                    reason: InvalidCallShapeReason::LabelledArguments,
                 },
             }),
         );

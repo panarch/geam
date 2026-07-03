@@ -19,14 +19,6 @@ pub(super) fn plan_call(
     arguments: Vec<GleamCallArg<TypedExpr>>,
     context: &mut PlanContext<'_>,
 ) -> Result<Expr, PlanError> {
-    if arguments.iter().any(|argument| argument.label.is_some()) {
-        return Err(PlanError::InvalidTypedAst {
-            reason: InvalidTypedAstReason::CallShape {
-                reason: InvalidCallShapeReason::LabelledArguments,
-            },
-        });
-    }
-
     if arguments.iter().any(|argument| argument.implicit.is_some()) {
         return Err(PlanError::InvalidTypedAst {
             reason: InvalidTypedAstReason::CallShape {
