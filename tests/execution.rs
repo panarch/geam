@@ -259,6 +259,7 @@ mod rejection {
         rejection_cases!("module_items";
             import,
             constant_bit_array,
+            constant_list_bit_array,
             constant_result_constructor,
             custom_type,
             external_function,
