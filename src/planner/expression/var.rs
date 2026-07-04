@@ -1,3 +1,5 @@
+mod constant;
+
 use crate::plan::{
     BoolExpr, BoolFunctionExpr, Expr, FloatExpr, FloatFunctionExpr, FunctionExpr,
     FunctionFunctionExpr, IntExpr, IntFunctionExpr, ListExpr, ListFunctionExpr, LocalId, NilExpr,
@@ -73,9 +75,12 @@ pub(super) fn plan_var(
                 kind: InvalidExpressionShapeKind::ModuleSelect,
             },
         }),
+        ValueConstructorVariant::ModuleConstant {
+            module, literal, ..
+        } if module == *context.module_name => constant::plan(literal, context),
         ValueConstructorVariant::ModuleConstant { .. } => Err(PlanError::InvalidTypedAst {
             reason: InvalidTypedAstReason::ExpressionShape {
-                kind: InvalidExpressionShapeKind::ModuleConstant,
+                kind: InvalidExpressionShapeKind::ModuleSelect,
             },
         }),
         ValueConstructorVariant::Record { .. } => Err(PlanError::InvalidTypedAst {
@@ -388,25 +393,6 @@ pub fn main() {
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::ExpressionShape {
                     kind: InvalidExpressionShapeKind::ModuleSelect,
-                },
-            }),
-        );
-
-        let mut module_constant = compile(
-            r#"
-const answer = 1
-
-pub fn main() {
-  answer
-}
-"#,
-        );
-        module_constant.definitions.constants.clear();
-        assert_eq!(
-            plan_module(module_constant),
-            Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::ExpressionShape {
-                    kind: InvalidExpressionShapeKind::ModuleConstant,
                 },
             }),
         );

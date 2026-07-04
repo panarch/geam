@@ -111,13 +111,16 @@ fn plan_call_expression(
                     type_, function, arguments, context, capture,
                 );
             }
-            ValueConstructorVariant::ModuleConstant { .. } => {
+            ValueConstructorVariant::ModuleConstant { literal, .. }
+                if literal.type_().fn_types().is_none() =>
+            {
                 return Err(PlanError::InvalidTypedAst {
                     reason: InvalidTypedAstReason::CallShape {
                         reason: InvalidCallShapeReason::ModuleConstant,
                     },
                 });
             }
+            ValueConstructorVariant::ModuleConstant { .. } => {}
             ValueConstructorVariant::Record { .. } => {
                 return Err(PlanError::InvalidTypedAst {
                     reason: InvalidTypedAstReason::CallShape {

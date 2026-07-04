@@ -55,8 +55,6 @@ pub enum InvalidExpressionShapeKind {
     FunctionCaptureLiteral,
     #[error("module select")]
     ModuleSelect,
-    #[error("module constant")]
-    ModuleConstant,
     #[error("positional access")]
     PositionalAccess,
     #[error("prelude constructor")]

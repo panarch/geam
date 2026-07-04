@@ -4,8 +4,6 @@ use thiserror::Error;
 pub enum UnsupportedTopLevelKind {
     #[error("import")]
     Import,
-    #[error("constant")]
-    Constant,
     #[error("custom type")]
     CustomType,
 }
