@@ -83,6 +83,21 @@ pub fn main() {
             expect_plan_error(
                 r#"
 pub fn main() {
+  {
+    panic
+    False
+  } || True
+}
+"#,
+            ),
+            PlanError::UnsupportedExpression {
+                kind: UnsupportedExpressionKind::Panic,
+            },
+        );
+        assert_eq!(
+            expect_plan_error(
+                r#"
+pub fn main() {
   True || {
     panic
     False

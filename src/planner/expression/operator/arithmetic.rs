@@ -109,8 +109,10 @@ mod tests {
     };
     use crate::planner::dsl::{float, function, int, module};
     use crate::planner::plan_module;
-    use crate::planner::support::{compile, dummy_span};
-    use crate::planner::{InvalidExpressionType, InvalidTypedAstReason, PlanError};
+    use crate::planner::support::{compile, dummy_span, expect_plan_error};
+    use crate::planner::{
+        InvalidExpressionType, InvalidTypedAstReason, PlanError, UnsupportedExpressionKind,
+    };
     use gleam_core::ast::{BinOp, TypedExpr};
     use gleam_core::type_;
 
@@ -190,6 +192,212 @@ pub fn div() {
     }
 
     #[test]
+    fn reject_profile_arithmetic_operand_errors_propagate() {
+        for (name, src) in [
+            (
+                "add int left",
+                r#"
+pub fn main() {
+  {
+    panic
+    1
+  } + 1
+}
+"#,
+            ),
+            (
+                "add int right",
+                r#"
+pub fn main() {
+  1 + {
+    panic
+    1
+  }
+}
+"#,
+            ),
+            (
+                "sub int left",
+                r#"
+pub fn main() {
+  {
+    panic
+    1
+  } - 1
+}
+"#,
+            ),
+            (
+                "sub int right",
+                r#"
+pub fn main() {
+  1 - {
+    panic
+    1
+  }
+}
+"#,
+            ),
+            (
+                "mult int left",
+                r#"
+pub fn main() {
+  {
+    panic
+    1
+  } * 1
+}
+"#,
+            ),
+            (
+                "mult int right",
+                r#"
+pub fn main() {
+  1 * {
+    panic
+    1
+  }
+}
+"#,
+            ),
+            (
+                "div int left",
+                r#"
+pub fn main() {
+  {
+    panic
+    1
+  } / 1
+}
+"#,
+            ),
+            (
+                "div int right",
+                r#"
+pub fn main() {
+  1 / {
+    panic
+    1
+  }
+}
+"#,
+            ),
+            (
+                "remainder int left",
+                r#"
+pub fn main() {
+  {
+    panic
+    1
+  } % 1
+}
+"#,
+            ),
+            (
+                "remainder int right",
+                r#"
+pub fn main() {
+  1 % {
+    panic
+    1
+  }
+}
+"#,
+            ),
+            (
+                "add float left",
+                r#"
+pub fn main() {
+  {
+    panic
+    1.0
+  } +. 1.0
+}
+"#,
+            ),
+            (
+                "add float right",
+                r#"
+pub fn main() {
+  1.0 +. {
+    panic
+    1.0
+  }
+}
+"#,
+            ),
+            (
+                "sub float left",
+                r#"
+pub fn main() {
+  {
+    panic
+    1.0
+  } -. 1.0
+}
+"#,
+            ),
+            (
+                "sub float right",
+                r#"
+pub fn main() {
+  1.0 -. {
+    panic
+    1.0
+  }
+}
+"#,
+            ),
+            (
+                "mult float left",
+                r#"
+pub fn main() {
+  {
+    panic
+    1.0
+  } *. 1.0
+}
+"#,
+            ),
+            (
+                "mult float right",
+                r#"
+pub fn main() {
+  1.0 *. {
+    panic
+    1.0
+  }
+}
+"#,
+            ),
+            (
+                "div float left",
+                r#"
+pub fn main() {
+  {
+    panic
+    1.0
+  } /. 1.0
+}
+"#,
+            ),
+            (
+                "div float right",
+                r#"
+pub fn main() {
+  1.0 /. {
+    panic
+    1.0
+  }
+}
+"#,
+            ),
+        ] {
+            assert_panic_reject(name, src);
+        }
+    }
+
+    #[test]
     fn reject_margin_integer_arithmetic_type_mismatch() {
         assert_eq!(
             plan_module(module_returning_typed_expr(TypedExpr::BinOp {
@@ -238,6 +446,16 @@ pub fn div() {
                     actual: InvalidExpressionType::Nil,
                 },
             }),
+        );
+    }
+
+    fn assert_panic_reject(name: &str, src: &str) {
+        assert_eq!(
+            expect_plan_error(src),
+            PlanError::UnsupportedExpression {
+                kind: UnsupportedExpressionKind::Panic,
+            },
+            "{name}",
         );
     }
 }
