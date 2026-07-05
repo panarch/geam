@@ -49,7 +49,7 @@ cargo fmt --check
 cargo clippy --all-targets -- -D warnings
 ```
 
-## Line Coverage
+## Coverage
 
 Geam uses `cargo-llvm-cov` for local line coverage. It is LLVM-based, works well
 on macOS, and keeps generated reports under `target/`.
@@ -66,6 +66,22 @@ Print a line coverage summary:
 ```sh
 cargo llvm-cov --summary-only
 ```
+
+Line coverage is the current enforced gate, and Geam keeps it at 100%. Region
+coverage is not yet an enforced gate, but it is a useful direction for tightening
+tests as the supported profile grows. Prefer tests that cover meaningful region
+gaps when the missing region maps to a real planner, plan, or runtime branch.
+
+When a coverage gap is hard to explain from the summary alone, split the target
+and inspect LLVM's region and instantiation detail before adding fixtures:
+
+```sh
+cargo llvm-cov --lib --text --show-instantiations --show-missing-lines
+```
+
+Use that report to decide where the test belongs. Public execution behavior
+belongs in fixture-based integration tests; planner or runtime implementation
+branches belong in the owning unit test next to that module.
 
 Generate an HTML report:
 

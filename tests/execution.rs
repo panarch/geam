@@ -37,6 +37,9 @@ mod values {
 
 mod module_items {
     execution_cases!("module_items";
+        constant,
+        constant_value_families,
+        constant_function_value,
         type_alias,
         type_alias_function_signature,
         type_alias_compound_signature,
@@ -255,7 +258,9 @@ mod rejection {
     mod module_items {
         rejection_cases!("module_items";
             import,
-            constant,
+            constant_bit_array,
+            constant_list_bit_array,
+            constant_result_constructor,
             custom_type,
             external_function,
         );

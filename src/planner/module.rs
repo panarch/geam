@@ -19,17 +19,11 @@ pub fn plan_module(module: TypedModule) -> Result<ExecutionPlan, PlanError> {
     let definitions = module.definitions;
 
     let imports = definitions.imports.len();
-    let constants = definitions.constants.len();
     let custom_types = definitions.custom_types.len();
 
     if imports != 0 {
         return Err(PlanError::UnsupportedTopLevel {
             kind: UnsupportedTopLevelKind::Import,
-        });
-    }
-    if constants != 0 {
-        return Err(PlanError::UnsupportedTopLevel {
-            kind: UnsupportedTopLevelKind::Constant,
         });
     }
     if custom_types != 0 {
@@ -469,21 +463,20 @@ pub fn main() {
     }
 
     #[test]
-    fn reject_profile_constant_definition() {
-        assert_eq!(
-            expect_plan_error(
-                r#"
+    fn plan_constant_definition() {
+        let actual = plan_module(compile(
+            r#"
 const answer = 42
 
 pub fn main() {
   answer
 }
 "#,
-            ),
-            PlanError::UnsupportedTopLevel {
-                kind: UnsupportedTopLevelKind::Constant,
-            },
-        );
+        ))
+        .expect("source should plan");
+        let expected = module("main", function("main", int(42)), []);
+
+        assert_eq!(actual, expected);
     }
 
     #[test]
@@ -855,19 +848,6 @@ pub fn main() {
 
     #[test]
     fn reject_profile_top_level_non_function_definitions() {
-        assert_plan_error(
-            r#"
-const answer = 42
-
-pub fn main() {
-  answer
-}
-"#,
-            PlanError::UnsupportedTopLevel {
-                kind: UnsupportedTopLevelKind::Constant,
-            },
-        );
-
         assert_plan_error(
             r#"
 pub type Boxed {

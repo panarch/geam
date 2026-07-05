@@ -4,8 +4,6 @@ use thiserror::Error;
 pub enum UnsupportedTopLevelKind {
     #[error("import")]
     Import,
-    #[error("constant")]
-    Constant,
     #[error("custom type")]
     CustomType,
 }
@@ -62,6 +60,8 @@ pub enum UnsupportedExpressionKind {
     UnsupportedListElementType,
     #[error("panic")]
     Panic,
+    #[error("record constructor")]
+    RecordConstructor,
     #[error("todo")]
     Todo,
     #[error("function literal type is not supported")]

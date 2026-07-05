@@ -1,10 +1,14 @@
+mod constant;
+
 use crate::plan::{
     BoolExpr, BoolFunctionExpr, Expr, FloatExpr, FloatFunctionExpr, FunctionExpr,
     FunctionFunctionExpr, IntExpr, IntFunctionExpr, ListExpr, ListFunctionExpr, LocalId, NilExpr,
     NilFunctionExpr, StringExpr, StringFunctionExpr, TupleExpr, TupleFunctionExpr, ValueType,
 };
 use crate::planner::context::{FunctionLocalBinding, PlanContext};
-use crate::planner::error::{InvalidExpressionShapeKind, InvalidTypedAstReason, PlanError};
+use crate::planner::error::{
+    InvalidExpressionShapeKind, InvalidTypedAstReason, PlanError, UnsupportedExpressionKind,
+};
 use ecow::EcoString;
 use gleam_core::type_::{PRELUDE_MODULE_NAME, ValueConstructor, ValueConstructorVariant};
 
@@ -37,16 +41,26 @@ pub(super) fn plan_var(
             module,
             arity,
             ..
-        } if arity == 0 && module == PRELUDE_MODULE_NAME => match name.as_str() {
-            "True" => Ok(Expr::bool(BoolExpr::value(true))),
-            "False" => Ok(Expr::bool(BoolExpr::value(false))),
-            "Nil" => Ok(Expr::nil(NilExpr::value())),
-            _ => Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::ExpressionShape {
-                    kind: InvalidExpressionShapeKind::PreludeConstructor,
-                },
-            }),
-        },
+        } if module == PRELUDE_MODULE_NAME => {
+            if arity == 0 {
+                match name.as_str() {
+                    "True" => return Ok(Expr::bool(BoolExpr::value(true))),
+                    "False" => return Ok(Expr::bool(BoolExpr::value(false))),
+                    "Nil" => return Ok(Expr::nil(NilExpr::value())),
+                    _ => {
+                        return Err(PlanError::InvalidTypedAst {
+                            reason: InvalidTypedAstReason::ExpressionShape {
+                                kind: InvalidExpressionShapeKind::PreludeConstructor,
+                            },
+                        });
+                    }
+                }
+            }
+
+            Err(PlanError::UnsupportedExpression {
+                kind: UnsupportedExpressionKind::RecordConstructor,
+            })
+        }
         ValueConstructorVariant::ModuleFn {
             module,
             name,
@@ -73,9 +87,12 @@ pub(super) fn plan_var(
                 kind: InvalidExpressionShapeKind::ModuleSelect,
             },
         }),
+        ValueConstructorVariant::ModuleConstant {
+            module, literal, ..
+        } if module == *context.module_name => constant::plan(literal, context),
         ValueConstructorVariant::ModuleConstant { .. } => Err(PlanError::InvalidTypedAst {
             reason: InvalidTypedAstReason::ExpressionShape {
-                kind: InvalidExpressionShapeKind::ModuleConstant,
+                kind: InvalidExpressionShapeKind::ModuleSelect,
             },
         }),
         ValueConstructorVariant::Record { .. } => Err(PlanError::InvalidTypedAst {
@@ -146,11 +163,13 @@ mod tests {
         local_float, local_int, local_int_function, local_nil, local_string, module, nil,
     };
     use crate::planner::plan_module;
-    use crate::planner::support::compile;
-    use crate::planner::{InvalidExpressionShapeKind, InvalidTypedAstReason, PlanError};
+    use crate::planner::support::{compile, dummy_span};
+    use crate::planner::{
+        InvalidExpressionShapeKind, InvalidTypedAstReason, PlanError, UnsupportedExpressionKind,
+    };
     use ecow::EcoString;
-    use gleam_core::ast::{Statement, TypedExpr, TypedStatement};
-    use gleam_core::type_;
+    use gleam_core::ast::{Publicity, Statement, TypedExpr, TypedStatement};
+    use gleam_core::type_::{self, Deprecation, ValueConstructor, ValueConstructorVariant};
 
     #[test]
     fn plan_local_variables() {
@@ -392,25 +411,6 @@ pub fn main() {
             }),
         );
 
-        let mut module_constant = compile(
-            r#"
-const answer = 1
-
-pub fn main() {
-  answer
-}
-"#,
-        );
-        module_constant.definitions.constants.clear();
-        assert_eq!(
-            plan_module(module_constant),
-            Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::ExpressionShape {
-                    kind: InvalidExpressionShapeKind::ModuleConstant,
-                },
-            }),
-        );
-
         let mut record_constructor = compile(
             r#"
 pub type Boxed {
@@ -442,6 +442,25 @@ pub fn main() {
                 reason: InvalidTypedAstReason::ExpressionShape {
                     kind: InvalidExpressionShapeKind::PreludeConstructor,
                 },
+            }),
+        );
+    }
+
+    #[test]
+    fn prelude_record_constructor_values_are_profile_out() {
+        assert_eq!(
+            plan_module(module_returning_typed_expr(
+                typed_prelude_record_constructor(
+                    "Ok",
+                    type_::fn_(
+                        vec![type_::int()],
+                        type_::result(type_::int(), type_::nil()),
+                    ),
+                    1,
+                )
+            )),
+            Err(PlanError::UnsupportedExpression {
+                kind: UnsupportedExpressionKind::RecordConstructor,
             }),
         );
     }
@@ -488,6 +507,32 @@ pub fn main() {
             panic!("expected variable expression");
         };
         (name, constructor)
+    }
+
+    fn typed_prelude_record_constructor(
+        name: &str,
+        type_: std::sync::Arc<type_::Type>,
+        arity: u16,
+    ) -> TypedExpr {
+        TypedExpr::Var {
+            location: dummy_span(),
+            name: name.into(),
+            constructor: ValueConstructor {
+                publicity: Publicity::Private,
+                deprecation: Deprecation::NotDeprecated,
+                type_,
+                variant: ValueConstructorVariant::Record {
+                    name: name.into(),
+                    arity,
+                    field_map: None,
+                    location: dummy_span(),
+                    module: type_::PRELUDE_MODULE_NAME.into(),
+                    variants_count: 1,
+                    variant_index: 0,
+                    documentation: None,
+                },
+            },
+        }
     }
 
     #[test]
