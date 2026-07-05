@@ -752,11 +752,11 @@ pub fn main() {
             &mut missing_pipe_argument.definitions.functions[1].body[0],
         );
         let arguments = expect_call_arguments_mut(finally);
-        for argument in arguments {
-            if argument.implicit == Some(ImplicitCallArgOrigin::Pipe) {
-                argument.implicit = None;
-            }
-        }
+        let pipe_argument = arguments
+            .iter_mut()
+            .find(|argument| argument.implicit == Some(ImplicitCallArgOrigin::Pipe))
+            .expect("expected pipe argument");
+        pipe_argument.implicit = None;
         assert_eq!(
             plan_module(missing_pipe_argument),
             Err(invalid_pipeline_shape(
