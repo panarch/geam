@@ -304,12 +304,13 @@ mod tests {
 const number = 1
 const ratio = 1.5
 const label = "ge" <> "am"
+const pair = #(1, "one")
 const truth = True
 const falsehood = False
 const nothing = Nil
 
 pub fn main() {
-  #(number, ratio, label, truth, falsehood, nothing)
+  #(number, ratio, label, pair, truth, falsehood, nothing)
 }
 "#,
         ))
@@ -322,6 +323,7 @@ pub fn main() {
                     Expr::from(int(1)),
                     Expr::from(float(1.5)),
                     Expr::from(string("ge").concatenate(string("am"))),
+                    Expr::from(tuple([Expr::from(int(1)), Expr::from(string("one"))])),
                     Expr::from(bool_(true)),
                     Expr::from(bool_(false)),
                     Expr::from(nil()),
