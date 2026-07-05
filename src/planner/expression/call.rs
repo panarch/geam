@@ -7,10 +7,11 @@ use crate::plan::Expr;
 use crate::planner::context::PlanContext;
 use crate::planner::error::{
     InvalidCallShapeReason, InvalidTypedAstReason, InvalidUseShapeReason, PlanError,
+    UnsupportedExpressionKind,
 };
 use ecow::EcoString;
 use gleam_core::ast::{CallArg as GleamCallArg, TypedExpr};
-use gleam_core::type_::{Type, ValueConstructorVariant};
+use gleam_core::type_::{PRELUDE_MODULE_NAME, Type, ValueConstructorVariant};
 use std::sync::Arc;
 
 pub(super) fn plan_call(
@@ -121,6 +122,13 @@ fn plan_call_expression(
                 });
             }
             ValueConstructorVariant::ModuleConstant { .. } => {}
+            ValueConstructorVariant::Record { module, arity, .. }
+                if module == PRELUDE_MODULE_NAME && *arity > 0 =>
+            {
+                return Err(PlanError::UnsupportedExpression {
+                    kind: UnsupportedExpressionKind::RecordConstructor,
+                });
+            }
             ValueConstructorVariant::Record { .. } => {
                 return Err(PlanError::InvalidTypedAst {
                     reason: InvalidTypedAstReason::CallShape {
@@ -220,12 +228,32 @@ pub fn main() {
 
 #[cfg(test)]
 mod tests {
+    use super::super::{module_returning_typed_expr, typed_prelude_constructor};
     use super::support::{expect_call_statement_mut, expect_var_constructor_mut};
     use crate::planner::plan_module;
     use crate::planner::support::{compile, dummy_span};
-    use crate::planner::{InvalidCallShapeReason, InvalidTypedAstReason, PlanError};
+    use crate::planner::{
+        InvalidCallShapeReason, InvalidTypedAstReason, PlanError, UnsupportedExpressionKind,
+    };
     use gleam_core::ast::{ImplicitCallArgOrigin, Statement, TypedExpr, TypedModule};
     use gleam_core::type_::{self, ValueConstructorVariant, error::VariableOrigin};
+
+    #[test]
+    fn reject_profile_prelude_record_constructor_call() {
+        assert_eq!(
+            plan_module(compile(
+                r#"
+pub fn main() {
+  Ok(1)
+  1
+}
+"#,
+            )),
+            Err(PlanError::UnsupportedExpression {
+                kind: UnsupportedExpressionKind::RecordConstructor,
+            }),
+        );
+    }
 
     #[test]
     fn reject_margin_module_constant_call_shape() {
@@ -376,6 +404,21 @@ pub fn main() {
         record_constructor_call.definitions.custom_types.clear();
         assert_eq!(
             plan_module(record_constructor_call),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::CallShape {
+                    reason: InvalidCallShapeReason::RecordConstructor,
+                },
+            }),
+        );
+
+        assert_eq!(
+            plan_module(module_returning_typed_expr(TypedExpr::Call {
+                location: dummy_span(),
+                type_: type_::bool(),
+                fun: Box::new(typed_prelude_constructor("True", type_::bool())),
+                arguments: Vec::new(),
+                open_parenthesis: Some(0),
+            })),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::CallShape {
                     reason: InvalidCallShapeReason::RecordConstructor,
