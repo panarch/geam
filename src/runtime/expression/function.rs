@@ -55,71 +55,221 @@ pub(in crate::runtime) fn eval_function_expr(
 mod tests {
     use super::eval_function_expr;
     use crate::plan::{
-        BoolFunctionId, FloatFunctionId, FloatLocalId, FunctionExpr, FunctionPlan, FunctionType,
-        FunctionValue, IntExpr, IntFunctionId, IntLocalId, NilFunctionId, NilLocalId, ParamLocal,
-        RuntimeFunctionId, StringFunctionId, StringLocalId, ValueType,
+        BoolFunctionExpr, BoolFunctionId, BoolLocalId, FloatFunctionExpr, FloatFunctionId,
+        FloatLocalId, FunctionExpr, FunctionFunctionExpr, FunctionFunctionId, FunctionPlan,
+        FunctionType, FunctionValue, IntExpr, IntFunctionExpr, IntFunctionFunctionId,
+        IntFunctionId, IntLocalId, ListFunctionExpr, ListFunctionId, ListLocalId, NilFunctionExpr,
+        NilFunctionId, NilLocalId, ParamLocal, RuntimeFunctionId, StringFunctionExpr,
+        StringFunctionId, StringLocalId, TupleExpr, TupleFunctionExpr, TupleFunctionId,
+        TupleLocalId, ValueType,
     };
+    use crate::runtime::ExecutionError;
     use crate::runtime::frame::Frame;
 
     #[test]
     fn eval_function_value() {
         let plan = plan();
         let mut frame = Frame::default();
-        let function =
-            eval_function_expr(&plan, &mut frame, &FunctionExpr::value(function_value()))
-                .expect("expression should evaluate");
+        let function = eval_function_expr(
+            &plan,
+            &mut frame,
+            &FunctionExpr::value(FunctionValue::new(
+                RuntimeFunctionId::Int(IntFunctionId(0)),
+                vec![ParamLocal::int(IntLocalId(0))],
+            )),
+        )
+        .expect("expression should evaluate");
+        let type_ = function.type_();
 
-        assert_int_function(function);
+        assert_eq!(
+            type_,
+            FunctionType::new(vec![ValueType::Int], ValueType::Int),
+        );
+        assert_eq!(type_.return_(), &ValueType::Int);
     }
 
     #[test]
     fn eval_function_value_return_families() {
         let plan = plan();
         let mut frame = Frame::default();
+        let mut assert_return_type = |value: FunctionValue, expected: ValueType| {
+            assert_eq!(
+                eval_function_expr(&plan, &mut frame, &FunctionExpr::value(value))
+                    .expect("expression should evaluate")
+                    .type_()
+                    .return_(),
+                &expected,
+            );
+        };
 
-        assert_eq!(
-            eval_function_expr(
-                &plan,
-                &mut frame,
-                &FunctionExpr::value(string_function_value())
-            )
-            .expect("expression should evaluate")
-            .type_()
-            .return_(),
-            &ValueType::String,
+        assert_return_type(
+            FunctionValue::new(
+                RuntimeFunctionId::String(StringFunctionId(0)),
+                vec![ParamLocal::string(StringLocalId(0))],
+            ),
+            ValueType::String,
         );
-        assert_eq!(
-            eval_function_expr(
-                &plan,
-                &mut frame,
-                &FunctionExpr::value(float_function_value())
-            )
-            .expect("expression should evaluate")
-            .type_()
-            .return_(),
-            &ValueType::Float,
+        assert_return_type(
+            FunctionValue::new(
+                RuntimeFunctionId::Float(FloatFunctionId(0)),
+                vec![ParamLocal::float(FloatLocalId(0))],
+            ),
+            ValueType::Float,
         );
-        assert_eq!(
-            eval_function_expr(
-                &plan,
-                &mut frame,
-                &FunctionExpr::value(bool_function_value())
-            )
-            .expect("expression should evaluate")
-            .type_()
-            .return_(),
-            &ValueType::Bool,
+        assert_return_type(
+            FunctionValue::new(
+                RuntimeFunctionId::Bool(BoolFunctionId(0)),
+                vec![ParamLocal::bool(BoolLocalId(0))],
+            ),
+            ValueType::Bool,
         );
-        assert_eq!(
-            eval_function_expr(
-                &plan,
-                &mut frame,
-                &FunctionExpr::value(nil_function_value())
-            )
-            .expect("expression should evaluate")
-            .type_()
-            .return_(),
-            &ValueType::Nil,
+        assert_return_type(
+            FunctionValue::new(
+                RuntimeFunctionId::Nil(NilFunctionId(0)),
+                vec![ParamLocal::nil(NilLocalId(0))],
+            ),
+            ValueType::Nil,
+        );
+        assert_return_type(
+            FunctionValue::new(
+                RuntimeFunctionId::Tuple {
+                    id: TupleFunctionId(0),
+                    return_type: vec![ValueType::Int],
+                },
+                vec![ParamLocal::tuple(TupleLocalId(0), vec![ValueType::Int])],
+            ),
+            ValueType::Tuple(vec![ValueType::Int]),
+        );
+        assert_return_type(
+            FunctionValue::new(
+                RuntimeFunctionId::List {
+                    id: ListFunctionId(0),
+                    return_type: Box::new(ValueType::Int),
+                },
+                vec![ParamLocal::list(ListLocalId(0), ValueType::Int)],
+            ),
+            ValueType::List(Box::new(ValueType::Int)),
+        );
+        assert_return_type(
+            FunctionValue::new(
+                RuntimeFunctionId::Function {
+                    id: FunctionFunctionId::Int(IntFunctionFunctionId(0)),
+                    return_type: FunctionType::new(vec![ValueType::Int], ValueType::Int),
+                },
+                Vec::new(),
+            ),
+            ValueType::Function(Box::new(FunctionType::new(
+                vec![ValueType::Int],
+                ValueType::Int,
+            ))),
+        );
+    }
+
+    #[test]
+    fn eval_function_expr_propagates_family_errors() {
+        let plan = plan();
+        let mut frame = Frame::default();
+        let mut assert_tuple_index_error = |expression: FunctionExpr, type_: FunctionType| {
+            assert_eq!(
+                eval_function_expr(&plan, &mut frame, &expression),
+                Err(ExecutionError::tuple_index_family_mismatch(
+                    ValueType::Function(Box::new(type_)),
+                    ValueType::Tuple(Vec::new()),
+                )),
+            );
+        };
+        let empty_tuple = || TupleExpr::value(Vec::new(), Vec::new());
+
+        let int_type = FunctionType::new(vec![ValueType::Int], ValueType::Int);
+        assert_tuple_index_error(
+            FunctionExpr::int(IntFunctionExpr::tuple_index(
+                empty_tuple(),
+                0,
+                int_type.clone(),
+            )),
+            int_type,
+        );
+
+        let string_type = FunctionType::new(vec![ValueType::String], ValueType::String);
+        assert_tuple_index_error(
+            FunctionExpr::string(StringFunctionExpr::tuple_index(
+                empty_tuple(),
+                0,
+                string_type.clone(),
+            )),
+            string_type,
+        );
+
+        let float_type = FunctionType::new(vec![ValueType::Float], ValueType::Float);
+        assert_tuple_index_error(
+            FunctionExpr::float(FloatFunctionExpr::tuple_index(
+                empty_tuple(),
+                0,
+                float_type.clone(),
+            )),
+            float_type,
+        );
+
+        let bool_type = FunctionType::new(vec![ValueType::Bool], ValueType::Bool);
+        assert_tuple_index_error(
+            FunctionExpr::bool(BoolFunctionExpr::tuple_index(
+                empty_tuple(),
+                0,
+                bool_type.clone(),
+            )),
+            bool_type,
+        );
+
+        let nil_type = FunctionType::new(vec![ValueType::Nil], ValueType::Nil);
+        assert_tuple_index_error(
+            FunctionExpr::nil(NilFunctionExpr::tuple_index(
+                empty_tuple(),
+                0,
+                nil_type.clone(),
+            )),
+            nil_type,
+        );
+
+        let tuple_type = FunctionType::new(
+            vec![ValueType::Tuple(vec![ValueType::Int])],
+            ValueType::Tuple(vec![ValueType::Int]),
+        );
+        assert_tuple_index_error(
+            FunctionExpr::tuple(TupleFunctionExpr::tuple_index(
+                empty_tuple(),
+                0,
+                tuple_type.clone(),
+            )),
+            tuple_type,
+        );
+
+        let list_type = FunctionType::new(
+            vec![ValueType::List(Box::new(ValueType::Int))],
+            ValueType::List(Box::new(ValueType::Int)),
+        );
+        assert_tuple_index_error(
+            FunctionExpr::list(ListFunctionExpr::tuple_index(
+                empty_tuple(),
+                0,
+                list_type.clone(),
+            )),
+            list_type,
+        );
+
+        let function_type = FunctionType::new(
+            Vec::new(),
+            ValueType::Function(Box::new(FunctionType::new(
+                vec![ValueType::Int],
+                ValueType::Int,
+            ))),
+        );
+        assert_tuple_index_error(
+            FunctionExpr::function(FunctionFunctionExpr::tuple_index(
+                empty_tuple(),
+                0,
+                function_type.clone(),
+            )),
+            function_type,
         );
     }
 
@@ -137,51 +287,6 @@ mod tests {
                 ),
             ),
             Vec::new(),
-        )
-    }
-
-    fn assert_int_function(function: FunctionValue) {
-        let type_ = function.type_();
-
-        assert_eq!(
-            type_,
-            FunctionType::new(vec![ValueType::Int], ValueType::Int),
-        );
-        assert_eq!(type_.return_(), &ValueType::Int);
-    }
-
-    fn function_value() -> FunctionValue {
-        FunctionValue::new(
-            RuntimeFunctionId::Int(IntFunctionId(0)),
-            vec![ParamLocal::int(IntLocalId(0))],
-        )
-    }
-
-    fn string_function_value() -> FunctionValue {
-        FunctionValue::new(
-            RuntimeFunctionId::String(StringFunctionId(0)),
-            vec![ParamLocal::string(StringLocalId(0))],
-        )
-    }
-
-    fn float_function_value() -> FunctionValue {
-        FunctionValue::new(
-            RuntimeFunctionId::Float(FloatFunctionId(0)),
-            vec![ParamLocal::float(FloatLocalId(0))],
-        )
-    }
-
-    fn bool_function_value() -> FunctionValue {
-        FunctionValue::new(
-            RuntimeFunctionId::Bool(BoolFunctionId(0)),
-            vec![ParamLocal::bool(crate::plan::BoolLocalId(0))],
-        )
-    }
-
-    fn nil_function_value() -> FunctionValue {
-        FunctionValue::new(
-            RuntimeFunctionId::Nil(NilFunctionId(0)),
-            vec![ParamLocal::nil(NilLocalId(0))],
         )
     }
 }
