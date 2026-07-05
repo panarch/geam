@@ -1515,6 +1515,19 @@ pub fn main() {
                     location: dummy_span(),
                     type_: type_::list(type_::int()),
                     elements: vec![typed_int_expr(1)],
+                    tail: Some(Box::new(invalid_expr(type_::list(type_::int())))),
+                },
+                PlanError::InvalidTypedAst {
+                    reason: InvalidTypedAstReason::ExpressionShape {
+                        kind: InvalidExpressionShapeKind::Invalid,
+                    },
+                },
+            ),
+            (
+                TypedExpr::List {
+                    location: dummy_span(),
+                    type_: type_::list(type_::int()),
+                    elements: vec![typed_int_expr(1)],
                     tail: Some(Box::new(typed_int_expr(2))),
                 },
                 PlanError::InvalidTypedAst {

@@ -582,10 +582,7 @@ impl<'a> PlanContext<'a> {
             .collect()
     }
 
-    pub(super) fn define_captures(
-        &mut self,
-        captures: Vec<CaptureBinding>,
-    ) -> Result<Vec<CaptureArg>, PlanError> {
+    pub(super) fn define_captures(&mut self, captures: Vec<CaptureBinding>) -> Vec<CaptureArg> {
         captures
             .into_iter()
             .map(|capture| self.define_capture(capture))
@@ -602,116 +599,98 @@ impl<'a> PlanContext<'a> {
         result
     }
 
-    fn define_capture(&mut self, capture: CaptureBinding) -> Result<CaptureArg, PlanError> {
+    fn define_capture(&mut self, capture: CaptureBinding) -> CaptureArg {
         match capture.binding {
             LocalBinding::Primitive(LocalId::Int(local)) => {
                 let target = self.define_int_local(capture.name.clone());
-                Ok(CaptureArg::int(
-                    target,
-                    IntExpr::local_get(local, capture.name),
-                ))
+                CaptureArg::int(target, IntExpr::local_get(local, capture.name))
             }
             LocalBinding::Primitive(LocalId::Float(local)) => {
                 let target = self.define_float_local(capture.name.clone());
-                Ok(CaptureArg::float(
-                    target,
-                    FloatExpr::local_get(local, capture.name),
-                ))
+                CaptureArg::float(target, FloatExpr::local_get(local, capture.name))
             }
             LocalBinding::Primitive(LocalId::String(local)) => {
                 let target = self.define_string_local(capture.name.clone());
-                Ok(CaptureArg::string(
-                    target,
-                    StringExpr::local_get(local, capture.name),
-                ))
+                CaptureArg::string(target, StringExpr::local_get(local, capture.name))
             }
             LocalBinding::Primitive(LocalId::Bool(local)) => {
                 let target = self.define_bool_local(capture.name.clone());
-                Ok(CaptureArg::bool(
-                    target,
-                    BoolExpr::local_get(local, capture.name),
-                ))
+                CaptureArg::bool(target, BoolExpr::local_get(local, capture.name))
             }
             LocalBinding::Primitive(LocalId::Nil(local)) => {
                 let target = self.define_nil_local(capture.name.clone());
-                Ok(CaptureArg::nil(
-                    target,
-                    NilExpr::local_get(local, capture.name),
-                ))
+                CaptureArg::nil(target, NilExpr::local_get(local, capture.name))
             }
             LocalBinding::Tuple { local, type_ } => {
                 let target = self.define_tuple_local(capture.name.clone(), type_.clone());
-                Ok(CaptureArg::tuple(
-                    target,
-                    TupleExpr::local_get(local, capture.name, type_),
-                ))
+                CaptureArg::tuple(target, TupleExpr::local_get(local, capture.name, type_))
             }
             LocalBinding::List {
                 local,
                 element_type,
             } => {
                 let target = self.define_list_local(capture.name.clone(), element_type.clone());
-                Ok(CaptureArg::list(
+                CaptureArg::list(
                     target,
                     ListExpr::local_get(local, capture.name, element_type),
-                ))
+                )
             }
             LocalBinding::Function(FunctionLocalBinding::Int { local, type_ }) => {
                 let target = self.define_int_function_local(capture.name.clone(), type_.clone());
-                Ok(CaptureArg::int_function(
+                CaptureArg::int_function(
                     target,
                     IntFunctionExpr::local_get(local, capture.name, type_),
-                ))
+                )
             }
             LocalBinding::Function(FunctionLocalBinding::Float { local, type_ }) => {
                 let target = self.define_float_function_local(capture.name.clone(), type_.clone());
-                Ok(CaptureArg::float_function(
+                CaptureArg::float_function(
                     target,
                     FloatFunctionExpr::local_get(local, capture.name, type_),
-                ))
+                )
             }
             LocalBinding::Function(FunctionLocalBinding::String { local, type_ }) => {
                 let target = self.define_string_function_local(capture.name.clone(), type_.clone());
-                Ok(CaptureArg::string_function(
+                CaptureArg::string_function(
                     target,
                     StringFunctionExpr::local_get(local, capture.name, type_),
-                ))
+                )
             }
             LocalBinding::Function(FunctionLocalBinding::Bool { local, type_ }) => {
                 let target = self.define_bool_function_local(capture.name.clone(), type_.clone());
-                Ok(CaptureArg::bool_function(
+                CaptureArg::bool_function(
                     target,
                     BoolFunctionExpr::local_get(local, capture.name, type_),
-                ))
+                )
             }
             LocalBinding::Function(FunctionLocalBinding::Nil { local, type_ }) => {
                 let target = self.define_nil_function_local(capture.name.clone(), type_.clone());
-                Ok(CaptureArg::nil_function(
+                CaptureArg::nil_function(
                     target,
                     NilFunctionExpr::local_get(local, capture.name, type_),
-                ))
+                )
             }
             LocalBinding::Function(FunctionLocalBinding::Tuple { local, type_ }) => {
                 let target = self.define_tuple_function_local(capture.name.clone(), type_.clone());
-                Ok(CaptureArg::tuple_function(
+                CaptureArg::tuple_function(
                     target,
                     TupleFunctionExpr::local_get(local, capture.name, type_),
-                ))
+                )
             }
             LocalBinding::Function(FunctionLocalBinding::List { local, type_ }) => {
                 let target = self.define_list_function_local(capture.name.clone(), type_.clone());
-                Ok(CaptureArg::list_function(
+                CaptureArg::list_function(
                     target,
                     ListFunctionExpr::local_get(local, capture.name, type_),
-                ))
+                )
             }
             LocalBinding::Function(FunctionLocalBinding::Function { local, type_ }) => {
                 let target =
                     self.define_function_function_local(capture.name.clone(), type_.clone());
-                Ok(CaptureArg::function_function(
+                CaptureArg::function_function(
                     target,
                     FunctionFunctionExpr::local_get(local, capture.name, type_),
-                ))
+                )
             }
         }
     }
@@ -1236,7 +1215,7 @@ mod tests {
 
         context.define_float_function_local("f".into(), type_.clone());
         let captures = context.capture_bindings(&[EcoString::from("f")]).unwrap();
-        let captures = context.define_captures(captures).unwrap();
+        let captures = context.define_captures(captures);
 
         assert_eq!(
             captures[0],
@@ -1257,7 +1236,7 @@ mod tests {
 
         context.define_tuple_function_local("f".into(), type_.clone());
         let captures = context.capture_bindings(&[EcoString::from("f")]).unwrap();
-        let captures = context.define_captures(captures).unwrap();
+        let captures = context.define_captures(captures);
 
         assert_eq!(
             captures[0],
@@ -1285,7 +1264,7 @@ mod tests {
         let captures = context
             .capture_bindings(&[EcoString::from("values"), EcoString::from("f")])
             .unwrap();
-        let captures = context.define_captures(captures).unwrap();
+        let captures = context.define_captures(captures);
 
         assert_eq!(
             captures,
@@ -1328,7 +1307,7 @@ mod tests {
                 "function_fn".into(),
             ])
             .unwrap();
-        let captures = context.define_captures(captures).unwrap();
+        let captures = context.define_captures(captures);
 
         assert_eq!(
             captures,

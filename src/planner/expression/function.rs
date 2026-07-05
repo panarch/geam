@@ -1068,18 +1068,25 @@ pub fn main() {
             |_: &mut Vec<TypedArg>, body: &mut vec1::Vec1<TypedStatement>| {
                 let arguments = function_capture_literal_body_call_args_mut(body);
                 let capture_index = capture_argument_index(arguments);
-                if let TypedExpr::Var { constructor, .. } = &mut arguments[capture_index].value {
-                    constructor.variant = gleam_core::type_::ValueConstructorVariant::Record {
-                        name: "Capture".into(),
-                        arity: 1,
-                        field_map: None,
-                        location: dummy_span(),
-                        module: "main".into(),
-                        variants_count: 1,
-                        variant_index: 0,
-                        documentation: None,
-                    };
-                }
+                arguments[capture_index].value = TypedExpr::Var {
+                    location: dummy_span(),
+                    name: CAPTURE_VARIABLE.into(),
+                    constructor: gleam_core::type_::ValueConstructor {
+                        publicity: gleam_core::ast::Publicity::Private,
+                        deprecation: gleam_core::type_::Deprecation::NotDeprecated,
+                        type_: gleam_core::type_::int(),
+                        variant: gleam_core::type_::ValueConstructorVariant::Record {
+                            name: "Capture".into(),
+                            arity: 1,
+                            field_map: None,
+                            location: dummy_span(),
+                            module: "main".into(),
+                            variants_count: 1,
+                            variant_index: 0,
+                            documentation: None,
+                        },
+                    },
+                };
             },
         ] {
             let mut module = function_capture_literal_module();
