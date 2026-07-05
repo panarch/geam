@@ -77,6 +77,19 @@ pub fn compile_typed_module(
 mod tests {
     use super::{FrontendError, compile_typed_module};
 
+    #[derive(Debug, PartialEq)]
+    enum FrontendErrorKind {
+        Parse,
+        Analyse,
+    }
+
+    fn frontend_error_kind(error: &FrontendError) -> FrontendErrorKind {
+        match error {
+            FrontendError::Parse { .. } => FrontendErrorKind::Parse,
+            FrontendError::Analyse { .. } => FrontendErrorKind::Analyse,
+        }
+    }
+
     #[test]
     fn compile_typed_module_returns_gleam_typed_module() {
         let module = compile_typed_module(
@@ -107,7 +120,8 @@ pub fn main() {
         let error = compile_typed_module("main", "main.gleam", "pub fn main(")
             .expect_err("invalid syntax should fail in Gleam parse");
 
-        assert!(matches!(error, FrontendError::Parse { .. }));
+        assert_eq!(frontend_error_kind(&error), FrontendErrorKind::Parse);
+        assert_eq!(error.to_string(), "failed to parse Gleam module main.gleam");
     }
 
     #[test]
@@ -123,6 +137,7 @@ pub fn main() {
         )
         .expect_err("invalid types should fail in Gleam analyse");
 
-        assert!(matches!(error, FrontendError::Analyse { .. }));
+        assert_eq!(frontend_error_kind(&error), FrontendErrorKind::Analyse);
+        assert_eq!(error.to_string(), "failed to analyse Gleam module");
     }
 }
