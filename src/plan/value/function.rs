@@ -578,10 +578,11 @@ mod tests {
             TupleFunctionValue::new(TupleFunctionId(0), Vec::new(), vec![ValueType::Int]).into();
         let list: FunctionValue =
             ListFunctionValue::new(ListFunctionId(0), Vec::new(), ValueType::Int).into();
+        let function_return_type = FunctionType::new(vec![ValueType::Int], ValueType::Int);
         let function: FunctionValue = FunctionFunctionValue::new(
             FunctionFunctionId::Int(IntFunctionFunctionId(0)),
             Vec::new(),
-            FunctionType::new(vec![ValueType::Int], ValueType::Int),
+            function_return_type.clone(),
         )
         .into();
 
@@ -598,7 +599,10 @@ mod tests {
             list.type_().return_(),
             &ValueType::List(Box::new(ValueType::Int)),
         );
-        assert!(matches!(function.type_().return_(), ValueType::Function(_)));
+        assert_eq!(
+            function.type_().return_(),
+            &ValueType::Function(Box::new(function_return_type)),
+        );
     }
 
     #[test]
@@ -704,7 +708,10 @@ mod tests {
         assert_eq!(tuple.params(), params);
         assert_eq!(list.params(), params);
         assert_eq!(function.params(), params);
-        assert!(matches!(int.kind(), FunctionValueKind::Int(_)));
+        assert_eq!(
+            int.kind(),
+            &FunctionValueKind::Int(IntFunctionValue::new(IntFunctionId(0), params)),
+        );
     }
 
     fn int_param(index: usize) -> ParamLocal {

@@ -192,52 +192,67 @@ mod tests {
 
     #[test]
     fn capture_value_preserves_float_function_shape() {
-        let value = CaptureValue::float_function(
-            FloatFunctionLocalId(0),
-            FloatFunctionValue::new(FloatFunctionId(0), vec![float_param(0)]),
-        );
+        let function = FloatFunctionValue::new(FloatFunctionId(0), vec![float_param(0)]);
+        let value = CaptureValue::float_function(FloatFunctionLocalId(0), function.clone());
 
-        assert!(matches!(
+        assert_eq!(
             value.kind(),
-            CaptureValueKind::FloatFunction { .. }
-        ));
+            &CaptureValueKind::FloatFunction {
+                local: FloatFunctionLocalId(0),
+                value: function,
+            },
+        );
     }
 
     #[test]
     fn capture_value_preserves_tuple_shapes() {
         let tuple = CaptureValue::tuple(TupleLocalId(0), vec![Value::Int(1.into())]);
-        assert!(matches!(tuple.kind(), CaptureValueKind::Tuple { .. }));
-
-        let function = CaptureValue::tuple_function(
-            TupleFunctionLocalId(0),
-            TupleFunctionValue::new(
-                TupleFunctionId(0),
-                vec![tuple_param(0)],
-                vec![ValueType::Int],
-            ),
+        assert_eq!(
+            tuple.kind(),
+            &CaptureValueKind::Tuple {
+                local: TupleLocalId(0),
+                value: vec![Value::Int(1.into())],
+            },
         );
-        assert!(matches!(
+
+        let tuple_function = TupleFunctionValue::new(
+            TupleFunctionId(0),
+            vec![tuple_param(0)],
+            vec![ValueType::Int],
+        );
+        let function =
+            CaptureValue::tuple_function(TupleFunctionLocalId(0), tuple_function.clone());
+        assert_eq!(
             function.kind(),
-            CaptureValueKind::TupleFunction { .. }
-        ));
+            &CaptureValueKind::TupleFunction {
+                local: TupleFunctionLocalId(0),
+                value: tuple_function,
+            },
+        );
     }
 
     #[test]
     fn capture_value_preserves_list_shapes() {
-        let list = CaptureValue::list(
-            ListLocalId(0),
-            ListValue::new(ValueType::Int, vec![Value::Int(1.into())]),
+        let list_value = ListValue::new(ValueType::Int, vec![Value::Int(1.into())]);
+        let list = CaptureValue::list(ListLocalId(0), list_value.clone());
+        assert_eq!(
+            list.kind(),
+            &CaptureValueKind::List {
+                local: ListLocalId(0),
+                value: list_value,
+            },
         );
-        assert!(matches!(list.kind(), CaptureValueKind::List { .. }));
 
-        let function = CaptureValue::list_function(
-            ListFunctionLocalId(0),
-            ListFunctionValue::new(ListFunctionId(0), vec![list_param(0)], ValueType::Int),
-        );
-        assert!(matches!(
+        let list_function =
+            ListFunctionValue::new(ListFunctionId(0), vec![list_param(0)], ValueType::Int);
+        let function = CaptureValue::list_function(ListFunctionLocalId(0), list_function.clone());
+        assert_eq!(
             function.kind(),
-            CaptureValueKind::ListFunction { .. }
-        ));
+            &CaptureValueKind::ListFunction {
+                local: ListFunctionLocalId(0),
+                value: list_function,
+            },
+        );
     }
 
     fn float_param(index: usize) -> ParamLocal {
