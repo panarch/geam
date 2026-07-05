@@ -247,11 +247,15 @@ fn plan_record(
     let arguments_are_empty = arguments.as_ref().is_none_or(Vec::is_empty);
 
     if arguments_are_empty {
-        plan_record_constructor(name, module, arity)
-    } else {
+        return plan_record_constructor(name, module, arity);
+    }
+
+    if module == PRELUDE_MODULE_NAME && arity > 0 {
         Err(PlanError::UnsupportedExpression {
             kind: UnsupportedExpressionKind::RecordConstructor,
         })
+    } else {
+        invalid_expression_shape(InvalidExpressionShapeKind::RecordConstructor)
     }
 }
 
@@ -833,6 +837,56 @@ pub fn main() {
                 type_: type_::int(),
                 field_map: Inferred::Unknown,
                 record_constructor: None,
+            }),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionShape {
+                    kind: InvalidExpressionShapeKind::RecordConstructor,
+                },
+            }),
+        );
+        assert_eq!(
+            plan_constant_literal(Constant::Record {
+                location: dummy_span(),
+                module: None,
+                name: "Boxed".into(),
+                arguments: Some(vec![gleam_core::ast::CallArg {
+                    label: None,
+                    location: dummy_span(),
+                    value: Constant::Int {
+                        location: dummy_span(),
+                        value: "1".into(),
+                        int_value: 1.into(),
+                    },
+                    implicit: None,
+                }]),
+                type_: type_::int(),
+                field_map: Inferred::Unknown,
+                record_constructor: Some(Box::new(record_constructor("Boxed", "main", 1))),
+            }),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionShape {
+                    kind: InvalidExpressionShapeKind::RecordConstructor,
+                },
+            }),
+        );
+        assert_eq!(
+            plan_constant_literal(Constant::Record {
+                location: dummy_span(),
+                module: None,
+                name: "True".into(),
+                arguments: Some(vec![gleam_core::ast::CallArg {
+                    label: None,
+                    location: dummy_span(),
+                    value: Constant::Int {
+                        location: dummy_span(),
+                        value: "1".into(),
+                        int_value: 1.into(),
+                    },
+                    implicit: None,
+                }]),
+                type_: type_::bool(),
+                field_map: Inferred::Unknown,
+                record_constructor: Some(Box::new(record_constructor("True", "gleam", 0))),
             }),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::ExpressionShape {
