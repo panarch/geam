@@ -239,18 +239,26 @@ mod tests {
 
     #[test]
     fn step_kind_accessors() {
-        assert!(matches!(
+        assert_eq!(
             Step::let_int(IntLocalId(0), "x".into(), IntExpr::value(BigInt::from(1))).kind(),
-            StepKind::LetInt { .. },
-        ));
-        assert!(matches!(
+            &StepKind::LetInt {
+                local: IntLocalId(0),
+                name: "x".into(),
+                value: IntExpr::value(BigInt::from(1)),
+            },
+        );
+        assert_eq!(
             Step::let_int_function(IntFunctionLocalId(0), "f".into(), function_expr()).kind(),
-            StepKind::LetIntFunction { .. },
-        ));
-        assert!(matches!(
+            &StepKind::LetIntFunction {
+                local: IntFunctionLocalId(0),
+                name: "f".into(),
+                value: function_expr(),
+            },
+        );
+        assert_eq!(
             Step::evaluate(Expr::int(IntExpr::value(BigInt::from(1)))).kind(),
-            StepKind::Evaluate(_),
-        ));
+            &StepKind::Evaluate(Expr::int(IntExpr::value(BigInt::from(1)))),
+        );
     }
 
     fn function_expr() -> crate::plan::IntFunctionExpr {
