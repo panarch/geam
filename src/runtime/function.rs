@@ -1445,6 +1445,116 @@ pub fn main() {
         ));
     }
 
+    #[test]
+    fn primitive_function_value_calls_propagate_frame_binding_errors() {
+        let plan = primitive_function_plan();
+
+        assert_expected_function_got_int(run_int_function_call(
+            &plan,
+            &IntFunctionExpr::value(IntFunctionValue::new(IntFunctionId(0), Vec::new())),
+            &[failing_function_function_arg()],
+            &mut Frame::default(),
+        ));
+        assert_expected_function_got_int(run_string_function_call(
+            &plan,
+            &StringFunctionExpr::value(StringFunctionValue::new(StringFunctionId(0), Vec::new())),
+            &[failing_function_function_arg()],
+            &mut Frame::default(),
+        ));
+        assert_expected_function_got_int(run_float_function_call(
+            &plan,
+            &FloatFunctionExpr::value(FloatFunctionValue::new(FloatFunctionId(0), Vec::new())),
+            &[failing_function_function_arg()],
+            &mut Frame::default(),
+        ));
+        assert_expected_function_got_int(run_bool_function_call(
+            &plan,
+            &BoolFunctionExpr::value(BoolFunctionValue::new(BoolFunctionId(0), Vec::new())),
+            &[failing_function_function_arg()],
+            &mut Frame::default(),
+        ));
+        assert_expected_function_got_int(run_nil_function_call(
+            &plan,
+            &NilFunctionExpr::value(NilFunctionValue::new(NilFunctionId(0), Vec::new())),
+            &[failing_function_function_arg()],
+            &mut Frame::default(),
+        ));
+        assert_expected_function_got_int(run_tuple_function_call(
+            &plan,
+            &TupleFunctionExpr::value(TupleFunctionValue::new(
+                TupleFunctionId(0),
+                Vec::new(),
+                vec![ValueType::Int],
+            )),
+            &[failing_function_function_arg()],
+            &mut Frame::default(),
+        ));
+        assert_expected_function_got_int(run_list_function_call(
+            &plan,
+            &ListFunctionExpr::value(ListFunctionValue::new(
+                ListFunctionId(0),
+                Vec::new(),
+                ValueType::Int,
+            )),
+            &[failing_function_function_arg()],
+            &mut Frame::default(),
+        ));
+    }
+
+    #[test]
+    fn function_function_calls_propagate_frame_binding_errors() {
+        let plan = plan_with_function_function_steps(Vec::new());
+
+        assert_expected_function_got_int(run_int_function_function_call(
+            &plan,
+            &function_function_expr(FunctionFunctionId::Int(IntFunctionFunctionId(0))),
+            &[failing_function_function_arg()],
+            &mut Frame::default(),
+        ));
+        assert_expected_function_got_int(run_string_function_function_call(
+            &plan,
+            &function_function_expr(FunctionFunctionId::String(StringFunctionFunctionId(0))),
+            &[failing_function_function_arg()],
+            &mut Frame::default(),
+        ));
+        assert_expected_function_got_int(run_float_function_function_call(
+            &plan,
+            &function_function_expr(FunctionFunctionId::Float(FloatFunctionFunctionId(0))),
+            &[failing_function_function_arg()],
+            &mut Frame::default(),
+        ));
+        assert_expected_function_got_int(run_bool_function_function_call(
+            &plan,
+            &function_function_expr(FunctionFunctionId::Bool(BoolFunctionFunctionId(0))),
+            &[failing_function_function_arg()],
+            &mut Frame::default(),
+        ));
+        assert_expected_function_got_int(run_nil_function_function_call(
+            &plan,
+            &function_function_expr(FunctionFunctionId::Nil(NilFunctionFunctionId(0))),
+            &[failing_function_function_arg()],
+            &mut Frame::default(),
+        ));
+        assert_expected_function_got_int(run_tuple_function_function_call(
+            &plan,
+            &function_function_expr(FunctionFunctionId::Tuple(TupleFunctionFunctionId(0))),
+            &[failing_function_function_arg()],
+            &mut Frame::default(),
+        ));
+        assert_expected_function_got_int(run_list_function_function_call(
+            &plan,
+            &function_function_expr(FunctionFunctionId::List(ListFunctionFunctionId(0))),
+            &[failing_function_function_arg()],
+            &mut Frame::default(),
+        ));
+        assert_expected_function_got_int(run_function_function_function_call(
+            &plan,
+            &function_function_expr(FunctionFunctionId::Function(FunctionFunctionFunctionId(0))),
+            &[failing_function_function_arg()],
+            &mut Frame::default(),
+        ));
+    }
+
     fn assert_expected_function_got_int<T>(actual: Result<T, ExecutionError>) {
         assert_function_return_family_mismatch(
             actual,

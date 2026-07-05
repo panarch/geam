@@ -416,42 +416,56 @@ mod tests {
     }
 
     #[test]
-    fn float_function_captures_are_evaluated_and_bound() {
+    fn eval_capture_args_evaluates_all_capture_families() {
         let plan = plan();
         let captures = eval_capture_args(
             &plan,
             &mut Frame::default(),
             &[
+                CaptureArg::int(IntLocalId(0), IntExpr::value(1.into())),
+                CaptureArg::string(StringLocalId(0), StringExpr::value("one".into())),
+                CaptureArg::float(FloatLocalId(0), FloatExpr::value(1.5)),
+                CaptureArg::bool(BoolLocalId(0), BoolExpr::value(true)),
+                CaptureArg::nil(NilLocalId(0), NilExpr::value()),
+                CaptureArg::tuple(TupleLocalId(0), tuple_expr()),
+                CaptureArg::list(ListLocalId(0), list_expr()),
+                CaptureArg::int_function(IntFunctionLocalId(0), int_function_expr()),
+                CaptureArg::string_function(StringFunctionLocalId(0), string_function_expr()),
                 CaptureArg::float_function(FloatFunctionLocalId(0), float_function_expr()),
+                CaptureArg::bool_function(BoolFunctionLocalId(0), bool_function_expr()),
+                CaptureArg::nil_function(NilFunctionLocalId(0), nil_function_expr()),
                 CaptureArg::tuple_function(TupleFunctionLocalId(0), tuple_function_expr()),
                 CaptureArg::list_function(ListFunctionLocalId(0), list_function_expr()),
+                CaptureArg::function_function(FunctionFunctionLocalId(0), function_function_expr()),
             ],
         )
         .expect("capture args should evaluate");
-        let frame = bind_function_value_arguments(
-            &plan,
-            &[],
-            &mut Frame::default(),
-            FrameLayout::default(),
-            &captures,
-        )
-        .expect("captures should bind");
 
         assert_eq!(
-            frame
-                .get_float_function(FloatFunctionLocalId(0))
-                .runtime_id(),
-            FloatFunctionId(0),
-        );
-        assert_eq!(
-            frame
-                .get_tuple_function(TupleFunctionLocalId(0))
-                .runtime_id(),
-            TupleFunctionId(0),
-        );
-        assert_eq!(
-            frame.get_list_function(ListFunctionLocalId(0)).runtime_id(),
-            ListFunctionId(0),
+            captures,
+            vec![
+                CaptureValue::int(IntLocalId(0), 1.into()),
+                CaptureValue::string(StringLocalId(0), "one".into()),
+                CaptureValue::float(FloatLocalId(0), 1.5),
+                CaptureValue::bool(BoolLocalId(0), true),
+                CaptureValue::nil(NilLocalId(0)),
+                CaptureValue::tuple(TupleLocalId(0), vec![Value::Int(1.into())]),
+                CaptureValue::list(
+                    ListLocalId(0),
+                    ListValue::new(ValueType::Int, vec![Value::Int(1.into())]),
+                ),
+                CaptureValue::int_function(IntFunctionLocalId(0), int_function_value()),
+                CaptureValue::string_function(StringFunctionLocalId(0), string_function_value()),
+                CaptureValue::float_function(FloatFunctionLocalId(0), float_function_value()),
+                CaptureValue::bool_function(BoolFunctionLocalId(0), bool_function_value()),
+                CaptureValue::nil_function(NilFunctionLocalId(0), nil_function_value()),
+                CaptureValue::tuple_function(TupleFunctionLocalId(0), tuple_function_value()),
+                CaptureValue::list_function(ListFunctionLocalId(0), list_function_value()),
+                CaptureValue::function_function(
+                    FunctionFunctionLocalId(0),
+                    function_function_value(),
+                ),
+            ],
         );
     }
 
