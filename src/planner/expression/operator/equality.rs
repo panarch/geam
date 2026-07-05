@@ -57,7 +57,7 @@ mod tests {
     use crate::planner::dsl::{bool_, equal, function, int, module, not_equal};
     use crate::planner::plan_module;
     use crate::planner::support::{compile, expect_plan_error};
-    use crate::planner::{PlanError, UnsupportedBinOpKind};
+    use crate::planner::{PlanError, UnsupportedBinOpKind, UnsupportedExpressionKind};
 
     #[test]
     fn plan_equality_operators() {
@@ -80,6 +80,58 @@ pub fn not_equal() {
         );
 
         assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn reject_profile_equality_operand_errors_propagate() {
+        for (name, src) in [
+            (
+                "equal left",
+                r#"
+pub fn main() {
+  {
+    panic
+    1
+  } == 1
+}
+"#,
+            ),
+            (
+                "equal right",
+                r#"
+pub fn main() {
+  1 == {
+    panic
+    1
+  }
+}
+"#,
+            ),
+            (
+                "not equal left",
+                r#"
+pub fn main() {
+  {
+    panic
+    1
+  } != 1
+}
+"#,
+            ),
+            (
+                "not equal right",
+                r#"
+pub fn main() {
+  1 != {
+    panic
+    1
+  }
+}
+"#,
+            ),
+        ] {
+            assert_panic_reject(name, src);
+        }
     }
 
     #[test]
@@ -187,6 +239,16 @@ pub fn main() {
             PlanError::UnsupportedBinOp {
                 operator: UnsupportedBinOpKind::NotEqFunction,
             },
+        );
+    }
+
+    fn assert_panic_reject(name: &str, src: &str) {
+        assert_eq!(
+            expect_plan_error(src),
+            PlanError::UnsupportedExpression {
+                kind: UnsupportedExpressionKind::Panic,
+            },
+            "{name}",
         );
     }
 }

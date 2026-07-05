@@ -58,7 +58,7 @@ pub(super) fn plan_negate_bool(
 
 #[cfg(test)]
 mod tests {
-    use super::super::{module_returning_typed_expr, typed_int_expr};
+    use super::super::{module_returning_typed_expr, typed_int_expr, typed_prelude_constructor};
     use crate::planner::dsl::{
         function, int, int_arg, int_return_tail_call, local_bool, local_int, module,
     };
@@ -66,6 +66,7 @@ mod tests {
     use crate::planner::support::{compile, dummy_span};
     use crate::planner::{InvalidExpressionType, InvalidTypedAstReason, PlanError};
     use gleam_core::ast::TypedExpr;
+    use gleam_core::type_;
 
     #[test]
     fn plan_negation_expressions() {
@@ -99,6 +100,18 @@ pub fn main() {
 
     #[test]
     fn reject_margin_negation_type_mismatch() {
+        assert_eq!(
+            plan_module(module_returning_typed_expr(TypedExpr::NegateInt {
+                location: dummy_span(),
+                value: Box::new(typed_prelude_constructor("True", type_::bool())),
+            })),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionType {
+                    expected: InvalidExpressionType::Int,
+                    actual: InvalidExpressionType::Bool,
+                },
+            }),
+        );
         assert_eq!(
             plan_module(module_returning_typed_expr(TypedExpr::NegateBool {
                 location: dummy_span(),

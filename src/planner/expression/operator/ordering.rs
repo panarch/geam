@@ -95,7 +95,8 @@ pub(super) fn gte_float(
 mod tests {
     use crate::planner::dsl::{float, function, int, module};
     use crate::planner::plan_module;
-    use crate::planner::support::compile;
+    use crate::planner::support::{compile, expect_plan_error};
+    use crate::planner::{PlanError, UnsupportedExpressionKind};
 
     #[test]
     fn plan_integer_ordering() {
@@ -165,5 +166,199 @@ pub fn gte() {
         );
 
         assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn reject_profile_ordering_operand_errors_propagate() {
+        for (name, src) in [
+            (
+                "lt int left",
+                r#"
+pub fn main() {
+  {
+    panic
+    1
+  } < 1
+}
+"#,
+            ),
+            (
+                "lt int right",
+                r#"
+pub fn main() {
+  1 < {
+    panic
+    1
+  }
+}
+"#,
+            ),
+            (
+                "lte int left",
+                r#"
+pub fn main() {
+  {
+    panic
+    1
+  } <= 1
+}
+"#,
+            ),
+            (
+                "lte int right",
+                r#"
+pub fn main() {
+  1 <= {
+    panic
+    1
+  }
+}
+"#,
+            ),
+            (
+                "gt int left",
+                r#"
+pub fn main() {
+  {
+    panic
+    1
+  } > 1
+}
+"#,
+            ),
+            (
+                "gt int right",
+                r#"
+pub fn main() {
+  1 > {
+    panic
+    1
+  }
+}
+"#,
+            ),
+            (
+                "gte int left",
+                r#"
+pub fn main() {
+  {
+    panic
+    1
+  } >= 1
+}
+"#,
+            ),
+            (
+                "gte int right",
+                r#"
+pub fn main() {
+  1 >= {
+    panic
+    1
+  }
+}
+"#,
+            ),
+            (
+                "lt float left",
+                r#"
+pub fn main() {
+  {
+    panic
+    1.0
+  } <. 1.0
+}
+"#,
+            ),
+            (
+                "lt float right",
+                r#"
+pub fn main() {
+  1.0 <. {
+    panic
+    1.0
+  }
+}
+"#,
+            ),
+            (
+                "lte float left",
+                r#"
+pub fn main() {
+  {
+    panic
+    1.0
+  } <=. 1.0
+}
+"#,
+            ),
+            (
+                "lte float right",
+                r#"
+pub fn main() {
+  1.0 <=. {
+    panic
+    1.0
+  }
+}
+"#,
+            ),
+            (
+                "gt float left",
+                r#"
+pub fn main() {
+  {
+    panic
+    1.0
+  } >. 1.0
+}
+"#,
+            ),
+            (
+                "gt float right",
+                r#"
+pub fn main() {
+  1.0 >. {
+    panic
+    1.0
+  }
+}
+"#,
+            ),
+            (
+                "gte float left",
+                r#"
+pub fn main() {
+  {
+    panic
+    1.0
+  } >=. 1.0
+}
+"#,
+            ),
+            (
+                "gte float right",
+                r#"
+pub fn main() {
+  1.0 >=. {
+    panic
+    1.0
+  }
+}
+"#,
+            ),
+        ] {
+            assert_panic_reject(name, src);
+        }
+    }
+
+    fn assert_panic_reject(name: &str, src: &str) {
+        assert_eq!(
+            expect_plan_error(src),
+            PlanError::UnsupportedExpression {
+                kind: UnsupportedExpressionKind::Panic,
+            },
+            "{name}",
+        );
     }
 }
