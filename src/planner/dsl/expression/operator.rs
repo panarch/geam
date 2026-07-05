@@ -296,280 +296,342 @@ impl Bool {
 mod tests {
     use super::{equal, not_equal};
     use crate::plan::{
-        BoolExprKind, BoolFunctionExprKind, FloatExprKind, FloatFunctionExprKind,
-        FunctionFunctionExprKind, FunctionType, IntExprKind, IntFunctionExprKind, ListExprKind,
-        ListFunctionExprKind, NilExprKind, NilFunctionExprKind, StringExprKind,
-        StringFunctionExprKind, TupleExprKind, TupleFunctionExprKind, ValueType,
+        BoolExpr, BoolFunctionExpr, FloatExpr, FloatFunctionExpr, FunctionFunctionExpr,
+        FunctionType, IntExpr, IntFunctionExpr, ListExpr, ListFunctionExpr, NilExpr,
+        NilFunctionExpr, StringExpr, StringFunctionExpr, TupleExpr, TupleFunctionExpr, ValueType,
     };
     use crate::planner::dsl::expression::{bool_, float, int, local_tuple, string};
 
     #[test]
     fn int_operator_helpers_build_operator_shapes() {
-        assert!(matches!(
-            int(1).add_int(int(2)).0.kind(),
-            IntExprKind::Add { .. },
-        ));
-        assert!(matches!(
-            int(1).sub_int(int(2)).0.kind(),
-            IntExprKind::Sub { .. },
-        ));
-        assert!(matches!(
-            int(1).mult_int(int(2)).0.kind(),
-            IntExprKind::Mult { .. },
-        ));
-        assert!(matches!(
-            int(1).div_int(int(2)).0.kind(),
-            IntExprKind::Div { .. },
-        ));
-        assert!(matches!(
-            int(1).remainder_int(int(2)).0.kind(),
-            IntExprKind::Remainder { .. },
-        ));
-        assert!(matches!(
-            int(1).negate_int().0.kind(),
-            IntExprKind::Negate(_)
-        ));
+        assert_eq!(
+            int(1).add_int(int(2)).0,
+            IntExpr::add(int(1).into(), int(2).into())
+        );
+        assert_eq!(
+            int(1).sub_int(int(2)).0,
+            IntExpr::sub(int(1).into(), int(2).into())
+        );
+        assert_eq!(
+            int(1).mult_int(int(2)).0,
+            IntExpr::mult(int(1).into(), int(2).into()),
+        );
+        assert_eq!(
+            int(1).div_int(int(2)).0,
+            IntExpr::div(int(1).into(), int(2).into())
+        );
+        assert_eq!(
+            int(1).remainder_int(int(2)).0,
+            IntExpr::remainder(int(1).into(), int(2).into()),
+        );
+        assert_eq!(int(1).negate_int().0, IntExpr::negate(int(1).into()));
     }
 
     #[test]
     fn float_operator_helpers_build_operator_shapes() {
-        assert!(matches!(
-            float(1.0).add_float(float(2.0)).0.kind(),
-            FloatExprKind::Add { .. },
-        ));
-        assert!(matches!(
-            float(1.0).sub_float(float(2.0)).0.kind(),
-            FloatExprKind::Sub { .. },
-        ));
-        assert!(matches!(
-            float(1.0).mult_float(float(2.0)).0.kind(),
-            FloatExprKind::Mult { .. },
-        ));
-        assert!(matches!(
-            float(1.0).div_float(float(2.0)).0.kind(),
-            FloatExprKind::Div { .. },
-        ));
+        assert_eq!(
+            float(1.0).add_float(float(2.0)).0,
+            FloatExpr::add(float(1.0).into(), float(2.0).into()),
+        );
+        assert_eq!(
+            float(1.0).sub_float(float(2.0)).0,
+            FloatExpr::sub(float(1.0).into(), float(2.0).into()),
+        );
+        assert_eq!(
+            float(1.0).mult_float(float(2.0)).0,
+            FloatExpr::mult(float(1.0).into(), float(2.0).into()),
+        );
+        assert_eq!(
+            float(1.0).div_float(float(2.0)).0,
+            FloatExpr::div(float(1.0).into(), float(2.0).into()),
+        );
     }
 
     #[test]
     fn bool_operator_helpers_build_operator_shapes() {
-        assert!(matches!(
-            int(1).lt_int(int(2)).0.kind(),
-            BoolExprKind::LtInt { .. },
-        ));
-        assert!(matches!(
-            int(1).lte_int(int(2)).0.kind(),
-            BoolExprKind::LtEqInt { .. },
-        ));
-        assert!(matches!(
-            int(2).gt_int(int(1)).0.kind(),
-            BoolExprKind::GtInt { .. },
-        ));
-        assert!(matches!(
-            int(2).gte_int(int(1)).0.kind(),
-            BoolExprKind::GtEqInt { .. },
-        ));
-        assert!(matches!(
-            float(1.0).lt_float(float(2.0)).0.kind(),
-            BoolExprKind::LtFloat { .. },
-        ));
-        assert!(matches!(
-            float(1.0).lte_float(float(2.0)).0.kind(),
-            BoolExprKind::LtEqFloat { .. },
-        ));
-        assert!(matches!(
-            float(2.0).gt_float(float(1.0)).0.kind(),
-            BoolExprKind::GtFloat { .. },
-        ));
-        assert!(matches!(
-            float(2.0).gte_float(float(1.0)).0.kind(),
-            BoolExprKind::GtEqFloat { .. },
-        ));
-        assert!(matches!(
-            equal(int(1), int(1)).0.kind(),
-            BoolExprKind::Equal { .. },
-        ));
-        assert!(matches!(
-            not_equal(bool_(true), bool_(false)).0.kind(),
-            BoolExprKind::NotEqual { .. },
-        ));
-        assert!(matches!(
-            bool_(true).and_bool(bool_(false)).0.kind(),
-            BoolExprKind::And { .. },
-        ));
-        assert!(matches!(
-            bool_(true).or_bool(bool_(false)).0.kind(),
-            BoolExprKind::Or { .. },
-        ));
-        assert!(matches!(
-            bool_(true).negate_bool().0.kind(),
-            BoolExprKind::Not(_)
-        ));
+        assert_eq!(
+            int(1).lt_int(int(2)).0,
+            BoolExpr::lt_int(int(1).into(), int(2).into())
+        );
+        assert_eq!(
+            int(1).lte_int(int(2)).0,
+            BoolExpr::lte_int(int(1).into(), int(2).into()),
+        );
+        assert_eq!(
+            int(2).gt_int(int(1)).0,
+            BoolExpr::gt_int(int(2).into(), int(1).into())
+        );
+        assert_eq!(
+            int(2).gte_int(int(1)).0,
+            BoolExpr::gte_int(int(2).into(), int(1).into()),
+        );
+        assert_eq!(
+            float(1.0).lt_float(float(2.0)).0,
+            BoolExpr::lt_float(float(1.0).into(), float(2.0).into()),
+        );
+        assert_eq!(
+            float(1.0).lte_float(float(2.0)).0,
+            BoolExpr::lte_float(float(1.0).into(), float(2.0).into()),
+        );
+        assert_eq!(
+            float(2.0).gt_float(float(1.0)).0,
+            BoolExpr::gt_float(float(2.0).into(), float(1.0).into()),
+        );
+        assert_eq!(
+            float(2.0).gte_float(float(1.0)).0,
+            BoolExpr::gte_float(float(2.0).into(), float(1.0).into()),
+        );
+        assert_eq!(
+            equal(int(1), int(1)).0,
+            BoolExpr::equal(int(1).into(), int(1).into())
+        );
+        assert_eq!(
+            not_equal(bool_(true), bool_(false)).0,
+            BoolExpr::not_equal(bool_(true).into(), bool_(false).into()),
+        );
+        assert_eq!(
+            bool_(true).and_bool(bool_(false)).0,
+            BoolExpr::and(bool_(true).into(), bool_(false).into()),
+        );
+        assert_eq!(
+            bool_(true).or_bool(bool_(false)).0,
+            BoolExpr::or(bool_(true).into(), bool_(false).into()),
+        );
+        assert_eq!(
+            bool_(true).negate_bool().0,
+            BoolExpr::not(bool_(true).into())
+        );
     }
 
     #[test]
     fn string_operator_helpers_build_operator_shapes() {
-        assert!(matches!(
-            string("a").concatenate(string("b")).0.kind(),
-            StringExprKind::Concatenate { .. },
-        ));
+        assert_eq!(
+            string("a").concatenate(string("b")).0,
+            StringExpr::concatenate(string("a").into(), string("b").into()),
+        );
     }
 
     #[test]
     fn tuple_projection_helpers_build_projection_shapes() {
-        assert!(matches!(
-            local_tuple(0, "pair", [ValueType::Int])
-                .index_int(0)
-                .0
-                .kind(),
-            IntExprKind::TupleIndex { .. },
-        ));
-        assert!(matches!(
-            local_tuple(0, "pair", [ValueType::String])
-                .index_string(0)
-                .0
-                .kind(),
-            StringExprKind::TupleIndex { .. },
-        ));
-        assert!(matches!(
-            local_tuple(0, "pair", [ValueType::Float])
-                .index_float(0)
-                .0
-                .kind(),
-            FloatExprKind::TupleIndex { .. },
-        ));
-        assert!(matches!(
-            local_tuple(0, "pair", [ValueType::Bool])
-                .index_bool(0)
-                .0
-                .kind(),
-            BoolExprKind::TupleIndex { .. },
-        ));
-        assert!(matches!(
-            local_tuple(0, "pair", [ValueType::Nil])
-                .index_nil(0)
-                .0
-                .kind(),
-            NilExprKind::TupleIndex { .. },
-        ));
-        assert!(matches!(
-            local_tuple(0, "pair", [ValueType::Tuple(vec![ValueType::Int])])
-                .index_tuple(0, [ValueType::Int])
-                .0
-                .kind(),
-            TupleExprKind::TupleIndex { .. },
-        ));
-        assert!(matches!(
-            local_tuple(0, "pair", [ValueType::List(Box::new(ValueType::Int))])
-                .index_list(0, ValueType::Int)
-                .0
-                .kind(),
-            ListExprKind::TupleIndex { .. },
-        ));
-        assert!(matches!(
-            local_tuple(
-                0,
-                "pair",
-                [function_value_type([ValueType::Int], ValueType::Int)]
-            )
-            .index_int_function(0, [ValueType::Int])
-            .0
-            .kind(),
-            IntFunctionExprKind::TupleIndex { .. },
-        ));
-        assert!(matches!(
-            local_tuple(
-                0,
-                "pair",
-                [function_value_type([ValueType::String], ValueType::String)]
-            )
-            .index_string_function(0, [ValueType::String])
-            .0
-            .kind(),
-            StringFunctionExprKind::TupleIndex { .. },
-        ));
-        assert!(matches!(
-            local_tuple(
-                0,
-                "pair",
-                [function_value_type([ValueType::Float], ValueType::Float)]
-            )
-            .index_float_function(0, [ValueType::Float])
-            .0
-            .kind(),
-            FloatFunctionExprKind::TupleIndex { .. },
-        ));
-        assert!(matches!(
-            local_tuple(
-                0,
-                "pair",
-                [function_value_type([ValueType::Bool], ValueType::Bool)]
-            )
-            .index_bool_function(0, [ValueType::Bool])
-            .0
-            .kind(),
-            BoolFunctionExprKind::TupleIndex { .. },
-        ));
-        assert!(matches!(
-            local_tuple(
-                0,
-                "pair",
-                [function_value_type([ValueType::Nil], ValueType::Nil)]
-            )
-            .index_nil_function(0, [ValueType::Nil])
-            .0
-            .kind(),
-            NilFunctionExprKind::TupleIndex { .. },
-        ));
-        assert!(matches!(
-            local_tuple(
-                0,
-                "pair",
-                [function_value_type(
-                    [ValueType::Int],
-                    ValueType::Tuple(vec![ValueType::Int])
-                )]
-            )
-            .index_tuple_function(0, [ValueType::Int], [ValueType::Int])
-            .0
-            .kind(),
-            TupleFunctionExprKind::TupleIndex { .. },
-        ));
-        assert!(matches!(
-            local_tuple(
-                0,
-                "pair",
-                [function_value_type(
-                    [ValueType::Int],
-                    ValueType::List(Box::new(ValueType::Int))
-                )]
-            )
-            .index_list_function(0, [ValueType::Int], ValueType::Int)
-            .0
-            .kind(),
-            ListFunctionExprKind::TupleIndex { .. },
-        ));
-        assert!(matches!(
-            local_tuple(
-                0,
-                "pair",
-                [function_value_type(
-                    [ValueType::Int],
-                    ValueType::Function(Box::new(FunctionType::new(
-                        vec![ValueType::Int],
-                        ValueType::Int
-                    )))
-                )]
-            )
-            .index_function_function(
-                0,
-                [ValueType::Int],
+        let pair = local_tuple(0, "pair", [ValueType::Int]);
+        assert_eq!(
+            pair.index_int(0).0,
+            IntExpr::tuple_index(local_tuple(0, "pair", [ValueType::Int]).into(), 0)
+        );
+
+        let pair = local_tuple(0, "pair", [ValueType::String]);
+        assert_eq!(
+            pair.index_string(1).0,
+            StringExpr::tuple_index(local_tuple(0, "pair", [ValueType::String]).into(), 1)
+        );
+
+        let pair = local_tuple(0, "pair", [ValueType::Float]);
+        assert_eq!(
+            pair.index_float(2).0,
+            FloatExpr::tuple_index(local_tuple(0, "pair", [ValueType::Float]).into(), 2)
+        );
+
+        let pair = local_tuple(0, "pair", [ValueType::Bool]);
+        assert_eq!(
+            pair.index_bool(3).0,
+            BoolExpr::tuple_index(local_tuple(0, "pair", [ValueType::Bool]).into(), 3)
+        );
+
+        let pair = local_tuple(0, "pair", [ValueType::Nil]);
+        assert_eq!(
+            pair.index_nil(4).0,
+            NilExpr::tuple_index(local_tuple(0, "pair", [ValueType::Nil]).into(), 4)
+        );
+
+        let pair = local_tuple(0, "pair", [ValueType::Tuple(vec![ValueType::Int])]);
+        assert_eq!(
+            pair.index_tuple(5, [ValueType::Int]).0,
+            TupleExpr::tuple_index(
+                local_tuple(0, "pair", [ValueType::Tuple(vec![ValueType::Int])]).into(),
+                5,
+                vec![ValueType::Int],
+            ),
+        );
+
+        let pair = local_tuple(0, "pair", [ValueType::List(Box::new(ValueType::Int))]);
+        assert_eq!(
+            pair.index_list(6, ValueType::Int).0,
+            ListExpr::tuple_index(
+                local_tuple(0, "pair", [ValueType::List(Box::new(ValueType::Int))]).into(),
+                6,
+                ValueType::Int,
+            ),
+        );
+
+        let pair = local_tuple(
+            0,
+            "pair",
+            [function_value_type([ValueType::Int], ValueType::Int)],
+        );
+        assert_eq!(
+            pair.index_int_function(7, [ValueType::Int]).0,
+            IntFunctionExpr::tuple_index(
+                local_tuple(
+                    0,
+                    "pair",
+                    [function_value_type([ValueType::Int], ValueType::Int)]
+                )
+                .into(),
+                7,
                 FunctionType::new(vec![ValueType::Int], ValueType::Int),
-            )
-            .0
-            .kind(),
-            FunctionFunctionExprKind::TupleIndex { .. },
-        ));
+            ),
+        );
+
+        let pair = local_tuple(
+            0,
+            "pair",
+            [function_value_type([ValueType::String], ValueType::String)],
+        );
+        assert_eq!(
+            pair.index_string_function(8, [ValueType::String]).0,
+            StringFunctionExpr::tuple_index(
+                local_tuple(
+                    0,
+                    "pair",
+                    [function_value_type([ValueType::String], ValueType::String)]
+                )
+                .into(),
+                8,
+                FunctionType::new(vec![ValueType::String], ValueType::String),
+            ),
+        );
+
+        let pair = local_tuple(
+            0,
+            "pair",
+            [function_value_type([ValueType::Float], ValueType::Float)],
+        );
+        assert_eq!(
+            pair.index_float_function(9, [ValueType::Float]).0,
+            FloatFunctionExpr::tuple_index(
+                local_tuple(
+                    0,
+                    "pair",
+                    [function_value_type([ValueType::Float], ValueType::Float)]
+                )
+                .into(),
+                9,
+                FunctionType::new(vec![ValueType::Float], ValueType::Float),
+            ),
+        );
+
+        let pair = local_tuple(
+            0,
+            "pair",
+            [function_value_type([ValueType::Bool], ValueType::Bool)],
+        );
+        assert_eq!(
+            pair.index_bool_function(10, [ValueType::Bool]).0,
+            BoolFunctionExpr::tuple_index(
+                local_tuple(
+                    0,
+                    "pair",
+                    [function_value_type([ValueType::Bool], ValueType::Bool)]
+                )
+                .into(),
+                10,
+                FunctionType::new(vec![ValueType::Bool], ValueType::Bool),
+            ),
+        );
+
+        let pair = local_tuple(
+            0,
+            "pair",
+            [function_value_type([ValueType::Nil], ValueType::Nil)],
+        );
+        assert_eq!(
+            pair.index_nil_function(11, [ValueType::Nil]).0,
+            NilFunctionExpr::tuple_index(
+                local_tuple(
+                    0,
+                    "pair",
+                    [function_value_type([ValueType::Nil], ValueType::Nil)]
+                )
+                .into(),
+                11,
+                FunctionType::new(vec![ValueType::Nil], ValueType::Nil),
+            ),
+        );
+
+        let tuple_return = ValueType::Tuple(vec![ValueType::Int]);
+        let pair = local_tuple(
+            0,
+            "pair",
+            [function_value_type([ValueType::Int], tuple_return.clone())],
+        );
+        assert_eq!(
+            pair.index_tuple_function(12, [ValueType::Int], [ValueType::Int])
+                .0,
+            TupleFunctionExpr::tuple_index(
+                local_tuple(
+                    0,
+                    "pair",
+                    [function_value_type([ValueType::Int], tuple_return)]
+                )
+                .into(),
+                12,
+                FunctionType::new(vec![ValueType::Int], ValueType::Tuple(vec![ValueType::Int])),
+            ),
+        );
+
+        let list_return = ValueType::List(Box::new(ValueType::Int));
+        let pair = local_tuple(
+            0,
+            "pair",
+            [function_value_type([ValueType::Int], list_return.clone())],
+        );
+        assert_eq!(
+            pair.index_list_function(13, [ValueType::Int], ValueType::Int)
+                .0,
+            ListFunctionExpr::tuple_index(
+                local_tuple(
+                    0,
+                    "pair",
+                    [function_value_type([ValueType::Int], list_return)]
+                )
+                .into(),
+                13,
+                FunctionType::new(
+                    vec![ValueType::Int],
+                    ValueType::List(Box::new(ValueType::Int)),
+                ),
+            ),
+        );
+
+        let returned_function_type = FunctionType::new(vec![ValueType::Int], ValueType::Int);
+        let pair = local_tuple(
+            0,
+            "pair",
+            [function_value_type(
+                [ValueType::Int],
+                ValueType::Function(Box::new(returned_function_type.clone())),
+            )],
+        );
+        assert_eq!(
+            pair.index_function_function(14, [ValueType::Int], returned_function_type.clone())
+                .0,
+            FunctionFunctionExpr::tuple_index(
+                local_tuple(
+                    0,
+                    "pair",
+                    [function_value_type(
+                        [ValueType::Int],
+                        ValueType::Function(Box::new(returned_function_type.clone())),
+                    )]
+                )
+                .into(),
+                14,
+                FunctionType::new(
+                    vec![ValueType::Int],
+                    ValueType::Function(Box::new(returned_function_type)),
+                ),
+            ),
+        );
     }
 
     fn function_value_type(

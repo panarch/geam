@@ -213,106 +213,197 @@ impl From<NilReturn> for FunctionReturn {
 mod tests {
     use super::FunctionReturn;
     use crate::plan::{
-        BoolFunctionId, BoolReturn, Expr, FunctionFunctionId, FunctionType, IntFunctionFunctionId,
-        IntFunctionId, IntReturn, NilFunctionId, NilReturn, ParamLocal, ReturnBodyKind,
-        RuntimeFunctionId, StringFunctionId, StringReturn, TupleFunctionId, ValueType,
+        BoolFunctionId, BoolReturn, Expr, FloatFunctionId, FloatReturn, FunctionFunctionId,
+        FunctionType, IntFunctionFunctionId, IntFunctionId, IntReturn, ListFunctionId,
+        NilFunctionId, NilReturn, ParamLocal, ReturnBody, RuntimeFunctionId, StringFunctionId,
+        StringReturn, TupleFunctionId, ValueType,
     };
     use crate::planner::dsl::expression::{
-        bool_, bool_function_ref, function_function_ref, function_ref, int, int_function_ref, nil,
-        nil_function_ref, string, string_function_ref, tuple, tuple_function_ref,
+        bool_, bool_function_ref, float, float_function_ref, function_function_ref, function_ref,
+        int, int_function_ref, list, list_function_ref, nil, nil_function_ref, string,
+        string_function_ref, tuple, tuple_function_ref,
     };
 
     #[test]
     fn value_conversions_build_function_return_families() {
-        assert!(matches!(
+        assert_eq!(
             FunctionReturn::from(int(1)),
-            FunctionReturn::Int(_),
-        ));
-        assert!(matches!(
+            FunctionReturn::Int(ReturnBody::expr(int(1).into())),
+        );
+        assert_eq!(
             FunctionReturn::from(string("value")),
-            FunctionReturn::String(_),
-        ));
-        assert!(matches!(
+            FunctionReturn::String(ReturnBody::expr(string("value").into())),
+        );
+        assert_eq!(
+            FunctionReturn::from(float(1.5)),
+            FunctionReturn::Float(ReturnBody::expr(float(1.5).into())),
+        );
+        assert_eq!(
             FunctionReturn::from(bool_(true)),
-            FunctionReturn::Bool(_),
-        ));
-        assert!(matches!(
+            FunctionReturn::Bool(ReturnBody::expr(bool_(true).into())),
+        );
+        assert_eq!(
             FunctionReturn::from(nil()),
-            FunctionReturn::Nil(_),
-        ));
-        assert!(matches!(
+            FunctionReturn::Nil(ReturnBody::expr(nil().into())),
+        );
+        assert_eq!(
             FunctionReturn::from(tuple([Expr::from(int(1))])),
-            FunctionReturn::Tuple { .. },
-        ));
+            FunctionReturn::Tuple {
+                type_: vec![ValueType::Int],
+                body: ReturnBody::expr(tuple([Expr::from(int(1))]).into()),
+            },
+        );
+        assert_eq!(
+            FunctionReturn::from(list([int(1)], ValueType::Int)),
+            FunctionReturn::List {
+                element_type: ValueType::Int,
+                body: ReturnBody::expr(list([int(1)], ValueType::Int).into()),
+            },
+        );
     }
 
     #[test]
     fn function_value_conversions_preserve_return_family() {
-        assert!(matches!(
+        assert_eq!(
             FunctionReturn::from(int_function_ref(0, Vec::<ParamLocal>::new())),
-            FunctionReturn::IntFunction { .. },
-        ));
-        assert!(matches!(
+            FunctionReturn::IntFunction {
+                type_: FunctionType::new(Vec::new(), ValueType::Int),
+                body: ReturnBody::expr(int_function_ref(0, Vec::<ParamLocal>::new()).into()),
+            },
+        );
+        assert_eq!(
             FunctionReturn::from(string_function_ref(0, Vec::<ParamLocal>::new())),
-            FunctionReturn::StringFunction { .. },
-        ));
-        assert!(matches!(
+            FunctionReturn::StringFunction {
+                type_: FunctionType::new(Vec::new(), ValueType::String),
+                body: ReturnBody::expr(string_function_ref(0, Vec::<ParamLocal>::new()).into()),
+            },
+        );
+        assert_eq!(
+            FunctionReturn::from(float_function_ref(0, Vec::<ParamLocal>::new())),
+            FunctionReturn::FloatFunction {
+                type_: FunctionType::new(Vec::new(), ValueType::Float),
+                body: ReturnBody::expr(float_function_ref(0, Vec::<ParamLocal>::new()).into()),
+            },
+        );
+        assert_eq!(
             FunctionReturn::from(bool_function_ref(0, Vec::<ParamLocal>::new())),
-            FunctionReturn::BoolFunction { .. },
-        ));
-        assert!(matches!(
+            FunctionReturn::BoolFunction {
+                type_: FunctionType::new(Vec::new(), ValueType::Bool),
+                body: ReturnBody::expr(bool_function_ref(0, Vec::<ParamLocal>::new()).into()),
+            },
+        );
+        assert_eq!(
             FunctionReturn::from(nil_function_ref(0, Vec::<ParamLocal>::new())),
-            FunctionReturn::NilFunction { .. },
-        ));
-        assert!(matches!(
+            FunctionReturn::NilFunction {
+                type_: FunctionType::new(Vec::new(), ValueType::Nil),
+                body: ReturnBody::expr(nil_function_ref(0, Vec::<ParamLocal>::new()).into()),
+            },
+        );
+        assert_eq!(
             FunctionReturn::from(tuple_function_ref(
                 0,
                 Vec::<ParamLocal>::new(),
                 [ValueType::Int],
             )),
-            FunctionReturn::TupleFunction { .. },
-        ));
-        assert!(matches!(
+            FunctionReturn::TupleFunction {
+                type_: FunctionType::new(Vec::new(), ValueType::Tuple(vec![ValueType::Int])),
+                body: ReturnBody::expr(
+                    tuple_function_ref(0, Vec::<ParamLocal>::new(), [ValueType::Int]).into(),
+                ),
+            },
+        );
+        assert_eq!(
+            FunctionReturn::from(list_function_ref(
+                0,
+                Vec::<ParamLocal>::new(),
+                ValueType::Int
+            )),
+            FunctionReturn::ListFunction {
+                type_: FunctionType::new(Vec::new(), ValueType::List(Box::new(ValueType::Int))),
+                body: ReturnBody::expr(
+                    list_function_ref(0, Vec::<ParamLocal>::new(), ValueType::Int).into(),
+                ),
+            },
+        );
+        assert_eq!(
             FunctionReturn::from(function_function_ref(
                 FunctionFunctionId::Int(IntFunctionFunctionId(0)),
                 Vec::<ParamLocal>::new(),
                 FunctionType::new(vec![ValueType::Int], ValueType::Int),
             )),
-            FunctionReturn::FunctionFunction { .. },
-        ));
+            FunctionReturn::FunctionFunction {
+                type_: FunctionType::new(
+                    Vec::new(),
+                    ValueType::Function(Box::new(FunctionType::new(
+                        vec![ValueType::Int],
+                        ValueType::Int,
+                    ))),
+                ),
+                body: ReturnBody::expr(
+                    function_function_ref(
+                        FunctionFunctionId::Int(IntFunctionFunctionId(0)),
+                        Vec::<ParamLocal>::new(),
+                        FunctionType::new(vec![ValueType::Int], ValueType::Int),
+                    )
+                    .into(),
+                ),
+            },
+        );
     }
 
     #[test]
     fn erased_function_value_conversion_preserves_return_family() {
-        assert!(matches!(
+        assert_eq!(
             FunctionReturn::from(function_ref(
                 RuntimeFunctionId::Int(IntFunctionId(0)),
                 Vec::<ParamLocal>::new(),
             )),
-            FunctionReturn::IntFunction { .. },
-        ));
-        assert!(matches!(
+            FunctionReturn::IntFunction {
+                type_: FunctionType::new(Vec::new(), ValueType::Int),
+                body: ReturnBody::expr(int_function_ref(0, Vec::<ParamLocal>::new()).into(),),
+            },
+        );
+        assert_eq!(
             FunctionReturn::from(function_ref(
                 RuntimeFunctionId::String(StringFunctionId(0)),
                 Vec::<ParamLocal>::new(),
             )),
-            FunctionReturn::StringFunction { .. },
-        ));
-        assert!(matches!(
+            FunctionReturn::StringFunction {
+                type_: FunctionType::new(Vec::new(), ValueType::String),
+                body: ReturnBody::expr(string_function_ref(0, Vec::<ParamLocal>::new()).into(),),
+            },
+        );
+        assert_eq!(
+            FunctionReturn::from(function_ref(
+                RuntimeFunctionId::Float(FloatFunctionId(0)),
+                Vec::<ParamLocal>::new(),
+            )),
+            FunctionReturn::FloatFunction {
+                type_: FunctionType::new(Vec::new(), ValueType::Float),
+                body: ReturnBody::expr(float_function_ref(0, Vec::<ParamLocal>::new()).into(),),
+            },
+        );
+        assert_eq!(
             FunctionReturn::from(function_ref(
                 RuntimeFunctionId::Bool(BoolFunctionId(0)),
                 Vec::<ParamLocal>::new(),
             )),
-            FunctionReturn::BoolFunction { .. },
-        ));
-        assert!(matches!(
+            FunctionReturn::BoolFunction {
+                type_: FunctionType::new(Vec::new(), ValueType::Bool),
+                body: ReturnBody::expr(bool_function_ref(0, Vec::<ParamLocal>::new()).into(),),
+            },
+        );
+        assert_eq!(
             FunctionReturn::from(function_ref(
                 RuntimeFunctionId::Nil(NilFunctionId(0)),
                 Vec::<ParamLocal>::new(),
             )),
-            FunctionReturn::NilFunction { .. },
-        ));
-        assert!(matches!(
+            FunctionReturn::NilFunction {
+                type_: FunctionType::new(Vec::new(), ValueType::Nil),
+                body: ReturnBody::expr(nil_function_ref(0, Vec::<ParamLocal>::new()).into(),),
+            },
+        );
+        assert_eq!(
             FunctionReturn::from(function_ref(
                 RuntimeFunctionId::Tuple {
                     id: TupleFunctionId(0),
@@ -320,9 +411,29 @@ mod tests {
                 },
                 Vec::<ParamLocal>::new(),
             )),
-            FunctionReturn::TupleFunction { .. },
-        ));
-        assert!(matches!(
+            FunctionReturn::TupleFunction {
+                type_: FunctionType::new(Vec::new(), ValueType::Tuple(vec![ValueType::Int])),
+                body: ReturnBody::expr(
+                    tuple_function_ref(0, Vec::<ParamLocal>::new(), [ValueType::Int]).into(),
+                ),
+            },
+        );
+        assert_eq!(
+            FunctionReturn::from(function_ref(
+                RuntimeFunctionId::List {
+                    id: ListFunctionId(0),
+                    return_type: Box::new(ValueType::Int),
+                },
+                Vec::<ParamLocal>::new(),
+            )),
+            FunctionReturn::ListFunction {
+                type_: FunctionType::new(Vec::new(), ValueType::List(Box::new(ValueType::Int))),
+                body: ReturnBody::expr(
+                    list_function_ref(0, Vec::<ParamLocal>::new(), ValueType::Int).into(),
+                ),
+            },
+        );
+        assert_eq!(
             FunctionReturn::from(function_ref(
                 RuntimeFunctionId::Function {
                     id: FunctionFunctionId::Int(IntFunctionFunctionId(0)),
@@ -330,27 +441,47 @@ mod tests {
                 },
                 Vec::<ParamLocal>::new(),
             )),
-            FunctionReturn::FunctionFunction { .. },
-        ));
+            FunctionReturn::FunctionFunction {
+                type_: FunctionType::new(
+                    Vec::new(),
+                    ValueType::Function(Box::new(FunctionType::new(
+                        vec![ValueType::Int],
+                        ValueType::Int,
+                    ))),
+                ),
+                body: ReturnBody::expr(
+                    function_function_ref(
+                        FunctionFunctionId::Int(IntFunctionFunctionId(0)),
+                        Vec::<ParamLocal>::new(),
+                        FunctionType::new(vec![ValueType::Int], ValueType::Int),
+                    )
+                    .into(),
+                ),
+            },
+        );
     }
 
     #[test]
     fn return_body_conversions_keep_existing_body_family() {
-        assert!(matches!(
+        assert_eq!(
             FunctionReturn::from(IntReturn::expr(int(1).into())),
-            FunctionReturn::Int(body) if matches!(body.kind(), ReturnBodyKind::Expr(_)),
-        ));
-        assert!(matches!(
+            FunctionReturn::Int(IntReturn::expr(int(1).into())),
+        );
+        assert_eq!(
             FunctionReturn::from(StringReturn::expr(string("value").into())),
-            FunctionReturn::String(body) if matches!(body.kind(), ReturnBodyKind::Expr(_)),
-        ));
-        assert!(matches!(
+            FunctionReturn::String(StringReturn::expr(string("value").into())),
+        );
+        assert_eq!(
+            FunctionReturn::from(FloatReturn::expr(float(1.0).into())),
+            FunctionReturn::Float(FloatReturn::expr(float(1.0).into())),
+        );
+        assert_eq!(
             FunctionReturn::from(BoolReturn::expr(bool_(true).into())),
-            FunctionReturn::Bool(body) if matches!(body.kind(), ReturnBodyKind::Expr(_)),
-        ));
-        assert!(matches!(
+            FunctionReturn::Bool(BoolReturn::expr(bool_(true).into())),
+        );
+        assert_eq!(
             FunctionReturn::from(NilReturn::expr(nil().into())),
-            FunctionReturn::Nil(body) if matches!(body.kind(), ReturnBodyKind::Expr(_)),
-        ));
+            FunctionReturn::Nil(NilReturn::expr(nil().into())),
+        );
     }
 }

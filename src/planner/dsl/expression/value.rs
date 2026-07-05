@@ -56,35 +56,39 @@ pub(crate) fn list_spread(
 #[cfg(test)]
 mod tests {
     use super::{bool_, float, int, list, list_spread, nil, string, tuple};
-    use crate::plan::ValueType;
-    use crate::plan::{Expr, ExprKind};
+    use crate::plan::{
+        BoolExpr, Expr, FloatExpr, IntExpr, ListExpr, NilExpr, StringExpr, TupleExpr, ValueType,
+    };
+    use num_bigint::BigInt;
 
     #[test]
     fn value_helpers_build_typed_exprs() {
-        assert!(matches!(Expr::from(int(1)).kind(), ExprKind::Int(_)));
-        assert!(matches!(
-            Expr::from(string("a")).kind(),
-            ExprKind::String(_),
-        ));
-        assert!(matches!(Expr::from(float(1.0)).kind(), ExprKind::Float(_)));
-        assert!(matches!(Expr::from(bool_(true)).kind(), ExprKind::Bool(_)));
-        assert!(matches!(Expr::from(nil()).kind(), ExprKind::Nil(_)));
-        assert!(matches!(
-            Expr::from(tuple([Expr::from(int(1)), Expr::from(string("one"))])).kind(),
-            ExprKind::Tuple(_),
-        ));
-        assert!(matches!(
-            Expr::from(list([int(1)], ValueType::Int)).kind(),
-            ExprKind::List(_),
-        ));
-        assert!(matches!(
-            Expr::from(list_spread(
-                [int(1)],
-                list([int(2)], ValueType::Int),
+        assert_eq!(int(1).0, IntExpr::value(BigInt::from(1)));
+        assert_eq!(string("a").0, StringExpr::value("a".into()));
+        assert_eq!(float(1.0).0, FloatExpr::value(1.0));
+        assert_eq!(bool_(true).0, BoolExpr::value(true));
+        assert_eq!(nil().0, NilExpr::value());
+
+        let tuple_elements = [Expr::from(int(1)), Expr::from(string("one"))];
+        assert_eq!(
+            tuple(tuple_elements.clone()).0,
+            TupleExpr::value(
+                tuple_elements.to_vec(),
+                vec![ValueType::Int, ValueType::String]
+            ),
+        );
+
+        assert_eq!(
+            list([int(1)], ValueType::Int).0,
+            ListExpr::value(vec![Expr::from(int(1))], ValueType::Int),
+        );
+        assert_eq!(
+            list_spread([int(1)], list([int(2)], ValueType::Int), ValueType::Int).0,
+            ListExpr::spread(
+                vec![Expr::from(int(1))],
+                ListExpr::value(vec![Expr::from(int(2))], ValueType::Int),
                 ValueType::Int,
-            ))
-            .kind(),
-            ExprKind::List(_),
-        ));
+            ),
+        );
     }
 }
