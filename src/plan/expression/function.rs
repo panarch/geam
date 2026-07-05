@@ -246,139 +246,261 @@ mod tests {
 
     #[test]
     fn function_expr_kind_accessors() {
-        assert!(matches!(
-            FunctionExpr::value(function_value()).kind(),
-            FunctionExprKind::Int(_)
-        ));
-        assert!(matches!(
+        assert_eq!(
             FunctionExpr::int(int_function_value()).kind(),
-            FunctionExprKind::Int(_)
-        ));
-        assert!(matches!(
+            &FunctionExprKind::Int(int_function_value()),
+        );
+        assert_eq!(
             FunctionExpr::string(string_function_value()).kind(),
-            FunctionExprKind::String(_)
-        ));
-        assert!(matches!(
+            &FunctionExprKind::String(string_function_value()),
+        );
+        assert_eq!(
             FunctionExpr::float(float_function_value()).kind(),
-            FunctionExprKind::Float(_)
-        ));
-        assert!(matches!(
+            &FunctionExprKind::Float(float_function_value()),
+        );
+        assert_eq!(
             FunctionExpr::bool(bool_function_value()).kind(),
-            FunctionExprKind::Bool(_)
-        ));
-        assert!(matches!(
+            &FunctionExprKind::Bool(bool_function_value()),
+        );
+        assert_eq!(
             FunctionExpr::nil(nil_function_value()).kind(),
-            FunctionExprKind::Nil(_)
-        ));
-        assert!(matches!(
+            &FunctionExprKind::Nil(nil_function_value()),
+        );
+        assert_eq!(
             FunctionExpr::tuple(tuple_function_value()).kind(),
-            FunctionExprKind::Tuple(_)
-        ));
-        assert!(matches!(
+            &FunctionExprKind::Tuple(tuple_function_value()),
+        );
+        assert_eq!(
             FunctionExpr::list(list_function_value()).kind(),
-            FunctionExprKind::List(_)
-        ));
-        assert!(matches!(
+            &FunctionExprKind::List(list_function_value()),
+        );
+        assert_eq!(
             FunctionExpr::function(function_function_value()).kind(),
-            FunctionExprKind::Function(_)
-        ));
+            &FunctionExprKind::Function(function_function_value()),
+        );
+    }
+
+    #[test]
+    fn function_expr_value_preserves_runtime_family() {
+        assert_eq!(
+            FunctionExpr::value(int_runtime_function_value()).kind(),
+            &FunctionExprKind::Int(int_function_value()),
+        );
+        assert_eq!(
+            FunctionExpr::value(string_runtime_function_value()).kind(),
+            &FunctionExprKind::String(string_function_value()),
+        );
+        assert_eq!(
+            FunctionExpr::value(float_runtime_function_value()).kind(),
+            &FunctionExprKind::Float(float_function_value()),
+        );
+        assert_eq!(
+            FunctionExpr::value(bool_runtime_function_value()).kind(),
+            &FunctionExprKind::Bool(bool_function_value()),
+        );
+        assert_eq!(
+            FunctionExpr::value(nil_runtime_function_value()).kind(),
+            &FunctionExprKind::Nil(nil_function_value()),
+        );
+        assert_eq!(
+            FunctionExpr::value(tuple_runtime_function_value()).kind(),
+            &FunctionExprKind::Tuple(tuple_function_value()),
+        );
+        assert_eq!(
+            FunctionExpr::value(list_runtime_function_value()).kind(),
+            &FunctionExprKind::List(list_function_value()),
+        );
+        assert_eq!(
+            FunctionExpr::value(function_runtime_function_value()).kind(),
+            &FunctionExprKind::Function(function_function_value()),
+        );
+    }
+
+    #[test]
+    fn function_expr_type_accessors() {
+        assert_eq!(
+            FunctionExpr::int(int_function_value()).type_(),
+            &int_function_type(),
+        );
+        assert_eq!(
+            FunctionExpr::string(string_function_value()).type_(),
+            &string_function_type(),
+        );
+        assert_eq!(
+            FunctionExpr::float(float_function_value()).type_(),
+            &float_function_type(),
+        );
+        assert_eq!(
+            FunctionExpr::bool(bool_function_value()).type_(),
+            &bool_function_type()
+        );
+        assert_eq!(FunctionExpr::nil(nil_function_value()).type_(), &nil_type());
+        assert_eq!(
+            FunctionExpr::tuple(tuple_function_value()).type_(),
+            &tuple_function_type(),
+        );
+        assert_eq!(
+            FunctionExpr::list(list_function_value()).type_(),
+            &list_function_type()
+        );
+        assert_eq!(
+            FunctionExpr::function(function_function_value()).type_(),
+            &function_function_type(),
+        );
     }
 
     #[test]
     fn function_expr_typed_conversions() {
-        assert!(FunctionExpr::int(int_function_value()).into_int().is_some());
-        assert!(
-            FunctionExpr::string(string_function_value())
-                .into_string()
-                .is_some()
+        assert_eq!(
+            FunctionExpr::int(int_function_value()).into_int(),
+            Some(int_function_value()),
         );
-        assert!(
-            FunctionExpr::float(float_function_value())
-                .into_float()
-                .is_some()
+        assert_eq!(
+            FunctionExpr::string(string_function_value()).into_string(),
+            Some(string_function_value()),
         );
-        assert!(
-            FunctionExpr::bool(bool_function_value())
-                .into_bool()
-                .is_some()
+        assert_eq!(
+            FunctionExpr::float(float_function_value()).into_float(),
+            Some(float_function_value()),
         );
-        assert!(FunctionExpr::nil(nil_function_value()).into_nil().is_some());
-        assert!(
-            FunctionExpr::tuple(tuple_function_value())
-                .into_tuple()
-                .is_some()
+        assert_eq!(
+            FunctionExpr::bool(bool_function_value()).into_bool(),
+            Some(bool_function_value()),
         );
-        assert!(
-            FunctionExpr::list(list_function_value())
-                .into_list()
-                .is_some()
+        assert_eq!(
+            FunctionExpr::nil(nil_function_value()).into_nil(),
+            Some(nil_function_value()),
         );
-
-        assert!(
-            FunctionExpr::int(int_function_value())
-                .into_string()
-                .is_none()
+        assert_eq!(
+            FunctionExpr::tuple(tuple_function_value()).into_tuple(),
+            Some(tuple_function_value()),
         );
-        assert!(
-            FunctionExpr::int(int_function_value())
-                .into_float()
-                .is_none()
+        assert_eq!(
+            FunctionExpr::list(list_function_value()).into_list(),
+            Some(list_function_value()),
         );
-        assert!(
-            FunctionExpr::int(int_function_value())
-                .into_bool()
-                .is_none()
-        );
-        assert!(FunctionExpr::int(int_function_value()).into_nil().is_none());
-        assert!(
-            FunctionExpr::int(int_function_value())
-                .into_tuple()
-                .is_none()
-        );
-        assert!(
-            FunctionExpr::int(int_function_value())
-                .into_list()
-                .is_none()
+        assert_eq!(
+            FunctionExpr::function(function_function_value()).into_function(),
+            Some(function_function_value()),
         );
 
-        assert!(matches!(
-            FunctionExpr::from(int_function_value()).kind(),
-            FunctionExprKind::Int(_),
-        ));
-        assert!(matches!(
-            FunctionExpr::from(string_function_value()).kind(),
-            FunctionExprKind::String(_),
-        ));
-        assert!(matches!(
-            FunctionExpr::from(float_function_value()).kind(),
-            FunctionExprKind::Float(_),
-        ));
-        assert!(matches!(
-            FunctionExpr::from(bool_function_value()).kind(),
-            FunctionExprKind::Bool(_),
-        ));
-        assert!(matches!(
-            FunctionExpr::from(nil_function_value()).kind(),
-            FunctionExprKind::Nil(_),
-        ));
-        assert!(matches!(
-            FunctionExpr::from(tuple_function_value()).kind(),
-            FunctionExprKind::Tuple(_),
-        ));
-        assert!(matches!(
-            FunctionExpr::from(list_function_value()).kind(),
-            FunctionExprKind::List(_),
-        ));
-        assert!(matches!(
-            FunctionExpr::from(function_function_value()).kind(),
-            FunctionExprKind::Function(_),
-        ));
+        assert_eq!(
+            FunctionExpr::string(string_function_value()).into_int(),
+            None
+        );
+        assert_eq!(FunctionExpr::int(int_function_value()).into_string(), None,);
+        assert_eq!(FunctionExpr::int(int_function_value()).into_float(), None);
+        assert_eq!(FunctionExpr::int(int_function_value()).into_bool(), None);
+        assert_eq!(FunctionExpr::int(int_function_value()).into_nil(), None);
+        assert_eq!(FunctionExpr::int(int_function_value()).into_tuple(), None);
+        assert_eq!(FunctionExpr::int(int_function_value()).into_list(), None);
+        assert_eq!(
+            FunctionExpr::int(int_function_value()).into_function(),
+            None,
+        );
+
+        assert_eq!(
+            FunctionExpr::from(int_function_value()),
+            FunctionExpr::int(int_function_value()),
+        );
+        assert_eq!(
+            FunctionExpr::from(string_function_value()),
+            FunctionExpr::string(string_function_value()),
+        );
+        assert_eq!(
+            FunctionExpr::from(float_function_value()),
+            FunctionExpr::float(float_function_value()),
+        );
+        assert_eq!(
+            FunctionExpr::from(bool_function_value()),
+            FunctionExpr::bool(bool_function_value()),
+        );
+        assert_eq!(
+            FunctionExpr::from(nil_function_value()),
+            FunctionExpr::nil(nil_function_value()),
+        );
+        assert_eq!(
+            FunctionExpr::from(tuple_function_value()),
+            FunctionExpr::tuple(tuple_function_value()),
+        );
+        assert_eq!(
+            FunctionExpr::from(list_function_value()),
+            FunctionExpr::list(list_function_value()),
+        );
+        assert_eq!(
+            FunctionExpr::from(function_function_value()),
+            FunctionExpr::function(function_function_value()),
+        );
     }
 
-    fn function_value() -> FunctionValue {
+    fn int_runtime_function_value() -> FunctionValue {
         FunctionValue::new(
             RuntimeFunctionId::Int(IntFunctionId(0)),
             vec![ParamLocal::int(crate::plan::IntLocalId(0))],
+        )
+    }
+
+    fn string_runtime_function_value() -> FunctionValue {
+        FunctionValue::new(
+            RuntimeFunctionId::String(StringFunctionId(0)),
+            vec![ParamLocal::string(crate::plan::StringLocalId(0))],
+        )
+    }
+
+    fn float_runtime_function_value() -> FunctionValue {
+        FunctionValue::new(
+            RuntimeFunctionId::Float(FloatFunctionId(0)),
+            vec![ParamLocal::float(crate::plan::FloatLocalId(0))],
+        )
+    }
+
+    fn bool_runtime_function_value() -> FunctionValue {
+        FunctionValue::new(
+            RuntimeFunctionId::Bool(BoolFunctionId(0)),
+            vec![ParamLocal::bool(crate::plan::BoolLocalId(0))],
+        )
+    }
+
+    fn nil_runtime_function_value() -> FunctionValue {
+        FunctionValue::new(
+            RuntimeFunctionId::Nil(NilFunctionId(0)),
+            vec![ParamLocal::nil(crate::plan::NilLocalId(0))],
+        )
+    }
+
+    fn tuple_runtime_function_value() -> FunctionValue {
+        FunctionValue::new(
+            RuntimeFunctionId::Tuple {
+                id: TupleFunctionId(0),
+                return_type: vec![ValueType::Int],
+            },
+            vec![ParamLocal::tuple(
+                crate::plan::TupleLocalId(0),
+                vec![ValueType::Int],
+            )],
+        )
+    }
+
+    fn list_runtime_function_value() -> FunctionValue {
+        FunctionValue::new(
+            RuntimeFunctionId::List {
+                id: ListFunctionId(0),
+                return_type: Box::new(ValueType::Int),
+            },
+            vec![ParamLocal::list(
+                crate::plan::ListLocalId(0),
+                ValueType::Int,
+            )],
+        )
+    }
+
+    fn function_runtime_function_value() -> FunctionValue {
+        FunctionValue::new(
+            RuntimeFunctionId::Function {
+                id: FunctionFunctionId::Int(IntFunctionFunctionId(0)),
+                return_type: FunctionType::new(vec![ValueType::Int], ValueType::Int),
+            },
+            Vec::new(),
         )
     }
 
@@ -443,7 +565,51 @@ mod tests {
         FunctionFunctionExpr::value(FunctionFunctionValue::new(
             FunctionFunctionId::Int(IntFunctionFunctionId(0)),
             Vec::new(),
-            FunctionType::new(vec![ValueType::Int], ValueType::Int),
+            int_function_type(),
         ))
+    }
+
+    fn int_function_type() -> FunctionType {
+        FunctionType::new(vec![ValueType::Int], ValueType::Int)
+    }
+
+    fn string_function_type() -> FunctionType {
+        FunctionType::new(vec![ValueType::String], ValueType::String)
+    }
+
+    fn float_function_type() -> FunctionType {
+        FunctionType::new(vec![ValueType::Float], ValueType::Float)
+    }
+
+    fn bool_function_type() -> FunctionType {
+        FunctionType::new(vec![ValueType::Bool], ValueType::Bool)
+    }
+
+    fn nil_type() -> FunctionType {
+        FunctionType::new(vec![ValueType::Nil], ValueType::Nil)
+    }
+
+    fn tuple_function_type() -> FunctionType {
+        FunctionType::new(
+            vec![ValueType::Tuple(vec![ValueType::Int])],
+            ValueType::Tuple(vec![ValueType::Int]),
+        )
+    }
+
+    fn list_function_type() -> FunctionType {
+        FunctionType::new(
+            vec![ValueType::List(Box::new(ValueType::Int))],
+            ValueType::List(Box::new(ValueType::Int)),
+        )
+    }
+
+    fn function_function_type() -> FunctionType {
+        FunctionType::new(
+            Vec::new(),
+            ValueType::Function(Box::new(FunctionType::new(
+                vec![ValueType::Int],
+                ValueType::Int,
+            ))),
+        )
     }
 }

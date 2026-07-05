@@ -229,64 +229,141 @@ mod tests {
     use super::{FunctionFunctionExpr, FunctionFunctionExprKind};
     use crate::plan::{
         BoolExpr, Expr, FunctionFunctionId, FunctionFunctionLocalId, FunctionFunctionValue,
-        FunctionType, IntExpr, IntFunctionFunctionId, ParamLocal, Step, ValueType,
+        FunctionType, IntExpr, IntFunctionFunctionId, ParamLocal, Step, StringExpr, ValueType,
     };
 
     #[test]
     fn function_function_expr_kind_accessors() {
-        assert!(matches!(
+        assert_eq!(
+            function_value().kind(),
+            &FunctionFunctionExprKind::Value(FunctionFunctionValue::new(
+                FunctionFunctionId::Int(IntFunctionFunctionId(0)),
+                vec![ParamLocal::int(crate::plan::IntLocalId(0))],
+                FunctionType::new(vec![ValueType::Int], ValueType::Int),
+            )),
+        );
+        assert_eq!(
+            FunctionFunctionExpr::closure(
+                FunctionFunctionId::Int(IntFunctionFunctionId(0)),
+                vec![ParamLocal::int(crate::plan::IntLocalId(0))],
+                Vec::new(),
+                function_type(),
+                returned_function_type(),
+            )
+            .kind(),
+            &FunctionFunctionExprKind::Closure {
+                runtime_id: FunctionFunctionId::Int(IntFunctionFunctionId(0)),
+                params: vec![ParamLocal::int(crate::plan::IntLocalId(0))],
+                captures: Vec::new(),
+                return_type: returned_function_type(),
+            },
+        );
+        assert_eq!(
             FunctionFunctionExpr::local_get(
                 FunctionFunctionLocalId(0),
                 "f".into(),
                 function_type(),
             )
             .kind(),
-            FunctionFunctionExprKind::LocalGet { .. },
-        ));
-        assert!(matches!(
+            &FunctionFunctionExprKind::LocalGet {
+                local: FunctionFunctionLocalId(0),
+                name: "f".into(),
+                type_: function_type(),
+            },
+        );
+        assert_eq!(
             FunctionFunctionExpr::call(
                 crate::plan::FunctionFunctionFunctionId(0),
                 Vec::new(),
                 function_type(),
             )
             .kind(),
-            FunctionFunctionExprKind::Call { .. },
-        ));
-        assert!(matches!(
+            &FunctionFunctionExprKind::Call {
+                function: crate::plan::FunctionFunctionFunctionId(0),
+                args: Vec::new(),
+                type_: function_type(),
+            },
+        );
+        assert_eq!(
             FunctionFunctionExpr::function_call(function_value(), Vec::new(), function_type())
                 .kind(),
-            FunctionFunctionExprKind::FunctionCall { .. },
-        ));
-        assert!(matches!(
+            &FunctionFunctionExprKind::FunctionCall {
+                function: Box::new(function_value()),
+                args: Vec::new(),
+                type_: function_type(),
+            },
+        );
+        assert_eq!(
             FunctionFunctionExpr::tuple_index(tuple_expr(), 0, function_type()).kind(),
-            FunctionFunctionExprKind::TupleIndex { .. },
-        ));
-        assert!(matches!(
+            &FunctionFunctionExprKind::TupleIndex {
+                tuple: Box::new(tuple_expr()),
+                index: 0,
+                type_: function_type(),
+            },
+        );
+        assert_eq!(
+            FunctionFunctionExpr::bool_case(
+                BoolExpr::value(true),
+                function_value(),
+                function_value(),
+            )
+            .kind(),
+            &FunctionFunctionExprKind::BoolCase {
+                subject: Box::new(BoolExpr::value(true)),
+                true_: Box::new(function_value()),
+                false_: Box::new(function_value()),
+            },
+        );
+        assert_eq!(
             FunctionFunctionExpr::int_case(
                 IntExpr::value(1.into()),
                 vec![(1.into(), function_value())],
                 function_value(),
             )
             .kind(),
-            FunctionFunctionExprKind::IntCase { .. },
-        ));
-        assert!(matches!(
+            &FunctionFunctionExprKind::IntCase {
+                subject: Box::new(IntExpr::value(1.into())),
+                clauses: vec![(1.into(), function_value())],
+                fallback: Box::new(function_value()),
+            },
+        );
+        assert_eq!(
+            FunctionFunctionExpr::string_case(
+                StringExpr::value("one".into()),
+                vec![("one".into(), function_value())],
+                function_value(),
+            )
+            .kind(),
+            &FunctionFunctionExprKind::StringCase {
+                subject: Box::new(StringExpr::value("one".into())),
+                clauses: vec![("one".into(), function_value())],
+                fallback: Box::new(function_value()),
+            },
+        );
+        assert_eq!(
             FunctionFunctionExpr::float_case(
                 crate::plan::FloatExpr::value(1.0),
                 vec![(1.0, function_value())],
                 function_value(),
             )
             .kind(),
-            FunctionFunctionExprKind::FloatCase { .. },
-        ));
-        assert!(matches!(
+            &FunctionFunctionExprKind::FloatCase {
+                subject: Box::new(crate::plan::FloatExpr::value(1.0)),
+                clauses: vec![(1.0, function_value())],
+                fallback: Box::new(function_value()),
+            },
+        );
+        assert_eq!(
             FunctionFunctionExpr::block(
                 vec![Step::evaluate(Expr::int(IntExpr::value(1.into())))],
                 function_value(),
             )
             .kind(),
-            FunctionFunctionExprKind::Block { .. },
-        ));
+            &FunctionFunctionExprKind::Block {
+                steps: vec![Step::evaluate(Expr::int(IntExpr::value(1.into())))],
+                return_: Box::new(function_value()),
+            },
+        );
     }
 
     #[test]
@@ -319,6 +396,10 @@ mod tests {
                 ValueType::Int,
             ))),
         )
+    }
+
+    fn returned_function_type() -> FunctionType {
+        FunctionType::new(vec![ValueType::Int], ValueType::Int)
     }
 
     fn tuple_expr() -> crate::plan::TupleExpr {

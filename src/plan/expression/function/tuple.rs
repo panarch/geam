@@ -234,96 +234,139 @@ mod tests {
 
     #[test]
     fn tuple_function_expr_kind_accessors() {
-        assert!(matches!(
+        assert_eq!(
             tuple_function_value().kind(),
-            TupleFunctionExprKind::Value(_)
-        ));
-        assert!(matches!(
+            &TupleFunctionExprKind::Value(TupleFunctionValue::new(
+                TupleFunctionId(0),
+                vec![ParamLocal::int(crate::plan::IntLocalId(0))],
+                tuple_type(),
+            )),
+        );
+        assert_eq!(
             TupleFunctionExpr::closure(
                 TupleFunctionId(0),
-                Vec::new(),
+                vec![ParamLocal::int(crate::plan::IntLocalId(0))],
                 Vec::new(),
                 tuple_function_type(),
                 tuple_type(),
             )
             .kind(),
-            TupleFunctionExprKind::Closure { .. }
-        ));
-        assert!(matches!(
+            &TupleFunctionExprKind::Closure {
+                runtime_id: TupleFunctionId(0),
+                params: vec![ParamLocal::int(crate::plan::IntLocalId(0))],
+                captures: Vec::new(),
+                return_type: tuple_type(),
+            },
+        );
+        assert_eq!(
             TupleFunctionExpr::local_get(
                 TupleFunctionLocalId(0),
                 "f".into(),
                 tuple_function_type(),
             )
             .kind(),
-            TupleFunctionExprKind::LocalGet { .. }
-        ));
-        assert!(matches!(
+            &TupleFunctionExprKind::LocalGet {
+                local: TupleFunctionLocalId(0),
+                name: "f".into(),
+            },
+        );
+        assert_eq!(
             TupleFunctionExpr::call(
                 TupleFunctionFunctionId(0),
                 Vec::new(),
                 tuple_function_type(),
             )
             .kind(),
-            TupleFunctionExprKind::Call { .. }
-        ));
-        assert!(matches!(
+            &TupleFunctionExprKind::Call {
+                function: TupleFunctionFunctionId(0),
+                args: Vec::new(),
+                type_: tuple_function_type(),
+            },
+        );
+        assert_eq!(
             TupleFunctionExpr::function_call(
                 function_function_value(),
                 Vec::new(),
                 tuple_function_type(),
             )
             .kind(),
-            TupleFunctionExprKind::FunctionCall { .. }
-        ));
-        assert!(matches!(
+            &TupleFunctionExprKind::FunctionCall {
+                function: Box::new(function_function_value()),
+                args: Vec::new(),
+                type_: tuple_function_type(),
+            },
+        );
+        assert_eq!(
             TupleFunctionExpr::tuple_index(tuple_expr(), 0, tuple_function_type()).kind(),
-            TupleFunctionExprKind::TupleIndex { .. }
-        ));
-        assert!(matches!(
+            &TupleFunctionExprKind::TupleIndex {
+                tuple: Box::new(tuple_expr()),
+                index: 0,
+                type_: tuple_function_type(),
+            },
+        );
+        assert_eq!(
             TupleFunctionExpr::bool_case(
                 BoolExpr::value(true),
                 tuple_function_value(),
                 tuple_function_value(),
             )
             .kind(),
-            TupleFunctionExprKind::BoolCase { .. }
-        ));
-        assert!(matches!(
+            &TupleFunctionExprKind::BoolCase {
+                subject: Box::new(BoolExpr::value(true)),
+                true_: Box::new(tuple_function_value()),
+                false_: Box::new(tuple_function_value()),
+            },
+        );
+        assert_eq!(
             TupleFunctionExpr::int_case(
                 IntExpr::value(1.into()),
                 vec![(1.into(), tuple_function_value())],
                 tuple_function_value(),
             )
             .kind(),
-            TupleFunctionExprKind::IntCase { .. }
-        ));
-        assert!(matches!(
+            &TupleFunctionExprKind::IntCase {
+                subject: Box::new(IntExpr::value(1.into())),
+                clauses: vec![(1.into(), tuple_function_value())],
+                fallback: Box::new(tuple_function_value()),
+            },
+        );
+        assert_eq!(
             TupleFunctionExpr::string_case(
                 crate::plan::StringExpr::value("one".into()),
                 vec![("one".into(), tuple_function_value())],
                 tuple_function_value(),
             )
             .kind(),
-            TupleFunctionExprKind::StringCase { .. }
-        ));
-        assert!(matches!(
+            &TupleFunctionExprKind::StringCase {
+                subject: Box::new(crate::plan::StringExpr::value("one".into())),
+                clauses: vec![("one".into(), tuple_function_value())],
+                fallback: Box::new(tuple_function_value()),
+            },
+        );
+        assert_eq!(
             TupleFunctionExpr::float_case(
                 crate::plan::FloatExpr::value(1.0),
                 vec![(1.0, tuple_function_value())],
                 tuple_function_value(),
             )
             .kind(),
-            TupleFunctionExprKind::FloatCase { .. }
-        ));
-        assert!(matches!(
+            &TupleFunctionExprKind::FloatCase {
+                subject: Box::new(crate::plan::FloatExpr::value(1.0)),
+                clauses: vec![(1.0, tuple_function_value())],
+                fallback: Box::new(tuple_function_value()),
+            },
+        );
+        assert_eq!(
             TupleFunctionExpr::block(
                 vec![Step::evaluate(Expr::int(IntExpr::value(1.into())))],
                 tuple_function_value(),
             )
             .kind(),
-            TupleFunctionExprKind::Block { .. }
-        ));
+            &TupleFunctionExprKind::Block {
+                steps: vec![Step::evaluate(Expr::int(IntExpr::value(1.into())))],
+                return_: Box::new(tuple_function_value()),
+            },
+        );
     }
 
     #[test]

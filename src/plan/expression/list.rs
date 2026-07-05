@@ -207,71 +207,108 @@ mod tests {
 
     #[test]
     fn list_expr_kind_accessors() {
-        assert!(matches!(list_value().kind(), ListExprKind::Value(_)));
-        assert!(matches!(
+        assert_eq!(
+            list_value().kind(),
+            &ListExprKind::Value(vec![Expr::int(IntExpr::value(1.into()))]),
+        );
+        assert_eq!(
             ListExpr::spread(
                 vec![Expr::int(IntExpr::value(0.into()))],
                 list_value(),
                 element_type()
             )
             .kind(),
-            ListExprKind::Spread { .. }
-        ));
-        assert!(matches!(
+            &ListExprKind::Spread {
+                elements: vec![Expr::int(IntExpr::value(0.into()))],
+                tail: Box::new(list_value()),
+            },
+        );
+        assert_eq!(
             ListExpr::local_get(ListLocalId(0), "values".into(), element_type()).kind(),
-            ListExprKind::LocalGet { .. }
-        ));
-        assert!(matches!(
+            &ListExprKind::LocalGet {
+                local: ListLocalId(0),
+                name: "values".into(),
+            },
+        );
+        assert_eq!(
             ListExpr::call(ListFunctionId(0), Vec::new(), element_type()).kind(),
-            ListExprKind::Call { .. }
-        ));
-        assert!(matches!(
+            &ListExprKind::Call {
+                function: ListFunctionId(0),
+                args: Vec::new(),
+            },
+        );
+        assert_eq!(
             ListExpr::function_call(list_function_expr(), Vec::new(), element_type()).kind(),
-            ListExprKind::FunctionCall { .. }
-        ));
-        assert!(matches!(
+            &ListExprKind::FunctionCall {
+                function: Box::new(list_function_expr()),
+                args: Vec::new(),
+            },
+        );
+        assert_eq!(
             ListExpr::tuple_index(tuple_expr(), 0, element_type()).kind(),
-            ListExprKind::TupleIndex { .. }
-        ));
-        assert!(matches!(
+            &ListExprKind::TupleIndex {
+                tuple: Box::new(tuple_expr()),
+                index: 0,
+            },
+        );
+        assert_eq!(
             ListExpr::bool_case(BoolExpr::value(true), list_value(), list_value()).kind(),
-            ListExprKind::BoolCase { .. }
-        ));
-        assert!(matches!(
+            &ListExprKind::BoolCase {
+                subject: Box::new(BoolExpr::value(true)),
+                true_: Box::new(list_value()),
+                false_: Box::new(list_value()),
+            },
+        );
+        assert_eq!(
             ListExpr::int_case(
                 IntExpr::value(1.into()),
                 vec![(1.into(), list_value())],
                 list_value(),
             )
             .kind(),
-            ListExprKind::IntCase { .. }
-        ));
-        assert!(matches!(
+            &ListExprKind::IntCase {
+                subject: Box::new(IntExpr::value(1.into())),
+                clauses: vec![(1.into(), list_value())],
+                fallback: Box::new(list_value()),
+            },
+        );
+        assert_eq!(
             ListExpr::string_case(
                 crate::plan::StringExpr::value("one".into()),
                 vec![("one".into(), list_value())],
                 list_value(),
             )
             .kind(),
-            ListExprKind::StringCase { .. }
-        ));
-        assert!(matches!(
+            &ListExprKind::StringCase {
+                subject: Box::new(crate::plan::StringExpr::value("one".into())),
+                clauses: vec![("one".into(), list_value())],
+                fallback: Box::new(list_value()),
+            },
+        );
+        assert_eq!(
             ListExpr::float_case(
                 crate::plan::FloatExpr::value(1.0),
                 vec![(1.0, list_value())],
                 list_value(),
             )
             .kind(),
-            ListExprKind::FloatCase { .. }
-        ));
-        assert!(matches!(
+            &ListExprKind::FloatCase {
+                subject: Box::new(crate::plan::FloatExpr::value(1.0)),
+                clauses: vec![(1.0, list_value())],
+                fallback: Box::new(list_value()),
+            },
+        );
+        assert_eq!(
             ListExpr::block(
                 vec![Step::evaluate(Expr::int(IntExpr::value(1.into())))],
                 list_value(),
             )
             .kind(),
-            ListExprKind::Block { .. }
-        ));
+            &ListExprKind::Block {
+                steps: vec![Step::evaluate(Expr::int(IntExpr::value(1.into())))],
+                return_: Box::new(list_value()),
+            },
+        );
     }
 
     #[test]

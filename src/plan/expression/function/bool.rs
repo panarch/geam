@@ -226,59 +226,123 @@ mod tests {
     use crate::plan::{
         BoolExpr, BoolFunctionFunctionId, BoolFunctionId, BoolFunctionLocalId, BoolFunctionValue,
         BoolLocalId, Expr, FunctionFunctionExpr, FunctionFunctionId, FunctionFunctionValue,
-        FunctionType, IntExpr, ParamLocal, Step, ValueType,
+        FunctionType, IntExpr, ParamLocal, Step, StringExpr, ValueType,
     };
 
     #[test]
     fn bool_function_expr_kind_accessors() {
-        assert!(matches!(
+        assert_eq!(
+            function_value().kind(),
+            &BoolFunctionExprKind::Value(BoolFunctionValue::new(
+                BoolFunctionId(0),
+                vec![ParamLocal::bool(BoolLocalId(0))],
+            )),
+        );
+        assert_eq!(
+            BoolFunctionExpr::closure(
+                BoolFunctionId(0),
+                vec![ParamLocal::bool(BoolLocalId(0))],
+                Vec::new(),
+                function_type(),
+            )
+            .kind(),
+            &BoolFunctionExprKind::Closure {
+                runtime_id: BoolFunctionId(0),
+                params: vec![ParamLocal::bool(BoolLocalId(0))],
+                captures: Vec::new(),
+            },
+        );
+        assert_eq!(
             BoolFunctionExpr::local_get(BoolFunctionLocalId(0), "f".into(), function_type()).kind(),
-            BoolFunctionExprKind::LocalGet { .. },
-        ));
-        assert!(matches!(
+            &BoolFunctionExprKind::LocalGet {
+                local: BoolFunctionLocalId(0),
+                name: "f".into(),
+            },
+        );
+        assert_eq!(
             BoolFunctionExpr::call(BoolFunctionFunctionId(0), Vec::new(), function_type()).kind(),
-            BoolFunctionExprKind::Call { .. },
-        ));
-        assert!(matches!(
+            &BoolFunctionExprKind::Call {
+                function: BoolFunctionFunctionId(0),
+                args: Vec::new(),
+                type_: function_type(),
+            },
+        );
+        assert_eq!(
             BoolFunctionExpr::function_call(function_function_value(), Vec::new(), function_type())
                 .kind(),
-            BoolFunctionExprKind::FunctionCall { .. },
-        ));
-        assert!(matches!(
+            &BoolFunctionExprKind::FunctionCall {
+                function: Box::new(function_function_value()),
+                args: Vec::new(),
+                type_: function_type(),
+            },
+        );
+        assert_eq!(
             BoolFunctionExpr::tuple_index(tuple_expr(), 0, function_type()).kind(),
-            BoolFunctionExprKind::TupleIndex { .. },
-        ));
-        assert!(matches!(
+            &BoolFunctionExprKind::TupleIndex {
+                tuple: Box::new(tuple_expr()),
+                index: 0,
+                type_: function_type(),
+            },
+        );
+        assert_eq!(
             BoolFunctionExpr::bool_case(BoolExpr::value(true), function_value(), function_value(),)
                 .kind(),
-            BoolFunctionExprKind::BoolCase { .. },
-        ));
-        assert!(matches!(
+            &BoolFunctionExprKind::BoolCase {
+                subject: Box::new(BoolExpr::value(true)),
+                true_: Box::new(function_value()),
+                false_: Box::new(function_value()),
+            },
+        );
+        assert_eq!(
             BoolFunctionExpr::int_case(
                 IntExpr::value(1.into()),
                 vec![(1.into(), function_value())],
                 function_value(),
             )
             .kind(),
-            BoolFunctionExprKind::IntCase { .. },
-        ));
-        assert!(matches!(
+            &BoolFunctionExprKind::IntCase {
+                subject: Box::new(IntExpr::value(1.into())),
+                clauses: vec![(1.into(), function_value())],
+                fallback: Box::new(function_value()),
+            },
+        );
+        assert_eq!(
+            BoolFunctionExpr::string_case(
+                StringExpr::value("one".into()),
+                vec![("one".into(), function_value())],
+                function_value(),
+            )
+            .kind(),
+            &BoolFunctionExprKind::StringCase {
+                subject: Box::new(StringExpr::value("one".into())),
+                clauses: vec![("one".into(), function_value())],
+                fallback: Box::new(function_value()),
+            },
+        );
+        assert_eq!(
             BoolFunctionExpr::float_case(
                 crate::plan::FloatExpr::value(1.0),
                 vec![(1.0, function_value())],
                 function_value(),
             )
             .kind(),
-            BoolFunctionExprKind::FloatCase { .. },
-        ));
-        assert!(matches!(
+            &BoolFunctionExprKind::FloatCase {
+                subject: Box::new(crate::plan::FloatExpr::value(1.0)),
+                clauses: vec![(1.0, function_value())],
+                fallback: Box::new(function_value()),
+            },
+        );
+        assert_eq!(
             BoolFunctionExpr::block(
                 vec![Step::evaluate(Expr::int(IntExpr::value(1.into())))],
                 function_value(),
             )
             .kind(),
-            BoolFunctionExprKind::Block { .. },
-        ));
+            &BoolFunctionExprKind::Block {
+                steps: vec![Step::evaluate(Expr::int(IntExpr::value(1.into())))],
+                return_: Box::new(function_value()),
+            },
+        );
     }
 
     #[test]
