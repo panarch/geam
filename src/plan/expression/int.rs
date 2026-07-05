@@ -231,76 +231,157 @@ impl IntExpr {
 #[cfg(test)]
 mod tests {
     use super::{IntExpr, IntExprKind};
-    use crate::plan::{BoolExpr, Expr, IntFunctionId, IntFunctionValue, Step};
+    use crate::plan::{
+        BoolExpr, Expr, IntFunctionId, IntFunctionValue, IntLocalId, Step, TupleExpr, ValueType,
+    };
+    use num_bigint::BigInt;
 
     #[test]
     fn int_expr_kind_accessors() {
-        assert!(matches!(
+        assert_eq!(
             IntExpr::value(1.into()).kind(),
-            IntExprKind::Value(_)
-        ));
-        assert!(matches!(
+            &IntExprKind::Value(BigInt::from(1)),
+        );
+        assert_eq!(
+            IntExpr::local_get(IntLocalId(0), "value".into()).kind(),
+            &IntExprKind::LocalGet {
+                local: IntLocalId(0),
+                name: "value".into(),
+            },
+        );
+        assert_eq!(
+            IntExpr::call(IntFunctionId(0), Vec::new()).kind(),
+            &IntExprKind::Call {
+                function: IntFunctionId(0),
+                args: Vec::new(),
+            },
+        );
+        assert_eq!(
+            IntExpr::function_call(function_expr(), Vec::new()).kind(),
+            &IntExprKind::FunctionCall {
+                function: Box::new(function_expr()),
+                args: Vec::new(),
+            },
+        );
+        assert_eq!(
+            IntExpr::tuple_index(tuple_expr(), 0).kind(),
+            &IntExprKind::TupleIndex {
+                tuple: Box::new(tuple_expr()),
+                index: 0,
+            },
+        );
+        assert_eq!(
+            IntExpr::add(IntExpr::value(1.into()), IntExpr::value(2.into())).kind(),
+            &IntExprKind::Add {
+                left: Box::new(IntExpr::value(1.into())),
+                right: Box::new(IntExpr::value(2.into())),
+            },
+        );
+        assert_eq!(
+            IntExpr::sub(IntExpr::value(1.into()), IntExpr::value(2.into())).kind(),
+            &IntExprKind::Sub {
+                left: Box::new(IntExpr::value(1.into())),
+                right: Box::new(IntExpr::value(2.into())),
+            },
+        );
+        assert_eq!(
+            IntExpr::mult(IntExpr::value(1.into()), IntExpr::value(2.into())).kind(),
+            &IntExprKind::Mult {
+                left: Box::new(IntExpr::value(1.into())),
+                right: Box::new(IntExpr::value(2.into())),
+            },
+        );
+        assert_eq!(
+            IntExpr::div(IntExpr::value(1.into()), IntExpr::value(2.into())).kind(),
+            &IntExprKind::Div {
+                left: Box::new(IntExpr::value(1.into())),
+                right: Box::new(IntExpr::value(2.into())),
+            },
+        );
+        assert_eq!(
+            IntExpr::remainder(IntExpr::value(1.into()), IntExpr::value(2.into())).kind(),
+            &IntExprKind::Remainder {
+                left: Box::new(IntExpr::value(1.into())),
+                right: Box::new(IntExpr::value(2.into())),
+            },
+        );
+        assert_eq!(
+            IntExpr::negate(IntExpr::value(1.into())).kind(),
+            &IntExprKind::Negate(Box::new(IntExpr::value(1.into()))),
+        );
+        assert_eq!(
             IntExpr::bool_case(
                 BoolExpr::value(true),
                 IntExpr::value(1.into()),
                 IntExpr::value(0.into())
             )
             .kind(),
-            IntExprKind::BoolCase { .. }
-        ));
-        assert!(matches!(
-            IntExpr::function_call(function_expr(), Vec::new()).kind(),
-            IntExprKind::FunctionCall { .. }
-        ));
-        assert!(matches!(
-            IntExpr::tuple_index(
-                crate::plan::TupleExpr::value(
-                    vec![Expr::int(IntExpr::value(1.into()))],
-                    vec![crate::plan::ValueType::Int],
-                ),
-                0,
-            )
-            .kind(),
-            IntExprKind::TupleIndex { .. }
-        ));
-        assert!(matches!(
+            &IntExprKind::BoolCase {
+                subject: Box::new(BoolExpr::value(true)),
+                true_: Box::new(IntExpr::value(1.into())),
+                false_: Box::new(IntExpr::value(0.into())),
+            },
+        );
+        assert_eq!(
             IntExpr::int_case(
                 IntExpr::value(1.into()),
                 vec![(1.into(), IntExpr::value(10.into()))],
                 IntExpr::value(0.into())
             )
             .kind(),
-            IntExprKind::IntCase { .. }
-        ));
-        assert!(matches!(
+            &IntExprKind::IntCase {
+                subject: Box::new(IntExpr::value(1.into())),
+                clauses: vec![(BigInt::from(1), IntExpr::value(10.into()))],
+                fallback: Box::new(IntExpr::value(0.into())),
+            },
+        );
+        assert_eq!(
             IntExpr::string_case(
                 crate::plan::StringExpr::value("a".into()),
                 vec![("a".into(), IntExpr::value(10.into()))],
                 IntExpr::value(0.into())
             )
             .kind(),
-            IntExprKind::StringCase { .. }
-        ));
-        assert!(matches!(
+            &IntExprKind::StringCase {
+                subject: Box::new(crate::plan::StringExpr::value("a".into())),
+                clauses: vec![("a".into(), IntExpr::value(10.into()))],
+                fallback: Box::new(IntExpr::value(0.into())),
+            },
+        );
+        assert_eq!(
             IntExpr::float_case(
                 crate::plan::FloatExpr::value(1.0),
                 vec![(1.0, IntExpr::value(10.into()))],
                 IntExpr::value(0.into())
             )
             .kind(),
-            IntExprKind::FloatCase { .. }
-        ));
-        assert!(matches!(
+            &IntExprKind::FloatCase {
+                subject: Box::new(crate::plan::FloatExpr::value(1.0)),
+                clauses: vec![(1.0, IntExpr::value(10.into()))],
+                fallback: Box::new(IntExpr::value(0.into())),
+            },
+        );
+        assert_eq!(
             IntExpr::block(
                 vec![Step::evaluate(Expr::int(IntExpr::value(1.into())))],
                 IntExpr::value(2.into()),
             )
             .kind(),
-            IntExprKind::Block { .. }
-        ));
+            &IntExprKind::Block {
+                steps: vec![Step::evaluate(Expr::int(IntExpr::value(1.into())))],
+                return_: Box::new(IntExpr::value(2.into())),
+            },
+        );
     }
 
     fn function_expr() -> crate::plan::IntFunctionExpr {
         crate::plan::IntFunctionExpr::value(IntFunctionValue::new(IntFunctionId(0), Vec::new()))
+    }
+
+    fn tuple_expr() -> TupleExpr {
+        TupleExpr::value(
+            vec![Expr::int(IntExpr::value(1.into()))],
+            vec![ValueType::Int],
+        )
     }
 }

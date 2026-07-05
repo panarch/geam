@@ -322,92 +322,212 @@ impl BoolExpr {
 #[cfg(test)]
 mod tests {
     use super::{BoolExpr, BoolExprKind};
-    use crate::plan::{BoolFunctionId, BoolFunctionValue, Expr, IntExpr, Step};
+    use crate::plan::{
+        BoolFunctionId, BoolFunctionValue, BoolLocalId, Expr, FloatExpr, IntExpr, Step, TupleExpr,
+        ValueType,
+    };
+    use num_bigint::BigInt;
 
     #[test]
     fn bool_expr_kind_accessors() {
-        assert!(matches!(
-            BoolExpr::value(true).kind(),
-            BoolExprKind::Value(true)
-        ));
-        assert!(matches!(
+        assert_eq!(BoolExpr::value(true).kind(), &BoolExprKind::Value(true),);
+        assert_eq!(
+            BoolExpr::local_get(BoolLocalId(0), "flag".into()).kind(),
+            &BoolExprKind::LocalGet {
+                local: BoolLocalId(0),
+                name: "flag".into(),
+            },
+        );
+        assert_eq!(
+            BoolExpr::call(BoolFunctionId(0), Vec::new()).kind(),
+            &BoolExprKind::Call {
+                function: BoolFunctionId(0),
+                args: Vec::new(),
+            },
+        );
+        assert_eq!(
+            BoolExpr::function_call(function_expr(), Vec::new()).kind(),
+            &BoolExprKind::FunctionCall {
+                function: Box::new(function_expr()),
+                args: Vec::new(),
+            },
+        );
+        assert_eq!(
+            BoolExpr::tuple_index(tuple_expr(), 0).kind(),
+            &BoolExprKind::TupleIndex {
+                tuple: Box::new(tuple_expr()),
+                index: 0,
+            },
+        );
+        assert_eq!(
+            BoolExpr::not(BoolExpr::value(true)).kind(),
+            &BoolExprKind::Not(Box::new(BoolExpr::value(true))),
+        );
+        assert_eq!(
+            BoolExpr::lt_int(IntExpr::value(1.into()), IntExpr::value(2.into())).kind(),
+            &BoolExprKind::LtInt {
+                left: Box::new(IntExpr::value(1.into())),
+                right: Box::new(IntExpr::value(2.into())),
+            },
+        );
+        assert_eq!(
+            BoolExpr::lte_int(IntExpr::value(1.into()), IntExpr::value(2.into())).kind(),
+            &BoolExprKind::LtEqInt {
+                left: Box::new(IntExpr::value(1.into())),
+                right: Box::new(IntExpr::value(2.into())),
+            },
+        );
+        assert_eq!(
+            BoolExpr::gt_int(IntExpr::value(2.into()), IntExpr::value(1.into())).kind(),
+            &BoolExprKind::GtInt {
+                left: Box::new(IntExpr::value(2.into())),
+                right: Box::new(IntExpr::value(1.into())),
+            },
+        );
+        assert_eq!(
+            BoolExpr::gte_int(IntExpr::value(2.into()), IntExpr::value(1.into())).kind(),
+            &BoolExprKind::GtEqInt {
+                left: Box::new(IntExpr::value(2.into())),
+                right: Box::new(IntExpr::value(1.into())),
+            },
+        );
+        assert_eq!(
+            BoolExpr::lt_float(FloatExpr::value(1.0), FloatExpr::value(2.0)).kind(),
+            &BoolExprKind::LtFloat {
+                left: Box::new(FloatExpr::value(1.0)),
+                right: Box::new(FloatExpr::value(2.0)),
+            },
+        );
+        assert_eq!(
+            BoolExpr::lte_float(FloatExpr::value(1.0), FloatExpr::value(2.0)).kind(),
+            &BoolExprKind::LtEqFloat {
+                left: Box::new(FloatExpr::value(1.0)),
+                right: Box::new(FloatExpr::value(2.0)),
+            },
+        );
+        assert_eq!(
+            BoolExpr::gt_float(FloatExpr::value(2.0), FloatExpr::value(1.0)).kind(),
+            &BoolExprKind::GtFloat {
+                left: Box::new(FloatExpr::value(2.0)),
+                right: Box::new(FloatExpr::value(1.0)),
+            },
+        );
+        assert_eq!(
+            BoolExpr::gte_float(FloatExpr::value(2.0), FloatExpr::value(1.0)).kind(),
+            &BoolExprKind::GtEqFloat {
+                left: Box::new(FloatExpr::value(2.0)),
+                right: Box::new(FloatExpr::value(1.0)),
+            },
+        );
+        assert_eq!(
+            BoolExpr::equal(
+                Expr::int(IntExpr::value(1.into())),
+                Expr::int(IntExpr::value(1.into()))
+            )
+            .kind(),
+            &BoolExprKind::Equal {
+                left: Box::new(Expr::int(IntExpr::value(1.into()))),
+                right: Box::new(Expr::int(IntExpr::value(1.into()))),
+            },
+        );
+        assert_eq!(
+            BoolExpr::not_equal(
+                Expr::bool(BoolExpr::value(true)),
+                Expr::bool(BoolExpr::value(false))
+            )
+            .kind(),
+            &BoolExprKind::NotEqual {
+                left: Box::new(Expr::bool(BoolExpr::value(true))),
+                right: Box::new(Expr::bool(BoolExpr::value(false))),
+            },
+        );
+        assert_eq!(
+            BoolExpr::and(BoolExpr::value(true), BoolExpr::value(false)).kind(),
+            &BoolExprKind::And {
+                left: Box::new(BoolExpr::value(true)),
+                right: Box::new(BoolExpr::value(false)),
+            },
+        );
+        assert_eq!(
+            BoolExpr::or(BoolExpr::value(true), BoolExpr::value(false)).kind(),
+            &BoolExprKind::Or {
+                left: Box::new(BoolExpr::value(true)),
+                right: Box::new(BoolExpr::value(false)),
+            },
+        );
+        assert_eq!(
             BoolExpr::bool_case(
                 BoolExpr::value(true),
                 BoolExpr::value(true),
                 BoolExpr::value(false)
             )
             .kind(),
-            BoolExprKind::BoolCase { .. }
-        ));
-        assert!(matches!(
-            BoolExpr::function_call(function_expr(), Vec::new()).kind(),
-            BoolExprKind::FunctionCall { .. }
-        ));
-        assert!(matches!(
-            BoolExpr::tuple_index(
-                crate::plan::TupleExpr::value(
-                    vec![Expr::bool(BoolExpr::value(true))],
-                    vec![crate::plan::ValueType::Bool],
-                ),
-                0,
-            )
-            .kind(),
-            BoolExprKind::TupleIndex { .. }
-        ));
-        assert!(matches!(
+            &BoolExprKind::BoolCase {
+                subject: Box::new(BoolExpr::value(true)),
+                true_: Box::new(BoolExpr::value(true)),
+                false_: Box::new(BoolExpr::value(false)),
+            },
+        );
+        assert_eq!(
             BoolExpr::int_case(
                 IntExpr::value(1.into()),
                 vec![(1.into(), BoolExpr::value(true))],
                 BoolExpr::value(false)
             )
             .kind(),
-            BoolExprKind::IntCase { .. }
-        ));
-        assert!(matches!(
+            &BoolExprKind::IntCase {
+                subject: Box::new(IntExpr::value(1.into())),
+                clauses: vec![(BigInt::from(1), BoolExpr::value(true))],
+                fallback: Box::new(BoolExpr::value(false)),
+            },
+        );
+        assert_eq!(
             BoolExpr::string_case(
                 crate::plan::StringExpr::value("a".into()),
                 vec![("a".into(), BoolExpr::value(true))],
                 BoolExpr::value(false)
             )
             .kind(),
-            BoolExprKind::StringCase { .. }
-        ));
-        assert!(matches!(
+            &BoolExprKind::StringCase {
+                subject: Box::new(crate::plan::StringExpr::value("a".into())),
+                clauses: vec![("a".into(), BoolExpr::value(true))],
+                fallback: Box::new(BoolExpr::value(false)),
+            },
+        );
+        assert_eq!(
             BoolExpr::float_case(
-                crate::plan::FloatExpr::value(1.0),
+                FloatExpr::value(1.0),
                 vec![(1.0, BoolExpr::value(true))],
                 BoolExpr::value(false)
             )
             .kind(),
-            BoolExprKind::FloatCase { .. }
-        ));
-        assert!(matches!(
-            BoolExpr::lt_float(
-                crate::plan::FloatExpr::value(1.0),
-                crate::plan::FloatExpr::value(2.0)
-            )
-            .kind(),
-            BoolExprKind::LtFloat { .. }
-        ));
-        assert!(matches!(
-            BoolExpr::and(BoolExpr::value(true), BoolExpr::value(false)).kind(),
-            BoolExprKind::And { .. }
-        ));
-        assert!(matches!(
-            BoolExpr::or(BoolExpr::value(true), BoolExpr::value(false)).kind(),
-            BoolExprKind::Or { .. }
-        ));
-        assert!(matches!(
+            &BoolExprKind::FloatCase {
+                subject: Box::new(FloatExpr::value(1.0)),
+                clauses: vec![(1.0, BoolExpr::value(true))],
+                fallback: Box::new(BoolExpr::value(false)),
+            },
+        );
+        assert_eq!(
             BoolExpr::block(
                 vec![Step::evaluate(Expr::bool(BoolExpr::value(false)))],
                 BoolExpr::value(true),
             )
             .kind(),
-            BoolExprKind::Block { .. }
-        ));
+            &BoolExprKind::Block {
+                steps: vec![Step::evaluate(Expr::bool(BoolExpr::value(false)))],
+                return_: Box::new(BoolExpr::value(true)),
+            },
+        );
     }
 
     fn function_expr() -> crate::plan::BoolFunctionExpr {
         crate::plan::BoolFunctionExpr::value(BoolFunctionValue::new(BoolFunctionId(0), Vec::new()))
+    }
+
+    fn tuple_expr() -> TupleExpr {
+        TupleExpr::value(
+            vec![Expr::bool(BoolExpr::value(true))],
+            vec![ValueType::Bool],
+        )
     }
 }

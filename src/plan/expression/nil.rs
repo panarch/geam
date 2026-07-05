@@ -159,68 +159,108 @@ impl NilExpr {
 #[cfg(test)]
 mod tests {
     use super::{NilExpr, NilExprKind};
-    use crate::plan::{BoolExpr, Expr, IntExpr, NilFunctionId, NilFunctionValue, Step};
+    use crate::plan::{
+        BoolExpr, Expr, IntExpr, NilFunctionId, NilFunctionValue, NilLocalId, Step, TupleExpr,
+        ValueType,
+    };
+    use num_bigint::BigInt;
 
     #[test]
     fn nil_expr_kind_accessors() {
-        assert!(matches!(NilExpr::value().kind(), NilExprKind::Value));
-        assert!(matches!(
+        assert_eq!(NilExpr::value().kind(), &NilExprKind::Value);
+        assert_eq!(
+            NilExpr::local_get(NilLocalId(0), "unit".into()).kind(),
+            &NilExprKind::LocalGet {
+                local: NilLocalId(0),
+                name: "unit".into(),
+            },
+        );
+        assert_eq!(
+            NilExpr::call(NilFunctionId(0), Vec::new()).kind(),
+            &NilExprKind::Call {
+                function: NilFunctionId(0),
+                args: Vec::new(),
+            },
+        );
+        assert_eq!(
             NilExpr::function_call(function_expr(), Vec::new()).kind(),
-            NilExprKind::FunctionCall { .. }
-        ));
-        assert!(matches!(
-            NilExpr::tuple_index(
-                crate::plan::TupleExpr::value(
-                    vec![Expr::nil(NilExpr::value())],
-                    vec![crate::plan::ValueType::Nil],
-                ),
-                0,
-            )
-            .kind(),
-            NilExprKind::TupleIndex { .. }
-        ));
-        assert!(matches!(
+            &NilExprKind::FunctionCall {
+                function: Box::new(function_expr()),
+                args: Vec::new(),
+            },
+        );
+        assert_eq!(
+            NilExpr::tuple_index(tuple_expr(), 0).kind(),
+            &NilExprKind::TupleIndex {
+                tuple: Box::new(tuple_expr()),
+                index: 0,
+            },
+        );
+        assert_eq!(
             NilExpr::bool_case(BoolExpr::value(true), NilExpr::value(), NilExpr::value()).kind(),
-            NilExprKind::BoolCase { .. }
-        ));
-        assert!(matches!(
+            &NilExprKind::BoolCase {
+                subject: Box::new(BoolExpr::value(true)),
+                true_: Box::new(NilExpr::value()),
+                false_: Box::new(NilExpr::value()),
+            },
+        );
+        assert_eq!(
             NilExpr::int_case(
                 IntExpr::value(1.into()),
                 vec![(1.into(), NilExpr::value())],
                 NilExpr::value()
             )
             .kind(),
-            NilExprKind::IntCase { .. }
-        ));
-        assert!(matches!(
+            &NilExprKind::IntCase {
+                subject: Box::new(IntExpr::value(1.into())),
+                clauses: vec![(BigInt::from(1), NilExpr::value())],
+                fallback: Box::new(NilExpr::value()),
+            },
+        );
+        assert_eq!(
             NilExpr::string_case(
                 crate::plan::StringExpr::value("a".into()),
                 vec![("a".into(), NilExpr::value())],
                 NilExpr::value()
             )
             .kind(),
-            NilExprKind::StringCase { .. }
-        ));
-        assert!(matches!(
+            &NilExprKind::StringCase {
+                subject: Box::new(crate::plan::StringExpr::value("a".into())),
+                clauses: vec![("a".into(), NilExpr::value())],
+                fallback: Box::new(NilExpr::value()),
+            },
+        );
+        assert_eq!(
             NilExpr::float_case(
                 crate::plan::FloatExpr::value(1.0),
                 vec![(1.0, NilExpr::value())],
                 NilExpr::value()
             )
             .kind(),
-            NilExprKind::FloatCase { .. }
-        ));
-        assert!(matches!(
+            &NilExprKind::FloatCase {
+                subject: Box::new(crate::plan::FloatExpr::value(1.0)),
+                clauses: vec![(1.0, NilExpr::value())],
+                fallback: Box::new(NilExpr::value()),
+            },
+        );
+        assert_eq!(
             NilExpr::block(
                 vec![Step::evaluate(Expr::nil(NilExpr::value()))],
                 NilExpr::value(),
             )
             .kind(),
-            NilExprKind::Block { .. }
-        ));
+            &NilExprKind::Block {
+                steps: vec![Step::evaluate(Expr::nil(NilExpr::value()))],
+                return_: Box::new(NilExpr::value()),
+            },
+        );
     }
 
     fn function_expr() -> crate::plan::NilFunctionExpr {
         crate::plan::NilFunctionExpr::value(NilFunctionValue::new(NilFunctionId(0), Vec::new()))
+    }
+
+    fn tuple_expr() -> TupleExpr {
+        TupleExpr::value(vec![Expr::nil(NilExpr::value())], vec![ValueType::Nil])
     }
 }

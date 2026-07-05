@@ -211,64 +211,134 @@ impl FloatExpr {
 #[cfg(test)]
 mod tests {
     use super::{FloatExpr, FloatExprKind};
-    use crate::plan::{BoolExpr, Expr, FloatFunctionId, FloatFunctionValue, Step};
+    use crate::plan::{
+        BoolExpr, Expr, FloatFunctionId, FloatFunctionValue, FloatLocalId, IntExpr, Step,
+        TupleExpr, ValueType,
+    };
+    use num_bigint::BigInt;
 
     #[test]
     fn float_expr_kind_accessors() {
-        assert!(matches!(
-            FloatExpr::value(1.0).kind(),
-            FloatExprKind::Value(_)
-        ));
-        assert!(matches!(
+        assert_eq!(FloatExpr::value(1.0).kind(), &FloatExprKind::Value(1.0),);
+        assert_eq!(
+            FloatExpr::local_get(FloatLocalId(0), "value".into()).kind(),
+            &FloatExprKind::LocalGet {
+                local: FloatLocalId(0),
+                name: "value".into(),
+            },
+        );
+        assert_eq!(
+            FloatExpr::call(FloatFunctionId(0), Vec::new()).kind(),
+            &FloatExprKind::Call {
+                function: FloatFunctionId(0),
+                args: Vec::new(),
+            },
+        );
+        assert_eq!(
+            FloatExpr::function_call(function_expr(), Vec::new()).kind(),
+            &FloatExprKind::FunctionCall {
+                function: Box::new(function_expr()),
+                args: Vec::new(),
+            },
+        );
+        assert_eq!(
+            FloatExpr::tuple_index(tuple_expr(), 0).kind(),
+            &FloatExprKind::TupleIndex {
+                tuple: Box::new(tuple_expr()),
+                index: 0,
+            },
+        );
+        assert_eq!(
+            FloatExpr::add(FloatExpr::value(1.0), FloatExpr::value(2.0)).kind(),
+            &FloatExprKind::Add {
+                left: Box::new(FloatExpr::value(1.0)),
+                right: Box::new(FloatExpr::value(2.0)),
+            },
+        );
+        assert_eq!(
+            FloatExpr::sub(FloatExpr::value(1.0), FloatExpr::value(2.0)).kind(),
+            &FloatExprKind::Sub {
+                left: Box::new(FloatExpr::value(1.0)),
+                right: Box::new(FloatExpr::value(2.0)),
+            },
+        );
+        assert_eq!(
+            FloatExpr::mult(FloatExpr::value(1.0), FloatExpr::value(2.0)).kind(),
+            &FloatExprKind::Mult {
+                left: Box::new(FloatExpr::value(1.0)),
+                right: Box::new(FloatExpr::value(2.0)),
+            },
+        );
+        assert_eq!(
+            FloatExpr::div(FloatExpr::value(1.0), FloatExpr::value(2.0)).kind(),
+            &FloatExprKind::Div {
+                left: Box::new(FloatExpr::value(1.0)),
+                right: Box::new(FloatExpr::value(2.0)),
+            },
+        );
+        assert_eq!(
             FloatExpr::bool_case(
                 BoolExpr::value(true),
                 FloatExpr::value(1.0),
                 FloatExpr::value(0.0)
             )
             .kind(),
-            FloatExprKind::BoolCase { .. }
-        ));
-        assert!(matches!(
-            FloatExpr::function_call(function_expr(), Vec::new()).kind(),
-            FloatExprKind::FunctionCall { .. }
-        ));
-        assert!(matches!(
-            FloatExpr::tuple_index(
-                crate::plan::TupleExpr::value(
-                    vec![Expr::float(FloatExpr::value(1.0))],
-                    vec![crate::plan::ValueType::Float],
-                ),
-                0,
+            &FloatExprKind::BoolCase {
+                subject: Box::new(BoolExpr::value(true)),
+                true_: Box::new(FloatExpr::value(1.0)),
+                false_: Box::new(FloatExpr::value(0.0)),
+            },
+        );
+        assert_eq!(
+            FloatExpr::int_case(
+                IntExpr::value(1.into()),
+                vec![(1.into(), FloatExpr::value(10.0))],
+                FloatExpr::value(0.0)
             )
             .kind(),
-            FloatExprKind::TupleIndex { .. }
-        ));
-        assert!(matches!(
+            &FloatExprKind::IntCase {
+                subject: Box::new(IntExpr::value(1.into())),
+                clauses: vec![(BigInt::from(1), FloatExpr::value(10.0))],
+                fallback: Box::new(FloatExpr::value(0.0)),
+            },
+        );
+        assert_eq!(
             FloatExpr::float_case(
                 FloatExpr::value(1.0),
                 vec![(1.0, FloatExpr::value(10.0))],
                 FloatExpr::value(0.0)
             )
             .kind(),
-            FloatExprKind::FloatCase { .. }
-        ));
-        assert!(matches!(
+            &FloatExprKind::FloatCase {
+                subject: Box::new(FloatExpr::value(1.0)),
+                clauses: vec![(1.0, FloatExpr::value(10.0))],
+                fallback: Box::new(FloatExpr::value(0.0)),
+            },
+        );
+        assert_eq!(
             FloatExpr::string_case(
                 crate::plan::StringExpr::value("a".into()),
                 vec![("a".into(), FloatExpr::value(10.0))],
                 FloatExpr::value(0.0)
             )
             .kind(),
-            FloatExprKind::StringCase { .. }
-        ));
-        assert!(matches!(
+            &FloatExprKind::StringCase {
+                subject: Box::new(crate::plan::StringExpr::value("a".into())),
+                clauses: vec![("a".into(), FloatExpr::value(10.0))],
+                fallback: Box::new(FloatExpr::value(0.0)),
+            },
+        );
+        assert_eq!(
             FloatExpr::block(
                 vec![Step::evaluate(Expr::float(FloatExpr::value(1.0)))],
                 FloatExpr::value(2.0),
             )
             .kind(),
-            FloatExprKind::Block { .. }
-        ));
+            &FloatExprKind::Block {
+                steps: vec![Step::evaluate(Expr::float(FloatExpr::value(1.0)))],
+                return_: Box::new(FloatExpr::value(2.0)),
+            },
+        );
     }
 
     fn function_expr() -> crate::plan::FloatFunctionExpr {
@@ -276,5 +346,12 @@ mod tests {
             FloatFunctionId(0),
             Vec::new(),
         ))
+    }
+
+    fn tuple_expr() -> TupleExpr {
+        TupleExpr::value(
+            vec![Expr::float(FloatExpr::value(1.0))],
+            vec![ValueType::Float],
+        )
     }
 }

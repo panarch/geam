@@ -172,73 +172,117 @@ impl StringExpr {
 #[cfg(test)]
 mod tests {
     use super::{StringExpr, StringExprKind};
-    use crate::plan::{BoolExpr, Expr, IntExpr, Step, StringFunctionId, StringFunctionValue};
+    use crate::plan::{
+        BoolExpr, Expr, IntExpr, Step, StringFunctionId, StringFunctionValue, StringLocalId,
+        TupleExpr, ValueType,
+    };
+    use num_bigint::BigInt;
 
     #[test]
     fn string_expr_kind_accessors() {
-        assert!(matches!(
+        assert_eq!(
             StringExpr::value("geam".into()).kind(),
-            StringExprKind::Value(_)
-        ));
-        assert!(matches!(
+            &StringExprKind::Value("geam".into()),
+        );
+        assert_eq!(
+            StringExpr::local_get(StringLocalId(0), "value".into()).kind(),
+            &StringExprKind::LocalGet {
+                local: StringLocalId(0),
+                name: "value".into(),
+            },
+        );
+        assert_eq!(
+            StringExpr::call(StringFunctionId(0), Vec::new()).kind(),
+            &StringExprKind::Call {
+                function: StringFunctionId(0),
+                args: Vec::new(),
+            },
+        );
+        assert_eq!(
+            StringExpr::function_call(function_expr(), Vec::new()).kind(),
+            &StringExprKind::FunctionCall {
+                function: Box::new(function_expr()),
+                args: Vec::new(),
+            },
+        );
+        assert_eq!(
+            StringExpr::tuple_index(tuple_expr(), 0).kind(),
+            &StringExprKind::TupleIndex {
+                tuple: Box::new(tuple_expr()),
+                index: 0,
+            },
+        );
+        assert_eq!(
+            StringExpr::concatenate(StringExpr::value("a".into()), StringExpr::value("b".into()))
+                .kind(),
+            &StringExprKind::Concatenate {
+                left: Box::new(StringExpr::value("a".into())),
+                right: Box::new(StringExpr::value("b".into())),
+            },
+        );
+        assert_eq!(
             StringExpr::bool_case(
                 BoolExpr::value(true),
                 StringExpr::value("yes".into()),
                 StringExpr::value("no".into())
             )
             .kind(),
-            StringExprKind::BoolCase { .. }
-        ));
-        assert!(matches!(
-            StringExpr::function_call(function_expr(), Vec::new()).kind(),
-            StringExprKind::FunctionCall { .. }
-        ));
-        assert!(matches!(
-            StringExpr::tuple_index(
-                crate::plan::TupleExpr::value(
-                    vec![Expr::string(StringExpr::value("geam".into()))],
-                    vec![crate::plan::ValueType::String],
-                ),
-                0,
-            )
-            .kind(),
-            StringExprKind::TupleIndex { .. }
-        ));
-        assert!(matches!(
+            &StringExprKind::BoolCase {
+                subject: Box::new(BoolExpr::value(true)),
+                true_: Box::new(StringExpr::value("yes".into())),
+                false_: Box::new(StringExpr::value("no".into())),
+            },
+        );
+        assert_eq!(
             StringExpr::int_case(
                 IntExpr::value(1.into()),
                 vec![(1.into(), StringExpr::value("one".into()))],
                 StringExpr::value("other".into())
             )
             .kind(),
-            StringExprKind::IntCase { .. }
-        ));
-        assert!(matches!(
+            &StringExprKind::IntCase {
+                subject: Box::new(IntExpr::value(1.into())),
+                clauses: vec![(BigInt::from(1), StringExpr::value("one".into()))],
+                fallback: Box::new(StringExpr::value("other".into())),
+            },
+        );
+        assert_eq!(
             StringExpr::string_case(
                 StringExpr::value("a".into()),
                 vec![("a".into(), StringExpr::value("hit".into()))],
                 StringExpr::value("miss".into())
             )
             .kind(),
-            StringExprKind::StringCase { .. }
-        ));
-        assert!(matches!(
+            &StringExprKind::StringCase {
+                subject: Box::new(StringExpr::value("a".into())),
+                clauses: vec![("a".into(), StringExpr::value("hit".into()))],
+                fallback: Box::new(StringExpr::value("miss".into())),
+            },
+        );
+        assert_eq!(
             StringExpr::float_case(
                 crate::plan::FloatExpr::value(1.0),
                 vec![(1.0, StringExpr::value("hit".into()))],
                 StringExpr::value("miss".into())
             )
             .kind(),
-            StringExprKind::FloatCase { .. }
-        ));
-        assert!(matches!(
+            &StringExprKind::FloatCase {
+                subject: Box::new(crate::plan::FloatExpr::value(1.0)),
+                clauses: vec![(1.0, StringExpr::value("hit".into()))],
+                fallback: Box::new(StringExpr::value("miss".into())),
+            },
+        );
+        assert_eq!(
             StringExpr::block(
                 vec![Step::evaluate(Expr::string(StringExpr::value("a".into())))],
                 StringExpr::value("b".into()),
             )
             .kind(),
-            StringExprKind::Block { .. }
-        ));
+            &StringExprKind::Block {
+                steps: vec![Step::evaluate(Expr::string(StringExpr::value("a".into())))],
+                return_: Box::new(StringExpr::value("b".into())),
+            },
+        );
     }
 
     fn function_expr() -> crate::plan::StringFunctionExpr {
@@ -246,5 +290,12 @@ mod tests {
             StringFunctionId(0),
             Vec::new(),
         ))
+    }
+
+    fn tuple_expr() -> TupleExpr {
+        TupleExpr::value(
+            vec![Expr::string(StringExpr::value("geam".into()))],
+            vec![ValueType::String],
+        )
     }
 }

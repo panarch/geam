@@ -226,59 +226,123 @@ mod tests {
     use crate::plan::{
         BoolExpr, Expr, FunctionFunctionExpr, FunctionFunctionId, FunctionFunctionValue,
         FunctionType, IntExpr, NilFunctionFunctionId, NilFunctionId, NilFunctionLocalId,
-        NilFunctionValue, NilLocalId, ParamLocal, Step, ValueType,
+        NilFunctionValue, NilLocalId, ParamLocal, Step, StringExpr, ValueType,
     };
 
     #[test]
     fn nil_function_expr_kind_accessors() {
-        assert!(matches!(
+        assert_eq!(
+            function_value().kind(),
+            &NilFunctionExprKind::Value(NilFunctionValue::new(
+                NilFunctionId(0),
+                vec![ParamLocal::nil(NilLocalId(0))],
+            )),
+        );
+        assert_eq!(
+            NilFunctionExpr::closure(
+                NilFunctionId(0),
+                vec![ParamLocal::nil(NilLocalId(0))],
+                Vec::new(),
+                function_type(),
+            )
+            .kind(),
+            &NilFunctionExprKind::Closure {
+                runtime_id: NilFunctionId(0),
+                params: vec![ParamLocal::nil(NilLocalId(0))],
+                captures: Vec::new(),
+            },
+        );
+        assert_eq!(
             NilFunctionExpr::local_get(NilFunctionLocalId(0), "f".into(), function_type()).kind(),
-            NilFunctionExprKind::LocalGet { .. },
-        ));
-        assert!(matches!(
+            &NilFunctionExprKind::LocalGet {
+                local: NilFunctionLocalId(0),
+                name: "f".into(),
+            },
+        );
+        assert_eq!(
             NilFunctionExpr::call(NilFunctionFunctionId(0), Vec::new(), function_type()).kind(),
-            NilFunctionExprKind::Call { .. },
-        ));
-        assert!(matches!(
+            &NilFunctionExprKind::Call {
+                function: NilFunctionFunctionId(0),
+                args: Vec::new(),
+                type_: function_type(),
+            },
+        );
+        assert_eq!(
             NilFunctionExpr::function_call(function_function_value(), Vec::new(), function_type())
                 .kind(),
-            NilFunctionExprKind::FunctionCall { .. },
-        ));
-        assert!(matches!(
+            &NilFunctionExprKind::FunctionCall {
+                function: Box::new(function_function_value()),
+                args: Vec::new(),
+                type_: function_type(),
+            },
+        );
+        assert_eq!(
             NilFunctionExpr::tuple_index(tuple_expr(), 0, function_type()).kind(),
-            NilFunctionExprKind::TupleIndex { .. },
-        ));
-        assert!(matches!(
+            &NilFunctionExprKind::TupleIndex {
+                tuple: Box::new(tuple_expr()),
+                index: 0,
+                type_: function_type(),
+            },
+        );
+        assert_eq!(
             NilFunctionExpr::bool_case(BoolExpr::value(true), function_value(), function_value(),)
                 .kind(),
-            NilFunctionExprKind::BoolCase { .. },
-        ));
-        assert!(matches!(
+            &NilFunctionExprKind::BoolCase {
+                subject: Box::new(BoolExpr::value(true)),
+                true_: Box::new(function_value()),
+                false_: Box::new(function_value()),
+            },
+        );
+        assert_eq!(
             NilFunctionExpr::int_case(
                 IntExpr::value(1.into()),
                 vec![(1.into(), function_value())],
                 function_value(),
             )
             .kind(),
-            NilFunctionExprKind::IntCase { .. },
-        ));
-        assert!(matches!(
+            &NilFunctionExprKind::IntCase {
+                subject: Box::new(IntExpr::value(1.into())),
+                clauses: vec![(1.into(), function_value())],
+                fallback: Box::new(function_value()),
+            },
+        );
+        assert_eq!(
+            NilFunctionExpr::string_case(
+                StringExpr::value("one".into()),
+                vec![("one".into(), function_value())],
+                function_value(),
+            )
+            .kind(),
+            &NilFunctionExprKind::StringCase {
+                subject: Box::new(StringExpr::value("one".into())),
+                clauses: vec![("one".into(), function_value())],
+                fallback: Box::new(function_value()),
+            },
+        );
+        assert_eq!(
             NilFunctionExpr::float_case(
                 crate::plan::FloatExpr::value(1.0),
                 vec![(1.0, function_value())],
                 function_value(),
             )
             .kind(),
-            NilFunctionExprKind::FloatCase { .. },
-        ));
-        assert!(matches!(
+            &NilFunctionExprKind::FloatCase {
+                subject: Box::new(crate::plan::FloatExpr::value(1.0)),
+                clauses: vec![(1.0, function_value())],
+                fallback: Box::new(function_value()),
+            },
+        );
+        assert_eq!(
             NilFunctionExpr::block(
                 vec![Step::evaluate(Expr::int(IntExpr::value(1.into())))],
                 function_value(),
             )
             .kind(),
-            NilFunctionExprKind::Block { .. },
-        ));
+            &NilFunctionExprKind::Block {
+                steps: vec![Step::evaluate(Expr::int(IntExpr::value(1.into())))],
+                return_: Box::new(function_value()),
+            },
+        );
     }
 
     #[test]

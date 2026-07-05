@@ -226,7 +226,7 @@ mod tests {
     use crate::plan::{
         BoolExpr, Expr, FloatExpr, FloatFunctionFunctionId, FloatFunctionId, FloatFunctionLocalId,
         FloatFunctionValue, FloatLocalId, FunctionFunctionExpr, FunctionFunctionId,
-        FunctionFunctionValue, FunctionType, ParamLocal, Step, ValueType,
+        FunctionFunctionValue, FunctionType, IntExpr, ParamLocal, Step, StringExpr, ValueType,
     };
 
     #[test]
@@ -235,54 +235,136 @@ mod tests {
             float_function_type(),
             FunctionType::new(vec![ValueType::Float], ValueType::Float),
         );
-        assert!(matches!(
+        assert_eq!(
+            float_function_value().kind(),
+            &FloatFunctionExprKind::Value(FloatFunctionValue::new(
+                FloatFunctionId(0),
+                vec![ParamLocal::float(FloatLocalId(0))],
+            )),
+        );
+        assert_eq!(
+            FloatFunctionExpr::closure(
+                FloatFunctionId(0),
+                vec![ParamLocal::float(FloatLocalId(0))],
+                Vec::new(),
+                float_function_type(),
+            )
+            .kind(),
+            &FloatFunctionExprKind::Closure {
+                runtime_id: FloatFunctionId(0),
+                params: vec![ParamLocal::float(FloatLocalId(0))],
+                captures: Vec::new(),
+            },
+        );
+        assert_eq!(
             FloatFunctionExpr::local_get(
                 FloatFunctionLocalId(0),
                 "f".into(),
                 float_function_type(),
             )
             .kind(),
-            FloatFunctionExprKind::LocalGet { .. }
-        ));
-        assert!(matches!(
+            &FloatFunctionExprKind::LocalGet {
+                local: FloatFunctionLocalId(0),
+                name: "f".into(),
+            },
+        );
+        assert_eq!(
             FloatFunctionExpr::call(
                 FloatFunctionFunctionId(0),
                 Vec::new(),
                 float_function_type()
             )
             .kind(),
-            FloatFunctionExprKind::Call { .. }
-        ));
-        assert!(matches!(
+            &FloatFunctionExprKind::Call {
+                function: FloatFunctionFunctionId(0),
+                args: Vec::new(),
+                type_: float_function_type(),
+            },
+        );
+        assert_eq!(
             FloatFunctionExpr::function_call(
                 function_function_value(),
                 Vec::new(),
                 float_function_type(),
             )
             .kind(),
-            FloatFunctionExprKind::FunctionCall { .. }
-        ));
-        assert!(matches!(
+            &FloatFunctionExprKind::FunctionCall {
+                function: Box::new(function_function_value()),
+                args: Vec::new(),
+                type_: float_function_type(),
+            },
+        );
+        assert_eq!(
             FloatFunctionExpr::tuple_index(tuple_expr(), 0, float_function_type()).kind(),
-            FloatFunctionExprKind::TupleIndex { .. }
-        ));
-        assert!(matches!(
+            &FloatFunctionExprKind::TupleIndex {
+                tuple: Box::new(tuple_expr()),
+                index: 0,
+                type_: float_function_type(),
+            },
+        );
+        assert_eq!(
+            FloatFunctionExpr::bool_case(
+                BoolExpr::value(true),
+                float_function_value(),
+                float_function_value(),
+            )
+            .kind(),
+            &FloatFunctionExprKind::BoolCase {
+                subject: Box::new(BoolExpr::value(true)),
+                true_: Box::new(float_function_value()),
+                false_: Box::new(float_function_value()),
+            },
+        );
+        assert_eq!(
+            FloatFunctionExpr::int_case(
+                IntExpr::value(1.into()),
+                vec![(1.into(), float_function_value())],
+                float_function_value(),
+            )
+            .kind(),
+            &FloatFunctionExprKind::IntCase {
+                subject: Box::new(IntExpr::value(1.into())),
+                clauses: vec![(1.into(), float_function_value())],
+                fallback: Box::new(float_function_value()),
+            },
+        );
+        assert_eq!(
+            FloatFunctionExpr::string_case(
+                StringExpr::value("one".into()),
+                vec![("one".into(), float_function_value())],
+                float_function_value(),
+            )
+            .kind(),
+            &FloatFunctionExprKind::StringCase {
+                subject: Box::new(StringExpr::value("one".into())),
+                clauses: vec![("one".into(), float_function_value())],
+                fallback: Box::new(float_function_value()),
+            },
+        );
+        assert_eq!(
             FloatFunctionExpr::float_case(
                 FloatExpr::value(1.0),
                 vec![(1.0, float_function_value())],
                 float_function_value(),
             )
             .kind(),
-            FloatFunctionExprKind::FloatCase { .. }
-        ));
-        assert!(matches!(
+            &FloatFunctionExprKind::FloatCase {
+                subject: Box::new(FloatExpr::value(1.0)),
+                clauses: vec![(1.0, float_function_value())],
+                fallback: Box::new(float_function_value()),
+            },
+        );
+        assert_eq!(
             FloatFunctionExpr::block(
                 vec![Step::evaluate(Expr::float(FloatExpr::value(1.0)))],
                 float_function_value(),
             )
             .kind(),
-            FloatFunctionExprKind::Block { .. }
-        ));
+            &FloatFunctionExprKind::Block {
+                steps: vec![Step::evaluate(Expr::float(FloatExpr::value(1.0)))],
+                return_: Box::new(float_function_value()),
+            },
+        );
     }
 
     #[test]
