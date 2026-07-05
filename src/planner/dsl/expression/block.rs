@@ -111,10 +111,12 @@ mod tests {
         block_tuple_function,
     };
     use crate::plan::{
-        BoolExprKind, FloatExprKind, FunctionExpr, FunctionExprKind, FunctionFunctionId,
-        FunctionType, IntExprKind, IntFunctionExprKind, IntFunctionFunctionId, ListExprKind,
-        ListFunctionExprKind, NilExprKind, ParamLocal, RuntimeFunctionId, StringExprKind,
-        TupleFunctionExprKind, ValueType,
+        BoolExpr, BoolFunctionId, BoolFunctionValue, FloatExpr, FloatFunctionId,
+        FloatFunctionValue, FunctionExpr, FunctionFunctionExpr, FunctionFunctionId,
+        FunctionFunctionValue, FunctionType, IntExpr, IntFunctionExpr, IntFunctionFunctionId,
+        IntFunctionId, IntFunctionValue, ListExpr, ListFunctionExpr, ListFunctionValue, NilExpr,
+        NilFunctionId, NilFunctionValue, ParamLocal, RuntimeFunctionId, StringExpr,
+        StringFunctionId, StringFunctionValue, TupleFunctionExpr, TupleFunctionValue, ValueType,
     };
     use crate::planner::dsl::expression::{
         Function, bool_, float, function_function_ref, function_ref, int, int_function_ref,
@@ -124,98 +126,121 @@ mod tests {
 
     #[test]
     fn primitive_block_helpers_build_block_shapes() {
-        assert!(matches!(
-            block_int([let_int_step(0, "x", int(1))], local_int(0, "x"))
-                .0
-                .kind(),
-            IntExprKind::Block { .. },
-        ));
-        assert!(matches!(
-            block_string([let_string_step(0, "x", string("a"))], local_string(0, "x"))
-                .0
-                .kind(),
-            StringExprKind::Block { .. },
-        ));
-        assert!(matches!(
-            block_float([], float(1.0)).0.kind(),
-            FloatExprKind::Block { .. },
-        ));
-        assert!(matches!(
-            block_bool([let_bool_step(0, "x", bool_(true))], local_bool(0, "x"))
-                .0
-                .kind(),
-            BoolExprKind::Block { .. },
-        ));
-        assert!(matches!(
-            block_nil([let_nil_step(0, "x", nil())], local_nil(0, "x"))
-                .0
-                .kind(),
-            NilExprKind::Block { .. },
-        ));
-        assert!(matches!(
-            block_list([], list([int(1)], ValueType::Int)).0.kind(),
-            ListExprKind::Block { .. },
-        ));
+        assert_eq!(
+            block_int([let_int_step(0, "x", int(1))], local_int(0, "x")).0,
+            IntExpr::block(vec![let_int_step(0, "x", int(1))], local_int(0, "x").into()),
+        );
+        assert_eq!(
+            block_string([let_string_step(0, "x", string("a"))], local_string(0, "x")).0,
+            StringExpr::block(
+                vec![let_string_step(0, "x", string("a"))],
+                local_string(0, "x").into(),
+            ),
+        );
+        assert_eq!(
+            block_float([], float(1.0)).0,
+            FloatExpr::block(Vec::new(), float(1.0).into()),
+        );
+        assert_eq!(
+            block_bool([let_bool_step(0, "x", bool_(true))], local_bool(0, "x")).0,
+            BoolExpr::block(
+                vec![let_bool_step(0, "x", bool_(true))],
+                local_bool(0, "x").into(),
+            ),
+        );
+        assert_eq!(
+            block_nil([let_nil_step(0, "x", nil())], local_nil(0, "x")).0,
+            NilExpr::block(vec![let_nil_step(0, "x", nil())], local_nil(0, "x").into()),
+        );
+        assert_eq!(
+            block_list([], list([int(1)], ValueType::Int)).0,
+            ListExpr::block(Vec::new(), list([int(1)], ValueType::Int).into()),
+        );
     }
 
     #[test]
     fn function_block_helpers_preserve_return_family() {
-        assert!(matches!(
+        assert_eq!(
             FunctionExpr::from(block_function(
                 vec![],
                 function_ref(
                     RuntimeFunctionId::Int(crate::plan::IntFunctionId(0)),
                     [crate::plan::LocalId::Int(crate::plan::IntLocalId(0))],
                 ),
-            ))
-            .kind(),
-            FunctionExprKind::Int(_),
-        ));
-        assert!(matches!(
+            )),
+            FunctionExpr::int(IntFunctionExpr::block(
+                Vec::new(),
+                IntFunctionExpr::value(IntFunctionValue::new(
+                    IntFunctionId(0),
+                    vec![ParamLocal::int(crate::plan::IntLocalId(0))],
+                )),
+            )),
+        );
+        assert_eq!(
             FunctionExpr::from(block_function(
                 vec![],
                 function_ref(
                     RuntimeFunctionId::String(crate::plan::StringFunctionId(0)),
                     [crate::plan::LocalId::String(crate::plan::StringLocalId(0))],
                 ),
-            ))
-            .kind(),
-            FunctionExprKind::String(_),
-        ));
-        assert!(matches!(
+            )),
+            FunctionExpr::string(crate::plan::StringFunctionExpr::block(
+                Vec::new(),
+                crate::plan::StringFunctionExpr::value(StringFunctionValue::new(
+                    StringFunctionId(0),
+                    vec![ParamLocal::string(crate::plan::StringLocalId(0))],
+                )),
+            )),
+        );
+        assert_eq!(
             FunctionExpr::from(block_function(
                 vec![],
                 function_ref(
                     RuntimeFunctionId::Float(crate::plan::FloatFunctionId(0)),
                     [crate::plan::LocalId::Float(crate::plan::FloatLocalId(0))],
                 ),
-            ))
-            .kind(),
-            FunctionExprKind::Float(_),
-        ));
-        assert!(matches!(
+            )),
+            FunctionExpr::float(crate::plan::FloatFunctionExpr::block(
+                Vec::new(),
+                crate::plan::FloatFunctionExpr::value(FloatFunctionValue::new(
+                    FloatFunctionId(0),
+                    vec![ParamLocal::float(crate::plan::FloatLocalId(0))],
+                )),
+            )),
+        );
+        assert_eq!(
             FunctionExpr::from(block_function(
                 vec![],
                 function_ref(
                     RuntimeFunctionId::Bool(crate::plan::BoolFunctionId(0)),
                     [crate::plan::LocalId::Bool(crate::plan::BoolLocalId(0))],
                 ),
-            ))
-            .kind(),
-            FunctionExprKind::Bool(_),
-        ));
-        assert!(matches!(
+            )),
+            FunctionExpr::bool(crate::plan::BoolFunctionExpr::block(
+                Vec::new(),
+                crate::plan::BoolFunctionExpr::value(BoolFunctionValue::new(
+                    BoolFunctionId(0),
+                    vec![ParamLocal::bool(crate::plan::BoolLocalId(0))],
+                )),
+            )),
+        );
+        assert_eq!(
             FunctionExpr::from(block_function(
                 vec![],
                 function_ref(
                     RuntimeFunctionId::Nil(crate::plan::NilFunctionId(0)),
                     [crate::plan::LocalId::Nil(crate::plan::NilLocalId(0))],
                 ),
-            ))
-            .kind(),
-            FunctionExprKind::Nil(_),
-        ));
-        assert!(matches!(
+            )),
+            FunctionExpr::nil(crate::plan::NilFunctionExpr::block(
+                Vec::new(),
+                crate::plan::NilFunctionExpr::value(NilFunctionValue::new(
+                    NilFunctionId(0),
+                    vec![ParamLocal::nil(crate::plan::NilLocalId(0))],
+                )),
+            )),
+        );
+        assert_eq!(
             FunctionExpr::from(block_function(
                 vec![],
                 Function::from(tuple_function_ref(
@@ -223,11 +248,17 @@ mod tests {
                     [crate::plan::LocalId::Int(crate::plan::IntLocalId(0))],
                     [ValueType::Int, ValueType::String],
                 )),
-            ))
-            .kind(),
-            FunctionExprKind::Tuple(_),
-        ));
-        assert!(matches!(
+            )),
+            FunctionExpr::tuple(TupleFunctionExpr::block(
+                Vec::new(),
+                TupleFunctionExpr::value(TupleFunctionValue::new(
+                    crate::plan::TupleFunctionId(0),
+                    vec![ParamLocal::int(crate::plan::IntLocalId(0))],
+                    vec![ValueType::Int, ValueType::String],
+                )),
+            )),
+        );
+        assert_eq!(
             FunctionExpr::from(block_function(
                 vec![],
                 Function::from(list_function_ref(
@@ -235,12 +266,18 @@ mod tests {
                     Vec::<ParamLocal>::new(),
                     ValueType::Int
                 )),
-            ))
-            .kind(),
-            FunctionExprKind::List(_),
-        ));
+            )),
+            FunctionExpr::list(ListFunctionExpr::block(
+                Vec::new(),
+                ListFunctionExpr::value(ListFunctionValue::new(
+                    crate::plan::ListFunctionId(0),
+                    Vec::new(),
+                    ValueType::Int,
+                )),
+            )),
+        );
         let returned_function_type = FunctionType::new(vec![ValueType::Int], ValueType::Int);
-        assert!(matches!(
+        assert_eq!(
             FunctionExpr::from(block_function(
                 vec![],
                 Function::from(function_function_ref(
@@ -248,20 +285,28 @@ mod tests {
                     Vec::<ParamLocal>::new(),
                     returned_function_type.clone(),
                 )),
-            ))
-            .kind(),
-            FunctionExprKind::Function(_),
-        ));
-        assert!(matches!(
+            )),
+            FunctionExpr::function(FunctionFunctionExpr::block(
+                Vec::new(),
+                FunctionFunctionExpr::value(FunctionFunctionValue::new(
+                    FunctionFunctionId::Int(IntFunctionFunctionId(0)),
+                    Vec::new(),
+                    returned_function_type.clone(),
+                )),
+            )),
+        );
+        assert_eq!(
             block_int_function(
                 [],
                 int_function_ref(0, [crate::plan::LocalId::Int(crate::plan::IntLocalId(0))]),
             )
-            .0
-            .kind(),
-            IntFunctionExprKind::Block { .. },
-        ));
-        assert!(matches!(
+            .0,
+            IntFunctionExpr::block(
+                Vec::new(),
+                int_function_ref(0, [crate::plan::LocalId::Int(crate::plan::IntLocalId(0))]).into(),
+            ),
+        );
+        assert_eq!(
             block_tuple_function(
                 [],
                 tuple_function_ref(
@@ -270,19 +315,28 @@ mod tests {
                     [ValueType::Int, ValueType::String],
                 ),
             )
-            .0
-            .kind(),
-            TupleFunctionExprKind::Block { .. },
-        ));
-        assert!(matches!(
+            .0,
+            TupleFunctionExpr::block(
+                Vec::new(),
+                tuple_function_ref(
+                    0,
+                    [crate::plan::LocalId::Int(crate::plan::IntLocalId(0))],
+                    [ValueType::Int, ValueType::String],
+                )
+                .into(),
+            ),
+        );
+        assert_eq!(
             block_list_function(
                 [],
                 list_function_ref(0, Vec::<ParamLocal>::new(), ValueType::Int)
             )
-            .0
-            .kind(),
-            ListFunctionExprKind::Block { .. },
-        ));
+            .0,
+            ListFunctionExpr::block(
+                Vec::new(),
+                list_function_ref(0, Vec::<ParamLocal>::new(), ValueType::Int).into(),
+            ),
+        );
         assert_eq!(
             block_function_function(
                 [],
@@ -292,11 +346,15 @@ mod tests {
                     returned_function_type.clone(),
                 ),
             )
-            .0
-            .type_(),
-            &FunctionType::new(
+            .0,
+            FunctionFunctionExpr::block(
                 Vec::new(),
-                ValueType::Function(Box::new(returned_function_type)),
+                function_function_ref(
+                    FunctionFunctionId::Int(IntFunctionFunctionId(0)),
+                    Vec::<ParamLocal>::new(),
+                    returned_function_type,
+                )
+                .into(),
             ),
         );
     }

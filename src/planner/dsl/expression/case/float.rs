@@ -180,10 +180,9 @@ mod tests {
         float_case_nil_function, float_case_string, float_case_string_function,
     };
     use crate::plan::{
-        BoolExprKind, BoolFunctionExprKind, FloatExprKind, FloatFunctionExprKind,
-        FunctionFunctionId, FunctionType, IntExprKind, IntFunctionExprKind, IntFunctionFunctionId,
-        NilExprKind, NilFunctionExprKind, ParamLocal, StringExprKind, StringFunctionExprKind,
-        ValueType,
+        BoolExpr, BoolFunctionExpr, FloatExpr, FloatFunctionExpr, FunctionFunctionExpr,
+        FunctionFunctionId, FunctionType, IntExpr, IntFunctionExpr, IntFunctionFunctionId, NilExpr,
+        NilFunctionExpr, ParamLocal, StringExpr, StringFunctionExpr, ValueType,
     };
     use crate::planner::dsl::expression::{
         bool_, bool_function_ref, float, float_function_ref, function_function_ref, int,
@@ -192,84 +191,107 @@ mod tests {
 
     #[test]
     fn float_case_helpers_build_result_family_shapes() {
-        assert!(matches!(
-            float_case_int(float(1.0), [(1.0, int(10))], int(0))
-                .0
-                .kind(),
-            IntExprKind::FloatCase { .. },
-        ));
-        assert!(matches!(
-            float_case_string(float(1.0), [(1.0, string("hit"))], string("miss"))
-                .0
-                .kind(),
-            StringExprKind::FloatCase { .. },
-        ));
-        assert!(matches!(
-            float_case_float(float(1.0), [(1.0, float(10.0))], float(0.0))
-                .0
-                .kind(),
-            FloatExprKind::FloatCase { .. },
-        ));
-        assert!(matches!(
-            float_case_bool(float(1.0), [(1.0, bool_(true))], bool_(false))
-                .0
-                .kind(),
-            BoolExprKind::FloatCase { .. },
-        ));
-        assert!(matches!(
-            float_case_nil(float(1.0), [(1.0, nil())], nil()).0.kind(),
-            NilExprKind::FloatCase { .. },
-        ));
-        assert!(matches!(
+        assert_eq!(
+            float_case_int(float(1.0), [(1.0, int(10))], int(0)).0,
+            IntExpr::float_case(
+                float(1.0).into(),
+                vec![(1.0, int(10).into())],
+                int(0).into()
+            ),
+        );
+        assert_eq!(
+            float_case_string(float(1.0), [(1.0, string("hit"))], string("miss")).0,
+            StringExpr::float_case(
+                float(1.0).into(),
+                vec![(1.0, string("hit").into())],
+                string("miss").into(),
+            ),
+        );
+        assert_eq!(
+            float_case_float(float(1.0), [(1.0, float(10.0))], float(0.0)).0,
+            FloatExpr::float_case(
+                float(1.0).into(),
+                vec![(1.0, float(10.0).into())],
+                float(0.0).into(),
+            ),
+        );
+        assert_eq!(
+            float_case_bool(float(1.0), [(1.0, bool_(true))], bool_(false)).0,
+            BoolExpr::float_case(
+                float(1.0).into(),
+                vec![(1.0, bool_(true).into())],
+                bool_(false).into(),
+            ),
+        );
+        assert_eq!(
+            float_case_nil(float(1.0), [(1.0, nil())], nil()).0,
+            NilExpr::float_case(float(1.0).into(), vec![(1.0, nil().into())], nil().into()),
+        );
+        assert_eq!(
             float_case_int_function(
                 float(1.0),
                 [(1.0, int_function_ref(0, Vec::<ParamLocal>::new()))],
                 int_function_ref(1, Vec::<ParamLocal>::new()),
             )
-            .0
-            .kind(),
-            IntFunctionExprKind::FloatCase { .. },
-        ));
-        assert!(matches!(
+            .0,
+            IntFunctionExpr::float_case(
+                float(1.0).into(),
+                vec![(1.0, int_function_ref(0, Vec::<ParamLocal>::new()).into())],
+                int_function_ref(1, Vec::<ParamLocal>::new()).into(),
+            ),
+        );
+        assert_eq!(
             float_case_string_function(
                 float(1.0),
                 [(1.0, string_function_ref(0, Vec::<ParamLocal>::new()))],
                 string_function_ref(1, Vec::<ParamLocal>::new()),
             )
-            .0
-            .kind(),
-            StringFunctionExprKind::FloatCase { .. },
-        ));
-        assert!(matches!(
+            .0,
+            StringFunctionExpr::float_case(
+                float(1.0).into(),
+                vec![(1.0, string_function_ref(0, Vec::<ParamLocal>::new()).into())],
+                string_function_ref(1, Vec::<ParamLocal>::new()).into(),
+            ),
+        );
+        assert_eq!(
             float_case_float_function(
                 float(1.0),
                 [(1.0, float_function_ref(0, Vec::<ParamLocal>::new()))],
                 float_function_ref(1, Vec::<ParamLocal>::new()),
             )
-            .0
-            .kind(),
-            FloatFunctionExprKind::FloatCase { .. },
-        ));
-        assert!(matches!(
+            .0,
+            FloatFunctionExpr::float_case(
+                float(1.0).into(),
+                vec![(1.0, float_function_ref(0, Vec::<ParamLocal>::new()).into())],
+                float_function_ref(1, Vec::<ParamLocal>::new()).into(),
+            ),
+        );
+        assert_eq!(
             float_case_bool_function(
                 float(1.0),
                 [(1.0, bool_function_ref(0, Vec::<ParamLocal>::new()))],
                 bool_function_ref(1, Vec::<ParamLocal>::new()),
             )
-            .0
-            .kind(),
-            BoolFunctionExprKind::FloatCase { .. },
-        ));
-        assert!(matches!(
+            .0,
+            BoolFunctionExpr::float_case(
+                float(1.0).into(),
+                vec![(1.0, bool_function_ref(0, Vec::<ParamLocal>::new()).into())],
+                bool_function_ref(1, Vec::<ParamLocal>::new()).into(),
+            ),
+        );
+        assert_eq!(
             float_case_nil_function(
                 float(1.0),
                 [(1.0, nil_function_ref(0, Vec::<ParamLocal>::new()))],
                 nil_function_ref(1, Vec::<ParamLocal>::new()),
             )
-            .0
-            .kind(),
-            NilFunctionExprKind::FloatCase { .. },
-        ));
+            .0,
+            NilFunctionExpr::float_case(
+                float(1.0).into(),
+                vec![(1.0, nil_function_ref(0, Vec::<ParamLocal>::new()).into())],
+                nil_function_ref(1, Vec::<ParamLocal>::new()).into(),
+            ),
+        );
         assert_eq!(
             float_case_function_function(
                 float(1.0),
@@ -287,14 +309,24 @@ mod tests {
                     FunctionType::new(vec![ValueType::Int], ValueType::Int),
                 ),
             )
-            .0
-            .type_(),
-            &FunctionType::new(
-                Vec::new(),
-                ValueType::Function(Box::new(FunctionType::new(
-                    vec![ValueType::Int],
-                    ValueType::Int,
-                ))),
+            .0,
+            FunctionFunctionExpr::float_case(
+                float(1.0).into(),
+                vec![(
+                    1.0,
+                    function_function_ref(
+                        FunctionFunctionId::Int(IntFunctionFunctionId(0)),
+                        Vec::<ParamLocal>::new(),
+                        FunctionType::new(vec![ValueType::Int], ValueType::Int),
+                    )
+                    .into(),
+                )],
+                function_function_ref(
+                    FunctionFunctionId::Int(IntFunctionFunctionId(1)),
+                    Vec::<ParamLocal>::new(),
+                    FunctionType::new(vec![ValueType::Int], ValueType::Int),
+                )
+                .into(),
             ),
         );
     }

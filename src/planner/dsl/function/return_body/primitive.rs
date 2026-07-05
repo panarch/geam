@@ -410,164 +410,195 @@ mod tests {
         string_return_block, string_return_bool_case, string_return_expr, string_return_float_case,
         string_return_int_case, string_return_string_case, string_return_tail_call,
     };
-    use crate::plan::{CallArg, ReturnBodyKind, Step};
+    use crate::plan::{
+        BoolFunctionId, CallArg, FloatFunctionId, IntFunctionId, ListFunctionId, NilFunctionId,
+        ReturnBody, Step, StringFunctionId,
+    };
     use crate::planner::dsl::expression::{bool_, float, int, list, nil, string};
+    use num_bigint::BigInt;
 
     #[test]
     fn primitive_return_expr_helpers_build_expr_shapes() {
-        assert!(matches!(
-            int_return_expr(int(1)).kind(),
-            ReturnBodyKind::Expr(_),
-        ));
-        assert!(matches!(
-            string_return_expr(string("value")).kind(),
-            ReturnBodyKind::Expr(_),
-        ));
-        assert!(matches!(
-            float_return_expr(float(1.0)).kind(),
-            ReturnBodyKind::Expr(_),
-        ));
-        assert!(matches!(
-            bool_return_expr(bool_(true)).kind(),
-            ReturnBodyKind::Expr(_),
-        ));
-        assert!(matches!(
-            nil_return_expr(nil()).kind(),
-            ReturnBodyKind::Expr(_),
-        ));
-        assert!(matches!(
-            list_return_expr(list([int(1)], crate::plan::ValueType::Int)).kind(),
-            ReturnBodyKind::Expr(_),
-        ));
+        assert_eq!(int_return_expr(int(1)), ReturnBody::expr(int(1).into()));
+        assert_eq!(
+            string_return_expr(string("value")),
+            ReturnBody::expr(string("value").into()),
+        );
+        assert_eq!(
+            float_return_expr(float(1.0)),
+            ReturnBody::expr(float(1.0).into())
+        );
+        assert_eq!(
+            bool_return_expr(bool_(true)),
+            ReturnBody::expr(bool_(true).into()),
+        );
+        assert_eq!(nil_return_expr(nil()), ReturnBody::expr(nil().into()));
+        assert_eq!(
+            list_return_expr(list([int(1)], crate::plan::ValueType::Int)),
+            ReturnBody::expr(list([int(1)], crate::plan::ValueType::Int).into()),
+        );
     }
 
     #[test]
     fn primitive_return_tail_call_helpers_build_tail_call_shapes() {
-        assert!(matches!(
-            int_return_tail_call(0, Vec::<CallArg>::new()).kind(),
-            ReturnBodyKind::TailCall { .. },
-        ));
-        assert!(matches!(
-            string_return_tail_call(0, Vec::<CallArg>::new()).kind(),
-            ReturnBodyKind::TailCall { .. },
-        ));
-        assert!(matches!(
-            float_return_tail_call(0, Vec::<CallArg>::new()).kind(),
-            ReturnBodyKind::TailCall { .. },
-        ));
-        assert!(matches!(
-            bool_return_tail_call(0, Vec::<CallArg>::new()).kind(),
-            ReturnBodyKind::TailCall { .. },
-        ));
-        assert!(matches!(
-            nil_return_tail_call(0, Vec::<CallArg>::new()).kind(),
-            ReturnBodyKind::TailCall { .. },
-        ));
-        assert!(matches!(
-            list_return_tail_call(0, Vec::<CallArg>::new()).kind(),
-            ReturnBodyKind::TailCall { .. },
-        ));
+        assert_eq!(
+            int_return_tail_call(0, Vec::<CallArg>::new()),
+            ReturnBody::tail_call(IntFunctionId(0), Vec::new()),
+        );
+        assert_eq!(
+            string_return_tail_call(1, Vec::<CallArg>::new()),
+            ReturnBody::tail_call(StringFunctionId(1), Vec::new()),
+        );
+        assert_eq!(
+            float_return_tail_call(2, Vec::<CallArg>::new()),
+            ReturnBody::tail_call(FloatFunctionId(2), Vec::new()),
+        );
+        assert_eq!(
+            bool_return_tail_call(3, Vec::<CallArg>::new()),
+            ReturnBody::tail_call(BoolFunctionId(3), Vec::new()),
+        );
+        assert_eq!(
+            nil_return_tail_call(4, Vec::<CallArg>::new()),
+            ReturnBody::tail_call(NilFunctionId(4), Vec::new()),
+        );
+        assert_eq!(
+            list_return_tail_call(5, Vec::<CallArg>::new()),
+            ReturnBody::tail_call(ListFunctionId(5), Vec::new()),
+        );
     }
 
     #[test]
     fn primitive_return_case_helpers_build_case_shapes() {
-        assert!(matches!(
+        assert_eq!(
             int_return_bool_case(
                 bool_(true),
                 int_return_expr(int(1)),
                 int_return_expr(int(0)),
-            )
-            .kind(),
-            ReturnBodyKind::BoolCase { .. },
-        ));
-        assert!(matches!(
+            ),
+            ReturnBody::bool_case(
+                bool_(true).into(),
+                int_return_expr(int(1)),
+                int_return_expr(int(0)),
+            ),
+        );
+        assert_eq!(
             string_return_bool_case(
                 bool_(true),
                 string_return_expr(string("true")),
                 string_return_expr(string("false")),
-            )
-            .kind(),
-            ReturnBodyKind::BoolCase { .. },
-        ));
-        assert!(matches!(
+            ),
+            ReturnBody::bool_case(
+                bool_(true).into(),
+                string_return_expr(string("true")),
+                string_return_expr(string("false")),
+            ),
+        );
+        assert_eq!(
             float_return_bool_case(
                 bool_(true),
                 float_return_expr(float(1.0)),
                 float_return_expr(float(0.0)),
-            )
-            .kind(),
-            ReturnBodyKind::BoolCase { .. },
-        ));
-        assert!(matches!(
+            ),
+            ReturnBody::bool_case(
+                bool_(true).into(),
+                float_return_expr(float(1.0)),
+                float_return_expr(float(0.0)),
+            ),
+        );
+        assert_eq!(
             bool_return_bool_case(
                 bool_(true),
                 bool_return_expr(bool_(true)),
                 bool_return_expr(bool_(false)),
-            )
-            .kind(),
-            ReturnBodyKind::BoolCase { .. },
-        ));
-        assert!(matches!(
-            nil_return_bool_case(bool_(true), nil_return_expr(nil()), nil_return_expr(nil()))
-                .kind(),
-            ReturnBodyKind::BoolCase { .. },
-        ));
-        assert!(matches!(
+            ),
+            ReturnBody::bool_case(
+                bool_(true).into(),
+                bool_return_expr(bool_(true)),
+                bool_return_expr(bool_(false)),
+            ),
+        );
+        assert_eq!(
+            nil_return_bool_case(bool_(true), nil_return_expr(nil()), nil_return_expr(nil())),
+            ReturnBody::bool_case(
+                bool_(true).into(),
+                nil_return_expr(nil()),
+                nil_return_expr(nil()),
+            ),
+        );
+        assert_eq!(
             list_return_bool_case(
                 bool_(true),
                 list_return_expr(list([int(1)], crate::plan::ValueType::Int)),
                 list_return_expr(list([int(0)], crate::plan::ValueType::Int)),
-            )
-            .kind(),
-            ReturnBodyKind::BoolCase { .. },
-        ));
+            ),
+            ReturnBody::bool_case(
+                bool_(true).into(),
+                list_return_expr(list([int(1)], crate::plan::ValueType::Int)),
+                list_return_expr(list([int(0)], crate::plan::ValueType::Int)),
+            ),
+        );
 
-        assert!(matches!(
+        assert_eq!(
             int_return_int_case(
                 int(1),
                 [(1, int_return_expr(int(1)))],
                 int_return_expr(int(0))
-            )
-            .kind(),
-            ReturnBodyKind::IntCase { .. },
-        ));
-        assert!(matches!(
+            ),
+            ReturnBody::int_case(
+                int(1).into(),
+                vec![(BigInt::from(1), int_return_expr(int(1)))],
+                int_return_expr(int(0)),
+            ),
+        );
+        assert_eq!(
             string_return_int_case(
                 int(1),
                 [(1, string_return_expr(string("one")))],
                 string_return_expr(string("other")),
-            )
-            .kind(),
-            ReturnBodyKind::IntCase { .. },
-        ));
-        assert!(matches!(
+            ),
+            ReturnBody::int_case(
+                int(1).into(),
+                vec![(BigInt::from(1), string_return_expr(string("one")))],
+                string_return_expr(string("other")),
+            ),
+        );
+        assert_eq!(
             float_return_int_case(
                 int(1),
                 [(1, float_return_expr(float(1.0)))],
                 float_return_expr(float(0.0)),
-            )
-            .kind(),
-            ReturnBodyKind::IntCase { .. },
-        ));
-        assert!(matches!(
+            ),
+            ReturnBody::int_case(
+                int(1).into(),
+                vec![(BigInt::from(1), float_return_expr(float(1.0)))],
+                float_return_expr(float(0.0)),
+            ),
+        );
+        assert_eq!(
             bool_return_int_case(
                 int(1),
                 [(1, bool_return_expr(bool_(true)))],
                 bool_return_expr(bool_(false)),
-            )
-            .kind(),
-            ReturnBodyKind::IntCase { .. },
-        ));
-        assert!(matches!(
+            ),
+            ReturnBody::int_case(
+                int(1).into(),
+                vec![(BigInt::from(1), bool_return_expr(bool_(true)))],
+                bool_return_expr(bool_(false)),
+            ),
+        );
+        assert_eq!(
             nil_return_int_case(
                 int(1),
                 [(1, nil_return_expr(nil()))],
                 nil_return_expr(nil())
-            )
-            .kind(),
-            ReturnBodyKind::IntCase { .. },
-        ));
-        assert!(matches!(
+            ),
+            ReturnBody::int_case(
+                int(1).into(),
+                vec![(BigInt::from(1), nil_return_expr(nil()))],
+                nil_return_expr(nil()),
+            ),
+        );
+        assert_eq!(
             list_return_int_case(
                 int(1),
                 [(
@@ -575,84 +606,114 @@ mod tests {
                     list_return_expr(list([int(1)], crate::plan::ValueType::Int))
                 )],
                 list_return_expr(list([int(0)], crate::plan::ValueType::Int)),
-            )
-            .kind(),
-            ReturnBodyKind::IntCase { .. },
-        ));
+            ),
+            ReturnBody::int_case(
+                int(1).into(),
+                vec![(
+                    BigInt::from(1),
+                    list_return_expr(list([int(1)], crate::plan::ValueType::Int)),
+                )],
+                list_return_expr(list([int(0)], crate::plan::ValueType::Int)),
+            ),
+        );
 
-        assert!(matches!(
+        assert_eq!(
             int_return_string_case(
                 string("key"),
                 [("one", int_return_expr(int(1)))],
                 int_return_expr(int(0)),
-            )
-            .kind(),
-            ReturnBodyKind::StringCase { .. },
-        ));
-        assert!(matches!(
+            ),
+            ReturnBody::string_case(
+                string("key").into(),
+                vec![("one".into(), int_return_expr(int(1)))],
+                int_return_expr(int(0)),
+            ),
+        );
+        assert_eq!(
             int_return_float_case(
                 float(1.0),
                 [(1.0, int_return_expr(int(1)))],
                 int_return_expr(int(0)),
-            )
-            .kind(),
-            ReturnBodyKind::FloatCase { .. },
-        ));
-        assert!(matches!(
+            ),
+            ReturnBody::float_case(
+                float(1.0).into(),
+                vec![(1.0, int_return_expr(int(1)))],
+                int_return_expr(int(0)),
+            ),
+        );
+        assert_eq!(
             string_return_string_case(
                 string("key"),
                 [("one", string_return_expr(string("one")))],
                 string_return_expr(string("other")),
-            )
-            .kind(),
-            ReturnBodyKind::StringCase { .. },
-        ));
-        assert!(matches!(
+            ),
+            ReturnBody::string_case(
+                string("key").into(),
+                vec![("one".into(), string_return_expr(string("one")))],
+                string_return_expr(string("other")),
+            ),
+        );
+        assert_eq!(
             float_return_string_case(
                 string("key"),
                 [("one", float_return_expr(float(1.0)))],
                 float_return_expr(float(0.0)),
-            )
-            .kind(),
-            ReturnBodyKind::StringCase { .. },
-        ));
-        assert!(matches!(
+            ),
+            ReturnBody::string_case(
+                string("key").into(),
+                vec![("one".into(), float_return_expr(float(1.0)))],
+                float_return_expr(float(0.0)),
+            ),
+        );
+        assert_eq!(
             bool_return_string_case(
                 string("key"),
                 [("one", bool_return_expr(bool_(true)))],
                 bool_return_expr(bool_(false)),
-            )
-            .kind(),
-            ReturnBodyKind::StringCase { .. },
-        ));
-        assert!(matches!(
+            ),
+            ReturnBody::string_case(
+                string("key").into(),
+                vec![("one".into(), bool_return_expr(bool_(true)))],
+                bool_return_expr(bool_(false)),
+            ),
+        );
+        assert_eq!(
             bool_return_float_case(
                 float(1.0),
                 [(1.0, bool_return_expr(bool_(true)))],
                 bool_return_expr(bool_(false)),
-            )
-            .kind(),
-            ReturnBodyKind::FloatCase { .. },
-        ));
-        assert!(matches!(
+            ),
+            ReturnBody::float_case(
+                float(1.0).into(),
+                vec![(1.0, bool_return_expr(bool_(true)))],
+                bool_return_expr(bool_(false)),
+            ),
+        );
+        assert_eq!(
             string_return_float_case(
                 float(1.0),
                 [(1.0, string_return_expr(string("one")))],
                 string_return_expr(string("other")),
-            )
-            .kind(),
-            ReturnBodyKind::FloatCase { .. },
-        ));
-        assert!(matches!(
+            ),
+            ReturnBody::float_case(
+                float(1.0).into(),
+                vec![(1.0, string_return_expr(string("one")))],
+                string_return_expr(string("other")),
+            ),
+        );
+        assert_eq!(
             nil_return_string_case(
                 string("key"),
                 [("one", nil_return_expr(nil()))],
                 nil_return_expr(nil()),
-            )
-            .kind(),
-            ReturnBodyKind::StringCase { .. },
-        ));
-        assert!(matches!(
+            ),
+            ReturnBody::string_case(
+                string("key").into(),
+                vec![("one".into(), nil_return_expr(nil()))],
+                nil_return_expr(nil()),
+            ),
+        );
+        assert_eq!(
             list_return_string_case(
                 string("key"),
                 [(
@@ -660,29 +721,41 @@ mod tests {
                     list_return_expr(list([int(1)], crate::plan::ValueType::Int))
                 )],
                 list_return_expr(list([int(0)], crate::plan::ValueType::Int)),
-            )
-            .kind(),
-            ReturnBodyKind::StringCase { .. },
-        ));
-        assert!(matches!(
+            ),
+            ReturnBody::string_case(
+                string("key").into(),
+                vec![(
+                    "one".into(),
+                    list_return_expr(list([int(1)], crate::plan::ValueType::Int)),
+                )],
+                list_return_expr(list([int(0)], crate::plan::ValueType::Int)),
+            ),
+        );
+        assert_eq!(
             nil_return_float_case(
                 float(1.0),
                 [(1.0, nil_return_expr(nil()))],
                 nil_return_expr(nil()),
-            )
-            .kind(),
-            ReturnBodyKind::FloatCase { .. },
-        ));
-        assert!(matches!(
+            ),
+            ReturnBody::float_case(
+                float(1.0).into(),
+                vec![(1.0, nil_return_expr(nil()))],
+                nil_return_expr(nil()),
+            ),
+        );
+        assert_eq!(
             float_return_float_case(
                 float(1.0),
                 [(1.0, float_return_expr(float(1.0)))],
                 float_return_expr(float(0.0)),
-            )
-            .kind(),
-            ReturnBodyKind::FloatCase { .. },
-        ));
-        assert!(matches!(
+            ),
+            ReturnBody::float_case(
+                float(1.0).into(),
+                vec![(1.0, float_return_expr(float(1.0)))],
+                float_return_expr(float(0.0)),
+            ),
+        );
+        assert_eq!(
             list_return_float_case(
                 float(1.0),
                 [(
@@ -690,43 +763,51 @@ mod tests {
                     list_return_expr(list([int(1)], crate::plan::ValueType::Int))
                 )],
                 list_return_expr(list([int(0)], crate::plan::ValueType::Int)),
-            )
-            .kind(),
-            ReturnBodyKind::FloatCase { .. },
-        ));
+            ),
+            ReturnBody::float_case(
+                float(1.0).into(),
+                vec![(
+                    1.0,
+                    list_return_expr(list([int(1)], crate::plan::ValueType::Int)),
+                )],
+                list_return_expr(list([int(0)], crate::plan::ValueType::Int)),
+            ),
+        );
     }
 
     #[test]
     fn primitive_return_block_helpers_build_block_shapes() {
         let step = Step::evaluate(int(0).into());
 
-        assert!(matches!(
-            int_return_block([step.clone()], int_return_expr(int(1))).kind(),
-            ReturnBodyKind::Block { .. },
-        ));
-        assert!(matches!(
-            string_return_block([step.clone()], string_return_expr(string("value"))).kind(),
-            ReturnBodyKind::Block { .. },
-        ));
-        assert!(matches!(
-            float_return_block([step.clone()], float_return_expr(float(1.0))).kind(),
-            ReturnBodyKind::Block { .. },
-        ));
-        assert!(matches!(
-            bool_return_block([step.clone()], bool_return_expr(bool_(true))).kind(),
-            ReturnBodyKind::Block { .. },
-        ));
-        assert!(matches!(
-            nil_return_block([step], nil_return_expr(nil())).kind(),
-            ReturnBodyKind::Block { .. },
-        ));
-        assert!(matches!(
+        assert_eq!(
+            int_return_block([step.clone()], int_return_expr(int(1))),
+            ReturnBody::block(vec![step.clone()], int_return_expr(int(1))),
+        );
+        assert_eq!(
+            string_return_block([step.clone()], string_return_expr(string("value"))),
+            ReturnBody::block(vec![step.clone()], string_return_expr(string("value"))),
+        );
+        assert_eq!(
+            float_return_block([step.clone()], float_return_expr(float(1.0))),
+            ReturnBody::block(vec![step.clone()], float_return_expr(float(1.0))),
+        );
+        assert_eq!(
+            bool_return_block([step.clone()], bool_return_expr(bool_(true))),
+            ReturnBody::block(vec![step.clone()], bool_return_expr(bool_(true))),
+        );
+        assert_eq!(
+            nil_return_block([step.clone()], nil_return_expr(nil())),
+            ReturnBody::block(vec![step], nil_return_expr(nil())),
+        );
+        assert_eq!(
             list_return_block(
                 Vec::<Step>::new(),
                 list_return_expr(list([int(1)], crate::plan::ValueType::Int)),
-            )
-            .kind(),
-            ReturnBodyKind::Block { .. },
-        ));
+            ),
+            ReturnBody::block(
+                Vec::new(),
+                list_return_expr(list([int(1)], crate::plan::ValueType::Int)),
+            ),
+        );
     }
 }

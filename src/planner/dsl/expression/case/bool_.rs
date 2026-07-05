@@ -127,10 +127,9 @@ mod tests {
         bool_case_nil_function, bool_case_string, bool_case_string_function,
     };
     use crate::plan::{
-        BoolExprKind, BoolFunctionExprKind, FloatExprKind, FloatFunctionExprKind,
-        FunctionFunctionId, FunctionType, IntExprKind, IntFunctionExprKind, IntFunctionFunctionId,
-        NilExprKind, NilFunctionExprKind, ParamLocal, StringExprKind, StringFunctionExprKind,
-        ValueType,
+        BoolExpr, BoolFunctionExpr, FloatExpr, FloatFunctionExpr, FunctionFunctionExpr,
+        FunctionFunctionId, FunctionType, IntExpr, IntFunctionExpr, IntFunctionFunctionId, NilExpr,
+        NilFunctionExpr, ParamLocal, StringExpr, StringFunctionExpr, ValueType,
     };
     use crate::planner::dsl::expression::{
         bool_, bool_function_ref, float, float_function_ref, function_function_ref, int,
@@ -139,82 +138,91 @@ mod tests {
 
     #[test]
     fn bool_case_helpers_build_result_family_shapes() {
-        assert!(matches!(
-            bool_case_int(bool_(true), int(1), int(0)).0.kind(),
-            IntExprKind::BoolCase { .. },
-        ));
-        assert!(matches!(
-            bool_case_string(bool_(true), string("a"), string("b"))
-                .0
-                .kind(),
-            StringExprKind::BoolCase { .. },
-        ));
-        assert!(matches!(
-            bool_case_float(bool_(true), float(1.0), float(0.0))
-                .0
-                .kind(),
-            FloatExprKind::BoolCase { .. },
-        ));
-        assert!(matches!(
-            bool_case_bool(bool_(true), bool_(true), bool_(false))
-                .0
-                .kind(),
-            BoolExprKind::BoolCase { .. },
-        ));
-        assert!(matches!(
-            bool_case_nil(bool_(true), nil(), nil()).0.kind(),
-            NilExprKind::BoolCase { .. },
-        ));
-        assert!(matches!(
+        assert_eq!(
+            bool_case_int(bool_(true), int(1), int(0)).0,
+            IntExpr::bool_case(bool_(true).into(), int(1).into(), int(0).into()),
+        );
+        assert_eq!(
+            bool_case_string(bool_(true), string("a"), string("b")).0,
+            StringExpr::bool_case(bool_(true).into(), string("a").into(), string("b").into()),
+        );
+        assert_eq!(
+            bool_case_float(bool_(true), float(1.0), float(0.0)).0,
+            FloatExpr::bool_case(bool_(true).into(), float(1.0).into(), float(0.0).into()),
+        );
+        assert_eq!(
+            bool_case_bool(bool_(true), bool_(true), bool_(false)).0,
+            BoolExpr::bool_case(bool_(true).into(), bool_(true).into(), bool_(false).into()),
+        );
+        assert_eq!(
+            bool_case_nil(bool_(true), nil(), nil()).0,
+            NilExpr::bool_case(bool_(true).into(), nil().into(), nil().into()),
+        );
+        assert_eq!(
             bool_case_int_function(
                 bool_(true),
                 int_function_ref(0, Vec::<ParamLocal>::new()),
                 int_function_ref(1, Vec::<ParamLocal>::new()),
             )
-            .0
-            .kind(),
-            IntFunctionExprKind::BoolCase { .. },
-        ));
-        assert!(matches!(
+            .0,
+            IntFunctionExpr::bool_case(
+                bool_(true).into(),
+                int_function_ref(0, Vec::<ParamLocal>::new()).into(),
+                int_function_ref(1, Vec::<ParamLocal>::new()).into(),
+            ),
+        );
+        assert_eq!(
             bool_case_string_function(
                 bool_(true),
                 string_function_ref(0, Vec::<ParamLocal>::new()),
                 string_function_ref(1, Vec::<ParamLocal>::new()),
             )
-            .0
-            .kind(),
-            StringFunctionExprKind::BoolCase { .. },
-        ));
-        assert!(matches!(
+            .0,
+            StringFunctionExpr::bool_case(
+                bool_(true).into(),
+                string_function_ref(0, Vec::<ParamLocal>::new()).into(),
+                string_function_ref(1, Vec::<ParamLocal>::new()).into(),
+            ),
+        );
+        assert_eq!(
             bool_case_float_function(
                 bool_(true),
                 float_function_ref(0, Vec::<ParamLocal>::new()),
                 float_function_ref(1, Vec::<ParamLocal>::new()),
             )
-            .0
-            .kind(),
-            FloatFunctionExprKind::BoolCase { .. },
-        ));
-        assert!(matches!(
+            .0,
+            FloatFunctionExpr::bool_case(
+                bool_(true).into(),
+                float_function_ref(0, Vec::<ParamLocal>::new()).into(),
+                float_function_ref(1, Vec::<ParamLocal>::new()).into(),
+            ),
+        );
+        assert_eq!(
             bool_case_bool_function(
                 bool_(true),
                 bool_function_ref(0, Vec::<ParamLocal>::new()),
                 bool_function_ref(1, Vec::<ParamLocal>::new()),
             )
-            .0
-            .kind(),
-            BoolFunctionExprKind::BoolCase { .. },
-        ));
-        assert!(matches!(
+            .0,
+            BoolFunctionExpr::bool_case(
+                bool_(true).into(),
+                bool_function_ref(0, Vec::<ParamLocal>::new()).into(),
+                bool_function_ref(1, Vec::<ParamLocal>::new()).into(),
+            ),
+        );
+        assert_eq!(
             bool_case_nil_function(
                 bool_(true),
                 nil_function_ref(0, Vec::<ParamLocal>::new()),
                 nil_function_ref(1, Vec::<ParamLocal>::new()),
             )
-            .0
-            .kind(),
-            NilFunctionExprKind::BoolCase { .. },
-        ));
+            .0,
+            NilFunctionExpr::bool_case(
+                bool_(true).into(),
+                nil_function_ref(0, Vec::<ParamLocal>::new()).into(),
+                nil_function_ref(1, Vec::<ParamLocal>::new()).into(),
+            ),
+        );
         assert_eq!(
             bool_case_function_function(
                 bool_(true),
@@ -229,14 +237,21 @@ mod tests {
                     FunctionType::new(vec![ValueType::Int], ValueType::Int),
                 ),
             )
-            .0
-            .type_(),
-            &FunctionType::new(
-                Vec::new(),
-                ValueType::Function(Box::new(FunctionType::new(
-                    vec![ValueType::Int],
-                    ValueType::Int,
-                ))),
+            .0,
+            FunctionFunctionExpr::bool_case(
+                bool_(true).into(),
+                function_function_ref(
+                    FunctionFunctionId::Int(IntFunctionFunctionId(0)),
+                    Vec::<ParamLocal>::new(),
+                    FunctionType::new(vec![ValueType::Int], ValueType::Int),
+                )
+                .into(),
+                function_function_ref(
+                    FunctionFunctionId::Int(IntFunctionFunctionId(1)),
+                    Vec::<ParamLocal>::new(),
+                    FunctionType::new(vec![ValueType::Int], ValueType::Int),
+                )
+                .into(),
             ),
         );
     }

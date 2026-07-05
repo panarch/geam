@@ -181,94 +181,138 @@ mod tests {
         int_case_nil_function, int_case_string, int_case_string_function,
     };
     use crate::plan::{
-        BoolExprKind, BoolFunctionExprKind, FloatExprKind, FloatFunctionExprKind,
-        FunctionFunctionId, FunctionType, IntExprKind, IntFunctionExprKind, IntFunctionFunctionId,
-        NilExprKind, NilFunctionExprKind, ParamLocal, StringExprKind, StringFunctionExprKind,
-        ValueType,
+        BoolExpr, BoolFunctionExpr, FloatExpr, FloatFunctionExpr, FunctionFunctionExpr,
+        FunctionFunctionId, FunctionType, IntExpr, IntFunctionExpr, IntFunctionFunctionId, NilExpr,
+        NilFunctionExpr, ParamLocal, StringExpr, StringFunctionExpr, ValueType,
     };
     use crate::planner::dsl::expression::{
         bool_, bool_function_ref, float, float_function_ref, function_function_ref, int,
         int_function_ref, nil, nil_function_ref, string, string_function_ref,
     };
+    use num_bigint::BigInt;
 
     #[test]
     fn int_case_helpers_build_result_family_shapes() {
-        assert!(matches!(
-            int_case_int(int(1), [(1, int(10))], int(0)).0.kind(),
-            IntExprKind::IntCase { .. },
-        ));
-        assert!(matches!(
-            int_case_string(int(1), [(1, string("one"))], string("other"))
-                .0
-                .kind(),
-            StringExprKind::IntCase { .. },
-        ));
-        assert!(matches!(
-            int_case_float(int(1), [(1, float(1.0))], float(0.0))
-                .0
-                .kind(),
-            FloatExprKind::IntCase { .. },
-        ));
-        assert!(matches!(
-            int_case_bool(int(1), [(1, bool_(true))], bool_(false))
-                .0
-                .kind(),
-            BoolExprKind::IntCase { .. },
-        ));
-        assert!(matches!(
-            int_case_nil(int(1), [(1, nil())], nil()).0.kind(),
-            NilExprKind::IntCase { .. },
-        ));
-        assert!(matches!(
+        assert_eq!(
+            int_case_int(int(1), [(1, int(10))], int(0)).0,
+            IntExpr::int_case(
+                int(1).into(),
+                vec![(BigInt::from(1), int(10).into())],
+                int(0).into(),
+            ),
+        );
+        assert_eq!(
+            int_case_string(int(1), [(1, string("one"))], string("other")).0,
+            StringExpr::int_case(
+                int(1).into(),
+                vec![(BigInt::from(1), string("one").into())],
+                string("other").into(),
+            ),
+        );
+        assert_eq!(
+            int_case_float(int(1), [(1, float(1.0))], float(0.0)).0,
+            FloatExpr::int_case(
+                int(1).into(),
+                vec![(BigInt::from(1), float(1.0).into())],
+                float(0.0).into(),
+            ),
+        );
+        assert_eq!(
+            int_case_bool(int(1), [(1, bool_(true))], bool_(false)).0,
+            BoolExpr::int_case(
+                int(1).into(),
+                vec![(BigInt::from(1), bool_(true).into())],
+                bool_(false).into(),
+            ),
+        );
+        assert_eq!(
+            int_case_nil(int(1), [(1, nil())], nil()).0,
+            NilExpr::int_case(
+                int(1).into(),
+                vec![(BigInt::from(1), nil().into())],
+                nil().into(),
+            ),
+        );
+        assert_eq!(
             int_case_int_function(
                 int(1),
                 [(1, int_function_ref(0, Vec::<ParamLocal>::new()))],
                 int_function_ref(1, Vec::<ParamLocal>::new()),
             )
-            .0
-            .kind(),
-            IntFunctionExprKind::IntCase { .. },
-        ));
-        assert!(matches!(
+            .0,
+            IntFunctionExpr::int_case(
+                int(1).into(),
+                vec![(
+                    BigInt::from(1),
+                    int_function_ref(0, Vec::<ParamLocal>::new()).into()
+                )],
+                int_function_ref(1, Vec::<ParamLocal>::new()).into(),
+            ),
+        );
+        assert_eq!(
             int_case_string_function(
                 int(1),
                 [(1, string_function_ref(0, Vec::<ParamLocal>::new()))],
                 string_function_ref(1, Vec::<ParamLocal>::new()),
             )
-            .0
-            .kind(),
-            StringFunctionExprKind::IntCase { .. },
-        ));
-        assert!(matches!(
+            .0,
+            StringFunctionExpr::int_case(
+                int(1).into(),
+                vec![(
+                    BigInt::from(1),
+                    string_function_ref(0, Vec::<ParamLocal>::new()).into(),
+                )],
+                string_function_ref(1, Vec::<ParamLocal>::new()).into(),
+            ),
+        );
+        assert_eq!(
             int_case_float_function(
                 int(1),
                 [(1, float_function_ref(0, Vec::<ParamLocal>::new()))],
                 float_function_ref(1, Vec::<ParamLocal>::new()),
             )
-            .0
-            .kind(),
-            FloatFunctionExprKind::IntCase { .. },
-        ));
-        assert!(matches!(
+            .0,
+            FloatFunctionExpr::int_case(
+                int(1).into(),
+                vec![(
+                    BigInt::from(1),
+                    float_function_ref(0, Vec::<ParamLocal>::new()).into(),
+                )],
+                float_function_ref(1, Vec::<ParamLocal>::new()).into(),
+            ),
+        );
+        assert_eq!(
             int_case_bool_function(
                 int(1),
                 [(1, bool_function_ref(0, Vec::<ParamLocal>::new()))],
                 bool_function_ref(1, Vec::<ParamLocal>::new()),
             )
-            .0
-            .kind(),
-            BoolFunctionExprKind::IntCase { .. },
-        ));
-        assert!(matches!(
+            .0,
+            BoolFunctionExpr::int_case(
+                int(1).into(),
+                vec![(
+                    BigInt::from(1),
+                    bool_function_ref(0, Vec::<ParamLocal>::new()).into()
+                )],
+                bool_function_ref(1, Vec::<ParamLocal>::new()).into(),
+            ),
+        );
+        assert_eq!(
             int_case_nil_function(
                 int(1),
                 [(1, nil_function_ref(0, Vec::<ParamLocal>::new()))],
                 nil_function_ref(1, Vec::<ParamLocal>::new()),
             )
-            .0
-            .kind(),
-            NilFunctionExprKind::IntCase { .. },
-        ));
+            .0,
+            NilFunctionExpr::int_case(
+                int(1).into(),
+                vec![(
+                    BigInt::from(1),
+                    nil_function_ref(0, Vec::<ParamLocal>::new()).into()
+                )],
+                nil_function_ref(1, Vec::<ParamLocal>::new()).into(),
+            ),
+        );
         assert_eq!(
             int_case_function_function(
                 int(1),
@@ -286,14 +330,24 @@ mod tests {
                     FunctionType::new(vec![ValueType::Int], ValueType::Int),
                 ),
             )
-            .0
-            .type_(),
-            &FunctionType::new(
-                Vec::new(),
-                ValueType::Function(Box::new(FunctionType::new(
-                    vec![ValueType::Int],
-                    ValueType::Int,
-                ))),
+            .0,
+            FunctionFunctionExpr::int_case(
+                int(1).into(),
+                vec![(
+                    BigInt::from(1),
+                    function_function_ref(
+                        FunctionFunctionId::Int(IntFunctionFunctionId(0)),
+                        Vec::<ParamLocal>::new(),
+                        FunctionType::new(vec![ValueType::Int], ValueType::Int),
+                    )
+                    .into(),
+                )],
+                function_function_ref(
+                    FunctionFunctionId::Int(IntFunctionFunctionId(1)),
+                    Vec::<ParamLocal>::new(),
+                    FunctionType::new(vec![ValueType::Int], ValueType::Int),
+                )
+                .into(),
             ),
         );
     }

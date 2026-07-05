@@ -55,39 +55,43 @@ mod tests {
         local_bool, local_float, local_int, local_list, local_nil, local_string, local_tuple,
     };
     use crate::plan::{
-        BoolExprKind, FloatExprKind, IntExprKind, ListExprKind, NilExprKind, StringExprKind,
-        TupleExprKind, ValueType,
+        BoolExpr, BoolLocalId, FloatExpr, FloatLocalId, IntExpr, IntLocalId, ListExpr, ListLocalId,
+        NilExpr, NilLocalId, StringExpr, StringLocalId, TupleExpr, TupleLocalId, ValueType,
     };
 
     #[test]
     fn local_helpers_build_local_get_shapes() {
-        assert!(matches!(
-            local_int(0, "x").0.kind(),
-            IntExprKind::LocalGet { .. }
-        ));
-        assert!(matches!(
-            local_string(0, "x").0.kind(),
-            StringExprKind::LocalGet { .. },
-        ));
-        assert!(matches!(
-            local_float(0, "x").0.kind(),
-            FloatExprKind::LocalGet { .. },
-        ));
-        assert!(matches!(
-            local_bool(0, "x").0.kind(),
-            BoolExprKind::LocalGet { .. },
-        ));
-        assert!(matches!(
-            local_nil(0, "x").0.kind(),
-            NilExprKind::LocalGet { .. },
-        ));
-        assert!(matches!(
-            local_tuple(0, "x", [ValueType::Int]).0.kind(),
-            TupleExprKind::LocalGet { .. },
-        ));
-        assert!(matches!(
-            local_list(0, "x", ValueType::Int).0.kind(),
-            ListExprKind::LocalGet { .. },
-        ));
+        assert_eq!(
+            local_int(0, "x").0,
+            IntExpr::local_get(IntLocalId(0), "x".into()),
+        );
+        assert_eq!(
+            local_string(1, "name").0,
+            StringExpr::local_get(StringLocalId(1), "name".into()),
+        );
+        assert_eq!(
+            local_float(2, "ratio").0,
+            FloatExpr::local_get(FloatLocalId(2), "ratio".into()),
+        );
+        assert_eq!(
+            local_bool(3, "ok").0,
+            BoolExpr::local_get(BoolLocalId(3), "ok".into()),
+        );
+        assert_eq!(
+            local_nil(4, "done").0,
+            NilExpr::local_get(NilLocalId(4), "done".into()),
+        );
+        assert_eq!(
+            local_tuple(5, "pair", [ValueType::Int, ValueType::String]).0,
+            TupleExpr::local_get(
+                TupleLocalId(5),
+                "pair".into(),
+                vec![ValueType::Int, ValueType::String],
+            ),
+        );
+        assert_eq!(
+            local_list(6, "values", ValueType::Int).0,
+            ListExpr::local_get(ListLocalId(6), "values".into(), ValueType::Int),
+        );
     }
 }

@@ -13,6 +13,7 @@ use crate::planner::context::FunctionRuntimeIds;
 pub(crate) use function::*;
 pub(crate) use primitive::*;
 
+#[derive(Debug, PartialEq)]
 pub(crate) enum FunctionReturn {
     Int(IntReturn),
     String(StringReturn),
@@ -111,142 +112,161 @@ mod tests {
     use crate::plan::{
         BoolFunctionFunctionId, BoolFunctionId, Expr, FloatFunctionFunctionId, FloatFunctionId,
         FunctionFunctionFunctionId, FunctionFunctionId, FunctionType, IntFunctionFunctionId,
-        IntFunctionId, NilFunctionFunctionId, NilFunctionId, ParamLocal, ReturnExprKind,
-        StringFunctionFunctionId, StringFunctionId, TupleFunctionFunctionId, TupleFunctionId,
-        ValueType,
+        IntFunctionId, ListFunctionFunctionId, ListFunctionId, NilFunctionFunctionId,
+        NilFunctionId, ParamLocal, ReturnBody, ReturnExpr, StringFunctionFunctionId,
+        StringFunctionId, TupleFunctionFunctionId, TupleFunctionId, ValueType,
     };
     use crate::planner::context::FunctionRuntimeIds;
     use crate::planner::dsl::expression::{
         bool_, bool_function_ref, float, float_function_ref, function_function_ref, int,
-        int_function_ref, nil, nil_function_ref, string, string_function_ref, tuple,
-        tuple_function_ref,
+        int_function_ref, list, list_function_ref, nil, nil_function_ref, string,
+        string_function_ref, tuple, tuple_function_ref,
     };
 
     #[test]
     fn function_return_build_allocates_runtime_ids_by_return_family() {
         let mut runtime_ids = FunctionRuntimeIds::default();
 
-        assert!(matches!(
-            FunctionReturn::from(int(1)).build(&mut runtime_ids).kind(),
-            ReturnExprKind::Int {
-                runtime_id: IntFunctionId(0),
-                ..
-            },
-        ));
-        assert!(matches!(
-            FunctionReturn::from(string("value"))
-                .build(&mut runtime_ids)
-                .kind(),
-            ReturnExprKind::String {
-                runtime_id: StringFunctionId(0),
-                ..
-            },
-        ));
-        assert!(matches!(
-            FunctionReturn::from(float(1.5))
-                .build(&mut runtime_ids)
-                .kind(),
-            ReturnExprKind::Float {
-                runtime_id: FloatFunctionId(0),
-                ..
-            },
-        ));
-        assert!(matches!(
-            FunctionReturn::from(bool_(true))
-                .build(&mut runtime_ids)
-                .kind(),
-            ReturnExprKind::Bool {
-                runtime_id: BoolFunctionId(0),
-                ..
-            },
-        ));
-        assert!(matches!(
-            FunctionReturn::from(nil()).build(&mut runtime_ids).kind(),
-            ReturnExprKind::Nil {
-                runtime_id: NilFunctionId(0),
-                ..
-            },
-        ));
-        assert!(matches!(
-            FunctionReturn::from(tuple([Expr::from(int(1))]))
-                .build(&mut runtime_ids)
-                .kind(),
-            ReturnExprKind::Tuple {
-                runtime_id: TupleFunctionId(0),
-                ..
-            },
-        ));
+        assert_eq!(
+            FunctionReturn::from(int(1)).build(&mut runtime_ids),
+            ReturnExpr::int_body(IntFunctionId(0), ReturnBody::expr(int(1).into())),
+        );
+        assert_eq!(
+            FunctionReturn::from(string("value")).build(&mut runtime_ids),
+            ReturnExpr::string_body(
+                StringFunctionId(0),
+                ReturnBody::expr(string("value").into()),
+            ),
+        );
+        assert_eq!(
+            FunctionReturn::from(float(1.5)).build(&mut runtime_ids),
+            ReturnExpr::float_body(FloatFunctionId(0), ReturnBody::expr(float(1.5).into())),
+        );
+        assert_eq!(
+            FunctionReturn::from(bool_(true)).build(&mut runtime_ids),
+            ReturnExpr::bool_body(BoolFunctionId(0), ReturnBody::expr(bool_(true).into())),
+        );
+        assert_eq!(
+            FunctionReturn::from(nil()).build(&mut runtime_ids),
+            ReturnExpr::nil_body(NilFunctionId(0), ReturnBody::expr(nil().into())),
+        );
+        assert_eq!(
+            FunctionReturn::from(tuple([Expr::from(int(1))])).build(&mut runtime_ids),
+            ReturnExpr::tuple_body(
+                TupleFunctionId(0),
+                vec![ValueType::Int],
+                ReturnBody::expr(tuple([Expr::from(int(1))]).into()),
+            ),
+        );
+        assert_eq!(
+            FunctionReturn::from(list([int(1)], ValueType::Int)).build(&mut runtime_ids),
+            ReturnExpr::list_body(
+                ListFunctionId(0),
+                ValueType::Int,
+                ReturnBody::expr(list([int(1)], ValueType::Int).into()),
+            ),
+        );
 
-        assert!(matches!(
+        assert_eq!(
             FunctionReturn::from(int_function_ref(0, Vec::<ParamLocal>::new()))
-                .build(&mut runtime_ids)
-                .kind(),
-            ReturnExprKind::IntFunction {
-                runtime_id: IntFunctionFunctionId(0),
-                ..
-            },
-        ));
-        assert!(matches!(
+                .build(&mut runtime_ids),
+            ReturnExpr::int_function_body(
+                IntFunctionFunctionId(0),
+                FunctionType::new(Vec::new(), ValueType::Int),
+                ReturnBody::expr(int_function_ref(0, Vec::<ParamLocal>::new()).into()),
+            ),
+        );
+        assert_eq!(
             FunctionReturn::from(string_function_ref(0, Vec::<ParamLocal>::new()))
-                .build(&mut runtime_ids)
-                .kind(),
-            ReturnExprKind::StringFunction {
-                runtime_id: StringFunctionFunctionId(0),
-                ..
-            },
-        ));
-        assert!(matches!(
+                .build(&mut runtime_ids),
+            ReturnExpr::string_function_body(
+                StringFunctionFunctionId(0),
+                FunctionType::new(Vec::new(), ValueType::String),
+                ReturnBody::expr(string_function_ref(0, Vec::<ParamLocal>::new()).into()),
+            ),
+        );
+        assert_eq!(
             FunctionReturn::from(float_function_ref(0, Vec::<ParamLocal>::new()))
-                .build(&mut runtime_ids)
-                .kind(),
-            ReturnExprKind::FloatFunction {
-                runtime_id: FloatFunctionFunctionId(0),
-                ..
-            },
-        ));
-        assert!(matches!(
+                .build(&mut runtime_ids),
+            ReturnExpr::float_function_body(
+                FloatFunctionFunctionId(0),
+                FunctionType::new(Vec::new(), ValueType::Float),
+                ReturnBody::expr(float_function_ref(0, Vec::<ParamLocal>::new()).into()),
+            ),
+        );
+        assert_eq!(
             FunctionReturn::from(bool_function_ref(0, Vec::<ParamLocal>::new()))
-                .build(&mut runtime_ids)
-                .kind(),
-            ReturnExprKind::BoolFunction {
-                runtime_id: BoolFunctionFunctionId(0),
-                ..
-            },
-        ));
-        assert!(matches!(
+                .build(&mut runtime_ids),
+            ReturnExpr::bool_function_body(
+                BoolFunctionFunctionId(0),
+                FunctionType::new(Vec::new(), ValueType::Bool),
+                ReturnBody::expr(bool_function_ref(0, Vec::<ParamLocal>::new()).into()),
+            ),
+        );
+        assert_eq!(
             FunctionReturn::from(nil_function_ref(0, Vec::<ParamLocal>::new()))
-                .build(&mut runtime_ids)
-                .kind(),
-            ReturnExprKind::NilFunction {
-                runtime_id: NilFunctionFunctionId(0),
-                ..
-            },
-        ));
-        assert!(matches!(
+                .build(&mut runtime_ids),
+            ReturnExpr::nil_function_body(
+                NilFunctionFunctionId(0),
+                FunctionType::new(Vec::new(), ValueType::Nil),
+                ReturnBody::expr(nil_function_ref(0, Vec::<ParamLocal>::new()).into()),
+            ),
+        );
+        assert_eq!(
             FunctionReturn::from(tuple_function_ref(
                 0,
                 Vec::<ParamLocal>::new(),
                 [ValueType::Int],
             ))
-            .build(&mut runtime_ids)
-            .kind(),
-            ReturnExprKind::TupleFunction {
-                runtime_id: TupleFunctionFunctionId(0),
-                ..
-            },
-        ));
-        assert!(matches!(
+            .build(&mut runtime_ids),
+            ReturnExpr::tuple_function_body(
+                TupleFunctionFunctionId(0),
+                FunctionType::new(Vec::new(), ValueType::Tuple(vec![ValueType::Int])),
+                ReturnBody::expr(
+                    tuple_function_ref(0, Vec::<ParamLocal>::new(), [ValueType::Int]).into(),
+                ),
+            ),
+        );
+        assert_eq!(
+            FunctionReturn::from(list_function_ref(
+                0,
+                Vec::<ParamLocal>::new(),
+                ValueType::Int
+            ))
+            .build(&mut runtime_ids),
+            ReturnExpr::list_function_body(
+                ListFunctionFunctionId(0),
+                FunctionType::new(Vec::new(), ValueType::List(Box::new(ValueType::Int))),
+                ReturnBody::expr(
+                    list_function_ref(0, Vec::<ParamLocal>::new(), ValueType::Int).into(),
+                ),
+            ),
+        );
+        assert_eq!(
             FunctionReturn::from(function_function_ref(
                 FunctionFunctionId::Int(IntFunctionFunctionId(1)),
                 Vec::<ParamLocal>::new(),
                 FunctionType::new(vec![ValueType::Int], ValueType::Int),
             ))
-            .build(&mut runtime_ids)
-            .kind(),
-            ReturnExprKind::FunctionFunction {
-                runtime_id: FunctionFunctionFunctionId(0),
-                ..
-            },
-        ));
+            .build(&mut runtime_ids),
+            ReturnExpr::function_function_body(
+                FunctionFunctionFunctionId(0),
+                FunctionType::new(
+                    Vec::new(),
+                    ValueType::Function(Box::new(FunctionType::new(
+                        vec![ValueType::Int],
+                        ValueType::Int,
+                    ))),
+                ),
+                ReturnBody::expr(
+                    function_function_ref(
+                        FunctionFunctionId::Int(IntFunctionFunctionId(1)),
+                        Vec::<ParamLocal>::new(),
+                        FunctionType::new(vec![ValueType::Int], ValueType::Int),
+                    )
+                    .into(),
+                ),
+            ),
+        );
     }
 }

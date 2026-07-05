@@ -338,109 +338,129 @@ mod tests {
         string_function_return_string_case, string_function_return_tail_call,
     };
     use crate::plan::{
-        CallArg, FunctionFunctionFunctionId, FunctionFunctionId, FunctionType,
-        IntFunctionFunctionId, ParamLocal, ReturnBodyKind, Step, ValueType,
+        BoolFunctionFunctionId, CallArg, FunctionFunctionFunctionId, FunctionFunctionId,
+        FunctionType, IntFunctionFunctionId, NilFunctionFunctionId, ParamLocal, ReturnBody, Step,
+        StringFunctionFunctionId, ValueType,
     };
     use crate::planner::dsl::expression::{
         bool_, bool_function_ref, function_function_ref, int, int_function_ref, nil_function_ref,
         string, string_function_ref,
     };
+    use num_bigint::BigInt;
 
     #[test]
     fn function_return_expr_helpers_build_return_body_shapes() {
         let returned_function_type = FunctionType::new(vec![ValueType::Int], ValueType::Int);
 
-        assert!(matches!(
-            int_function_return_expr(int_function_ref(0, Vec::<ParamLocal>::new())).kind(),
-            ReturnBodyKind::Expr(_),
-        ));
-        assert!(matches!(
-            string_function_return_expr(string_function_ref(0, Vec::<ParamLocal>::new())).kind(),
-            ReturnBodyKind::Expr(_),
-        ));
-        assert!(matches!(
-            bool_function_return_expr(bool_function_ref(0, Vec::<ParamLocal>::new())).kind(),
-            ReturnBodyKind::Expr(_),
-        ));
-        assert!(matches!(
-            nil_function_return_expr(nil_function_ref(0, Vec::<ParamLocal>::new())).kind(),
-            ReturnBodyKind::Expr(_),
-        ));
-        assert!(matches!(
+        assert_eq!(
+            int_function_return_expr(int_function_ref(0, Vec::<ParamLocal>::new())),
+            ReturnBody::expr(int_function_ref(0, Vec::<ParamLocal>::new()).into()),
+        );
+        assert_eq!(
+            string_function_return_expr(string_function_ref(0, Vec::<ParamLocal>::new())),
+            ReturnBody::expr(string_function_ref(0, Vec::<ParamLocal>::new()).into()),
+        );
+        assert_eq!(
+            bool_function_return_expr(bool_function_ref(0, Vec::<ParamLocal>::new())),
+            ReturnBody::expr(bool_function_ref(0, Vec::<ParamLocal>::new()).into()),
+        );
+        assert_eq!(
+            nil_function_return_expr(nil_function_ref(0, Vec::<ParamLocal>::new())),
+            ReturnBody::expr(nil_function_ref(0, Vec::<ParamLocal>::new()).into()),
+        );
+        assert_eq!(
             function_function_return_expr(function_function_ref(
                 FunctionFunctionId::Int(IntFunctionFunctionId(0)),
                 Vec::<ParamLocal>::new(),
                 returned_function_type,
-            ))
-            .kind(),
-            ReturnBodyKind::Expr(_),
-        ));
+            )),
+            ReturnBody::expr(
+                function_function_ref(
+                    FunctionFunctionId::Int(IntFunctionFunctionId(0)),
+                    Vec::<ParamLocal>::new(),
+                    FunctionType::new(vec![ValueType::Int], ValueType::Int),
+                )
+                .into(),
+            ),
+        );
     }
 
     #[test]
     fn function_return_tail_call_helpers_build_return_body_shapes() {
-        assert!(matches!(
-            int_function_return_tail_call(0, Vec::<CallArg>::new()).kind(),
-            ReturnBodyKind::TailCall { .. },
-        ));
-        assert!(matches!(
-            string_function_return_tail_call(0, Vec::<CallArg>::new()).kind(),
-            ReturnBodyKind::TailCall { .. },
-        ));
-        assert!(matches!(
-            bool_function_return_tail_call(0, Vec::<CallArg>::new()).kind(),
-            ReturnBodyKind::TailCall { .. },
-        ));
-        assert!(matches!(
-            nil_function_return_tail_call(0, Vec::<CallArg>::new()).kind(),
-            ReturnBodyKind::TailCall { .. },
-        ));
-        assert!(matches!(
-            function_function_return_tail_call(0, Vec::<CallArg>::new()).kind(),
-            ReturnBodyKind::TailCall { .. },
-        ));
+        assert_eq!(
+            int_function_return_tail_call(0, Vec::<CallArg>::new()),
+            ReturnBody::tail_call(IntFunctionFunctionId(0), Vec::new()),
+        );
+        assert_eq!(
+            string_function_return_tail_call(1, Vec::<CallArg>::new()),
+            ReturnBody::tail_call(StringFunctionFunctionId(1), Vec::new()),
+        );
+        assert_eq!(
+            bool_function_return_tail_call(2, Vec::<CallArg>::new()),
+            ReturnBody::tail_call(BoolFunctionFunctionId(2), Vec::new()),
+        );
+        assert_eq!(
+            nil_function_return_tail_call(3, Vec::<CallArg>::new()),
+            ReturnBody::tail_call(NilFunctionFunctionId(3), Vec::new()),
+        );
+        assert_eq!(
+            function_function_return_tail_call(4, Vec::<CallArg>::new()),
+            ReturnBody::tail_call(FunctionFunctionFunctionId(4), Vec::new()),
+        );
     }
 
     #[test]
     fn function_return_case_helpers_build_return_body_shapes() {
-        assert!(matches!(
+        assert_eq!(
             int_function_return_bool_case(
                 bool_(true),
                 int_function_return_expr(int_function_ref(0, Vec::<ParamLocal>::new())),
                 int_function_return_expr(int_function_ref(1, Vec::<ParamLocal>::new())),
-            )
-            .kind(),
-            ReturnBodyKind::BoolCase { .. },
-        ));
-        assert!(matches!(
+            ),
+            ReturnBody::bool_case(
+                bool_(true).into(),
+                int_function_return_expr(int_function_ref(0, Vec::<ParamLocal>::new())),
+                int_function_return_expr(int_function_ref(1, Vec::<ParamLocal>::new())),
+            ),
+        );
+        assert_eq!(
             string_function_return_bool_case(
                 bool_(true),
                 string_function_return_expr(string_function_ref(0, Vec::<ParamLocal>::new())),
                 string_function_return_expr(string_function_ref(1, Vec::<ParamLocal>::new())),
-            )
-            .kind(),
-            ReturnBodyKind::BoolCase { .. },
-        ));
-        assert!(matches!(
+            ),
+            ReturnBody::bool_case(
+                bool_(true).into(),
+                string_function_return_expr(string_function_ref(0, Vec::<ParamLocal>::new())),
+                string_function_return_expr(string_function_ref(1, Vec::<ParamLocal>::new())),
+            ),
+        );
+        assert_eq!(
             bool_function_return_bool_case(
                 bool_(true),
                 bool_function_return_expr(bool_function_ref(0, Vec::<ParamLocal>::new())),
                 bool_function_return_expr(bool_function_ref(1, Vec::<ParamLocal>::new())),
-            )
-            .kind(),
-            ReturnBodyKind::BoolCase { .. },
-        ));
-        assert!(matches!(
+            ),
+            ReturnBody::bool_case(
+                bool_(true).into(),
+                bool_function_return_expr(bool_function_ref(0, Vec::<ParamLocal>::new())),
+                bool_function_return_expr(bool_function_ref(1, Vec::<ParamLocal>::new())),
+            ),
+        );
+        assert_eq!(
             nil_function_return_bool_case(
                 bool_(true),
                 nil_function_return_expr(nil_function_ref(0, Vec::<ParamLocal>::new())),
                 nil_function_return_expr(nil_function_ref(1, Vec::<ParamLocal>::new())),
-            )
-            .kind(),
-            ReturnBodyKind::BoolCase { .. },
-        ));
+            ),
+            ReturnBody::bool_case(
+                bool_(true).into(),
+                nil_function_return_expr(nil_function_ref(0, Vec::<ParamLocal>::new())),
+                nil_function_return_expr(nil_function_ref(1, Vec::<ParamLocal>::new())),
+            ),
+        );
 
-        assert!(matches!(
+        assert_eq!(
             int_function_return_int_case(
                 int(1),
                 [(
@@ -448,11 +468,17 @@ mod tests {
                     int_function_return_expr(int_function_ref(0, Vec::<ParamLocal>::new())),
                 )],
                 int_function_return_expr(int_function_ref(1, Vec::<ParamLocal>::new())),
-            )
-            .kind(),
-            ReturnBodyKind::IntCase { .. },
-        ));
-        assert!(matches!(
+            ),
+            ReturnBody::int_case(
+                int(1).into(),
+                vec![(
+                    BigInt::from(1),
+                    int_function_return_expr(int_function_ref(0, Vec::<ParamLocal>::new())),
+                )],
+                int_function_return_expr(int_function_ref(1, Vec::<ParamLocal>::new())),
+            ),
+        );
+        assert_eq!(
             string_function_return_int_case(
                 int(1),
                 [(
@@ -460,11 +486,17 @@ mod tests {
                     string_function_return_expr(string_function_ref(0, Vec::<ParamLocal>::new())),
                 )],
                 string_function_return_expr(string_function_ref(1, Vec::<ParamLocal>::new())),
-            )
-            .kind(),
-            ReturnBodyKind::IntCase { .. },
-        ));
-        assert!(matches!(
+            ),
+            ReturnBody::int_case(
+                int(1).into(),
+                vec![(
+                    BigInt::from(1),
+                    string_function_return_expr(string_function_ref(0, Vec::<ParamLocal>::new())),
+                )],
+                string_function_return_expr(string_function_ref(1, Vec::<ParamLocal>::new())),
+            ),
+        );
+        assert_eq!(
             bool_function_return_int_case(
                 int(1),
                 [(
@@ -472,11 +504,17 @@ mod tests {
                     bool_function_return_expr(bool_function_ref(0, Vec::<ParamLocal>::new())),
                 )],
                 bool_function_return_expr(bool_function_ref(1, Vec::<ParamLocal>::new())),
-            )
-            .kind(),
-            ReturnBodyKind::IntCase { .. },
-        ));
-        assert!(matches!(
+            ),
+            ReturnBody::int_case(
+                int(1).into(),
+                vec![(
+                    BigInt::from(1),
+                    bool_function_return_expr(bool_function_ref(0, Vec::<ParamLocal>::new())),
+                )],
+                bool_function_return_expr(bool_function_ref(1, Vec::<ParamLocal>::new())),
+            ),
+        );
+        assert_eq!(
             nil_function_return_int_case(
                 int(1),
                 [(
@@ -484,11 +522,17 @@ mod tests {
                     nil_function_return_expr(nil_function_ref(0, Vec::<ParamLocal>::new())),
                 )],
                 nil_function_return_expr(nil_function_ref(1, Vec::<ParamLocal>::new())),
-            )
-            .kind(),
-            ReturnBodyKind::IntCase { .. },
-        ));
-        assert!(matches!(
+            ),
+            ReturnBody::int_case(
+                int(1).into(),
+                vec![(
+                    BigInt::from(1),
+                    nil_function_return_expr(nil_function_ref(0, Vec::<ParamLocal>::new())),
+                )],
+                nil_function_return_expr(nil_function_ref(1, Vec::<ParamLocal>::new())),
+            ),
+        );
+        assert_eq!(
             function_function_return_int_case(
                 int(1),
                 [(
@@ -504,12 +548,26 @@ mod tests {
                     Vec::<ParamLocal>::new(),
                     FunctionType::new(vec![ValueType::Int], ValueType::Int),
                 )),
-            )
-            .kind(),
-            ReturnBodyKind::IntCase { .. },
-        ));
+            ),
+            ReturnBody::int_case(
+                int(1).into(),
+                vec![(
+                    BigInt::from(1),
+                    function_function_return_expr(function_function_ref(
+                        FunctionFunctionId::Int(IntFunctionFunctionId(0)),
+                        Vec::<ParamLocal>::new(),
+                        FunctionType::new(vec![ValueType::Int], ValueType::Int),
+                    )),
+                )],
+                function_function_return_expr(function_function_ref(
+                    FunctionFunctionId::Int(IntFunctionFunctionId(1)),
+                    Vec::<ParamLocal>::new(),
+                    FunctionType::new(vec![ValueType::Int], ValueType::Int),
+                )),
+            ),
+        );
 
-        assert!(matches!(
+        assert_eq!(
             int_function_return_string_case(
                 string("key"),
                 [(
@@ -517,11 +575,17 @@ mod tests {
                     int_function_return_expr(int_function_ref(0, Vec::<ParamLocal>::new())),
                 )],
                 int_function_return_expr(int_function_ref(1, Vec::<ParamLocal>::new())),
-            )
-            .kind(),
-            ReturnBodyKind::StringCase { .. },
-        ));
-        assert!(matches!(
+            ),
+            ReturnBody::string_case(
+                string("key").into(),
+                vec![(
+                    "one".into(),
+                    int_function_return_expr(int_function_ref(0, Vec::<ParamLocal>::new())),
+                )],
+                int_function_return_expr(int_function_ref(1, Vec::<ParamLocal>::new())),
+            ),
+        );
+        assert_eq!(
             string_function_return_string_case(
                 string("key"),
                 [(
@@ -529,11 +593,17 @@ mod tests {
                     string_function_return_expr(string_function_ref(0, Vec::<ParamLocal>::new())),
                 )],
                 string_function_return_expr(string_function_ref(1, Vec::<ParamLocal>::new())),
-            )
-            .kind(),
-            ReturnBodyKind::StringCase { .. },
-        ));
-        assert!(matches!(
+            ),
+            ReturnBody::string_case(
+                string("key").into(),
+                vec![(
+                    "one".into(),
+                    string_function_return_expr(string_function_ref(0, Vec::<ParamLocal>::new())),
+                )],
+                string_function_return_expr(string_function_ref(1, Vec::<ParamLocal>::new())),
+            ),
+        );
+        assert_eq!(
             bool_function_return_string_case(
                 string("key"),
                 [(
@@ -541,11 +611,17 @@ mod tests {
                     bool_function_return_expr(bool_function_ref(0, Vec::<ParamLocal>::new())),
                 )],
                 bool_function_return_expr(bool_function_ref(1, Vec::<ParamLocal>::new())),
-            )
-            .kind(),
-            ReturnBodyKind::StringCase { .. },
-        ));
-        assert!(matches!(
+            ),
+            ReturnBody::string_case(
+                string("key").into(),
+                vec![(
+                    "one".into(),
+                    bool_function_return_expr(bool_function_ref(0, Vec::<ParamLocal>::new())),
+                )],
+                bool_function_return_expr(bool_function_ref(1, Vec::<ParamLocal>::new())),
+            ),
+        );
+        assert_eq!(
             nil_function_return_string_case(
                 string("key"),
                 [(
@@ -553,14 +629,20 @@ mod tests {
                     nil_function_return_expr(nil_function_ref(0, Vec::<ParamLocal>::new())),
                 )],
                 nil_function_return_expr(nil_function_ref(1, Vec::<ParamLocal>::new())),
-            )
-            .kind(),
-            ReturnBodyKind::StringCase { .. },
-        ));
+            ),
+            ReturnBody::string_case(
+                string("key").into(),
+                vec![(
+                    "one".into(),
+                    nil_function_return_expr(nil_function_ref(0, Vec::<ParamLocal>::new())),
+                )],
+                nil_function_return_expr(nil_function_ref(1, Vec::<ParamLocal>::new())),
+            ),
+        );
 
         let returned_function_type = FunctionType::new(vec![ValueType::Int], ValueType::Int);
 
-        assert!(matches!(
+        assert_eq!(
             function_function_return_string_case(
                 string("key"),
                 [(
@@ -576,13 +658,30 @@ mod tests {
                     Vec::<ParamLocal>::new(),
                     FunctionType::new(
                         Vec::new(),
+                        ValueType::Function(Box::new(returned_function_type.clone())),
+                    ),
+                )),
+            ),
+            ReturnBody::string_case(
+                string("key").into(),
+                vec![(
+                    "one".into(),
+                    function_function_return_expr(function_function_ref(
+                        FunctionFunctionId::Int(IntFunctionFunctionId(0)),
+                        Vec::<ParamLocal>::new(),
+                        returned_function_type.clone(),
+                    )),
+                )],
+                function_function_return_expr(function_function_ref(
+                    FunctionFunctionId::Function(FunctionFunctionFunctionId(1)),
+                    Vec::<ParamLocal>::new(),
+                    FunctionType::new(
+                        Vec::new(),
                         ValueType::Function(Box::new(returned_function_type)),
                     ),
                 )),
-            )
-            .kind(),
-            ReturnBodyKind::StringCase { .. },
-        ));
+            ),
+        );
     }
 
     #[test]
@@ -590,85 +689,111 @@ mod tests {
         let step = Step::evaluate(int(0).into());
         let returned_function_type = FunctionType::new(vec![ValueType::Int], ValueType::Int);
 
-        assert!(matches!(
+        assert_eq!(
             int_function_return_block(
                 [step.clone()],
                 int_function_return_expr(int_function_ref(0, Vec::<ParamLocal>::new())),
-            )
-            .kind(),
-            ReturnBodyKind::Block { .. },
-        ));
-        assert!(matches!(
+            ),
+            ReturnBody::block(
+                vec![step.clone()],
+                int_function_return_expr(int_function_ref(0, Vec::<ParamLocal>::new())),
+            ),
+        );
+        assert_eq!(
             string_function_return_block(
                 [step.clone()],
                 string_function_return_expr(string_function_ref(0, Vec::<ParamLocal>::new())),
-            )
-            .kind(),
-            ReturnBodyKind::Block { .. },
-        ));
-        assert!(matches!(
+            ),
+            ReturnBody::block(
+                vec![step.clone()],
+                string_function_return_expr(string_function_ref(0, Vec::<ParamLocal>::new())),
+            ),
+        );
+        assert_eq!(
             bool_function_return_block(
                 [step.clone()],
                 bool_function_return_expr(bool_function_ref(0, Vec::<ParamLocal>::new())),
-            )
-            .kind(),
-            ReturnBodyKind::Block { .. },
-        ));
-        assert!(matches!(
+            ),
+            ReturnBody::block(
+                vec![step.clone()],
+                bool_function_return_expr(bool_function_ref(0, Vec::<ParamLocal>::new())),
+            ),
+        );
+        assert_eq!(
             nil_function_return_block(
                 [step.clone()],
                 nil_function_return_expr(nil_function_ref(0, Vec::<ParamLocal>::new())),
-            )
-            .kind(),
-            ReturnBodyKind::Block { .. },
-        ));
-        assert!(matches!(
+            ),
+            ReturnBody::block(
+                vec![step.clone()],
+                nil_function_return_expr(nil_function_ref(0, Vec::<ParamLocal>::new())),
+            ),
+        );
+        assert_eq!(
             function_function_return_block(
                 [step],
                 function_function_return_expr(function_function_ref(
                     FunctionFunctionId::Int(IntFunctionFunctionId(0)),
                     Vec::<ParamLocal>::new(),
-                    returned_function_type,
+                    returned_function_type.clone(),
                 )),
-            )
-            .kind(),
-            ReturnBodyKind::Block { .. },
-        ));
+            ),
+            ReturnBody::block(
+                vec![Step::evaluate(int(0).into())],
+                function_function_return_expr(function_function_ref(
+                    FunctionFunctionId::Int(IntFunctionFunctionId(0)),
+                    Vec::<ParamLocal>::new(),
+                    FunctionType::new(vec![ValueType::Int], ValueType::Int),
+                )),
+            ),
+        );
     }
 
     #[test]
     fn function_return_wrapper_helpers_build_return_families() {
         let returned_function_type = FunctionType::new(vec![ValueType::Int], ValueType::Int);
 
-        assert!(matches!(
+        assert_eq!(
             return_int_function(
                 returned_function_type.clone(),
                 int_function_return_expr(int_function_ref(0, Vec::<ParamLocal>::new())),
             ),
-            super::super::FunctionReturn::IntFunction { .. },
-        ));
-        assert!(matches!(
+            super::super::FunctionReturn::IntFunction {
+                type_: returned_function_type.clone(),
+                body: int_function_return_expr(int_function_ref(0, Vec::<ParamLocal>::new())),
+            },
+        );
+        assert_eq!(
             return_string_function(
                 returned_function_type.clone(),
                 string_function_return_expr(string_function_ref(0, Vec::<ParamLocal>::new())),
             ),
-            super::super::FunctionReturn::StringFunction { .. },
-        ));
-        assert!(matches!(
+            super::super::FunctionReturn::StringFunction {
+                type_: returned_function_type.clone(),
+                body: string_function_return_expr(string_function_ref(0, Vec::<ParamLocal>::new())),
+            },
+        );
+        assert_eq!(
             return_bool_function(
                 returned_function_type.clone(),
                 bool_function_return_expr(bool_function_ref(0, Vec::<ParamLocal>::new())),
             ),
-            super::super::FunctionReturn::BoolFunction { .. },
-        ));
-        assert!(matches!(
+            super::super::FunctionReturn::BoolFunction {
+                type_: returned_function_type.clone(),
+                body: bool_function_return_expr(bool_function_ref(0, Vec::<ParamLocal>::new())),
+            },
+        );
+        assert_eq!(
             return_nil_function(
                 returned_function_type.clone(),
                 nil_function_return_expr(nil_function_ref(0, Vec::<ParamLocal>::new())),
             ),
-            super::super::FunctionReturn::NilFunction { .. },
-        ));
-        assert!(matches!(
+            super::super::FunctionReturn::NilFunction {
+                type_: returned_function_type.clone(),
+                body: nil_function_return_expr(nil_function_ref(0, Vec::<ParamLocal>::new())),
+            },
+        );
+        assert_eq!(
             return_function_function(
                 FunctionType::new(
                     Vec::new(),
@@ -677,10 +802,20 @@ mod tests {
                 function_function_return_expr(function_function_ref(
                     FunctionFunctionId::Function(FunctionFunctionFunctionId(0)),
                     Vec::<ParamLocal>::new(),
-                    returned_function_type,
+                    returned_function_type.clone(),
                 )),
             ),
-            super::super::FunctionReturn::FunctionFunction { .. },
-        ));
+            super::super::FunctionReturn::FunctionFunction {
+                type_: FunctionType::new(
+                    Vec::new(),
+                    ValueType::Function(Box::new(returned_function_type.clone())),
+                ),
+                body: function_function_return_expr(function_function_ref(
+                    FunctionFunctionId::Function(FunctionFunctionFunctionId(0)),
+                    Vec::<ParamLocal>::new(),
+                    returned_function_type,
+                )),
+            },
+        );
     }
 }

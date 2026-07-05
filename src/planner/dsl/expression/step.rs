@@ -88,8 +88,11 @@ mod tests {
         let_float_step, let_int_function_step, let_int_step, let_list_step, let_nil_function_step,
         let_nil_step, let_string_function_step, let_string_step, let_tuple_step,
     };
-    use crate::plan::Expr;
-    use crate::plan::StepKind;
+    use crate::plan::{
+        BoolFunctionLocalId, BoolLocalId, Expr, FloatFunctionLocalId, FloatLocalId,
+        IntFunctionLocalId, IntLocalId, ListLocalId, NilFunctionLocalId, NilLocalId, Step,
+        StringFunctionLocalId, StringLocalId, TupleLocalId,
+    };
     use crate::planner::dsl::expression::{
         bool_, bool_function_ref, float, float_function_ref, int, int_function_ref, list, nil,
         nil_function_ref, string, string_function_ref, tuple,
@@ -97,93 +100,121 @@ mod tests {
 
     #[test]
     fn step_helpers_build_step_shapes() {
-        assert!(matches!(
-            let_int_step(0, "x", int(1)).kind(),
-            StepKind::LetInt { .. },
-        ));
-        assert!(matches!(
-            let_string_step(0, "x", string("a")).kind(),
-            StepKind::LetString { .. },
-        ));
-        assert!(matches!(
-            let_float_step(0, "x", float(1.0)).kind(),
-            StepKind::LetFloat { .. },
-        ));
-        assert!(matches!(
-            let_bool_step(0, "x", bool_(true)).kind(),
-            StepKind::LetBool { .. },
-        ));
-        assert!(matches!(
-            let_nil_step(0, "x", nil()).kind(),
-            StepKind::LetNil { .. },
-        ));
-        assert!(matches!(
+        assert_eq!(
+            let_int_step(0, "x", int(1)),
+            Step::let_int(IntLocalId(0), "x".into(), int(1).into()),
+        );
+        assert_eq!(
+            let_string_step(1, "name", string("a")),
+            Step::let_string(StringLocalId(1), "name".into(), string("a").into()),
+        );
+        assert_eq!(
+            let_float_step(2, "ratio", float(1.0)),
+            Step::let_float(FloatLocalId(2), "ratio".into(), float(1.0).into()),
+        );
+        assert_eq!(
+            let_bool_step(3, "ok", bool_(true)),
+            Step::let_bool(BoolLocalId(3), "ok".into(), bool_(true).into()),
+        );
+        assert_eq!(
+            let_nil_step(4, "done", nil()),
+            Step::let_nil(NilLocalId(4), "done".into(), nil().into()),
+        );
+        assert_eq!(
             let_tuple_step(
-                0,
-                "x",
+                5,
+                "pair",
                 tuple([Expr::from(int(1)), Expr::from(string("one"))])
-            )
-            .kind(),
-            StepKind::LetTuple { .. },
-        ));
-        assert!(matches!(
-            let_list_step(0, "x", list([int(1)], crate::plan::ValueType::Int)).kind(),
-            StepKind::LetList { .. },
-        ));
-        assert!(matches!(
+            ),
+            Step::let_tuple(
+                TupleLocalId(5),
+                "pair".into(),
+                tuple([Expr::from(int(1)), Expr::from(string("one"))]).into(),
+            ),
+        );
+        assert_eq!(
+            let_list_step(6, "values", list([int(1)], crate::plan::ValueType::Int)),
+            Step::let_list(
+                ListLocalId(6),
+                "values".into(),
+                list([int(1)], crate::plan::ValueType::Int).into(),
+            ),
+        );
+        assert_eq!(
             let_int_function_step(
                 0,
                 "f",
                 int_function_ref(0, [crate::plan::LocalId::Int(crate::plan::IntLocalId(0))]),
-            )
-            .kind(),
-            StepKind::LetIntFunction { .. },
-        ));
-        assert!(matches!(
+            ),
+            Step::let_int_function(
+                IntFunctionLocalId(0),
+                "f".into(),
+                int_function_ref(0, [crate::plan::LocalId::Int(crate::plan::IntLocalId(0))]).into(),
+            ),
+        );
+        assert_eq!(
             let_string_function_step(
-                0,
+                1,
                 "f",
                 string_function_ref(
                     0,
                     [crate::plan::LocalId::String(crate::plan::StringLocalId(0))],
                 ),
-            )
-            .kind(),
-            StepKind::LetStringFunction { .. },
-        ));
-        assert!(matches!(
+            ),
+            Step::let_string_function(
+                StringFunctionLocalId(1),
+                "f".into(),
+                string_function_ref(
+                    0,
+                    [crate::plan::LocalId::String(crate::plan::StringLocalId(0))],
+                )
+                .into(),
+            ),
+        );
+        assert_eq!(
             let_float_function_step(
-                0,
+                2,
                 "f",
                 float_function_ref(
                     0,
                     [crate::plan::LocalId::Float(crate::plan::FloatLocalId(0))]
                 ),
-            )
-            .kind(),
-            StepKind::LetFloatFunction { .. },
-        ));
-        assert!(matches!(
+            ),
+            Step::let_float_function(
+                FloatFunctionLocalId(2),
+                "f".into(),
+                float_function_ref(
+                    0,
+                    [crate::plan::LocalId::Float(crate::plan::FloatLocalId(0))]
+                )
+                .into(),
+            ),
+        );
+        assert_eq!(
             let_bool_function_step(
-                0,
+                3,
                 "f",
                 bool_function_ref(0, [crate::plan::LocalId::Bool(crate::plan::BoolLocalId(0))]),
-            )
-            .kind(),
-            StepKind::LetBoolFunction { .. },
-        ));
-        assert!(matches!(
+            ),
+            Step::let_bool_function(
+                BoolFunctionLocalId(3),
+                "f".into(),
+                bool_function_ref(0, [crate::plan::LocalId::Bool(crate::plan::BoolLocalId(0))])
+                    .into(),
+            ),
+        );
+        assert_eq!(
             let_nil_function_step(
-                0,
+                4,
                 "f",
                 nil_function_ref(0, [crate::plan::LocalId::Nil(crate::plan::NilLocalId(0))]),
-            )
-            .kind(),
-            StepKind::LetNilFunction { .. },
-        ));
-        assert!(matches!(
-            evaluate_step(int(1)).kind(),
-            StepKind::Evaluate(_),
-        ));
+            ),
+            Step::let_nil_function(
+                NilFunctionLocalId(4),
+                "f".into(),
+                nil_function_ref(0, [crate::plan::LocalId::Nil(crate::plan::NilLocalId(0))]).into(),
+            ),
+        );
+        assert_eq!(evaluate_step(int(1)), Step::evaluate(Expr::from(int(1))));
     }
 }

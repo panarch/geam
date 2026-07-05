@@ -180,10 +180,9 @@ mod tests {
         string_case_nil_function, string_case_string, string_case_string_function,
     };
     use crate::plan::{
-        BoolExprKind, BoolFunctionExprKind, FloatExprKind, FloatFunctionExprKind,
-        FunctionFunctionId, FunctionType, IntExprKind, IntFunctionExprKind, IntFunctionFunctionId,
-        NilExprKind, NilFunctionExprKind, ParamLocal, StringExprKind, StringFunctionExprKind,
-        ValueType,
+        BoolExpr, BoolFunctionExpr, FloatExpr, FloatFunctionExpr, FunctionFunctionExpr,
+        FunctionFunctionId, FunctionType, IntExpr, IntFunctionExpr, IntFunctionFunctionId, NilExpr,
+        NilFunctionExpr, ParamLocal, StringExpr, StringFunctionExpr, ValueType,
     };
     use crate::planner::dsl::expression::{
         bool_, bool_function_ref, float, float_function_ref, function_function_ref, int,
@@ -192,86 +191,126 @@ mod tests {
 
     #[test]
     fn string_case_helpers_build_result_family_shapes() {
-        assert!(matches!(
-            string_case_int(string("key"), [("one", int(10))], int(0))
-                .0
-                .kind(),
-            IntExprKind::StringCase { .. },
-        ));
-        assert!(matches!(
-            string_case_string(string("key"), [("one", string("hit"))], string("miss"))
-                .0
-                .kind(),
-            StringExprKind::StringCase { .. },
-        ));
-        assert!(matches!(
-            string_case_float(string("key"), [("one", float(1.0))], float(0.0))
-                .0
-                .kind(),
-            FloatExprKind::StringCase { .. },
-        ));
-        assert!(matches!(
-            string_case_bool(string("key"), [("one", bool_(true))], bool_(false))
-                .0
-                .kind(),
-            BoolExprKind::StringCase { .. },
-        ));
-        assert!(matches!(
-            string_case_nil(string("key"), [("one", nil())], nil())
-                .0
-                .kind(),
-            NilExprKind::StringCase { .. },
-        ));
-        assert!(matches!(
+        assert_eq!(
+            string_case_int(string("key"), [("one", int(10))], int(0)).0,
+            IntExpr::string_case(
+                string("key").into(),
+                vec![("one".into(), int(10).into())],
+                int(0).into(),
+            ),
+        );
+        assert_eq!(
+            string_case_string(string("key"), [("one", string("hit"))], string("miss")).0,
+            StringExpr::string_case(
+                string("key").into(),
+                vec![("one".into(), string("hit").into())],
+                string("miss").into(),
+            ),
+        );
+        assert_eq!(
+            string_case_float(string("key"), [("one", float(1.0))], float(0.0)).0,
+            FloatExpr::string_case(
+                string("key").into(),
+                vec![("one".into(), float(1.0).into())],
+                float(0.0).into(),
+            ),
+        );
+        assert_eq!(
+            string_case_bool(string("key"), [("one", bool_(true))], bool_(false)).0,
+            BoolExpr::string_case(
+                string("key").into(),
+                vec![("one".into(), bool_(true).into())],
+                bool_(false).into(),
+            ),
+        );
+        assert_eq!(
+            string_case_nil(string("key"), [("one", nil())], nil()).0,
+            NilExpr::string_case(
+                string("key").into(),
+                vec![("one".into(), nil().into())],
+                nil().into(),
+            ),
+        );
+        assert_eq!(
             string_case_int_function(
                 string("key"),
                 [("one", int_function_ref(0, Vec::<ParamLocal>::new()))],
                 int_function_ref(1, Vec::<ParamLocal>::new()),
             )
-            .0
-            .kind(),
-            IntFunctionExprKind::StringCase { .. },
-        ));
-        assert!(matches!(
+            .0,
+            IntFunctionExpr::string_case(
+                string("key").into(),
+                vec![(
+                    "one".into(),
+                    int_function_ref(0, Vec::<ParamLocal>::new()).into()
+                )],
+                int_function_ref(1, Vec::<ParamLocal>::new()).into(),
+            ),
+        );
+        assert_eq!(
             string_case_string_function(
                 string("key"),
                 [("one", string_function_ref(0, Vec::<ParamLocal>::new()))],
                 string_function_ref(1, Vec::<ParamLocal>::new()),
             )
-            .0
-            .kind(),
-            StringFunctionExprKind::StringCase { .. },
-        ));
-        assert!(matches!(
+            .0,
+            StringFunctionExpr::string_case(
+                string("key").into(),
+                vec![(
+                    "one".into(),
+                    string_function_ref(0, Vec::<ParamLocal>::new()).into(),
+                )],
+                string_function_ref(1, Vec::<ParamLocal>::new()).into(),
+            ),
+        );
+        assert_eq!(
             string_case_float_function(
                 string("key"),
                 [("one", float_function_ref(0, Vec::<ParamLocal>::new()))],
                 float_function_ref(1, Vec::<ParamLocal>::new()),
             )
-            .0
-            .kind(),
-            FloatFunctionExprKind::StringCase { .. },
-        ));
-        assert!(matches!(
+            .0,
+            FloatFunctionExpr::string_case(
+                string("key").into(),
+                vec![(
+                    "one".into(),
+                    float_function_ref(0, Vec::<ParamLocal>::new()).into()
+                )],
+                float_function_ref(1, Vec::<ParamLocal>::new()).into(),
+            ),
+        );
+        assert_eq!(
             string_case_bool_function(
                 string("key"),
                 [("one", bool_function_ref(0, Vec::<ParamLocal>::new()))],
                 bool_function_ref(1, Vec::<ParamLocal>::new()),
             )
-            .0
-            .kind(),
-            BoolFunctionExprKind::StringCase { .. },
-        ));
-        assert!(matches!(
+            .0,
+            BoolFunctionExpr::string_case(
+                string("key").into(),
+                vec![(
+                    "one".into(),
+                    bool_function_ref(0, Vec::<ParamLocal>::new()).into()
+                )],
+                bool_function_ref(1, Vec::<ParamLocal>::new()).into(),
+            ),
+        );
+        assert_eq!(
             string_case_nil_function(
                 string("key"),
                 [("one", nil_function_ref(0, Vec::<ParamLocal>::new()))],
                 nil_function_ref(1, Vec::<ParamLocal>::new()),
             )
-            .0
-            .kind(),
-            NilFunctionExprKind::StringCase { .. },
-        ));
+            .0,
+            NilFunctionExpr::string_case(
+                string("key").into(),
+                vec![(
+                    "one".into(),
+                    nil_function_ref(0, Vec::<ParamLocal>::new()).into()
+                )],
+                nil_function_ref(1, Vec::<ParamLocal>::new()).into(),
+            ),
+        );
         assert_eq!(
             string_case_function_function(
                 string("key"),
@@ -289,14 +328,24 @@ mod tests {
                     FunctionType::new(vec![ValueType::Int], ValueType::Int),
                 ),
             )
-            .0
-            .type_(),
-            &FunctionType::new(
-                Vec::new(),
-                ValueType::Function(Box::new(FunctionType::new(
-                    vec![ValueType::Int],
-                    ValueType::Int,
-                ))),
+            .0,
+            FunctionFunctionExpr::string_case(
+                string("key").into(),
+                vec![(
+                    "one".into(),
+                    function_function_ref(
+                        FunctionFunctionId::Int(IntFunctionFunctionId(0)),
+                        Vec::<ParamLocal>::new(),
+                        FunctionType::new(vec![ValueType::Int], ValueType::Int),
+                    )
+                    .into(),
+                )],
+                function_function_ref(
+                    FunctionFunctionId::Int(IntFunctionFunctionId(1)),
+                    Vec::<ParamLocal>::new(),
+                    FunctionType::new(vec![ValueType::Int], ValueType::Int),
+                )
+                .into(),
             ),
         );
     }

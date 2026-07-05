@@ -81,34 +81,38 @@ mod tests {
         call_nil, call_string,
     };
     use crate::plan::{
-        BoolExprKind, FloatExprKind, FunctionType, IntExprKind, ListExprKind, NilExprKind,
-        ParamLocal, StringExprKind, ValueType,
+        BoolExpr, BoolFunctionId, FloatExpr, FloatFunctionId, FunctionType, IntExpr,
+        IntFunctionExpr, IntFunctionFunctionId, IntFunctionId, ListExpr, ListFunctionId, NilExpr,
+        NilFunctionId, ParamLocal, StringExpr, StringFunctionId, ValueType,
     };
     use crate::planner::dsl::expression::{int, int_arg, int_function_ref, string, string_arg};
 
     #[test]
     fn direct_call_helpers_build_call_shapes() {
-        assert!(matches!(
-            call_int(0, [int_arg(0, int(1))]).0.kind(),
-            IntExprKind::Call { .. },
-        ));
-        assert!(matches!(
-            call_string(0, [string_arg(0, string("a"))]).0.kind(),
-            StringExprKind::Call { .. },
-        ));
-        assert!(matches!(
-            call_float(0, []).0.kind(),
-            FloatExprKind::Call { .. },
-        ));
-        assert!(matches!(
-            call_bool(0, []).0.kind(),
-            BoolExprKind::Call { .. },
-        ));
-        assert!(matches!(call_nil(0, []).0.kind(), NilExprKind::Call { .. },));
-        assert!(matches!(
-            call_list(0, [], ValueType::Int).0.kind(),
-            ListExprKind::Call { .. },
-        ));
+        assert_eq!(
+            call_int(0, [int_arg(0, int(1))]).0,
+            IntExpr::call(IntFunctionId(0), vec![int_arg(0, int(1))]),
+        );
+        assert_eq!(
+            call_string(1, [string_arg(0, string("a"))]).0,
+            StringExpr::call(StringFunctionId(1), vec![string_arg(0, string("a"))]),
+        );
+        assert_eq!(
+            call_float(2, []).0,
+            FloatExpr::call(FloatFunctionId(2), Vec::new()),
+        );
+        assert_eq!(
+            call_bool(3, []).0,
+            BoolExpr::call(BoolFunctionId(3), Vec::new()),
+        );
+        assert_eq!(
+            call_nil(4, []).0,
+            NilExpr::call(NilFunctionId(4), Vec::new()),
+        );
+        assert_eq!(
+            call_list(5, [], ValueType::Int).0,
+            ListExpr::call(ListFunctionId(5), Vec::new(), ValueType::Int),
+        );
     }
 
     #[test]
@@ -116,19 +120,23 @@ mod tests {
         let return_type = FunctionType::new(vec![ValueType::Int], ValueType::Int);
 
         assert_eq!(
-            call_int_returning_function(0, [], return_type.clone())
-                .0
-                .type_(),
-            &return_type,
+            call_int_returning_function(6, [int_arg(0, int(1))], return_type.clone()).0,
+            IntFunctionExpr::call(
+                IntFunctionFunctionId(6),
+                vec![int_arg(0, int(1))],
+                return_type,
+            ),
         );
-        assert!(matches!(
+        assert_eq!(
             call_int_function(
                 int_function_ref(0, Vec::<ParamLocal>::new()),
                 [int_arg(0, int(1))],
             )
-            .0
-            .kind(),
-            IntExprKind::FunctionCall { .. },
-        ));
+            .0,
+            IntExpr::function_call(
+                int_function_ref(0, Vec::<ParamLocal>::new()).into(),
+                vec![int_arg(0, int(1))],
+            ),
+        );
     }
 }
