@@ -868,14 +868,15 @@ mod tests {
         BoolFunctionValue, BoolLocalId, FloatExpr, FloatFunctionExpr, FloatFunctionFunctionId,
         FloatFunctionId, FloatFunctionLocalId, FloatFunctionValue, FloatLocalId, FrameLayout,
         FunctionFunctionExpr, FunctionFunctionFunctionId, FunctionFunctionId,
-        FunctionFunctionValue, FunctionId, FunctionType, IntExpr, IntFunctionExpr,
-        IntFunctionFunctionId, IntFunctionId, IntFunctionLocalId, IntFunctionValue, IntLocalId,
-        ListExpr, ListFunctionExpr, ListFunctionFunctionId, ListFunctionId, ListFunctionLocalId,
-        ListFunctionValue, ListLocalId, NilExpr, NilFunctionExpr, NilFunctionFunctionId,
-        NilFunctionId, NilFunctionLocalId, NilFunctionValue, StringExpr, StringFunctionExpr,
-        StringFunctionFunctionId, StringFunctionId, StringFunctionLocalId, StringFunctionValue,
-        TupleExpr, TupleFunctionExpr, TupleFunctionFunctionId, TupleFunctionId,
-        TupleFunctionLocalId, TupleFunctionValue, ValueType,
+        FunctionFunctionLocalId, FunctionFunctionValue, FunctionId, FunctionType, IntExpr,
+        IntFunctionExpr, IntFunctionFunctionId, IntFunctionId, IntFunctionLocalId,
+        IntFunctionValue, IntLocalId, ListExpr, ListFunctionExpr, ListFunctionFunctionId,
+        ListFunctionId, ListFunctionLocalId, ListFunctionValue, ListLocalId, NilExpr,
+        NilFunctionExpr, NilFunctionFunctionId, NilFunctionId, NilFunctionLocalId,
+        NilFunctionValue, StringExpr, StringFunctionExpr, StringFunctionFunctionId,
+        StringFunctionId, StringFunctionLocalId, StringFunctionValue, TupleExpr, TupleFunctionExpr,
+        TupleFunctionFunctionId, TupleFunctionId, TupleFunctionLocalId, TupleFunctionValue,
+        ValueType,
     };
     use num_bigint::BigInt;
 
@@ -1158,6 +1159,20 @@ mod tests {
             ValueType::Function(Box::new(FunctionType::new(
                 vec![ValueType::List(Box::new(ValueType::Int))],
                 ValueType::List(Box::new(ValueType::String)),
+            ))),
+        );
+        assert_eq!(
+            ParamLocal::function_function(
+                FunctionFunctionLocalId(0),
+                FunctionType::new(
+                    Vec::new(),
+                    ValueType::Function(Box::new(FunctionType::new(Vec::new(), ValueType::Int))),
+                ),
+            )
+            .value_type(),
+            ValueType::Function(Box::new(FunctionType::new(
+                Vec::new(),
+                ValueType::Function(Box::new(FunctionType::new(Vec::new(), ValueType::Int))),
             ))),
         );
     }
