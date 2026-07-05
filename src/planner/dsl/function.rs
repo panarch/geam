@@ -44,8 +44,8 @@ mod tests {
     use super::function;
     use crate::plan::{
         BoolFunctionId, FloatFunctionId, FunctionFunctionId, FunctionId, FunctionType,
-        IntFunctionFunctionId, IntFunctionId, ListFunctionId, NilFunctionId, ParamLocal,
-        RuntimeFunctionId, Step, StepKind, StringFunctionId, ValueType,
+        IntFunctionFunctionId, IntFunctionId, IntLocalId, ListFunctionId, NilFunctionId,
+        ParamLocal, RuntimeFunctionId, Step, StepKind, StringFunctionId, ValueType,
     };
     use crate::planner::context::FunctionRuntimeIds;
     use crate::planner::dsl::expression::{
@@ -105,11 +105,18 @@ mod tests {
         assert_eq!(function.name(), "main");
         assert_eq!(function.params().len(), 11);
         assert_eq!(function.steps().len(), 7);
-        assert!(matches!(
+        assert_eq!(
             function.steps()[0].kind(),
-            StepKind::LetInt { .. }
-        ));
-        assert!(matches!(function.steps()[6].kind(), StepKind::Evaluate(_)));
+            &StepKind::LetInt {
+                local: IntLocalId(1),
+                name: "x".into(),
+                value: int(2).into(),
+            },
+        );
+        assert_eq!(
+            function.steps()[6].kind(),
+            &StepKind::Evaluate(int(3).into()),
+        );
     }
 
     #[test]
