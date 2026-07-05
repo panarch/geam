@@ -75,7 +75,7 @@ pub(super) fn plan_anonymous_function_body(
     context: &mut PlanContext<'_>,
 ) -> Result<PlannedFunctionBody, PlanError> {
     let params = define_params(params, context);
-    let captures = context.define_captures(captures)?;
+    let captures = context.define_captures(captures);
     let planned = crate::planner::statement::plan_non_empty_steps_and_return(body, context)?;
     let return_ = function_return_expr(name, return_type, runtime_id, planned.return_)?;
 
