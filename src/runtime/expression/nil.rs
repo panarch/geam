@@ -91,9 +91,10 @@ pub(in crate::runtime) fn eval_nil_expr(
 mod tests {
     use super::eval_nil_expr;
     use crate::plan::{
-        BoolExpr, BoolFunctionExpr, ExecutionPlan, Expr, FunctionFunctionExpr, FunctionFunctionId,
-        FunctionFunctionValue, FunctionId, FunctionPlan, FunctionReturnFamily, FunctionType,
-        IntExpr, IntFunctionExpr, IntFunctionId, NilExpr, NilFunctionExpr, ReturnExpr, Step,
+        BoolExpr, BoolFunctionExpr, ExecutionPlan, Expr, FloatExpr, FloatFunctionExpr,
+        FunctionFunctionExpr, FunctionFunctionId, FunctionFunctionValue, FunctionId, FunctionPlan,
+        FunctionReturnFamily, FunctionType, IntExpr, IntFunctionExpr, IntFunctionFunctionId,
+        IntFunctionId, NilExpr, NilFunctionExpr, ReturnExpr, Step, StringExpr, StringFunctionExpr,
         StringFunctionFunctionId, TupleExpr, ValueType,
     };
     use crate::runtime::ExecutionError;
@@ -320,6 +321,35 @@ pub fn main() {
             eval_nil_expr(
                 &plan,
                 &mut frame,
+                &crate::plan::NilExpr::string_case(
+                    error_string_expr(),
+                    vec![("one".into(), crate::plan::NilExpr::value())],
+                    crate::plan::NilExpr::value(),
+                ),
+            ),
+            Err(function_return_family_error(
+                FunctionReturnFamily::String,
+                FunctionReturnFamily::Int,
+            )),
+        );
+        assert_eq!(
+            eval_nil_expr(
+                &plan,
+                &mut frame,
+                &crate::plan::NilExpr::float_case(
+                    error_float_expr(),
+                    vec![(1.0, crate::plan::NilExpr::value())],
+                    crate::plan::NilExpr::value(),
+                ),
+            ),
+            Err(function_return_family_error_value(
+                FunctionReturnFamily::Float
+            )),
+        );
+        assert_eq!(
+            eval_nil_expr(
+                &plan,
+                &mut frame,
                 &crate::plan::NilExpr::block(
                     vec![Step::evaluate(Expr::bool(error_bool_expr()))],
                     crate::plan::NilExpr::value(),
@@ -462,12 +492,34 @@ pub fn main() {
         )
     }
 
+    fn error_float_expr() -> FloatExpr {
+        FloatExpr::function_call(
+            FloatFunctionExpr::function_call(
+                function_function_expr(),
+                Vec::new(),
+                FunctionType::new(Vec::new(), ValueType::Float),
+            ),
+            Vec::new(),
+        )
+    }
+
     fn error_int_expr() -> IntExpr {
         IntExpr::function_call(
             IntFunctionExpr::function_call(
                 function_function_expr(),
                 Vec::new(),
                 FunctionType::new(Vec::new(), ValueType::Int),
+            ),
+            Vec::new(),
+        )
+    }
+
+    fn error_string_expr() -> StringExpr {
+        StringExpr::function_call(
+            StringFunctionExpr::function_call(
+                int_function_function_expr(),
+                Vec::new(),
+                FunctionType::new(Vec::new(), ValueType::String),
             ),
             Vec::new(),
         )
@@ -492,7 +544,22 @@ pub fn main() {
         ))
     }
 
+    fn int_function_function_expr() -> FunctionFunctionExpr {
+        FunctionFunctionExpr::value(FunctionFunctionValue::new(
+            FunctionFunctionId::Int(IntFunctionFunctionId(0)),
+            Vec::new(),
+            FunctionType::new(Vec::new(), ValueType::Int),
+        ))
+    }
+
     fn function_return_family_error_value(expected: FunctionReturnFamily) -> ExecutionError {
-        ExecutionError::function_return_family_mismatch(expected, FunctionReturnFamily::String)
+        function_return_family_error(expected, FunctionReturnFamily::String)
+    }
+
+    fn function_return_family_error(
+        expected: FunctionReturnFamily,
+        actual: FunctionReturnFamily,
+    ) -> ExecutionError {
+        ExecutionError::function_return_family_mismatch(expected, actual)
     }
 }
