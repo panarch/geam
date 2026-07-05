@@ -408,6 +408,18 @@ mod tests {
                 ValueType::Int,
             )),
         );
+
+        let tuple = error_tuple_expr();
+        assert_eq!(
+            eval_float_function_expr(
+                &plan,
+                &mut frame,
+                &FloatFunctionExpr::tuple_index(tuple, 0, type_()),
+            ),
+            Err(tuple_index_error(ValueType::Tuple(vec![
+                ValueType::Function(Box::new(type_()))
+            ]))),
+        );
     }
 
     fn plan() -> ExecutionPlan {
@@ -500,6 +512,22 @@ mod tests {
             Vec::new(),
             FunctionType::new(Vec::new(), ValueType::String),
         ))
+    }
+
+    fn error_tuple_expr() -> TupleExpr {
+        TupleExpr::tuple_index(
+            empty_tuple(),
+            0,
+            vec![ValueType::Function(Box::new(type_()))],
+        )
+    }
+
+    fn empty_tuple() -> TupleExpr {
+        TupleExpr::value(Vec::new(), Vec::new())
+    }
+
+    fn tuple_index_error(expected: ValueType) -> ExecutionError {
+        ExecutionError::tuple_index_family_mismatch(expected, ValueType::Tuple(Vec::new()))
     }
 
     fn function_value() -> FloatFunctionExpr {

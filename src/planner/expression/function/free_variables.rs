@@ -201,8 +201,11 @@ fn collect_variable_pattern_bound_name(
 
 #[cfg(test)]
 mod tests {
-    use crate::planner::support::compile;
-    use gleam_core::ast::{Statement, TypedExpr};
+    use crate::planner::support::{compile, dummy_span};
+    use gleam_core::ast::{Publicity, Statement, TypedExpr};
+    use gleam_core::type_::error::VariableOrigin;
+    use gleam_core::type_::{self, Deprecation, ValueConstructor, ValueConstructorVariant};
+    use vec1::Vec1;
 
     #[test]
     fn anonymous_free_variables_include_use_callback_call() {
@@ -237,14 +240,18 @@ pub fn main() {
   let case_subject = True
   let pattern_source = 2
   let case_value = 3
+  let repeated_value = 4
   let negate_int_value = 4
   let negate_bool_value = True
   let tuple_value = #(5, 6)
+  let list_element_value = 7
   let list_tail_value = [7]
   fn() {
     {
       block_value
     }
+    repeated_value
+    repeated_value
     case case_subject {
       True -> {
         let branch_local = pattern_source
@@ -258,6 +265,7 @@ pub fn main() {
     }
     -negate_int_value
     tuple_value.0
+    [list_element_value]
     [0, ..list_tail_value]
   }
   1
@@ -266,15 +274,32 @@ pub fn main() {
             ),
             vec![
                 "block_value".to_string(),
+                "repeated_value".to_string(),
                 "case_subject".to_string(),
                 "pattern_source".to_string(),
                 "case_value".to_string(),
                 "negate_bool_value".to_string(),
                 "negate_int_value".to_string(),
                 "tuple_value".to_string(),
+                "list_element_value".to_string(),
                 "list_tail_value".to_string(),
             ],
         );
+    }
+
+    #[test]
+    fn anonymous_free_variables_include_synthetic_negate_int() {
+        let body = Vec1::new(Statement::Expression(TypedExpr::NegateInt {
+            location: dummy_span(),
+            value: Box::new(typed_local_int_variable("negate_int_value")),
+        }));
+
+        let mut names = Vec::new();
+        for name in super::anonymous_free_variables(&[], &body) {
+            names.push(name.to_string());
+        }
+
+        assert_eq!(names, vec!["negate_int_value".to_string()]);
     }
 
     fn anonymous_function_free_variables(src: &str) -> Vec<String> {
@@ -300,5 +325,21 @@ pub fn main() {
             names.push(name.to_string());
         }
         names
+    }
+
+    fn typed_local_int_variable(name: &str) -> TypedExpr {
+        TypedExpr::Var {
+            location: dummy_span(),
+            name: name.into(),
+            constructor: ValueConstructor {
+                publicity: Publicity::Private,
+                deprecation: Deprecation::NotDeprecated,
+                type_: type_::int(),
+                variant: ValueConstructorVariant::LocalVariable {
+                    location: dummy_span(),
+                    origin: VariableOrigin::generated(),
+                },
+            },
+        }
     }
 }
