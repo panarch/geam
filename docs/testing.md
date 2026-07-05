@@ -51,8 +51,8 @@ cargo clippy --all-targets -- -D warnings
 
 ## Coverage
 
-Geam uses `cargo-llvm-cov` for local line coverage. It is LLVM-based, works well
-on macOS, and keeps generated reports under `target/`.
+Geam uses `cargo-llvm-cov` for local coverage. It is LLVM-based, works well on
+macOS, and keeps generated reports under `target/`.
 
 Install the local tools:
 
@@ -61,23 +61,32 @@ rustup component add llvm-tools-preview
 cargo install cargo-llvm-cov --locked
 ```
 
-Print a line coverage summary:
+Run the enforced coverage gate:
 
 ```sh
-cargo llvm-cov --summary-only
+cargo llvm-cov --summary-only --fail-under-lines 100 --fail-under-regions 100
 ```
 
-Line coverage is the current enforced gate, and Geam keeps it at 100%. Region
-coverage is not yet an enforced gate, but it is a useful direction for tightening
-tests as the supported profile grows. Prefer tests that cover meaningful region
-gaps when the missing region maps to a real planner, plan, or runtime branch.
+Geam keeps both line coverage and full-scope region coverage at 100%. Region
+coverage is the stricter review signal when a source line contains multiple
+expression regions.
 
 When a coverage gap is hard to explain from the summary alone, split the target
 and inspect LLVM's region and instantiation detail before adding fixtures:
 
 ```sh
-cargo llvm-cov --lib --text --show-instantiations --show-missing-lines
+cargo llvm-cov --text --show-instantiations --show-missing-lines
 ```
+
+Do not add tests by guessing from the summary. First locate the uncovered line,
+region, or instantiation. When line coverage is already 100% but region coverage
+is not, common causes are broad assertions such as `matches!`, `is_some`, or
+`is_ok`, where the source line runs but one reviewed branch of the assertion
+shape is never exercised.
+
+In that case, prefer an owning unit test with exact assertions over a new
+fixture. The goal is to make the reviewed shape visible, not merely to execute
+the line.
 
 Use that report to decide where the test belongs. Public execution behavior
 belongs in fixture-based integration tests; planner or runtime implementation

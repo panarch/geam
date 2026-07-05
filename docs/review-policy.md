@@ -181,7 +181,7 @@ Test helpers reduce real repetition without hiding the reviewed shape.
 
 ## Coverage Rules
 
-Geam keeps line coverage at 100%.
+Geam keeps full-scope region coverage and line coverage at 100%.
 
 Coverage gaps are work. When guard paths are needed for fixture or typed-AST
 shape assertions, cover them with a small repeatable pattern.
