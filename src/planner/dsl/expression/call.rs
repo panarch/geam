@@ -1,7 +1,8 @@
-use super::{Bool, Int, IntFunction, Nil, String};
+use super::{Bool, Float, Int, IntFunction, List, Nil, String};
 use crate::plan::{
-    BoolExpr, BoolFunctionId, CallArg, FunctionType, IntExpr, IntFunctionExpr,
-    IntFunctionFunctionId, IntFunctionId, NilExpr, NilFunctionId, StringExpr, StringFunctionId,
+    BoolExpr, BoolFunctionId, CallArg, FloatExpr, FloatFunctionId, FunctionType, IntExpr,
+    IntFunctionExpr, IntFunctionFunctionId, IntFunctionId, ListExpr, ListFunctionId, NilExpr,
+    NilFunctionId, StringExpr, StringFunctionId, ValueType,
 };
 
 pub(crate) fn call_int(function: usize, args: impl IntoIterator<Item = CallArg>) -> Int {
@@ -18,6 +19,13 @@ pub(crate) fn call_string(function: usize, args: impl IntoIterator<Item = CallAr
     ))
 }
 
+pub(crate) fn call_float(function: usize, args: impl IntoIterator<Item = CallArg>) -> Float {
+    Float(FloatExpr::call(
+        FloatFunctionId(function),
+        args.into_iter().collect(),
+    ))
+}
+
 pub(crate) fn call_bool(function: usize, args: impl IntoIterator<Item = CallArg>) -> Bool {
     Bool(BoolExpr::call(
         BoolFunctionId(function),
@@ -29,6 +37,18 @@ pub(crate) fn call_nil(function: usize, args: impl IntoIterator<Item = CallArg>)
     Nil(NilExpr::call(
         NilFunctionId(function),
         args.into_iter().collect(),
+    ))
+}
+
+pub(crate) fn call_list(
+    function: usize,
+    args: impl IntoIterator<Item = CallArg>,
+    element_type: ValueType,
+) -> List {
+    List(ListExpr::call(
+        ListFunctionId(function),
+        args.into_iter().collect(),
+        element_type,
     ))
 }
 
@@ -57,10 +77,12 @@ pub(crate) fn call_int_function(
 #[cfg(test)]
 mod tests {
     use super::{
-        call_bool, call_int, call_int_function, call_int_returning_function, call_nil, call_string,
+        call_bool, call_float, call_int, call_int_function, call_int_returning_function, call_list,
+        call_nil, call_string,
     };
     use crate::plan::{
-        BoolExprKind, FunctionType, IntExprKind, NilExprKind, ParamLocal, StringExprKind, ValueType,
+        BoolExprKind, FloatExprKind, FunctionType, IntExprKind, ListExprKind, NilExprKind,
+        ParamLocal, StringExprKind, ValueType,
     };
     use crate::planner::dsl::expression::{int, int_arg, int_function_ref, string, string_arg};
 
@@ -75,10 +97,18 @@ mod tests {
             StringExprKind::Call { .. },
         ));
         assert!(matches!(
+            call_float(0, []).0.kind(),
+            FloatExprKind::Call { .. },
+        ));
+        assert!(matches!(
             call_bool(0, []).0.kind(),
             BoolExprKind::Call { .. },
         ));
         assert!(matches!(call_nil(0, []).0.kind(), NilExprKind::Call { .. },));
+        assert!(matches!(
+            call_list(0, [], ValueType::Int).0.kind(),
+            ListExprKind::Call { .. },
+        ));
     }
 
     #[test]

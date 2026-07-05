@@ -238,3 +238,107 @@ fn invalid_hole_capture() -> PlanError {
         },
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::planner::plan_module;
+    use crate::planner::support::{compile, compile_minimal_module, dummy_span};
+    use crate::planner::{InvalidExpressionShapeKind, InvalidTypedAstReason, PlanError};
+    use gleam_core::ast::{
+        CallArg, Constant, ImplicitCallArgOrigin, Statement, TypedExpr, TypedModule,
+    };
+    use gleam_core::type_::{self, ModuleValueConstructor};
+    use num_bigint::BigInt;
+
+    #[test]
+    fn reject_margin_pipeline_hole_call_pipe_value_expression_shape() {
+        let mut module = compile_hole_pipeline_module();
+        let pipe_argument = expect_pipe_argument_mut(&mut module.definitions.functions[1].body[0]);
+        pipe_argument.value = typed_module_select_expr();
+
+        assert_eq!(
+            plan_module(module),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionShape {
+                    kind: InvalidExpressionShapeKind::ModuleSelect,
+                },
+            }),
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "expected pipeline expression statement")]
+    fn expect_pipe_argument_mut_panics_on_non_pipeline() {
+        let mut module = compile_minimal_module();
+
+        expect_pipe_argument_mut(&mut module.definitions.functions[0].body[0]);
+    }
+
+    #[test]
+    #[should_panic(expected = "expected pipeline final call")]
+    fn expect_pipe_argument_mut_panics_on_non_call_final() {
+        let mut module = compile_hole_pipeline_module();
+        let finally = expect_pipeline_final_mut(&mut module.definitions.functions[1].body[0]);
+        **finally = super::super::super::typed_int_expr(1);
+
+        expect_pipe_argument_mut(&mut module.definitions.functions[1].body[0]);
+    }
+
+    fn compile_hole_pipeline_module() -> TypedModule {
+        compile(
+            r#"
+fn subtract(left: Int, right: Int) {
+  left - right
+}
+
+pub fn main() {
+  1 |> subtract(10, _)
+}
+"#,
+        )
+    }
+
+    fn expect_pipe_argument_mut(
+        statement: &mut gleam_core::ast::TypedStatement,
+    ) -> &mut CallArg<TypedExpr> {
+        let finally = expect_pipeline_final_mut(statement);
+        let TypedExpr::Call { arguments, .. } = finally.as_mut() else {
+            panic!("expected pipeline final call");
+        };
+
+        arguments
+            .iter_mut()
+            .find(|argument| argument.implicit == Some(ImplicitCallArgOrigin::Pipe))
+            .expect("expected pipe argument")
+    }
+
+    fn expect_pipeline_final_mut(
+        statement: &mut gleam_core::ast::TypedStatement,
+    ) -> &mut Box<TypedExpr> {
+        let Statement::Expression(TypedExpr::Pipeline { finally, .. }) = statement else {
+            panic!("expected pipeline expression statement");
+        };
+
+        finally
+    }
+
+    fn typed_module_select_expr() -> TypedExpr {
+        TypedExpr::ModuleSelect {
+            location: dummy_span(),
+            field_start: 0,
+            type_: type_::int(),
+            label: "answer".into(),
+            module_name: "other".into(),
+            module_alias: "other".into(),
+            constructor: ModuleValueConstructor::Constant {
+                literal: Constant::Int {
+                    location: dummy_span(),
+                    value: "1".into(),
+                    int_value: BigInt::from(1),
+                },
+                location: dummy_span(),
+                documentation: None,
+            },
+        }
+    }
+}

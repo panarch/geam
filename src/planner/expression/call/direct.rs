@@ -119,14 +119,16 @@ fn function_returning_function_call_expr(
 mod tests {
     use super::function_returning_function_call_expr;
     use crate::plan::{
-        BoolFunctionFunctionId, FunctionFunctionFunctionId, FunctionFunctionId, FunctionType,
-        IntFunctionFunctionId, IntLocalId, LocalId, NilFunctionFunctionId,
-        StringFunctionFunctionId, ValueType,
+        BoolFunctionFunctionId, FloatFunctionFunctionId, FunctionFunctionFunctionId,
+        FunctionFunctionId, FunctionType, IntFunctionFunctionId, IntLocalId,
+        ListFunctionFunctionId, LocalId, NilFunctionFunctionId, StringFunctionFunctionId,
+        TupleFunctionFunctionId, ValueType,
     };
     use crate::planner::dsl::{
-        call_int_function, function, int, int_arg, int_function_arg, int_function_call_arg,
-        int_function_ref, int_return_tail_call, let_int_function_step, local_int,
-        local_int_function, module,
+        call_float, call_int_function, call_list, float, float_arg, function, int, int_arg,
+        int_function_arg, int_function_call_arg, int_function_ref, int_return_tail_call,
+        let_float_step, let_int_function_step, let_list_step, list, list_return_expr, local_float,
+        local_int, local_int_function, local_list, module, return_list,
     };
     use crate::planner::expression::call::support::expect_call_statement_mut;
     use crate::planner::expression::{typed_int_expr, typed_string_expr};
@@ -264,6 +266,56 @@ pub fn main() {
                 function("add", local_int(0, "base").add_int(local_int(1, "amount")))
                     .param_int(0, "base")
                     .param_int(1, "amount"),
+            ],
+        );
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn plan_float_and_list_direct_call_shapes() {
+        let actual = plan_module(compile(
+            r#"
+fn half(value: Float) {
+  value /. 2.0
+}
+
+fn singleton(value: Int) {
+  [value]
+}
+
+pub fn main() {
+  let half_value = half(3.0)
+  let values = singleton(1)
+  values
+}
+"#,
+        ))
+        .expect("source should plan");
+        let expected = module(
+            "main",
+            function(
+                "main",
+                return_list(
+                    ValueType::Int,
+                    list_return_expr(local_list(0, "values", ValueType::Int)),
+                ),
+            )
+            .step(let_float_step(
+                0,
+                "half_value",
+                call_float(0, [float_arg(0, float(3.0))]),
+            ))
+            .step(let_list_step(
+                0,
+                "values",
+                call_list(1, [int_arg(0, int(1))], ValueType::Int),
+            )),
+            [
+                function("half", local_float(0, "value").div_float(float(2.0)))
+                    .param_float(0, "value"),
+                function("singleton", list([local_int(0, "value")], ValueType::Int))
+                    .param_int(0, "value"),
             ],
         );
 
@@ -531,12 +583,30 @@ pub fn main() {
                 FunctionType::new(vec![ValueType::String], ValueType::String),
             ),
             (
+                FunctionFunctionId::Float(FloatFunctionFunctionId(0)),
+                FunctionType::new(vec![ValueType::Float], ValueType::Float),
+            ),
+            (
                 FunctionFunctionId::Bool(BoolFunctionFunctionId(0)),
                 FunctionType::new(vec![ValueType::Bool], ValueType::Bool),
             ),
             (
                 FunctionFunctionId::Nil(NilFunctionFunctionId(0)),
                 FunctionType::new(vec![ValueType::Nil], ValueType::Nil),
+            ),
+            (
+                FunctionFunctionId::Tuple(TupleFunctionFunctionId(0)),
+                FunctionType::new(
+                    vec![ValueType::Tuple(vec![ValueType::Int])],
+                    ValueType::Tuple(vec![ValueType::Int]),
+                ),
+            ),
+            (
+                FunctionFunctionId::List(ListFunctionFunctionId(0)),
+                FunctionType::new(
+                    vec![ValueType::List(Box::new(ValueType::Int))],
+                    ValueType::List(Box::new(ValueType::Int)),
+                ),
             ),
             (
                 FunctionFunctionId::Function(FunctionFunctionFunctionId(0)),
