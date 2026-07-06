@@ -315,9 +315,10 @@ fn tuple_index_function_expr(tuple: TupleExpr, index: usize, type_: FunctionType
 
 pub(super) fn plan_use_call(
     call: TypedExpr,
+    use_assignment_count: usize,
     context: &mut PlanContext<'_>,
 ) -> Result<Expr, PlanError> {
-    call::plan_use_call(call, context)
+    call::plan_use_call(call, use_assignment_count, context)
 }
 
 fn plan_int_expr(

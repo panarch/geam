@@ -6,3 +6,5 @@ pub fn main() {
   use value as alias <- with_value
   alias
 }
+
+// geam:expect Int(1)

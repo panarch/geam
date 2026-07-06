@@ -163,6 +163,8 @@ pub enum InvalidUseShapeReason {
     CallbackNotLast,
     #[error("callback argument is not a function literal")]
     CallbackNotFunctionLiteral,
+    #[error("invalid generated assignment")]
+    InvalidGeneratedAssignment,
     #[error("missing callback")]
     MissingCallback,
     #[error("multiple callbacks")]

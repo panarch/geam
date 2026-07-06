@@ -74,8 +74,8 @@ fn plan_use_statement(
     use_: gleam_core::ast::TypedUse,
     context: &mut PlanContext<'_>,
 ) -> Result<crate::plan::Expr, PlanError> {
-    validate_use_assignments(&use_.assignments)?;
-    plan_use_call(*use_.call, context)
+    let use_assignment_count = validate_use_assignments(&use_.assignments)?;
+    plan_use_call(*use_.call, use_assignment_count, context)
 }
 
 pub(super) fn plan_runtime_steps(
@@ -446,11 +446,11 @@ fn plan_binding_pattern(pattern: TypedPattern) -> Result<BindingPattern, PlanErr
     }
 }
 
-fn validate_use_assignments(assignments: &[TypedUseAssignment]) -> Result<(), PlanError> {
+fn validate_use_assignments(assignments: &[TypedUseAssignment]) -> Result<usize, PlanError> {
     for assignment in assignments {
         validate_use_assignment_pattern(&assignment.pattern)?;
     }
-    Ok(())
+    Ok(assignments.len())
 }
 
 fn validate_use_assignment_pattern(pattern: &TypedPattern) -> Result<(), PlanError> {
@@ -458,18 +458,15 @@ fn validate_use_assignment_pattern(pattern: &TypedPattern) -> Result<(), PlanErr
         Pattern::Variable { .. } => Err(invalid_use_shape(
             InvalidUseShapeReason::UnexpectedVariableAssignment,
         )),
+        Pattern::Tuple { .. } | Pattern::Assign { .. } => {
+            plan_binding_pattern(pattern.clone()).map(|_| ())
+        }
         pattern => Err(non_variable_pattern_error(pattern)),
     }
 }
 
 fn non_variable_pattern_error(pattern: &TypedPattern) -> PlanError {
     match pattern {
-        Pattern::Assign { .. } => PlanError::UnsupportedPattern {
-            kind: UnsupportedPatternKind::Assign,
-        },
-        Pattern::Tuple { .. } => PlanError::UnsupportedPattern {
-            kind: UnsupportedPatternKind::Tuple,
-        },
         Pattern::List { .. } => PlanError::UnsupportedPattern {
             kind: UnsupportedPatternKind::List,
         },
@@ -482,7 +479,9 @@ fn non_variable_pattern_error(pattern: &TypedPattern) -> PlanError {
         | Pattern::StringPrefix { .. }
         | Pattern::Invalid { .. }
         | Pattern::Discard { .. }
-        | Pattern::Variable { .. } => PlanError::InvalidTypedAst {
+        | Pattern::Variable { .. }
+        | Pattern::Assign { .. }
+        | Pattern::Tuple { .. } => PlanError::InvalidTypedAst {
             reason: InvalidTypedAstReason::InvalidPattern,
         },
     }
@@ -498,7 +497,8 @@ fn invalid_use_shape(reason: InvalidUseShapeReason) -> PlanError {
 mod tests {
     use super::{BindingPattern, plan_binding_pattern};
     use crate::plan::{
-        BoolLocalId, Expr, FunctionType, IntLocalId, LocalId, NilLocalId, StringLocalId, ValueType,
+        BoolLocalId, Expr, FunctionType, IntLocalId, LocalId, NilLocalId, ParamLocal,
+        StringLocalId, TupleLocalId, ValueType,
     };
     use crate::planner::dsl::{
         bool_, bool_case_int_function, bool_function_ref, call_int_function, capture_int, equal,
@@ -506,7 +506,7 @@ mod tests {
         int_function_ref, int_return_tail_call, let_bool_function_step, let_int_function_step,
         let_nil_function_step, let_string_function_step, let_tuple_step, local_bool, local_int,
         local_int_function, local_nil, local_string, local_tuple, module, module_with_anonymous,
-        nil_function_ref, string_function_ref, tuple,
+        nil_function_ref, string_function_ref, tuple, tuple_arg,
     };
     use crate::planner::plan_module;
     use crate::planner::support::{compile, compile_minimal_module, dummy_span, expect_plan_error};
@@ -519,7 +519,7 @@ mod tests {
     use gleam_core::ast::{
         AssignName, AssignmentKind, BitArraySize, CallArg, FunctionLiteralKind,
         ImplicitCallArgOrigin, Pattern, Statement, TypedAssignment, TypedExpr, TypedModule,
-        TypedUse, UseAssignment,
+        TypedStatement, TypedUse, UseAssignment,
     };
     use gleam_core::exhaustiveness::CompiledCase;
     use gleam_core::parse::LiteralFloatValue;
@@ -1490,27 +1490,9 @@ pub fn main() {
     }
 
     #[test]
-    fn reject_profile_use_assignment_patterns() {
-        assert_eq!(
-            expect_plan_error(
-                r#"
-fn with_value(continue: fn(Int) -> Int) {
-  continue(1)
-}
-
-pub fn main() {
-  use value as alias <- with_value
-  alias
-}
-"#,
-            ),
-            PlanError::UnsupportedPattern {
-                kind: UnsupportedPatternKind::Assign,
-            },
-        );
-        assert_eq!(
-            expect_plan_error(
-                r#"
+    fn plan_use_syntax_with_tuple_assignment() {
+        let actual = plan_module(compile(
+            r#"
 fn with_pair(continue: fn(#(Int, Int)) -> Int) {
   continue(#(1, 2))
 }
@@ -1520,11 +1502,187 @@ pub fn main() {
   one + two
 }
 "#,
+        ))
+        .expect("source should plan");
+        let type_ = [ValueType::Int, ValueType::Int];
+        let tuple_type = ValueType::Tuple(type_.to_vec());
+        let anonymous_ref =
+            int_function_ref(2, [ParamLocal::tuple(TupleLocalId(0), type_.to_vec())]);
+        let internal_tuple = local_tuple(1, "<tuple:1>", type_.clone());
+        let expected = module_with_anonymous(
+            "main",
+            function(
+                "main",
+                int_return_tail_call(1, [int_function_arg(0, anonymous_ref)]),
             ),
-            PlanError::UnsupportedPattern {
-                kind: UnsupportedPatternKind::Tuple,
-            },
+            [function(
+                "with_pair",
+                call_int_function(
+                    local_int_function(0, "continue", [tuple_type.clone()]),
+                    [tuple_arg(0, tuple([int(1), int(2)]))],
+                ),
+            )
+            .param_int_function(0, "continue", [tuple_type])],
+            [function(
+                "<anonymous:0>",
+                local_int(0, "one").add_int(local_int(1, "two")),
+            )
+            .param_tuple(0, "_use0", type_.clone())
+            .step(let_tuple_step(
+                1,
+                "<tuple:1>",
+                local_tuple(0, "_use0", type_.clone()),
+            ))
+            .let_int(
+                0,
+                "one",
+                local_tuple(1, "<tuple:1>", type_.clone()).index_int(0),
+            )
+            .let_int(1, "two", internal_tuple.index_int(1))],
         );
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn plan_use_syntax_with_pattern_alias_assignment() {
+        let actual = plan_module(compile(
+            r#"
+fn with_value(continue: fn(Int) -> Int) {
+  continue(1)
+}
+
+pub fn main() {
+  use value as alias <- with_value
+  alias
+}
+"#,
+        ))
+        .expect("source should plan");
+        let expected = module_with_anonymous(
+            "main",
+            function(
+                "main",
+                int_return_tail_call(
+                    1,
+                    [int_function_arg(
+                        0,
+                        int_function_ref(2, [LocalId::Int(IntLocalId(0))]),
+                    )],
+                ),
+            ),
+            [function(
+                "with_value",
+                call_int_function(
+                    local_int_function(0, "continue", [ValueType::Int]),
+                    [int_function_call_arg(0, int(1))],
+                ),
+            )
+            .param_int_function(0, "continue", [ValueType::Int])],
+            [function("<anonymous:0>", local_int(2, "alias"))
+                .param_int(0, "_use0")
+                .let_int(1, "value", local_int(0, "_use0"))
+                .let_int(2, "alias", local_int(1, "value"))],
+        );
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn plan_use_syntax_with_nested_tuple_alias_assignment() {
+        let actual = plan_module(compile(
+            r#"
+fn with_pair(continue: fn(#(Int, #(Int, Int))) -> Int) {
+  continue(#(1, #(2, 3)))
+}
+
+pub fn main() {
+  use #(one, #(two, _) as inner) as pair <- with_pair
+  one + two + inner.0 + pair.0
+}
+"#,
+        ))
+        .expect("source should plan");
+        let inner_type = [ValueType::Int, ValueType::Int];
+        let outer_type = [
+            ValueType::Int,
+            ValueType::Tuple(vec![ValueType::Int, ValueType::Int]),
+        ];
+        let outer_value_type = ValueType::Tuple(outer_type.to_vec());
+        let inner_internal = local_tuple(2, "<tuple:2>", inner_type.clone());
+        let inner_alias = local_tuple(3, "inner", inner_type.clone());
+        let pair_alias = local_tuple(4, "pair", outer_type.clone());
+        let expected = module_with_anonymous(
+            "main",
+            function(
+                "main",
+                int_return_tail_call(
+                    1,
+                    [int_function_arg(
+                        0,
+                        int_function_ref(
+                            2,
+                            [ParamLocal::tuple(TupleLocalId(0), outer_type.to_vec())],
+                        ),
+                    )],
+                ),
+            ),
+            [function(
+                "with_pair",
+                call_int_function(
+                    local_int_function(0, "continue", [outer_value_type.clone()]),
+                    [tuple_arg(
+                        0,
+                        tuple([
+                            Expr::from(int(1)),
+                            Expr::from(tuple([Expr::from(int(2)), Expr::from(int(3))])),
+                        ]),
+                    )],
+                ),
+            )
+            .param_int_function(0, "continue", [outer_value_type])],
+            [function(
+                "<anonymous:0>",
+                local_int(0, "one")
+                    .add_int(local_int(1, "two"))
+                    .add_int(inner_alias.index_int(0))
+                    .add_int(pair_alias.index_int(0)),
+            )
+            .param_tuple(0, "_use0", outer_type.clone())
+            .step(let_tuple_step(
+                1,
+                "<tuple:1>",
+                local_tuple(0, "_use0", outer_type.clone()),
+            ))
+            .let_int(
+                0,
+                "one",
+                local_tuple(1, "<tuple:1>", outer_type.clone()).index_int(0),
+            )
+            .step(let_tuple_step(
+                2,
+                "<tuple:2>",
+                local_tuple(1, "<tuple:1>", outer_type.clone()).index_tuple(1, inner_type.clone()),
+            ))
+            .let_int(
+                1,
+                "two",
+                local_tuple(2, "<tuple:2>", inner_type.clone()).index_int(0),
+            )
+            .evaluate(local_tuple(2, "<tuple:2>", inner_type.clone()).index_int(1))
+            .step(let_tuple_step(3, "inner", inner_internal))
+            .step(let_tuple_step(
+                4,
+                "pair",
+                local_tuple(1, "<tuple:1>", outer_type),
+            ))],
+        );
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn reject_profile_use_list_assignment() {
         assert_eq!(
             expect_plan_error(
                 r#"
@@ -1686,6 +1844,62 @@ pub fn main() {
                 },
             }),
         );
+
+        let mut missing_generated_assignment = compile_use_module();
+        expect_final_use_mut(&mut missing_generated_assignment).assignments = vec![
+            UseAssignment {
+                location: dummy_span(),
+                pattern: Pattern::Tuple {
+                    location: dummy_span(),
+                    elements: vec![Pattern::Variable {
+                        location: dummy_span(),
+                        name: "value".into(),
+                        type_: type_::int(),
+                        origin: VariableOrigin::generated(),
+                    }],
+                },
+                annotation: None,
+            },
+            UseAssignment {
+                location: dummy_span(),
+                pattern: Pattern::Tuple {
+                    location: dummy_span(),
+                    elements: vec![Pattern::Variable {
+                        location: dummy_span(),
+                        name: "other".into(),
+                        type_: type_::int(),
+                        origin: VariableOrigin::generated(),
+                    }],
+                },
+                annotation: None,
+            },
+        ];
+        assert_eq!(
+            plan_module(missing_generated_assignment),
+            Err(invalid_use_shape(
+                InvalidUseShapeReason::InvalidGeneratedAssignment
+            )),
+        );
+
+        let mut non_assignment_generated_step = compile_tuple_use_module();
+        expect_use_callback_body_mut(&mut non_assignment_generated_step)[0] =
+            Statement::Expression(typed_int_expr(1));
+        assert_eq!(
+            plan_module(non_assignment_generated_step),
+            Err(invalid_use_shape(
+                InvalidUseShapeReason::InvalidGeneratedAssignment
+            )),
+        );
+
+        let mut non_generated_assignment = compile_tuple_use_module();
+        expect_use_callback_assignment_mut(&mut non_generated_assignment).kind =
+            AssignmentKind::Let;
+        assert_eq!(
+            plan_module(non_generated_assignment),
+            Err(invalid_use_shape(
+                InvalidUseShapeReason::InvalidGeneratedAssignment
+            )),
+        );
     }
 
     #[test]
@@ -1709,6 +1923,22 @@ pub fn main() {
         let mut module = compile_use_module();
         expect_use_callback_argument_mut(&mut module).value = typed_int_expr(1);
         expect_use_callback_function_mut(&mut module);
+    }
+
+    #[test]
+    #[should_panic(expected = "use callback should be a function literal")]
+    fn expect_use_callback_body_mut_panics_on_non_function() {
+        let mut module = compile_use_module();
+        expect_use_callback_argument_mut(&mut module).value = typed_int_expr(1);
+        expect_use_callback_body_mut(&mut module);
+    }
+
+    #[test]
+    #[should_panic(expected = "expected use callback assignment")]
+    fn expect_use_callback_assignment_mut_panics_on_expression() {
+        let mut module = compile_tuple_use_module();
+        expect_use_callback_body_mut(&mut module)[0] = Statement::Expression(typed_int_expr(1));
+        expect_use_callback_assignment_mut(&mut module);
     }
 
     #[test]
@@ -1950,6 +2180,21 @@ pub fn main() {
         )
     }
 
+    fn compile_tuple_use_module() -> TypedModule {
+        compile(
+            r#"
+fn with_pair(continue: fn(#(Int, Int)) -> Int) {
+  continue(#(1, 2))
+}
+
+pub fn main() {
+  use #(one, two) <- with_pair
+  one + two
+}
+"#,
+        )
+    }
+
     fn expect_final_use_mut(module: &mut TypedModule) -> &mut TypedUse {
         let main = module
             .definitions
@@ -1995,6 +2240,23 @@ pub fn main() {
             panic!("use callback should be a function literal");
         };
         (type_, kind, arguments)
+    }
+
+    fn expect_use_callback_body_mut(module: &mut TypedModule) -> &mut vec1::Vec1<TypedStatement> {
+        let callback = expect_use_callback_argument_mut(module);
+        let TypedExpr::Fn { body, .. } = &mut callback.value else {
+            panic!("use callback should be a function literal");
+        };
+        body
+    }
+
+    fn expect_use_callback_assignment_mut(module: &mut TypedModule) -> &mut TypedAssignment {
+        match &mut expect_use_callback_body_mut(module)[0] {
+            Statement::Assignment(assignment) => assignment,
+            Statement::Expression(_) | Statement::Use(_) | Statement::Assert(_) => {
+                panic!("expected use callback assignment");
+            }
+        }
     }
 
     fn invalid_use_shape(reason: InvalidUseShapeReason) -> PlanError {

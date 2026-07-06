@@ -6,13 +6,14 @@ use crate::planner::error::{
 };
 use ecow::EcoString;
 use gleam_core::ast::{
-    CallArg as GleamCallArg, FunctionLiteralKind, ImplicitCallArgOrigin, Statement, TypedArg,
-    TypedExpr, TypedStatement,
+    AssignmentKind, CallArg as GleamCallArg, FunctionLiteralKind, ImplicitCallArgOrigin, Statement,
+    TypedArg, TypedExpr, TypedStatement,
 };
 use vec1::Vec1;
 
 pub(super) fn plan_use_call(
     call: TypedExpr,
+    use_assignment_count: usize,
     context: &mut PlanContext<'_>,
 ) -> Result<Expr, PlanError> {
     match call {
@@ -22,7 +23,7 @@ pub(super) fn plan_use_call(
             arguments,
             ..
         } => {
-            let arguments = normalize_use_call_arguments(arguments)?;
+            let arguments = normalize_use_call_arguments(arguments, use_assignment_count)?;
             super::plan_call_expression(type_, *fun, arguments, context, None)
         }
         _ => Err(super::invalid_use_shape(InvalidUseShapeReason::NonCallRhs)),
@@ -123,6 +124,7 @@ fn pipeline_hole_body_call(
 
 fn normalize_use_call_arguments(
     mut arguments: Vec<GleamCallArg<TypedExpr>>,
+    use_assignment_count: usize,
 ) -> Result<Vec<GleamCallArg<TypedExpr>>, PlanError> {
     let mut callback_index = None;
     for (index, argument) in arguments.iter().enumerate() {
@@ -160,15 +162,19 @@ fn normalize_use_call_arguments(
 
     let callback = &mut arguments[callback_index];
     callback.implicit = None;
-    normalize_use_callback(&mut callback.value)?;
+    normalize_use_callback(&mut callback.value, use_assignment_count)?;
 
     Ok(arguments)
 }
 
-fn normalize_use_callback(callback: &mut TypedExpr) -> Result<(), PlanError> {
+fn normalize_use_callback(
+    callback: &mut TypedExpr,
+    use_assignment_count: usize,
+) -> Result<(), PlanError> {
     match callback {
-        TypedExpr::Fn { kind, .. } => match kind {
+        TypedExpr::Fn { kind, body, .. } => match kind {
             FunctionLiteralKind::Use { location } => {
+                normalize_use_generated_assignments(body, use_assignment_count)?;
                 *kind = FunctionLiteralKind::Anonymous { head: *location };
                 Ok(())
             }
@@ -180,6 +186,35 @@ fn normalize_use_callback(callback: &mut TypedExpr) -> Result<(), PlanError> {
             InvalidUseShapeReason::CallbackNotFunctionLiteral,
         )),
     }
+}
+
+fn normalize_use_generated_assignments(
+    body: &mut Vec1<TypedStatement>,
+    use_assignment_count: usize,
+) -> Result<(), PlanError> {
+    let statements = body.as_mut_slice();
+    if statements.len() < use_assignment_count {
+        return Err(super::invalid_use_shape(
+            InvalidUseShapeReason::InvalidGeneratedAssignment,
+        ));
+    }
+
+    for statement in &mut statements[..use_assignment_count] {
+        match statement {
+            Statement::Assignment(assignment)
+                if matches!(assignment.kind, AssignmentKind::Generated) =>
+            {
+                assignment.kind = AssignmentKind::Let;
+            }
+            _ => {
+                return Err(super::invalid_use_shape(
+                    InvalidUseShapeReason::InvalidGeneratedAssignment,
+                ));
+            }
+        }
+    }
+
+    Ok(())
 }
 
 fn count_capture_arguments(
