@@ -636,6 +636,40 @@ pub fn main() {
             ),
             None,
         );
+
+        assert_eq!(
+            super::function_return_type(
+                "main".into(),
+                type_::bit_array().as_ref(),
+                &block_with_final_assignment.definitions.functions[0].body,
+            ),
+            Err(PlanError::UnsupportedFunction {
+                name: "main".into(),
+                reason: UnsupportedFunctionReason::UnsupportedReturnType,
+            }),
+        );
+    }
+
+    #[test]
+    fn source_stop_return_type_accepts_block_source_stop_for_unsupported_return_type() {
+        let block_with_source_stop = compile(
+            r#"
+pub fn main() {
+  {
+    panic
+  }
+}
+"#,
+        );
+
+        assert_eq!(
+            super::function_return_type(
+                "main".into(),
+                type_::bit_array().as_ref(),
+                &block_with_source_stop.definitions.functions[0].body,
+            ),
+            Ok(ValueType::Nil),
+        );
     }
 
     #[test]
