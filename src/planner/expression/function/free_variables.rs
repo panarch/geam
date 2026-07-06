@@ -184,13 +184,20 @@ fn collect_variable_pattern_bound_name(
         Pattern::Variable { name, .. } => {
             bound.insert(name.clone());
         }
+        Pattern::Assign { name, pattern, .. } => {
+            collect_variable_pattern_bound_name(pattern, bound);
+            bound.insert(name.clone());
+        }
+        Pattern::Tuple { elements, .. } => {
+            for element in elements {
+                collect_variable_pattern_bound_name(element, bound);
+            }
+        }
         Pattern::Int { .. }
         | Pattern::Float { .. }
         | Pattern::String { .. }
-        | Pattern::Assign { .. }
         | Pattern::List { .. }
         | Pattern::Constructor { .. }
-        | Pattern::Tuple { .. }
         | Pattern::BitArray { .. }
         | Pattern::StringPrefix { .. }
         | Pattern::BitArraySize(_)
@@ -284,6 +291,25 @@ pub fn main() {
                 "list_element_value".to_string(),
                 "list_tail_value".to_string(),
             ],
+        );
+    }
+
+    #[test]
+    fn anonymous_free_variables_treat_tuple_alias_assignment_names_as_bound() {
+        assert_eq!(
+            anonymous_function_free_variables(
+                r#"
+pub fn main() {
+  let captured = 1
+  fn() {
+    let #(one, #(two, _) as inner) as pair = #(captured, #(2, 3))
+    one + two + inner.0 + pair.0
+  }
+  1
+}
+"#,
+            ),
+            vec!["captured".to_string()],
         );
     }
 

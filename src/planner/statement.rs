@@ -127,6 +127,9 @@ fn plan_final_assignment(
             value,
         }),
         BindingPattern::Tuple(elements) => plan_tuple_assignment(elements, value, context),
+        BindingPattern::Alias { pattern, name } => {
+            plan_alias_assignment(*pattern, name, value, context)
+        }
     }
 }
 
@@ -158,6 +161,10 @@ enum BindingPattern {
     Named(EcoString),
     Discard,
     Tuple(Vec<BindingPattern>),
+    Alias {
+        pattern: Box<BindingPattern>,
+        name: EcoString,
+    },
 }
 
 fn plan_assignment_steps(
@@ -171,7 +178,43 @@ fn plan_assignment_steps(
         BindingPattern::Tuple(elements) => {
             Ok(plan_tuple_assignment(elements, value, context)?.steps)
         }
+        BindingPattern::Alias { pattern, name } => {
+            Ok(plan_alias_assignment(*pattern, name, value, context)?.steps)
+        }
     }
+}
+
+fn plan_alias_assignment(
+    pattern: BindingPattern,
+    name: EcoString,
+    value: Expr,
+    context: &mut PlanContext<'_>,
+) -> Result<PlannedAssignment, PlanError> {
+    let mut planned = match pattern {
+        BindingPattern::Named(name) => {
+            let (step, value) = plan_variable_runtime_step_and_return(name, value, context);
+            PlannedAssignment {
+                steps: vec![step],
+                value,
+            }
+        }
+        BindingPattern::Discard => PlannedAssignment {
+            steps: Vec::new(),
+            value,
+        },
+        BindingPattern::Tuple(elements) => plan_tuple_assignment(elements, value, context)?,
+        BindingPattern::Alias { .. } => {
+            return Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::InvalidPattern,
+            });
+        }
+    };
+    let (step, value) = plan_variable_runtime_step_and_return(name, planned.value, context);
+    planned.steps.push(step);
+    Ok(PlannedAssignment {
+        steps: planned.steps,
+        value,
+    })
 }
 
 fn plan_tuple_assignment(
@@ -395,6 +438,10 @@ fn plan_binding_pattern(pattern: TypedPattern) -> Result<BindingPattern, PlanErr
             .map(plan_binding_pattern)
             .collect::<Result<Vec<_>, _>>()
             .map(BindingPattern::Tuple),
+        Pattern::Assign { name, pattern, .. } => Ok(BindingPattern::Alias {
+            pattern: Box::new(plan_binding_pattern(*pattern)?),
+            name,
+        }),
         pattern => Err(non_variable_pattern_error(&pattern)),
     }
 }
@@ -454,8 +501,8 @@ mod tests {
         BoolLocalId, Expr, FunctionType, IntLocalId, LocalId, NilLocalId, StringLocalId, ValueType,
     };
     use crate::planner::dsl::{
-        bool_, bool_case_int_function, bool_function_ref, call_int_function, capture_int, function,
-        int, int_arg, int_function_arg, int_function_call_arg, int_function_closure,
+        bool_, bool_case_int_function, bool_function_ref, call_int_function, capture_int, equal,
+        function, int, int_arg, int_function_arg, int_function_call_arg, int_function_closure,
         int_function_ref, int_return_tail_call, let_bool_function_step, let_int_function_step,
         let_nil_function_step, let_string_function_step, let_tuple_step, local_bool, local_int,
         local_int_function, local_nil, local_string, local_tuple, module, module_with_anonymous,
@@ -570,6 +617,159 @@ pub fn main() {
     }
 
     #[test]
+    fn plan_variable_alias_assignment_binds_inner_name_then_alias() {
+        let actual = plan_module(compile(
+            r#"
+pub fn main() {
+  let value as alias = 1
+  value + alias
+}
+"#,
+        ))
+        .expect("source should plan");
+        let expected = module(
+            "main",
+            function("main", local_int(0, "value").add_int(local_int(1, "alias")))
+                .let_int(0, "value", int(1))
+                .let_int(1, "alias", local_int(0, "value")),
+            [],
+        );
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn plan_discard_alias_assignment_binds_alias_without_discard_step() {
+        let actual = plan_module(compile(
+            r#"
+pub fn main() {
+  let _ as alias = 1
+  alias
+}
+"#,
+        ))
+        .expect("source should plan");
+        let expected = module(
+            "main",
+            function("main", local_int(0, "alias")).let_int(0, "alias", int(1)),
+            [],
+        );
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn reject_margin_nested_alias_pattern_is_invalid() {
+        let mut module = compile_minimal_module();
+        module.definitions.functions[0].body = vec![
+            Statement::Assignment(Box::new(TypedAssignment {
+                location: dummy_span(),
+                value: typed_int_expr(1),
+                pattern: Pattern::Assign {
+                    location: dummy_span(),
+                    name: "alias".into(),
+                    pattern: Box::new(Pattern::Assign {
+                        location: dummy_span(),
+                        name: "inner".into(),
+                        pattern: Box::new(Pattern::Variable {
+                            location: dummy_span(),
+                            name: "value".into(),
+                            type_: type_::int(),
+                            origin: VariableOrigin::generated(),
+                        }),
+                    }),
+                },
+                kind: AssignmentKind::Let,
+                compiled_case: CompiledCase::simple_variable_assignment(
+                    "value".into(),
+                    type_::int(),
+                ),
+                annotation: None,
+            })),
+            Statement::Expression(typed_int_expr(1)),
+        ];
+
+        assert_eq!(
+            plan_module(module),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::InvalidPattern,
+            }),
+        );
+    }
+
+    #[test]
+    fn reject_margin_alias_tuple_pattern_requires_tuple_value() {
+        let mut module = compile_minimal_module();
+        module.definitions.functions[0].body = vec![
+            Statement::Assignment(Box::new(TypedAssignment {
+                location: dummy_span(),
+                value: typed_int_expr(1),
+                pattern: Pattern::Assign {
+                    location: dummy_span(),
+                    name: "alias".into(),
+                    pattern: Box::new(Pattern::Tuple {
+                        location: dummy_span(),
+                        elements: vec![Pattern::Variable {
+                            location: dummy_span(),
+                            name: "value".into(),
+                            type_: type_::int(),
+                            origin: VariableOrigin::generated(),
+                        }],
+                    }),
+                },
+                kind: AssignmentKind::Let,
+                compiled_case: CompiledCase::simple_variable_assignment(
+                    "value".into(),
+                    type_::int(),
+                ),
+                annotation: None,
+            })),
+            Statement::Expression(typed_int_expr(1)),
+        ];
+
+        assert_eq!(
+            plan_module(module),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionType {
+                    expected: InvalidExpressionType::Tuple,
+                    actual: InvalidExpressionType::Int,
+                },
+            }),
+        );
+    }
+
+    #[test]
+    fn plan_tuple_alias_assignment_binds_projected_elements_and_alias_from_internal_local() {
+        let actual = plan_module(compile(
+            r#"
+pub fn main() {
+  let #(one, _) as pair = #(1, 2)
+  one == pair.0
+}
+"#,
+        ))
+        .expect("source should plan");
+        let type_ = [ValueType::Int, ValueType::Int];
+        let internal_tuple = local_tuple(0, "<tuple:0>", type_.clone());
+        let alias_tuple = local_tuple(1, "pair", type_.clone());
+        let expected = module(
+            "main",
+            function("main", equal(local_int(0, "one"), alias_tuple.index_int(0)))
+                .step(let_tuple_step(0, "<tuple:0>", tuple([int(1), int(2)])))
+                .let_int(
+                    0,
+                    "one",
+                    local_tuple(0, "<tuple:0>", type_.clone()).index_int(0),
+                )
+                .evaluate(local_tuple(0, "<tuple:0>", type_.clone()).index_int(1))
+                .step(let_tuple_step(1, "pair", internal_tuple)),
+            [],
+        );
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
     fn plan_nested_tuple_assignment_binds_nested_internal_local() {
         let actual = plan_module(compile(
             r#"
@@ -618,6 +818,71 @@ pub fn main() {
                 local_tuple(1, "<tuple:1>", [ValueType::Int, ValueType::Int]).index_int(0),
             )
             .let_int(2, "three", inner_local.index_int(1)),
+            [],
+        );
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn plan_nested_tuple_alias_assignment_binds_nested_aliases_in_step_order() {
+        let actual = plan_module(compile(
+            r#"
+pub fn main() {
+  let #(one, #(two, _) as inner) as pair = #(1, #(2, 3))
+  one + two + inner.0 + pair.0
+}
+"#,
+        ))
+        .expect("source should plan");
+        let outer_type = [
+            ValueType::Int,
+            ValueType::Tuple(vec![ValueType::Int, ValueType::Int]),
+        ];
+        let inner_type = [ValueType::Int, ValueType::Int];
+        let outer_internal = local_tuple(0, "<tuple:0>", outer_type.clone());
+        let inner_internal = local_tuple(1, "<tuple:1>", inner_type.clone());
+        let inner_alias = local_tuple(2, "inner", inner_type.clone());
+        let pair_alias = local_tuple(3, "pair", outer_type.clone());
+        let expected = module(
+            "main",
+            function(
+                "main",
+                local_int(0, "one")
+                    .add_int(local_int(1, "two"))
+                    .add_int(inner_alias.index_int(0))
+                    .add_int(pair_alias.index_int(0)),
+            )
+            .step(let_tuple_step(
+                0,
+                "<tuple:0>",
+                tuple([
+                    Expr::from(int(1)),
+                    Expr::from(tuple([Expr::from(int(2)), Expr::from(int(3))])),
+                ]),
+            ))
+            .let_int(
+                0,
+                "one",
+                local_tuple(0, "<tuple:0>", outer_type.clone()).index_int(0),
+            )
+            .step(let_tuple_step(
+                1,
+                "<tuple:1>",
+                outer_internal.index_tuple(1, inner_type.clone()),
+            ))
+            .let_int(
+                1,
+                "two",
+                local_tuple(1, "<tuple:1>", inner_type.clone()).index_int(0),
+            )
+            .evaluate(local_tuple(1, "<tuple:1>", inner_type.clone()).index_int(1))
+            .step(let_tuple_step(2, "inner", inner_internal))
+            .step(let_tuple_step(
+                3,
+                "pair",
+                local_tuple(0, "<tuple:0>", outer_type),
+            )),
             [],
         );
 
@@ -959,6 +1224,38 @@ pub fn main() {
                 local_tuple(0, "<tuple:0>", [ValueType::Int, ValueType::Int]).index_int(0),
             )
             .let_int(1, "two", tuple_local.index_int(1)),
+            [],
+        );
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn plan_final_pattern_alias_assignment_returns_alias_local() {
+        let actual = plan_module(compile(
+            r#"
+pub fn main() {
+  let #(one, _) as pair = #(1, 2)
+}
+"#,
+        ))
+        .expect("source should plan");
+        let type_ = [ValueType::Int, ValueType::Int];
+        let expected = module(
+            "main",
+            function("main", local_tuple(1, "pair", type_.clone()))
+                .step(let_tuple_step(0, "<tuple:0>", tuple([int(1), int(2)])))
+                .let_int(
+                    0,
+                    "one",
+                    local_tuple(0, "<tuple:0>", type_.clone()).index_int(0),
+                )
+                .evaluate(local_tuple(0, "<tuple:0>", type_.clone()).index_int(1))
+                .step(let_tuple_step(
+                    1,
+                    "pair",
+                    local_tuple(0, "<tuple:0>", type_),
+                )),
             [],
         );
 
@@ -1481,30 +1778,17 @@ pub fn main() {
 
     #[test]
     fn reject_profile_non_variable_pattern_shapes() {
-        let cases = [
-            (
-                r#"
-pub fn main() {
-  let value as alias = 1
-  alias
-}
-"#,
-                PlanError::UnsupportedPattern {
-                    kind: UnsupportedPatternKind::Assign,
-                },
-            ),
-            (
-                r#"
+        let cases = [(
+            r#"
 pub fn main() {
   let [..rest] = [1]
   rest
 }
 "#,
-                PlanError::UnsupportedPattern {
-                    kind: UnsupportedPatternKind::List,
-                },
-            ),
-        ];
+            PlanError::UnsupportedPattern {
+                kind: UnsupportedPatternKind::List,
+            },
+        )];
 
         for (src, expected) in cases {
             assert_eq!(expect_plan_error(src), expected);
@@ -1541,6 +1825,32 @@ pub fn main() {
                 BindingPattern::Named("x".into()),
                 BindingPattern::Named("y".into()),
             ])),
+        );
+        assert_eq!(
+            plan_binding_pattern(Pattern::Assign {
+                location: dummy_span(),
+                name: "alias".into(),
+                pattern: Box::new(variable("x")),
+            }),
+            Ok(BindingPattern::Alias {
+                pattern: Box::new(BindingPattern::Named("x".into())),
+                name: "alias".into(),
+            }),
+        );
+        assert_eq!(
+            plan_binding_pattern(Pattern::Assign {
+                location: dummy_span(),
+                name: "alias".into(),
+                pattern: Box::new(Pattern::List {
+                    location: dummy_span(),
+                    elements: vec![variable("x")],
+                    tail: None,
+                    type_: type_::list(type_::int()),
+                }),
+            }),
+            Err(PlanError::UnsupportedPattern {
+                kind: UnsupportedPatternKind::List,
+            }),
         );
 
         let patterns = [
