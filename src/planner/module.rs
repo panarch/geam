@@ -12,8 +12,9 @@ use crate::planner::error::{
 use crate::planner::function::{function_name, plan_function};
 use ecow::EcoString;
 use gleam_core::ast::{ArgNames, Statement, TypedExpr, TypedFunction, TypedModule};
-use gleam_core::type_::Type;
+use gleam_core::type_::{Type, TypeVar};
 use std::collections::HashMap;
+use std::ops::Deref;
 
 pub fn plan_module(module: TypedModule) -> Result<ExecutionPlan, PlanError> {
     let definitions = module.definitions;
@@ -194,12 +195,32 @@ fn function_return_type(
     type_: &Type,
     body: &[gleam_core::ast::TypedStatement],
 ) -> Result<ValueType, PlanError> {
-    ValueType::from_gleam(type_)
-        .or_else(|| source_stop_return_type(body))
-        .ok_or(PlanError::UnsupportedFunction {
-            name,
-            reason: UnsupportedFunctionReason::UnsupportedReturnType,
-        })
+    if let Some(return_type) = ValueType::from_gleam(type_) {
+        return Ok(return_type);
+    }
+
+    if is_inferred_return_type(type_)
+        && let Some(return_type) = source_stop_return_type(body)
+    {
+        return Ok(return_type);
+    }
+
+    Err(PlanError::UnsupportedFunction {
+        name,
+        reason: UnsupportedFunctionReason::UnsupportedReturnType,
+    })
+}
+
+fn is_inferred_return_type(type_: &Type) -> bool {
+    let Type::Var { type_ } = type_ else {
+        return false;
+    };
+
+    match type_.borrow().deref() {
+        TypeVar::Link { type_ } => is_inferred_return_type(type_.as_ref()),
+        TypeVar::Unbound { .. } => true,
+        TypeVar::Generic { .. } => false,
+    }
 }
 
 fn source_stop_return_type(body: &[gleam_core::ast::TypedStatement]) -> Option<ValueType> {
@@ -609,6 +630,18 @@ pub fn main() {
             }),
         );
 
+        let final_expression = compile(
+            r#"
+pub fn main() {
+  1
+}
+"#,
+        );
+        assert_eq!(
+            super::source_stop_return_type(&final_expression.definitions.functions[0].body),
+            None,
+        );
+
         let final_assignment = compile(
             r#"
 pub fn main() {
@@ -651,7 +684,7 @@ pub fn main() {
     }
 
     #[test]
-    fn plan_source_stop_with_unsupported_return_type_as_nil() {
+    fn plan_source_stop_with_unbound_return_type_as_nil() {
         let block_with_source_stop = compile(
             r#"
 pub fn main() {
@@ -665,10 +698,86 @@ pub fn main() {
         assert_eq!(
             super::function_return_type(
                 "main".into(),
-                type_::bit_array().as_ref(),
+                type_::unbound_var(0).as_ref(),
                 &block_with_source_stop.definitions.functions[0].body,
             ),
             Ok(ValueType::Nil),
+        );
+    }
+
+    #[test]
+    fn reject_profile_source_stop_with_generic_return_type() {
+        let block_with_source_stop = compile(
+            r#"
+pub fn main() {
+  {
+    panic
+  }
+}
+"#,
+        );
+
+        assert_eq!(
+            super::function_return_type(
+                "main".into(),
+                type_::generic_var(0).as_ref(),
+                &block_with_source_stop.definitions.functions[0].body,
+            ),
+            Err(PlanError::UnsupportedFunction {
+                name: "main".into(),
+                reason: UnsupportedFunctionReason::UnsupportedReturnType,
+            }),
+        );
+        assert_eq!(
+            expect_plan_error(
+                r#"
+fn fail() -> a {
+  panic
+}
+
+pub fn main() {
+  1
+}
+"#,
+            ),
+            PlanError::UnsupportedFunction {
+                name: "fail".into(),
+                reason: UnsupportedFunctionReason::UnsupportedReturnType,
+            },
+        );
+    }
+
+    #[test]
+    fn reject_profile_source_stop_with_explicit_unsupported_return_type() {
+        assert_eq!(
+            expect_plan_error(
+                r#"
+pub fn main() -> BitArray {
+  panic
+}
+"#,
+            ),
+            PlanError::UnsupportedFunction {
+                name: "main".into(),
+                reason: UnsupportedFunctionReason::UnsupportedReturnType,
+            },
+        );
+        assert_eq!(
+            expect_plan_error(
+                r#"
+fn helper() -> BitArray {
+  panic
+}
+
+pub fn main() {
+  1
+}
+"#,
+            ),
+            PlanError::UnsupportedFunction {
+                name: "helper".into(),
+                reason: UnsupportedFunctionReason::UnsupportedReturnType,
+            },
         );
     }
 
