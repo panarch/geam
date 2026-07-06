@@ -552,6 +552,66 @@ mod tests {
     }
 
     #[test]
+    fn execute_steps_assert_list_does_not_commit_partial_nested_bindings() {
+        let plan = plan();
+        let mut layout = FrameLayout::default();
+        layout.include_list(ListLocalId(0));
+        layout.include_int(IntLocalId(0));
+        layout.include_int(IntLocalId(1));
+        let mut frame = Frame::new(layout);
+        frame.set_list(
+            ListLocalId(0),
+            ListValue::new(
+                ValueType::List(Box::new(ValueType::Int)),
+                vec![
+                    Value::List(ListValue::new(ValueType::Int, vec![Value::Int(1.into())])),
+                    Value::List(ListValue::new(ValueType::Int, Vec::new())),
+                ],
+            ),
+        );
+
+        let actual = execute_steps(
+            &plan,
+            &[Step::assert_list(
+                ListLocalId(0),
+                AssertPattern::list(ListAssertPattern::new(
+                    ValueType::List(Box::new(ValueType::Int)),
+                    vec![
+                        AssertPattern::list(ListAssertPattern::new(
+                            ValueType::Int,
+                            vec![AssertPattern::Bind(AssertBinding::new(
+                                ParamLocal::int(IntLocalId(0)),
+                                "first".into(),
+                            ))],
+                            None,
+                        )),
+                        AssertPattern::list(ListAssertPattern::new(
+                            ValueType::Int,
+                            vec![AssertPattern::Bind(AssertBinding::new(
+                                ParamLocal::int(IntLocalId(1)),
+                                "second".into(),
+                            ))],
+                            None,
+                        )),
+                    ],
+                    None,
+                )),
+                None,
+            )],
+            &mut frame,
+        );
+
+        assert_eq!(
+            actual,
+            Err(ExecutionError::panic(PanicKind::LetAssert {
+                message: None,
+            })),
+        );
+        assert_eq!(frame.get_int(IntLocalId(0)), 0.into());
+        assert_eq!(frame.get_int(IntLocalId(1)), 0.into());
+    }
+
+    #[test]
     fn execute_steps_assert_list_accepts_empty_pattern_without_bindings() {
         let plan = plan();
         let mut layout = FrameLayout::default();
