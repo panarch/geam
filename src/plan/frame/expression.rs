@@ -589,7 +589,13 @@ mod tests {
 
         let layout = FrameLayout::from_function_parts(&[], &steps, &return_);
 
+        assert_eq!(layout.ints(), 0);
+        assert_eq!(layout.floats(), 0);
         assert_eq!(layout.strings(), 7);
+        assert_eq!(layout.bools(), 0);
+        assert_eq!(layout.nils(), 0);
+        assert_eq!(layout.tuples(), 0);
+        assert_eq!(layout.lists(), 0);
     }
 
     #[test]

@@ -20,7 +20,7 @@ pub(super) fn plan(
     })
 }
 
-pub(super) fn plan_with_expected_panic(
+pub(super) fn plan_with_expected_source_stop_type(
     statements: Vec1<TypedStatement>,
     expected: &ValueType,
     context: &mut PlanContext<'_>,

@@ -195,7 +195,7 @@ fn plan_argument_value(
         return Ok(capture.value.clone());
     }
 
-    super::super::plan_expr_with_expected_panic(argument.value, expected, context)
+    super::super::plan_expr_with_expected_source_stop_type(argument.value, expected, context)
 }
 
 #[cfg(test)]

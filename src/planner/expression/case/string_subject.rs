@@ -24,8 +24,11 @@ pub(super) fn plan(
         validate_clause_shape(&clause)?;
         let pattern = single_case_pattern(clause.pattern)?;
         let pattern = plan_string_case_pattern(pattern)?;
-        let branch =
-            super::super::plan_expr_with_expected_panic(clause.then, return_type.clone(), context)?;
+        let branch = super::super::plan_expr_with_expected_source_stop_type(
+            clause.then,
+            return_type.clone(),
+            context,
+        )?;
         validate_case_branch_type(type_.as_ref(), &branch)?;
 
         match pattern {

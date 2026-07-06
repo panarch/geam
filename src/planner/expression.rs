@@ -205,7 +205,7 @@ fn generated_todo_expr(
     Ok(expression())
 }
 
-pub(super) fn plan_expr_with_expected_panic(
+pub(super) fn plan_expr_with_expected_source_stop_type(
     expression: TypedExpr,
     expected: ValueType,
     context: &mut PlanContext<'_>,
@@ -218,7 +218,7 @@ pub(super) fn plan_expr_with_expected_panic(
             plan_panic_expr_with_type(message.map(|message| *message), expected, context)
         }
         TypedExpr::Block { statements, .. } => {
-            block::plan_with_expected_panic(statements, &expected, context)
+            block::plan_with_expected_source_stop_type(statements, &expected, context)
         }
         expression => plan_expr(expression, context),
     }
@@ -298,7 +298,7 @@ fn plan_tuple(
         .into_iter()
         .zip(&expected_type)
         .map(|(element, expected)| {
-            plan_expr_with_expected_panic(element, expected.clone(), context)
+            plan_expr_with_expected_source_stop_type(element, expected.clone(), context)
         })
         .collect::<Result<Vec<_>, _>>()?;
     let actual_type = planned_elements
@@ -350,7 +350,11 @@ fn plan_list(
     let planned_elements = elements
         .into_iter()
         .map(|element| {
-            plan_expr_with_expected_panic(element, expected_element_type.clone(), context)
+            plan_expr_with_expected_source_stop_type(
+                element,
+                expected_element_type.clone(),
+                context,
+            )
         })
         .collect::<Result<Vec<_>, _>>()?;
 
@@ -371,7 +375,7 @@ fn plan_list(
         )));
     };
 
-    let tail = plan_expr_with_expected_panic(
+    let tail = plan_expr_with_expected_source_stop_type(
         tail,
         ValueType::List(Box::new(expected_element_type.clone())),
         context,
@@ -488,7 +492,7 @@ fn plan_int_expr(
     expression: TypedExpr,
     context: &mut PlanContext<'_>,
 ) -> Result<IntExpr, PlanError> {
-    let expression = plan_expr_with_expected_panic(expression, ValueType::Int, context)?;
+    let expression = plan_expr_with_expected_source_stop_type(expression, ValueType::Int, context)?;
     let actual = expression_type(&expression);
     expression
         .into_int()
@@ -499,7 +503,8 @@ fn plan_string_expr(
     expression: TypedExpr,
     context: &mut PlanContext<'_>,
 ) -> Result<StringExpr, PlanError> {
-    let expression = plan_expr_with_expected_panic(expression, ValueType::String, context)?;
+    let expression =
+        plan_expr_with_expected_source_stop_type(expression, ValueType::String, context)?;
     let actual = expression_type(&expression);
     expression
         .into_string()
@@ -510,7 +515,8 @@ fn plan_float_expr(
     expression: TypedExpr,
     context: &mut PlanContext<'_>,
 ) -> Result<FloatExpr, PlanError> {
-    let expression = plan_expr_with_expected_panic(expression, ValueType::Float, context)?;
+    let expression =
+        plan_expr_with_expected_source_stop_type(expression, ValueType::Float, context)?;
     let actual = expression_type(&expression);
     expression
         .into_float()
@@ -521,7 +527,8 @@ fn plan_bool_expr(
     expression: TypedExpr,
     context: &mut PlanContext<'_>,
 ) -> Result<BoolExpr, PlanError> {
-    let expression = plan_expr_with_expected_panic(expression, ValueType::Bool, context)?;
+    let expression =
+        plan_expr_with_expected_source_stop_type(expression, ValueType::Bool, context)?;
     let actual = expression_type(&expression);
     expression
         .into_bool()

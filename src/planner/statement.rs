@@ -10,7 +10,7 @@ use crate::planner::error::{
     UnsupportedAssignmentKind, UnsupportedPatternKind, UnsupportedStatementKind,
 };
 use crate::planner::expression::{
-    plan_expr, plan_expr_with_expected_panic, plan_use_call, tuple_index_expr,
+    plan_expr, plan_expr_with_expected_source_stop_type, plan_use_call, tuple_index_expr,
 };
 use ecow::EcoString;
 use gleam_core::ast::{
@@ -59,7 +59,9 @@ fn plan_ordered_steps_and_return(
 
     let return_ = match last_statement {
         Statement::Expression(expression) => match expected_return_type {
-            Some(type_) => plan_expr_with_expected_panic(expression, type_.clone(), context)?,
+            Some(type_) => {
+                plan_expr_with_expected_source_stop_type(expression, type_.clone(), context)?
+            }
             None => plan_expr(expression, context)?,
         },
         Statement::Assignment(assignment) => {
@@ -92,7 +94,7 @@ pub(super) fn plan_runtime_steps(
 ) -> Result<Vec<Step>, PlanError> {
     match statement {
         Statement::Expression(expression) => Ok(vec![Step::evaluate(
-            plan_expr_with_expected_panic(expression, ValueType::Nil, context)?,
+            plan_expr_with_expected_source_stop_type(expression, ValueType::Nil, context)?,
         )]),
         Statement::Assignment(assignment) => plan_assignment(*assignment, context),
         Statement::Use(_) => Err(PlanError::InvalidTypedAst {
@@ -161,7 +163,7 @@ fn plan_assignment_parts(
 
     let pattern = plan_binding_pattern(assignment.pattern)?;
     let value = if matches!(pattern, BindingPattern::Discard) {
-        plan_expr_with_expected_panic(assignment.value, ValueType::Nil, context)?
+        plan_expr_with_expected_source_stop_type(assignment.value, ValueType::Nil, context)?
     } else {
         plan_expr(assignment.value, context)?
     };
