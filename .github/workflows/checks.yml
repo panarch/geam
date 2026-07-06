@@ -4,10 +4,6 @@ on:
   push:
     branches:
       - main
-  # Temporary trigger for validating this workflow before the first merge.
-  pull_request:
-    branches:
-      - main
 
 permissions:
   contents: read
