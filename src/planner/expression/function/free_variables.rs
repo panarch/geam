@@ -156,10 +156,13 @@ fn collect_expr(expression: &TypedExpr, bound: &mut HashSet<EcoString>, free: &m
                 collect_expr(tail, bound, free);
             }
         }
+        TypedExpr::Todo { message, .. } | TypedExpr::Panic { message, .. } => {
+            if let Some(message) = message {
+                collect_expr(message, bound, free);
+            }
+        }
         TypedExpr::RecordAccess { .. }
         | TypedExpr::PositionalAccess { .. }
-        | TypedExpr::Todo { .. }
-        | TypedExpr::Panic { .. }
         | TypedExpr::Echo { .. }
         | TypedExpr::BitArray { .. }
         | TypedExpr::RecordUpdate { .. }
@@ -253,6 +256,8 @@ pub fn main() {
   let tuple_value = #(5, 6)
   let list_element_value = 7
   let list_tail_value = [7]
+  let panic_message = "boom"
+  let todo_message = "later"
   fn() {
     {
       block_value
@@ -274,6 +279,8 @@ pub fn main() {
     tuple_value.0
     [list_element_value]
     [0, ..list_tail_value]
+    panic as panic_message
+    todo as todo_message
   }
   1
 }
@@ -290,6 +297,8 @@ pub fn main() {
                 "tuple_value".to_string(),
                 "list_element_value".to_string(),
                 "list_tail_value".to_string(),
+                "panic_message".to_string(),
+                "todo_message".to_string(),
             ],
         );
     }

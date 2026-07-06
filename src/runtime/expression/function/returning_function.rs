@@ -4,7 +4,8 @@ use crate::plan::{
 };
 use crate::runtime::ExecutionError;
 use crate::runtime::expression::{
-    eval_bool_expr, eval_float_expr, eval_int_expr, eval_string_expr, project_tuple_expr,
+    eval_bool_expr, eval_float_expr, eval_int_expr, eval_panic_expr, eval_string_expr,
+    project_tuple_expr,
 };
 use crate::runtime::frame::Frame;
 use crate::runtime::function;
@@ -56,6 +57,7 @@ pub(in crate::runtime) fn eval_function_function_expr(
                 )),
             }
         }
+        FunctionFunctionExprKind::Panic(panic) => eval_panic_expr(plan, frame, panic),
         FunctionFunctionExprKind::BoolCase {
             subject,
             true_,
@@ -120,10 +122,10 @@ mod tests {
         BoolExpr, CaptureArg, ExecutionPlan, Expr, FloatExpr, FunctionExpr, FunctionFunctionExpr,
         FunctionFunctionId, FunctionFunctionValue, FunctionId, FunctionPlan, FunctionType, IntExpr,
         IntFunctionExpr, IntFunctionFunctionId, IntFunctionId, IntFunctionValue, IntLocalId,
-        ReturnExpr, Step, StringExpr, TupleExpr, ValueType,
+        PanicExpr, ReturnExpr, Step, StringExpr, TupleExpr, ValueType,
     };
-    use crate::runtime::ExecutionError;
     use crate::runtime::frame::Frame;
+    use crate::runtime::{ExecutionError, PanicKind};
     use crate::runtime::{Value, run_src};
 
     #[test]
@@ -162,6 +164,21 @@ pub fn main() {
   getter
 }
 "#,
+        );
+    }
+
+    #[test]
+    fn eval_function_function_panic_returns_error() {
+        let plan = plan();
+        let mut frame = Frame::default();
+
+        assert_eq!(
+            eval_function_function_expr(
+                &plan,
+                &mut frame,
+                &FunctionFunctionExpr::panic(PanicExpr::panic(None), returned_int_function_type(),),
+            ),
+            Err(ExecutionError::panic(PanicKind::Panic { message: None })),
         );
     }
 

@@ -4,7 +4,7 @@ mod frame;
 mod function;
 
 pub use crate::plan::Value;
-pub use error::ExecutionError;
+pub use error::{ExecutionError, PanicKind};
 
 use crate::plan::ExecutionPlan;
 

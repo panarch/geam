@@ -3,5 +3,5 @@ pub fn main() {
 }
 
 fn helper() -> Int {
-  panic
+  echo 1
 }

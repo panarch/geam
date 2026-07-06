@@ -1,4 +1,7 @@
-use super::{eval_bool_expr, eval_float_expr, eval_int_expr, eval_string_expr, project_tuple_expr};
+use super::{
+    eval_bool_expr, eval_float_expr, eval_int_expr, eval_panic_expr, eval_string_expr,
+    project_tuple_expr,
+};
 use crate::plan::{ExecutionPlan, NilExpr, NilExprKind, Value, ValueType};
 use crate::runtime::ExecutionError;
 use crate::runtime::frame::Frame;
@@ -30,6 +33,7 @@ pub(in crate::runtime) fn eval_nil_expr(
                 )),
             }
         }
+        NilExprKind::Panic(panic) => eval_panic_expr(plan, frame, panic),
         NilExprKind::BoolCase {
             subject,
             true_,
@@ -94,11 +98,11 @@ mod tests {
         BoolExpr, BoolFunctionExpr, ExecutionPlan, Expr, FloatExpr, FloatFunctionExpr,
         FunctionFunctionExpr, FunctionFunctionId, FunctionFunctionValue, FunctionId, FunctionPlan,
         FunctionReturnFamily, FunctionType, IntExpr, IntFunctionExpr, IntFunctionFunctionId,
-        IntFunctionId, NilExpr, NilFunctionExpr, ReturnExpr, Step, StringExpr, StringFunctionExpr,
-        StringFunctionFunctionId, TupleExpr, ValueType,
+        IntFunctionId, NilExpr, NilFunctionExpr, PanicExpr, ReturnExpr, Step, StringExpr,
+        StringFunctionExpr, StringFunctionFunctionId, TupleExpr, ValueType,
     };
-    use crate::runtime::ExecutionError;
     use crate::runtime::frame::Frame;
+    use crate::runtime::{ExecutionError, PanicKind};
     use crate::runtime::{Value, run_src};
 
     #[test]
@@ -122,6 +126,17 @@ mod tests {
         assert_eq!(
             eval_nil_expr(&plan, &mut frame, &NilExpr::tuple_index(tuple, 0)),
             Ok(()),
+        );
+    }
+
+    #[test]
+    fn eval_nil_panic_returns_error() {
+        let plan = crate::runtime::plan_src("pub fn main() { Nil }");
+        let mut frame = Frame::default();
+
+        assert_eq!(
+            eval_nil_expr(&plan, &mut frame, &NilExpr::panic(PanicExpr::panic(None)),),
+            Err(ExecutionError::panic(PanicKind::Panic { message: None })),
         );
     }
 

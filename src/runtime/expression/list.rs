@@ -1,4 +1,7 @@
-use super::{eval_bool_expr, eval_float_expr, eval_int_expr, eval_string_expr, project_tuple_expr};
+use super::{
+    eval_bool_expr, eval_float_expr, eval_int_expr, eval_panic_expr, eval_string_expr,
+    project_tuple_expr,
+};
 use crate::plan::{ExecutionPlan, ListExpr, ListExprKind, ListValue, Value, ValueType};
 use crate::runtime::ExecutionError;
 use crate::runtime::frame::Frame;
@@ -43,6 +46,7 @@ pub(in crate::runtime) fn eval_list_expr(
                 )),
             }
         }
+        ListExprKind::Panic(panic) => eval_panic_expr(plan, frame, panic),
         ListExprKind::BoolCase {
             subject,
             true_,
@@ -105,12 +109,27 @@ mod tests {
     use super::eval_list_expr;
     use crate::plan::{
         BoolExpr, ExecutionPlan, Expr, FloatExpr, FrameLayout, FunctionId, FunctionPlan, IntExpr,
-        IntFunctionId, ListExpr, ListFunctionId, ListLocalId, ListValue, ReturnBody, ReturnExpr,
-        Step, StringExpr, TupleExpr, Value, ValueType,
+        IntFunctionId, ListExpr, ListFunctionId, ListLocalId, ListValue, PanicExpr, ReturnBody,
+        ReturnExpr, Step, StringExpr, TupleExpr, Value, ValueType,
     };
-    use crate::runtime::ExecutionError;
     use crate::runtime::frame::Frame;
+    use crate::runtime::{ExecutionError, PanicKind};
     use num_bigint::BigInt;
+
+    #[test]
+    fn eval_list_panic_returns_error() {
+        let plan = plan();
+        let mut frame = Frame::default();
+
+        assert_eq!(
+            eval_list_expr(
+                &plan,
+                &mut frame,
+                &ListExpr::panic(PanicExpr::panic(None), element_type()),
+            ),
+            Err(ExecutionError::panic(PanicKind::Panic { message: None })),
+        );
+    }
 
     #[test]
     fn eval_list_expr_evaluates_value_local_and_direct_call() {

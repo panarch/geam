@@ -54,12 +54,8 @@ pub enum UnsupportedExpressionKind {
     Echo,
     #[error("list element type is not supported")]
     UnsupportedListElementType,
-    #[error("panic")]
-    Panic,
     #[error("record constructor")]
     RecordConstructor,
-    #[error("todo")]
-    Todo,
     #[error("function literal type is not supported")]
     UnsupportedFunctionLiteralType,
 }

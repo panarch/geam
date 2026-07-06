@@ -83,14 +83,14 @@ pub fn not_equal() {
     }
 
     #[test]
-    fn reject_profile_equality_operand_errors_propagate() {
+    fn reject_profile_equality_operand_expression_errors_propagate() {
         for (name, src) in [
             (
                 "equal left",
                 r#"
 pub fn main() {
   {
-    panic
+    echo 1
     1
   } == 1
 }
@@ -101,7 +101,7 @@ pub fn main() {
                 r#"
 pub fn main() {
   1 == {
-    panic
+    echo 1
     1
   }
 }
@@ -112,7 +112,7 @@ pub fn main() {
                 r#"
 pub fn main() {
   {
-    panic
+    echo 1
     1
   } != 1
 }
@@ -123,14 +123,14 @@ pub fn main() {
                 r#"
 pub fn main() {
   1 != {
-    panic
+    echo 1
     1
   }
 }
 "#,
             ),
         ] {
-            assert_panic_reject(name, src);
+            assert_echo_reject(name, src);
         }
     }
 
@@ -242,11 +242,11 @@ pub fn main() {
         );
     }
 
-    fn assert_panic_reject(name: &str, src: &str) {
+    fn assert_echo_reject(name: &str, src: &str) {
         assert_eq!(
             expect_plan_error(src),
             PlanError::UnsupportedExpression {
-                kind: UnsupportedExpressionKind::Panic,
+                kind: UnsupportedExpressionKind::Echo,
             },
             "{name}",
         );

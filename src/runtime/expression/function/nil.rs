@@ -4,7 +4,8 @@ use crate::plan::{
 };
 use crate::runtime::ExecutionError;
 use crate::runtime::expression::{
-    eval_bool_expr, eval_float_expr, eval_int_expr, eval_string_expr, project_tuple_expr,
+    eval_bool_expr, eval_float_expr, eval_int_expr, eval_panic_expr, eval_string_expr,
+    project_tuple_expr,
 };
 use crate::runtime::frame::Frame;
 use crate::runtime::function;
@@ -54,6 +55,7 @@ pub(in crate::runtime) fn eval_nil_function_expr(
                 )),
             }
         }
+        NilFunctionExprKind::Panic(panic) => eval_panic_expr(plan, frame, panic),
         NilFunctionExprKind::BoolCase {
             subject,
             true_,
@@ -119,11 +121,11 @@ mod tests {
         Expr, FloatExpr, FunctionExpr, FunctionFunctionExpr, FunctionFunctionId,
         FunctionFunctionValue, FunctionId, FunctionPlan, FunctionType, IntExpr, IntFunctionId,
         NilFunctionExpr, NilFunctionFunctionId, NilFunctionId, NilFunctionLocalId,
-        NilFunctionValue, NilLocalId, ParamLocal, ReturnExpr, Step, StringExpr, TupleExpr,
-        ValueType,
+        NilFunctionValue, NilLocalId, PanicExpr, ParamLocal, ReturnExpr, Step, StringExpr,
+        TupleExpr, ValueType,
     };
-    use crate::runtime::ExecutionError;
     use crate::runtime::frame::Frame;
+    use crate::runtime::{ExecutionError, PanicKind};
 
     #[test]
     fn eval_nil_function_local_closure_call_function_call_and_block() {
@@ -196,6 +198,21 @@ mod tests {
             .expect("expression should evaluate")
             .runtime_id(),
             NilFunctionId(0),
+        );
+    }
+
+    #[test]
+    fn eval_nil_function_panic_returns_error() {
+        let plan = plan();
+        let mut frame = Frame::default();
+
+        assert_eq!(
+            eval_nil_function_expr(
+                &plan,
+                &mut frame,
+                &NilFunctionExpr::panic(PanicExpr::panic(None), type_()),
+            ),
+            Err(ExecutionError::panic(PanicKind::Panic { message: None })),
         );
     }
 

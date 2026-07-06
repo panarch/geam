@@ -1,6 +1,6 @@
 use super::{
-    invalid_case_shape, single_case_pattern, unsupported_case, validate_case_branch_type,
-    validate_clause_shape,
+    case_return_type, invalid_case_shape, single_case_pattern, unsupported_case,
+    validate_case_branch_type, validate_clause_shape,
 };
 use crate::plan::{BoolCaseBranches, BoolExpr, Expr, ExprKind};
 use crate::planner::context::PlanContext;
@@ -16,13 +16,18 @@ pub(super) fn plan(
     context: &mut PlanContext<'_>,
 ) -> Result<Expr, PlanError> {
     let subject = super::super::plan_bool_expr(subject, context)?;
+    let return_type = case_return_type(type_.as_ref())?;
     let mut true_branch = None;
     let mut false_branch = None;
     for clause in clauses {
         validate_clause_shape(&clause)?;
         let pattern = single_case_pattern(clause.pattern)?;
         let pattern = plan_bool_case_pattern(pattern)?;
-        let branch = super::super::plan_expr(clause.then, context)?;
+        let branch = super::super::plan_expr_with_expected_source_stop_type(
+            clause.then,
+            return_type.clone(),
+            context,
+        )?;
         validate_case_branch_type(type_.as_ref(), &branch)?;
 
         match pattern {
@@ -696,7 +701,7 @@ pub fn main() {
             expect_plan_error(
                 r#"
 pub fn main() {
-  case todo {
+  case echo True {
     True -> 1
     False -> 0
   }
@@ -704,7 +709,7 @@ pub fn main() {
 "#,
             ),
             PlanError::UnsupportedExpression {
-                kind: UnsupportedExpressionKind::Todo,
+                kind: UnsupportedExpressionKind::Echo,
             },
         );
     }
@@ -946,6 +951,23 @@ pub fn main() {
                 reason: InvalidTypedAstReason::ExpressionType {
                     expected: InvalidExpressionType::Bool,
                     actual: InvalidExpressionType::String,
+                },
+            }),
+        );
+    }
+
+    #[test]
+    fn reject_margin_bool_case_return_type_unsupported() {
+        let mut module = super::super::compile_bool_case_module();
+        let (type_, _, _) =
+            super::super::expect_case_statement_mut(&mut module.definitions.functions[0].body[0]);
+        *type_ = type_::bit_array();
+
+        assert_eq!(
+            plan_module(module),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::CaseShape {
+                    reason: InvalidCaseShapeReason::BranchReturnTypeMismatch,
                 },
             }),
         );

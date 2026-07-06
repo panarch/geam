@@ -1,4 +1,6 @@
-use super::{BoolExpr, CallArg, FloatExpr, IntExpr, ListFunctionExpr, StringExpr, TupleExpr};
+use super::{
+    BoolExpr, CallArg, FloatExpr, IntExpr, ListFunctionExpr, PanicExpr, StringExpr, TupleExpr,
+};
 use crate::plan::{ListFunctionId, ListLocalId, Step, ValueType};
 use ecow::EcoString;
 use num_bigint::BigInt;
@@ -32,6 +34,7 @@ pub(crate) enum ListExprKind {
         tuple: Box<TupleExpr>,
         index: usize,
     },
+    Panic(PanicExpr),
     BoolCase {
         subject: Box<BoolExpr>,
         true_: Box<ListExpr>,
@@ -119,6 +122,13 @@ impl ListExpr {
                 tuple: Box::new(tuple),
                 index,
             },
+        }
+    }
+
+    pub(crate) fn panic(panic: PanicExpr, element_type: ValueType) -> Self {
+        Self {
+            element_type: Box::new(element_type),
+            kind: ListExprKind::Panic(panic),
         }
     }
 

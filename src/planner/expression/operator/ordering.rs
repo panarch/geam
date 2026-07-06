@@ -169,14 +169,14 @@ pub fn gte() {
     }
 
     #[test]
-    fn reject_profile_ordering_operand_errors_propagate() {
+    fn reject_profile_ordering_operand_expression_errors_propagate() {
         for (name, src) in [
             (
                 "lt int left",
                 r#"
 pub fn main() {
   {
-    panic
+    echo 1
     1
   } < 1
 }
@@ -187,7 +187,7 @@ pub fn main() {
                 r#"
 pub fn main() {
   1 < {
-    panic
+    echo 1
     1
   }
 }
@@ -198,7 +198,7 @@ pub fn main() {
                 r#"
 pub fn main() {
   {
-    panic
+    echo 1
     1
   } <= 1
 }
@@ -209,7 +209,7 @@ pub fn main() {
                 r#"
 pub fn main() {
   1 <= {
-    panic
+    echo 1
     1
   }
 }
@@ -220,7 +220,7 @@ pub fn main() {
                 r#"
 pub fn main() {
   {
-    panic
+    echo 1
     1
   } > 1
 }
@@ -231,7 +231,7 @@ pub fn main() {
                 r#"
 pub fn main() {
   1 > {
-    panic
+    echo 1
     1
   }
 }
@@ -242,7 +242,7 @@ pub fn main() {
                 r#"
 pub fn main() {
   {
-    panic
+    echo 1
     1
   } >= 1
 }
@@ -253,7 +253,7 @@ pub fn main() {
                 r#"
 pub fn main() {
   1 >= {
-    panic
+    echo 1
     1
   }
 }
@@ -264,7 +264,7 @@ pub fn main() {
                 r#"
 pub fn main() {
   {
-    panic
+    echo 1
     1.0
   } <. 1.0
 }
@@ -275,7 +275,7 @@ pub fn main() {
                 r#"
 pub fn main() {
   1.0 <. {
-    panic
+    echo 1
     1.0
   }
 }
@@ -286,7 +286,7 @@ pub fn main() {
                 r#"
 pub fn main() {
   {
-    panic
+    echo 1
     1.0
   } <=. 1.0
 }
@@ -297,7 +297,7 @@ pub fn main() {
                 r#"
 pub fn main() {
   1.0 <=. {
-    panic
+    echo 1
     1.0
   }
 }
@@ -308,7 +308,7 @@ pub fn main() {
                 r#"
 pub fn main() {
   {
-    panic
+    echo 1
     1.0
   } >. 1.0
 }
@@ -319,7 +319,7 @@ pub fn main() {
                 r#"
 pub fn main() {
   1.0 >. {
-    panic
+    echo 1
     1.0
   }
 }
@@ -330,7 +330,7 @@ pub fn main() {
                 r#"
 pub fn main() {
   {
-    panic
+    echo 1
     1.0
   } >=. 1.0
 }
@@ -341,22 +341,22 @@ pub fn main() {
                 r#"
 pub fn main() {
   1.0 >=. {
-    panic
+    echo 1
     1.0
   }
 }
 "#,
             ),
         ] {
-            assert_panic_reject(name, src);
+            assert_echo_reject(name, src);
         }
     }
 
-    fn assert_panic_reject(name: &str, src: &str) {
+    fn assert_echo_reject(name: &str, src: &str) {
         assert_eq!(
             expect_plan_error(src),
             PlanError::UnsupportedExpression {
-                kind: UnsupportedExpressionKind::Panic,
+                kind: UnsupportedExpressionKind::Echo,
             },
             "{name}",
         );

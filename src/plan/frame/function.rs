@@ -29,6 +29,7 @@ impl FrameLayout {
     ) {
         match expression.kind() {
             IntFunctionExprKind::Value(_) => {}
+            IntFunctionExprKind::Panic(panic) => self.include_panic_expr(panic),
             IntFunctionExprKind::Closure { captures, .. } => self.include_capture_args(captures),
             IntFunctionExprKind::LocalGet { local, .. } => self.include_int_function(*local),
             IntFunctionExprKind::Call { args, .. } => self.include_call_args(args),
@@ -92,6 +93,7 @@ impl FrameLayout {
     ) {
         match expression.kind() {
             FloatFunctionExprKind::Value(_) => {}
+            FloatFunctionExprKind::Panic(panic) => self.include_panic_expr(panic),
             FloatFunctionExprKind::Closure { captures, .. } => self.include_capture_args(captures),
             FloatFunctionExprKind::LocalGet { local, .. } => self.include_float_function(*local),
             FloatFunctionExprKind::Call { args, .. } => self.include_call_args(args),
@@ -155,6 +157,7 @@ impl FrameLayout {
     ) {
         match expression.kind() {
             StringFunctionExprKind::Value(_) => {}
+            StringFunctionExprKind::Panic(panic) => self.include_panic_expr(panic),
             StringFunctionExprKind::Closure { captures, .. } => self.include_capture_args(captures),
             StringFunctionExprKind::LocalGet { local, .. } => {
                 self.include_string_function(*local);
@@ -220,6 +223,7 @@ impl FrameLayout {
     ) {
         match expression.kind() {
             BoolFunctionExprKind::Value(_) => {}
+            BoolFunctionExprKind::Panic(panic) => self.include_panic_expr(panic),
             BoolFunctionExprKind::Closure { captures, .. } => self.include_capture_args(captures),
             BoolFunctionExprKind::LocalGet { local, .. } => self.include_bool_function(*local),
             BoolFunctionExprKind::Call { args, .. } => self.include_call_args(args),
@@ -283,6 +287,7 @@ impl FrameLayout {
     ) {
         match expression.kind() {
             NilFunctionExprKind::Value(_) => {}
+            NilFunctionExprKind::Panic(panic) => self.include_panic_expr(panic),
             NilFunctionExprKind::Closure { captures, .. } => self.include_capture_args(captures),
             NilFunctionExprKind::LocalGet { local, .. } => self.include_nil_function(*local),
             NilFunctionExprKind::Call { args, .. } => self.include_call_args(args),
@@ -346,6 +351,7 @@ impl FrameLayout {
     ) {
         match expression.kind() {
             FunctionFunctionExprKind::Value(_) => {}
+            FunctionFunctionExprKind::Panic(panic) => self.include_panic_expr(panic),
             FunctionFunctionExprKind::Closure { captures, .. } => {
                 self.include_capture_args(captures);
             }
@@ -413,6 +419,7 @@ impl FrameLayout {
     ) {
         match expression.kind() {
             TupleFunctionExprKind::Value(_) => {}
+            TupleFunctionExprKind::Panic(panic) => self.include_panic_expr(panic),
             TupleFunctionExprKind::Closure { captures, .. } => self.include_capture_args(captures),
             TupleFunctionExprKind::LocalGet { local, .. } => self.include_tuple_function(*local),
             TupleFunctionExprKind::Call { args, .. } => self.include_call_args(args),
@@ -476,6 +483,7 @@ impl FrameLayout {
     ) {
         match expression.kind() {
             ListFunctionExprKind::Value(_) => {}
+            ListFunctionExprKind::Panic(panic) => self.include_panic_expr(panic),
             ListFunctionExprKind::Closure { captures, .. } => self.include_capture_args(captures),
             ListFunctionExprKind::LocalGet { local, .. } => self.include_list_function(*local),
             ListFunctionExprKind::Call { args, .. } => self.include_call_args(args),
@@ -543,9 +551,10 @@ mod tests {
         FunctionFunctionExpr, FunctionFunctionId, FunctionFunctionLocalId, FunctionType, IntExpr,
         IntFunctionExpr, IntFunctionFunctionId, IntFunctionId, IntFunctionLocalId, IntLocalId,
         ListFunctionExpr, ListFunctionFunctionId, ListFunctionId, ListFunctionLocalId,
-        NilFunctionExpr, NilFunctionId, NilFunctionLocalId, ReturnExpr, Step, StringExpr,
-        StringFunctionExpr, StringFunctionId, StringFunctionLocalId, TupleExpr, TupleFunctionExpr,
-        TupleFunctionFunctionId, TupleFunctionId, TupleFunctionLocalId, TupleLocalId, ValueType,
+        NilFunctionExpr, NilFunctionId, NilFunctionLocalId, PanicExpr, ReturnExpr, Step,
+        StringExpr, StringFunctionExpr, StringFunctionId, StringFunctionLocalId, StringLocalId,
+        TupleExpr, TupleFunctionExpr, TupleFunctionFunctionId, TupleFunctionId,
+        TupleFunctionLocalId, TupleLocalId, ValueType,
     };
 
     #[test]
@@ -581,6 +590,70 @@ mod tests {
 
         assert_eq!(layout.ints(), 5);
         assert_eq!(layout.bools(), 3);
+    }
+
+    #[test]
+    fn frame_layout_includes_function_panic_message_dependencies() {
+        let int_type = FunctionType::new(Vec::new(), ValueType::Int);
+        let string_type = FunctionType::new(Vec::new(), ValueType::String);
+        let float_type = FunctionType::new(Vec::new(), ValueType::Float);
+        let bool_type = FunctionType::new(Vec::new(), ValueType::Bool);
+        let nil_type = FunctionType::new(Vec::new(), ValueType::Nil);
+        let tuple_type = FunctionType::new(Vec::new(), ValueType::Tuple(vec![ValueType::Int]));
+        let list_type = FunctionType::new(Vec::new(), ValueType::List(Box::new(ValueType::Int)));
+        let function_type = FunctionType::new(
+            Vec::new(),
+            ValueType::Function(Box::new(FunctionType::new(Vec::new(), ValueType::Int))),
+        );
+        let steps = vec![
+            Step::evaluate(Expr::function(FunctionExpr::int(IntFunctionExpr::panic(
+                panic_message(0),
+                int_type,
+            )))),
+            Step::evaluate(Expr::function(FunctionExpr::string(
+                StringFunctionExpr::panic(panic_message(1), string_type),
+            ))),
+            Step::evaluate(Expr::function(FunctionExpr::float(
+                FloatFunctionExpr::panic(panic_message(2), float_type),
+            ))),
+            Step::evaluate(Expr::function(FunctionExpr::bool(BoolFunctionExpr::panic(
+                panic_message(3),
+                bool_type,
+            )))),
+            Step::evaluate(Expr::function(FunctionExpr::nil(NilFunctionExpr::panic(
+                panic_message(4),
+                nil_type,
+            )))),
+            Step::evaluate(Expr::function(FunctionExpr::tuple(
+                TupleFunctionExpr::panic(panic_message(5), tuple_type),
+            ))),
+            Step::evaluate(Expr::function(FunctionExpr::list(ListFunctionExpr::panic(
+                panic_message(6),
+                list_type,
+            )))),
+            Step::evaluate(Expr::function(FunctionExpr::function(
+                FunctionFunctionExpr::panic(panic_message(7), function_type),
+            ))),
+        ];
+        let return_ = ReturnExpr::int(IntFunctionId(0), IntExpr::value(0.into()));
+
+        let layout = FrameLayout::from_function_parts(&[], &steps, &return_);
+
+        assert_eq!(layout.ints(), 0);
+        assert_eq!(layout.floats(), 0);
+        assert_eq!(layout.strings(), 8);
+        assert_eq!(layout.bools(), 0);
+        assert_eq!(layout.nils(), 0);
+        assert_eq!(layout.tuples(), 0);
+        assert_eq!(layout.lists(), 0);
+        assert_eq!(layout.int_functions(), 0);
+        assert_eq!(layout.float_functions(), 0);
+        assert_eq!(layout.string_functions(), 0);
+        assert_eq!(layout.bool_functions(), 0);
+        assert_eq!(layout.nil_functions(), 0);
+        assert_eq!(layout.tuple_functions(), 0);
+        assert_eq!(layout.list_functions(), 0);
+        assert_eq!(layout.function_functions(), 0);
     }
 
     #[test]
@@ -1369,6 +1442,13 @@ mod tests {
 
     fn list_type() -> ValueType {
         ValueType::Int
+    }
+
+    fn panic_message(index: usize) -> PanicExpr {
+        PanicExpr::panic(Some(StringExpr::local_get(
+            StringLocalId(index),
+            format!("function_panic_message_{index}").into(),
+        )))
     }
 
     fn list_function_type() -> FunctionType {

@@ -9,7 +9,9 @@ use crate::planner::error::{
     InvalidExpressionType, InvalidTypedAstReason, InvalidUseShapeReason, PlanError,
     UnsupportedAssignmentKind, UnsupportedPatternKind, UnsupportedStatementKind,
 };
-use crate::planner::expression::{plan_expr, plan_use_call, tuple_index_expr};
+use crate::planner::expression::{
+    plan_expr, plan_expr_with_expected_source_stop_type, plan_use_call, tuple_index_expr,
+};
 use ecow::EcoString;
 use gleam_core::ast::{
     AssignmentKind, Pattern, Statement, TypedAssignment, TypedPattern, TypedUseAssignment,
@@ -25,27 +27,30 @@ pub(super) fn plan_steps_and_return(
     mut statements: Vec<gleam_core::ast::TypedStatement>,
     context: &mut PlanContext<'_>,
     empty_error: PlanError,
+    expected_return_type: Option<&ValueType>,
 ) -> Result<PlannedStatements, PlanError> {
     let Some(last_statement) = statements.pop() else {
         return Err(empty_error);
     };
 
-    plan_ordered_steps_and_return(statements, last_statement, context)
+    plan_ordered_steps_and_return(statements, last_statement, context, expected_return_type)
 }
 
 pub(super) fn plan_non_empty_steps_and_return(
     statements: Vec1<gleam_core::ast::TypedStatement>,
     context: &mut PlanContext<'_>,
+    expected_return_type: Option<&ValueType>,
 ) -> Result<PlannedStatements, PlanError> {
     let (statements, last_statement) = statements.split_off_last();
 
-    plan_ordered_steps_and_return(statements, last_statement, context)
+    plan_ordered_steps_and_return(statements, last_statement, context, expected_return_type)
 }
 
 fn plan_ordered_steps_and_return(
     statements: Vec<gleam_core::ast::TypedStatement>,
     last_statement: gleam_core::ast::TypedStatement,
     context: &mut PlanContext<'_>,
+    expected_return_type: Option<&ValueType>,
 ) -> Result<PlannedStatements, PlanError> {
     let mut steps = Vec::new();
     for statement in statements {
@@ -53,7 +58,12 @@ fn plan_ordered_steps_and_return(
     }
 
     let return_ = match last_statement {
-        Statement::Expression(expression) => plan_expr(expression, context)?,
+        Statement::Expression(expression) => match expected_return_type {
+            Some(type_) => {
+                plan_expr_with_expected_source_stop_type(expression, type_.clone(), context)?
+            }
+            None => plan_expr(expression, context)?,
+        },
         Statement::Assignment(assignment) => {
             let planned = plan_final_assignment(*assignment, context)?;
             steps.extend(planned.steps);
@@ -83,9 +93,9 @@ pub(super) fn plan_runtime_steps(
     context: &mut PlanContext<'_>,
 ) -> Result<Vec<Step>, PlanError> {
     match statement {
-        Statement::Expression(expression) => {
-            Ok(vec![Step::evaluate(plan_expr(expression, context)?)])
-        }
+        Statement::Expression(expression) => Ok(vec![Step::evaluate(
+            plan_expr_with_expected_source_stop_type(expression, ValueType::Nil, context)?,
+        )]),
         Statement::Assignment(assignment) => plan_assignment(*assignment, context),
         Statement::Use(_) => Err(PlanError::InvalidTypedAst {
             reason: InvalidTypedAstReason::UseStatement,
@@ -152,7 +162,11 @@ fn plan_assignment_parts(
     }
 
     let pattern = plan_binding_pattern(assignment.pattern)?;
-    let value = plan_expr(assignment.value, context)?;
+    let value = if matches!(pattern, BindingPattern::Discard) {
+        plan_expr_with_expected_source_stop_type(assignment.value, ValueType::Nil, context)?
+    } else {
+        plan_expr(assignment.value, context)?
+    };
     Ok((pattern, value))
 }
 
@@ -500,6 +514,7 @@ mod tests {
         BoolLocalId, Expr, FunctionType, IntLocalId, LocalId, NilLocalId, ParamLocal,
         StringLocalId, TupleLocalId, ValueType,
     };
+    use crate::planner::context::{AnonymousFunctions, PlanContext};
     use crate::planner::dsl::{
         bool_, bool_case_int_function, bool_function_ref, call_int_function, capture_int, equal,
         function, int, int_arg, int_function_arg, int_function_call_arg, int_function_closure,
@@ -525,6 +540,8 @@ mod tests {
     use gleam_core::parse::LiteralFloatValue;
     use gleam_core::type_::{self, error::VariableOrigin};
     use num_bigint::BigInt;
+    use std::collections::HashMap;
+    use vec1::Vec1;
 
     #[test]
     fn plan_let_and_integer_binop() {
@@ -560,6 +577,43 @@ pub fn main() {
         let expected = module("main", function("main", int(42)).evaluate(int(1)), []);
 
         assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn plan_final_expression_without_expected_return_type_uses_plain_expression_lowering() {
+        let mut module = compile("pub fn main() { 1 }");
+        let statement = module.definitions.functions[0].body.remove(0);
+        let module_name = "main".into();
+        let functions = HashMap::new();
+        let mut anonymous = AnonymousFunctions::default();
+        let mut context = PlanContext::new(&module_name, &functions, &mut anonymous);
+
+        let actual =
+            super::plan_non_empty_steps_and_return(Vec1::new(statement), &mut context, None)
+                .expect("statement should plan");
+
+        assert_eq!(actual.steps, []);
+        assert_eq!(actual.return_, int(1).into());
+    }
+
+    #[test]
+    fn plan_final_expression_without_expected_return_type_propagates_expression_error() {
+        let mut module = compile("pub fn main() { echo 1 }");
+        let statement = module.definitions.functions[0].body.remove(0);
+        let module_name = "main".into();
+        let functions = HashMap::new();
+        let mut anonymous = AnonymousFunctions::default();
+        let mut context = PlanContext::new(&module_name, &functions, &mut anonymous);
+
+        let actual =
+            super::plan_non_empty_steps_and_return(Vec1::new(statement), &mut context, None).err();
+
+        assert_eq!(
+            actual,
+            Some(PlanError::UnsupportedExpression {
+                kind: UnsupportedExpressionKind::Echo,
+            }),
+        );
     }
 
     #[test]
@@ -1051,13 +1105,13 @@ pub fn main() {
             expect_plan_error(
                 r#"
 pub fn main() {
-  let _ = panic
+  let _ = echo 1
   42
 }
 "#,
             ),
             PlanError::UnsupportedExpression {
-                kind: UnsupportedExpressionKind::Panic,
+                kind: UnsupportedExpressionKind::Echo,
             },
         );
     }
@@ -1387,13 +1441,13 @@ fn with_value(continue: fn(Int) -> Int) {
 
 pub fn main() {
   use _ <- with_value
-  todo
+  echo 1
   42
 }
 "#,
             ),
             PlanError::UnsupportedExpression {
-                kind: UnsupportedExpressionKind::Todo,
+                kind: UnsupportedExpressionKind::Echo,
             },
         );
     }

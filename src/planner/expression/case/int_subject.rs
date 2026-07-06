@@ -1,6 +1,6 @@
 use super::{
-    invalid_case_shape, single_case_pattern, unsupported_case, validate_case_branch_type,
-    validate_clause_shape,
+    case_return_type, invalid_case_shape, single_case_pattern, unsupported_case,
+    validate_case_branch_type, validate_clause_shape,
 };
 use crate::plan::{Expr, ExprKind, IntCaseBranches, IntExpr};
 use crate::planner::context::PlanContext;
@@ -17,13 +17,18 @@ pub(super) fn plan(
     context: &mut PlanContext<'_>,
 ) -> Result<Expr, PlanError> {
     let subject = super::super::plan_int_expr(subject, context)?;
+    let return_type = case_return_type(type_.as_ref())?;
     let mut literal_clauses = Vec::new();
     let mut fallback = None;
     for clause in clauses {
         validate_clause_shape(&clause)?;
         let pattern = single_case_pattern(clause.pattern)?;
         let pattern = plan_int_case_pattern(pattern)?;
-        let branch = super::super::plan_expr(clause.then, context)?;
+        let branch = super::super::plan_expr_with_expected_source_stop_type(
+            clause.then,
+            return_type.clone(),
+            context,
+        )?;
         validate_case_branch_type(type_.as_ref(), &branch)?;
 
         match pattern {
@@ -922,17 +927,14 @@ fn duplicate_literal(value: Int) {
 pub fn main() {
   case 1 {
     1 -> 1
-    1 -> {
-      panic
-      2
-    }
+    1 -> echo 2
     _ -> 0
   }
 }
 "#,
             ),
             PlanError::UnsupportedExpression {
-                kind: UnsupportedExpressionKind::Panic,
+                kind: UnsupportedExpressionKind::Echo,
             },
         );
     }
@@ -1157,6 +1159,12 @@ fn add_one(value: Int) {
 
     #[test]
     fn reject_margin_int_case_expr_type_mismatch() {
+        let mut module = compile_int_case_module();
+        let (type_, _, _) =
+            super::super::expect_case_statement_mut(&mut module.definitions.functions[0].body[0]);
+        *type_ = type_::bit_array();
+        assert_eq!(plan_module(module), Err(case_branch_return_type_mismatch()));
+
         assert_eq!(
             super::int_case_expr(
                 int(1).into(),

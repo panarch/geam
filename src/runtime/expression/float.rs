@@ -1,4 +1,4 @@
-use super::{eval_bool_expr, eval_int_expr, eval_string_expr, project_tuple_expr};
+use super::{eval_bool_expr, eval_int_expr, eval_panic_expr, eval_string_expr, project_tuple_expr};
 use crate::plan::{ExecutionPlan, FloatExpr, FloatExprKind, Value, ValueType};
 use crate::runtime::ExecutionError;
 use crate::runtime::frame::Frame;
@@ -27,6 +27,7 @@ pub(in crate::runtime) fn eval_float_expr(
                 )),
             }
         }
+        FloatExprKind::Panic(panic) => eval_panic_expr(plan, frame, panic),
         FloatExprKind::Add { left, right } => {
             Ok(eval_float_expr(plan, frame, left)? + eval_float_expr(plan, frame, right)?)
         }
@@ -110,11 +111,11 @@ mod tests {
         BoolExpr, BoolFunctionExpr, ExecutionPlan, Expr, FloatExpr, FloatFunctionExpr,
         FloatFunctionId, FloatLocalId, FrameLayout, FunctionFunctionExpr, FunctionFunctionId,
         FunctionFunctionValue, FunctionId, FunctionPlan, FunctionReturnFamily, FunctionType,
-        IntExpr, IntFunctionExpr, ReturnExpr, Step, StringExpr, StringFunctionExpr,
+        IntExpr, IntFunctionExpr, PanicExpr, ReturnExpr, Step, StringExpr, StringFunctionExpr,
         StringFunctionFunctionId, TupleExpr, ValueType,
     };
-    use crate::runtime::ExecutionError;
     use crate::runtime::frame::Frame;
+    use crate::runtime::{ExecutionError, PanicKind};
 
     #[test]
     fn tuple_index_family_mismatch_returns_error() {
@@ -141,6 +142,17 @@ mod tests {
                 ValueType::Float,
                 ValueType::String,
             )),
+        );
+    }
+
+    #[test]
+    fn eval_float_panic_returns_error() {
+        let plan = crate::runtime::plan_src("pub fn main() { 1.0 }");
+        let mut frame = Frame::default();
+
+        assert_eq!(
+            eval_float_expr(&plan, &mut frame, &FloatExpr::panic(PanicExpr::panic(None)),),
+            Err(ExecutionError::panic(PanicKind::Panic { message: None })),
         );
     }
 

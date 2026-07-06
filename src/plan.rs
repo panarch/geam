@@ -14,8 +14,9 @@ pub(crate) use expression::{
     BoolCaseBranches, BoolExprKind, BoolFunctionExprKind, CallArgKind, CaptureArg, CaptureArgKind,
     ExprKind, FloatCaseBranches, FloatExprKind, FloatFunctionExprKind, FunctionExprKind,
     FunctionFunctionExprKind, IntCaseBranches, IntExprKind, IntFunctionExprKind, ListExprKind,
-    ListFunctionExprKind, NilExprKind, NilFunctionExprKind, StringCaseBranches, StringExprKind,
-    StringFunctionExprKind, TupleExprKind, TupleFunctionExprKind,
+    ListFunctionExprKind, NilExprKind, NilFunctionExprKind, PanicExpr, PanicExprKind,
+    StringCaseBranches, StringExprKind, StringFunctionExprKind, TupleExprKind,
+    TupleFunctionExprKind,
 };
 pub use expression::{
     BoolExpr, BoolFunctionExpr, CallArg, Expr, FloatExpr, FloatFunctionExpr, FunctionExpr,
@@ -33,14 +34,14 @@ pub use function::{FunctionPlan, Param, ParamBinding, ReturnExpr};
 pub use id::{
     BoolFunctionFunctionId, BoolFunctionId, BoolFunctionLocalId, BoolLocalId,
     FloatFunctionFunctionId, FloatFunctionId, FloatFunctionLocalId, FloatLocalId,
-    FunctionFunctionFunctionId, FunctionFunctionLocalId, FunctionId, IntFunctionFunctionId,
-    IntFunctionId, IntFunctionLocalId, IntLocalId, ListFunctionFunctionId, ListFunctionId,
-    ListFunctionLocalId, ListLocalId, LocalId, NilFunctionFunctionId, NilFunctionId,
-    NilFunctionLocalId, NilLocalId, StringFunctionFunctionId, StringFunctionId,
+    FunctionFunctionFunctionId, FunctionFunctionLocalId, FunctionId, FunctionReturnFamily,
+    IntFunctionFunctionId, IntFunctionId, IntFunctionLocalId, IntLocalId, ListFunctionFunctionId,
+    ListFunctionId, ListFunctionLocalId, ListLocalId, LocalId, NilFunctionFunctionId,
+    NilFunctionId, NilFunctionLocalId, NilLocalId, StringFunctionFunctionId, StringFunctionId,
     StringFunctionLocalId, StringLocalId, TupleFunctionFunctionId, TupleFunctionId,
     TupleFunctionLocalId, TupleLocalId,
 };
-pub(crate) use id::{FunctionFunctionId, FunctionReturnFamily, RuntimeFunctionId};
+pub(crate) use id::{FunctionFunctionId, RuntimeFunctionId};
 pub use step::Step;
 pub(crate) use step::StepKind;
 pub(crate) use value::{

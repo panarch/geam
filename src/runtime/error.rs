@@ -1,16 +1,13 @@
 use crate::plan::{FunctionReturnFamily, ValueType};
+use ecow::EcoString;
+use std::fmt;
 
 pub(crate) type ExecutionResult<T> = Result<T, ExecutionError>;
 
-// Adding a new invariant kind is a design change, not a local runtime fix.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
-#[error("execution invariant failed: {kind}")]
-pub struct ExecutionError {
-    kind: ExecutionErrorKind,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
-enum ExecutionErrorKind {
+pub enum ExecutionError {
+    #[error("{0}")]
+    Panic(PanicKind),
     #[error("function return family mismatch (expected {expected}, got {actual})")]
     FunctionReturnFamilyMismatch {
         expected: FunctionReturnFamily,
@@ -23,27 +20,86 @@ enum ExecutionErrorKind {
     },
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PanicKind {
+    Panic { message: Option<EcoString> },
+    Todo { message: Option<EcoString> },
+    EmptyFunction,
+    EmptyBlock,
+    IncompleteUse,
+}
+
+impl fmt::Display for PanicKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            PanicKind::Panic { message } => write_panic_message(f, "panic", message.as_deref()),
+            PanicKind::Todo { message } => write_panic_message(f, "todo", message.as_deref()),
+            PanicKind::EmptyFunction => f.write_str("empty function"),
+            PanicKind::EmptyBlock => f.write_str("empty block"),
+            PanicKind::IncompleteUse => f.write_str("incomplete use"),
+        }
+    }
+}
+
+impl std::error::Error for PanicKind {}
+
+fn write_panic_message(
+    f: &mut fmt::Formatter<'_>,
+    kind: &str,
+    message: Option<&str>,
+) -> fmt::Result {
+    match message {
+        Some(message) => write!(f, "{kind} as {message:?}"),
+        None => f.write_str(kind),
+    }
+}
+
 impl ExecutionError {
+    pub(crate) fn panic(kind: PanicKind) -> Self {
+        Self::Panic(kind)
+    }
+
     pub(crate) fn function_return_family_mismatch(
         expected: FunctionReturnFamily,
         actual: FunctionReturnFamily,
     ) -> Self {
-        Self {
-            kind: ExecutionErrorKind::FunctionReturnFamilyMismatch { expected, actual },
-        }
+        Self::FunctionReturnFamilyMismatch { expected, actual }
     }
 
     pub(crate) fn tuple_index_family_mismatch(expected: ValueType, actual: ValueType) -> Self {
-        Self {
-            kind: ExecutionErrorKind::TupleIndexFamilyMismatch { expected, actual },
-        }
+        Self::TupleIndexFamilyMismatch { expected, actual }
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::ExecutionError;
+    use super::{ExecutionError, PanicKind};
     use crate::plan::{FunctionReturnFamily, ValueType};
+
+    #[test]
+    fn panic_display() {
+        for (kind, expected) in [
+            (PanicKind::Panic { message: None }, "panic"),
+            (
+                PanicKind::Panic {
+                    message: Some("boom".into()),
+                },
+                "panic as \"boom\"",
+            ),
+            (PanicKind::Todo { message: None }, "todo"),
+            (
+                PanicKind::Todo {
+                    message: Some("later".into()),
+                },
+                "todo as \"later\"",
+            ),
+            (PanicKind::EmptyFunction, "empty function"),
+            (PanicKind::EmptyBlock, "empty block"),
+            (PanicKind::IncompleteUse, "incomplete use"),
+        ] {
+            assert_eq!(ExecutionError::panic(kind).to_string(), expected);
+        }
+    }
 
     #[test]
     fn function_return_family_mismatch_display() {
@@ -54,7 +110,7 @@ mod tests {
 
         assert_eq!(
             error.to_string(),
-            "execution invariant failed: function return family mismatch (expected Int, got String)",
+            "function return family mismatch (expected Int, got String)",
         );
     }
 
@@ -67,7 +123,7 @@ mod tests {
 
         assert_eq!(
             error.to_string(),
-            "execution invariant failed: tuple index family mismatch (expected Tuple([Int]), got String)",
+            "tuple index family mismatch (expected Tuple([Int]), got String)",
         );
     }
 }

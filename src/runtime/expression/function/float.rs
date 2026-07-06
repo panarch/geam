@@ -4,7 +4,8 @@ use crate::plan::{
 };
 use crate::runtime::ExecutionError;
 use crate::runtime::expression::{
-    eval_bool_expr, eval_float_expr, eval_int_expr, eval_string_expr, project_tuple_expr,
+    eval_bool_expr, eval_float_expr, eval_int_expr, eval_panic_expr, eval_string_expr,
+    project_tuple_expr,
 };
 use crate::runtime::frame::Frame;
 use crate::runtime::function;
@@ -54,6 +55,7 @@ pub(in crate::runtime) fn eval_float_function_expr(
                 )),
             }
         }
+        FloatFunctionExprKind::Panic(panic) => eval_panic_expr(plan, frame, panic),
         FloatFunctionExprKind::BoolCase {
             subject,
             true_,
@@ -119,11 +121,11 @@ mod tests {
         FloatFunctionFunctionId, FloatFunctionId, FloatFunctionLocalId, FloatFunctionValue,
         FloatLocalId, FunctionExpr, FunctionFunctionExpr, FunctionFunctionId,
         FunctionFunctionValue, FunctionId, FunctionPlan, FunctionReturnFamily, FunctionType,
-        IntExpr, IntFunctionExpr, IntFunctionId, ParamLocal, ReturnExpr, Step, StringExpr,
-        StringFunctionExpr, StringFunctionFunctionId, TupleExpr, ValueType,
+        IntExpr, IntFunctionExpr, IntFunctionId, PanicExpr, ParamLocal, ReturnExpr, Step,
+        StringExpr, StringFunctionExpr, StringFunctionFunctionId, TupleExpr, ValueType,
     };
-    use crate::runtime::ExecutionError;
     use crate::runtime::frame::Frame;
+    use crate::runtime::{ExecutionError, PanicKind};
 
     #[test]
     fn eval_float_function_value_local_function_call_and_block() {
@@ -138,6 +140,14 @@ mod tests {
         )
         .expect("expression should evaluate");
         assert_eq!(function.runtime_id(), FloatFunctionId(0));
+        assert_eq!(
+            eval_float_function_expr(
+                &plan,
+                &mut frame,
+                &FloatFunctionExpr::panic(PanicExpr::panic(None), type_()),
+            ),
+            Err(ExecutionError::panic(PanicKind::Panic { message: None })),
+        );
 
         let function = eval_float_function_expr(
             &plan,

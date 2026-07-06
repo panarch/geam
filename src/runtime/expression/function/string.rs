@@ -4,7 +4,8 @@ use crate::plan::{
 };
 use crate::runtime::ExecutionError;
 use crate::runtime::expression::{
-    eval_bool_expr, eval_float_expr, eval_int_expr, eval_string_expr, project_tuple_expr,
+    eval_bool_expr, eval_float_expr, eval_int_expr, eval_panic_expr, eval_string_expr,
+    project_tuple_expr,
 };
 use crate::runtime::frame::Frame;
 use crate::runtime::function;
@@ -54,6 +55,7 @@ pub(in crate::runtime) fn eval_string_function_expr(
                 )),
             }
         }
+        StringFunctionExprKind::Panic(panic) => eval_panic_expr(plan, frame, panic),
         StringFunctionExprKind::BoolCase {
             subject,
             true_,
@@ -118,12 +120,12 @@ mod tests {
         BoolExpr, BoolFunctionExpr, BoolFunctionId, BoolFunctionValue, CaptureArg, ExecutionPlan,
         Expr, FloatExpr, FunctionExpr, FunctionFunctionExpr, FunctionFunctionId,
         FunctionFunctionValue, FunctionId, FunctionPlan, FunctionType, IntExpr, IntFunctionId,
-        ParamLocal, ReturnExpr, Step, StringExpr, StringFunctionExpr, StringFunctionFunctionId,
-        StringFunctionId, StringFunctionLocalId, StringFunctionValue, StringLocalId, TupleExpr,
-        ValueType,
+        PanicExpr, ParamLocal, ReturnExpr, Step, StringExpr, StringFunctionExpr,
+        StringFunctionFunctionId, StringFunctionId, StringFunctionLocalId, StringFunctionValue,
+        StringLocalId, TupleExpr, ValueType,
     };
-    use crate::runtime::ExecutionError;
     use crate::runtime::frame::Frame;
+    use crate::runtime::{ExecutionError, PanicKind};
 
     #[test]
     fn eval_string_function_local_closure_call_function_call_and_block() {
@@ -196,6 +198,21 @@ mod tests {
             .expect("expression should evaluate")
             .runtime_id(),
             StringFunctionId(0),
+        );
+    }
+
+    #[test]
+    fn eval_string_function_panic_returns_error() {
+        let plan = plan();
+        let mut frame = Frame::default();
+
+        assert_eq!(
+            eval_string_function_expr(
+                &plan,
+                &mut frame,
+                &StringFunctionExpr::panic(PanicExpr::panic(None), type_()),
+            ),
+            Err(ExecutionError::panic(PanicKind::Panic { message: None })),
         );
     }
 

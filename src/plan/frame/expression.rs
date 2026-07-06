@@ -1,7 +1,7 @@
 use super::FrameLayout;
 use crate::plan::{
     BoolExpr, BoolExprKind, Expr, ExprKind, FloatExpr, FloatExprKind, IntExpr, IntExprKind,
-    ListExpr, ListExprKind, NilExpr, NilExprKind, StringExpr, StringExprKind, TupleExpr,
+    ListExpr, ListExprKind, NilExpr, NilExprKind, PanicExpr, StringExpr, StringExprKind, TupleExpr,
     TupleExprKind,
 };
 
@@ -19,9 +19,16 @@ impl FrameLayout {
         }
     }
 
+    pub(in crate::plan::frame) fn include_panic_expr(&mut self, expression: &PanicExpr) {
+        if let Some(message) = expression.message() {
+            self.include_string_expr(message);
+        }
+    }
+
     pub(in crate::plan::frame) fn include_int_expr(&mut self, expression: &IntExpr) {
         match expression.kind() {
             IntExprKind::Value(_) => {}
+            IntExprKind::Panic(panic) => self.include_panic_expr(panic),
             IntExprKind::LocalGet { local, .. } => self.include_int(*local),
             IntExprKind::Call { args, .. } => self.include_call_args(args),
             IntExprKind::FunctionCall { function, args } => {
@@ -90,6 +97,7 @@ impl FrameLayout {
     pub(in crate::plan::frame) fn include_string_expr(&mut self, expression: &StringExpr) {
         match expression.kind() {
             StringExprKind::Value(_) => {}
+            StringExprKind::Panic(panic) => self.include_panic_expr(panic),
             StringExprKind::LocalGet { local, .. } => self.include_string(*local),
             StringExprKind::Call { args, .. } => self.include_call_args(args),
             StringExprKind::FunctionCall { function, args } => {
@@ -153,6 +161,7 @@ impl FrameLayout {
     pub(in crate::plan::frame) fn include_bool_expr(&mut self, expression: &BoolExpr) {
         match expression.kind() {
             BoolExprKind::Value(_) => {}
+            BoolExprKind::Panic(panic) => self.include_panic_expr(panic),
             BoolExprKind::LocalGet { local, .. } => self.include_bool(*local),
             BoolExprKind::Call { args, .. } => self.include_call_args(args),
             BoolExprKind::FunctionCall { function, args } => {
@@ -245,6 +254,7 @@ impl FrameLayout {
     pub(in crate::plan::frame) fn include_nil_expr(&mut self, expression: &NilExpr) {
         match expression.kind() {
             NilExprKind::Value => {}
+            NilExprKind::Panic(panic) => self.include_panic_expr(panic),
             NilExprKind::LocalGet { local, .. } => self.include_nil(*local),
             NilExprKind::Call { args, .. } => self.include_call_args(args),
             NilExprKind::FunctionCall { function, args } => {
@@ -304,6 +314,7 @@ impl FrameLayout {
     pub(in crate::plan::frame) fn include_float_expr(&mut self, expression: &FloatExpr) {
         match expression.kind() {
             FloatExprKind::Value(_) => {}
+            FloatExprKind::Panic(panic) => self.include_panic_expr(panic),
             FloatExprKind::LocalGet { local, .. } => self.include_float(*local),
             FloatExprKind::Call { args, .. } => self.include_call_args(args),
             FloatExprKind::FunctionCall { function, args } => {
@@ -374,6 +385,7 @@ impl FrameLayout {
                     self.include_expr(element);
                 }
             }
+            TupleExprKind::Panic(panic) => self.include_panic_expr(panic),
             TupleExprKind::LocalGet { local, .. } => self.include_tuple(*local),
             TupleExprKind::Call { args, .. } => self.include_call_args(args),
             TupleExprKind::FunctionCall { function, args } => {
@@ -437,6 +449,7 @@ impl FrameLayout {
                     self.include_expr(element);
                 }
             }
+            ListExprKind::Panic(panic) => self.include_panic_expr(panic),
             ListExprKind::Spread { elements, tail } => {
                 for element in elements {
                     self.include_expr(element);
@@ -506,8 +519,8 @@ mod tests {
     use crate::plan::{
         BoolExpr, BoolLocalId, CallArg, Expr, FloatExpr, FloatFunctionId, FloatFunctionLocalId,
         FloatLocalId, FunctionType, IntExpr, IntFunctionId, IntLocalId, ListExpr, ListFunctionExpr,
-        ListFunctionId, ListFunctionLocalId, ListLocalId, NilExpr, NilLocalId, ReturnExpr, Step,
-        StringExpr, StringLocalId, TupleExpr, TupleFunctionExpr, TupleFunctionId,
+        ListFunctionId, ListFunctionLocalId, ListLocalId, NilExpr, NilLocalId, PanicExpr,
+        ReturnExpr, Step, StringExpr, StringLocalId, TupleExpr, TupleFunctionExpr, TupleFunctionId,
         TupleFunctionLocalId, TupleLocalId, ValueType,
     };
 
@@ -553,6 +566,36 @@ mod tests {
 
         assert_eq!(layout.ints(), 9);
         assert_eq!(layout.floats(), 4);
+    }
+
+    #[test]
+    fn frame_layout_includes_panic_message_dependencies() {
+        let steps = vec![
+            Step::evaluate(Expr::int(IntExpr::panic(panic_message(0)))),
+            Step::evaluate(Expr::string(StringExpr::panic(panic_message(1)))),
+            Step::evaluate(Expr::float(FloatExpr::panic(panic_message(2)))),
+            Step::evaluate(Expr::bool(BoolExpr::panic(panic_message(3)))),
+            Step::evaluate(Expr::nil(NilExpr::panic(panic_message(4)))),
+            Step::evaluate(Expr::tuple(TupleExpr::panic(
+                panic_message(5),
+                vec![ValueType::Int],
+            ))),
+            Step::evaluate(Expr::list(ListExpr::panic(
+                panic_message(6),
+                ValueType::Int,
+            ))),
+        ];
+        let return_ = ReturnExpr::int(IntFunctionId(0), IntExpr::value(0.into()));
+
+        let layout = FrameLayout::from_function_parts(&[], &steps, &return_);
+
+        assert_eq!(layout.ints(), 0);
+        assert_eq!(layout.floats(), 0);
+        assert_eq!(layout.strings(), 7);
+        assert_eq!(layout.bools(), 0);
+        assert_eq!(layout.nils(), 0);
+        assert_eq!(layout.tuples(), 0);
+        assert_eq!(layout.lists(), 0);
     }
 
     #[test]
@@ -1049,6 +1092,13 @@ mod tests {
 
     fn list_type() -> ValueType {
         ValueType::Int
+    }
+
+    fn panic_message(index: usize) -> PanicExpr {
+        PanicExpr::panic(Some(StringExpr::local_get(
+            StringLocalId(index),
+            format!("panic_message_{index}").into(),
+        )))
     }
 
     fn list_function_type() -> FunctionType {

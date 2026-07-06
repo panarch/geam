@@ -6,6 +6,7 @@ mod function;
 mod int;
 mod list;
 mod nil;
+mod panic;
 mod string;
 mod tuple;
 
@@ -40,6 +41,7 @@ pub(crate) use self::{
     int::IntExprKind,
     list::ListExprKind,
     nil::NilExprKind,
+    panic::{PanicExpr, PanicExprKind},
     string::StringExprKind,
     tuple::TupleExprKind,
 };

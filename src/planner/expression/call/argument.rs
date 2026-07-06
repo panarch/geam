@@ -15,7 +15,7 @@ pub(super) fn plan_call_args(
 ) -> Result<Vec<CallArg>, PlanError> {
     let mut args = Vec::with_capacity(arguments.len());
     for (argument, param) in arguments.into_iter().zip(params) {
-        let expression = plan_argument_value(argument, capture, context)?;
+        let expression = plan_argument_value(argument, param.local.value_type(), capture, context)?;
         let actual = expression.value_type();
         let arg = match expression.into_call_arg(&param.local) {
             Some(arg) => arg,
@@ -35,7 +35,7 @@ pub(super) fn plan_function_call_args(
     let locals = function_call_param_locals(params);
     let mut args = Vec::with_capacity(arguments.len());
     for (argument, local) in arguments.into_iter().zip(&locals) {
-        let expression = plan_argument_value(argument, capture, context)?;
+        let expression = plan_argument_value(argument, local.value_type(), capture, context)?;
         let actual = expression.value_type();
         let arg = match expression.into_call_arg(local) {
             Some(arg) => arg,
@@ -185,6 +185,7 @@ fn call_arg_type_mismatch(expected: ValueType, actual: ValueType) -> PlanError {
 
 fn plan_argument_value(
     argument: GleamCallArg<TypedExpr>,
+    expected: ValueType,
     capture: Option<&CaptureSubstitution>,
     context: &mut PlanContext<'_>,
 ) -> Result<Expr, PlanError> {
@@ -194,7 +195,7 @@ fn plan_argument_value(
         return Ok(capture.value.clone());
     }
 
-    super::super::plan_expr(argument.value, context)
+    super::super::plan_expr_with_expected_source_stop_type(argument.value, expected, context)
 }
 
 #[cfg(test)]
