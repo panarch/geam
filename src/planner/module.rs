@@ -599,7 +599,7 @@ pub fn main() {
     }
 
     #[test]
-    fn source_stop_return_type_ignores_non_source_stop_final_shapes() {
+    fn reject_profile_unsupported_return_type_for_non_source_stop_final_shapes() {
         assert_eq!(super::source_stop_return_type(&[]), None);
         assert_eq!(
             super::function_return_type("values".into(), type_::bit_array().as_ref(), &[]),
@@ -651,7 +651,7 @@ pub fn main() {
     }
 
     #[test]
-    fn source_stop_return_type_accepts_block_source_stop_for_unsupported_return_type() {
+    fn plan_source_stop_with_unsupported_return_type_as_nil() {
         let block_with_source_stop = compile(
             r#"
 pub fn main() {

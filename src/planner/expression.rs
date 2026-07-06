@@ -918,7 +918,10 @@ pub fn main() -> Int {
                 kind: UnsupportedExpressionKind::Echo,
             },
         );
+    }
 
+    #[test]
+    fn reject_margin_source_stop_expression_shapes() {
         let module_name = "main".into();
         let functions = HashMap::new();
         let mut anonymous = AnonymousFunctions::default();
