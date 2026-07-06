@@ -448,6 +448,12 @@ impl<'a> PlanContext<'a> {
         local
     }
 
+    pub(super) fn define_internal_tuple_local(&mut self) -> TupleLocalId {
+        let local = TupleLocalId(self.next_tuple_local);
+        self.next_tuple_local += 1;
+        local
+    }
+
     pub(super) fn define_list_local(
         &mut self,
         name: EcoString,
@@ -1164,6 +1170,26 @@ mod tests {
                 .define_function_function_local("next_function_fn".into(), function_type)
                 .0,
             8,
+        );
+    }
+
+    #[test]
+    fn define_internal_tuple_local_reserves_id_without_user_binding() {
+        let module = EcoString::from("main");
+        let functions = HashMap::<EcoString, FunctionInfo>::new();
+        let mut anonymous = AnonymousFunctions::default();
+        let mut context = PlanContext::new(&module, &functions, &mut anonymous);
+        let tuple_type = vec![ValueType::Int];
+
+        assert_eq!(context.define_internal_tuple_local(), TupleLocalId(0));
+        assert_eq!(context.lookup_tuple_local(&"<tuple:0>".into()), None);
+        assert_eq!(
+            context.define_tuple_local("tuple".into(), tuple_type.clone()),
+            TupleLocalId(1),
+        );
+        assert_eq!(
+            context.lookup_tuple_local(&"tuple".into()),
+            Some((TupleLocalId(1), tuple_type)),
         );
     }
 

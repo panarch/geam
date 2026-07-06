@@ -268,23 +268,19 @@ fn plan_tuple_index(
         return Err(invalid_expression_type_for_value(expected.clone(), actual));
     }
 
-    tuple_index_expr(tuple, index, expected)
+    Ok(tuple_index_expr(tuple, index, expected))
 }
 
-fn tuple_index_expr(
-    tuple: TupleExpr,
-    index: usize,
-    return_type: ValueType,
-) -> Result<Expr, PlanError> {
+pub(super) fn tuple_index_expr(tuple: TupleExpr, index: usize, return_type: ValueType) -> Expr {
     match return_type {
-        ValueType::Int => Ok(Expr::int(IntExpr::tuple_index(tuple, index))),
-        ValueType::String => Ok(Expr::string(StringExpr::tuple_index(tuple, index))),
-        ValueType::Float => Ok(Expr::float(FloatExpr::tuple_index(tuple, index))),
-        ValueType::Bool => Ok(Expr::bool(BoolExpr::tuple_index(tuple, index))),
-        ValueType::Nil => Ok(Expr::nil(crate::plan::NilExpr::tuple_index(tuple, index))),
-        ValueType::Tuple(type_) => Ok(Expr::tuple(TupleExpr::tuple_index(tuple, index, type_))),
-        ValueType::List(type_) => Ok(Expr::list(ListExpr::tuple_index(tuple, index, *type_))),
-        ValueType::Function(type_) => Ok(tuple_index_function_expr(tuple, index, *type_)),
+        ValueType::Int => Expr::int(IntExpr::tuple_index(tuple, index)),
+        ValueType::String => Expr::string(StringExpr::tuple_index(tuple, index)),
+        ValueType::Float => Expr::float(FloatExpr::tuple_index(tuple, index)),
+        ValueType::Bool => Expr::bool(BoolExpr::tuple_index(tuple, index)),
+        ValueType::Nil => Expr::nil(crate::plan::NilExpr::tuple_index(tuple, index)),
+        ValueType::Tuple(type_) => Expr::tuple(TupleExpr::tuple_index(tuple, index, type_)),
+        ValueType::List(type_) => Expr::list(ListExpr::tuple_index(tuple, index, *type_)),
+        ValueType::Function(type_) => tuple_index_function_expr(tuple, index, *type_),
     }
 }
 

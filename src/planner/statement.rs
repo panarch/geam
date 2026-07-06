@@ -2,13 +2,14 @@ use crate::plan::{
     BoolExpr, BoolFunctionExpr, Expr, ExprKind, FloatExpr, FloatFunctionExpr, FunctionExpr,
     FunctionExprKind, FunctionFunctionExpr, IntExpr, IntFunctionExpr, ListExpr, ListFunctionExpr,
     NilExpr, NilFunctionExpr, Step, StringExpr, StringFunctionExpr, TupleExpr, TupleFunctionExpr,
+    TupleLocalId, ValueType,
 };
 use crate::planner::context::PlanContext;
 use crate::planner::error::{
-    InvalidTypedAstReason, InvalidUseShapeReason, PlanError, UnsupportedAssignmentKind,
-    UnsupportedPatternKind, UnsupportedStatementKind,
+    InvalidExpressionType, InvalidTypedAstReason, InvalidUseShapeReason, PlanError,
+    UnsupportedAssignmentKind, UnsupportedPatternKind, UnsupportedStatementKind,
 };
-use crate::planner::expression::{plan_expr, plan_use_call};
+use crate::planner::expression::{plan_expr, plan_use_call, tuple_index_expr};
 use ecow::EcoString;
 use gleam_core::ast::{
     AssignmentKind, Pattern, Statement, TypedAssignment, TypedPattern, TypedUseAssignment,
@@ -48,7 +49,7 @@ fn plan_ordered_steps_and_return(
 ) -> Result<PlannedStatements, PlanError> {
     let mut steps = Vec::new();
     for statement in statements {
-        steps.push(plan_runtime_step(statement, context)?);
+        steps.extend(plan_runtime_steps(statement, context)?);
     }
 
     let return_ = match last_statement {
@@ -56,7 +57,7 @@ fn plan_ordered_steps_and_return(
         Statement::Assignment(assignment) => {
             let planned = plan_final_assignment(*assignment, context)?;
             steps.extend(planned.steps);
-            planned.return_
+            planned.value
         }
         Statement::Use(use_) => plan_use_statement(use_, context)?,
         Statement::Assert(_) => {
@@ -77,12 +78,14 @@ fn plan_use_statement(
     plan_use_call(*use_.call, context)
 }
 
-pub(super) fn plan_runtime_step(
+pub(super) fn plan_runtime_steps(
     statement: gleam_core::ast::TypedStatement,
     context: &mut PlanContext<'_>,
-) -> Result<Step, PlanError> {
+) -> Result<Vec<Step>, PlanError> {
     match statement {
-        Statement::Expression(expression) => Ok(Step::evaluate(plan_expr(expression, context)?)),
+        Statement::Expression(expression) => {
+            Ok(vec![Step::evaluate(plan_expr(expression, context)?)])
+        }
         Statement::Assignment(assignment) => plan_assignment(*assignment, context),
         Statement::Use(_) => Err(PlanError::InvalidTypedAst {
             reason: InvalidTypedAstReason::UseStatement,
@@ -96,37 +99,35 @@ pub(super) fn plan_runtime_step(
 fn plan_assignment(
     assignment: TypedAssignment,
     context: &mut PlanContext<'_>,
-) -> Result<Step, PlanError> {
+) -> Result<Vec<Step>, PlanError> {
     let (pattern, value) = plan_assignment_parts(assignment, context)?;
-    match pattern {
-        BindingPattern::Named(name) => plan_variable_runtime_step(name, value, context),
-        BindingPattern::Discard => Ok(Step::evaluate(value)),
-    }
+    plan_assignment_steps(pattern, value, context)
 }
 
-struct PlannedFinalAssignment {
+struct PlannedAssignment {
     steps: Vec<Step>,
-    return_: Expr,
+    value: Expr,
 }
 
 fn plan_final_assignment(
     assignment: TypedAssignment,
     context: &mut PlanContext<'_>,
-) -> Result<PlannedFinalAssignment, PlanError> {
+) -> Result<PlannedAssignment, PlanError> {
     let (pattern, value) = plan_assignment_parts(assignment, context)?;
-    Ok(match pattern {
+    match pattern {
         BindingPattern::Named(name) => {
-            let (step, return_) = plan_variable_runtime_step_and_return(name, value, context);
-            PlannedFinalAssignment {
+            let (step, value) = plan_variable_runtime_step_and_return(name, value, context);
+            Ok(PlannedAssignment {
                 steps: vec![step],
-                return_,
-            }
+                value,
+            })
         }
-        BindingPattern::Discard => PlannedFinalAssignment {
+        BindingPattern::Discard => Ok(PlannedAssignment {
             steps: Vec::new(),
-            return_: value,
-        },
-    })
+            value,
+        }),
+        BindingPattern::Tuple(elements) => plan_tuple_assignment(elements, value, context),
+    }
 }
 
 fn plan_assignment_parts(
@@ -156,14 +157,87 @@ fn plan_assignment_parts(
 enum BindingPattern {
     Named(EcoString),
     Discard,
+    Tuple(Vec<BindingPattern>),
+}
+
+fn plan_assignment_steps(
+    pattern: BindingPattern,
+    value: Expr,
+    context: &mut PlanContext<'_>,
+) -> Result<Vec<Step>, PlanError> {
+    match pattern {
+        BindingPattern::Named(name) => Ok(vec![plan_variable_runtime_step(name, value, context)]),
+        BindingPattern::Discard => Ok(vec![Step::evaluate(value)]),
+        BindingPattern::Tuple(elements) => {
+            Ok(plan_tuple_assignment(elements, value, context)?.steps)
+        }
+    }
+}
+
+fn plan_tuple_assignment(
+    elements: Vec<BindingPattern>,
+    value: Expr,
+    context: &mut PlanContext<'_>,
+) -> Result<PlannedAssignment, PlanError> {
+    let actual = value.value_type();
+    let value = value
+        .into_tuple()
+        .ok_or_else(|| tuple_assignment_value_must_be_tuple(actual))?;
+    let type_ = value.type_().to_vec();
+    if elements.len() != type_.len() {
+        return Err(PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::InvalidPattern,
+        });
+    }
+
+    let local = context.define_internal_tuple_local();
+    let name = internal_tuple_name(local);
+    let tuple_local = TupleExpr::local_get(local, name.clone(), type_.clone());
+    let mut steps = vec![Step::let_tuple(local, name, value)];
+
+    for (index, (pattern, type_)) in elements.into_iter().zip(type_).enumerate() {
+        let element = tuple_index_expr(tuple_local.clone(), index, type_);
+        steps.extend(plan_assignment_steps(pattern, element, context)?);
+    }
+
+    Ok(PlannedAssignment {
+        steps,
+        value: Expr::tuple(tuple_local),
+    })
+}
+
+fn internal_tuple_name(local: TupleLocalId) -> EcoString {
+    format!("<tuple:{}>", local.0).into()
+}
+
+fn tuple_assignment_value_must_be_tuple(actual: ValueType) -> PlanError {
+    PlanError::InvalidTypedAst {
+        reason: InvalidTypedAstReason::ExpressionType {
+            expected: InvalidExpressionType::Tuple,
+            actual: value_type_expression_type(actual),
+        },
+    }
+}
+
+fn value_type_expression_type(type_: ValueType) -> InvalidExpressionType {
+    match type_ {
+        ValueType::Int => InvalidExpressionType::Int,
+        ValueType::String => InvalidExpressionType::String,
+        ValueType::Float => InvalidExpressionType::Float,
+        ValueType::Bool => InvalidExpressionType::Bool,
+        ValueType::Nil => InvalidExpressionType::Nil,
+        ValueType::Tuple(_) => InvalidExpressionType::Tuple,
+        ValueType::List(_) => InvalidExpressionType::List,
+        ValueType::Function(_) => InvalidExpressionType::Function,
+    }
 }
 
 pub(in crate::planner) fn plan_variable_runtime_step(
     name: EcoString,
     value: crate::plan::Expr,
     context: &mut PlanContext<'_>,
-) -> Result<Step, PlanError> {
-    Ok(plan_variable_runtime_step_and_return(name, value, context).0)
+) -> Step {
+    plan_variable_runtime_step_and_return(name, value, context).0
 }
 
 fn plan_variable_runtime_step_and_return(
@@ -316,6 +390,11 @@ fn plan_binding_pattern(pattern: TypedPattern) -> Result<BindingPattern, PlanErr
     match pattern {
         Pattern::Variable { name, .. } => Ok(BindingPattern::Named(name)),
         Pattern::Discard { .. } => Ok(BindingPattern::Discard),
+        Pattern::Tuple { elements, .. } => elements
+            .into_iter()
+            .map(plan_binding_pattern)
+            .collect::<Result<Vec<_>, _>>()
+            .map(BindingPattern::Tuple),
         pattern => Err(non_variable_pattern_error(&pattern)),
     }
 }
@@ -371,14 +450,16 @@ fn invalid_use_shape(reason: InvalidUseShapeReason) -> PlanError {
 #[cfg(test)]
 mod tests {
     use super::{BindingPattern, plan_binding_pattern};
-    use crate::plan::{BoolLocalId, IntLocalId, LocalId, NilLocalId, StringLocalId, ValueType};
+    use crate::plan::{
+        BoolLocalId, Expr, FunctionType, IntLocalId, LocalId, NilLocalId, StringLocalId, ValueType,
+    };
     use crate::planner::dsl::{
         bool_, bool_case_int_function, bool_function_ref, call_int_function, capture_int, function,
         int, int_arg, int_function_arg, int_function_call_arg, int_function_closure,
         int_function_ref, int_return_tail_call, let_bool_function_step, let_int_function_step,
-        let_nil_function_step, let_string_function_step, local_bool, local_int, local_int_function,
-        local_nil, local_string, module, module_with_anonymous, nil_function_ref,
-        string_function_ref,
+        let_nil_function_step, let_string_function_step, let_tuple_step, local_bool, local_int,
+        local_int_function, local_nil, local_string, local_tuple, module, module_with_anonymous,
+        nil_function_ref, string_function_ref, tuple,
     };
     use crate::planner::plan_module;
     use crate::planner::support::{compile, compile_minimal_module, dummy_span, expect_plan_error};
@@ -432,6 +513,271 @@ pub fn main() {
         let expected = module("main", function("main", int(42)).evaluate(int(1)), []);
 
         assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn plan_tuple_assignment_binds_projected_elements_from_internal_local() {
+        let actual = plan_module(compile(
+            r#"
+pub fn main() {
+  let #(one, two) = #(1, 2)
+  one + two
+}
+"#,
+        ))
+        .expect("source should plan");
+        let tuple_local = local_tuple(0, "<tuple:0>", [ValueType::Int, ValueType::Int]);
+        let expected = module(
+            "main",
+            function("main", local_int(0, "one").add_int(local_int(1, "two")))
+                .step(let_tuple_step(0, "<tuple:0>", tuple([int(1), int(2)])))
+                .let_int(
+                    0,
+                    "one",
+                    local_tuple(0, "<tuple:0>", [ValueType::Int, ValueType::Int]).index_int(0),
+                )
+                .let_int(1, "two", tuple_local.index_int(1)),
+            [],
+        );
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn plan_tuple_assignment_discard_evaluates_projected_element_without_binding() {
+        let actual = plan_module(compile(
+            r#"
+pub fn main() {
+  let #(_, value) = #(1, 2)
+  value
+}
+"#,
+        ))
+        .expect("source should plan");
+        let tuple_local = local_tuple(0, "<tuple:0>", [ValueType::Int, ValueType::Int]);
+        let expected = module(
+            "main",
+            function("main", local_int(0, "value"))
+                .step(let_tuple_step(0, "<tuple:0>", tuple([int(1), int(2)])))
+                .evaluate(
+                    local_tuple(0, "<tuple:0>", [ValueType::Int, ValueType::Int]).index_int(0),
+                )
+                .let_int(0, "value", tuple_local.index_int(1)),
+            [],
+        );
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn plan_nested_tuple_assignment_binds_nested_internal_local() {
+        let actual = plan_module(compile(
+            r#"
+pub fn main() {
+  let #(one, #(two, three)) = #(1, #(2, 3))
+  one + two + three
+}
+"#,
+        ))
+        .expect("source should plan");
+        let outer_type = [
+            ValueType::Int,
+            ValueType::Tuple(vec![ValueType::Int, ValueType::Int]),
+        ];
+        let outer_local = local_tuple(0, "<tuple:0>", outer_type.clone());
+        let inner_local = local_tuple(1, "<tuple:1>", [ValueType::Int, ValueType::Int]);
+        let expected = module(
+            "main",
+            function(
+                "main",
+                local_int(0, "one")
+                    .add_int(local_int(1, "two"))
+                    .add_int(local_int(2, "three")),
+            )
+            .step(let_tuple_step(
+                0,
+                "<tuple:0>",
+                tuple([
+                    Expr::from(int(1)),
+                    Expr::from(tuple([Expr::from(int(2)), Expr::from(int(3))])),
+                ]),
+            ))
+            .let_int(
+                0,
+                "one",
+                local_tuple(0, "<tuple:0>", outer_type).index_int(0),
+            )
+            .step(let_tuple_step(
+                1,
+                "<tuple:1>",
+                outer_local.index_tuple(1, [ValueType::Int, ValueType::Int]),
+            ))
+            .let_int(
+                1,
+                "two",
+                local_tuple(1, "<tuple:1>", [ValueType::Int, ValueType::Int]).index_int(0),
+            )
+            .let_int(2, "three", inner_local.index_int(1)),
+            [],
+        );
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn reject_margin_tuple_assignment_arity_mismatch() {
+        let mut module = compile_minimal_module();
+        module.definitions.functions[0].body = vec![
+            Statement::Assignment(Box::new(TypedAssignment {
+                location: dummy_span(),
+                value: TypedExpr::Tuple {
+                    location: dummy_span(),
+                    type_: type_::tuple(vec![type_::int()]),
+                    elements: vec![typed_int_expr(1)],
+                },
+                pattern: Pattern::Tuple {
+                    location: dummy_span(),
+                    elements: vec![
+                        Pattern::Variable {
+                            location: dummy_span(),
+                            name: "one".into(),
+                            type_: type_::int(),
+                            origin: VariableOrigin::generated(),
+                        },
+                        Pattern::Variable {
+                            location: dummy_span(),
+                            name: "two".into(),
+                            type_: type_::int(),
+                            origin: VariableOrigin::generated(),
+                        },
+                    ],
+                },
+                kind: AssignmentKind::Let,
+                compiled_case: CompiledCase::simple_variable_assignment("one".into(), type_::int()),
+                annotation: None,
+            })),
+            Statement::Expression(typed_int_expr(1)),
+        ];
+
+        assert_eq!(
+            plan_module(module),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::InvalidPattern,
+            }),
+        );
+    }
+
+    #[test]
+    fn reject_margin_tuple_assignment_value_must_be_tuple() {
+        let mut module = compile_minimal_module();
+        module.definitions.functions[0].body = vec![
+            Statement::Assignment(Box::new(TypedAssignment {
+                location: dummy_span(),
+                value: typed_int_expr(1),
+                pattern: Pattern::Tuple {
+                    location: dummy_span(),
+                    elements: vec![Pattern::Variable {
+                        location: dummy_span(),
+                        name: "one".into(),
+                        type_: type_::int(),
+                        origin: VariableOrigin::generated(),
+                    }],
+                },
+                kind: AssignmentKind::Let,
+                compiled_case: CompiledCase::simple_variable_assignment("one".into(), type_::int()),
+                annotation: None,
+            })),
+            Statement::Expression(typed_int_expr(1)),
+        ];
+
+        assert_eq!(
+            plan_module(module),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionType {
+                    expected: crate::planner::InvalidExpressionType::Tuple,
+                    actual: crate::planner::InvalidExpressionType::Int,
+                },
+            }),
+        );
+    }
+
+    #[test]
+    fn reject_margin_nested_tuple_assignment_value_must_be_tuple() {
+        let mut module = compile_minimal_module();
+        module.definitions.functions[0].body = vec![
+            Statement::Assignment(Box::new(TypedAssignment {
+                location: dummy_span(),
+                value: TypedExpr::Tuple {
+                    location: dummy_span(),
+                    type_: type_::tuple(vec![type_::int()]),
+                    elements: vec![typed_int_expr(1)],
+                },
+                pattern: Pattern::Tuple {
+                    location: dummy_span(),
+                    elements: vec![Pattern::Tuple {
+                        location: dummy_span(),
+                        elements: vec![Pattern::Variable {
+                            location: dummy_span(),
+                            name: "one".into(),
+                            type_: type_::int(),
+                            origin: VariableOrigin::generated(),
+                        }],
+                    }],
+                },
+                kind: AssignmentKind::Let,
+                compiled_case: CompiledCase::simple_variable_assignment("one".into(), type_::int()),
+                annotation: None,
+            })),
+            Statement::Expression(typed_int_expr(1)),
+        ];
+
+        assert_eq!(
+            plan_module(module),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionType {
+                    expected: InvalidExpressionType::Tuple,
+                    actual: InvalidExpressionType::Int,
+                },
+            }),
+        );
+    }
+
+    #[test]
+    fn reject_margin_tuple_assignment_value_type_error_preserves_actual_family() {
+        let cases = [
+            (ValueType::Int, InvalidExpressionType::Int),
+            (ValueType::String, InvalidExpressionType::String),
+            (ValueType::Float, InvalidExpressionType::Float),
+            (ValueType::Bool, InvalidExpressionType::Bool),
+            (ValueType::Nil, InvalidExpressionType::Nil),
+            (
+                ValueType::Tuple(vec![ValueType::Int]),
+                InvalidExpressionType::Tuple,
+            ),
+            (
+                ValueType::List(Box::new(ValueType::Int)),
+                InvalidExpressionType::List,
+            ),
+            (
+                ValueType::Function(Box::new(FunctionType::new(
+                    vec![ValueType::Int],
+                    ValueType::Int,
+                ))),
+                InvalidExpressionType::Function,
+            ),
+        ];
+
+        for (actual_type, actual) in cases {
+            assert_eq!(
+                super::tuple_assignment_value_must_be_tuple(actual_type),
+                PlanError::InvalidTypedAst {
+                    reason: InvalidTypedAstReason::ExpressionType {
+                        expected: InvalidExpressionType::Tuple,
+                        actual,
+                    },
+                },
+            );
+        }
     }
 
     #[test]
@@ -585,6 +931,36 @@ pub fn main() {
         ))
         .expect("source should plan");
         let expected = module("main", function("main", int(1)), []);
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn plan_final_tuple_assignment_returns_internal_tuple_local() {
+        let actual = plan_module(compile(
+            r#"
+pub fn main() {
+  let #(one, two) = #(1, 2)
+}
+"#,
+        ))
+        .expect("source should plan");
+        let tuple_local = local_tuple(0, "<tuple:0>", [ValueType::Int, ValueType::Int]);
+        let expected = module(
+            "main",
+            function(
+                "main",
+                local_tuple(0, "<tuple:0>", [ValueType::Int, ValueType::Int]),
+            )
+            .step(let_tuple_step(0, "<tuple:0>", tuple([int(1), int(2)])))
+            .let_int(
+                0,
+                "one",
+                local_tuple(0, "<tuple:0>", [ValueType::Int, ValueType::Int]).index_int(0),
+            )
+            .let_int(1, "two", tuple_local.index_int(1)),
+            [],
+        );
 
         assert_eq!(actual, expected);
     }
@@ -833,6 +1209,23 @@ pub fn main() {
             ),
             PlanError::UnsupportedPattern {
                 kind: UnsupportedPatternKind::Assign,
+            },
+        );
+        assert_eq!(
+            expect_plan_error(
+                r#"
+fn with_pair(continue: fn(#(Int, Int)) -> Int) {
+  continue(#(1, 2))
+}
+
+pub fn main() {
+  use #(one, two) <- with_pair
+  one + two
+}
+"#,
+            ),
+            PlanError::UnsupportedPattern {
+                kind: UnsupportedPatternKind::Tuple,
             },
         );
         assert_eq!(
@@ -1092,17 +1485,6 @@ pub fn main() {
             (
                 r#"
 pub fn main() {
-  let #(a, b) = #(1, 2)
-  a
-}
-"#,
-                PlanError::UnsupportedPattern {
-                    kind: UnsupportedPatternKind::Tuple,
-                },
-            ),
-            (
-                r#"
-pub fn main() {
   let value as alias = 1
   alias
 }
@@ -1149,6 +1531,16 @@ pub fn main() {
                 type_: type_::int(),
             }),
             Ok(BindingPattern::Discard),
+        );
+        assert_eq!(
+            plan_binding_pattern(Pattern::Tuple {
+                location: dummy_span(),
+                elements: vec![variable("x"), variable("y")],
+            }),
+            Ok(BindingPattern::Tuple(vec![
+                BindingPattern::Named("x".into()),
+                BindingPattern::Named("y".into()),
+            ])),
         );
 
         let patterns = [
