@@ -6,3 +6,5 @@ pub fn main() {
   use #(one, two) <- with_pair
   one + two
 }
+
+// geam:expect Int(3)

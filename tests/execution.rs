@@ -256,6 +256,9 @@ mod functions {
             use_float_value,
             use_tuple_value,
             use_list_value,
+            use_tuple_assignment,
+            use_pattern_alias_assignment,
+            use_nested_tuple_alias_assignment,
             use_block_scope,
             use_function_value_provider,
             use_inside_anonymous_function,
@@ -330,8 +333,6 @@ mod rejection {
     mod patterns {
         rejection_cases!("patterns";
             list_assignment,
-            use_tuple_assignment,
-            use_pattern_alias_assignment,
             use_list_assignment,
             let_assert,
         );

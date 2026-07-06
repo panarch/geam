@@ -33,9 +33,10 @@ pub(super) fn plan_call(
 
 pub(super) fn plan_use_call(
     call: TypedExpr,
+    use_assignment_count: usize,
     context: &mut PlanContext<'_>,
 ) -> Result<Expr, PlanError> {
-    implicit::plan_use_call(call, context)
+    implicit::plan_use_call(call, use_assignment_count, context)
 }
 
 pub(super) fn plan_pipeline_direct_call(

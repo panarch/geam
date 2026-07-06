@@ -42,10 +42,6 @@ pub enum UnsupportedAssignmentKind {
 
 #[derive(Debug, Error, Clone, Copy, PartialEq, Eq)]
 pub enum UnsupportedPatternKind {
-    #[error("assign")]
-    Assign,
-    #[error("tuple")]
-    Tuple,
     #[error("list")]
     List,
 }
