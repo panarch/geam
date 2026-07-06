@@ -35,15 +35,17 @@ pub enum UnsupportedStatementKind {
 }
 
 #[derive(Debug, Error, Clone, Copy, PartialEq, Eq)]
-pub enum UnsupportedAssignmentKind {
-    #[error("let assert")]
-    LetAssert,
-}
-
-#[derive(Debug, Error, Clone, Copy, PartialEq, Eq)]
 pub enum UnsupportedPatternKind {
     #[error("list")]
     List,
+    #[error("literal")]
+    Literal,
+    #[error("bit array")]
+    BitArray,
+    #[error("constructor")]
+    Constructor,
+    #[error("string prefix")]
+    StringPrefix,
 }
 
 #[derive(Debug, Error, Clone, Copy, PartialEq, Eq)]

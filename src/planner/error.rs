@@ -10,10 +10,9 @@ pub use invalid::{
     InvalidTypedAstReason, InvalidUseShapeReason,
 };
 pub use unsupported::{
-    UnsupportedArgumentReason, UnsupportedAssignmentKind, UnsupportedBinOpKind,
-    UnsupportedCaseReason, UnsupportedExpressionKind, UnsupportedFunctionReason,
-    UnsupportedPatternKind, UnsupportedPipelineReason, UnsupportedStatementKind,
-    UnsupportedTopLevelKind,
+    UnsupportedArgumentReason, UnsupportedBinOpKind, UnsupportedCaseReason,
+    UnsupportedExpressionKind, UnsupportedFunctionReason, UnsupportedPatternKind,
+    UnsupportedPipelineReason, UnsupportedStatementKind, UnsupportedTopLevelKind,
 };
 
 #[derive(Debug, Error, Clone, PartialEq, Eq)]
@@ -35,9 +34,6 @@ pub enum PlanError {
 
     #[error("unsupported statement: {kind}")]
     UnsupportedStatement { kind: UnsupportedStatementKind },
-
-    #[error("unsupported assignment: {kind}")]
-    UnsupportedAssignment { kind: UnsupportedAssignmentKind },
 
     #[error("unsupported pattern: {kind}")]
     UnsupportedPattern { kind: UnsupportedPatternKind },

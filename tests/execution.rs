@@ -73,6 +73,11 @@ mod bindings {
         tuple_destructuring_discard,
         nested_tuple_destructuring,
         nested_pattern_alias_assignment,
+        let_assert_list_destructuring,
+        let_assert_fixed_list,
+        let_assert_empty_list,
+        let_assert_discard_alias,
+        final_let_assert_list,
         expression_steps,
     );
 }
@@ -313,6 +318,16 @@ mod execution_errors {
             );
         }
     }
+
+    mod patterns {
+        execution_error_cases!("patterns";
+            let_assert_empty_head,
+            let_assert_nested_prefix,
+            let_assert_fixed_length,
+            let_assert_empty_list,
+            let_assert_message,
+        );
+    }
 }
 
 mod rejection {
@@ -378,7 +393,6 @@ mod rejection {
         rejection_cases!("patterns";
             list_assignment,
             use_list_assignment,
-            let_assert,
         );
     }
 
@@ -455,6 +469,7 @@ fn render_panic_kind(kind: &PanicKind) -> String {
     match kind {
         PanicKind::Panic { message } => render_panic_message("panic", message.as_deref()),
         PanicKind::Todo { message } => render_panic_message("todo", message.as_deref()),
+        PanicKind::LetAssert { message } => render_panic_message("let_assert", message.as_deref()),
         PanicKind::EmptyFunction => "empty_function".into(),
         PanicKind::EmptyBlock => "empty_block".into(),
         PanicKind::IncompleteUse => "incomplete_use".into(),

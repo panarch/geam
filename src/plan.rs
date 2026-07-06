@@ -43,7 +43,7 @@ pub use id::{
 };
 pub(crate) use id::{FunctionFunctionId, RuntimeFunctionId};
 pub use step::Step;
-pub(crate) use step::StepKind;
+pub(crate) use step::{AssertBinding, AssertPattern, ListAssertPattern, ListAssertTail, StepKind};
 pub(crate) use value::{
     BoolFunctionValue, CaptureValue, CaptureValueKind, FloatFunctionValue, FunctionFunctionValue,
     FunctionValueKind, IntFunctionValue, ListFunctionValue, NilFunctionValue, StringFunctionValue,

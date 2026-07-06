@@ -196,10 +196,17 @@ fn collect_variable_pattern_bound_name(
                 collect_variable_pattern_bound_name(element, bound);
             }
         }
+        Pattern::List { elements, tail, .. } => {
+            for element in elements {
+                collect_variable_pattern_bound_name(element, bound);
+            }
+            if let Some(tail) = tail {
+                collect_variable_pattern_bound_name(&tail.pattern, bound);
+            }
+        }
         Pattern::Int { .. }
         | Pattern::Float { .. }
         | Pattern::String { .. }
-        | Pattern::List { .. }
         | Pattern::Constructor { .. }
         | Pattern::BitArray { .. }
         | Pattern::StringPrefix { .. }
@@ -313,6 +320,44 @@ pub fn main() {
   fn() {
     let #(one, #(two, _) as inner) as pair = #(captured, #(2, 3))
     one + two + inner.0 + pair.0
+  }
+  1
+}
+"#,
+            ),
+            vec!["captured".to_string()],
+        );
+    }
+
+    #[test]
+    fn anonymous_free_variables_treat_let_assert_list_names_as_bound() {
+        assert_eq!(
+            anonymous_function_free_variables(
+                r#"
+pub fn main() {
+  let captured = [1, 2]
+  fn() {
+    let assert [first, ..rest] = captured
+    first == 1 && rest == [2]
+  }
+  1
+}
+"#,
+            ),
+            vec!["captured".to_string()],
+        );
+    }
+
+    #[test]
+    fn anonymous_free_variables_treat_fixed_let_assert_list_names_as_bound() {
+        assert_eq!(
+            anonymous_function_free_variables(
+                r#"
+pub fn main() {
+  let captured = [1]
+  fn() {
+    let assert [first] = captured
+    first
   }
   1
 }

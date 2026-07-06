@@ -471,6 +471,12 @@ impl<'a> PlanContext<'a> {
         local
     }
 
+    pub(super) fn define_internal_list_local(&mut self) -> ListLocalId {
+        let local = ListLocalId(self.next_list_local);
+        self.next_list_local += 1;
+        local
+    }
+
     pub(super) fn lookup_local(&self, name: &EcoString) -> Option<(LocalId, ValueType)> {
         match self.bindings.get(name)? {
             LocalBinding::Primitive(local) => Some((*local, local.value_type())),
@@ -1190,6 +1196,25 @@ mod tests {
         assert_eq!(
             context.lookup_tuple_local(&"tuple".into()),
             Some((TupleLocalId(1), tuple_type)),
+        );
+    }
+
+    #[test]
+    fn define_internal_list_local_reserves_id_without_user_binding() {
+        let module = EcoString::from("main");
+        let functions = HashMap::<EcoString, FunctionInfo>::new();
+        let mut anonymous = AnonymousFunctions::default();
+        let mut context = PlanContext::new(&module, &functions, &mut anonymous);
+
+        assert_eq!(context.define_internal_list_local(), ListLocalId(0));
+        assert_eq!(context.lookup_list_local(&"<list:0>".into()), None);
+        assert_eq!(
+            context.define_list_local("values".into(), ValueType::Int),
+            ListLocalId(1),
+        );
+        assert_eq!(
+            context.lookup_list_local(&"values".into()),
+            Some((ListLocalId(1), ValueType::Int)),
         );
     }
 

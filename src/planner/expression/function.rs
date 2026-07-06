@@ -309,8 +309,8 @@ mod tests {
     };
     use crate::planner::error::{
         InvalidExpressionShapeKind, InvalidExpressionType, InvalidFunctionShapeReason,
-        InvalidPipelineShapeReason, InvalidTypedAstReason, PlanError, UnsupportedAssignmentKind,
-        UnsupportedExpressionKind, UnsupportedStatementKind,
+        InvalidPipelineShapeReason, InvalidTypedAstReason, PlanError, UnsupportedExpressionKind,
+        UnsupportedPatternKind, UnsupportedStatementKind,
     };
     use crate::planner::plan_module;
     use crate::planner::support::{compile, dummy_span};
@@ -988,7 +988,7 @@ pub fn main() {
     }
 
     #[test]
-    fn reject_profile_anonymous_function_let_assert_assignment() {
+    fn reject_profile_anonymous_function_let_assert_constructor_pattern() {
         assert_eq!(
             plan_module(compile(
                 r#"
@@ -1001,8 +1001,8 @@ pub fn main() {
 }
 "#,
             )),
-            Err(PlanError::UnsupportedAssignment {
-                kind: UnsupportedAssignmentKind::LetAssert,
+            Err(PlanError::UnsupportedPattern {
+                kind: UnsupportedPatternKind::Constructor,
             }),
         );
     }
