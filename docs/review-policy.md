@@ -28,19 +28,19 @@ Runtime code assumes it receives a valid `ExecutionPlan`. Structural execution
 failures belong in plan construction as `PlanError`, not in a runtime error
 enum.
 
-Source-level execution stops accepted by the Geam profile, such as Gleam
-`panic`, `todo`, or generated empty-body todo expressions, are runtime results.
-Represent them as `ExecutionError::Panic` and cover them with execution-error
-fixtures that compile and plan successfully before failing at runtime. Do not
-add speculative `PanicKind` variants.
+`ExecutionError` has two allowed roles:
+
+- Source-reachable execution stops accepted by the Geam profile use
+  `ExecutionError::Panic(PanicKind)`. Cover them with execution-error fixtures
+  that compile and plan successfully before failing at runtime. Do not add
+  speculative `PanicKind` variants.
+- All other `ExecutionError` variants are execution invariant failures that
+  Rust cannot encode in the current plan shape. Adding a non-`Panic` execution
+  error variant or invariant kind requires explicit design review.
 
 Runtime tag dispatch is allowed only for planner-validated recursive plan
 shapes, and only as execution routing. It must not become validation, fallback
 behavior, or a source-visible semantic difference.
-
-Internal `ExecutionError` variants are limited to execution invariant failures
-that Rust cannot encode in the current plan shape. Adding a new internal
-`ExecutionError` constructor or invariant kind requires explicit design review.
 
 Tuple projection has one approved execution invariant:
 `ExecutionError::tuple_index_family_mismatch`. It is only for typed tuple-index
