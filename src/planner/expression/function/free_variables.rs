@@ -1,6 +1,7 @@
 use ecow::EcoString;
 use gleam_core::ast::{
-    Pattern, Statement, TypedArg, TypedExpr, TypedPipelineAssignment, TypedStatement,
+    AssignmentKind, Pattern, Statement, TypedArg, TypedExpr, TypedPipelineAssignment,
+    TypedStatement,
 };
 use gleam_core::type_::{Type, ValueConstructorVariant};
 use std::collections::HashSet;
@@ -64,6 +65,13 @@ fn collect_statement(
         Statement::Expression(expression) => collect_expr(expression, bound, free),
         Statement::Assignment(assignment) => {
             collect_expr(&assignment.value, bound, free);
+            if let AssignmentKind::Assert {
+                message: Some(message),
+                ..
+            } = &assignment.kind
+            {
+                collect_expr(message, bound, free);
+            }
             collect_variable_pattern_bound_name(&assignment.pattern, bound);
         }
         Statement::Use(use_) => {
@@ -196,10 +204,17 @@ fn collect_variable_pattern_bound_name(
                 collect_variable_pattern_bound_name(element, bound);
             }
         }
+        Pattern::List { elements, tail, .. } => {
+            for element in elements {
+                collect_variable_pattern_bound_name(element, bound);
+            }
+            if let Some(tail) = tail {
+                collect_variable_pattern_bound_name(&tail.pattern, bound);
+            }
+        }
         Pattern::Int { .. }
         | Pattern::Float { .. }
         | Pattern::String { .. }
-        | Pattern::List { .. }
         | Pattern::Constructor { .. }
         | Pattern::BitArray { .. }
         | Pattern::StringPrefix { .. }
@@ -319,6 +334,64 @@ pub fn main() {
 "#,
             ),
             vec!["captured".to_string()],
+        );
+    }
+
+    #[test]
+    fn anonymous_free_variables_treat_let_assert_list_names_as_bound() {
+        assert_eq!(
+            anonymous_function_free_variables(
+                r#"
+pub fn main() {
+  let captured = [1, 2]
+  fn() {
+    let assert [first, ..rest] = captured
+    first == 1 && rest == [2]
+  }
+  1
+}
+"#,
+            ),
+            vec!["captured".to_string()],
+        );
+    }
+
+    #[test]
+    fn anonymous_free_variables_treat_fixed_let_assert_list_names_as_bound() {
+        assert_eq!(
+            anonymous_function_free_variables(
+                r#"
+pub fn main() {
+  let captured = [1]
+  fn() {
+    let assert [first] = captured
+    first
+  }
+  1
+}
+"#,
+            ),
+            vec!["captured".to_string()],
+        );
+    }
+
+    #[test]
+    fn anonymous_free_variables_include_let_assert_message_expression() {
+        assert_eq!(
+            anonymous_function_free_variables(
+                r#"
+pub fn main() {
+  let values = [1]
+  let message = "missing"
+  fn() {
+    let assert [first] = values as message
+    first
+  }
+  1
+}
+"#,
+            ),
+            vec!["values".to_string(), "message".to_string()],
         );
     }
 

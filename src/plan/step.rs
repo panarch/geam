@@ -3,16 +3,55 @@ use super::expression::{
     IntFunctionExpr, ListExpr, ListFunctionExpr, NilExpr, NilFunctionExpr, StringExpr,
     StringFunctionExpr, TupleExpr, TupleFunctionExpr,
 };
+use super::function::ParamLocal;
 use super::id::{
     BoolFunctionLocalId, BoolLocalId, FloatFunctionLocalId, FloatLocalId, FunctionFunctionLocalId,
     IntFunctionLocalId, IntLocalId, ListFunctionLocalId, ListLocalId, NilFunctionLocalId,
     NilLocalId, StringFunctionLocalId, StringLocalId, TupleFunctionLocalId, TupleLocalId,
 };
+use super::value::ValueType;
 use ecow::EcoString;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Step {
     kind: StepKind,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct AssertBinding {
+    local: ParamLocal,
+    name: EcoString,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum AssertPattern {
+    Bind(AssertBinding),
+    Discard,
+    Tuple(Vec<AssertPattern>),
+    List(ListAssertPattern),
+    Alias {
+        pattern: Box<AssertPattern>,
+        binding: AssertBinding,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ListAssertPattern {
+    element_type: ValueType,
+    elements: Vec<AssertPattern>,
+    tail: Option<ListAssertTail>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ListAssertTailBinding {
+    local: ListLocalId,
+    name: EcoString,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum ListAssertTail {
+    Ignore,
+    Bind(ListAssertTailBinding),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -92,7 +131,73 @@ pub(crate) enum StepKind {
         name: EcoString,
         value: FunctionFunctionExpr,
     },
+    AssertList {
+        local: ListLocalId,
+        pattern: AssertPattern,
+        message: Option<StringExpr>,
+    },
     Evaluate(Expr),
+}
+
+impl AssertBinding {
+    pub(crate) fn new(local: ParamLocal, name: EcoString) -> Self {
+        Self { local, name }
+    }
+
+    pub(crate) fn local(&self) -> &ParamLocal {
+        &self.local
+    }
+}
+
+impl AssertPattern {
+    pub(crate) fn list(pattern: ListAssertPattern) -> Self {
+        Self::List(pattern)
+    }
+
+    pub(crate) fn alias(pattern: AssertPattern, binding: AssertBinding) -> Self {
+        Self::Alias {
+            pattern: Box::new(pattern),
+            binding,
+        }
+    }
+}
+
+impl ListAssertPattern {
+    pub(crate) fn new(
+        element_type: ValueType,
+        elements: Vec<AssertPattern>,
+        tail: Option<ListAssertTail>,
+    ) -> Self {
+        Self {
+            element_type,
+            elements,
+            tail,
+        }
+    }
+
+    pub(crate) fn element_type(&self) -> &ValueType {
+        &self.element_type
+    }
+
+    pub(crate) fn elements(&self) -> &[AssertPattern] {
+        &self.elements
+    }
+
+    pub(crate) fn tail(&self) -> Option<&ListAssertTail> {
+        self.tail.as_ref()
+    }
+}
+
+impl ListAssertTail {
+    pub(crate) fn bind(local: ListLocalId, name: EcoString) -> Self {
+        Self::Bind(ListAssertTailBinding { local, name })
+    }
+}
+
+impl ListAssertTailBinding {
+    pub(crate) fn local(&self) -> ListLocalId {
+        self.local
+    }
 }
 
 impl Step {
@@ -224,6 +329,20 @@ impl Step {
         }
     }
 
+    pub(crate) fn assert_list(
+        local: ListLocalId,
+        pattern: AssertPattern,
+        message: Option<StringExpr>,
+    ) -> Self {
+        Self {
+            kind: StepKind::AssertList {
+                local,
+                pattern,
+                message,
+            },
+        }
+    }
+
     pub(crate) fn kind(&self) -> &StepKind {
         &self.kind
     }
@@ -233,7 +352,8 @@ impl Step {
 mod tests {
     use super::{Step, StepKind};
     use crate::plan::{
-        Expr, IntExpr, IntFunctionId, IntFunctionLocalId, IntFunctionValue, IntLocalId, ParamLocal,
+        AssertPattern, Expr, IntExpr, IntFunctionId, IntFunctionLocalId, IntFunctionValue,
+        IntLocalId, ListAssertPattern, ListAssertTail, ListLocalId, ParamLocal, ValueType,
     };
     use num_bigint::BigInt;
 
@@ -258,6 +378,27 @@ mod tests {
         assert_eq!(
             Step::evaluate(Expr::int(IntExpr::value(BigInt::from(1)))).kind(),
             &StepKind::Evaluate(Expr::int(IntExpr::value(BigInt::from(1)))),
+        );
+        assert_eq!(
+            Step::assert_list(
+                ListLocalId(0),
+                AssertPattern::list(ListAssertPattern::new(
+                    ValueType::Int,
+                    vec![AssertPattern::Discard],
+                    Some(ListAssertTail::bind(ListLocalId(1), "tail".into())),
+                )),
+                None,
+            )
+            .kind(),
+            &StepKind::AssertList {
+                local: ListLocalId(0),
+                pattern: AssertPattern::list(ListAssertPattern::new(
+                    ValueType::Int,
+                    vec![AssertPattern::Discard],
+                    Some(ListAssertTail::bind(ListLocalId(1), "tail".into())),
+                )),
+                message: None,
+            },
         );
     }
 

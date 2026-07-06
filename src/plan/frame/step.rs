@@ -1,5 +1,5 @@
 use super::FrameLayout;
-use crate::plan::{Step, StepKind};
+use crate::plan::{AssertPattern, ListAssertPattern, ListAssertTail, Step, StepKind};
 
 impl FrameLayout {
     pub(in crate::plan::frame) fn include_steps(&mut self, steps: &[Step]) {
@@ -70,7 +70,44 @@ impl FrameLayout {
                 self.include_function_function_expr(value);
                 self.include_function_function(*local);
             }
+            StepKind::AssertList {
+                local,
+                pattern,
+                message,
+            } => {
+                self.include_list(*local);
+                self.include_assert_pattern(pattern);
+                if let Some(message) = message {
+                    self.include_string_expr(message);
+                }
+            }
             StepKind::Evaluate(value) => self.include_expr(value),
+        }
+    }
+
+    fn include_list_assert_pattern(&mut self, pattern: &ListAssertPattern) {
+        for element in pattern.elements() {
+            self.include_assert_pattern(element);
+        }
+        if let Some(ListAssertTail::Bind(binding)) = pattern.tail() {
+            self.include_list(binding.local());
+        }
+    }
+
+    fn include_assert_pattern(&mut self, pattern: &AssertPattern) {
+        match pattern {
+            AssertPattern::Bind(binding) => self.include_local(binding.local()),
+            AssertPattern::Discard => {}
+            AssertPattern::Tuple(elements) => {
+                for element in elements {
+                    self.include_assert_pattern(element);
+                }
+            }
+            AssertPattern::List(pattern) => self.include_list_assert_pattern(pattern),
+            AssertPattern::Alias { pattern, binding } => {
+                self.include_assert_pattern(pattern);
+                self.include_local(binding.local());
+            }
         }
     }
 }
@@ -79,9 +116,10 @@ impl FrameLayout {
 mod tests {
     use super::FrameLayout;
     use crate::plan::{
-        BoolExpr, BoolFunctionExpr, BoolFunctionLocalId, BoolLocalId, Expr, IntExpr, IntFunctionId,
-        IntLocalId, NilExpr, NilFunctionExpr, NilFunctionLocalId, NilLocalId, ReturnExpr,
-        StringExpr, StringFunctionExpr, StringFunctionLocalId, StringLocalId,
+        AssertBinding, AssertPattern, BoolExpr, BoolFunctionExpr, BoolFunctionLocalId, BoolLocalId,
+        Expr, IntExpr, IntFunctionId, IntLocalId, ListAssertPattern, ListAssertTail, ListLocalId,
+        NilExpr, NilFunctionExpr, NilFunctionLocalId, NilLocalId, ParamLocal, ReturnExpr,
+        StringExpr, StringFunctionExpr, StringFunctionLocalId, StringLocalId, ValueType,
     };
 
     #[test]
@@ -218,5 +256,35 @@ mod tests {
         assert_eq!(layout.string_functions(), 4);
         assert_eq!(layout.bool_functions(), 4);
         assert_eq!(layout.nil_functions(), 4);
+    }
+
+    #[test]
+    fn frame_layout_includes_assert_list_pattern_dependencies() {
+        let list_element_type = ValueType::Tuple(vec![ValueType::Int, ValueType::String]);
+        let steps = [crate::plan::Step::assert_list(
+            ListLocalId(0),
+            AssertPattern::list(ListAssertPattern::new(
+                list_element_type.clone(),
+                vec![AssertPattern::Tuple(vec![
+                    AssertPattern::Bind(AssertBinding::new(
+                        ParamLocal::int(IntLocalId(0)),
+                        "number".into(),
+                    )),
+                    AssertPattern::alias(
+                        AssertPattern::Discard,
+                        AssertBinding::new(ParamLocal::string(StringLocalId(0)), "text".into()),
+                    ),
+                ])],
+                Some(ListAssertTail::bind(ListLocalId(1), "rest".into())),
+            )),
+            Some(StringExpr::local_get(StringLocalId(1), "message".into())),
+        )];
+        let return_ = ReturnExpr::int(IntFunctionId(0), IntExpr::value(0.into()));
+
+        let layout = FrameLayout::from_function_parts(&[], &steps, &return_);
+
+        assert_eq!(layout.ints(), 1);
+        assert_eq!(layout.strings(), 2);
+        assert_eq!(layout.lists(), 2);
     }
 }
