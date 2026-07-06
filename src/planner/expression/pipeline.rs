@@ -32,7 +32,7 @@ fn plan_first_assignment(
 ) -> Result<Step, PlanError> {
     let value = plan_expr(*assignment.value, context)?;
 
-    plan_variable_runtime_step(assignment.name, value, context)
+    Ok(plan_variable_runtime_step(assignment.name, value, context))
 }
 
 fn plan_assignment(
@@ -42,7 +42,7 @@ fn plan_assignment(
 ) -> Result<Step, PlanError> {
     let value = plan_pipeline_value(*assignment.value, kind, context)?;
 
-    plan_variable_runtime_step(assignment.name, value, context)
+    Ok(plan_variable_runtime_step(assignment.name, value, context))
 }
 
 fn plan_pipeline_value(

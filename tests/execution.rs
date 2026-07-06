@@ -57,6 +57,9 @@ mod bindings {
         string_let_binding,
         bool_let_binding,
         nil_let_binding,
+        tuple_destructuring,
+        tuple_destructuring_discard,
+        nested_tuple_destructuring,
         expression_steps,
     );
 }
@@ -65,6 +68,7 @@ mod statements {
     execution_cases!("statements";
         final_assignment,
         final_discard_assignment,
+        final_tuple_destructuring,
     );
 }
 
@@ -320,9 +324,9 @@ mod rejection {
 
     mod patterns {
         rejection_cases!("patterns";
-            tuple_assignment,
             pattern_alias_assignment,
             list_assignment,
+            use_tuple_assignment,
             use_pattern_alias_assignment,
             use_list_assignment,
             let_assert,
@@ -336,6 +340,7 @@ mod rejection {
             multiple_subjects,
             variable_pattern,
             tuple_pattern,
+            tuple_subject,
             string_prefix_pattern,
             list_pattern,
             pattern_alias,
