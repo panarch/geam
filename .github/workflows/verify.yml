@@ -1,0 +1,48 @@
+name: Verify
+
+on:
+  push:
+    branches:
+      - main
+  # Temporary trigger for validating this workflow before the first merge.
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  verify:
+    name: fmt, clippy, test, coverage
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, llvm-tools-preview, rustfmt
+
+      - name: Install cargo-llvm-cov
+        run: cargo install cargo-llvm-cov --version 0.8.7 --locked
+
+      - name: Check formatting
+        run: cargo fmt --check
+
+      - name: Run clippy
+        run: cargo clippy --all-targets -- -D warnings
+
+      - name: Run tests
+        run: cargo test
+
+      - name: Run locked tests
+        run: cargo test --locked
+
+      - name: Check coverage
+        run: cargo llvm-cov --summary-only --fail-under-lines 100 --fail-under-regions 100
