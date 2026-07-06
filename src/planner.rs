@@ -13,7 +13,7 @@ pub use error::{
     InvalidTypedAstReason, InvalidUseShapeReason, PlanError, UnsupportedArgumentReason,
     UnsupportedBinOpKind, UnsupportedCaseReason, UnsupportedExpressionKind,
     UnsupportedFunctionReason, UnsupportedPatternKind, UnsupportedPipelineReason,
-    UnsupportedStatementKind, UnsupportedTopLevelKind,
+    UnsupportedTopLevelKind,
 };
 pub use module::plan_module;
 

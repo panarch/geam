@@ -499,7 +499,7 @@ fn plan_int_expr(
         .ok_or_else(|| invalid_expression_type(InvalidExpressionType::Int, actual))
 }
 
-fn plan_string_expr(
+pub(super) fn plan_string_expr(
     expression: TypedExpr,
     context: &mut PlanContext<'_>,
 ) -> Result<StringExpr, PlanError> {
@@ -523,7 +523,7 @@ fn plan_float_expr(
         .ok_or_else(|| invalid_expression_type(InvalidExpressionType::Float, actual))
 }
 
-fn plan_bool_expr(
+pub(super) fn plan_bool_expr(
     expression: TypedExpr,
     context: &mut PlanContext<'_>,
 ) -> Result<BoolExpr, PlanError> {

@@ -81,6 +81,12 @@ impl FrameLayout {
                     self.include_string_expr(message);
                 }
             }
+            StepKind::AssertBool { condition, message } => {
+                self.include_bool_expr(condition);
+                if let Some(message) = message {
+                    self.include_string_expr(message);
+                }
+            }
             StepKind::Evaluate(value) => self.include_expr(value),
         }
     }
@@ -286,5 +292,19 @@ mod tests {
         assert_eq!(layout.ints(), 1);
         assert_eq!(layout.strings(), 2);
         assert_eq!(layout.lists(), 2);
+    }
+
+    #[test]
+    fn frame_layout_includes_assert_bool_dependencies() {
+        let steps = [crate::plan::Step::assert_bool(
+            BoolExpr::local_get(BoolLocalId(0), "condition".into()),
+            Some(StringExpr::local_get(StringLocalId(0), "message".into())),
+        )];
+        let return_ = ReturnExpr::int(IntFunctionId(0), IntExpr::value(0.into()));
+
+        let layout = FrameLayout::from_function_parts(&[], &steps, &return_);
+
+        assert_eq!(layout.bools(), 1);
+        assert_eq!(layout.strings(), 1);
     }
 }

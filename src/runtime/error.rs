@@ -24,6 +24,7 @@ pub enum ExecutionError {
 pub enum PanicKind {
     Panic { message: Option<EcoString> },
     Todo { message: Option<EcoString> },
+    Assert { message: Option<EcoString> },
     LetAssert { message: Option<EcoString> },
     EmptyFunction,
     EmptyBlock,
@@ -35,6 +36,7 @@ impl fmt::Display for PanicKind {
         match self {
             PanicKind::Panic { message } => write_panic_message(f, "panic", message.as_deref()),
             PanicKind::Todo { message } => write_panic_message(f, "todo", message.as_deref()),
+            PanicKind::Assert { message } => write_panic_message(f, "assert", message.as_deref()),
             PanicKind::LetAssert { message } => {
                 write_panic_message(f, "let assert", message.as_deref())
             }
@@ -96,6 +98,13 @@ mod tests {
                     message: Some("later".into()),
                 },
                 "todo as \"later\"",
+            ),
+            (PanicKind::Assert { message: None }, "assert"),
+            (
+                PanicKind::Assert {
+                    message: Some("nope".into()),
+                },
+                "assert as \"nope\"",
             ),
             (PanicKind::LetAssert { message: None }, "let assert"),
             (

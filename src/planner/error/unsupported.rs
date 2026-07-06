@@ -27,14 +27,6 @@ pub enum UnsupportedArgumentReason {
 }
 
 #[derive(Debug, Error, Clone, Copy, PartialEq, Eq)]
-pub enum UnsupportedStatementKind {
-    #[error("assert")]
-    Assert,
-    #[error("assert as final statement")]
-    AssertAsFinalStatement,
-}
-
-#[derive(Debug, Error, Clone, Copy, PartialEq, Eq)]
 pub enum UnsupportedPatternKind {
     #[error("list")]
     List,

@@ -88,6 +88,8 @@ mod statements {
         final_discard_assignment,
         final_tuple_destructuring,
         final_pattern_alias_assignment,
+        assert_statement,
+        final_assert,
     );
 }
 
@@ -241,6 +243,7 @@ mod functions {
             anonymous_function_returning_function,
             anonymous_float_function,
             anonymous_list_function,
+            anonymous_assert_statement,
             anonymous_function_main_returning_function,
             anonymous_todo_body_not_called,
             function_capture_literal,
@@ -328,6 +331,15 @@ mod execution_errors {
             let_assert_message,
         );
     }
+
+    mod statements {
+        execution_error_cases!("statements";
+            assert_statement,
+            assert_message,
+            assert_message_before_condition,
+            assert_condition_error_after_message,
+        );
+    }
 }
 
 mod rejection {
@@ -359,7 +371,6 @@ mod rejection {
             unsupported_list_return_type,
             unsupported_body_before_main,
             unsupported_body_after_main,
-            anonymous_assert_statement,
             anonymous_unsupported_argument_type,
             anonymous_unsupported_return_type,
         );
@@ -379,13 +390,6 @@ mod rejection {
             function_equality,
             tuple_function_equality,
             list_function_equality,
-        );
-    }
-
-    mod statements {
-        rejection_cases!("statements";
-            assert_statement,
-            final_assert,
         );
     }
 
@@ -469,6 +473,7 @@ fn render_panic_kind(kind: &PanicKind) -> String {
     match kind {
         PanicKind::Panic { message } => render_panic_message("panic", message.as_deref()),
         PanicKind::Todo { message } => render_panic_message("todo", message.as_deref()),
+        PanicKind::Assert { message } => render_panic_message("assert", message.as_deref()),
         PanicKind::LetAssert { message } => render_panic_message("let_assert", message.as_deref()),
         PanicKind::EmptyFunction => "empty_function".into(),
         PanicKind::EmptyBlock => "empty_block".into(),

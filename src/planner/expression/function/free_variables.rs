@@ -77,7 +77,12 @@ fn collect_statement(
         Statement::Use(use_) => {
             collect_expr(&use_.call, bound, free);
         }
-        Statement::Assert(_) => {}
+        Statement::Assert(assert) => {
+            collect_expr(&assert.value, bound, free);
+            if let Some(message) = &assert.message {
+                collect_expr(message, bound, free);
+            }
+        }
     }
 }
 
@@ -273,6 +278,9 @@ pub fn main() {
   let list_tail_value = [7]
   let panic_message = "boom"
   let todo_message = "later"
+  let assert_condition = True
+  let assert_message = "failed"
+  let plain_assert_condition = True
   fn() {
     {
       block_value
@@ -296,6 +304,8 @@ pub fn main() {
     [0, ..list_tail_value]
     panic as panic_message
     todo as todo_message
+    assert assert_condition as assert_message
+    assert plain_assert_condition
   }
   1
 }
@@ -314,6 +324,9 @@ pub fn main() {
                 "list_tail_value".to_string(),
                 "panic_message".to_string(),
                 "todo_message".to_string(),
+                "assert_condition".to_string(),
+                "assert_message".to_string(),
+                "plain_assert_condition".to_string(),
             ],
         );
     }
