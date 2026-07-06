@@ -30,7 +30,9 @@ jobs:
           components: clippy, llvm-tools-preview, rustfmt
 
       - name: Install cargo-llvm-cov
-        run: cargo install cargo-llvm-cov --version 0.8.7 --locked
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-llvm-cov@0.8.7
 
       - name: Check formatting
         run: cargo fmt --check
