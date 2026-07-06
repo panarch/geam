@@ -8,13 +8,14 @@ mod var;
 
 use crate::plan::{
     BoolExpr, Expr, FloatExpr, FunctionExpr, FunctionFunctionExpr, FunctionType, IntExpr, ListExpr,
-    StringExpr, TupleExpr, ValueType,
+    PanicExpr, StringExpr, TupleExpr, ValueType,
 };
 use crate::planner::context::PlanContext;
 use crate::planner::error::{
     InvalidExpressionShapeKind, InvalidExpressionType, InvalidTypedAstReason, PlanError,
     UnsupportedExpressionKind,
 };
+use gleam_core::ast::TodoKind;
 use gleam_core::ast::TypedExpr;
 
 pub(super) fn plan_expr(
@@ -95,12 +96,15 @@ pub(super) fn plan_expr(
                 kind: InvalidExpressionShapeKind::ModuleSelect,
             },
         }),
-        TypedExpr::Todo { .. } => Err(PlanError::UnsupportedExpression {
-            kind: UnsupportedExpressionKind::Todo,
-        }),
-        TypedExpr::Panic { .. } => Err(PlanError::UnsupportedExpression {
-            kind: UnsupportedExpressionKind::Panic,
-        }),
+        TypedExpr::Todo {
+            type_,
+            kind,
+            message,
+            ..
+        } => plan_todo_expr(kind, message.map(|message| *message), type_, context),
+        TypedExpr::Panic { type_, message, .. } => {
+            plan_panic_expr(message.map(|message| *message), type_, context)
+        }
         TypedExpr::Echo { .. } => Err(PlanError::UnsupportedExpression {
             kind: UnsupportedExpressionKind::Echo,
         }),
@@ -120,24 +124,158 @@ pub(super) fn plan_expr(
     }
 }
 
+fn plan_panic_expr(
+    message: Option<TypedExpr>,
+    type_: std::sync::Arc<gleam_core::type_::Type>,
+    context: &mut PlanContext<'_>,
+) -> Result<Expr, PlanError> {
+    let return_type = ValueType::from_gleam(type_.as_ref()).ok_or_else(|| {
+        invalid_expression_type(
+            InvalidExpressionType::Unsupported,
+            InvalidExpressionType::Unsupported,
+        )
+    })?;
+
+    plan_panic_expr_with_type(message, return_type, context)
+}
+
+fn plan_todo_expr(
+    kind: TodoKind,
+    message: Option<TypedExpr>,
+    type_: std::sync::Arc<gleam_core::type_::Type>,
+    context: &mut PlanContext<'_>,
+) -> Result<Expr, PlanError> {
+    let return_type = ValueType::from_gleam(type_.as_ref()).ok_or_else(|| {
+        invalid_expression_type(
+            InvalidExpressionType::Unsupported,
+            InvalidExpressionType::Unsupported,
+        )
+    })?;
+
+    plan_todo_expr_with_type(kind, message, return_type, context)
+}
+
+fn plan_panic_expr_with_type(
+    message: Option<TypedExpr>,
+    return_type: ValueType,
+    context: &mut PlanContext<'_>,
+) -> Result<Expr, PlanError> {
+    let message = plan_panic_message(message, context)?;
+
+    Ok(panic_expr(PanicExpr::panic(message), return_type))
+}
+
+fn plan_todo_expr_with_type(
+    kind: TodoKind,
+    message: Option<TypedExpr>,
+    return_type: ValueType,
+    context: &mut PlanContext<'_>,
+) -> Result<Expr, PlanError> {
+    let panic = match kind {
+        TodoKind::Keyword => PanicExpr::todo(plan_panic_message(message, context)?),
+        TodoKind::EmptyFunction { .. } => generated_todo_expr(message, PanicExpr::empty_function)?,
+        TodoKind::EmptyBlock => generated_todo_expr(message, PanicExpr::empty_block)?,
+        TodoKind::IncompleteUse => generated_todo_expr(message, PanicExpr::incomplete_use)?,
+    };
+
+    Ok(panic_expr(panic, return_type))
+}
+
+fn plan_panic_message(
+    message: Option<TypedExpr>,
+    context: &mut PlanContext<'_>,
+) -> Result<Option<StringExpr>, PlanError> {
+    message
+        .map(|message| plan_string_expr(message, context))
+        .transpose()
+}
+
+fn generated_todo_expr(
+    message: Option<TypedExpr>,
+    expression: impl FnOnce() -> PanicExpr,
+) -> Result<PanicExpr, PlanError> {
+    if message.is_some() {
+        return Err(PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::ExpressionShape {
+                kind: InvalidExpressionShapeKind::Invalid,
+            },
+        });
+    }
+
+    Ok(expression())
+}
+
+pub(super) fn plan_expr_with_expected_panic(
+    expression: TypedExpr,
+    expected: ValueType,
+    context: &mut PlanContext<'_>,
+) -> Result<Expr, PlanError> {
+    match expression {
+        TypedExpr::Todo { kind, message, .. } => {
+            plan_todo_expr_with_type(kind, message.map(|message| *message), expected, context)
+        }
+        TypedExpr::Panic { message, .. } => {
+            plan_panic_expr_with_type(message.map(|message| *message), expected, context)
+        }
+        TypedExpr::Block { statements, .. } => {
+            block::plan_with_expected_panic(statements, &expected, context)
+        }
+        expression => plan_expr(expression, context),
+    }
+}
+
+fn panic_expr(panic: PanicExpr, return_type: ValueType) -> Expr {
+    match return_type {
+        ValueType::Int => Expr::int(IntExpr::panic(panic)),
+        ValueType::String => Expr::string(StringExpr::panic(panic)),
+        ValueType::Float => Expr::float(FloatExpr::panic(panic)),
+        ValueType::Bool => Expr::bool(BoolExpr::panic(panic)),
+        ValueType::Nil => Expr::nil(crate::plan::NilExpr::panic(panic)),
+        ValueType::Tuple(type_) => Expr::tuple(TupleExpr::panic(panic, type_)),
+        ValueType::List(type_) => Expr::list(ListExpr::panic(panic, *type_)),
+        ValueType::Function(type_) => panic_function_expr(panic, *type_),
+    }
+}
+
+fn panic_function_expr(panic: PanicExpr, type_: FunctionType) -> Expr {
+    match type_.return_() {
+        ValueType::Int => Expr::function(FunctionExpr::int(crate::plan::IntFunctionExpr::panic(
+            panic, type_,
+        ))),
+        ValueType::String => Expr::function(FunctionExpr::string(
+            crate::plan::StringFunctionExpr::panic(panic, type_),
+        )),
+        ValueType::Float => Expr::function(FunctionExpr::float(
+            crate::plan::FloatFunctionExpr::panic(panic, type_),
+        )),
+        ValueType::Bool => Expr::function(FunctionExpr::bool(
+            crate::plan::BoolFunctionExpr::panic(panic, type_),
+        )),
+        ValueType::Nil => Expr::function(FunctionExpr::nil(crate::plan::NilFunctionExpr::panic(
+            panic, type_,
+        ))),
+        ValueType::Tuple(_) => Expr::function(FunctionExpr::tuple(
+            crate::plan::TupleFunctionExpr::panic(panic, type_),
+        )),
+        ValueType::List(_) => Expr::function(FunctionExpr::list(
+            crate::plan::ListFunctionExpr::panic(panic, type_),
+        )),
+        ValueType::Function(_) => Expr::function(FunctionExpr::function(
+            FunctionFunctionExpr::panic(panic, type_),
+        )),
+    }
+}
+
 fn plan_tuple(
     type_: std::sync::Arc<gleam_core::type_::Type>,
     elements: Vec<TypedExpr>,
     context: &mut PlanContext<'_>,
 ) -> Result<Expr, PlanError> {
-    let planned_elements = elements
-        .into_iter()
-        .map(|element| plan_expr(element, context))
-        .collect::<Result<Vec<_>, _>>()?;
-    let actual_type = planned_elements
-        .iter()
-        .map(Expr::value_type)
-        .collect::<Vec<_>>();
     let expected_type = match ValueType::from_gleam(type_.as_ref()) {
         Some(ValueType::Tuple(type_)) => type_,
         Some(actual) => {
             return Err(invalid_expression_type_for_value(
-                ValueType::Tuple(actual_type),
+                ValueType::Tuple(vec![]),
                 actual,
             ));
         }
@@ -148,6 +286,25 @@ fn plan_tuple(
             ));
         }
     };
+
+    if elements.len() != expected_type.len() {
+        return Err(invalid_expression_type_for_value(
+            ValueType::Tuple(expected_type),
+            ValueType::Tuple(Vec::new()),
+        ));
+    }
+
+    let planned_elements = elements
+        .into_iter()
+        .zip(&expected_type)
+        .map(|(element, expected)| {
+            plan_expr_with_expected_panic(element, expected.clone(), context)
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    let actual_type = planned_elements
+        .iter()
+        .map(Expr::value_type)
+        .collect::<Vec<_>>();
 
     if expected_type != actual_type {
         return Err(invalid_expression_type_for_value(
@@ -168,11 +325,6 @@ fn plan_list(
     tail: Option<TypedExpr>,
     context: &mut PlanContext<'_>,
 ) -> Result<Expr, PlanError> {
-    let planned_elements = elements
-        .into_iter()
-        .map(|element| plan_expr(element, context))
-        .collect::<Result<Vec<_>, _>>()?;
-
     let Some(list_element_type) = type_.list_type() else {
         return match ValueType::from_gleam(type_.as_ref()) {
             Some(actual) => Err(invalid_expression_type_for_value(
@@ -195,6 +347,13 @@ fn plan_list(
         }
     };
 
+    let planned_elements = elements
+        .into_iter()
+        .map(|element| {
+            plan_expr_with_expected_panic(element, expected_element_type.clone(), context)
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+
     for element in &planned_elements {
         let actual = element.value_type();
         if actual != expected_element_type {
@@ -212,7 +371,11 @@ fn plan_list(
         )));
     };
 
-    let tail = plan_expr(tail, context)?;
+    let tail = plan_expr_with_expected_panic(
+        tail,
+        ValueType::List(Box::new(expected_element_type.clone())),
+        context,
+    )?;
     let actual = tail.value_type();
     let tail = tail.into_list().ok_or_else(|| {
         invalid_expression_type_for_value(
@@ -325,7 +488,7 @@ fn plan_int_expr(
     expression: TypedExpr,
     context: &mut PlanContext<'_>,
 ) -> Result<IntExpr, PlanError> {
-    let expression = plan_expr(expression, context)?;
+    let expression = plan_expr_with_expected_panic(expression, ValueType::Int, context)?;
     let actual = expression_type(&expression);
     expression
         .into_int()
@@ -336,7 +499,7 @@ fn plan_string_expr(
     expression: TypedExpr,
     context: &mut PlanContext<'_>,
 ) -> Result<StringExpr, PlanError> {
-    let expression = plan_expr(expression, context)?;
+    let expression = plan_expr_with_expected_panic(expression, ValueType::String, context)?;
     let actual = expression_type(&expression);
     expression
         .into_string()
@@ -347,7 +510,7 @@ fn plan_float_expr(
     expression: TypedExpr,
     context: &mut PlanContext<'_>,
 ) -> Result<FloatExpr, PlanError> {
-    let expression = plan_expr(expression, context)?;
+    let expression = plan_expr_with_expected_panic(expression, ValueType::Float, context)?;
     let actual = expression_type(&expression);
     expression
         .into_float()
@@ -358,7 +521,7 @@ fn plan_bool_expr(
     expression: TypedExpr,
     context: &mut PlanContext<'_>,
 ) -> Result<BoolExpr, PlanError> {
-    let expression = plan_expr(expression, context)?;
+    let expression = plan_expr_with_expected_panic(expression, ValueType::Bool, context)?;
     let actual = expression_type(&expression);
     expression
         .into_bool()
@@ -487,9 +650,10 @@ mod tests {
         module_returning_typed_expr, typed_int_expr, typed_string_expr, typed_tuple_expr,
     };
     use crate::plan::{
-        BoolLocalId, Expr, FunctionExpr, FunctionFunctionId, FunctionType, FunctionValue,
-        IntFunctionFunctionId, IntLocalId, NilFunctionId, NilLocalId, ParamLocal,
-        RuntimeFunctionId, StringLocalId, ValueType,
+        BoolExpr, BoolFunctionId, BoolLocalId, Expr, FloatExpr, FunctionExpr, FunctionFunctionExpr,
+        FunctionFunctionId, FunctionType, FunctionValue, IntExpr, IntFunctionFunctionId,
+        IntFunctionId, IntLocalId, ListExpr, NilFunctionId, NilLocalId, PanicExpr, ParamLocal,
+        ReturnBody, RuntimeFunctionId, StringExpr, StringLocalId, TupleExpr, ValueType,
     };
     use crate::planner::context::{AnonymousFunctions, PlanContext};
     use crate::planner::dsl::{
@@ -510,6 +674,317 @@ mod tests {
     use std::collections::HashMap;
 
     #[test]
+    fn plan_panic_and_todo_return_shapes() {
+        let actual = plan_module(compile(
+            r#"
+pub fn main() -> Int {
+  panic as "boom"
+}
+"#,
+        ))
+        .expect("source should plan");
+        assert_eq!(
+            actual.main_function().return_(),
+            &crate::plan::ReturnExpr::int(
+                IntFunctionId(0),
+                IntExpr::panic(PanicExpr::panic(Some(StringExpr::value("boom".into())))),
+            ),
+        );
+
+        let actual = plan_module(compile(
+            r#"
+pub fn main() -> Bool {
+  todo
+}
+"#,
+        ))
+        .expect("source should plan");
+        assert_eq!(
+            actual.main_function().return_(),
+            &crate::plan::ReturnExpr::bool(
+                BoolFunctionId(0),
+                BoolExpr::panic(PanicExpr::todo(None)),
+            ),
+        );
+    }
+
+    #[test]
+    fn plan_generated_todo_kinds_are_distinct() {
+        let actual = plan_module(compile(
+            r#"
+pub fn main() -> Int {
+}
+"#,
+        ))
+        .expect("source should plan");
+        assert_eq!(
+            actual.main_function().return_(),
+            &crate::plan::ReturnExpr::int(
+                IntFunctionId(0),
+                IntExpr::panic(PanicExpr::empty_function()),
+            ),
+        );
+
+        let actual = plan_module(compile(
+            r#"
+pub fn main() -> Int {
+  {}
+}
+"#,
+        ))
+        .expect("source should plan");
+        assert_eq!(
+            actual.main_function().return_(),
+            &crate::plan::ReturnExpr::int_body(
+                IntFunctionId(0),
+                ReturnBody::block(
+                    Vec::new(),
+                    ReturnBody::expr(IntExpr::panic(PanicExpr::empty_block())),
+                ),
+            ),
+        );
+
+        let actual = plan_module(compile(
+            r#"
+fn with_value(continue: fn(Int) -> Int) {
+  continue(1)
+}
+
+pub fn main() -> Int {
+  use value <- with_value
+}
+"#,
+        ))
+        .expect("source should plan");
+        assert_eq!(
+            actual.anonymous_functions()[0].return_(),
+            &crate::plan::ReturnExpr::int(
+                IntFunctionId(2),
+                IntExpr::panic(PanicExpr::incomplete_use()),
+            ),
+        );
+    }
+
+    #[test]
+    fn plan_source_stop_expression_shapes_directly() {
+        let module_name = "main".into();
+        let functions = HashMap::new();
+        let mut anonymous = AnonymousFunctions::default();
+        let mut context = PlanContext::new(&module_name, &functions, &mut anonymous);
+        let panic = PanicExpr::panic(None);
+
+        assert_eq!(
+            super::plan_expr(
+                TypedExpr::Panic {
+                    location: dummy_span(),
+                    type_: type_::int(),
+                    message: None,
+                },
+                &mut context,
+            ),
+            Ok(Expr::int(IntExpr::panic(panic.clone()))),
+        );
+        assert_eq!(
+            super::plan_expr(
+                TypedExpr::Panic {
+                    location: dummy_span(),
+                    type_: type_::string(),
+                    message: None,
+                },
+                &mut context,
+            ),
+            Ok(Expr::string(StringExpr::panic(panic.clone()))),
+        );
+        assert_eq!(
+            super::plan_expr(
+                TypedExpr::Panic {
+                    location: dummy_span(),
+                    type_: type_::float(),
+                    message: None,
+                },
+                &mut context,
+            ),
+            Ok(Expr::float(FloatExpr::panic(panic.clone()))),
+        );
+        assert_eq!(
+            super::plan_expr(
+                TypedExpr::Panic {
+                    location: dummy_span(),
+                    type_: type_::bool(),
+                    message: None,
+                },
+                &mut context,
+            ),
+            Ok(Expr::bool(BoolExpr::panic(panic.clone()))),
+        );
+        assert_eq!(
+            super::plan_expr(
+                TypedExpr::Panic {
+                    location: dummy_span(),
+                    type_: type_::tuple(vec![type_::int()]),
+                    message: None,
+                },
+                &mut context,
+            ),
+            Ok(Expr::tuple(TupleExpr::panic(
+                panic.clone(),
+                vec![ValueType::Int],
+            ))),
+        );
+        assert_eq!(
+            super::plan_expr(
+                TypedExpr::Panic {
+                    location: dummy_span(),
+                    type_: type_::list(type_::int()),
+                    message: None,
+                },
+                &mut context,
+            ),
+            Ok(Expr::list(ListExpr::panic(panic.clone(), ValueType::Int))),
+        );
+        let int_function_type = FunctionType::new(vec![ValueType::Int], ValueType::Int);
+        assert_eq!(
+            super::plan_expr(
+                TypedExpr::Panic {
+                    location: dummy_span(),
+                    type_: type_::fn_(vec![type_::int()], type_::int()),
+                    message: None,
+                },
+                &mut context,
+            ),
+            Ok(Expr::function(FunctionExpr::int(
+                crate::plan::IntFunctionExpr::panic(panic.clone(), int_function_type),
+            ))),
+        );
+        let function_function_type = FunctionType::new(
+            Vec::new(),
+            ValueType::Function(Box::new(FunctionType::new(
+                vec![ValueType::Int],
+                ValueType::Int,
+            ))),
+        );
+        assert_eq!(
+            super::plan_expr(
+                TypedExpr::Panic {
+                    location: dummy_span(),
+                    type_: type_::fn_(Vec::new(), type_::fn_(vec![type_::int()], type_::int())),
+                    message: None,
+                },
+                &mut context,
+            ),
+            Ok(Expr::function(FunctionExpr::function(
+                FunctionFunctionExpr::panic(panic, function_function_type),
+            ))),
+        );
+
+        assert_eq!(
+            super::plan_expr(
+                TypedExpr::Todo {
+                    location: dummy_span(),
+                    type_: type_::string(),
+                    kind: gleam_core::ast::TodoKind::Keyword,
+                    message: None,
+                },
+                &mut context,
+            ),
+            Ok(Expr::string(StringExpr::panic(PanicExpr::todo(None)))),
+        );
+    }
+
+    #[test]
+    fn reject_profile_source_stop_message_expression_is_validated() {
+        assert_eq!(
+            expect_plan_error(
+                r#"
+pub fn main() -> Int {
+  panic as echo "boom"
+}
+"#,
+            ),
+            PlanError::UnsupportedExpression {
+                kind: UnsupportedExpressionKind::Echo,
+            },
+        );
+
+        assert_eq!(
+            expect_plan_error(
+                r#"
+pub fn main() -> Int {
+  todo as echo "later"
+}
+"#,
+            ),
+            PlanError::UnsupportedExpression {
+                kind: UnsupportedExpressionKind::Echo,
+            },
+        );
+
+        let module_name = "main".into();
+        let functions = HashMap::new();
+        let mut anonymous = AnonymousFunctions::default();
+        let mut context = PlanContext::new(&module_name, &functions, &mut anonymous);
+        assert_eq!(
+            super::plan_expr(
+                TypedExpr::Panic {
+                    location: dummy_span(),
+                    type_: type_::bit_array(),
+                    message: None,
+                },
+                &mut context
+            ),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionType {
+                    expected: InvalidExpressionType::Unsupported,
+                    actual: InvalidExpressionType::Unsupported,
+                },
+            }),
+        );
+
+        assert_eq!(
+            super::plan_expr(
+                TypedExpr::Todo {
+                    location: dummy_span(),
+                    type_: type_::bit_array(),
+                    kind: gleam_core::ast::TodoKind::Keyword,
+                    message: None,
+                },
+                &mut context
+            ),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionType {
+                    expected: InvalidExpressionType::Unsupported,
+                    actual: InvalidExpressionType::Unsupported,
+                },
+            }),
+        );
+
+        for kind in [
+            gleam_core::ast::TodoKind::EmptyFunction {
+                function_location: dummy_span(),
+            },
+            gleam_core::ast::TodoKind::EmptyBlock,
+            gleam_core::ast::TodoKind::IncompleteUse,
+        ] {
+            assert_eq!(
+                super::plan_expr(
+                    TypedExpr::Todo {
+                        location: dummy_span(),
+                        type_: type_::int(),
+                        kind,
+                        message: Some(Box::new(typed_string_expr("generated message"))),
+                    },
+                    &mut context
+                ),
+                Err(PlanError::InvalidTypedAst {
+                    reason: InvalidTypedAstReason::ExpressionShape {
+                        kind: InvalidExpressionShapeKind::Invalid,
+                    },
+                }),
+            );
+        }
+    }
+
+    #[test]
     fn reject_profile_expression_variants() {
         let cases = [
             (
@@ -520,7 +995,7 @@ pub fn main() {
 }
 "#,
                 PlanError::UnsupportedExpression {
-                    kind: UnsupportedExpressionKind::BitArray,
+                    kind: UnsupportedExpressionKind::UnsupportedListElementType,
                 },
             ),
             (
@@ -532,28 +1007,6 @@ pub fn main() {
 "#,
                 PlanError::UnsupportedExpression {
                     kind: UnsupportedExpressionKind::UnsupportedListElementType,
-                },
-            ),
-            (
-                r#"
-pub fn main() {
-  todo
-  1
-}
-"#,
-                PlanError::UnsupportedExpression {
-                    kind: UnsupportedExpressionKind::Todo,
-                },
-            ),
-            (
-                r#"
-pub fn main() {
-  panic
-  1
-}
-"#,
-                PlanError::UnsupportedExpression {
-                    kind: UnsupportedExpressionKind::Panic,
                 },
             ),
             (
@@ -1336,6 +1789,19 @@ pub fn main() {
                     location: dummy_span(),
                     type_: type_::tuple(vec![type_::string()]),
                     elements: vec![typed_int_expr(1)],
+                },
+                PlanError::InvalidTypedAst {
+                    reason: InvalidTypedAstReason::ExpressionType {
+                        expected: InvalidExpressionType::Tuple,
+                        actual: InvalidExpressionType::Tuple,
+                    },
+                },
+            ),
+            (
+                TypedExpr::Tuple {
+                    location: dummy_span(),
+                    type_: type_::tuple(vec![type_::int()]),
+                    elements: vec![typed_int_expr(1), typed_int_expr(2)],
                 },
                 PlanError::InvalidTypedAst {
                     reason: InvalidTypedAstReason::ExpressionType {

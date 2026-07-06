@@ -619,12 +619,12 @@ fn add(left: Int, right: Int) {
 }
 
 pub fn main() {
-  todo |> add(1)
+  echo 1 |> add(1)
 }
 "#,
             ),
             PlanError::UnsupportedExpression {
-                kind: UnsupportedExpressionKind::Todo,
+                kind: UnsupportedExpressionKind::Echo,
             },
         );
         assert_eq!(
@@ -635,18 +635,34 @@ fn add(left: Int, right: Int) {
 }
 
 pub fn main() {
-  1 |> add(todo)
+  1 |> add(echo 1)
 }
 "#,
             ),
             PlanError::UnsupportedExpression {
-                kind: UnsupportedExpressionKind::Todo,
+                kind: UnsupportedExpressionKind::Echo,
             },
         );
     }
 
     #[test]
     fn reject_margin_pipeline_shapes() {
+        let mut unsupported_first_assignment = compile_pipeline_module();
+        let (first_value, _, _, _) = expect_pipeline_statement_mut(
+            &mut unsupported_first_assignment.definitions.functions[1].body[0],
+        );
+        let mut echo_module = compile("pub fn main() { echo 1 }");
+        let echo =
+            expect_expression_statement_mut(&mut echo_module.definitions.functions[0].body[0])
+                .clone();
+        *first_value.value = echo;
+        assert_eq!(
+            plan_module(unsupported_first_assignment),
+            Err(PlanError::UnsupportedExpression {
+                kind: UnsupportedExpressionKind::Echo,
+            }),
+        );
+
         let mut non_call_step = compile_pipeline_module();
         let (_, _, finally, _) =
             expect_pipeline_statement_mut(&mut non_call_step.definitions.functions[1].body[0]);

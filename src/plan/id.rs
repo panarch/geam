@@ -110,7 +110,7 @@ pub(crate) enum FunctionFunctionId {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum FunctionReturnFamily {
+pub enum FunctionReturnFamily {
     Int,
     Float,
     String,

@@ -93,6 +93,11 @@ pub(super) fn validate_case_branch_type(case_type: &Type, branch: &Expr) -> Resu
     ))
 }
 
+pub(super) fn case_return_type(case_type: &Type) -> Result<ValueType, PlanError> {
+    ValueType::from_gleam(case_type)
+        .ok_or_else(|| invalid_case_shape(InvalidCaseShapeReason::BranchReturnTypeMismatch))
+}
+
 pub(super) fn unsupported_case(reason: UnsupportedCaseReason) -> PlanError {
     PlanError::UnsupportedCase { reason }
 }
@@ -235,16 +240,13 @@ pub fn main() {
 pub fn main() {
   case True {
     _ -> 1
-    True -> {
-      panic
-      2
-    }
+    True -> echo 2
   }
 }
 "#,
             ),
             PlanError::UnsupportedExpression {
-                kind: UnsupportedExpressionKind::Panic,
+                kind: UnsupportedExpressionKind::Echo,
             },
         );
 
@@ -254,16 +256,13 @@ pub fn main() {
 pub fn main() {
   case 1 {
     _ -> 1
-    1 -> {
-      panic
-      2
-    }
+    1 -> echo 2
   }
 }
 "#,
             ),
             PlanError::UnsupportedExpression {
-                kind: UnsupportedExpressionKind::Panic,
+                kind: UnsupportedExpressionKind::Echo,
             },
         );
     }

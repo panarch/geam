@@ -1,4 +1,4 @@
-use super::{BoolExpr, CallArg, FloatExpr, IntExpr, StringExpr, TupleFunctionExpr};
+use super::{BoolExpr, CallArg, FloatExpr, IntExpr, PanicExpr, StringExpr, TupleFunctionExpr};
 use crate::plan::{Step, TupleFunctionId, TupleLocalId, ValueType};
 use ecow::EcoString;
 use num_bigint::BigInt;
@@ -28,6 +28,7 @@ pub(crate) enum TupleExprKind {
         tuple: Box<TupleExpr>,
         index: usize,
     },
+    Panic(PanicExpr),
     BoolCase {
         subject: Box<BoolExpr>,
         true_: Box<TupleExpr>,
@@ -101,6 +102,13 @@ impl TupleExpr {
                 tuple: Box::new(tuple),
                 index,
             },
+        }
+    }
+
+    pub(crate) fn panic(panic: PanicExpr, type_: Vec<ValueType>) -> Self {
+        Self {
+            type_,
+            kind: TupleExprKind::Panic(panic),
         }
     }
 

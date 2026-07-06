@@ -3,7 +3,8 @@ use crate::plan::{
 };
 use crate::runtime::ExecutionError;
 use crate::runtime::expression::{
-    eval_bool_expr, eval_float_expr, eval_int_expr, eval_string_expr, project_tuple_expr,
+    eval_bool_expr, eval_float_expr, eval_int_expr, eval_panic_expr, eval_string_expr,
+    project_tuple_expr,
 };
 use crate::runtime::frame::Frame;
 use crate::runtime::function;
@@ -60,6 +61,7 @@ pub(in crate::runtime) fn eval_tuple_function_expr(
                 )),
             }
         }
+        TupleFunctionExprKind::Panic(panic) => eval_panic_expr(plan, frame, panic),
         TupleFunctionExprKind::BoolCase {
             subject,
             true_,
@@ -123,13 +125,13 @@ mod tests {
     use crate::plan::{
         BoolExpr, CaptureArg, ExecutionPlan, Expr, FloatExpr, FunctionExpr, FunctionFunctionExpr,
         FunctionFunctionId, FunctionFunctionValue, FunctionId, FunctionPlan, FunctionType, IntExpr,
-        IntFunctionExpr, IntFunctionId, IntFunctionValue, ParamLocal, ReturnExpr, Step, StringExpr,
-        TupleExpr, TupleFunctionExpr, TupleFunctionFunctionId, TupleFunctionId,
+        IntFunctionExpr, IntFunctionId, IntFunctionValue, PanicExpr, ParamLocal, ReturnExpr, Step,
+        StringExpr, TupleExpr, TupleFunctionExpr, TupleFunctionFunctionId, TupleFunctionId,
         TupleFunctionLocalId, TupleFunctionValue, TupleLocalId, Value, ValueType,
     };
-    use crate::runtime::ExecutionError;
     use crate::runtime::frame::Frame;
     use crate::runtime::run_src;
+    use crate::runtime::{ExecutionError, PanicKind};
 
     #[test]
     fn eval_tuple_function_value_local_call_function_call_block_and_closure() {
@@ -211,6 +213,21 @@ pub fn main() {
   fn(value: Int) { #(value, "ok") }
 }
 "#,
+        );
+    }
+
+    #[test]
+    fn eval_tuple_function_panic_returns_error() {
+        let plan = plan();
+        let mut frame = Frame::default();
+
+        assert_eq!(
+            eval_tuple_function_expr(
+                &plan,
+                &mut frame,
+                &TupleFunctionExpr::panic(PanicExpr::panic(None), tuple_function_type(),),
+            ),
+            Err(ExecutionError::panic(PanicKind::Panic { message: None })),
         );
     }
 

@@ -7,9 +7,9 @@ mod nil;
 mod string;
 mod tuple;
 
-use crate::plan::{ExecutionPlan, Expr, ExprKind, Value};
-use crate::runtime::ExecutionError;
+use crate::plan::{ExecutionPlan, Expr, ExprKind, PanicExpr, PanicExprKind, Value};
 use crate::runtime::frame::Frame;
+use crate::runtime::{ExecutionError, PanicKind};
 
 pub(super) use self::{
     bool::eval_bool_expr,
@@ -48,5 +48,113 @@ pub(super) fn eval_expr(
             let value = eval_function_expr(plan, frame, expression)?;
             Ok(Value::Function(value))
         }
+    }
+}
+
+pub(super) fn eval_panic_expr<T>(
+    plan: &ExecutionPlan,
+    frame: &mut Frame,
+    expression: &PanicExpr,
+) -> Result<T, ExecutionError> {
+    let kind = match expression.kind() {
+        PanicExprKind::Panic { message } => PanicKind::Panic {
+            message: eval_panic_message(plan, frame, message.as_deref())?,
+        },
+        PanicExprKind::Todo { message } => PanicKind::Todo {
+            message: eval_panic_message(plan, frame, message.as_deref())?,
+        },
+        PanicExprKind::EmptyFunction => PanicKind::EmptyFunction,
+        PanicExprKind::EmptyBlock => PanicKind::EmptyBlock,
+        PanicExprKind::IncompleteUse => PanicKind::IncompleteUse,
+    };
+
+    Err(ExecutionError::panic(kind))
+}
+
+fn eval_panic_message(
+    plan: &ExecutionPlan,
+    frame: &mut Frame,
+    message: Option<&crate::plan::StringExpr>,
+) -> Result<Option<ecow::EcoString>, ExecutionError> {
+    match message {
+        Some(message) => Ok(Some(eval_string_expr(plan, frame, message)?)),
+        None => Ok(None),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::eval_panic_expr;
+    use crate::plan::{
+        ExecutionPlan, FunctionId, FunctionPlan, IntExpr, IntFunctionId, PanicExpr, ReturnExpr,
+        StringExpr,
+    };
+    use crate::runtime::frame::Frame;
+    use crate::runtime::{ExecutionError, PanicKind};
+
+    #[test]
+    fn eval_panic_expr_returns_exact_panic_error() {
+        assert_eq!(
+            eval_panic(PanicExpr::panic(None)),
+            Err(ExecutionError::panic(PanicKind::Panic { message: None })),
+        );
+        assert_eq!(
+            eval_panic(PanicExpr::todo(Some(StringExpr::value("later".into())))),
+            Err(ExecutionError::panic(PanicKind::Todo {
+                message: Some("later".into()),
+            })),
+        );
+    }
+
+    #[test]
+    fn eval_generated_todo_kinds_return_distinct_panic_errors() {
+        for (expression, expected) in [
+            (PanicExpr::empty_function(), PanicKind::EmptyFunction),
+            (PanicExpr::empty_block(), PanicKind::EmptyBlock),
+            (PanicExpr::incomplete_use(), PanicKind::IncompleteUse),
+        ] {
+            assert_eq!(eval_panic(expression), Err(ExecutionError::panic(expected)),);
+        }
+    }
+
+    #[test]
+    fn eval_panic_expr_propagates_message_error_first() {
+        let message = StringExpr::panic(PanicExpr::todo(None));
+
+        assert_eq!(
+            eval_panic(PanicExpr::panic(Some(message))),
+            Err(ExecutionError::panic(PanicKind::Todo { message: None })),
+        );
+    }
+
+    #[test]
+    fn eval_todo_expr_propagates_message_error_first() {
+        let message = StringExpr::panic(PanicExpr::panic(None));
+
+        assert_eq!(
+            eval_panic(PanicExpr::todo(Some(message))),
+            Err(ExecutionError::panic(PanicKind::Panic { message: None })),
+        );
+    }
+
+    fn eval_panic(expression: PanicExpr) -> Result<(), ExecutionError> {
+        let plan = plan();
+        let mut frame = Frame::default();
+
+        eval_panic_expr(&plan, &mut frame, &expression)
+    }
+
+    fn plan() -> ExecutionPlan {
+        ExecutionPlan::new(
+            "main".into(),
+            FunctionPlan::new(
+                FunctionId::new(0),
+                "main".into(),
+                Vec::new(),
+                Vec::new(),
+                ReturnExpr::int(IntFunctionId(0), IntExpr::value(0.into())),
+            ),
+            Vec::new(),
+        )
     }
 }

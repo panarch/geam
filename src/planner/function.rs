@@ -39,6 +39,7 @@ pub(super) fn plan_function(
 
     let mut context = PlanContext::new(module_name, functions, anonymous_functions);
     let params = define_params(&info.params, &mut context);
+    let return_type = info.return_type();
     let planned = plan_steps_and_return(
         function.body,
         &mut context,
@@ -48,13 +49,9 @@ pub(super) fn plan_function(
                 reason: InvalidFunctionShapeReason::EmptyBody,
             },
         },
+        Some(&return_type),
     )?;
-    let return_ = function_return_expr(
-        &name,
-        &info.return_type(),
-        &info.runtime_id,
-        planned.return_,
-    )?;
+    let return_ = function_return_expr(&name, &return_type, &info.runtime_id, planned.return_)?;
 
     Ok(FunctionPlan::new(
         info.id,
@@ -76,7 +73,11 @@ pub(super) fn plan_anonymous_function_body(
 ) -> Result<PlannedFunctionBody, PlanError> {
     let params = define_params(params, context);
     let captures = context.define_captures(captures);
-    let planned = crate::planner::statement::plan_non_empty_steps_and_return(body, context)?;
+    let planned = crate::planner::statement::plan_non_empty_steps_and_return(
+        body,
+        context,
+        Some(return_type),
+    )?;
     let return_ = function_return_expr(name, return_type, runtime_id, planned.return_)?;
 
     Ok(PlannedFunctionBody {

@@ -231,12 +231,12 @@ fn add_one(value: Int) {
 
 pub fn main() {
   let function = add_one
-  function(todo)
+  function(echo 1)
 }
 "#,
             )),
             Err(PlanError::UnsupportedExpression {
-                kind: UnsupportedExpressionKind::Todo,
+                kind: UnsupportedExpressionKind::Echo,
             }),
         );
     }

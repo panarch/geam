@@ -4,7 +4,8 @@ use crate::plan::{
 };
 use crate::runtime::ExecutionError;
 use crate::runtime::expression::{
-    eval_bool_expr, eval_float_expr, eval_int_expr, eval_string_expr, project_tuple_expr,
+    eval_bool_expr, eval_float_expr, eval_int_expr, eval_panic_expr, eval_string_expr,
+    project_tuple_expr,
 };
 use crate::runtime::frame::Frame;
 use crate::runtime::function;
@@ -61,6 +62,7 @@ pub(in crate::runtime) fn eval_list_function_expr(
                 )),
             }
         }
+        ListFunctionExprKind::Panic(panic) => eval_panic_expr(plan, frame, panic),
         ListFunctionExprKind::BoolCase {
             subject,
             true_,
@@ -125,11 +127,11 @@ mod tests {
         BoolExpr, CaptureArg, ExecutionPlan, Expr, FloatExpr, FunctionExpr, FunctionFunctionExpr,
         FunctionFunctionId, FunctionFunctionValue, FunctionId, FunctionPlan, FunctionType, IntExpr,
         IntFunctionId, IntFunctionValue, ListExpr, ListFunctionExpr, ListFunctionFunctionId,
-        ListFunctionId, ListFunctionLocalId, ListFunctionValue, ListLocalId, ParamLocal,
+        ListFunctionId, ListFunctionLocalId, ListFunctionValue, ListLocalId, PanicExpr, ParamLocal,
         ReturnBody, ReturnExpr, Step, StringExpr, TupleExpr, ValueType,
     };
-    use crate::runtime::ExecutionError;
     use crate::runtime::frame::Frame;
+    use crate::runtime::{ExecutionError, PanicKind};
     use num_bigint::BigInt;
 
     #[test]
@@ -153,6 +155,14 @@ mod tests {
             .expect("expression should evaluate")
             .runtime_id(),
             ListFunctionId(0),
+        );
+        assert_eq!(
+            eval_list_function_expr(
+                &plan,
+                &mut frame,
+                &ListFunctionExpr::panic(PanicExpr::panic(None), list_function_type(),),
+            ),
+            Err(ExecutionError::panic(PanicKind::Panic { message: None })),
         );
         assert_eq!(
             eval_list_function_expr(

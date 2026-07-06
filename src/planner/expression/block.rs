@@ -2,6 +2,7 @@ use crate::plan::{
     BoolExpr, BoolFunctionExpr, Expr, ExprKind, FloatExpr, FloatFunctionExpr, FunctionExpr,
     FunctionExprKind, FunctionFunctionExpr, IntExpr, IntFunctionExpr, ListExpr, ListFunctionExpr,
     NilExpr, NilFunctionExpr, Step, StringExpr, StringFunctionExpr, TupleExpr, TupleFunctionExpr,
+    ValueType,
 };
 use crate::planner::context::PlanContext;
 use crate::planner::error::PlanError;
@@ -14,7 +15,18 @@ pub(super) fn plan(
     context: &mut PlanContext<'_>,
 ) -> Result<Expr, PlanError> {
     context.with_local_scope(|context| {
-        let planned = plan_non_empty_steps_and_return(statements, context)?;
+        let planned = plan_non_empty_steps_and_return(statements, context, None)?;
+        Ok(block_expr(planned.steps, planned.return_))
+    })
+}
+
+pub(super) fn plan_with_expected_panic(
+    statements: Vec1<TypedStatement>,
+    expected: &ValueType,
+    context: &mut PlanContext<'_>,
+) -> Result<Expr, PlanError> {
+    context.with_local_scope(|context| {
+        let planned = plan_non_empty_steps_and_return(statements, context, Some(expected))?;
         Ok(block_expr(planned.steps, planned.return_))
     })
 }
@@ -407,14 +419,14 @@ pub fn main() {
                 r#"
 pub fn main() {
   {
-    panic
+    echo 1
     1
   }
 }
 "#,
             ),
             PlanError::UnsupportedExpression {
-                kind: UnsupportedExpressionKind::Panic,
+                kind: UnsupportedExpressionKind::Echo,
             },
         );
     }
@@ -430,14 +442,14 @@ fn add_one(value: Int) {
 
 pub fn main() {
   {
-    panic
+    echo 1
     add_one
   }
 }
 "#,
             ),
             PlanError::UnsupportedExpression {
-                kind: UnsupportedExpressionKind::Panic,
+                kind: UnsupportedExpressionKind::Echo,
             },
         );
     }

@@ -1,7 +1,7 @@
 use crate::plan::{
     BoolExpr, CaptureArg, FloatExpr, FunctionFunctionExpr, FunctionType, IntExpr,
-    ListFunctionFunctionId, ListFunctionId, ListFunctionLocalId, ListFunctionValue, ParamLocal,
-    Step, StringExpr, TupleExpr, ValueType,
+    ListFunctionFunctionId, ListFunctionId, ListFunctionLocalId, ListFunctionValue, PanicExpr,
+    ParamLocal, Step, StringExpr, TupleExpr, ValueType,
 };
 use ecow::EcoString;
 use num_bigint::BigInt;
@@ -40,6 +40,7 @@ pub(crate) enum ListFunctionExprKind {
         index: usize,
         type_: FunctionType,
     },
+    Panic(PanicExpr),
     BoolCase {
         subject: Box<BoolExpr>,
         true_: Box<ListFunctionExpr>,
@@ -141,6 +142,13 @@ impl ListFunctionExpr {
                 index,
                 type_,
             },
+        }
+    }
+
+    pub(crate) fn panic(panic: PanicExpr, type_: FunctionType) -> Self {
+        Self {
+            type_,
+            kind: ListFunctionExprKind::Panic(panic),
         }
     }
 

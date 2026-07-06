@@ -1,4 +1,6 @@
-use super::{eval_bool_expr, eval_float_expr, eval_string_expr, project_tuple_expr};
+use super::{
+    eval_bool_expr, eval_float_expr, eval_panic_expr, eval_string_expr, project_tuple_expr,
+};
 use crate::plan::{ExecutionPlan, IntExpr, IntExprKind, Value, ValueType};
 use crate::runtime::ExecutionError;
 use crate::runtime::frame::Frame;
@@ -28,6 +30,7 @@ pub(in crate::runtime) fn eval_int_expr(
                 )),
             }
         }
+        IntExprKind::Panic(panic) => eval_panic_expr(plan, frame, panic),
         IntExprKind::Add { left, right } => {
             Ok(eval_int_expr(plan, frame, left)? + eval_int_expr(plan, frame, right)?)
         }
@@ -124,9 +127,11 @@ fn eval_remainder_int(left: BigInt, right: BigInt) -> BigInt {
 #[cfg(test)]
 mod tests {
     use super::eval_int_expr;
-    use crate::plan::{BoolExpr, Expr, FloatExpr, IntExpr, Step, StringExpr, TupleExpr, ValueType};
-    use crate::runtime::ExecutionError;
+    use crate::plan::{
+        BoolExpr, Expr, FloatExpr, IntExpr, PanicExpr, Step, StringExpr, TupleExpr, ValueType,
+    };
     use crate::runtime::frame::Frame;
+    use crate::runtime::{ExecutionError, PanicKind};
     use crate::runtime::{int, run_src};
 
     #[test]
@@ -154,6 +159,17 @@ mod tests {
                 ValueType::Int,
                 ValueType::String,
             )),
+        );
+    }
+
+    #[test]
+    fn eval_int_panic_returns_error() {
+        let plan = crate::runtime::plan_src("pub fn main() { 1 }");
+        let mut frame = Frame::default();
+
+        assert_eq!(
+            eval_int_expr(&plan, &mut frame, &IntExpr::panic(PanicExpr::panic(None)),),
+            Err(ExecutionError::panic(PanicKind::Panic { message: None })),
         );
     }
 

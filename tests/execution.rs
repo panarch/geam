@@ -1,4 +1,7 @@
-use geam::{FunctionType, Value, ValueType, compile_typed_module, plan_module, run_main};
+use geam::{
+    ExecutionError, FunctionType, PanicKind, Value, ValueType, compile_typed_module, plan_module,
+    run_main,
+};
 
 macro_rules! fixture_cases {
     ($runner:path, $dir:literal; $($name:ident),+ $(,)?) => {
@@ -20,6 +23,12 @@ macro_rules! execution_cases {
 macro_rules! rejection_cases {
     ($dir:literal; $($name:ident),+ $(,)?) => {
         fixture_cases!(crate::reject_fixture, $dir; $($name),+);
+    };
+}
+
+macro_rules! execution_error_cases {
+    ($dir:literal; $($name:ident),+ $(,)?) => {
+        fixture_cases!(crate::run_error_fixture, $dir; $($name),+);
     };
 }
 
@@ -45,6 +54,90 @@ mod module_items {
         type_alias_compound_signature,
         type_alias_generic_signature,
     );
+}
+
+mod planner_margins {
+    use geam::planner::{
+        InvalidFunctionShapeReason, InvalidTypedAstReason, PlanError, UnsupportedFunctionReason,
+    };
+    use geam::{ExecutionError, PanicKind, run_main};
+    use gleam_core::type_;
+
+    use super::{compile_typed_module, plan_module};
+
+    #[test]
+    fn plan_module_rejects_anonymous_module_function_shape() {
+        let mut module = compile_typed_module(
+            "main",
+            "main.gleam",
+            r#"
+pub fn main() {
+  1
+}
+"#,
+        )
+        .expect("source should compile");
+        module.definitions.functions[0].name = None;
+
+        assert_eq!(
+            plan_module(module).err(),
+            Some(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::FunctionShape {
+                    name: "<anonymous>".into(),
+                    reason: InvalidFunctionShapeReason::Anonymous,
+                },
+            }),
+        );
+    }
+
+    #[test]
+    fn plan_module_rejects_non_source_stop_block_with_unsupported_return_type() {
+        let mut module = compile_typed_module(
+            "main",
+            "main.gleam",
+            r#"
+pub fn main() {
+  {
+    let value = 1
+  }
+}
+"#,
+        )
+        .expect("source should compile");
+        module.definitions.functions[0].return_type = type_::bit_array();
+
+        assert_eq!(
+            plan_module(module).err(),
+            Some(PlanError::UnsupportedFunction {
+                name: "main".into(),
+                reason: UnsupportedFunctionReason::UnsupportedReturnType,
+            }),
+        );
+    }
+
+    #[test]
+    fn plan_module_accepts_block_source_stop_with_unsupported_return_type() {
+        let mut module = compile_typed_module(
+            "main",
+            "main.gleam",
+            r#"
+pub fn main() {
+  {
+    panic
+  }
+}
+"#,
+        )
+        .expect("source should compile");
+        module.definitions.functions[0].return_type = type_::bit_array();
+
+        let plan = plan_module(module).expect("source stop should plan");
+
+        assert_eq!(
+            run_main(&plan),
+            Err(ExecutionError::Panic(PanicKind::Panic { message: None })),
+        );
+    }
 }
 
 mod bindings {
@@ -146,6 +239,8 @@ mod functions {
             bool_function_call,
             nil_function_call,
             function_after_main,
+            panic_body_before_main_not_called,
+            panic_body_after_main_not_called,
         );
     }
 
@@ -226,6 +321,7 @@ mod functions {
             anonymous_float_function,
             anonymous_list_function,
             anonymous_function_main_returning_function,
+            anonymous_todo_body_not_called,
             function_capture_literal,
             function_capture_labelled_argument,
             function_capture_literal_first_argument,
@@ -266,6 +362,43 @@ mod functions {
     }
 }
 
+mod execution_errors {
+    mod expressions {
+        execution_error_cases!("expressions";
+            panic,
+            panic_message,
+            panic_assignment,
+            panic_int,
+            panic_string,
+            panic_float,
+            panic_bool,
+            panic_tuple,
+            panic_list,
+            panic_int_function,
+            panic_string_function,
+            panic_float_function,
+            panic_bool_function,
+            panic_nil_function,
+            panic_tuple_function,
+            panic_list_function,
+            panic_function_function,
+            todo,
+            todo_message,
+            todo_assignment,
+            empty_function,
+            empty_block,
+        );
+    }
+
+    mod functions {
+        mod use_syntax {
+            execution_error_cases!("functions/use";
+                incomplete_use,
+            );
+        }
+    }
+}
+
 mod rejection {
     mod module_items {
         rejection_cases!("module_items";
@@ -280,10 +413,8 @@ mod rejection {
 
     mod entrypoint {
         rejection_cases!("entrypoint";
-            empty_body,
             missing_main,
             main_with_arguments,
-            unsupported_body,
         );
     }
 
@@ -298,7 +429,6 @@ mod rejection {
             unsupported_body_before_main,
             unsupported_body_after_main,
             anonymous_assert_statement,
-            anonymous_unsupported_body,
             anonymous_unsupported_argument_type,
             anonymous_unsupported_return_type,
         );
@@ -306,8 +436,6 @@ mod rejection {
 
     mod expressions {
         rejection_cases!("expressions";
-            todo,
-            panic,
             echo,
             bit_array,
             result_constructor,
@@ -363,12 +491,26 @@ mod rejection {
 fn run_fixture(file_name: &str) {
     let path = format!("tests/fixtures/execution/{file_name}");
     let src = std::fs::read_to_string(&path).expect("fixture should be readable");
-    let expected = expected_text(&src);
+    let expected = expected_text_with_prefix(&src, "// geam:expect ");
     let module = compile_typed_module("main", path, &src).expect("fixture should compile");
     let plan = plan_module(module).expect("fixture should plan");
     let actual = run_main(&plan).expect("fixture should run");
 
     assert_eq!(render_value(&actual), expected);
+}
+
+fn run_error_fixture(file_name: &str) {
+    let path = format!("tests/fixtures/execution_errors/{file_name}");
+    let src = std::fs::read_to_string(&path).expect("fixture should be readable");
+    let expected = expected_text_with_prefix(&src, "// geam:expect-error ");
+    let module = compile_typed_module("main", path, &src).expect("fixture should compile");
+    let plan = plan_module(module).expect("fixture should plan");
+    let error = run_main(&plan).expect_err("fixture should fail during execution");
+    let ExecutionError::Panic(kind) = error else {
+        panic!("execution-error fixture should fail with source panic");
+    };
+
+    assert_eq!(format!("Panic({})", render_panic_kind(&kind)), expected);
 }
 
 fn reject_fixture(file_name: &str) {
@@ -379,18 +521,35 @@ fn reject_fixture(file_name: &str) {
     assert!(plan_module(module).is_err());
 }
 
-fn expected_text(src: &str) -> &str {
+fn expected_text_with_prefix<'a>(src: &'a str, prefix: &str) -> &'a str {
     let line = src
         .lines()
         .rev()
         .find(|line| !line.trim().is_empty())
         .expect("fixture should not be empty")
         .trim();
-    let Some(value) = line.strip_prefix("// geam:expect ") else {
-        panic!("last non-empty fixture line must start with `// geam:expect `");
+    let Some(value) = line.strip_prefix(prefix) else {
+        panic!("last non-empty fixture line must start with `{prefix}`");
     };
 
     value
+}
+
+fn render_panic_kind(kind: &PanicKind) -> String {
+    match kind {
+        PanicKind::Panic { message } => render_panic_message("panic", message.as_deref()),
+        PanicKind::Todo { message } => render_panic_message("todo", message.as_deref()),
+        PanicKind::EmptyFunction => "empty_function".into(),
+        PanicKind::EmptyBlock => "empty_block".into(),
+        PanicKind::IncompleteUse => "incomplete_use".into(),
+    }
+}
+
+fn render_panic_message(kind: &str, message: Option<&str>) -> String {
+    match message {
+        Some(message) => format!("{kind}, {message:?}"),
+        None => kind.into(),
+    }
 }
 
 fn render_value(value: &Value) -> String {

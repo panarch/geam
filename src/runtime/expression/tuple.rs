@@ -1,4 +1,4 @@
-use super::{eval_bool_expr, eval_float_expr, eval_int_expr, eval_string_expr};
+use super::{eval_bool_expr, eval_float_expr, eval_int_expr, eval_panic_expr, eval_string_expr};
 use crate::plan::{ExecutionPlan, TupleExpr, TupleExprKind, Value, ValueType};
 use crate::runtime::ExecutionError;
 use crate::runtime::frame::Frame;
@@ -34,6 +34,7 @@ pub(in crate::runtime) fn eval_tuple_expr(
                 )),
             }
         }
+        TupleExprKind::Panic(panic) => eval_panic_expr(plan, frame, panic),
         TupleExprKind::BoolCase {
             subject,
             true_,
@@ -113,11 +114,26 @@ mod tests {
     use super::{eval_tuple_expr, project_tuple_expr};
     use crate::plan::{
         BoolExpr, ExecutionPlan, Expr, FloatExpr, FunctionId, FunctionPlan, IntExpr, IntFunctionId,
-        ReturnExpr, Step, StringExpr, TupleExpr, TupleFunctionId, Value, ValueType,
+        PanicExpr, ReturnExpr, Step, StringExpr, TupleExpr, TupleFunctionId, Value, ValueType,
     };
-    use crate::runtime::ExecutionError;
     use crate::runtime::frame::Frame;
+    use crate::runtime::{ExecutionError, PanicKind};
     use crate::runtime::{int, run_src};
+
+    #[test]
+    fn eval_tuple_panic_returns_error() {
+        let plan = crate::runtime::plan_src("pub fn main() { #(1) }");
+        let mut frame = Frame::default();
+
+        assert_eq!(
+            eval_tuple_expr(
+                &plan,
+                &mut frame,
+                &TupleExpr::panic(PanicExpr::panic(None), vec![ValueType::Int],),
+            ),
+            Err(ExecutionError::panic(PanicKind::Panic { message: None })),
+        );
+    }
 
     #[test]
     fn eval_tuple_expr_source_paths() {

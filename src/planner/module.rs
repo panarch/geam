@@ -7,7 +7,7 @@ use crate::planner::context::{
 };
 use crate::planner::error::{
     InvalidFunctionShapeReason, InvalidTypedAstReason, PlanError, UnsupportedArgumentReason,
-    UnsupportedExpressionKind, UnsupportedFunctionReason, UnsupportedTopLevelKind,
+    UnsupportedFunctionReason, UnsupportedTopLevelKind,
 };
 use crate::planner::function::{function_name, plan_function};
 use ecow::EcoString;
@@ -102,8 +102,8 @@ fn function_table(
 
     for function in functions {
         let name = function_name(function)?;
-        reject_todo_body(function)?;
-        let return_type = function_return_type(name.clone(), &function.return_type)?;
+        let return_type =
+            function_return_type(name.clone(), &function.return_type, &function.body)?;
         let params = function_params(name.clone(), &function.arguments, ParamLabelPolicy::Allow)?;
         seeds.push(FunctionSeed {
             name,
@@ -189,24 +189,38 @@ struct FunctionSeed {
     return_type: ValueType,
 }
 
-fn function_return_type(name: EcoString, type_: &Type) -> Result<ValueType, PlanError> {
-    ValueType::from_gleam(type_).ok_or(PlanError::UnsupportedFunction {
-        name,
-        reason: UnsupportedFunctionReason::UnsupportedReturnType,
-    })
+fn function_return_type(
+    name: EcoString,
+    type_: &Type,
+    body: &[gleam_core::ast::TypedStatement],
+) -> Result<ValueType, PlanError> {
+    ValueType::from_gleam(type_)
+        .or_else(|| source_stop_return_type(body))
+        .ok_or(PlanError::UnsupportedFunction {
+            name,
+            reason: UnsupportedFunctionReason::UnsupportedReturnType,
+        })
 }
 
-fn reject_todo_body(function: &TypedFunction) -> Result<(), PlanError> {
-    if matches!(
-        function.body.as_slice(),
-        [Statement::Expression(TypedExpr::Todo { .. })]
-    ) {
-        return Err(PlanError::UnsupportedExpression {
-            kind: UnsupportedExpressionKind::Todo,
-        });
-    }
+fn source_stop_return_type(body: &[gleam_core::ast::TypedStatement]) -> Option<ValueType> {
+    matches!(
+        body.last(),
+        Some(Statement::Expression(expression)) if is_source_stop_expr(expression)
+    )
+    .then_some(ValueType::Nil)
+}
 
-    Ok(())
+fn is_source_stop_expr(expression: &TypedExpr) -> bool {
+    match expression {
+        TypedExpr::Panic { .. } | TypedExpr::Todo { .. } => true,
+        TypedExpr::Block { statements, .. } => {
+            let Statement::Expression(expression) = statements.last() else {
+                return false;
+            };
+            is_source_stop_expr(expression)
+        }
+        _ => false,
+    }
 }
 
 pub(super) fn function_params(
@@ -409,17 +423,18 @@ mod tests {
     use super::plan_module;
     use crate::plan::{
         FunctionFunctionId, FunctionType, IntFunctionFunctionId, IntFunctionId, IntLocalId,
-        LocalId, ParamLocal, RuntimeFunctionId, ValueType,
+        LocalId, NilExpr, NilFunctionId, PanicExpr, ParamLocal, RuntimeFunctionId, ValueType,
     };
     use crate::planner::dsl::{
-        call_int_returning_function, function, function_ref, int, int_arg, int_return_tail_call,
-        local_int, module,
+        call_int, call_int_returning_function, function, function_ref, int, int_arg,
+        int_return_tail_call, local_int, module,
     };
     use crate::planner::support::{compile, expect_plan_error};
     use crate::planner::{
-        PlanError, UnsupportedArgumentReason, UnsupportedExpressionKind, UnsupportedFunctionReason,
-        UnsupportedTopLevelKind,
+        InvalidFunctionShapeReason, InvalidTypedAstReason, PlanError, UnsupportedArgumentReason,
+        UnsupportedExpressionKind, UnsupportedFunctionReason, UnsupportedTopLevelKind,
     };
+    use gleam_core::type_;
 
     #[test]
     fn plan_integer_return() {
@@ -432,6 +447,36 @@ pub fn main() {
         ))
         .expect("source should plan");
         let expected = module("main", function("main", int(1)), []);
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn plan_functions_before_and_after_main() {
+        let actual = plan_module(compile(
+            r#"
+fn before() {
+  1
+}
+
+pub fn main() {
+  before() + after()
+}
+
+fn after() {
+  2
+}
+"#,
+        ))
+        .expect("source should plan");
+        let expected = module(
+            "main",
+            function(
+                "main",
+                call_int(1, Vec::new()).add_int(call_int(2, Vec::new())),
+            ),
+            [function("before", int(1)), function("after", int(2))],
+        );
 
         assert_eq!(actual, expected);
     }
@@ -514,17 +559,82 @@ pub fn main(value: Int) {
     }
 
     #[test]
-    fn reject_profile_empty_source_body_is_todo() {
+    fn reject_margin_function_table_name_shape() {
+        let mut module = compile(
+            r#"
+pub fn main() {
+  1
+}
+"#,
+        );
+        module.definitions.functions[0].name = None;
+
         assert_eq!(
-            expect_plan_error(
-                r#"
+            super::function_table(&module.definitions.functions).err(),
+            Some(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::FunctionShape {
+                    name: "<anonymous>".into(),
+                    reason: InvalidFunctionShapeReason::Anonymous,
+                },
+            }),
+        );
+    }
+
+    #[test]
+    fn plan_empty_source_body_as_nil_generated_todo() {
+        let actual = plan_module(compile(
+            r#"
 pub fn main() {
 }
 "#,
+        ))
+        .expect("source should plan");
+        assert_eq!(
+            actual.main_function().return_(),
+            &crate::plan::ReturnExpr::nil(
+                NilFunctionId(0),
+                NilExpr::panic(PanicExpr::empty_function()),
             ),
-            PlanError::UnsupportedExpression {
-                kind: UnsupportedExpressionKind::Todo,
-            },
+        );
+    }
+
+    #[test]
+    fn source_stop_return_type_ignores_non_source_stop_final_shapes() {
+        assert_eq!(super::source_stop_return_type(&[]), None);
+        assert_eq!(
+            super::function_return_type("values".into(), type_::bit_array().as_ref(), &[]),
+            Err(PlanError::UnsupportedFunction {
+                name: "values".into(),
+                reason: UnsupportedFunctionReason::UnsupportedReturnType,
+            }),
+        );
+
+        let final_assignment = compile(
+            r#"
+pub fn main() {
+  let value = 1
+}
+"#,
+        );
+        assert_eq!(
+            super::source_stop_return_type(&final_assignment.definitions.functions[0].body),
+            None,
+        );
+
+        let block_with_final_assignment = compile(
+            r#"
+pub fn main() {
+  {
+    let value = 1
+  }
+}
+"#,
+        );
+        assert_eq!(
+            super::source_stop_return_type(
+                &block_with_final_assignment.definitions.functions[0].body
+            ),
+            None,
         );
     }
 
@@ -576,7 +686,7 @@ fn values() -> BitArray {
             expect_plan_error(
                 r#"
 fn helper() -> Int {
-  panic
+  echo 1
 }
 
 pub fn main() {
@@ -585,7 +695,7 @@ pub fn main() {
 "#,
             ),
             PlanError::UnsupportedExpression {
-                kind: UnsupportedExpressionKind::Panic,
+                kind: UnsupportedExpressionKind::Echo,
             },
         );
     }
@@ -600,12 +710,12 @@ pub fn main() {
 }
 
 fn helper() -> Int {
-  panic
+  echo 1
 }
 "#,
             ),
             PlanError::UnsupportedExpression {
-                kind: UnsupportedExpressionKind::Panic,
+                kind: UnsupportedExpressionKind::Echo,
             },
         );
     }

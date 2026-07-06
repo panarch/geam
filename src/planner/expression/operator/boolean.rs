@@ -63,20 +63,20 @@ pub fn or_op() {
     }
 
     #[test]
-    fn reject_profile_bool_operator_operands() {
+    fn reject_profile_bool_operator_operand_expression_errors() {
         assert_eq!(
             expect_plan_error(
                 r#"
 pub fn main() {
   False && {
-    panic
+    echo 1
     True
   }
 }
 "#,
             ),
             PlanError::UnsupportedExpression {
-                kind: UnsupportedExpressionKind::Panic,
+                kind: UnsupportedExpressionKind::Echo,
             },
         );
         assert_eq!(
@@ -84,14 +84,14 @@ pub fn main() {
                 r#"
 pub fn main() {
   {
-    panic
+    echo 1
     False
   } || True
 }
 "#,
             ),
             PlanError::UnsupportedExpression {
-                kind: UnsupportedExpressionKind::Panic,
+                kind: UnsupportedExpressionKind::Echo,
             },
         );
         assert_eq!(
@@ -99,14 +99,14 @@ pub fn main() {
                 r#"
 pub fn main() {
   True || {
-    panic
+    echo 1
     False
   }
 }
 "#,
             ),
             PlanError::UnsupportedExpression {
-                kind: UnsupportedExpressionKind::Panic,
+                kind: UnsupportedExpressionKind::Echo,
             },
         );
     }

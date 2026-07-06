@@ -1,4 +1,7 @@
-use super::{eval_expr, eval_float_expr, eval_int_expr, eval_string_expr, project_tuple_expr};
+use super::{
+    eval_expr, eval_float_expr, eval_int_expr, eval_panic_expr, eval_string_expr,
+    project_tuple_expr,
+};
 use crate::plan::{BoolExpr, BoolExprKind, ExecutionPlan, Value, ValueType};
 use crate::runtime::ExecutionError;
 use crate::runtime::frame::Frame;
@@ -27,6 +30,7 @@ pub(in crate::runtime) fn eval_bool_expr(
                 )),
             }
         }
+        BoolExprKind::Panic(panic) => eval_panic_expr(plan, frame, panic),
         BoolExprKind::Not(value) => Ok(!eval_bool_expr(plan, frame, value)?),
         BoolExprKind::LtInt { left, right } => {
             Ok(eval_int_expr(plan, frame, left)? < eval_int_expr(plan, frame, right)?)
@@ -143,11 +147,12 @@ mod tests {
     use crate::plan::{
         BoolExpr, BoolFunctionExpr, ExecutionPlan, Expr, FloatExpr, FloatFunctionExpr,
         FunctionFunctionExpr, FunctionFunctionId, FunctionFunctionValue, FunctionId, FunctionPlan,
-        FunctionReturnFamily, FunctionType, IntExpr, IntFunctionExpr, IntFunctionId, ReturnExpr,
-        Step, StringExpr, StringFunctionExpr, StringFunctionFunctionId, TupleExpr, ValueType,
+        FunctionReturnFamily, FunctionType, IntExpr, IntFunctionExpr, IntFunctionId, PanicExpr,
+        ReturnExpr, Step, StringExpr, StringFunctionExpr, StringFunctionFunctionId, TupleExpr,
+        ValueType,
     };
-    use crate::runtime::ExecutionError;
     use crate::runtime::frame::Frame;
+    use crate::runtime::{ExecutionError, PanicKind};
     use crate::runtime::{Value, run_src};
     use std::cell::Cell;
 
@@ -179,6 +184,17 @@ mod tests {
         assert_eq!(
             eval_bool_expr(&plan, &mut frame, &BoolExpr::tuple_index(tuple, 0)),
             Ok(true),
+        );
+    }
+
+    #[test]
+    fn eval_bool_panic_returns_error() {
+        let plan = crate::runtime::plan_src("pub fn main() { True }");
+        let mut frame = Frame::default();
+
+        assert_eq!(
+            eval_bool_expr(&plan, &mut frame, &BoolExpr::panic(PanicExpr::panic(None)),),
+            Err(ExecutionError::panic(PanicKind::Panic { message: None })),
         );
     }
 
@@ -406,10 +422,7 @@ pub fn main() {
 
         assert_eq!(
             actual.err().map(|error| error.to_string()),
-            Some(
-                "execution invariant failed: function return family mismatch (expected Bool, got Int)"
-                    .into()
-            ),
+            Some("function return family mismatch (expected Bool, got Int)".into()),
         );
     }
 
@@ -419,10 +432,7 @@ pub fn main() {
 
         assert_eq!(
             actual.err().map(|error| error.to_string()),
-            Some(
-                "execution invariant failed: function return family mismatch (expected Bool, got Int)"
-                    .into()
-            ),
+            Some("function return family mismatch (expected Bool, got Int)".into()),
         );
     }
 
