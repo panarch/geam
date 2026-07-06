@@ -183,12 +183,31 @@ fn plan_assert_list_tail(
     context: &mut PlanContext<'_>,
 ) -> Result<ListAssertTail, PlanError> {
     match tail.pattern {
-        Pattern::Variable { name, .. } => Ok(ListAssertTail::bind(
-            context.define_list_local(name.clone(), element_type),
-            name,
-        )),
-        Pattern::Discard { .. } => Ok(ListAssertTail::Ignore),
+        Pattern::Variable { name, type_, .. } => {
+            assert_list_tail_type_matches(type_.as_ref(), &element_type)?;
+            Ok(ListAssertTail::bind(
+                context.define_list_local(name.clone(), element_type),
+                name,
+            ))
+        }
+        Pattern::Discard { type_, .. } => {
+            assert_list_tail_type_matches(type_.as_ref(), &element_type)?;
+            Ok(ListAssertTail::Ignore)
+        }
         pattern => Err(unsupported_assert_pattern_error(&pattern)),
+    }
+}
+
+fn assert_list_tail_type_matches(
+    type_: &gleam_core::type_::Type,
+    element_type: &ValueType,
+) -> Result<(), PlanError> {
+    if ValueType::from_gleam(type_) == Some(ValueType::List(Box::new(element_type.clone()))) {
+        Ok(())
+    } else {
+        Err(PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::InvalidPattern,
+        })
     }
 }
 
@@ -953,6 +972,41 @@ pub fn main() {
             ),
             Err(PlanError::UnsupportedPattern {
                 kind: UnsupportedPatternKind::Literal,
+            }),
+        );
+        assert_eq!(
+            super::plan_assert_list_tail(
+                TailPattern {
+                    location: dummy_span(),
+                    pattern: Pattern::Variable {
+                        location: dummy_span(),
+                        name: "rest".into(),
+                        type_: type_::int(),
+                        origin: VariableOrigin::generated(),
+                    },
+                },
+                ValueType::Int,
+                &mut context,
+            ),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::InvalidPattern,
+            }),
+        );
+        assert_eq!(
+            super::plan_assert_list_tail(
+                TailPattern {
+                    location: dummy_span(),
+                    pattern: Pattern::Discard {
+                        location: dummy_span(),
+                        name: "_".into(),
+                        type_: type_::int(),
+                    },
+                },
+                ValueType::Int,
+                &mut context,
+            ),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::InvalidPattern,
             }),
         );
     }
