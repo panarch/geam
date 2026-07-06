@@ -104,6 +104,15 @@ pub(in crate::runtime) fn execute_steps(
                     frame_set_binding(frame, binding);
                 }
             }
+            StepKind::AssertBool { condition, message } => {
+                let message = match message {
+                    Some(message) => Some(eval_string_expr(plan, frame, message)?),
+                    None => None,
+                };
+                if !eval_bool_expr(plan, frame, condition)? {
+                    return Err(ExecutionError::panic(PanicKind::Assert { message }));
+                }
+            }
             StepKind::Evaluate(expression) => {
                 let _ = eval_expr(plan, frame, expression)?;
             }
@@ -310,9 +319,10 @@ mod tests {
         IntFunctionValue, IntLocalId, ListAssertPattern, ListAssertTail, ListExpr,
         ListFunctionExpr, ListFunctionId, ListFunctionLocalId, ListFunctionValue, ListLocalId,
         ListValue, NilExpr, NilFunctionExpr, NilFunctionId, NilFunctionLocalId, NilFunctionValue,
-        NilLocalId, ParamLocal, ReturnExpr, Step, StringExpr, StringFunctionExpr, StringFunctionId,
-        StringFunctionLocalId, StringFunctionValue, StringLocalId, TupleExpr, TupleFunctionExpr,
-        TupleFunctionId, TupleFunctionLocalId, TupleFunctionValue, TupleLocalId, Value, ValueType,
+        NilLocalId, PanicExpr, ParamLocal, ReturnExpr, Step, StringExpr, StringFunctionExpr,
+        StringFunctionId, StringFunctionLocalId, StringFunctionValue, StringLocalId, TupleExpr,
+        TupleFunctionExpr, TupleFunctionId, TupleFunctionLocalId, TupleFunctionValue, TupleLocalId,
+        Value, ValueType,
     };
     use crate::runtime::frame::Frame;
     use crate::runtime::{ExecutionError, PanicKind};
@@ -484,6 +494,95 @@ mod tests {
             frame.get_list(ListLocalId(1)),
             ListValue::new(ValueType::Int, vec![Value::Int(2.into())]),
         );
+    }
+
+    #[test]
+    fn execute_steps_assert_bool_continues_after_true_condition() {
+        let plan = plan();
+
+        assert_eq!(
+            execute_steps(
+                &plan,
+                &[Step::assert_bool(
+                    BoolExpr::value(true),
+                    Some(StringExpr::value("ok".into())),
+                )],
+                &mut Frame::default(),
+            ),
+            Ok(()),
+        );
+    }
+
+    #[test]
+    fn execute_steps_assert_bool_returns_assert_panic_after_false_condition() {
+        let plan = plan();
+
+        assert_eq!(
+            execute_steps(
+                &plan,
+                &[Step::assert_bool(BoolExpr::value(false), None)],
+                &mut Frame::default(),
+            ),
+            Err(ExecutionError::panic(PanicKind::Assert { message: None })),
+        );
+        assert_eq!(
+            execute_steps(
+                &plan,
+                &[Step::assert_bool(
+                    BoolExpr::value(false),
+                    Some(StringExpr::value("nope".into())),
+                )],
+                &mut Frame::default(),
+            ),
+            Err(ExecutionError::panic(PanicKind::Assert {
+                message: Some("nope".into()),
+            })),
+        );
+    }
+
+    #[test]
+    fn execute_steps_assert_bool_evaluates_message_before_condition() {
+        let plan = plan();
+
+        assert_eq!(
+            execute_steps(
+                &plan,
+                &[Step::assert_bool(
+                    BoolExpr::panic(PanicExpr::todo(None)),
+                    Some(StringExpr::panic(PanicExpr::panic(None))),
+                )],
+                &mut Frame::default(),
+            ),
+            Err(ExecutionError::panic(PanicKind::Panic { message: None })),
+        );
+    }
+
+    #[test]
+    fn execute_steps_assert_bool_propagates_message_error_before_condition() {
+        let plan = plan();
+
+        assert_expected_function_got_int(execute_steps(
+            &plan,
+            &[Step::assert_bool(
+                failing_bool_expr(),
+                Some(failing_string_expr()),
+            )],
+            &mut Frame::default(),
+        ));
+    }
+
+    #[test]
+    fn execute_steps_assert_bool_propagates_condition_error_after_message() {
+        let plan = plan();
+
+        assert_expected_function_got_int(execute_steps(
+            &plan,
+            &[Step::assert_bool(
+                failing_bool_expr(),
+                Some(StringExpr::value("checked".into())),
+            )],
+            &mut Frame::default(),
+        ));
     }
 
     #[test]

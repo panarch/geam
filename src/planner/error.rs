@@ -12,7 +12,7 @@ pub use invalid::{
 pub use unsupported::{
     UnsupportedArgumentReason, UnsupportedBinOpKind, UnsupportedCaseReason,
     UnsupportedExpressionKind, UnsupportedFunctionReason, UnsupportedPatternKind,
-    UnsupportedPipelineReason, UnsupportedStatementKind, UnsupportedTopLevelKind,
+    UnsupportedPipelineReason, UnsupportedTopLevelKind,
 };
 
 #[derive(Debug, Error, Clone, PartialEq, Eq)]
@@ -31,9 +31,6 @@ pub enum PlanError {
         function: EcoString,
         reason: UnsupportedArgumentReason,
     },
-
-    #[error("unsupported statement: {kind}")]
-    UnsupportedStatement { kind: UnsupportedStatementKind },
 
     #[error("unsupported pattern: {kind}")]
     UnsupportedPattern { kind: UnsupportedPatternKind },

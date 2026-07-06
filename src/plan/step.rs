@@ -136,6 +136,10 @@ pub(crate) enum StepKind {
         pattern: AssertPattern,
         message: Option<StringExpr>,
     },
+    AssertBool {
+        condition: BoolExpr,
+        message: Option<StringExpr>,
+    },
     Evaluate(Expr),
 }
 
@@ -329,6 +333,12 @@ impl Step {
         }
     }
 
+    pub(crate) fn assert_bool(condition: BoolExpr, message: Option<StringExpr>) -> Self {
+        Self {
+            kind: StepKind::AssertBool { condition, message },
+        }
+    }
+
     pub(crate) fn assert_list(
         local: ListLocalId,
         pattern: AssertPattern,
@@ -352,8 +362,9 @@ impl Step {
 mod tests {
     use super::{Step, StepKind};
     use crate::plan::{
-        AssertPattern, Expr, IntExpr, IntFunctionId, IntFunctionLocalId, IntFunctionValue,
-        IntLocalId, ListAssertPattern, ListAssertTail, ListLocalId, ParamLocal, ValueType,
+        AssertPattern, BoolExpr, Expr, IntExpr, IntFunctionId, IntFunctionLocalId,
+        IntFunctionValue, IntLocalId, ListAssertPattern, ListAssertTail, ListLocalId, ParamLocal,
+        StringExpr, ValueType,
     };
     use num_bigint::BigInt;
 
@@ -378,6 +389,17 @@ mod tests {
         assert_eq!(
             Step::evaluate(Expr::int(IntExpr::value(BigInt::from(1)))).kind(),
             &StepKind::Evaluate(Expr::int(IntExpr::value(BigInt::from(1)))),
+        );
+        assert_eq!(
+            Step::assert_bool(
+                BoolExpr::value(false),
+                Some(StringExpr::value("nope".into()))
+            )
+            .kind(),
+            &StepKind::AssertBool {
+                condition: BoolExpr::value(false),
+                message: Some(StringExpr::value("nope".into())),
+            },
         );
         assert_eq!(
             Step::assert_list(

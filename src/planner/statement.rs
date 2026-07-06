@@ -3,11 +3,13 @@ mod use_;
 
 pub(in crate::planner) use assignment::plan_variable_runtime_step;
 
-use crate::plan::{Step, ValueType};
+use crate::plan::{Expr, NilExpr, Step, ValueType};
 use crate::planner::context::PlanContext;
-use crate::planner::error::{InvalidTypedAstReason, PlanError, UnsupportedStatementKind};
-use crate::planner::expression::{plan_expr, plan_expr_with_expected_source_stop_type};
-use gleam_core::ast::Statement;
+use crate::planner::error::{InvalidTypedAstReason, PlanError};
+use crate::planner::expression::{
+    plan_bool_expr, plan_expr, plan_expr_with_expected_source_stop_type, plan_string_expr,
+};
+use gleam_core::ast::{Statement, TypedAssert};
 use vec1::Vec1;
 
 pub(super) struct PlannedStatements {
@@ -62,10 +64,9 @@ fn plan_ordered_steps_and_return(
             planned.value
         }
         Statement::Use(use_) => use_::plan_use_statement(use_, context)?,
-        Statement::Assert(_) => {
-            return Err(PlanError::UnsupportedStatement {
-                kind: UnsupportedStatementKind::AssertAsFinalStatement,
-            });
+        Statement::Assert(assert) => {
+            steps.push(plan_assert_step(assert, context)?);
+            Expr::nil(NilExpr::value())
         }
     };
 
@@ -84,20 +85,29 @@ pub(super) fn plan_runtime_steps(
         Statement::Use(_) => Err(PlanError::InvalidTypedAst {
             reason: InvalidTypedAstReason::UseStatement,
         }),
-        Statement::Assert(_) => Err(PlanError::UnsupportedStatement {
-            kind: UnsupportedStatementKind::Assert,
-        }),
+        Statement::Assert(assert) => Ok(vec![plan_assert_step(assert, context)?]),
     }
+}
+
+fn plan_assert_step(assert: TypedAssert, context: &mut PlanContext<'_>) -> Result<Step, PlanError> {
+    let message = assert
+        .message
+        .map(|message| plan_string_expr(message, context))
+        .transpose()?;
+    let condition = plan_bool_expr(assert.value, context)?;
+
+    Ok(Step::assert_bool(condition, message))
 }
 
 #[cfg(test)]
 mod tests {
+    use crate::plan::{BoolExpr, Step, StringExpr};
     use crate::planner::context::{AnonymousFunctions, PlanContext};
-    use crate::planner::dsl::{function, int, module};
+    use crate::planner::dsl::{function, int, module, nil};
     use crate::planner::plan_module;
-    use crate::planner::support::{compile, compile_minimal_module, dummy_span, expect_plan_error};
+    use crate::planner::support::{compile, compile_minimal_module, dummy_span};
     use crate::planner::{
-        InvalidTypedAstReason, PlanError, UnsupportedExpressionKind, UnsupportedStatementKind,
+        InvalidExpressionType, InvalidTypedAstReason, PlanError, UnsupportedExpressionKind,
     };
     use gleam_core::ast::{Statement, TypedExpr};
     use gleam_core::type_;
@@ -159,35 +169,173 @@ pub fn main() {
     }
 
     #[test]
-    fn reject_profile_assert_statement() {
-        assert_eq!(
-            expect_plan_error(
-                r#"
+    fn plan_assert_statement_steps() {
+        let actual = plan_module(compile(
+            r#"
 pub fn main() {
   assert True
   1
 }
 "#,
-            ),
-            PlanError::UnsupportedStatement {
-                kind: UnsupportedStatementKind::Assert,
-            },
+        ))
+        .expect("source should plan");
+        let expected = module(
+            "main",
+            function("main", int(1)).step(Step::assert_bool(BoolExpr::value(true), None)),
+            [],
         );
+
+        assert_eq!(actual, expected);
     }
 
     #[test]
-    fn reject_profile_final_assert_statement() {
-        assert_eq!(
-            expect_plan_error(
-                r#"
+    fn plan_final_assert_statement_returns_nil() {
+        let actual = plan_module(compile(
+            r#"
 pub fn main() {
   assert True
 }
 "#,
-            ),
-            PlanError::UnsupportedStatement {
-                kind: UnsupportedStatementKind::AssertAsFinalStatement,
-            },
+        ))
+        .expect("source should plan");
+        let expected = module(
+            "main",
+            function("main", nil()).step(Step::assert_bool(BoolExpr::value(true), None)),
+            [],
+        );
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn plan_assert_statement_with_message() {
+        let actual = plan_module(compile(
+            r#"
+pub fn main() {
+  assert True as "ok"
+  1
+}
+"#,
+        ))
+        .expect("source should plan");
+        let expected = module(
+            "main",
+            function("main", int(1)).step(Step::assert_bool(
+                BoolExpr::value(true),
+                Some(StringExpr::value("ok".into())),
+            )),
+            [],
+        );
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn reject_margin_assert_condition_type_mismatch() {
+        let mut module = compile_minimal_module();
+        module.definitions.functions[0].body = vec![
+            Statement::Assert(gleam_core::ast::Assert {
+                location: dummy_span(),
+                value: typed_int_expr(1),
+                message: None,
+            }),
+            Statement::Expression(typed_int_expr(1)),
+        ];
+
+        assert_eq!(
+            plan_module(module),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionType {
+                    expected: InvalidExpressionType::Bool,
+                    actual: InvalidExpressionType::Int,
+                },
+            }),
+        );
+    }
+
+    #[test]
+    fn reject_margin_assert_message_type_mismatch() {
+        let mut module = compile_minimal_module();
+        module.definitions.functions[0].body = vec![
+            Statement::Assert(gleam_core::ast::Assert {
+                location: dummy_span(),
+                value: typed_bool_expr(false),
+                message: Some(typed_int_expr(1)),
+            }),
+            Statement::Expression(typed_int_expr(1)),
+        ];
+
+        assert_eq!(
+            plan_module(module),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionType {
+                    expected: InvalidExpressionType::String,
+                    actual: InvalidExpressionType::Int,
+                },
+            }),
+        );
+    }
+
+    #[test]
+    fn reject_margin_assert_message_type_takes_precedence_over_condition_type() {
+        let mut module = compile_minimal_module();
+        module.definitions.functions[0].body = vec![
+            Statement::Assert(gleam_core::ast::Assert {
+                location: dummy_span(),
+                value: typed_int_expr(1),
+                message: Some(typed_int_expr(2)),
+            }),
+            Statement::Expression(typed_int_expr(3)),
+        ];
+
+        assert_eq!(
+            plan_module(module),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionType {
+                    expected: InvalidExpressionType::String,
+                    actual: InvalidExpressionType::Int,
+                },
+            }),
+        );
+    }
+
+    #[test]
+    fn reject_margin_final_assert_condition_type_mismatch() {
+        let mut module = compile_minimal_module();
+        module.definitions.functions[0].body = vec![Statement::Assert(gleam_core::ast::Assert {
+            location: dummy_span(),
+            value: typed_int_expr(1),
+            message: None,
+        })];
+
+        assert_eq!(
+            plan_module(module),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionType {
+                    expected: InvalidExpressionType::Bool,
+                    actual: InvalidExpressionType::Int,
+                },
+            }),
+        );
+    }
+
+    #[test]
+    fn reject_margin_final_assert_message_type_mismatch() {
+        let mut module = compile_minimal_module();
+        module.definitions.functions[0].body = vec![Statement::Assert(gleam_core::ast::Assert {
+            location: dummy_span(),
+            value: typed_bool_expr(true),
+            message: Some(typed_int_expr(1)),
+        })];
+
+        assert_eq!(
+            plan_module(module),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionType {
+                    expected: InvalidExpressionType::String,
+                    actual: InvalidExpressionType::Int,
+                },
+            }),
         );
     }
 
@@ -218,6 +366,32 @@ pub fn main() {
             type_: type_::int(),
             value: value.to_string().into(),
             int_value: BigInt::from(value),
+        }
+    }
+
+    fn typed_bool_expr(value: bool) -> TypedExpr {
+        use gleam_core::ast::Publicity;
+        use gleam_core::type_::{Deprecation, ValueConstructor, ValueConstructorVariant};
+
+        let name = if value { "True" } else { "False" };
+        TypedExpr::Var {
+            location: dummy_span(),
+            name: name.into(),
+            constructor: ValueConstructor {
+                publicity: Publicity::Private,
+                deprecation: Deprecation::NotDeprecated,
+                type_: type_::bool(),
+                variant: ValueConstructorVariant::Record {
+                    name: name.into(),
+                    arity: 0,
+                    field_map: None,
+                    location: dummy_span(),
+                    module: type_::PRELUDE_MODULE_NAME.into(),
+                    variants_count: 1,
+                    variant_index: 0,
+                    documentation: None,
+                },
+            },
         }
     }
 }
