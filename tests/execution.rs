@@ -1,5 +1,5 @@
 use geam::{
-    ExecutionError, FunctionType, Panic, SourceContext, Value, ValueType, compile_typed_module,
+    ExecutionError, FunctionType, SourceContext, Value, ValueType, compile_typed_module,
     plan_module, plan_module_with_source, run_main,
 };
 use miette::{GraphicalReportHandler, GraphicalTheme};
@@ -446,11 +446,12 @@ fn run_error_fixture(file_name: &str) {
     );
     let plan = plan_module_with_source(module, source_context).expect("fixture should plan");
     let error = run_main(&plan).expect_err("fixture should fail during execution");
-    let ExecutionError::Panic(panic) = error else {
-        panic!("execution-error fixture should fail with source panic");
-    };
+    assert!(
+        matches!(error, ExecutionError::Panic(_)),
+        "execution-error fixture should fail with source panic"
+    );
 
-    assert_eq!(render_panic(&panic), expected);
+    assert_eq!(render_execution_error(&error), expected);
 }
 
 fn reject_fixture(file_name: &str) {
@@ -509,7 +510,7 @@ fn expected_error_text(src: &str) -> String {
     panic!("fixture should include `// geam:expect-error`");
 }
 
-fn render_panic(panic: &Panic) -> String {
+fn render_execution_error(error: &ExecutionError) -> String {
     let handler = GraphicalReportHandler::new_themed(GraphicalTheme::none())
         .with_links(false)
         .with_urls(false)
@@ -521,7 +522,7 @@ fn render_panic(panic: &Panic) -> String {
         .with_break_words(false);
     let mut rendered = String::new();
     handler
-        .render_report(&mut rendered, panic)
+        .render_report(&mut rendered, error)
         .expect("diagnostic should render");
 
     rendered.trim_end().to_string()

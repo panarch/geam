@@ -540,14 +540,19 @@ impl<'a> PlanContext<'a> {
         self.anonymous_functions.next_name()
     }
 
+    pub(super) fn reserve_anonymous_function_name(&mut self) -> EcoString {
+        self.anonymous_functions.reserve_name()
+    }
+
     pub(super) fn allocate_anonymous_function(
         &mut self,
+        name: EcoString,
         return_type: ValueType,
         params: Vec<FunctionParam>,
         runtime_id: RuntimeFunctionId,
     ) -> (EcoString, FunctionInfo) {
         self.anonymous_functions
-            .allocate(return_type, params, runtime_id)
+            .allocate(name, return_type, params, runtime_id)
     }
 
     pub(super) fn allocate_anonymous_runtime_id(
@@ -754,13 +759,19 @@ impl AnonymousFunctions {
         format!("<anonymous:{}>", self.next_anonymous_index).into()
     }
 
+    fn reserve_name(&mut self) -> EcoString {
+        let name = self.next_name();
+        self.next_anonymous_index += 1;
+        name
+    }
+
     fn allocate(
         &mut self,
+        name: EcoString,
         return_type: ValueType,
         params: Vec<FunctionParam>,
         runtime_id: RuntimeFunctionId,
     ) -> (EcoString, FunctionInfo) {
-        let name = self.next_name();
         let info = FunctionInfo {
             id: FunctionId::new(self.next_function_index),
             runtime_id,
@@ -768,7 +779,6 @@ impl AnonymousFunctions {
             params,
         };
         self.next_function_index += 1;
-        self.next_anonymous_index += 1;
         (name, info)
     }
 

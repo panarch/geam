@@ -10,7 +10,6 @@ use crate::planner::error::{
 };
 use crate::planner::function::{anonymous_function_plan, plan_anonymous_function_body};
 use crate::planner::module::{ParamLabelPolicy, function_params};
-use ecow::EcoString;
 use gleam_core::ast::{
     CAPTURE_VARIABLE, CallArg as GleamCallArg, FunctionLiteralKind, Statement, TypedArg, TypedExpr,
     TypedStatement,
@@ -40,12 +39,11 @@ pub(super) fn plan_anonymous(
     let error_name = context.anonymous_function_error_name();
     let params = function_params(error_name.clone(), &arguments, ParamLabelPolicy::Reject)?;
     validate_argument_types(&error_name, &function_type, &params)?;
-    plan_anonymous_with_valid_arguments(function_type, error_name, params, arguments, body, context)
+    plan_anonymous_with_valid_arguments(function_type, params, arguments, body, context)
 }
 
 fn plan_anonymous_with_valid_arguments(
     function_type: FunctionType,
-    error_name: EcoString,
     params: Vec<crate::planner::context::FunctionParam>,
     arguments: Vec<TypedArg>,
     body: Vec1<TypedStatement>,
@@ -53,12 +51,11 @@ fn plan_anonymous_with_valid_arguments(
 ) -> Result<Expr, PlanError> {
     let free_names = free_variables::anonymous_free_variables(&arguments, &body);
     let captures = context.capture_bindings(&free_names)?;
-    plan_anonymous_with_captures(function_type, error_name, params, captures, body, context)
+    plan_anonymous_with_captures(function_type, params, captures, body, context)
 }
 
 fn plan_anonymous_with_captures(
     function_type: FunctionType,
-    error_name: EcoString,
     params: Vec<crate::planner::context::FunctionParam>,
     captures: Vec<crate::planner::context::CaptureBinding>,
     body: Vec1<TypedStatement>,
@@ -66,11 +63,12 @@ fn plan_anonymous_with_captures(
 ) -> Result<Expr, PlanError> {
     let return_type = function_type.return_().clone();
     let runtime_id = context.allocate_anonymous_runtime_id(&return_type);
+    let name = context.reserve_anonymous_function_name();
 
     let planned = {
-        let mut body_context = context.anonymous_function_context(error_name.clone());
+        let mut body_context = context.anonymous_function_context(name.clone());
         plan_anonymous_function_body(
-            &error_name,
+            &name,
             &return_type,
             &runtime_id,
             &params,
@@ -81,7 +79,7 @@ fn plan_anonymous_with_captures(
     };
 
     let planned = planned?;
-    let (name, info) = context.allocate_anonymous_function(return_type, params, runtime_id);
+    let (name, info) = context.allocate_anonymous_function(name, return_type, params, runtime_id);
     let value = if planned.captures.is_empty() {
         FunctionExpr::value(info.value())
     } else {
@@ -297,8 +295,9 @@ fn validate_argument_types(
 #[cfg(test)]
 mod tests {
     use crate::plan::{
-        Expr, FunctionFunctionId, FunctionType, IntFunctionFunctionId, IntFunctionId, IntLocalId,
-        LocalId, ParamLocal, RuntimeFunctionId, TupleFunctionId, ValueType,
+        Expr, FunctionFunctionId, FunctionType, IntExpr, IntFunctionFunctionId, IntFunctionId,
+        IntLocalId, LocalId, PanicExpr, PanicSite, ParamLocal, ReturnExpr, RuntimeFunctionId,
+        SourceSpan, StringExpr, TupleFunctionId, ValueType,
     };
     use crate::planner::dsl::{
         call_int_function, capture_int, capture_tuple, function, function_function_closure,
@@ -441,7 +440,7 @@ pub fn main() {
     }
 
     #[test]
-    fn plan_nested_anonymous_function_storage_in_postorder() {
+    fn plan_nested_anonymous_function_reserves_outer_name_before_body() {
         let actual = plan_module(compile(
             r#"
 pub fn main() {
@@ -463,10 +462,10 @@ pub fn main() {
             ),
             [],
             [
-                function("<anonymous:0>", local_int(0, "value").add_int(int(1)))
+                function("<anonymous:1>", local_int(0, "value").add_int(int(1)))
                     .param_int(0, "value"),
                 function(
-                    "<anonymous:1>",
+                    "<anonymous:0>",
                     function_ref(
                         RuntimeFunctionId::Int(IntFunctionId(0)),
                         [LocalId::Int(IntLocalId(0))],
@@ -476,6 +475,43 @@ pub fn main() {
         );
 
         assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn plan_nested_anonymous_function_panic_site_uses_reserved_outer_name() {
+        let actual = plan_module(compile(
+            r#"
+pub fn main() -> Int {
+  let outer = fn() {
+    fn() { 1 }
+    panic as "outer"
+  }
+  outer()
+}
+"#,
+        ))
+        .expect("source should plan");
+        let anonymous_functions = actual.anonymous_functions();
+        let inner_function = &anonymous_functions[0];
+        let outer_function = &anonymous_functions[1];
+
+        assert_eq!(inner_function.name(), "<anonymous:1>");
+        assert_eq!(outer_function.name(), "<anonymous:0>");
+
+        assert_eq!(
+            outer_function.return_(),
+            &ReturnExpr::int(
+                IntFunctionId(1),
+                IntExpr::panic(PanicExpr::panic_at(
+                    Some(StringExpr::value("outer".into())),
+                    PanicSite::new(
+                        "main".into(),
+                        "<anonymous:0>".into(),
+                        SourceSpan::new(64, 80)
+                    ),
+                )),
+            ),
+        );
     }
 
     #[test]
@@ -531,9 +567,9 @@ pub fn main() {
                 )),
             [],
             [
-                function("<anonymous:0>", local_int(0, "value")),
+                function("<anonymous:1>", local_int(0, "value")),
                 function(
-                    "<anonymous:1>",
+                    "<anonymous:0>",
                     int_function_closure(
                         1,
                         Vec::<LocalId>::new(),
