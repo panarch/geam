@@ -1,9 +1,9 @@
 use super::super::super::plan_float_expr;
-use super::super::{invalid_case_shape, unsupported_case};
+use super::super::invalid_case_shape;
 use super::{case_return_type, single_case_pattern, validate_clause_shape};
 use crate::plan::{BoolExpr, Expr, ExprKind, FloatCaseBranches, FloatExpr, ValueType};
 use crate::planner::context::PlanContext;
-use crate::planner::error::{InvalidCaseShapeReason, PlanError, UnsupportedCaseReason};
+use crate::planner::error::{InvalidCaseShapeReason, PlanError};
 use ecow::EcoString;
 use gleam_core::ast::{Pattern, TypedClause, TypedExpr};
 use gleam_core::type_::Type;
@@ -25,7 +25,7 @@ pub(super) fn plan(
         let case = plan_guarded_float_case(type_.as_ref(), return_type, subject, clauses, context)?;
         return Ok(super::case_subject_block(subject_step, case));
     }
-    let needs_subject_binding = clauses.iter().any(clause_has_float_variable_pattern);
+    let needs_subject_binding = clauses.iter().any(clause_has_float_bound_name);
     let (subject_step, subject) = if needs_subject_binding {
         let (step, subject) = super::bind_float_case_subject(subject, context);
         (Some(step), subject)
@@ -37,15 +37,12 @@ pub(super) fn plan(
     for clause in clauses {
         let pattern = single_case_pattern(clause.pattern)?;
         let pattern = plan_float_case_pattern(pattern)?;
-        let binding = pattern
-            .bound_name()
-            .cloned()
-            .map(|name| (name, Expr::float(subject.clone())));
+        let bindings = super::branch_bindings(pattern.bound_names(), Expr::float(subject.clone()));
         let branch =
-            super::plan_case_branch(type_.as_ref(), &return_type, clause.then, binding, context)?;
+            super::plan_case_branch(type_.as_ref(), &return_type, clause.then, bindings, context)?;
 
         match pattern {
-            FloatCasePattern::Literal(value) => {
+            FloatCasePattern::Literal { value, .. } => {
                 if fallback.is_none()
                     && literal_clauses
                         .iter()
@@ -83,13 +80,10 @@ fn plan_guarded_float_case(
     for clause in clauses {
         let pattern = single_case_pattern(clause.pattern)?;
         let pattern = plan_float_case_pattern(pattern)?;
-        let binding = pattern
-            .bound_name()
-            .cloned()
-            .map(|name| (name, Expr::float(subject.clone())));
+        let bindings = super::branch_bindings(pattern.bound_names(), Expr::float(subject.clone()));
         let is_total = matches!(pattern, FloatCasePattern::Any { .. }) && clause.guard.is_none();
         let match_condition = match pattern {
-            FloatCasePattern::Literal(value) => BoolExpr::equal(
+            FloatCasePattern::Literal { value, .. } => BoolExpr::equal(
                 Expr::float(subject.clone()),
                 Expr::float(FloatExpr::value(value)),
             ),
@@ -100,7 +94,7 @@ fn plan_guarded_float_case(
                 case_type,
                 return_type: &return_type,
                 then: clause.then,
-                variable_binding: binding,
+                branch_bindings: bindings,
                 guard: clause.guard,
                 match_condition,
                 is_total,
@@ -114,38 +108,56 @@ fn plan_guarded_float_case(
 
 #[derive(Debug, Clone, PartialEq)]
 enum FloatCasePattern {
-    Literal(f64),
-    Any { bound_name: Option<EcoString> },
+    Literal {
+        value: f64,
+        bound_names: Vec<EcoString>,
+    },
+    Any {
+        bound_names: Vec<EcoString>,
+    },
 }
 
 impl FloatCasePattern {
-    fn bound_name(&self) -> Option<&EcoString> {
+    fn bound_names(&self) -> &[EcoString] {
         match self {
-            FloatCasePattern::Any { bound_name } => bound_name.as_ref(),
-            FloatCasePattern::Literal(_) => None,
+            FloatCasePattern::Literal { bound_names, .. }
+            | FloatCasePattern::Any { bound_names } => bound_names,
+        }
+    }
+
+    fn add_bound_name(&mut self, name: EcoString) {
+        match self {
+            FloatCasePattern::Literal { bound_names, .. }
+            | FloatCasePattern::Any { bound_names } => {
+                bound_names.push(name);
+            }
         }
     }
 }
 
 fn plan_float_case_pattern(pattern: Pattern<Arc<Type>>) -> Result<FloatCasePattern, PlanError> {
     match pattern {
-        Pattern::Float { float_value, .. } => Ok(FloatCasePattern::Literal(float_value.value())),
+        Pattern::Float { float_value, .. } => Ok(FloatCasePattern::Literal {
+            value: float_value.value(),
+            bound_names: Vec::new(),
+        }),
         Pattern::Variable { name, type_, .. } if type_.is_float() => Ok(FloatCasePattern::Any {
-            bound_name: Some(name),
+            bound_names: vec![name],
         }),
         Pattern::Variable { .. } => Err(invalid_case_shape(
             InvalidCaseShapeReason::PatternTypeMismatch,
         )),
-        Pattern::Discard { type_, .. } if type_.is_float() => {
-            Ok(FloatCasePattern::Any { bound_name: None })
-        }
+        Pattern::Discard { type_, .. } if type_.is_float() => Ok(FloatCasePattern::Any {
+            bound_names: Vec::new(),
+        }),
         Pattern::Discard { .. } => Err(invalid_case_shape(
             InvalidCaseShapeReason::PatternTypeMismatch,
         )),
-        Pattern::Assign { pattern, .. } => match validate_float_case_assign_pattern(&pattern) {
-            Ok(()) => Err(unsupported_case(UnsupportedCaseReason::AssignPattern)),
-            Err(reason) => Err(invalid_case_shape(reason)),
-        },
+        Pattern::Assign { name, pattern, .. } => {
+            let mut pattern = plan_float_case_pattern(*pattern)?;
+            pattern.add_bound_name(name);
+            Ok(pattern)
+        }
         Pattern::Invalid { .. } => Err(invalid_case_shape(InvalidCaseShapeReason::InvalidPattern)),
         Pattern::Int { .. }
         | Pattern::String { .. }
@@ -160,25 +172,15 @@ fn plan_float_case_pattern(pattern: Pattern<Arc<Type>>) -> Result<FloatCasePatte
     }
 }
 
-fn clause_has_float_variable_pattern(clause: &TypedClause) -> bool {
-    clause.pattern.iter().any(|pattern| {
-        matches!(
-            pattern,
-            Pattern::Variable { type_, .. } if type_.is_float()
-        )
-    })
+fn clause_has_float_bound_name(clause: &TypedClause) -> bool {
+    clause.pattern.iter().any(float_pattern_has_bound_name)
 }
 
-fn validate_float_case_assign_pattern(
-    pattern: &Pattern<Arc<Type>>,
-) -> Result<(), InvalidCaseShapeReason> {
+fn float_pattern_has_bound_name(pattern: &Pattern<Arc<Type>>) -> bool {
     match pattern {
-        Pattern::Float { .. } => Ok(()),
-        Pattern::Variable { type_, .. } | Pattern::Discard { type_, .. } if type_.is_float() => {
-            Ok(())
-        }
-        Pattern::Invalid { .. } => Err(InvalidCaseShapeReason::InvalidPattern),
-        _ => Err(InvalidCaseShapeReason::PatternTypeMismatch),
+        Pattern::Variable { type_, .. } if type_.is_float() => true,
+        Pattern::Assign { .. } => true,
+        _ => false,
     }
 }
 
@@ -703,6 +705,83 @@ pub fn main() {
     }
 
     #[test]
+    fn plan_float_case_variable_alias_binds_inner_then_alias_in_branch_scope() {
+        let actual = plan_module(crate::planner::support::compile(
+            r#"
+pub fn main() {
+  case 1.5 {
+    other as alias -> other +. alias
+  }
+}
+"#,
+        ))
+        .expect("source should plan");
+        let expected = module(
+            "main",
+            function(
+                "main",
+                float_return_block(
+                    [let_float_step(0, "<case:float:0>", float(1.5))],
+                    float_return_float_case(
+                        local_float(0, "<case:float:0>"),
+                        [],
+                        float_return_block(
+                            [
+                                let_float_step(1, "other", local_float(0, "<case:float:0>")),
+                                let_float_step(2, "alias", local_float(0, "<case:float:0>")),
+                            ],
+                            float_return_expr(
+                                local_float(1, "other").add_float(local_float(2, "alias")),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+            [],
+        );
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn plan_float_case_literal_alias_binds_subject_once_for_alias_value() {
+        let actual = plan_module(crate::planner::support::compile(
+            r#"
+pub fn main() {
+  case 1.5 {
+    1.5 as alias -> alias
+    _ -> 0.0
+  }
+}
+"#,
+        ))
+        .expect("source should plan");
+        let expected = module(
+            "main",
+            function(
+                "main",
+                float_return_block(
+                    [let_float_step(0, "<case:float:0>", float(1.5))],
+                    float_return_float_case(
+                        local_float(0, "<case:float:0>"),
+                        [(
+                            1.5,
+                            float_return_block(
+                                [let_float_step(1, "alias", local_float(0, "<case:float:0>"))],
+                                float_return_expr(local_float(1, "alias")),
+                            ),
+                        )],
+                        float_return_expr(float(0.0)),
+                    ),
+                ),
+            ),
+            [],
+        );
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
     fn plan_float_case_guard_binds_subject_once_and_falls_through() {
         let actual = plan_module(crate::planner::support::compile(
             r#"
@@ -725,6 +804,51 @@ pub fn main() {
         );
         let guarded_branch =
             float_return_block([bind_other], float_return_expr(local_float(1, "other")));
+        let expected = module(
+            "main",
+            function(
+                "main",
+                float_return_block(
+                    [let_float_step(0, "<case:float:0>", float(1.5))],
+                    FloatReturn::bool_case(
+                        condition,
+                        guarded_branch,
+                        float_return_expr(float(0.0)),
+                    ),
+                ),
+            ),
+            [],
+        );
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn plan_float_case_guarded_alias_binds_guard_and_branch_scope() {
+        let actual = plan_module(crate::planner::support::compile(
+            r#"
+pub fn main() {
+  case 1.5 {
+    other as alias if alias >. 1.0 -> other +. alias
+    _ -> 0.0
+  }
+}
+"#,
+        ))
+        .expect("source should plan");
+        let bind_other = let_float_step(1, "other", local_float(0, "<case:float:0>"));
+        let bind_alias = let_float_step(2, "alias", local_float(0, "<case:float:0>"));
+        let condition = BoolExpr::block(
+            vec![bind_other.clone(), bind_alias.clone()],
+            BoolExpr::and(
+                BoolExpr::value(true),
+                BoolExpr::gt_float(local_float(2, "alias").into(), float(1.0).into()),
+            ),
+        );
+        let guarded_branch = float_return_block(
+            [bind_other, bind_alias],
+            float_return_expr(local_float(1, "other").add_float(local_float(2, "alias"))),
+        );
         let expected = module(
             "main",
             function(
@@ -997,31 +1121,6 @@ fn duplicate_literal(value: Float) {
                     .expect("function-returning function expression"),
             }),
         );
-    }
-
-    #[test]
-    fn reject_profile_float_case_patterns() {
-        let cases = [
-            (
-                r#"pub fn main() { case 1.0 { 1.0 as value -> 1 _ -> 0 } }"#,
-                UnsupportedCaseReason::AssignPattern,
-            ),
-            (
-                r#"pub fn main() { case 1.0 { value as alias -> 1 } }"#,
-                UnsupportedCaseReason::AssignPattern,
-            ),
-            (
-                r#"pub fn main() { case 1.0 { _ as alias -> 1 } }"#,
-                UnsupportedCaseReason::AssignPattern,
-            ),
-        ];
-
-        for (src, reason) in cases {
-            assert_eq!(
-                expect_plan_error(src),
-                PlanError::UnsupportedCase { reason },
-            );
-        }
     }
 
     #[test]
@@ -1611,28 +1710,5 @@ pub fn main() {
 }
 "#,
         )
-    }
-
-    #[test]
-    fn reject_margin_float_case_assign_literal_pattern_still_profile_boundary() {
-        let mut module = compile_float_case_module();
-        let (_, _, clauses) = super::super::super::expect_case_statement_mut(
-            &mut module.definitions.functions[0].body[0],
-        );
-        clauses[0].pattern[0] = Pattern::Assign {
-            name: "value".into(),
-            location: dummy_span(),
-            pattern: Box::new(Pattern::Float {
-                location: dummy_span(),
-                value: "1.0".into(),
-                float_value: LiteralFloatValue::ONE,
-            }),
-        };
-        assert_eq!(
-            plan_module(module),
-            Err(PlanError::UnsupportedCase {
-                reason: UnsupportedCaseReason::AssignPattern,
-            }),
-        );
     }
 }

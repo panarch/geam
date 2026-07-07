@@ -145,6 +145,12 @@ mod control_flow {
             variable_pattern_families,
             variable_pattern_closure_capture,
             variable_pattern_scope,
+            pattern_alias,
+            pattern_alias_literal_and_discard,
+            pattern_alias_families,
+            pattern_alias_guard,
+            pattern_alias_scope,
+            pattern_alias_closure_capture,
         );
     }
 }
@@ -413,10 +419,12 @@ mod rejection {
             alternative_patterns,
             multiple_subjects,
             tuple_pattern,
+            tuple_pattern_alias,
             tuple_subject,
             string_prefix_pattern,
+            string_prefix_pattern_alias,
             list_pattern,
-            pattern_alias,
+            list_pattern_alias,
             unsupported_subject_type,
         );
     }
