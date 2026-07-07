@@ -1,7 +1,7 @@
 use ecow::EcoString;
 use gleam_core::ast::{
-    AssignmentKind, Pattern, Statement, TypedArg, TypedExpr, TypedPipelineAssignment,
-    TypedStatement,
+    AssignmentKind, ClauseGuard, Pattern, Statement, TypedArg, TypedClauseGuard, TypedExpr,
+    TypedPipelineAssignment, TypedStatement,
 };
 use gleam_core::type_::{Type, ValueConstructorVariant};
 use std::collections::HashSet;
@@ -147,6 +147,9 @@ fn collect_expr(expression: &TypedExpr, bound: &mut HashSet<EcoString>, free: &m
                 for pattern in &clause.pattern {
                     collect_variable_pattern_bound_name(pattern, &mut branch_bound);
                 }
+                if let Some(guard) = &clause.guard {
+                    collect_clause_guard(guard, &mut branch_bound, free);
+                }
                 collect_expr(&clause.then, &mut branch_bound, free);
             }
         }
@@ -192,6 +195,27 @@ fn collect_pipeline_assignment(
     bound.insert(assignment.name.clone());
 }
 
+fn collect_clause_guard(
+    guard: &TypedClauseGuard,
+    bound: &mut HashSet<EcoString>,
+    free: &mut FreeVariables,
+) {
+    match guard {
+        ClauseGuard::Var { name, .. } => free.record(name, bound),
+        ClauseGuard::Block { value, .. } => collect_clause_guard(value, bound, free),
+        ClauseGuard::BinaryOperator { left, right, .. } => {
+            collect_clause_guard(left, bound, free);
+            collect_clause_guard(right, bound, free);
+        }
+        ClauseGuard::Not { expression, .. } => collect_clause_guard(expression, bound, free),
+        ClauseGuard::TupleIndex { tuple, .. } => collect_clause_guard(tuple, bound, free),
+        ClauseGuard::FieldAccess { container, .. } => collect_clause_guard(container, bound, free),
+        ClauseGuard::Constant(_)
+        | ClauseGuard::ModuleSelect { .. }
+        | ClauseGuard::Invalid { .. } => {}
+    }
+}
+
 fn collect_variable_pattern_bound_name(
     pattern: &Pattern<Arc<Type>>,
     bound: &mut HashSet<EcoString>,
@@ -232,7 +256,7 @@ fn collect_variable_pattern_bound_name(
 #[cfg(test)]
 mod tests {
     use crate::planner::support::{compile, dummy_span};
-    use gleam_core::ast::{Publicity, Statement, TypedExpr};
+    use gleam_core::ast::{ClauseGuard, Constant, Publicity, Statement, TypedExpr};
     use gleam_core::type_::error::VariableOrigin;
     use gleam_core::type_::{self, Deprecation, ValueConstructor, ValueConstructorVariant};
     use vec1::Vec1;
@@ -332,6 +356,102 @@ pub fn main() {
     }
 
     #[test]
+    fn anonymous_free_variables_include_case_guard_only_outer_local() {
+        assert_eq!(
+            anonymous_function_free_variables(
+                r#"
+pub fn main() {
+  let threshold = 40
+  fn() {
+    case 41 {
+      value if value > threshold -> value
+      _ -> 0
+    }
+  }
+  1
+}
+"#,
+            ),
+            vec!["threshold".to_string()],
+        );
+    }
+
+    #[test]
+    fn collect_clause_guard_records_supported_guard_shapes() {
+        let mut bound = std::collections::HashSet::new();
+        bound.insert("bound".into());
+        let mut free = super::FreeVariables::new();
+        let guard = ClauseGuard::Block {
+            location: dummy_span(),
+            value: Box::new(ClauseGuard::BinaryOperator {
+                location: dummy_span(),
+                operator: gleam_core::ast::BinOp::And,
+                operator_start: 0,
+                left: Box::new(ClauseGuard::Not {
+                    location: dummy_span(),
+                    expression: Box::new(guard_var("outer_bool", type_::bool())),
+                }),
+                right: Box::new(ClauseGuard::TupleIndex {
+                    location: dummy_span(),
+                    index: 0,
+                    type_: type_::int(),
+                    tuple: Box::new(guard_var("outer_tuple", type_::tuple(vec![type_::int()]))),
+                }),
+            }),
+        };
+        super::collect_clause_guard(&guard, &mut bound, &mut free);
+        let field_guard = ClauseGuard::FieldAccess {
+            label_location: dummy_span(),
+            index: Some(0),
+            label: "field".into(),
+            type_: type_::int(),
+            container: Box::new(guard_var("outer_record", type_::int())),
+        };
+        super::collect_clause_guard(&field_guard, &mut bound, &mut free);
+        super::collect_clause_guard(&guard_var("bound", type_::int()), &mut bound, &mut free);
+        super::collect_clause_guard(
+            &ClauseGuard::Constant(Constant::Int {
+                location: dummy_span(),
+                value: "1".into(),
+                int_value: 1.into(),
+            }),
+            &mut bound,
+            &mut free,
+        );
+        super::collect_clause_guard(
+            &ClauseGuard::ModuleSelect {
+                location: dummy_span(),
+                field_start: 0,
+                definition_location: dummy_span(),
+                type_: type_::int(),
+                label: "answer".into(),
+                module_name: "main".into(),
+                module_alias: "main".into(),
+                literal: guard_constant_literal(),
+            },
+            &mut bound,
+            &mut free,
+        );
+        super::collect_clause_guard(
+            &ClauseGuard::Invalid {
+                location: dummy_span(),
+                type_: type_::int(),
+            },
+            &mut bound,
+            &mut free,
+        );
+
+        assert_eq!(
+            free.names,
+            vec![
+                "outer_bool".to_string(),
+                "outer_tuple".to_string(),
+                "outer_record".to_string(),
+            ],
+        );
+    }
+
+    #[test]
     fn anonymous_free_variables_treat_tuple_alias_assignment_names_as_bound() {
         assert_eq!(
             anonymous_function_free_variables(
@@ -421,6 +541,27 @@ pub fn main() {
         }
 
         assert_eq!(names, vec!["negate_int_value".to_string()]);
+    }
+
+    fn guard_var(
+        name: impl Into<ecow::EcoString>,
+        type_: std::sync::Arc<gleam_core::type_::Type>,
+    ) -> ClauseGuard<std::sync::Arc<gleam_core::type_::Type>> {
+        ClauseGuard::Var {
+            location: dummy_span(),
+            type_,
+            name: name.into(),
+            definition_location: dummy_span(),
+            origin: VariableOrigin::generated(),
+        }
+    }
+
+    fn guard_constant_literal() -> Constant<std::sync::Arc<gleam_core::type_::Type>> {
+        Constant::Int {
+            location: dummy_span(),
+            value: "1".into(),
+            int_value: 1.into(),
+        }
     }
 
     fn anonymous_function_free_variables(src: &str) -> Vec<String> {

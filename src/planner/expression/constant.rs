@@ -1,4 +1,4 @@
-use super::super::{invalid_expression_type, invalid_expression_type_for_value};
+use super::{invalid_expression_type, invalid_expression_type_for_value};
 use crate::plan::{
     BoolExpr, Expr, FloatExpr, FunctionExpr, IntExpr, ListExpr, NilExpr, StringExpr, TupleExpr,
     ValueType,
@@ -12,7 +12,7 @@ use gleam_core::ast::Constant;
 use gleam_core::type_::{PRELUDE_MODULE_NAME, Type, ValueConstructor, ValueConstructorVariant};
 use std::sync::Arc;
 
-pub(super) fn plan(
+pub(in crate::planner::expression) fn plan(
     literal: Constant<Arc<Type>>,
     context: &PlanContext<'_>,
 ) -> Result<Expr, PlanError> {

@@ -2,7 +2,7 @@ use super::{
     case_return_type, invalid_case_shape, single_case_pattern, unsupported_case,
     validate_clause_shape,
 };
-use crate::plan::{Expr, ExprKind, IntCaseBranches, IntExpr};
+use crate::plan::{BoolExpr, Expr, ExprKind, IntCaseBranches, IntExpr, ValueType};
 use crate::planner::context::PlanContext;
 use crate::planner::error::{InvalidCaseShapeReason, PlanError, UnsupportedCaseReason};
 use ecow::EcoString;
@@ -21,6 +21,11 @@ pub(super) fn plan(
     let return_type = case_return_type(type_.as_ref())?;
     for clause in &clauses {
         validate_clause_shape(clause)?;
+    }
+    if clauses.iter().any(|clause| clause.guard.is_some()) {
+        let (subject_step, subject) = super::bind_int_case_subject(subject, context);
+        let case = plan_guarded_int_case(type_.as_ref(), return_type, subject, clauses, context)?;
+        return Ok(super::case_subject_block(subject_step, case));
     }
     let needs_subject_binding = clauses.iter().any(clause_has_int_variable_pattern);
     let (subject_step, subject) = if needs_subject_binding {
@@ -67,6 +72,45 @@ pub(super) fn plan(
         Some(step) => super::case_subject_block(step, case),
         None => case,
     })
+}
+
+fn plan_guarded_int_case(
+    case_type: &Type,
+    return_type: ValueType,
+    subject: IntExpr,
+    clauses: Vec<TypedClause>,
+    context: &mut PlanContext<'_>,
+) -> Result<Expr, PlanError> {
+    let mut ordered_clauses = Vec::with_capacity(clauses.len());
+    for clause in clauses {
+        let pattern = single_case_pattern(clause.pattern)?;
+        let pattern = plan_int_case_pattern(pattern)?;
+        let binding = pattern
+            .bound_name()
+            .cloned()
+            .map(|name| (name, Expr::int(subject.clone())));
+        let is_total = matches!(pattern, IntCasePattern::Any { .. }) && clause.guard.is_none();
+        let match_condition = match pattern {
+            IntCasePattern::Literal(value) => {
+                BoolExpr::equal(Expr::int(subject.clone()), Expr::int(IntExpr::value(value)))
+            }
+            IntCasePattern::Any { .. } => BoolExpr::value(true),
+        };
+        ordered_clauses.push(super::plan_ordered_case_clause(
+            super::OrderedCaseClauseInput {
+                case_type,
+                return_type: &return_type,
+                then: clause.then,
+                variable_binding: binding,
+                guard: clause.guard,
+                match_condition,
+                is_total,
+            },
+            context,
+        )?);
+    }
+
+    super::ordered_case_expr(ordered_clauses)
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -185,7 +229,9 @@ fn int_case_clauses(
     let mut typed_clauses = Vec::with_capacity(clauses.len());
     for (value, clause) in clauses {
         let ExprKind::Int(clause) = clause.into_kind() else {
-            return Err(branch_return_type_mismatch());
+            return Err(invalid_case_shape(
+                InvalidCaseShapeReason::BranchReturnTypeMismatch,
+            ));
         };
         typed_clauses.push((value, clause));
     }
@@ -198,7 +244,9 @@ fn string_case_clauses(
     let mut typed_clauses = Vec::with_capacity(clauses.len());
     for (value, clause) in clauses {
         let ExprKind::String(clause) = clause.into_kind() else {
-            return Err(branch_return_type_mismatch());
+            return Err(invalid_case_shape(
+                InvalidCaseShapeReason::BranchReturnTypeMismatch,
+            ));
         };
         typed_clauses.push((value, clause));
     }
@@ -211,7 +259,9 @@ fn float_case_clauses(
     let mut typed_clauses = Vec::with_capacity(clauses.len());
     for (value, clause) in clauses {
         let ExprKind::Float(clause) = clause.into_kind() else {
-            return Err(branch_return_type_mismatch());
+            return Err(invalid_case_shape(
+                InvalidCaseShapeReason::BranchReturnTypeMismatch,
+            ));
         };
         typed_clauses.push((value, clause));
     }
@@ -224,7 +274,9 @@ fn bool_case_clauses(
     let mut typed_clauses = Vec::with_capacity(clauses.len());
     for (value, clause) in clauses {
         let ExprKind::Bool(clause) = clause.into_kind() else {
-            return Err(branch_return_type_mismatch());
+            return Err(invalid_case_shape(
+                InvalidCaseShapeReason::BranchReturnTypeMismatch,
+            ));
         };
         typed_clauses.push((value, clause));
     }
@@ -237,7 +289,9 @@ fn nil_case_clauses(
     let mut typed_clauses = Vec::with_capacity(clauses.len());
     for (value, clause) in clauses {
         let ExprKind::Nil(clause) = clause.into_kind() else {
-            return Err(branch_return_type_mismatch());
+            return Err(invalid_case_shape(
+                InvalidCaseShapeReason::BranchReturnTypeMismatch,
+            ));
         };
         typed_clauses.push((value, clause));
     }
@@ -250,7 +304,9 @@ fn tuple_case_clauses(
     let mut typed_clauses = Vec::with_capacity(clauses.len());
     for (value, clause) in clauses {
         let ExprKind::Tuple(clause) = clause.into_kind() else {
-            return Err(branch_return_type_mismatch());
+            return Err(invalid_case_shape(
+                InvalidCaseShapeReason::BranchReturnTypeMismatch,
+            ));
         };
         typed_clauses.push((value, clause));
     }
@@ -263,7 +319,9 @@ fn list_case_clauses(
     let mut typed_clauses = Vec::with_capacity(clauses.len());
     for (value, clause) in clauses {
         let ExprKind::List(clause) = clause.into_kind() else {
-            return Err(branch_return_type_mismatch());
+            return Err(invalid_case_shape(
+                InvalidCaseShapeReason::BranchReturnTypeMismatch,
+            ));
         };
         typed_clauses.push((value, clause));
     }
@@ -318,10 +376,14 @@ fn int_function_case_clauses(
     let mut typed_clauses = Vec::with_capacity(clauses.len());
     for (value, clause) in clauses {
         let ExprKind::Function(clause) = clause.into_kind() else {
-            return Err(branch_return_type_mismatch());
+            return Err(invalid_case_shape(
+                InvalidCaseShapeReason::BranchReturnTypeMismatch,
+            ));
         };
         let Some(clause) = clause.into_int() else {
-            return Err(branch_return_type_mismatch());
+            return Err(invalid_case_shape(
+                InvalidCaseShapeReason::BranchReturnTypeMismatch,
+            ));
         };
         typed_clauses.push((value, clause));
     }
@@ -334,10 +396,14 @@ fn string_function_case_clauses(
     let mut typed_clauses = Vec::with_capacity(clauses.len());
     for (value, clause) in clauses {
         let ExprKind::Function(clause) = clause.into_kind() else {
-            return Err(branch_return_type_mismatch());
+            return Err(invalid_case_shape(
+                InvalidCaseShapeReason::BranchReturnTypeMismatch,
+            ));
         };
         let Some(clause) = clause.into_string() else {
-            return Err(branch_return_type_mismatch());
+            return Err(invalid_case_shape(
+                InvalidCaseShapeReason::BranchReturnTypeMismatch,
+            ));
         };
         typed_clauses.push((value, clause));
     }
@@ -350,10 +416,14 @@ fn float_function_case_clauses(
     let mut typed_clauses = Vec::with_capacity(clauses.len());
     for (value, clause) in clauses {
         let ExprKind::Function(clause) = clause.into_kind() else {
-            return Err(branch_return_type_mismatch());
+            return Err(invalid_case_shape(
+                InvalidCaseShapeReason::BranchReturnTypeMismatch,
+            ));
         };
         let Some(clause) = clause.into_float() else {
-            return Err(branch_return_type_mismatch());
+            return Err(invalid_case_shape(
+                InvalidCaseShapeReason::BranchReturnTypeMismatch,
+            ));
         };
         typed_clauses.push((value, clause));
     }
@@ -366,10 +436,14 @@ fn bool_function_case_clauses(
     let mut typed_clauses = Vec::with_capacity(clauses.len());
     for (value, clause) in clauses {
         let ExprKind::Function(clause) = clause.into_kind() else {
-            return Err(branch_return_type_mismatch());
+            return Err(invalid_case_shape(
+                InvalidCaseShapeReason::BranchReturnTypeMismatch,
+            ));
         };
         let Some(clause) = clause.into_bool() else {
-            return Err(branch_return_type_mismatch());
+            return Err(invalid_case_shape(
+                InvalidCaseShapeReason::BranchReturnTypeMismatch,
+            ));
         };
         typed_clauses.push((value, clause));
     }
@@ -382,10 +456,14 @@ fn nil_function_case_clauses(
     let mut typed_clauses = Vec::with_capacity(clauses.len());
     for (value, clause) in clauses {
         let ExprKind::Function(clause) = clause.into_kind() else {
-            return Err(branch_return_type_mismatch());
+            return Err(invalid_case_shape(
+                InvalidCaseShapeReason::BranchReturnTypeMismatch,
+            ));
         };
         let Some(clause) = clause.into_nil() else {
-            return Err(branch_return_type_mismatch());
+            return Err(invalid_case_shape(
+                InvalidCaseShapeReason::BranchReturnTypeMismatch,
+            ));
         };
         typed_clauses.push((value, clause));
     }
@@ -398,10 +476,14 @@ fn tuple_function_case_clauses(
     let mut typed_clauses = Vec::with_capacity(clauses.len());
     for (value, clause) in clauses {
         let ExprKind::Function(clause) = clause.into_kind() else {
-            return Err(branch_return_type_mismatch());
+            return Err(invalid_case_shape(
+                InvalidCaseShapeReason::BranchReturnTypeMismatch,
+            ));
         };
         let Some(clause) = clause.into_tuple() else {
-            return Err(branch_return_type_mismatch());
+            return Err(invalid_case_shape(
+                InvalidCaseShapeReason::BranchReturnTypeMismatch,
+            ));
         };
         typed_clauses.push((value, clause));
     }
@@ -414,10 +496,14 @@ fn list_function_case_clauses(
     let mut typed_clauses = Vec::with_capacity(clauses.len());
     for (value, clause) in clauses {
         let ExprKind::Function(clause) = clause.into_kind() else {
-            return Err(branch_return_type_mismatch());
+            return Err(invalid_case_shape(
+                InvalidCaseShapeReason::BranchReturnTypeMismatch,
+            ));
         };
         let Some(clause) = clause.into_list() else {
-            return Err(branch_return_type_mismatch());
+            return Err(invalid_case_shape(
+                InvalidCaseShapeReason::BranchReturnTypeMismatch,
+            ));
         };
         typed_clauses.push((value, clause));
     }
@@ -430,27 +516,27 @@ fn function_function_case_clauses(
     let mut typed_clauses = Vec::with_capacity(clauses.len());
     for (value, clause) in clauses {
         let ExprKind::Function(clause) = clause.into_kind() else {
-            return Err(branch_return_type_mismatch());
+            return Err(invalid_case_shape(
+                InvalidCaseShapeReason::BranchReturnTypeMismatch,
+            ));
         };
         let Some(clause) = clause.into_function() else {
-            return Err(branch_return_type_mismatch());
+            return Err(invalid_case_shape(
+                InvalidCaseShapeReason::BranchReturnTypeMismatch,
+            ));
         };
         typed_clauses.push((value, clause));
     }
     Ok(typed_clauses)
 }
 
-fn branch_return_type_mismatch() -> PlanError {
-    invalid_case_shape(InvalidCaseShapeReason::BranchReturnTypeMismatch)
-}
-
 #[cfg(test)]
 mod tests {
     use crate::plan::{
-        BoolFunctionId, Expr, FloatExpr, FloatFunctionId, FunctionExpr, FunctionFunctionId,
-        FunctionType, IntCaseBranches, IntFunctionExpr, IntFunctionFunctionId, IntFunctionId,
-        IntLocalId, ListFunctionId, LocalId, NilFunctionId, RuntimeFunctionId, StringFunctionId,
-        TupleFunctionId, ValueType,
+        BoolExpr, BoolFunctionId, Expr, FloatExpr, FloatFunctionId, FunctionExpr,
+        FunctionFunctionId, FunctionType, IntCaseBranches, IntFunctionExpr, IntFunctionFunctionId,
+        IntFunctionId, IntLocalId, IntReturn, ListFunctionId, LocalId, NilFunctionId,
+        RuntimeFunctionId, StringFunctionId, TupleFunctionId, ValueType,
     };
     use crate::planner::dsl::{
         bool_, bool_return_expr, bool_return_int_case, float, function, function_ref, int,
@@ -465,7 +551,7 @@ mod tests {
         InvalidCaseShapeReason, InvalidExpressionType, InvalidTypedAstReason, PlanError,
         UnsupportedCaseReason, UnsupportedExpressionKind,
     };
-    use gleam_core::ast::{Pattern, TypedModule};
+    use gleam_core::ast::{ClauseGuard, Constant, Pattern, TypedModule};
     use gleam_core::type_::{self, error::VariableOrigin};
     use num_bigint::BigInt;
 
@@ -667,6 +753,46 @@ pub fn main() {
                             int_return_expr(local_int(1, "other").add_int(int(1))),
                         ),
                     ),
+                ),
+            ),
+            [],
+        );
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn plan_int_case_guard_binds_subject_once_and_falls_through() {
+        let actual = plan_module(crate::planner::support::compile(
+            r#"
+pub fn main() {
+  case 41 {
+    other if other > 40 -> other + 1
+    _ -> 0
+  }
+}
+"#,
+        ))
+        .expect("source should plan");
+        let bind_other = let_int_step(1, "other", local_int(0, "<case:int:0>"));
+        let condition = BoolExpr::block(
+            vec![bind_other.clone()],
+            BoolExpr::and(
+                BoolExpr::value(true),
+                BoolExpr::gt_int(local_int(1, "other").into(), int(40).into()),
+            ),
+        );
+        let guarded_branch = int_return_block(
+            [bind_other],
+            int_return_expr(local_int(1, "other").add_int(int(1))),
+        );
+        let expected = module(
+            "main",
+            function(
+                "main",
+                int_return_block(
+                    [let_int_step(0, "<case:int:0>", int(41))],
+                    IntReturn::bool_case(condition, guarded_branch, int_return_expr(int(0))),
                 ),
             ),
             [],
@@ -958,6 +1084,10 @@ pub fn main() {
     fn reject_profile_int_case_patterns() {
         let cases = [
             (
+                r#"pub fn main() { case 1 { 1 | 2 -> 1 _ -> 0 } }"#,
+                UnsupportedCaseReason::AlternativePatterns,
+            ),
+            (
                 r#"pub fn main() { case 1 { 1 as value -> 1 _ -> 0 } }"#,
                 UnsupportedCaseReason::AssignPattern,
             ),
@@ -968,10 +1098,6 @@ pub fn main() {
             (
                 r#"pub fn main() { case 1 { _ as alias -> 1 } }"#,
                 UnsupportedCaseReason::AssignPattern,
-            ),
-            (
-                r#"pub fn main() { case 1 { 1 if True -> 1 _ -> 0 } }"#,
-                UnsupportedCaseReason::Guard,
             ),
         ];
 
@@ -1194,6 +1320,72 @@ fn add_one(value: Int) {
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::CaseShape {
                     reason: InvalidCaseShapeReason::MissingFallbackPattern,
+                },
+            }),
+        );
+    }
+
+    #[test]
+    fn reject_margin_int_case_guard_must_be_bool() {
+        let mut module = compile_int_case_module();
+        let (_, _, clauses) =
+            super::super::expect_case_statement_mut(&mut module.definitions.functions[0].body[0]);
+        clauses[0].guard = Some(ClauseGuard::Constant(Constant::Int {
+            location: dummy_span(),
+            value: "1".into(),
+            int_value: BigInt::from(1),
+        }));
+
+        assert_eq!(
+            plan_module(module),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionType {
+                    expected: InvalidExpressionType::Bool,
+                    actual: InvalidExpressionType::Int,
+                },
+            }),
+        );
+    }
+
+    #[test]
+    fn reject_margin_guarded_int_case_pattern_shapes() {
+        let mut empty_pattern = compile_int_case_module();
+        let (_, _, clauses) = super::super::expect_case_statement_mut(
+            &mut empty_pattern.definitions.functions[0].body[0],
+        );
+        clauses[0].guard = Some(ClauseGuard::Constant(Constant::Int {
+            location: dummy_span(),
+            value: "1".into(),
+            int_value: BigInt::from(1),
+        }));
+        clauses[0].pattern.clear();
+        assert_eq!(
+            plan_module(empty_pattern),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::CaseShape {
+                    reason: InvalidCaseShapeReason::PatternSubjectCountMismatch,
+                },
+            }),
+        );
+
+        let mut pattern_type_mismatch = compile_int_case_module();
+        let (_, _, clauses) = super::super::expect_case_statement_mut(
+            &mut pattern_type_mismatch.definitions.functions[0].body[0],
+        );
+        clauses[0].guard = Some(ClauseGuard::Constant(Constant::Int {
+            location: dummy_span(),
+            value: "1".into(),
+            int_value: BigInt::from(1),
+        }));
+        clauses[0].pattern[0] = Pattern::String {
+            location: dummy_span(),
+            value: "one".into(),
+        };
+        assert_eq!(
+            plan_module(pattern_type_mismatch),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::CaseShape {
+                    reason: InvalidCaseShapeReason::PatternTypeMismatch,
                 },
             }),
         );

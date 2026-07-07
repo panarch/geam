@@ -1,5 +1,3 @@
-mod constant;
-
 use crate::plan::{
     BoolExpr, BoolFunctionExpr, Expr, FloatExpr, FloatFunctionExpr, FunctionExpr,
     FunctionFunctionExpr, IntExpr, IntFunctionExpr, ListExpr, ListFunctionExpr, LocalId, NilExpr,
@@ -89,7 +87,7 @@ pub(super) fn plan_var(
         }),
         ValueConstructorVariant::ModuleConstant {
             module, literal, ..
-        } if module == *context.module_name => constant::plan(literal, context),
+        } if module == *context.module_name => super::constant::plan(literal, context),
         ValueConstructorVariant::ModuleConstant { .. } => Err(PlanError::InvalidTypedAst {
             reason: InvalidTypedAstReason::ExpressionShape {
                 kind: InvalidExpressionShapeKind::ModuleSelect,
