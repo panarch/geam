@@ -147,13 +147,11 @@ fn plan_case_branch(
     case_type: &Type,
     return_type: &ValueType,
     then: TypedExpr,
-    variable_binding: Option<(EcoString, Expr)>,
+    branch_bindings: Vec<(EcoString, Expr)>,
     context: &mut PlanContext<'_>,
 ) -> Result<Expr, PlanError> {
     context.with_local_scope(|context| {
-        let steps = variable_binding
-            .map(|(name, value)| vec![plan_variable_runtime_step(name, value, context)])
-            .unwrap_or_default();
+        let steps = plan_branch_binding_steps(branch_bindings, context);
         let branch = super::super::plan_expr_with_expected_source_stop_type(
             then,
             return_type.clone(),
@@ -180,7 +178,7 @@ struct OrderedCaseClauseInput<'a> {
     case_type: &'a Type,
     return_type: &'a ValueType,
     then: TypedExpr,
-    variable_binding: Option<(EcoString, Expr)>,
+    branch_bindings: Vec<(EcoString, Expr)>,
     guard: Option<TypedClauseGuard>,
     match_condition: BoolExpr,
     is_total: bool,
@@ -194,15 +192,14 @@ fn plan_ordered_case_clause(
         case_type,
         return_type,
         then,
-        variable_binding,
+        branch_bindings,
         guard,
         match_condition,
         is_total,
     } = input;
 
     context.with_local_scope(|context| {
-        let binding_step =
-            variable_binding.map(|(name, value)| plan_variable_runtime_step(name, value, context));
+        let binding_steps = plan_branch_binding_steps(branch_bindings, context);
         let guard_condition = guard
             .map(|guard| super::guard::plan_bool(guard, context))
             .transpose()?;
@@ -210,9 +207,10 @@ fn plan_ordered_case_clause(
             Some(guard_condition) => BoolExpr::and(match_condition, guard_condition),
             None => match_condition,
         };
-        let condition = match &binding_step {
-            Some(step) => BoolExpr::block(vec![step.clone()], condition),
-            None => condition,
+        let condition = if binding_steps.is_empty() {
+            condition
+        } else {
+            BoolExpr::block(binding_steps.clone(), condition)
         };
 
         let branch = super::super::plan_expr_with_expected_source_stop_type(
@@ -221,10 +219,10 @@ fn plan_ordered_case_clause(
             context,
         )?;
         validate_case_branch_type(case_type, &branch)?;
-        let branch = if let Some(step) = binding_step {
-            super::super::block::block_expr(vec![step], branch)
-        } else {
+        let branch = if binding_steps.is_empty() {
             branch
+        } else {
+            super::super::block::block_expr(binding_steps, branch)
         };
 
         Ok(OrderedCaseClause {
@@ -233,6 +231,24 @@ fn plan_ordered_case_clause(
             is_total,
         })
     })
+}
+
+fn branch_bindings(names: &[EcoString], value: Expr) -> Vec<(EcoString, Expr)> {
+    names
+        .iter()
+        .cloned()
+        .map(|name| (name, value.clone()))
+        .collect()
+}
+
+fn plan_branch_binding_steps(
+    bindings: Vec<(EcoString, Expr)>,
+    context: &mut PlanContext<'_>,
+) -> Vec<Step> {
+    bindings
+        .into_iter()
+        .map(|(name, value)| plan_variable_runtime_step(name, value, context))
+        .collect()
 }
 
 fn ordered_case_expr(clauses: Vec<OrderedCaseClause>) -> Result<Expr, PlanError> {
@@ -547,7 +563,7 @@ pub fn main() {
                 case_type: case_type.as_ref(),
                 return_type: &crate::plan::ValueType::String,
                 then: super::super::super::typed_int_expr(1),
-                variable_binding: None,
+                branch_bindings: Vec::new(),
                 guard: None,
                 match_condition: BoolExpr::value(true),
                 is_total: true,

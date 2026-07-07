@@ -26,7 +26,7 @@ pub(super) fn plan(
             plan_guarded_string_case(type_.as_ref(), return_type, subject, clauses, context)?;
         return Ok(super::case_subject_block(subject_step, case));
     }
-    let needs_subject_binding = clauses.iter().any(clause_has_string_variable_pattern);
+    let needs_subject_binding = clauses.iter().any(clause_has_string_bound_name);
     let (subject_step, subject) = if needs_subject_binding {
         let (step, subject) = super::bind_string_case_subject(subject, context);
         (Some(step), subject)
@@ -38,15 +38,12 @@ pub(super) fn plan(
     for clause in clauses {
         let pattern = single_case_pattern(clause.pattern)?;
         let pattern = plan_string_case_pattern(pattern)?;
-        let binding = pattern
-            .bound_name()
-            .cloned()
-            .map(|name| (name, Expr::string(subject.clone())));
+        let bindings = super::branch_bindings(pattern.bound_names(), Expr::string(subject.clone()));
         let branch =
-            super::plan_case_branch(type_.as_ref(), &return_type, clause.then, binding, context)?;
+            super::plan_case_branch(type_.as_ref(), &return_type, clause.then, bindings, context)?;
 
         match pattern {
-            StringCasePattern::Literal(value) => {
+            StringCasePattern::Literal { value, .. } => {
                 if fallback.is_none()
                     && literal_clauses
                         .iter()
@@ -84,13 +81,10 @@ fn plan_guarded_string_case(
     for clause in clauses {
         let pattern = single_case_pattern(clause.pattern)?;
         let pattern = plan_string_case_pattern(pattern)?;
-        let binding = pattern
-            .bound_name()
-            .cloned()
-            .map(|name| (name, Expr::string(subject.clone())));
+        let bindings = super::branch_bindings(pattern.bound_names(), Expr::string(subject.clone()));
         let is_total = matches!(pattern, StringCasePattern::Any { .. }) && clause.guard.is_none();
         let match_condition = match pattern {
-            StringCasePattern::Literal(value) => BoolExpr::equal(
+            StringCasePattern::Literal { value, .. } => BoolExpr::equal(
                 Expr::string(subject.clone()),
                 Expr::string(StringExpr::value(value)),
             ),
@@ -101,7 +95,7 @@ fn plan_guarded_string_case(
                 case_type,
                 return_type: &return_type,
                 then: clause.then,
-                variable_binding: binding,
+                branch_bindings: bindings,
                 guard: clause.guard,
                 match_condition,
                 is_total,
@@ -115,38 +109,56 @@ fn plan_guarded_string_case(
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum StringCasePattern {
-    Literal(EcoString),
-    Any { bound_name: Option<EcoString> },
+    Literal {
+        value: EcoString,
+        bound_names: Vec<EcoString>,
+    },
+    Any {
+        bound_names: Vec<EcoString>,
+    },
 }
 
 impl StringCasePattern {
-    fn bound_name(&self) -> Option<&EcoString> {
+    fn bound_names(&self) -> &[EcoString] {
         match self {
-            StringCasePattern::Any { bound_name } => bound_name.as_ref(),
-            StringCasePattern::Literal(_) => None,
+            StringCasePattern::Literal { bound_names, .. }
+            | StringCasePattern::Any { bound_names } => bound_names,
+        }
+    }
+
+    fn add_bound_name(&mut self, name: EcoString) {
+        match self {
+            StringCasePattern::Literal { bound_names, .. }
+            | StringCasePattern::Any { bound_names } => {
+                bound_names.push(name);
+            }
         }
     }
 }
 
 fn plan_string_case_pattern(pattern: Pattern<Arc<Type>>) -> Result<StringCasePattern, PlanError> {
     match pattern {
-        Pattern::String { value, .. } => Ok(StringCasePattern::Literal(value)),
+        Pattern::String { value, .. } => Ok(StringCasePattern::Literal {
+            value,
+            bound_names: Vec::new(),
+        }),
         Pattern::Variable { name, type_, .. } if type_.is_string() => Ok(StringCasePattern::Any {
-            bound_name: Some(name),
+            bound_names: vec![name],
         }),
         Pattern::Variable { .. } => Err(invalid_case_shape(
             InvalidCaseShapeReason::PatternTypeMismatch,
         )),
-        Pattern::Discard { type_, .. } if type_.is_string() => {
-            Ok(StringCasePattern::Any { bound_name: None })
-        }
+        Pattern::Discard { type_, .. } if type_.is_string() => Ok(StringCasePattern::Any {
+            bound_names: Vec::new(),
+        }),
         Pattern::Discard { .. } => Err(invalid_case_shape(
             InvalidCaseShapeReason::PatternTypeMismatch,
         )),
-        Pattern::Assign { pattern, .. } => match validate_string_case_assign_pattern(&pattern) {
-            Ok(()) => Err(unsupported_case(UnsupportedCaseReason::AssignPattern)),
-            Err(reason) => Err(invalid_case_shape(reason)),
-        },
+        Pattern::Assign { name, pattern, .. } => {
+            let mut pattern = plan_string_case_pattern(*pattern)?;
+            pattern.add_bound_name(name);
+            Ok(pattern)
+        }
         Pattern::StringPrefix { .. } => {
             Err(unsupported_case(UnsupportedCaseReason::StringPrefixPattern))
         }
@@ -163,25 +175,15 @@ fn plan_string_case_pattern(pattern: Pattern<Arc<Type>>) -> Result<StringCasePat
     }
 }
 
-fn clause_has_string_variable_pattern(clause: &TypedClause) -> bool {
-    clause.pattern.iter().any(|pattern| {
-        matches!(
-            pattern,
-            Pattern::Variable { type_, .. } if type_.is_string()
-        )
-    })
+fn clause_has_string_bound_name(clause: &TypedClause) -> bool {
+    clause.pattern.iter().any(string_pattern_has_bound_name)
 }
 
-fn validate_string_case_assign_pattern(
-    pattern: &Pattern<Arc<Type>>,
-) -> Result<(), InvalidCaseShapeReason> {
+fn string_pattern_has_bound_name(pattern: &Pattern<Arc<Type>>) -> bool {
     match pattern {
-        Pattern::String { .. } => Ok(()),
-        Pattern::Variable { type_, .. } | Pattern::Discard { type_, .. } if type_.is_string() => {
-            Ok(())
-        }
-        Pattern::Invalid { .. } => Err(InvalidCaseShapeReason::InvalidPattern),
-        _ => Err(InvalidCaseShapeReason::PatternTypeMismatch),
+        Pattern::Variable { type_, .. } if type_.is_string() => true,
+        Pattern::Assign { .. } => true,
+        _ => false,
     }
 }
 
@@ -697,6 +699,87 @@ pub fn main() {
     }
 
     #[test]
+    fn plan_string_case_variable_alias_binds_inner_then_alias_in_branch_scope() {
+        let actual = plan_module(crate::planner::support::compile(
+            r#"
+pub fn main() {
+  case "geam" {
+    other as alias -> other <> alias
+  }
+}
+"#,
+        ))
+        .expect("source should plan");
+        let expected = module(
+            "main",
+            function(
+                "main",
+                string_return_block(
+                    [let_string_step(0, "<case:string:0>", string("geam"))],
+                    string_return_string_case(
+                        local_string(0, "<case:string:0>"),
+                        [],
+                        string_return_block(
+                            [
+                                let_string_step(1, "other", local_string(0, "<case:string:0>")),
+                                let_string_step(2, "alias", local_string(0, "<case:string:0>")),
+                            ],
+                            string_return_expr(
+                                local_string(1, "other").concatenate(local_string(2, "alias")),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+            [],
+        );
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn plan_string_case_literal_alias_binds_subject_once_for_alias_value() {
+        let actual = plan_module(crate::planner::support::compile(
+            r#"
+pub fn main() {
+  case "geam" {
+    "geam" as alias -> alias
+    _ -> ""
+  }
+}
+"#,
+        ))
+        .expect("source should plan");
+        let expected = module(
+            "main",
+            function(
+                "main",
+                string_return_block(
+                    [let_string_step(0, "<case:string:0>", string("geam"))],
+                    string_return_string_case(
+                        local_string(0, "<case:string:0>"),
+                        [(
+                            "geam",
+                            string_return_block(
+                                [let_string_step(
+                                    1,
+                                    "alias",
+                                    local_string(0, "<case:string:0>"),
+                                )],
+                                string_return_expr(local_string(1, "alias")),
+                            ),
+                        )],
+                        string_return_expr(string("")),
+                    ),
+                ),
+            ),
+            [],
+        );
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
     fn plan_string_case_guard_binds_subject_once_and_falls_through() {
         let actual = plan_module(crate::planner::support::compile(
             r#"
@@ -719,6 +802,51 @@ pub fn main() {
         );
         let guarded_branch =
             string_return_block([bind_other], string_return_expr(local_string(1, "other")));
+        let expected = module(
+            "main",
+            function(
+                "main",
+                string_return_block(
+                    [let_string_step(0, "<case:string:0>", string("geam"))],
+                    StringReturn::bool_case(
+                        condition,
+                        guarded_branch,
+                        string_return_expr(string("")),
+                    ),
+                ),
+            ),
+            [],
+        );
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn plan_string_case_guarded_alias_binds_guard_and_branch_scope() {
+        let actual = plan_module(crate::planner::support::compile(
+            r#"
+pub fn main() {
+  case "geam" {
+    other as alias if alias == "geam" -> other <> alias
+    _ -> ""
+  }
+}
+"#,
+        ))
+        .expect("source should plan");
+        let bind_other = let_string_step(1, "other", local_string(0, "<case:string:0>"));
+        let bind_alias = let_string_step(2, "alias", local_string(0, "<case:string:0>"));
+        let condition = BoolExpr::block(
+            vec![bind_other.clone(), bind_alias.clone()],
+            BoolExpr::and(
+                BoolExpr::value(true),
+                BoolExpr::equal(local_string(2, "alias").into(), string("geam").into()),
+            ),
+        );
+        let guarded_branch = string_return_block(
+            [bind_other, bind_alias],
+            string_return_expr(local_string(1, "other").concatenate(local_string(2, "alias"))),
+        );
         let expected = module(
             "main",
             function(
@@ -841,24 +969,10 @@ fn duplicate_literal(value: String) {
 
     #[test]
     fn reject_profile_string_case_patterns() {
-        let cases = [
-            (
-                r#"pub fn main() { case "one" { "one" as value -> 1 _ -> 0 } }"#,
-                UnsupportedCaseReason::AssignPattern,
-            ),
-            (
-                r#"pub fn main() { case "one" { value as alias -> 1 } }"#,
-                UnsupportedCaseReason::AssignPattern,
-            ),
-            (
-                r#"pub fn main() { case "one" { _ as alias -> 1 } }"#,
-                UnsupportedCaseReason::AssignPattern,
-            ),
-            (
-                r#"pub fn main() { case "prefix one" { "prefix " <> rest -> 1 _ -> 0 } }"#,
-                UnsupportedCaseReason::StringPrefixPattern,
-            ),
-        ];
+        let cases = [(
+            r#"pub fn main() { case "prefix one" { "prefix " <> rest -> 1 _ -> 0 } }"#,
+            UnsupportedCaseReason::StringPrefixPattern,
+        )];
 
         for (src, reason) in cases {
             assert_eq!(
