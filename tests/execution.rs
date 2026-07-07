@@ -134,6 +134,12 @@ mod control_flow {
             tuple_projection_case,
             tuple_case_return_families,
             list_case_return_families,
+            guard,
+            guard_fallthrough,
+            guard_operator_surface,
+            guard_subject_families,
+            guard_closure_capture,
+            literal_guard_ordering,
             variable_pattern,
             variable_pattern_ordering,
             variable_pattern_families,
@@ -404,7 +410,6 @@ mod rejection {
 
     mod case_patterns {
         rejection_cases!("case_patterns";
-            guard,
             alternative_patterns,
             multiple_subjects,
             tuple_pattern,

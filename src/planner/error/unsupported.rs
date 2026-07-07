@@ -68,8 +68,6 @@ pub enum UnsupportedCaseReason {
     AlternativePatterns,
     #[error("assign patterns are not supported")]
     AssignPattern,
-    #[error("guards are not supported")]
-    Guard,
     #[error("multiple subjects are not supported")]
     MultipleSubjects,
     #[error("case subject type is not supported")]

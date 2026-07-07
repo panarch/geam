@@ -2,9 +2,11 @@ use super::{
     case_return_type, invalid_case_shape, single_case_pattern, unsupported_case,
     validate_clause_shape,
 };
-use crate::plan::{BoolCaseBranches, BoolExpr, Expr, ExprKind};
+use crate::plan::{BoolExpr, Expr, ValueType};
 use crate::planner::context::PlanContext;
-use crate::planner::error::{InvalidCaseShapeReason, PlanError, UnsupportedCaseReason};
+use crate::planner::error::{
+    InvalidCaseShapeReason, InvalidTypedAstReason, PlanError, UnsupportedCaseReason,
+};
 use ecow::EcoString;
 use gleam_core::ast::{Pattern, TypedClause, TypedExpr};
 use gleam_core::type_::Type;
@@ -20,6 +22,11 @@ pub(super) fn plan(
     let return_type = case_return_type(type_.as_ref())?;
     for clause in &clauses {
         validate_clause_shape(clause)?;
+    }
+    if clauses.iter().any(|clause| clause.guard.is_some()) {
+        let (subject_step, subject) = super::bind_bool_case_subject(subject, context);
+        let case = plan_guarded_bool_case(type_.as_ref(), return_type, subject, clauses, context)?;
+        return Ok(super::case_subject_block(subject_step, case));
     }
     let needs_subject_binding = clauses.iter().any(clause_has_bool_variable_pattern);
     let (subject_step, subject) = if needs_subject_binding {
@@ -57,9 +64,71 @@ pub(super) fn plan(
         InvalidCaseShapeReason::MissingFalsePattern,
     ))?;
 
-    bool_case_expr(subject, true_, false_).map(|case| match subject_step {
+    super::bool_case_expr(subject, true_, false_).map(|case| match subject_step {
         Some(step) => super::case_subject_block(step, case),
         None => case,
+    })
+}
+
+fn plan_guarded_bool_case(
+    case_type: &Type,
+    return_type: ValueType,
+    subject: BoolExpr,
+    clauses: Vec<TypedClause>,
+    context: &mut PlanContext<'_>,
+) -> Result<Expr, PlanError> {
+    let mut true_clauses = Vec::with_capacity(clauses.len());
+    let mut false_clauses = Vec::with_capacity(clauses.len());
+    for clause in clauses {
+        let pattern = single_case_pattern(clause.pattern)?;
+        let pattern = plan_bool_case_pattern(pattern)?;
+        let binding = pattern
+            .bound_name()
+            .cloned()
+            .map(|name| (name, Expr::bool(subject.clone())));
+        let is_total = clause.guard.is_none();
+        let ordered_clause = super::plan_ordered_case_clause(
+            super::OrderedCaseClauseInput {
+                case_type,
+                return_type: &return_type,
+                then: clause.then,
+                variable_binding: binding,
+                guard: clause.guard,
+                match_condition: BoolExpr::value(true),
+                is_total,
+            },
+            context,
+        )?;
+
+        match pattern {
+            BoolCasePattern::True => true_clauses.push(ordered_clause),
+            BoolCasePattern::False => false_clauses.push(ordered_clause),
+            BoolCasePattern::Any { .. } => {
+                true_clauses.push(ordered_clause.clone());
+                false_clauses.push(ordered_clause);
+            }
+        }
+    }
+
+    let true_ = ordered_bool_case_branch(true_clauses, InvalidCaseShapeReason::MissingTruePattern)?;
+    let false_ =
+        ordered_bool_case_branch(false_clauses, InvalidCaseShapeReason::MissingFalsePattern)?;
+
+    super::bool_case_expr(subject, true_, false_)
+}
+
+fn ordered_bool_case_branch(
+    clauses: Vec<super::OrderedCaseClause>,
+    missing_reason: InvalidCaseShapeReason,
+) -> Result<Expr, PlanError> {
+    super::ordered_case_expr(clauses).map_err(|error| match error {
+        PlanError::InvalidTypedAst {
+            reason:
+                InvalidTypedAstReason::CaseShape {
+                    reason: InvalidCaseShapeReason::MissingFallbackPattern,
+                },
+        } => invalid_case_shape(missing_reason),
+        error => error,
     })
 }
 
@@ -165,87 +234,20 @@ fn set_case_branch(branch: &mut Option<Expr>, value: Expr) {
     }
 }
 
-fn bool_case_expr(subject: BoolExpr, true_: Expr, false_: Expr) -> Result<Expr, PlanError> {
-    let branches = match (true_.into_kind(), false_.into_kind()) {
-        (ExprKind::Int(true_), ExprKind::Int(false_)) => BoolCaseBranches::Int { true_, false_ },
-        (ExprKind::String(true_), ExprKind::String(false_)) => {
-            BoolCaseBranches::String { true_, false_ }
-        }
-        (ExprKind::Float(true_), ExprKind::Float(false_)) => {
-            BoolCaseBranches::Float { true_, false_ }
-        }
-        (ExprKind::Bool(true_), ExprKind::Bool(false_)) => BoolCaseBranches::Bool { true_, false_ },
-        (ExprKind::Nil(true_), ExprKind::Nil(false_)) => BoolCaseBranches::Nil { true_, false_ },
-        (ExprKind::Tuple(true_), ExprKind::Tuple(false_)) => {
-            BoolCaseBranches::Tuple { true_, false_ }
-        }
-        (ExprKind::List(true_), ExprKind::List(false_)) => BoolCaseBranches::List { true_, false_ },
-        (ExprKind::Function(true_), ExprKind::Function(false_)) => {
-            bool_function_case_branches(true_, false_)?
-        }
-        _ => {
-            return Err(invalid_case_shape(
-                InvalidCaseShapeReason::BranchReturnTypeMismatch,
-            ));
-        }
-    };
-
-    Ok(Expr::bool_case(subject, branches))
-}
-
-fn bool_function_case_branches(
-    true_: crate::plan::FunctionExpr,
-    false_: crate::plan::FunctionExpr,
-) -> Result<BoolCaseBranches, PlanError> {
-    match (true_.into_kind(), false_.into_kind()) {
-        (crate::plan::FunctionExprKind::Int(true_), crate::plan::FunctionExprKind::Int(false_)) => {
-            Ok(BoolCaseBranches::IntFunction { true_, false_ })
-        }
-        (
-            crate::plan::FunctionExprKind::String(true_),
-            crate::plan::FunctionExprKind::String(false_),
-        ) => Ok(BoolCaseBranches::StringFunction { true_, false_ }),
-        (
-            crate::plan::FunctionExprKind::Float(true_),
-            crate::plan::FunctionExprKind::Float(false_),
-        ) => Ok(BoolCaseBranches::FloatFunction { true_, false_ }),
-        (
-            crate::plan::FunctionExprKind::Bool(true_),
-            crate::plan::FunctionExprKind::Bool(false_),
-        ) => Ok(BoolCaseBranches::BoolFunction { true_, false_ }),
-        (crate::plan::FunctionExprKind::Nil(true_), crate::plan::FunctionExprKind::Nil(false_)) => {
-            Ok(BoolCaseBranches::NilFunction { true_, false_ })
-        }
-        (
-            crate::plan::FunctionExprKind::Tuple(true_),
-            crate::plan::FunctionExprKind::Tuple(false_),
-        ) => Ok(BoolCaseBranches::TupleFunction { true_, false_ }),
-        (
-            crate::plan::FunctionExprKind::List(true_),
-            crate::plan::FunctionExprKind::List(false_),
-        ) => Ok(BoolCaseBranches::ListFunction { true_, false_ }),
-        (
-            crate::plan::FunctionExprKind::Function(true_),
-            crate::plan::FunctionExprKind::Function(false_),
-        ) => Ok(BoolCaseBranches::FunctionFunction { true_, false_ }),
-        _ => Err(invalid_case_shape(
-            InvalidCaseShapeReason::BranchReturnTypeMismatch,
-        )),
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use crate::plan::{
         BoolExpr, BoolFunctionId, Expr, FloatExpr, FloatFunctionId, FunctionExpr,
         FunctionFunctionId, FunctionType, IntFunctionFunctionId, IntFunctionId, IntLocalId,
-        ListFunctionId, LocalId, NilFunctionId, RuntimeFunctionId, StringFunctionId, ValueType,
+        IntReturn, ListFunctionId, LocalId, NilFunctionId, RuntimeFunctionId, StringFunctionId,
+        ValueType,
     };
     use crate::planner::dsl::{
         bool_, bool_return_block, bool_return_bool_case, bool_return_expr, call_bool, function,
-        function_ref, int, int_return_bool_case, int_return_expr, let_bool_step, list,
-        list_return_bool_case, list_return_expr, local_bool, module, nil, nil_return_bool_case,
-        nil_return_expr, return_list, string, string_return_bool_case, string_return_expr,
+        function_ref, int, int_return_block, int_return_bool_case, int_return_expr, let_bool_step,
+        list, list_return_bool_case, list_return_expr, local_bool, module, nil,
+        nil_return_bool_case, nil_return_expr, return_list, string, string_return_bool_case,
+        string_return_expr,
     };
     use crate::planner::plan_module;
     use crate::planner::support::{dummy_span, expect_plan_error};
@@ -253,7 +255,7 @@ mod tests {
         InvalidCaseShapeReason, InvalidExpressionType, InvalidTypedAstReason, PlanError,
         UnsupportedCaseReason, UnsupportedExpressionKind,
     };
-    use gleam_core::ast::Pattern;
+    use gleam_core::ast::{BinOp, ClauseGuard, Constant, Pattern};
     use gleam_core::type_::{self, error::VariableOrigin};
     use num_bigint::BigInt;
 
@@ -375,6 +377,45 @@ pub fn main() {
                 bool_return_block(
                     [let_bool_step(0, "<case:bool:0>", bool_(true))],
                     bool_return_bool_case(local_bool(0, "<case:bool:0>"), branch.clone(), branch),
+                ),
+            ),
+            [],
+        );
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn plan_bool_case_guard_binds_subject_once_and_falls_through() {
+        let actual = plan_module(crate::planner::support::compile(
+            r#"
+pub fn main() {
+  case True {
+    other if other -> 1
+    _ -> 0
+  }
+}
+"#,
+        ))
+        .expect("source should plan");
+        let bind_other = let_bool_step(1, "other", local_bool(0, "<case:bool:0>"));
+        let condition = BoolExpr::block(
+            vec![bind_other.clone()],
+            BoolExpr::and(BoolExpr::value(true), local_bool(1, "other").into()),
+        );
+        let guarded_branch = int_return_block([bind_other], int_return_expr(int(1)));
+        let guarded_case = IntReturn::bool_case(condition, guarded_branch, int_return_expr(int(0)));
+        let expected = module(
+            "main",
+            function(
+                "main",
+                int_return_block(
+                    [let_bool_step(0, "<case:bool:0>", bool_(true))],
+                    int_return_bool_case(
+                        local_bool(0, "<case:bool:0>"),
+                        guarded_case.clone(),
+                        guarded_case,
+                    ),
                 ),
             ),
             [],
@@ -530,7 +571,7 @@ fn duplicate_true(value: Bool) {
     #[test]
     fn reject_margin_bool_case_function_branch_type_mismatch_direct() {
         assert_eq!(
-            (super::bool_function_case_branches(
+            (super::super::bool_function_case_branches(
                 FunctionExpr::from(function_ref(
                     RuntimeFunctionId::Int(IntFunctionId(0)),
                     [LocalId::Int(IntLocalId(0))],
@@ -548,7 +589,7 @@ fn duplicate_true(value: Bool) {
             }),
         );
         assert_eq!(
-            (super::bool_function_case_branches(
+            (super::super::bool_function_case_branches(
                 FunctionExpr::from(function_ref(
                     RuntimeFunctionId::Bool(BoolFunctionId(0)),
                     [LocalId::Int(IntLocalId(0))],
@@ -570,21 +611,21 @@ fn duplicate_true(value: Bool) {
     #[test]
     fn plan_bool_case_function_branch_return_families_direct() {
         assert_eq!(
-            super::bool_case_expr(
+            super::super::bool_case_expr(
                 BoolExpr::value(true),
                 Expr::float(FloatExpr::value(1.0)),
                 Expr::float(FloatExpr::value(0.0)),
             ),
             Ok(Expr::bool_case(
                 BoolExpr::value(true),
-                super::BoolCaseBranches::Float {
+                crate::plan::BoolCaseBranches::Float {
                     true_: FloatExpr::value(1.0),
                     false_: FloatExpr::value(0.0),
                 },
             )),
         );
 
-        let string_branches = super::bool_function_case_branches(
+        let string_branches = super::super::bool_function_case_branches(
             FunctionExpr::from(function_ref(
                 RuntimeFunctionId::String(StringFunctionId(0)),
                 [LocalId::String(crate::plan::StringLocalId(0))],
@@ -603,7 +644,7 @@ fn duplicate_true(value: Bool) {
             ))),
         );
 
-        let float_branches = super::bool_function_case_branches(
+        let float_branches = super::super::bool_function_case_branches(
             FunctionExpr::from(function_ref(
                 RuntimeFunctionId::Float(FloatFunctionId(0)),
                 [LocalId::Float(crate::plan::FloatLocalId(0))],
@@ -622,7 +663,7 @@ fn duplicate_true(value: Bool) {
             ))),
         );
 
-        let bool_branches = super::bool_function_case_branches(
+        let bool_branches = super::super::bool_function_case_branches(
             FunctionExpr::from(function_ref(
                 RuntimeFunctionId::Bool(BoolFunctionId(0)),
                 [LocalId::Bool(crate::plan::BoolLocalId(0))],
@@ -641,7 +682,7 @@ fn duplicate_true(value: Bool) {
             ))),
         );
 
-        let nil_branches = super::bool_function_case_branches(
+        let nil_branches = super::super::bool_function_case_branches(
             FunctionExpr::from(function_ref(
                 RuntimeFunctionId::Nil(NilFunctionId(0)),
                 [LocalId::Nil(crate::plan::NilLocalId(0))],
@@ -660,7 +701,7 @@ fn duplicate_true(value: Bool) {
             ))),
         );
 
-        let list_branches = super::bool_function_case_branches(
+        let list_branches = super::super::bool_function_case_branches(
             FunctionExpr::from(function_ref(
                 RuntimeFunctionId::List {
                     id: ListFunctionId(0),
@@ -686,7 +727,7 @@ fn duplicate_true(value: Bool) {
         );
 
         let returned_function_type = FunctionType::new(vec![ValueType::Int], ValueType::Int);
-        let function_branches = super::bool_function_case_branches(
+        let function_branches = super::super::bool_function_case_branches(
             FunctionExpr::from(function_ref(
                 RuntimeFunctionId::Function {
                     id: FunctionFunctionId::Int(IntFunctionFunctionId(0)),
@@ -995,6 +1036,112 @@ pub fn main() {
     }
 
     #[test]
+    fn reject_margin_guarded_bool_case_pattern_shapes() {
+        let mut empty_pattern = super::super::compile_bool_case_module();
+        let (_, _, clauses) = super::super::expect_case_statement_mut(
+            &mut empty_pattern.definitions.functions[0].body[0],
+        );
+        clauses[0].guard = Some(bool_true_guard());
+        clauses[0].pattern.clear();
+        assert_eq!(
+            plan_module(empty_pattern),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::CaseShape {
+                    reason: InvalidCaseShapeReason::PatternSubjectCountMismatch,
+                },
+            }),
+        );
+
+        let mut pattern_type_mismatch = super::super::compile_bool_case_module();
+        let (_, _, clauses) = super::super::expect_case_statement_mut(
+            &mut pattern_type_mismatch.definitions.functions[0].body[0],
+        );
+        clauses[0].guard = Some(bool_true_guard());
+        clauses[0].pattern[0] = Pattern::Int {
+            location: dummy_span(),
+            value: "1".into(),
+            int_value: BigInt::from(1),
+        };
+        assert_eq!(
+            plan_module(pattern_type_mismatch),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::CaseShape {
+                    reason: InvalidCaseShapeReason::PatternTypeMismatch,
+                },
+            }),
+        );
+    }
+
+    #[test]
+    fn reject_margin_guarded_bool_case_missing_patterns() {
+        let mut missing_true_pattern = super::super::compile_bool_case_module();
+        let (_, _, clauses) = super::super::expect_case_statement_mut(
+            &mut missing_true_pattern.definitions.functions[0].body[0],
+        );
+        clauses.remove(0);
+        clauses[0].guard = Some(bool_true_guard());
+        assert_eq!(
+            plan_module(missing_true_pattern),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::CaseShape {
+                    reason: InvalidCaseShapeReason::MissingTruePattern,
+                },
+            }),
+        );
+
+        let mut missing_false_pattern = super::super::compile_bool_case_module();
+        let (_, _, clauses) = super::super::expect_case_statement_mut(
+            &mut missing_false_pattern.definitions.functions[0].body[0],
+        );
+        clauses.pop();
+        clauses.push(gleam_core::ast::Clause {
+            location: dummy_span(),
+            pattern: vec![Pattern::Discard {
+                name: "_".into(),
+                location: dummy_span(),
+                type_: type_::bool(),
+            }],
+            alternative_patterns: Vec::new(),
+            guard: Some(bool_true_guard()),
+            then: crate::planner::expression::typed_int_expr(0),
+        });
+        assert_eq!(
+            plan_module(missing_false_pattern),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::CaseShape {
+                    reason: InvalidCaseShapeReason::MissingFalsePattern,
+                },
+            }),
+        );
+    }
+
+    #[test]
+    fn reject_margin_ordered_bool_case_branch_preserves_non_fallback_errors() {
+        assert_eq!(
+            super::ordered_bool_case_branch(
+                vec![
+                    super::super::OrderedCaseClause {
+                        condition: BoolExpr::value(true),
+                        branch: int(1).into(),
+                        is_total: false,
+                    },
+                    super::super::OrderedCaseClause {
+                        condition: BoolExpr::value(true),
+                        branch: bool_(true).into(),
+                        is_total: true,
+                    },
+                ],
+                InvalidCaseShapeReason::MissingTruePattern,
+            ),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::CaseShape {
+                    reason: InvalidCaseShapeReason::BranchReturnTypeMismatch,
+                },
+            }),
+        );
+    }
+
+    #[test]
     fn reject_margin_bool_case_subject_type_mismatch() {
         let mut module = super::super::compile_bool_case_module();
         let (_, subjects, _) =
@@ -1034,9 +1181,31 @@ pub fn main() {
     }
 
     #[test]
+    fn reject_margin_bool_case_guard_must_be_bool() {
+        let mut module = super::super::compile_bool_case_module();
+        let (_, _, clauses) =
+            super::super::expect_case_statement_mut(&mut module.definitions.functions[0].body[0]);
+        clauses[0].guard = Some(ClauseGuard::Constant(Constant::Int {
+            location: dummy_span(),
+            value: "1".into(),
+            int_value: BigInt::from(1),
+        }));
+
+        assert_eq!(
+            plan_module(module),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionType {
+                    expected: InvalidExpressionType::Bool,
+                    actual: InvalidExpressionType::Int,
+                },
+            }),
+        );
+    }
+
+    #[test]
     fn reject_margin_bool_case_expr_type_mismatch() {
         assert_eq!(
-            super::bool_case_expr(bool_(true).into(), int(1).into(), bool_(false).into()),
+            super::super::bool_case_expr(bool_(true).into(), int(1).into(), bool_(false).into()),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::CaseShape {
                     reason: InvalidCaseShapeReason::BranchReturnTypeMismatch,
@@ -1048,7 +1217,7 @@ pub fn main() {
     #[test]
     fn reject_margin_bool_case_function_expr_type_mismatch_direct() {
         assert_eq!(
-            super::bool_case_expr(
+            super::super::bool_case_expr(
                 BoolExpr::value(true),
                 Expr::from(function_ref(
                     RuntimeFunctionId::Int(IntFunctionId(0)),
@@ -1113,5 +1282,23 @@ fn stringify(value: Int) {
                 },
             }),
         );
+    }
+
+    fn bool_true_guard() -> ClauseGuard<std::sync::Arc<gleam_core::type_::Type>> {
+        ClauseGuard::BinaryOperator {
+            location: dummy_span(),
+            operator: BinOp::Eq,
+            operator_start: 0,
+            left: Box::new(ClauseGuard::Constant(Constant::Int {
+                location: dummy_span(),
+                value: "1".into(),
+                int_value: BigInt::from(1),
+            })),
+            right: Box::new(ClauseGuard::Constant(Constant::Int {
+                location: dummy_span(),
+                value: "1".into(),
+                int_value: BigInt::from(1),
+            })),
+        }
     }
 }

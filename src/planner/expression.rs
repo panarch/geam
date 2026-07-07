@@ -1,6 +1,7 @@
 mod block;
 mod call;
 mod case;
+mod constant;
 mod function;
 mod operator;
 mod pipeline;
