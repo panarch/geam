@@ -3,11 +3,16 @@ mod float_subject;
 mod int_subject;
 mod string_subject;
 
-use crate::plan::{Expr, ValueType};
+use crate::plan::{
+    BoolExpr, BoolLocalId, Expr, FloatExpr, FloatLocalId, IntExpr, IntLocalId, Step, StringExpr,
+    StringLocalId, ValueType,
+};
 use crate::planner::context::PlanContext;
 use crate::planner::error::{
     InvalidCaseShapeReason, InvalidTypedAstReason, PlanError, UnsupportedCaseReason,
 };
+use crate::planner::statement::plan_variable_runtime_step;
+use ecow::EcoString;
 use gleam_core::ast::{Pattern, TypedClause, TypedExpr};
 use gleam_core::type_::Type;
 use std::sync::Arc;
@@ -98,6 +103,81 @@ pub(super) fn case_return_type(case_type: &Type) -> Result<ValueType, PlanError>
         .ok_or_else(|| invalid_case_shape(InvalidCaseShapeReason::BranchReturnTypeMismatch))
 }
 
+pub(super) fn plan_case_branch(
+    case_type: &Type,
+    return_type: &ValueType,
+    then: TypedExpr,
+    variable_binding: Option<(EcoString, Expr)>,
+    context: &mut PlanContext<'_>,
+) -> Result<Expr, PlanError> {
+    context.with_local_scope(|context| {
+        let steps = variable_binding
+            .map(|(name, value)| vec![plan_variable_runtime_step(name, value, context)])
+            .unwrap_or_default();
+        let branch =
+            super::plan_expr_with_expected_source_stop_type(then, return_type.clone(), context)?;
+        validate_case_branch_type(case_type, &branch)?;
+
+        if steps.is_empty() {
+            Ok(branch)
+        } else {
+            Ok(super::block::block_expr(steps, branch))
+        }
+    })
+}
+
+pub(super) fn bind_int_case_subject(
+    subject: IntExpr,
+    context: &mut PlanContext<'_>,
+) -> (Step, IntExpr) {
+    let local = context.define_internal_int_local();
+    let name = internal_int_case_subject_name(local);
+    (
+        Step::let_int(local, name.clone(), subject),
+        IntExpr::local_get(local, name),
+    )
+}
+
+pub(super) fn bind_string_case_subject(
+    subject: StringExpr,
+    context: &mut PlanContext<'_>,
+) -> (Step, StringExpr) {
+    let local = context.define_internal_string_local();
+    let name = internal_string_case_subject_name(local);
+    (
+        Step::let_string(local, name.clone(), subject),
+        StringExpr::local_get(local, name),
+    )
+}
+
+pub(super) fn bind_float_case_subject(
+    subject: FloatExpr,
+    context: &mut PlanContext<'_>,
+) -> (Step, FloatExpr) {
+    let local = context.define_internal_float_local();
+    let name = internal_float_case_subject_name(local);
+    (
+        Step::let_float(local, name.clone(), subject),
+        FloatExpr::local_get(local, name),
+    )
+}
+
+pub(super) fn bind_bool_case_subject(
+    subject: BoolExpr,
+    context: &mut PlanContext<'_>,
+) -> (Step, BoolExpr) {
+    let local = context.define_internal_bool_local();
+    let name = internal_bool_case_subject_name(local);
+    (
+        Step::let_bool(local, name.clone(), subject),
+        BoolExpr::local_get(local, name),
+    )
+}
+
+pub(super) fn case_subject_block(step: Step, case: Expr) -> Expr {
+    super::block::block_expr(vec![step], case)
+}
+
 pub(super) fn unsupported_case(reason: UnsupportedCaseReason) -> PlanError {
     PlanError::UnsupportedCase { reason }
 }
@@ -106,6 +186,22 @@ pub(super) fn invalid_case_shape(reason: InvalidCaseShapeReason) -> PlanError {
     PlanError::InvalidTypedAst {
         reason: InvalidTypedAstReason::CaseShape { reason },
     }
+}
+
+fn internal_int_case_subject_name(local: IntLocalId) -> EcoString {
+    format!("<case:int:{}>", local.0).into()
+}
+
+fn internal_string_case_subject_name(local: StringLocalId) -> EcoString {
+    format!("<case:string:{}>", local.0).into()
+}
+
+fn internal_float_case_subject_name(local: FloatLocalId) -> EcoString {
+    format!("<case:float:{}>", local.0).into()
+}
+
+fn internal_bool_case_subject_name(local: BoolLocalId) -> EcoString {
+    format!("<case:bool:{}>", local.0).into()
 }
 
 #[cfg(test)]

@@ -134,6 +134,11 @@ mod control_flow {
             tuple_projection_case,
             tuple_case_return_families,
             list_case_return_families,
+            variable_pattern,
+            variable_pattern_ordering,
+            variable_pattern_families,
+            variable_pattern_closure_capture,
+            variable_pattern_scope,
         );
     }
 }
@@ -402,7 +407,6 @@ mod rejection {
             guard,
             alternative_patterns,
             multiple_subjects,
-            variable_pattern,
             tuple_pattern,
             tuple_subject,
             string_prefix_pattern,

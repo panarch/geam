@@ -76,8 +76,6 @@ pub enum UnsupportedCaseReason {
     UnsupportedSubjectType,
     #[error("string prefix patterns are not supported")]
     StringPrefixPattern,
-    #[error("variable patterns are not supported")]
-    VariablePattern,
 }
 
 #[derive(Debug, Error, Clone, Copy, PartialEq, Eq)]

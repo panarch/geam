@@ -4,3 +4,5 @@ pub fn main() {
     other -> other
   }
 }
+
+// geam:expect Int(1)
