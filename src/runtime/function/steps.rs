@@ -90,27 +90,46 @@ pub(in crate::runtime) fn execute_steps(
                 local,
                 pattern,
                 message,
+                site,
+                pattern_span,
             } => {
                 let value = frame.get_list(*local);
                 let mut bindings = Vec::new();
-                if match_assert_pattern(pattern, &Value::List(value), &mut bindings).is_none() {
+                if match_assert_pattern(pattern, &Value::List(value.clone()), &mut bindings)
+                    .is_none()
+                {
                     let message = match message {
                         Some(message) => Some(eval_string_expr(plan, frame, message)?),
                         None => None,
                     };
-                    return Err(ExecutionError::panic(PanicKind::LetAssert { message }));
+                    return Err(ExecutionError::let_assert_panic(
+                        plan.source_context(),
+                        message,
+                        site.clone(),
+                        Value::List(value),
+                        *pattern_span,
+                    ));
                 }
                 for binding in bindings {
                     frame_set_binding(frame, binding);
                 }
             }
-            StepKind::AssertBool { condition, message } => {
+            StepKind::AssertBool {
+                condition,
+                message,
+                site,
+            } => {
                 let message = match message {
                     Some(message) => Some(eval_string_expr(plan, frame, message)?),
                     None => None,
                 };
                 if !eval_bool_expr(plan, frame, condition)? {
-                    return Err(ExecutionError::panic(PanicKind::Assert { message }));
+                    return Err(ExecutionError::source_panic(
+                        plan.source_context(),
+                        PanicKind::Assert,
+                        message,
+                        site.clone(),
+                    ));
                 }
             }
             StepKind::Evaluate(expression) => {
@@ -319,10 +338,10 @@ mod tests {
         IntFunctionValue, IntLocalId, ListAssertPattern, ListAssertTail, ListExpr,
         ListFunctionExpr, ListFunctionId, ListFunctionLocalId, ListFunctionValue, ListLocalId,
         ListValue, NilExpr, NilFunctionExpr, NilFunctionId, NilFunctionLocalId, NilFunctionValue,
-        NilLocalId, PanicExpr, ParamLocal, ReturnExpr, Step, StringExpr, StringFunctionExpr,
-        StringFunctionId, StringFunctionLocalId, StringFunctionValue, StringLocalId, TupleExpr,
-        TupleFunctionExpr, TupleFunctionId, TupleFunctionLocalId, TupleFunctionValue, TupleLocalId,
-        Value, ValueType,
+        NilLocalId, PanicExpr, PanicSite, ParamLocal, ReturnExpr, SourceSpan, Step, StringExpr,
+        StringFunctionExpr, StringFunctionId, StringFunctionLocalId, StringFunctionValue,
+        StringLocalId, TupleExpr, TupleFunctionExpr, TupleFunctionId, TupleFunctionLocalId,
+        TupleFunctionValue, TupleLocalId, Value, ValueType,
     };
     use crate::runtime::frame::Frame;
     use crate::runtime::{ExecutionError, PanicKind};
@@ -484,7 +503,13 @@ mod tests {
 
         execute_steps(
             &plan,
-            &[Step::assert_list(ListLocalId(0), list_pattern(), None)],
+            &[Step::assert_list_at(
+                ListLocalId(0),
+                list_pattern(),
+                None,
+                PanicSite::unknown(),
+                SourceSpan::new(0, 0),
+            )],
             &mut frame,
         )
         .expect("assert should match");
@@ -503,9 +528,10 @@ mod tests {
         assert_eq!(
             execute_steps(
                 &plan,
-                &[Step::assert_bool(
+                &[Step::assert_bool_at(
                     BoolExpr::value(true),
                     Some(StringExpr::value("ok".into())),
+                    PanicSite::unknown(),
                 )],
                 &mut Frame::default(),
             ),
@@ -520,23 +546,36 @@ mod tests {
         assert_eq!(
             execute_steps(
                 &plan,
-                &[Step::assert_bool(BoolExpr::value(false), None)],
+                &[Step::assert_bool_at(
+                    BoolExpr::value(false),
+                    None,
+                    PanicSite::unknown(),
+                )],
                 &mut Frame::default(),
             ),
-            Err(ExecutionError::panic(PanicKind::Assert { message: None })),
+            Err(ExecutionError::source_panic(
+                None,
+                PanicKind::Assert,
+                None,
+                PanicSite::unknown()
+            )),
         );
         assert_eq!(
             execute_steps(
                 &plan,
-                &[Step::assert_bool(
+                &[Step::assert_bool_at(
                     BoolExpr::value(false),
                     Some(StringExpr::value("nope".into())),
+                    PanicSite::unknown(),
                 )],
                 &mut Frame::default(),
             ),
-            Err(ExecutionError::panic(PanicKind::Assert {
-                message: Some("nope".into()),
-            })),
+            Err(ExecutionError::source_panic(
+                None,
+                PanicKind::Assert,
+                Some("nope".into()),
+                PanicSite::unknown(),
+            )),
         );
     }
 
@@ -547,13 +586,22 @@ mod tests {
         assert_eq!(
             execute_steps(
                 &plan,
-                &[Step::assert_bool(
-                    BoolExpr::panic(PanicExpr::todo(None)),
-                    Some(StringExpr::panic(PanicExpr::panic(None))),
+                &[Step::assert_bool_at(
+                    BoolExpr::panic(PanicExpr::todo_at(None, PanicSite::unknown())),
+                    Some(StringExpr::panic(PanicExpr::panic_at(
+                        None,
+                        PanicSite::unknown()
+                    ))),
+                    PanicSite::unknown(),
                 )],
                 &mut Frame::default(),
             ),
-            Err(ExecutionError::panic(PanicKind::Panic { message: None })),
+            Err(ExecutionError::source_panic(
+                None,
+                PanicKind::Panic,
+                None,
+                PanicSite::unknown()
+            )),
         );
     }
 
@@ -563,9 +611,10 @@ mod tests {
 
         assert_expected_function_got_int(execute_steps(
             &plan,
-            &[Step::assert_bool(
+            &[Step::assert_bool_at(
                 failing_bool_expr(),
                 Some(failing_string_expr()),
+                PanicSite::unknown(),
             )],
             &mut Frame::default(),
         ));
@@ -577,9 +626,10 @@ mod tests {
 
         assert_expected_function_got_int(execute_steps(
             &plan,
-            &[Step::assert_bool(
+            &[Step::assert_bool_at(
                 failing_bool_expr(),
                 Some(StringExpr::value("checked".into())),
+                PanicSite::unknown(),
             )],
             &mut Frame::default(),
         ));
@@ -599,10 +649,12 @@ mod tests {
 
         execute_steps(
             &plan,
-            &[Step::assert_list(
+            &[Step::assert_list_at(
                 ListLocalId(0),
                 list_pattern(),
                 Some(failing_string_expr()),
+                PanicSite::unknown(),
+                SourceSpan::new(0, 0),
             )],
             &mut frame,
         )
@@ -619,10 +671,12 @@ mod tests {
 
         assert_expected_function_got_int(execute_steps(
             &plan,
-            &[Step::assert_list(
+            &[Step::assert_list_at(
                 ListLocalId(0),
                 list_pattern(),
                 Some(failing_string_expr()),
+                PanicSite::unknown(),
+                SourceSpan::new(0, 0),
             )],
             &mut frame,
         ));
@@ -637,15 +691,25 @@ mod tests {
 
         let actual = execute_steps(
             &plan,
-            &[Step::assert_list(ListLocalId(0), list_pattern(), None)],
+            &[Step::assert_list_at(
+                ListLocalId(0),
+                list_pattern(),
+                None,
+                PanicSite::unknown(),
+                SourceSpan::new(0, 0),
+            )],
             &mut frame,
         );
 
         assert_eq!(
             actual,
-            Err(ExecutionError::panic(PanicKind::LetAssert {
-                message: None,
-            })),
+            Err(ExecutionError::let_assert_panic(
+                None,
+                None,
+                PanicSite::unknown(),
+                Value::List(ListValue::new(ValueType::Int, Vec::new())),
+                SourceSpan::new(0, 0),
+            )),
         );
         assert_eq!(frame.get_int(IntLocalId(0)), 0.into());
     }
@@ -671,7 +735,7 @@ mod tests {
 
         let actual = execute_steps(
             &plan,
-            &[Step::assert_list(
+            &[Step::assert_list_at(
                 ListLocalId(0),
                 AssertPattern::list(ListAssertPattern::new(
                     ValueType::List(Box::new(ValueType::Int)),
@@ -696,15 +760,27 @@ mod tests {
                     None,
                 )),
                 None,
+                PanicSite::unknown(),
+                SourceSpan::new(0, 0),
             )],
             &mut frame,
         );
 
         assert_eq!(
             actual,
-            Err(ExecutionError::panic(PanicKind::LetAssert {
-                message: None,
-            })),
+            Err(ExecutionError::let_assert_panic(
+                None,
+                None,
+                PanicSite::unknown(),
+                Value::List(ListValue::new(
+                    ValueType::List(Box::new(ValueType::Int)),
+                    vec![
+                        Value::List(ListValue::new(ValueType::Int, vec![Value::Int(1.into())])),
+                        Value::List(ListValue::new(ValueType::Int, Vec::new())),
+                    ],
+                )),
+                SourceSpan::new(0, 0),
+            )),
         );
         assert_eq!(frame.get_int(IntLocalId(0)), 0.into());
         assert_eq!(frame.get_int(IntLocalId(1)), 0.into());
@@ -720,10 +796,12 @@ mod tests {
 
         execute_steps(
             &plan,
-            &[Step::assert_list(
+            &[Step::assert_list_at(
                 ListLocalId(0),
                 AssertPattern::list(ListAssertPattern::new(ValueType::Int, Vec::new(), None)),
                 None,
+                PanicSite::unknown(),
+                SourceSpan::new(0, 0),
             )],
             &mut frame,
         )

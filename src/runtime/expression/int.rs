@@ -128,7 +128,8 @@ fn eval_remainder_int(left: BigInt, right: BigInt) -> BigInt {
 mod tests {
     use super::eval_int_expr;
     use crate::plan::{
-        BoolExpr, Expr, FloatExpr, IntExpr, PanicExpr, Step, StringExpr, TupleExpr, ValueType,
+        BoolExpr, Expr, FloatExpr, IntExpr, PanicExpr, PanicSite, Step, StringExpr, TupleExpr,
+        ValueType,
     };
     use crate::runtime::frame::Frame;
     use crate::runtime::{ExecutionError, PanicKind};
@@ -168,8 +169,17 @@ mod tests {
         let mut frame = Frame::default();
 
         assert_eq!(
-            eval_int_expr(&plan, &mut frame, &IntExpr::panic(PanicExpr::panic(None)),),
-            Err(ExecutionError::panic(PanicKind::Panic { message: None })),
+            eval_int_expr(
+                &plan,
+                &mut frame,
+                &IntExpr::panic(PanicExpr::panic_at(None, PanicSite::unknown())),
+            ),
+            Err(ExecutionError::source_panic(
+                None,
+                PanicKind::Panic,
+                None,
+                PanicSite::unknown()
+            )),
         );
     }
 

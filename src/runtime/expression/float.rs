@@ -111,8 +111,8 @@ mod tests {
         BoolExpr, BoolFunctionExpr, ExecutionPlan, Expr, FloatExpr, FloatFunctionExpr,
         FloatFunctionId, FloatLocalId, FrameLayout, FunctionFunctionExpr, FunctionFunctionId,
         FunctionFunctionValue, FunctionId, FunctionPlan, FunctionReturnFamily, FunctionType,
-        IntExpr, IntFunctionExpr, PanicExpr, ReturnExpr, Step, StringExpr, StringFunctionExpr,
-        StringFunctionFunctionId, TupleExpr, ValueType,
+        IntExpr, IntFunctionExpr, PanicExpr, PanicSite, ReturnExpr, Step, StringExpr,
+        StringFunctionExpr, StringFunctionFunctionId, TupleExpr, ValueType,
     };
     use crate::runtime::frame::Frame;
     use crate::runtime::{ExecutionError, PanicKind};
@@ -151,8 +151,17 @@ mod tests {
         let mut frame = Frame::default();
 
         assert_eq!(
-            eval_float_expr(&plan, &mut frame, &FloatExpr::panic(PanicExpr::panic(None)),),
-            Err(ExecutionError::panic(PanicKind::Panic { message: None })),
+            eval_float_expr(
+                &plan,
+                &mut frame,
+                &FloatExpr::panic(PanicExpr::panic_at(None, PanicSite::unknown())),
+            ),
+            Err(ExecutionError::source_panic(
+                None,
+                PanicKind::Panic,
+                None,
+                PanicSite::unknown()
+            )),
         );
     }
 

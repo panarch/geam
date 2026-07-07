@@ -31,9 +31,9 @@ enum.
 `ExecutionError` has two allowed roles:
 
 - Source-reachable execution stops accepted by the Geam profile use
-  `ExecutionError::Panic(PanicKind)`. Cover them with execution-error fixtures
-  that compile and plan successfully before failing at runtime. Do not add
-  speculative `PanicKind` variants.
+  `ExecutionError::Panic(Panic)`, with `PanicKind` as the source-level tag.
+  Cover them with execution-error fixtures that compile and plan successfully
+  before failing at runtime. Do not add speculative `PanicKind` variants.
 - All other `ExecutionError` variants are execution invariant failures that
   Rust cannot encode in the current plan shape. Adding a non-`Panic` execution
   error variant or invariant kind requires explicit design review.
@@ -66,6 +66,11 @@ are required by an accepted source path.
 Treat over-wide execution plan state as a blocking design issue, even when no
 current source fixture executes incorrectly. The plan model is the validation
 boundary; unused executable shape creates future margin and review ambiguity.
+
+When adding or changing fields on a type with custom `Debug`, `PartialEq`,
+`Eq`, `Hash`, or ordering implementations, update or explicitly justify every
+affected implementation. Only derived/cache fields may be omitted, and owning
+unit tests must prove both included fields and intentionally omitted fields.
 
 ## Gleam Compatibility Rules
 
@@ -173,11 +178,17 @@ to an owning planner unit test.
 
 ## Helper And DSL Rules
 
-Test helpers reduce real repetition without hiding the reviewed shape.
+Test helpers may reduce real repetition and fixture setup, but they must not
+hide the reviewed shape or create a second constructor API for plan/runtime
+shapes.
 
 - Avoid single-use shallow wrapper helpers.
 - Name helpers after their fixture role, not their implementation detail.
 - Keep helpers in the nearest module that uses them.
+- Do not layer test-only constructor helpers. A test-only helper that builds a
+  plan/runtime value must construct the reviewed shape directly from production
+  constructors, not by calling another test-only helper that supplies hidden
+  defaults, sentinel values, dummy ids, empty spans, or unknown sites.
 - Use the crate-internal `planner::dsl` helpers for readable expected plans.
 - Expected-plan DSL is an oracle, not a lowering path: helpers may reduce
   constructor noise, but must not infer, hide, or call planner lowering for the

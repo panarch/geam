@@ -120,7 +120,7 @@ mod tests {
         BoolExpr, BoolFunctionExpr, BoolFunctionId, BoolFunctionValue, CaptureArg, ExecutionPlan,
         Expr, FloatExpr, FunctionExpr, FunctionFunctionExpr, FunctionFunctionId,
         FunctionFunctionValue, FunctionId, FunctionPlan, FunctionType, IntExpr, IntFunctionId,
-        PanicExpr, ParamLocal, ReturnExpr, Step, StringExpr, StringFunctionExpr,
+        PanicExpr, PanicSite, ParamLocal, ReturnExpr, Step, StringExpr, StringFunctionExpr,
         StringFunctionFunctionId, StringFunctionId, StringFunctionLocalId, StringFunctionValue,
         StringLocalId, TupleExpr, ValueType,
     };
@@ -210,9 +210,17 @@ mod tests {
             eval_string_function_expr(
                 &plan,
                 &mut frame,
-                &StringFunctionExpr::panic(PanicExpr::panic(None), type_()),
+                &StringFunctionExpr::panic(
+                    PanicExpr::panic_at(None, PanicSite::unknown()),
+                    type_()
+                ),
             ),
-            Err(ExecutionError::panic(PanicKind::Panic { message: None })),
+            Err(ExecutionError::source_panic(
+                None,
+                PanicKind::Panic,
+                None,
+                PanicSite::unknown()
+            )),
         );
     }
 

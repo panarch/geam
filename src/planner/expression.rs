@@ -97,14 +97,24 @@ pub(super) fn plan_expr(
             },
         }),
         TypedExpr::Todo {
+            location,
             type_,
             kind,
             message,
             ..
-        } => plan_todo_expr(kind, message.map(|message| *message), type_, context),
-        TypedExpr::Panic { type_, message, .. } => {
-            plan_panic_expr(message.map(|message| *message), type_, context)
-        }
+        } => plan_todo_expr(
+            location,
+            kind,
+            message.map(|message| *message),
+            type_,
+            context,
+        ),
+        TypedExpr::Panic {
+            location,
+            type_,
+            message,
+            ..
+        } => plan_panic_expr(location, message.map(|message| *message), type_, context),
         TypedExpr::Echo { .. } => Err(PlanError::UnsupportedExpression {
             kind: UnsupportedExpressionKind::Echo,
         }),
@@ -125,6 +135,7 @@ pub(super) fn plan_expr(
 }
 
 fn plan_panic_expr(
+    location: gleam_core::ast::SrcSpan,
     message: Option<TypedExpr>,
     type_: std::sync::Arc<gleam_core::type_::Type>,
     context: &mut PlanContext<'_>,
@@ -136,10 +147,12 @@ fn plan_panic_expr(
         )
     })?;
 
-    plan_panic_expr_with_type(message, return_type, context)
+    let site = context.panic_site(location);
+    plan_panic_expr_with_type(message, return_type, site, context)
 }
 
 fn plan_todo_expr(
+    location: gleam_core::ast::SrcSpan,
     kind: TodoKind,
     message: Option<TypedExpr>,
     type_: std::sync::Arc<gleam_core::type_::Type>,
@@ -152,30 +165,42 @@ fn plan_todo_expr(
         )
     })?;
 
-    plan_todo_expr_with_type(kind, message, return_type, context)
+    plan_todo_expr_with_type(location, kind, message, return_type, context)
 }
 
 fn plan_panic_expr_with_type(
     message: Option<TypedExpr>,
     return_type: ValueType,
+    site: crate::plan::PanicSite,
     context: &mut PlanContext<'_>,
 ) -> Result<Expr, PlanError> {
     let message = plan_panic_message(message, context)?;
 
-    Ok(panic_expr(PanicExpr::panic(message), return_type))
+    Ok(panic_expr(PanicExpr::panic_at(message, site), return_type))
 }
 
 fn plan_todo_expr_with_type(
+    location: gleam_core::ast::SrcSpan,
     kind: TodoKind,
     message: Option<TypedExpr>,
     return_type: ValueType,
     context: &mut PlanContext<'_>,
 ) -> Result<Expr, PlanError> {
+    let site = match &kind {
+        TodoKind::EmptyFunction { function_location } => context.panic_site(*function_location),
+        TodoKind::Keyword | TodoKind::EmptyBlock | TodoKind::IncompleteUse => {
+            context.panic_site(location)
+        }
+    };
     let panic = match kind {
-        TodoKind::Keyword => PanicExpr::todo(plan_panic_message(message, context)?),
-        TodoKind::EmptyFunction { .. } => generated_todo_expr(message, PanicExpr::empty_function)?,
-        TodoKind::EmptyBlock => generated_todo_expr(message, PanicExpr::empty_block)?,
-        TodoKind::IncompleteUse => generated_todo_expr(message, PanicExpr::incomplete_use)?,
+        TodoKind::Keyword => PanicExpr::todo_at(plan_panic_message(message, context)?, site),
+        TodoKind::EmptyFunction { .. } => {
+            generated_todo_expr(message, || PanicExpr::empty_function_at(site))?
+        }
+        TodoKind::EmptyBlock => generated_todo_expr(message, || PanicExpr::empty_block_at(site))?,
+        TodoKind::IncompleteUse => {
+            generated_todo_expr(message, || PanicExpr::incomplete_use_at(site))?
+        }
     };
 
     Ok(panic_expr(panic, return_type))
@@ -211,11 +236,23 @@ pub(super) fn plan_expr_with_expected_source_stop_type(
     context: &mut PlanContext<'_>,
 ) -> Result<Expr, PlanError> {
     match expression {
-        TypedExpr::Todo { kind, message, .. } => {
-            plan_todo_expr_with_type(kind, message.map(|message| *message), expected, context)
-        }
-        TypedExpr::Panic { message, .. } => {
-            plan_panic_expr_with_type(message.map(|message| *message), expected, context)
+        TypedExpr::Todo {
+            location,
+            kind,
+            message,
+            ..
+        } => plan_todo_expr_with_type(
+            location,
+            kind,
+            message.map(|message| *message),
+            expected,
+            context,
+        ),
+        TypedExpr::Panic {
+            location, message, ..
+        } => {
+            let site = context.panic_site(location);
+            plan_panic_expr_with_type(message.map(|message| *message), expected, site, context)
         }
         TypedExpr::Block { statements, .. } => {
             block::plan_with_expected_source_stop_type(statements, &expected, context)
@@ -659,8 +696,9 @@ mod tests {
     use crate::plan::{
         BoolExpr, BoolFunctionId, BoolLocalId, Expr, FloatExpr, FunctionExpr, FunctionFunctionExpr,
         FunctionFunctionId, FunctionType, FunctionValue, IntExpr, IntFunctionFunctionId,
-        IntFunctionId, IntLocalId, ListExpr, NilFunctionId, NilLocalId, PanicExpr, ParamLocal,
-        ReturnBody, RuntimeFunctionId, StringExpr, StringLocalId, TupleExpr, ValueType,
+        IntFunctionId, IntLocalId, ListExpr, NilFunctionId, NilLocalId, PanicExpr, PanicSite,
+        ParamLocal, ReturnBody, RuntimeFunctionId, SourceSpan, StringExpr, StringLocalId,
+        TupleExpr, ValueType,
     };
     use crate::planner::context::{AnonymousFunctions, PlanContext};
     use crate::planner::dsl::{
@@ -694,7 +732,10 @@ pub fn main() -> Int {
             actual.main_function().return_(),
             &crate::plan::ReturnExpr::int(
                 IntFunctionId(0),
-                IntExpr::panic(PanicExpr::panic(Some(StringExpr::value("boom".into())))),
+                IntExpr::panic(PanicExpr::panic_at(
+                    Some(StringExpr::value("boom".into())),
+                    PanicSite::new("main".into(), "main".into(), SourceSpan::new(26, 41)),
+                )),
             ),
         );
 
@@ -710,7 +751,10 @@ pub fn main() -> Bool {
             actual.main_function().return_(),
             &crate::plan::ReturnExpr::bool(
                 BoolFunctionId(0),
-                BoolExpr::panic(PanicExpr::todo(None)),
+                BoolExpr::panic(PanicExpr::todo_at(
+                    None,
+                    PanicSite::new("main".into(), "main".into(), SourceSpan::new(27, 31)),
+                )),
             ),
         );
     }
@@ -728,7 +772,11 @@ pub fn main() -> Int {
             actual.main_function().return_(),
             &crate::plan::ReturnExpr::int(
                 IntFunctionId(0),
-                IntExpr::panic(PanicExpr::empty_function()),
+                IntExpr::panic(PanicExpr::empty_function_at(PanicSite::new(
+                    "main".into(),
+                    "main".into(),
+                    SourceSpan::new(1, 21),
+                ))),
             ),
         );
 
@@ -746,7 +794,11 @@ pub fn main() -> Int {
                 IntFunctionId(0),
                 ReturnBody::block(
                     Vec::new(),
-                    ReturnBody::expr(IntExpr::panic(PanicExpr::empty_block())),
+                    ReturnBody::expr(IntExpr::panic(PanicExpr::empty_block_at(PanicSite::new(
+                        "main".into(),
+                        "main".into(),
+                        SourceSpan::new(26, 28)
+                    ),))),
                 ),
             ),
         );
@@ -767,7 +819,11 @@ pub fn main() -> Int {
             actual.anonymous_functions()[0].return_(),
             &crate::plan::ReturnExpr::int(
                 IntFunctionId(2),
-                IntExpr::panic(PanicExpr::incomplete_use()),
+                IntExpr::panic(PanicExpr::incomplete_use_at(PanicSite::new(
+                    "main".into(),
+                    "<anonymous:0>".into(),
+                    SourceSpan::new(85, 108),
+                ))),
             ),
         );
     }
@@ -778,7 +834,7 @@ pub fn main() -> Int {
         let functions = HashMap::new();
         let mut anonymous = AnonymousFunctions::default();
         let mut context = PlanContext::new(&module_name, &functions, &mut anonymous);
-        let panic = PanicExpr::panic(None);
+        let panic = PanicExpr::panic_at(None, context.panic_site(dummy_span()));
 
         assert_eq!(
             super::plan_expr(
@@ -894,7 +950,10 @@ pub fn main() -> Int {
                 },
                 &mut context,
             ),
-            Ok(Expr::string(StringExpr::panic(PanicExpr::todo(None)))),
+            Ok(Expr::string(StringExpr::panic(PanicExpr::todo_at(
+                None,
+                context.panic_site(dummy_span()),
+            )))),
         );
     }
 

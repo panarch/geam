@@ -520,8 +520,8 @@ mod tests {
         BoolExpr, BoolLocalId, CallArg, Expr, FloatExpr, FloatFunctionId, FloatFunctionLocalId,
         FloatLocalId, FunctionType, IntExpr, IntFunctionId, IntLocalId, ListExpr, ListFunctionExpr,
         ListFunctionId, ListFunctionLocalId, ListLocalId, NilExpr, NilLocalId, PanicExpr,
-        ReturnExpr, Step, StringExpr, StringLocalId, TupleExpr, TupleFunctionExpr, TupleFunctionId,
-        TupleFunctionLocalId, TupleLocalId, ValueType,
+        PanicSite, ReturnExpr, Step, StringExpr, StringLocalId, TupleExpr, TupleFunctionExpr,
+        TupleFunctionId, TupleFunctionLocalId, TupleLocalId, ValueType,
     };
 
     #[test]
@@ -1095,10 +1095,13 @@ mod tests {
     }
 
     fn panic_message(index: usize) -> PanicExpr {
-        PanicExpr::panic(Some(StringExpr::local_get(
-            StringLocalId(index),
-            format!("panic_message_{index}").into(),
-        )))
+        PanicExpr::panic_at(
+            Some(StringExpr::local_get(
+                StringLocalId(index),
+                format!("panic_message_{index}").into(),
+            )),
+            PanicSite::unknown(),
+        )
     }
 
     fn list_function_type() -> FunctionType {

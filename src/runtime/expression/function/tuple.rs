@@ -125,9 +125,9 @@ mod tests {
     use crate::plan::{
         BoolExpr, CaptureArg, ExecutionPlan, Expr, FloatExpr, FunctionExpr, FunctionFunctionExpr,
         FunctionFunctionId, FunctionFunctionValue, FunctionId, FunctionPlan, FunctionType, IntExpr,
-        IntFunctionExpr, IntFunctionId, IntFunctionValue, PanicExpr, ParamLocal, ReturnExpr, Step,
-        StringExpr, TupleExpr, TupleFunctionExpr, TupleFunctionFunctionId, TupleFunctionId,
-        TupleFunctionLocalId, TupleFunctionValue, TupleLocalId, Value, ValueType,
+        IntFunctionExpr, IntFunctionId, IntFunctionValue, PanicExpr, PanicSite, ParamLocal,
+        ReturnExpr, Step, StringExpr, TupleExpr, TupleFunctionExpr, TupleFunctionFunctionId,
+        TupleFunctionId, TupleFunctionLocalId, TupleFunctionValue, TupleLocalId, Value, ValueType,
     };
     use crate::runtime::frame::Frame;
     use crate::runtime::run_src;
@@ -225,9 +225,17 @@ pub fn main() {
             eval_tuple_function_expr(
                 &plan,
                 &mut frame,
-                &TupleFunctionExpr::panic(PanicExpr::panic(None), tuple_function_type(),),
+                &TupleFunctionExpr::panic(
+                    PanicExpr::panic_at(None, PanicSite::unknown()),
+                    tuple_function_type(),
+                ),
             ),
-            Err(ExecutionError::panic(PanicKind::Panic { message: None })),
+            Err(ExecutionError::source_panic(
+                None,
+                PanicKind::Panic,
+                None,
+                PanicSite::unknown()
+            )),
         );
     }
 

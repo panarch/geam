@@ -122,7 +122,7 @@ mod tests {
         BoolExpr, CaptureArg, ExecutionPlan, Expr, FloatExpr, FunctionExpr, FunctionFunctionExpr,
         FunctionFunctionId, FunctionFunctionValue, FunctionId, FunctionPlan, FunctionType, IntExpr,
         IntFunctionExpr, IntFunctionFunctionId, IntFunctionId, IntFunctionValue, IntLocalId,
-        PanicExpr, ReturnExpr, Step, StringExpr, TupleExpr, ValueType,
+        PanicExpr, PanicSite, ReturnExpr, Step, StringExpr, TupleExpr, ValueType,
     };
     use crate::runtime::frame::Frame;
     use crate::runtime::{ExecutionError, PanicKind};
@@ -176,9 +176,17 @@ pub fn main() {
             eval_function_function_expr(
                 &plan,
                 &mut frame,
-                &FunctionFunctionExpr::panic(PanicExpr::panic(None), returned_int_function_type(),),
+                &FunctionFunctionExpr::panic(
+                    PanicExpr::panic_at(None, PanicSite::unknown()),
+                    returned_int_function_type(),
+                ),
             ),
-            Err(ExecutionError::panic(PanicKind::Panic { message: None })),
+            Err(ExecutionError::source_panic(
+                None,
+                PanicKind::Panic,
+                None,
+                PanicSite::unknown()
+            )),
         );
     }
 

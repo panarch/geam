@@ -3,6 +3,7 @@ mod frame;
 mod function;
 mod id;
 mod runtime;
+mod source;
 mod step;
 mod value;
 
@@ -42,6 +43,7 @@ pub use id::{
     TupleFunctionLocalId, TupleLocalId,
 };
 pub(crate) use id::{FunctionFunctionId, RuntimeFunctionId};
+pub use source::{PanicSite, SourceContext, SourceSpan};
 pub use step::Step;
 pub(crate) use step::{AssertBinding, AssertPattern, ListAssertPattern, ListAssertTail, StepKind};
 pub(crate) use value::{
@@ -53,6 +55,7 @@ pub use value::{FunctionType, FunctionValue, ListValue, Value, ValueType};
 
 pub struct ExecutionPlan {
     module: EcoString,
+    source_context: Option<SourceContext>,
     main: FunctionPlan,
     functions: Vec<FunctionPlan>,
     anonymous_functions: Vec<FunctionPlan>,
@@ -75,6 +78,7 @@ impl ExecutionPlan {
 
         Self {
             module,
+            source_context: None,
             main,
             functions,
             anonymous_functions,
@@ -82,8 +86,17 @@ impl ExecutionPlan {
         }
     }
 
+    pub(crate) fn with_source_context(mut self, source_context: SourceContext) -> Self {
+        self.source_context = Some(source_context);
+        self
+    }
+
     pub fn module(&self) -> &EcoString {
         &self.module
+    }
+
+    pub fn source_context(&self) -> Option<&SourceContext> {
+        self.source_context.as_ref()
     }
 
     pub fn main_function(&self) -> &FunctionPlan {
@@ -193,6 +206,7 @@ impl fmt::Debug for ExecutionPlan {
         formatter
             .debug_struct("ExecutionPlan")
             .field("module", &self.module)
+            .field("source_context", &self.source_context)
             .field("main", &self.main)
             .field("functions", &self.functions)
             .field("anonymous_functions", &self.anonymous_functions)
@@ -203,6 +217,7 @@ impl fmt::Debug for ExecutionPlan {
 impl PartialEq for ExecutionPlan {
     fn eq(&self, other: &Self) -> bool {
         self.module == other.module
+            && self.source_context == other.source_context
             && self.main == other.main
             && self.functions == other.functions
             && self.anonymous_functions == other.anonymous_functions
@@ -213,7 +228,7 @@ impl PartialEq for ExecutionPlan {
 mod tests {
     use super::{
         ExecutionPlan, FunctionId, FunctionPlan, IntExpr, IntFunctionId, ReturnBody, ReturnExpr,
-        RuntimeFunctionId,
+        RuntimeFunctionId, SourceContext,
     };
     use num_bigint::BigInt;
 
@@ -295,15 +310,53 @@ mod tests {
                 ReturnExpr::int(IntFunctionId(0), IntExpr::value(BigInt::from(1))),
             ),
             Vec::new(),
-        );
+        )
+        .with_source_context(SourceContext::new("main.gleam", "pub fn main() { panic }"));
         let debug = format!("{plan:?}");
 
         assert!(debug.contains("ExecutionPlan"));
         assert!(debug.contains("module"));
+        assert!(debug.contains("source_context"));
+        assert!(debug.contains("main.gleam"));
         assert!(debug.contains("main"));
         assert!(debug.contains("functions"));
         assert!(debug.contains("anonymous_functions"));
         assert!(!debug.contains("runtime:"));
         assert!(!debug.contains("RuntimePlan"));
+    }
+
+    #[test]
+    fn execution_plan_equality_includes_source_context() {
+        let new_plan = || {
+            ExecutionPlan::new(
+                "main".into(),
+                FunctionPlan::new(
+                    FunctionId::new(0),
+                    "main".into(),
+                    Vec::new(),
+                    Vec::new(),
+                    ReturnExpr::int(IntFunctionId(0), IntExpr::value(BigInt::from(1))),
+                ),
+                Vec::new(),
+            )
+        };
+
+        assert_eq!(
+            new_plan().with_source_context(SourceContext::new("main.gleam", "pub fn main() { 1 }")),
+            new_plan().with_source_context(SourceContext::new("main.gleam", "pub fn main() { 1 }")),
+        );
+        assert_ne!(
+            new_plan(),
+            new_plan().with_source_context(SourceContext::new("main.gleam", "pub fn main() { 1 }")),
+        );
+        assert_ne!(
+            new_plan().with_source_context(SourceContext::new("main.gleam", "pub fn main() { 1 }")),
+            new_plan()
+                .with_source_context(SourceContext::new("other.gleam", "pub fn main() { 1 }")),
+        );
+        assert_ne!(
+            new_plan().with_source_context(SourceContext::new("main.gleam", "pub fn main() { 1 }")),
+            new_plan().with_source_context(SourceContext::new("main.gleam", "pub fn main() { 2 }")),
+        );
     }
 }

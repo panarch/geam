@@ -114,7 +114,8 @@ mod tests {
     use super::{eval_tuple_expr, project_tuple_expr};
     use crate::plan::{
         BoolExpr, ExecutionPlan, Expr, FloatExpr, FunctionId, FunctionPlan, IntExpr, IntFunctionId,
-        PanicExpr, ReturnExpr, Step, StringExpr, TupleExpr, TupleFunctionId, Value, ValueType,
+        PanicExpr, PanicSite, ReturnExpr, Step, StringExpr, TupleExpr, TupleFunctionId, Value,
+        ValueType,
     };
     use crate::runtime::frame::Frame;
     use crate::runtime::{ExecutionError, PanicKind};
@@ -129,9 +130,17 @@ mod tests {
             eval_tuple_expr(
                 &plan,
                 &mut frame,
-                &TupleExpr::panic(PanicExpr::panic(None), vec![ValueType::Int],),
+                &TupleExpr::panic(
+                    PanicExpr::panic_at(None, PanicSite::unknown()),
+                    vec![ValueType::Int],
+                ),
             ),
-            Err(ExecutionError::panic(PanicKind::Panic { message: None })),
+            Err(ExecutionError::source_panic(
+                None,
+                PanicKind::Panic,
+                None,
+                PanicSite::unknown()
+            )),
         );
     }
 

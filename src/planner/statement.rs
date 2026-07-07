@@ -90,18 +90,19 @@ pub(super) fn plan_runtime_steps(
 }
 
 fn plan_assert_step(assert: TypedAssert, context: &mut PlanContext<'_>) -> Result<Step, PlanError> {
+    let site = context.panic_site(assert.location);
     let message = assert
         .message
         .map(|message| plan_string_expr(message, context))
         .transpose()?;
     let condition = plan_bool_expr(assert.value, context)?;
 
-    Ok(Step::assert_bool(condition, message))
+    Ok(Step::assert_bool_at(condition, message, site))
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::plan::{BoolExpr, Step, StringExpr};
+    use crate::plan::{BoolExpr, PanicSite, SourceSpan, Step, StringExpr};
     use crate::planner::context::{AnonymousFunctions, PlanContext};
     use crate::planner::dsl::{function, int, module, nil};
     use crate::planner::plan_module;
@@ -181,7 +182,11 @@ pub fn main() {
         .expect("source should plan");
         let expected = module(
             "main",
-            function("main", int(1)).step(Step::assert_bool(BoolExpr::value(true), None)),
+            function("main", int(1)).step(Step::assert_bool_at(
+                BoolExpr::value(true),
+                None,
+                PanicSite::new("main".into(), "main".into(), SourceSpan::new(19, 30)),
+            )),
             [],
         );
 
@@ -200,7 +205,11 @@ pub fn main() {
         .expect("source should plan");
         let expected = module(
             "main",
-            function("main", nil()).step(Step::assert_bool(BoolExpr::value(true), None)),
+            function("main", nil()).step(Step::assert_bool_at(
+                BoolExpr::value(true),
+                None,
+                PanicSite::new("main".into(), "main".into(), SourceSpan::new(19, 30)),
+            )),
             [],
         );
 
@@ -220,9 +229,10 @@ pub fn main() {
         .expect("source should plan");
         let expected = module(
             "main",
-            function("main", int(1)).step(Step::assert_bool(
+            function("main", int(1)).step(Step::assert_bool_at(
                 BoolExpr::value(true),
                 Some(StringExpr::value("ok".into())),
+                PanicSite::new("main".into(), "main".into(), SourceSpan::new(19, 38)),
             )),
             [],
         );

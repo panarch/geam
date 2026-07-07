@@ -74,6 +74,7 @@ impl FrameLayout {
                 local,
                 pattern,
                 message,
+                ..
             } => {
                 self.include_list(*local);
                 self.include_assert_pattern(pattern);
@@ -81,7 +82,9 @@ impl FrameLayout {
                     self.include_string_expr(message);
                 }
             }
-            StepKind::AssertBool { condition, message } => {
+            StepKind::AssertBool {
+                condition, message, ..
+            } => {
                 self.include_bool_expr(condition);
                 if let Some(message) = message {
                     self.include_string_expr(message);
@@ -124,8 +127,9 @@ mod tests {
     use crate::plan::{
         AssertBinding, AssertPattern, BoolExpr, BoolFunctionExpr, BoolFunctionLocalId, BoolLocalId,
         Expr, IntExpr, IntFunctionId, IntLocalId, ListAssertPattern, ListAssertTail, ListLocalId,
-        NilExpr, NilFunctionExpr, NilFunctionLocalId, NilLocalId, ParamLocal, ReturnExpr,
-        StringExpr, StringFunctionExpr, StringFunctionLocalId, StringLocalId, ValueType,
+        NilExpr, NilFunctionExpr, NilFunctionLocalId, NilLocalId, PanicSite, ParamLocal,
+        ReturnExpr, SourceSpan, StringExpr, StringFunctionExpr, StringFunctionLocalId,
+        StringLocalId, ValueType,
     };
 
     #[test]
@@ -267,7 +271,7 @@ mod tests {
     #[test]
     fn frame_layout_includes_assert_list_pattern_dependencies() {
         let list_element_type = ValueType::Tuple(vec![ValueType::Int, ValueType::String]);
-        let steps = [crate::plan::Step::assert_list(
+        let steps = [crate::plan::Step::assert_list_at(
             ListLocalId(0),
             AssertPattern::list(ListAssertPattern::new(
                 list_element_type.clone(),
@@ -284,6 +288,8 @@ mod tests {
                 Some(ListAssertTail::bind(ListLocalId(1), "rest".into())),
             )),
             Some(StringExpr::local_get(StringLocalId(1), "message".into())),
+            PanicSite::unknown(),
+            SourceSpan::new(0, 0),
         )];
         let return_ = ReturnExpr::int(IntFunctionId(0), IntExpr::value(0.into()));
 
@@ -296,9 +302,10 @@ mod tests {
 
     #[test]
     fn frame_layout_includes_assert_bool_dependencies() {
-        let steps = [crate::plan::Step::assert_bool(
+        let steps = [crate::plan::Step::assert_bool_at(
             BoolExpr::local_get(BoolLocalId(0), "condition".into()),
             Some(StringExpr::local_get(StringLocalId(0), "message".into())),
+            PanicSite::unknown(),
         )];
         let return_ = ReturnExpr::int(IntFunctionId(0), IntExpr::value(0.into()));
 

@@ -13,9 +13,10 @@ use crate::planner::error::{
 };
 use crate::planner::expression::plan_expr;
 use ecow::EcoString;
-use gleam_core::ast::{Pattern, TypedExpr, TypedPattern};
+use gleam_core::ast::{Pattern, SrcSpan, TypedExpr, TypedPattern};
 
 pub(super) fn plan_assert_assignment(
+    location: SrcSpan,
     pattern: TypedPattern,
     value: TypedExpr,
     message: Option<TypedExpr>,
@@ -62,11 +63,13 @@ pub(super) fn plan_assert_assignment(
 
     let local = context.define_internal_list_local();
     let name = internal_list_name(local);
+    let site = context.panic_site(location);
+    let pattern_span = pattern.location().into();
     let pattern = plan_assert_pattern(pattern, context)?;
     let list_local = ListExpr::local_get(local, name.clone(), element_type);
     let steps = vec![
         Step::let_list(local, name, value),
-        Step::assert_list(local, pattern, message),
+        Step::assert_list_at(local, pattern, message, site, pattern_span),
     ];
 
     Ok(PlannedAssignment {
@@ -76,13 +79,14 @@ pub(super) fn plan_assert_assignment(
 }
 
 pub(super) fn plan_assert_assignment_steps(
+    location: SrcSpan,
     pattern: TypedPattern,
     value: TypedExpr,
     message: Option<TypedExpr>,
     context: &mut PlanContext<'_>,
 ) -> Result<Vec<Step>, PlanError> {
     if assert_list_pattern_type(&pattern).is_some() {
-        return Ok(plan_assert_assignment(pattern, value, message, context)?.steps);
+        return Ok(plan_assert_assignment(location, pattern, value, message, context)?.steps);
     }
 
     let pattern = plan_assert_exhaustive_pattern(pattern)?;
@@ -372,8 +376,8 @@ mod tests {
         AssertBinding, AssertPattern, BoolFunctionLocalId, BoolLocalId, FloatFunctionLocalId,
         FloatLocalId, FunctionFunctionLocalId, FunctionType, IntFunctionLocalId, IntLocalId,
         ListAssertPattern, ListAssertTail, ListFunctionLocalId, ListLocalId, NilFunctionLocalId,
-        NilLocalId, ParamLocal, Step, StringExpr, StringFunctionLocalId, StringLocalId,
-        TupleFunctionLocalId, TupleLocalId, ValueType,
+        NilLocalId, PanicSite, ParamLocal, SourceSpan, Step, StringExpr, StringFunctionLocalId,
+        StringLocalId, TupleFunctionLocalId, TupleLocalId, ValueType,
     };
     use crate::planner::context::{AnonymousFunctions, PlanContext};
     use crate::planner::dsl::{
@@ -559,7 +563,7 @@ pub fn main() {
                     "<list:0>",
                     list([int(1), int(2)], ValueType::Int),
                 ))
-                .step(Step::assert_list(
+                .step(Step::assert_list_at(
                     ListLocalId(0),
                     AssertPattern::list(ListAssertPattern::new(
                         ValueType::Int,
@@ -570,6 +574,8 @@ pub fn main() {
                         Some(ListAssertTail::bind(ListLocalId(1), "rest".into())),
                     )),
                     None,
+                    PanicSite::new("main".into(), "main".into(), SourceSpan::new(19, 29)),
+                    SourceSpan::new(30, 45),
                 )),
             [],
         );
@@ -592,7 +598,7 @@ pub fn main() {
             "main",
             function("main", local_int(0, "first"))
                 .step(let_list_step(0, "<list:0>", list([int(1)], ValueType::Int)))
-                .step(Step::assert_list(
+                .step(Step::assert_list_at(
                     ListLocalId(0),
                     AssertPattern::list(ListAssertPattern::new(
                         ValueType::Int,
@@ -603,6 +609,8 @@ pub fn main() {
                         Some(ListAssertTail::Ignore),
                     )),
                     Some(StringExpr::value("not empty".into())),
+                    PanicSite::new("main".into(), "main".into(), SourceSpan::new(19, 29)),
+                    SourceSpan::new(30, 41),
                 )),
             [],
         );
@@ -636,6 +644,7 @@ pub fn main() {
 
         assert_eq!(
             super::plan_assert_assignment(
+                dummy_span(),
                 Pattern::List {
                     location: dummy_span(),
                     elements: vec![Pattern::Variable {
@@ -667,6 +676,7 @@ pub fn main() {
 
         assert_eq!(
             super::plan_assert_assignment(
+                dummy_span(),
                 int_list_pattern(),
                 typed_int_list_expr(),
                 Some(typed_int_expr(1)),
@@ -691,6 +701,7 @@ pub fn main() {
 
         assert_eq!(
             super::plan_assert_assignment(
+                dummy_span(),
                 Pattern::Tuple {
                     location: dummy_span(),
                     elements: vec![int_list_pattern()],
@@ -715,6 +726,7 @@ pub fn main() {
 
         assert_eq!(
             super::plan_assert_assignment(
+                dummy_span(),
                 Pattern::Discard {
                     location: dummy_span(),
                     name: "_".into(),
@@ -740,6 +752,7 @@ pub fn main() {
 
         assert_eq!(
             super::plan_assert_assignment(
+                dummy_span(),
                 int_list_pattern(),
                 typed_echo_expr(type_::list(type_::int())),
                 None,
@@ -761,6 +774,7 @@ pub fn main() {
 
         assert_eq!(
             super::plan_assert_assignment(
+                dummy_span(),
                 int_list_pattern(),
                 typed_int_expr(1),
                 None,
@@ -814,6 +828,7 @@ pub fn main() {
 
         assert_eq!(
             super::plan_assert_assignment_steps(
+                dummy_span(),
                 Pattern::Discard {
                     location: dummy_span(),
                     name: "_".into(),
@@ -838,6 +853,7 @@ pub fn main() {
 
         assert_eq!(
             super::plan_assert_assignment(
+                dummy_span(),
                 int_list_pattern(),
                 typed_int_list_expr(),
                 Some(typed_echo_expr(type_::string())),
