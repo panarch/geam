@@ -120,8 +120,8 @@ mod tests {
         BoolExpr, BoolFunctionExpr, BoolFunctionId, BoolFunctionValue, BoolLocalId, CaptureArg,
         ExecutionPlan, Expr, FloatExpr, FunctionExpr, FunctionFunctionExpr, FunctionFunctionId,
         FunctionFunctionValue, FunctionId, FunctionPlan, FunctionType, IntExpr, IntFunctionExpr,
-        IntFunctionId, IntFunctionValue, PanicExpr, ParamLocal, ReturnExpr, Step, StringExpr,
-        TupleExpr, ValueType,
+        IntFunctionId, IntFunctionValue, PanicExpr, PanicSite, ParamLocal, ReturnExpr, Step,
+        StringExpr, TupleExpr, ValueType,
     };
     use crate::plan::{BoolFunctionFunctionId, BoolFunctionLocalId};
     use crate::runtime::frame::Frame;
@@ -210,9 +210,14 @@ mod tests {
             eval_bool_function_expr(
                 &plan,
                 &mut frame,
-                &BoolFunctionExpr::panic(PanicExpr::panic(None), type_()),
+                &BoolFunctionExpr::panic(PanicExpr::panic_at(None, PanicSite::unknown()), type_()),
             ),
-            Err(ExecutionError::panic(PanicKind::Panic)),
+            Err(ExecutionError::source_panic(
+                None,
+                PanicKind::Panic,
+                None,
+                PanicSite::unknown()
+            )),
         );
     }
 

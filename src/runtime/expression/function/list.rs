@@ -127,8 +127,8 @@ mod tests {
         BoolExpr, CaptureArg, ExecutionPlan, Expr, FloatExpr, FunctionExpr, FunctionFunctionExpr,
         FunctionFunctionId, FunctionFunctionValue, FunctionId, FunctionPlan, FunctionType, IntExpr,
         IntFunctionId, IntFunctionValue, ListExpr, ListFunctionExpr, ListFunctionFunctionId,
-        ListFunctionId, ListFunctionLocalId, ListFunctionValue, ListLocalId, PanicExpr, ParamLocal,
-        ReturnBody, ReturnExpr, Step, StringExpr, TupleExpr, ValueType,
+        ListFunctionId, ListFunctionLocalId, ListFunctionValue, ListLocalId, PanicExpr, PanicSite,
+        ParamLocal, ReturnBody, ReturnExpr, Step, StringExpr, TupleExpr, ValueType,
     };
     use crate::runtime::frame::Frame;
     use crate::runtime::{ExecutionError, PanicKind};
@@ -160,9 +160,17 @@ mod tests {
             eval_list_function_expr(
                 &plan,
                 &mut frame,
-                &ListFunctionExpr::panic(PanicExpr::panic(None), list_function_type(),),
+                &ListFunctionExpr::panic(
+                    PanicExpr::panic_at(None, PanicSite::unknown()),
+                    list_function_type(),
+                ),
             ),
-            Err(ExecutionError::panic(PanicKind::Panic)),
+            Err(ExecutionError::source_panic(
+                None,
+                PanicKind::Panic,
+                None,
+                PanicSite::unknown()
+            )),
         );
         assert_eq!(
             eval_list_function_expr(

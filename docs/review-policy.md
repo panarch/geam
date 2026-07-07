@@ -173,11 +173,17 @@ to an owning planner unit test.
 
 ## Helper And DSL Rules
 
-Test helpers reduce real repetition without hiding the reviewed shape.
+Test helpers may reduce real repetition and fixture setup, but they must not
+hide the reviewed shape or create a second constructor API for plan/runtime
+shapes.
 
 - Avoid single-use shallow wrapper helpers.
 - Name helpers after their fixture role, not their implementation detail.
 - Keep helpers in the nearest module that uses them.
+- Do not layer test-only constructor helpers. A test-only helper that builds a
+  plan/runtime value must construct the reviewed shape directly from production
+  constructors, not by calling another test-only helper that supplies hidden
+  defaults, sentinel values, dummy ids, empty spans, or unknown sites.
 - Use the crate-internal `planner::dsl` helpers for readable expected plans.
 - Expected-plan DSL is an oracle, not a lowering path: helpers may reduce
   constructor noise, but must not infer, hide, or call planner lowering for the

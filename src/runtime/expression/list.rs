@@ -109,8 +109,8 @@ mod tests {
     use super::eval_list_expr;
     use crate::plan::{
         BoolExpr, ExecutionPlan, Expr, FloatExpr, FrameLayout, FunctionId, FunctionPlan, IntExpr,
-        IntFunctionId, ListExpr, ListFunctionId, ListLocalId, ListValue, PanicExpr, ReturnBody,
-        ReturnExpr, Step, StringExpr, TupleExpr, Value, ValueType,
+        IntFunctionId, ListExpr, ListFunctionId, ListLocalId, ListValue, PanicExpr, PanicSite,
+        ReturnBody, ReturnExpr, Step, StringExpr, TupleExpr, Value, ValueType,
     };
     use crate::runtime::frame::Frame;
     use crate::runtime::{ExecutionError, PanicKind};
@@ -125,9 +125,17 @@ mod tests {
             eval_list_expr(
                 &plan,
                 &mut frame,
-                &ListExpr::panic(PanicExpr::panic(None), element_type()),
+                &ListExpr::panic(
+                    PanicExpr::panic_at(None, PanicSite::unknown()),
+                    element_type()
+                ),
             ),
-            Err(ExecutionError::panic(PanicKind::Panic)),
+            Err(ExecutionError::source_panic(
+                None,
+                PanicKind::Panic,
+                None,
+                PanicSite::unknown()
+            )),
         );
     }
 

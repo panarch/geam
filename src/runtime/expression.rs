@@ -102,11 +102,19 @@ mod tests {
     #[test]
     fn eval_panic_expr_returns_exact_panic_error() {
         assert_eq!(
-            eval_panic(PanicExpr::panic(None)),
-            Err(ExecutionError::panic(PanicKind::Panic)),
+            eval_panic(PanicExpr::panic_at(None, PanicSite::unknown())),
+            Err(ExecutionError::source_panic(
+                None,
+                PanicKind::Panic,
+                None,
+                PanicSite::unknown()
+            )),
         );
         assert_eq!(
-            eval_panic(PanicExpr::todo(Some(StringExpr::value("later".into())))),
+            eval_panic(PanicExpr::todo_at(
+                Some(StringExpr::value("later".into())),
+                PanicSite::unknown(),
+            )),
             Err(ExecutionError::source_panic(
                 None,
                 PanicKind::Todo,
@@ -119,31 +127,58 @@ mod tests {
     #[test]
     fn eval_generated_todo_kinds_return_distinct_panic_errors() {
         for (expression, expected) in [
-            (PanicExpr::empty_function(), PanicKind::EmptyFunction),
-            (PanicExpr::empty_block(), PanicKind::EmptyBlock),
-            (PanicExpr::incomplete_use(), PanicKind::IncompleteUse),
+            (
+                PanicExpr::empty_function_at(PanicSite::unknown()),
+                PanicKind::EmptyFunction,
+            ),
+            (
+                PanicExpr::empty_block_at(PanicSite::unknown()),
+                PanicKind::EmptyBlock,
+            ),
+            (
+                PanicExpr::incomplete_use_at(PanicSite::unknown()),
+                PanicKind::IncompleteUse,
+            ),
         ] {
-            assert_eq!(eval_panic(expression), Err(ExecutionError::panic(expected)),);
+            assert_eq!(
+                eval_panic(expression),
+                Err(ExecutionError::source_panic(
+                    None,
+                    expected,
+                    None,
+                    PanicSite::unknown(),
+                )),
+            );
         }
     }
 
     #[test]
     fn eval_panic_expr_propagates_message_error_first() {
-        let message = StringExpr::panic(PanicExpr::todo(None));
+        let message = StringExpr::panic(PanicExpr::todo_at(None, PanicSite::unknown()));
 
         assert_eq!(
-            eval_panic(PanicExpr::panic(Some(message))),
-            Err(ExecutionError::panic(PanicKind::Todo)),
+            eval_panic(PanicExpr::panic_at(Some(message), PanicSite::unknown())),
+            Err(ExecutionError::source_panic(
+                None,
+                PanicKind::Todo,
+                None,
+                PanicSite::unknown()
+            )),
         );
     }
 
     #[test]
     fn eval_todo_expr_propagates_message_error_first() {
-        let message = StringExpr::panic(PanicExpr::panic(None));
+        let message = StringExpr::panic(PanicExpr::panic_at(None, PanicSite::unknown()));
 
         assert_eq!(
-            eval_panic(PanicExpr::todo(Some(message))),
-            Err(ExecutionError::panic(PanicKind::Panic)),
+            eval_panic(PanicExpr::todo_at(Some(message), PanicSite::unknown())),
+            Err(ExecutionError::source_panic(
+                None,
+                PanicKind::Panic,
+                None,
+                PanicSite::unknown()
+            )),
         );
     }
 

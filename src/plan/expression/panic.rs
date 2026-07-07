@@ -17,11 +17,6 @@ pub(crate) enum PanicExprKind {
 }
 
 impl PanicExpr {
-    #[cfg(test)]
-    pub(crate) fn panic(message: Option<StringExpr>) -> Self {
-        Self::panic_at(message, PanicSite::unknown())
-    }
-
     pub(crate) fn panic_at(message: Option<StringExpr>, site: PanicSite) -> Self {
         Self {
             kind: PanicExprKind::Panic {
@@ -29,11 +24,6 @@ impl PanicExpr {
             },
             site,
         }
-    }
-
-    #[cfg(test)]
-    pub(crate) fn todo(message: Option<StringExpr>) -> Self {
-        Self::todo_at(message, PanicSite::unknown())
     }
 
     pub(crate) fn todo_at(message: Option<StringExpr>, site: PanicSite) -> Self {
@@ -45,11 +35,6 @@ impl PanicExpr {
         }
     }
 
-    #[cfg(test)]
-    pub(crate) fn empty_function() -> Self {
-        Self::empty_function_at(PanicSite::unknown())
-    }
-
     pub(crate) fn empty_function_at(site: PanicSite) -> Self {
         Self {
             kind: PanicExprKind::EmptyFunction,
@@ -57,21 +42,11 @@ impl PanicExpr {
         }
     }
 
-    #[cfg(test)]
-    pub(crate) fn empty_block() -> Self {
-        Self::empty_block_at(PanicSite::unknown())
-    }
-
     pub(crate) fn empty_block_at(site: PanicSite) -> Self {
         Self {
             kind: PanicExprKind::EmptyBlock,
             site,
         }
-    }
-
-    #[cfg(test)]
-    pub(crate) fn incomplete_use() -> Self {
-        Self::incomplete_use_at(PanicSite::unknown())
     }
 
     pub(crate) fn incomplete_use_at(site: PanicSite) -> Self {
@@ -104,11 +79,14 @@ impl PanicExpr {
 #[cfg(test)]
 mod tests {
     use super::{PanicExpr, PanicExprKind};
-    use crate::plan::StringExpr;
+    use crate::plan::{PanicSite, StringExpr};
 
     #[test]
     fn panic_expr_preserves_kind_and_message() {
-        let expression = PanicExpr::panic(Some(StringExpr::value("message".into())));
+        let expression = PanicExpr::panic_at(
+            Some(StringExpr::value("message".into())),
+            PanicSite::unknown(),
+        );
 
         assert_eq!(
             expression.kind(),
@@ -125,9 +103,9 @@ mod tests {
     #[test]
     fn generated_todo_kinds_have_no_message() {
         for expression in [
-            PanicExpr::empty_function(),
-            PanicExpr::empty_block(),
-            PanicExpr::incomplete_use(),
+            PanicExpr::empty_function_at(PanicSite::unknown()),
+            PanicExpr::empty_block_at(PanicSite::unknown()),
+            PanicExpr::incomplete_use_at(PanicSite::unknown()),
         ] {
             assert_eq!(expression.message(), None);
         }

@@ -266,17 +266,6 @@ impl Diagnostic for ExecutionError {
 }
 
 impl ExecutionError {
-    #[cfg(test)]
-    pub(crate) fn panic(kind: PanicKind) -> Self {
-        Self::Panic(Panic::new(
-            kind,
-            PanicMessage::Default,
-            PanicSite::unknown(),
-            None,
-            None,
-        ))
-    }
-
     pub(crate) fn source_panic(
         source_context: Option<&SourceContext>,
         kind: PanicKind,
@@ -402,7 +391,7 @@ mod tests {
     fn panic_display_uses_kind_and_default_or_explicit_message() {
         for (error, expected) in [
             (
-                ExecutionError::panic(PanicKind::Panic),
+                ExecutionError::source_panic(None, PanicKind::Panic, None, PanicSite::unknown()),
                 "panic: `panic` expression evaluated.",
             ),
             (
@@ -415,27 +404,47 @@ mod tests {
                 "panic: boom",
             ),
             (
-                ExecutionError::panic(PanicKind::Todo),
+                ExecutionError::source_panic(None, PanicKind::Todo, None, PanicSite::unknown()),
                 "todo: `todo` expression evaluated. This code has not yet been implemented.",
             ),
             (
-                ExecutionError::panic(PanicKind::Assert),
+                ExecutionError::source_panic(None, PanicKind::Assert, None, PanicSite::unknown()),
                 "assert: Assertion failed.",
             ),
             (
-                ExecutionError::panic(PanicKind::LetAssert),
+                ExecutionError::source_panic(
+                    None,
+                    PanicKind::LetAssert,
+                    None,
+                    PanicSite::unknown(),
+                ),
                 "let_assert: Pattern match failed, no pattern matched the value.",
             ),
             (
-                ExecutionError::panic(PanicKind::EmptyFunction),
+                ExecutionError::source_panic(
+                    None,
+                    PanicKind::EmptyFunction,
+                    None,
+                    PanicSite::unknown(),
+                ),
                 "empty_function: Function body is empty.",
             ),
             (
-                ExecutionError::panic(PanicKind::EmptyBlock),
+                ExecutionError::source_panic(
+                    None,
+                    PanicKind::EmptyBlock,
+                    None,
+                    PanicSite::unknown(),
+                ),
                 "empty_block: Block is empty.",
             ),
             (
-                ExecutionError::panic(PanicKind::IncompleteUse),
+                ExecutionError::source_panic(
+                    None,
+                    PanicKind::IncompleteUse,
+                    None,
+                    PanicSite::unknown(),
+                ),
                 "incomplete_use: Use callback is incomplete.",
             ),
         ] {
@@ -496,17 +505,18 @@ mod tests {
                 None,
                 PanicSite::unknown(),
             ),
-            ExecutionError::panic(PanicKind::Panic),
+            ExecutionError::source_panic(None, PanicKind::Panic, None, PanicSite::unknown()),
         );
         assert_eq!(
-            ExecutionError::panic(PanicKind::Todo),
-            ExecutionError::panic(PanicKind::Todo),
+            ExecutionError::source_panic(None, PanicKind::Todo, None, PanicSite::unknown()),
+            ExecutionError::source_panic(None, PanicKind::Todo, None, PanicSite::unknown()),
         );
     }
 
     #[test]
     fn source_less_panic_diagnostic_has_no_source_labels_or_help() {
-        let error = ExecutionError::panic(PanicKind::Panic);
+        let error =
+            ExecutionError::source_panic(None, PanicKind::Panic, None, PanicSite::unknown());
 
         assert_eq!(
             error.code().map(|code| code.to_string()),

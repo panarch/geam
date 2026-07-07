@@ -503,7 +503,13 @@ mod tests {
 
         execute_steps(
             &plan,
-            &[Step::assert_list(ListLocalId(0), list_pattern(), None)],
+            &[Step::assert_list_at(
+                ListLocalId(0),
+                list_pattern(),
+                None,
+                PanicSite::unknown(),
+                SourceSpan::new(0, 0),
+            )],
             &mut frame,
         )
         .expect("assert should match");
@@ -522,9 +528,10 @@ mod tests {
         assert_eq!(
             execute_steps(
                 &plan,
-                &[Step::assert_bool(
+                &[Step::assert_bool_at(
                     BoolExpr::value(true),
                     Some(StringExpr::value("ok".into())),
+                    PanicSite::unknown(),
                 )],
                 &mut Frame::default(),
             ),
@@ -539,17 +546,27 @@ mod tests {
         assert_eq!(
             execute_steps(
                 &plan,
-                &[Step::assert_bool(BoolExpr::value(false), None)],
+                &[Step::assert_bool_at(
+                    BoolExpr::value(false),
+                    None,
+                    PanicSite::unknown(),
+                )],
                 &mut Frame::default(),
             ),
-            Err(ExecutionError::panic(PanicKind::Assert)),
+            Err(ExecutionError::source_panic(
+                None,
+                PanicKind::Assert,
+                None,
+                PanicSite::unknown()
+            )),
         );
         assert_eq!(
             execute_steps(
                 &plan,
-                &[Step::assert_bool(
+                &[Step::assert_bool_at(
                     BoolExpr::value(false),
                     Some(StringExpr::value("nope".into())),
+                    PanicSite::unknown(),
                 )],
                 &mut Frame::default(),
             ),
@@ -569,13 +586,22 @@ mod tests {
         assert_eq!(
             execute_steps(
                 &plan,
-                &[Step::assert_bool(
-                    BoolExpr::panic(PanicExpr::todo(None)),
-                    Some(StringExpr::panic(PanicExpr::panic(None))),
+                &[Step::assert_bool_at(
+                    BoolExpr::panic(PanicExpr::todo_at(None, PanicSite::unknown())),
+                    Some(StringExpr::panic(PanicExpr::panic_at(
+                        None,
+                        PanicSite::unknown()
+                    ))),
+                    PanicSite::unknown(),
                 )],
                 &mut Frame::default(),
             ),
-            Err(ExecutionError::panic(PanicKind::Panic)),
+            Err(ExecutionError::source_panic(
+                None,
+                PanicKind::Panic,
+                None,
+                PanicSite::unknown()
+            )),
         );
     }
 
@@ -585,9 +611,10 @@ mod tests {
 
         assert_expected_function_got_int(execute_steps(
             &plan,
-            &[Step::assert_bool(
+            &[Step::assert_bool_at(
                 failing_bool_expr(),
                 Some(failing_string_expr()),
+                PanicSite::unknown(),
             )],
             &mut Frame::default(),
         ));
@@ -599,9 +626,10 @@ mod tests {
 
         assert_expected_function_got_int(execute_steps(
             &plan,
-            &[Step::assert_bool(
+            &[Step::assert_bool_at(
                 failing_bool_expr(),
                 Some(StringExpr::value("checked".into())),
+                PanicSite::unknown(),
             )],
             &mut Frame::default(),
         ));
@@ -621,10 +649,12 @@ mod tests {
 
         execute_steps(
             &plan,
-            &[Step::assert_list(
+            &[Step::assert_list_at(
                 ListLocalId(0),
                 list_pattern(),
                 Some(failing_string_expr()),
+                PanicSite::unknown(),
+                SourceSpan::new(0, 0),
             )],
             &mut frame,
         )
@@ -641,10 +671,12 @@ mod tests {
 
         assert_expected_function_got_int(execute_steps(
             &plan,
-            &[Step::assert_list(
+            &[Step::assert_list_at(
                 ListLocalId(0),
                 list_pattern(),
                 Some(failing_string_expr()),
+                PanicSite::unknown(),
+                SourceSpan::new(0, 0),
             )],
             &mut frame,
         ));
@@ -659,7 +691,13 @@ mod tests {
 
         let actual = execute_steps(
             &plan,
-            &[Step::assert_list(ListLocalId(0), list_pattern(), None)],
+            &[Step::assert_list_at(
+                ListLocalId(0),
+                list_pattern(),
+                None,
+                PanicSite::unknown(),
+                SourceSpan::new(0, 0),
+            )],
             &mut frame,
         );
 
@@ -697,7 +735,7 @@ mod tests {
 
         let actual = execute_steps(
             &plan,
-            &[Step::assert_list(
+            &[Step::assert_list_at(
                 ListLocalId(0),
                 AssertPattern::list(ListAssertPattern::new(
                     ValueType::List(Box::new(ValueType::Int)),
@@ -722,6 +760,8 @@ mod tests {
                     None,
                 )),
                 None,
+                PanicSite::unknown(),
+                SourceSpan::new(0, 0),
             )],
             &mut frame,
         );
@@ -756,10 +796,12 @@ mod tests {
 
         execute_steps(
             &plan,
-            &[Step::assert_list(
+            &[Step::assert_list_at(
                 ListLocalId(0),
                 AssertPattern::list(ListAssertPattern::new(ValueType::Int, Vec::new(), None)),
                 None,
+                PanicSite::unknown(),
+                SourceSpan::new(0, 0),
             )],
             &mut frame,
         )

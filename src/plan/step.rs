@@ -337,11 +337,6 @@ impl Step {
         }
     }
 
-    #[cfg(test)]
-    pub(crate) fn assert_bool(condition: BoolExpr, message: Option<StringExpr>) -> Self {
-        Self::assert_bool_at(condition, message, PanicSite::unknown())
-    }
-
     pub(crate) fn assert_bool_at(
         condition: BoolExpr,
         message: Option<StringExpr>,
@@ -354,21 +349,6 @@ impl Step {
                 site,
             },
         }
-    }
-
-    #[cfg(test)]
-    pub(crate) fn assert_list(
-        local: ListLocalId,
-        pattern: AssertPattern,
-        message: Option<StringExpr>,
-    ) -> Self {
-        Self::assert_list_at(
-            local,
-            pattern,
-            message,
-            PanicSite::unknown(),
-            SourceSpan::new(0, 0),
-        )
     }
 
     pub(crate) fn assert_list_at(
@@ -427,9 +407,10 @@ mod tests {
             &StepKind::Evaluate(Expr::int(IntExpr::value(BigInt::from(1)))),
         );
         assert_eq!(
-            Step::assert_bool(
+            Step::assert_bool_at(
                 BoolExpr::value(false),
-                Some(StringExpr::value("nope".into()))
+                Some(StringExpr::value("nope".into())),
+                crate::plan::PanicSite::unknown(),
             )
             .kind(),
             &StepKind::AssertBool {
@@ -439,7 +420,7 @@ mod tests {
             },
         );
         assert_eq!(
-            Step::assert_list(
+            Step::assert_list_at(
                 ListLocalId(0),
                 AssertPattern::list(ListAssertPattern::new(
                     ValueType::Int,
@@ -447,6 +428,8 @@ mod tests {
                     Some(ListAssertTail::bind(ListLocalId(1), "tail".into())),
                 )),
                 None,
+                crate::plan::PanicSite::unknown(),
+                crate::plan::SourceSpan::new(0, 0),
             )
             .kind(),
             &StepKind::AssertList {

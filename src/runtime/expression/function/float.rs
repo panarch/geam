@@ -121,8 +121,8 @@ mod tests {
         FloatFunctionFunctionId, FloatFunctionId, FloatFunctionLocalId, FloatFunctionValue,
         FloatLocalId, FunctionExpr, FunctionFunctionExpr, FunctionFunctionId,
         FunctionFunctionValue, FunctionId, FunctionPlan, FunctionReturnFamily, FunctionType,
-        IntExpr, IntFunctionExpr, IntFunctionId, PanicExpr, ParamLocal, ReturnExpr, Step,
-        StringExpr, StringFunctionExpr, StringFunctionFunctionId, TupleExpr, ValueType,
+        IntExpr, IntFunctionExpr, IntFunctionId, PanicExpr, PanicSite, ParamLocal, ReturnExpr,
+        Step, StringExpr, StringFunctionExpr, StringFunctionFunctionId, TupleExpr, ValueType,
     };
     use crate::runtime::frame::Frame;
     use crate::runtime::{ExecutionError, PanicKind};
@@ -144,9 +144,14 @@ mod tests {
             eval_float_function_expr(
                 &plan,
                 &mut frame,
-                &FloatFunctionExpr::panic(PanicExpr::panic(None), type_()),
+                &FloatFunctionExpr::panic(PanicExpr::panic_at(None, PanicSite::unknown()), type_()),
             ),
-            Err(ExecutionError::panic(PanicKind::Panic)),
+            Err(ExecutionError::source_panic(
+                None,
+                PanicKind::Panic,
+                None,
+                PanicSite::unknown()
+            )),
         );
 
         let function = eval_float_function_expr(
