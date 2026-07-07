@@ -312,6 +312,12 @@ impl<'a> PlanContext<'a> {
         local
     }
 
+    pub(super) fn define_internal_int_function_local(&mut self) -> IntFunctionLocalId {
+        let local = IntFunctionLocalId(self.next_int_function_local);
+        self.next_int_function_local += 1;
+        local
+    }
+
     pub(super) fn define_string_function_local(
         &mut self,
         name: EcoString,
@@ -323,6 +329,12 @@ impl<'a> PlanContext<'a> {
             name,
             LocalBinding::Function(FunctionLocalBinding::String { local, type_ }),
         );
+        local
+    }
+
+    pub(super) fn define_internal_string_function_local(&mut self) -> StringFunctionLocalId {
+        let local = StringFunctionLocalId(self.next_string_function_local);
+        self.next_string_function_local += 1;
         local
     }
 
@@ -340,6 +352,12 @@ impl<'a> PlanContext<'a> {
         local
     }
 
+    pub(super) fn define_internal_float_function_local(&mut self) -> FloatFunctionLocalId {
+        let local = FloatFunctionLocalId(self.next_float_function_local);
+        self.next_float_function_local += 1;
+        local
+    }
+
     pub(super) fn define_bool_function_local(
         &mut self,
         name: EcoString,
@@ -351,6 +369,12 @@ impl<'a> PlanContext<'a> {
             name,
             LocalBinding::Function(FunctionLocalBinding::Bool { local, type_ }),
         );
+        local
+    }
+
+    pub(super) fn define_internal_bool_function_local(&mut self) -> BoolFunctionLocalId {
+        let local = BoolFunctionLocalId(self.next_bool_function_local);
+        self.next_bool_function_local += 1;
         local
     }
 
@@ -368,6 +392,12 @@ impl<'a> PlanContext<'a> {
         local
     }
 
+    pub(super) fn define_internal_nil_function_local(&mut self) -> NilFunctionLocalId {
+        let local = NilFunctionLocalId(self.next_nil_function_local);
+        self.next_nil_function_local += 1;
+        local
+    }
+
     pub(super) fn define_tuple_function_local(
         &mut self,
         name: EcoString,
@@ -379,6 +409,12 @@ impl<'a> PlanContext<'a> {
             name,
             LocalBinding::Function(FunctionLocalBinding::Tuple { local, type_ }),
         );
+        local
+    }
+
+    pub(super) fn define_internal_tuple_function_local(&mut self) -> TupleFunctionLocalId {
+        let local = TupleFunctionLocalId(self.next_tuple_function_local);
+        self.next_tuple_function_local += 1;
         local
     }
 
@@ -396,6 +432,12 @@ impl<'a> PlanContext<'a> {
         local
     }
 
+    pub(super) fn define_internal_list_function_local(&mut self) -> ListFunctionLocalId {
+        let local = ListFunctionLocalId(self.next_list_function_local);
+        self.next_list_function_local += 1;
+        local
+    }
+
     pub(super) fn define_function_function_local(
         &mut self,
         name: EcoString,
@@ -407,6 +449,12 @@ impl<'a> PlanContext<'a> {
             name,
             LocalBinding::Function(FunctionLocalBinding::Function { local, type_ }),
         );
+        local
+    }
+
+    pub(super) fn define_internal_function_function_local(&mut self) -> FunctionFunctionLocalId {
+        let local = FunctionFunctionLocalId(self.next_function_function_local);
+        self.next_function_function_local += 1;
         local
     }
 
@@ -471,6 +519,12 @@ impl<'a> PlanContext<'a> {
         self.next_nil_local += 1;
         self.bindings
             .insert(name, LocalBinding::Primitive(LocalId::Nil(local)));
+        local
+    }
+
+    pub(super) fn define_internal_nil_local(&mut self) -> NilLocalId {
+        let local = NilLocalId(self.next_nil_local);
+        self.next_nil_local += 1;
         local
     }
 
@@ -1041,9 +1095,9 @@ mod tests {
         FloatFunctionId, FloatFunctionLocalId, FloatLocalId, FunctionFunctionExpr,
         FunctionFunctionLocalId, FunctionType, FunctionValue, IntFunctionId, IntFunctionLocalId,
         IntLocalId, ListExpr, ListFunctionExpr, ListFunctionLocalId, ListLocalId, LocalId,
-        NilFunctionExpr, NilFunctionLocalId, ParamLocal, RuntimeFunctionId, StringFunctionExpr,
-        StringFunctionLocalId, StringLocalId, TupleFunctionExpr, TupleFunctionLocalId,
-        TupleLocalId, ValueType,
+        NilFunctionExpr, NilFunctionLocalId, NilLocalId, ParamLocal, RuntimeFunctionId,
+        StringFunctionExpr, StringFunctionLocalId, StringLocalId, TupleFunctionExpr,
+        TupleFunctionLocalId, TupleLocalId, ValueType,
     };
     use ecow::EcoString;
     use gleam_core::type_;
@@ -1242,6 +1296,7 @@ mod tests {
 
         assert_eq!(context.define_internal_tuple_local(), TupleLocalId(0));
         assert_eq!(context.lookup_tuple_local(&"<tuple:0>".into()), None);
+        assert_eq!(context.lookup_tuple_local(&"<case:tuple:0>".into()), None);
         assert_eq!(
             context.define_tuple_local("tuple".into(), tuple_type.clone()),
             TupleLocalId(1),
@@ -1261,6 +1316,7 @@ mod tests {
 
         assert_eq!(context.define_internal_list_local(), ListLocalId(0));
         assert_eq!(context.lookup_list_local(&"<list:0>".into()), None);
+        assert_eq!(context.lookup_list_local(&"<case:list:0>".into()), None);
         assert_eq!(
             context.define_list_local("values".into(), ValueType::Int),
             ListLocalId(1),
@@ -1282,10 +1338,12 @@ mod tests {
         assert_eq!(context.define_internal_string_local(), StringLocalId(0));
         assert_eq!(context.define_internal_float_local(), FloatLocalId(0));
         assert_eq!(context.define_internal_bool_local(), BoolLocalId(0));
+        assert_eq!(context.define_internal_nil_local(), NilLocalId(0));
         assert_eq!(context.lookup_local(&"<case:int:0>".into()), None);
         assert_eq!(context.lookup_local(&"<case:string:0>".into()), None);
         assert_eq!(context.lookup_local(&"<case:float:0>".into()), None);
         assert_eq!(context.lookup_local(&"<case:bool:0>".into()), None);
+        assert_eq!(context.lookup_local(&"<case:nil:0>".into()), None);
 
         assert_eq!(context.define_int_local("int".into()), IntLocalId(1));
         assert_eq!(
@@ -1294,6 +1352,86 @@ mod tests {
         );
         assert_eq!(context.define_float_local("float".into()), FloatLocalId(1));
         assert_eq!(context.define_bool_local("bool".into()), BoolLocalId(1));
+        assert_eq!(context.define_nil_local("nil".into()), NilLocalId(1));
+    }
+
+    #[test]
+    fn define_internal_function_locals_reserve_ids_without_user_binding() {
+        let module = EcoString::from("main");
+        let functions = HashMap::<EcoString, FunctionInfo>::new();
+        let mut anonymous = AnonymousFunctions::default();
+        let mut context = PlanContext::new(&module, &functions, &mut anonymous);
+        let type_ = FunctionType::new(Vec::new(), ValueType::Int);
+
+        assert_eq!(
+            context.define_internal_int_function_local(),
+            IntFunctionLocalId(0),
+        );
+        assert_eq!(
+            context.define_internal_string_function_local(),
+            StringFunctionLocalId(0),
+        );
+        assert_eq!(
+            context.define_internal_float_function_local(),
+            FloatFunctionLocalId(0),
+        );
+        assert_eq!(
+            context.define_internal_bool_function_local(),
+            BoolFunctionLocalId(0),
+        );
+        assert_eq!(
+            context.define_internal_nil_function_local(),
+            NilFunctionLocalId(0),
+        );
+        assert_eq!(
+            context.define_internal_tuple_function_local(),
+            TupleFunctionLocalId(0),
+        );
+        assert_eq!(
+            context.define_internal_list_function_local(),
+            ListFunctionLocalId(0),
+        );
+        assert_eq!(
+            context.define_internal_function_function_local(),
+            FunctionFunctionLocalId(0),
+        );
+        assert_eq!(
+            context.lookup_function_local(&"<case:int_function:0>".into()),
+            None,
+        );
+        assert_eq!(
+            context.lookup_function_local(&"<case:string_function:0>".into()),
+            None,
+        );
+        assert_eq!(
+            context.lookup_function_local(&"<case:float_function:0>".into()),
+            None,
+        );
+        assert_eq!(
+            context.lookup_function_local(&"<case:bool_function:0>".into()),
+            None,
+        );
+        assert_eq!(
+            context.lookup_function_local(&"<case:nil_function:0>".into()),
+            None,
+        );
+        assert_eq!(
+            context.lookup_function_local(&"<case:tuple_function:0>".into()),
+            None,
+        );
+        assert_eq!(
+            context.lookup_function_local(&"<case:list_function:0>".into()),
+            None,
+        );
+        assert_eq!(
+            context.lookup_function_local(&"<case:function_function:0>".into()),
+            None,
+        );
+
+        assert_eq!(
+            context.define_int_function_local("f".into(), type_),
+            IntFunctionLocalId(1),
+        );
     }
 
     #[test]

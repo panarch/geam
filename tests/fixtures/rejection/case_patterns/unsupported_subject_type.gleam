@@ -1,6 +1,5 @@
 pub fn main() {
-  let values = [1, 2]
-  case values {
+  case <<1>> {
     _ -> 1
   }
 }
