@@ -1,6 +1,6 @@
 use super::{
     case_return_type, invalid_case_shape, single_case_pattern, unsupported_case,
-    validate_case_branch_type, validate_clause_shape,
+    validate_clause_shape,
 };
 use crate::plan::{Expr, ExprKind, StringCaseBranches, StringExpr};
 use crate::planner::context::PlanContext;
@@ -18,18 +18,27 @@ pub(super) fn plan(
 ) -> Result<Expr, PlanError> {
     let subject = super::super::plan_string_expr(subject, context)?;
     let return_type = case_return_type(type_.as_ref())?;
+    for clause in &clauses {
+        validate_clause_shape(clause)?;
+    }
+    let needs_subject_binding = clauses.iter().any(clause_has_string_variable_pattern);
+    let (subject_step, subject) = if needs_subject_binding {
+        let (step, subject) = super::bind_string_case_subject(subject, context);
+        (Some(step), subject)
+    } else {
+        (None, subject)
+    };
     let mut literal_clauses = Vec::new();
     let mut fallback = None;
     for clause in clauses {
-        validate_clause_shape(&clause)?;
         let pattern = single_case_pattern(clause.pattern)?;
         let pattern = plan_string_case_pattern(pattern)?;
-        let branch = super::super::plan_expr_with_expected_source_stop_type(
-            clause.then,
-            return_type.clone(),
-            context,
-        )?;
-        validate_case_branch_type(type_.as_ref(), &branch)?;
+        let binding = pattern
+            .binding()
+            .cloned()
+            .map(|name| (name, Expr::string(subject.clone())));
+        let branch =
+            super::plan_case_branch(type_.as_ref(), &return_type, clause.then, binding, context)?;
 
         match pattern {
             StringCasePattern::Literal(value) => {
@@ -41,7 +50,7 @@ pub(super) fn plan(
                     literal_clauses.push((value, branch));
                 }
             }
-            StringCasePattern::Any => {
+            StringCasePattern::Any { .. } => {
                 if fallback.is_none() {
                     fallback = Some(branch);
                 }
@@ -53,25 +62,39 @@ pub(super) fn plan(
         InvalidCaseShapeReason::MissingFallbackPattern,
     ))?;
 
-    string_case_expr(subject, literal_clauses, fallback)
+    string_case_expr(subject, literal_clauses, fallback).map(|case| match subject_step {
+        Some(step) => super::case_subject_block(step, case),
+        None => case,
+    })
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum StringCasePattern {
     Literal(EcoString),
-    Any,
+    Any { binding: Option<EcoString> },
+}
+
+impl StringCasePattern {
+    fn binding(&self) -> Option<&EcoString> {
+        match self {
+            StringCasePattern::Any { binding } => binding.as_ref(),
+            StringCasePattern::Literal(_) => None,
+        }
+    }
 }
 
 fn plan_string_case_pattern(pattern: Pattern<Arc<Type>>) -> Result<StringCasePattern, PlanError> {
     match pattern {
         Pattern::String { value, .. } => Ok(StringCasePattern::Literal(value)),
-        Pattern::Variable { type_, .. } if type_.is_string() => {
-            Err(unsupported_case(UnsupportedCaseReason::VariablePattern))
-        }
+        Pattern::Variable { name, type_, .. } if type_.is_string() => Ok(StringCasePattern::Any {
+            binding: Some(name),
+        }),
         Pattern::Variable { .. } => Err(invalid_case_shape(
             InvalidCaseShapeReason::PatternTypeMismatch,
         )),
-        Pattern::Discard { type_, .. } if type_.is_string() => Ok(StringCasePattern::Any),
+        Pattern::Discard { type_, .. } if type_.is_string() => {
+            Ok(StringCasePattern::Any { binding: None })
+        }
         Pattern::Discard { .. } => Err(invalid_case_shape(
             InvalidCaseShapeReason::PatternTypeMismatch,
         )),
@@ -93,6 +116,15 @@ fn plan_string_case_pattern(pattern: Pattern<Arc<Type>>) -> Result<StringCasePat
             InvalidCaseShapeReason::PatternTypeMismatch,
         )),
     }
+}
+
+fn clause_has_string_variable_pattern(clause: &TypedClause) -> bool {
+    clause.pattern.iter().any(|pattern| {
+        matches!(
+            pattern,
+            Pattern::Variable { type_, .. } if type_.is_string()
+        )
+    })
 }
 
 fn validate_string_case_assign_pattern(
@@ -423,9 +455,10 @@ mod tests {
     };
     use crate::planner::dsl::{
         bool_, bool_return_expr, bool_return_string_case, float, function, function_ref, int,
-        int_return_expr, int_return_string_case, list, list_return_expr, list_return_string_case,
-        local_string, module, nil, nil_return_expr, nil_return_string_case, return_list, string,
-        string_return_expr, string_return_string_case, tuple,
+        int_return_expr, int_return_string_case, let_string_step, list, list_return_expr,
+        list_return_string_case, local_string, module, nil, nil_return_expr,
+        nil_return_string_case, return_list, string, string_return_block, string_return_expr,
+        string_return_string_case, tuple,
     };
     use crate::planner::plan_module;
     use crate::planner::support::{dummy_span, expect_plan_error};
@@ -539,6 +572,44 @@ pub fn list_case(value: String) {
     }
 
     #[test]
+    fn plan_string_case_variable_pattern_binds_subject_once_in_branch_scope() {
+        let actual = plan_module(crate::planner::support::compile(
+            r#"
+pub fn main() {
+  case "geam" {
+    other -> other
+  }
+}
+"#,
+        ))
+        .expect("source should plan");
+        let expected = module(
+            "main",
+            function(
+                "main",
+                string_return_block(
+                    [let_string_step(0, "<case:string:0>", string("geam"))],
+                    string_return_string_case(
+                        local_string(0, "<case:string:0>"),
+                        [],
+                        string_return_block(
+                            [let_string_step(
+                                1,
+                                "other",
+                                local_string(0, "<case:string:0>"),
+                            )],
+                            string_return_expr(local_string(1, "other")),
+                        ),
+                    ),
+                ),
+            ),
+            [],
+        );
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
     fn plan_string_case_wildcard_fallbacks() {
         let actual = plan_module(crate::planner::support::compile(
             r#"
@@ -642,10 +713,6 @@ fn duplicate_literal(value: String) {
     #[test]
     fn reject_profile_string_case_patterns() {
         let cases = [
-            (
-                r#"pub fn main() { case "one" { value -> 1 _ -> 0 } }"#,
-                UnsupportedCaseReason::VariablePattern,
-            ),
             (
                 r#"pub fn main() { case "one" { "one" as value -> 1 _ -> 0 } }"#,
                 UnsupportedCaseReason::AssignPattern,

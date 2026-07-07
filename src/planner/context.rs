@@ -418,11 +418,23 @@ impl<'a> PlanContext<'a> {
         local
     }
 
+    pub(super) fn define_internal_int_local(&mut self) -> IntLocalId {
+        let local = IntLocalId(self.next_int_local);
+        self.next_int_local += 1;
+        local
+    }
+
     pub(super) fn define_string_local(&mut self, name: EcoString) -> StringLocalId {
         let local = StringLocalId(self.next_string_local);
         self.next_string_local += 1;
         self.bindings
             .insert(name, LocalBinding::Primitive(LocalId::String(local)));
+        local
+    }
+
+    pub(super) fn define_internal_string_local(&mut self) -> StringLocalId {
+        let local = StringLocalId(self.next_string_local);
+        self.next_string_local += 1;
         local
     }
 
@@ -434,11 +446,23 @@ impl<'a> PlanContext<'a> {
         local
     }
 
+    pub(super) fn define_internal_float_local(&mut self) -> FloatLocalId {
+        let local = FloatLocalId(self.next_float_local);
+        self.next_float_local += 1;
+        local
+    }
+
     pub(super) fn define_bool_local(&mut self, name: EcoString) -> BoolLocalId {
         let local = BoolLocalId(self.next_bool_local);
         self.next_bool_local += 1;
         self.bindings
             .insert(name, LocalBinding::Primitive(LocalId::Bool(local)));
+        local
+    }
+
+    pub(super) fn define_internal_bool_local(&mut self) -> BoolLocalId {
+        let local = BoolLocalId(self.next_bool_local);
+        self.next_bool_local += 1;
         local
     }
 
@@ -1013,12 +1037,13 @@ mod tests {
     use super::FunctionLocalBinding;
     use super::{AnonymousFunctions, FunctionInfo, FunctionRuntimeIds, PlanContext};
     use crate::plan::{
-        BoolFunctionExpr, BoolFunctionLocalId, CaptureArg, FloatFunctionExpr, FloatFunctionId,
-        FloatFunctionLocalId, FunctionFunctionExpr, FunctionFunctionLocalId, FunctionType,
-        FunctionValue, IntFunctionId, IntFunctionLocalId, IntLocalId, ListExpr, ListFunctionExpr,
-        ListFunctionLocalId, ListLocalId, LocalId, NilFunctionExpr, NilFunctionLocalId, ParamLocal,
-        RuntimeFunctionId, StringFunctionExpr, StringFunctionLocalId, TupleFunctionExpr,
-        TupleFunctionLocalId, TupleLocalId, ValueType,
+        BoolFunctionExpr, BoolFunctionLocalId, BoolLocalId, CaptureArg, FloatFunctionExpr,
+        FloatFunctionId, FloatFunctionLocalId, FloatLocalId, FunctionFunctionExpr,
+        FunctionFunctionLocalId, FunctionType, FunctionValue, IntFunctionId, IntFunctionLocalId,
+        IntLocalId, ListExpr, ListFunctionExpr, ListFunctionLocalId, ListLocalId, LocalId,
+        NilFunctionExpr, NilFunctionLocalId, ParamLocal, RuntimeFunctionId, StringFunctionExpr,
+        StringFunctionLocalId, StringLocalId, TupleFunctionExpr, TupleFunctionLocalId,
+        TupleLocalId, ValueType,
     };
     use ecow::EcoString;
     use gleam_core::type_;
@@ -1244,6 +1269,31 @@ mod tests {
             context.lookup_list_local(&"values".into()),
             Some((ListLocalId(1), ValueType::Int)),
         );
+    }
+
+    #[test]
+    fn define_internal_primitive_locals_reserve_ids_without_user_binding() {
+        let module = EcoString::from("main");
+        let functions = HashMap::<EcoString, FunctionInfo>::new();
+        let mut anonymous = AnonymousFunctions::default();
+        let mut context = PlanContext::new(&module, &functions, &mut anonymous);
+
+        assert_eq!(context.define_internal_int_local(), IntLocalId(0));
+        assert_eq!(context.define_internal_string_local(), StringLocalId(0));
+        assert_eq!(context.define_internal_float_local(), FloatLocalId(0));
+        assert_eq!(context.define_internal_bool_local(), BoolLocalId(0));
+        assert_eq!(context.lookup_local(&"<case:int:0>".into()), None);
+        assert_eq!(context.lookup_local(&"<case:string:0>".into()), None);
+        assert_eq!(context.lookup_local(&"<case:float:0>".into()), None);
+        assert_eq!(context.lookup_local(&"<case:bool:0>".into()), None);
+
+        assert_eq!(context.define_int_local("int".into()), IntLocalId(1));
+        assert_eq!(
+            context.define_string_local("string".into()),
+            StringLocalId(1),
+        );
+        assert_eq!(context.define_float_local("float".into()), FloatLocalId(1));
+        assert_eq!(context.define_bool_local("bool".into()), BoolLocalId(1));
     }
 
     #[test]

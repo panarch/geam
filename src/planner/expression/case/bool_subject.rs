@@ -1,10 +1,11 @@
 use super::{
     case_return_type, invalid_case_shape, single_case_pattern, unsupported_case,
-    validate_case_branch_type, validate_clause_shape,
+    validate_clause_shape,
 };
 use crate::plan::{BoolCaseBranches, BoolExpr, Expr, ExprKind};
 use crate::planner::context::PlanContext;
 use crate::planner::error::{InvalidCaseShapeReason, PlanError, UnsupportedCaseReason};
+use ecow::EcoString;
 use gleam_core::ast::{Pattern, TypedClause, TypedExpr};
 use gleam_core::type_::Type;
 use std::sync::Arc;
@@ -17,23 +18,32 @@ pub(super) fn plan(
 ) -> Result<Expr, PlanError> {
     let subject = super::super::plan_bool_expr(subject, context)?;
     let return_type = case_return_type(type_.as_ref())?;
+    for clause in &clauses {
+        validate_clause_shape(clause)?;
+    }
+    let needs_subject_binding = clauses.iter().any(clause_has_bool_variable_pattern);
+    let (subject_step, subject) = if needs_subject_binding {
+        let (step, subject) = super::bind_bool_case_subject(subject, context);
+        (Some(step), subject)
+    } else {
+        (None, subject)
+    };
     let mut true_branch = None;
     let mut false_branch = None;
     for clause in clauses {
-        validate_clause_shape(&clause)?;
         let pattern = single_case_pattern(clause.pattern)?;
         let pattern = plan_bool_case_pattern(pattern)?;
-        let branch = super::super::plan_expr_with_expected_source_stop_type(
-            clause.then,
-            return_type.clone(),
-            context,
-        )?;
-        validate_case_branch_type(type_.as_ref(), &branch)?;
+        let binding = pattern
+            .binding()
+            .cloned()
+            .map(|name| (name, Expr::bool(subject.clone())));
+        let branch =
+            super::plan_case_branch(type_.as_ref(), &return_type, clause.then, binding, context)?;
 
         match pattern {
             BoolCasePattern::True => set_case_branch(&mut true_branch, branch),
             BoolCasePattern::False => set_case_branch(&mut false_branch, branch),
-            BoolCasePattern::Any => {
+            BoolCasePattern::Any { .. } => {
                 set_case_branch(&mut true_branch, branch.clone());
                 set_case_branch(&mut false_branch, branch);
             }
@@ -47,14 +57,26 @@ pub(super) fn plan(
         InvalidCaseShapeReason::MissingFalsePattern,
     ))?;
 
-    bool_case_expr(subject, true_, false_)
+    bool_case_expr(subject, true_, false_).map(|case| match subject_step {
+        Some(step) => super::case_subject_block(step, case),
+        None => case,
+    })
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 enum BoolCasePattern {
     True,
     False,
-    Any,
+    Any { binding: Option<EcoString> },
+}
+
+impl BoolCasePattern {
+    fn binding(&self) -> Option<&EcoString> {
+        match self {
+            BoolCasePattern::Any { binding } => binding.as_ref(),
+            BoolCasePattern::True | BoolCasePattern::False => None,
+        }
+    }
 }
 
 fn plan_bool_case_pattern(pattern: Pattern<Arc<Type>>) -> Result<BoolCasePattern, PlanError> {
@@ -72,13 +94,15 @@ fn plan_bool_case_pattern(pattern: Pattern<Arc<Type>>) -> Result<BoolCasePattern
                 InvalidCaseShapeReason::PatternTypeMismatch,
             )),
         },
-        Pattern::Variable { type_, .. } if type_.is_bool() => {
-            Err(unsupported_case(UnsupportedCaseReason::VariablePattern))
-        }
+        Pattern::Variable { name, type_, .. } if type_.is_bool() => Ok(BoolCasePattern::Any {
+            binding: Some(name),
+        }),
         Pattern::Variable { .. } => Err(invalid_case_shape(
             InvalidCaseShapeReason::PatternTypeMismatch,
         )),
-        Pattern::Discard { type_, .. } if type_.is_bool() => Ok(BoolCasePattern::Any),
+        Pattern::Discard { type_, .. } if type_.is_bool() => {
+            Ok(BoolCasePattern::Any { binding: None })
+        }
         Pattern::Discard { .. } => Err(invalid_case_shape(
             InvalidCaseShapeReason::PatternTypeMismatch,
         )),
@@ -99,6 +123,15 @@ fn plan_bool_case_pattern(pattern: Pattern<Arc<Type>>) -> Result<BoolCasePattern
             InvalidCaseShapeReason::PatternTypeMismatch,
         )),
     }
+}
+
+fn clause_has_bool_variable_pattern(clause: &TypedClause) -> bool {
+    clause.pattern.iter().any(|pattern| {
+        matches!(
+            pattern,
+            Pattern::Variable { type_, .. } if type_.is_bool()
+        )
+    })
 }
 
 fn validate_bool_case_assign_pattern(
@@ -209,10 +242,10 @@ mod tests {
         ListFunctionId, LocalId, NilFunctionId, RuntimeFunctionId, StringFunctionId, ValueType,
     };
     use crate::planner::dsl::{
-        bool_, bool_return_bool_case, bool_return_expr, call_bool, function, function_ref, int,
-        int_return_bool_case, int_return_expr, list, list_return_bool_case, list_return_expr,
-        local_bool, module, nil, nil_return_bool_case, nil_return_expr, return_list, string,
-        string_return_bool_case, string_return_expr,
+        bool_, bool_return_block, bool_return_bool_case, bool_return_expr, call_bool, function,
+        function_ref, int, int_return_bool_case, int_return_expr, let_bool_step, list,
+        list_return_bool_case, list_return_expr, local_bool, module, nil, nil_return_bool_case,
+        nil_return_expr, return_list, string, string_return_bool_case, string_return_expr,
     };
     use crate::planner::plan_module;
     use crate::planner::support::{dummy_span, expect_plan_error};
@@ -314,6 +347,37 @@ pub fn list_case(value: Bool) {
                 )
                 .param_bool(0, "value"),
             ],
+        );
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn plan_bool_case_variable_pattern_binds_subject_once_in_branch_scope() {
+        let actual = plan_module(crate::planner::support::compile(
+            r#"
+pub fn main() {
+  case True {
+    other -> other
+  }
+}
+"#,
+        ))
+        .expect("source should plan");
+        let branch = bool_return_block(
+            [let_bool_step(1, "other", local_bool(0, "<case:bool:0>"))],
+            bool_return_expr(local_bool(1, "other")),
+        );
+        let expected = module(
+            "main",
+            function(
+                "main",
+                bool_return_block(
+                    [let_bool_step(0, "<case:bool:0>", bool_(true))],
+                    bool_return_bool_case(local_bool(0, "<case:bool:0>"), branch.clone(), branch),
+                ),
+            ),
+            [],
         );
 
         assert_eq!(actual, expected);
@@ -650,10 +714,6 @@ fn duplicate_true(value: Bool) {
     #[test]
     fn reject_profile_bool_case_patterns() {
         let cases = [
-            (
-                r#"pub fn main() { case True { value -> 1 } }"#,
-                UnsupportedCaseReason::VariablePattern,
-            ),
             (
                 r#"
 pub fn main() {

@@ -1,10 +1,11 @@
 use super::{
     case_return_type, invalid_case_shape, single_case_pattern, unsupported_case,
-    validate_case_branch_type, validate_clause_shape,
+    validate_clause_shape,
 };
 use crate::plan::{Expr, ExprKind, IntCaseBranches, IntExpr};
 use crate::planner::context::PlanContext;
 use crate::planner::error::{InvalidCaseShapeReason, PlanError, UnsupportedCaseReason};
+use ecow::EcoString;
 use gleam_core::ast::{Pattern, TypedClause, TypedExpr};
 use gleam_core::type_::Type;
 use num_bigint::BigInt;
@@ -18,18 +19,27 @@ pub(super) fn plan(
 ) -> Result<Expr, PlanError> {
     let subject = super::super::plan_int_expr(subject, context)?;
     let return_type = case_return_type(type_.as_ref())?;
+    for clause in &clauses {
+        validate_clause_shape(clause)?;
+    }
+    let needs_subject_binding = clauses.iter().any(clause_has_int_variable_pattern);
+    let (subject_step, subject) = if needs_subject_binding {
+        let (step, subject) = super::bind_int_case_subject(subject, context);
+        (Some(step), subject)
+    } else {
+        (None, subject)
+    };
     let mut literal_clauses = Vec::new();
     let mut fallback = None;
     for clause in clauses {
-        validate_clause_shape(&clause)?;
         let pattern = single_case_pattern(clause.pattern)?;
         let pattern = plan_int_case_pattern(pattern)?;
-        let branch = super::super::plan_expr_with_expected_source_stop_type(
-            clause.then,
-            return_type.clone(),
-            context,
-        )?;
-        validate_case_branch_type(type_.as_ref(), &branch)?;
+        let binding = pattern
+            .binding()
+            .cloned()
+            .map(|name| (name, Expr::int(subject.clone())));
+        let branch =
+            super::plan_case_branch(type_.as_ref(), &return_type, clause.then, binding, context)?;
 
         match pattern {
             IntCasePattern::Literal(value) => {
@@ -41,7 +51,7 @@ pub(super) fn plan(
                     literal_clauses.push((value, branch));
                 }
             }
-            IntCasePattern::Any => {
+            IntCasePattern::Any { .. } => {
                 if fallback.is_none() {
                     fallback = Some(branch);
                 }
@@ -53,25 +63,39 @@ pub(super) fn plan(
         InvalidCaseShapeReason::MissingFallbackPattern,
     ))?;
 
-    int_case_expr(subject, literal_clauses, fallback)
+    int_case_expr(subject, literal_clauses, fallback).map(|case| match subject_step {
+        Some(step) => super::case_subject_block(step, case),
+        None => case,
+    })
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum IntCasePattern {
     Literal(BigInt),
-    Any,
+    Any { binding: Option<EcoString> },
+}
+
+impl IntCasePattern {
+    fn binding(&self) -> Option<&EcoString> {
+        match self {
+            IntCasePattern::Any { binding } => binding.as_ref(),
+            IntCasePattern::Literal(_) => None,
+        }
+    }
 }
 
 fn plan_int_case_pattern(pattern: Pattern<Arc<Type>>) -> Result<IntCasePattern, PlanError> {
     match pattern {
         Pattern::Int { int_value, .. } => Ok(IntCasePattern::Literal(int_value)),
-        Pattern::Variable { type_, .. } if type_.is_int() => {
-            Err(unsupported_case(UnsupportedCaseReason::VariablePattern))
-        }
+        Pattern::Variable { name, type_, .. } if type_.is_int() => Ok(IntCasePattern::Any {
+            binding: Some(name),
+        }),
         Pattern::Variable { .. } => Err(invalid_case_shape(
             InvalidCaseShapeReason::PatternTypeMismatch,
         )),
-        Pattern::Discard { type_, .. } if type_.is_int() => Ok(IntCasePattern::Any),
+        Pattern::Discard { type_, .. } if type_.is_int() => {
+            Ok(IntCasePattern::Any { binding: None })
+        }
         Pattern::Discard { .. } => Err(invalid_case_shape(
             InvalidCaseShapeReason::PatternTypeMismatch,
         )),
@@ -91,6 +115,15 @@ fn plan_int_case_pattern(pattern: Pattern<Arc<Type>>) -> Result<IntCasePattern, 
             InvalidCaseShapeReason::PatternTypeMismatch,
         )),
     }
+}
+
+fn clause_has_int_variable_pattern(clause: &TypedClause) -> bool {
+    clause.pattern.iter().any(|pattern| {
+        matches!(
+            pattern,
+            Pattern::Variable { type_, .. } if type_.is_int()
+        )
+    })
 }
 
 fn validate_int_case_assign_pattern(
@@ -421,9 +454,10 @@ mod tests {
     };
     use crate::planner::dsl::{
         bool_, bool_return_expr, bool_return_int_case, float, function, function_ref, int,
-        int_return_expr, int_return_int_case, list, list_return_expr, list_return_int_case,
-        local_int, module, nil, nil_return_expr, nil_return_int_case, return_list, string,
-        string_return_expr, string_return_int_case, tuple,
+        int_return_block, int_return_expr, int_return_int_case, let_int_step, list,
+        list_return_expr, list_return_int_case, local_int, module, nil, nil_return_expr,
+        nil_return_int_case, return_list, string, string_return_expr, string_return_int_case,
+        tuple,
     };
     use crate::planner::plan_module;
     use crate::planner::support::{dummy_span, expect_plan_error};
@@ -602,6 +636,40 @@ fn duplicate_literal(value: Int) {
                 )
                 .param_int(0, "value"),
             ],
+        );
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn plan_int_case_variable_pattern_binds_subject_once_in_branch_scope() {
+        let actual = plan_module(crate::planner::support::compile(
+            r#"
+pub fn main() {
+  case 41 {
+    other -> other + 1
+  }
+}
+"#,
+        ))
+        .expect("source should plan");
+        let expected = module(
+            "main",
+            function(
+                "main",
+                int_return_block(
+                    [let_int_step(0, "<case:int:0>", int(41))],
+                    int_return_int_case(
+                        local_int(0, "<case:int:0>"),
+                        [],
+                        int_return_block(
+                            [let_int_step(1, "other", local_int(0, "<case:int:0>"))],
+                            int_return_expr(local_int(1, "other").add_int(int(1))),
+                        ),
+                    ),
+                ),
+            ),
+            [],
         );
 
         assert_eq!(actual, expected);
@@ -889,10 +957,6 @@ fn duplicate_literal(value: Int) {
     #[test]
     fn reject_profile_int_case_patterns() {
         let cases = [
-            (
-                r#"pub fn main() { case 1 { value -> 1 _ -> 0 } }"#,
-                UnsupportedCaseReason::VariablePattern,
-            ),
             (
                 r#"pub fn main() { case 1 { 1 as value -> 1 _ -> 0 } }"#,
                 UnsupportedCaseReason::AssignPattern,
