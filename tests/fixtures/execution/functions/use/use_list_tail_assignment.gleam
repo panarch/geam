@@ -6,3 +6,5 @@ pub fn main() {
   use [..rest] <- with_values
   rest
 }
+
+// geam:expect List(Int)([Int(1)])
