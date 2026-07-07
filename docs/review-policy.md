@@ -67,6 +67,11 @@ Treat over-wide execution plan state as a blocking design issue, even when no
 current source fixture executes incorrectly. The plan model is the validation
 boundary; unused executable shape creates future margin and review ambiguity.
 
+When adding or changing fields on a type with custom `Debug`, `PartialEq`,
+`Eq`, `Hash`, or ordering implementations, update or explicitly justify every
+affected implementation. Only derived/cache fields may be omitted, and owning
+unit tests must prove both included fields and intentionally omitted fields.
+
 ## Gleam Compatibility Rules
 
 For any Gleam source that Geam accepts, observable runtime behavior must match
