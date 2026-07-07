@@ -38,6 +38,7 @@ pub(super) fn plan_function(
     }
 
     let mut context = PlanContext::new(module_name, functions, anonymous_functions);
+    context.set_current_function(name.clone());
     let params = define_params(&info.params, &mut context);
     let return_type = info.return_type();
     let planned = plan_steps_and_return(

@@ -1,6 +1,6 @@
 use crate::plan::{
     ExecutionPlan, FunctionFunctionLocalId, FunctionId, FunctionType, IntFunctionLocalId,
-    ParamBinding, ParamLocal, ValueType,
+    ParamBinding, ParamLocal, SourceContext, ValueType,
 };
 use crate::planner::context::{
     AnonymousFunctions, FunctionInfo, FunctionParam, FunctionRuntimeIds,
@@ -17,6 +17,17 @@ use std::collections::HashMap;
 use std::ops::Deref;
 
 pub fn plan_module(module: TypedModule) -> Result<ExecutionPlan, PlanError> {
+    plan_module_inner(module)
+}
+
+pub fn plan_module_with_source(
+    module: TypedModule,
+    source_context: SourceContext,
+) -> Result<ExecutionPlan, PlanError> {
+    plan_module_inner(module).map(|plan| plan.with_source_context(source_context))
+}
+
+fn plan_module_inner(module: TypedModule) -> Result<ExecutionPlan, PlanError> {
     let definitions = module.definitions;
 
     let imports = definitions.imports.len();
@@ -444,7 +455,8 @@ mod tests {
     use super::plan_module;
     use crate::plan::{
         FunctionFunctionId, FunctionType, IntFunctionFunctionId, IntFunctionId, IntLocalId,
-        LocalId, NilExpr, NilFunctionId, PanicExpr, ParamLocal, RuntimeFunctionId, ValueType,
+        LocalId, NilExpr, NilFunctionId, PanicExpr, PanicSite, ParamLocal, RuntimeFunctionId,
+        SourceSpan, ValueType,
     };
     use crate::planner::dsl::{
         call_int, call_int_returning_function, function, function_ref, int, int_arg,
@@ -614,7 +626,11 @@ pub fn main() {
             actual.main_function().return_(),
             &crate::plan::ReturnExpr::nil(
                 NilFunctionId(0),
-                NilExpr::panic(PanicExpr::empty_function()),
+                NilExpr::panic(PanicExpr::empty_function_at(PanicSite::new(
+                    "main".into(),
+                    "main".into(),
+                    SourceSpan::new(1, 14),
+                ))),
             ),
         );
     }

@@ -3,6 +3,7 @@ mod frame;
 mod function;
 mod id;
 mod runtime;
+mod source;
 mod step;
 mod value;
 
@@ -42,6 +43,7 @@ pub use id::{
     TupleFunctionLocalId, TupleLocalId,
 };
 pub(crate) use id::{FunctionFunctionId, RuntimeFunctionId};
+pub use source::{PanicSite, SourceContext, SourceSpan};
 pub use step::Step;
 pub(crate) use step::{AssertBinding, AssertPattern, ListAssertPattern, ListAssertTail, StepKind};
 pub(crate) use value::{
@@ -53,6 +55,7 @@ pub use value::{FunctionType, FunctionValue, ListValue, Value, ValueType};
 
 pub struct ExecutionPlan {
     module: EcoString,
+    source_context: Option<SourceContext>,
     main: FunctionPlan,
     functions: Vec<FunctionPlan>,
     anonymous_functions: Vec<FunctionPlan>,
@@ -75,6 +78,7 @@ impl ExecutionPlan {
 
         Self {
             module,
+            source_context: None,
             main,
             functions,
             anonymous_functions,
@@ -82,8 +86,17 @@ impl ExecutionPlan {
         }
     }
 
+    pub(crate) fn with_source_context(mut self, source_context: SourceContext) -> Self {
+        self.source_context = Some(source_context);
+        self
+    }
+
     pub fn module(&self) -> &EcoString {
         &self.module
+    }
+
+    pub fn source_context(&self) -> Option<&SourceContext> {
+        self.source_context.as_ref()
     }
 
     pub fn main_function(&self) -> &FunctionPlan {

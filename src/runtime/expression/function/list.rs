@@ -162,7 +162,7 @@ mod tests {
                 &mut frame,
                 &ListFunctionExpr::panic(PanicExpr::panic(None), list_function_type(),),
             ),
-            Err(ExecutionError::panic(PanicKind::Panic { message: None })),
+            Err(ExecutionError::panic(PanicKind::Panic)),
         );
         assert_eq!(
             eval_list_function_expr(

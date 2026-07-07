@@ -127,7 +127,7 @@ mod tests {
                 &mut frame,
                 &ListExpr::panic(PanicExpr::panic(None), element_type()),
             ),
-            Err(ExecutionError::panic(PanicKind::Panic { message: None })),
+            Err(ExecutionError::panic(PanicKind::Panic)),
         );
     }
 

@@ -131,7 +131,7 @@ mod tests {
                 &mut frame,
                 &TupleExpr::panic(PanicExpr::panic(None), vec![ValueType::Int],),
             ),
-            Err(ExecutionError::panic(PanicKind::Panic { message: None })),
+            Err(ExecutionError::panic(PanicKind::Panic)),
         );
     }
 

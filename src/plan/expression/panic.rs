@@ -1,8 +1,10 @@
 use super::StringExpr;
+use crate::plan::PanicSite;
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct PanicExpr {
     kind: PanicExprKind,
+    site: PanicSite,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -15,42 +17,76 @@ pub(crate) enum PanicExprKind {
 }
 
 impl PanicExpr {
+    #[cfg(test)]
     pub(crate) fn panic(message: Option<StringExpr>) -> Self {
+        Self::panic_at(message, PanicSite::unknown())
+    }
+
+    pub(crate) fn panic_at(message: Option<StringExpr>, site: PanicSite) -> Self {
         Self {
             kind: PanicExprKind::Panic {
                 message: message.map(Box::new),
             },
+            site,
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn todo(message: Option<StringExpr>) -> Self {
+        Self::todo_at(message, PanicSite::unknown())
+    }
+
+    pub(crate) fn todo_at(message: Option<StringExpr>, site: PanicSite) -> Self {
         Self {
             kind: PanicExprKind::Todo {
                 message: message.map(Box::new),
             },
+            site,
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn empty_function() -> Self {
+        Self::empty_function_at(PanicSite::unknown())
+    }
+
+    pub(crate) fn empty_function_at(site: PanicSite) -> Self {
         Self {
             kind: PanicExprKind::EmptyFunction,
+            site,
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn empty_block() -> Self {
+        Self::empty_block_at(PanicSite::unknown())
+    }
+
+    pub(crate) fn empty_block_at(site: PanicSite) -> Self {
         Self {
             kind: PanicExprKind::EmptyBlock,
+            site,
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn incomplete_use() -> Self {
+        Self::incomplete_use_at(PanicSite::unknown())
+    }
+
+    pub(crate) fn incomplete_use_at(site: PanicSite) -> Self {
         Self {
             kind: PanicExprKind::IncompleteUse,
+            site,
         }
     }
 
     pub(crate) fn kind(&self) -> &PanicExprKind {
         &self.kind
+    }
+
+    pub(crate) fn site(&self) -> &PanicSite {
+        &self.site
     }
 
     pub(crate) fn message(&self) -> Option<&StringExpr> {

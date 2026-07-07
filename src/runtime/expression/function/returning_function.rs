@@ -178,7 +178,7 @@ pub fn main() {
                 &mut frame,
                 &FunctionFunctionExpr::panic(PanicExpr::panic(None), returned_int_function_type(),),
             ),
-            Err(ExecutionError::panic(PanicKind::Panic { message: None })),
+            Err(ExecutionError::panic(PanicKind::Panic)),
         );
     }
 

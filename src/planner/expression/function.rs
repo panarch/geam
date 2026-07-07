@@ -68,7 +68,7 @@ fn plan_anonymous_with_captures(
     let runtime_id = context.allocate_anonymous_runtime_id(&return_type);
 
     let planned = {
-        let mut body_context = context.anonymous_function_context();
+        let mut body_context = context.anonymous_function_context(error_name.clone());
         plan_anonymous_function_body(
             &error_name,
             &return_type,

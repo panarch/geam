@@ -212,7 +212,7 @@ mod tests {
                 &mut frame,
                 &StringFunctionExpr::panic(PanicExpr::panic(None), type_()),
             ),
-            Err(ExecutionError::panic(PanicKind::Panic { message: None })),
+            Err(ExecutionError::panic(PanicKind::Panic)),
         );
     }
 

@@ -194,7 +194,7 @@ mod tests {
 
         assert_eq!(
             eval_bool_expr(&plan, &mut frame, &BoolExpr::panic(PanicExpr::panic(None)),),
-            Err(ExecutionError::panic(PanicKind::Panic { message: None })),
+            Err(ExecutionError::panic(PanicKind::Panic)),
         );
     }
 

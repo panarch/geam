@@ -1,7 +1,8 @@
 use geam::{
-    ExecutionError, FunctionType, PanicKind, Value, ValueType, compile_typed_module, plan_module,
-    run_main,
+    ExecutionError, FunctionType, Panic, SourceContext, Value, ValueType, compile_typed_module,
+    plan_module, plan_module_with_source, run_main,
 };
+use miette::{GraphicalReportHandler, GraphicalTheme};
 
 macro_rules! fixture_cases {
     ($runner:path, $dir:literal; $($name:ident),+ $(,)?) => {
@@ -326,6 +327,7 @@ mod execution_errors {
         execution_error_cases!("patterns";
             let_assert_empty_head,
             let_assert_nested_prefix,
+            let_assert_compound_failed_value,
             let_assert_fixed_length,
             let_assert_empty_list,
             let_assert_message,
@@ -436,15 +438,19 @@ fn run_fixture(file_name: &str) {
 fn run_error_fixture(file_name: &str) {
     let path = format!("tests/fixtures/execution_errors/{file_name}");
     let src = std::fs::read_to_string(&path).expect("fixture should be readable");
-    let expected = expected_text_with_prefix(&src, "// geam:expect-error ");
+    let expected = expected_error_text(&src);
     let module = compile_typed_module("main", path, &src).expect("fixture should compile");
-    let plan = plan_module(module).expect("fixture should plan");
+    let source_context = SourceContext::new(
+        format!("tests/fixtures/execution_errors/{file_name}"),
+        src.clone(),
+    );
+    let plan = plan_module_with_source(module, source_context).expect("fixture should plan");
     let error = run_main(&plan).expect_err("fixture should fail during execution");
-    let ExecutionError::Panic(kind) = error else {
+    let ExecutionError::Panic(panic) = error else {
         panic!("execution-error fixture should fail with source panic");
     };
 
-    assert_eq!(format!("Panic({})", render_panic_kind(&kind)), expected);
+    assert_eq!(render_panic(&panic), expected);
 }
 
 fn reject_fixture(file_name: &str) {
@@ -469,23 +475,56 @@ fn expected_text_with_prefix<'a>(src: &'a str, prefix: &str) -> &'a str {
     value
 }
 
-fn render_panic_kind(kind: &PanicKind) -> String {
-    match kind {
-        PanicKind::Panic { message } => render_panic_message("panic", message.as_deref()),
-        PanicKind::Todo { message } => render_panic_message("todo", message.as_deref()),
-        PanicKind::Assert { message } => render_panic_message("assert", message.as_deref()),
-        PanicKind::LetAssert { message } => render_panic_message("let_assert", message.as_deref()),
-        PanicKind::EmptyFunction => "empty_function".into(),
-        PanicKind::EmptyBlock => "empty_block".into(),
-        PanicKind::IncompleteUse => "incomplete_use".into(),
+fn expected_error_text(src: &str) -> String {
+    let mut lines = src.lines();
+    for line in lines.by_ref() {
+        let line = line.trim();
+        if line == "// geam:expect-error" {
+            let mut expected = lines
+                .map(|line| {
+                    let line = line.trim_start();
+                    if line == "//" {
+                        String::new()
+                    } else if let Some(line) = line.strip_prefix("// ") {
+                        line.to_string()
+                    } else {
+                        panic!(
+                            "error fixture expected block lines must be comments after `// geam:expect-error`"
+                        );
+                    }
+                })
+                .collect::<Vec<_>>();
+
+            while expected.last().is_some_and(String::is_empty) {
+                expected.pop();
+            }
+            assert!(
+                !expected.is_empty(),
+                "error fixture expected block must not be empty"
+            );
+            return expected.join("\n");
+        }
     }
+
+    panic!("fixture should include `// geam:expect-error`");
 }
 
-fn render_panic_message(kind: &str, message: Option<&str>) -> String {
-    match message {
-        Some(message) => format!("{kind}, {message:?}"),
-        None => kind.into(),
-    }
+fn render_panic(panic: &Panic) -> String {
+    let handler = GraphicalReportHandler::new_themed(GraphicalTheme::none())
+        .with_links(false)
+        .with_urls(false)
+        .without_cause_chain()
+        .without_syntax_highlighting()
+        .with_context_lines(1)
+        .with_width(120)
+        .with_wrap_lines(false)
+        .with_break_words(false);
+    let mut rendered = String::new();
+    handler
+        .render_report(&mut rendered, panic)
+        .expect("diagnostic should render");
+
+    rendered.trim_end().to_string()
 }
 
 fn render_value(value: &Value) -> String {

@@ -56,19 +56,26 @@ pub(super) fn eval_panic_expr<T>(
     frame: &mut Frame,
     expression: &PanicExpr,
 ) -> Result<T, ExecutionError> {
-    let kind = match expression.kind() {
-        PanicExprKind::Panic { message } => PanicKind::Panic {
-            message: eval_panic_message(plan, frame, message.as_deref())?,
-        },
-        PanicExprKind::Todo { message } => PanicKind::Todo {
-            message: eval_panic_message(plan, frame, message.as_deref())?,
-        },
-        PanicExprKind::EmptyFunction => PanicKind::EmptyFunction,
-        PanicExprKind::EmptyBlock => PanicKind::EmptyBlock,
-        PanicExprKind::IncompleteUse => PanicKind::IncompleteUse,
+    let (kind, message) = match expression.kind() {
+        PanicExprKind::Panic { message } => (
+            PanicKind::Panic,
+            eval_panic_message(plan, frame, message.as_deref())?,
+        ),
+        PanicExprKind::Todo { message } => (
+            PanicKind::Todo,
+            eval_panic_message(plan, frame, message.as_deref())?,
+        ),
+        PanicExprKind::EmptyFunction => (PanicKind::EmptyFunction, None),
+        PanicExprKind::EmptyBlock => (PanicKind::EmptyBlock, None),
+        PanicExprKind::IncompleteUse => (PanicKind::IncompleteUse, None),
     };
 
-    Err(ExecutionError::panic(kind))
+    Err(ExecutionError::source_panic(
+        plan.source_context(),
+        kind,
+        message,
+        expression.site().clone(),
+    ))
 }
 
 fn eval_panic_message(
@@ -86,8 +93,8 @@ fn eval_panic_message(
 mod tests {
     use super::eval_panic_expr;
     use crate::plan::{
-        ExecutionPlan, FunctionId, FunctionPlan, IntExpr, IntFunctionId, PanicExpr, ReturnExpr,
-        StringExpr,
+        ExecutionPlan, FunctionId, FunctionPlan, IntExpr, IntFunctionId, PanicExpr, PanicSite,
+        ReturnExpr, StringExpr,
     };
     use crate::runtime::frame::Frame;
     use crate::runtime::{ExecutionError, PanicKind};
@@ -96,13 +103,16 @@ mod tests {
     fn eval_panic_expr_returns_exact_panic_error() {
         assert_eq!(
             eval_panic(PanicExpr::panic(None)),
-            Err(ExecutionError::panic(PanicKind::Panic { message: None })),
+            Err(ExecutionError::panic(PanicKind::Panic)),
         );
         assert_eq!(
             eval_panic(PanicExpr::todo(Some(StringExpr::value("later".into())))),
-            Err(ExecutionError::panic(PanicKind::Todo {
-                message: Some("later".into()),
-            })),
+            Err(ExecutionError::source_panic(
+                None,
+                PanicKind::Todo,
+                Some("later".into()),
+                PanicSite::unknown(),
+            )),
         );
     }
 
@@ -123,7 +133,7 @@ mod tests {
 
         assert_eq!(
             eval_panic(PanicExpr::panic(Some(message))),
-            Err(ExecutionError::panic(PanicKind::Todo { message: None })),
+            Err(ExecutionError::panic(PanicKind::Todo)),
         );
     }
 
@@ -133,7 +143,7 @@ mod tests {
 
         assert_eq!(
             eval_panic(PanicExpr::todo(Some(message))),
-            Err(ExecutionError::panic(PanicKind::Panic { message: None })),
+            Err(ExecutionError::panic(PanicKind::Panic)),
         );
     }
 

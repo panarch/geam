@@ -146,7 +146,7 @@ mod tests {
                 &mut frame,
                 &FloatFunctionExpr::panic(PanicExpr::panic(None), type_()),
             ),
-            Err(ExecutionError::panic(PanicKind::Panic { message: None })),
+            Err(ExecutionError::panic(PanicKind::Panic)),
         );
 
         let function = eval_float_function_expr(

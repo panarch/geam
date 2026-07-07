@@ -227,7 +227,7 @@ pub fn main() {
                 &mut frame,
                 &TupleFunctionExpr::panic(PanicExpr::panic(None), tuple_function_type(),),
             ),
-            Err(ExecutionError::panic(PanicKind::Panic { message: None })),
+            Err(ExecutionError::panic(PanicKind::Panic)),
         );
     }
 

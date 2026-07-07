@@ -136,7 +136,7 @@ mod tests {
 
         assert_eq!(
             eval_nil_expr(&plan, &mut frame, &NilExpr::panic(PanicExpr::panic(None)),),
-            Err(ExecutionError::panic(PanicKind::Panic { message: None })),
+            Err(ExecutionError::panic(PanicKind::Panic)),
         );
     }
 

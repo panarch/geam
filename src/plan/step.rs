@@ -9,6 +9,7 @@ use super::id::{
     IntFunctionLocalId, IntLocalId, ListFunctionLocalId, ListLocalId, NilFunctionLocalId,
     NilLocalId, StringFunctionLocalId, StringLocalId, TupleFunctionLocalId, TupleLocalId,
 };
+use super::source::{PanicSite, SourceSpan};
 use super::value::ValueType;
 use ecow::EcoString;
 
@@ -135,10 +136,13 @@ pub(crate) enum StepKind {
         local: ListLocalId,
         pattern: AssertPattern,
         message: Option<StringExpr>,
+        site: PanicSite,
+        pattern_span: SourceSpan,
     },
     AssertBool {
         condition: BoolExpr,
         message: Option<StringExpr>,
+        site: PanicSite,
     },
     Evaluate(Expr),
 }
@@ -333,22 +337,54 @@ impl Step {
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn assert_bool(condition: BoolExpr, message: Option<StringExpr>) -> Self {
+        Self::assert_bool_at(condition, message, PanicSite::unknown())
+    }
+
+    pub(crate) fn assert_bool_at(
+        condition: BoolExpr,
+        message: Option<StringExpr>,
+        site: PanicSite,
+    ) -> Self {
         Self {
-            kind: StepKind::AssertBool { condition, message },
+            kind: StepKind::AssertBool {
+                condition,
+                message,
+                site,
+            },
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn assert_list(
         local: ListLocalId,
         pattern: AssertPattern,
         message: Option<StringExpr>,
+    ) -> Self {
+        Self::assert_list_at(
+            local,
+            pattern,
+            message,
+            PanicSite::unknown(),
+            SourceSpan::new(0, 0),
+        )
+    }
+
+    pub(crate) fn assert_list_at(
+        local: ListLocalId,
+        pattern: AssertPattern,
+        message: Option<StringExpr>,
+        site: PanicSite,
+        pattern_span: SourceSpan,
     ) -> Self {
         Self {
             kind: StepKind::AssertList {
                 local,
                 pattern,
                 message,
+                site,
+                pattern_span,
             },
         }
     }
@@ -399,6 +435,7 @@ mod tests {
             &StepKind::AssertBool {
                 condition: BoolExpr::value(false),
                 message: Some(StringExpr::value("nope".into())),
+                site: crate::plan::PanicSite::unknown(),
             },
         );
         assert_eq!(
@@ -420,6 +457,8 @@ mod tests {
                     Some(ListAssertTail::bind(ListLocalId(1), "tail".into())),
                 )),
                 message: None,
+                site: crate::plan::PanicSite::unknown(),
+                pattern_span: crate::plan::SourceSpan::new(0, 0),
             },
         );
     }

@@ -169,7 +169,7 @@ mod tests {
 
         assert_eq!(
             eval_int_expr(&plan, &mut frame, &IntExpr::panic(PanicExpr::panic(None)),),
-            Err(ExecutionError::panic(PanicKind::Panic { message: None })),
+            Err(ExecutionError::panic(PanicKind::Panic)),
         );
     }
 

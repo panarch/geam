@@ -152,7 +152,7 @@ mod tests {
 
         assert_eq!(
             eval_float_expr(&plan, &mut frame, &FloatExpr::panic(PanicExpr::panic(None)),),
-            Err(ExecutionError::panic(PanicKind::Panic { message: None })),
+            Err(ExecutionError::panic(PanicKind::Panic)),
         );
     }
 

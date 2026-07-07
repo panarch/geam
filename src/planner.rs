@@ -15,7 +15,7 @@ pub use error::{
     UnsupportedFunctionReason, UnsupportedPatternKind, UnsupportedPipelineReason,
     UnsupportedTopLevelKind,
 };
-pub use module::plan_module;
+pub use module::{plan_module, plan_module_with_source};
 
 #[cfg(test)]
 mod support {

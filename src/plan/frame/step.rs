@@ -74,6 +74,7 @@ impl FrameLayout {
                 local,
                 pattern,
                 message,
+                ..
             } => {
                 self.include_list(*local);
                 self.include_assert_pattern(pattern);
@@ -81,7 +82,9 @@ impl FrameLayout {
                     self.include_string_expr(message);
                 }
             }
-            StepKind::AssertBool { condition, message } => {
+            StepKind::AssertBool {
+                condition, message, ..
+            } => {
                 self.include_bool_expr(condition);
                 if let Some(message) = message {
                     self.include_string_expr(message);

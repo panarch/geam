@@ -7,7 +7,7 @@ use crate::plan::{
     IntFunctionId, IntFunctionLocalId, IntLocalId, ListExpr, ListFunctionExpr,
     ListFunctionFunctionId, ListFunctionId, ListFunctionLocalId, ListLocalId, LocalId, NilExpr,
     NilFunctionExpr, NilFunctionFunctionId, NilFunctionId, NilFunctionLocalId, NilLocalId,
-    ParamBinding, ParamLocal, RuntimeFunctionId, StringExpr, StringFunctionExpr,
+    PanicSite, ParamBinding, ParamLocal, RuntimeFunctionId, StringExpr, StringFunctionExpr,
     StringFunctionFunctionId, StringFunctionId, StringFunctionLocalId, StringLocalId, TupleExpr,
     TupleFunctionExpr, TupleFunctionFunctionId, TupleFunctionId, TupleFunctionLocalId,
     TupleLocalId, ValueType,
@@ -35,6 +35,7 @@ pub(super) struct FunctionParam {
 
 pub(super) struct PlanContext<'a> {
     pub(super) module_name: &'a EcoString,
+    current_function: EcoString,
     functions: &'a HashMap<EcoString, FunctionInfo>,
     anonymous_functions: &'a mut AnonymousFunctions,
     bindings: HashMap<EcoString, LocalBinding>,
@@ -118,6 +119,7 @@ impl<'a> PlanContext<'a> {
     ) -> Self {
         Self {
             module_name,
+            current_function: "main".into(),
             functions,
             anonymous_functions,
             bindings: HashMap::new(),
@@ -137,6 +139,18 @@ impl<'a> PlanContext<'a> {
             next_list_function_local: 0,
             next_function_function_local: 0,
         }
+    }
+
+    pub(super) fn set_current_function(&mut self, name: EcoString) {
+        self.current_function = name;
+    }
+
+    pub(super) fn panic_site(&self, location: gleam_core::ast::SrcSpan) -> PanicSite {
+        PanicSite::new(
+            self.module_name.clone(),
+            self.current_function.clone(),
+            location.into(),
+        )
     }
 
     pub(super) fn define_existing_local(&mut self, name: EcoString, local: LocalId) {
@@ -547,9 +561,13 @@ impl<'a> PlanContext<'a> {
         self.anonymous_functions.push(function);
     }
 
-    pub(super) fn anonymous_function_context(&mut self) -> PlanContext<'_> {
+    pub(super) fn anonymous_function_context(
+        &mut self,
+        function_name: EcoString,
+    ) -> PlanContext<'_> {
         PlanContext {
             module_name: self.module_name,
+            current_function: function_name,
             functions: self.functions,
             anonymous_functions: self.anonymous_functions,
             bindings: HashMap::new(),

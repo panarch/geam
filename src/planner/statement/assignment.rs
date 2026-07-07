@@ -26,7 +26,10 @@ pub(super) fn plan_assignment(
             let value = plan_ordinary_assignment_value(&pattern, assignment.value, context)?;
             plan_assignment_steps(pattern, value, context)
         }
-        AssignmentKind::Assert { message, .. } => assert::plan_assert_assignment_steps(
+        AssignmentKind::Assert {
+            location, message, ..
+        } => assert::plan_assert_assignment_steps(
+            location,
             assignment.pattern,
             assignment.value,
             message,
@@ -53,8 +56,11 @@ pub(super) fn plan_final_assignment(
             let value = plan_ordinary_assignment_value(&pattern, assignment.value, context)?;
             (pattern, value)
         }
-        AssignmentKind::Assert { message, .. } => {
+        AssignmentKind::Assert {
+            location, message, ..
+        } => {
             return assert::plan_assert_assignment(
+                location,
                 assignment.pattern,
                 assignment.value,
                 message,
