@@ -137,11 +137,7 @@ pub fn main() {
                 UnsupportedCaseReason::MultipleSubjects,
             ),
             (
-                r#"pub fn main() { case #(1, 2) { _ -> 1 } }"#,
-                UnsupportedCaseReason::UnsupportedSubjectType,
-            ),
-            (
-                r#"pub fn main() { case [1, 2] { _ -> 1 } }"#,
+                r#"pub fn main() { case <<1>> { _ -> 1 } }"#,
                 UnsupportedCaseReason::UnsupportedSubjectType,
             ),
         ];

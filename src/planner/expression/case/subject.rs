@@ -1,7 +1,11 @@
 mod bool_;
 mod float;
+mod function;
 mod int;
+mod list;
+mod nil;
 mod string;
+mod tuple;
 
 use crate::plan::{
     BoolCaseBranches, BoolExpr, BoolLocalId, Expr, ExprKind, FloatExpr, FloatLocalId,
@@ -21,22 +25,25 @@ pub(super) fn plan(
     clauses: Vec<TypedClause>,
     context: &mut PlanContext<'_>,
 ) -> Result<Expr, PlanError> {
-    if subject.type_().is_bool() {
-        return bool_::plan(type_, subject, clauses, context);
+    match ValueType::from_gleam(subject.type_().as_ref()) {
+        Some(ValueType::Bool) => bool_::plan(type_, subject, clauses, context),
+        Some(ValueType::Int) => int::plan(type_, subject, clauses, context),
+        Some(ValueType::String) => string::plan(type_, subject, clauses, context),
+        Some(ValueType::Float) => float::plan(type_, subject, clauses, context),
+        Some(ValueType::Nil) => nil::plan(type_, subject, clauses, context),
+        Some(ValueType::Tuple(subject_type)) => {
+            tuple::plan(type_, subject, subject_type, clauses, context)
+        }
+        Some(ValueType::List(subject_type)) => {
+            list::plan(type_, subject, *subject_type, clauses, context)
+        }
+        Some(ValueType::Function(subject_type)) => {
+            function::plan(type_, subject, *subject_type, clauses, context)
+        }
+        _ => Err(super::unsupported_case(
+            UnsupportedCaseReason::UnsupportedSubjectType,
+        )),
     }
-    if subject.type_().is_int() {
-        return int::plan(type_, subject, clauses, context);
-    }
-    if subject.type_().is_string() {
-        return string::plan(type_, subject, clauses, context);
-    }
-    if subject.type_().is_float() {
-        return float::plan(type_, subject, clauses, context);
-    }
-
-    Err(super::unsupported_case(
-        UnsupportedCaseReason::UnsupportedSubjectType,
-    ))
 }
 
 fn validate_clause_shape(clause: &TypedClause) -> Result<(), PlanError> {
