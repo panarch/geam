@@ -1,7 +1,6 @@
-use super::{
-    case_return_type, invalid_case_shape, single_case_pattern, unsupported_case,
-    validate_clause_shape,
-};
+use super::super::super::plan_float_expr;
+use super::super::{invalid_case_shape, unsupported_case};
+use super::{case_return_type, single_case_pattern, validate_clause_shape};
 use crate::plan::{BoolExpr, Expr, ExprKind, FloatCaseBranches, FloatExpr, ValueType};
 use crate::planner::context::PlanContext;
 use crate::planner::error::{InvalidCaseShapeReason, PlanError, UnsupportedCaseReason};
@@ -16,7 +15,7 @@ pub(super) fn plan(
     clauses: Vec<TypedClause>,
     context: &mut PlanContext<'_>,
 ) -> Result<Expr, PlanError> {
-    let subject = super::super::plan_float_expr(subject, context)?;
+    let subject = plan_float_expr(subject, context)?;
     let return_type = case_return_type(type_.as_ref())?;
     for clause in &clauses {
         validate_clause_shape(clause)?;
@@ -1048,7 +1047,7 @@ pub fn main() {
     #[test]
     fn reject_margin_float_case_pattern_shapes() {
         let mut alternative_pattern = compile_float_case_module();
-        let (_, _, clauses) = super::super::expect_case_statement_mut(
+        let (_, _, clauses) = super::super::super::expect_case_statement_mut(
             &mut alternative_pattern.definitions.functions[0].body[0],
         );
         clauses[0].alternative_patterns.push(vec![Pattern::Float {
@@ -1064,7 +1063,7 @@ pub fn main() {
         );
 
         let mut variable_type_mismatch = compile_float_case_module();
-        let (_, _, clauses) = super::super::expect_case_statement_mut(
+        let (_, _, clauses) = super::super::super::expect_case_statement_mut(
             &mut variable_type_mismatch.definitions.functions[0].body[0],
         );
         clauses[0].pattern[0] = Pattern::Variable {
@@ -1083,7 +1082,7 @@ pub fn main() {
         );
 
         let mut discard_type_mismatch = compile_float_case_module();
-        let (_, _, clauses) = super::super::expect_case_statement_mut(
+        let (_, _, clauses) = super::super::super::expect_case_statement_mut(
             &mut discard_type_mismatch.definitions.functions[0].body[0],
         );
         clauses[1].pattern[0] = Pattern::Discard {
@@ -1101,7 +1100,7 @@ pub fn main() {
         );
 
         let mut invalid_pattern = compile_float_case_module();
-        let (_, _, clauses) = super::super::expect_case_statement_mut(
+        let (_, _, clauses) = super::super::super::expect_case_statement_mut(
             &mut invalid_pattern.definitions.functions[0].body[0],
         );
         clauses[0].pattern[0] = Pattern::Invalid {
@@ -1118,7 +1117,7 @@ pub fn main() {
         );
 
         let mut pattern_type_mismatch = compile_float_case_module();
-        let (_, _, clauses) = super::super::expect_case_statement_mut(
+        let (_, _, clauses) = super::super::super::expect_case_statement_mut(
             &mut pattern_type_mismatch.definitions.functions[0].body[0],
         );
         clauses[0].pattern[0] = Pattern::String {
@@ -1135,7 +1134,7 @@ pub fn main() {
         );
 
         let mut assign_invalid_pattern = compile_float_case_module();
-        let (_, _, clauses) = super::super::expect_case_statement_mut(
+        let (_, _, clauses) = super::super::super::expect_case_statement_mut(
             &mut assign_invalid_pattern.definitions.functions[0].body[0],
         );
         clauses[0].pattern[0] = Pattern::Assign {
@@ -1156,7 +1155,7 @@ pub fn main() {
         );
 
         let mut assign_type_mismatch = compile_float_case_module();
-        let (_, _, clauses) = super::super::expect_case_statement_mut(
+        let (_, _, clauses) = super::super::super::expect_case_statement_mut(
             &mut assign_type_mismatch.definitions.functions[0].body[0],
         );
         clauses[0].pattern[0] = Pattern::Assign {
@@ -1177,7 +1176,7 @@ pub fn main() {
         );
 
         let mut empty_pattern = compile_float_case_module();
-        let (_, _, clauses) = super::super::expect_case_statement_mut(
+        let (_, _, clauses) = super::super::super::expect_case_statement_mut(
             &mut empty_pattern.definitions.functions[0].body[0],
         );
         clauses[0].pattern.clear();
@@ -1191,7 +1190,7 @@ pub fn main() {
         );
 
         let mut case_type_mismatch = compile_float_case_module();
-        let (case_type, _, _) = super::super::expect_case_statement_mut(
+        let (case_type, _, _) = super::super::super::expect_case_statement_mut(
             &mut case_type_mismatch.definitions.functions[0].body[0],
         );
         *case_type = type_::bool();
@@ -1205,7 +1204,7 @@ pub fn main() {
         );
 
         let mut missing_fallback_pattern = compile_float_case_module();
-        let (_, _, clauses) = super::super::expect_case_statement_mut(
+        let (_, _, clauses) = super::super::super::expect_case_statement_mut(
             &mut missing_fallback_pattern.definitions.functions[0].body[0],
         );
         clauses.pop();
@@ -1245,7 +1244,8 @@ fn add_one(value: Float) {
             })
             .map(|function| &mut function.body)
             .expect("expected main function");
-        let (_, _, clauses) = super::super::expect_assignment_case_statement_mut(&mut body[0]);
+        let (_, _, clauses) =
+            super::super::super::expect_assignment_case_statement_mut(&mut body[0]);
         clauses.pop();
         assert_eq!(
             plan_module(missing_function_fallback_pattern),
@@ -1260,7 +1260,7 @@ fn add_one(value: Float) {
     #[test]
     fn reject_margin_guarded_float_case_pattern_shapes() {
         let mut empty_pattern = compile_float_case_module();
-        let (_, _, clauses) = super::super::expect_case_statement_mut(
+        let (_, _, clauses) = super::super::super::expect_case_statement_mut(
             &mut empty_pattern.definitions.functions[0].body[0],
         );
         clauses[0].guard = Some(ClauseGuard::Constant(Constant::Int {
@@ -1279,7 +1279,7 @@ fn add_one(value: Float) {
         );
 
         let mut pattern_type_mismatch = compile_float_case_module();
-        let (_, _, clauses) = super::super::expect_case_statement_mut(
+        let (_, _, clauses) = super::super::super::expect_case_statement_mut(
             &mut pattern_type_mismatch.definitions.functions[0].body[0],
         );
         clauses[0].guard = Some(ClauseGuard::Constant(Constant::Int {
@@ -1304,8 +1304,9 @@ fn add_one(value: Float) {
     #[test]
     fn reject_margin_float_case_guard_must_be_bool() {
         let mut module = compile_float_case_module();
-        let (_, _, clauses) =
-            super::super::expect_case_statement_mut(&mut module.definitions.functions[0].body[0]);
+        let (_, _, clauses) = super::super::super::expect_case_statement_mut(
+            &mut module.definitions.functions[0].body[0],
+        );
         clauses[0].guard = Some(ClauseGuard::Constant(Constant::Int {
             location: dummy_span(),
             value: "1".into(),
@@ -1326,8 +1327,9 @@ fn add_one(value: Float) {
     #[test]
     fn reject_margin_float_case_subject_type_mismatch() {
         let mut module = compile_float_case_module();
-        let (_, subjects, _) =
-            super::super::expect_case_statement_mut(&mut module.definitions.functions[0].body[0]);
+        let (_, subjects, _) = super::super::super::expect_case_statement_mut(
+            &mut module.definitions.functions[0].body[0],
+        );
         subjects[0] = gleam_core::ast::TypedExpr::String {
             location: dummy_span(),
             type_: type_::float(),
@@ -1348,8 +1350,9 @@ fn add_one(value: Float) {
     #[test]
     fn reject_margin_float_case_expr_type_mismatch() {
         let mut module = compile_float_case_module();
-        let (type_, _, _) =
-            super::super::expect_case_statement_mut(&mut module.definitions.functions[0].body[0]);
+        let (type_, _, _) = super::super::super::expect_case_statement_mut(
+            &mut module.definitions.functions[0].body[0],
+        );
         *type_ = type_::bit_array();
         assert_eq!(plan_module(module), Err(case_branch_return_type_mismatch()));
 
@@ -1613,8 +1616,9 @@ pub fn main() {
     #[test]
     fn reject_margin_float_case_assign_literal_pattern_still_profile_boundary() {
         let mut module = compile_float_case_module();
-        let (_, _, clauses) =
-            super::super::expect_case_statement_mut(&mut module.definitions.functions[0].body[0]);
+        let (_, _, clauses) = super::super::super::expect_case_statement_mut(
+            &mut module.definitions.functions[0].body[0],
+        );
         clauses[0].pattern[0] = Pattern::Assign {
             name: "value".into(),
             location: dummy_span(),

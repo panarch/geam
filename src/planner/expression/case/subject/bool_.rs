@@ -1,7 +1,6 @@
-use super::{
-    case_return_type, invalid_case_shape, single_case_pattern, unsupported_case,
-    validate_clause_shape,
-};
+use super::super::super::plan_bool_expr;
+use super::super::{invalid_case_shape, unsupported_case};
+use super::{case_return_type, single_case_pattern, validate_clause_shape};
 use crate::plan::{BoolExpr, Expr, ValueType};
 use crate::planner::context::PlanContext;
 use crate::planner::error::{
@@ -18,7 +17,7 @@ pub(super) fn plan(
     clauses: Vec<TypedClause>,
     context: &mut PlanContext<'_>,
 ) -> Result<Expr, PlanError> {
-    let subject = super::super::plan_bool_expr(subject, context)?;
+    let subject = plan_bool_expr(subject, context)?;
     let return_type = case_return_type(type_.as_ref())?;
     for clause in &clauses {
         validate_clause_shape(clause)?;
@@ -841,8 +840,8 @@ pub fn main() {
 
     #[test]
     fn reject_margin_bool_case_pattern_shapes() {
-        let mut invalid_pattern = super::super::compile_bool_case_module();
-        let (_, _, clauses) = super::super::expect_case_statement_mut(
+        let mut invalid_pattern = super::super::super::compile_bool_case_module();
+        let (_, _, clauses) = super::super::super::expect_case_statement_mut(
             &mut invalid_pattern.definitions.functions[0].body[0],
         );
         clauses[0].pattern[0] = Pattern::Invalid {
@@ -858,8 +857,8 @@ pub fn main() {
             }),
         );
 
-        let mut pattern_type_mismatch = super::super::compile_bool_case_module();
-        let (_, _, clauses) = super::super::expect_case_statement_mut(
+        let mut pattern_type_mismatch = super::super::super::compile_bool_case_module();
+        let (_, _, clauses) = super::super::super::expect_case_statement_mut(
             &mut pattern_type_mismatch.definitions.functions[0].body[0],
         );
         clauses[0].pattern[0] = Pattern::Int {
@@ -876,8 +875,8 @@ pub fn main() {
             }),
         );
 
-        let mut variable_type_mismatch = super::super::compile_bool_case_module();
-        let (_, _, clauses) = super::super::expect_case_statement_mut(
+        let mut variable_type_mismatch = super::super::super::compile_bool_case_module();
+        let (_, _, clauses) = super::super::super::expect_case_statement_mut(
             &mut variable_type_mismatch.definitions.functions[0].body[0],
         );
         clauses[0].pattern[0] = Pattern::Variable {
@@ -895,8 +894,8 @@ pub fn main() {
             }),
         );
 
-        let mut discard_type_mismatch = super::super::compile_bool_case_module();
-        let (_, _, clauses) = super::super::expect_case_statement_mut(
+        let mut discard_type_mismatch = super::super::super::compile_bool_case_module();
+        let (_, _, clauses) = super::super::super::expect_case_statement_mut(
             &mut discard_type_mismatch.definitions.functions[0].body[0],
         );
         clauses[0].pattern[0] = Pattern::Discard {
@@ -913,8 +912,8 @@ pub fn main() {
             }),
         );
 
-        let mut assign_type_mismatch = super::super::compile_bool_case_module();
-        let (_, _, clauses) = super::super::expect_case_statement_mut(
+        let mut assign_type_mismatch = super::super::super::compile_bool_case_module();
+        let (_, _, clauses) = super::super::super::expect_case_statement_mut(
             &mut assign_type_mismatch.definitions.functions[0].body[0],
         );
         clauses[0].pattern[0] = Pattern::Assign {
@@ -935,8 +934,8 @@ pub fn main() {
             }),
         );
 
-        let mut assign_constructor_name_mismatch = super::super::compile_bool_case_module();
-        let (_, _, clauses) = super::super::expect_case_statement_mut(
+        let mut assign_constructor_name_mismatch = super::super::super::compile_bool_case_module();
+        let (_, _, clauses) = super::super::super::expect_case_statement_mut(
             &mut assign_constructor_name_mismatch.definitions.functions[0].body[0],
         );
         clauses[0].pattern[0] = Pattern::Assign {
@@ -962,8 +961,8 @@ pub fn main() {
             }),
         );
 
-        let mut assign_invalid_pattern = super::super::compile_bool_case_module();
-        let (_, _, clauses) = super::super::expect_case_statement_mut(
+        let mut assign_invalid_pattern = super::super::super::compile_bool_case_module();
+        let (_, _, clauses) = super::super::super::expect_case_statement_mut(
             &mut assign_invalid_pattern.definitions.functions[0].body[0],
         );
         clauses[0].pattern[0] = Pattern::Assign {
@@ -983,8 +982,8 @@ pub fn main() {
             }),
         );
 
-        let mut bool_constructor_name_mismatch = super::super::compile_bool_case_module();
-        let (_, _, clauses) = super::super::expect_case_statement_mut(
+        let mut bool_constructor_name_mismatch = super::super::super::compile_bool_case_module();
+        let (_, _, clauses) = super::super::super::expect_case_statement_mut(
             &mut bool_constructor_name_mismatch.definitions.functions[0].body[0],
         );
         clauses[0].pattern[0] = Pattern::Constructor {
@@ -1006,8 +1005,8 @@ pub fn main() {
             }),
         );
 
-        let mut missing_true_pattern = super::super::compile_bool_case_module();
-        let (_, _, clauses) = super::super::expect_case_statement_mut(
+        let mut missing_true_pattern = super::super::super::compile_bool_case_module();
+        let (_, _, clauses) = super::super::super::expect_case_statement_mut(
             &mut missing_true_pattern.definitions.functions[0].body[0],
         );
         clauses.remove(0);
@@ -1020,8 +1019,8 @@ pub fn main() {
             }),
         );
 
-        let mut missing_false_pattern = super::super::compile_bool_case_module();
-        let (_, _, clauses) = super::super::expect_case_statement_mut(
+        let mut missing_false_pattern = super::super::super::compile_bool_case_module();
+        let (_, _, clauses) = super::super::super::expect_case_statement_mut(
             &mut missing_false_pattern.definitions.functions[0].body[0],
         );
         clauses.pop();
@@ -1037,8 +1036,8 @@ pub fn main() {
 
     #[test]
     fn reject_margin_guarded_bool_case_pattern_shapes() {
-        let mut empty_pattern = super::super::compile_bool_case_module();
-        let (_, _, clauses) = super::super::expect_case_statement_mut(
+        let mut empty_pattern = super::super::super::compile_bool_case_module();
+        let (_, _, clauses) = super::super::super::expect_case_statement_mut(
             &mut empty_pattern.definitions.functions[0].body[0],
         );
         clauses[0].guard = Some(bool_true_guard());
@@ -1052,8 +1051,8 @@ pub fn main() {
             }),
         );
 
-        let mut pattern_type_mismatch = super::super::compile_bool_case_module();
-        let (_, _, clauses) = super::super::expect_case_statement_mut(
+        let mut pattern_type_mismatch = super::super::super::compile_bool_case_module();
+        let (_, _, clauses) = super::super::super::expect_case_statement_mut(
             &mut pattern_type_mismatch.definitions.functions[0].body[0],
         );
         clauses[0].guard = Some(bool_true_guard());
@@ -1074,8 +1073,8 @@ pub fn main() {
 
     #[test]
     fn reject_margin_guarded_bool_case_missing_patterns() {
-        let mut missing_true_pattern = super::super::compile_bool_case_module();
-        let (_, _, clauses) = super::super::expect_case_statement_mut(
+        let mut missing_true_pattern = super::super::super::compile_bool_case_module();
+        let (_, _, clauses) = super::super::super::expect_case_statement_mut(
             &mut missing_true_pattern.definitions.functions[0].body[0],
         );
         clauses.remove(0);
@@ -1089,8 +1088,8 @@ pub fn main() {
             }),
         );
 
-        let mut missing_false_pattern = super::super::compile_bool_case_module();
-        let (_, _, clauses) = super::super::expect_case_statement_mut(
+        let mut missing_false_pattern = super::super::super::compile_bool_case_module();
+        let (_, _, clauses) = super::super::super::expect_case_statement_mut(
             &mut missing_false_pattern.definitions.functions[0].body[0],
         );
         clauses.pop();
@@ -1143,9 +1142,10 @@ pub fn main() {
 
     #[test]
     fn reject_margin_bool_case_subject_type_mismatch() {
-        let mut module = super::super::compile_bool_case_module();
-        let (_, subjects, _) =
-            super::super::expect_case_statement_mut(&mut module.definitions.functions[0].body[0]);
+        let mut module = super::super::super::compile_bool_case_module();
+        let (_, subjects, _) = super::super::super::expect_case_statement_mut(
+            &mut module.definitions.functions[0].body[0],
+        );
         subjects[0] = gleam_core::ast::TypedExpr::String {
             location: dummy_span(),
             type_: type_::bool(),
@@ -1165,9 +1165,10 @@ pub fn main() {
 
     #[test]
     fn reject_margin_bool_case_return_type_unsupported() {
-        let mut module = super::super::compile_bool_case_module();
-        let (type_, _, _) =
-            super::super::expect_case_statement_mut(&mut module.definitions.functions[0].body[0]);
+        let mut module = super::super::super::compile_bool_case_module();
+        let (type_, _, _) = super::super::super::expect_case_statement_mut(
+            &mut module.definitions.functions[0].body[0],
+        );
         *type_ = type_::bit_array();
 
         assert_eq!(
@@ -1182,9 +1183,10 @@ pub fn main() {
 
     #[test]
     fn reject_margin_bool_case_guard_must_be_bool() {
-        let mut module = super::super::compile_bool_case_module();
-        let (_, _, clauses) =
-            super::super::expect_case_statement_mut(&mut module.definitions.functions[0].body[0]);
+        let mut module = super::super::super::compile_bool_case_module();
+        let (_, _, clauses) = super::super::super::expect_case_statement_mut(
+            &mut module.definitions.functions[0].body[0],
+        );
         clauses[0].guard = Some(ClauseGuard::Constant(Constant::Int {
             location: dummy_span(),
             value: "1".into(),
@@ -1270,8 +1272,9 @@ fn stringify(value: Int) {
             })
             .map(|function| &mut function.body)
             .expect("expected main function");
-        let replacement = super::super::expect_expression_statement(&body[1]).clone();
-        let (_, _, clauses) = super::super::expect_assignment_case_statement_mut(&mut body[0]);
+        let replacement = super::super::super::expect_expression_statement(&body[1]).clone();
+        let (_, _, clauses) =
+            super::super::super::expect_assignment_case_statement_mut(&mut body[0]);
         clauses[1].then = replacement;
 
         assert_eq!(
