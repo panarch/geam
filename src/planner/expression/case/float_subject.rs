@@ -34,7 +34,7 @@ pub(super) fn plan(
         let pattern = single_case_pattern(clause.pattern)?;
         let pattern = plan_float_case_pattern(pattern)?;
         let binding = pattern
-            .binding()
+            .bound_name()
             .cloned()
             .map(|name| (name, Expr::float(subject.clone())));
         let branch =
@@ -71,13 +71,13 @@ pub(super) fn plan(
 #[derive(Debug, Clone, PartialEq)]
 enum FloatCasePattern {
     Literal(f64),
-    Any { binding: Option<EcoString> },
+    Any { bound_name: Option<EcoString> },
 }
 
 impl FloatCasePattern {
-    fn binding(&self) -> Option<&EcoString> {
+    fn bound_name(&self) -> Option<&EcoString> {
         match self {
-            FloatCasePattern::Any { binding } => binding.as_ref(),
+            FloatCasePattern::Any { bound_name } => bound_name.as_ref(),
             FloatCasePattern::Literal(_) => None,
         }
     }
@@ -87,13 +87,13 @@ fn plan_float_case_pattern(pattern: Pattern<Arc<Type>>) -> Result<FloatCasePatte
     match pattern {
         Pattern::Float { float_value, .. } => Ok(FloatCasePattern::Literal(float_value.value())),
         Pattern::Variable { name, type_, .. } if type_.is_float() => Ok(FloatCasePattern::Any {
-            binding: Some(name),
+            bound_name: Some(name),
         }),
         Pattern::Variable { .. } => Err(invalid_case_shape(
             InvalidCaseShapeReason::PatternTypeMismatch,
         )),
         Pattern::Discard { type_, .. } if type_.is_float() => {
-            Ok(FloatCasePattern::Any { binding: None })
+            Ok(FloatCasePattern::Any { bound_name: None })
         }
         Pattern::Discard { .. } => Err(invalid_case_shape(
             InvalidCaseShapeReason::PatternTypeMismatch,

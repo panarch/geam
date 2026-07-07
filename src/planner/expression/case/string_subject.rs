@@ -34,7 +34,7 @@ pub(super) fn plan(
         let pattern = single_case_pattern(clause.pattern)?;
         let pattern = plan_string_case_pattern(pattern)?;
         let binding = pattern
-            .binding()
+            .bound_name()
             .cloned()
             .map(|name| (name, Expr::string(subject.clone())));
         let branch =
@@ -71,13 +71,13 @@ pub(super) fn plan(
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum StringCasePattern {
     Literal(EcoString),
-    Any { binding: Option<EcoString> },
+    Any { bound_name: Option<EcoString> },
 }
 
 impl StringCasePattern {
-    fn binding(&self) -> Option<&EcoString> {
+    fn bound_name(&self) -> Option<&EcoString> {
         match self {
-            StringCasePattern::Any { binding } => binding.as_ref(),
+            StringCasePattern::Any { bound_name } => bound_name.as_ref(),
             StringCasePattern::Literal(_) => None,
         }
     }
@@ -87,13 +87,13 @@ fn plan_string_case_pattern(pattern: Pattern<Arc<Type>>) -> Result<StringCasePat
     match pattern {
         Pattern::String { value, .. } => Ok(StringCasePattern::Literal(value)),
         Pattern::Variable { name, type_, .. } if type_.is_string() => Ok(StringCasePattern::Any {
-            binding: Some(name),
+            bound_name: Some(name),
         }),
         Pattern::Variable { .. } => Err(invalid_case_shape(
             InvalidCaseShapeReason::PatternTypeMismatch,
         )),
         Pattern::Discard { type_, .. } if type_.is_string() => {
-            Ok(StringCasePattern::Any { binding: None })
+            Ok(StringCasePattern::Any { bound_name: None })
         }
         Pattern::Discard { .. } => Err(invalid_case_shape(
             InvalidCaseShapeReason::PatternTypeMismatch,

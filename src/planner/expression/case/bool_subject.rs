@@ -34,7 +34,7 @@ pub(super) fn plan(
         let pattern = single_case_pattern(clause.pattern)?;
         let pattern = plan_bool_case_pattern(pattern)?;
         let binding = pattern
-            .binding()
+            .bound_name()
             .cloned()
             .map(|name| (name, Expr::bool(subject.clone())));
         let branch =
@@ -67,13 +67,13 @@ pub(super) fn plan(
 enum BoolCasePattern {
     True,
     False,
-    Any { binding: Option<EcoString> },
+    Any { bound_name: Option<EcoString> },
 }
 
 impl BoolCasePattern {
-    fn binding(&self) -> Option<&EcoString> {
+    fn bound_name(&self) -> Option<&EcoString> {
         match self {
-            BoolCasePattern::Any { binding } => binding.as_ref(),
+            BoolCasePattern::Any { bound_name } => bound_name.as_ref(),
             BoolCasePattern::True | BoolCasePattern::False => None,
         }
     }
@@ -95,13 +95,13 @@ fn plan_bool_case_pattern(pattern: Pattern<Arc<Type>>) -> Result<BoolCasePattern
             )),
         },
         Pattern::Variable { name, type_, .. } if type_.is_bool() => Ok(BoolCasePattern::Any {
-            binding: Some(name),
+            bound_name: Some(name),
         }),
         Pattern::Variable { .. } => Err(invalid_case_shape(
             InvalidCaseShapeReason::PatternTypeMismatch,
         )),
         Pattern::Discard { type_, .. } if type_.is_bool() => {
-            Ok(BoolCasePattern::Any { binding: None })
+            Ok(BoolCasePattern::Any { bound_name: None })
         }
         Pattern::Discard { .. } => Err(invalid_case_shape(
             InvalidCaseShapeReason::PatternTypeMismatch,
