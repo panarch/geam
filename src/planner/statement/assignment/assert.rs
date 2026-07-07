@@ -1,7 +1,6 @@
 use super::{
-    BindingPattern, PlannedAssignment, plan_alias_assignment, plan_assignment_steps,
-    plan_binding_pattern, plan_ordinary_assignment_value, plan_tuple_assignment,
-    plan_variable_runtime_step_and_return, value_type_expression_type,
+    BindingPattern, PlannedAssignment, plan_assignment_steps, plan_binding_pattern,
+    plan_bound_assignment, plan_ordinary_assignment_value, value_type_expression_type,
 };
 use crate::plan::{
     AssertBinding, AssertPattern, Expr, ListAssertPattern, ListAssertTail, ListExpr, ListLocalId,
@@ -25,23 +24,7 @@ pub(super) fn plan_assert_assignment(
     let Some(pattern_type) = assert_list_pattern_type(&pattern) else {
         let pattern = plan_assert_exhaustive_pattern(pattern)?;
         let value = plan_ordinary_assignment_value(&pattern, value, context)?;
-        return match pattern {
-            BindingPattern::Named(name) => {
-                let (step, value) = plan_variable_runtime_step_and_return(name, value, context);
-                Ok(PlannedAssignment {
-                    steps: vec![step],
-                    value,
-                })
-            }
-            BindingPattern::Discard => Ok(PlannedAssignment {
-                steps: Vec::new(),
-                value,
-            }),
-            BindingPattern::Tuple(elements) => plan_tuple_assignment(elements, value, context),
-            BindingPattern::Alias { pattern, name } => {
-                plan_alias_assignment(*pattern, name, value, context)
-            }
-        };
+        return plan_bound_assignment(pattern, value, context);
     };
 
     let value = plan_expr(value, context)?;
@@ -99,7 +82,7 @@ fn plan_assert_exhaustive_pattern(pattern: TypedPattern) -> Result<BindingPatter
         Ok(pattern) => Ok(pattern),
         Err(PlanError::InvalidTypedAst {
             reason: InvalidTypedAstReason::InvalidPattern,
-        }) => Err(unsupported_assert_pattern_error(&pattern)),
+        }) => Err(unsupported_assert_exhaustive_pattern_error(&pattern)),
         Err(error) => Err(error),
     }
 }
@@ -354,6 +337,20 @@ fn unsupported_assert_pattern_error(pattern: &TypedPattern) -> PlanError {
         | Pattern::Tuple { .. } => PlanError::InvalidTypedAst {
             reason: InvalidTypedAstReason::InvalidPattern,
         },
+    }
+}
+
+fn unsupported_assert_exhaustive_pattern_error(pattern: &TypedPattern) -> PlanError {
+    match pattern {
+        Pattern::Tuple { elements, .. } => elements
+            .iter()
+            .map(unsupported_assert_exhaustive_pattern_error)
+            .find(|error| matches!(error, PlanError::UnsupportedPattern { .. }))
+            .unwrap_or(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::InvalidPattern,
+            }),
+        Pattern::Assign { pattern, .. } => unsupported_assert_exhaustive_pattern_error(pattern),
+        pattern => unsupported_assert_pattern_error(pattern),
     }
 }
 
@@ -744,6 +741,32 @@ pub fn main() {
     }
 
     #[test]
+    fn reject_margin_let_assert_exhaustive_pattern_propagates_binding_error() {
+        assert_eq!(
+            super::plan_assert_exhaustive_pattern(Pattern::Tuple {
+                location: dummy_span(),
+                elements: vec![Pattern::List {
+                    location: dummy_span(),
+                    elements: Vec::new(),
+                    tail: Some(Box::new(TailPattern {
+                        location: dummy_span(),
+                        pattern: Pattern::Variable {
+                            location: dummy_span(),
+                            name: "rest".into(),
+                            type_: type_::list(type_::bit_array()),
+                            origin: VariableOrigin::generated(),
+                        },
+                    })),
+                    type_: type_::list(type_::bit_array()),
+                }],
+            }),
+            Err(PlanError::UnsupportedExpression {
+                kind: UnsupportedExpressionKind::UnsupportedListElementType,
+            }),
+        );
+    }
+
+    #[test]
     fn reject_margin_let_assert_list_pattern_propagates_value_error() {
         let module_name = "main".into();
         let functions = HashMap::new();
@@ -813,8 +836,8 @@ pub fn main() {
                 &mut context,
             )
             .err(),
-            Some(PlanError::UnsupportedPattern {
-                kind: UnsupportedPatternKind::List,
+            Some(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::InvalidPattern,
             }),
         );
     }
@@ -1410,6 +1433,11 @@ pub fn main() {
             location: dummy_span(),
             type_: type_::int(),
         };
+        let alias = Pattern::Assign {
+            location: dummy_span(),
+            name: "alias".into(),
+            pattern: Box::new(string_prefix.clone()),
+        };
 
         assert_eq!(
             super::unsupported_assert_pattern_error(&list),
@@ -1425,6 +1453,12 @@ pub fn main() {
         );
         assert_eq!(
             super::unsupported_assert_pattern_error(&string_prefix),
+            PlanError::UnsupportedPattern {
+                kind: UnsupportedPatternKind::StringPrefix,
+            },
+        );
+        assert_eq!(
+            super::unsupported_assert_pattern_error(&alias),
             PlanError::UnsupportedPattern {
                 kind: UnsupportedPatternKind::StringPrefix,
             },

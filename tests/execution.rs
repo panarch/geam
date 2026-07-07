@@ -74,6 +74,7 @@ mod bindings {
         tuple_destructuring_discard,
         nested_tuple_destructuring,
         nested_pattern_alias_assignment,
+        list_tail_assignment,
         let_assert_list_destructuring,
         let_assert_fixed_list,
         let_assert_empty_list,
@@ -278,6 +279,7 @@ mod functions {
             use_tuple_value,
             use_list_value,
             use_tuple_assignment,
+            use_list_tail_assignment,
             use_pattern_alias_assignment,
             use_nested_tuple_alias_assignment,
             use_block_scope,
@@ -392,13 +394,6 @@ mod rejection {
             function_equality,
             tuple_function_equality,
             list_function_equality,
-        );
-    }
-
-    mod patterns {
-        rejection_cases!("patterns";
-            list_assignment,
-            use_list_assignment,
         );
     }
 

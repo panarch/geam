@@ -8,7 +8,8 @@ use crate::plan::{
 };
 use crate::planner::context::PlanContext;
 use crate::planner::error::{
-    InvalidExpressionType, InvalidTypedAstReason, PlanError, UnsupportedPatternKind,
+    InvalidExpressionType, InvalidTypedAstReason, PlanError, UnsupportedExpressionKind,
+    UnsupportedPatternKind,
 };
 use crate::planner::expression::{
     plan_expr, plan_expr_with_expected_source_stop_type, tuple_index_expr,
@@ -73,23 +74,7 @@ pub(super) fn plan_final_assignment(
             });
         }
     };
-    match pattern {
-        BindingPattern::Named(name) => {
-            let (step, value) = plan_variable_runtime_step_and_return(name, value, context);
-            Ok(PlannedAssignment {
-                steps: vec![step],
-                value,
-            })
-        }
-        BindingPattern::Discard => Ok(PlannedAssignment {
-            steps: Vec::new(),
-            value,
-        }),
-        BindingPattern::Tuple(elements) => plan_tuple_assignment(elements, value, context),
-        BindingPattern::Alias { pattern, name } => {
-            plan_alias_assignment(*pattern, name, value, context)
-        }
-    }
+    plan_bound_assignment(pattern, value, context)
 }
 
 fn plan_ordinary_assignment_value(
@@ -104,11 +89,42 @@ fn plan_ordinary_assignment_value(
     }
 }
 
+fn plan_bound_assignment(
+    pattern: BindingPattern,
+    value: Expr,
+    context: &mut PlanContext<'_>,
+) -> Result<PlannedAssignment, PlanError> {
+    match pattern {
+        BindingPattern::Named(name) => {
+            let (step, value) = plan_variable_runtime_step_and_return(name, value, context);
+            Ok(PlannedAssignment {
+                steps: vec![step],
+                value,
+            })
+        }
+        BindingPattern::Discard => Ok(PlannedAssignment {
+            steps: Vec::new(),
+            value,
+        }),
+        BindingPattern::Tuple(elements) => plan_tuple_assignment(elements, value, context),
+        BindingPattern::ListTail { tail, element_type } => {
+            plan_list_tail_assignment(tail, element_type, value, context)
+        }
+        BindingPattern::Alias { pattern, name } => {
+            plan_alias_assignment(*pattern, name, value, context)
+        }
+    }
+}
+
 #[derive(Debug, PartialEq, Eq)]
 pub(super) enum BindingPattern {
     Named(EcoString),
     Discard,
     Tuple(Vec<BindingPattern>),
+    ListTail {
+        tail: ListTailBinding,
+        element_type: ValueType,
+    },
     Alias {
         pattern: Box<BindingPattern>,
         name: EcoString,
@@ -126,10 +142,19 @@ fn plan_assignment_steps(
         BindingPattern::Tuple(elements) => {
             Ok(plan_tuple_assignment(elements, value, context)?.steps)
         }
+        BindingPattern::ListTail { tail, element_type } => {
+            plan_list_tail_assignment_steps(tail, element_type, value, context)
+        }
         BindingPattern::Alias { pattern, name } => {
             Ok(plan_alias_assignment(*pattern, name, value, context)?.steps)
         }
     }
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub(super) enum ListTailBinding {
+    Named(EcoString),
+    Discard,
 }
 
 fn plan_alias_assignment(
@@ -151,6 +176,9 @@ fn plan_alias_assignment(
             value,
         },
         BindingPattern::Tuple(elements) => plan_tuple_assignment(elements, value, context)?,
+        BindingPattern::ListTail { tail, element_type } => {
+            plan_list_tail_assignment(tail, element_type, value, context)?
+        }
         BindingPattern::Alias { .. } => {
             return Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::InvalidPattern,
@@ -163,6 +191,51 @@ fn plan_alias_assignment(
         steps: planned.steps,
         value,
     })
+}
+
+fn plan_list_tail_assignment_steps(
+    tail: ListTailBinding,
+    element_type: ValueType,
+    value: Expr,
+    context: &mut PlanContext<'_>,
+) -> Result<Vec<Step>, PlanError> {
+    let planned = plan_list_tail_assignment(tail, element_type, value, context)?;
+    if planned.steps.is_empty() {
+        Ok(vec![Step::evaluate(planned.value)])
+    } else {
+        Ok(planned.steps)
+    }
+}
+
+fn plan_list_tail_assignment(
+    tail: ListTailBinding,
+    element_type: ValueType,
+    value: Expr,
+    context: &mut PlanContext<'_>,
+) -> Result<PlannedAssignment, PlanError> {
+    let actual = value.value_type();
+    let value = value
+        .into_list()
+        .ok_or_else(|| list_assignment_value_must_be_list(actual))?;
+    if value.element_type() != &element_type {
+        return Err(PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::InvalidPattern,
+        });
+    }
+
+    match tail {
+        ListTailBinding::Named(name) => {
+            let local = context.define_list_local(name.clone(), element_type.clone());
+            Ok(PlannedAssignment {
+                steps: vec![Step::let_list(local, name.clone(), value)],
+                value: Expr::list(ListExpr::local_get(local, name, element_type)),
+            })
+        }
+        ListTailBinding::Discard => Ok(PlannedAssignment {
+            steps: Vec::new(),
+            value: Expr::list(value),
+        }),
+    }
 }
 
 fn plan_tuple_assignment(
@@ -199,6 +272,15 @@ fn plan_tuple_assignment(
 
 fn internal_tuple_name(local: TupleLocalId) -> EcoString {
     format!("<tuple:{}>", local.0).into()
+}
+
+fn list_assignment_value_must_be_list(actual: ValueType) -> PlanError {
+    PlanError::InvalidTypedAst {
+        reason: InvalidTypedAstReason::ExpressionType {
+            expected: InvalidExpressionType::List,
+            actual: value_type_expression_type(actual),
+        },
+    }
 }
 
 fn tuple_assignment_value_must_be_tuple(actual: ValueType) -> PlanError {
@@ -386,11 +468,81 @@ pub(super) fn plan_binding_pattern(pattern: TypedPattern) -> Result<BindingPatte
             .map(plan_binding_pattern)
             .collect::<Result<Vec<_>, _>>()
             .map(BindingPattern::Tuple),
+        Pattern::List {
+            elements,
+            tail,
+            type_,
+            ..
+        } => plan_tail_only_list_binding_pattern(elements, tail.map(|tail| *tail), type_),
         Pattern::Assign { name, pattern, .. } => Ok(BindingPattern::Alias {
             pattern: Box::new(plan_binding_pattern(*pattern)?),
             name,
         }),
         pattern => Err(non_variable_pattern_error(&pattern)),
+    }
+}
+
+fn plan_tail_only_list_binding_pattern(
+    elements: Vec<TypedPattern>,
+    tail: Option<gleam_core::ast::TailPattern<std::sync::Arc<gleam_core::type_::Type>>>,
+    type_: std::sync::Arc<gleam_core::type_::Type>,
+) -> Result<BindingPattern, PlanError> {
+    if !elements.is_empty() {
+        return Err(PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::InvalidPattern,
+        });
+    }
+
+    let Some(tail) = tail else {
+        return Err(PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::InvalidPattern,
+        });
+    };
+
+    let ValueType::List(element_type) =
+        ValueType::from_gleam(type_.as_ref()).ok_or(PlanError::UnsupportedExpression {
+            kind: UnsupportedExpressionKind::UnsupportedListElementType,
+        })?
+    else {
+        return Err(PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::InvalidPattern,
+        });
+    };
+    let element_type = *element_type;
+    let tail = plan_list_tail_binding(tail, element_type.clone())?;
+
+    Ok(BindingPattern::ListTail { tail, element_type })
+}
+
+fn plan_list_tail_binding(
+    tail: gleam_core::ast::TailPattern<std::sync::Arc<gleam_core::type_::Type>>,
+    element_type: ValueType,
+) -> Result<ListTailBinding, PlanError> {
+    match tail.pattern {
+        Pattern::Variable { name, type_, .. } => {
+            list_tail_type_matches(type_.as_ref(), &element_type)?;
+            Ok(ListTailBinding::Named(name))
+        }
+        Pattern::Discard { type_, .. } => {
+            list_tail_type_matches(type_.as_ref(), &element_type)?;
+            Ok(ListTailBinding::Discard)
+        }
+        _ => Err(PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::InvalidPattern,
+        }),
+    }
+}
+
+fn list_tail_type_matches(
+    type_: &gleam_core::type_::Type,
+    element_type: &ValueType,
+) -> Result<(), PlanError> {
+    if ValueType::from_gleam(type_) == Some(ValueType::List(Box::new(element_type.clone()))) {
+        Ok(())
+    } else {
+        Err(PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::InvalidPattern,
+        })
     }
 }
 
@@ -418,15 +570,16 @@ pub(super) fn non_variable_pattern_error(pattern: &TypedPattern) -> PlanError {
 
 #[cfg(test)]
 mod tests {
-    use super::{BindingPattern, plan_binding_pattern};
+    use super::{BindingPattern, ListTailBinding, plan_binding_pattern};
     use crate::plan::{
-        BoolLocalId, Expr, FunctionType, IntLocalId, LocalId, NilLocalId, StringLocalId, ValueType,
+        BoolLocalId, Expr, FunctionType, IntLocalId, ListExpr, LocalId, NilLocalId, StringLocalId,
+        ValueType,
     };
     use crate::planner::dsl::{
         bool_, bool_case_int_function, bool_function_ref, equal, function, int, int_function_ref,
-        let_bool_function_step, let_int_function_step, let_nil_function_step,
-        let_string_function_step, let_tuple_step, local_bool, local_int, local_nil, local_string,
-        local_tuple, module, nil_function_ref, string_function_ref, tuple,
+        let_bool_function_step, let_int_function_step, let_list_step, let_nil_function_step,
+        let_string_function_step, let_tuple_step, list, local_bool, local_int, local_list,
+        local_nil, local_string, local_tuple, module, nil_function_ref, string_function_ref, tuple,
     };
     use crate::planner::plan_module;
     use crate::planner::support::{compile, compile_minimal_module, dummy_span, expect_plan_error};
@@ -436,7 +589,8 @@ mod tests {
     };
     use gleam_core::analyse::Inferred;
     use gleam_core::ast::{
-        AssignName, AssignmentKind, BitArraySize, Pattern, Statement, TypedAssignment, TypedExpr,
+        AssignName, AssignmentKind, BitArraySize, Pattern, Statement, TailPattern, TypedAssignment,
+        TypedExpr,
     };
     use gleam_core::exhaustiveness::CompiledCase;
     use gleam_core::parse::LiteralFloatValue;
@@ -534,6 +688,67 @@ pub fn main() {
     }
 
     #[test]
+    fn plan_list_tail_assignment_binds_whole_list() {
+        let actual = plan_module(compile(
+            r#"
+pub fn main() {
+  let [..rest] = [1, 2]
+  rest
+}
+"#,
+        ))
+        .expect("source should plan");
+        let expected = module(
+            "main",
+            function("main", local_list(0, "rest", ValueType::Int)).step(let_list_step(
+                0,
+                "rest",
+                list([int(1), int(2)], ValueType::Int),
+            )),
+            [],
+        );
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn plan_list_tail_discard_assignment_evaluates_whole_list() {
+        let actual = plan_module(compile(
+            r#"
+pub fn main() {
+  let [..] = [1]
+  42
+}
+"#,
+        ))
+        .expect("source should plan");
+        let expected = module(
+            "main",
+            function("main", int(42)).evaluate(list([int(1)], ValueType::Int)),
+            [],
+        );
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn reject_profile_list_tail_assignment_unsupported_element_type() {
+        assert_eq!(
+            expect_plan_error(
+                r#"
+pub fn main() {
+  let [..rest]: List(BitArray) = []
+  1
+}
+"#,
+            ),
+            PlanError::UnsupportedExpression {
+                kind: UnsupportedExpressionKind::UnsupportedListElementType,
+            },
+        );
+    }
+
+    #[test]
     fn plan_variable_alias_assignment_binds_inner_name_then_alias() {
         let actual = plan_module(compile(
             r#"
@@ -569,6 +784,32 @@ pub fn main() {
         let expected = module(
             "main",
             function("main", local_int(0, "alias")).let_int(0, "alias", int(1)),
+            [],
+        );
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn plan_list_tail_alias_assignment_binds_tail_then_alias() {
+        let actual = plan_module(compile(
+            r#"
+pub fn main() {
+  let [..rest] as values = [1]
+  values
+}
+"#,
+        ))
+        .expect("source should plan");
+        let expected = module(
+            "main",
+            function("main", local_list(1, "values", ValueType::Int))
+                .step(let_list_step(0, "rest", list([int(1)], ValueType::Int)))
+                .step(let_list_step(
+                    1,
+                    "values",
+                    local_list(0, "rest", ValueType::Int),
+                )),
             [],
         );
 
@@ -963,6 +1204,145 @@ pub fn main() {
     }
 
     #[test]
+    fn reject_margin_list_tail_assignment_value_type_error_preserves_actual_family() {
+        assert_eq!(
+            super::list_assignment_value_must_be_list(ValueType::Int),
+            PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionType {
+                    expected: InvalidExpressionType::List,
+                    actual: InvalidExpressionType::Int,
+                },
+            },
+        );
+
+        let module_name = "main".into();
+        let functions = std::collections::HashMap::new();
+        let mut anonymous = crate::planner::context::AnonymousFunctions::default();
+        let mut context =
+            crate::planner::context::PlanContext::new(&module_name, &functions, &mut anonymous);
+
+        assert_eq!(
+            super::plan_list_tail_assignment(
+                ListTailBinding::Named("rest".into()),
+                ValueType::Int,
+                int(1).into(),
+                &mut context,
+            )
+            .err(),
+            Some(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionType {
+                    expected: InvalidExpressionType::List,
+                    actual: InvalidExpressionType::Int,
+                },
+            }),
+        );
+    }
+
+    #[test]
+    fn reject_margin_list_tail_assignment_element_type_mismatch() {
+        let module_name = "main".into();
+        let functions = std::collections::HashMap::new();
+        let mut anonymous = crate::planner::context::AnonymousFunctions::default();
+        let mut context =
+            crate::planner::context::PlanContext::new(&module_name, &functions, &mut anonymous);
+
+        assert_eq!(
+            super::plan_list_tail_assignment(
+                ListTailBinding::Named("rest".into()),
+                ValueType::String,
+                Expr::list(ListExpr::value(Vec::new(), ValueType::Int)),
+                &mut context,
+            )
+            .err(),
+            Some(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::InvalidPattern,
+            }),
+        );
+    }
+
+    #[test]
+    fn reject_margin_assignment_pattern_error_is_propagated() {
+        let module_name = "main".into();
+        let functions = std::collections::HashMap::new();
+        let mut anonymous = crate::planner::context::AnonymousFunctions::default();
+        let mut context =
+            crate::planner::context::PlanContext::new(&module_name, &functions, &mut anonymous);
+
+        assert_eq!(
+            super::plan_assignment(
+                TypedAssignment {
+                    location: dummy_span(),
+                    value: typed_int_expr(1),
+                    pattern: Pattern::Int {
+                        location: dummy_span(),
+                        value: "1".into(),
+                        int_value: BigInt::from(1),
+                    },
+                    kind: AssignmentKind::Let,
+                    compiled_case: CompiledCase::simple_variable_assignment(
+                        "value".into(),
+                        type_::int(),
+                    ),
+                    annotation: None,
+                },
+                &mut context,
+            ),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::InvalidPattern,
+            }),
+        );
+    }
+
+    #[test]
+    fn reject_margin_list_tail_assignment_step_error_is_propagated() {
+        let module_name = "main".into();
+        let functions = std::collections::HashMap::new();
+        let mut anonymous = crate::planner::context::AnonymousFunctions::default();
+        let mut context =
+            crate::planner::context::PlanContext::new(&module_name, &functions, &mut anonymous);
+
+        assert_eq!(
+            super::plan_assignment_steps(
+                BindingPattern::ListTail {
+                    tail: ListTailBinding::Named("rest".into()),
+                    element_type: ValueType::String,
+                },
+                Expr::list(ListExpr::value(Vec::new(), ValueType::Int)),
+                &mut context,
+            )
+            .err(),
+            Some(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::InvalidPattern,
+            }),
+        );
+    }
+
+    #[test]
+    fn reject_margin_list_tail_alias_assignment_error_is_propagated() {
+        let module_name = "main".into();
+        let functions = std::collections::HashMap::new();
+        let mut anonymous = crate::planner::context::AnonymousFunctions::default();
+        let mut context =
+            crate::planner::context::PlanContext::new(&module_name, &functions, &mut anonymous);
+
+        assert_eq!(
+            super::plan_alias_assignment(
+                BindingPattern::ListTail {
+                    tail: ListTailBinding::Named("rest".into()),
+                    element_type: ValueType::String,
+                },
+                "values".into(),
+                Expr::list(ListExpr::value(Vec::new(), ValueType::Int)),
+                &mut context,
+            )
+            .err(),
+            Some(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::InvalidPattern,
+            }),
+        );
+    }
+
+    #[test]
     fn reject_profile_discard_assignment_value_is_validated() {
         assert_eq!(
             expect_plan_error(
@@ -1147,6 +1527,29 @@ pub fn main() {
     }
 
     #[test]
+    fn plan_final_list_tail_assignment_returns_list_local() {
+        let actual = plan_module(compile(
+            r#"
+pub fn main() {
+  let [..rest] = [1]
+}
+"#,
+        ))
+        .expect("source should plan");
+        let expected = module(
+            "main",
+            function("main", local_list(0, "rest", ValueType::Int)).step(let_list_step(
+                0,
+                "rest",
+                list([int(1)], ValueType::Int),
+            )),
+            [],
+        );
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
     fn reject_profile_final_assignment_value_is_validated() {
         assert_eq!(
             expect_plan_error(
@@ -1212,25 +1615,6 @@ pub fn main() {
     }
 
     #[test]
-    fn reject_profile_non_variable_pattern_shapes() {
-        let cases = [(
-            r#"
-pub fn main() {
-  let [..rest] = [1]
-  rest
-}
-"#,
-            PlanError::UnsupportedPattern {
-                kind: UnsupportedPatternKind::List,
-            },
-        )];
-
-        for (src, expected) in cases {
-            assert_eq!(expect_plan_error(src), expected);
-        }
-    }
-
-    #[test]
     fn reject_profile_let_assert_list_literal_element_pattern() {
         assert_eq!(
             expect_plan_error(
@@ -1265,7 +1649,7 @@ pub fn main() {
     }
 
     #[test]
-    fn reject_margin_invalid_pattern_shapes() {
+    fn plan_binding_pattern_accepts_supported_shapes() {
         let variable = |name: &str| Pattern::Variable {
             location: dummy_span(),
             name: name.into(),
@@ -1307,6 +1691,56 @@ pub fn main() {
             }),
         );
         assert_eq!(
+            plan_binding_pattern(Pattern::List {
+                location: dummy_span(),
+                elements: Vec::new(),
+                tail: Some(Box::new(TailPattern {
+                    location: dummy_span(),
+                    pattern: Pattern::Variable {
+                        location: dummy_span(),
+                        name: "rest".into(),
+                        type_: type_::list(type_::int()),
+                        origin: VariableOrigin::generated(),
+                    },
+                })),
+                type_: type_::list(type_::int()),
+            }),
+            Ok(BindingPattern::ListTail {
+                tail: ListTailBinding::Named("rest".into()),
+                element_type: ValueType::Int,
+            }),
+        );
+        assert_eq!(
+            plan_binding_pattern(Pattern::List {
+                location: dummy_span(),
+                elements: Vec::new(),
+                tail: Some(Box::new(TailPattern {
+                    location: dummy_span(),
+                    pattern: Pattern::Discard {
+                        location: dummy_span(),
+                        name: "_".into(),
+                        type_: type_::list(type_::int()),
+                    },
+                })),
+                type_: type_::list(type_::int()),
+            }),
+            Ok(BindingPattern::ListTail {
+                tail: ListTailBinding::Discard,
+                element_type: ValueType::Int,
+            }),
+        );
+    }
+
+    #[test]
+    fn reject_margin_invalid_pattern_shapes() {
+        let variable = |name: &str| Pattern::Variable {
+            location: dummy_span(),
+            name: name.into(),
+            type_: type_::int(),
+            origin: VariableOrigin::generated(),
+        };
+
+        assert_eq!(
             plan_binding_pattern(Pattern::Assign {
                 location: dummy_span(),
                 name: "alias".into(),
@@ -1317,11 +1751,95 @@ pub fn main() {
                     type_: type_::list(type_::int()),
                 }),
             }),
-            Err(PlanError::UnsupportedPattern {
-                kind: UnsupportedPatternKind::List,
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::InvalidPattern,
             }),
         );
-
+        assert_eq!(
+            plan_binding_pattern(Pattern::List {
+                location: dummy_span(),
+                elements: Vec::new(),
+                tail: Some(Box::new(TailPattern {
+                    location: dummy_span(),
+                    pattern: Pattern::Variable {
+                        location: dummy_span(),
+                        name: "rest".into(),
+                        type_: type_::int(),
+                        origin: VariableOrigin::generated(),
+                    },
+                })),
+                type_: type_::list(type_::int()),
+            }),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::InvalidPattern,
+            }),
+        );
+        assert_eq!(
+            plan_binding_pattern(Pattern::List {
+                location: dummy_span(),
+                elements: Vec::new(),
+                tail: Some(Box::new(TailPattern {
+                    location: dummy_span(),
+                    pattern: Pattern::Discard {
+                        location: dummy_span(),
+                        name: "_".into(),
+                        type_: type_::int(),
+                    },
+                })),
+                type_: type_::list(type_::int()),
+            }),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::InvalidPattern,
+            }),
+        );
+        assert_eq!(
+            plan_binding_pattern(Pattern::List {
+                location: dummy_span(),
+                elements: Vec::new(),
+                tail: None,
+                type_: type_::list(type_::int()),
+            }),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::InvalidPattern,
+            }),
+        );
+        assert_eq!(
+            plan_binding_pattern(Pattern::List {
+                location: dummy_span(),
+                elements: Vec::new(),
+                tail: Some(Box::new(TailPattern {
+                    location: dummy_span(),
+                    pattern: Pattern::Variable {
+                        location: dummy_span(),
+                        name: "rest".into(),
+                        type_: type_::list(type_::int()),
+                        origin: VariableOrigin::generated(),
+                    },
+                })),
+                type_: type_::int(),
+            }),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::InvalidPattern,
+            }),
+        );
+        assert_eq!(
+            plan_binding_pattern(Pattern::List {
+                location: dummy_span(),
+                elements: Vec::new(),
+                tail: Some(Box::new(TailPattern {
+                    location: dummy_span(),
+                    pattern: Pattern::Int {
+                        location: dummy_span(),
+                        value: "1".into(),
+                        int_value: BigInt::from(1),
+                    },
+                })),
+                type_: type_::list(type_::int()),
+            }),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::InvalidPattern,
+            }),
+        );
         let patterns = [
             Pattern::Int {
                 location: dummy_span(),
@@ -1378,6 +1896,21 @@ pub fn main() {
                 }),
             );
         }
+    }
+
+    #[test]
+    fn non_variable_pattern_error_reports_list_profile_boundary() {
+        assert_eq!(
+            super::non_variable_pattern_error(&Pattern::List {
+                location: dummy_span(),
+                elements: Vec::new(),
+                tail: None,
+                type_: type_::list(type_::int()),
+            }),
+            PlanError::UnsupportedPattern {
+                kind: UnsupportedPatternKind::List,
+            },
+        );
     }
 
     fn typed_int_expr(value: i64) -> TypedExpr {
