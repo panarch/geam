@@ -72,8 +72,6 @@ pub enum UnsupportedCaseReason {
     UnsupportedSubjectType,
     #[error("list patterns are not supported")]
     ListPattern,
-    #[error("string prefix patterns are not supported")]
-    StringPrefixPattern,
 }
 
 #[derive(Debug, Error, Clone, Copy, PartialEq, Eq)]

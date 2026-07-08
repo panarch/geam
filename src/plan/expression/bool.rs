@@ -71,6 +71,10 @@ pub(crate) enum BoolExprKind {
         left: Box<Expr>,
         right: Box<Expr>,
     },
+    StringStartsWith {
+        value: Box<StringExpr>,
+        prefix: EcoString,
+    },
     And {
         left: Box<BoolExpr>,
         right: Box<BoolExpr>,
@@ -244,6 +248,15 @@ impl BoolExpr {
         }
     }
 
+    pub(crate) fn string_starts_with(value: StringExpr, prefix: EcoString) -> Self {
+        Self {
+            kind: BoolExprKind::StringStartsWith {
+                value: Box::new(value),
+                prefix,
+            },
+        }
+    }
+
     pub(crate) fn and(left: BoolExpr, right: BoolExpr) -> Self {
         Self {
             kind: BoolExprKind::And {
@@ -332,8 +345,8 @@ impl BoolExpr {
 mod tests {
     use super::{BoolExpr, BoolExprKind};
     use crate::plan::{
-        BoolFunctionId, BoolFunctionValue, BoolLocalId, Expr, FloatExpr, IntExpr, Step, TupleExpr,
-        ValueType,
+        BoolFunctionId, BoolFunctionValue, BoolLocalId, Expr, FloatExpr, IntExpr, Step, StringExpr,
+        TupleExpr, ValueType,
     };
     use num_bigint::BigInt;
 
@@ -448,6 +461,13 @@ mod tests {
             &BoolExprKind::NotEqual {
                 left: Box::new(Expr::bool(BoolExpr::value(true))),
                 right: Box::new(Expr::bool(BoolExpr::value(false))),
+            },
+        );
+        assert_eq!(
+            BoolExpr::string_starts_with(StringExpr::value("geam".into()), "ge".into()).kind(),
+            &BoolExprKind::StringStartsWith {
+                value: Box::new(StringExpr::value("geam".into())),
+                prefix: "ge".into(),
             },
         );
         assert_eq!(

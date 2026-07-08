@@ -241,12 +241,23 @@ fn collect_variable_pattern_bound_name(
                 collect_variable_pattern_bound_name(&tail.pattern, bound);
             }
         }
+        Pattern::StringPrefix {
+            left_side_assignment,
+            right_side_assignment,
+            ..
+        } => {
+            if let Some((name, _)) = left_side_assignment {
+                bound.insert(name.clone());
+            }
+            if let gleam_core::ast::AssignName::Variable(name) = right_side_assignment {
+                bound.insert(name.clone());
+            }
+        }
         Pattern::Int { .. }
         | Pattern::Float { .. }
         | Pattern::String { .. }
         | Pattern::Constructor { .. }
         | Pattern::BitArray { .. }
-        | Pattern::StringPrefix { .. }
         | Pattern::BitArraySize(_)
         | Pattern::Discard { .. }
         | Pattern::Invalid { .. } => {}
@@ -256,7 +267,7 @@ fn collect_variable_pattern_bound_name(
 #[cfg(test)]
 mod tests {
     use crate::planner::support::{compile, dummy_span};
-    use gleam_core::ast::{ClauseGuard, Constant, Publicity, Statement, TypedExpr};
+    use gleam_core::ast::{AssignName, ClauseGuard, Constant, Publicity, Statement, TypedExpr};
     use gleam_core::type_::error::VariableOrigin;
     use gleam_core::type_::{self, Deprecation, ValueConstructor, ValueConstructorVariant};
     use vec1::Vec1;
@@ -353,6 +364,67 @@ pub fn main() {
                 "plain_assert_condition".to_string(),
             ],
         );
+    }
+
+    #[test]
+    fn anonymous_free_variables_treat_string_prefix_pattern_names_as_bound() {
+        assert_eq!(
+            anonymous_function_free_variables(
+                r#"
+pub fn main() {
+  fn() {
+    case "Hello, Geam" {
+      "Hello, " as prefix <> name -> prefix <> name
+      _ -> ""
+    }
+  }
+  1
+}
+"#,
+            ),
+            Vec::<String>::new(),
+        );
+    }
+
+    #[test]
+    fn collect_variable_pattern_bound_name_records_string_prefix_alias_and_suffix_names() {
+        let mut bound = std::collections::HashSet::new();
+
+        super::collect_variable_pattern_bound_name(
+            &gleam_core::ast::Pattern::StringPrefix {
+                location: dummy_span(),
+                left_location: dummy_span(),
+                left_side_assignment: Some(("prefix".into(), dummy_span())),
+                right_location: dummy_span(),
+                left_side_string: "Hello, ".into(),
+                right_side_assignment: AssignName::Variable("name".into()),
+            },
+            &mut bound,
+        );
+
+        assert_eq!(
+            bound,
+            std::collections::HashSet::from(["prefix".into(), "name".into()]),
+        );
+    }
+
+    #[test]
+    fn collect_variable_pattern_bound_name_ignores_discard_string_prefix_names() {
+        let mut bound = std::collections::HashSet::new();
+
+        super::collect_variable_pattern_bound_name(
+            &gleam_core::ast::Pattern::StringPrefix {
+                location: dummy_span(),
+                left_location: dummy_span(),
+                left_side_assignment: None,
+                right_location: dummy_span(),
+                left_side_string: "Hello, ".into(),
+                right_side_assignment: AssignName::Discard("_rest".into()),
+            },
+            &mut bound,
+        );
+
+        assert_eq!(bound, std::collections::HashSet::new());
     }
 
     #[test]

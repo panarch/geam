@@ -9,7 +9,7 @@ use crate::plan::{
 use crate::planner::context::PlanContext;
 use crate::planner::error::{InvalidCaseShapeReason, PlanError, UnsupportedCaseReason};
 use ecow::EcoString;
-use gleam_core::ast::{Pattern, TypedClause, TypedExpr};
+use gleam_core::ast::{AssignName, Pattern, SrcSpan, TypedClause, TypedExpr};
 use gleam_core::type_::Type;
 use std::sync::Arc;
 
@@ -81,6 +81,36 @@ impl TupleCasePattern {
             branch_bindings: Vec::new(),
             is_total: false,
         }
+    }
+
+    fn string_prefix(
+        value: Expr,
+        prefix: EcoString,
+        left_side_assignment: Option<(EcoString, SrcSpan)>,
+        right_side_assignment: AssignName,
+    ) -> Result<Self, PlanError> {
+        let Some(value) = value.into_string() else {
+            return Err(invalid_case_shape(
+                InvalidCaseShapeReason::PatternTypeMismatch,
+            ));
+        };
+        let mut pattern = Self {
+            match_condition: Some(BoolExpr::string_starts_with(value.clone(), prefix.clone())),
+            branch_bindings: Vec::new(),
+            is_total: false,
+        };
+        if let Some((name, _)) = left_side_assignment {
+            pattern
+                .branch_bindings
+                .push((name, Expr::string(StringExpr::value(prefix.clone()))));
+        }
+        if let AssignName::Variable(name) = right_side_assignment {
+            pattern
+                .branch_bindings
+                .push((name, Expr::string(StringExpr::drop_prefix(value, prefix))));
+        }
+
+        Ok(pattern)
     }
 
     fn with_binding(mut self, name: EcoString, value: Expr) -> Self {
@@ -173,8 +203,16 @@ fn plan_tuple_case_pattern(
         Pattern::List { .. } if matches!(subject_type, ValueType::List(_)) => Err(
             super::super::unsupported_case(UnsupportedCaseReason::ListPattern),
         ),
-        Pattern::StringPrefix { .. } if subject_type == ValueType::String => Err(
-            super::super::unsupported_case(UnsupportedCaseReason::StringPrefixPattern),
+        Pattern::StringPrefix {
+            left_side_string,
+            left_side_assignment,
+            right_side_assignment,
+            ..
+        } if subject_type == ValueType::String => TupleCasePattern::string_prefix(
+            value,
+            left_side_string,
+            left_side_assignment,
+            right_side_assignment,
         ),
         Pattern::Int { .. }
         | Pattern::Float { .. }
@@ -254,10 +292,11 @@ fn internal_tuple_case_subject_name(local: TupleLocalId) -> EcoString {
 
 #[cfg(test)]
 mod tests {
-    use crate::plan::{BoolExpr, Expr, ValueType};
+    use crate::plan::{BoolExpr, Expr, Step, StringExpr, StringLocalId, ValueType};
     use crate::planner::dsl::{
         bool_, float, function, int, int_return_block, int_return_expr, let_int_step,
-        let_tuple_step, local_int, local_tuple, module, nil, string, tuple,
+        let_tuple_step, local_int, local_string, local_tuple, module, nil, string,
+        string_return_block, string_return_expr, tuple,
     };
     use crate::planner::plan_module;
     use crate::planner::support::{dummy_span, expect_plan_error};
@@ -344,10 +383,10 @@ pub fn main() {
             "alias",
             local_tuple(0, "<case:tuple:0>", tuple_type.clone()),
         );
-        let first_condition = BoolExpr::block(
-            vec![first_binding.clone()],
-            BoolExpr::and(
-                BoolExpr::value(true),
+        let first_condition = BoolExpr::and(
+            BoolExpr::value(true),
+            BoolExpr::block(
+                vec![first_binding.clone()],
                 BoolExpr::gt_int(
                     local_tuple(1, "value", tuple_type.clone())
                         .index_int(0)
@@ -356,10 +395,10 @@ pub fn main() {
                 ),
             ),
         );
-        let second_condition = BoolExpr::block(
-            vec![second_value_binding.clone(), second_alias_binding.clone()],
-            BoolExpr::and(
-                BoolExpr::value(true),
+        let second_condition = BoolExpr::and(
+            BoolExpr::value(true),
+            BoolExpr::block(
+                vec![second_value_binding.clone(), second_alias_binding.clone()],
                 BoolExpr::equal(
                     Expr::from(local_tuple(3, "alias", tuple_type.clone()).index_int(1)),
                     Expr::from(int(2)),
@@ -461,19 +500,13 @@ pub fn main() {
             "value",
             local_tuple(0, "<case:tuple:0>", tuple_type.clone()).index_int(1),
         );
-        let first_condition = BoolExpr::block(
-            vec![first_binding.clone()],
-            BoolExpr::equal(
-                Expr::from(local_tuple(0, "<case:tuple:0>", tuple_type.clone()).index_int(0)),
-                Expr::from(int(1)),
-            ),
+        let first_condition = BoolExpr::equal(
+            Expr::from(local_tuple(0, "<case:tuple:0>", tuple_type.clone()).index_int(0)),
+            Expr::from(int(1)),
         );
-        let second_condition = BoolExpr::block(
-            vec![second_binding.clone()],
-            BoolExpr::equal(
-                Expr::from(local_tuple(0, "<case:tuple:0>", tuple_type.clone()).index_int(0)),
-                Expr::from(int(2)),
-            ),
+        let second_condition = BoolExpr::equal(
+            Expr::from(local_tuple(0, "<case:tuple:0>", tuple_type.clone()).index_int(0)),
+            Expr::from(int(2)),
         );
         let expected = module(
             "main",
@@ -525,10 +558,10 @@ pub fn main() {
             "right",
             local_tuple(0, "<case:tuple:0>", tuple_type.clone()).index_int(1),
         );
-        let condition = BoolExpr::block(
-            vec![left_binding.clone(), right_binding.clone()],
-            BoolExpr::and(
-                BoolExpr::value(true),
+        let condition = BoolExpr::and(
+            BoolExpr::value(true),
+            BoolExpr::block(
+                vec![left_binding.clone(), right_binding.clone()],
                 BoolExpr::gt_int(local_int(0, "left").into(), int(0).into()),
             ),
         );
@@ -681,22 +714,87 @@ pub fn main() {
     }
 
     #[test]
-    fn reject_profile_tuple_subject_inner_string_prefix_pattern() {
+    fn tuple_case_pattern_binds_string_prefix_left_alias() {
+        let actual = super::plan_tuple_case_pattern(
+            Pattern::StringPrefix {
+                location: dummy_span(),
+                left_location: dummy_span(),
+                left_side_assignment: Some(("prefix".into(), dummy_span())),
+                right_location: dummy_span(),
+                left_side_string: "Hello, ".into(),
+                right_side_assignment: AssignName::Discard("_rest".into()),
+            },
+            Expr::from(string("Hello, Geam")),
+            ValueType::String,
+        );
+
         assert_eq!(
-            expect_plan_error(
-                r#"
+            actual,
+            Ok(super::TupleCasePattern {
+                match_condition: Some(BoolExpr::string_starts_with(
+                    string("Hello, Geam").into(),
+                    "Hello, ".into(),
+                )),
+                branch_bindings: vec![("prefix".into(), Expr::from(string("Hello, ")))],
+                is_total: false,
+            }),
+        );
+    }
+
+    #[test]
+    fn plan_tuple_subject_inner_string_prefix_pattern_uses_tuple_projection() {
+        let actual = plan_module(crate::planner::support::compile(
+            r#"
 pub fn main() {
-  case #("Hello, Geam", 1) {
-    #("Hello, " <> name, value) -> value
-    _ -> 0
+  case #("Hello, Geam", "!") {
+    #("Hello, " <> name, suffix) -> name <> suffix
+    _ -> "none"
   }
 }
 "#,
-            ),
-            PlanError::UnsupportedCase {
-                reason: UnsupportedCaseReason::StringPrefixPattern,
-            },
+        ))
+        .expect("source should plan");
+        let tuple_type = vec![ValueType::String, ValueType::String];
+        let first_element = local_tuple(0, "<case:tuple:0>", tuple_type.clone()).index_string(0);
+        let second_element = local_tuple(0, "<case:tuple:0>", tuple_type.clone()).index_string(1);
+        let bind_name = Step::let_string(
+            StringLocalId(0),
+            "name".into(),
+            StringExpr::drop_prefix(first_element.into(), "Hello, ".into()),
         );
+        let bind_suffix =
+            Step::let_string(StringLocalId(1), "suffix".into(), second_element.into());
+        let expected = module(
+            "main",
+            function(
+                "main",
+                string_return_block(
+                    [let_tuple_step(
+                        0,
+                        "<case:tuple:0>",
+                        tuple([string("Hello, Geam"), string("!")]),
+                    )],
+                    crate::plan::StringReturn::bool_case(
+                        BoolExpr::string_starts_with(
+                            local_tuple(0, "<case:tuple:0>", tuple_type)
+                                .index_string(0)
+                                .into(),
+                            "Hello, ".into(),
+                        ),
+                        string_return_block(
+                            [bind_name, bind_suffix],
+                            string_return_expr(
+                                local_string(0, "name").concatenate(local_string(1, "suffix")),
+                            ),
+                        ),
+                        string_return_expr(string("none")),
+                    ),
+                ),
+            ),
+            [],
+        );
+
+        assert_eq!(actual, expected);
     }
 
     #[test]
@@ -986,6 +1084,25 @@ pub fn main() {
                 },
                 Expr::from(int(1)),
                 ValueType::Int,
+            ),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::CaseShape {
+                    reason: InvalidCaseShapeReason::PatternTypeMismatch,
+                },
+            }),
+        );
+        assert_eq!(
+            super::plan_tuple_case_pattern(
+                gleam_core::ast::Pattern::StringPrefix {
+                    location: dummy_span(),
+                    left_location: dummy_span(),
+                    left_side_assignment: None,
+                    right_location: dummy_span(),
+                    left_side_string: "prefix".into(),
+                    right_side_assignment: AssignName::Variable("rest".into()),
+                },
+                Expr::from(int(1)),
+                ValueType::String,
             ),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::CaseShape {

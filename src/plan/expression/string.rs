@@ -32,6 +32,10 @@ pub(crate) enum StringExprKind {
         left: Box<StringExpr>,
         right: Box<StringExpr>,
     },
+    DropPrefix {
+        value: Box<StringExpr>,
+        prefix: EcoString,
+    },
     BoolCase {
         subject: Box<BoolExpr>,
         true_: Box<StringExpr>,
@@ -106,6 +110,15 @@ impl StringExpr {
             kind: StringExprKind::Concatenate {
                 left: Box::new(left),
                 right: Box::new(right),
+            },
+        }
+    }
+
+    pub(crate) fn drop_prefix(value: StringExpr, prefix: EcoString) -> Self {
+        Self {
+            kind: StringExprKind::DropPrefix {
+                value: Box::new(value),
+                prefix,
             },
         }
     }
@@ -225,6 +238,13 @@ mod tests {
             &StringExprKind::Concatenate {
                 left: Box::new(StringExpr::value("a".into())),
                 right: Box::new(StringExpr::value("b".into())),
+            },
+        );
+        assert_eq!(
+            StringExpr::drop_prefix(StringExpr::value("hello".into()), "he".into()).kind(),
+            &StringExprKind::DropPrefix {
+                value: Box::new(StringExpr::value("hello".into())),
+                prefix: "he".into(),
             },
         );
         assert_eq!(

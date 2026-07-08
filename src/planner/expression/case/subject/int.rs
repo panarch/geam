@@ -851,10 +851,10 @@ pub fn main() {
         ))
         .expect("source should plan");
         let bind_other = let_int_step(1, "other", local_int(0, "<case:int:0>"));
-        let condition = BoolExpr::block(
-            vec![bind_other.clone()],
-            BoolExpr::and(
-                BoolExpr::value(true),
+        let condition = BoolExpr::and(
+            BoolExpr::value(true),
+            BoolExpr::block(
+                vec![bind_other.clone()],
                 BoolExpr::gt_int(local_int(1, "other").into(), int(40).into()),
             ),
         );
@@ -892,10 +892,10 @@ pub fn main() {
         .expect("source should plan");
         let bind_other = let_int_step(1, "other", local_int(0, "<case:int:0>"));
         let bind_alias = let_int_step(2, "alias", local_int(0, "<case:int:0>"));
-        let condition = BoolExpr::block(
-            vec![bind_other.clone(), bind_alias.clone()],
-            BoolExpr::and(
-                BoolExpr::value(true),
+        let condition = BoolExpr::and(
+            BoolExpr::value(true),
+            BoolExpr::block(
+                vec![bind_other.clone(), bind_alias.clone()],
                 BoolExpr::equal(local_int(2, "alias").into(), int(2).into()),
             ),
         );

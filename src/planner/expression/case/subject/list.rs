@@ -211,20 +211,20 @@ pub fn main() {
             let_list_step(2, "value", local_list(0, "<case:list:0>", ValueType::Int));
         let second_alias_binding =
             let_list_step(3, "alias", local_list(0, "<case:list:0>", ValueType::Int));
-        let first_condition = BoolExpr::block(
-            vec![first_binding.clone()],
-            BoolExpr::and(
-                BoolExpr::value(true),
+        let first_condition = BoolExpr::and(
+            BoolExpr::value(true),
+            BoolExpr::block(
+                vec![first_binding.clone()],
                 BoolExpr::equal(
                     Expr::from(local_list(1, "value", ValueType::Int)),
                     Expr::from(list(Vec::<Expr>::new(), ValueType::Int)),
                 ),
             ),
         );
-        let second_condition = BoolExpr::block(
-            vec![second_value_binding.clone(), second_alias_binding.clone()],
-            BoolExpr::and(
-                BoolExpr::value(true),
+        let second_condition = BoolExpr::and(
+            BoolExpr::value(true),
+            BoolExpr::block(
+                vec![second_value_binding.clone(), second_alias_binding.clone()],
                 BoolExpr::equal(
                     Expr::from(local_list(3, "alias", ValueType::Int)),
                     Expr::from(list([int(1), int(2)], ValueType::Int)),

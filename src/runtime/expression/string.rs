@@ -35,6 +35,10 @@ pub(in crate::runtime) fn eval_string_expr(
             eval_string_expr(plan, frame, right)?,
         )
         .into()),
+        StringExprKind::DropPrefix { value, prefix } => Ok(eval_string_expr(plan, frame, value)?
+            .strip_prefix(prefix.as_str())
+            .unwrap_or("")
+            .into()),
         StringExprKind::BoolCase {
             subject,
             true_,
@@ -144,6 +148,63 @@ pub fn main() {
 "#,
             ),
             Value::String("hello, geam".into()),
+        );
+    }
+
+    #[test]
+    fn eval_string_drop_prefix() {
+        let plan = crate::runtime::plan_src(r#"pub fn main() { "value" }"#);
+        let mut frame = Frame::default();
+
+        assert_eq!(
+            eval_string_expr(
+                &plan,
+                &mut frame,
+                &StringExpr::drop_prefix(StringExpr::value("Hello, Geam".into()), "Hello, ".into()),
+            ),
+            Ok("Geam".into()),
+        );
+        assert_eq!(
+            eval_string_expr(
+                &plan,
+                &mut frame,
+                &StringExpr::drop_prefix(StringExpr::value("안녕, 글림".into()), "안녕, ".into()),
+            ),
+            Ok("글림".into()),
+        );
+        assert_eq!(
+            eval_string_expr(
+                &plan,
+                &mut frame,
+                &StringExpr::drop_prefix(StringExpr::value("abc".into()), "".into()),
+            ),
+            Ok("abc".into()),
+        );
+        assert_eq!(
+            eval_string_expr(
+                &plan,
+                &mut frame,
+                &StringExpr::drop_prefix(StringExpr::value("Hello, Geam".into()), "Goodbye".into()),
+            ),
+            Ok("".into()),
+        );
+    }
+
+    #[test]
+    fn eval_string_drop_prefix_propagates_value_error() {
+        let plan = plan();
+        let mut frame = Frame::default();
+
+        assert_eq!(
+            eval_string_expr(
+                &plan,
+                &mut frame,
+                &StringExpr::drop_prefix(error_string_expr(), "prefix".into()),
+            ),
+            Err(function_return_family_error_value(
+                FunctionReturnFamily::String,
+                FunctionReturnFamily::Bool,
+            )),
         );
     }
 

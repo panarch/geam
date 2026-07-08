@@ -211,13 +211,15 @@ fn plan_ordered_case_clause(
             .map(|guard| super::guard::plan_bool(guard, context))
             .transpose()?;
         let condition = match guard_condition {
-            Some(guard_condition) => BoolExpr::and(match_condition, guard_condition),
+            Some(guard_condition) => {
+                let guard_condition = if binding_steps.is_empty() {
+                    guard_condition
+                } else {
+                    BoolExpr::block(binding_steps.clone(), guard_condition)
+                };
+                BoolExpr::and(match_condition, guard_condition)
+            }
             None => match_condition,
-        };
-        let condition = if binding_steps.is_empty() {
-            condition
-        } else {
-            BoolExpr::block(binding_steps.clone(), condition)
         };
 
         let branch = super::super::plan_expr_with_expected_source_stop_type(
