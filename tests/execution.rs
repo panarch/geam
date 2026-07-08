@@ -148,6 +148,18 @@ mod control_flow {
             function_subject,
             tuple_subject_guard,
             list_subject_closure_capture,
+            list_pattern,
+            list_pattern_fixed_length,
+            list_pattern_empty,
+            list_pattern_fallthrough,
+            list_pattern_total_rest,
+            list_pattern_nested,
+            list_pattern_alias,
+            list_pattern_alternative_guard,
+            list_pattern_closure_capture,
+            list_pattern_element_families,
+            list_pattern_string_prefix_element,
+            tuple_inner_list_pattern,
             guard,
             guard_fallthrough,
             guard_operator_surface,
@@ -185,6 +197,7 @@ mod control_flow {
             multiple_subject_variables,
             multiple_subject_alternative_guard,
             multiple_subject_mixed_patterns,
+            multiple_subject_list_pattern,
             multiple_subject_closure_capture,
         );
     }
@@ -451,11 +464,7 @@ mod rejection {
 
     mod case_patterns {
         rejection_cases!("case_patterns";
-            tuple_inner_list_pattern,
-            multiple_subject_list_pattern,
             multiple_subject_bit_array_subject,
-            list_pattern,
-            list_pattern_alias,
             bit_array_subject,
         );
     }

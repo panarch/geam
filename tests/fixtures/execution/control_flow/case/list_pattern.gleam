@@ -1,7 +1,9 @@
 pub fn main() {
   let values = [1, 2]
   case values {
-    [first, ..] as whole -> first
+    [first, ..] -> first
     _ -> 0
   }
 }
+
+// geam:expect Int(1)

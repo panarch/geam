@@ -1,4 +1,7 @@
-use super::{eval_bool_expr, eval_float_expr, eval_int_expr, eval_panic_expr, project_tuple_expr};
+use super::{
+    eval_bool_expr, eval_float_expr, eval_int_expr, eval_panic_expr, project_list_expr,
+    project_tuple_expr,
+};
 use crate::plan::{ExecutionPlan, StringExpr, StringExprKind, Value, ValueType};
 use crate::runtime::ExecutionError;
 use crate::runtime::frame::Frame;
@@ -23,6 +26,15 @@ pub(in crate::runtime) fn eval_string_expr(
             match project_tuple_expr(plan, frame, tuple, *index, ValueType::String)? {
                 Value::String(value) => Ok(value),
                 other => Err(ExecutionError::tuple_index_family_mismatch(
+                    ValueType::String,
+                    other.value_type(),
+                )),
+            }
+        }
+        StringExprKind::ListIndex { list, index } => {
+            match project_list_expr(plan, frame, list, *index, ValueType::String)? {
+                Value::String(value) => Ok(value),
+                other => Err(ExecutionError::list_index_family_mismatch(
                     ValueType::String,
                     other.value_type(),
                 )),
@@ -102,8 +114,8 @@ mod tests {
     use crate::plan::{
         BoolExpr, BoolFunctionExpr, ExecutionPlan, Expr, FloatExpr, FunctionFunctionExpr,
         FunctionFunctionId, FunctionFunctionValue, FunctionId, FunctionPlan, FunctionReturnFamily,
-        FunctionType, IntExpr, IntFunctionExpr, IntFunctionId, ReturnExpr, Step, StringExpr,
-        StringFunctionExpr, StringFunctionFunctionId, TupleExpr, ValueType,
+        FunctionType, IntExpr, IntFunctionExpr, IntFunctionId, ListExpr, ReturnExpr, Step,
+        StringExpr, StringFunctionExpr, StringFunctionFunctionId, TupleExpr, ValueType,
     };
     use crate::runtime::ExecutionError;
     use crate::runtime::frame::Frame;
@@ -131,6 +143,43 @@ mod tests {
         assert_eq!(
             eval_string_expr(&plan, &mut frame, &StringExpr::tuple_index(tuple, 0)),
             Err(ExecutionError::tuple_index_family_mismatch(
+                ValueType::String,
+                ValueType::Int,
+            )),
+        );
+    }
+
+    #[test]
+    fn list_index_family_mismatch_returns_error() {
+        let plan = crate::runtime::plan_src(r#"pub fn main() { "one" }"#);
+        let mut frame = Frame::default();
+        let list = ListExpr::value(
+            vec![Expr::string(StringExpr::value("one".into()))],
+            ValueType::String,
+        );
+
+        assert_eq!(
+            eval_string_expr(&plan, &mut frame, &StringExpr::list_index(list, 0)),
+            Ok("one".into()),
+        );
+
+        let list = ListExpr::value(
+            vec![Expr::string(StringExpr::value("one".into()))],
+            ValueType::String,
+        );
+        assert_eq!(
+            eval_string_expr(&plan, &mut frame, &StringExpr::list_index(list, 1)),
+            Err(ExecutionError::list_index_family_mismatch(
+                ValueType::String,
+                ValueType::List(Box::new(ValueType::String)),
+            )),
+        );
+
+        let list = ListExpr::value(vec![Expr::int(IntExpr::value(1.into()))], ValueType::Int);
+
+        assert_eq!(
+            eval_string_expr(&plan, &mut frame, &StringExpr::list_index(list, 0)),
+            Err(ExecutionError::list_index_family_mismatch(
                 ValueType::String,
                 ValueType::Int,
             )),

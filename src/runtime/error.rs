@@ -22,6 +22,11 @@ pub enum ExecutionError {
         expected: ValueType,
         actual: ValueType,
     },
+    #[error("list index family mismatch (expected {expected:?}, got {actual:?})")]
+    ListIndexFamilyMismatch {
+        expected: ValueType,
+        actual: ValueType,
+    },
 }
 
 impl ExecutionError {
@@ -69,6 +74,10 @@ impl ExecutionError {
     pub(crate) fn tuple_index_family_mismatch(expected: ValueType, actual: ValueType) -> Self {
         Self::TupleIndexFamilyMismatch { expected, actual }
     }
+
+    pub(crate) fn list_index_family_mismatch(expected: ValueType, actual: ValueType) -> Self {
+        Self::ListIndexFamilyMismatch { expected, actual }
+    }
 }
 
 #[cfg(test)]
@@ -99,6 +108,16 @@ mod tests {
         assert_eq!(
             error.to_string(),
             "tuple index family mismatch (expected Tuple([Int]), got String)",
+        );
+    }
+
+    #[test]
+    fn list_index_family_mismatch_display() {
+        let error = ExecutionError::list_index_family_mismatch(ValueType::Int, ValueType::String);
+
+        assert_eq!(
+            error.to_string(),
+            "list index family mismatch (expected Int, got String)",
         );
     }
 }

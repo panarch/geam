@@ -1,4 +1,7 @@
-use super::{eval_bool_expr, eval_float_expr, eval_int_expr, eval_panic_expr, eval_string_expr};
+use super::{
+    eval_bool_expr, eval_float_expr, eval_int_expr, eval_panic_expr, eval_string_expr,
+    project_list_expr,
+};
 use crate::plan::{ExecutionPlan, TupleExpr, TupleExprKind, Value, ValueType};
 use crate::runtime::ExecutionError;
 use crate::runtime::frame::Frame;
@@ -29,6 +32,16 @@ pub(in crate::runtime) fn eval_tuple_expr(
             match project_tuple_expr(plan, frame, tuple, *index, expected.clone())? {
                 Value::Tuple(values) => Ok(values),
                 other => Err(ExecutionError::tuple_index_family_mismatch(
+                    expected,
+                    other.value_type(),
+                )),
+            }
+        }
+        TupleExprKind::ListIndex { list, index } => {
+            let expected = ValueType::Tuple(expression.type_().to_vec());
+            match project_list_expr(plan, frame, list, *index, expected.clone())? {
+                Value::Tuple(values) => Ok(values),
+                other => Err(ExecutionError::list_index_family_mismatch(
                     expected,
                     other.value_type(),
                 )),
@@ -114,8 +127,8 @@ mod tests {
     use super::{eval_tuple_expr, project_tuple_expr};
     use crate::plan::{
         BoolExpr, ExecutionPlan, Expr, FloatExpr, FunctionId, FunctionPlan, IntExpr, IntFunctionId,
-        PanicExpr, PanicSite, ReturnExpr, Step, StringExpr, TupleExpr, TupleFunctionId, Value,
-        ValueType,
+        ListExpr, PanicExpr, PanicSite, ReturnExpr, Step, StringExpr, TupleExpr, TupleFunctionId,
+        Value, ValueType,
     };
     use crate::runtime::frame::Frame;
     use crate::runtime::{ExecutionError, PanicKind};
@@ -425,6 +438,68 @@ pub fn main() {
             ),
             Err(ExecutionError::tuple_index_family_mismatch(
                 ValueType::Tuple(vec![ValueType::String]),
+                ValueType::Int,
+            )),
+        );
+    }
+
+    #[test]
+    fn list_projection_invariant_errors() {
+        let plan = plan();
+        let mut frame = Frame::default();
+        let tuple_type = vec![ValueType::Int, ValueType::String];
+        let list = ListExpr::value(
+            vec![Expr::tuple(TupleExpr::value(
+                vec![
+                    Expr::int(IntExpr::value(1.into())),
+                    Expr::string(StringExpr::value("one".into())),
+                ],
+                tuple_type.clone(),
+            ))],
+            ValueType::Tuple(tuple_type.clone()),
+        );
+
+        assert_eq!(
+            eval_tuple_expr(
+                &plan,
+                &mut frame,
+                &TupleExpr::list_index(list, 0, tuple_type.clone()),
+            ),
+            Ok(vec![Value::Int(1.into()), Value::String("one".into())]),
+        );
+
+        let list = ListExpr::value(
+            vec![Expr::tuple(TupleExpr::value(
+                vec![
+                    Expr::int(IntExpr::value(1.into())),
+                    Expr::string(StringExpr::value("one".into())),
+                ],
+                tuple_type.clone(),
+            ))],
+            ValueType::Tuple(tuple_type.clone()),
+        );
+        assert_eq!(
+            eval_tuple_expr(
+                &plan,
+                &mut frame,
+                &TupleExpr::list_index(list, 1, tuple_type.clone()),
+            ),
+            Err(ExecutionError::list_index_family_mismatch(
+                ValueType::Tuple(tuple_type.clone()),
+                ValueType::List(Box::new(ValueType::Tuple(tuple_type.clone()))),
+            )),
+        );
+
+        let list = ListExpr::value(vec![Expr::int(IntExpr::value(1.into()))], ValueType::Int);
+
+        assert_eq!(
+            eval_tuple_expr(
+                &plan,
+                &mut frame,
+                &TupleExpr::list_index(list, 0, tuple_type.clone()),
+            ),
+            Err(ExecutionError::list_index_family_mismatch(
+                ValueType::Tuple(tuple_type),
                 ValueType::Int,
             )),
         );

@@ -5,7 +5,7 @@ use crate::plan::{
 use crate::runtime::ExecutionError;
 use crate::runtime::expression::{
     eval_bool_expr, eval_float_expr, eval_int_expr, eval_panic_expr, eval_string_expr,
-    project_tuple_expr,
+    project_list_expr, project_tuple_expr,
 };
 use crate::runtime::frame::Frame;
 use crate::runtime::function;
@@ -53,6 +53,18 @@ pub(in crate::runtime) fn eval_nil_function_expr(
                 _ => Err(ExecutionError::tuple_index_family_mismatch(
                     expected, actual,
                 )),
+            }
+        }
+        NilFunctionExprKind::ListIndex { list, index, type_ } => {
+            let expected = ValueType::Function(Box::new(type_.clone()));
+            let value = project_list_expr(plan, frame, list, *index, expected.clone())?;
+            let actual = value.value_type();
+            match value {
+                Value::Function(function) => match function.kind() {
+                    FunctionValueKind::Nil(value) => Ok(value.clone()),
+                    _ => Err(ExecutionError::list_index_family_mismatch(expected, actual)),
+                },
+                _ => Err(ExecutionError::list_index_family_mismatch(expected, actual)),
             }
         }
         NilFunctionExprKind::Panic(panic) => eval_panic_expr(plan, frame, panic),
@@ -120,7 +132,7 @@ mod tests {
         BoolExpr, BoolFunctionExpr, BoolFunctionId, BoolFunctionValue, CaptureArg, ExecutionPlan,
         Expr, FloatExpr, FunctionExpr, FunctionFunctionExpr, FunctionFunctionId,
         FunctionFunctionValue, FunctionId, FunctionPlan, FunctionType, IntExpr, IntFunctionId,
-        NilFunctionExpr, NilFunctionFunctionId, NilFunctionId, NilFunctionLocalId,
+        ListExpr, NilFunctionExpr, NilFunctionFunctionId, NilFunctionId, NilFunctionLocalId,
         NilFunctionValue, NilLocalId, PanicExpr, PanicSite, ParamLocal, ReturnExpr, Step,
         StringExpr, TupleExpr, ValueType,
     };
@@ -481,6 +493,88 @@ mod tests {
                 &NilFunctionExpr::tuple_index(tuple, 0, type_()),
             ),
             Err(ExecutionError::tuple_index_family_mismatch(
+                ValueType::Function(Box::new(type_())),
+                ValueType::Int,
+            )),
+        );
+    }
+
+    #[test]
+    fn eval_nil_function_list_index() {
+        let plan = plan();
+        let mut frame = Frame::default();
+        let list = ListExpr::value(
+            vec![Expr::function(FunctionExpr::nil(function_value()))],
+            ValueType::Function(Box::new(type_())),
+        );
+        assert_eq!(
+            eval_nil_function_expr(
+                &plan,
+                &mut frame,
+                &NilFunctionExpr::list_index(list, 0, type_()),
+            )
+            .expect("expression should evaluate")
+            .runtime_id(),
+            NilFunctionId(0),
+        );
+
+        let mismatch_type = FunctionType::new(Vec::new(), ValueType::Bool);
+        let list = ListExpr::value(
+            vec![Expr::function(FunctionExpr::bool(BoolFunctionExpr::value(
+                BoolFunctionValue::new(BoolFunctionId(0), Vec::new()),
+            )))],
+            ValueType::Function(Box::new(mismatch_type.clone())),
+        );
+
+        assert_eq!(
+            eval_nil_function_expr(
+                &plan,
+                &mut frame,
+                &NilFunctionExpr::list_index(list, 0, type_()),
+            ),
+            Err(ExecutionError::list_index_family_mismatch(
+                ValueType::Function(Box::new(type_())),
+                ValueType::Function(Box::new(mismatch_type)),
+            )),
+        );
+
+        let list = ListExpr::value(
+            vec![Expr::function(FunctionExpr::nil(function_value()))],
+            ValueType::Function(Box::new(type_())),
+        );
+        assert_eq!(
+            eval_nil_function_expr(
+                &plan,
+                &mut frame,
+                &NilFunctionExpr::list_index(list, 1, type_()),
+            ),
+            Err(ExecutionError::list_index_family_mismatch(
+                ValueType::Function(Box::new(type_())),
+                ValueType::List(Box::new(ValueType::Function(Box::new(type_())))),
+            )),
+        );
+
+        let list = ListExpr::tuple_index(empty_tuple(), 0, ValueType::Function(Box::new(type_())));
+        assert_eq!(
+            eval_nil_function_expr(
+                &plan,
+                &mut frame,
+                &NilFunctionExpr::list_index(list, 0, type_()),
+            ),
+            Err(ExecutionError::tuple_index_family_mismatch(
+                ValueType::List(Box::new(ValueType::Function(Box::new(type_())))),
+                ValueType::Tuple(Vec::new()),
+            )),
+        );
+
+        let list = ListExpr::value(vec![Expr::int(IntExpr::value(1.into()))], ValueType::Int);
+        assert_eq!(
+            eval_nil_function_expr(
+                &plan,
+                &mut frame,
+                &NilFunctionExpr::list_index(list, 0, type_()),
+            ),
+            Err(ExecutionError::list_index_family_mismatch(
                 ValueType::Function(Box::new(type_())),
                 ValueType::Int,
             )),

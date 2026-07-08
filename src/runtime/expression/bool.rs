@@ -1,6 +1,6 @@
 use super::{
-    eval_expr, eval_float_expr, eval_int_expr, eval_panic_expr, eval_string_expr,
-    project_tuple_expr,
+    eval_expr, eval_float_expr, eval_int_expr, eval_list_expr, eval_panic_expr, eval_string_expr,
+    project_list_expr, project_tuple_expr,
 };
 use crate::plan::{BoolExpr, BoolExprKind, ExecutionPlan, Value, ValueType};
 use crate::runtime::ExecutionError;
@@ -25,6 +25,15 @@ pub(in crate::runtime) fn eval_bool_expr(
             match project_tuple_expr(plan, frame, tuple, *index, ValueType::Bool)? {
                 Value::Bool(value) => Ok(value),
                 other => Err(ExecutionError::tuple_index_family_mismatch(
+                    ValueType::Bool,
+                    other.value_type(),
+                )),
+            }
+        }
+        BoolExprKind::ListIndex { list, index } => {
+            match project_list_expr(plan, frame, list, *index, ValueType::Bool)? {
+                Value::Bool(value) => Ok(value),
+                other => Err(ExecutionError::list_index_family_mismatch(
                     ValueType::Bool,
                     other.value_type(),
                 )),
@@ -64,6 +73,12 @@ pub(in crate::runtime) fn eval_bool_expr(
         }
         BoolExprKind::StringStartsWith { value, prefix } => {
             Ok(eval_string_expr(plan, frame, value)?.starts_with(prefix.as_str()))
+        }
+        BoolExprKind::ListLengthEquals { value, length } => {
+            Ok(eval_list_expr(plan, frame, value)?.values().len() == *length)
+        }
+        BoolExprKind::ListLengthAtLeast { value, length } => {
+            Ok(eval_list_expr(plan, frame, value)?.values().len() >= *length)
         }
         BoolExprKind::And { left, right } => {
             let left = eval_bool_expr(plan, frame, left)?;
@@ -150,9 +165,9 @@ mod tests {
     use crate::plan::{
         BoolExpr, BoolFunctionExpr, ExecutionPlan, Expr, FloatExpr, FloatFunctionExpr,
         FunctionFunctionExpr, FunctionFunctionId, FunctionFunctionValue, FunctionId, FunctionPlan,
-        FunctionReturnFamily, FunctionType, IntExpr, IntFunctionExpr, IntFunctionId, PanicExpr,
-        PanicSite, ReturnExpr, Step, StringExpr, StringFunctionExpr, StringFunctionFunctionId,
-        TupleExpr, ValueType,
+        FunctionReturnFamily, FunctionType, IntExpr, IntFunctionExpr, IntFunctionId, ListExpr,
+        PanicExpr, PanicSite, ReturnExpr, Step, StringExpr, StringFunctionExpr,
+        StringFunctionFunctionId, TupleExpr, ValueType,
     };
     use crate::runtime::frame::Frame;
     use crate::runtime::{ExecutionError, PanicKind};
@@ -187,6 +202,106 @@ mod tests {
         assert_eq!(
             eval_bool_expr(&plan, &mut frame, &BoolExpr::tuple_index(tuple, 0)),
             Ok(true),
+        );
+    }
+
+    #[test]
+    fn list_index_family_mismatch_returns_error() {
+        let plan = crate::runtime::plan_src("pub fn main() { True }");
+        let mut frame = Frame::default();
+        let list = ListExpr::value(
+            vec![Expr::string(StringExpr::value("one".into()))],
+            ValueType::String,
+        );
+
+        assert_eq!(
+            eval_bool_expr(&plan, &mut frame, &BoolExpr::list_index(list, 0)),
+            Err(ExecutionError::list_index_family_mismatch(
+                ValueType::Bool,
+                ValueType::String,
+            )),
+        );
+
+        let list = ListExpr::value(vec![Expr::bool(BoolExpr::value(true))], ValueType::Bool);
+        assert_eq!(
+            eval_bool_expr(&plan, &mut frame, &BoolExpr::list_index(list, 0)),
+            Ok(true),
+        );
+
+        let list = ListExpr::value(vec![Expr::bool(BoolExpr::value(true))], ValueType::Bool);
+        assert_eq!(
+            eval_bool_expr(&plan, &mut frame, &BoolExpr::list_index(list, 1)),
+            Err(ExecutionError::list_index_family_mismatch(
+                ValueType::Bool,
+                ValueType::List(Box::new(ValueType::Bool)),
+            )),
+        );
+    }
+
+    #[test]
+    fn eval_list_length_conditions() {
+        let plan = crate::runtime::plan_src("pub fn main() { True }");
+        let mut frame = Frame::default();
+        let list = ListExpr::value(
+            vec![
+                Expr::int(IntExpr::value(1.into())),
+                Expr::int(IntExpr::value(2.into())),
+            ],
+            ValueType::Int,
+        );
+
+        assert_eq!(
+            eval_bool_expr(
+                &plan,
+                &mut frame,
+                &BoolExpr::list_length_equals(list.clone(), 2),
+            ),
+            Ok(true),
+        );
+        assert_eq!(
+            eval_bool_expr(
+                &plan,
+                &mut frame,
+                &BoolExpr::list_length_equals(list.clone(), 1),
+            ),
+            Ok(false),
+        );
+        assert_eq!(
+            eval_bool_expr(
+                &plan,
+                &mut frame,
+                &BoolExpr::list_length_at_least(list.clone(), 2),
+            ),
+            Ok(true),
+        );
+        assert_eq!(
+            eval_bool_expr(&plan, &mut frame, &BoolExpr::list_length_at_least(list, 3),),
+            Ok(false),
+        );
+
+        let invalid_list =
+            ListExpr::tuple_index(TupleExpr::value(Vec::new(), Vec::new()), 0, ValueType::Int);
+        assert_eq!(
+            eval_bool_expr(
+                &plan,
+                &mut frame,
+                &BoolExpr::list_length_equals(invalid_list.clone(), 0),
+            ),
+            Err(ExecutionError::tuple_index_family_mismatch(
+                ValueType::List(Box::new(ValueType::Int)),
+                ValueType::Tuple(Vec::new()),
+            )),
+        );
+        assert_eq!(
+            eval_bool_expr(
+                &plan,
+                &mut frame,
+                &BoolExpr::list_length_at_least(invalid_list, 0),
+            ),
+            Err(ExecutionError::tuple_index_family_mismatch(
+                ValueType::List(Box::new(ValueType::Int)),
+                ValueType::Tuple(Vec::new()),
+            )),
         );
     }
 

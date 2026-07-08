@@ -42,11 +42,18 @@ Runtime tag dispatch is allowed only for planner-validated recursive plan
 shapes, and only as execution routing. It must not become validation, fallback
 behavior, or a source-visible semantic difference.
 
-Tuple projection has one approved execution invariant:
-`ExecutionError::tuple_index_family_mismatch`. It is only for typed tuple-index
-plan evaluation when the runtime tuple value lacks the planner-selected element
-or that element has a different value family. Tuple index validation, profile
-boundaries, and typed-AST margins remain planner responsibilities.
+Typed projection has two approved execution invariants:
+
+- `ExecutionError::tuple_index_family_mismatch` is only for typed tuple-index
+  plan evaluation when the runtime tuple value lacks the planner-selected
+  element or that element has a different value family.
+- `ExecutionError::list_index_family_mismatch` is only for typed list-index plan
+  evaluation when the runtime list value lacks the planner-selected element or
+  that element has a different value family. Source-reachable list matching must
+  guard list-index projections with the planner-selected length condition.
+
+Tuple/list index validation, profile boundaries, and typed-AST margins remain
+planner responsibilities.
 
 ## Plan Construction Rules
 

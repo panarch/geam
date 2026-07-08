@@ -1,4 +1,7 @@
-use super::{eval_bool_expr, eval_int_expr, eval_panic_expr, eval_string_expr, project_tuple_expr};
+use super::{
+    eval_bool_expr, eval_int_expr, eval_panic_expr, eval_string_expr, project_list_expr,
+    project_tuple_expr,
+};
 use crate::plan::{ExecutionPlan, FloatExpr, FloatExprKind, Value, ValueType};
 use crate::runtime::ExecutionError;
 use crate::runtime::frame::Frame;
@@ -22,6 +25,15 @@ pub(in crate::runtime) fn eval_float_expr(
             match project_tuple_expr(plan, frame, tuple, *index, ValueType::Float)? {
                 Value::Float(value) => Ok(value),
                 other => Err(ExecutionError::tuple_index_family_mismatch(
+                    ValueType::Float,
+                    other.value_type(),
+                )),
+            }
+        }
+        FloatExprKind::ListIndex { list, index } => {
+            match project_list_expr(plan, frame, list, *index, ValueType::Float)? {
+                Value::Float(value) => Ok(value),
+                other => Err(ExecutionError::list_index_family_mismatch(
                     ValueType::Float,
                     other.value_type(),
                 )),
@@ -111,7 +123,7 @@ mod tests {
         BoolExpr, BoolFunctionExpr, ExecutionPlan, Expr, FloatExpr, FloatFunctionExpr,
         FloatFunctionId, FloatLocalId, FrameLayout, FunctionFunctionExpr, FunctionFunctionId,
         FunctionFunctionValue, FunctionId, FunctionPlan, FunctionReturnFamily, FunctionType,
-        IntExpr, IntFunctionExpr, PanicExpr, PanicSite, ReturnExpr, Step, StringExpr,
+        IntExpr, IntFunctionExpr, ListExpr, PanicExpr, PanicSite, ReturnExpr, Step, StringExpr,
         StringFunctionExpr, StringFunctionFunctionId, TupleExpr, ValueType,
     };
     use crate::runtime::frame::Frame;
@@ -139,6 +151,40 @@ mod tests {
         assert_eq!(
             eval_float_expr(&plan, &mut frame, &FloatExpr::tuple_index(tuple, 0)),
             Err(ExecutionError::tuple_index_family_mismatch(
+                ValueType::Float,
+                ValueType::String,
+            )),
+        );
+    }
+
+    #[test]
+    fn list_index_family_mismatch_returns_error() {
+        let plan = crate::runtime::plan_src("pub fn main() { 1.0 }");
+        let mut frame = Frame::default();
+        let list = ListExpr::value(vec![Expr::float(FloatExpr::value(1.5))], ValueType::Float);
+
+        assert_eq!(
+            eval_float_expr(&plan, &mut frame, &FloatExpr::list_index(list, 0)),
+            Ok(1.5),
+        );
+
+        let list = ListExpr::value(vec![Expr::float(FloatExpr::value(1.5))], ValueType::Float);
+        assert_eq!(
+            eval_float_expr(&plan, &mut frame, &FloatExpr::list_index(list, 1)),
+            Err(ExecutionError::list_index_family_mismatch(
+                ValueType::Float,
+                ValueType::List(Box::new(ValueType::Float)),
+            )),
+        );
+
+        let list = ListExpr::value(
+            vec![Expr::string(StringExpr::value("one".into()))],
+            ValueType::String,
+        );
+
+        assert_eq!(
+            eval_float_expr(&plan, &mut frame, &FloatExpr::list_index(list, 0)),
+            Err(ExecutionError::list_index_family_mismatch(
                 ValueType::Float,
                 ValueType::String,
             )),

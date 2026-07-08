@@ -36,6 +36,7 @@ impl FrameLayout {
                 self.include_call_args(args);
             }
             IntExprKind::TupleIndex { tuple, .. } => self.include_tuple_expr(tuple),
+            IntExprKind::ListIndex { list, .. } => self.include_list_expr(list),
             IntExprKind::Add { left, right }
             | IntExprKind::Sub { left, right }
             | IntExprKind::Mult { left, right }
@@ -105,6 +106,7 @@ impl FrameLayout {
                 self.include_call_args(args);
             }
             StringExprKind::TupleIndex { tuple, .. } => self.include_tuple_expr(tuple),
+            StringExprKind::ListIndex { list, .. } => self.include_list_expr(list),
             StringExprKind::Concatenate { left, right } => {
                 self.include_string_expr(left);
                 self.include_string_expr(right);
@@ -170,6 +172,7 @@ impl FrameLayout {
                 self.include_call_args(args);
             }
             BoolExprKind::TupleIndex { tuple, .. } => self.include_tuple_expr(tuple),
+            BoolExprKind::ListIndex { list, .. } => self.include_list_expr(list),
             BoolExprKind::Not(value) => self.include_bool_expr(value),
             BoolExprKind::LtInt { left, right } => self.include_int_binary_expr(left, right),
             BoolExprKind::LtEqInt { left, right } => self.include_int_binary_expr(left, right),
@@ -182,6 +185,8 @@ impl FrameLayout {
             BoolExprKind::Equal { left, right } => self.include_binary_expr(left, right),
             BoolExprKind::NotEqual { left, right } => self.include_binary_expr(left, right),
             BoolExprKind::StringStartsWith { value, .. } => self.include_string_expr(value),
+            BoolExprKind::ListLengthEquals { value, .. }
+            | BoolExprKind::ListLengthAtLeast { value, .. } => self.include_list_expr(value),
             BoolExprKind::And { left, right } => self.include_bool_binary_expr(left, right),
             BoolExprKind::Or { left, right } => self.include_bool_binary_expr(left, right),
             BoolExprKind::BoolCase {
@@ -264,6 +269,7 @@ impl FrameLayout {
                 self.include_call_args(args);
             }
             NilExprKind::TupleIndex { tuple, .. } => self.include_tuple_expr(tuple),
+            NilExprKind::ListIndex { list, .. } => self.include_list_expr(list),
             NilExprKind::BoolCase {
                 subject,
                 true_,
@@ -324,6 +330,7 @@ impl FrameLayout {
                 self.include_call_args(args);
             }
             FloatExprKind::TupleIndex { tuple, .. } => self.include_tuple_expr(tuple),
+            FloatExprKind::ListIndex { list, .. } => self.include_list_expr(list),
             FloatExprKind::Add { left, right }
             | FloatExprKind::Sub { left, right }
             | FloatExprKind::Mult { left, right }
@@ -395,6 +402,7 @@ impl FrameLayout {
                 self.include_call_args(args);
             }
             TupleExprKind::TupleIndex { tuple, .. } => self.include_tuple_expr(tuple),
+            TupleExprKind::ListIndex { list, .. } => self.include_list_expr(list),
             TupleExprKind::BoolCase {
                 subject,
                 true_,
@@ -465,6 +473,9 @@ impl FrameLayout {
                 self.include_call_args(args);
             }
             ListExprKind::TupleIndex { tuple, .. } => self.include_tuple_expr(tuple),
+            ListExprKind::ListIndex { list, .. } | ListExprKind::DropFirst { list, .. } => {
+                self.include_list_expr(list);
+            }
             ListExprKind::BoolCase {
                 subject,
                 true_,
@@ -525,6 +536,67 @@ mod tests {
         PanicSite, ReturnExpr, Step, StringExpr, StringLocalId, TupleExpr, TupleFunctionExpr,
         TupleFunctionId, TupleFunctionLocalId, TupleLocalId, ValueType,
     };
+
+    #[test]
+    fn frame_layout_includes_list_projection_expression_dependencies() {
+        let steps = vec![
+            Step::evaluate(Expr::int(IntExpr::list_index(
+                ListExpr::local_get(ListLocalId(0), "int_list".into(), ValueType::Int),
+                0,
+            ))),
+            Step::evaluate(Expr::string(StringExpr::list_index(
+                ListExpr::local_get(ListLocalId(1), "string_list".into(), ValueType::String),
+                0,
+            ))),
+            Step::evaluate(Expr::float(FloatExpr::list_index(
+                ListExpr::local_get(ListLocalId(2), "float_list".into(), ValueType::Float),
+                0,
+            ))),
+            Step::evaluate(Expr::bool(BoolExpr::list_index(
+                ListExpr::local_get(ListLocalId(3), "bool_list".into(), ValueType::Bool),
+                0,
+            ))),
+            Step::evaluate(Expr::nil(NilExpr::list_index(
+                ListExpr::local_get(ListLocalId(4), "nil_list".into(), ValueType::Nil),
+                0,
+            ))),
+            Step::evaluate(Expr::tuple(TupleExpr::list_index(
+                ListExpr::local_get(
+                    ListLocalId(5),
+                    "tuple_list".into(),
+                    ValueType::Tuple(tuple_type()),
+                ),
+                0,
+                tuple_type(),
+            ))),
+            Step::evaluate(Expr::list(ListExpr::list_index(
+                ListExpr::local_get(
+                    ListLocalId(6),
+                    "nested_list".into(),
+                    ValueType::List(Box::new(ValueType::Int)),
+                ),
+                0,
+                ValueType::Int,
+            ))),
+            Step::evaluate(Expr::list(ListExpr::drop_first(
+                ListExpr::local_get(ListLocalId(7), "drop_list".into(), ValueType::Int),
+                1,
+            ))),
+            Step::evaluate(Expr::bool(BoolExpr::list_length_equals(
+                ListExpr::local_get(ListLocalId(8), "exact_list".into(), ValueType::Int),
+                2,
+            ))),
+            Step::evaluate(Expr::bool(BoolExpr::list_length_at_least(
+                ListExpr::local_get(ListLocalId(9), "minimum_list".into(), ValueType::Int),
+                1,
+            ))),
+        ];
+        let return_ = ReturnExpr::int(IntFunctionId(0), IntExpr::value(0.into()));
+
+        let layout = FrameLayout::from_function_parts(&[], &steps, &return_);
+
+        assert_eq!(layout.lists(), 10);
+    }
 
     #[test]
     fn frame_layout_includes_bool_operator_families() {
@@ -775,6 +847,14 @@ mod tests {
                 )],
                 NilExpr::local_get(NilLocalId(10), "nil_float_fallback".into()),
             ))),
+            Step::evaluate(Expr::nil(NilExpr::list_index(
+                ListExpr::local_get(
+                    ListLocalId(0),
+                    "nil_list_index_subject".into(),
+                    ValueType::Nil,
+                ),
+                0,
+            ))),
             Step::evaluate(Expr::float(FloatExpr::add(
                 FloatExpr::local_get(FloatLocalId(22), "float_add_left".into()),
                 FloatExpr::sub(
@@ -992,6 +1072,7 @@ mod tests {
         assert_eq!(layout.bools(), 15);
         assert_eq!(layout.nils(), 11);
         assert_eq!(layout.tuples(), 15);
+        assert_eq!(layout.lists(), 1);
         assert_eq!(layout.float_functions(), 1);
         assert_eq!(layout.tuple_functions(), 1);
     }

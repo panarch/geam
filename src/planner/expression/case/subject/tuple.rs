@@ -7,7 +7,7 @@ use crate::plan::{
     ValueType,
 };
 use crate::planner::context::PlanContext;
-use crate::planner::error::{InvalidCaseShapeReason, PlanError, UnsupportedCaseReason};
+use crate::planner::error::{InvalidCaseShapeReason, PlanError};
 use ecow::EcoString;
 use gleam_core::ast::{AssignName, Pattern, SrcSpan, TypedExpr};
 use gleam_core::type_::Type;
@@ -198,9 +198,10 @@ fn plan_tuple_case_pattern(
             }
         }
         Pattern::Invalid { .. } => Err(invalid_case_shape(InvalidCaseShapeReason::InvalidPattern)),
-        Pattern::List { .. } if matches!(subject_type, ValueType::List(_)) => Err(
-            super::super::unsupported_case(UnsupportedCaseReason::ListPattern),
-        ),
+        Pattern::List { .. } if matches!(subject_type, ValueType::List(_)) => {
+            let pattern = super::list::plan_list_case_pattern(pattern, value, subject_type)?;
+            Ok(TupleCasePattern::from_list_pattern(pattern))
+        }
         Pattern::StringPrefix {
             left_side_string,
             left_side_assignment,
@@ -270,6 +271,17 @@ fn combine_tuple_case_patterns(patterns: Vec<TupleCasePattern>) -> TupleCasePatt
     combined
 }
 
+impl TupleCasePattern {
+    fn from_list_pattern(pattern: super::list::ListCasePattern) -> Self {
+        let (match_condition, branch_bindings, is_total) = pattern.into_parts();
+        Self {
+            match_condition,
+            branch_bindings,
+            is_total,
+        }
+    }
+}
+
 fn matches_type(type_: &Type, subject_type: &ValueType) -> bool {
     ValueType::from_gleam(type_) == Some(subject_type.clone())
 }
@@ -290,17 +302,17 @@ fn internal_tuple_case_subject_name(local: TupleLocalId) -> EcoString {
 
 #[cfg(test)]
 mod tests {
-    use crate::plan::{BoolExpr, Expr, Step, StringExpr, StringLocalId, ValueType};
+    use crate::plan::{
+        BoolExpr, Expr, IntLocalId, ListExpr, Step, StringExpr, StringLocalId, ValueType,
+    };
     use crate::planner::dsl::{
         bool_, float, function, int, int_return_block, int_return_expr, let_int_step,
-        let_tuple_step, local_int, local_string, local_tuple, module, nil, string,
+        let_tuple_step, list, local_int, local_string, local_tuple, module, nil, string,
         string_return_block, string_return_expr, tuple,
     };
     use crate::planner::plan_module;
     use crate::planner::support::{dummy_span, expect_plan_error};
-    use crate::planner::{
-        InvalidCaseShapeReason, InvalidTypedAstReason, PlanError, UnsupportedCaseReason,
-    };
+    use crate::planner::{InvalidCaseShapeReason, InvalidTypedAstReason, PlanError};
     use gleam_core::ast::{AssignName, Pattern};
     use gleam_core::parse::LiteralFloatValue;
     use gleam_core::type_::error::VariableOrigin;
@@ -932,10 +944,9 @@ pub fn main() {
     }
 
     #[test]
-    fn reject_profile_tuple_subject_inner_list_pattern() {
-        assert_eq!(
-            expect_plan_error(
-                r#"
+    fn plan_tuple_subject_inner_list_pattern_uses_list_matcher() {
+        let actual = plan_module(crate::planner::support::compile(
+            r#"
 pub fn main() {
   case #([1, 2], 3) {
     #([first, ..], value) -> first + value
@@ -943,10 +954,99 @@ pub fn main() {
   }
 }
 "#,
+        ))
+        .expect("source should plan");
+        let tuple_type = vec![ValueType::List(Box::new(ValueType::Int)), ValueType::Int];
+        let list_subject = ListExpr::tuple_index(
+            local_tuple(0, "<case:tuple:0>", tuple_type.clone()).into(),
+            0,
+            ValueType::Int,
+        );
+        let expected = module(
+            "main",
+            function(
+                "main",
+                int_return_block(
+                    [let_tuple_step(
+                        0,
+                        "<case:tuple:0>",
+                        tuple(vec![
+                            Expr::from(list([int(1), int(2)], ValueType::Int)),
+                            Expr::from(int(3)),
+                        ]),
+                    )],
+                    crate::plan::IntReturn::bool_case(
+                        BoolExpr::list_length_at_least(list_subject.clone(), 1),
+                        int_return_block(
+                            [
+                                Step::let_int(
+                                    IntLocalId(0),
+                                    "first".into(),
+                                    crate::plan::IntExpr::list_index(list_subject, 0),
+                                ),
+                                let_int_step(
+                                    1,
+                                    "value",
+                                    local_tuple(0, "<case:tuple:0>", tuple_type).index_int(1),
+                                ),
+                            ],
+                            int_return_expr(local_int(0, "first").add_int(local_int(1, "value"))),
+                        ),
+                        int_return_expr(int(0)),
+                    ),
+                ),
             ),
-            PlanError::UnsupportedCase {
-                reason: UnsupportedCaseReason::ListPattern,
-            },
+            [],
+        );
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn reject_margin_tuple_inner_list_pattern_errors_are_propagated() {
+        assert_eq!(
+            super::plan_tuple_case_pattern(
+                Pattern::List {
+                    location: dummy_span(),
+                    elements: vec![Pattern::List {
+                        location: dummy_span(),
+                        elements: Vec::new(),
+                        tail: None,
+                        type_: gleam_core::type_::int(),
+                    }],
+                    tail: None,
+                    type_: gleam_core::type_::list(gleam_core::type_::int()),
+                },
+                list([int(1)], ValueType::Int).into(),
+                ValueType::List(Box::new(ValueType::Int)),
+            ),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::CaseShape {
+                    reason: InvalidCaseShapeReason::PatternTypeMismatch,
+                },
+            }),
+        );
+    }
+
+    #[test]
+    fn reject_margin_tuple_structural_element_errors_are_propagated() {
+        assert_eq!(
+            super::plan_tuple_case_pattern(
+                Pattern::Tuple {
+                    location: dummy_span(),
+                    elements: vec![Pattern::Tuple {
+                        location: dummy_span(),
+                        elements: Vec::new(),
+                    }],
+                },
+                tuple([int(1)]).into(),
+                ValueType::Tuple(vec![ValueType::Int]),
+            ),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::CaseShape {
+                    reason: InvalidCaseShapeReason::PatternTypeMismatch,
+                },
+            }),
         );
     }
 

@@ -34,6 +34,14 @@ pub(crate) enum ListExprKind {
         tuple: Box<TupleExpr>,
         index: usize,
     },
+    ListIndex {
+        list: Box<ListExpr>,
+        index: usize,
+    },
+    DropFirst {
+        list: Box<ListExpr>,
+        count: usize,
+    },
     Panic(PanicExpr),
     BoolCase {
         subject: Box<BoolExpr>,
@@ -121,6 +129,26 @@ impl ListExpr {
             kind: ListExprKind::TupleIndex {
                 tuple: Box::new(tuple),
                 index,
+            },
+        }
+    }
+
+    pub(crate) fn list_index(list: ListExpr, index: usize, element_type: ValueType) -> Self {
+        Self {
+            element_type: Box::new(element_type),
+            kind: ListExprKind::ListIndex {
+                list: Box::new(list),
+                index,
+            },
+        }
+    }
+
+    pub(crate) fn drop_first(list: ListExpr, count: usize) -> Self {
+        Self {
+            element_type: list.element_type.clone(),
+            kind: ListExprKind::DropFirst {
+                list: Box::new(list),
+                count,
             },
         }
     }

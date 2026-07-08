@@ -44,33 +44,34 @@ impl Diagnostic for ExecutionError {
                 Some(Box::new("geam::function_return_family_mismatch"))
             }
             Self::TupleIndexFamilyMismatch { .. } => Some(Box::new("geam::tuple_index_mismatch")),
+            Self::ListIndexFamilyMismatch { .. } => Some(Box::new("geam::list_index_mismatch")),
         }
     }
 
     fn help<'a>(&'a self) -> Option<Box<dyn fmt::Display + 'a>> {
         match self {
             Self::Panic(panic) => panic.help(),
-            Self::FunctionReturnFamilyMismatch { .. } | Self::TupleIndexFamilyMismatch { .. } => {
-                None
-            }
+            Self::FunctionReturnFamilyMismatch { .. }
+            | Self::TupleIndexFamilyMismatch { .. }
+            | Self::ListIndexFamilyMismatch { .. } => None,
         }
     }
 
     fn source_code(&self) -> Option<&dyn SourceCode> {
         match self {
             Self::Panic(panic) => panic.source_code(),
-            Self::FunctionReturnFamilyMismatch { .. } | Self::TupleIndexFamilyMismatch { .. } => {
-                None
-            }
+            Self::FunctionReturnFamilyMismatch { .. }
+            | Self::TupleIndexFamilyMismatch { .. }
+            | Self::ListIndexFamilyMismatch { .. } => None,
         }
     }
 
     fn labels(&self) -> Option<Box<dyn Iterator<Item = LabeledSpan> + '_>> {
         match self {
             Self::Panic(panic) => panic.labels(),
-            Self::FunctionReturnFamilyMismatch { .. } | Self::TupleIndexFamilyMismatch { .. } => {
-                None
-            }
+            Self::FunctionReturnFamilyMismatch { .. }
+            | Self::TupleIndexFamilyMismatch { .. }
+            | Self::ListIndexFamilyMismatch { .. } => None,
         }
     }
 }
@@ -235,6 +236,10 @@ mod tests {
             (
                 ExecutionError::tuple_index_family_mismatch(ValueType::Int, ValueType::String),
                 "geam::tuple_index_mismatch",
+            ),
+            (
+                ExecutionError::list_index_family_mismatch(ValueType::Int, ValueType::String),
+                "geam::list_index_mismatch",
             ),
         ] {
             assert_eq!(

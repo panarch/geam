@@ -1,5 +1,6 @@
 use super::{
-    BoolExpr, CallArg, FloatExpr, IntExpr, NilFunctionExpr, PanicExpr, StringExpr, TupleExpr,
+    BoolExpr, CallArg, FloatExpr, IntExpr, ListExpr, NilFunctionExpr, PanicExpr, StringExpr,
+    TupleExpr,
 };
 use crate::plan::{NilFunctionId, NilLocalId, Step};
 use ecow::EcoString;
@@ -27,6 +28,10 @@ pub(crate) enum NilExprKind {
     },
     TupleIndex {
         tuple: Box<TupleExpr>,
+        index: usize,
+    },
+    ListIndex {
+        list: Box<ListExpr>,
         index: usize,
     },
     Panic(PanicExpr),
@@ -88,6 +93,15 @@ impl NilExpr {
         Self {
             kind: NilExprKind::TupleIndex {
                 tuple: Box::new(tuple),
+                index,
+            },
+        }
+    }
+
+    pub(crate) fn list_index(list: ListExpr, index: usize) -> Self {
+        Self {
+            kind: NilExprKind::ListIndex {
+                list: Box::new(list),
                 index,
             },
         }

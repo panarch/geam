@@ -1,6 +1,6 @@
 use super::{
     eval_bool_expr, eval_float_expr, eval_int_expr, eval_panic_expr, eval_string_expr,
-    project_tuple_expr,
+    project_list_expr, project_tuple_expr,
 };
 use crate::plan::{ExecutionPlan, NilExpr, NilExprKind, Value, ValueType};
 use crate::runtime::ExecutionError;
@@ -28,6 +28,15 @@ pub(in crate::runtime) fn eval_nil_expr(
             match project_tuple_expr(plan, frame, tuple, *index, ValueType::Nil)? {
                 Value::Nil => Ok(()),
                 other => Err(ExecutionError::tuple_index_family_mismatch(
+                    ValueType::Nil,
+                    other.value_type(),
+                )),
+            }
+        }
+        NilExprKind::ListIndex { list, index } => {
+            match project_list_expr(plan, frame, list, *index, ValueType::Nil)? {
+                Value::Nil => Ok(()),
+                other => Err(ExecutionError::list_index_family_mismatch(
                     ValueType::Nil,
                     other.value_type(),
                 )),
@@ -98,7 +107,7 @@ mod tests {
         BoolExpr, BoolFunctionExpr, ExecutionPlan, Expr, FloatExpr, FloatFunctionExpr,
         FunctionFunctionExpr, FunctionFunctionId, FunctionFunctionValue, FunctionId, FunctionPlan,
         FunctionReturnFamily, FunctionType, IntExpr, IntFunctionExpr, IntFunctionFunctionId,
-        IntFunctionId, NilExpr, NilFunctionExpr, PanicExpr, PanicSite, ReturnExpr, Step,
+        IntFunctionId, ListExpr, NilExpr, NilFunctionExpr, PanicExpr, PanicSite, ReturnExpr, Step,
         StringExpr, StringFunctionExpr, StringFunctionFunctionId, TupleExpr, ValueType,
     };
     use crate::runtime::frame::Frame;
@@ -126,6 +135,37 @@ mod tests {
         assert_eq!(
             eval_nil_expr(&plan, &mut frame, &NilExpr::tuple_index(tuple, 0)),
             Ok(()),
+        );
+    }
+
+    #[test]
+    fn list_index_family_mismatch_returns_error() {
+        let plan = crate::runtime::plan_src("pub fn main() { Nil }");
+        let mut frame = Frame::default();
+        let list = ListExpr::value(vec![Expr::nil(NilExpr::value())], ValueType::Nil);
+
+        assert_eq!(
+            eval_nil_expr(&plan, &mut frame, &NilExpr::list_index(list, 0)),
+            Ok(()),
+        );
+
+        let list = ListExpr::value(vec![Expr::nil(NilExpr::value())], ValueType::Nil);
+        assert_eq!(
+            eval_nil_expr(&plan, &mut frame, &NilExpr::list_index(list, 1)),
+            Err(ExecutionError::list_index_family_mismatch(
+                ValueType::Nil,
+                ValueType::List(Box::new(ValueType::Nil)),
+            )),
+        );
+
+        let list = ListExpr::value(vec![Expr::int(IntExpr::value(1.into()))], ValueType::Int);
+
+        assert_eq!(
+            eval_nil_expr(&plan, &mut frame, &NilExpr::list_index(list, 0)),
+            Err(ExecutionError::list_index_family_mismatch(
+                ValueType::Nil,
+                ValueType::Int,
+            )),
         );
     }
 

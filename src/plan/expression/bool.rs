@@ -1,5 +1,5 @@
 use super::{
-    BoolFunctionExpr, CallArg, Expr, FloatExpr, IntExpr, PanicExpr, StringExpr, TupleExpr,
+    BoolFunctionExpr, CallArg, Expr, FloatExpr, IntExpr, ListExpr, PanicExpr, StringExpr, TupleExpr,
 };
 use crate::plan::{BoolFunctionId, BoolLocalId, Step};
 use ecow::EcoString;
@@ -27,6 +27,10 @@ pub(crate) enum BoolExprKind {
     },
     TupleIndex {
         tuple: Box<TupleExpr>,
+        index: usize,
+    },
+    ListIndex {
+        list: Box<ListExpr>,
         index: usize,
     },
     Panic(PanicExpr),
@@ -74,6 +78,14 @@ pub(crate) enum BoolExprKind {
     StringStartsWith {
         value: Box<StringExpr>,
         prefix: EcoString,
+    },
+    ListLengthEquals {
+        value: Box<ListExpr>,
+        length: usize,
+    },
+    ListLengthAtLeast {
+        value: Box<ListExpr>,
+        length: usize,
     },
     And {
         left: Box<BoolExpr>,
@@ -141,6 +153,15 @@ impl BoolExpr {
         Self {
             kind: BoolExprKind::TupleIndex {
                 tuple: Box::new(tuple),
+                index,
+            },
+        }
+    }
+
+    pub(crate) fn list_index(list: ListExpr, index: usize) -> Self {
+        Self {
+            kind: BoolExprKind::ListIndex {
+                list: Box::new(list),
                 index,
             },
         }
@@ -253,6 +274,24 @@ impl BoolExpr {
             kind: BoolExprKind::StringStartsWith {
                 value: Box::new(value),
                 prefix,
+            },
+        }
+    }
+
+    pub(crate) fn list_length_equals(value: ListExpr, length: usize) -> Self {
+        Self {
+            kind: BoolExprKind::ListLengthEquals {
+                value: Box::new(value),
+                length,
+            },
+        }
+    }
+
+    pub(crate) fn list_length_at_least(value: ListExpr, length: usize) -> Self {
+        Self {
+            kind: BoolExprKind::ListLengthAtLeast {
+                value: Box::new(value),
+                length,
             },
         }
     }

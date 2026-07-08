@@ -489,6 +489,19 @@ pub(super) fn tuple_index_expr(tuple: TupleExpr, index: usize, return_type: Valu
     }
 }
 
+pub(super) fn list_index_expr(list: ListExpr, index: usize, return_type: ValueType) -> Expr {
+    match return_type {
+        ValueType::Int => Expr::int(IntExpr::list_index(list, index)),
+        ValueType::String => Expr::string(StringExpr::list_index(list, index)),
+        ValueType::Float => Expr::float(FloatExpr::list_index(list, index)),
+        ValueType::Bool => Expr::bool(BoolExpr::list_index(list, index)),
+        ValueType::Nil => Expr::nil(crate::plan::NilExpr::list_index(list, index)),
+        ValueType::Tuple(type_) => Expr::tuple(TupleExpr::list_index(list, index, type_)),
+        ValueType::List(type_) => Expr::list(ListExpr::list_index(list, index, *type_)),
+        ValueType::Function(type_) => list_index_function_expr(list, index, *type_),
+    }
+}
+
 fn tuple_index_function_expr(tuple: TupleExpr, index: usize, type_: FunctionType) -> Expr {
     match type_.return_() {
         ValueType::Int => Expr::function(FunctionExpr::int(
@@ -514,6 +527,35 @@ fn tuple_index_function_expr(tuple: TupleExpr, index: usize, type_: FunctionType
         )),
         ValueType::Function(_) => Expr::function(FunctionExpr::function(
             FunctionFunctionExpr::tuple_index(tuple, index, type_),
+        )),
+    }
+}
+
+fn list_index_function_expr(list: ListExpr, index: usize, type_: FunctionType) -> Expr {
+    match type_.return_() {
+        ValueType::Int => Expr::function(FunctionExpr::int(
+            crate::plan::IntFunctionExpr::list_index(list, index, type_),
+        )),
+        ValueType::String => Expr::function(FunctionExpr::string(
+            crate::plan::StringFunctionExpr::list_index(list, index, type_),
+        )),
+        ValueType::Float => Expr::function(FunctionExpr::float(
+            crate::plan::FloatFunctionExpr::list_index(list, index, type_),
+        )),
+        ValueType::Bool => Expr::function(FunctionExpr::bool(
+            crate::plan::BoolFunctionExpr::list_index(list, index, type_),
+        )),
+        ValueType::Nil => Expr::function(FunctionExpr::nil(
+            crate::plan::NilFunctionExpr::list_index(list, index, type_),
+        )),
+        ValueType::Tuple(_) => Expr::function(FunctionExpr::tuple(
+            crate::plan::TupleFunctionExpr::list_index(list, index, type_),
+        )),
+        ValueType::List(_) => Expr::function(FunctionExpr::list(
+            crate::plan::ListFunctionExpr::list_index(list, index, type_),
+        )),
+        ValueType::Function(_) => Expr::function(FunctionExpr::function(
+            FunctionFunctionExpr::list_index(list, index, type_),
         )),
     }
 }

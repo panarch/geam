@@ -33,6 +33,7 @@ pub struct FunctionType {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ListValue {
+    // This is the planned item type, kept even when the list is empty.
     element_type: Box<ValueType>,
     values: Vec<Value>,
 }

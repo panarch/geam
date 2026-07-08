@@ -46,6 +46,22 @@ pub(in crate::runtime) fn eval_list_expr(
                 )),
             }
         }
+        ListExprKind::ListIndex { list, index } => {
+            let expected = ValueType::List(Box::new(expression.element_type().clone()));
+            match project_list_expr(plan, frame, list, *index, expected.clone())? {
+                Value::List(value) => Ok(value),
+                other => Err(ExecutionError::list_index_family_mismatch(
+                    expected,
+                    other.value_type(),
+                )),
+            }
+        }
+        ListExprKind::DropFirst { list, count } => {
+            let list = eval_list_expr(plan, frame, list)?;
+            let start = (*count).min(list.values().len());
+            let values = list.values()[start..].to_vec();
+            Ok(ListValue::new(list.element_type().clone(), values))
+        }
         ListExprKind::Panic(panic) => eval_panic_expr(plan, frame, panic),
         ListExprKind::BoolCase {
             subject,
@@ -104,9 +120,26 @@ pub(in crate::runtime) fn eval_list_expr(
     }
 }
 
+pub(in crate::runtime) fn project_list_expr(
+    plan: &ExecutionPlan,
+    frame: &mut Frame,
+    list: &ListExpr,
+    index: usize,
+    expected: ValueType,
+) -> Result<Value, ExecutionError> {
+    let list = eval_list_expr(plan, frame, list)?;
+    let Some(value) = list.values().get(index).cloned() else {
+        return Err(ExecutionError::list_index_family_mismatch(
+            expected,
+            ValueType::List(Box::new(list.element_type().clone())),
+        ));
+    };
+    Ok(value)
+}
+
 #[cfg(test)]
 mod tests {
-    use super::eval_list_expr;
+    use super::{eval_list_expr, project_list_expr};
     use crate::plan::{
         BoolExpr, ExecutionPlan, Expr, FloatExpr, FrameLayout, FunctionId, FunctionPlan, IntExpr,
         IntFunctionId, ListExpr, ListFunctionId, ListLocalId, ListValue, PanicExpr, PanicSite,
@@ -350,6 +383,108 @@ mod tests {
                 ValueType::List(Box::new(element_type())),
                 ValueType::Int,
             )),
+        );
+    }
+
+    #[test]
+    fn eval_list_index_and_drop_first_paths() {
+        let plan = plan();
+        let mut frame = Frame::default();
+        let nested_list = ListExpr::value(
+            vec![Expr::list(list_expr(1)), Expr::list(list_expr(2))],
+            ValueType::List(Box::new(element_type())),
+        );
+
+        assert_eq!(
+            eval_list_expr(
+                &plan,
+                &mut frame,
+                &ListExpr::list_index(nested_list.clone(), 1, element_type()),
+            ),
+            Ok(list_value(2)),
+        );
+        assert_eq!(
+            eval_list_expr(
+                &plan,
+                &mut frame,
+                &ListExpr::list_index(nested_list.clone(), 2, element_type()),
+            ),
+            Err(ExecutionError::list_index_family_mismatch(
+                ValueType::List(Box::new(element_type())),
+                ValueType::List(Box::new(ValueType::List(Box::new(element_type())))),
+            )),
+        );
+        assert_eq!(
+            eval_list_expr(
+                &plan,
+                &mut frame,
+                &ListExpr::list_index(error_list_expr(), 0, element_type()),
+            ),
+            Err(tuple_index_error(ValueType::List(Box::new(element_type())))),
+        );
+        assert_eq!(
+            eval_list_expr(
+                &plan,
+                &mut frame,
+                &ListExpr::list_index(
+                    ListExpr::value(vec![Expr::int(IntExpr::value(1.into()))], element_type()),
+                    0,
+                    element_type(),
+                ),
+            ),
+            Err(ExecutionError::list_index_family_mismatch(
+                ValueType::List(Box::new(element_type())),
+                ValueType::Int,
+            )),
+        );
+        assert_eq!(
+            project_list_expr(
+                &plan,
+                &mut frame,
+                &nested_list,
+                2,
+                ValueType::List(Box::new(element_type())),
+            ),
+            Err(ExecutionError::list_index_family_mismatch(
+                ValueType::List(Box::new(element_type())),
+                ValueType::List(Box::new(ValueType::List(Box::new(element_type())))),
+            )),
+        );
+        assert_eq!(
+            eval_list_expr(
+                &plan,
+                &mut frame,
+                &ListExpr::drop_first(
+                    ListExpr::value(
+                        vec![
+                            Expr::int(IntExpr::value(1.into())),
+                            Expr::int(IntExpr::value(2.into())),
+                        ],
+                        element_type(),
+                    ),
+                    1,
+                ),
+            ),
+            Ok(list_value(2)),
+        );
+        assert_eq!(
+            eval_list_expr(
+                &plan,
+                &mut frame,
+                &ListExpr::drop_first(
+                    ListExpr::value(vec![Expr::int(IntExpr::value(1.into()))], element_type()),
+                    2,
+                ),
+            ),
+            Ok(ListValue::new(element_type(), Vec::new())),
+        );
+        assert_eq!(
+            eval_list_expr(
+                &plan,
+                &mut frame,
+                &ListExpr::drop_first(error_list_expr(), 1),
+            ),
+            Err(tuple_index_error(ValueType::List(Box::new(element_type())))),
         );
     }
 

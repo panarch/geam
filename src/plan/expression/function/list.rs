@@ -1,5 +1,5 @@
 use crate::plan::{
-    BoolExpr, CaptureArg, FloatExpr, FunctionFunctionExpr, FunctionType, IntExpr,
+    BoolExpr, CaptureArg, FloatExpr, FunctionFunctionExpr, FunctionType, IntExpr, ListExpr,
     ListFunctionFunctionId, ListFunctionId, ListFunctionLocalId, ListFunctionValue, PanicExpr,
     ParamLocal, Step, StringExpr, TupleExpr, ValueType,
 };
@@ -37,6 +37,11 @@ pub(crate) enum ListFunctionExprKind {
     },
     TupleIndex {
         tuple: Box<TupleExpr>,
+        index: usize,
+        type_: FunctionType,
+    },
+    ListIndex {
+        list: Box<ListExpr>,
         index: usize,
         type_: FunctionType,
     },
@@ -139,6 +144,17 @@ impl ListFunctionExpr {
             type_: type_.clone(),
             kind: ListFunctionExprKind::TupleIndex {
                 tuple: Box::new(tuple),
+                index,
+                type_,
+            },
+        }
+    }
+
+    pub(crate) fn list_index(list: ListExpr, index: usize, type_: FunctionType) -> Self {
+        Self {
+            type_: type_.clone(),
+            kind: ListFunctionExprKind::ListIndex {
+                list: Box::new(list),
                 index,
                 type_,
             },

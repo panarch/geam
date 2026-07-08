@@ -20,7 +20,7 @@ pub(super) use self::{
         eval_nil_function_expr, eval_string_function_expr, eval_tuple_function_expr,
     },
     int::eval_int_expr,
-    list::eval_list_expr,
+    list::{eval_list_expr, project_list_expr},
     nil::eval_nil_expr,
     string::eval_string_expr,
     tuple::{eval_tuple_expr, project_tuple_expr},

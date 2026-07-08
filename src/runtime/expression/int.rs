@@ -1,5 +1,6 @@
 use super::{
-    eval_bool_expr, eval_float_expr, eval_panic_expr, eval_string_expr, project_tuple_expr,
+    eval_bool_expr, eval_float_expr, eval_panic_expr, eval_string_expr, project_list_expr,
+    project_tuple_expr,
 };
 use crate::plan::{ExecutionPlan, IntExpr, IntExprKind, Value, ValueType};
 use crate::runtime::ExecutionError;
@@ -25,6 +26,15 @@ pub(in crate::runtime) fn eval_int_expr(
             match project_tuple_expr(plan, frame, tuple, *index, ValueType::Int)? {
                 Value::Int(value) => Ok(value),
                 other => Err(ExecutionError::tuple_index_family_mismatch(
+                    ValueType::Int,
+                    other.value_type(),
+                )),
+            }
+        }
+        IntExprKind::ListIndex { list, index } => {
+            match project_list_expr(plan, frame, list, *index, ValueType::Int)? {
+                Value::Int(value) => Ok(value),
+                other => Err(ExecutionError::list_index_family_mismatch(
                     ValueType::Int,
                     other.value_type(),
                 )),
@@ -128,8 +138,8 @@ fn eval_remainder_int(left: BigInt, right: BigInt) -> BigInt {
 mod tests {
     use super::eval_int_expr;
     use crate::plan::{
-        BoolExpr, Expr, FloatExpr, IntExpr, PanicExpr, PanicSite, Step, StringExpr, TupleExpr,
-        ValueType,
+        BoolExpr, Expr, FloatExpr, IntExpr, ListExpr, PanicExpr, PanicSite, Step, StringExpr,
+        TupleExpr, ValueType,
     };
     use crate::runtime::frame::Frame;
     use crate::runtime::{ExecutionError, PanicKind};
@@ -157,6 +167,40 @@ mod tests {
         assert_eq!(
             eval_int_expr(&plan, &mut frame, &IntExpr::tuple_index(tuple, 0)),
             Err(ExecutionError::tuple_index_family_mismatch(
+                ValueType::Int,
+                ValueType::String,
+            )),
+        );
+    }
+
+    #[test]
+    fn list_index_family_mismatch_returns_error() {
+        let plan = crate::runtime::plan_src("pub fn main() { 1 }");
+        let mut frame = Frame::default();
+        let list = ListExpr::value(vec![Expr::int(IntExpr::value(1.into()))], ValueType::Int);
+
+        assert_eq!(
+            eval_int_expr(&plan, &mut frame, &IntExpr::list_index(list, 0)),
+            Ok(1.into()),
+        );
+
+        let list = ListExpr::value(vec![Expr::int(IntExpr::value(1.into()))], ValueType::Int);
+        assert_eq!(
+            eval_int_expr(&plan, &mut frame, &IntExpr::list_index(list, 1)),
+            Err(ExecutionError::list_index_family_mismatch(
+                ValueType::Int,
+                ValueType::List(Box::new(ValueType::Int)),
+            )),
+        );
+
+        let list = ListExpr::value(
+            vec![Expr::string(StringExpr::value("one".into()))],
+            ValueType::String,
+        );
+
+        assert_eq!(
+            eval_int_expr(&plan, &mut frame, &IntExpr::list_index(list, 0)),
+            Err(ExecutionError::list_index_family_mismatch(
                 ValueType::Int,
                 ValueType::String,
             )),

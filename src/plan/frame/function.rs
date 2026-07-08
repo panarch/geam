@@ -38,6 +38,7 @@ impl FrameLayout {
                 self.include_call_args(args);
             }
             IntFunctionExprKind::TupleIndex { tuple, .. } => self.include_tuple_expr(tuple),
+            IntFunctionExprKind::ListIndex { list, .. } => self.include_list_expr(list),
             IntFunctionExprKind::BoolCase {
                 subject,
                 true_,
@@ -102,6 +103,7 @@ impl FrameLayout {
                 self.include_call_args(args);
             }
             FloatFunctionExprKind::TupleIndex { tuple, .. } => self.include_tuple_expr(tuple),
+            FloatFunctionExprKind::ListIndex { list, .. } => self.include_list_expr(list),
             FloatFunctionExprKind::BoolCase {
                 subject,
                 true_,
@@ -168,6 +170,7 @@ impl FrameLayout {
                 self.include_call_args(args);
             }
             StringFunctionExprKind::TupleIndex { tuple, .. } => self.include_tuple_expr(tuple),
+            StringFunctionExprKind::ListIndex { list, .. } => self.include_list_expr(list),
             StringFunctionExprKind::BoolCase {
                 subject,
                 true_,
@@ -232,6 +235,7 @@ impl FrameLayout {
                 self.include_call_args(args);
             }
             BoolFunctionExprKind::TupleIndex { tuple, .. } => self.include_tuple_expr(tuple),
+            BoolFunctionExprKind::ListIndex { list, .. } => self.include_list_expr(list),
             BoolFunctionExprKind::BoolCase {
                 subject,
                 true_,
@@ -296,6 +300,7 @@ impl FrameLayout {
                 self.include_call_args(args);
             }
             NilFunctionExprKind::TupleIndex { tuple, .. } => self.include_tuple_expr(tuple),
+            NilFunctionExprKind::ListIndex { list, .. } => self.include_list_expr(list),
             NilFunctionExprKind::BoolCase {
                 subject,
                 true_,
@@ -364,6 +369,7 @@ impl FrameLayout {
                 self.include_call_args(args);
             }
             FunctionFunctionExprKind::TupleIndex { tuple, .. } => self.include_tuple_expr(tuple),
+            FunctionFunctionExprKind::ListIndex { list, .. } => self.include_list_expr(list),
             FunctionFunctionExprKind::BoolCase {
                 subject,
                 true_,
@@ -428,6 +434,7 @@ impl FrameLayout {
                 self.include_call_args(args);
             }
             TupleFunctionExprKind::TupleIndex { tuple, .. } => self.include_tuple_expr(tuple),
+            TupleFunctionExprKind::ListIndex { list, .. } => self.include_list_expr(list),
             TupleFunctionExprKind::BoolCase {
                 subject,
                 true_,
@@ -492,6 +499,7 @@ impl FrameLayout {
                 self.include_call_args(args);
             }
             ListFunctionExprKind::TupleIndex { tuple, .. } => self.include_tuple_expr(tuple),
+            ListFunctionExprKind::ListIndex { list, .. } => self.include_list_expr(list),
             ListFunctionExprKind::BoolCase {
                 subject,
                 true_,
@@ -550,10 +558,10 @@ mod tests {
         FloatExpr, FloatFunctionExpr, FloatFunctionId, FloatFunctionLocalId, FunctionExpr,
         FunctionFunctionExpr, FunctionFunctionId, FunctionFunctionLocalId, FunctionType, IntExpr,
         IntFunctionExpr, IntFunctionFunctionId, IntFunctionId, IntFunctionLocalId, IntLocalId,
-        ListFunctionExpr, ListFunctionFunctionId, ListFunctionId, ListFunctionLocalId,
-        NilFunctionExpr, NilFunctionId, NilFunctionLocalId, PanicExpr, PanicSite, ReturnExpr, Step,
-        StringExpr, StringFunctionExpr, StringFunctionId, StringFunctionLocalId, StringLocalId,
-        TupleExpr, TupleFunctionExpr, TupleFunctionFunctionId, TupleFunctionId,
+        ListExpr, ListFunctionExpr, ListFunctionFunctionId, ListFunctionId, ListFunctionLocalId,
+        ListLocalId, NilFunctionExpr, NilFunctionId, NilFunctionLocalId, PanicExpr, PanicSite,
+        ReturnExpr, Step, StringExpr, StringFunctionExpr, StringFunctionId, StringFunctionLocalId,
+        StringLocalId, TupleExpr, TupleFunctionExpr, TupleFunctionFunctionId, TupleFunctionId,
         TupleFunctionLocalId, TupleLocalId, ValueType,
     };
 
@@ -654,6 +662,91 @@ mod tests {
         assert_eq!(layout.tuple_functions(), 0);
         assert_eq!(layout.list_functions(), 0);
         assert_eq!(layout.function_functions(), 0);
+    }
+
+    #[test]
+    fn frame_layout_includes_function_list_index_dependencies() {
+        let int_type = FunctionType::new(Vec::new(), ValueType::Int);
+        let string_type = FunctionType::new(Vec::new(), ValueType::String);
+        let float_type = FunctionType::new(Vec::new(), ValueType::Float);
+        let bool_type = FunctionType::new(Vec::new(), ValueType::Bool);
+        let nil_type = FunctionType::new(Vec::new(), ValueType::Nil);
+        let tuple_type = FunctionType::new(Vec::new(), ValueType::Tuple(vec![ValueType::Int]));
+        let list_type = FunctionType::new(Vec::new(), ValueType::List(Box::new(ValueType::Int)));
+        let function_type = FunctionType::new(
+            Vec::new(),
+            ValueType::Function(Box::new(FunctionType::new(Vec::new(), ValueType::Int))),
+        );
+        let function_list = |local, name: &str, type_: FunctionType| {
+            ListExpr::local_get(
+                ListLocalId(local),
+                name.into(),
+                ValueType::Function(Box::new(type_)),
+            )
+        };
+        let steps = vec![
+            Step::evaluate(Expr::function(FunctionExpr::int(
+                IntFunctionExpr::list_index(
+                    function_list(0, "int_list", int_type.clone()),
+                    0,
+                    int_type,
+                ),
+            ))),
+            Step::evaluate(Expr::function(FunctionExpr::string(
+                StringFunctionExpr::list_index(
+                    function_list(1, "string_list", string_type.clone()),
+                    0,
+                    string_type,
+                ),
+            ))),
+            Step::evaluate(Expr::function(FunctionExpr::float(
+                FloatFunctionExpr::list_index(
+                    function_list(2, "float_list", float_type.clone()),
+                    0,
+                    float_type,
+                ),
+            ))),
+            Step::evaluate(Expr::function(FunctionExpr::bool(
+                BoolFunctionExpr::list_index(
+                    function_list(3, "bool_list", bool_type.clone()),
+                    0,
+                    bool_type,
+                ),
+            ))),
+            Step::evaluate(Expr::function(FunctionExpr::nil(
+                NilFunctionExpr::list_index(
+                    function_list(4, "nil_list", nil_type.clone()),
+                    0,
+                    nil_type,
+                ),
+            ))),
+            Step::evaluate(Expr::function(FunctionExpr::tuple(
+                TupleFunctionExpr::list_index(
+                    function_list(5, "tuple_list", tuple_type.clone()),
+                    0,
+                    tuple_type,
+                ),
+            ))),
+            Step::evaluate(Expr::function(FunctionExpr::list(
+                ListFunctionExpr::list_index(
+                    function_list(6, "list_list", list_type.clone()),
+                    0,
+                    list_type,
+                ),
+            ))),
+            Step::evaluate(Expr::function(FunctionExpr::function(
+                FunctionFunctionExpr::list_index(
+                    function_list(7, "function_list", function_type.clone()),
+                    0,
+                    function_type,
+                ),
+            ))),
+        ];
+        let return_ = ReturnExpr::int(IntFunctionId(0), IntExpr::value(0.into()));
+
+        let layout = FrameLayout::from_function_parts(&[], &steps, &return_);
+
+        assert_eq!(layout.lists(), 8);
     }
 
     #[test]

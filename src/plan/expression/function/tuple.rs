@@ -1,6 +1,6 @@
 use crate::plan::{
-    BoolExpr, CaptureArg, FloatExpr, FunctionFunctionExpr, FunctionType, IntExpr, PanicExpr,
-    ParamLocal, Step, StringExpr, TupleExpr, TupleFunctionFunctionId, TupleFunctionId,
+    BoolExpr, CaptureArg, FloatExpr, FunctionFunctionExpr, FunctionType, IntExpr, ListExpr,
+    PanicExpr, ParamLocal, Step, StringExpr, TupleExpr, TupleFunctionFunctionId, TupleFunctionId,
     TupleFunctionLocalId, TupleFunctionValue, ValueType,
 };
 use ecow::EcoString;
@@ -37,6 +37,11 @@ pub(crate) enum TupleFunctionExprKind {
     },
     TupleIndex {
         tuple: Box<TupleExpr>,
+        index: usize,
+        type_: FunctionType,
+    },
+    ListIndex {
+        list: Box<ListExpr>,
         index: usize,
         type_: FunctionType,
     },
@@ -139,6 +144,17 @@ impl TupleFunctionExpr {
             type_: type_.clone(),
             kind: TupleFunctionExprKind::TupleIndex {
                 tuple: Box::new(tuple),
+                index,
+                type_,
+            },
+        }
+    }
+
+    pub(crate) fn list_index(list: ListExpr, index: usize, type_: FunctionType) -> Self {
+        Self {
+            type_: type_.clone(),
+            kind: TupleFunctionExprKind::ListIndex {
+                list: Box::new(list),
                 index,
                 type_,
             },
