@@ -1,6 +1,6 @@
 use super::{
     eval_bool_expr, eval_float_expr, eval_int_expr, eval_panic_expr, eval_string_expr,
-    project_list_expr,
+    project_tuple_list_expr,
 };
 use crate::plan::{ExecutionPlan, TupleExpr, TupleExprKind, Value, ValueType};
 use crate::runtime::ExecutionError;
@@ -38,14 +38,7 @@ pub(in crate::runtime) fn eval_tuple_expr(
             }
         }
         TupleExprKind::ListIndex { list, index } => {
-            let expected = ValueType::Tuple(expression.type_().to_vec());
-            match project_list_expr(plan, frame, list, *index, expected.clone())? {
-                Value::Tuple(values) => Ok(values),
-                other => Err(ExecutionError::list_index_family_mismatch(
-                    expected,
-                    other.value_type(),
-                )),
-            }
+            project_tuple_list_expr(plan, frame, list, *index, expression.type_())
         }
         TupleExprKind::Panic(panic) => eval_panic_expr(plan, frame, panic),
         TupleExprKind::BoolCase {
@@ -484,9 +477,10 @@ pub fn main() {
                 &mut frame,
                 &TupleExpr::list_index(list, 1, tuple_type.clone()),
             ),
-            Err(ExecutionError::list_index_family_mismatch(
+            Err(ExecutionError::list_index_out_of_bounds(
                 ValueType::Tuple(tuple_type.clone()),
-                ValueType::List(Box::new(ValueType::Tuple(tuple_type.clone()))),
+                1,
+                1,
             )),
         );
 
@@ -498,7 +492,7 @@ pub fn main() {
                 &mut frame,
                 &TupleExpr::list_index(list, 0, tuple_type.clone()),
             ),
-            Err(ExecutionError::list_index_family_mismatch(
+            Err(ExecutionError::list_item_type_mismatch(
                 ValueType::Tuple(tuple_type),
                 ValueType::Int,
             )),

@@ -5,7 +5,7 @@ use crate::plan::{
 use crate::runtime::ExecutionError;
 use crate::runtime::expression::{
     eval_bool_expr, eval_float_expr, eval_int_expr, eval_panic_expr, eval_string_expr,
-    project_list_expr, project_tuple_expr,
+    project_function_list_expr, project_tuple_expr,
 };
 use crate::runtime::frame::Frame;
 use crate::runtime::function;
@@ -64,14 +64,13 @@ pub(in crate::runtime) fn eval_list_function_expr(
         }
         ListFunctionExprKind::ListIndex { list, index, type_ } => {
             let expected = ValueType::Function(Box::new(type_.clone()));
-            let value = project_list_expr(plan, frame, list, *index, expected.clone())?;
-            let actual = value.value_type();
-            match value {
-                Value::Function(function) => match function.kind() {
-                    FunctionValueKind::List(value) => Ok(value.clone()),
-                    _ => Err(ExecutionError::list_index_family_mismatch(expected, actual)),
-                },
-                _ => Err(ExecutionError::list_index_family_mismatch(expected, actual)),
+            let function = project_function_list_expr(plan, frame, list, *index, type_)?;
+            match function.kind() {
+                FunctionValueKind::List(value) => Ok(value.clone()),
+                _ => Err(ExecutionError::list_item_type_mismatch(
+                    expected,
+                    Value::Function(function).value_type(),
+                )),
             }
         }
         ListFunctionExprKind::Panic(panic) => eval_panic_expr(plan, frame, panic),
@@ -135,13 +134,14 @@ pub(in crate::runtime) fn eval_list_function_expr(
 #[cfg(test)]
 mod tests {
     use super::eval_list_function_expr;
+    use crate::plan::FrameLayout;
     use crate::plan::{
         BoolExpr, CaptureArg, ExecutionPlan, Expr, FloatExpr, FunctionExpr, FunctionFunctionExpr,
         FunctionFunctionId, FunctionFunctionValue, FunctionId, FunctionPlan, FunctionType, IntExpr,
         IntFunctionExpr, IntFunctionId, IntFunctionValue, ListExpr, ListFunctionExpr,
         ListFunctionFunctionId, ListFunctionId, ListFunctionLocalId, ListFunctionValue,
-        ListLocalId, PanicExpr, PanicSite, ParamLocal, ReturnBody, ReturnExpr, Step, StringExpr,
-        TupleExpr, ValueType,
+        ListLocalId, ListValue, PanicExpr, PanicSite, ParamLocal, ReturnBody, ReturnExpr, Step,
+        StringExpr, TupleExpr, ValueType,
     };
     use crate::runtime::frame::Frame;
     use crate::runtime::{ExecutionError, PanicKind};
@@ -530,12 +530,41 @@ mod tests {
                 &mut frame,
                 &ListFunctionExpr::list_index(list, 0, list_function_type.clone()),
             ),
-            Err(ExecutionError::list_index_family_mismatch(
+            Err(ExecutionError::list_item_type_mismatch(
                 ValueType::Function(Box::new(list_function_type.clone())),
                 ValueType::Function(Box::new(int_function_type)),
             )),
         );
 
+        let mut layout = FrameLayout::default();
+        layout.include_list(ListLocalId(1));
+        let mut frame = Frame::new(layout);
+        let int_function_type = FunctionType::new(Vec::new(), ValueType::Int);
+        frame.set_list(
+            ListLocalId(1),
+            ListValue::function(
+                list_function_type.clone(),
+                vec![IntFunctionValue::new(IntFunctionId(0), Vec::new()).into()],
+            ),
+        );
+        let list = ListExpr::local_get(
+            ListLocalId(1),
+            "functions".into(),
+            ValueType::Function(Box::new(list_function_type.clone())),
+        );
+        assert_eq!(
+            eval_list_function_expr(
+                &plan,
+                &mut frame,
+                &ListFunctionExpr::list_index(list, 0, list_function_type.clone()),
+            ),
+            Err(ExecutionError::list_item_type_mismatch(
+                ValueType::Function(Box::new(list_function_type.clone())),
+                ValueType::Function(Box::new(int_function_type)),
+            )),
+        );
+
+        let mut frame = Frame::default();
         let list = ListExpr::value(
             vec![Expr::function(FunctionExpr::list(list_function_expr()))],
             ValueType::Function(Box::new(list_function_type.clone())),
@@ -546,11 +575,10 @@ mod tests {
                 &mut frame,
                 &ListFunctionExpr::list_index(list, 1, list_function_type.clone()),
             ),
-            Err(ExecutionError::list_index_family_mismatch(
+            Err(ExecutionError::list_index_out_of_bounds(
                 ValueType::Function(Box::new(list_function_type.clone())),
-                ValueType::List(Box::new(ValueType::Function(Box::new(
-                    list_function_type.clone(),
-                )))),
+                1,
+                1,
             )),
         );
 
@@ -580,7 +608,7 @@ mod tests {
                 &mut frame,
                 &ListFunctionExpr::list_index(list, 0, list_function_type),
             ),
-            Err(ExecutionError::list_index_family_mismatch(
+            Err(ExecutionError::list_item_type_mismatch(
                 ValueType::Function(Box::new(FunctionType::new(
                     Vec::new(),
                     ValueType::List(Box::new(element_type())),

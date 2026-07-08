@@ -1,7 +1,8 @@
 use super::{
-    BoolExpr, CallArg, FloatExpr, IntExpr, ListFunctionExpr, PanicExpr, StringExpr, TupleExpr,
+    BoolExpr, CallArg, Expr, FloatExpr, FunctionExpr, IntExpr, ListFunctionExpr, NilExpr,
+    PanicExpr, StringExpr, TupleExpr,
 };
-use crate::plan::{ListFunctionId, ListLocalId, Step, ValueType};
+use crate::plan::{FunctionType, ListFunctionId, ListLocalId, Step, ValueType};
 use ecow::EcoString;
 use num_bigint::BigInt;
 
@@ -13,9 +14,9 @@ pub struct ListExpr {
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum ListExprKind {
-    Value(Vec<super::Expr>),
+    Value(ListElements),
     Spread {
-        elements: Vec<super::Expr>,
+        elements: ListElements,
         tail: Box<ListExpr>,
     },
     LocalGet {
@@ -69,21 +70,81 @@ pub(crate) enum ListExprKind {
     },
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) enum ListElements {
+    Int(Vec<IntExpr>),
+    String(Vec<StringExpr>),
+    Float(Vec<FloatExpr>),
+    Bool(Vec<BoolExpr>),
+    Nil(Vec<NilExpr>),
+    Tuple {
+        item_type: Vec<ValueType>,
+        values: Vec<TupleExpr>,
+    },
+    List {
+        item_type: Box<ValueType>,
+        values: Vec<ListExpr>,
+    },
+    Function {
+        item_type: FunctionType,
+        values: Vec<FunctionExpr>,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ListElementTypeMismatch {
+    pub(crate) expected: ValueType,
+    pub(crate) actual: ValueType,
+}
+
 impl ListExpr {
-    pub(crate) fn value(elements: Vec<super::Expr>, element_type: ValueType) -> Self {
+    pub(crate) fn value(elements: Vec<Expr>, element_type: ValueType) -> Self {
+        let elements = ListElements::from_exprs(element_type, elements)
+            .expect("list expression elements must match declared item type");
+        Self::from_elements(elements)
+    }
+
+    pub(crate) fn try_value(
+        elements: Vec<Expr>,
+        element_type: ValueType,
+    ) -> Result<Self, ListElementTypeMismatch> {
+        Ok(Self::from_elements(ListElements::from_exprs(
+            element_type,
+            elements,
+        )?))
+    }
+
+    pub(crate) fn from_elements(elements: ListElements) -> Self {
         Self {
-            element_type: Box::new(element_type),
+            element_type: Box::new(elements.item_type()),
             kind: ListExprKind::Value(elements),
         }
     }
 
-    pub(crate) fn spread(
-        elements: Vec<super::Expr>,
+    #[cfg(test)]
+    pub(crate) fn spread(elements: Vec<Expr>, tail: ListExpr, element_type: ValueType) -> Self {
+        let elements = ListElements::from_exprs(element_type, elements)
+            .expect("list spread elements must match declared item type");
+        Self::try_spread(elements, tail).expect("list spread tail must match prefix item type")
+    }
+
+    #[cfg(test)]
+    pub(crate) fn try_spread(
+        elements: ListElements,
         tail: ListExpr,
-        element_type: ValueType,
-    ) -> Self {
+    ) -> Result<Self, ListElementTypeMismatch> {
+        let expected = elements.item_type();
+        let actual = tail.element_type().clone();
+        if expected != actual {
+            return Err(ListElementTypeMismatch { expected, actual });
+        }
+
+        Ok(Self::from_spread_elements(elements, tail))
+    }
+
+    pub(crate) fn from_spread_elements(elements: ListElements, tail: ListExpr) -> Self {
         Self {
-            element_type: Box::new(element_type),
+            element_type: Box::new(elements.item_type()),
             kind: ListExprKind::Spread {
                 elements,
                 tail: Box::new(tail),
@@ -235,19 +296,149 @@ impl ListExpr {
     }
 }
 
+impl ListElements {
+    pub(crate) fn from_exprs(
+        item_type: ValueType,
+        values: Vec<Expr>,
+    ) -> Result<Self, ListElementTypeMismatch> {
+        match item_type {
+            ValueType::Int => values
+                .into_iter()
+                .map(|value| match value {
+                    Expr {
+                        kind: super::ExprKind::Int(value),
+                    } => Ok(value),
+                    value => Err(ListElementTypeMismatch {
+                        expected: ValueType::Int,
+                        actual: value.value_type(),
+                    }),
+                })
+                .collect::<Result<Vec<_>, _>>()
+                .map(Self::Int),
+            ValueType::String => values
+                .into_iter()
+                .map(|value| match value {
+                    Expr {
+                        kind: super::ExprKind::String(value),
+                    } => Ok(value),
+                    value => Err(ListElementTypeMismatch {
+                        expected: ValueType::String,
+                        actual: value.value_type(),
+                    }),
+                })
+                .collect::<Result<Vec<_>, _>>()
+                .map(Self::String),
+            ValueType::Float => values
+                .into_iter()
+                .map(|value| match value {
+                    Expr {
+                        kind: super::ExprKind::Float(value),
+                    } => Ok(value),
+                    value => Err(ListElementTypeMismatch {
+                        expected: ValueType::Float,
+                        actual: value.value_type(),
+                    }),
+                })
+                .collect::<Result<Vec<_>, _>>()
+                .map(Self::Float),
+            ValueType::Bool => values
+                .into_iter()
+                .map(|value| match value {
+                    Expr {
+                        kind: super::ExprKind::Bool(value),
+                    } => Ok(value),
+                    value => Err(ListElementTypeMismatch {
+                        expected: ValueType::Bool,
+                        actual: value.value_type(),
+                    }),
+                })
+                .collect::<Result<Vec<_>, _>>()
+                .map(Self::Bool),
+            ValueType::Nil => values
+                .into_iter()
+                .map(|value| match value {
+                    Expr {
+                        kind: super::ExprKind::Nil(value),
+                    } => Ok(value),
+                    value => Err(ListElementTypeMismatch {
+                        expected: ValueType::Nil,
+                        actual: value.value_type(),
+                    }),
+                })
+                .collect::<Result<Vec<_>, _>>()
+                .map(Self::Nil),
+            ValueType::Tuple(item_type) => values
+                .into_iter()
+                .map(|value| match value {
+                    Expr {
+                        kind: super::ExprKind::Tuple(value),
+                    } => Ok(value),
+                    value => Err(ListElementTypeMismatch {
+                        expected: ValueType::Tuple(item_type.clone()),
+                        actual: value.value_type(),
+                    }),
+                })
+                .collect::<Result<Vec<_>, _>>()
+                .map(|values| Self::Tuple { item_type, values }),
+            ValueType::List(item_type) => values
+                .into_iter()
+                .map(|value| match value {
+                    Expr {
+                        kind: super::ExprKind::List(value),
+                    } => Ok(value),
+                    value => Err(ListElementTypeMismatch {
+                        expected: ValueType::List(item_type.clone()),
+                        actual: value.value_type(),
+                    }),
+                })
+                .collect::<Result<Vec<_>, _>>()
+                .map(|values| Self::List { item_type, values }),
+            ValueType::Function(item_type) => values
+                .into_iter()
+                .map(|value| match value {
+                    Expr {
+                        kind: super::ExprKind::Function(value),
+                    } => Ok(value),
+                    value => Err(ListElementTypeMismatch {
+                        expected: ValueType::Function(item_type.clone()),
+                        actual: value.value_type(),
+                    }),
+                })
+                .collect::<Result<Vec<_>, _>>()
+                .map(|values| Self::Function {
+                    item_type: *item_type,
+                    values,
+                }),
+        }
+    }
+
+    pub(crate) fn item_type(&self) -> ValueType {
+        match self {
+            Self::Int(_) => ValueType::Int,
+            Self::String(_) => ValueType::String,
+            Self::Float(_) => ValueType::Float,
+            Self::Bool(_) => ValueType::Bool,
+            Self::Nil(_) => ValueType::Nil,
+            Self::Tuple { item_type, .. } => ValueType::Tuple(item_type.clone()),
+            Self::List { item_type, .. } => ValueType::List(item_type.clone()),
+            Self::Function { item_type, .. } => ValueType::Function(Box::new(item_type.clone())),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{ListExpr, ListExprKind};
+    use super::{ListElementTypeMismatch, ListElements, ListExpr, ListExprKind};
     use crate::plan::{
-        BoolExpr, Expr, FunctionType, IntExpr, ListFunctionExpr, ListFunctionId, ListFunctionValue,
-        ListLocalId, ParamLocal, Step, ValueType,
+        BoolExpr, Expr, FunctionExpr, FunctionType, IntExpr, ListFunctionExpr, ListFunctionId,
+        ListFunctionValue, ListLocalId, NilExpr, ParamLocal, Step, ValueType,
     };
 
     #[test]
     fn list_expr_kind_accessors() {
         assert_eq!(
             list_value().kind(),
-            &ListExprKind::Value(vec![Expr::int(IntExpr::value(1.into()))]),
+            &ListExprKind::Value(ListElements::Int(vec![IntExpr::value(1.into())])),
         );
         assert_eq!(
             ListExpr::spread(
@@ -257,7 +448,7 @@ mod tests {
             )
             .kind(),
             &ListExprKind::Spread {
-                elements: vec![Expr::int(IntExpr::value(0.into()))],
+                elements: ListElements::Int(vec![IntExpr::value(0.into())]),
                 tail: Box::new(list_value()),
             },
         );
@@ -395,6 +586,165 @@ mod tests {
         assert_eq!(
             ListExpr::block(Vec::new(), list_value()).element_type(),
             &element_type(),
+        );
+    }
+
+    #[test]
+    fn list_expr_try_constructors_reject_wrong_item_family() {
+        assert_eq!(
+            ListExpr::try_value(
+                vec![Expr::string(crate::plan::StringExpr::value("one".into()))],
+                ValueType::Int,
+            ),
+            Err(ListElementTypeMismatch {
+                expected: ValueType::Int,
+                actual: ValueType::String,
+            }),
+        );
+        assert_eq!(
+            ListExpr::try_spread(
+                ListElements::Int(vec![IntExpr::value(1.into())]),
+                ListExpr::value(
+                    vec![Expr::string(crate::plan::StringExpr::value("two".into()))],
+                    ValueType::String,
+                ),
+            ),
+            Err(ListElementTypeMismatch {
+                expected: ValueType::Int,
+                actual: ValueType::String,
+            }),
+        );
+    }
+
+    #[test]
+    fn list_elements_reject_wrong_item_family() {
+        assert_eq!(
+            ListElements::from_exprs(
+                ValueType::Int,
+                vec![Expr::string(crate::plan::StringExpr::value("one".into()))],
+            ),
+            Err(ListElementTypeMismatch {
+                expected: ValueType::Int,
+                actual: ValueType::String,
+            }),
+        );
+        assert_eq!(
+            ListElements::from_exprs(ValueType::String, vec![Expr::int(IntExpr::value(1.into()))],),
+            Err(ListElementTypeMismatch {
+                expected: ValueType::String,
+                actual: ValueType::Int,
+            }),
+        );
+        assert_eq!(
+            ListElements::from_exprs(ValueType::Float, vec![Expr::int(IntExpr::value(1.into()))],),
+            Err(ListElementTypeMismatch {
+                expected: ValueType::Float,
+                actual: ValueType::Int,
+            }),
+        );
+        assert_eq!(
+            ListElements::from_exprs(ValueType::Bool, vec![Expr::int(IntExpr::value(1.into()))],),
+            Err(ListElementTypeMismatch {
+                expected: ValueType::Bool,
+                actual: ValueType::Int,
+            }),
+        );
+        assert_eq!(
+            ListElements::from_exprs(ValueType::Nil, vec![Expr::int(IntExpr::value(1.into()))],),
+            Err(ListElementTypeMismatch {
+                expected: ValueType::Nil,
+                actual: ValueType::Int,
+            }),
+        );
+        assert_eq!(
+            ListElements::from_exprs(
+                ValueType::Tuple(vec![ValueType::Int]),
+                vec![Expr::int(IntExpr::value(1.into()))],
+            ),
+            Err(ListElementTypeMismatch {
+                expected: ValueType::Tuple(vec![ValueType::Int]),
+                actual: ValueType::Int,
+            }),
+        );
+        assert_eq!(
+            ListElements::from_exprs(
+                ValueType::List(Box::new(ValueType::Int)),
+                vec![Expr::int(IntExpr::value(1.into()))],
+            ),
+            Err(ListElementTypeMismatch {
+                expected: ValueType::List(Box::new(ValueType::Int)),
+                actual: ValueType::Int,
+            }),
+        );
+        assert_eq!(
+            ListElements::from_exprs(
+                ValueType::Function(Box::new(list_function_expr().type_().clone())),
+                vec![Expr::int(IntExpr::value(1.into()))],
+            ),
+            Err(ListElementTypeMismatch {
+                expected: ValueType::Function(Box::new(list_function_expr().type_().clone())),
+                actual: ValueType::Int,
+            }),
+        );
+    }
+
+    #[test]
+    fn list_elements_preserve_family_specific_storage() {
+        assert_eq!(
+            ListElements::from_exprs(
+                ValueType::String,
+                vec![Expr::string(crate::plan::StringExpr::value("one".into()))],
+            ),
+            Ok(ListElements::String(vec![crate::plan::StringExpr::value(
+                "one".into()
+            )])),
+        );
+        assert_eq!(
+            ListElements::from_exprs(
+                ValueType::Float,
+                vec![Expr::float(crate::plan::FloatExpr::value(1.5))],
+            ),
+            Ok(ListElements::Float(vec![crate::plan::FloatExpr::value(
+                1.5
+            )])),
+        );
+        assert_eq!(
+            ListElements::from_exprs(ValueType::Bool, vec![Expr::bool(BoolExpr::value(true))],),
+            Ok(ListElements::Bool(vec![BoolExpr::value(true)])),
+        );
+        assert_eq!(
+            ListElements::from_exprs(ValueType::Nil, vec![Expr::nil(NilExpr::value())],),
+            Ok(ListElements::Nil(vec![NilExpr::value()])),
+        );
+        assert_eq!(
+            ListElements::from_exprs(
+                ValueType::Tuple(vec![ValueType::List(Box::new(element_type()))]),
+                vec![Expr::tuple(tuple_expr())],
+            ),
+            Ok(ListElements::Tuple {
+                item_type: vec![ValueType::List(Box::new(element_type()))],
+                values: vec![tuple_expr()],
+            }),
+        );
+        assert_eq!(
+            ListElements::from_exprs(
+                ValueType::List(Box::new(element_type())),
+                vec![Expr::list(list_value())],
+            ),
+            Ok(ListElements::List {
+                item_type: Box::new(element_type()),
+                values: vec![list_value()],
+            }),
+        );
+        assert_eq!(
+            ListElements::from_exprs(
+                ValueType::Function(Box::new(list_function_expr().type_().clone())),
+                vec![Expr::function(FunctionExpr::list(list_function_expr()))],
+            ),
+            Ok(ListElements::Function {
+                item_type: list_function_expr().type_().clone(),
+                values: vec![FunctionExpr::list(list_function_expr())],
+            }),
         );
     }
 

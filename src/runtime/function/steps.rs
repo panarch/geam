@@ -164,26 +164,26 @@ fn match_list_assert_pattern(
     pattern: &ListAssertPattern,
     value: &ListValue,
 ) -> Option<Vec<PendingBinding>> {
+    let values = value.to_values();
     if let Some(tail) = pattern.tail() {
-        if value.values().len() < pattern.elements().len() {
+        if values.len() < pattern.elements().len() {
             return None;
         }
 
-        let mut bindings = match_prefix_assert_patterns(pattern.elements(), value.values())?;
+        let mut bindings = match_prefix_assert_patterns(pattern.elements(), &values)?;
         if let ListAssertTail::Bind(binding) = tail {
-            let tail_values = value.values()[pattern.elements().len()..].to_vec();
             bindings.push(PendingBinding::List(
                 binding.local(),
-                ListValue::new(pattern.element_type().clone(), tail_values),
+                value.drop_first(pattern.elements().len()),
             ));
         }
         Some(bindings)
     } else {
-        if value.values().len() != pattern.elements().len() {
+        if values.len() != pattern.elements().len() {
             return None;
         }
 
-        match_prefix_assert_patterns(pattern.elements(), value.values())
+        match_prefix_assert_patterns(pattern.elements(), &values)
     }
 }
 
@@ -256,8 +256,7 @@ fn pending_binding(target: &AssertBinding, value: &Value) -> Option<PendingBindi
             Some(PendingBinding::Tuple(*local, value.clone()))
         }
         (ParamLocal::List { local, .. }, Value::List(value))
-            if target.local().value_type()
-                == ValueType::List(Box::new(value.element_type().clone())) =>
+            if target.local().value_type() == ValueType::List(Box::new(value.item_type())) =>
         {
             Some(PendingBinding::List(*local, value.clone()))
         }
@@ -445,7 +444,7 @@ mod tests {
         assert_eq!(frame.get_tuple(TupleLocalId(0)), vec![Value::Int(1.into())]);
         assert_eq!(
             frame.get_list(ListLocalId(0)),
-            ListValue::new(ValueType::Int, vec![Value::Int(1.into())]),
+            ListValue::int(vec![1.into()]),
         );
         assert_eq!(
             frame.get_int_function(IntFunctionLocalId(0)).runtime_id(),
@@ -493,13 +492,7 @@ mod tests {
     fn execute_steps_assert_list_binds_elements_and_tail_after_match() {
         let plan = plan();
         let mut frame = Frame::new(assert_list_layout());
-        frame.set_list(
-            ListLocalId(0),
-            ListValue::new(
-                ValueType::Int,
-                vec![Value::Int(1.into()), Value::Int(2.into())],
-            ),
-        );
+        frame.set_list(ListLocalId(0), ListValue::int(vec![1.into(), 2.into()]));
 
         execute_steps(
             &plan,
@@ -517,7 +510,7 @@ mod tests {
         assert_eq!(frame.get_int(IntLocalId(0)), 1.into());
         assert_eq!(
             frame.get_list(ListLocalId(1)),
-            ListValue::new(ValueType::Int, vec![Value::Int(2.into())]),
+            ListValue::int(vec![2.into()]),
         );
     }
 
@@ -639,13 +632,7 @@ mod tests {
     fn execute_steps_assert_list_does_not_evaluate_message_after_match() {
         let plan = plan();
         let mut frame = Frame::new(assert_list_layout());
-        frame.set_list(
-            ListLocalId(0),
-            ListValue::new(
-                ValueType::Int,
-                vec![Value::Int(1.into()), Value::Int(2.into())],
-            ),
-        );
+        frame.set_list(ListLocalId(0), ListValue::int(vec![1.into(), 2.into()]));
 
         execute_steps(
             &plan,
@@ -667,7 +654,7 @@ mod tests {
     fn execute_steps_assert_list_propagates_message_error_before_let_assert_panic() {
         let plan = plan();
         let mut frame = Frame::new(assert_list_layout());
-        frame.set_list(ListLocalId(0), ListValue::new(ValueType::Int, Vec::new()));
+        frame.set_list(ListLocalId(0), ListValue::empty(ValueType::Int));
 
         assert_expected_function_got_int(execute_steps(
             &plan,
@@ -687,7 +674,7 @@ mod tests {
     fn execute_steps_assert_list_returns_let_assert_panic_without_message() {
         let plan = plan();
         let mut frame = Frame::new(assert_list_layout());
-        frame.set_list(ListLocalId(0), ListValue::new(ValueType::Int, Vec::new()));
+        frame.set_list(ListLocalId(0), ListValue::empty(ValueType::Int));
 
         let actual = execute_steps(
             &plan,
@@ -707,7 +694,7 @@ mod tests {
                 None,
                 None,
                 PanicSite::unknown(),
-                Value::List(ListValue::new(ValueType::Int, Vec::new())),
+                Value::List(ListValue::empty(ValueType::Int)),
                 SourceSpan::new(0, 0),
             )),
         );
@@ -724,11 +711,11 @@ mod tests {
         let mut frame = Frame::new(layout);
         frame.set_list(
             ListLocalId(0),
-            ListValue::new(
-                ValueType::List(Box::new(ValueType::Int)),
+            ListValue::list(
+                ValueType::Int,
                 vec![
-                    Value::List(ListValue::new(ValueType::Int, vec![Value::Int(1.into())])),
-                    Value::List(ListValue::new(ValueType::Int, Vec::new())),
+                    ListValue::int(vec![1.into()]),
+                    ListValue::empty(ValueType::Int),
                 ],
             ),
         );
@@ -772,11 +759,11 @@ mod tests {
                 None,
                 None,
                 PanicSite::unknown(),
-                Value::List(ListValue::new(
-                    ValueType::List(Box::new(ValueType::Int)),
+                Value::List(ListValue::list(
+                    ValueType::Int,
                     vec![
-                        Value::List(ListValue::new(ValueType::Int, vec![Value::Int(1.into())])),
-                        Value::List(ListValue::new(ValueType::Int, Vec::new())),
+                        ListValue::int(vec![1.into()]),
+                        ListValue::empty(ValueType::Int),
                     ],
                 )),
                 SourceSpan::new(0, 0),
@@ -792,7 +779,7 @@ mod tests {
         let mut layout = FrameLayout::default();
         layout.include_list(ListLocalId(0));
         let mut frame = Frame::new(layout);
-        frame.set_list(ListLocalId(0), ListValue::new(ValueType::Int, Vec::new()));
+        frame.set_list(ListLocalId(0), ListValue::empty(ValueType::Int));
 
         execute_steps(
             &plan,
@@ -809,7 +796,7 @@ mod tests {
 
         assert_eq!(
             frame.get_list(ListLocalId(0)),
-            ListValue::new(ValueType::Int, Vec::new()),
+            ListValue::empty(ValueType::Int),
         );
     }
 
@@ -839,10 +826,7 @@ mod tests {
                     ))],
                     Some(ListAssertTail::Ignore),
                 )),
-                Value::List(ListValue::new(
-                    ValueType::Int,
-                    vec![Value::String("wrong".into())],
-                )),
+                Value::List(ListValue::string(vec!["wrong".into()])),
             ),
             (
                 AssertPattern::Tuple(vec![AssertPattern::Bind(string_binding.clone())]),
@@ -907,10 +891,7 @@ mod tests {
         );
         let tuple_value = vec![
             Value::Int(1.into()),
-            Value::List(ListValue::new(
-                ValueType::Int,
-                vec![Value::Int(2.into()), Value::Int(3.into())],
-            )),
+            Value::List(ListValue::int(vec![2.into(), 3.into()])),
         ];
         let value = Value::Tuple(tuple_value.clone());
         let mut bindings = Vec::new();
@@ -924,10 +905,7 @@ mod tests {
         assert_eq!(bindings[0], PendingBinding::Int(IntLocalId(0), 1.into()),);
         assert_eq!(
             bindings[1],
-            PendingBinding::List(
-                ListLocalId(0),
-                ListValue::new(ValueType::Int, vec![Value::Int(3.into())]),
-            ),
+            PendingBinding::List(ListLocalId(0), ListValue::int(vec![3.into()]),),
         );
         assert_eq!(
             bindings[2],
@@ -938,14 +916,7 @@ mod tests {
     #[test]
     fn match_list_assert_pattern_handles_tail_bind_and_ignore() {
         let first_binding = AssertBinding::new(ParamLocal::int(IntLocalId(0)), "first".into());
-        let value = ListValue::new(
-            ValueType::Int,
-            vec![
-                Value::Int(1.into()),
-                Value::Int(2.into()),
-                Value::Int(3.into()),
-            ],
-        );
+        let value = ListValue::int(vec![1.into(), 2.into(), 3.into()]);
         let bind_tail = ListAssertPattern::new(
             ValueType::Int,
             vec![AssertPattern::Bind(first_binding.clone())],
@@ -963,13 +934,7 @@ mod tests {
         assert_eq!(bound[0], PendingBinding::Int(IntLocalId(0), 1.into()));
         assert_eq!(
             bound[1],
-            PendingBinding::List(
-                ListLocalId(0),
-                ListValue::new(
-                    ValueType::Int,
-                    vec![Value::Int(2.into()), Value::Int(3.into())],
-                ),
-            ),
+            PendingBinding::List(ListLocalId(0), ListValue::int(vec![2.into(), 3.into()]),),
         );
 
         let ignored =
@@ -983,7 +948,7 @@ mod tests {
     fn frame_set_binding_writes_all_value_families() {
         let mut frame = Frame::new(all_family_layout());
         let tuple_value = vec![Value::Int(1.into())];
-        let list_value = ListValue::new(ValueType::Int, vec![Value::Int(2.into())]);
+        let list_value = ListValue::int(vec![2.into()]);
         let int_function = IntFunctionValue::new(IntFunctionId(0), Vec::new());
         let string_function = StringFunctionValue::new(StringFunctionId(0), Vec::new());
         let float_function = FloatFunctionValue::new(FloatFunctionId(0), Vec::new());

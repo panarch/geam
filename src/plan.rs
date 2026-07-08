@@ -14,8 +14,8 @@ use std::fmt;
 pub(crate) use expression::{
     BoolCaseBranches, BoolExprKind, BoolFunctionExprKind, CallArgKind, CaptureArg, CaptureArgKind,
     ExprKind, FloatCaseBranches, FloatExprKind, FloatFunctionExprKind, FunctionExprKind,
-    FunctionFunctionExprKind, IntCaseBranches, IntExprKind, IntFunctionExprKind, ListExprKind,
-    ListFunctionExprKind, NilExprKind, NilFunctionExprKind, PanicExpr, PanicExprKind,
+    FunctionFunctionExprKind, IntCaseBranches, IntExprKind, IntFunctionExprKind, ListElements,
+    ListExprKind, ListFunctionExprKind, NilExprKind, NilFunctionExprKind, PanicExpr, PanicExprKind,
     StringCaseBranches, StringExprKind, StringFunctionExprKind, TupleExprKind,
     TupleFunctionExprKind,
 };

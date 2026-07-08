@@ -299,7 +299,7 @@ mod tests {
         assert_eq!(frame.get_tuple(TupleLocalId(0)), vec![Value::Int(1.into())]);
         assert_eq!(
             frame.get_list(ListLocalId(0)),
-            ListValue::new(ValueType::Int, vec![Value::Int(1.into())]),
+            ListValue::int(vec![1.into()]),
         );
         assert_eq!(
             frame.get_int_function(IntFunctionLocalId(0)).runtime_id(),
@@ -450,10 +450,7 @@ mod tests {
                 CaptureValue::bool(BoolLocalId(0), true),
                 CaptureValue::nil(NilLocalId(0)),
                 CaptureValue::tuple(TupleLocalId(0), vec![Value::Int(1.into())]),
-                CaptureValue::list(
-                    ListLocalId(0),
-                    ListValue::new(ValueType::Int, vec![Value::Int(1.into())]),
-                ),
+                CaptureValue::list(ListLocalId(0), ListValue::int(vec![1.into()]),),
                 CaptureValue::int_function(IntFunctionLocalId(0), int_function_value()),
                 CaptureValue::string_function(StringFunctionLocalId(0), string_function_value()),
                 CaptureValue::float_function(FloatFunctionLocalId(0), float_function_value()),
@@ -484,10 +481,7 @@ mod tests {
                 CaptureValue::bool(BoolLocalId(0), true),
                 CaptureValue::nil(NilLocalId(0)),
                 CaptureValue::tuple(TupleLocalId(0), vec![Value::Int(1.into())]),
-                CaptureValue::list(
-                    ListLocalId(0),
-                    ListValue::new(ValueType::Int, vec![Value::Int(1.into())]),
-                ),
+                CaptureValue::list(ListLocalId(0), ListValue::int(vec![1.into()])),
                 CaptureValue::int_function(IntFunctionLocalId(0), int_function_value()),
                 CaptureValue::string_function(StringFunctionLocalId(0), string_function_value()),
                 CaptureValue::float_function(FloatFunctionLocalId(0), float_function_value()),
@@ -511,7 +505,7 @@ mod tests {
         assert_eq!(frame.get_tuple(TupleLocalId(0)), vec![Value::Int(1.into())]);
         assert_eq!(
             frame.get_list(ListLocalId(0)),
-            ListValue::new(ValueType::Int, vec![Value::Int(1.into())]),
+            ListValue::int(vec![1.into()]),
         );
         assert_eq!(
             frame.get_int_function(IntFunctionLocalId(0)).runtime_id(),

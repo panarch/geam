@@ -183,10 +183,6 @@ impl ListAssertPattern {
         }
     }
 
-    pub(crate) fn element_type(&self) -> &ValueType {
-        &self.element_type
-    }
-
     pub(crate) fn elements(&self) -> &[AssertPattern] {
         &self.elements
     }

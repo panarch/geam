@@ -3,7 +3,7 @@ use crate::plan::{
     FloatLocalId, FrameLayout, FunctionFunctionLocalId, FunctionFunctionValue, IntFunctionLocalId,
     IntFunctionValue, IntLocalId, ListFunctionLocalId, ListFunctionValue, ListLocalId, ListValue,
     NilFunctionLocalId, NilFunctionValue, NilLocalId, StringFunctionLocalId, StringFunctionValue,
-    StringLocalId, TupleFunctionLocalId, TupleFunctionValue, TupleLocalId, Value, ValueType,
+    StringLocalId, TupleFunctionLocalId, TupleFunctionValue, TupleLocalId, Value,
 };
 use ecow::EcoString;
 use num_bigint::BigInt;
@@ -34,7 +34,7 @@ impl Frame {
             strings: vec![EcoString::default(); layout.strings()],
             bools: vec![false; layout.bools()],
             tuples: vec![Vec::new(); layout.tuples()],
-            lists: vec![ListValue::new(ValueType::Nil, Vec::new()); layout.lists()],
+            lists: vec![ListValue::empty(crate::plan::ValueType::Nil); layout.lists()],
             int_functions: HashMap::with_capacity(layout.int_functions()),
             float_functions: HashMap::with_capacity(layout.float_functions()),
             string_functions: HashMap::with_capacity(layout.string_functions()),

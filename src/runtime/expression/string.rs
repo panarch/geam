@@ -1,5 +1,5 @@
 use super::{
-    eval_bool_expr, eval_float_expr, eval_int_expr, eval_panic_expr, project_list_expr,
+    eval_bool_expr, eval_float_expr, eval_int_expr, eval_panic_expr, project_string_list_expr,
     project_tuple_expr,
 };
 use crate::plan::{ExecutionPlan, StringExpr, StringExprKind, Value, ValueType};
@@ -32,13 +32,7 @@ pub(in crate::runtime) fn eval_string_expr(
             }
         }
         StringExprKind::ListIndex { list, index } => {
-            match project_list_expr(plan, frame, list, *index, ValueType::String)? {
-                Value::String(value) => Ok(value),
-                other => Err(ExecutionError::list_index_family_mismatch(
-                    ValueType::String,
-                    other.value_type(),
-                )),
-            }
+            project_string_list_expr(plan, frame, list, *index)
         }
         StringExprKind::Panic(panic) => eval_panic_expr(plan, frame, panic),
         StringExprKind::Concatenate { left, right } => Ok(format!(
@@ -150,7 +144,7 @@ mod tests {
     }
 
     #[test]
-    fn list_index_family_mismatch_returns_error() {
+    fn list_projection_invariant_errors() {
         let plan = crate::runtime::plan_src(r#"pub fn main() { "one" }"#);
         let mut frame = Frame::default();
         let list = ListExpr::value(
@@ -169,9 +163,10 @@ mod tests {
         );
         assert_eq!(
             eval_string_expr(&plan, &mut frame, &StringExpr::list_index(list, 1)),
-            Err(ExecutionError::list_index_family_mismatch(
+            Err(ExecutionError::list_index_out_of_bounds(
                 ValueType::String,
-                ValueType::List(Box::new(ValueType::String)),
+                1,
+                1,
             )),
         );
 
@@ -179,7 +174,7 @@ mod tests {
 
         assert_eq!(
             eval_string_expr(&plan, &mut frame, &StringExpr::list_index(list, 0)),
-            Err(ExecutionError::list_index_family_mismatch(
+            Err(ExecutionError::list_item_type_mismatch(
                 ValueType::String,
                 ValueType::Int,
             )),

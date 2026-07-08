@@ -44,7 +44,8 @@ impl Diagnostic for ExecutionError {
                 Some(Box::new("geam::function_return_family_mismatch"))
             }
             Self::TupleIndexFamilyMismatch { .. } => Some(Box::new("geam::tuple_index_mismatch")),
-            Self::ListIndexFamilyMismatch { .. } => Some(Box::new("geam::list_index_mismatch")),
+            Self::ListIndexOutOfBounds { .. } => Some(Box::new("geam::list_index_out_of_bounds")),
+            Self::ListItemTypeMismatch { .. } => Some(Box::new("geam::list_item_type_mismatch")),
         }
     }
 
@@ -53,7 +54,8 @@ impl Diagnostic for ExecutionError {
             Self::Panic(panic) => panic.help(),
             Self::FunctionReturnFamilyMismatch { .. }
             | Self::TupleIndexFamilyMismatch { .. }
-            | Self::ListIndexFamilyMismatch { .. } => None,
+            | Self::ListIndexOutOfBounds { .. }
+            | Self::ListItemTypeMismatch { .. } => None,
         }
     }
 
@@ -62,7 +64,8 @@ impl Diagnostic for ExecutionError {
             Self::Panic(panic) => panic.source_code(),
             Self::FunctionReturnFamilyMismatch { .. }
             | Self::TupleIndexFamilyMismatch { .. }
-            | Self::ListIndexFamilyMismatch { .. } => None,
+            | Self::ListIndexOutOfBounds { .. }
+            | Self::ListItemTypeMismatch { .. } => None,
         }
     }
 
@@ -71,7 +74,8 @@ impl Diagnostic for ExecutionError {
             Self::Panic(panic) => panic.labels(),
             Self::FunctionReturnFamilyMismatch { .. }
             | Self::TupleIndexFamilyMismatch { .. }
-            | Self::ListIndexFamilyMismatch { .. } => None,
+            | Self::ListIndexOutOfBounds { .. }
+            | Self::ListItemTypeMismatch { .. } => None,
         }
     }
 }
@@ -93,9 +97,9 @@ fn render_value(value: &Value) -> String {
         ),
         Value::List(value) => format!(
             "List({})([{}])",
-            render_value_type(value.element_type()),
+            render_value_type(&value.item_type()),
             value
-                .values()
+                .to_values()
                 .iter()
                 .map(render_value)
                 .collect::<Vec<_>>()
@@ -175,7 +179,7 @@ mod tests {
             PanicSite::new("main".into(), "main".into(), SourceSpan::new(18, 43)),
             Some(&source),
             Some(PanicDetails::LetAssert {
-                value: Value::List(crate::plan::ListValue::new(ValueType::Int, Vec::new())),
+                value: Value::List(crate::plan::ListValue::empty(ValueType::Int)),
                 pattern_span: SourceSpan::new(29, 36),
             }),
         );
@@ -238,8 +242,12 @@ mod tests {
                 "geam::tuple_index_mismatch",
             ),
             (
-                ExecutionError::list_index_family_mismatch(ValueType::Int, ValueType::String),
-                "geam::list_index_mismatch",
+                ExecutionError::list_index_out_of_bounds(ValueType::Int, 1, 1),
+                "geam::list_index_out_of_bounds",
+            ),
+            (
+                ExecutionError::list_item_type_mismatch(ValueType::Int, ValueType::String),
+                "geam::list_item_type_mismatch",
             ),
         ] {
             assert_eq!(
@@ -270,10 +278,7 @@ mod tests {
                 "Tuple([Int(1), String(\"one\")])",
             ),
             (
-                Value::List(ListValue::new(
-                    ValueType::Int,
-                    vec![Value::Int(1.into()), Value::Int(2.into())],
-                )),
+                Value::List(ListValue::int(vec![1.into(), 2.into()])),
                 "List(Int)([Int(1), Int(2)])",
             ),
             (function, "Function(fn(Int) -> Int)"),

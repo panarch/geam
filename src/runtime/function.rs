@@ -1048,7 +1048,7 @@ pub fn main() {
         );
         assert_eq!(
             run_list_call(&plan, ListFunctionId(0), &[], &mut Frame::default()),
-            Ok(ListValue::new(ValueType::Int, vec![Value::Int(1.into())])),
+            Ok(ListValue::int(vec![1.into()])),
         );
     }
 

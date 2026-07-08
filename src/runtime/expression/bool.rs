@@ -1,6 +1,6 @@
 use super::{
     eval_expr, eval_float_expr, eval_int_expr, eval_list_expr, eval_panic_expr, eval_string_expr,
-    project_list_expr, project_tuple_expr,
+    project_bool_list_expr, project_tuple_expr,
 };
 use crate::plan::{BoolExpr, BoolExprKind, ExecutionPlan, Value, ValueType};
 use crate::runtime::ExecutionError;
@@ -31,13 +31,7 @@ pub(in crate::runtime) fn eval_bool_expr(
             }
         }
         BoolExprKind::ListIndex { list, index } => {
-            match project_list_expr(plan, frame, list, *index, ValueType::Bool)? {
-                Value::Bool(value) => Ok(value),
-                other => Err(ExecutionError::list_index_family_mismatch(
-                    ValueType::Bool,
-                    other.value_type(),
-                )),
-            }
+            project_bool_list_expr(plan, frame, list, *index)
         }
         BoolExprKind::Panic(panic) => eval_panic_expr(plan, frame, panic),
         BoolExprKind::Not(value) => Ok(!eval_bool_expr(plan, frame, value)?),
@@ -75,10 +69,10 @@ pub(in crate::runtime) fn eval_bool_expr(
             Ok(eval_string_expr(plan, frame, value)?.starts_with(prefix.as_str()))
         }
         BoolExprKind::ListLengthEquals { value, length } => {
-            Ok(eval_list_expr(plan, frame, value)?.values().len() == *length)
+            Ok(eval_list_expr(plan, frame, value)?.len() == *length)
         }
         BoolExprKind::ListLengthAtLeast { value, length } => {
-            Ok(eval_list_expr(plan, frame, value)?.values().len() >= *length)
+            Ok(eval_list_expr(plan, frame, value)?.len() >= *length)
         }
         BoolExprKind::And { left, right } => {
             let left = eval_bool_expr(plan, frame, left)?;
@@ -206,7 +200,7 @@ mod tests {
     }
 
     #[test]
-    fn list_index_family_mismatch_returns_error() {
+    fn list_projection_invariant_errors() {
         let plan = crate::runtime::plan_src("pub fn main() { True }");
         let mut frame = Frame::default();
         let list = ListExpr::value(
@@ -216,7 +210,7 @@ mod tests {
 
         assert_eq!(
             eval_bool_expr(&plan, &mut frame, &BoolExpr::list_index(list, 0)),
-            Err(ExecutionError::list_index_family_mismatch(
+            Err(ExecutionError::list_item_type_mismatch(
                 ValueType::Bool,
                 ValueType::String,
             )),
@@ -231,9 +225,10 @@ mod tests {
         let list = ListExpr::value(vec![Expr::bool(BoolExpr::value(true))], ValueType::Bool);
         assert_eq!(
             eval_bool_expr(&plan, &mut frame, &BoolExpr::list_index(list, 1)),
-            Err(ExecutionError::list_index_family_mismatch(
+            Err(ExecutionError::list_index_out_of_bounds(
                 ValueType::Bool,
-                ValueType::List(Box::new(ValueType::Bool)),
+                1,
+                1,
             )),
         );
     }

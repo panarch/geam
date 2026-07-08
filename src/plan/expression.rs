@@ -39,7 +39,7 @@ pub(crate) use self::{
         TupleFunctionExprKind,
     },
     int::IntExprKind,
-    list::ListExprKind,
+    list::{ListElements, ListExprKind},
     nil::NilExprKind,
     panic::{PanicExpr, PanicExprKind},
     string::StringExprKind,
@@ -412,8 +412,8 @@ impl From<Value> for Expr {
                 value.iter().map(Value::value_type).collect(),
             )),
             Value::List(value) => Self::list(ListExpr::value(
-                value.values().iter().cloned().map(Self::from).collect(),
-                value.element_type().clone(),
+                value.to_values().into_iter().map(Self::from).collect(),
+                value.item_type(),
             )),
             Value::Function(value) => Self::function(FunctionExpr::value(value)),
         }
@@ -469,10 +469,7 @@ mod tests {
                 vec![Expr::int(IntExpr::value(BigInt::from(1)))],
                 ValueType::Int,
             )),
-            Expr::from(Value::List(ListValue::new(
-                ValueType::Int,
-                vec![Value::Int(BigInt::from(1))],
-            ))),
+            Expr::from(Value::List(ListValue::int(vec![BigInt::from(1)]))),
         );
         assert_eq!(
             Expr::function(FunctionExpr::value(function_value())),
@@ -1088,11 +1085,7 @@ mod tests {
             ValueType::Tuple(vec![ValueType::Int]),
         );
         assert_eq!(
-            Expr::from(Value::List(ListValue::new(
-                ValueType::Int,
-                vec![Value::Int(BigInt::from(1))],
-            )))
-            .value_type(),
+            Expr::from(Value::List(ListValue::int(vec![BigInt::from(1)]))).value_type(),
             ValueType::List(Box::new(ValueType::Int)),
         );
         assert_eq!(
@@ -1129,11 +1122,7 @@ mod tests {
             )),
         );
         assert_eq!(
-            Expr::from(Value::List(ListValue::new(
-                ValueType::Int,
-                vec![Value::Int(BigInt::from(1))],
-            )))
-            .into_list(),
+            Expr::from(Value::List(ListValue::int(vec![BigInt::from(1)]))).into_list(),
             Some(ListExpr::value(
                 vec![Expr::int(IntExpr::value(BigInt::from(1)))],
                 ValueType::Int,

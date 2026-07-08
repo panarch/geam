@@ -47,10 +47,13 @@ Typed projection has two approved execution invariants:
 - `ExecutionError::tuple_index_family_mismatch` is only for typed tuple-index
   plan evaluation when the runtime tuple value lacks the planner-selected
   element or that element has a different value family.
-- `ExecutionError::list_index_family_mismatch` is only for typed list-index plan
-  evaluation when the runtime list value lacks the planner-selected element or
-  that element has a different value family. Source-reachable list matching must
-  guard list-index projections with the planner-selected length condition.
+- `ExecutionError::list_index_out_of_bounds` is only for typed list-index plan
+  evaluation when the runtime list value lacks the planner-selected element.
+  Source-reachable list matching must guard list-index projections with the
+  planner-selected length condition.
+- `ExecutionError::list_item_type_mismatch` is only for typed list-value plan
+  evaluation when a direct-mutated plan produces a list with a different
+  planner-selected item type.
 
 Tuple/list index validation, profile boundaries, and typed-AST margins remain
 planner responsibilities.

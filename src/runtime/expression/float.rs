@@ -1,5 +1,5 @@
 use super::{
-    eval_bool_expr, eval_int_expr, eval_panic_expr, eval_string_expr, project_list_expr,
+    eval_bool_expr, eval_int_expr, eval_panic_expr, eval_string_expr, project_float_list_expr,
     project_tuple_expr,
 };
 use crate::plan::{ExecutionPlan, FloatExpr, FloatExprKind, Value, ValueType};
@@ -31,13 +31,7 @@ pub(in crate::runtime) fn eval_float_expr(
             }
         }
         FloatExprKind::ListIndex { list, index } => {
-            match project_list_expr(plan, frame, list, *index, ValueType::Float)? {
-                Value::Float(value) => Ok(value),
-                other => Err(ExecutionError::list_index_family_mismatch(
-                    ValueType::Float,
-                    other.value_type(),
-                )),
-            }
+            project_float_list_expr(plan, frame, list, *index)
         }
         FloatExprKind::Panic(panic) => eval_panic_expr(plan, frame, panic),
         FloatExprKind::Add { left, right } => {
@@ -158,7 +152,7 @@ mod tests {
     }
 
     #[test]
-    fn list_index_family_mismatch_returns_error() {
+    fn list_projection_invariant_errors() {
         let plan = crate::runtime::plan_src("pub fn main() { 1.0 }");
         let mut frame = Frame::default();
         let list = ListExpr::value(vec![Expr::float(FloatExpr::value(1.5))], ValueType::Float);
@@ -171,9 +165,10 @@ mod tests {
         let list = ListExpr::value(vec![Expr::float(FloatExpr::value(1.5))], ValueType::Float);
         assert_eq!(
             eval_float_expr(&plan, &mut frame, &FloatExpr::list_index(list, 1)),
-            Err(ExecutionError::list_index_family_mismatch(
+            Err(ExecutionError::list_index_out_of_bounds(
                 ValueType::Float,
-                ValueType::List(Box::new(ValueType::Float)),
+                1,
+                1,
             )),
         );
 
@@ -184,7 +179,7 @@ mod tests {
 
         assert_eq!(
             eval_float_expr(&plan, &mut frame, &FloatExpr::list_index(list, 0)),
-            Err(ExecutionError::list_index_family_mismatch(
+            Err(ExecutionError::list_item_type_mismatch(
                 ValueType::Float,
                 ValueType::String,
             )),

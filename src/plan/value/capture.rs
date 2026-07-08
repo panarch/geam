@@ -233,7 +233,7 @@ mod tests {
 
     #[test]
     fn capture_value_preserves_list_shapes() {
-        let list_value = ListValue::new(ValueType::Int, vec![Value::Int(1.into())]);
+        let list_value = ListValue::int(vec![1.into()]);
         let list = CaptureValue::list(ListLocalId(0), list_value.clone());
         assert_eq!(
             list.kind(),

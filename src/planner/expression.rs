@@ -396,21 +396,11 @@ fn plan_list(
         })
         .collect::<Result<Vec<_>, _>>()?;
 
-    for element in &planned_elements {
-        let actual = element.value_type();
-        if actual != expected_element_type {
-            return Err(invalid_expression_type_for_value(
-                expected_element_type.clone(),
-                actual,
-            ));
-        }
-    }
-
     let Some(tail) = tail else {
-        return Ok(Expr::list(ListExpr::value(
-            planned_elements,
-            expected_element_type,
-        )));
+        return Ok(Expr::list(
+            ListExpr::try_value(planned_elements, expected_element_type)
+                .map_err(|error| invalid_expression_type_for_value(error.expected, error.actual))?,
+        ));
     };
 
     let tail = plan_expr_with_expected_source_stop_type(
@@ -433,11 +423,10 @@ fn plan_list(
         ));
     }
 
-    Ok(Expr::list(ListExpr::spread(
-        planned_elements,
-        tail,
-        expected_element_type,
-    )))
+    let elements =
+        crate::plan::ListElements::from_exprs(expected_element_type, planned_elements)
+            .map_err(|error| invalid_expression_type_for_value(error.expected, error.actual))?;
+    Ok(Expr::list(ListExpr::from_spread_elements(elements, tail)))
 }
 
 fn plan_tuple_index(
@@ -2064,6 +2053,25 @@ pub fn main() {
                     type_: type_::list(type_::string()),
                     elements: vec![typed_int_expr(1)],
                     tail: None,
+                },
+                PlanError::InvalidTypedAst {
+                    reason: InvalidTypedAstReason::ExpressionType {
+                        expected: InvalidExpressionType::String,
+                        actual: InvalidExpressionType::Int,
+                    },
+                },
+            ),
+            (
+                TypedExpr::List {
+                    location: dummy_span(),
+                    type_: type_::list(type_::string()),
+                    elements: vec![typed_int_expr(1)],
+                    tail: Some(Box::new(TypedExpr::List {
+                        location: dummy_span(),
+                        type_: type_::list(type_::string()),
+                        elements: vec![typed_string_expr("tail")],
+                        tail: None,
+                    })),
                 },
                 PlanError::InvalidTypedAst {
                     reason: InvalidTypedAstReason::ExpressionType {

@@ -1,5 +1,6 @@
 mod capture;
 mod function;
+mod list;
 
 use ecow::EcoString;
 use num_bigint::BigInt;
@@ -12,6 +13,7 @@ pub(crate) use self::function::{
     BoolFunctionValue, FloatFunctionValue, FunctionFunctionValue, FunctionValueKind,
     IntFunctionValue, ListFunctionValue, NilFunctionValue, StringFunctionValue, TupleFunctionValue,
 };
+pub use self::list::ListValue;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ValueType {
@@ -29,13 +31,6 @@ pub enum ValueType {
 pub struct FunctionType {
     arguments: Vec<ValueType>,
     return_: Box<ValueType>,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct ListValue {
-    // This is the planned item type, kept even when the list is empty.
-    element_type: Box<ValueType>,
-    values: Vec<Value>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -59,26 +54,9 @@ impl Value {
             Self::Bool(_) => ValueType::Bool,
             Self::Nil => ValueType::Nil,
             Self::Tuple(values) => ValueType::Tuple(values.iter().map(Self::value_type).collect()),
-            Self::List(value) => ValueType::List(Box::new(value.element_type().clone())),
+            Self::List(value) => ValueType::List(Box::new(value.item_type())),
             Self::Function(value) => ValueType::Function(Box::new(value.type_())),
         }
-    }
-}
-
-impl ListValue {
-    pub fn new(element_type: ValueType, values: Vec<Value>) -> Self {
-        Self {
-            element_type: Box::new(element_type),
-            values,
-        }
-    }
-
-    pub fn element_type(&self) -> &ValueType {
-        &self.element_type
-    }
-
-    pub fn values(&self) -> &[Value] {
-        &self.values
     }
 }
 
@@ -118,7 +96,7 @@ mod tests {
             ValueType::Tuple(vec![ValueType::Int, ValueType::String]),
         );
         assert_eq!(
-            Value::List(ListValue::new(ValueType::Int, vec![Value::Int(1.into())])).value_type(),
+            Value::List(ListValue::int(vec![1.into()])).value_type(),
             ValueType::List(Box::new(ValueType::Int)),
         );
     }

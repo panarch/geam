@@ -816,7 +816,7 @@ mod tests {
         );
         assert_eq!(
             run_list_loop(&plan, ListFunctionId(0), Frame::default()),
-            Ok(ListValue::new(ValueType::Int, vec![Value::Int(2.into())])),
+            Ok(ListValue::int(vec![2.into()])),
         );
     }
 

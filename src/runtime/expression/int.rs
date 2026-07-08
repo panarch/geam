@@ -1,5 +1,5 @@
 use super::{
-    eval_bool_expr, eval_float_expr, eval_panic_expr, eval_string_expr, project_list_expr,
+    eval_bool_expr, eval_float_expr, eval_panic_expr, eval_string_expr, project_int_list_expr,
     project_tuple_expr,
 };
 use crate::plan::{ExecutionPlan, IntExpr, IntExprKind, Value, ValueType};
@@ -31,15 +31,7 @@ pub(in crate::runtime) fn eval_int_expr(
                 )),
             }
         }
-        IntExprKind::ListIndex { list, index } => {
-            match project_list_expr(plan, frame, list, *index, ValueType::Int)? {
-                Value::Int(value) => Ok(value),
-                other => Err(ExecutionError::list_index_family_mismatch(
-                    ValueType::Int,
-                    other.value_type(),
-                )),
-            }
-        }
+        IntExprKind::ListIndex { list, index } => project_int_list_expr(plan, frame, list, *index),
         IntExprKind::Panic(panic) => eval_panic_expr(plan, frame, panic),
         IntExprKind::Add { left, right } => {
             Ok(eval_int_expr(plan, frame, left)? + eval_int_expr(plan, frame, right)?)
@@ -174,7 +166,7 @@ mod tests {
     }
 
     #[test]
-    fn list_index_family_mismatch_returns_error() {
+    fn list_projection_invariant_errors() {
         let plan = crate::runtime::plan_src("pub fn main() { 1 }");
         let mut frame = Frame::default();
         let list = ListExpr::value(vec![Expr::int(IntExpr::value(1.into()))], ValueType::Int);
@@ -187,9 +179,10 @@ mod tests {
         let list = ListExpr::value(vec![Expr::int(IntExpr::value(1.into()))], ValueType::Int);
         assert_eq!(
             eval_int_expr(&plan, &mut frame, &IntExpr::list_index(list, 1)),
-            Err(ExecutionError::list_index_family_mismatch(
+            Err(ExecutionError::list_index_out_of_bounds(
                 ValueType::Int,
-                ValueType::List(Box::new(ValueType::Int)),
+                1,
+                1,
             )),
         );
 
@@ -200,7 +193,7 @@ mod tests {
 
         assert_eq!(
             eval_int_expr(&plan, &mut frame, &IntExpr::list_index(list, 0)),
-            Err(ExecutionError::list_index_family_mismatch(
+            Err(ExecutionError::list_item_type_mismatch(
                 ValueType::Int,
                 ValueType::String,
             )),

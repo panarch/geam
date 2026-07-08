@@ -22,8 +22,14 @@ pub enum ExecutionError {
         expected: ValueType,
         actual: ValueType,
     },
-    #[error("list index family mismatch (expected {expected:?}, got {actual:?})")]
-    ListIndexFamilyMismatch {
+    #[error("list index out of bounds for {item_type:?} list (index {index}, length {length})")]
+    ListIndexOutOfBounds {
+        item_type: ValueType,
+        index: usize,
+        length: usize,
+    },
+    #[error("list item type mismatch (expected {expected:?}, got {actual:?})")]
+    ListItemTypeMismatch {
         expected: ValueType,
         actual: ValueType,
     },
@@ -75,8 +81,20 @@ impl ExecutionError {
         Self::TupleIndexFamilyMismatch { expected, actual }
     }
 
-    pub(crate) fn list_index_family_mismatch(expected: ValueType, actual: ValueType) -> Self {
-        Self::ListIndexFamilyMismatch { expected, actual }
+    pub(crate) fn list_index_out_of_bounds(
+        item_type: ValueType,
+        index: usize,
+        length: usize,
+    ) -> Self {
+        Self::ListIndexOutOfBounds {
+            item_type,
+            index,
+            length,
+        }
+    }
+
+    pub(crate) fn list_item_type_mismatch(expected: ValueType, actual: ValueType) -> Self {
+        Self::ListItemTypeMismatch { expected, actual }
     }
 }
 
@@ -112,12 +130,22 @@ mod tests {
     }
 
     #[test]
-    fn list_index_family_mismatch_display() {
-        let error = ExecutionError::list_index_family_mismatch(ValueType::Int, ValueType::String);
+    fn list_index_out_of_bounds_display() {
+        let error = ExecutionError::list_index_out_of_bounds(ValueType::Int, 1, 1);
 
         assert_eq!(
             error.to_string(),
-            "list index family mismatch (expected Int, got String)",
+            "list index out of bounds for Int list (index 1, length 1)",
+        );
+    }
+
+    #[test]
+    fn list_item_type_mismatch_display() {
+        let error = ExecutionError::list_item_type_mismatch(ValueType::Int, ValueType::String);
+
+        assert_eq!(
+            error.to_string(),
+            "list item type mismatch (expected Int, got String)",
         );
     }
 }

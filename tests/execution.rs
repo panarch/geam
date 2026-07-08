@@ -597,9 +597,9 @@ fn render_value(value: &Value) -> String {
         ),
         Value::List(value) => format!(
             "List({})([{}])",
-            render_value_type(value.element_type()),
+            render_value_type(&value.item_type()),
             value
-                .values()
+                .to_values()
                 .iter()
                 .map(render_value)
                 .collect::<Vec<_>>()

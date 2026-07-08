@@ -1,8 +1,8 @@
 use super::FrameLayout;
 use crate::plan::{
     BoolExpr, BoolExprKind, Expr, ExprKind, FloatExpr, FloatExprKind, IntExpr, IntExprKind,
-    ListExpr, ListExprKind, NilExpr, NilExprKind, PanicExpr, StringExpr, StringExprKind, TupleExpr,
-    TupleExprKind,
+    ListElements, ListExpr, ListExprKind, NilExpr, NilExprKind, PanicExpr, StringExpr,
+    StringExprKind, TupleExpr, TupleExprKind,
 };
 
 impl FrameLayout {
@@ -454,16 +454,10 @@ impl FrameLayout {
 
     pub(in crate::plan::frame) fn include_list_expr(&mut self, expression: &ListExpr) {
         match expression.kind() {
-            ListExprKind::Value(elements) => {
-                for element in elements {
-                    self.include_expr(element);
-                }
-            }
+            ListExprKind::Value(elements) => self.include_list_elements(elements),
             ListExprKind::Panic(panic) => self.include_panic_expr(panic),
             ListExprKind::Spread { elements, tail } => {
-                for element in elements {
-                    self.include_expr(element);
-                }
+                self.include_list_elements(elements);
                 self.include_list_expr(tail);
             }
             ListExprKind::LocalGet { local, .. } => self.include_list(*local),
@@ -521,6 +515,51 @@ impl FrameLayout {
             ListExprKind::Block { steps, return_ } => {
                 self.include_steps(steps);
                 self.include_list_expr(return_);
+            }
+        }
+    }
+
+    fn include_list_elements(&mut self, elements: &ListElements) {
+        match elements {
+            ListElements::Int(values) => {
+                for value in values {
+                    self.include_int_expr(value);
+                }
+            }
+            ListElements::String(values) => {
+                for value in values {
+                    self.include_string_expr(value);
+                }
+            }
+            ListElements::Float(values) => {
+                for value in values {
+                    self.include_float_expr(value);
+                }
+            }
+            ListElements::Bool(values) => {
+                for value in values {
+                    self.include_bool_expr(value);
+                }
+            }
+            ListElements::Nil(values) => {
+                for value in values {
+                    self.include_nil_expr(value);
+                }
+            }
+            ListElements::Tuple { values, .. } => {
+                for value in values {
+                    self.include_tuple_expr(value);
+                }
+            }
+            ListElements::List { values, .. } => {
+                for value in values {
+                    self.include_list_expr(value);
+                }
+            }
+            ListElements::Function { values, .. } => {
+                for value in values {
+                    self.include_function_expr(value);
+                }
             }
         }
     }

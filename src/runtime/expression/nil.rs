@@ -1,6 +1,6 @@
 use super::{
     eval_bool_expr, eval_float_expr, eval_int_expr, eval_panic_expr, eval_string_expr,
-    project_list_expr, project_tuple_expr,
+    project_nil_list_expr, project_tuple_expr,
 };
 use crate::plan::{ExecutionPlan, NilExpr, NilExprKind, Value, ValueType};
 use crate::runtime::ExecutionError;
@@ -33,15 +33,7 @@ pub(in crate::runtime) fn eval_nil_expr(
                 )),
             }
         }
-        NilExprKind::ListIndex { list, index } => {
-            match project_list_expr(plan, frame, list, *index, ValueType::Nil)? {
-                Value::Nil => Ok(()),
-                other => Err(ExecutionError::list_index_family_mismatch(
-                    ValueType::Nil,
-                    other.value_type(),
-                )),
-            }
-        }
+        NilExprKind::ListIndex { list, index } => project_nil_list_expr(plan, frame, list, *index),
         NilExprKind::Panic(panic) => eval_panic_expr(plan, frame, panic),
         NilExprKind::BoolCase {
             subject,
@@ -139,7 +131,7 @@ mod tests {
     }
 
     #[test]
-    fn list_index_family_mismatch_returns_error() {
+    fn list_projection_invariant_errors() {
         let plan = crate::runtime::plan_src("pub fn main() { Nil }");
         let mut frame = Frame::default();
         let list = ListExpr::value(vec![Expr::nil(NilExpr::value())], ValueType::Nil);
@@ -152,9 +144,10 @@ mod tests {
         let list = ListExpr::value(vec![Expr::nil(NilExpr::value())], ValueType::Nil);
         assert_eq!(
             eval_nil_expr(&plan, &mut frame, &NilExpr::list_index(list, 1)),
-            Err(ExecutionError::list_index_family_mismatch(
+            Err(ExecutionError::list_index_out_of_bounds(
                 ValueType::Nil,
-                ValueType::List(Box::new(ValueType::Nil)),
+                1,
+                1,
             )),
         );
 
@@ -162,7 +155,7 @@ mod tests {
 
         assert_eq!(
             eval_nil_expr(&plan, &mut frame, &NilExpr::list_index(list, 0)),
-            Err(ExecutionError::list_index_family_mismatch(
+            Err(ExecutionError::list_item_type_mismatch(
                 ValueType::Nil,
                 ValueType::Int,
             )),

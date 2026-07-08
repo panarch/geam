@@ -143,21 +143,11 @@ fn plan_list(
         }
     };
 
-    for element in &planned_elements {
-        let actual = element.value_type();
-        if actual != expected_element_type {
-            return Err(invalid_expression_type_for_value(
-                expected_element_type.clone(),
-                actual,
-            ));
-        }
-    }
-
     let Some(tail) = tail else {
-        return Ok(Expr::list(ListExpr::value(
-            planned_elements,
-            expected_element_type,
-        )));
+        return Ok(Expr::list(
+            ListExpr::try_value(planned_elements, expected_element_type)
+                .map_err(|error| invalid_expression_type_for_value(error.expected, error.actual))?,
+        ));
     };
     let tail = plan(tail, context)?;
     let actual = tail.value_type();
@@ -174,11 +164,10 @@ fn plan_list(
         ));
     }
 
-    Ok(Expr::list(ListExpr::spread(
-        planned_elements,
-        tail,
-        expected_element_type,
-    )))
+    let elements =
+        crate::plan::ListElements::from_exprs(expected_element_type, planned_elements)
+            .map_err(|error| invalid_expression_type_for_value(error.expected, error.actual))?;
+    Ok(Expr::list(ListExpr::from_spread_elements(elements, tail)))
 }
 
 fn plan_var(
@@ -672,6 +661,32 @@ pub fn main() {
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::ExpressionType {
                     expected: InvalidExpressionType::Function,
+                    actual: InvalidExpressionType::Int,
+                },
+            }),
+        );
+        assert_eq!(
+            plan_constant_literal(Constant::List {
+                location: dummy_span(),
+                elements: vec![Constant::Int {
+                    location: dummy_span(),
+                    value: "1".into(),
+                    int_value: 1.into(),
+                }],
+                type_: type_::list(type_::string()),
+                tail: Some(Box::new(Constant::List {
+                    location: dummy_span(),
+                    elements: vec![Constant::String {
+                        location: dummy_span(),
+                        value: "tail".into(),
+                    }],
+                    type_: type_::list(type_::string()),
+                    tail: None,
+                })),
+            }),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionType {
+                    expected: InvalidExpressionType::String,
                     actual: InvalidExpressionType::Int,
                 },
             }),

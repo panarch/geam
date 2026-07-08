@@ -248,7 +248,7 @@ mod tests {
     fn panic_accessors_preserve_kind_message_site_and_details() {
         let site = PanicSite::new("main".into(), "main".into(), SourceSpan::new(12, 18));
         let details = PanicDetails::LetAssert {
-            value: Value::List(crate::plan::ListValue::new(ValueType::Int, Vec::new())),
+            value: Value::List(crate::plan::ListValue::empty(ValueType::Int)),
             pattern_span: SourceSpan::new(23, 32),
         };
         let panic = Panic::new(
