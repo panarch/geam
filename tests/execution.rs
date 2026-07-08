@@ -181,6 +181,11 @@ mod control_flow {
             alternative_subject_families,
             alternative_closure_capture,
             tuple_alternative_patterns,
+            multiple_subjects,
+            multiple_subject_variables,
+            multiple_subject_alternative_guard,
+            multiple_subject_mixed_patterns,
+            multiple_subject_closure_capture,
         );
     }
 }
@@ -446,8 +451,9 @@ mod rejection {
 
     mod case_patterns {
         rejection_cases!("case_patterns";
-            multiple_subjects,
             tuple_inner_list_pattern,
+            multiple_subject_list_pattern,
+            multiple_subject_unsupported_subject_type,
             list_pattern,
             list_pattern_alias,
             unsupported_subject_type,

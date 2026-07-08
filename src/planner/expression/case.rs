@@ -19,24 +19,22 @@ pub(super) fn plan_case(
     clauses: Vec<TypedClause>,
     context: &mut PlanContext<'_>,
 ) -> Result<Expr, PlanError> {
-    let subject = single_case_subject(subjects)?;
     if clauses.is_empty() {
         return Err(invalid_case_shape(InvalidCaseShapeReason::EmptyClauses));
     }
 
-    subject::plan(type_, subject, clauses, context)
-}
-
-fn single_case_subject(subjects: Vec<TypedExpr>) -> Result<TypedExpr, PlanError> {
     let mut subjects = subjects.into_iter();
     let subject = subjects
         .next()
         .ok_or(invalid_case_shape(InvalidCaseShapeReason::EmptySubjects))?;
-    if subjects.next().is_some() {
-        return Err(unsupported_case(UnsupportedCaseReason::MultipleSubjects));
+    if subjects.len() == 0 {
+        return subject::plan(type_, subject, clauses, context);
     }
 
-    Ok(subject)
+    let mut all_subjects = Vec::with_capacity(1 + subjects.len());
+    all_subjects.push(subject);
+    all_subjects.extend(subjects);
+    subject::plan_multi(type_, all_subjects, clauses, context)
 }
 
 pub(super) fn unsupported_case(reason: UnsupportedCaseReason) -> PlanError {
@@ -123,31 +121,13 @@ mod tests {
     };
 
     #[test]
-    fn reject_profile_case_expressions() {
-        let cases = [
-            (
-                r#"
-pub fn main() {
-  case True, False {
-    True, False -> 1
-    _, _ -> 0
-  }
-}
-"#,
-                UnsupportedCaseReason::MultipleSubjects,
-            ),
-            (
-                r#"pub fn main() { case <<1>> { _ -> 1 } }"#,
-                UnsupportedCaseReason::UnsupportedSubjectType,
-            ),
-        ];
-
-        for (src, reason) in cases {
-            assert_eq!(
-                expect_plan_error(src),
-                PlanError::UnsupportedCase { reason },
-            );
-        }
+    fn reject_profile_unsupported_case_subject_type() {
+        assert_eq!(
+            expect_plan_error(r#"pub fn main() { case <<1>> { _ -> 1 } }"#),
+            PlanError::UnsupportedCase {
+                reason: UnsupportedCaseReason::UnsupportedSubjectType,
+            },
+        );
     }
 
     #[test]
