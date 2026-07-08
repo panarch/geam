@@ -1,6 +1,7 @@
 pub fn main() {
   let pair = #(1, 2)
   case pair {
-    #(left, right) -> left + right
+    #(1, value) | #(2, value) -> value
+    _ -> 0
   }
 }

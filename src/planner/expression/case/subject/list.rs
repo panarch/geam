@@ -1,9 +1,9 @@
 use super::super::super::plan_expr_with_expected_source_stop_type;
-use super::super::invalid_case_shape;
+use super::super::{invalid_case_shape, unsupported_case};
 use super::{case_return_type, single_case_pattern, validate_clause_shape};
 use crate::plan::{BoolExpr, Expr, ExprKind, ListExpr, ListLocalId, Step, ValueType};
 use crate::planner::context::PlanContext;
-use crate::planner::error::{InvalidCaseShapeReason, PlanError};
+use crate::planner::error::{InvalidCaseShapeReason, PlanError, UnsupportedCaseReason};
 use ecow::EcoString;
 use gleam_core::ast::{Pattern, TypedClause, TypedExpr};
 use gleam_core::type_::Type;
@@ -96,11 +96,11 @@ fn plan_list_case_pattern(
             Ok(pattern)
         }
         Pattern::Invalid { .. } => Err(invalid_case_shape(InvalidCaseShapeReason::InvalidPattern)),
+        Pattern::List { .. } => Err(unsupported_case(UnsupportedCaseReason::ListPattern)),
         Pattern::Int { .. }
         | Pattern::Float { .. }
         | Pattern::String { .. }
         | Pattern::BitArraySize(_)
-        | Pattern::List { .. }
         | Pattern::Constructor { .. }
         | Pattern::Tuple { .. }
         | Pattern::BitArray { .. }
@@ -274,10 +274,8 @@ pub fn main() {
 }
 "#,
             ),
-            PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::CaseShape {
-                    reason: InvalidCaseShapeReason::PatternTypeMismatch,
-                },
+            PlanError::UnsupportedCase {
+                reason: UnsupportedCaseReason::ListPattern,
             },
         );
     }

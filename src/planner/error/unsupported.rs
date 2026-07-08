@@ -70,6 +70,8 @@ pub enum UnsupportedCaseReason {
     MultipleSubjects,
     #[error("case subject type is not supported")]
     UnsupportedSubjectType,
+    #[error("list patterns are not supported")]
+    ListPattern,
     #[error("string prefix patterns are not supported")]
     StringPrefixPattern,
 }
