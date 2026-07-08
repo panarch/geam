@@ -461,7 +461,7 @@ impl FrameLayout {
                 self.include_list_expr(tail);
             }
             ListExprKind::LocalGet { local, .. } => {
-                self.include_list(*local, expression.element_type().clone());
+                self.include_list(local);
             }
             ListExprKind::Call { args, .. } => self.include_call_args(args),
             ListExprKind::FunctionCall { function, args } => {
@@ -571,64 +571,67 @@ impl FrameLayout {
 mod tests {
     use super::FrameLayout;
     use crate::plan::{
-        BoolExpr, BoolLocalId, CallArg, Expr, FloatExpr, FloatFunctionId, FloatFunctionLocalId,
-        FloatLocalId, FunctionType, IntExpr, IntFunctionId, IntLocalId, ListExpr, ListFunctionExpr,
-        ListFunctionId, ListFunctionLocalId, ListLocalId, NilExpr, NilLocalId, PanicExpr,
-        PanicSite, ReturnExpr, Step, StringExpr, StringLocalId, TupleExpr, TupleFunctionExpr,
-        TupleFunctionId, TupleFunctionLocalId, TupleLocalId, ValueType,
+        BoolExpr, BoolListLocalId, BoolLocalId, CallArg, Expr, FloatExpr, FloatFunctionId,
+        FloatFunctionLocalId, FloatListLocalId, FloatLocalId, FunctionType, IntExpr, IntFunctionId,
+        IntListLocalId, IntLocalId, ListExpr, ListFunctionExpr, ListFunctionId,
+        ListFunctionLocalId, ListListLocalId, ListLocal, NilExpr, NilListLocalId, NilLocalId,
+        PanicExpr, PanicSite, ReturnExpr, Step, StringExpr, StringListLocalId, StringLocalId,
+        TupleExpr, TupleFunctionExpr, TupleFunctionId, TupleFunctionLocalId, TupleListLocalId,
+        TupleLocalId, ValueType,
     };
 
     #[test]
     fn frame_layout_includes_list_projection_expression_dependencies() {
         let steps = vec![
             Step::evaluate(Expr::int(IntExpr::list_index(
-                ListExpr::local_get(ListLocalId(0), "int_list".into(), ValueType::Int),
+                ListExpr::local_get(ListLocal::int(IntListLocalId(0)), "int_list".into()),
                 0,
             ))),
             Step::evaluate(Expr::string(StringExpr::list_index(
-                ListExpr::local_get(ListLocalId(1), "string_list".into(), ValueType::String),
+                ListExpr::local_get(
+                    ListLocal::string(StringListLocalId(0)),
+                    "string_list".into(),
+                ),
                 0,
             ))),
             Step::evaluate(Expr::float(FloatExpr::list_index(
-                ListExpr::local_get(ListLocalId(2), "float_list".into(), ValueType::Float),
+                ListExpr::local_get(ListLocal::float(FloatListLocalId(0)), "float_list".into()),
                 0,
             ))),
             Step::evaluate(Expr::bool(BoolExpr::list_index(
-                ListExpr::local_get(ListLocalId(3), "bool_list".into(), ValueType::Bool),
+                ListExpr::local_get(ListLocal::bool(BoolListLocalId(0)), "bool_list".into()),
                 0,
             ))),
             Step::evaluate(Expr::nil(NilExpr::list_index(
-                ListExpr::local_get(ListLocalId(4), "nil_list".into(), ValueType::Nil),
+                ListExpr::local_get(ListLocal::nil(NilListLocalId(0)), "nil_list".into()),
                 0,
             ))),
             Step::evaluate(Expr::tuple(TupleExpr::list_index(
                 ListExpr::local_get(
-                    ListLocalId(5),
+                    ListLocal::tuple(TupleListLocalId(0), tuple_type()),
                     "tuple_list".into(),
-                    ValueType::Tuple(tuple_type()),
                 ),
                 0,
                 tuple_type(),
             ))),
             Step::evaluate(Expr::list(ListExpr::list_index(
                 ListExpr::local_get(
-                    ListLocalId(6),
+                    ListLocal::list(ListListLocalId(0), ValueType::Int),
                     "nested_list".into(),
-                    ValueType::List(Box::new(ValueType::Int)),
                 ),
                 0,
                 ValueType::Int,
             ))),
             Step::evaluate(Expr::list(ListExpr::drop_first(
-                ListExpr::local_get(ListLocalId(7), "drop_list".into(), ValueType::Int),
+                ListExpr::local_get(ListLocal::int(IntListLocalId(1)), "drop_list".into()),
                 1,
             ))),
             Step::evaluate(Expr::bool(BoolExpr::list_length_equals(
-                ListExpr::local_get(ListLocalId(8), "exact_list".into(), ValueType::Int),
+                ListExpr::local_get(ListLocal::int(IntListLocalId(2)), "exact_list".into()),
                 2,
             ))),
             Step::evaluate(Expr::bool(BoolExpr::list_length_at_least(
-                ListExpr::local_get(ListLocalId(9), "minimum_list".into(), ValueType::Int),
+                ListExpr::local_get(ListLocal::int(IntListLocalId(3)), "minimum_list".into()),
                 1,
             ))),
         ];
@@ -636,21 +639,13 @@ mod tests {
 
         let layout = FrameLayout::from_function_parts(&[], &steps, &return_);
 
-        assert_eq!(
-            layout.lists(),
-            &[
-                ValueType::Int,
-                ValueType::String,
-                ValueType::Float,
-                ValueType::Bool,
-                ValueType::Nil,
-                ValueType::Tuple(tuple_type()),
-                ValueType::List(Box::new(ValueType::Int)),
-                ValueType::Int,
-                ValueType::Int,
-                ValueType::Int,
-            ],
-        );
+        assert_eq!(layout.int_lists(), 4);
+        assert_eq!(layout.string_lists(), 1);
+        assert_eq!(layout.float_lists(), 1);
+        assert_eq!(layout.bool_lists(), 1);
+        assert_eq!(layout.nil_lists(), 1);
+        assert_eq!(layout.tuple_lists(), &[tuple_type()]);
+        assert_eq!(layout.list_lists(), &[ValueType::Int]);
     }
 
     #[test]
@@ -743,7 +738,13 @@ mod tests {
         assert_eq!(layout.bools(), 0);
         assert_eq!(layout.nils(), 0);
         assert_eq!(layout.tuples(), 0);
-        assert_eq!(layout.lists().len(), 0);
+        assert_eq!(layout.int_lists(), 0);
+        assert_eq!(layout.string_lists(), 0);
+        assert_eq!(layout.float_lists(), 0);
+        assert_eq!(layout.bool_lists(), 0);
+        assert_eq!(layout.nil_lists(), 0);
+        assert_eq!(layout.tuple_lists(), &[] as &[Vec<ValueType>]);
+        assert_eq!(layout.list_lists(), &[] as &[ValueType]);
     }
 
     #[test]
@@ -904,9 +905,8 @@ mod tests {
             ))),
             Step::evaluate(Expr::nil(NilExpr::list_index(
                 ListExpr::local_get(
-                    ListLocalId(0),
+                    ListLocal::nil(NilListLocalId(0)),
                     "nil_list_index_subject".into(),
-                    ValueType::Nil,
                 ),
                 0,
             ))),
@@ -1127,7 +1127,7 @@ mod tests {
         assert_eq!(layout.bools(), 15);
         assert_eq!(layout.nils(), 11);
         assert_eq!(layout.tuples(), 15);
-        assert_eq!(layout.lists().len(), 1);
+        assert_eq!(layout.nil_lists(), 1);
         assert_eq!(layout.float_functions(), 1);
         assert_eq!(layout.tuple_functions(), 1);
     }
@@ -1147,19 +1147,18 @@ mod tests {
                     IntLocalId(3),
                     "spread_element".into(),
                 ))],
-                ListExpr::local_get(ListLocalId(13), "spread_tail".into(), list_type()),
+                ListExpr::local_get(ListLocal::int(IntListLocalId(13)), "spread_tail".into()),
                 list_type(),
             ))),
             Step::evaluate(Expr::list(ListExpr::local_get(
-                ListLocalId(0),
+                ListLocal::int(IntListLocalId(0)),
                 "local".into(),
-                list_type(),
             ))),
             Step::evaluate(Expr::list(ListExpr::call(
                 ListFunctionId(0),
                 vec![CallArg::list(
-                    ListLocalId(0),
-                    ListExpr::local_get(ListLocalId(1), "call_arg".into(), list_type()),
+                    ListLocal::int(IntListLocalId(0)),
+                    ListExpr::local_get(ListLocal::int(IntListLocalId(1)), "call_arg".into()),
                 )],
                 list_type(),
             ))),
@@ -1170,17 +1169,19 @@ mod tests {
                     list_function_type(),
                 ),
                 vec![CallArg::list(
-                    ListLocalId(1),
-                    ListExpr::local_get(ListLocalId(2), "function_call_arg".into(), list_type()),
+                    ListLocal::int(IntListLocalId(1)),
+                    ListExpr::local_get(
+                        ListLocal::int(IntListLocalId(2)),
+                        "function_call_arg".into(),
+                    ),
                 )],
                 list_type(),
             ))),
             Step::evaluate(Expr::list(ListExpr::tuple_index(
                 TupleExpr::value(
                     vec![Expr::list(ListExpr::local_get(
-                        ListLocalId(3),
+                        ListLocal::int(IntListLocalId(3)),
                         "tuple_element".into(),
-                        list_type(),
                     ))],
                     vec![ValueType::List(Box::new(list_type()))],
                 ),
@@ -1189,39 +1190,39 @@ mod tests {
             ))),
             Step::evaluate(Expr::list(ListExpr::bool_case(
                 BoolExpr::local_get(BoolLocalId(0), "bool_subject".into()),
-                ListExpr::local_get(ListLocalId(4), "bool_true".into(), list_type()),
-                ListExpr::local_get(ListLocalId(5), "bool_false".into(), list_type()),
+                ListExpr::local_get(ListLocal::int(IntListLocalId(4)), "bool_true".into()),
+                ListExpr::local_get(ListLocal::int(IntListLocalId(5)), "bool_false".into()),
             ))),
             Step::evaluate(Expr::list(ListExpr::int_case(
                 IntExpr::local_get(IntLocalId(1), "int_subject".into()),
                 vec![(
                     1.into(),
-                    ListExpr::local_get(ListLocalId(6), "int_branch".into(), list_type()),
+                    ListExpr::local_get(ListLocal::int(IntListLocalId(6)), "int_branch".into()),
                 )],
-                ListExpr::local_get(ListLocalId(7), "int_fallback".into(), list_type()),
+                ListExpr::local_get(ListLocal::int(IntListLocalId(7)), "int_fallback".into()),
             ))),
             Step::evaluate(Expr::list(ListExpr::string_case(
                 StringExpr::local_get(StringLocalId(0), "string_subject".into()),
                 vec![(
                     "hit".into(),
-                    ListExpr::local_get(ListLocalId(8), "string_branch".into(), list_type()),
+                    ListExpr::local_get(ListLocal::int(IntListLocalId(8)), "string_branch".into()),
                 )],
-                ListExpr::local_get(ListLocalId(9), "string_fallback".into(), list_type()),
+                ListExpr::local_get(ListLocal::int(IntListLocalId(9)), "string_fallback".into()),
             ))),
             Step::evaluate(Expr::list(ListExpr::float_case(
                 FloatExpr::local_get(FloatLocalId(0), "float_subject".into()),
                 vec![(
                     1.0,
-                    ListExpr::local_get(ListLocalId(10), "float_branch".into(), list_type()),
+                    ListExpr::local_get(ListLocal::int(IntListLocalId(10)), "float_branch".into()),
                 )],
-                ListExpr::local_get(ListLocalId(11), "float_fallback".into(), list_type()),
+                ListExpr::local_get(ListLocal::int(IntListLocalId(11)), "float_fallback".into()),
             ))),
             Step::evaluate(Expr::list(ListExpr::block(
                 vec![Step::evaluate(Expr::int(IntExpr::local_get(
                     IntLocalId(2),
                     "block_step".into(),
                 )))],
-                ListExpr::local_get(ListLocalId(12), "block_return".into(), list_type()),
+                ListExpr::local_get(ListLocal::int(IntListLocalId(12)), "block_return".into()),
             ))),
         ];
         let return_ = ReturnExpr::int(IntFunctionId(0), IntExpr::value(0.into()));
@@ -1232,7 +1233,7 @@ mod tests {
         assert_eq!(layout.floats(), 1);
         assert_eq!(layout.strings(), 1);
         assert_eq!(layout.bools(), 1);
-        assert_eq!(layout.lists().len(), 14);
+        assert_eq!(layout.int_lists(), 14);
         assert_eq!(layout.list_functions(), 1);
     }
 

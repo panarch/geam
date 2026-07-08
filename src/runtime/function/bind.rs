@@ -30,7 +30,7 @@ pub(super) fn bind_function_value_arguments(
     captures: &[CaptureValue],
 ) -> ExecutionResult<Frame> {
     let mut frame = Frame::new(frame_layout);
-    bind_captures(&mut frame, captures);
+    bind_captures(&mut frame, captures)?;
     bind_arguments_into(plan, args, caller_frame, &mut frame)?;
     Ok(frame)
 }
@@ -69,7 +69,7 @@ fn bind_arguments_into(
             }
             CallArgKind::List { local, value } => {
                 let value = eval_list_expr(plan, caller_frame, value)?;
-                frame.set_list(*local, value);
+                frame.set_list(local, value)?;
             }
             CallArgKind::IntFunction { local, value } => {
                 let value = eval_int_function_expr(plan, caller_frame, value)?;
@@ -137,7 +137,7 @@ pub(in crate::runtime) fn eval_capture_args(
                 CaptureValue::tuple(*local, eval_tuple_expr(plan, frame, value)?)
             }
             CaptureArgKind::List { local, value } => {
-                CaptureValue::list(*local, eval_list_expr(plan, frame, value)?)
+                CaptureValue::list(local.clone(), eval_list_expr(plan, frame, value)?)
             }
             CaptureArgKind::IntFunction { local, value } => {
                 CaptureValue::int_function(*local, eval_int_function_expr(plan, frame, value)?)
@@ -171,7 +171,7 @@ pub(in crate::runtime) fn eval_capture_args(
     Ok(captures)
 }
 
-fn bind_captures(frame: &mut Frame, captures: &[CaptureValue]) {
+fn bind_captures(frame: &mut Frame, captures: &[CaptureValue]) -> ExecutionResult<()> {
     for capture in captures {
         match capture.kind() {
             CaptureValueKind::Int { local, value } => frame.set_int(*local, value.clone()),
@@ -180,7 +180,9 @@ fn bind_captures(frame: &mut Frame, captures: &[CaptureValue]) {
             CaptureValueKind::Bool { local, value } => frame.set_bool(*local, *value),
             CaptureValueKind::Nil { local } => frame.set_nil(*local),
             CaptureValueKind::Tuple { local, value } => frame.set_tuple(*local, value.clone()),
-            CaptureValueKind::List { local, value } => frame.set_list(*local, value.clone()),
+            CaptureValueKind::List { local, value } => {
+                frame.set_list(local, value.clone())?;
+            }
             CaptureValueKind::IntFunction { local, value } => {
                 frame.set_int_function(*local, value.clone());
             }
@@ -207,6 +209,7 @@ fn bind_captures(frame: &mut Frame, captures: &[CaptureValue]) {
             }
         }
     }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -219,12 +222,12 @@ mod tests {
         FrameLayout, FunctionFunctionExpr, FunctionFunctionId, FunctionFunctionLocalId,
         FunctionFunctionValue, FunctionId, FunctionPlan, FunctionReturnFamily, FunctionType,
         IntExpr, IntFunctionExpr, IntFunctionFunctionId, IntFunctionId, IntFunctionLocalId,
-        IntFunctionValue, IntLocalId, ListExpr, ListFunctionExpr, ListFunctionId,
-        ListFunctionLocalId, ListFunctionValue, ListLocalId, ListValue, NilExpr, NilFunctionExpr,
-        NilFunctionId, NilFunctionLocalId, NilFunctionValue, NilLocalId, ReturnExpr, StringExpr,
-        StringFunctionExpr, StringFunctionId, StringFunctionLocalId, StringFunctionValue,
-        StringLocalId, TupleExpr, TupleFunctionExpr, TupleFunctionId, TupleFunctionLocalId,
-        TupleFunctionValue, TupleLocalId, Value, ValueType,
+        IntFunctionValue, IntListLocalId, IntLocalId, ListExpr, ListFunctionExpr, ListFunctionId,
+        ListFunctionLocalId, ListFunctionValue, ListLocal, ListValue, NilExpr, NilFunctionExpr,
+        NilFunctionId, NilFunctionLocalId, NilFunctionValue, NilLocalId, ReturnBody, ReturnExpr,
+        StringExpr, StringFunctionExpr, StringFunctionId, StringFunctionLocalId,
+        StringFunctionValue, StringLocalId, TupleExpr, TupleFunctionExpr, TupleFunctionId,
+        TupleFunctionLocalId, TupleFunctionValue, TupleLocalId, Value, ValueType,
     };
     use crate::runtime::ExecutionError;
     use crate::runtime::frame::Frame;
@@ -240,7 +243,7 @@ mod tests {
             CallArg::bool(BoolLocalId(0), failing_bool_expr()),
             CallArg::nil(NilLocalId(0), failing_nil_expr()),
             CallArg::tuple(TupleLocalId(0), failing_tuple_expr()),
-            CallArg::list(ListLocalId(0), failing_list_expr()),
+            CallArg::list(ListLocal::int(IntListLocalId(0)), failing_list_expr()),
             CallArg::int_function(IntFunctionLocalId(0), failing_int_function_expr()),
             CallArg::string_function(StringFunctionLocalId(0), failing_string_function_expr()),
             CallArg::float_function(FloatFunctionLocalId(0), failing_float_function_expr()),
@@ -276,7 +279,7 @@ mod tests {
                 CallArg::bool(BoolLocalId(0), BoolExpr::value(true)),
                 CallArg::nil(NilLocalId(0), NilExpr::value()),
                 CallArg::tuple(TupleLocalId(0), tuple_expr()),
-                CallArg::list(ListLocalId(0), list_expr()),
+                CallArg::list(ListLocal::int(IntListLocalId(0)), list_expr()),
                 CallArg::int_function(IntFunctionLocalId(0), int_function_expr()),
                 CallArg::string_function(StringFunctionLocalId(0), string_function_expr()),
                 CallArg::float_function(FloatFunctionLocalId(0), float_function_expr()),
@@ -298,8 +301,8 @@ mod tests {
         assert_eq!(frame.get_nil(NilLocalId(0)), ());
         assert_eq!(frame.get_tuple(TupleLocalId(0)), vec![Value::Int(1.into())]);
         assert_eq!(
-            frame.get_list(ListLocalId(0)),
-            ListValue::int(vec![1.into()]),
+            frame.get_list(&ListLocal::int(IntListLocalId(0))),
+            Ok(ListValue::int(vec![1.into()])),
         );
         assert_eq!(
             frame.get_int_function(IntFunctionLocalId(0)).runtime_id(),
@@ -344,6 +347,29 @@ mod tests {
     }
 
     #[test]
+    fn bind_arguments_propagates_list_item_type_mismatch() {
+        let plan = plan_with_string_list_function();
+        let local = ListLocal::int(IntListLocalId(0));
+        let mut layout = FrameLayout::default();
+        layout.include_list(local.clone());
+
+        let actual = bind_arguments(
+            &plan,
+            &[CallArg::list(local, mismatched_list_expr())],
+            &mut Frame::default(),
+            layout,
+        );
+
+        assert_eq!(
+            actual.err(),
+            Some(ExecutionError::list_item_type_mismatch(
+                ValueType::Int,
+                ValueType::String,
+            )),
+        );
+    }
+
+    #[test]
     fn tuple_function_arguments_are_evaluated_and_bound() {
         let plan = plan();
         let frame = bind_arguments(
@@ -382,6 +408,33 @@ mod tests {
     }
 
     #[test]
+    fn bind_function_value_arguments_propagates_list_capture_item_type_mismatch() {
+        let local = ListLocal::int(IntListLocalId(0));
+        let captures = [CaptureValue::list(
+            local.clone(),
+            ListValue::string(vec!["wrong".into()]),
+        )];
+        let mut frame_layout = FrameLayout::default();
+        frame_layout.include_list(local);
+
+        let actual = bind_function_value_arguments(
+            &plan(),
+            &[],
+            &mut Frame::default(),
+            frame_layout,
+            &captures,
+        );
+
+        assert_eq!(
+            actual.err(),
+            Some(ExecutionError::list_item_type_mismatch(
+                ValueType::Int,
+                ValueType::String,
+            )),
+        );
+    }
+
+    #[test]
     fn eval_capture_args_propagates_typed_argument_evaluation_errors() {
         let plan = plan();
 
@@ -392,7 +445,7 @@ mod tests {
             CaptureArg::bool(BoolLocalId(0), failing_bool_expr()),
             CaptureArg::nil(NilLocalId(0), failing_nil_expr()),
             CaptureArg::tuple(TupleLocalId(0), failing_tuple_expr()),
-            CaptureArg::list(ListLocalId(0), failing_list_expr()),
+            CaptureArg::list(ListLocal::int(IntListLocalId(0)), failing_list_expr()),
             CaptureArg::int_function(IntFunctionLocalId(0), failing_int_function_expr()),
             CaptureArg::string_function(StringFunctionLocalId(0), failing_string_function_expr()),
             CaptureArg::float_function(FloatFunctionLocalId(0), failing_float_function_expr()),
@@ -428,7 +481,7 @@ mod tests {
                 CaptureArg::bool(BoolLocalId(0), BoolExpr::value(true)),
                 CaptureArg::nil(NilLocalId(0), NilExpr::value()),
                 CaptureArg::tuple(TupleLocalId(0), tuple_expr()),
-                CaptureArg::list(ListLocalId(0), list_expr()),
+                CaptureArg::list(ListLocal::int(IntListLocalId(0)), list_expr()),
                 CaptureArg::int_function(IntFunctionLocalId(0), int_function_expr()),
                 CaptureArg::string_function(StringFunctionLocalId(0), string_function_expr()),
                 CaptureArg::float_function(FloatFunctionLocalId(0), float_function_expr()),
@@ -450,7 +503,10 @@ mod tests {
                 CaptureValue::bool(BoolLocalId(0), true),
                 CaptureValue::nil(NilLocalId(0)),
                 CaptureValue::tuple(TupleLocalId(0), vec![Value::Int(1.into())]),
-                CaptureValue::list(ListLocalId(0), ListValue::int(vec![1.into()]),),
+                CaptureValue::list(
+                    ListLocal::int(IntListLocalId(0)),
+                    ListValue::int(vec![1.into()]),
+                ),
                 CaptureValue::int_function(IntFunctionLocalId(0), int_function_value()),
                 CaptureValue::string_function(StringFunctionLocalId(0), string_function_value()),
                 CaptureValue::float_function(FloatFunctionLocalId(0), float_function_value()),
@@ -481,7 +537,10 @@ mod tests {
                 CaptureValue::bool(BoolLocalId(0), true),
                 CaptureValue::nil(NilLocalId(0)),
                 CaptureValue::tuple(TupleLocalId(0), vec![Value::Int(1.into())]),
-                CaptureValue::list(ListLocalId(0), ListValue::int(vec![1.into()])),
+                CaptureValue::list(
+                    ListLocal::int(IntListLocalId(0)),
+                    ListValue::int(vec![1.into()]),
+                ),
                 CaptureValue::int_function(IntFunctionLocalId(0), int_function_value()),
                 CaptureValue::string_function(StringFunctionLocalId(0), string_function_value()),
                 CaptureValue::float_function(FloatFunctionLocalId(0), float_function_value()),
@@ -504,8 +563,8 @@ mod tests {
         assert_eq!(frame.get_nil(NilLocalId(0)), ());
         assert_eq!(frame.get_tuple(TupleLocalId(0)), vec![Value::Int(1.into())]);
         assert_eq!(
-            frame.get_list(ListLocalId(0)),
-            ListValue::int(vec![1.into()]),
+            frame.get_list(&ListLocal::int(IntListLocalId(0))),
+            Ok(ListValue::int(vec![1.into()])),
         );
         assert_eq!(
             frame.get_int_function(IntFunctionLocalId(0)).runtime_id(),
@@ -606,6 +665,10 @@ mod tests {
 
     fn failing_list_expr() -> ListExpr {
         ListExpr::function_call(failing_list_function_expr(), Vec::new(), ValueType::Int)
+    }
+
+    fn mismatched_list_expr() -> ListExpr {
+        ListExpr::call(ListFunctionId(0), Vec::new(), ValueType::Int)
     }
 
     fn tuple_expr() -> TupleExpr {
@@ -751,7 +814,7 @@ mod tests {
         layout.include_bool(BoolLocalId(0));
         layout.include_nil(NilLocalId(0));
         layout.include_tuple(TupleLocalId(0));
-        layout.include_list(ListLocalId(0), ValueType::Int);
+        layout.include_list(ListLocal::int(IntListLocalId(0)));
         layout.include_int_function(IntFunctionLocalId(0));
         layout.include_string_function(StringFunctionLocalId(0));
         layout.include_float_function(FloatFunctionLocalId(0));
@@ -774,6 +837,33 @@ mod tests {
                 ReturnExpr::int(crate::plan::IntFunctionId(0), IntExpr::value(1.into())),
             ),
             Vec::new(),
+        )
+    }
+
+    fn plan_with_string_list_function() -> ExecutionPlan {
+        ExecutionPlan::new(
+            "main".into(),
+            FunctionPlan::new(
+                FunctionId::new(0),
+                "main".into(),
+                Vec::new(),
+                Vec::new(),
+                ReturnExpr::int(crate::plan::IntFunctionId(0), IntExpr::value(1.into())),
+            ),
+            vec![FunctionPlan::new(
+                FunctionId::new(1),
+                "string_list".into(),
+                Vec::new(),
+                Vec::new(),
+                ReturnExpr::list_body(
+                    ListFunctionId(0),
+                    ValueType::String,
+                    ReturnBody::expr(ListExpr::value(
+                        vec![Expr::string(StringExpr::value("wrong".into()))],
+                        ValueType::String,
+                    )),
+                ),
+            )],
         )
     }
 }

@@ -2,7 +2,7 @@ use super::{
     BoolExpr, CallArg, Expr, FloatExpr, FunctionExpr, IntExpr, ListFunctionExpr, NilExpr,
     PanicExpr, StringExpr, TupleExpr,
 };
-use crate::plan::{FunctionType, ListFunctionId, ListLocalId, Step, ValueType};
+use crate::plan::{FunctionType, ListFunctionId, ListLocal, Step, ValueType};
 use ecow::EcoString;
 use num_bigint::BigInt;
 
@@ -20,7 +20,7 @@ pub(crate) enum ListExprKind {
         tail: Box<ListExpr>,
     },
     LocalGet {
-        local: ListLocalId,
+        local: ListLocal,
         name: EcoString,
     },
     Call {
@@ -152,9 +152,9 @@ impl ListExpr {
         }
     }
 
-    pub(crate) fn local_get(local: ListLocalId, name: EcoString, element_type: ValueType) -> Self {
+    pub(crate) fn local_get(local: ListLocal, name: EcoString) -> Self {
         Self {
-            element_type: Box::new(element_type),
+            element_type: Box::new(local.item_type()),
             kind: ListExprKind::LocalGet { local, name },
         }
     }
@@ -430,8 +430,8 @@ impl ListElements {
 mod tests {
     use super::{ListElementTypeMismatch, ListElements, ListExpr, ListExprKind};
     use crate::plan::{
-        BoolExpr, Expr, FunctionExpr, FunctionType, IntExpr, ListFunctionExpr, ListFunctionId,
-        ListFunctionValue, ListLocalId, NilExpr, ParamLocal, Step, ValueType,
+        BoolExpr, Expr, FunctionExpr, FunctionType, IntExpr, IntListLocalId, ListFunctionExpr,
+        ListFunctionId, ListFunctionValue, ListLocal, NilExpr, ParamLocal, Step, ValueType,
     };
 
     #[test]
@@ -453,9 +453,9 @@ mod tests {
             },
         );
         assert_eq!(
-            ListExpr::local_get(ListLocalId(0), "values".into(), element_type()).kind(),
+            ListExpr::local_get(ListLocal::int(IntListLocalId(0)), "values".into()).kind(),
             &ListExprKind::LocalGet {
-                local: ListLocalId(0),
+                local: ListLocal::int(IntListLocalId(0)),
                 name: "values".into(),
             },
         );

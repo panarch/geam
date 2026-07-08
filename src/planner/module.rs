@@ -266,7 +266,14 @@ pub(super) fn function_params(
     let mut next_bool = 0;
     let mut next_nil = 0;
     let mut next_tuple = 0;
-    let mut next_list = 0;
+    let mut next_int_list = 0;
+    let mut next_string_list = 0;
+    let mut next_float_list = 0;
+    let mut next_bool_list = 0;
+    let mut next_nil_list = 0;
+    let mut next_tuple_list = 0;
+    let mut next_list_list = 0;
+    let mut next_function_list = 0;
     let mut function_locals = FunctionParamLocalCounters::default();
 
     arguments
@@ -334,12 +341,68 @@ pub(super) fn function_params(
                     local
                 }
                 ValueType::List(element_type) => {
-                    let local = ParamLocal::list(
-                        crate::plan::ListLocalId(next_list),
-                        element_type.as_ref().clone(),
-                    );
-                    next_list += 1;
-                    local
+                    let local = match element_type.as_ref() {
+                        ValueType::Int => {
+                            let local = crate::plan::ListLocal::int(crate::plan::IntListLocalId(
+                                next_int_list,
+                            ));
+                            next_int_list += 1;
+                            local
+                        }
+                        ValueType::String => {
+                            let local = crate::plan::ListLocal::string(
+                                crate::plan::StringListLocalId(next_string_list),
+                            );
+                            next_string_list += 1;
+                            local
+                        }
+                        ValueType::Float => {
+                            let local = crate::plan::ListLocal::float(
+                                crate::plan::FloatListLocalId(next_float_list),
+                            );
+                            next_float_list += 1;
+                            local
+                        }
+                        ValueType::Bool => {
+                            let local = crate::plan::ListLocal::bool(crate::plan::BoolListLocalId(
+                                next_bool_list,
+                            ));
+                            next_bool_list += 1;
+                            local
+                        }
+                        ValueType::Nil => {
+                            let local = crate::plan::ListLocal::nil(crate::plan::NilListLocalId(
+                                next_nil_list,
+                            ));
+                            next_nil_list += 1;
+                            local
+                        }
+                        ValueType::Tuple(item_type) => {
+                            let local = crate::plan::ListLocal::tuple(
+                                crate::plan::TupleListLocalId(next_tuple_list),
+                                item_type.clone(),
+                            );
+                            next_tuple_list += 1;
+                            local
+                        }
+                        ValueType::List(item_type) => {
+                            let local = crate::plan::ListLocal::list(
+                                crate::plan::ListListLocalId(next_list_list),
+                                *item_type.clone(),
+                            );
+                            next_list_list += 1;
+                            local
+                        }
+                        ValueType::Function(item_type) => {
+                            let local = crate::plan::ListLocal::function(
+                                crate::plan::FunctionListLocalId(next_function_list),
+                                *item_type.clone(),
+                            );
+                            next_function_list += 1;
+                            local
+                        }
+                    };
+                    ParamLocal::list(local)
                 }
                 ValueType::Function(type_) => function_locals.next(type_),
             };
@@ -454,9 +517,10 @@ fn validate_main_function(main: FunctionToPlan) -> Result<FunctionToPlan, PlanEr
 mod tests {
     use super::plan_module;
     use crate::plan::{
-        FunctionFunctionId, FunctionType, IntFunctionFunctionId, IntFunctionId, IntLocalId,
-        LocalId, NilExpr, NilFunctionId, PanicExpr, PanicSite, ParamLocal, RuntimeFunctionId,
-        SourceSpan, ValueType,
+        BoolListLocalId, FloatListLocalId, FunctionFunctionId, FunctionListLocalId, FunctionType,
+        IntFunctionFunctionId, IntFunctionId, IntListLocalId, IntLocalId, ListListLocalId,
+        ListLocal, LocalId, NilExpr, NilFunctionId, NilListLocalId, PanicExpr, PanicSite, Param,
+        ParamLocal, RuntimeFunctionId, SourceSpan, StringListLocalId, TupleListLocalId, ValueType,
     };
     use crate::planner::dsl::{
         call_int, call_int_returning_function, function, function_ref, int, int_arg,
@@ -1113,6 +1177,81 @@ pub fn main() {
         );
 
         assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn plan_function_list_params_preserve_item_family_boundaries() {
+        let actual = plan_module(compile(
+            r#"
+fn collect(
+  ints: List(Int),
+  strings: List(String),
+  floats: List(Float),
+  bools: List(Bool),
+  nils: List(Nil),
+  tuples: List(#(Int, String)),
+  lists: List(List(Float)),
+  functions: List(fn(Int) -> String),
+) {
+  Nil
+}
+
+pub fn main() {
+  Nil
+}
+"#,
+        ))
+        .expect("source should plan");
+        let collect = actual
+            .functions()
+            .iter()
+            .find(|function| function.name() == "collect")
+            .expect("collect function should be planned");
+        let nested_function_type = FunctionType::new(vec![ValueType::Int], ValueType::String);
+
+        assert_eq!(
+            collect.params(),
+            &[
+                Param::named(
+                    ParamLocal::list(ListLocal::int(IntListLocalId(0))),
+                    "ints".into(),
+                ),
+                Param::named(
+                    ParamLocal::list(ListLocal::string(StringListLocalId(0))),
+                    "strings".into(),
+                ),
+                Param::named(
+                    ParamLocal::list(ListLocal::float(FloatListLocalId(0))),
+                    "floats".into(),
+                ),
+                Param::named(
+                    ParamLocal::list(ListLocal::bool(BoolListLocalId(0))),
+                    "bools".into(),
+                ),
+                Param::named(
+                    ParamLocal::list(ListLocal::nil(NilListLocalId(0))),
+                    "nils".into(),
+                ),
+                Param::named(
+                    ParamLocal::list(ListLocal::tuple(
+                        TupleListLocalId(0),
+                        vec![ValueType::Int, ValueType::String],
+                    )),
+                    "tuples".into(),
+                ),
+                Param::named(
+                    ParamLocal::list(ListLocal::list(ListListLocalId(0), ValueType::Float)),
+                    "lists".into(),
+                ),
+                Param::named(
+                    ParamLocal::list(ListLocal::function(
+                        FunctionListLocalId(0),
+                        nested_function_type,
+                    )),
+                    "functions".into(),
+                ),
+            ],
+        );
     }
 
     #[test]

@@ -431,10 +431,10 @@ mod tests {
     use crate::plan::{
         BoolFunctionId, BoolFunctionValue, BoolLocalId, FloatFunctionId, FloatFunctionValue,
         FloatLocalId, FunctionFunctionId, FunctionFunctionValue, FunctionType, FunctionValue,
-        IntFunctionFunctionId, IntFunctionId, IntFunctionValue, IntLocalId, ListFunctionId,
-        ListFunctionValue, ListLocalId, ListValue, NilFunctionId, NilFunctionValue, NilLocalId,
-        ParamLocal, RuntimeFunctionId, StringFunctionId, StringFunctionValue, StringLocalId, Value,
-        ValueType,
+        IntFunctionFunctionId, IntFunctionId, IntFunctionValue, IntListLocalId, IntLocalId,
+        ListFunctionId, ListFunctionValue, ListLocal, ListValue, NilFunctionId, NilFunctionValue,
+        NilLocalId, ParamLocal, RuntimeFunctionId, StringFunctionId, StringFunctionValue,
+        StringLocalId, Value, ValueType,
     };
     use num_bigint::BigInt;
 
@@ -1193,7 +1193,7 @@ mod tests {
     fn list_function_expr() -> ListFunctionExpr {
         ListFunctionExpr::value(ListFunctionValue::new(
             ListFunctionId(0),
-            vec![ParamLocal::list(ListLocalId(0), ValueType::Int)],
+            vec![ParamLocal::list(ListLocal::int(IntListLocalId(0)))],
             ValueType::Int,
         ))
     }

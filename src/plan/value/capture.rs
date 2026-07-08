@@ -7,8 +7,8 @@ use super::{
 };
 use crate::plan::{
     BoolFunctionLocalId, BoolLocalId, FloatFunctionLocalId, FloatLocalId, FunctionFunctionLocalId,
-    IntFunctionLocalId, IntLocalId, ListFunctionLocalId, ListLocalId, NilFunctionLocalId,
-    NilLocalId, StringFunctionLocalId, StringLocalId, TupleFunctionLocalId, TupleLocalId,
+    IntFunctionLocalId, IntLocalId, ListFunctionLocalId, ListLocal, NilFunctionLocalId, NilLocalId,
+    StringFunctionLocalId, StringLocalId, TupleFunctionLocalId, TupleLocalId,
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -42,7 +42,7 @@ pub(crate) enum CaptureValueKind {
         value: Vec<Value>,
     },
     List {
-        local: ListLocalId,
+        local: ListLocal,
         value: ListValue,
     },
     IntFunction {
@@ -116,7 +116,7 @@ impl CaptureValue {
         }
     }
 
-    pub(crate) fn list(local: ListLocalId, value: ListValue) -> Self {
+    pub(crate) fn list(local: ListLocal, value: ListValue) -> Self {
         Self {
             kind: CaptureValueKind::List { local, value },
         }
@@ -185,8 +185,8 @@ impl CaptureValue {
 mod tests {
     use super::{CaptureValue, CaptureValueKind};
     use crate::plan::{
-        FloatFunctionId, FloatFunctionLocalId, FloatFunctionValue, FloatLocalId, ListFunctionId,
-        ListFunctionLocalId, ListFunctionValue, ListLocalId, ListValue, ParamLocal,
+        FloatFunctionId, FloatFunctionLocalId, FloatFunctionValue, FloatLocalId, IntListLocalId,
+        ListFunctionId, ListFunctionLocalId, ListFunctionValue, ListLocal, ListValue, ParamLocal,
         TupleFunctionId, TupleFunctionLocalId, TupleFunctionValue, TupleLocalId, Value, ValueType,
     };
 
@@ -234,11 +234,11 @@ mod tests {
     #[test]
     fn capture_value_preserves_list_shapes() {
         let list_value = ListValue::int(vec![1.into()]);
-        let list = CaptureValue::list(ListLocalId(0), list_value.clone());
+        let list = CaptureValue::list(ListLocal::int(IntListLocalId(0)), list_value.clone());
         assert_eq!(
             list.kind(),
             &CaptureValueKind::List {
-                local: ListLocalId(0),
+                local: ListLocal::int(IntListLocalId(0)),
                 value: list_value,
             },
         );
@@ -264,6 +264,6 @@ mod tests {
     }
 
     fn list_param(index: usize) -> ParamLocal {
-        ParamLocal::list(ListLocalId(index), ValueType::Int)
+        ParamLocal::list(ListLocal::int(IntListLocalId(index)))
     }
 }

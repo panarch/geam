@@ -42,8 +42,8 @@ fn invalid_use_shape(reason: InvalidUseShapeReason) -> PlanError {
 mod tests {
     use super::invalid_use_shape;
     use crate::plan::{
-        Expr, IntLocalId, ListFunctionId, ListLocalId, LocalId, Param, ParamLocal, ReturnBody,
-        ReturnExpr, TupleLocalId, ValueType,
+        Expr, IntListLocalId, IntLocalId, ListFunctionId, ListLocal, LocalId, Param, ParamLocal,
+        ReturnBody, ReturnExpr, TupleLocalId, ValueType,
     };
     use crate::planner::dsl::{
         call_int_function, capture_int, function, int, int_arg, int_function_arg,
@@ -335,7 +335,7 @@ pub fn main() {
         assert_eq!(
             callback.params(),
             &[Param::named(
-                ParamLocal::list(ListLocalId(0), ValueType::Int),
+                ParamLocal::list(ListLocal::int(IntListLocalId(0))),
                 "_use0".into(),
             )],
         );

@@ -3,8 +3,7 @@ use super::super::super::{list_index_expr, tuple_index_expr};
 use super::super::invalid_case_shape;
 use super::{CaseClause, OrderedCaseClauseInput, case_return_type};
 use crate::plan::{
-    BoolExpr, Expr, ExprKind, FloatExpr, IntExpr, ListExpr, ListLocalId, Step, StringExpr,
-    ValueType,
+    BoolExpr, Expr, ExprKind, FloatExpr, IntExpr, ListExpr, ListLocal, Step, StringExpr, ValueType,
 };
 use crate::planner::context::PlanContext;
 use crate::planner::error::{InvalidCaseShapeReason, PlanError, UnsupportedExpressionKind};
@@ -387,23 +386,24 @@ fn matches_type(type_: &Type, subject_type: &ValueType) -> bool {
 }
 
 fn bind_list_case_subject(subject: ListExpr, context: &mut PlanContext<'_>) -> (Step, Expr) {
-    let local = context.define_internal_list_local();
-    let name = internal_list_case_subject_name(local);
     let element_type = subject.element_type().clone();
+    let local = context.define_internal_list_local(element_type);
+    let name = internal_list_case_subject_name(&local);
     (
-        Step::let_list(local, name.clone(), subject),
-        Expr::list(ListExpr::local_get(local, name, element_type)),
+        Step::let_list(local.clone(), name.clone(), subject),
+        Expr::list(ListExpr::local_get(local, name)),
     )
 }
 
-fn internal_list_case_subject_name(local: ListLocalId) -> EcoString {
-    format!("<case:list:{}>", local.0).into()
+fn internal_list_case_subject_name(local: &ListLocal) -> EcoString {
+    format!("<case:list:{}:{}>", local.family_name(), local.index()).into()
 }
 
 #[cfg(test)]
 mod tests {
     use crate::plan::{
-        BoolExpr, Expr, IntLocalId, ListExpr, ListLocalId, Step, StringExpr, ValueType,
+        BoolExpr, Expr, IntListLocalId, IntLocalId, ListExpr, ListLocal, Step, StringExpr,
+        ValueType,
     };
     use crate::planner::dsl::{
         bool_, bool_return_block, bool_return_expr, equal, function, int, int_return_block,
@@ -435,7 +435,7 @@ pub fn main() {
                 bool_return_block(
                     [let_list_step(
                         0,
-                        "<case:list:0>",
+                        "<case:list:int:0>",
                         list([int(1), int(2)], ValueType::Int),
                     )],
                     bool_return_block(
@@ -443,12 +443,12 @@ pub fn main() {
                             let_list_step(
                                 1,
                                 "value",
-                                local_list(0, "<case:list:0>", ValueType::Int),
+                                local_list(0, "<case:list:int:0>", ValueType::Int),
                             ),
                             let_list_step(
                                 2,
                                 "alias",
-                                local_list(0, "<case:list:0>", ValueType::Int),
+                                local_list(0, "<case:list:int:0>", ValueType::Int),
                             ),
                         ],
                         bool_return_expr(equal(value, alias)),
@@ -477,12 +477,21 @@ pub fn main() {
         .expect("source should plan");
         let second_value = local_list(2, "value", ValueType::Int);
         let second_alias = local_list(3, "alias", ValueType::Int);
-        let first_binding =
-            let_list_step(1, "value", local_list(0, "<case:list:0>", ValueType::Int));
-        let second_value_binding =
-            let_list_step(2, "value", local_list(0, "<case:list:0>", ValueType::Int));
-        let second_alias_binding =
-            let_list_step(3, "alias", local_list(0, "<case:list:0>", ValueType::Int));
+        let first_binding = let_list_step(
+            1,
+            "value",
+            local_list(0, "<case:list:int:0>", ValueType::Int),
+        );
+        let second_value_binding = let_list_step(
+            2,
+            "value",
+            local_list(0, "<case:list:int:0>", ValueType::Int),
+        );
+        let second_alias_binding = let_list_step(
+            3,
+            "alias",
+            local_list(0, "<case:list:int:0>", ValueType::Int),
+        );
         let first_condition = BoolExpr::and(
             BoolExpr::value(true),
             BoolExpr::block(
@@ -510,7 +519,7 @@ pub fn main() {
                 bool_return_block(
                     [let_list_step(
                         0,
-                        "<case:list:0>",
+                        "<case:list:int:0>",
                         list([int(1), int(2)], ValueType::Int),
                     )],
                     crate::plan::BoolReturn::bool_case(
@@ -546,7 +555,10 @@ pub fn main() {
 "#,
         ))
         .expect("source should plan");
-        let subject = ListExpr::local_get(ListLocalId(0), "<case:list:0>".into(), ValueType::Int);
+        let subject = ListExpr::local_get(
+            ListLocal::int(IntListLocalId(0)),
+            "<case:list:int:0>".into(),
+        );
         let expected = module(
             "main",
             function(
@@ -554,7 +566,7 @@ pub fn main() {
                 int_return_block(
                     [let_list_step(
                         0,
-                        "<case:list:0>",
+                        "<case:list:int:0>",
                         list([int(1), int(2)], ValueType::Int),
                     )],
                     crate::plan::IntReturn::bool_case(
@@ -590,7 +602,10 @@ pub fn main() {
 "#,
         ))
         .expect("source should plan");
-        let subject = ListExpr::local_get(ListLocalId(0), "<case:list:0>".into(), ValueType::Int);
+        let subject = ListExpr::local_get(
+            ListLocal::int(IntListLocalId(0)),
+            "<case:list:int:0>".into(),
+        );
         let rest = local_list(1, "rest", ValueType::Int);
         let expected = module(
             "main",
@@ -599,7 +614,7 @@ pub fn main() {
                 bool_return_block(
                     [let_list_step(
                         0,
-                        "<case:list:0>",
+                        "<case:list:int:0>",
                         list([int(1), int(2), int(3)], ValueType::Int),
                     )],
                     crate::plan::BoolReturn::bool_case(
@@ -612,7 +627,7 @@ pub fn main() {
                                     crate::plan::IntExpr::list_index(subject.clone(), 0),
                                 ),
                                 Step::let_list(
-                                    ListLocalId(1),
+                                    ListLocal::int(IntListLocalId(1)),
                                     "rest".into(),
                                     ListExpr::drop_first(subject.clone(), 1),
                                 ),
@@ -769,9 +784,8 @@ pub fn main() {
     fn reject_margin_list_case_pattern_mismatched_and_invalid_shapes() {
         let list_type = ValueType::List(Box::new(ValueType::Int));
         let subject = Expr::list(ListExpr::local_get(
-            ListLocalId(0),
+            ListLocal::int(IntListLocalId(0)),
             "values".into(),
-            ValueType::Int,
         ));
         assert_eq!(
             super::plan_list_case_pattern(
@@ -1026,7 +1040,7 @@ pub fn main() {
 
     #[test]
     fn list_structural_case_pattern_builds_fixed_length_condition() {
-        let list_subject = ListExpr::local_get(ListLocalId(0), "values".into(), ValueType::Int);
+        let list_subject = ListExpr::local_get(ListLocal::int(IntListLocalId(0)), "values".into());
 
         assert_eq!(
             super::plan_list_case_pattern(
@@ -1054,9 +1068,8 @@ pub fn main() {
     #[test]
     fn reject_margin_list_structural_pattern_shapes() {
         let list_subject = Expr::list(ListExpr::local_get(
-            ListLocalId(0),
+            ListLocal::int(IntListLocalId(0)),
             "values".into(),
-            ValueType::Int,
         ));
         let list_type = ValueType::List(Box::new(ValueType::Int));
 
@@ -1147,7 +1160,7 @@ pub fn main() {
 
     #[test]
     fn list_case_pattern_binds_tail_shapes() {
-        let list_subject = ListExpr::local_get(ListLocalId(0), "values".into(), ValueType::Int);
+        let list_subject = ListExpr::local_get(ListLocal::int(IntListLocalId(0)), "values".into());
         assert_eq!(
             super::plan_list_case_pattern(
                 gleam_core::ast::Pattern::List {
@@ -1205,9 +1218,8 @@ pub fn main() {
     #[test]
     fn reject_margin_list_structural_tail_shapes() {
         let list_subject = Expr::list(ListExpr::local_get(
-            ListLocalId(0),
+            ListLocal::int(IntListLocalId(0)),
             "values".into(),
-            ValueType::Int,
         ));
         let list_type = ValueType::List(Box::new(ValueType::Int));
 
@@ -1444,7 +1456,7 @@ pub fn main() {
         );
         assert_eq!(super::combine_conditions(None, None), None);
 
-        let list = ListExpr::local_get(ListLocalId(0), "values".into(), ValueType::Int);
+        let list = ListExpr::local_get(ListLocal::int(IntListLocalId(0)), "values".into());
         assert_eq!(super::list_length_condition(list.clone(), 0, true), None);
         assert_eq!(
             super::list_length_condition(list.clone(), 1, true),

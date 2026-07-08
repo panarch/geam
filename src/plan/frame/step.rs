@@ -36,7 +36,7 @@ impl FrameLayout {
             }
             StepKind::LetList { local, value, .. } => {
                 self.include_list_expr(value);
-                self.include_list(*local, value.element_type().clone());
+                self.include_list(local);
             }
             StepKind::LetIntFunction { local, value, .. } => {
                 self.include_int_function_expr(value);
@@ -72,12 +72,11 @@ impl FrameLayout {
             }
             StepKind::AssertList {
                 local,
-                element_type,
                 pattern,
                 message,
                 ..
             } => {
-                self.include_list(*local, element_type.clone());
+                self.include_list(local);
                 self.include_assert_pattern(pattern);
                 if let Some(message) = message {
                     self.include_string_expr(message);
@@ -100,7 +99,7 @@ impl FrameLayout {
             self.include_assert_pattern(element);
         }
         if let Some(ListAssertTail::Bind(binding)) = pattern.tail() {
-            self.include_list(binding.local(), pattern.element_type().clone());
+            self.include_list(binding.local());
         }
     }
 
@@ -127,10 +126,10 @@ mod tests {
     use super::FrameLayout;
     use crate::plan::{
         AssertBinding, AssertPattern, BoolExpr, BoolFunctionExpr, BoolFunctionLocalId, BoolLocalId,
-        Expr, IntExpr, IntFunctionId, IntLocalId, ListAssertPattern, ListAssertTail, ListLocalId,
+        Expr, IntExpr, IntFunctionId, IntLocalId, ListAssertPattern, ListAssertTail, ListLocal,
         NilExpr, NilFunctionExpr, NilFunctionLocalId, NilLocalId, PanicSite, ParamLocal,
         ReturnExpr, SourceSpan, StringExpr, StringFunctionExpr, StringFunctionLocalId,
-        StringLocalId, ValueType,
+        StringLocalId, TupleListLocalId, ValueType,
     };
 
     #[test]
@@ -272,9 +271,12 @@ mod tests {
     #[test]
     fn frame_layout_includes_assert_list_pattern_dependencies() {
         let list_element_type = ValueType::Tuple(vec![ValueType::Int, ValueType::String]);
+        let subject_local =
+            ListLocal::tuple(TupleListLocalId(0), vec![ValueType::Int, ValueType::String]);
+        let tail_local =
+            ListLocal::tuple(TupleListLocalId(1), vec![ValueType::Int, ValueType::String]);
         let steps = [crate::plan::Step::assert_list_at(
-            ListLocalId(0),
-            list_element_type.clone(),
+            subject_local,
             AssertPattern::list(ListAssertPattern::new(
                 list_element_type.clone(),
                 vec![AssertPattern::Tuple(vec![
@@ -287,7 +289,7 @@ mod tests {
                         AssertBinding::new(ParamLocal::string(StringLocalId(0)), "text".into()),
                     ),
                 ])],
-                Some(ListAssertTail::bind(ListLocalId(1), "rest".into())),
+                Some(ListAssertTail::bind(tail_local, "rest".into())),
             )),
             Some(StringExpr::local_get(StringLocalId(1), "message".into())),
             PanicSite::unknown(),
@@ -300,8 +302,11 @@ mod tests {
         assert_eq!(layout.ints(), 1);
         assert_eq!(layout.strings(), 2);
         assert_eq!(
-            layout.lists(),
-            &[list_element_type.clone(), list_element_type],
+            layout.tuple_lists(),
+            &[
+                vec![ValueType::Int, ValueType::String],
+                vec![ValueType::Int, ValueType::String],
+            ],
         );
     }
 

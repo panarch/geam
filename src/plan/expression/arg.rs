@@ -5,9 +5,8 @@ use super::{
 };
 use crate::plan::{
     BoolFunctionLocalId, BoolLocalId, FloatFunctionLocalId, FloatLocalId, FunctionFunctionLocalId,
-    IntFunctionLocalId, IntLocalId, ListFunctionLocalId, ListLocalId, NilFunctionLocalId,
-    NilLocalId, ParamLocal, StringFunctionLocalId, StringLocalId, TupleFunctionLocalId,
-    TupleLocalId,
+    IntFunctionLocalId, IntLocalId, ListFunctionLocalId, ListLocal, NilFunctionLocalId, NilLocalId,
+    ParamLocal, StringFunctionLocalId, StringLocalId, TupleFunctionLocalId, TupleLocalId,
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -42,7 +41,7 @@ pub(crate) enum CallArgKind {
         value: TupleExpr,
     },
     List {
-        local: ListLocalId,
+        local: ListLocal,
         value: ListExpr,
     },
     IntFunction {
@@ -111,7 +110,7 @@ pub(crate) enum CaptureArgKind {
         value: TupleExpr,
     },
     List {
-        local: ListLocalId,
+        local: ListLocal,
         value: ListExpr,
     },
     IntFunction {
@@ -167,13 +166,11 @@ impl Expr {
                 },
                 ExprKind::Tuple(value),
             ) if value.type_() == expected => Some(CallArg::tuple(*local, value)),
-            (
-                ParamLocal::List {
-                    local,
-                    element_type: expected,
-                },
-                ExprKind::List(value),
-            ) if value.element_type() == expected => Some(CallArg::list(*local, value)),
+            (ParamLocal::List(local), ExprKind::List(value))
+                if value.element_type() == &local.item_type() =>
+            {
+                Some(CallArg::list(local.clone(), value))
+            }
             (
                 ParamLocal::IntFunction {
                     local,
@@ -288,7 +285,7 @@ impl CallArg {
         }
     }
 
-    pub(crate) fn list(local: ListLocalId, value: ListExpr) -> Self {
+    pub(crate) fn list(local: ListLocal, value: ListExpr) -> Self {
         Self {
             kind: CallArgKind::List { local, value },
         }
@@ -387,7 +384,7 @@ impl CaptureArg {
         }
     }
 
-    pub(crate) fn list(local: ListLocalId, value: ListExpr) -> Self {
+    pub(crate) fn list(local: ListLocal, value: ListExpr) -> Self {
         Self {
             kind: CaptureArgKind::List { local, value },
         }
@@ -458,10 +455,10 @@ mod tests {
         FloatFunctionValue, FloatLocalId, FunctionExpr, FunctionFunctionExpr, FunctionFunctionId,
         FunctionFunctionLocalId, FunctionFunctionValue, FunctionType, FunctionValue, IntExpr,
         IntFunctionExpr, IntFunctionFunctionId, IntFunctionId, IntFunctionLocalId,
-        IntFunctionValue, IntLocalId, ListExpr, ListFunctionExpr, ListFunctionId,
-        ListFunctionLocalId, ListFunctionValue, ListLocalId, NilExpr, NilFunctionExpr,
-        NilFunctionId, NilFunctionLocalId, NilFunctionValue, NilLocalId, ParamLocal,
-        RuntimeFunctionId, StringExpr, StringFunctionExpr, StringFunctionId, StringFunctionLocalId,
+        IntFunctionValue, IntListLocalId, IntLocalId, ListExpr, ListFunctionExpr, ListFunctionId,
+        ListFunctionLocalId, ListFunctionValue, ListLocal, NilExpr, NilFunctionExpr, NilFunctionId,
+        NilFunctionLocalId, NilFunctionValue, NilLocalId, ParamLocal, RuntimeFunctionId,
+        StringExpr, StringFunctionExpr, StringFunctionId, StringFunctionLocalId,
         StringFunctionValue, StringLocalId, TupleExpr, TupleFunctionExpr, TupleFunctionId,
         TupleFunctionLocalId, TupleFunctionValue, TupleLocalId, ValueType,
     };
@@ -506,8 +503,11 @@ mod tests {
         );
         assert_eq!(
             Expr::list(list_expr())
-                .into_call_arg(&ParamLocal::list(ListLocalId(0), ValueType::Int)),
-            Some(CallArg::list(ListLocalId(0), list_expr())),
+                .into_call_arg(&ParamLocal::list(ListLocal::int(IntListLocalId(0)))),
+            Some(CallArg::list(
+                ListLocal::int(IntListLocalId(0)),
+                list_expr()
+            )),
         );
         assert_eq!(
             Expr::function(FunctionExpr::value(function_value())).into_call_arg(
@@ -738,7 +738,7 @@ mod tests {
     fn list_function_expr() -> ListFunctionExpr {
         ListFunctionExpr::value(ListFunctionValue::new(
             ListFunctionId(0),
-            vec![ParamLocal::list(ListLocalId(0), ValueType::Int)],
+            vec![ParamLocal::list(ListLocal::int(IntListLocalId(0)))],
             ValueType::Int,
         ))
     }

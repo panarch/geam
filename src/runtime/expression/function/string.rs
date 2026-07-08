@@ -131,10 +131,11 @@ mod tests {
     use crate::plan::{
         BoolExpr, BoolFunctionExpr, BoolFunctionId, BoolFunctionValue, CaptureArg, ExecutionPlan,
         Expr, FloatExpr, FunctionExpr, FunctionFunctionExpr, FunctionFunctionId,
-        FunctionFunctionValue, FunctionId, FunctionPlan, FunctionType, IntExpr, IntFunctionId,
-        ListExpr, ListLocalId, ListValue, PanicExpr, PanicSite, ParamLocal, ReturnExpr, Step,
-        StringExpr, StringFunctionExpr, StringFunctionFunctionId, StringFunctionId,
-        StringFunctionLocalId, StringFunctionValue, StringLocalId, TupleExpr, ValueType,
+        FunctionFunctionValue, FunctionId, FunctionListLocalId, FunctionPlan, FunctionType,
+        IntExpr, IntFunctionId, ListExpr, ListLocal, ListValue, PanicExpr, PanicSite, ParamLocal,
+        ReturnExpr, Step, StringExpr, StringFunctionExpr, StringFunctionFunctionId,
+        StringFunctionId, StringFunctionLocalId, StringFunctionValue, StringLocalId, TupleExpr,
+        ValueType,
     };
     use crate::runtime::frame::Frame;
     use crate::runtime::{ExecutionError, PanicKind};
@@ -550,20 +551,22 @@ mod tests {
         );
 
         let mut layout = FrameLayout::default();
-        layout.include_list(ListLocalId(0), ValueType::Int);
+        layout.include_list(ListLocal::function(FunctionListLocalId(0), type_()));
         let mut frame = Frame::new(layout);
         let mismatch_type = FunctionType::new(Vec::new(), ValueType::Bool);
-        frame.set_list(
-            ListLocalId(0),
-            ListValue::function(
-                type_(),
-                vec![BoolFunctionValue::new(BoolFunctionId(0), Vec::new()).into()],
+        assert_eq!(
+            frame.set_list(
+                &ListLocal::function(FunctionListLocalId(0), type_()),
+                ListValue::function(
+                    type_(),
+                    vec![BoolFunctionValue::new(BoolFunctionId(0), Vec::new()).into()],
+                ),
             ),
+            Ok(()),
         );
         let list = ListExpr::local_get(
-            ListLocalId(0),
+            ListLocal::function(FunctionListLocalId(0), type_()),
             "functions".into(),
-            ValueType::Function(Box::new(type_())),
         );
         assert_eq!(
             eval_string_function_expr(

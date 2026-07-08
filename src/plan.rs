@@ -33,14 +33,15 @@ pub(crate) use function::{
 };
 pub use function::{FunctionPlan, Param, ParamBinding, ReturnExpr};
 pub use id::{
-    BoolFunctionFunctionId, BoolFunctionId, BoolFunctionLocalId, BoolLocalId,
-    FloatFunctionFunctionId, FloatFunctionId, FloatFunctionLocalId, FloatLocalId,
-    FunctionFunctionFunctionId, FunctionFunctionLocalId, FunctionId, FunctionReturnFamily,
-    IntFunctionFunctionId, IntFunctionId, IntFunctionLocalId, IntLocalId, ListFunctionFunctionId,
-    ListFunctionId, ListFunctionLocalId, ListLocalId, LocalId, NilFunctionFunctionId,
-    NilFunctionId, NilFunctionLocalId, NilLocalId, StringFunctionFunctionId, StringFunctionId,
-    StringFunctionLocalId, StringLocalId, TupleFunctionFunctionId, TupleFunctionId,
-    TupleFunctionLocalId, TupleLocalId,
+    BoolFunctionFunctionId, BoolFunctionId, BoolFunctionLocalId, BoolListLocalId, BoolLocalId,
+    FloatFunctionFunctionId, FloatFunctionId, FloatFunctionLocalId, FloatListLocalId, FloatLocalId,
+    FunctionFunctionFunctionId, FunctionFunctionLocalId, FunctionId, FunctionListLocalId,
+    FunctionReturnFamily, IntFunctionFunctionId, IntFunctionId, IntFunctionLocalId, IntListLocalId,
+    IntLocalId, ListFunctionFunctionId, ListFunctionId, ListFunctionLocalId, ListListLocalId,
+    ListLocal, LocalId, NilFunctionFunctionId, NilFunctionId, NilFunctionLocalId, NilListLocalId,
+    NilLocalId, StringFunctionFunctionId, StringFunctionId, StringFunctionLocalId,
+    StringListLocalId, StringLocalId, TupleFunctionFunctionId, TupleFunctionId,
+    TupleFunctionLocalId, TupleListLocalId, TupleLocalId,
 };
 pub(crate) use id::{FunctionFunctionId, RuntimeFunctionId};
 pub use source::{PanicSite, SourceContext, SourceSpan};

@@ -137,11 +137,11 @@ mod tests {
     use crate::plan::FrameLayout;
     use crate::plan::{
         BoolExpr, CaptureArg, ExecutionPlan, Expr, FloatExpr, FunctionExpr, FunctionFunctionExpr,
-        FunctionFunctionId, FunctionFunctionValue, FunctionId, FunctionPlan, FunctionType, IntExpr,
-        IntFunctionExpr, IntFunctionId, IntFunctionValue, ListExpr, ListFunctionExpr,
-        ListFunctionFunctionId, ListFunctionId, ListFunctionLocalId, ListFunctionValue,
-        ListLocalId, ListValue, PanicExpr, PanicSite, ParamLocal, ReturnBody, ReturnExpr, Step,
-        StringExpr, TupleExpr, ValueType,
+        FunctionFunctionId, FunctionFunctionValue, FunctionId, FunctionListLocalId, FunctionPlan,
+        FunctionType, IntExpr, IntFunctionExpr, IntFunctionId, IntFunctionValue, IntListLocalId,
+        ListExpr, ListFunctionExpr, ListFunctionFunctionId, ListFunctionId, ListFunctionLocalId,
+        ListFunctionValue, ListLocal, ListValue, PanicExpr, PanicSite, ParamLocal, ReturnBody,
+        ReturnExpr, Step, StringExpr, TupleExpr, ValueType,
     };
     use crate::runtime::frame::Frame;
     use crate::runtime::{ExecutionError, PanicKind};
@@ -381,8 +381,11 @@ mod tests {
             ValueType::List(Box::new(element_type())),
             ListFunctionExpr::closure(
                 ListFunctionId(0),
-                vec![ParamLocal::list(ListLocalId(0), element_type())],
-                vec![CaptureArg::list(ListLocalId(0), error_list_expr())],
+                vec![ParamLocal::list(ListLocal::int(IntListLocalId(0)))],
+                vec![CaptureArg::list(
+                    ListLocal::int(IntListLocalId(0)),
+                    error_list_expr(),
+                )],
                 list_function_type(),
                 element_type(),
             ),
@@ -535,20 +538,25 @@ mod tests {
         );
 
         let mut layout = FrameLayout::default();
-        layout.include_list(ListLocalId(1), ValueType::Int);
+        layout.include_list(ListLocal::function(
+            FunctionListLocalId(1),
+            list_function_type.clone(),
+        ));
         let mut frame = Frame::new(layout);
         let int_function_type = FunctionType::new(Vec::new(), ValueType::Int);
-        frame.set_list(
-            ListLocalId(1),
-            ListValue::function(
-                list_function_type.clone(),
-                vec![IntFunctionValue::new(IntFunctionId(0), Vec::new()).into()],
+        assert_eq!(
+            frame.set_list(
+                &ListLocal::function(FunctionListLocalId(1), list_function_type.clone()),
+                ListValue::function(
+                    list_function_type.clone(),
+                    vec![IntFunctionValue::new(IntFunctionId(0), Vec::new()).into()],
+                ),
             ),
+            Ok(()),
         );
         let list = ListExpr::local_get(
-            ListLocalId(1),
+            ListLocal::function(FunctionListLocalId(1), list_function_type.clone()),
             "functions".into(),
-            ValueType::Function(Box::new(list_function_type.clone())),
         );
         assert_eq!(
             eval_list_function_expr(

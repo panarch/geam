@@ -895,10 +895,9 @@ pub fn main() {
                     id: ListFunctionId(0),
                     return_type: Box::new(ValueType::Int),
                 },
-                vec![ParamLocal::list(
-                    crate::plan::ListLocalId(0),
-                    ValueType::Int
-                )],
+                vec![ParamLocal::list(crate::plan::ListLocal::int(
+                    crate::plan::IntListLocalId(0),
+                ))],
             )),
         );
         assert_eq!(

@@ -132,10 +132,10 @@ mod tests {
     use crate::plan::FrameLayout;
     use crate::plan::{
         BoolExpr, CaptureArg, ExecutionPlan, Expr, FloatExpr, FunctionExpr, FunctionFunctionExpr,
-        FunctionFunctionId, FunctionFunctionValue, FunctionId, FunctionPlan, FunctionType, IntExpr,
-        IntFunctionExpr, IntFunctionFunctionId, IntFunctionId, IntFunctionValue, IntLocalId,
-        ListExpr, ListLocalId, ListValue, PanicExpr, PanicSite, ReturnExpr, Step, StringExpr,
-        TupleExpr, ValueType,
+        FunctionFunctionId, FunctionFunctionValue, FunctionId, FunctionListLocalId, FunctionPlan,
+        FunctionType, IntExpr, IntFunctionExpr, IntFunctionFunctionId, IntFunctionId,
+        IntFunctionValue, IntLocalId, ListExpr, ListLocal, ListValue, PanicExpr, PanicSite,
+        ReturnExpr, Step, StringExpr, TupleExpr, ValueType,
     };
     use crate::runtime::frame::Frame;
     use crate::runtime::{ExecutionError, PanicKind};
@@ -773,19 +773,24 @@ pub fn main() {
         );
 
         let mut layout = FrameLayout::default();
-        layout.include_list(ListLocalId(0), ValueType::Int);
+        layout.include_list(ListLocal::function(
+            FunctionListLocalId(0),
+            returned_int_function_type(),
+        ));
         let mut frame = Frame::new(layout);
-        frame.set_list(
-            ListLocalId(0),
-            ListValue::function(
-                returned_int_function_type(),
-                vec![IntFunctionValue::new(IntFunctionId(0), Vec::new()).into()],
+        assert_eq!(
+            frame.set_list(
+                &ListLocal::function(FunctionListLocalId(0), returned_int_function_type()),
+                ListValue::function(
+                    returned_int_function_type(),
+                    vec![IntFunctionValue::new(IntFunctionId(0), Vec::new()).into()],
+                ),
             ),
+            Ok(()),
         );
         let list = ListExpr::local_get(
-            ListLocalId(0),
+            ListLocal::function(FunctionListLocalId(0), returned_int_function_type()),
             "functions".into(),
-            ValueType::Function(Box::new(returned_int_function_type())),
         );
         assert_eq!(
             eval_function_function_expr(
@@ -806,22 +811,24 @@ pub fn main() {
         let expected_function_type = function_function_value().type_().clone();
         let int_function_type = FunctionType::new(Vec::new(), ValueType::Int);
         let mut layout = FrameLayout::default();
-        layout.include_list(
-            ListLocalId(0),
-            ValueType::Function(Box::new(expected_function_type.clone())),
-        );
+        layout.include_list(ListLocal::function(
+            FunctionListLocalId(0),
+            expected_function_type.clone(),
+        ));
         let mut frame = Frame::new(layout);
-        frame.set_list(
-            ListLocalId(0),
-            ListValue::function(
-                expected_function_type.clone(),
-                vec![IntFunctionValue::new(IntFunctionId(0), Vec::new()).into()],
+        assert_eq!(
+            frame.set_list(
+                &ListLocal::function(FunctionListLocalId(0), expected_function_type.clone()),
+                ListValue::function(
+                    expected_function_type.clone(),
+                    vec![IntFunctionValue::new(IntFunctionId(0), Vec::new()).into()],
+                ),
             ),
+            Ok(()),
         );
         let list = ListExpr::local_get(
-            ListLocalId(0),
+            ListLocal::function(FunctionListLocalId(0), expected_function_type.clone()),
             "malformed_functions".into(),
-            ValueType::Function(Box::new(expected_function_type.clone())),
         );
         assert_eq!(
             eval_function_function_expr(

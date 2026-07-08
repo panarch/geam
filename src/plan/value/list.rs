@@ -102,6 +102,14 @@ impl ListValue {
         }
     }
 
+    pub(crate) fn empty_list(item_type: ValueType) -> Self {
+        Self::list(item_type, Vec::new())
+    }
+
+    pub(crate) fn empty_function(item_type: FunctionType) -> Self {
+        Self::function(item_type, Vec::new())
+    }
+
     pub fn item_type(&self) -> ValueType {
         match &self.kind {
             ListValueKind::Int(_) => ValueType::Int,

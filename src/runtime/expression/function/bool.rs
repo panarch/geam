@@ -130,9 +130,9 @@ mod tests {
     use crate::plan::{
         BoolExpr, BoolFunctionExpr, BoolFunctionId, BoolFunctionValue, BoolLocalId, CaptureArg,
         ExecutionPlan, Expr, FloatExpr, FunctionExpr, FunctionFunctionExpr, FunctionFunctionId,
-        FunctionFunctionValue, FunctionId, FunctionPlan, FunctionType, IntExpr, IntFunctionExpr,
-        IntFunctionId, IntFunctionValue, ListExpr, ListLocalId, ListValue, PanicExpr, PanicSite,
-        ParamLocal, ReturnExpr, Step, StringExpr, TupleExpr, ValueType,
+        FunctionFunctionValue, FunctionId, FunctionListLocalId, FunctionPlan, FunctionType,
+        IntExpr, IntFunctionExpr, IntFunctionId, IntFunctionValue, ListExpr, ListLocal, ListValue,
+        PanicExpr, PanicSite, ParamLocal, ReturnExpr, Step, StringExpr, TupleExpr, ValueType,
     };
     use crate::plan::{BoolFunctionFunctionId, BoolFunctionLocalId, FrameLayout};
     use crate::runtime::frame::Frame;
@@ -542,20 +542,22 @@ mod tests {
         );
 
         let mut layout = FrameLayout::default();
-        layout.include_list(ListLocalId(0), ValueType::Int);
+        layout.include_list(ListLocal::function(FunctionListLocalId(0), type_()));
         let mut frame = Frame::new(layout);
         let mismatch_type = FunctionType::new(Vec::new(), ValueType::Int);
-        frame.set_list(
-            ListLocalId(0),
-            ListValue::function(
-                type_(),
-                vec![IntFunctionValue::new(IntFunctionId(0), Vec::new()).into()],
+        assert_eq!(
+            frame.set_list(
+                &ListLocal::function(FunctionListLocalId(0), type_()),
+                ListValue::function(
+                    type_(),
+                    vec![IntFunctionValue::new(IntFunctionId(0), Vec::new()).into()],
+                ),
             ),
+            Ok(()),
         );
         let list = ListExpr::local_get(
-            ListLocalId(0),
+            ListLocal::function(FunctionListLocalId(0), type_()),
             "functions".into(),
-            ValueType::Function(Box::new(type_())),
         );
         assert_eq!(
             eval_bool_function_expr(

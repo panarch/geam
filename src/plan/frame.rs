@@ -4,11 +4,15 @@ mod function;
 mod return_;
 mod step;
 
+use std::borrow::Borrow;
+
 use super::function::{Param, ParamLocal, ReturnExpr};
 use super::id::{
-    BoolFunctionLocalId, BoolLocalId, FloatFunctionLocalId, FloatLocalId, FunctionFunctionLocalId,
-    IntFunctionLocalId, IntLocalId, ListFunctionLocalId, ListLocalId, NilFunctionLocalId,
-    NilLocalId, StringFunctionLocalId, StringLocalId, TupleFunctionLocalId, TupleLocalId,
+    BoolFunctionLocalId, BoolListLocalId, BoolLocalId, FloatFunctionLocalId, FloatListLocalId,
+    FloatLocalId, FunctionFunctionLocalId, FunctionListLocalId, IntFunctionLocalId, IntListLocalId,
+    IntLocalId, ListFunctionLocalId, ListListLocalId, ListLocal, NilFunctionLocalId,
+    NilListLocalId, NilLocalId, StringFunctionLocalId, StringListLocalId, StringLocalId,
+    TupleFunctionLocalId, TupleListLocalId, TupleLocalId,
 };
 use super::step::Step;
 use super::value::ValueType;
@@ -21,7 +25,14 @@ pub(crate) struct FrameLayout {
     bools: usize,
     nils: usize,
     tuples: usize,
-    lists: Vec<ValueType>,
+    int_lists: usize,
+    string_lists: usize,
+    float_lists: usize,
+    bool_lists: usize,
+    nil_lists: usize,
+    tuple_lists: Vec<Vec<ValueType>>,
+    list_lists: Vec<ValueType>,
+    function_lists: Vec<super::FunctionType>,
     int_functions: usize,
     float_functions: usize,
     string_functions: usize,
@@ -57,10 +68,7 @@ impl FrameLayout {
             ParamLocal::Bool(local) => self.include_bool(*local),
             ParamLocal::Nil(local) => self.include_nil(*local),
             ParamLocal::Tuple { local, .. } => self.include_tuple(*local),
-            ParamLocal::List {
-                local,
-                element_type,
-            } => self.include_list(*local, element_type.clone()),
+            ParamLocal::List(local) => self.include_list(local),
             ParamLocal::IntFunction { local, .. } => self.include_int_function(*local),
             ParamLocal::FloatFunction { local, .. } => self.include_float_function(*local),
             ParamLocal::StringFunction { local, .. } => self.include_string_function(*local),
@@ -96,11 +104,76 @@ impl FrameLayout {
         self.tuples = self.tuples.max(local.0 + 1);
     }
 
-    pub(crate) fn include_list(&mut self, local: ListLocalId, item_type: ValueType) {
-        if self.lists.len() <= local.0 {
-            self.lists.resize(local.0 + 1, ValueType::Nil);
+    pub(crate) fn include_list(&mut self, local: impl Borrow<ListLocal>) {
+        let local = local.borrow();
+        match local {
+            ListLocal::Int(local) => self.include_int_list(*local),
+            ListLocal::String(local) => self.include_string_list(*local),
+            ListLocal::Float(local) => self.include_float_list(*local),
+            ListLocal::Bool(local) => self.include_bool_list(*local),
+            ListLocal::Nil(local) => self.include_nil_list(*local),
+            ListLocal::Tuple { local, item_type } => {
+                self.include_tuple_list(*local, item_type.clone());
+            }
+            ListLocal::List { local, item_type } => {
+                self.include_list_list(*local, item_type.as_ref().clone());
+            }
+            ListLocal::Function { local, item_type } => {
+                self.include_function_list(*local, item_type.clone());
+            }
         }
-        self.lists[local.0] = item_type;
+    }
+
+    pub(crate) fn include_int_list(&mut self, local: IntListLocalId) {
+        self.int_lists = self.int_lists.max(local.0 + 1);
+    }
+
+    pub(crate) fn include_string_list(&mut self, local: StringListLocalId) {
+        self.string_lists = self.string_lists.max(local.0 + 1);
+    }
+
+    pub(crate) fn include_float_list(&mut self, local: FloatListLocalId) {
+        self.float_lists = self.float_lists.max(local.0 + 1);
+    }
+
+    pub(crate) fn include_bool_list(&mut self, local: BoolListLocalId) {
+        self.bool_lists = self.bool_lists.max(local.0 + 1);
+    }
+
+    pub(crate) fn include_nil_list(&mut self, local: NilListLocalId) {
+        self.nil_lists = self.nil_lists.max(local.0 + 1);
+    }
+
+    pub(crate) fn include_tuple_list(
+        &mut self,
+        local: TupleListLocalId,
+        item_type: Vec<ValueType>,
+    ) {
+        if self.tuple_lists.len() <= local.0 {
+            self.tuple_lists.resize(local.0 + 1, Vec::new());
+        }
+        self.tuple_lists[local.0] = item_type;
+    }
+
+    pub(crate) fn include_list_list(&mut self, local: ListListLocalId, item_type: ValueType) {
+        if self.list_lists.len() <= local.0 {
+            self.list_lists.resize(local.0 + 1, ValueType::Nil);
+        }
+        self.list_lists[local.0] = item_type;
+    }
+
+    pub(crate) fn include_function_list(
+        &mut self,
+        local: FunctionListLocalId,
+        item_type: super::FunctionType,
+    ) {
+        if self.function_lists.len() <= local.0 {
+            self.function_lists.resize(
+                local.0 + 1,
+                super::FunctionType::new(Vec::new(), ValueType::Nil),
+            );
+        }
+        self.function_lists[local.0] = item_type;
     }
 
     pub(crate) fn include_int_function(&mut self, local: IntFunctionLocalId) {
@@ -160,8 +233,36 @@ impl FrameLayout {
         self.tuples
     }
 
-    pub(crate) fn lists(&self) -> &[ValueType] {
-        &self.lists
+    pub(crate) fn int_lists(&self) -> usize {
+        self.int_lists
+    }
+
+    pub(crate) fn string_lists(&self) -> usize {
+        self.string_lists
+    }
+
+    pub(crate) fn float_lists(&self) -> usize {
+        self.float_lists
+    }
+
+    pub(crate) fn bool_lists(&self) -> usize {
+        self.bool_lists
+    }
+
+    pub(crate) fn nil_lists(&self) -> usize {
+        self.nil_lists
+    }
+
+    pub(crate) fn tuple_lists(&self) -> &[Vec<ValueType>] {
+        &self.tuple_lists
+    }
+
+    pub(crate) fn list_lists(&self) -> &[ValueType] {
+        &self.list_lists
+    }
+
+    pub(crate) fn function_lists(&self) -> &[super::FunctionType] {
+        &self.function_lists
     }
 
     pub(crate) fn int_functions(&self) -> usize {
@@ -254,9 +355,9 @@ pub(super) mod test_helpers {
 mod tests {
     use super::FrameLayout;
     use crate::plan::{
-        BoolLocalId, FloatFunctionLocalId, FloatLocalId, IntFunctionLocalId, IntLocalId,
-        ListLocalId, NilFunctionLocalId, NilLocalId, ParamLocal, StringLocalId,
-        TupleFunctionLocalId, TupleLocalId, ValueType,
+        BoolLocalId, FloatFunctionLocalId, FloatLocalId, IntFunctionLocalId, IntListLocalId,
+        IntLocalId, ListLocal, NilFunctionLocalId, NilLocalId, ParamLocal, StringLocalId,
+        TupleFunctionLocalId, TupleListLocalId, TupleLocalId, ValueType,
     };
 
     #[test]
@@ -267,7 +368,7 @@ mod tests {
         assert_eq!(layout, cloned);
         assert_eq!(
             format!("{layout:?}"),
-            "FrameLayout { ints: 0, floats: 0, strings: 0, bools: 0, nils: 0, tuples: 0, lists: [], int_functions: 0, float_functions: 0, string_functions: 0, bool_functions: 0, nil_functions: 0, tuple_functions: 0, list_functions: 0, function_functions: 0 }",
+            "FrameLayout { ints: 0, floats: 0, strings: 0, bools: 0, nils: 0, tuples: 0, int_lists: 0, string_lists: 0, float_lists: 0, bool_lists: 0, nil_lists: 0, tuple_lists: [], list_lists: [], function_lists: [], int_functions: 0, float_functions: 0, string_functions: 0, bool_functions: 0, nil_functions: 0, tuple_functions: 0, list_functions: 0, function_functions: 0 }",
         );
     }
 
@@ -309,15 +410,13 @@ mod tests {
     fn frame_layout_preserves_list_local_item_types() {
         let mut layout = FrameLayout::default();
 
-        layout.include_list(ListLocalId(0), ValueType::Int);
-        layout.include_local(&ParamLocal::list(
-            ListLocalId(1),
-            ValueType::Tuple(vec![ValueType::String]),
-        ));
+        layout.include_list(ListLocal::int(IntListLocalId(0)));
+        layout.include_local(&ParamLocal::list(ListLocal::tuple(
+            TupleListLocalId(0),
+            vec![ValueType::String],
+        )));
 
-        assert_eq!(
-            layout.lists(),
-            &[ValueType::Int, ValueType::Tuple(vec![ValueType::String]),],
-        );
+        assert_eq!(layout.int_lists(), 1);
+        assert_eq!(layout.tuple_lists(), &[vec![ValueType::String]]);
     }
 }

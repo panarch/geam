@@ -3,7 +3,7 @@ use crate::plan::{
     ExecutionPlan, FloatFunctionLocalId, FloatFunctionValue, FloatLocalId, FunctionFunctionLocalId,
     FunctionFunctionValue, FunctionValue, FunctionValueKind, IntFunctionLocalId, IntFunctionValue,
     IntLocalId, ListAssertPattern, ListAssertTail, ListFunctionLocalId, ListFunctionValue,
-    ListLocalId, ListValue, NilFunctionLocalId, NilFunctionValue, NilLocalId, ParamLocal, StepKind,
+    ListLocal, ListValue, NilFunctionLocalId, NilFunctionValue, NilLocalId, ParamLocal, StepKind,
     StringFunctionLocalId, StringFunctionValue, StringLocalId, TupleFunctionLocalId,
     TupleFunctionValue, TupleLocalId, Value, ValueType,
 };
@@ -52,7 +52,7 @@ pub(in crate::runtime) fn execute_steps(
             }
             StepKind::LetList { local, value, .. } => {
                 let value = eval_list_expr(plan, frame, value)?;
-                frame.set_list(*local, value);
+                frame.set_list(local, value)?;
             }
             StepKind::LetIntFunction { local, value, .. } => {
                 let value = eval_int_function_expr(plan, frame, value)?;
@@ -88,13 +88,12 @@ pub(in crate::runtime) fn execute_steps(
             }
             StepKind::AssertList {
                 local,
-                element_type: _,
                 pattern,
                 message,
                 site,
                 pattern_span,
             } => {
-                let value = frame.get_list(*local);
+                let value = frame.get_list(local)?;
                 let mut bindings = Vec::new();
                 if match_assert_pattern(pattern, &Value::List(value.clone()), &mut bindings)
                     .is_none()
@@ -112,7 +111,7 @@ pub(in crate::runtime) fn execute_steps(
                     ));
                 }
                 for binding in bindings {
-                    frame_set_binding(frame, binding);
+                    frame_set_binding(frame, binding)?;
                 }
             }
             StepKind::AssertBool {
@@ -150,7 +149,7 @@ enum PendingBinding {
     Bool(BoolLocalId, bool),
     Nil(NilLocalId),
     Tuple(TupleLocalId, Vec<Value>),
-    List(ListLocalId, ListValue),
+    List(ListLocal, ListValue),
     IntFunction(IntFunctionLocalId, IntFunctionValue),
     FloatFunction(FloatFunctionLocalId, FloatFunctionValue),
     StringFunction(StringFunctionLocalId, StringFunctionValue),
@@ -174,7 +173,7 @@ fn match_list_assert_pattern(
         let mut bindings = match_prefix_assert_patterns(pattern.elements(), &values)?;
         if let ListAssertTail::Bind(binding) = tail {
             bindings.push(PendingBinding::List(
-                binding.local(),
+                binding.local().clone(),
                 value.drop_first(pattern.elements().len()),
             ));
         }
@@ -256,10 +255,10 @@ fn pending_binding(target: &AssertBinding, value: &Value) -> Option<PendingBindi
         {
             Some(PendingBinding::Tuple(*local, value.clone()))
         }
-        (ParamLocal::List { local, .. }, Value::List(value))
+        (ParamLocal::List(local), Value::List(value))
             if target.local().value_type() == ValueType::List(Box::new(value.item_type())) =>
         {
-            Some(PendingBinding::List(*local, value.clone()))
+            Some(PendingBinding::List(local.clone(), value.clone()))
         }
         (_, Value::Function(value)) => pending_function_binding(target.local(), value),
         _ => None,
@@ -300,7 +299,7 @@ fn pending_function_binding(target: &ParamLocal, value: &FunctionValue) -> Optio
     }
 }
 
-fn frame_set_binding(frame: &mut Frame, binding: PendingBinding) {
+fn frame_set_binding(frame: &mut Frame, binding: PendingBinding) -> ExecutionResult<()> {
     match binding {
         PendingBinding::Int(local, value) => frame.set_int(local, value),
         PendingBinding::Float(local, value) => frame.set_float(local, value),
@@ -308,7 +307,7 @@ fn frame_set_binding(frame: &mut Frame, binding: PendingBinding) {
         PendingBinding::Bool(local, value) => frame.set_bool(local, value),
         PendingBinding::Nil(local) => frame.set_nil(local),
         PendingBinding::Tuple(local, value) => frame.set_tuple(local, value),
-        PendingBinding::List(local, value) => frame.set_list(local, value),
+        PendingBinding::List(local, value) => frame.set_list(&local, value)?,
         PendingBinding::IntFunction(local, value) => frame.set_int_function(local, value),
         PendingBinding::FloatFunction(local, value) => frame.set_float_function(local, value),
         PendingBinding::StringFunction(local, value) => frame.set_string_function(local, value),
@@ -320,6 +319,7 @@ fn frame_set_binding(frame: &mut Frame, binding: PendingBinding) {
             frame.set_function_function(local, value);
         }
     }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -335,13 +335,14 @@ mod tests {
         FrameLayout, FunctionFunctionExpr, FunctionFunctionId, FunctionFunctionLocalId,
         FunctionFunctionValue, FunctionId, FunctionPlan, FunctionReturnFamily, FunctionType,
         IntExpr, IntFunctionExpr, IntFunctionFunctionId, IntFunctionId, IntFunctionLocalId,
-        IntFunctionValue, IntLocalId, ListAssertPattern, ListAssertTail, ListExpr,
-        ListFunctionExpr, ListFunctionId, ListFunctionLocalId, ListFunctionValue, ListLocalId,
-        ListValue, NilExpr, NilFunctionExpr, NilFunctionId, NilFunctionLocalId, NilFunctionValue,
-        NilLocalId, PanicExpr, PanicSite, ParamLocal, ReturnExpr, SourceSpan, Step, StringExpr,
-        StringFunctionExpr, StringFunctionId, StringFunctionLocalId, StringFunctionValue,
-        StringLocalId, TupleExpr, TupleFunctionExpr, TupleFunctionId, TupleFunctionLocalId,
-        TupleFunctionValue, TupleLocalId, Value, ValueType,
+        IntFunctionValue, IntListLocalId, IntLocalId, ListAssertPattern, ListAssertTail, ListExpr,
+        ListFunctionExpr, ListFunctionId, ListFunctionLocalId, ListFunctionValue, ListListLocalId,
+        ListLocal, ListValue, NilExpr, NilFunctionExpr, NilFunctionId, NilFunctionLocalId,
+        NilFunctionValue, NilLocalId, PanicExpr, PanicSite, ParamLocal, ReturnBody, ReturnExpr,
+        SourceSpan, Step, StringExpr, StringFunctionExpr, StringFunctionId, StringFunctionLocalId,
+        StringFunctionValue, StringListLocalId, StringLocalId, TupleExpr, TupleFunctionExpr,
+        TupleFunctionId, TupleFunctionLocalId, TupleFunctionValue, TupleListLocalId, TupleLocalId,
+        Value, ValueType,
     };
     use crate::runtime::frame::Frame;
     use crate::runtime::{ExecutionError, PanicKind};
@@ -357,7 +358,11 @@ mod tests {
             Step::let_bool(BoolLocalId(0), "x".into(), failing_bool_expr()),
             Step::let_nil(NilLocalId(0), "x".into(), failing_nil_expr()),
             Step::let_tuple(TupleLocalId(0), "x".into(), failing_tuple_expr()),
-            Step::let_list(ListLocalId(0), "x".into(), failing_list_expr()),
+            Step::let_list(
+                ListLocal::int(IntListLocalId(0)),
+                "x".into(),
+                failing_list_expr(),
+            ),
             Step::let_int_function(
                 IntFunctionLocalId(0),
                 "x".into(),
@@ -420,7 +425,7 @@ mod tests {
             Step::let_bool(BoolLocalId(0), "x".into(), BoolExpr::value(true)),
             Step::let_nil(NilLocalId(0), "x".into(), NilExpr::value()),
             Step::let_tuple(TupleLocalId(0), "x".into(), tuple_expr()),
-            Step::let_list(ListLocalId(0), "x".into(), list_expr()),
+            Step::let_list(ListLocal::int(IntListLocalId(0)), "x".into(), list_expr()),
             Step::let_int_function(IntFunctionLocalId(0), "x".into(), int_function_expr()),
             Step::let_string_function(StringFunctionLocalId(0), "x".into(), string_function_expr()),
             Step::let_float_function(FloatFunctionLocalId(0), "x".into(), float_function_expr()),
@@ -444,8 +449,8 @@ mod tests {
         assert_eq!(frame.get_nil(NilLocalId(0)), ());
         assert_eq!(frame.get_tuple(TupleLocalId(0)), vec![Value::Int(1.into())]);
         assert_eq!(
-            frame.get_list(ListLocalId(0)),
-            ListValue::int(vec![1.into()]),
+            frame.get_list(&ListLocal::int(IntListLocalId(0))),
+            Ok(ListValue::int(vec![1.into()])),
         );
         assert_eq!(
             frame.get_int_function(IntFunctionLocalId(0)).runtime_id(),
@@ -490,16 +495,46 @@ mod tests {
     }
 
     #[test]
+    fn execute_steps_let_list_propagates_item_type_mismatch() {
+        let plan = plan_with_string_list_function();
+        let local = ListLocal::int(IntListLocalId(0));
+        let mut layout = FrameLayout::default();
+        layout.include_list(local.clone());
+        let mut frame = Frame::new(layout);
+
+        assert_eq!(
+            execute_steps(
+                &plan,
+                &[Step::let_list(
+                    local,
+                    "values".into(),
+                    mismatched_list_expr()
+                )],
+                &mut frame,
+            ),
+            Err(ExecutionError::list_item_type_mismatch(
+                ValueType::Int,
+                ValueType::String,
+            )),
+        );
+    }
+
+    #[test]
     fn execute_steps_assert_list_binds_elements_and_tail_after_match() {
         let plan = plan();
         let mut frame = Frame::new(assert_list_layout());
-        frame.set_list(ListLocalId(0), ListValue::int(vec![1.into(), 2.into()]));
+        assert_eq!(
+            frame.set_list(
+                &ListLocal::int(IntListLocalId(0)),
+                ListValue::int(vec![1.into(), 2.into()])
+            ),
+            Ok(())
+        );
 
         execute_steps(
             &plan,
             &[Step::assert_list_at(
-                ListLocalId(0),
-                ValueType::Int,
+                ListLocal::int(IntListLocalId(0)),
                 list_pattern(),
                 None,
                 PanicSite::unknown(),
@@ -511,8 +546,81 @@ mod tests {
 
         assert_eq!(frame.get_int(IntLocalId(0)), 1.into());
         assert_eq!(
-            frame.get_list(ListLocalId(1)),
-            ListValue::int(vec![2.into()]),
+            frame.get_list(&ListLocal::int(IntListLocalId(1))),
+            Ok(ListValue::int(vec![2.into()])),
+        );
+    }
+
+    #[test]
+    fn execute_steps_assert_list_propagates_tail_binding_item_type_mismatch() {
+        let plan = plan();
+        let subject = ListLocal::int(IntListLocalId(0));
+        let tail = ListLocal::string(StringListLocalId(0));
+        let mut layout = FrameLayout::default();
+        layout.include_list(subject.clone());
+        layout.include_list(tail.clone());
+        let mut frame = Frame::new(layout);
+        assert_eq!(
+            frame.set_list(&subject, ListValue::int(vec![1.into(), 2.into()])),
+            Ok(()),
+        );
+
+        assert_eq!(
+            execute_steps(
+                &plan,
+                &[Step::assert_list_at(
+                    subject,
+                    AssertPattern::list(ListAssertPattern::new(
+                        ValueType::Int,
+                        vec![AssertPattern::Discard],
+                        Some(ListAssertTail::bind(tail.clone(), "tail".into())),
+                    )),
+                    None,
+                    PanicSite::unknown(),
+                    SourceSpan::new(0, 0),
+                )],
+                &mut frame,
+            ),
+            Err(ExecutionError::list_item_type_mismatch(
+                ValueType::String,
+                ValueType::Int,
+            )),
+        );
+        assert_eq!(
+            frame.get_list(&tail),
+            Ok(ListValue::empty(ValueType::String)),
+        );
+    }
+
+    #[test]
+    fn execute_steps_assert_list_propagates_subject_item_type_mismatch() {
+        let plan = plan();
+        let actual_subject = ListLocal::tuple(TupleListLocalId(0), vec![ValueType::String]);
+        let requested_subject = ListLocal::tuple(TupleListLocalId(0), vec![ValueType::Int]);
+        let mut layout = FrameLayout::default();
+        layout.include_list(actual_subject);
+        let mut frame = Frame::new(layout);
+
+        assert_eq!(
+            execute_steps(
+                &plan,
+                &[Step::assert_list_at(
+                    requested_subject,
+                    AssertPattern::list(ListAssertPattern::new(
+                        ValueType::Tuple(vec![ValueType::Int]),
+                        vec![AssertPattern::Discard],
+                        None,
+                    )),
+                    None,
+                    PanicSite::unknown(),
+                    SourceSpan::new(0, 0),
+                )],
+                &mut frame,
+            ),
+            Err(ExecutionError::list_item_type_mismatch(
+                ValueType::Tuple(vec![ValueType::Int]),
+                ValueType::Tuple(vec![ValueType::String]),
+            )),
         );
     }
 
@@ -634,13 +742,18 @@ mod tests {
     fn execute_steps_assert_list_does_not_evaluate_message_after_match() {
         let plan = plan();
         let mut frame = Frame::new(assert_list_layout());
-        frame.set_list(ListLocalId(0), ListValue::int(vec![1.into(), 2.into()]));
+        assert_eq!(
+            frame.set_list(
+                &ListLocal::int(IntListLocalId(0)),
+                ListValue::int(vec![1.into(), 2.into()])
+            ),
+            Ok(())
+        );
 
         execute_steps(
             &plan,
             &[Step::assert_list_at(
-                ListLocalId(0),
-                ValueType::Int,
+                ListLocal::int(IntListLocalId(0)),
                 list_pattern(),
                 Some(failing_string_expr()),
                 PanicSite::unknown(),
@@ -657,13 +770,18 @@ mod tests {
     fn execute_steps_assert_list_propagates_message_error_before_let_assert_panic() {
         let plan = plan();
         let mut frame = Frame::new(assert_list_layout());
-        frame.set_list(ListLocalId(0), ListValue::empty(ValueType::Int));
+        assert_eq!(
+            frame.set_list(
+                &ListLocal::int(IntListLocalId(0)),
+                ListValue::empty(ValueType::Int)
+            ),
+            Ok(())
+        );
 
         assert_expected_function_got_int(execute_steps(
             &plan,
             &[Step::assert_list_at(
-                ListLocalId(0),
-                ValueType::Int,
+                ListLocal::int(IntListLocalId(0)),
                 list_pattern(),
                 Some(failing_string_expr()),
                 PanicSite::unknown(),
@@ -678,13 +796,18 @@ mod tests {
     fn execute_steps_assert_list_returns_let_assert_panic_without_message() {
         let plan = plan();
         let mut frame = Frame::new(assert_list_layout());
-        frame.set_list(ListLocalId(0), ListValue::empty(ValueType::Int));
+        assert_eq!(
+            frame.set_list(
+                &ListLocal::int(IntListLocalId(0)),
+                ListValue::empty(ValueType::Int)
+            ),
+            Ok(())
+        );
 
         let actual = execute_steps(
             &plan,
             &[Step::assert_list_at(
-                ListLocalId(0),
-                ValueType::Int,
+                ListLocal::int(IntListLocalId(0)),
                 list_pattern(),
                 None,
                 PanicSite::unknown(),
@@ -710,26 +833,29 @@ mod tests {
     fn execute_steps_assert_list_does_not_commit_partial_nested_bindings() {
         let plan = plan();
         let mut layout = FrameLayout::default();
-        layout.include_list(ListLocalId(0), ValueType::Int);
+        let subject_local = ListLocal::list(ListListLocalId(0), ValueType::Int);
+        layout.include_list(subject_local.clone());
         layout.include_int(IntLocalId(0));
         layout.include_int(IntLocalId(1));
         let mut frame = Frame::new(layout);
-        frame.set_list(
-            ListLocalId(0),
-            ListValue::list(
-                ValueType::Int,
-                vec![
-                    ListValue::int(vec![1.into()]),
-                    ListValue::empty(ValueType::Int),
-                ],
+        assert_eq!(
+            frame.set_list(
+                &subject_local,
+                ListValue::list(
+                    ValueType::Int,
+                    vec![
+                        ListValue::int(vec![1.into()]),
+                        ListValue::empty(ValueType::Int),
+                    ],
+                ),
             ),
+            Ok(()),
         );
 
         let actual = execute_steps(
             &plan,
             &[Step::assert_list_at(
-                ListLocalId(0),
-                ValueType::List(Box::new(ValueType::Int)),
+                subject_local,
                 AssertPattern::list(ListAssertPattern::new(
                     ValueType::List(Box::new(ValueType::Int)),
                     vec![
@@ -783,15 +909,20 @@ mod tests {
     fn execute_steps_assert_list_accepts_empty_pattern_without_bindings() {
         let plan = plan();
         let mut layout = FrameLayout::default();
-        layout.include_list(ListLocalId(0), ValueType::Int);
+        layout.include_list(ListLocal::int(IntListLocalId(0)));
         let mut frame = Frame::new(layout);
-        frame.set_list(ListLocalId(0), ListValue::empty(ValueType::Int));
+        assert_eq!(
+            frame.set_list(
+                &ListLocal::int(IntListLocalId(0)),
+                ListValue::empty(ValueType::Int)
+            ),
+            Ok(())
+        );
 
         execute_steps(
             &plan,
             &[Step::assert_list_at(
-                ListLocalId(0),
-                ValueType::Int,
+                ListLocal::int(IntListLocalId(0)),
                 AssertPattern::list(ListAssertPattern::new(ValueType::Int, Vec::new(), None)),
                 None,
                 PanicSite::unknown(),
@@ -802,8 +933,8 @@ mod tests {
         .expect("empty assert list pattern should match an empty list");
 
         assert_eq!(
-            frame.get_list(ListLocalId(0)),
-            ListValue::empty(ValueType::Int),
+            frame.get_list(&ListLocal::int(IntListLocalId(0))),
+            Ok(ListValue::empty(ValueType::Int)),
         );
     }
 
@@ -891,7 +1022,10 @@ mod tests {
                 AssertPattern::list(ListAssertPattern::new(
                     ValueType::Int,
                     vec![AssertPattern::Discard],
-                    Some(ListAssertTail::bind(ListLocalId(0), "tail".into())),
+                    Some(ListAssertTail::bind(
+                        ListLocal::int(IntListLocalId(0)),
+                        "tail".into(),
+                    )),
                 )),
             ]),
             tuple_alias,
@@ -912,7 +1046,10 @@ mod tests {
         assert_eq!(bindings[0], PendingBinding::Int(IntLocalId(0), 1.into()),);
         assert_eq!(
             bindings[1],
-            PendingBinding::List(ListLocalId(0), ListValue::int(vec![3.into()]),),
+            PendingBinding::List(
+                ListLocal::int(IntListLocalId(0)),
+                ListValue::int(vec![3.into()]),
+            ),
         );
         assert_eq!(
             bindings[2],
@@ -927,7 +1064,10 @@ mod tests {
         let bind_tail = ListAssertPattern::new(
             ValueType::Int,
             vec![AssertPattern::Bind(first_binding.clone())],
-            Some(ListAssertTail::bind(ListLocalId(0), "tail".into())),
+            Some(ListAssertTail::bind(
+                ListLocal::int(IntListLocalId(0)),
+                "tail".into(),
+            )),
         );
         let ignore_tail = ListAssertPattern::new(
             ValueType::Int,
@@ -941,7 +1081,10 @@ mod tests {
         assert_eq!(bound[0], PendingBinding::Int(IntLocalId(0), 1.into()));
         assert_eq!(
             bound[1],
-            PendingBinding::List(ListLocalId(0), ListValue::int(vec![2.into(), 3.into()]),),
+            PendingBinding::List(
+                ListLocal::int(IntListLocalId(0)),
+                ListValue::int(vec![2.into(), 3.into()]),
+            ),
         );
 
         let ignored =
@@ -980,7 +1123,7 @@ mod tests {
             "tuple".into(),
         );
         let list_binding = AssertBinding::new(
-            ParamLocal::list(ListLocalId(0), ValueType::Int),
+            ParamLocal::list(ListLocal::int(IntListLocalId(0))),
             "list".into(),
         );
         let int_function_type = FunctionType::new(Vec::new(), ValueType::Int);
@@ -1096,9 +1239,12 @@ mod tests {
             ),
         ];
         for binding in bindings {
-            frame_set_binding(
-                &mut frame,
-                binding.expect("pending binding should match target family"),
+            assert_eq!(
+                frame_set_binding(
+                    &mut frame,
+                    binding.expect("pending binding should match target family"),
+                ),
+                Ok(()),
             );
         }
 
@@ -1108,7 +1254,10 @@ mod tests {
         assert!(frame.get_bool(BoolLocalId(0)));
         assert_eq!(frame.get_nil(NilLocalId(0)), ());
         assert_eq!(frame.get_tuple(TupleLocalId(0)), tuple_value);
-        assert_eq!(frame.get_list(ListLocalId(0)), list_value);
+        assert_eq!(
+            frame.get_list(&ListLocal::int(IntListLocalId(0))),
+            Ok(list_value)
+        );
         assert_eq!(frame.get_int_function(IntFunctionLocalId(0)), int_function);
         assert_eq!(
             frame.get_string_function(StringFunctionLocalId(0)),
@@ -1201,6 +1350,10 @@ mod tests {
 
     fn failing_list_expr() -> ListExpr {
         ListExpr::function_call(failing_list_function_expr(), Vec::new(), ValueType::Int)
+    }
+
+    fn mismatched_list_expr() -> ListExpr {
+        ListExpr::call(ListFunctionId(0), Vec::new(), ValueType::Int)
     }
 
     fn list_expr() -> ListExpr {
@@ -1321,6 +1474,33 @@ mod tests {
         )
     }
 
+    fn plan_with_string_list_function() -> ExecutionPlan {
+        ExecutionPlan::new(
+            "main".into(),
+            FunctionPlan::new(
+                FunctionId::new(0),
+                "main".into(),
+                Vec::new(),
+                Vec::new(),
+                ReturnExpr::int(crate::plan::IntFunctionId(0), IntExpr::value(1.into())),
+            ),
+            vec![FunctionPlan::new(
+                FunctionId::new(1),
+                "string_list".into(),
+                Vec::new(),
+                Vec::new(),
+                ReturnExpr::list_body(
+                    ListFunctionId(0),
+                    ValueType::String,
+                    ReturnBody::expr(ListExpr::value(
+                        vec![Expr::string(StringExpr::value("wrong".into()))],
+                        ValueType::String,
+                    )),
+                ),
+            )],
+        )
+    }
+
     fn all_family_layout() -> FrameLayout {
         let mut layout = FrameLayout::default();
         layout.include_int(IntLocalId(0));
@@ -1329,7 +1509,7 @@ mod tests {
         layout.include_bool(BoolLocalId(0));
         layout.include_nil(NilLocalId(0));
         layout.include_tuple(TupleLocalId(0));
-        layout.include_list(ListLocalId(0), ValueType::Int);
+        layout.include_list(ListLocal::int(IntListLocalId(0)));
         layout.include_int_function(IntFunctionLocalId(0));
         layout.include_string_function(StringFunctionLocalId(0));
         layout.include_float_function(FloatFunctionLocalId(0));
@@ -1343,9 +1523,9 @@ mod tests {
 
     fn assert_list_layout() -> FrameLayout {
         let mut layout = FrameLayout::default();
-        layout.include_list(ListLocalId(0), ValueType::Int);
+        layout.include_list(ListLocal::int(IntListLocalId(0)));
         layout.include_int(IntLocalId(0));
-        layout.include_list(ListLocalId(1), ValueType::Int);
+        layout.include_list(ListLocal::int(IntListLocalId(1)));
         layout
     }
 
@@ -1356,7 +1536,10 @@ mod tests {
                 ParamLocal::int(IntLocalId(0)),
                 "first".into(),
             ))],
-            Some(ListAssertTail::bind(ListLocalId(1), "rest".into())),
+            Some(ListAssertTail::bind(
+                ListLocal::int(IntListLocalId(1)),
+                "rest".into(),
+            )),
         ))
     }
 }

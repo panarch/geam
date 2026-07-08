@@ -5,7 +5,7 @@ use super::id::{
     FloatFunctionFunctionId, FloatFunctionId, FloatFunctionLocalId, FloatLocalId,
     FunctionFunctionFunctionId, FunctionFunctionId, FunctionFunctionLocalId, FunctionId,
     IntFunctionFunctionId, IntFunctionId, IntFunctionLocalId, IntLocalId, ListFunctionFunctionId,
-    ListFunctionId, ListFunctionLocalId, ListLocalId, NilFunctionFunctionId, NilFunctionId,
+    ListFunctionId, ListFunctionLocalId, ListLocal, NilFunctionFunctionId, NilFunctionId,
     NilFunctionLocalId, NilLocalId, RuntimeFunctionId, StringFunctionFunctionId, StringFunctionId,
     StringFunctionLocalId, StringLocalId, TupleFunctionFunctionId, TupleFunctionId,
     TupleFunctionLocalId, TupleLocalId,
@@ -48,10 +48,7 @@ pub(crate) enum ParamLocal {
         local: TupleLocalId,
         type_: Vec<ValueType>,
     },
-    List {
-        local: ListLocalId,
-        element_type: ValueType,
-    },
+    List(ListLocal),
     IntFunction {
         local: IntFunctionLocalId,
         type_: FunctionType,
@@ -800,11 +797,8 @@ impl ParamLocal {
         Self::Tuple { local, type_ }
     }
 
-    pub(crate) fn list(local: ListLocalId, element_type: ValueType) -> Self {
-        Self::List {
-            local,
-            element_type,
-        }
+    pub(crate) fn list(local: ListLocal) -> Self {
+        Self::List(local)
     }
 
     pub(crate) fn int_function(local: IntFunctionLocalId, type_: FunctionType) -> Self {
@@ -847,7 +841,7 @@ impl ParamLocal {
             Self::Bool(_) => ValueType::Bool,
             Self::Nil(_) => ValueType::Nil,
             Self::Tuple { type_, .. } => ValueType::Tuple(type_.clone()),
-            Self::List { element_type, .. } => ValueType::List(Box::new(element_type.clone())),
+            Self::List(local) => local.value_type(),
             Self::IntFunction { type_, .. }
             | Self::FloatFunction { type_, .. }
             | Self::StringFunction { type_, .. }
@@ -870,9 +864,9 @@ mod tests {
         FunctionFunctionExpr, FunctionFunctionFunctionId, FunctionFunctionId,
         FunctionFunctionLocalId, FunctionFunctionValue, FunctionId, FunctionType, IntExpr,
         IntFunctionExpr, IntFunctionFunctionId, IntFunctionId, IntFunctionLocalId,
-        IntFunctionValue, IntLocalId, ListExpr, ListFunctionExpr, ListFunctionFunctionId,
-        ListFunctionId, ListFunctionLocalId, ListFunctionValue, ListLocalId, NilExpr,
-        NilFunctionExpr, NilFunctionFunctionId, NilFunctionId, NilFunctionLocalId,
+        IntFunctionValue, IntListLocalId, IntLocalId, ListExpr, ListFunctionExpr,
+        ListFunctionFunctionId, ListFunctionId, ListFunctionLocalId, ListFunctionValue, ListLocal,
+        NilExpr, NilFunctionExpr, NilFunctionFunctionId, NilFunctionId, NilFunctionLocalId,
         NilFunctionValue, StringExpr, StringFunctionExpr, StringFunctionFunctionId,
         StringFunctionId, StringFunctionLocalId, StringFunctionValue, TupleExpr, TupleFunctionExpr,
         TupleFunctionFunctionId, TupleFunctionId, TupleFunctionLocalId, TupleFunctionValue,
@@ -1075,7 +1069,7 @@ mod tests {
             ValueType::Nil,
         );
         assert_eq!(
-            ParamLocal::list(ListLocalId(0), ValueType::Int).value_type(),
+            ParamLocal::list(ListLocal::int(IntListLocalId(0))).value_type(),
             ValueType::List(Box::new(ValueType::Int)),
         );
         assert_eq!(

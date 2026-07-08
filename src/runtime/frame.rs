@@ -1,10 +1,11 @@
 use crate::plan::{
     BoolFunctionLocalId, BoolFunctionValue, BoolLocalId, FloatFunctionLocalId, FloatFunctionValue,
     FloatLocalId, FrameLayout, FunctionFunctionLocalId, FunctionFunctionValue, IntFunctionLocalId,
-    IntFunctionValue, IntLocalId, ListFunctionLocalId, ListFunctionValue, ListLocalId, ListValue,
+    IntFunctionValue, IntLocalId, ListFunctionLocalId, ListFunctionValue, ListLocal, ListValue,
     NilFunctionLocalId, NilFunctionValue, NilLocalId, StringFunctionLocalId, StringFunctionValue,
-    StringLocalId, TupleFunctionLocalId, TupleFunctionValue, TupleLocalId, Value,
+    StringLocalId, TupleFunctionLocalId, TupleFunctionValue, TupleLocalId, Value, ValueType,
 };
+use crate::runtime::ExecutionError;
 use ecow::EcoString;
 use num_bigint::BigInt;
 use std::collections::HashMap;
@@ -15,7 +16,14 @@ pub(super) struct Frame {
     strings: Vec<EcoString>,
     bools: Vec<bool>,
     tuples: Vec<Vec<Value>>,
-    lists: Vec<ListValue>,
+    int_lists: Vec<ListValue>,
+    string_lists: Vec<ListValue>,
+    float_lists: Vec<ListValue>,
+    bool_lists: Vec<ListValue>,
+    nil_lists: Vec<ListValue>,
+    tuple_lists: Vec<ListValue>,
+    list_lists: Vec<ListValue>,
+    function_lists: Vec<ListValue>,
     int_functions: HashMap<IntFunctionLocalId, IntFunctionValue>,
     float_functions: HashMap<FloatFunctionLocalId, FloatFunctionValue>,
     string_functions: HashMap<StringFunctionLocalId, StringFunctionValue>,
@@ -34,11 +42,29 @@ impl Frame {
             strings: vec![EcoString::default(); layout.strings()],
             bools: vec![false; layout.bools()],
             tuples: vec![Vec::new(); layout.tuples()],
-            lists: layout
-                .lists()
+            int_lists: vec![ListValue::empty(ValueType::Int); layout.int_lists()],
+            string_lists: vec![ListValue::empty(ValueType::String); layout.string_lists()],
+            float_lists: vec![ListValue::empty(ValueType::Float); layout.float_lists()],
+            bool_lists: vec![ListValue::empty(ValueType::Bool); layout.bool_lists()],
+            nil_lists: vec![ListValue::empty(ValueType::Nil); layout.nil_lists()],
+            tuple_lists: layout
+                .tuple_lists()
                 .iter()
                 .cloned()
+                .map(ValueType::Tuple)
                 .map(ListValue::empty)
+                .collect(),
+            list_lists: layout
+                .list_lists()
+                .iter()
+                .cloned()
+                .map(ListValue::empty_list)
+                .collect(),
+            function_lists: layout
+                .function_lists()
+                .iter()
+                .cloned()
+                .map(ListValue::empty_function)
                 .collect(),
             int_functions: HashMap::with_capacity(layout.int_functions()),
             float_functions: HashMap::with_capacity(layout.float_functions()),
@@ -95,12 +121,50 @@ impl Frame {
         self.tuples[local.0].clone()
     }
 
-    pub(super) fn set_list(&mut self, local: ListLocalId, value: ListValue) {
-        set_slot(&mut self.lists, local.0, value);
+    pub(super) fn set_list(
+        &mut self,
+        local: &ListLocal,
+        value: ListValue,
+    ) -> Result<(), ExecutionError> {
+        let expected = local.item_type();
+        let actual = value.item_type();
+        if expected != actual {
+            return Err(ExecutionError::list_item_type_mismatch(expected, actual));
+        }
+
+        match local {
+            ListLocal::Int(local) => set_slot(&mut self.int_lists, local.0, value),
+            ListLocal::String(local) => set_slot(&mut self.string_lists, local.0, value),
+            ListLocal::Float(local) => set_slot(&mut self.float_lists, local.0, value),
+            ListLocal::Bool(local) => set_slot(&mut self.bool_lists, local.0, value),
+            ListLocal::Nil(local) => set_slot(&mut self.nil_lists, local.0, value),
+            ListLocal::Tuple { local, .. } => set_slot(&mut self.tuple_lists, local.0, value),
+            ListLocal::List { local, .. } => set_slot(&mut self.list_lists, local.0, value),
+            ListLocal::Function { local, .. } => {
+                set_slot(&mut self.function_lists, local.0, value);
+            }
+        }
+        Ok(())
     }
 
-    pub(super) fn get_list(&self, local: ListLocalId) -> ListValue {
-        self.lists[local.0].clone()
+    pub(super) fn get_list(&self, local: &ListLocal) -> Result<ListValue, ExecutionError> {
+        let value = match local {
+            ListLocal::Int(local) => self.int_lists[local.0].clone(),
+            ListLocal::String(local) => self.string_lists[local.0].clone(),
+            ListLocal::Float(local) => self.float_lists[local.0].clone(),
+            ListLocal::Bool(local) => self.bool_lists[local.0].clone(),
+            ListLocal::Nil(local) => self.nil_lists[local.0].clone(),
+            ListLocal::Tuple { local, .. } => self.tuple_lists[local.0].clone(),
+            ListLocal::List { local, .. } => self.list_lists[local.0].clone(),
+            ListLocal::Function { local, .. } => self.function_lists[local.0].clone(),
+        };
+        let expected = local.item_type();
+        let actual = value.item_type();
+        if expected == actual {
+            Ok(value)
+        } else {
+            Err(ExecutionError::list_item_type_mismatch(expected, actual))
+        }
     }
 
     pub(super) fn set_int_function(&mut self, local: IntFunctionLocalId, value: IntFunctionValue) {
@@ -209,18 +273,21 @@ fn set_slot<T>(slots: &mut [T], index: usize, value: T) {
 mod tests {
     use super::Frame;
     use crate::plan::{
-        BoolFunctionId, BoolFunctionLocalId, BoolFunctionValue, BoolLocalId, FloatFunctionId,
-        FloatFunctionLocalId, FloatFunctionValue, FloatLocalId, FrameLayout, IntFunctionId,
-        IntFunctionLocalId, IntFunctionValue, IntLocalId, ListLocalId, ListValue, NilFunctionId,
-        NilFunctionLocalId, NilFunctionValue, NilLocalId, ParamLocal, StringFunctionId,
-        StringFunctionLocalId, StringFunctionValue, StringLocalId, TupleFunctionId,
-        TupleFunctionLocalId, TupleFunctionValue, TupleLocalId, Value, ValueType,
+        BoolFunctionId, BoolFunctionLocalId, BoolFunctionValue, BoolListLocalId, BoolLocalId,
+        FloatFunctionId, FloatFunctionLocalId, FloatFunctionValue, FloatListLocalId, FloatLocalId,
+        FrameLayout, FunctionListLocalId, FunctionType, IntFunctionId, IntFunctionLocalId,
+        IntFunctionValue, IntListLocalId, IntLocalId, ListListLocalId, ListLocal, ListValue,
+        NilFunctionId, NilFunctionLocalId, NilFunctionValue, NilListLocalId, NilLocalId,
+        ParamLocal, StringFunctionId, StringFunctionLocalId, StringFunctionValue,
+        StringListLocalId, StringLocalId, TupleFunctionId, TupleFunctionLocalId,
+        TupleFunctionValue, TupleListLocalId, TupleLocalId, Value, ValueType,
     };
+    use crate::runtime::ExecutionError;
     use num_bigint::BigInt;
 
     #[test]
     fn frame_set_and_get_local() {
-        let frame = frame_with_layout(1, 1, 1, 1, 1, 1);
+        let frame = frame_with_all_slots();
         let mut frame = frame;
         let int_function = int_function_value();
         let float_function = float_function_value();
@@ -270,8 +337,8 @@ mod tests {
 
     #[test]
     fn frame_set_overwrites_local() {
-        let mut frame = frame_with_layout(1, 1, 0, 0, 0, 1);
-        let _ = frame_with_layout(0, 0, 0, 0, 0, 0);
+        let mut frame = frame_with_overwrite_slots();
+        let _ = Frame::default();
 
         frame.set_int(IntLocalId(0), int(1));
         frame.set_int(IntLocalId(0), int(2));
@@ -305,54 +372,209 @@ mod tests {
 
     #[test]
     fn frame_initializes_list_slots_from_layout_item_types() {
+        let function_type = FunctionType::new(vec![ValueType::Int], ValueType::String);
         let mut layout = FrameLayout::default();
-        layout.include_list(ListLocalId(0), ValueType::Int);
-        layout.include_list(ListLocalId(1), ValueType::Tuple(vec![ValueType::String]));
+        layout.include_list(ListLocal::int(IntListLocalId(0)));
+        layout.include_list(ListLocal::string(StringListLocalId(0)));
+        layout.include_list(ListLocal::float(FloatListLocalId(0)));
+        layout.include_list(ListLocal::bool(BoolListLocalId(0)));
+        layout.include_list(ListLocal::nil(NilListLocalId(0)));
+        layout.include_list(ListLocal::tuple(
+            TupleListLocalId(0),
+            vec![ValueType::String],
+        ));
+        layout.include_list(ListLocal::list(ListListLocalId(0), ValueType::Float));
+        layout.include_list(ListLocal::function(
+            FunctionListLocalId(0),
+            function_type.clone(),
+        ));
 
         let frame = Frame::new(layout);
 
         assert_eq!(
-            frame.get_list(ListLocalId(0)),
-            ListValue::empty(ValueType::Int)
+            frame.get_list(&ListLocal::int(IntListLocalId(0))),
+            Ok(ListValue::empty(ValueType::Int))
         );
         assert_eq!(
-            frame.get_list(ListLocalId(1)),
-            ListValue::empty(ValueType::Tuple(vec![ValueType::String])),
+            frame.get_list(&ListLocal::string(StringListLocalId(0))),
+            Ok(ListValue::empty(ValueType::String))
+        );
+        assert_eq!(
+            frame.get_list(&ListLocal::float(FloatListLocalId(0))),
+            Ok(ListValue::empty(ValueType::Float))
+        );
+        assert_eq!(
+            frame.get_list(&ListLocal::bool(BoolListLocalId(0))),
+            Ok(ListValue::empty(ValueType::Bool))
+        );
+        assert_eq!(
+            frame.get_list(&ListLocal::nil(NilListLocalId(0))),
+            Ok(ListValue::empty(ValueType::Nil))
+        );
+        assert_eq!(
+            frame.get_list(&ListLocal::tuple(
+                TupleListLocalId(0),
+                vec![ValueType::String],
+            )),
+            Ok(ListValue::empty(ValueType::Tuple(vec![ValueType::String]))),
+        );
+        assert_eq!(
+            frame.get_list(&ListLocal::list(ListListLocalId(0), ValueType::Float)),
+            Ok(ListValue::empty(ValueType::List(Box::new(
+                ValueType::Float
+            )))),
+        );
+        assert_eq!(
+            frame.get_list(&ListLocal::function(
+                FunctionListLocalId(0),
+                function_type.clone()
+            )),
+            Ok(ListValue::empty(ValueType::Function(Box::new(
+                function_type
+            )))),
         );
     }
 
-    fn frame_with_layout(
-        ints: usize,
-        floats: usize,
-        strings: usize,
-        bools: usize,
-        nils: usize,
-        tuples: usize,
-    ) -> Frame {
+    #[test]
+    fn frame_set_list_preserves_typed_family_slots() {
+        let function_type = FunctionType::new(vec![ValueType::Int], ValueType::String);
+        let int = ListLocal::int(IntListLocalId(0));
+        let string = ListLocal::string(StringListLocalId(0));
+        let float = ListLocal::float(FloatListLocalId(0));
+        let bool_ = ListLocal::bool(BoolListLocalId(0));
+        let nil = ListLocal::nil(NilListLocalId(0));
+        let tuple = ListLocal::tuple(TupleListLocalId(0), vec![ValueType::String]);
+        let list = ListLocal::list(ListListLocalId(0), ValueType::Float);
+        let function = ListLocal::function(FunctionListLocalId(0), function_type.clone());
         let mut layout = FrameLayout::default();
-        if ints > 0 {
-            layout.include_int(IntLocalId(ints - 1));
-        }
-        if floats > 0 {
-            layout.include_float(FloatLocalId(floats - 1));
-        }
-        if strings > 0 {
-            layout.include_string(StringLocalId(strings - 1));
-        }
-        if bools > 0 {
-            layout.include_bool(BoolLocalId(bools - 1));
-        }
-        if nils > 0 {
-            layout.include_nil(NilLocalId(nils - 1));
-        }
-        if tuples > 0 {
-            layout.include_tuple(TupleLocalId(tuples - 1));
-        }
+        layout.include_list(&int);
+        layout.include_list(&string);
+        layout.include_list(&float);
+        layout.include_list(&bool_);
+        layout.include_list(&nil);
+        layout.include_list(&tuple);
+        layout.include_list(&list);
+        layout.include_list(&function);
+        let mut frame = Frame::new(layout);
+
+        assert_eq!(frame.set_list(&int, ListValue::int(vec![1.into()])), Ok(()));
+        assert_eq!(
+            frame.set_list(&string, ListValue::string(vec!["one".into()])),
+            Ok(()),
+        );
+        assert_eq!(frame.set_list(&float, ListValue::float(vec![1.5])), Ok(()));
+        assert_eq!(frame.set_list(&bool_, ListValue::bool(vec![true])), Ok(()));
+        assert_eq!(frame.set_list(&nil, ListValue::nil(1)), Ok(()));
+        assert_eq!(
+            frame.set_list(
+                &tuple,
+                ListValue::tuple(
+                    vec![ValueType::String],
+                    vec![vec![Value::String("one".into())]]
+                ),
+            ),
+            Ok(()),
+        );
+        assert_eq!(
+            frame.set_list(
+                &list,
+                ListValue::list(ValueType::Float, vec![ListValue::float(vec![1.5])]),
+            ),
+            Ok(()),
+        );
+        assert_eq!(
+            frame.set_list(&function, ListValue::function(function_type, Vec::new())),
+            Ok(()),
+        );
+
+        assert_eq!(frame.get_list(&int), Ok(ListValue::int(vec![1.into()])));
+        assert_eq!(
+            frame.get_list(&string),
+            Ok(ListValue::string(vec!["one".into()]))
+        );
+        assert_eq!(frame.get_list(&float), Ok(ListValue::float(vec![1.5])));
+        assert_eq!(frame.get_list(&bool_), Ok(ListValue::bool(vec![true])));
+        assert_eq!(frame.get_list(&nil), Ok(ListValue::nil(1)));
+        assert_eq!(
+            frame.get_list(&tuple),
+            Ok(ListValue::tuple(
+                vec![ValueType::String],
+                vec![vec![Value::String("one".into())]]
+            )),
+        );
+        assert_eq!(
+            frame.get_list(&list),
+            Ok(ListValue::list(
+                ValueType::Float,
+                vec![ListValue::float(vec![1.5])]
+            )),
+        );
+        assert_eq!(
+            frame
+                .get_list(&function)
+                .expect("function list should be set")
+                .len(),
+            0
+        );
+    }
+
+    #[test]
+    fn frame_set_list_rejects_mismatched_item_type() {
+        let mut layout = FrameLayout::default();
+        let local = ListLocal::int(IntListLocalId(0));
+        layout.include_list(local.clone());
+        let mut frame = Frame::new(layout);
+
+        assert_eq!(
+            frame.set_list(&local, ListValue::string(vec!["wrong".into()])),
+            Err(ExecutionError::list_item_type_mismatch(
+                ValueType::Int,
+                ValueType::String,
+            )),
+        );
+    }
+
+    #[test]
+    fn frame_get_list_rejects_mismatched_item_metadata() {
+        let tuple_slot = ListLocal::tuple(TupleListLocalId(0), vec![ValueType::String]);
+        let wrong_tuple_metadata = ListLocal::tuple(TupleListLocalId(0), vec![ValueType::Int]);
+        let mut layout = FrameLayout::default();
+        layout.include_list(tuple_slot.clone());
+        let frame = Frame::new(layout);
+
+        assert_eq!(
+            frame.get_list(&wrong_tuple_metadata),
+            Err(ExecutionError::list_item_type_mismatch(
+                ValueType::Tuple(vec![ValueType::Int]),
+                ValueType::Tuple(vec![ValueType::String]),
+            )),
+        );
+    }
+
+    fn frame_with_all_slots() -> Frame {
+        let mut layout = FrameLayout::default();
+        layout.include_int(IntLocalId(0));
+        layout.include_float(FloatLocalId(0));
+        layout.include_string(StringLocalId(0));
+        layout.include_bool(BoolLocalId(0));
+        layout.include_nil(NilLocalId(0));
+        layout.include_tuple(TupleLocalId(0));
         layout.include_int_function(IntFunctionLocalId(0));
         layout.include_float_function(FloatFunctionLocalId(0));
         layout.include_string_function(StringFunctionLocalId(0));
         layout.include_bool_function(BoolFunctionLocalId(0));
         layout.include_nil_function(NilFunctionLocalId(0));
+        layout.include_tuple_function(TupleFunctionLocalId(0));
+        Frame::new(layout)
+    }
+
+    fn frame_with_overwrite_slots() -> Frame {
+        let mut layout = FrameLayout::default();
+        layout.include_int(IntLocalId(0));
+        layout.include_float(FloatLocalId(0));
+        layout.include_tuple(TupleLocalId(0));
+        layout.include_int_function(IntFunctionLocalId(0));
+        layout.include_float_function(FloatFunctionLocalId(0));
         layout.include_tuple_function(TupleFunctionLocalId(0));
         Frame::new(layout)
     }

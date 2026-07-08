@@ -6,8 +6,8 @@ use super::expression::{
 use super::function::ParamLocal;
 use super::id::{
     BoolFunctionLocalId, BoolLocalId, FloatFunctionLocalId, FloatLocalId, FunctionFunctionLocalId,
-    IntFunctionLocalId, IntLocalId, ListFunctionLocalId, ListLocalId, NilFunctionLocalId,
-    NilLocalId, StringFunctionLocalId, StringLocalId, TupleFunctionLocalId, TupleLocalId,
+    IntFunctionLocalId, IntLocalId, ListFunctionLocalId, ListLocal, NilFunctionLocalId, NilLocalId,
+    StringFunctionLocalId, StringLocalId, TupleFunctionLocalId, TupleLocalId,
 };
 use super::source::{PanicSite, SourceSpan};
 use super::value::ValueType;
@@ -45,7 +45,7 @@ pub(crate) struct ListAssertPattern {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ListAssertTailBinding {
-    local: ListLocalId,
+    local: ListLocal,
     name: EcoString,
 }
 
@@ -88,7 +88,7 @@ pub(crate) enum StepKind {
         value: TupleExpr,
     },
     LetList {
-        local: ListLocalId,
+        local: ListLocal,
         name: EcoString,
         value: ListExpr,
     },
@@ -133,8 +133,7 @@ pub(crate) enum StepKind {
         value: FunctionFunctionExpr,
     },
     AssertList {
-        local: ListLocalId,
-        element_type: ValueType,
+        local: ListLocal,
         pattern: AssertPattern,
         message: Option<StringExpr>,
         site: PanicSite,
@@ -188,24 +187,20 @@ impl ListAssertPattern {
         &self.elements
     }
 
-    pub(crate) fn element_type(&self) -> &ValueType {
-        &self.element_type
-    }
-
     pub(crate) fn tail(&self) -> Option<&ListAssertTail> {
         self.tail.as_ref()
     }
 }
 
 impl ListAssertTail {
-    pub(crate) fn bind(local: ListLocalId, name: EcoString) -> Self {
+    pub(crate) fn bind(local: ListLocal, name: EcoString) -> Self {
         Self::Bind(ListAssertTailBinding { local, name })
     }
 }
 
 impl ListAssertTailBinding {
-    pub(crate) fn local(&self) -> ListLocalId {
-        self.local
+    pub(crate) fn local(&self) -> &ListLocal {
+        &self.local
     }
 }
 
@@ -246,7 +241,7 @@ impl Step {
         }
     }
 
-    pub(crate) fn let_list(local: ListLocalId, name: EcoString, value: ListExpr) -> Self {
+    pub(crate) fn let_list(local: ListLocal, name: EcoString, value: ListExpr) -> Self {
         Self {
             kind: StepKind::LetList { local, name, value },
         }
@@ -353,8 +348,7 @@ impl Step {
     }
 
     pub(crate) fn assert_list_at(
-        local: ListLocalId,
-        element_type: ValueType,
+        local: ListLocal,
         pattern: AssertPattern,
         message: Option<StringExpr>,
         site: PanicSite,
@@ -363,7 +357,6 @@ impl Step {
         Self {
             kind: StepKind::AssertList {
                 local,
-                element_type,
                 pattern,
                 message,
                 site,
@@ -382,8 +375,8 @@ mod tests {
     use super::{Step, StepKind};
     use crate::plan::{
         AssertPattern, BoolExpr, Expr, IntExpr, IntFunctionId, IntFunctionLocalId,
-        IntFunctionValue, IntLocalId, ListAssertPattern, ListAssertTail, ListLocalId, ParamLocal,
-        StringExpr, ValueType,
+        IntFunctionValue, IntListLocalId, IntLocalId, ListAssertPattern, ListAssertTail, ListLocal,
+        ParamLocal, StringExpr, ValueType,
     };
     use num_bigint::BigInt;
 
@@ -424,12 +417,14 @@ mod tests {
         );
         assert_eq!(
             Step::assert_list_at(
-                ListLocalId(0),
-                ValueType::Int,
+                ListLocal::int(IntListLocalId(0)),
                 AssertPattern::list(ListAssertPattern::new(
                     ValueType::Int,
                     vec![AssertPattern::Discard],
-                    Some(ListAssertTail::bind(ListLocalId(1), "tail".into())),
+                    Some(ListAssertTail::bind(
+                        ListLocal::int(IntListLocalId(1)),
+                        "tail".into()
+                    )),
                 )),
                 None,
                 crate::plan::PanicSite::unknown(),
@@ -437,12 +432,14 @@ mod tests {
             )
             .kind(),
             &StepKind::AssertList {
-                local: ListLocalId(0),
-                element_type: ValueType::Int,
+                local: ListLocal::int(IntListLocalId(0)),
                 pattern: AssertPattern::list(ListAssertPattern::new(
                     ValueType::Int,
                     vec![AssertPattern::Discard],
-                    Some(ListAssertTail::bind(ListLocalId(1), "tail".into())),
+                    Some(ListAssertTail::bind(
+                        ListLocal::int(IntListLocalId(1)),
+                        "tail".into()
+                    )),
                 )),
                 message: None,
                 site: crate::plan::PanicSite::unknown(),

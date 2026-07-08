@@ -275,8 +275,8 @@ fn plan_local(name: EcoString, context: &PlanContext<'_>) -> Result<Expr, PlanEr
     if let Some((local, type_)) = context.lookup_tuple_local(&name) {
         return Ok(Expr::tuple(TupleExpr::local_get(local, name, type_)));
     }
-    if let Some((local, element_type)) = context.lookup_list_local(&name) {
-        return Ok(Expr::list(ListExpr::local_get(local, name, element_type)));
+    if let Some(local) = context.lookup_list_local(&name) {
+        return Ok(Expr::list(ListExpr::local_get(local, name)));
     }
     if let Some(binding) = context.lookup_function_local(&name) {
         return Ok(function_local_get(binding, name));
@@ -379,10 +379,10 @@ mod tests {
         BoolExpr, BoolFunctionExpr, BoolFunctionLocalId, BoolLocalId, Expr, FloatExpr,
         FloatFunctionExpr, FloatFunctionLocalId, FunctionExpr, FunctionFunctionExpr,
         FunctionFunctionLocalId, FunctionType, IntExpr, IntFunctionExpr, IntFunctionLocalId,
-        IntLocalId, ListExpr, ListFunctionExpr, ListFunctionLocalId, ListLocalId, LocalId, NilExpr,
+        IntLocalId, ListExpr, ListFunctionExpr, ListFunctionLocalId, ListLocal, LocalId, NilExpr,
         NilFunctionExpr, NilFunctionLocalId, NilLocalId, StringExpr, StringFunctionExpr,
-        StringFunctionLocalId, TupleExpr, TupleFunctionExpr, TupleFunctionLocalId, TupleLocalId,
-        ValueType,
+        StringFunctionLocalId, StringListLocalId, TupleExpr, TupleFunctionExpr,
+        TupleFunctionLocalId, TupleLocalId, ValueType,
     };
     use crate::planner::context::{AnonymousFunctions, FunctionLocalBinding, PlanContext};
     use crate::planner::support::dummy_span;
@@ -1054,9 +1054,8 @@ mod tests {
         assert_eq!(
             super::plan_local("values".into(), &context),
             Ok(Expr::list(ListExpr::local_get(
-                ListLocalId(0),
+                ListLocal::string(StringListLocalId(0)),
                 "values".into(),
-                ValueType::String,
             ))),
         );
         assert_eq!(

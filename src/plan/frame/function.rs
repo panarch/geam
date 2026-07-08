@@ -556,13 +556,13 @@ mod tests {
     use crate::plan::{
         BoolExpr, BoolFunctionExpr, BoolFunctionId, BoolFunctionLocalId, CallArg, CaptureArg, Expr,
         FloatExpr, FloatFunctionExpr, FloatFunctionId, FloatFunctionLocalId, FunctionExpr,
-        FunctionFunctionExpr, FunctionFunctionId, FunctionFunctionLocalId, FunctionType, IntExpr,
-        IntFunctionExpr, IntFunctionFunctionId, IntFunctionId, IntFunctionLocalId, IntLocalId,
-        ListExpr, ListFunctionExpr, ListFunctionFunctionId, ListFunctionId, ListFunctionLocalId,
-        ListLocalId, NilFunctionExpr, NilFunctionId, NilFunctionLocalId, PanicExpr, PanicSite,
-        ReturnExpr, Step, StringExpr, StringFunctionExpr, StringFunctionId, StringFunctionLocalId,
-        StringLocalId, TupleExpr, TupleFunctionExpr, TupleFunctionFunctionId, TupleFunctionId,
-        TupleFunctionLocalId, TupleLocalId, ValueType,
+        FunctionFunctionExpr, FunctionFunctionId, FunctionFunctionLocalId, FunctionListLocalId,
+        FunctionType, IntExpr, IntFunctionExpr, IntFunctionFunctionId, IntFunctionId,
+        IntFunctionLocalId, IntLocalId, ListExpr, ListFunctionExpr, ListFunctionFunctionId,
+        ListFunctionId, ListFunctionLocalId, ListLocal, NilFunctionExpr, NilFunctionId,
+        NilFunctionLocalId, PanicExpr, PanicSite, ReturnExpr, Step, StringExpr, StringFunctionExpr,
+        StringFunctionId, StringFunctionLocalId, StringLocalId, TupleExpr, TupleFunctionExpr,
+        TupleFunctionFunctionId, TupleFunctionId, TupleFunctionLocalId, TupleLocalId, ValueType,
     };
 
     #[test]
@@ -653,7 +653,8 @@ mod tests {
         assert_eq!(layout.bools(), 0);
         assert_eq!(layout.nils(), 0);
         assert_eq!(layout.tuples(), 0);
-        assert_eq!(layout.lists().len(), 0);
+        assert_eq!(layout.int_lists(), 0);
+        assert_eq!(layout.function_lists(), &[] as &[FunctionType]);
         assert_eq!(layout.int_functions(), 0);
         assert_eq!(layout.float_functions(), 0);
         assert_eq!(layout.string_functions(), 0);
@@ -679,9 +680,8 @@ mod tests {
         );
         let function_list = |local, name: &str, type_: FunctionType| {
             ListExpr::local_get(
-                ListLocalId(local),
+                ListLocal::function(FunctionListLocalId(local), type_),
                 name.into(),
-                ValueType::Function(Box::new(type_)),
             )
         };
         let steps = vec![
@@ -746,7 +746,22 @@ mod tests {
 
         let layout = FrameLayout::from_function_parts(&[], &steps, &return_);
 
-        assert_eq!(layout.lists().len(), 8);
+        assert_eq!(
+            layout.function_lists(),
+            &[
+                FunctionType::new(Vec::new(), ValueType::Int),
+                FunctionType::new(Vec::new(), ValueType::String),
+                FunctionType::new(Vec::new(), ValueType::Float),
+                FunctionType::new(Vec::new(), ValueType::Bool),
+                FunctionType::new(Vec::new(), ValueType::Nil),
+                FunctionType::new(Vec::new(), ValueType::Tuple(vec![ValueType::Int])),
+                FunctionType::new(Vec::new(), ValueType::List(Box::new(ValueType::Int))),
+                FunctionType::new(
+                    Vec::new(),
+                    ValueType::Function(Box::new(FunctionType::new(Vec::new(), ValueType::Int))),
+                ),
+            ],
+        );
     }
 
     #[test]

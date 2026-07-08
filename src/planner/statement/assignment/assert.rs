@@ -3,7 +3,7 @@ use super::{
     plan_bound_assignment, plan_ordinary_assignment_value, value_type_expression_type,
 };
 use crate::plan::{
-    AssertBinding, AssertPattern, Expr, ListAssertPattern, ListAssertTail, ListExpr, ListLocalId,
+    AssertBinding, AssertPattern, Expr, ListAssertPattern, ListAssertTail, ListExpr, ListLocal,
     ParamLocal, Step, StringExpr, ValueType,
 };
 use crate::planner::context::PlanContext;
@@ -44,15 +44,15 @@ pub(super) fn plan_assert_assignment(
         .map(|message| plan_assert_message(message, context))
         .transpose()?;
 
-    let local = context.define_internal_list_local();
-    let name = internal_list_name(local);
+    let local = context.define_internal_list_local(element_type.clone());
+    let name = internal_list_name(&local);
     let site = context.panic_site(location);
     let pattern_span = pattern.location().into();
     let pattern = plan_assert_pattern(pattern, context)?;
-    let list_local = ListExpr::local_get(local, name.clone(), element_type.clone());
+    let list_local = ListExpr::local_get(local.clone(), name.clone());
     let steps = vec![
-        Step::let_list(local, name, value),
-        Step::assert_list_at(local, element_type, pattern, message, site, pattern_span),
+        Step::let_list(local.clone(), name, value),
+        Step::assert_list_at(local, pattern, message, site, pattern_span),
     ];
 
     Ok(PlannedAssignment {
@@ -226,10 +226,7 @@ fn define_assert_local(
         }
         ValueType::List(element_type) => {
             let element_type = *element_type;
-            ParamLocal::list(
-                context.define_list_local(name, element_type.clone()),
-                element_type,
-            )
+            ParamLocal::list(context.define_list_local(name, element_type))
         }
         ValueType::Function(type_) => {
             let type_ = *type_;
@@ -354,8 +351,8 @@ fn unsupported_assert_exhaustive_pattern_error(pattern: &TypedPattern) -> PlanEr
     }
 }
 
-fn internal_list_name(local: ListLocalId) -> EcoString {
-    format!("<list:{}>", local.0).into()
+fn internal_list_name(local: &ListLocal) -> EcoString {
+    format!("<list:{}:{}>", local.family_name(), local.index()).into()
 }
 
 fn list_assert_value_must_be_list(actual: ValueType) -> PlanError {
@@ -371,10 +368,10 @@ fn list_assert_value_must_be_list(actual: ValueType) -> PlanError {
 mod tests {
     use crate::plan::{
         AssertBinding, AssertPattern, BoolFunctionLocalId, BoolLocalId, FloatFunctionLocalId,
-        FloatLocalId, FunctionFunctionLocalId, FunctionType, IntFunctionLocalId, IntLocalId,
-        ListAssertPattern, ListAssertTail, ListFunctionLocalId, ListLocalId, NilFunctionLocalId,
-        NilLocalId, PanicSite, ParamLocal, SourceSpan, Step, StringExpr, StringFunctionLocalId,
-        StringLocalId, TupleFunctionLocalId, TupleLocalId, ValueType,
+        FloatLocalId, FunctionFunctionLocalId, FunctionType, IntFunctionLocalId, IntListLocalId,
+        IntLocalId, ListAssertPattern, ListAssertTail, ListFunctionLocalId, ListLocal,
+        NilFunctionLocalId, NilLocalId, PanicSite, ParamLocal, SourceSpan, Step, StringExpr,
+        StringFunctionLocalId, StringLocalId, TupleFunctionLocalId, TupleLocalId, ValueType,
     };
     use crate::planner::context::{AnonymousFunctions, PlanContext};
     use crate::planner::dsl::{
@@ -557,19 +554,21 @@ pub fn main() {
             function("main", local_int(0, "first"))
                 .step(let_list_step(
                     0,
-                    "<list:0>",
+                    "<list:int:0>",
                     list([int(1), int(2)], ValueType::Int),
                 ))
                 .step(Step::assert_list_at(
-                    ListLocalId(0),
-                    ValueType::Int,
+                    ListLocal::int(IntListLocalId(0)),
                     AssertPattern::list(ListAssertPattern::new(
                         ValueType::Int,
                         vec![AssertPattern::Bind(AssertBinding::new(
                             ParamLocal::int(IntLocalId(0)),
                             "first".into(),
                         ))],
-                        Some(ListAssertTail::bind(ListLocalId(1), "rest".into())),
+                        Some(ListAssertTail::bind(
+                            ListLocal::int(IntListLocalId(1)),
+                            "rest".into(),
+                        )),
                     )),
                     None,
                     PanicSite::new("main".into(), "main".into(), SourceSpan::new(19, 29)),
@@ -595,10 +594,13 @@ pub fn main() {
         let expected = module(
             "main",
             function("main", local_int(0, "first"))
-                .step(let_list_step(0, "<list:0>", list([int(1)], ValueType::Int)))
+                .step(let_list_step(
+                    0,
+                    "<list:int:0>",
+                    list([int(1)], ValueType::Int),
+                ))
                 .step(Step::assert_list_at(
-                    ListLocalId(0),
-                    ValueType::Int,
+                    ListLocal::int(IntListLocalId(0)),
                     AssertPattern::list(ListAssertPattern::new(
                         ValueType::Int,
                         vec![AssertPattern::Bind(AssertBinding::new(
@@ -1264,7 +1266,7 @@ pub fn main() {
                 ValueType::List(Box::new(list_type.clone())),
                 &mut context,
             ),
-            ParamLocal::list(ListLocalId(0), list_type),
+            ParamLocal::list(ListLocal::int(IntListLocalId(0))),
         );
         assert_eq!(
             super::define_assert_local(

@@ -26,7 +26,49 @@ pub struct NilLocalId(pub(crate) usize);
 pub struct TupleLocalId(pub(crate) usize);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct ListLocalId(pub(crate) usize);
+pub struct IntListLocalId(pub(crate) usize);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct StringListLocalId(pub(crate) usize);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct FloatListLocalId(pub(crate) usize);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct BoolListLocalId(pub(crate) usize);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct NilListLocalId(pub(crate) usize);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TupleListLocalId(pub(crate) usize);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ListListLocalId(pub(crate) usize);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct FunctionListLocalId(pub(crate) usize);
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ListLocal {
+    Int(IntListLocalId),
+    String(StringListLocalId),
+    Float(FloatListLocalId),
+    Bool(BoolListLocalId),
+    Nil(NilListLocalId),
+    Tuple {
+        local: TupleListLocalId,
+        item_type: Vec<crate::plan::ValueType>,
+    },
+    List {
+        local: ListListLocalId,
+        item_type: Box<crate::plan::ValueType>,
+    },
+    Function {
+        local: FunctionListLocalId,
+        item_type: crate::plan::FunctionType,
+    },
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct IntFunctionLocalId(pub(crate) usize);
@@ -235,6 +277,91 @@ impl FunctionFunctionId {
         match self {
             Self::Function(id) => Some(id),
             _ => None,
+        }
+    }
+}
+
+impl ListLocal {
+    pub(crate) fn int(local: IntListLocalId) -> Self {
+        Self::Int(local)
+    }
+
+    pub(crate) fn string(local: StringListLocalId) -> Self {
+        Self::String(local)
+    }
+
+    pub(crate) fn float(local: FloatListLocalId) -> Self {
+        Self::Float(local)
+    }
+
+    pub(crate) fn bool(local: BoolListLocalId) -> Self {
+        Self::Bool(local)
+    }
+
+    pub(crate) fn nil(local: NilListLocalId) -> Self {
+        Self::Nil(local)
+    }
+
+    pub(crate) fn tuple(local: TupleListLocalId, item_type: Vec<crate::plan::ValueType>) -> Self {
+        Self::Tuple { local, item_type }
+    }
+
+    pub(crate) fn list(local: ListListLocalId, item_type: crate::plan::ValueType) -> Self {
+        Self::List {
+            local,
+            item_type: Box::new(item_type),
+        }
+    }
+
+    pub(crate) fn function(
+        local: FunctionListLocalId,
+        item_type: crate::plan::FunctionType,
+    ) -> Self {
+        Self::Function { local, item_type }
+    }
+
+    pub(crate) fn item_type(&self) -> crate::plan::ValueType {
+        match self {
+            Self::Int(_) => crate::plan::ValueType::Int,
+            Self::String(_) => crate::plan::ValueType::String,
+            Self::Float(_) => crate::plan::ValueType::Float,
+            Self::Bool(_) => crate::plan::ValueType::Bool,
+            Self::Nil(_) => crate::plan::ValueType::Nil,
+            Self::Tuple { item_type, .. } => crate::plan::ValueType::Tuple(item_type.clone()),
+            Self::List { item_type, .. } => crate::plan::ValueType::List(item_type.clone()),
+            Self::Function { item_type, .. } => {
+                crate::plan::ValueType::Function(Box::new(item_type.clone()))
+            }
+        }
+    }
+
+    pub(crate) fn value_type(&self) -> crate::plan::ValueType {
+        crate::plan::ValueType::List(Box::new(self.item_type()))
+    }
+
+    pub(crate) fn family_name(&self) -> &'static str {
+        match self {
+            Self::Int(_) => "int",
+            Self::String(_) => "string",
+            Self::Float(_) => "float",
+            Self::Bool(_) => "bool",
+            Self::Nil(_) => "nil",
+            Self::Tuple { .. } => "tuple",
+            Self::List { .. } => "list",
+            Self::Function { .. } => "function",
+        }
+    }
+
+    pub(crate) fn index(&self) -> usize {
+        match self {
+            Self::Int(local) => local.0,
+            Self::String(local) => local.0,
+            Self::Float(local) => local.0,
+            Self::Bool(local) => local.0,
+            Self::Nil(local) => local.0,
+            Self::Tuple { local, .. } => local.0,
+            Self::List { local, .. } => local.0,
+            Self::Function { local, .. } => local.0,
         }
     }
 }

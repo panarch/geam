@@ -58,10 +58,10 @@ mod tests {
         BoolFunctionExpr, BoolFunctionId, BoolLocalId, FloatFunctionExpr, FloatFunctionId,
         FloatLocalId, FunctionExpr, FunctionFunctionExpr, FunctionFunctionId, FunctionPlan,
         FunctionType, FunctionValue, IntExpr, IntFunctionExpr, IntFunctionFunctionId,
-        IntFunctionId, IntLocalId, ListFunctionExpr, ListFunctionId, ListLocalId, NilFunctionExpr,
-        NilFunctionId, NilLocalId, ParamLocal, RuntimeFunctionId, StringFunctionExpr,
-        StringFunctionId, StringLocalId, TupleExpr, TupleFunctionExpr, TupleFunctionId,
-        TupleLocalId, ValueType,
+        IntFunctionId, IntListLocalId, IntLocalId, ListFunctionExpr, ListFunctionId, ListLocal,
+        NilFunctionExpr, NilFunctionId, NilLocalId, ParamLocal, RuntimeFunctionId,
+        StringFunctionExpr, StringFunctionId, StringLocalId, TupleExpr, TupleFunctionExpr,
+        TupleFunctionId, TupleLocalId, ValueType,
     };
     use crate::runtime::ExecutionError;
     use crate::runtime::frame::Frame;
@@ -146,7 +146,7 @@ mod tests {
                     id: ListFunctionId(0),
                     return_type: Box::new(ValueType::Int),
                 },
-                vec![ParamLocal::list(ListLocalId(0), ValueType::Int)],
+                vec![ParamLocal::list(ListLocal::int(IntListLocalId(0)))],
             ),
             ValueType::List(Box::new(ValueType::Int)),
         );

@@ -538,9 +538,9 @@ mod tests {
     use crate::plan::{
         BoolFunctionId, BoolFunctionLocalId, BoolLocalId, FloatFunctionId, FloatFunctionLocalId,
         FloatLocalId, FunctionFunctionId, FunctionType, IntFunctionFunctionId, IntFunctionId,
-        IntLocalId, ListFunctionId, ListFunctionLocalId, ListLocalId, NilFunctionId, NilLocalId,
-        ParamLocal, RuntimeFunctionId, StringFunctionId, StringLocalId, TupleFunctionId,
-        TupleFunctionLocalId, TupleLocalId, ValueType,
+        IntListLocalId, IntLocalId, ListFunctionId, ListFunctionLocalId, ListLocal, NilFunctionId,
+        NilLocalId, ParamLocal, RuntimeFunctionId, StringFunctionId, StringLocalId,
+        TupleFunctionId, TupleFunctionLocalId, TupleLocalId, ValueType,
     };
 
     #[test]
@@ -739,6 +739,6 @@ mod tests {
     }
 
     fn list_param(index: usize) -> ParamLocal {
-        ParamLocal::list(ListLocalId(index), ValueType::Int)
+        ParamLocal::list(ListLocal::int(IntListLocalId(index)))
     }
 }

@@ -76,9 +76,9 @@ mod tests {
         BoolExpr, BoolFunctionExpr, BoolFunctionLocalId, CallArg, CaptureArg, Expr, FloatExpr,
         FloatFunctionExpr, FloatFunctionLocalId, FloatLocalId, FunctionExpr, FunctionFunctionExpr,
         FunctionFunctionId, FunctionFunctionLocalId, IntExpr, IntFunctionFunctionId, IntFunctionId,
-        IntFunctionLocalId, ListExpr, ListFunctionExpr, ListFunctionLocalId, ListLocalId,
-        ReturnExpr, Step, StringExpr, StringFunctionExpr, StringFunctionLocalId, StringLocalId,
-        TupleExpr, TupleFunctionExpr, TupleFunctionLocalId, TupleLocalId, ValueType,
+        IntFunctionLocalId, IntListLocalId, ListExpr, ListFunctionExpr, ListFunctionLocalId,
+        ListLocal, ReturnExpr, Step, StringExpr, StringFunctionExpr, StringFunctionLocalId,
+        StringLocalId, TupleExpr, TupleFunctionExpr, TupleFunctionLocalId, TupleLocalId, ValueType,
     };
 
     #[test]
@@ -145,8 +145,8 @@ mod tests {
                         ),
                     ),
                     CallArg::list(
-                        ListLocalId(1),
-                        ListExpr::local_get(ListLocalId(4), "list_arg".into(), list_type()),
+                        ListLocal::int(IntListLocalId(1)),
+                        ListExpr::local_get(ListLocal::int(IntListLocalId(4)), "list_arg".into()),
                     ),
                     CallArg::list_function(
                         ListFunctionLocalId(1),
@@ -258,8 +258,11 @@ mod tests {
                             ),
                         ),
                         CaptureArg::list(
-                            ListLocalId(2),
-                            ListExpr::local_get(ListLocalId(5), "list_capture".into(), list_type()),
+                            ListLocal::int(IntListLocalId(2)),
+                            ListExpr::local_get(
+                                ListLocal::int(IntListLocalId(5)),
+                                "list_capture".into(),
+                            ),
                         ),
                         CaptureArg::list_function(
                             ListFunctionLocalId(2),
@@ -299,7 +302,7 @@ mod tests {
         assert_eq!(layout.floats(), 21);
         assert_eq!(layout.tuples(), 3);
         assert_eq!(layout.tuple_functions(), 3);
-        assert_eq!(layout.lists().len(), 6);
+        assert_eq!(layout.int_lists(), 6);
         assert_eq!(layout.list_functions(), 6);
     }
 

@@ -487,10 +487,9 @@ mod tests {
                 id: ListFunctionId(0),
                 return_type: Box::new(ValueType::Int),
             },
-            vec![ParamLocal::list(
-                crate::plan::ListLocalId(0),
-                ValueType::Int,
-            )],
+            vec![ParamLocal::list(crate::plan::ListLocal::int(
+                crate::plan::IntListLocalId(0),
+            ))],
         )
     }
 
@@ -553,10 +552,9 @@ mod tests {
     fn list_function_value() -> ListFunctionExpr {
         ListFunctionExpr::value(ListFunctionValue::new(
             ListFunctionId(0),
-            vec![ParamLocal::list(
-                crate::plan::ListLocalId(0),
-                ValueType::Int,
-            )],
+            vec![ParamLocal::list(crate::plan::ListLocal::int(
+                crate::plan::IntListLocalId(0),
+            ))],
             ValueType::Int,
         ))
     }

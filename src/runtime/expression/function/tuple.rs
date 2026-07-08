@@ -137,11 +137,11 @@ mod tests {
     use crate::plan::FrameLayout;
     use crate::plan::{
         BoolExpr, CaptureArg, ExecutionPlan, Expr, FloatExpr, FunctionExpr, FunctionFunctionExpr,
-        FunctionFunctionId, FunctionFunctionValue, FunctionId, FunctionPlan, FunctionType, IntExpr,
-        IntFunctionExpr, IntFunctionId, IntFunctionValue, ListExpr, ListLocalId, ListValue,
-        PanicExpr, PanicSite, ParamLocal, ReturnExpr, Step, StringExpr, TupleExpr,
-        TupleFunctionExpr, TupleFunctionFunctionId, TupleFunctionId, TupleFunctionLocalId,
-        TupleFunctionValue, TupleLocalId, Value, ValueType,
+        FunctionFunctionId, FunctionFunctionValue, FunctionId, FunctionListLocalId, FunctionPlan,
+        FunctionType, IntExpr, IntFunctionExpr, IntFunctionId, IntFunctionValue, ListExpr,
+        ListLocal, ListValue, PanicExpr, PanicSite, ParamLocal, ReturnExpr, Step, StringExpr,
+        TupleExpr, TupleFunctionExpr, TupleFunctionFunctionId, TupleFunctionId,
+        TupleFunctionLocalId, TupleFunctionValue, TupleLocalId, Value, ValueType,
     };
     use crate::runtime::frame::Frame;
     use crate::runtime::run_src;
@@ -718,20 +718,25 @@ pub fn main() {
         );
 
         let mut layout = FrameLayout::default();
-        layout.include_list(ListLocalId(0), ValueType::Int);
+        layout.include_list(ListLocal::function(
+            FunctionListLocalId(0),
+            tuple_function_type.clone(),
+        ));
         let mut frame = Frame::new(layout);
         let int_function_type = FunctionType::new(Vec::new(), ValueType::Int);
-        frame.set_list(
-            ListLocalId(0),
-            ListValue::function(
-                tuple_function_type.clone(),
-                vec![IntFunctionValue::new(IntFunctionId(0), Vec::new()).into()],
+        assert_eq!(
+            frame.set_list(
+                &ListLocal::function(FunctionListLocalId(0), tuple_function_type.clone()),
+                ListValue::function(
+                    tuple_function_type.clone(),
+                    vec![IntFunctionValue::new(IntFunctionId(0), Vec::new()).into()],
+                ),
             ),
+            Ok(()),
         );
         let list = ListExpr::local_get(
-            ListLocalId(0),
+            ListLocal::function(FunctionListLocalId(0), tuple_function_type.clone()),
             "functions".into(),
-            ValueType::Function(Box::new(tuple_function_type.clone())),
         );
         assert_eq!(
             eval_tuple_function_expr(

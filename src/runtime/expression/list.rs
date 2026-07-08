@@ -27,7 +27,7 @@ pub(in crate::runtime) fn eval_list_expr(
             })?;
             Ok(values)
         }
-        ListExprKind::LocalGet { local, .. } => Ok(frame.get_list(*local)),
+        ListExprKind::LocalGet { local, .. } => frame.get_list(local),
         ListExprKind::Call { function, args } => {
             function::run_list_call(plan, *function, args, frame)
         }
@@ -329,11 +329,12 @@ mod tests {
         project_function_list_expr, project_int_list_expr, project_list_list_expr,
         project_nil_list_expr, project_string_list_expr, project_tuple_list_expr,
     };
+    use crate::plan::ListElements;
     use crate::plan::{
         BoolExpr, ExecutionPlan, Expr, FloatExpr, FrameLayout, FunctionExpr, FunctionId,
         FunctionPlan, FunctionType, IntExpr, IntFunctionExpr, IntFunctionId, IntFunctionValue,
-        ListExpr, ListFunctionId, ListLocalId, ListValue, NilExpr, PanicExpr, PanicSite,
-        ReturnBody, ReturnExpr, Step, StringExpr, TupleExpr, ValueType,
+        IntListLocalId, ListExpr, ListFunctionId, ListLocal, ListValue, NilExpr, PanicExpr,
+        PanicSite, ReturnBody, ReturnExpr, Step, StringExpr, TupleExpr, ValueType,
     };
     use crate::runtime::frame::Frame;
     use crate::runtime::{ExecutionError, PanicKind};
@@ -366,7 +367,10 @@ mod tests {
     fn eval_list_expr_evaluates_value_local_and_direct_call() {
         let plan = plan();
         let mut frame = frame();
-        frame.set_list(ListLocalId(0), list_value(1));
+        assert_eq!(
+            frame.set_list(&ListLocal::int(IntListLocalId(0)), list_value(1)),
+            Ok(())
+        );
 
         assert_eq!(
             eval_list_expr(&plan, &mut frame, &list_expr(1)),
@@ -376,7 +380,7 @@ mod tests {
             eval_list_expr(
                 &plan,
                 &mut frame,
-                &ListExpr::local_get(ListLocalId(0), "values".into(), element_type()),
+                &ListExpr::local_get(ListLocal::int(IntListLocalId(0)), "values".into()),
             ),
             Ok(list_value(1)),
         );
@@ -421,17 +425,35 @@ mod tests {
         );
 
         let mut frame = frame();
-        frame.set_list(ListLocalId(0), ListValue::string(vec!["tail".into()]));
+        assert_eq!(
+            frame.set_list(
+                &ListLocal::int(IntListLocalId(0)),
+                ListValue::int(vec![1.into()])
+            ),
+            Ok(())
+        );
         assert_eq!(
             eval_list_expr(
                 &plan,
                 &mut frame,
                 &ListExpr::spread(
                     vec![Expr::int(IntExpr::value(0.into()))],
-                    ListExpr::local_get(ListLocalId(0), "tail".into(), element_type()),
+                    ListExpr::local_get(ListLocal::int(IntListLocalId(0)), "tail".into()),
                     element_type(),
                 ),
             ),
+            Ok(ListValue::int(vec![0.into(), 1.into()])),
+        );
+
+        let plan = plan_with_string_list_function();
+        let mut frame = Frame::default();
+        let spread = ListExpr::from_spread_elements(
+            ListElements::Int(vec![IntExpr::value(0.into())]),
+            ListExpr::call(ListFunctionId(0), Vec::new(), element_type()),
+        );
+
+        assert_eq!(
+            eval_list_expr(&plan, &mut frame, &spread),
             Err(ExecutionError::list_item_type_mismatch(
                 ValueType::Int,
                 ValueType::String,
@@ -545,11 +567,11 @@ mod tests {
                 &mut frame,
                 &ListExpr::block(
                     vec![Step::let_list(
-                        ListLocalId(0),
+                        ListLocal::int(IntListLocalId(0)),
                         "values".into(),
                         list_expr(1)
                     )],
-                    ListExpr::local_get(ListLocalId(0), "values".into(), element_type()),
+                    ListExpr::local_get(ListLocal::int(IntListLocalId(0)), "values".into()),
                 ),
             ),
             Ok(list_value(1)),
@@ -966,7 +988,7 @@ mod tests {
 
     fn frame() -> Frame {
         let mut layout = FrameLayout::default();
-        layout.include_list(ListLocalId(0), ValueType::Int);
+        layout.include_list(ListLocal::int(IntListLocalId(0)));
         Frame::new(layout)
     }
 
@@ -989,6 +1011,33 @@ mod tests {
                     ListFunctionId(0),
                     element_type(),
                     ReturnBody::expr(list_expr(1)),
+                ),
+            )],
+        )
+    }
+
+    fn plan_with_string_list_function() -> ExecutionPlan {
+        ExecutionPlan::new(
+            "main".into(),
+            FunctionPlan::new(
+                FunctionId::new(0),
+                "main".into(),
+                Vec::new(),
+                Vec::new(),
+                ReturnExpr::int(IntFunctionId(0), IntExpr::value(0.into())),
+            ),
+            vec![FunctionPlan::new(
+                FunctionId::new(1),
+                "string_list".into(),
+                Vec::new(),
+                Vec::new(),
+                ReturnExpr::list_body(
+                    ListFunctionId(0),
+                    ValueType::String,
+                    ReturnBody::expr(ListExpr::value(
+                        vec![Expr::string(StringExpr::value("tail".into()))],
+                        ValueType::String,
+                    )),
                 ),
             )],
         )

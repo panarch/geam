@@ -4,8 +4,8 @@ use super::{
 };
 use crate::plan::{
     BoolFunctionLocalId, BoolLocalId, Expr, FloatFunctionLocalId, FloatLocalId, IntFunctionLocalId,
-    IntLocalId, ListLocalId, NilFunctionLocalId, NilLocalId, Step, StringFunctionLocalId,
-    StringLocalId, TupleLocalId,
+    IntLocalId, NilFunctionLocalId, NilLocalId, Step, StringFunctionLocalId, StringLocalId,
+    TupleLocalId,
 };
 use ecow::EcoString;
 
@@ -34,7 +34,8 @@ pub(crate) fn let_tuple_step(local: usize, name: impl Into<EcoString>, value: Tu
 }
 
 pub(crate) fn let_list_step(local: usize, name: impl Into<EcoString>, value: List) -> Step {
-    Step::let_list(ListLocalId(local), name.into(), value.into())
+    let local = super::local::list_local(local, value.0.element_type().clone());
+    Step::let_list(local, name.into(), value.into())
 }
 
 pub(crate) fn let_int_function_step(
@@ -90,8 +91,8 @@ mod tests {
     };
     use crate::plan::{
         BoolFunctionLocalId, BoolLocalId, Expr, FloatFunctionLocalId, FloatLocalId,
-        IntFunctionLocalId, IntLocalId, ListLocalId, NilFunctionLocalId, NilLocalId, Step,
-        StringFunctionLocalId, StringLocalId, TupleLocalId,
+        IntFunctionLocalId, IntListLocalId, IntLocalId, ListLocal, NilFunctionLocalId, NilLocalId,
+        Step, StringFunctionLocalId, StringListLocalId, StringLocalId, TupleLocalId, ValueType,
     };
     use crate::planner::dsl::expression::{
         bool_, bool_function_ref, float, float_function_ref, int, int_function_ref, list, nil,
@@ -133,11 +134,19 @@ mod tests {
             ),
         );
         assert_eq!(
-            let_list_step(6, "values", list([int(1)], crate::plan::ValueType::Int)),
+            let_list_step(6, "values", list([int(1)], ValueType::Int)),
             Step::let_list(
-                ListLocalId(6),
+                ListLocal::int(IntListLocalId(6)),
                 "values".into(),
-                list([int(1)], crate::plan::ValueType::Int).into(),
+                list([int(1)], ValueType::Int).into(),
+            ),
+        );
+        assert_eq!(
+            let_list_step(7, "names", list([string("a")], ValueType::String)),
+            Step::let_list(
+                ListLocal::string(StringListLocalId(7)),
+                "names".into(),
+                list([string("a")], ValueType::String).into(),
             ),
         );
         assert_eq!(

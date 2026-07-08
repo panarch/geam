@@ -1,7 +1,8 @@
 use super::CaptureSubstitution;
 use crate::plan::{
-    CallArg, Expr, ListFunctionLocalId, ListLocalId, ParamLocal, TupleFunctionLocalId,
-    TupleLocalId, ValueType,
+    BoolListLocalId, CallArg, Expr, FloatListLocalId, FunctionListLocalId, IntListLocalId,
+    ListFunctionLocalId, ListListLocalId, ListLocal, NilListLocalId, ParamLocal, StringListLocalId,
+    TupleFunctionLocalId, TupleListLocalId, TupleLocalId, ValueType,
 };
 use crate::planner::context::{FunctionParam, PlanContext};
 use crate::planner::error::{InvalidCallShapeReason, InvalidTypedAstReason, PlanError};
@@ -53,7 +54,14 @@ fn function_call_param_locals(params: &[ValueType]) -> Vec<ParamLocal> {
     let mut next_bool = 0;
     let mut next_nil = 0;
     let mut next_tuple = 0;
-    let mut next_list = 0;
+    let mut next_int_list = 0;
+    let mut next_string_list = 0;
+    let mut next_float_list = 0;
+    let mut next_bool_list = 0;
+    let mut next_nil_list = 0;
+    let mut next_tuple_list = 0;
+    let mut next_list_list = 0;
+    let mut next_function_list = 0;
     let mut next_int_function = 0;
     let mut next_string_function = 0;
     let mut next_float_function = 0;
@@ -97,9 +105,54 @@ fn function_call_param_locals(params: &[ValueType]) -> Vec<ParamLocal> {
                 local
             }
             ValueType::List(element_type) => {
-                let local = ParamLocal::list(ListLocalId(next_list), element_type.as_ref().clone());
-                next_list += 1;
-                local
+                let local = match element_type.as_ref() {
+                    ValueType::Int => {
+                        let local = ListLocal::int(IntListLocalId(next_int_list));
+                        next_int_list += 1;
+                        local
+                    }
+                    ValueType::String => {
+                        let local = ListLocal::string(StringListLocalId(next_string_list));
+                        next_string_list += 1;
+                        local
+                    }
+                    ValueType::Float => {
+                        let local = ListLocal::float(FloatListLocalId(next_float_list));
+                        next_float_list += 1;
+                        local
+                    }
+                    ValueType::Bool => {
+                        let local = ListLocal::bool(BoolListLocalId(next_bool_list));
+                        next_bool_list += 1;
+                        local
+                    }
+                    ValueType::Nil => {
+                        let local = ListLocal::nil(NilListLocalId(next_nil_list));
+                        next_nil_list += 1;
+                        local
+                    }
+                    ValueType::Tuple(item_type) => {
+                        let local =
+                            ListLocal::tuple(TupleListLocalId(next_tuple_list), item_type.clone());
+                        next_tuple_list += 1;
+                        local
+                    }
+                    ValueType::List(item_type) => {
+                        let local =
+                            ListLocal::list(ListListLocalId(next_list_list), *item_type.clone());
+                        next_list_list += 1;
+                        local
+                    }
+                    ValueType::Function(item_type) => {
+                        let local = ListLocal::function(
+                            FunctionListLocalId(next_function_list),
+                            *item_type.clone(),
+                        );
+                        next_function_list += 1;
+                        local
+                    }
+                };
+                ParamLocal::list(local)
             }
             ValueType::Function(type_) => match type_.return_() {
                 ValueType::Int => {
@@ -201,7 +254,11 @@ fn plan_argument_value(
 #[cfg(test)]
 mod tests {
     use super::function_call_param_locals;
-    use crate::plan::{FunctionType, ParamLocal, ValueType};
+    use crate::plan::{
+        BoolListLocalId, FloatListLocalId, FunctionListLocalId, FunctionType, IntListLocalId,
+        ListListLocalId, ListLocal, NilListLocalId, ParamLocal, StringListLocalId,
+        TupleListLocalId, ValueType,
+    };
 
     #[test]
     fn function_call_param_locals_preserve_family_local_order() {
@@ -213,6 +270,17 @@ mod tests {
                 ValueType::Bool,
                 ValueType::Nil,
                 ValueType::Int,
+                ValueType::List(Box::new(ValueType::Int)),
+                ValueType::List(Box::new(ValueType::String)),
+                ValueType::List(Box::new(ValueType::Float)),
+                ValueType::List(Box::new(ValueType::Bool)),
+                ValueType::List(Box::new(ValueType::Nil)),
+                ValueType::List(Box::new(ValueType::Tuple(vec![ValueType::Int]))),
+                ValueType::List(Box::new(ValueType::List(Box::new(ValueType::String)))),
+                ValueType::List(Box::new(ValueType::Function(Box::new(FunctionType::new(
+                    vec![ValueType::Int],
+                    ValueType::String,
+                ))))),
                 ValueType::Function(Box::new(FunctionType::new(
                     vec![ValueType::Int],
                     ValueType::Int,
@@ -253,6 +321,17 @@ mod tests {
                 ParamLocal::bool(crate::plan::BoolLocalId(0)),
                 ParamLocal::nil(crate::plan::NilLocalId(0)),
                 ParamLocal::int(crate::plan::IntLocalId(1)),
+                ParamLocal::list(ListLocal::int(IntListLocalId(0))),
+                ParamLocal::list(ListLocal::string(StringListLocalId(0))),
+                ParamLocal::list(ListLocal::float(FloatListLocalId(0))),
+                ParamLocal::list(ListLocal::bool(BoolListLocalId(0))),
+                ParamLocal::list(ListLocal::nil(NilListLocalId(0))),
+                ParamLocal::list(ListLocal::tuple(TupleListLocalId(0), vec![ValueType::Int])),
+                ParamLocal::list(ListLocal::list(ListListLocalId(0), ValueType::String)),
+                ParamLocal::list(ListLocal::function(
+                    FunctionListLocalId(0),
+                    FunctionType::new(vec![ValueType::Int], ValueType::String),
+                )),
                 ParamLocal::int_function(
                     crate::plan::IntFunctionLocalId(0),
                     FunctionType::new(vec![ValueType::Int], ValueType::Int),

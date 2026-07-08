@@ -1,16 +1,17 @@
 use crate::plan::{
     BoolExpr, BoolFunctionExpr, BoolFunctionFunctionId, BoolFunctionId, BoolFunctionLocalId,
-    BoolLocalId, CaptureArg, FloatExpr, FloatFunctionExpr, FloatFunctionFunctionId,
-    FloatFunctionId, FloatFunctionLocalId, FloatLocalId, FunctionFunctionExpr,
-    FunctionFunctionFunctionId, FunctionFunctionId, FunctionFunctionLocalId, FunctionId,
-    FunctionPlan, FunctionType, FunctionValue, IntExpr, IntFunctionExpr, IntFunctionFunctionId,
-    IntFunctionId, IntFunctionLocalId, IntLocalId, ListExpr, ListFunctionExpr,
-    ListFunctionFunctionId, ListFunctionId, ListFunctionLocalId, ListLocalId, LocalId, NilExpr,
-    NilFunctionExpr, NilFunctionFunctionId, NilFunctionId, NilFunctionLocalId, NilLocalId,
+    BoolListLocalId, BoolLocalId, CaptureArg, FloatExpr, FloatFunctionExpr,
+    FloatFunctionFunctionId, FloatFunctionId, FloatFunctionLocalId, FloatListLocalId, FloatLocalId,
+    FunctionFunctionExpr, FunctionFunctionFunctionId, FunctionFunctionId, FunctionFunctionLocalId,
+    FunctionId, FunctionListLocalId, FunctionPlan, FunctionType, FunctionValue, IntExpr,
+    IntFunctionExpr, IntFunctionFunctionId, IntFunctionId, IntFunctionLocalId, IntListLocalId,
+    IntLocalId, ListExpr, ListFunctionExpr, ListFunctionFunctionId, ListFunctionId,
+    ListFunctionLocalId, ListListLocalId, ListLocal, LocalId, NilExpr, NilFunctionExpr,
+    NilFunctionFunctionId, NilFunctionId, NilFunctionLocalId, NilListLocalId, NilLocalId,
     PanicSite, ParamBinding, ParamLocal, RuntimeFunctionId, StringExpr, StringFunctionExpr,
-    StringFunctionFunctionId, StringFunctionId, StringFunctionLocalId, StringLocalId, TupleExpr,
-    TupleFunctionExpr, TupleFunctionFunctionId, TupleFunctionId, TupleFunctionLocalId,
-    TupleLocalId, ValueType,
+    StringFunctionFunctionId, StringFunctionId, StringFunctionLocalId, StringListLocalId,
+    StringLocalId, TupleExpr, TupleFunctionExpr, TupleFunctionFunctionId, TupleFunctionId,
+    TupleFunctionLocalId, TupleListLocalId, TupleLocalId, ValueType,
 };
 use crate::planner::error::{InvalidTypedAstReason, PlanError};
 use ecow::EcoString;
@@ -45,7 +46,14 @@ pub(super) struct PlanContext<'a> {
     next_bool_local: usize,
     next_nil_local: usize,
     next_tuple_local: usize,
-    next_list_local: usize,
+    next_int_list_local: usize,
+    next_string_list_local: usize,
+    next_float_list_local: usize,
+    next_bool_list_local: usize,
+    next_nil_list_local: usize,
+    next_tuple_list_local: usize,
+    next_list_list_local: usize,
+    next_function_list_local: usize,
     next_int_function_local: usize,
     next_float_function_local: usize,
     next_string_function_local: usize,
@@ -63,10 +71,7 @@ enum LocalBinding {
         local: TupleLocalId,
         type_: Vec<ValueType>,
     },
-    List {
-        local: ListLocalId,
-        element_type: ValueType,
-    },
+    List(ListLocal),
     Function(FunctionLocalBinding),
 }
 
@@ -129,7 +134,14 @@ impl<'a> PlanContext<'a> {
             next_bool_local: 0,
             next_nil_local: 0,
             next_tuple_local: 0,
-            next_list_local: 0,
+            next_int_list_local: 0,
+            next_string_list_local: 0,
+            next_float_list_local: 0,
+            next_bool_list_local: 0,
+            next_nil_list_local: 0,
+            next_tuple_list_local: 0,
+            next_list_list_local: 0,
+            next_function_list_local: 0,
             next_int_function_local: 0,
             next_float_function_local: 0,
             next_string_function_local: 0,
@@ -201,18 +213,10 @@ impl<'a> PlanContext<'a> {
                     },
                 );
             }
-            ParamLocal::List {
-                local,
-                element_type,
-            } => {
-                self.next_list_local = self.next_list_local.max(local.0 + 1);
-                self.bindings.insert(
-                    name,
-                    LocalBinding::List {
-                        local: *local,
-                        element_type: element_type.clone(),
-                    },
-                );
+            ParamLocal::List(local) => {
+                self.bump_list_local(local);
+                self.bindings
+                    .insert(name, LocalBinding::List(local.clone()));
             }
             ParamLocal::IntFunction { local, type_ } => {
                 self.next_int_function_local = self.next_int_function_local.max(local.0 + 1);
@@ -550,29 +554,95 @@ impl<'a> PlanContext<'a> {
         &mut self,
         name: EcoString,
         element_type: ValueType,
-    ) -> ListLocalId {
-        let local = ListLocalId(self.next_list_local);
-        self.next_list_local += 1;
-        self.bindings.insert(
-            name,
-            LocalBinding::List {
-                local,
-                element_type,
-            },
-        );
+    ) -> ListLocal {
+        let local = self.next_list_local(element_type);
+        self.bindings
+            .insert(name, LocalBinding::List(local.clone()));
         local
     }
 
-    pub(super) fn define_internal_list_local(&mut self) -> ListLocalId {
-        let local = ListLocalId(self.next_list_local);
-        self.next_list_local += 1;
-        local
+    pub(super) fn define_internal_list_local(&mut self, element_type: ValueType) -> ListLocal {
+        self.next_list_local(element_type)
+    }
+
+    fn next_list_local(&mut self, element_type: ValueType) -> ListLocal {
+        match element_type {
+            ValueType::Int => {
+                let local = IntListLocalId(self.next_int_list_local);
+                self.next_int_list_local += 1;
+                ListLocal::int(local)
+            }
+            ValueType::String => {
+                let local = StringListLocalId(self.next_string_list_local);
+                self.next_string_list_local += 1;
+                ListLocal::string(local)
+            }
+            ValueType::Float => {
+                let local = FloatListLocalId(self.next_float_list_local);
+                self.next_float_list_local += 1;
+                ListLocal::float(local)
+            }
+            ValueType::Bool => {
+                let local = BoolListLocalId(self.next_bool_list_local);
+                self.next_bool_list_local += 1;
+                ListLocal::bool(local)
+            }
+            ValueType::Nil => {
+                let local = NilListLocalId(self.next_nil_list_local);
+                self.next_nil_list_local += 1;
+                ListLocal::nil(local)
+            }
+            ValueType::Tuple(item_type) => {
+                let local = TupleListLocalId(self.next_tuple_list_local);
+                self.next_tuple_list_local += 1;
+                ListLocal::tuple(local, item_type)
+            }
+            ValueType::List(item_type) => {
+                let local = ListListLocalId(self.next_list_list_local);
+                self.next_list_list_local += 1;
+                ListLocal::list(local, *item_type)
+            }
+            ValueType::Function(item_type) => {
+                let local = FunctionListLocalId(self.next_function_list_local);
+                self.next_function_list_local += 1;
+                ListLocal::function(local, *item_type)
+            }
+        }
+    }
+
+    fn bump_list_local(&mut self, local: &ListLocal) {
+        match local {
+            ListLocal::Int(local) => {
+                self.next_int_list_local = self.next_int_list_local.max(local.0 + 1);
+            }
+            ListLocal::String(local) => {
+                self.next_string_list_local = self.next_string_list_local.max(local.0 + 1);
+            }
+            ListLocal::Float(local) => {
+                self.next_float_list_local = self.next_float_list_local.max(local.0 + 1);
+            }
+            ListLocal::Bool(local) => {
+                self.next_bool_list_local = self.next_bool_list_local.max(local.0 + 1);
+            }
+            ListLocal::Nil(local) => {
+                self.next_nil_list_local = self.next_nil_list_local.max(local.0 + 1);
+            }
+            ListLocal::Tuple { local, .. } => {
+                self.next_tuple_list_local = self.next_tuple_list_local.max(local.0 + 1);
+            }
+            ListLocal::List { local, .. } => {
+                self.next_list_list_local = self.next_list_list_local.max(local.0 + 1);
+            }
+            ListLocal::Function { local, .. } => {
+                self.next_function_list_local = self.next_function_list_local.max(local.0 + 1);
+            }
+        }
     }
 
     pub(super) fn lookup_local(&self, name: &EcoString) -> Option<(LocalId, ValueType)> {
         match self.bindings.get(name)? {
             LocalBinding::Primitive(local) => Some((*local, local.value_type())),
-            LocalBinding::Tuple { .. } | LocalBinding::List { .. } => None,
+            LocalBinding::Tuple { .. } | LocalBinding::List(_) => None,
             LocalBinding::Function(_) => None,
         }
     }
@@ -583,18 +653,13 @@ impl<'a> PlanContext<'a> {
     ) -> Option<(TupleLocalId, Vec<ValueType>)> {
         match self.bindings.get(name)? {
             LocalBinding::Tuple { local, type_ } => Some((*local, type_.clone())),
-            LocalBinding::Primitive(_) | LocalBinding::List { .. } | LocalBinding::Function(_) => {
-                None
-            }
+            LocalBinding::Primitive(_) | LocalBinding::List(_) | LocalBinding::Function(_) => None,
         }
     }
 
-    pub(super) fn lookup_list_local(&self, name: &EcoString) -> Option<(ListLocalId, ValueType)> {
+    pub(super) fn lookup_list_local(&self, name: &EcoString) -> Option<ListLocal> {
         match self.bindings.get(name)? {
-            LocalBinding::List {
-                local,
-                element_type,
-            } => Some((*local, element_type.clone())),
+            LocalBinding::List(local) => Some(local.clone()),
             LocalBinding::Primitive(_) | LocalBinding::Tuple { .. } | LocalBinding::Function(_) => {
                 None
             }
@@ -608,9 +673,7 @@ impl<'a> PlanContext<'a> {
     pub(super) fn lookup_function_local(&self, name: &EcoString) -> Option<FunctionLocalBinding> {
         match self.bindings.get(name)? {
             LocalBinding::Function(binding) => Some(binding.clone()),
-            LocalBinding::Primitive(_) | LocalBinding::Tuple { .. } | LocalBinding::List { .. } => {
-                None
-            }
+            LocalBinding::Primitive(_) | LocalBinding::Tuple { .. } | LocalBinding::List(_) => None,
         }
     }
 
@@ -660,7 +723,14 @@ impl<'a> PlanContext<'a> {
             next_bool_local: 0,
             next_nil_local: 0,
             next_tuple_local: 0,
-            next_list_local: 0,
+            next_int_list_local: 0,
+            next_string_list_local: 0,
+            next_float_list_local: 0,
+            next_bool_list_local: 0,
+            next_nil_list_local: 0,
+            next_tuple_list_local: 0,
+            next_list_list_local: 0,
+            next_function_list_local: 0,
             next_int_function_local: 0,
             next_float_function_local: 0,
             next_string_function_local: 0,
@@ -738,15 +808,9 @@ impl<'a> PlanContext<'a> {
                 let target = self.define_tuple_local(capture.name.clone(), type_.clone());
                 CaptureArg::tuple(target, TupleExpr::local_get(local, capture.name, type_))
             }
-            LocalBinding::List {
-                local,
-                element_type,
-            } => {
-                let target = self.define_list_local(capture.name.clone(), element_type.clone());
-                CaptureArg::list(
-                    target,
-                    ListExpr::local_get(local, capture.name, element_type),
-                )
+            LocalBinding::List(local) => {
+                let target = self.define_list_local(capture.name.clone(), local.item_type());
+                CaptureArg::list(target, ListExpr::local_get(local, capture.name))
             }
             LocalBinding::Function(FunctionLocalBinding::Int { local, type_ }) => {
                 let target = self.define_int_function_local(capture.name.clone(), type_.clone());
@@ -1091,13 +1155,15 @@ mod tests {
     use super::FunctionLocalBinding;
     use super::{AnonymousFunctions, FunctionInfo, FunctionRuntimeIds, PlanContext};
     use crate::plan::{
-        BoolFunctionExpr, BoolFunctionLocalId, BoolLocalId, CaptureArg, FloatFunctionExpr,
-        FloatFunctionId, FloatFunctionLocalId, FloatLocalId, FunctionFunctionExpr,
-        FunctionFunctionLocalId, FunctionType, FunctionValue, IntFunctionId, IntFunctionLocalId,
-        IntLocalId, ListExpr, ListFunctionExpr, ListFunctionLocalId, ListLocalId, LocalId,
-        NilFunctionExpr, NilFunctionLocalId, NilLocalId, ParamLocal, RuntimeFunctionId,
-        StringFunctionExpr, StringFunctionLocalId, StringLocalId, TupleFunctionExpr,
-        TupleFunctionLocalId, TupleLocalId, ValueType,
+        BoolFunctionExpr, BoolFunctionLocalId, BoolListLocalId, BoolLocalId, CaptureArg,
+        FloatFunctionExpr, FloatFunctionId, FloatFunctionLocalId, FloatListLocalId, FloatLocalId,
+        FunctionFunctionExpr, FunctionFunctionLocalId, FunctionListLocalId, FunctionType,
+        FunctionValue, IntFunctionId, IntFunctionLocalId, IntListLocalId, IntLocalId, ListExpr,
+        ListFunctionExpr, ListFunctionLocalId, ListListLocalId, ListLocal, LocalId,
+        NilFunctionExpr, NilFunctionLocalId, NilListLocalId, NilLocalId, ParamLocal,
+        RuntimeFunctionId, StringFunctionExpr, StringFunctionLocalId, StringListLocalId,
+        StringLocalId, TupleFunctionExpr, TupleFunctionLocalId, TupleListLocalId, TupleLocalId,
+        ValueType,
     };
     use ecow::EcoString;
     use gleam_core::type_;
@@ -1314,16 +1380,150 @@ mod tests {
         let mut anonymous = AnonymousFunctions::default();
         let mut context = PlanContext::new(&module, &functions, &mut anonymous);
 
-        assert_eq!(context.define_internal_list_local(), ListLocalId(0));
-        assert_eq!(context.lookup_list_local(&"<list:0>".into()), None);
-        assert_eq!(context.lookup_list_local(&"<case:list:0>".into()), None);
+        assert_eq!(
+            context.define_internal_list_local(ValueType::Int),
+            ListLocal::int(IntListLocalId(0))
+        );
+        assert_eq!(context.lookup_list_local(&"<list:int:0>".into()), None);
+        assert_eq!(context.lookup_list_local(&"<case:list:int:0>".into()), None);
         assert_eq!(
             context.define_list_local("values".into(), ValueType::Int),
-            ListLocalId(1),
+            ListLocal::int(IntListLocalId(1)),
         );
         assert_eq!(
             context.lookup_list_local(&"values".into()),
-            Some((ListLocalId(1), ValueType::Int)),
+            Some(ListLocal::int(IntListLocalId(1))),
+        );
+    }
+
+    #[test]
+    fn define_list_locals_preserve_item_family_boundaries() {
+        let module = EcoString::from("main");
+        let functions = HashMap::<EcoString, FunctionInfo>::new();
+        let mut anonymous = AnonymousFunctions::default();
+        let mut context = PlanContext::new(&module, &functions, &mut anonymous);
+        let tuple_type = vec![ValueType::Int, ValueType::String];
+        let nested_function_type = FunctionType::new(vec![ValueType::Int], ValueType::String);
+
+        assert_eq!(
+            context.define_list_local("strings".into(), ValueType::String),
+            ListLocal::string(StringListLocalId(0)),
+        );
+        assert_eq!(
+            context.define_list_local("floats".into(), ValueType::Float),
+            ListLocal::float(FloatListLocalId(0)),
+        );
+        assert_eq!(
+            context.define_list_local("bools".into(), ValueType::Bool),
+            ListLocal::bool(BoolListLocalId(0)),
+        );
+        assert_eq!(
+            context.define_list_local("nils".into(), ValueType::Nil),
+            ListLocal::nil(NilListLocalId(0)),
+        );
+        assert_eq!(
+            context.define_list_local("tuples".into(), ValueType::Tuple(tuple_type.clone())),
+            ListLocal::tuple(TupleListLocalId(0), tuple_type.clone()),
+        );
+        assert_eq!(
+            context.define_list_local("lists".into(), ValueType::List(Box::new(ValueType::Float)),),
+            ListLocal::list(ListListLocalId(0), ValueType::Float),
+        );
+        assert_eq!(
+            context.define_list_local(
+                "functions".into(),
+                ValueType::Function(Box::new(nested_function_type.clone())),
+            ),
+            ListLocal::function(FunctionListLocalId(0), nested_function_type.clone()),
+        );
+
+        assert_eq!(
+            context.lookup_list_local(&"tuples".into()),
+            Some(ListLocal::tuple(TupleListLocalId(0), tuple_type)),
+        );
+        assert_eq!(
+            context.lookup_list_local(&"functions".into()),
+            Some(ListLocal::function(
+                FunctionListLocalId(0),
+                nested_function_type,
+            )),
+        );
+    }
+
+    #[test]
+    fn define_existing_list_params_bump_their_own_item_family() {
+        let module = EcoString::from("main");
+        let functions = HashMap::<EcoString, FunctionInfo>::new();
+        let mut anonymous = AnonymousFunctions::default();
+        let mut context = PlanContext::new(&module, &functions, &mut anonymous);
+        let tuple_type = vec![ValueType::Int];
+        let nested_function_type = FunctionType::new(Vec::new(), ValueType::Int);
+
+        context.define_existing_param(
+            "strings".into(),
+            &ParamLocal::list(ListLocal::string(StringListLocalId(2))),
+        );
+        context.define_existing_param(
+            "floats".into(),
+            &ParamLocal::list(ListLocal::float(FloatListLocalId(3))),
+        );
+        context.define_existing_param(
+            "bools".into(),
+            &ParamLocal::list(ListLocal::bool(BoolListLocalId(4))),
+        );
+        context.define_existing_param(
+            "nils".into(),
+            &ParamLocal::list(ListLocal::nil(NilListLocalId(5))),
+        );
+        context.define_existing_param(
+            "tuples".into(),
+            &ParamLocal::list(ListLocal::tuple(TupleListLocalId(6), tuple_type.clone())),
+        );
+        context.define_existing_param(
+            "lists".into(),
+            &ParamLocal::list(ListLocal::list(ListListLocalId(7), ValueType::Int)),
+        );
+        context.define_existing_param(
+            "functions".into(),
+            &ParamLocal::list(ListLocal::function(
+                FunctionListLocalId(8),
+                nested_function_type.clone(),
+            )),
+        );
+
+        assert_eq!(
+            context.define_list_local("next_string".into(), ValueType::String),
+            ListLocal::string(StringListLocalId(3)),
+        );
+        assert_eq!(
+            context.define_list_local("next_float".into(), ValueType::Float),
+            ListLocal::float(FloatListLocalId(4)),
+        );
+        assert_eq!(
+            context.define_list_local("next_bool".into(), ValueType::Bool),
+            ListLocal::bool(BoolListLocalId(5)),
+        );
+        assert_eq!(
+            context.define_list_local("next_nil".into(), ValueType::Nil),
+            ListLocal::nil(NilListLocalId(6)),
+        );
+        assert_eq!(
+            context.define_list_local("next_tuple".into(), ValueType::Tuple(tuple_type)),
+            ListLocal::tuple(TupleListLocalId(7), vec![ValueType::Int]),
+        );
+        assert_eq!(
+            context.define_list_local(
+                "next_list".into(),
+                ValueType::List(Box::new(ValueType::Int)),
+            ),
+            ListLocal::list(ListListLocalId(8), ValueType::Int),
+        );
+        assert_eq!(
+            context.define_list_local(
+                "next_function".into(),
+                ValueType::Function(Box::new(nested_function_type.clone())),
+            ),
+            ListLocal::function(FunctionListLocalId(9), nested_function_type),
         );
     }
 
@@ -1537,8 +1737,8 @@ mod tests {
             captures,
             vec![
                 CaptureArg::list(
-                    ListLocalId(1),
-                    ListExpr::local_get(ListLocalId(0), "values".into(), element_type),
+                    ListLocal::int(IntListLocalId(1)),
+                    ListExpr::local_get(ListLocal::int(IntListLocalId(0)), "values".into()),
                 ),
                 CaptureArg::list_function(
                     ListFunctionLocalId(1),
