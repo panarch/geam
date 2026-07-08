@@ -1,11 +1,11 @@
 use super::super::super::plan_expr_with_expected_source_stop_type;
 use super::super::{invalid_case_shape, unsupported_case};
-use super::{case_return_type, single_case_pattern, validate_clause_shape};
+use super::{CaseClause, OrderedCaseClauseInput, case_return_type};
 use crate::plan::{BoolExpr, Expr, ExprKind, ListExpr, ListLocalId, Step, ValueType};
 use crate::planner::context::PlanContext;
 use crate::planner::error::{InvalidCaseShapeReason, PlanError, UnsupportedCaseReason};
 use ecow::EcoString;
-use gleam_core::ast::{Pattern, TypedClause, TypedExpr};
+use gleam_core::ast::{Pattern, TypedExpr};
 use gleam_core::type_::Type;
 use std::sync::Arc;
 
@@ -13,16 +13,13 @@ pub(super) fn plan(
     type_: Arc<Type>,
     subject: TypedExpr,
     element_type: ValueType,
-    clauses: Vec<TypedClause>,
+    clauses: Vec<CaseClause>,
     context: &mut PlanContext<'_>,
 ) -> Result<Expr, PlanError> {
     let subject_value_type = ValueType::List(Box::new(element_type.clone()));
     let subject =
         plan_expr_with_expected_source_stop_type(subject, subject_value_type.clone(), context)?;
     let return_type = case_return_type(type_.as_ref())?;
-    for clause in &clauses {
-        validate_clause_shape(clause)?;
-    }
 
     let ExprKind::List(subject) = subject.into_kind() else {
         return Err(invalid_case_shape(
@@ -30,24 +27,25 @@ pub(super) fn plan(
         ));
     };
     let (subject_step, subject) = bind_list_case_subject(subject, context);
-    let mut ordered_clauses = Vec::with_capacity(clauses.len());
+    let mut ordered_clauses = Vec::new();
     for clause in clauses {
-        let pattern = single_case_pattern(clause.pattern)?;
-        let pattern = plan_list_case_pattern(pattern, &subject_value_type)?;
-        let bindings = super::branch_bindings(pattern.bound_names(), subject.clone());
-        let is_total = clause.guard.is_none();
-        ordered_clauses.push(super::plan_ordered_case_clause(
-            super::OrderedCaseClauseInput {
-                case_type: type_.as_ref(),
-                return_type: &return_type,
-                then: clause.then,
-                branch_bindings: bindings,
-                guard: clause.guard,
-                match_condition: BoolExpr::value(true),
-                is_total,
-            },
-            context,
-        )?);
+        for pattern in clause.patterns() {
+            let pattern = plan_list_case_pattern(pattern, &subject_value_type)?;
+            let bindings = super::branch_bindings(pattern.bound_names(), subject.clone());
+            let is_total = clause.guard.is_none();
+            ordered_clauses.push(super::plan_ordered_case_clause(
+                OrderedCaseClauseInput {
+                    case_type: type_.as_ref(),
+                    return_type: &return_type,
+                    then: clause.then.clone(),
+                    branch_bindings: bindings,
+                    guard: clause.guard.clone(),
+                    match_condition: BoolExpr::value(true),
+                    is_total,
+                },
+                context,
+            )?);
+        }
     }
 
     super::ordered_case_expr(ordered_clauses)
@@ -276,24 +274,6 @@ pub fn main() {
             ),
             PlanError::UnsupportedCase {
                 reason: UnsupportedCaseReason::ListPattern,
-            },
-        );
-    }
-
-    #[test]
-    fn reject_profile_list_subject_alternative_patterns() {
-        assert_eq!(
-            expect_plan_error(
-                r#"
-pub fn main() {
-  case [1] {
-    _ | _ -> 1
-  }
-}
-"#,
-            ),
-            PlanError::UnsupportedCase {
-                reason: UnsupportedCaseReason::AlternativePatterns,
             },
         );
     }

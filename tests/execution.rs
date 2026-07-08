@@ -175,6 +175,12 @@ mod control_flow {
             string_prefix_empty,
             tuple_inner_string_prefix_pattern,
             string_prefix_closure_capture,
+            alternative_patterns,
+            alternative_guard_fallthrough,
+            alternative_tuple_binding_positions,
+            alternative_subject_families,
+            alternative_closure_capture,
+            tuple_alternative_patterns,
         );
     }
 }
@@ -440,9 +446,7 @@ mod rejection {
 
     mod case_patterns {
         rejection_cases!("case_patterns";
-            alternative_patterns,
             multiple_subjects,
-            tuple_alternative_patterns,
             tuple_inner_list_pattern,
             list_pattern,
             list_pattern_alias,

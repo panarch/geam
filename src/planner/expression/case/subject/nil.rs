@@ -1,25 +1,22 @@
 use super::super::super::plan_expr_with_expected_source_stop_type;
 use super::super::invalid_case_shape;
-use super::{case_return_type, single_case_pattern, validate_clause_shape};
+use super::{CaseClause, OrderedCaseClauseInput, case_return_type};
 use crate::plan::{BoolExpr, Expr, ExprKind, NilExpr, NilLocalId, Step, ValueType};
 use crate::planner::context::PlanContext;
 use crate::planner::error::{InvalidCaseShapeReason, PlanError};
 use ecow::EcoString;
-use gleam_core::ast::{Pattern, TypedClause, TypedExpr};
+use gleam_core::ast::{Pattern, TypedExpr};
 use gleam_core::type_::Type;
 use std::sync::Arc;
 
 pub(super) fn plan(
     type_: Arc<Type>,
     subject: TypedExpr,
-    clauses: Vec<TypedClause>,
+    clauses: Vec<CaseClause>,
     context: &mut PlanContext<'_>,
 ) -> Result<Expr, PlanError> {
     let subject = plan_expr_with_expected_source_stop_type(subject, ValueType::Nil, context)?;
     let return_type = case_return_type(type_.as_ref())?;
-    for clause in &clauses {
-        validate_clause_shape(clause)?;
-    }
 
     let ExprKind::Nil(subject) = subject.into_kind() else {
         return Err(invalid_case_shape(
@@ -27,24 +24,25 @@ pub(super) fn plan(
         ));
     };
     let (subject_step, subject) = bind_nil_case_subject(subject, context);
-    let mut ordered_clauses = Vec::with_capacity(clauses.len());
+    let mut ordered_clauses = Vec::new();
     for clause in clauses {
-        let pattern = single_case_pattern(clause.pattern)?;
-        let pattern = plan_nil_case_pattern(pattern)?;
-        let bindings = super::branch_bindings(pattern.bound_names(), subject.clone());
-        let is_total = clause.guard.is_none();
-        ordered_clauses.push(super::plan_ordered_case_clause(
-            super::OrderedCaseClauseInput {
-                case_type: type_.as_ref(),
-                return_type: &return_type,
-                then: clause.then,
-                branch_bindings: bindings,
-                guard: clause.guard,
-                match_condition: BoolExpr::value(true),
-                is_total,
-            },
-            context,
-        )?);
+        for pattern in clause.patterns() {
+            let pattern = plan_nil_case_pattern(pattern)?;
+            let bindings = super::branch_bindings(pattern.bound_names(), subject.clone());
+            let is_total = clause.guard.is_none();
+            ordered_clauses.push(super::plan_ordered_case_clause(
+                OrderedCaseClauseInput {
+                    case_type: type_.as_ref(),
+                    return_type: &return_type,
+                    then: clause.then.clone(),
+                    branch_bindings: bindings,
+                    guard: clause.guard.clone(),
+                    match_condition: BoolExpr::value(true),
+                    is_total,
+                },
+                context,
+            )?);
+        }
     }
 
     super::ordered_case_expr(ordered_clauses)
@@ -131,9 +129,7 @@ mod tests {
     };
     use crate::planner::plan_module;
     use crate::planner::support::{dummy_span, expect_plan_error};
-    use crate::planner::{
-        InvalidCaseShapeReason, InvalidTypedAstReason, PlanError, UnsupportedCaseReason,
-    };
+    use crate::planner::{InvalidCaseShapeReason, InvalidTypedAstReason, PlanError};
     use gleam_core::type_::error::VariableOrigin;
 
     #[test]
@@ -194,24 +190,6 @@ pub fn main() {
         );
 
         assert_eq!(actual, expected);
-    }
-
-    #[test]
-    fn reject_profile_nil_subject_alternative_patterns() {
-        assert_eq!(
-            expect_plan_error(
-                r#"
-pub fn main() {
-  case Nil {
-    _ | _ -> 1
-  }
-}
-"#,
-            ),
-            PlanError::UnsupportedCase {
-                reason: UnsupportedCaseReason::AlternativePatterns,
-            },
-        );
     }
 
     #[test]
