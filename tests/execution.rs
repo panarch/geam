@@ -165,6 +165,16 @@ mod control_flow {
             pattern_alias_guard,
             pattern_alias_scope,
             pattern_alias_closure_capture,
+            string_prefix_pattern,
+            string_prefix_whole_alias,
+            string_prefix_fallthrough,
+            string_prefix_left_alias,
+            string_prefix_discard_suffix,
+            string_prefix_guard,
+            string_prefix_unicode,
+            string_prefix_empty,
+            tuple_inner_string_prefix_pattern,
+            string_prefix_closure_capture,
         );
     }
 }
@@ -434,9 +444,6 @@ mod rejection {
             multiple_subjects,
             tuple_alternative_patterns,
             tuple_inner_list_pattern,
-            tuple_inner_string_prefix_pattern,
-            string_prefix_pattern,
-            string_prefix_pattern_alias,
             list_pattern,
             list_pattern_alias,
             unsupported_subject_type,

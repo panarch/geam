@@ -461,9 +461,9 @@ pub fn main() {
         ))
         .expect("source should plan");
         let bind_other = let_bool_step(1, "other", local_bool(0, "<case:bool:0>"));
-        let condition = BoolExpr::block(
-            vec![bind_other.clone()],
-            BoolExpr::and(BoolExpr::value(true), local_bool(1, "other").into()),
+        let condition = BoolExpr::and(
+            BoolExpr::value(true),
+            BoolExpr::block(vec![bind_other.clone()], local_bool(1, "other").into()),
         );
         let guarded_branch = int_return_block([bind_other], int_return_expr(int(1)));
         let guarded_case = IntReturn::bool_case(condition, guarded_branch, int_return_expr(int(0)));
@@ -501,10 +501,10 @@ pub fn main() {
         .expect("source should plan");
         let bind_value = let_bool_step(1, "value", local_bool(0, "<case:bool:0>"));
         let bind_alias = let_bool_step(2, "alias", local_bool(0, "<case:bool:0>"));
-        let condition = BoolExpr::block(
-            vec![bind_value.clone(), bind_alias.clone()],
-            BoolExpr::and(
-                BoolExpr::value(true),
+        let condition = BoolExpr::and(
+            BoolExpr::value(true),
+            BoolExpr::block(
+                vec![bind_value.clone(), bind_alias.clone()],
                 local_bool(1, "value")
                     .and_bool(local_bool(2, "alias"))
                     .into(),

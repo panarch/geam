@@ -62,6 +62,9 @@ pub(in crate::runtime) fn eval_bool_expr(
         BoolExprKind::NotEqual { left, right } => {
             Ok(eval_expr(plan, frame, left)? != eval_expr(plan, frame, right)?)
         }
+        BoolExprKind::StringStartsWith { value, prefix } => {
+            Ok(eval_string_expr(plan, frame, value)?.starts_with(prefix.as_str()))
+        }
         BoolExprKind::And { left, right } => {
             let left = eval_bool_expr(plan, frame, left)?;
             eval_and(left, || eval_bool_expr(plan, frame, right))
@@ -251,6 +254,72 @@ pub fn main() {
 "#,
             ),
             Value::Bool(false),
+        );
+    }
+
+    #[test]
+    fn eval_string_starts_with() {
+        let plan = crate::runtime::plan_src("pub fn main() { True }");
+        let mut frame = Frame::default();
+
+        assert_eq!(
+            eval_bool_expr(
+                &plan,
+                &mut frame,
+                &BoolExpr::string_starts_with(
+                    StringExpr::value("Hello, Geam".into()),
+                    "Hello, ".into()
+                ),
+            ),
+            Ok(true),
+        );
+        assert_eq!(
+            eval_bool_expr(
+                &plan,
+                &mut frame,
+                &BoolExpr::string_starts_with(
+                    StringExpr::value("안녕, 글림".into()),
+                    "안녕, ".into()
+                ),
+            ),
+            Ok(true),
+        );
+        assert_eq!(
+            eval_bool_expr(
+                &plan,
+                &mut frame,
+                &BoolExpr::string_starts_with(
+                    StringExpr::value("Hello, Geam".into()),
+                    "Goodbye".into()
+                ),
+            ),
+            Ok(false),
+        );
+        assert_eq!(
+            eval_bool_expr(
+                &plan,
+                &mut frame,
+                &BoolExpr::string_starts_with(StringExpr::value("abc".into()), "".into()),
+            ),
+            Ok(true),
+        );
+    }
+
+    #[test]
+    fn eval_string_starts_with_propagates_value_error() {
+        let plan = plan();
+        let mut frame = Frame::default();
+
+        assert_eq!(
+            eval_bool_expr(
+                &plan,
+                &mut frame,
+                &BoolExpr::string_starts_with(error_string_expr(), "prefix".into()),
+            ),
+            Err(function_return_family_error_value(
+                FunctionReturnFamily::String,
+                FunctionReturnFamily::Int,
+            )),
         );
     }
 

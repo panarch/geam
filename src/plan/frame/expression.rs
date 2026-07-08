@@ -109,6 +109,7 @@ impl FrameLayout {
                 self.include_string_expr(left);
                 self.include_string_expr(right);
             }
+            StringExprKind::DropPrefix { value, .. } => self.include_string_expr(value),
             StringExprKind::BoolCase {
                 subject,
                 true_,
@@ -180,6 +181,7 @@ impl FrameLayout {
             BoolExprKind::GtEqFloat { left, right } => self.include_float_binary_expr(left, right),
             BoolExprKind::Equal { left, right } => self.include_binary_expr(left, right),
             BoolExprKind::NotEqual { left, right } => self.include_binary_expr(left, right),
+            BoolExprKind::StringStartsWith { value, .. } => self.include_string_expr(value),
             BoolExprKind::And { left, right } => self.include_bool_binary_expr(left, right),
             BoolExprKind::Or { left, right } => self.include_bool_binary_expr(left, right),
             BoolExprKind::BoolCase {
@@ -566,6 +568,25 @@ mod tests {
 
         assert_eq!(layout.ints(), 9);
         assert_eq!(layout.floats(), 4);
+    }
+
+    #[test]
+    fn frame_layout_includes_string_prefix_expression_dependencies() {
+        let steps = vec![
+            Step::evaluate(Expr::bool(BoolExpr::string_starts_with(
+                StringExpr::local_get(StringLocalId(0), "prefix_subject".into()),
+                "pre".into(),
+            ))),
+            Step::evaluate(Expr::string(StringExpr::drop_prefix(
+                StringExpr::local_get(StringLocalId(1), "suffix_subject".into()),
+                "pre".into(),
+            ))),
+        ];
+        let return_ = ReturnExpr::int(IntFunctionId(0), IntExpr::value(0.into()));
+
+        let layout = FrameLayout::from_function_parts(&[], &steps, &return_);
+
+        assert_eq!(layout.strings(), 2);
     }
 
     #[test]

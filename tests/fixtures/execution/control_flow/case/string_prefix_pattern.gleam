@@ -1,7 +1,9 @@
 pub fn main() {
   let value = "Hello, Geam"
   case value {
-    "Hello, " <> name as greeting -> greeting <> name
+    "Hello, " <> name -> name
     _ -> "Unknown"
   }
 }
+
+// geam:expect String("Geam")
