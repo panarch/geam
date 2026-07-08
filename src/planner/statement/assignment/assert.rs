@@ -255,10 +255,13 @@ fn define_assert_local(
                     context.define_tuple_function_local(name, type_.clone()),
                     type_,
                 ),
-                ValueType::List(_) => ParamLocal::list_function(
-                    context.define_list_function_local(name, type_.clone()),
-                    type_,
-                ),
+                ValueType::List(item_type) => {
+                    ParamLocal::list_function(context.define_list_function_local(
+                        name,
+                        type_.clone(),
+                        item_type.as_ref().clone(),
+                    ))
+                }
                 ValueType::Function(_) => ParamLocal::function_function(
                     context.define_function_function_local(name, type_.clone()),
                     type_,
@@ -369,9 +372,9 @@ mod tests {
     use crate::plan::{
         AssertBinding, AssertPattern, BoolFunctionLocalId, BoolLocalId, FloatFunctionLocalId,
         FloatLocalId, FunctionFunctionLocalId, FunctionType, IntFunctionLocalId, IntListLocalId,
-        IntLocalId, ListAssertPattern, ListAssertTail, ListFunctionLocalId, ListLocal,
-        NilFunctionLocalId, NilLocalId, PanicSite, ParamLocal, SourceSpan, Step, StringExpr,
-        StringFunctionLocalId, StringLocalId, TupleFunctionLocalId, TupleLocalId, ValueType,
+        IntLocalId, ListAssertPattern, ListAssertTail, ListLocal, NilFunctionLocalId, NilLocalId,
+        PanicSite, ParamLocal, SourceSpan, Step, StringExpr, StringFunctionLocalId, StringLocalId,
+        TupleFunctionLocalId, TupleLocalId, ValueType,
     };
     use crate::planner::context::{AnonymousFunctions, PlanContext};
     use crate::planner::dsl::{
@@ -1322,7 +1325,14 @@ pub fn main() {
                 ValueType::Function(Box::new(list_function_type.clone())),
                 &mut context,
             ),
-            ParamLocal::list_function(ListFunctionLocalId(0), list_function_type),
+            ParamLocal::list_function(crate::plan::ListFunctionLocal::from_item_type(
+                0,
+                crate::plan::FunctionType::new(
+                    Vec::new(),
+                    crate::plan::ValueType::List(Box::new(crate::plan::ValueType::Int))
+                ),
+                crate::plan::ValueType::Int,
+            )),
         );
         assert_eq!(
             super::define_assert_local(

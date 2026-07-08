@@ -482,11 +482,13 @@ impl FunctionParamLocalCounters {
                 self.next_tuple += 1;
                 local
             }
-            ValueType::List(_) => {
-                let local = ParamLocal::list_function(
-                    crate::plan::ListFunctionLocalId(self.next_list),
-                    type_.clone(),
-                );
+            ValueType::List(item_type) => {
+                let local =
+                    ParamLocal::list_function(crate::plan::ListFunctionLocal::from_item_type(
+                        self.next_list,
+                        type_.clone(),
+                        item_type.as_ref().clone(),
+                    ));
                 self.next_list += 1;
                 local
             }

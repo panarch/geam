@@ -5,7 +5,7 @@ use super::{
 };
 use crate::plan::{
     BoolFunctionLocalId, BoolLocalId, FloatFunctionLocalId, FloatLocalId, FunctionFunctionLocalId,
-    IntFunctionLocalId, IntLocalId, ListFunctionLocalId, ListLocal, NilFunctionLocalId, NilLocalId,
+    IntFunctionLocalId, IntLocalId, ListFunctionLocal, ListLocal, NilFunctionLocalId, NilLocalId,
     ParamLocal, StringFunctionLocalId, StringLocalId, TupleFunctionLocalId, TupleLocalId,
 };
 
@@ -69,7 +69,7 @@ pub(crate) enum CallArgKind {
         value: TupleFunctionExpr,
     },
     ListFunction {
-        local: ListFunctionLocalId,
+        local: ListFunctionLocal,
         value: ListFunctionExpr,
     },
     FunctionFunction {
@@ -138,7 +138,7 @@ pub(crate) enum CaptureArgKind {
         value: TupleFunctionExpr,
     },
     ListFunction {
-        local: ListFunctionLocalId,
+        local: ListFunctionLocal,
         value: ListFunctionExpr,
     },
     FunctionFunction {
@@ -225,15 +225,13 @@ impl Expr {
             ) if value.type_() == expected => value
                 .into_tuple()
                 .map(|value| CallArg::tuple_function(*local, value)),
-            (
-                ParamLocal::ListFunction {
-                    local,
-                    type_: expected,
-                },
-                ExprKind::Function(value),
-            ) if value.type_() == expected => value
-                .into_list()
-                .map(|value| CallArg::list_function(*local, value)),
+            (ParamLocal::ListFunction(local), ExprKind::Function(value))
+                if value.type_() == local.type_() =>
+            {
+                value
+                    .into_list()
+                    .map(|value| CallArg::list_function(local.clone(), value))
+            }
             (
                 ParamLocal::FunctionFunction {
                     local,
@@ -327,7 +325,7 @@ impl CallArg {
         }
     }
 
-    pub(crate) fn list_function(local: ListFunctionLocalId, value: ListFunctionExpr) -> Self {
+    pub(crate) fn list_function(local: ListFunctionLocal, value: ListFunctionExpr) -> Self {
         Self {
             kind: CallArgKind::ListFunction { local, value },
         }
@@ -426,7 +424,7 @@ impl CaptureArg {
         }
     }
 
-    pub(crate) fn list_function(local: ListFunctionLocalId, value: ListFunctionExpr) -> Self {
+    pub(crate) fn list_function(local: ListFunctionLocal, value: ListFunctionExpr) -> Self {
         Self {
             kind: CaptureArgKind::ListFunction { local, value },
         }
@@ -456,11 +454,11 @@ mod tests {
         FunctionFunctionLocalId, FunctionFunctionValue, FunctionType, FunctionValue, IntExpr,
         IntFunctionExpr, IntFunctionFunctionId, IntFunctionId, IntFunctionLocalId,
         IntFunctionValue, IntListLocalId, IntLocalId, ListExpr, ListFunctionExpr, ListFunctionId,
-        ListFunctionLocalId, ListFunctionValue, ListLocal, NilExpr, NilFunctionExpr, NilFunctionId,
-        NilFunctionLocalId, NilFunctionValue, NilLocalId, ParamLocal, RuntimeFunctionId,
-        StringExpr, StringFunctionExpr, StringFunctionId, StringFunctionLocalId,
-        StringFunctionValue, StringLocalId, TupleExpr, TupleFunctionExpr, TupleFunctionId,
-        TupleFunctionLocalId, TupleFunctionValue, TupleLocalId, ValueType,
+        ListFunctionValue, ListLocal, NilExpr, NilFunctionExpr, NilFunctionId, NilFunctionLocalId,
+        NilFunctionValue, NilLocalId, ParamLocal, RuntimeFunctionId, StringExpr,
+        StringFunctionExpr, StringFunctionId, StringFunctionLocalId, StringFunctionValue,
+        StringLocalId, TupleExpr, TupleFunctionExpr, TupleFunctionId, TupleFunctionLocalId,
+        TupleFunctionValue, TupleLocalId, ValueType,
     };
     use num_bigint::BigInt;
 
@@ -580,10 +578,18 @@ mod tests {
         );
         assert_eq!(
             Expr::function(FunctionExpr::list(list_function_expr())).into_call_arg(
-                &ParamLocal::list_function(ListFunctionLocalId(0), list_function_type())
+                &ParamLocal::list_function(crate::plan::ListFunctionLocal::from_item_type(
+                    0,
+                    list_function_type(),
+                    ValueType::Int,
+                ))
             ),
             Some(CallArg::list_function(
-                ListFunctionLocalId(0),
+                crate::plan::ListFunctionLocal::from_item_type(
+                    0,
+                    list_function_type(),
+                    ValueType::Int,
+                ),
                 list_function_expr(),
             )),
         );
@@ -737,10 +743,16 @@ mod tests {
 
     fn list_function_expr() -> ListFunctionExpr {
         ListFunctionExpr::value(ListFunctionValue::new(
-            ListFunctionId(0),
+            ListFunctionId::from_item_type(0, crate::plan::ValueType::Int),
             vec![ParamLocal::list(ListLocal::int(IntListLocalId(0)))],
-            ValueType::Int,
         ))
+    }
+
+    fn list_function_type() -> FunctionType {
+        FunctionType::new(
+            vec![ValueType::List(Box::new(ValueType::Int))],
+            ValueType::List(Box::new(ValueType::Int)),
+        )
     }
 
     fn function_function_expr() -> FunctionFunctionExpr {
@@ -787,13 +799,6 @@ mod tests {
         FunctionType::new(
             vec![ValueType::Tuple(vec![ValueType::Int])],
             ValueType::Tuple(vec![ValueType::Int]),
-        )
-    }
-
-    fn list_function_type() -> FunctionType {
-        FunctionType::new(
-            vec![ValueType::List(Box::new(ValueType::Int))],
-            ValueType::List(Box::new(ValueType::Int)),
         )
     }
 

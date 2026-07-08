@@ -7,7 +7,7 @@ use crate::plan::{
     FloatFunctionExpr, FloatFunctionId, FloatFunctionLocalId, FloatFunctionValue, FunctionExpr,
     FunctionFunctionExpr, FunctionFunctionId, FunctionFunctionLocalId, FunctionFunctionValue,
     FunctionType, FunctionValue, IntFunctionExpr, IntFunctionId, IntFunctionLocalId,
-    IntFunctionValue, ListFunctionExpr, ListFunctionId, ListFunctionLocalId, ListFunctionValue,
+    IntFunctionValue, ListFunctionExpr, ListFunctionId, ListFunctionLocal, ListFunctionValue,
     NilFunctionExpr, NilFunctionId, NilFunctionLocalId, NilFunctionValue, RuntimeFunctionId,
     StringFunctionExpr, StringFunctionId, StringFunctionLocalId, StringFunctionValue,
     TupleFunctionExpr, TupleFunctionId, TupleFunctionLocalId, TupleFunctionValue, ValueType,
@@ -151,15 +151,15 @@ pub(crate) fn tuple_function_ref(
 pub(crate) fn list_function_ref(
     runtime_id: usize,
     params: impl IntoIterator<Item = impl IntoParamLocal>,
-    return_type: impl IntoValueType,
+    item_type: impl IntoValueType,
 ) -> ListFunction {
+    let item_type = item_type.into_value_type();
     ListFunction(ListFunctionExpr::value(ListFunctionValue::new(
-        ListFunctionId(runtime_id),
+        ListFunctionId::from_item_type(runtime_id, item_type),
         params
             .into_iter()
             .map(IntoParamLocal::into_param_local)
             .collect(),
-        return_type.into_value_type(),
     )))
 }
 
@@ -192,21 +192,18 @@ pub(crate) fn list_function_closure(
     runtime_id: usize,
     params: impl IntoIterator<Item = impl IntoParamLocal>,
     captures: impl IntoIterator<Item = CaptureArg>,
-    return_type: impl IntoValueType,
+    item_type: impl IntoValueType,
 ) -> ListFunction {
     let params = params
         .into_iter()
         .map(IntoParamLocal::into_param_local)
         .collect::<Vec<_>>();
-    let return_type = return_type.into_value_type();
-    let type_ = FunctionType::from_params(&params, ValueType::List(Box::new(return_type.clone())));
+    let item_type = item_type.into_value_type();
 
     ListFunction(ListFunctionExpr::closure(
-        ListFunctionId(runtime_id),
+        ListFunctionId::from_item_type(runtime_id, item_type),
         params,
         captures.into_iter().collect(),
-        type_,
-        return_type,
     ))
 }
 
@@ -334,13 +331,15 @@ pub(crate) fn local_list_function(
     params: impl IntoIterator<Item = impl IntoValueType>,
     return_type: impl IntoValueType,
 ) -> ListFunction {
+    let params = params
+        .into_iter()
+        .map(IntoValueType::into_value_type)
+        .collect::<Vec<_>>();
+    let item_type = return_type.into_value_type();
+    let return_type = ValueType::List(Box::new(item_type.clone()));
     ListFunction(ListFunctionExpr::local_get(
-        ListFunctionLocalId(local),
+        ListFunctionLocal::from_item_type(local, FunctionType::new(params, return_type), item_type),
         name.into(),
-        function_type(
-            params,
-            ValueType::List(Box::new(return_type.into_value_type())),
-        ),
     ))
 }
 
@@ -404,11 +403,10 @@ mod tests {
         FloatFunctionExpr, FloatFunctionId, FloatFunctionLocalId, FloatFunctionValue, FunctionExpr,
         FunctionFunctionExpr, FunctionFunctionId, FunctionFunctionLocalId, FunctionType,
         FunctionValue, IntFunctionExpr, IntFunctionFunctionId, IntFunctionId, IntFunctionLocalId,
-        IntFunctionValue, ListFunctionExpr, ListFunctionId, ListFunctionLocalId, ListFunctionValue,
-        NilFunctionExpr, NilFunctionId, NilFunctionLocalId, NilFunctionValue, ParamLocal,
-        RuntimeFunctionId, StringFunctionExpr, StringFunctionId, StringFunctionLocalId,
-        StringFunctionValue, TupleFunctionExpr, TupleFunctionId, TupleFunctionLocalId,
-        TupleFunctionValue, ValueType,
+        IntFunctionValue, ListFunctionExpr, ListFunctionId, ListFunctionValue, NilFunctionExpr,
+        NilFunctionId, NilFunctionLocalId, NilFunctionValue, ParamLocal, RuntimeFunctionId,
+        StringFunctionExpr, StringFunctionId, StringFunctionLocalId, StringFunctionValue,
+        TupleFunctionExpr, TupleFunctionId, TupleFunctionLocalId, TupleFunctionValue, ValueType,
     };
     use crate::planner::dsl::expression::{Function, float, int};
 
@@ -481,9 +479,8 @@ mod tests {
             )
             .0,
             ListFunctionExpr::value(ListFunctionValue::new(
-                ListFunctionId(6),
-                vec![ParamLocal::int(crate::plan::IntLocalId(0))],
-                ValueType::Int,
+                ListFunctionId::from_item_type(6, crate::plan::ValueType::Int),
+                vec![ParamLocal::int(crate::plan::IntLocalId(0))]
             )),
         );
         assert_eq!(
@@ -585,12 +582,15 @@ mod tests {
         assert_eq!(
             local_list_function(0, "f", [ValueType::Int], ValueType::String).0,
             ListFunctionExpr::local_get(
-                ListFunctionLocalId(0),
-                "f".into(),
-                FunctionType::new(
-                    vec![ValueType::Int],
-                    ValueType::List(Box::new(ValueType::String)),
+                crate::plan::ListFunctionLocal::from_item_type(
+                    0,
+                    FunctionType::new(
+                        vec![ValueType::Int],
+                        ValueType::List(Box::new(ValueType::String)),
+                    ),
+                    ValueType::String,
                 ),
+                "f".into(),
             ),
         );
         assert_eq!(
@@ -701,14 +701,9 @@ mod tests {
             )
             .0,
             ListFunctionExpr::closure(
-                ListFunctionId(0),
+                ListFunctionId::from_item_type(0, ValueType::String),
                 vec![ParamLocal::int(crate::plan::IntLocalId(0))],
                 vec![crate::planner::dsl::expression::capture_int(0, int(1))],
-                FunctionType::new(
-                    vec![ValueType::Int],
-                    ValueType::List(Box::new(ValueType::String)),
-                ),
-                ValueType::String,
             ),
         );
     }

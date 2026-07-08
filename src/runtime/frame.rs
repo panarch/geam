@@ -1,7 +1,7 @@
 use crate::plan::{
     BoolFunctionLocalId, BoolFunctionValue, BoolLocalId, FloatFunctionLocalId, FloatFunctionValue,
     FloatLocalId, FrameLayout, FunctionFunctionLocalId, FunctionFunctionValue, IntFunctionLocalId,
-    IntFunctionValue, IntLocalId, ListFunctionLocalId, ListFunctionValue, ListLocal, ListValue,
+    IntFunctionValue, IntLocalId, ListFunctionLocal, ListFunctionValue, ListLocal, ListValue,
     NilFunctionLocalId, NilFunctionValue, NilLocalId, StringFunctionLocalId, StringFunctionValue,
     StringLocalId, TupleFunctionLocalId, TupleFunctionValue, TupleLocalId, Value, ValueType,
 };
@@ -30,7 +30,7 @@ pub(super) struct Frame {
     bool_functions: HashMap<BoolFunctionLocalId, BoolFunctionValue>,
     nil_functions: HashMap<NilFunctionLocalId, NilFunctionValue>,
     tuple_functions: HashMap<TupleFunctionLocalId, TupleFunctionValue>,
-    list_functions: HashMap<ListFunctionLocalId, ListFunctionValue>,
+    list_functions: HashMap<ListFunctionLocal, ListFunctionValue>,
     function_functions: HashMap<FunctionFunctionLocalId, FunctionFunctionValue>,
 }
 
@@ -72,7 +72,7 @@ impl Frame {
             bool_functions: HashMap::with_capacity(layout.bool_functions()),
             nil_functions: HashMap::with_capacity(layout.nil_functions()),
             tuple_functions: HashMap::with_capacity(layout.tuple_functions()),
-            list_functions: HashMap::with_capacity(layout.list_functions()),
+            list_functions: HashMap::with_capacity(layout.list_functions().len()),
             function_functions: HashMap::with_capacity(layout.function_functions()),
         }
     }
@@ -231,16 +231,12 @@ impl Frame {
         self.tuple_functions[&local].clone()
     }
 
-    pub(super) fn set_list_function(
-        &mut self,
-        local: ListFunctionLocalId,
-        value: ListFunctionValue,
-    ) {
+    pub(super) fn set_list_function(&mut self, local: ListFunctionLocal, value: ListFunctionValue) {
         self.list_functions.insert(local, value);
     }
 
-    pub(super) fn get_list_function(&self, local: ListFunctionLocalId) -> ListFunctionValue {
-        self.list_functions[&local].clone()
+    pub(super) fn get_list_function(&self, local: &ListFunctionLocal) -> ListFunctionValue {
+        self.list_functions[local].clone()
     }
 
     pub(super) fn set_function_function(

@@ -69,7 +69,6 @@ pub(crate) struct ListFunctionValue {
     runtime_id: ListFunctionId,
     params: Vec<ParamLocal>,
     captures: Vec<CaptureValue>,
-    return_type: ValueType,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -109,9 +108,9 @@ impl FunctionValue {
             RuntimeFunctionId::Tuple { id, return_type } => FunctionValueKind::Tuple(
                 TupleFunctionValue::new_with_captures(id, params, captures, return_type),
             ),
-            RuntimeFunctionId::List { id, return_type } => FunctionValueKind::List(
-                ListFunctionValue::new_with_captures(id, params, captures, *return_type),
-            ),
+            RuntimeFunctionId::List(id) => {
+                FunctionValueKind::List(ListFunctionValue::new_with_captures(id, params, captures))
+            }
             RuntimeFunctionId::Function { id, return_type } => FunctionValueKind::Function(
                 FunctionFunctionValue::new_with_captures(id, params, captures, return_type),
             ),
@@ -376,37 +375,31 @@ impl TupleFunctionValue {
 
 impl ListFunctionValue {
     #[cfg(test)]
-    pub(crate) fn new(
-        runtime_id: ListFunctionId,
-        params: Vec<ParamLocal>,
-        return_type: ValueType,
-    ) -> Self {
-        Self::new_with_captures(runtime_id, params, Vec::new(), return_type)
+    pub(crate) fn new(runtime_id: ListFunctionId, params: Vec<ParamLocal>) -> Self {
+        Self::new_with_captures(runtime_id, params, Vec::new())
     }
 
     pub(crate) fn new_with_captures(
         runtime_id: ListFunctionId,
         params: Vec<ParamLocal>,
         captures: Vec<CaptureValue>,
-        return_type: ValueType,
     ) -> Self {
         Self {
             runtime_id,
             params,
             captures,
-            return_type,
         }
     }
 
     pub(crate) fn type_(&self) -> FunctionType {
         FunctionType::from_params(
             &self.params,
-            ValueType::List(Box::new(self.return_type.clone())),
+            ValueType::List(Box::new(self.runtime_id.item_type())),
         )
     }
 
     pub(crate) fn runtime_id(&self) -> ListFunctionId {
-        self.runtime_id
+        self.runtime_id.clone()
     }
 
     pub(crate) fn captures(&self) -> &[CaptureValue] {
@@ -451,7 +444,7 @@ impl FunctionFunctionValue {
     }
 
     pub(crate) fn runtime_id(&self) -> FunctionFunctionId {
-        self.runtime_id
+        self.runtime_id.clone()
     }
 
     pub(crate) fn captures(&self) -> &[CaptureValue] {
@@ -538,9 +531,9 @@ mod tests {
     use crate::plan::{
         BoolFunctionId, BoolFunctionLocalId, BoolLocalId, FloatFunctionId, FloatFunctionLocalId,
         FloatLocalId, FunctionFunctionId, FunctionType, IntFunctionFunctionId, IntFunctionId,
-        IntListLocalId, IntLocalId, ListFunctionId, ListFunctionLocalId, ListLocal, NilFunctionId,
-        NilLocalId, ParamLocal, RuntimeFunctionId, StringFunctionId, StringLocalId,
-        TupleFunctionId, TupleFunctionLocalId, TupleLocalId, ValueType,
+        IntListLocalId, IntLocalId, ListFunctionId, ListLocal, NilFunctionId, NilLocalId,
+        ParamLocal, RuntimeFunctionId, StringFunctionId, StringLocalId, TupleFunctionId,
+        TupleFunctionLocalId, TupleLocalId, ValueType,
     };
 
     #[test]
@@ -576,8 +569,11 @@ mod tests {
         let nil: FunctionValue = NilFunctionValue::new(NilFunctionId(0), Vec::new()).into();
         let tuple: FunctionValue =
             TupleFunctionValue::new(TupleFunctionId(0), Vec::new(), vec![ValueType::Int]).into();
-        let list: FunctionValue =
-            ListFunctionValue::new(ListFunctionId(0), Vec::new(), ValueType::Int).into();
+        let list: FunctionValue = ListFunctionValue::new(
+            ListFunctionId::from_item_type(0, crate::plan::ValueType::Int),
+            Vec::new(),
+        )
+        .into();
         let function_return_type = FunctionType::new(vec![ValueType::Int], ValueType::Int);
         let function: FunctionValue = FunctionFunctionValue::new(
             FunctionFunctionId::Int(IntFunctionFunctionId(0)),
@@ -620,7 +616,11 @@ mod tests {
                 list_param(0),
                 ParamLocal::float_function(FloatFunctionLocalId(0), argument_function.clone()),
                 ParamLocal::tuple_function(TupleFunctionLocalId(0), argument_function.clone()),
-                ParamLocal::list_function(ListFunctionLocalId(0), argument_function.clone()),
+                ParamLocal::list_function(crate::plan::ListFunctionLocal::from_item_type(
+                    0,
+                    argument_function.clone(),
+                    crate::plan::ValueType::Int,
+                )),
                 ParamLocal::bool_function(BoolFunctionLocalId(0), argument_function.clone()),
             ],
         );
@@ -686,10 +686,10 @@ mod tests {
             params.clone(),
         );
         let list = FunctionValue::new(
-            RuntimeFunctionId::List {
-                id: ListFunctionId(0),
-                return_type: Box::new(ValueType::Int),
-            },
+            RuntimeFunctionId::List(ListFunctionId::from_item_type(
+                0,
+                crate::plan::ValueType::Int,
+            )),
             params.clone(),
         );
         let function = FunctionValue::new(

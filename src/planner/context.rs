@@ -6,7 +6,7 @@ use crate::plan::{
     FunctionId, FunctionListLocalId, FunctionPlan, FunctionType, FunctionValue, IntExpr,
     IntFunctionExpr, IntFunctionFunctionId, IntFunctionId, IntFunctionLocalId, IntListLocalId,
     IntLocalId, ListExpr, ListFunctionExpr, ListFunctionFunctionId, ListFunctionId,
-    ListFunctionLocalId, ListListLocalId, ListLocal, LocalId, NilExpr, NilFunctionExpr,
+    ListFunctionLocal, ListListLocalId, ListLocal, LocalId, NilExpr, NilFunctionExpr,
     NilFunctionFunctionId, NilFunctionId, NilFunctionLocalId, NilListLocalId, NilLocalId,
     PanicSite, ParamBinding, ParamLocal, RuntimeFunctionId, StringExpr, StringFunctionExpr,
     StringFunctionFunctionId, StringFunctionId, StringFunctionLocalId, StringListLocalId,
@@ -106,10 +106,7 @@ pub(super) enum FunctionLocalBinding {
         local: TupleFunctionLocalId,
         type_: FunctionType,
     },
-    List {
-        local: ListFunctionLocalId,
-        type_: FunctionType,
-    },
+    List(ListFunctionLocal),
     Function {
         local: FunctionFunctionLocalId,
         type_: FunctionType,
@@ -278,14 +275,12 @@ impl<'a> PlanContext<'a> {
                     }),
                 );
             }
-            ParamLocal::ListFunction { local, type_ } => {
-                self.next_list_function_local = self.next_list_function_local.max(local.0 + 1);
+            ParamLocal::ListFunction(local) => {
+                self.next_list_function_local =
+                    self.next_list_function_local.max(local.index() + 1);
                 self.bindings.insert(
                     name,
-                    LocalBinding::Function(FunctionLocalBinding::List {
-                        local: *local,
-                        type_: type_.clone(),
-                    }),
+                    LocalBinding::Function(FunctionLocalBinding::List(local.clone())),
                 );
             }
             ParamLocal::FunctionFunction { local, type_ } => {
@@ -426,18 +421,25 @@ impl<'a> PlanContext<'a> {
         &mut self,
         name: EcoString,
         type_: FunctionType,
-    ) -> ListFunctionLocalId {
-        let local = ListFunctionLocalId(self.next_list_function_local);
+        item_type: ValueType,
+    ) -> ListFunctionLocal {
+        let local =
+            ListFunctionLocal::from_item_type(self.next_list_function_local, type_, item_type);
         self.next_list_function_local += 1;
         self.bindings.insert(
             name,
-            LocalBinding::Function(FunctionLocalBinding::List { local, type_ }),
+            LocalBinding::Function(FunctionLocalBinding::List(local.clone())),
         );
         local
     }
 
-    pub(super) fn define_internal_list_function_local(&mut self) -> ListFunctionLocalId {
-        let local = ListFunctionLocalId(self.next_list_function_local);
+    pub(super) fn define_internal_list_function_local(
+        &mut self,
+        type_: FunctionType,
+        item_type: ValueType,
+    ) -> ListFunctionLocal {
+        let local =
+            ListFunctionLocal::from_item_type(self.next_list_function_local, type_, item_type);
         self.next_list_function_local += 1;
         local
     }
@@ -854,12 +856,13 @@ impl<'a> PlanContext<'a> {
                     TupleFunctionExpr::local_get(local, capture.name, type_),
                 )
             }
-            LocalBinding::Function(FunctionLocalBinding::List { local, type_ }) => {
-                let target = self.define_list_function_local(capture.name.clone(), type_.clone());
-                CaptureArg::list_function(
-                    target,
-                    ListFunctionExpr::local_get(local, capture.name, type_),
-                )
+            LocalBinding::Function(FunctionLocalBinding::List(local)) => {
+                let target = self.define_list_function_local(
+                    capture.name.clone(),
+                    local.type_().clone(),
+                    local.item_type(),
+                );
+                CaptureArg::list_function(target, ListFunctionExpr::local_get(local, capture.name))
             }
             LocalBinding::Function(FunctionLocalBinding::Function { local, type_ }) => {
                 let target =
@@ -968,14 +971,28 @@ pub(in crate::planner) struct FunctionRuntimeIds {
     next_bool: usize,
     next_nil: usize,
     next_tuple: usize,
-    next_list: usize,
+    next_int_list: usize,
+    next_string_list: usize,
+    next_float_list: usize,
+    next_bool_list: usize,
+    next_nil_list: usize,
+    next_tuple_list: usize,
+    next_list_list: usize,
+    next_function_list: usize,
     next_int_function: usize,
     next_float_function: usize,
     next_string_function: usize,
     next_bool_function: usize,
     next_nil_function: usize,
     next_tuple_function: usize,
-    next_list_function: usize,
+    next_int_list_function: usize,
+    next_string_list_function: usize,
+    next_float_list_function: usize,
+    next_bool_list_function: usize,
+    next_nil_list_function: usize,
+    next_tuple_list_function: usize,
+    next_list_list_function: usize,
+    next_function_list_function: usize,
     next_function_function: usize,
 }
 
@@ -991,10 +1008,9 @@ impl FunctionRuntimeIds {
                 id: self.next_tuple_id(),
                 return_type: return_type.clone(),
             },
-            ValueType::List(return_type) => RuntimeFunctionId::List {
-                id: self.next_list_id(),
-                return_type: return_type.clone(),
-            },
+            ValueType::List(return_type) => {
+                RuntimeFunctionId::List(self.next_list_id(return_type.as_ref().clone()))
+            }
             ValueType::Function(return_type) => self.next_function(return_type.as_ref().clone()),
         }
     }
@@ -1007,7 +1023,9 @@ impl FunctionRuntimeIds {
             ValueType::Bool => FunctionFunctionId::Bool(self.next_bool_function_id()),
             ValueType::Nil => FunctionFunctionId::Nil(self.next_nil_function_id()),
             ValueType::Tuple(_) => FunctionFunctionId::Tuple(self.next_tuple_function_id()),
-            ValueType::List(_) => FunctionFunctionId::List(self.next_list_function_id()),
+            ValueType::List(item_type) => FunctionFunctionId::List(
+                self.next_list_function_id(return_type.clone(), item_type.as_ref().clone()),
+            ),
             ValueType::Function(_) => {
                 FunctionFunctionId::Function(self.next_function_function_id())
             }
@@ -1052,10 +1070,56 @@ impl FunctionRuntimeIds {
         id
     }
 
-    pub(in crate::planner) fn next_list_id(&mut self) -> ListFunctionId {
-        let id = ListFunctionId(self.next_list);
-        self.next_list += 1;
-        id
+    pub(in crate::planner) fn next_list_id(&mut self, item_type: ValueType) -> ListFunctionId {
+        match item_type {
+            ValueType::Int => {
+                let id = ListFunctionId::from_item_type(self.next_int_list, ValueType::Int);
+                self.next_int_list += 1;
+                id
+            }
+            ValueType::String => {
+                let id = ListFunctionId::from_item_type(self.next_string_list, ValueType::String);
+                self.next_string_list += 1;
+                id
+            }
+            ValueType::Float => {
+                let id = ListFunctionId::from_item_type(self.next_float_list, ValueType::Float);
+                self.next_float_list += 1;
+                id
+            }
+            ValueType::Bool => {
+                let id = ListFunctionId::from_item_type(self.next_bool_list, ValueType::Bool);
+                self.next_bool_list += 1;
+                id
+            }
+            ValueType::Nil => {
+                let id = ListFunctionId::from_item_type(self.next_nil_list, ValueType::Nil);
+                self.next_nil_list += 1;
+                id
+            }
+            ValueType::Tuple(item_type) => {
+                let id = ListFunctionId::from_item_type(
+                    self.next_tuple_list,
+                    ValueType::Tuple(item_type),
+                );
+                self.next_tuple_list += 1;
+                id
+            }
+            ValueType::List(item_type) => {
+                let id =
+                    ListFunctionId::from_item_type(self.next_list_list, ValueType::List(item_type));
+                self.next_list_list += 1;
+                id
+            }
+            ValueType::Function(item_type) => {
+                let id = ListFunctionId::from_item_type(
+                    self.next_function_list,
+                    ValueType::Function(item_type),
+                );
+                self.next_function_list += 1;
+                id
+            }
+        }
     }
 
     pub(in crate::planner) fn next_int_function_id(&mut self) -> IntFunctionFunctionId {
@@ -1094,10 +1158,85 @@ impl FunctionRuntimeIds {
         id
     }
 
-    pub(in crate::planner) fn next_list_function_id(&mut self) -> ListFunctionFunctionId {
-        let id = ListFunctionFunctionId(self.next_list_function);
-        self.next_list_function += 1;
-        id
+    pub(in crate::planner) fn next_list_function_id(
+        &mut self,
+        type_: FunctionType,
+        item_type: ValueType,
+    ) -> ListFunctionFunctionId {
+        match item_type {
+            ValueType::Int => {
+                let id = ListFunctionFunctionId::from_item_type(
+                    self.next_int_list_function,
+                    type_,
+                    ValueType::Int,
+                );
+                self.next_int_list_function += 1;
+                id
+            }
+            ValueType::String => {
+                let id = ListFunctionFunctionId::from_item_type(
+                    self.next_string_list_function,
+                    type_,
+                    ValueType::String,
+                );
+                self.next_string_list_function += 1;
+                id
+            }
+            ValueType::Float => {
+                let id = ListFunctionFunctionId::from_item_type(
+                    self.next_float_list_function,
+                    type_,
+                    ValueType::Float,
+                );
+                self.next_float_list_function += 1;
+                id
+            }
+            ValueType::Bool => {
+                let id = ListFunctionFunctionId::from_item_type(
+                    self.next_bool_list_function,
+                    type_,
+                    ValueType::Bool,
+                );
+                self.next_bool_list_function += 1;
+                id
+            }
+            ValueType::Nil => {
+                let id = ListFunctionFunctionId::from_item_type(
+                    self.next_nil_list_function,
+                    type_,
+                    ValueType::Nil,
+                );
+                self.next_nil_list_function += 1;
+                id
+            }
+            item_type @ ValueType::Tuple(_) => {
+                let id = ListFunctionFunctionId::from_item_type(
+                    self.next_tuple_list_function,
+                    type_,
+                    item_type,
+                );
+                self.next_tuple_list_function += 1;
+                id
+            }
+            item_type @ ValueType::List(_) => {
+                let id = ListFunctionFunctionId::from_item_type(
+                    self.next_list_list_function,
+                    type_,
+                    item_type,
+                );
+                self.next_list_list_function += 1;
+                id
+            }
+            item_type @ ValueType::Function(_) => {
+                let id = ListFunctionFunctionId::from_item_type(
+                    self.next_function_list_function,
+                    type_,
+                    item_type,
+                );
+                self.next_function_list_function += 1;
+                id
+            }
+        }
     }
 
     pub(in crate::planner) fn next_function_function_id(&mut self) -> FunctionFunctionFunctionId {
@@ -1159,11 +1298,10 @@ mod tests {
         FloatFunctionExpr, FloatFunctionId, FloatFunctionLocalId, FloatListLocalId, FloatLocalId,
         FunctionFunctionExpr, FunctionFunctionLocalId, FunctionListLocalId, FunctionType,
         FunctionValue, IntFunctionId, IntFunctionLocalId, IntListLocalId, IntLocalId, ListExpr,
-        ListFunctionExpr, ListFunctionLocalId, ListListLocalId, ListLocal, LocalId,
-        NilFunctionExpr, NilFunctionLocalId, NilListLocalId, NilLocalId, ParamLocal,
-        RuntimeFunctionId, StringFunctionExpr, StringFunctionLocalId, StringListLocalId,
-        StringLocalId, TupleFunctionExpr, TupleFunctionLocalId, TupleListLocalId, TupleLocalId,
-        ValueType,
+        ListFunctionExpr, ListListLocalId, ListLocal, LocalId, NilFunctionExpr, NilFunctionLocalId,
+        NilListLocalId, NilLocalId, ParamLocal, RuntimeFunctionId, StringFunctionExpr,
+        StringFunctionLocalId, StringListLocalId, StringLocalId, TupleFunctionExpr,
+        TupleFunctionLocalId, TupleListLocalId, TupleLocalId, ValueType,
     };
     use ecow::EcoString;
     use gleam_core::type_;
@@ -1588,8 +1726,21 @@ mod tests {
             TupleFunctionLocalId(0),
         );
         assert_eq!(
-            context.define_internal_list_function_local(),
-            ListFunctionLocalId(0),
+            context.define_internal_list_function_local(
+                crate::plan::FunctionType::new(
+                    Vec::new(),
+                    crate::plan::ValueType::List(Box::new(crate::plan::ValueType::Int)),
+                ),
+                crate::plan::ValueType::Int
+            ),
+            crate::plan::ListFunctionLocal::from_item_type(
+                0,
+                crate::plan::FunctionType::new(
+                    Vec::new(),
+                    crate::plan::ValueType::List(Box::new(crate::plan::ValueType::Int))
+                ),
+                crate::plan::ValueType::Int,
+            ),
         );
         assert_eq!(
             context.define_internal_function_function_local(),
@@ -1727,7 +1878,7 @@ mod tests {
         );
 
         context.define_list_local("values".into(), element_type.clone());
-        context.define_list_function_local("f".into(), function_type.clone());
+        context.define_list_function_local("f".into(), function_type.clone(), element_type);
         let captures = context
             .capture_bindings(&[EcoString::from("values"), EcoString::from("f")])
             .unwrap();
@@ -1741,8 +1892,19 @@ mod tests {
                     ListExpr::local_get(ListLocal::int(IntListLocalId(0)), "values".into()),
                 ),
                 CaptureArg::list_function(
-                    ListFunctionLocalId(1),
-                    ListFunctionExpr::local_get(ListFunctionLocalId(0), "f".into(), function_type),
+                    crate::plan::ListFunctionLocal::from_item_type(
+                        1,
+                        function_type.clone(),
+                        ValueType::Int,
+                    ),
+                    ListFunctionExpr::local_get(
+                        crate::plan::ListFunctionLocal::from_item_type(
+                            0,
+                            function_type,
+                            ValueType::Int,
+                        ),
+                        "f".into(),
+                    ),
                 ),
             ],
         );
@@ -1887,6 +2049,98 @@ mod tests {
             ids.next(&ValueType::Nil),
             RuntimeFunctionId::Nil(crate::plan::NilFunctionId(0))
         );
+    }
+
+    #[test]
+    fn function_runtime_ids_allocate_list_functions_by_item_family() {
+        let mut ids = FunctionRuntimeIds::default();
+
+        assert_eq!(
+            ids.next_list_id(ValueType::Int),
+            crate::plan::ListFunctionId::from_item_type(0, ValueType::Int),
+        );
+        assert_eq!(
+            ids.next_list_id(ValueType::String),
+            crate::plan::ListFunctionId::from_item_type(0, ValueType::String),
+        );
+        assert_eq!(
+            ids.next_list_id(ValueType::Float),
+            crate::plan::ListFunctionId::from_item_type(0, ValueType::Float),
+        );
+        assert_eq!(
+            ids.next_list_id(ValueType::Bool),
+            crate::plan::ListFunctionId::from_item_type(0, ValueType::Bool),
+        );
+        assert_eq!(
+            ids.next_list_id(ValueType::Nil),
+            crate::plan::ListFunctionId::from_item_type(0, ValueType::Nil),
+        );
+        assert_eq!(
+            ids.next_list_id(ValueType::Tuple(vec![ValueType::Int])),
+            crate::plan::ListFunctionId::from_item_type(0, ValueType::Tuple(vec![ValueType::Int])),
+        );
+        assert_eq!(
+            ids.next_list_id(ValueType::List(Box::new(ValueType::Int))),
+            crate::plan::ListFunctionId::from_item_type(
+                0,
+                ValueType::List(Box::new(ValueType::Int))
+            ),
+        );
+        assert_eq!(
+            ids.next_list_id(ValueType::Function(Box::new(nested_function_type()))),
+            crate::plan::ListFunctionId::from_item_type(
+                0,
+                ValueType::Function(Box::new(nested_function_type()))
+            ),
+        );
+        assert_eq!(
+            ids.next_list_id(ValueType::Int),
+            crate::plan::ListFunctionId::from_item_type(1, ValueType::Int),
+        );
+    }
+
+    #[test]
+    fn function_runtime_ids_allocate_list_function_functions_by_item_family() {
+        let mut ids = FunctionRuntimeIds::default();
+
+        for item_type in list_item_types() {
+            let type_ = list_function_type(item_type.clone());
+
+            assert_eq!(
+                ids.next_list_function_id(type_.clone(), item_type.clone()),
+                crate::plan::ListFunctionFunctionId::from_item_type(0, type_, item_type),
+            );
+        }
+
+        assert_eq!(
+            ids.next_list_function_id(list_function_type(ValueType::Int), ValueType::Int),
+            crate::plan::ListFunctionFunctionId::from_item_type(
+                1,
+                list_function_type(ValueType::Int),
+                ValueType::Int,
+            ),
+        );
+    }
+
+    fn list_item_types() -> Vec<ValueType> {
+        vec![
+            ValueType::Int,
+            ValueType::String,
+            ValueType::Float,
+            ValueType::Bool,
+            ValueType::Nil,
+            ValueType::Tuple(vec![ValueType::Int, ValueType::String]),
+            ValueType::List(Box::new(ValueType::Int)),
+            ValueType::Function(Box::new(nested_function_type())),
+        ]
+    }
+
+    fn list_function_type(item_type: ValueType) -> FunctionType {
+        FunctionType::new(Vec::new(), ValueType::List(Box::new(item_type)))
+    }
+
+    fn nested_function_type() -> FunctionType {
+        FunctionType::new(vec![ValueType::Int], ValueType::String)
     }
 
     fn function_value() -> FunctionValue {

@@ -46,9 +46,8 @@ pub(crate) fn call_list(
     element_type: ValueType,
 ) -> List {
     List(ListExpr::call(
-        ListFunctionId(function),
+        ListFunctionId::from_item_type(function, element_type),
         args.into_iter().collect(),
-        element_type,
     ))
 }
 
@@ -111,7 +110,10 @@ mod tests {
         );
         assert_eq!(
             call_list(5, [], ValueType::Int).0,
-            ListExpr::call(ListFunctionId(5), Vec::new(), ValueType::Int),
+            ListExpr::call(
+                ListFunctionId::from_item_type(5, crate::plan::ValueType::Int),
+                Vec::new()
+            ),
         );
     }
 

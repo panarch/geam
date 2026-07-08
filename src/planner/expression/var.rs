@@ -121,9 +121,9 @@ fn function_local_get(binding: FunctionLocalBinding, name: EcoString) -> Expr {
         FunctionLocalBinding::Tuple { local, type_ } => Expr::function(FunctionExpr::tuple(
             TupleFunctionExpr::local_get(local, name, type_),
         )),
-        FunctionLocalBinding::List { local, type_ } => Expr::function(FunctionExpr::list(
-            ListFunctionExpr::local_get(local, name, type_),
-        )),
+        FunctionLocalBinding::List(local) => {
+            Expr::function(FunctionExpr::list(ListFunctionExpr::local_get(local, name)))
+        }
         FunctionLocalBinding::Function { local, type_ } => Expr::function(FunctionExpr::function(
             FunctionFunctionExpr::local_get(local, name, type_),
         )),

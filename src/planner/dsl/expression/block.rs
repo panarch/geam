@@ -270,9 +270,8 @@ mod tests {
             FunctionExpr::list(ListFunctionExpr::block(
                 Vec::new(),
                 ListFunctionExpr::value(ListFunctionValue::new(
-                    crate::plan::ListFunctionId(0),
-                    Vec::new(),
-                    ValueType::Int,
+                    crate::plan::ListFunctionId::from_item_type(0, crate::plan::ValueType::Int),
+                    Vec::new()
                 )),
             )),
         );

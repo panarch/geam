@@ -7,7 +7,7 @@ use super::{
 };
 use crate::plan::{
     BoolFunctionLocalId, BoolLocalId, FloatFunctionLocalId, FloatLocalId, FunctionFunctionLocalId,
-    IntFunctionLocalId, IntLocalId, ListFunctionLocalId, ListLocal, NilFunctionLocalId, NilLocalId,
+    IntFunctionLocalId, IntLocalId, ListFunctionLocal, ListLocal, NilFunctionLocalId, NilLocalId,
     StringFunctionLocalId, StringLocalId, TupleFunctionLocalId, TupleLocalId,
 };
 
@@ -70,7 +70,7 @@ pub(crate) enum CaptureValueKind {
         value: TupleFunctionValue,
     },
     ListFunction {
-        local: ListFunctionLocalId,
+        local: ListFunctionLocal,
         value: ListFunctionValue,
     },
     FunctionFunction {
@@ -161,7 +161,7 @@ impl CaptureValue {
         }
     }
 
-    pub(crate) fn list_function(local: ListFunctionLocalId, value: ListFunctionValue) -> Self {
+    pub(crate) fn list_function(local: ListFunctionLocal, value: ListFunctionValue) -> Self {
         Self {
             kind: CaptureValueKind::ListFunction { local, value },
         }
@@ -186,8 +186,8 @@ mod tests {
     use super::{CaptureValue, CaptureValueKind};
     use crate::plan::{
         FloatFunctionId, FloatFunctionLocalId, FloatFunctionValue, FloatLocalId, IntListLocalId,
-        ListFunctionId, ListFunctionLocalId, ListFunctionValue, ListLocal, ListValue, ParamLocal,
-        TupleFunctionId, TupleFunctionLocalId, TupleFunctionValue, TupleLocalId, Value, ValueType,
+        ListFunctionId, ListFunctionValue, ListLocal, ListValue, ParamLocal, TupleFunctionId,
+        TupleFunctionLocalId, TupleFunctionValue, TupleLocalId, Value, ValueType,
     };
 
     #[test]
@@ -243,13 +243,32 @@ mod tests {
             },
         );
 
-        let list_function =
-            ListFunctionValue::new(ListFunctionId(0), vec![list_param(0)], ValueType::Int);
-        let function = CaptureValue::list_function(ListFunctionLocalId(0), list_function.clone());
+        let list_function = ListFunctionValue::new(
+            ListFunctionId::from_item_type(0, crate::plan::ValueType::Int),
+            vec![list_param(0)],
+        );
+        let function = CaptureValue::list_function(
+            crate::plan::ListFunctionLocal::from_item_type(
+                0,
+                crate::plan::FunctionType::new(
+                    Vec::new(),
+                    crate::plan::ValueType::List(Box::new(crate::plan::ValueType::Int)),
+                ),
+                crate::plan::ValueType::Int,
+            ),
+            list_function.clone(),
+        );
         assert_eq!(
             function.kind(),
             &CaptureValueKind::ListFunction {
-                local: ListFunctionLocalId(0),
+                local: crate::plan::ListFunctionLocal::from_item_type(
+                    0,
+                    crate::plan::FunctionType::new(
+                        Vec::new(),
+                        crate::plan::ValueType::List(Box::new(crate::plan::ValueType::Int))
+                    ),
+                    crate::plan::ValueType::Int,
+                ),
                 value: list_function,
             },
         );

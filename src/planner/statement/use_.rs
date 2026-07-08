@@ -350,8 +350,7 @@ pub fn main() {
         assert_eq!(
             callback.return_(),
             &ReturnExpr::list_body(
-                ListFunctionId(2),
-                ValueType::Int,
+                ListFunctionId::from_item_type(2, ValueType::Int),
                 ReturnBody::expr(local_list(1, "rest", ValueType::Int).into()),
             ),
         );

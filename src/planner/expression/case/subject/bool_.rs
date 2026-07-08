@@ -818,17 +818,17 @@ fn duplicate_true(value: Bool) {
 
         let list_branches = super::super::bool_function_case_branches(
             FunctionExpr::from(function_ref(
-                RuntimeFunctionId::List {
-                    id: ListFunctionId(0),
-                    return_type: Box::new(ValueType::Int),
-                },
+                RuntimeFunctionId::List(ListFunctionId::from_item_type(
+                    0,
+                    crate::plan::ValueType::Int,
+                )),
                 [LocalId::Int(crate::plan::IntLocalId(0))],
             )),
             FunctionExpr::from(function_ref(
-                RuntimeFunctionId::List {
-                    id: ListFunctionId(1),
-                    return_type: Box::new(ValueType::Int),
-                },
+                RuntimeFunctionId::List(ListFunctionId::from_item_type(
+                    1,
+                    crate::plan::ValueType::Int,
+                )),
                 [LocalId::Int(crate::plan::IntLocalId(0))],
             )),
         )

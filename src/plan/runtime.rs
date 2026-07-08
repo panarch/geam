@@ -1,12 +1,16 @@
 use super::{
-    BoolFunctionFunctionId, BoolFunctionId, BoolFunctionReturn, BoolReturn,
-    FloatFunctionFunctionId, FloatFunctionId, FloatFunctionReturn, FloatReturn,
-    FunctionFunctionFunctionId, FunctionFunctionReturn, FunctionPlan, IntFunctionFunctionId,
-    IntFunctionId, IntFunctionReturn, IntReturn, ListFunctionFunctionId, ListFunctionId,
-    ListFunctionReturn, ListReturn, NilFunctionFunctionId, NilFunctionId, NilFunctionReturn,
-    NilReturn, RuntimeFunction, RuntimeFunctionId, StringFunctionFunctionId, StringFunctionId,
-    StringFunctionReturn, StringReturn, TupleFunctionFunctionId, TupleFunctionId,
-    TupleFunctionReturn, TupleReturn,
+    BoolFunctionFunctionId, BoolFunctionId, BoolFunctionReturn, BoolListFunctionFunctionId,
+    BoolListFunctionId, BoolReturn, FloatFunctionFunctionId, FloatFunctionId, FloatFunctionReturn,
+    FloatListFunctionFunctionId, FloatListFunctionId, FloatReturn, FunctionFunctionFunctionId,
+    FunctionFunctionReturn, FunctionListFunctionFunctionId, FunctionListFunctionId, FunctionPlan,
+    IntFunctionFunctionId, IntFunctionId, IntFunctionReturn, IntListFunctionFunctionId,
+    IntListFunctionId, IntReturn, ListFunctionFunctionId, ListFunctionId, ListFunctionReturn,
+    ListListFunctionFunctionId, ListListFunctionId, ListReturn, NilFunctionFunctionId,
+    NilFunctionId, NilFunctionReturn, NilListFunctionFunctionId, NilListFunctionId, NilReturn,
+    RuntimeFunction, RuntimeFunctionId, StringFunctionFunctionId, StringFunctionId,
+    StringFunctionReturn, StringListFunctionFunctionId, StringListFunctionId, StringReturn,
+    TupleFunctionFunctionId, TupleFunctionId, TupleFunctionReturn, TupleListFunctionFunctionId,
+    TupleListFunctionId, TupleReturn,
 };
 use crate::plan::ReturnExprKind;
 
@@ -18,14 +22,28 @@ pub(super) struct RuntimePlan {
     bool_functions: Vec<RuntimeFunction<BoolReturn>>,
     nil_functions: Vec<RuntimeFunction<NilReturn>>,
     tuple_functions: Vec<RuntimeFunction<TupleReturn>>,
-    list_functions: Vec<RuntimeFunction<ListReturn>>,
+    int_list_functions: Vec<RuntimeFunction<ListReturn>>,
+    string_list_functions: Vec<RuntimeFunction<ListReturn>>,
+    float_list_functions: Vec<RuntimeFunction<ListReturn>>,
+    bool_list_functions: Vec<RuntimeFunction<ListReturn>>,
+    nil_list_functions: Vec<RuntimeFunction<ListReturn>>,
+    tuple_list_functions: Vec<RuntimeFunction<ListReturn>>,
+    list_list_functions: Vec<RuntimeFunction<ListReturn>>,
+    function_list_functions: Vec<RuntimeFunction<ListReturn>>,
     int_function_functions: Vec<RuntimeFunction<IntFunctionReturn>>,
     float_function_functions: Vec<RuntimeFunction<FloatFunctionReturn>>,
     string_function_functions: Vec<RuntimeFunction<StringFunctionReturn>>,
     bool_function_functions: Vec<RuntimeFunction<BoolFunctionReturn>>,
     nil_function_functions: Vec<RuntimeFunction<NilFunctionReturn>>,
     tuple_function_functions: Vec<RuntimeFunction<TupleFunctionReturn>>,
-    list_function_functions: Vec<RuntimeFunction<ListFunctionReturn>>,
+    int_list_function_functions: Vec<RuntimeFunction<ListFunctionReturn>>,
+    string_list_function_functions: Vec<RuntimeFunction<ListFunctionReturn>>,
+    float_list_function_functions: Vec<RuntimeFunction<ListFunctionReturn>>,
+    bool_list_function_functions: Vec<RuntimeFunction<ListFunctionReturn>>,
+    nil_list_function_functions: Vec<RuntimeFunction<ListFunctionReturn>>,
+    tuple_list_function_functions: Vec<RuntimeFunction<ListFunctionReturn>>,
+    list_list_function_functions: Vec<RuntimeFunction<ListFunctionReturn>>,
+    function_list_function_functions: Vec<RuntimeFunction<ListFunctionReturn>>,
     function_function_functions: Vec<RuntimeFunction<FunctionFunctionReturn>>,
 }
 
@@ -77,8 +95,17 @@ impl RuntimePlan {
         &self.tuple_functions[id.0]
     }
 
-    pub(super) fn list_function(&self, id: ListFunctionId) -> &RuntimeFunction<ListReturn> {
-        &self.list_functions[id.0]
+    pub(super) fn list_function(&self, id: &ListFunctionId) -> &RuntimeFunction<ListReturn> {
+        match id {
+            ListFunctionId::Int(id) => &self.int_list_functions[id.0],
+            ListFunctionId::String(id) => &self.string_list_functions[id.0],
+            ListFunctionId::Float(id) => &self.float_list_functions[id.0],
+            ListFunctionId::Bool(id) => &self.bool_list_functions[id.0],
+            ListFunctionId::Nil(id) => &self.nil_list_functions[id.0],
+            ListFunctionId::Tuple { id, .. } => &self.tuple_list_functions[id.0],
+            ListFunctionId::List { id, .. } => &self.list_list_functions[id.0],
+            ListFunctionId::Function { id, .. } => &self.function_list_functions[id.0],
+        }
     }
 
     pub(super) fn int_function_function(
@@ -125,9 +152,20 @@ impl RuntimePlan {
 
     pub(super) fn list_function_function(
         &self,
-        id: ListFunctionFunctionId,
+        id: &ListFunctionFunctionId,
     ) -> &RuntimeFunction<ListFunctionReturn> {
-        &self.list_function_functions[id.0]
+        match id {
+            ListFunctionFunctionId::Int { id, .. } => &self.int_list_function_functions[id.0],
+            ListFunctionFunctionId::String { id, .. } => &self.string_list_function_functions[id.0],
+            ListFunctionFunctionId::Float { id, .. } => &self.float_list_function_functions[id.0],
+            ListFunctionFunctionId::Bool { id, .. } => &self.bool_list_function_functions[id.0],
+            ListFunctionFunctionId::Nil { id, .. } => &self.nil_list_function_functions[id.0],
+            ListFunctionFunctionId::Tuple { id, .. } => &self.tuple_list_function_functions[id.0],
+            ListFunctionFunctionId::List { id, .. } => &self.list_list_function_functions[id.0],
+            ListFunctionFunctionId::Function { id, .. } => {
+                &self.function_list_function_functions[id.0]
+            }
+        }
     }
 
     pub(super) fn function_function_function(
@@ -146,20 +184,130 @@ struct RuntimePlanBuilder {
     bool_functions: Vec<(usize, RuntimeFunction<BoolReturn>)>,
     nil_functions: Vec<(usize, RuntimeFunction<NilReturn>)>,
     tuple_functions: Vec<(usize, RuntimeFunction<TupleReturn>)>,
-    list_functions: Vec<(usize, RuntimeFunction<ListReturn>)>,
+    int_list_functions: Vec<(usize, RuntimeFunction<ListReturn>)>,
+    string_list_functions: Vec<(usize, RuntimeFunction<ListReturn>)>,
+    float_list_functions: Vec<(usize, RuntimeFunction<ListReturn>)>,
+    bool_list_functions: Vec<(usize, RuntimeFunction<ListReturn>)>,
+    nil_list_functions: Vec<(usize, RuntimeFunction<ListReturn>)>,
+    tuple_list_functions: Vec<(usize, RuntimeFunction<ListReturn>)>,
+    list_list_functions: Vec<(usize, RuntimeFunction<ListReturn>)>,
+    function_list_functions: Vec<(usize, RuntimeFunction<ListReturn>)>,
     int_function_functions: Vec<(usize, RuntimeFunction<IntFunctionReturn>)>,
     float_function_functions: Vec<(usize, RuntimeFunction<FloatFunctionReturn>)>,
     string_function_functions: Vec<(usize, RuntimeFunction<StringFunctionReturn>)>,
     bool_function_functions: Vec<(usize, RuntimeFunction<BoolFunctionReturn>)>,
     nil_function_functions: Vec<(usize, RuntimeFunction<NilFunctionReturn>)>,
     tuple_function_functions: Vec<(usize, RuntimeFunction<TupleFunctionReturn>)>,
-    list_function_functions: Vec<(usize, RuntimeFunction<ListFunctionReturn>)>,
+    int_list_function_functions: Vec<(usize, RuntimeFunction<ListFunctionReturn>)>,
+    string_list_function_functions: Vec<(usize, RuntimeFunction<ListFunctionReturn>)>,
+    float_list_function_functions: Vec<(usize, RuntimeFunction<ListFunctionReturn>)>,
+    bool_list_function_functions: Vec<(usize, RuntimeFunction<ListFunctionReturn>)>,
+    nil_list_function_functions: Vec<(usize, RuntimeFunction<ListFunctionReturn>)>,
+    tuple_list_function_functions: Vec<(usize, RuntimeFunction<ListFunctionReturn>)>,
+    list_list_function_functions: Vec<(usize, RuntimeFunction<ListFunctionReturn>)>,
+    function_list_function_functions: Vec<(usize, RuntimeFunction<ListFunctionReturn>)>,
     function_function_functions: Vec<(usize, RuntimeFunction<FunctionFunctionReturn>)>,
 }
 
 impl RuntimePlanBuilder {
     fn push(&mut self, function: &FunctionPlan) {
         runtime_function(function, self);
+    }
+
+    fn push_list_function(&mut self, id: &ListFunctionId, function: RuntimeFunction<ListReturn>) {
+        match id {
+            ListFunctionId::Int(IntListFunctionId(index)) => {
+                self.int_list_functions.push((*index, function));
+            }
+            ListFunctionId::String(StringListFunctionId(index)) => {
+                self.string_list_functions.push((*index, function));
+            }
+            ListFunctionId::Float(FloatListFunctionId(index)) => {
+                self.float_list_functions.push((*index, function));
+            }
+            ListFunctionId::Bool(BoolListFunctionId(index)) => {
+                self.bool_list_functions.push((*index, function));
+            }
+            ListFunctionId::Nil(NilListFunctionId(index)) => {
+                self.nil_list_functions.push((*index, function));
+            }
+            ListFunctionId::Tuple {
+                id: TupleListFunctionId(index),
+                ..
+            } => {
+                self.tuple_list_functions.push((*index, function));
+            }
+            ListFunctionId::List {
+                id: ListListFunctionId(index),
+                ..
+            } => {
+                self.list_list_functions.push((*index, function));
+            }
+            ListFunctionId::Function {
+                id: FunctionListFunctionId(index),
+                ..
+            } => {
+                self.function_list_functions.push((*index, function));
+            }
+        }
+    }
+
+    fn push_list_function_function(
+        &mut self,
+        id: &ListFunctionFunctionId,
+        function: RuntimeFunction<ListFunctionReturn>,
+    ) {
+        match id {
+            ListFunctionFunctionId::Int {
+                id: IntListFunctionFunctionId(index),
+                ..
+            } => {
+                self.int_list_function_functions.push((*index, function));
+            }
+            ListFunctionFunctionId::String {
+                id: StringListFunctionFunctionId(index),
+                ..
+            } => {
+                self.string_list_function_functions.push((*index, function));
+            }
+            ListFunctionFunctionId::Float {
+                id: FloatListFunctionFunctionId(index),
+                ..
+            } => {
+                self.float_list_function_functions.push((*index, function));
+            }
+            ListFunctionFunctionId::Bool {
+                id: BoolListFunctionFunctionId(index),
+                ..
+            } => {
+                self.bool_list_function_functions.push((*index, function));
+            }
+            ListFunctionFunctionId::Nil {
+                id: NilListFunctionFunctionId(index),
+                ..
+            } => {
+                self.nil_list_function_functions.push((*index, function));
+            }
+            ListFunctionFunctionId::Tuple {
+                id: TupleListFunctionFunctionId(index),
+                ..
+            } => {
+                self.tuple_list_function_functions.push((*index, function));
+            }
+            ListFunctionFunctionId::List {
+                id: ListListFunctionFunctionId(index),
+                ..
+            } => {
+                self.list_list_function_functions.push((*index, function));
+            }
+            ListFunctionFunctionId::Function {
+                id: FunctionListFunctionFunctionId(index),
+                ..
+            } => {
+                self.function_list_function_functions
+                    .push((*index, function));
+            }
+        }
     }
 
     fn finish(self, main: RuntimeFunctionId) -> RuntimePlan {
@@ -171,14 +319,28 @@ impl RuntimePlanBuilder {
             bool_functions: sort_functions(self.bool_functions),
             nil_functions: sort_functions(self.nil_functions),
             tuple_functions: sort_functions(self.tuple_functions),
-            list_functions: sort_functions(self.list_functions),
+            int_list_functions: sort_functions(self.int_list_functions),
+            string_list_functions: sort_functions(self.string_list_functions),
+            float_list_functions: sort_functions(self.float_list_functions),
+            bool_list_functions: sort_functions(self.bool_list_functions),
+            nil_list_functions: sort_functions(self.nil_list_functions),
+            tuple_list_functions: sort_functions(self.tuple_list_functions),
+            list_list_functions: sort_functions(self.list_list_functions),
+            function_list_functions: sort_functions(self.function_list_functions),
             int_function_functions: sort_functions(self.int_function_functions),
             float_function_functions: sort_functions(self.float_function_functions),
             string_function_functions: sort_functions(self.string_function_functions),
             bool_function_functions: sort_functions(self.bool_function_functions),
             nil_function_functions: sort_functions(self.nil_function_functions),
             tuple_function_functions: sort_functions(self.tuple_function_functions),
-            list_function_functions: sort_functions(self.list_function_functions),
+            int_list_function_functions: sort_functions(self.int_list_function_functions),
+            string_list_function_functions: sort_functions(self.string_list_function_functions),
+            float_list_function_functions: sort_functions(self.float_list_function_functions),
+            bool_list_function_functions: sort_functions(self.bool_list_function_functions),
+            nil_list_function_functions: sort_functions(self.nil_list_function_functions),
+            tuple_list_function_functions: sort_functions(self.tuple_list_function_functions),
+            list_list_function_functions: sort_functions(self.list_list_function_functions),
+            function_list_function_functions: sort_functions(self.function_list_function_functions),
             function_function_functions: sort_functions(self.function_function_functions),
         }
     }
@@ -251,14 +413,14 @@ fn runtime_function(function: &FunctionPlan, runtime_functions: &mut RuntimePlan
         ReturnExprKind::List {
             runtime_id, body, ..
         } => {
-            runtime_functions.list_functions.push((
-                runtime_id.0,
+            runtime_functions.push_list_function(
+                runtime_id,
                 RuntimeFunction::new(
                     function.frame_layout(),
                     function.steps().to_vec(),
                     body.clone(),
                 ),
-            ));
+            );
         }
         ReturnExprKind::IntFunction {
             runtime_id, body, ..
@@ -335,14 +497,14 @@ fn runtime_function(function: &FunctionPlan, runtime_functions: &mut RuntimePlan
         ReturnExprKind::ListFunction {
             runtime_id, body, ..
         } => {
-            runtime_functions.list_function_functions.push((
-                runtime_id.0,
+            runtime_functions.push_list_function_function(
+                runtime_id,
                 RuntimeFunction::new(
                     function.frame_layout(),
                     function.steps().to_vec(),
                     body.clone(),
                 ),
-            ));
+            );
         }
         ReturnExprKind::FunctionFunction {
             runtime_id, body, ..
@@ -367,4 +529,112 @@ fn sort_functions<Return>(
         .into_iter()
         .map(|(_, function)| function)
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::RuntimePlan;
+    use crate::plan::{
+        FunctionId, FunctionPlan, FunctionType, IntExpr, IntFunctionId, ListElements, ListExpr,
+        ListFunctionExpr, ListFunctionFunctionId, ListFunctionId, ListFunctionValue, ParamLocal,
+        ReturnBody, ReturnExpr, ValueType,
+    };
+
+    #[test]
+    fn runtime_plan_stores_list_returning_functions_by_item_family() {
+        for (function_index, item_type) in list_item_types().into_iter().enumerate() {
+            let runtime_id = ListFunctionId::from_item_type(0, item_type.clone());
+            let return_ = ReturnBody::expr(empty_list_expr(item_type));
+            let function = FunctionPlan::new(
+                FunctionId::new(function_index + 1),
+                format!("list_{function_index}").into(),
+                Vec::new(),
+                Vec::new(),
+                ReturnExpr::list_body(runtime_id.clone(), return_.clone()),
+            );
+
+            let runtime = RuntimePlan::new(&main_function(), &[function], &[]);
+
+            assert_eq!(runtime.list_function(&runtime_id).return_(), &return_);
+        }
+    }
+
+    #[test]
+    fn runtime_plan_stores_list_function_returning_functions_by_item_family() {
+        for (function_index, item_type) in list_item_types().into_iter().enumerate() {
+            let returned_function_id = ListFunctionId::from_item_type(0, item_type.clone());
+            let returned_function = ListFunctionValue::new(
+                returned_function_id,
+                vec![ParamLocal::int(crate::plan::IntLocalId(0))],
+            );
+            let function_type = FunctionType::new(
+                vec![ValueType::Int],
+                ValueType::List(Box::new(item_type.clone())),
+            );
+            let runtime_id = ListFunctionFunctionId::from_item_type(0, function_type, item_type);
+            let return_ = ReturnBody::expr(ListFunctionExpr::value(returned_function));
+            let function = FunctionPlan::new(
+                FunctionId::new(function_index + 1),
+                format!("list_function_{function_index}").into(),
+                Vec::new(),
+                Vec::new(),
+                ReturnExpr::list_function_body(runtime_id.clone(), return_.clone()),
+            );
+
+            let runtime = RuntimePlan::new(&main_function(), &[function], &[]);
+
+            assert_eq!(
+                runtime.list_function_function(&runtime_id).return_(),
+                &return_
+            );
+        }
+    }
+
+    fn main_function() -> FunctionPlan {
+        FunctionPlan::new(
+            FunctionId::new(0),
+            "main".into(),
+            Vec::new(),
+            Vec::new(),
+            ReturnExpr::int(IntFunctionId(0), IntExpr::value(0.into())),
+        )
+    }
+
+    fn list_item_types() -> Vec<ValueType> {
+        vec![
+            ValueType::Int,
+            ValueType::String,
+            ValueType::Float,
+            ValueType::Bool,
+            ValueType::Nil,
+            ValueType::Tuple(vec![ValueType::Int, ValueType::String]),
+            ValueType::List(Box::new(ValueType::Int)),
+            ValueType::Function(Box::new(FunctionType::new(
+                vec![ValueType::Int],
+                ValueType::String,
+            ))),
+        ]
+    }
+
+    fn empty_list_expr(item_type: ValueType) -> ListExpr {
+        match item_type {
+            ValueType::Int => ListExpr::from_elements(ListElements::Int(Vec::new())),
+            ValueType::String => ListExpr::from_elements(ListElements::String(Vec::new())),
+            ValueType::Float => ListExpr::from_elements(ListElements::Float(Vec::new())),
+            ValueType::Bool => ListExpr::from_elements(ListElements::Bool(Vec::new())),
+            ValueType::Nil => ListExpr::from_elements(ListElements::Nil(Vec::new())),
+            ValueType::Tuple(item_type) => ListExpr::from_elements(ListElements::Tuple {
+                item_type,
+                values: Vec::new(),
+            }),
+            ValueType::List(item_type) => ListExpr::from_elements(ListElements::List {
+                item_type,
+                values: Vec::new(),
+            }),
+            ValueType::Function(item_type) => ListExpr::from_elements(ListElements::Function {
+                item_type: *item_type,
+                values: Vec::new(),
+            }),
+        }
+    }
 }

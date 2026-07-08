@@ -53,6 +53,7 @@ pub(crate) enum FunctionReturn {
         body: TupleFunctionReturn,
     },
     ListFunction {
+        item_type: ValueType,
         type_: FunctionType,
         body: ListFunctionReturn,
     },
@@ -74,7 +75,7 @@ impl FunctionReturn {
                 ReturnExpr::tuple_body(runtime_ids.next_tuple_id(), type_, body)
             }
             Self::List { element_type, body } => {
-                ReturnExpr::list_body(runtime_ids.next_list_id(), element_type, body)
+                ReturnExpr::list_body(runtime_ids.next_list_id(element_type), body)
             }
             Self::IntFunction { type_, body } => {
                 ReturnExpr::int_function_body(runtime_ids.next_int_function_id(), type_, body)
@@ -94,9 +95,14 @@ impl FunctionReturn {
             Self::TupleFunction { type_, body } => {
                 ReturnExpr::tuple_function_body(runtime_ids.next_tuple_function_id(), type_, body)
             }
-            Self::ListFunction { type_, body } => {
-                ReturnExpr::list_function_body(runtime_ids.next_list_function_id(), type_, body)
-            }
+            Self::ListFunction {
+                item_type,
+                type_,
+                body,
+            } => ReturnExpr::list_function_body(
+                runtime_ids.next_list_function_id(type_, item_type),
+                body,
+            ),
             Self::FunctionFunction { type_, body } => ReturnExpr::function_function_body(
                 runtime_ids.next_function_function_id(),
                 type_,
@@ -161,8 +167,7 @@ mod tests {
         assert_eq!(
             FunctionReturn::from(list([int(1)], ValueType::Int)).build(&mut runtime_ids),
             ReturnExpr::list_body(
-                ListFunctionId(0),
-                ValueType::Int,
+                ListFunctionId::from_item_type(0, ValueType::Int),
                 ReturnBody::expr(list([int(1)], ValueType::Int).into()),
             ),
         );
@@ -235,8 +240,11 @@ mod tests {
             ))
             .build(&mut runtime_ids),
             ReturnExpr::list_function_body(
-                ListFunctionFunctionId(0),
-                FunctionType::new(Vec::new(), ValueType::List(Box::new(ValueType::Int))),
+                ListFunctionFunctionId::from_item_type(
+                    0,
+                    FunctionType::new(Vec::new(), ValueType::List(Box::new(ValueType::Int))),
+                    ValueType::Int,
+                ),
                 ReturnBody::expr(
                     list_function_ref(0, Vec::<ParamLocal>::new(), ValueType::Int).into(),
                 ),

@@ -111,11 +111,9 @@ fn function_call_expr(
             ))),
             None => Err(function_call_return_type_mismatch()),
         },
-        ValueType::List(return_type) => match function.into_list() {
+        ValueType::List(_) => match function.into_list() {
             Some(function) => Ok(Expr::list(crate::plan::ListExpr::function_call(
-                function,
-                args,
-                *return_type,
+                function, args,
             ))),
             None => Err(function_call_return_type_mismatch()),
         },
@@ -143,7 +141,7 @@ fn function_returning_function_value_call_expr(
     args: Vec<CallArg>,
     return_type: crate::plan::FunctionType,
 ) -> Expr {
-    match return_type.return_() {
+    match return_type.return_().clone() {
         ValueType::Int => Expr::function(FunctionExpr::int(
             crate::plan::IntFunctionExpr::function_call(function, args, return_type),
         )),
@@ -162,8 +160,8 @@ fn function_returning_function_value_call_expr(
         ValueType::Tuple(_) => Expr::function(FunctionExpr::tuple(
             crate::plan::TupleFunctionExpr::function_call(function, args, return_type),
         )),
-        ValueType::List(_) => Expr::function(FunctionExpr::list(
-            crate::plan::ListFunctionExpr::function_call(function, args, return_type),
+        ValueType::List(item_type) => Expr::function(FunctionExpr::list(
+            crate::plan::ListFunctionExpr::function_call(function, args, return_type, *item_type),
         )),
         ValueType::Function(_) => Expr::function(FunctionExpr::function(
             FunctionFunctionExpr::function_call(function, args, return_type),
@@ -845,10 +843,10 @@ pub fn main() {
         assert_eq!(
             function_call_expr(
                 FunctionExpr::from(function_ref(
-                    RuntimeFunctionId::List {
-                        id: crate::plan::ListFunctionId(0),
-                        return_type: Box::new(ValueType::Int),
-                    },
+                    RuntimeFunctionId::List(crate::plan::ListFunctionId::from_item_type(
+                        0,
+                        crate::plan::ValueType::Int
+                    )),
                     Vec::<ParamLocal>::new(),
                 )),
                 Vec::new(),
@@ -907,7 +905,14 @@ pub fn main() {
                 ),
             ),
             (
-                FunctionFunctionId::List(crate::plan::ListFunctionFunctionId(0)),
+                FunctionFunctionId::List(crate::plan::ListFunctionFunctionId::from_item_type(
+                    0,
+                    crate::plan::FunctionType::new(
+                        Vec::new(),
+                        crate::plan::ValueType::List(Box::new(crate::plan::ValueType::Int)),
+                    ),
+                    crate::plan::ValueType::Int,
+                )),
                 FunctionType::new(
                     vec![ValueType::List(Box::new(ValueType::Int))],
                     ValueType::List(Box::new(ValueType::Int)),

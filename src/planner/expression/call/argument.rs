@@ -1,7 +1,7 @@
 use super::CaptureSubstitution;
 use crate::plan::{
     BoolListLocalId, CallArg, Expr, FloatListLocalId, FunctionListLocalId, IntListLocalId,
-    ListFunctionLocalId, ListListLocalId, ListLocal, NilListLocalId, ParamLocal, StringListLocalId,
+    ListFunctionLocal, ListListLocalId, ListLocal, NilListLocalId, ParamLocal, StringListLocalId,
     TupleFunctionLocalId, TupleListLocalId, TupleLocalId, ValueType,
 };
 use crate::planner::context::{FunctionParam, PlanContext};
@@ -203,11 +203,12 @@ fn function_call_param_locals(params: &[ValueType]) -> Vec<ParamLocal> {
                     next_tuple_function += 1;
                     local
                 }
-                ValueType::List(_) => {
-                    let local = ParamLocal::list_function(
-                        ListFunctionLocalId(next_list_function),
+                ValueType::List(item_type) => {
+                    let local = ParamLocal::list_function(ListFunctionLocal::from_item_type(
+                        next_list_function,
                         type_.as_ref().clone(),
-                    );
+                        item_type.as_ref().clone(),
+                    ));
                     next_list_function += 1;
                     local
                 }
@@ -359,13 +360,14 @@ mod tests {
                         ValueType::Tuple(vec![ValueType::Int]),
                     ),
                 ),
-                ParamLocal::list_function(
-                    crate::plan::ListFunctionLocalId(0),
+                ParamLocal::list_function(crate::plan::ListFunctionLocal::from_item_type(
+                    0,
                     FunctionType::new(
                         vec![ValueType::List(Box::new(ValueType::Int))],
                         ValueType::List(Box::new(ValueType::Int)),
                     ),
-                ),
+                    ValueType::Int,
+                )),
                 ParamLocal::function_function(
                     crate::plan::FunctionFunctionLocalId(0),
                     FunctionType::new(

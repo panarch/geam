@@ -142,10 +142,10 @@ mod tests {
         );
         assert_return_type(
             FunctionValue::new(
-                RuntimeFunctionId::List {
-                    id: ListFunctionId(0),
-                    return_type: Box::new(ValueType::Int),
-                },
+                RuntimeFunctionId::List(ListFunctionId::from_item_type(
+                    0,
+                    crate::plan::ValueType::Int,
+                )),
                 vec![ParamLocal::list(ListLocal::int(IntListLocalId(0)))],
             ),
             ValueType::List(Box::new(ValueType::Int)),
@@ -252,6 +252,7 @@ mod tests {
                 empty_tuple(),
                 0,
                 list_type.clone(),
+                ValueType::Int,
             )),
             list_type,
         );

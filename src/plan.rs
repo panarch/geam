@@ -33,15 +33,23 @@ pub(crate) use function::{
 };
 pub use function::{FunctionPlan, Param, ParamBinding, ReturnExpr};
 pub use id::{
-    BoolFunctionFunctionId, BoolFunctionId, BoolFunctionLocalId, BoolListLocalId, BoolLocalId,
-    FloatFunctionFunctionId, FloatFunctionId, FloatFunctionLocalId, FloatListLocalId, FloatLocalId,
-    FunctionFunctionFunctionId, FunctionFunctionLocalId, FunctionId, FunctionListLocalId,
-    FunctionReturnFamily, IntFunctionFunctionId, IntFunctionId, IntFunctionLocalId, IntListLocalId,
-    IntLocalId, ListFunctionFunctionId, ListFunctionId, ListFunctionLocalId, ListListLocalId,
-    ListLocal, LocalId, NilFunctionFunctionId, NilFunctionId, NilFunctionLocalId, NilListLocalId,
+    BoolFunctionFunctionId, BoolFunctionId, BoolFunctionLocalId, BoolListFunctionFunctionId,
+    BoolListFunctionId, BoolListFunctionLocalId, BoolListLocalId, BoolLocalId,
+    FloatFunctionFunctionId, FloatFunctionId, FloatFunctionLocalId, FloatListFunctionFunctionId,
+    FloatListFunctionId, FloatListFunctionLocalId, FloatListLocalId, FloatLocalId,
+    FunctionFunctionFunctionId, FunctionFunctionLocalId, FunctionId,
+    FunctionListFunctionFunctionId, FunctionListFunctionId, FunctionListFunctionLocalId,
+    FunctionListLocalId, FunctionReturnFamily, IntFunctionFunctionId, IntFunctionId,
+    IntFunctionLocalId, IntListFunctionFunctionId, IntListFunctionId, IntListFunctionLocalId,
+    IntListLocalId, IntLocalId, ListFunctionFunctionId, ListFunctionId, ListFunctionLocal,
+    ListListFunctionFunctionId, ListListFunctionId, ListListFunctionLocalId, ListListLocalId,
+    ListLocal, LocalId, NilFunctionFunctionId, NilFunctionId, NilFunctionLocalId,
+    NilListFunctionFunctionId, NilListFunctionId, NilListFunctionLocalId, NilListLocalId,
     NilLocalId, StringFunctionFunctionId, StringFunctionId, StringFunctionLocalId,
+    StringListFunctionFunctionId, StringListFunctionId, StringListFunctionLocalId,
     StringListLocalId, StringLocalId, TupleFunctionFunctionId, TupleFunctionId,
-    TupleFunctionLocalId, TupleListLocalId, TupleLocalId,
+    TupleFunctionLocalId, TupleListFunctionFunctionId, TupleListFunctionId,
+    TupleListFunctionLocalId, TupleListLocalId, TupleLocalId,
 };
 pub(crate) use id::{FunctionFunctionId, RuntimeFunctionId};
 pub use source::{PanicSite, SourceContext, SourceSpan};
@@ -141,7 +149,7 @@ impl ExecutionPlan {
         self.runtime.tuple_function(id)
     }
 
-    pub(crate) fn list_function(&self, id: ListFunctionId) -> &RuntimeFunction<ListReturn> {
+    pub(crate) fn list_function(&self, id: &ListFunctionId) -> &RuntimeFunction<ListReturn> {
         self.runtime.list_function(id)
     }
 
@@ -189,7 +197,7 @@ impl ExecutionPlan {
 
     pub(crate) fn list_function_function(
         &self,
-        id: ListFunctionFunctionId,
+        id: &ListFunctionFunctionId,
     ) -> &RuntimeFunction<ListFunctionReturn> {
         self.runtime.list_function_function(id)
     }

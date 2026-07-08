@@ -2,8 +2,8 @@ use crate::plan::{
     AssertBinding, AssertPattern, BoolFunctionLocalId, BoolFunctionValue, BoolLocalId,
     ExecutionPlan, FloatFunctionLocalId, FloatFunctionValue, FloatLocalId, FunctionFunctionLocalId,
     FunctionFunctionValue, FunctionValue, FunctionValueKind, IntFunctionLocalId, IntFunctionValue,
-    IntLocalId, ListAssertPattern, ListAssertTail, ListFunctionLocalId, ListFunctionValue,
-    ListLocal, ListValue, NilFunctionLocalId, NilFunctionValue, NilLocalId, ParamLocal, StepKind,
+    IntLocalId, ListAssertPattern, ListAssertTail, ListFunctionLocal, ListFunctionValue, ListLocal,
+    ListValue, NilFunctionLocalId, NilFunctionValue, NilLocalId, ParamLocal, StepKind,
     StringFunctionLocalId, StringFunctionValue, StringLocalId, TupleFunctionLocalId,
     TupleFunctionValue, TupleLocalId, Value, ValueType,
 };
@@ -80,7 +80,7 @@ pub(in crate::runtime) fn execute_steps(
             }
             StepKind::LetListFunction { local, value, .. } => {
                 let value = eval_list_function_expr(plan, frame, value)?;
-                frame.set_list_function(*local, value);
+                frame.set_list_function(local.clone(), value);
             }
             StepKind::LetFunctionFunction { local, value, .. } => {
                 let value = eval_function_function_expr(plan, frame, value)?;
@@ -156,7 +156,7 @@ enum PendingBinding {
     BoolFunction(BoolFunctionLocalId, BoolFunctionValue),
     NilFunction(NilFunctionLocalId, NilFunctionValue),
     TupleFunction(TupleFunctionLocalId, TupleFunctionValue),
-    ListFunction(ListFunctionLocalId, ListFunctionValue),
+    ListFunction(ListFunctionLocal, ListFunctionValue),
     FunctionFunction(FunctionFunctionLocalId, FunctionFunctionValue),
 }
 
@@ -289,8 +289,8 @@ fn pending_function_binding(target: &ParamLocal, value: &FunctionValue) -> Optio
         (ParamLocal::TupleFunction { local, .. }, FunctionValueKind::Tuple(value)) => {
             Some(PendingBinding::TupleFunction(*local, value.clone()))
         }
-        (ParamLocal::ListFunction { local, .. }, FunctionValueKind::List(value)) => {
-            Some(PendingBinding::ListFunction(*local, value.clone()))
+        (ParamLocal::ListFunction(local), FunctionValueKind::List(value)) => {
+            Some(PendingBinding::ListFunction(local.clone(), value.clone()))
         }
         (ParamLocal::FunctionFunction { local, .. }, FunctionValueKind::Function(value)) => {
             Some(PendingBinding::FunctionFunction(*local, value.clone()))
@@ -336,13 +336,12 @@ mod tests {
         FunctionFunctionValue, FunctionId, FunctionPlan, FunctionReturnFamily, FunctionType,
         IntExpr, IntFunctionExpr, IntFunctionFunctionId, IntFunctionId, IntFunctionLocalId,
         IntFunctionValue, IntListLocalId, IntLocalId, ListAssertPattern, ListAssertTail, ListExpr,
-        ListFunctionExpr, ListFunctionId, ListFunctionLocalId, ListFunctionValue, ListListLocalId,
-        ListLocal, ListValue, NilExpr, NilFunctionExpr, NilFunctionId, NilFunctionLocalId,
-        NilFunctionValue, NilLocalId, PanicExpr, PanicSite, ParamLocal, ReturnBody, ReturnExpr,
-        SourceSpan, Step, StringExpr, StringFunctionExpr, StringFunctionId, StringFunctionLocalId,
-        StringFunctionValue, StringListLocalId, StringLocalId, TupleExpr, TupleFunctionExpr,
-        TupleFunctionId, TupleFunctionLocalId, TupleFunctionValue, TupleListLocalId, TupleLocalId,
-        Value, ValueType,
+        ListFunctionExpr, ListFunctionId, ListFunctionValue, ListListLocalId, ListLocal, ListValue,
+        NilExpr, NilFunctionExpr, NilFunctionId, NilFunctionLocalId, NilFunctionValue, NilLocalId,
+        PanicExpr, PanicSite, ParamLocal, ReturnBody, ReturnExpr, SourceSpan, Step, StringExpr,
+        StringFunctionExpr, StringFunctionId, StringFunctionLocalId, StringFunctionValue,
+        StringListLocalId, StringLocalId, TupleExpr, TupleFunctionExpr, TupleFunctionId,
+        TupleFunctionLocalId, TupleFunctionValue, TupleListLocalId, TupleLocalId, Value, ValueType,
     };
     use crate::runtime::frame::Frame;
     use crate::runtime::{ExecutionError, PanicKind};
@@ -394,7 +393,14 @@ mod tests {
                 failing_tuple_function_expr(),
             ),
             Step::let_list_function(
-                ListFunctionLocalId(0),
+                crate::plan::ListFunctionLocal::from_item_type(
+                    0,
+                    crate::plan::FunctionType::new(
+                        Vec::new(),
+                        crate::plan::ValueType::List(Box::new(crate::plan::ValueType::Int)),
+                    ),
+                    crate::plan::ValueType::Int,
+                ),
                 "x".into(),
                 failing_list_function_expr(),
             ),
@@ -432,7 +438,18 @@ mod tests {
             Step::let_bool_function(BoolFunctionLocalId(0), "x".into(), bool_function_expr()),
             Step::let_nil_function(NilFunctionLocalId(0), "x".into(), nil_function_expr()),
             Step::let_tuple_function(TupleFunctionLocalId(0), "x".into(), tuple_function_expr()),
-            Step::let_list_function(ListFunctionLocalId(0), "x".into(), list_function_expr()),
+            Step::let_list_function(
+                crate::plan::ListFunctionLocal::from_item_type(
+                    0,
+                    crate::plan::FunctionType::new(
+                        Vec::new(),
+                        crate::plan::ValueType::List(Box::new(crate::plan::ValueType::Int)),
+                    ),
+                    crate::plan::ValueType::Int,
+                ),
+                "x".into(),
+                list_function_expr(),
+            ),
             Step::let_function_function(
                 FunctionFunctionLocalId(0),
                 "x".into(),
@@ -483,8 +500,17 @@ mod tests {
             TupleFunctionId(0),
         );
         assert_eq!(
-            frame.get_list_function(ListFunctionLocalId(0)).runtime_id(),
-            ListFunctionId(0),
+            frame
+                .get_list_function(&crate::plan::ListFunctionLocal::from_item_type(
+                    0,
+                    crate::plan::FunctionType::new(
+                        Vec::new(),
+                        crate::plan::ValueType::List(Box::new(crate::plan::ValueType::Int))
+                    ),
+                    crate::plan::ValueType::Int,
+                ))
+                .runtime_id(),
+            ListFunctionId::from_item_type(0, crate::plan::ValueType::Int),
         );
         assert_eq!(
             frame
@@ -1106,7 +1132,10 @@ mod tests {
         let nil_function = NilFunctionValue::new(NilFunctionId(0), Vec::new());
         let tuple_function =
             TupleFunctionValue::new(TupleFunctionId(0), Vec::new(), vec![ValueType::Int]);
-        let list_function = ListFunctionValue::new(ListFunctionId(0), Vec::new(), ValueType::Int);
+        let list_function = ListFunctionValue::new(
+            ListFunctionId::from_item_type(0, crate::plan::ValueType::Int),
+            Vec::new(),
+        );
         let function_function = FunctionFunctionValue::new(
             FunctionFunctionId::Int(IntFunctionFunctionId(0)),
             Vec::new(),
@@ -1164,7 +1193,11 @@ mod tests {
             "tuple_function".into(),
         );
         let list_function_binding = AssertBinding::new(
-            ParamLocal::list_function(ListFunctionLocalId(0), list_function_type),
+            ParamLocal::list_function(crate::plan::ListFunctionLocal::from_item_type(
+                0,
+                list_function_type,
+                crate::plan::ValueType::Int,
+            )),
             "list_function".into(),
         );
         let function_function_binding = AssertBinding::new(
@@ -1277,7 +1310,14 @@ mod tests {
             tuple_function,
         );
         assert_eq!(
-            frame.get_list_function(ListFunctionLocalId(0)),
+            frame.get_list_function(&crate::plan::ListFunctionLocal::from_item_type(
+                0,
+                crate::plan::FunctionType::new(
+                    Vec::new(),
+                    crate::plan::ValueType::List(Box::new(crate::plan::ValueType::Int))
+                ),
+                crate::plan::ValueType::Int,
+            )),
             list_function,
         );
         assert_eq!(
@@ -1349,11 +1389,14 @@ mod tests {
     }
 
     fn failing_list_expr() -> ListExpr {
-        ListExpr::function_call(failing_list_function_expr(), Vec::new(), ValueType::Int)
+        ListExpr::function_call(failing_list_function_expr(), Vec::new())
     }
 
     fn mismatched_list_expr() -> ListExpr {
-        ListExpr::call(ListFunctionId(0), Vec::new(), ValueType::Int)
+        ListExpr::call(
+            ListFunctionId::from_item_type(0, crate::plan::ValueType::Int),
+            Vec::new(),
+        )
     }
 
     fn list_expr() -> ListExpr {
@@ -1390,9 +1433,8 @@ mod tests {
 
     fn list_function_expr() -> ListFunctionExpr {
         ListFunctionExpr::value(ListFunctionValue::new(
-            ListFunctionId(0),
+            ListFunctionId::from_item_type(0, crate::plan::ValueType::Int),
             Vec::new(),
-            ValueType::Int,
         ))
     }
 
@@ -1457,6 +1499,7 @@ mod tests {
             failing_function_function_expr(),
             Vec::new(),
             FunctionType::new(Vec::new(), ValueType::List(Box::new(ValueType::Int))),
+            ValueType::Int,
         )
     }
 
@@ -1490,8 +1533,7 @@ mod tests {
                 Vec::new(),
                 Vec::new(),
                 ReturnExpr::list_body(
-                    ListFunctionId(0),
-                    ValueType::String,
+                    ListFunctionId::from_item_type(0, ValueType::Int),
                     ReturnBody::expr(ListExpr::value(
                         vec![Expr::string(StringExpr::value("wrong".into()))],
                         ValueType::String,
@@ -1516,7 +1558,14 @@ mod tests {
         layout.include_bool_function(BoolFunctionLocalId(0));
         layout.include_nil_function(NilFunctionLocalId(0));
         layout.include_tuple_function(TupleFunctionLocalId(0));
-        layout.include_list_function(ListFunctionLocalId(0));
+        layout.include_list_function(crate::plan::ListFunctionLocal::from_item_type(
+            0,
+            crate::plan::FunctionType::new(
+                Vec::new(),
+                crate::plan::ValueType::List(Box::new(crate::plan::ValueType::Int)),
+            ),
+            crate::plan::ValueType::Int,
+        ));
         layout.include_function_function(FunctionFunctionLocalId(0));
         layout
     }

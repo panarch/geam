@@ -266,8 +266,12 @@ pub(crate) fn string_return_block(
 pub(crate) fn list_return_tail_call(
     function: usize,
     args: impl IntoIterator<Item = CallArg>,
+    element_type: ValueType,
 ) -> ListReturn {
-    ReturnBody::tail_call(ListFunctionId(function), args.into_iter().collect())
+    ReturnBody::tail_call(
+        ListFunctionId::from_item_type(function, element_type),
+        args.into_iter().collect(),
+    )
 }
 
 pub(crate) fn list_return_expr(expression: List) -> ListReturn {
@@ -462,8 +466,11 @@ mod tests {
             ReturnBody::tail_call(NilFunctionId(4), Vec::new()),
         );
         assert_eq!(
-            list_return_tail_call(5, Vec::<CallArg>::new()),
-            ReturnBody::tail_call(ListFunctionId(5), Vec::new()),
+            list_return_tail_call(5, Vec::<CallArg>::new(), crate::plan::ValueType::Int),
+            ReturnBody::tail_call(
+                ListFunctionId::from_item_type(5, crate::plan::ValueType::Int),
+                Vec::new(),
+            ),
         );
     }
 

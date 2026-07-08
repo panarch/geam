@@ -73,9 +73,7 @@ fn call_expr(function: RuntimeFunctionId, args: Vec<CallArg>) -> Expr {
         RuntimeFunctionId::Tuple { id, return_type } => {
             Expr::tuple(TupleExpr::call(id, args, return_type))
         }
-        RuntimeFunctionId::List { id, return_type } => {
-            Expr::list(ListExpr::call(id, args, *return_type))
-        }
+        RuntimeFunctionId::List(id) => Expr::list(ListExpr::call(id, args)),
         RuntimeFunctionId::Function { id, return_type } => {
             function_returning_function_call_expr(id, args, return_type)
         }
@@ -106,9 +104,9 @@ fn function_returning_function_call_expr(
         crate::plan::FunctionFunctionId::Tuple(function) => Expr::function(FunctionExpr::tuple(
             TupleFunctionExpr::call(function, args, return_type),
         )),
-        crate::plan::FunctionFunctionId::List(function) => Expr::function(FunctionExpr::list(
-            ListFunctionExpr::call(function, args, return_type),
-        )),
+        crate::plan::FunctionFunctionId::List(function) => {
+            Expr::function(FunctionExpr::list(ListFunctionExpr::call(function, args)))
+        }
         crate::plan::FunctionFunctionId::Function(function) => Expr::function(
             FunctionExpr::function(FunctionFunctionExpr::call(function, args, return_type)),
         ),
@@ -602,7 +600,14 @@ pub fn main() {
                 ),
             ),
             (
-                FunctionFunctionId::List(ListFunctionFunctionId(0)),
+                FunctionFunctionId::List(ListFunctionFunctionId::from_item_type(
+                    0,
+                    FunctionType::new(
+                        vec![ValueType::List(Box::new(ValueType::Int))],
+                        ValueType::List(Box::new(ValueType::Int)),
+                    ),
+                    ValueType::Int,
+                )),
                 FunctionType::new(
                     vec![ValueType::List(Box::new(ValueType::Int))],
                     ValueType::List(Box::new(ValueType::Int)),

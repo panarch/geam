@@ -276,7 +276,7 @@ fn panic_expr(panic: PanicExpr, return_type: ValueType) -> Expr {
 }
 
 fn panic_function_expr(panic: PanicExpr, type_: FunctionType) -> Expr {
-    match type_.return_() {
+    match type_.return_().clone() {
         ValueType::Int => Expr::function(FunctionExpr::int(crate::plan::IntFunctionExpr::panic(
             panic, type_,
         ))),
@@ -295,8 +295,8 @@ fn panic_function_expr(panic: PanicExpr, type_: FunctionType) -> Expr {
         ValueType::Tuple(_) => Expr::function(FunctionExpr::tuple(
             crate::plan::TupleFunctionExpr::panic(panic, type_),
         )),
-        ValueType::List(_) => Expr::function(FunctionExpr::list(
-            crate::plan::ListFunctionExpr::panic(panic, type_),
+        ValueType::List(item_type) => Expr::function(FunctionExpr::list(
+            crate::plan::ListFunctionExpr::panic(panic, type_, *item_type),
         )),
         ValueType::Function(_) => Expr::function(FunctionExpr::function(
             FunctionFunctionExpr::panic(panic, type_),
@@ -492,7 +492,7 @@ pub(super) fn list_index_expr(list: ListExpr, index: usize, return_type: ValueTy
 }
 
 fn tuple_index_function_expr(tuple: TupleExpr, index: usize, type_: FunctionType) -> Expr {
-    match type_.return_() {
+    match type_.return_().clone() {
         ValueType::Int => Expr::function(FunctionExpr::int(
             crate::plan::IntFunctionExpr::tuple_index(tuple, index, type_),
         )),
@@ -511,8 +511,8 @@ fn tuple_index_function_expr(tuple: TupleExpr, index: usize, type_: FunctionType
         ValueType::Tuple(_) => Expr::function(FunctionExpr::tuple(
             crate::plan::TupleFunctionExpr::tuple_index(tuple, index, type_),
         )),
-        ValueType::List(_) => Expr::function(FunctionExpr::list(
-            crate::plan::ListFunctionExpr::tuple_index(tuple, index, type_),
+        ValueType::List(item_type) => Expr::function(FunctionExpr::list(
+            crate::plan::ListFunctionExpr::tuple_index(tuple, index, type_, *item_type),
         )),
         ValueType::Function(_) => Expr::function(FunctionExpr::function(
             FunctionFunctionExpr::tuple_index(tuple, index, type_),
@@ -521,7 +521,7 @@ fn tuple_index_function_expr(tuple: TupleExpr, index: usize, type_: FunctionType
 }
 
 fn list_index_function_expr(list: ListExpr, index: usize, type_: FunctionType) -> Expr {
-    match type_.return_() {
+    match type_.return_().clone() {
         ValueType::Int => Expr::function(FunctionExpr::int(
             crate::plan::IntFunctionExpr::list_index(list, index, type_),
         )),
@@ -540,8 +540,8 @@ fn list_index_function_expr(list: ListExpr, index: usize, type_: FunctionType) -
         ValueType::Tuple(_) => Expr::function(FunctionExpr::tuple(
             crate::plan::TupleFunctionExpr::list_index(list, index, type_),
         )),
-        ValueType::List(_) => Expr::function(FunctionExpr::list(
-            crate::plan::ListFunctionExpr::list_index(list, index, type_),
+        ValueType::List(item_type) => Expr::function(FunctionExpr::list(
+            crate::plan::ListFunctionExpr::list_index(list, index, type_, *item_type),
         )),
         ValueType::Function(_) => Expr::function(FunctionExpr::function(
             FunctionFunctionExpr::list_index(list, index, type_),

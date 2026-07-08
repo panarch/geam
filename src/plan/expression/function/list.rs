@@ -1,6 +1,6 @@
 use crate::plan::{
     BoolExpr, CaptureArg, FloatExpr, FunctionFunctionExpr, FunctionType, IntExpr, ListExpr,
-    ListFunctionFunctionId, ListFunctionId, ListFunctionLocalId, ListFunctionValue, PanicExpr,
+    ListFunctionFunctionId, ListFunctionId, ListFunctionLocal, ListFunctionValue, PanicExpr,
     ParamLocal, Step, StringExpr, TupleExpr, ValueType,
 };
 use ecow::EcoString;
@@ -9,6 +9,7 @@ use num_bigint::BigInt;
 #[derive(Debug, Clone, PartialEq)]
 pub struct ListFunctionExpr {
     type_: FunctionType,
+    item_type: ValueType,
     kind: ListFunctionExprKind,
 }
 
@@ -19,10 +20,9 @@ pub(crate) enum ListFunctionExprKind {
         runtime_id: ListFunctionId,
         params: Vec<ParamLocal>,
         captures: Vec<CaptureArg>,
-        return_type: ValueType,
     },
     LocalGet {
-        local: ListFunctionLocalId,
+        local: ListFunctionLocal,
         name: EcoString,
     },
     Call {
@@ -74,8 +74,10 @@ pub(crate) enum ListFunctionExprKind {
 
 impl ListFunctionExpr {
     pub(crate) fn value(value: ListFunctionValue) -> Self {
+        let item_type = value.runtime_id().item_type();
         Self {
             type_: value.type_(),
+            item_type,
             kind: ListFunctionExprKind::Value(value),
         }
     }
@@ -84,38 +86,35 @@ impl ListFunctionExpr {
         runtime_id: ListFunctionId,
         params: Vec<ParamLocal>,
         captures: Vec<CaptureArg>,
-        type_: FunctionType,
-        return_type: ValueType,
     ) -> Self {
+        let item_type = runtime_id.item_type();
+        let type_ =
+            FunctionType::from_params(&params, ValueType::List(Box::new(item_type.clone())));
         Self {
             type_,
+            item_type,
             kind: ListFunctionExprKind::Closure {
                 runtime_id,
                 params,
                 captures,
-                return_type,
             },
         }
     }
 
-    pub(crate) fn local_get(
-        local: ListFunctionLocalId,
-        name: EcoString,
-        type_: FunctionType,
-    ) -> Self {
+    pub(crate) fn local_get(local: ListFunctionLocal, name: EcoString) -> Self {
         Self {
-            type_,
+            type_: local.type_().clone(),
+            item_type: local.item_type(),
             kind: ListFunctionExprKind::LocalGet { local, name },
         }
     }
 
-    pub(crate) fn call(
-        function: ListFunctionFunctionId,
-        args: Vec<crate::plan::CallArg>,
-        type_: FunctionType,
-    ) -> Self {
+    pub(crate) fn call(function: ListFunctionFunctionId, args: Vec<crate::plan::CallArg>) -> Self {
+        let type_ = function.type_().clone();
+        let item_type = function.item_type();
         Self {
             type_: type_.clone(),
+            item_type,
             kind: ListFunctionExprKind::Call {
                 function,
                 args,
@@ -128,9 +127,11 @@ impl ListFunctionExpr {
         function: FunctionFunctionExpr,
         args: Vec<crate::plan::CallArg>,
         type_: FunctionType,
+        item_type: ValueType,
     ) -> Self {
         Self {
             type_: type_.clone(),
+            item_type,
             kind: ListFunctionExprKind::FunctionCall {
                 function: Box::new(function),
                 args,
@@ -139,9 +140,15 @@ impl ListFunctionExpr {
         }
     }
 
-    pub(crate) fn tuple_index(tuple: TupleExpr, index: usize, type_: FunctionType) -> Self {
+    pub(crate) fn tuple_index(
+        tuple: TupleExpr,
+        index: usize,
+        type_: FunctionType,
+        item_type: ValueType,
+    ) -> Self {
         Self {
             type_: type_.clone(),
+            item_type,
             kind: ListFunctionExprKind::TupleIndex {
                 tuple: Box::new(tuple),
                 index,
@@ -150,9 +157,15 @@ impl ListFunctionExpr {
         }
     }
 
-    pub(crate) fn list_index(list: ListExpr, index: usize, type_: FunctionType) -> Self {
+    pub(crate) fn list_index(
+        list: ListExpr,
+        index: usize,
+        type_: FunctionType,
+        item_type: ValueType,
+    ) -> Self {
         Self {
             type_: type_.clone(),
+            item_type,
             kind: ListFunctionExprKind::ListIndex {
                 list: Box::new(list),
                 index,
@@ -161,9 +174,10 @@ impl ListFunctionExpr {
         }
     }
 
-    pub(crate) fn panic(panic: PanicExpr, type_: FunctionType) -> Self {
+    pub(crate) fn panic(panic: PanicExpr, type_: FunctionType, item_type: ValueType) -> Self {
         Self {
             type_,
+            item_type,
             kind: ListFunctionExprKind::Panic(panic),
         }
     }
@@ -175,6 +189,7 @@ impl ListFunctionExpr {
     ) -> Self {
         Self {
             type_: true_.type_.clone(),
+            item_type: true_.item_type.clone(),
             kind: ListFunctionExprKind::BoolCase {
                 subject: Box::new(subject),
                 true_: Box::new(true_),
@@ -190,6 +205,7 @@ impl ListFunctionExpr {
     ) -> Self {
         Self {
             type_: fallback.type_.clone(),
+            item_type: fallback.item_type.clone(),
             kind: ListFunctionExprKind::IntCase {
                 subject: Box::new(subject),
                 clauses,
@@ -205,6 +221,7 @@ impl ListFunctionExpr {
     ) -> Self {
         Self {
             type_: fallback.type_.clone(),
+            item_type: fallback.item_type.clone(),
             kind: ListFunctionExprKind::StringCase {
                 subject: Box::new(subject),
                 clauses,
@@ -220,6 +237,7 @@ impl ListFunctionExpr {
     ) -> Self {
         Self {
             type_: fallback.type_.clone(),
+            item_type: fallback.item_type.clone(),
             kind: ListFunctionExprKind::FloatCase {
                 subject: Box::new(subject),
                 clauses,
@@ -231,6 +249,7 @@ impl ListFunctionExpr {
     pub(crate) fn block(steps: Vec<Step>, return_: ListFunctionExpr) -> Self {
         Self {
             type_: return_.type_.clone(),
+            item_type: return_.item_type.clone(),
             kind: ListFunctionExprKind::Block {
                 steps,
                 return_: Box::new(return_),
@@ -240,6 +259,10 @@ impl ListFunctionExpr {
 
     pub fn type_(&self) -> &FunctionType {
         &self.type_
+    }
+
+    pub(crate) fn return_item_type(&self) -> ValueType {
+        self.item_type.clone()
     }
 
     pub(crate) fn kind(&self) -> &ListFunctionExprKind {
@@ -252,8 +275,8 @@ mod tests {
     use super::{ListFunctionExpr, ListFunctionExprKind};
     use crate::plan::{
         BoolExpr, Expr, FunctionFunctionExpr, FunctionFunctionId, FunctionFunctionValue,
-        FunctionType, IntExpr, ListExpr, ListFunctionFunctionId, ListFunctionId,
-        ListFunctionLocalId, ListFunctionValue, ParamLocal, Step, TupleExpr, ValueType,
+        FunctionType, IntExpr, ListExpr, ListFunctionFunctionId, ListFunctionId, ListFunctionValue,
+        ParamLocal, Step, TupleExpr, ValueType,
     };
 
     #[test]
@@ -261,40 +284,64 @@ mod tests {
         assert_eq!(
             list_function_value().kind(),
             &ListFunctionExprKind::Value(ListFunctionValue::new(
-                ListFunctionId(0),
-                vec![ParamLocal::int(crate::plan::IntLocalId(0))],
-                element_type(),
+                ListFunctionId::from_item_type(0, crate::plan::ValueType::Int),
+                vec![ParamLocal::int(crate::plan::IntLocalId(0))]
             )),
         );
         assert_eq!(
             ListFunctionExpr::closure(
-                ListFunctionId(0),
+                ListFunctionId::from_item_type(0, crate::plan::ValueType::Int),
                 vec![ParamLocal::int(crate::plan::IntLocalId(0))],
-                Vec::new(),
-                list_function_type(),
-                element_type(),
+                Vec::new()
             )
             .kind(),
             &ListFunctionExprKind::Closure {
-                runtime_id: ListFunctionId(0),
+                runtime_id: ListFunctionId::from_item_type(0, crate::plan::ValueType::Int),
                 params: vec![ParamLocal::int(crate::plan::IntLocalId(0))],
                 captures: Vec::new(),
-                return_type: element_type(),
             },
         );
         assert_eq!(
-            ListFunctionExpr::local_get(ListFunctionLocalId(0), "f".into(), list_function_type(),)
-                .kind(),
+            ListFunctionExpr::local_get(
+                crate::plan::ListFunctionLocal::from_item_type(
+                    0,
+                    crate::plan::FunctionType::new(
+                        Vec::new(),
+                        crate::plan::ValueType::List(Box::new(crate::plan::ValueType::Int))
+                    ),
+                    crate::plan::ValueType::Int,
+                ),
+                "f".into()
+            )
+            .kind(),
             &ListFunctionExprKind::LocalGet {
-                local: ListFunctionLocalId(0),
+                local: crate::plan::ListFunctionLocal::from_item_type(
+                    0,
+                    crate::plan::FunctionType::new(
+                        Vec::new(),
+                        crate::plan::ValueType::List(Box::new(crate::plan::ValueType::Int))
+                    ),
+                    crate::plan::ValueType::Int,
+                ),
                 name: "f".into(),
             },
         );
         assert_eq!(
-            ListFunctionExpr::call(ListFunctionFunctionId(0), Vec::new(), list_function_type(),)
-                .kind(),
+            ListFunctionExpr::call(
+                ListFunctionFunctionId::from_item_type(
+                    0,
+                    list_function_type(),
+                    crate::plan::ValueType::Int
+                ),
+                Vec::new()
+            )
+            .kind(),
             &ListFunctionExprKind::Call {
-                function: ListFunctionFunctionId(0),
+                function: ListFunctionFunctionId::from_item_type(
+                    0,
+                    list_function_type(),
+                    crate::plan::ValueType::Int
+                ),
                 args: Vec::new(),
                 type_: list_function_type(),
             },
@@ -304,6 +351,7 @@ mod tests {
                 function_function_value(),
                 Vec::new(),
                 list_function_type(),
+                crate::plan::ValueType::Int,
             )
             .kind(),
             &ListFunctionExprKind::FunctionCall {
@@ -313,7 +361,13 @@ mod tests {
             },
         );
         assert_eq!(
-            ListFunctionExpr::tuple_index(tuple_expr(), 0, list_function_type()).kind(),
+            ListFunctionExpr::tuple_index(
+                tuple_expr(),
+                0,
+                list_function_type(),
+                crate::plan::ValueType::Int,
+            )
+            .kind(),
             &ListFunctionExprKind::TupleIndex {
                 tuple: Box::new(tuple_expr()),
                 index: 0,
@@ -390,11 +444,9 @@ mod tests {
         assert_eq!(list_function_value().type_(), &list_function_type());
         assert_eq!(
             ListFunctionExpr::closure(
-                ListFunctionId(0),
+                ListFunctionId::from_item_type(0, crate::plan::ValueType::Int),
                 vec![ParamLocal::int(crate::plan::IntLocalId(0))],
-                Vec::new(),
-                list_function_type(),
-                element_type(),
+                Vec::new()
             )
             .type_(),
             &list_function_type(),
@@ -425,9 +477,8 @@ mod tests {
 
     fn list_function_value() -> ListFunctionExpr {
         ListFunctionExpr::value(ListFunctionValue::new(
-            ListFunctionId(0),
+            ListFunctionId::from_item_type(0, crate::plan::ValueType::Int),
             vec![ParamLocal::int(crate::plan::IntLocalId(0))],
-            element_type(),
         ))
     }
 
@@ -453,7 +504,14 @@ mod tests {
 
     fn function_function_value() -> FunctionFunctionExpr {
         FunctionFunctionExpr::value(FunctionFunctionValue::new(
-            FunctionFunctionId::List(ListFunctionFunctionId(0)),
+            FunctionFunctionId::List(ListFunctionFunctionId::from_item_type(
+                0,
+                crate::plan::FunctionType::new(
+                    Vec::new(),
+                    crate::plan::ValueType::List(Box::new(crate::plan::ValueType::Int)),
+                ),
+                crate::plan::ValueType::Int,
+            )),
             Vec::new(),
             list_function_type(),
         ))
@@ -467,9 +525,8 @@ mod tests {
     fn list_function_value_type_fixture() {
         assert_eq!(
             ListFunctionExpr::value(ListFunctionValue::new(
-                ListFunctionId(0),
-                Vec::new(),
-                element_type(),
+                ListFunctionId::from_item_type(0, crate::plan::ValueType::Int),
+                Vec::new()
             ))
             .type_(),
             &FunctionType::new(Vec::new(), ValueType::List(Box::new(element_type()))),

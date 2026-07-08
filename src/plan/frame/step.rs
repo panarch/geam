@@ -64,7 +64,7 @@ impl FrameLayout {
             }
             StepKind::LetListFunction { local, value, .. } => {
                 self.include_list_function_expr(value);
-                self.include_list_function(*local);
+                self.include_list_function(local.clone());
             }
             StepKind::LetFunctionFunction { local, value, .. } => {
                 self.include_function_function_expr(value);

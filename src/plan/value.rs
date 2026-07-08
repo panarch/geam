@@ -15,7 +15,7 @@ pub(crate) use self::function::{
 };
 pub use self::list::ListValue;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum ValueType {
     Int,
     Float,
@@ -27,7 +27,7 @@ pub enum ValueType {
     Function(Box<FunctionType>),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct FunctionType {
     arguments: Vec<ValueType>,
     return_: Box<ValueType>,

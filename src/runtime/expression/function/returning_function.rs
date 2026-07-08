@@ -23,7 +23,7 @@ pub(in crate::runtime) fn eval_function_function_expr(
             captures,
             return_type,
         } => Ok(FunctionFunctionValue::new_with_captures(
-            *runtime_id,
+            runtime_id.clone(),
             params.clone(),
             function::eval_capture_args(plan, frame, captures)?,
             return_type.clone(),

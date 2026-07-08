@@ -5,7 +5,7 @@ use super::id::{
     FloatFunctionFunctionId, FloatFunctionId, FloatFunctionLocalId, FloatLocalId,
     FunctionFunctionFunctionId, FunctionFunctionId, FunctionFunctionLocalId, FunctionId,
     IntFunctionFunctionId, IntFunctionId, IntFunctionLocalId, IntLocalId, ListFunctionFunctionId,
-    ListFunctionId, ListFunctionLocalId, ListLocal, NilFunctionFunctionId, NilFunctionId,
+    ListFunctionId, ListFunctionLocal, ListLocal, NilFunctionFunctionId, NilFunctionId,
     NilFunctionLocalId, NilLocalId, RuntimeFunctionId, StringFunctionFunctionId, StringFunctionId,
     StringFunctionLocalId, StringLocalId, TupleFunctionFunctionId, TupleFunctionId,
     TupleFunctionLocalId, TupleLocalId,
@@ -73,10 +73,7 @@ pub(crate) enum ParamLocal {
         local: TupleFunctionLocalId,
         type_: FunctionType,
     },
-    ListFunction {
-        local: ListFunctionLocalId,
-        type_: FunctionType,
-    },
+    ListFunction(ListFunctionLocal),
     FunctionFunction {
         local: FunctionFunctionLocalId,
         type_: FunctionType,
@@ -179,7 +176,6 @@ pub(crate) enum ReturnExprKind {
     },
     List {
         runtime_id: ListFunctionId,
-        element_type: ValueType,
         body: ListReturn,
     },
     IntFunction {
@@ -214,7 +210,6 @@ pub(crate) enum ReturnExprKind {
     },
     ListFunction {
         runtime_id: ListFunctionFunctionId,
-        type_: FunctionType,
         body: ListFunctionReturn,
     },
     FunctionFunction {
@@ -345,17 +340,9 @@ impl ReturnExpr {
         }
     }
 
-    pub(crate) fn list_body(
-        runtime_id: ListFunctionId,
-        element_type: ValueType,
-        body: ListReturn,
-    ) -> Self {
+    pub(crate) fn list_body(runtime_id: ListFunctionId, body: ListReturn) -> Self {
         Self {
-            kind: ReturnExprKind::List {
-                runtime_id,
-                element_type,
-                body,
-            },
+            kind: ReturnExprKind::List { runtime_id, body },
         }
     }
 
@@ -502,21 +489,15 @@ impl ReturnExpr {
         runtime_id: ListFunctionFunctionId,
         expression: super::ListFunctionExpr,
     ) -> Self {
-        let type_ = expression.type_().clone();
-        Self::list_function_body(runtime_id, type_, ReturnBody::expr(expression))
+        Self::list_function_body(runtime_id, ReturnBody::expr(expression))
     }
 
     pub(crate) fn list_function_body(
         runtime_id: ListFunctionFunctionId,
-        type_: FunctionType,
         body: ListFunctionReturn,
     ) -> Self {
         Self {
-            kind: ReturnExprKind::ListFunction {
-                runtime_id,
-                type_,
-                body,
-            },
+            kind: ReturnExprKind::ListFunction { runtime_id, body },
         }
     }
 
@@ -555,8 +536,8 @@ impl ReturnExpr {
             ReturnExprKind::Bool { .. } => ValueType::Bool,
             ReturnExprKind::Nil { .. } => ValueType::Nil,
             ReturnExprKind::Tuple { type_, .. } => ValueType::Tuple(type_.clone()),
-            ReturnExprKind::List { element_type, .. } => {
-                ValueType::List(Box::new(element_type.clone()))
+            ReturnExprKind::List { runtime_id, .. } => {
+                ValueType::List(Box::new(runtime_id.item_type()))
             }
             ReturnExprKind::IntFunction { type_, .. }
             | ReturnExprKind::FloatFunction { type_, .. }
@@ -564,9 +545,11 @@ impl ReturnExpr {
             | ReturnExprKind::BoolFunction { type_, .. }
             | ReturnExprKind::NilFunction { type_, .. }
             | ReturnExprKind::TupleFunction { type_, .. }
-            | ReturnExprKind::ListFunction { type_, .. }
             | ReturnExprKind::FunctionFunction { type_, .. } => {
                 ValueType::Function(Box::new(type_.clone()))
+            }
+            ReturnExprKind::ListFunction { runtime_id, .. } => {
+                ValueType::Function(Box::new(runtime_id.type_().clone()))
             }
         }
     }
@@ -584,14 +567,7 @@ impl ReturnExpr {
                 id: *runtime_id,
                 return_type: type_.clone(),
             },
-            ReturnExprKind::List {
-                runtime_id,
-                element_type,
-                ..
-            } => RuntimeFunctionId::List {
-                id: *runtime_id,
-                return_type: Box::new(element_type.clone()),
-            },
+            ReturnExprKind::List { runtime_id, .. } => RuntimeFunctionId::List(runtime_id.clone()),
             ReturnExprKind::IntFunction {
                 runtime_id, type_, ..
             } => RuntimeFunctionId::Function {
@@ -628,11 +604,9 @@ impl ReturnExpr {
                 id: FunctionFunctionId::Tuple(*runtime_id),
                 return_type: type_.clone(),
             },
-            ReturnExprKind::ListFunction {
-                runtime_id, type_, ..
-            } => RuntimeFunctionId::Function {
-                id: FunctionFunctionId::List(*runtime_id),
-                return_type: type_.clone(),
+            ReturnExprKind::ListFunction { runtime_id, .. } => RuntimeFunctionId::Function {
+                id: FunctionFunctionId::List(runtime_id.clone()),
+                return_type: runtime_id.type_().clone(),
             },
             ReturnExprKind::FunctionFunction {
                 runtime_id, type_, ..
@@ -825,8 +799,8 @@ impl ParamLocal {
         Self::TupleFunction { local, type_ }
     }
 
-    pub(crate) fn list_function(local: ListFunctionLocalId, type_: FunctionType) -> Self {
-        Self::ListFunction { local, type_ }
+    pub(crate) fn list_function(local: ListFunctionLocal) -> Self {
+        Self::ListFunction(local)
     }
 
     pub(crate) fn function_function(local: FunctionFunctionLocalId, type_: FunctionType) -> Self {
@@ -848,8 +822,8 @@ impl ParamLocal {
             | Self::BoolFunction { type_, .. }
             | Self::NilFunction { type_, .. }
             | Self::TupleFunction { type_, .. }
-            | Self::ListFunction { type_, .. }
             | Self::FunctionFunction { type_, .. } => ValueType::Function(Box::new(type_.clone())),
+            Self::ListFunction(local) => local.value_type(),
         }
     }
 }
@@ -865,8 +839,8 @@ mod tests {
         FunctionFunctionLocalId, FunctionFunctionValue, FunctionId, FunctionType, IntExpr,
         IntFunctionExpr, IntFunctionFunctionId, IntFunctionId, IntFunctionLocalId,
         IntFunctionValue, IntListLocalId, IntLocalId, ListExpr, ListFunctionExpr,
-        ListFunctionFunctionId, ListFunctionId, ListFunctionLocalId, ListFunctionValue, ListLocal,
-        NilExpr, NilFunctionExpr, NilFunctionFunctionId, NilFunctionId, NilFunctionLocalId,
+        ListFunctionFunctionId, ListFunctionId, ListFunctionValue, ListLocal, NilExpr,
+        NilFunctionExpr, NilFunctionFunctionId, NilFunctionId, NilFunctionLocalId,
         NilFunctionValue, StringExpr, StringFunctionExpr, StringFunctionFunctionId,
         StringFunctionId, StringFunctionLocalId, StringFunctionValue, TupleExpr, TupleFunctionExpr,
         TupleFunctionFunctionId, TupleFunctionId, TupleFunctionLocalId, TupleFunctionValue,
@@ -937,8 +911,7 @@ mod tests {
         );
         assert_eq!(
             ReturnExpr::list_body(
-                ListFunctionId(0),
-                ValueType::Int,
+                ListFunctionId::from_item_type(0, ValueType::Int),
                 super::ReturnBody::expr(ListExpr::value(
                     vec![crate::plan::Expr::int(IntExpr::value(BigInt::from(1)))],
                     ValueType::Int,
@@ -1007,11 +980,17 @@ mod tests {
         );
         assert_eq!(
             ReturnExpr::list_function(
-                ListFunctionFunctionId(0),
+                ListFunctionFunctionId::from_item_type(
+                    0,
+                    crate::plan::FunctionType::new(
+                        Vec::new(),
+                        crate::plan::ValueType::List(Box::new(crate::plan::ValueType::Int))
+                    ),
+                    crate::plan::ValueType::Int
+                ),
                 ListFunctionExpr::value(ListFunctionValue::new(
-                    ListFunctionId(0),
-                    Vec::new(),
-                    ValueType::Int,
+                    ListFunctionId::from_item_type(0, crate::plan::ValueType::Int),
+                    Vec::new()
                 )),
             )
             .value_type(),
@@ -1142,13 +1121,14 @@ mod tests {
             ))),
         );
         assert_eq!(
-            ParamLocal::list_function(
-                ListFunctionLocalId(0),
+            ParamLocal::list_function(crate::plan::ListFunctionLocal::from_item_type(
+                0,
                 FunctionType::new(
                     vec![ValueType::List(Box::new(ValueType::Int))],
                     ValueType::List(Box::new(ValueType::String)),
                 ),
-            )
+                ValueType::String,
+            ))
             .value_type(),
             ValueType::Function(Box::new(FunctionType::new(
                 vec![ValueType::List(Box::new(ValueType::Int))],

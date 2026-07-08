@@ -29,7 +29,7 @@ pub(in crate::runtime) fn eval_list_expr(
         }
         ListExprKind::LocalGet { local, .. } => frame.get_list(local),
         ListExprKind::Call { function, args } => {
-            function::run_list_call(plan, *function, args, frame)
+            function::run_list_call(plan, function.clone(), args, frame)
         }
         ListExprKind::FunctionCall { function, args } => {
             function::run_list_function_call(plan, function, args, frame)
@@ -388,7 +388,10 @@ mod tests {
             eval_list_expr(
                 &plan,
                 &mut frame,
-                &ListExpr::call(ListFunctionId(0), Vec::new(), element_type()),
+                &ListExpr::call(
+                    ListFunctionId::from_item_type(0, crate::plan::ValueType::Int),
+                    Vec::new()
+                ),
             ),
             Ok(list_value(1)),
         );
@@ -449,7 +452,10 @@ mod tests {
         let mut frame = Frame::default();
         let spread = ListExpr::from_spread_elements(
             ListElements::Int(vec![IntExpr::value(0.into())]),
-            ListExpr::call(ListFunctionId(0), Vec::new(), element_type()),
+            ListExpr::call(
+                ListFunctionId::from_item_type(0, crate::plan::ValueType::Int),
+                Vec::new(),
+            ),
         );
 
         assert_eq!(
@@ -1008,8 +1014,7 @@ mod tests {
                 Vec::new(),
                 Vec::new(),
                 ReturnExpr::list_body(
-                    ListFunctionId(0),
-                    element_type(),
+                    ListFunctionId::from_item_type(0, element_type()),
                     ReturnBody::expr(list_expr(1)),
                 ),
             )],
@@ -1032,8 +1037,7 @@ mod tests {
                 Vec::new(),
                 Vec::new(),
                 ReturnExpr::list_body(
-                    ListFunctionId(0),
-                    ValueType::String,
+                    ListFunctionId::from_item_type(0, ValueType::Int),
                     ReturnBody::expr(ListExpr::value(
                         vec![Expr::string(StringExpr::value("tail".into()))],
                         ValueType::String,

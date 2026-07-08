@@ -36,14 +36,12 @@ pub(super) fn function_return_expr(
             expected.clone(),
             primitive::tuple_return(actual),
         )),
-        (
-            ValueType::List(expected),
-            RuntimeFunctionId::List { id, return_type },
-            ExprKind::List(actual),
-        ) if expected.as_ref() == actual.element_type() && expected == return_type => {
+        (ValueType::List(expected), RuntimeFunctionId::List(id), ExprKind::List(actual))
+            if expected.as_ref() == actual.element_type()
+                && expected.as_ref() == &id.item_type() =>
+        {
             Ok(ReturnExpr::list_body(
-                *id,
-                expected.as_ref().clone(),
+                id.clone(),
                 primitive::list_return(actual),
             ))
         }
@@ -52,7 +50,7 @@ pub(super) fn function_return_expr(
             RuntimeFunctionId::Function { id, return_type },
             ExprKind::Function(actual),
         ) if expected.as_ref() == actual.type_() && expected.as_ref() == return_type => {
-            function_value::function_returning_function_expr(name, *id, actual)
+            function_value::function_returning_function_expr(name, id.clone(), actual)
         }
         _ => Err(PlanError::InvalidTypedAst {
             reason: InvalidTypedAstReason::FunctionShape {

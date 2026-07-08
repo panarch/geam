@@ -573,11 +573,10 @@ mod tests {
     use crate::plan::{
         BoolExpr, BoolListLocalId, BoolLocalId, CallArg, Expr, FloatExpr, FloatFunctionId,
         FloatFunctionLocalId, FloatListLocalId, FloatLocalId, FunctionType, IntExpr, IntFunctionId,
-        IntListLocalId, IntLocalId, ListExpr, ListFunctionExpr, ListFunctionId,
-        ListFunctionLocalId, ListListLocalId, ListLocal, NilExpr, NilListLocalId, NilLocalId,
-        PanicExpr, PanicSite, ReturnExpr, Step, StringExpr, StringListLocalId, StringLocalId,
-        TupleExpr, TupleFunctionExpr, TupleFunctionId, TupleFunctionLocalId, TupleListLocalId,
-        TupleLocalId, ValueType,
+        IntListLocalId, IntLocalId, ListExpr, ListFunctionExpr, ListFunctionId, ListListLocalId,
+        ListLocal, NilExpr, NilListLocalId, NilLocalId, PanicExpr, PanicSite, ReturnExpr, Step,
+        StringExpr, StringListLocalId, StringLocalId, TupleExpr, TupleFunctionExpr,
+        TupleFunctionId, TupleFunctionLocalId, TupleListLocalId, TupleLocalId, ValueType,
     };
 
     #[test]
@@ -1155,18 +1154,23 @@ mod tests {
                 "local".into(),
             ))),
             Step::evaluate(Expr::list(ListExpr::call(
-                ListFunctionId(0),
+                ListFunctionId::from_item_type(0, crate::plan::ValueType::Int),
                 vec![CallArg::list(
                     ListLocal::int(IntListLocalId(0)),
                     ListExpr::local_get(ListLocal::int(IntListLocalId(1)), "call_arg".into()),
                 )],
-                list_type(),
             ))),
             Step::evaluate(Expr::list(ListExpr::function_call(
                 ListFunctionExpr::local_get(
-                    ListFunctionLocalId(0),
+                    crate::plan::ListFunctionLocal::from_item_type(
+                        0,
+                        crate::plan::FunctionType::new(
+                            Vec::new(),
+                            crate::plan::ValueType::List(Box::new(crate::plan::ValueType::Int)),
+                        ),
+                        crate::plan::ValueType::Int,
+                    ),
                     "callee".into(),
-                    list_function_type(),
                 ),
                 vec![CallArg::list(
                     ListLocal::int(IntListLocalId(1)),
@@ -1175,7 +1179,6 @@ mod tests {
                         "function_call_arg".into(),
                     ),
                 )],
-                list_type(),
             ))),
             Step::evaluate(Expr::list(ListExpr::tuple_index(
                 TupleExpr::value(
@@ -1234,7 +1237,7 @@ mod tests {
         assert_eq!(layout.strings(), 1);
         assert_eq!(layout.bools(), 1);
         assert_eq!(layout.int_lists(), 14);
-        assert_eq!(layout.list_functions(), 1);
+        assert_eq!(layout.list_functions().len(), 1);
     }
 
     fn tuple_type() -> Vec<ValueType> {
@@ -1259,13 +1262,6 @@ mod tests {
                 format!("panic_message_{index}").into(),
             )),
             PanicSite::unknown(),
-        )
-    }
-
-    fn list_function_type() -> FunctionType {
-        FunctionType::new(
-            vec![ValueType::List(Box::new(list_type()))],
-            ValueType::List(Box::new(list_type())),
         )
     }
 }

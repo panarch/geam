@@ -238,10 +238,10 @@ pub fn main() {
                 .evaluate(block_function(
                     vec![],
                     function_ref(
-                        RuntimeFunctionId::List {
-                            id: crate::plan::ListFunctionId(0),
-                            return_type: Box::new(ValueType::Int),
-                        },
+                        RuntimeFunctionId::List(crate::plan::ListFunctionId::from_item_type(
+                            0,
+                            crate::plan::ValueType::Int,
+                        )),
                         [LocalId::Int(crate::plan::IntLocalId(0))],
                     ),
                 )),

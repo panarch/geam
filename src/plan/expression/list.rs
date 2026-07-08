@@ -159,22 +159,16 @@ impl ListExpr {
         }
     }
 
-    pub(crate) fn call(
-        function: ListFunctionId,
-        args: Vec<CallArg>,
-        element_type: ValueType,
-    ) -> Self {
+    pub(crate) fn call(function: ListFunctionId, args: Vec<CallArg>) -> Self {
+        let element_type = function.item_type();
         Self {
             element_type: Box::new(element_type),
             kind: ListExprKind::Call { function, args },
         }
     }
 
-    pub(crate) fn function_call(
-        function: ListFunctionExpr,
-        args: Vec<CallArg>,
-        element_type: ValueType,
-    ) -> Self {
+    pub(crate) fn function_call(function: ListFunctionExpr, args: Vec<CallArg>) -> Self {
+        let element_type = function.return_item_type();
         Self {
             element_type: Box::new(element_type),
             kind: ListExprKind::FunctionCall {
@@ -460,14 +454,18 @@ mod tests {
             },
         );
         assert_eq!(
-            ListExpr::call(ListFunctionId(0), Vec::new(), element_type()).kind(),
+            ListExpr::call(
+                ListFunctionId::from_item_type(0, crate::plan::ValueType::Int),
+                Vec::new()
+            )
+            .kind(),
             &ListExprKind::Call {
-                function: ListFunctionId(0),
+                function: ListFunctionId::from_item_type(0, crate::plan::ValueType::Int),
                 args: Vec::new(),
             },
         );
         assert_eq!(
-            ListExpr::function_call(list_function_expr(), Vec::new(), element_type()).kind(),
+            ListExpr::function_call(list_function_expr(), Vec::new()).kind(),
             &ListExprKind::FunctionCall {
                 function: Box::new(list_function_expr()),
                 args: Vec::new(),
@@ -798,9 +796,8 @@ mod tests {
 
     fn list_function_expr() -> ListFunctionExpr {
         ListFunctionExpr::value(ListFunctionValue::new(
-            ListFunctionId(0),
+            ListFunctionId::from_item_type(0, crate::plan::ValueType::Int),
             vec![ParamLocal::int(crate::plan::IntLocalId(0))],
-            element_type(),
         ))
     }
 

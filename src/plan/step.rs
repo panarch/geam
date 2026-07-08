@@ -6,7 +6,7 @@ use super::expression::{
 use super::function::ParamLocal;
 use super::id::{
     BoolFunctionLocalId, BoolLocalId, FloatFunctionLocalId, FloatLocalId, FunctionFunctionLocalId,
-    IntFunctionLocalId, IntLocalId, ListFunctionLocalId, ListLocal, NilFunctionLocalId, NilLocalId,
+    IntFunctionLocalId, IntLocalId, ListFunctionLocal, ListLocal, NilFunctionLocalId, NilLocalId,
     StringFunctionLocalId, StringLocalId, TupleFunctionLocalId, TupleLocalId,
 };
 use super::source::{PanicSite, SourceSpan};
@@ -123,7 +123,7 @@ pub(crate) enum StepKind {
         value: TupleFunctionExpr,
     },
     LetListFunction {
-        local: ListFunctionLocalId,
+        local: ListFunctionLocal,
         name: EcoString,
         value: ListFunctionExpr,
     },
@@ -308,7 +308,7 @@ impl Step {
     }
 
     pub(crate) fn let_list_function(
-        local: ListFunctionLocalId,
+        local: ListFunctionLocal,
         name: EcoString,
         value: ListFunctionExpr,
     ) -> Self {

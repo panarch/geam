@@ -97,7 +97,7 @@ fn bind_arguments_into(
             }
             CallArgKind::ListFunction { local, value } => {
                 let value = eval_list_function_expr(plan, caller_frame, value)?;
-                frame.set_list_function(*local, value);
+                frame.set_list_function(local.clone(), value);
             }
             CallArgKind::FunctionFunction { local, value } => {
                 let value = eval_function_function_expr(plan, caller_frame, value)?;
@@ -158,9 +158,10 @@ pub(in crate::runtime) fn eval_capture_args(
             CaptureArgKind::TupleFunction { local, value } => {
                 CaptureValue::tuple_function(*local, eval_tuple_function_expr(plan, frame, value)?)
             }
-            CaptureArgKind::ListFunction { local, value } => {
-                CaptureValue::list_function(*local, eval_list_function_expr(plan, frame, value)?)
-            }
+            CaptureArgKind::ListFunction { local, value } => CaptureValue::list_function(
+                local.clone(),
+                eval_list_function_expr(plan, frame, value)?,
+            ),
             CaptureArgKind::FunctionFunction { local, value } => CaptureValue::function_function(
                 *local,
                 eval_function_function_expr(plan, frame, value)?,
@@ -202,7 +203,7 @@ fn bind_captures(frame: &mut Frame, captures: &[CaptureValue]) -> ExecutionResul
                 frame.set_tuple_function(*local, value.clone());
             }
             CaptureValueKind::ListFunction { local, value } => {
-                frame.set_list_function(*local, value.clone());
+                frame.set_list_function(local.clone(), value.clone());
             }
             CaptureValueKind::FunctionFunction { local, value } => {
                 frame.set_function_function(*local, value.clone());
@@ -223,11 +224,11 @@ mod tests {
         FunctionFunctionValue, FunctionId, FunctionPlan, FunctionReturnFamily, FunctionType,
         IntExpr, IntFunctionExpr, IntFunctionFunctionId, IntFunctionId, IntFunctionLocalId,
         IntFunctionValue, IntListLocalId, IntLocalId, ListExpr, ListFunctionExpr, ListFunctionId,
-        ListFunctionLocalId, ListFunctionValue, ListLocal, ListValue, NilExpr, NilFunctionExpr,
-        NilFunctionId, NilFunctionLocalId, NilFunctionValue, NilLocalId, ReturnBody, ReturnExpr,
-        StringExpr, StringFunctionExpr, StringFunctionId, StringFunctionLocalId,
-        StringFunctionValue, StringLocalId, TupleExpr, TupleFunctionExpr, TupleFunctionId,
-        TupleFunctionLocalId, TupleFunctionValue, TupleLocalId, Value, ValueType,
+        ListFunctionValue, ListLocal, ListValue, NilExpr, NilFunctionExpr, NilFunctionId,
+        NilFunctionLocalId, NilFunctionValue, NilLocalId, ReturnBody, ReturnExpr, StringExpr,
+        StringFunctionExpr, StringFunctionId, StringFunctionLocalId, StringFunctionValue,
+        StringLocalId, TupleExpr, TupleFunctionExpr, TupleFunctionId, TupleFunctionLocalId,
+        TupleFunctionValue, TupleLocalId, Value, ValueType,
     };
     use crate::runtime::ExecutionError;
     use crate::runtime::frame::Frame;
@@ -250,7 +251,17 @@ mod tests {
             CallArg::bool_function(BoolFunctionLocalId(0), failing_bool_function_expr()),
             CallArg::nil_function(NilFunctionLocalId(0), failing_nil_function_expr()),
             CallArg::tuple_function(TupleFunctionLocalId(0), failing_tuple_function_expr()),
-            CallArg::list_function(ListFunctionLocalId(0), failing_list_function_expr()),
+            CallArg::list_function(
+                crate::plan::ListFunctionLocal::from_item_type(
+                    0,
+                    crate::plan::FunctionType::new(
+                        Vec::new(),
+                        crate::plan::ValueType::List(Box::new(crate::plan::ValueType::Int)),
+                    ),
+                    crate::plan::ValueType::Int,
+                ),
+                failing_list_function_expr(),
+            ),
             CallArg::function_function(
                 FunctionFunctionLocalId(0),
                 failing_function_function_expr(),
@@ -286,7 +297,17 @@ mod tests {
                 CallArg::bool_function(BoolFunctionLocalId(0), bool_function_expr()),
                 CallArg::nil_function(NilFunctionLocalId(0), nil_function_expr()),
                 CallArg::tuple_function(TupleFunctionLocalId(0), tuple_function_expr()),
-                CallArg::list_function(ListFunctionLocalId(0), list_function_expr()),
+                CallArg::list_function(
+                    crate::plan::ListFunctionLocal::from_item_type(
+                        0,
+                        crate::plan::FunctionType::new(
+                            Vec::new(),
+                            crate::plan::ValueType::List(Box::new(crate::plan::ValueType::Int)),
+                        ),
+                        crate::plan::ValueType::Int,
+                    ),
+                    list_function_expr(),
+                ),
                 CallArg::function_function(FunctionFunctionLocalId(0), function_function_expr()),
             ],
             &mut Frame::default(),
@@ -335,8 +356,17 @@ mod tests {
             TupleFunctionId(0),
         );
         assert_eq!(
-            frame.get_list_function(ListFunctionLocalId(0)).runtime_id(),
-            ListFunctionId(0),
+            frame
+                .get_list_function(&crate::plan::ListFunctionLocal::from_item_type(
+                    0,
+                    crate::plan::FunctionType::new(
+                        Vec::new(),
+                        crate::plan::ValueType::List(Box::new(crate::plan::ValueType::Int))
+                    ),
+                    crate::plan::ValueType::Int,
+                ))
+                .runtime_id(),
+            ListFunctionId::from_item_type(0, crate::plan::ValueType::Int),
         );
         assert_eq!(
             frame
@@ -452,7 +482,17 @@ mod tests {
             CaptureArg::bool_function(BoolFunctionLocalId(0), failing_bool_function_expr()),
             CaptureArg::nil_function(NilFunctionLocalId(0), failing_nil_function_expr()),
             CaptureArg::tuple_function(TupleFunctionLocalId(0), failing_tuple_function_expr()),
-            CaptureArg::list_function(ListFunctionLocalId(0), failing_list_function_expr()),
+            CaptureArg::list_function(
+                crate::plan::ListFunctionLocal::from_item_type(
+                    0,
+                    crate::plan::FunctionType::new(
+                        Vec::new(),
+                        crate::plan::ValueType::List(Box::new(crate::plan::ValueType::Int)),
+                    ),
+                    crate::plan::ValueType::Int,
+                ),
+                failing_list_function_expr(),
+            ),
             CaptureArg::function_function(
                 FunctionFunctionLocalId(0),
                 failing_function_function_expr(),
@@ -488,7 +528,17 @@ mod tests {
                 CaptureArg::bool_function(BoolFunctionLocalId(0), bool_function_expr()),
                 CaptureArg::nil_function(NilFunctionLocalId(0), nil_function_expr()),
                 CaptureArg::tuple_function(TupleFunctionLocalId(0), tuple_function_expr()),
-                CaptureArg::list_function(ListFunctionLocalId(0), list_function_expr()),
+                CaptureArg::list_function(
+                    crate::plan::ListFunctionLocal::from_item_type(
+                        0,
+                        crate::plan::FunctionType::new(
+                            Vec::new(),
+                            crate::plan::ValueType::List(Box::new(crate::plan::ValueType::Int)),
+                        ),
+                        crate::plan::ValueType::Int,
+                    ),
+                    list_function_expr(),
+                ),
                 CaptureArg::function_function(FunctionFunctionLocalId(0), function_function_expr()),
             ],
         )
@@ -513,7 +563,17 @@ mod tests {
                 CaptureValue::bool_function(BoolFunctionLocalId(0), bool_function_value()),
                 CaptureValue::nil_function(NilFunctionLocalId(0), nil_function_value()),
                 CaptureValue::tuple_function(TupleFunctionLocalId(0), tuple_function_value()),
-                CaptureValue::list_function(ListFunctionLocalId(0), list_function_value()),
+                CaptureValue::list_function(
+                    crate::plan::ListFunctionLocal::from_item_type(
+                        0,
+                        crate::plan::FunctionType::new(
+                            Vec::new(),
+                            crate::plan::ValueType::List(Box::new(crate::plan::ValueType::Int))
+                        ),
+                        crate::plan::ValueType::Int,
+                    ),
+                    list_function_value(),
+                ),
                 CaptureValue::function_function(
                     FunctionFunctionLocalId(0),
                     function_function_value(),
@@ -547,7 +607,17 @@ mod tests {
                 CaptureValue::bool_function(BoolFunctionLocalId(0), bool_function_value()),
                 CaptureValue::nil_function(NilFunctionLocalId(0), nil_function_value()),
                 CaptureValue::tuple_function(TupleFunctionLocalId(0), tuple_function_value()),
-                CaptureValue::list_function(ListFunctionLocalId(0), list_function_value()),
+                CaptureValue::list_function(
+                    crate::plan::ListFunctionLocal::from_item_type(
+                        0,
+                        crate::plan::FunctionType::new(
+                            Vec::new(),
+                            crate::plan::ValueType::List(Box::new(crate::plan::ValueType::Int)),
+                        ),
+                        crate::plan::ValueType::Int,
+                    ),
+                    list_function_value(),
+                ),
                 CaptureValue::function_function(
                     FunctionFunctionLocalId(0),
                     function_function_value(),
@@ -597,8 +667,17 @@ mod tests {
             TupleFunctionId(0),
         );
         assert_eq!(
-            frame.get_list_function(ListFunctionLocalId(0)).runtime_id(),
-            ListFunctionId(0),
+            frame
+                .get_list_function(&crate::plan::ListFunctionLocal::from_item_type(
+                    0,
+                    crate::plan::FunctionType::new(
+                        Vec::new(),
+                        crate::plan::ValueType::List(Box::new(crate::plan::ValueType::Int))
+                    ),
+                    crate::plan::ValueType::Int,
+                ))
+                .runtime_id(),
+            ListFunctionId::from_item_type(0, crate::plan::ValueType::Int),
         );
         assert_eq!(
             frame
@@ -664,11 +743,14 @@ mod tests {
     }
 
     fn failing_list_expr() -> ListExpr {
-        ListExpr::function_call(failing_list_function_expr(), Vec::new(), ValueType::Int)
+        ListExpr::function_call(failing_list_function_expr(), Vec::new())
     }
 
     fn mismatched_list_expr() -> ListExpr {
-        ListExpr::call(ListFunctionId(0), Vec::new(), ValueType::Int)
+        ListExpr::call(
+            ListFunctionId::from_item_type(0, crate::plan::ValueType::Int),
+            Vec::new(),
+        )
     }
 
     fn tuple_expr() -> TupleExpr {
@@ -775,6 +857,7 @@ mod tests {
             failing_function_function_expr(),
             Vec::new(),
             FunctionType::new(Vec::new(), ValueType::List(Box::new(ValueType::Int))),
+            ValueType::Int,
         )
     }
 
@@ -791,7 +874,10 @@ mod tests {
     }
 
     fn list_function_value() -> ListFunctionValue {
-        ListFunctionValue::new(ListFunctionId(0), Vec::new(), ValueType::Int)
+        ListFunctionValue::new(
+            ListFunctionId::from_item_type(0, crate::plan::ValueType::Int),
+            Vec::new(),
+        )
     }
 
     fn function_function_expr() -> FunctionFunctionExpr {
@@ -821,7 +907,14 @@ mod tests {
         layout.include_bool_function(BoolFunctionLocalId(0));
         layout.include_nil_function(NilFunctionLocalId(0));
         layout.include_tuple_function(TupleFunctionLocalId(0));
-        layout.include_list_function(ListFunctionLocalId(0));
+        layout.include_list_function(crate::plan::ListFunctionLocal::from_item_type(
+            0,
+            crate::plan::FunctionType::new(
+                Vec::new(),
+                crate::plan::ValueType::List(Box::new(crate::plan::ValueType::Int)),
+            ),
+            crate::plan::ValueType::Int,
+        ));
         layout.include_function_function(FunctionFunctionLocalId(0));
         layout
     }
@@ -856,8 +949,7 @@ mod tests {
                 Vec::new(),
                 Vec::new(),
                 ReturnExpr::list_body(
-                    ListFunctionId(0),
-                    ValueType::String,
+                    ListFunctionId::from_item_type(0, ValueType::Int),
                     ReturnBody::expr(ListExpr::value(
                         vec![Expr::string(StringExpr::value("wrong".into()))],
                         ValueType::String,

@@ -1192,9 +1192,8 @@ mod tests {
 
     fn list_function_expr() -> ListFunctionExpr {
         ListFunctionExpr::value(ListFunctionValue::new(
-            ListFunctionId(0),
+            ListFunctionId::from_item_type(0, crate::plan::ValueType::Int),
             vec![ParamLocal::list(ListLocal::int(IntListLocalId(0)))],
-            ValueType::Int,
         ))
     }
 

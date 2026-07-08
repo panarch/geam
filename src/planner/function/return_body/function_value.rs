@@ -64,14 +64,9 @@ pub(super) fn function_returning_function_expr(
                 tuple_function_return(actual),
             ))
         }
-        (FunctionFunctionId::List(runtime_id), FunctionExprKind::List(actual)) => {
-            let type_ = actual.type_().clone();
-            Ok(ReturnExpr::list_function_body(
-                runtime_id,
-                type_,
-                list_function_return(actual),
-            ))
-        }
+        (FunctionFunctionId::List(runtime_id), FunctionExprKind::List(actual)) => Ok(
+            ReturnExpr::list_function_body(runtime_id, list_function_return(actual)),
+        ),
         (FunctionFunctionId::Function(runtime_id), FunctionExprKind::Function(actual)) => {
             let type_ = actual.type_().clone();
             Ok(ReturnExpr::function_function_body(
@@ -434,7 +429,7 @@ fn tuple_function_return(expression: TupleFunctionExpr) -> TupleFunctionReturn {
 fn list_function_return(expression: ListFunctionExpr) -> ListFunctionReturn {
     match expression.kind() {
         ListFunctionExprKind::Call { function, args, .. } => {
-            ReturnBody::tail_call(*function, args.clone())
+            ReturnBody::tail_call(function.clone(), args.clone())
         }
         ListFunctionExprKind::BoolCase {
             subject,
@@ -687,19 +682,31 @@ mod tests {
         assert_eq!(
             function_returning_function_expr(
                 &"main".into(),
-                FunctionFunctionId::List(ListFunctionFunctionId(0)),
+                FunctionFunctionId::List(ListFunctionFunctionId::from_item_type(
+                    0,
+                    crate::plan::FunctionType::new(
+                        Vec::new(),
+                        crate::plan::ValueType::List(Box::new(crate::plan::ValueType::Int))
+                    ),
+                    crate::plan::ValueType::Int
+                )),
                 FunctionExpr::list(ListFunctionExpr::value(ListFunctionValue::new(
-                    ListFunctionId(0),
-                    Vec::new(),
-                    ValueType::Float,
+                    ListFunctionId::from_item_type(0, crate::plan::ValueType::Int),
+                    Vec::new()
                 ))),
             ),
             Ok(ReturnExpr::list_function(
-                ListFunctionFunctionId(0),
+                ListFunctionFunctionId::from_item_type(
+                    0,
+                    crate::plan::FunctionType::new(
+                        Vec::new(),
+                        crate::plan::ValueType::List(Box::new(crate::plan::ValueType::Int))
+                    ),
+                    crate::plan::ValueType::Int
+                ),
                 ListFunctionExpr::value(ListFunctionValue::new(
-                    ListFunctionId(0),
-                    Vec::new(),
-                    ValueType::Float,
+                    ListFunctionId::from_item_type(0, crate::plan::ValueType::Int),
+                    Vec::new()
                 )),
             )),
         );
@@ -826,12 +833,19 @@ mod tests {
         assert_eq!(
             function_returning_function_expr(
                 &"list_function".into(),
-                FunctionFunctionId::List(ListFunctionFunctionId(0)),
+                FunctionFunctionId::List(ListFunctionFunctionId::from_item_type(
+                    0,
+                    list_function_type(),
+                    crate::plan::ValueType::Int,
+                )),
                 FunctionExpr::list(list_function_float_case()),
             ),
             Ok(ReturnExpr::list_function_body(
-                ListFunctionFunctionId(0),
-                list_function_type(),
+                ListFunctionFunctionId::from_item_type(
+                    0,
+                    list_function_type(),
+                    crate::plan::ValueType::Int
+                ),
                 ReturnBody::float_case(
                     FloatExpr::value(1.0),
                     vec![(1.0, ReturnBody::expr(list_function_value()))],
@@ -926,11 +940,27 @@ mod tests {
     fn list_function_return_preserves_tail_and_case_return_body_shapes() {
         assert_eq!(
             list_function_return(ListFunctionExpr::call(
-                ListFunctionFunctionId(0),
-                Vec::new(),
-                list_function_type(),
+                ListFunctionFunctionId::from_item_type(
+                    0,
+                    crate::plan::FunctionType::new(
+                        Vec::new(),
+                        crate::plan::ValueType::List(Box::new(crate::plan::ValueType::Int))
+                    ),
+                    crate::plan::ValueType::Int
+                ),
+                Vec::new()
             )),
-            ReturnBody::tail_call(ListFunctionFunctionId(0), Vec::new()),
+            ReturnBody::tail_call(
+                ListFunctionFunctionId::from_item_type(
+                    0,
+                    crate::plan::FunctionType::new(
+                        Vec::new(),
+                        crate::plan::ValueType::List(Box::new(crate::plan::ValueType::Int))
+                    ),
+                    crate::plan::ValueType::Int
+                ),
+                Vec::new()
+            ),
         );
         assert_eq!(
             list_function_return(ListFunctionExpr::bool_case(
@@ -1090,7 +1120,7 @@ mod tests {
     fn list_function_type() -> FunctionType {
         FunctionType::new(
             vec![ValueType::Float],
-            ValueType::List(Box::new(ValueType::Float)),
+            ValueType::List(Box::new(ValueType::Int)),
         )
     }
 
@@ -1139,9 +1169,8 @@ mod tests {
 
     fn list_function_value() -> ListFunctionExpr {
         ListFunctionExpr::value(ListFunctionValue::new(
-            ListFunctionId(0),
+            ListFunctionId::from_item_type(0, crate::plan::ValueType::Int),
             vec![ParamLocal::float(crate::plan::FloatLocalId(0))],
-            ValueType::Float,
         ))
     }
 

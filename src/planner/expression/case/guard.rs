@@ -322,9 +322,9 @@ fn function_local_get(binding: FunctionLocalBinding, name: EcoString) -> Expr {
         FunctionLocalBinding::Tuple { local, type_ } => Expr::function(FunctionExpr::tuple(
             TupleFunctionExpr::local_get(local, name, type_),
         )),
-        FunctionLocalBinding::List { local, type_ } => Expr::function(FunctionExpr::list(
-            ListFunctionExpr::local_get(local, name, type_),
-        )),
+        FunctionLocalBinding::List(local) => {
+            Expr::function(FunctionExpr::list(ListFunctionExpr::local_get(local, name)))
+        }
         FunctionLocalBinding::Function { local, type_ } => Expr::function(FunctionExpr::function(
             FunctionFunctionExpr::local_get(local, name, type_),
         )),
@@ -379,10 +379,10 @@ mod tests {
         BoolExpr, BoolFunctionExpr, BoolFunctionLocalId, BoolLocalId, Expr, FloatExpr,
         FloatFunctionExpr, FloatFunctionLocalId, FunctionExpr, FunctionFunctionExpr,
         FunctionFunctionLocalId, FunctionType, IntExpr, IntFunctionExpr, IntFunctionLocalId,
-        IntLocalId, ListExpr, ListFunctionExpr, ListFunctionLocalId, ListLocal, LocalId, NilExpr,
-        NilFunctionExpr, NilFunctionLocalId, NilLocalId, StringExpr, StringFunctionExpr,
-        StringFunctionLocalId, StringListLocalId, TupleExpr, TupleFunctionExpr,
-        TupleFunctionLocalId, TupleLocalId, ValueType,
+        IntLocalId, ListExpr, ListFunctionExpr, ListLocal, LocalId, NilExpr, NilFunctionExpr,
+        NilFunctionLocalId, NilLocalId, StringExpr, StringFunctionExpr, StringFunctionLocalId,
+        StringListLocalId, TupleExpr, TupleFunctionExpr, TupleFunctionLocalId, TupleLocalId,
+        ValueType,
     };
     use crate::planner::context::{AnonymousFunctions, FunctionLocalBinding, PlanContext};
     use crate::planner::support::dummy_span;
@@ -1184,16 +1184,23 @@ mod tests {
         );
         assert_eq!(
             function_local_get(
-                FunctionLocalBinding::List {
-                    local: ListFunctionLocalId(0),
-                    type_: list_type.clone(),
-                },
+                FunctionLocalBinding::List(crate::plan::ListFunctionLocal::from_item_type(
+                    0,
+                    list_type,
+                    ValueType::Int,
+                )),
                 "f".into(),
             ),
             Expr::function(FunctionExpr::list(ListFunctionExpr::local_get(
-                ListFunctionLocalId(0),
-                "f".into(),
-                list_type,
+                crate::plan::ListFunctionLocal::from_item_type(
+                    0,
+                    crate::plan::FunctionType::new(
+                        Vec::new(),
+                        crate::plan::ValueType::List(Box::new(crate::plan::ValueType::Int))
+                    ),
+                    crate::plan::ValueType::Int,
+                ),
+                "f".into()
             ))),
         );
         assert_eq!(

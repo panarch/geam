@@ -1184,10 +1184,10 @@ pub fn main() {
             super::function_case_branches(
                 vec![(BigInt::from(1), list_function_ref_expr(0))],
                 FunctionExpr::from(function_ref(
-                    RuntimeFunctionId::List {
-                        id: ListFunctionId(1),
-                        return_type: Box::new(ValueType::Int),
-                    },
+                    RuntimeFunctionId::List(ListFunctionId::from_item_type(
+                        1,
+                        crate::plan::ValueType::Int
+                    )),
                     [LocalId::Int(IntLocalId(0))],
                 )),
             ),
@@ -1201,10 +1201,10 @@ pub fn main() {
                         .expect("list function expression"),
                 )],
                 fallback: FunctionExpr::from(function_ref(
-                    RuntimeFunctionId::List {
-                        id: ListFunctionId(1),
-                        return_type: Box::new(ValueType::Int),
-                    },
+                    RuntimeFunctionId::List(ListFunctionId::from_item_type(
+                        1,
+                        crate::plan::ValueType::Int
+                    )),
                     [LocalId::Int(IntLocalId(0))],
                 ))
                 .into_list()
@@ -1681,10 +1681,7 @@ fn add_one(value: Int) {
 
     fn list_function_ref_expr(id: usize) -> crate::plan::Expr {
         function_ref(
-            RuntimeFunctionId::List {
-                id: ListFunctionId(id),
-                return_type: Box::new(ValueType::Int),
-            },
+            RuntimeFunctionId::List(ListFunctionId::from_item_type(id, ValueType::Int)),
             [LocalId::Int(IntLocalId(0))],
         )
         .into()

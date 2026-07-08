@@ -187,18 +187,14 @@ fn closure_expr(
                 return_type.clone(),
             ))
         }
-        RuntimeFunctionId::List { id, return_type } => {
-            FunctionExpr::list(crate::plan::ListFunctionExpr::closure(
-                *id,
-                params,
-                captures,
-                type_,
-                *return_type.clone(),
-            ))
-        }
+        RuntimeFunctionId::List(id) => FunctionExpr::list(crate::plan::ListFunctionExpr::closure(
+            id.clone(),
+            params,
+            captures,
+        )),
         RuntimeFunctionId::Function { id, return_type } => {
             FunctionExpr::function(crate::plan::FunctionFunctionExpr::closure(
-                *id,
+                id.clone(),
                 params,
                 captures,
                 type_,

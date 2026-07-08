@@ -152,10 +152,10 @@ mod tests {
 
         assert_eq!(
             list_value_return.return_().runtime_id(),
-            RuntimeFunctionId::List {
-                id: ListFunctionId(0),
-                return_type: Box::new(ValueType::Int),
-            },
+            RuntimeFunctionId::List(ListFunctionId::from_item_type(
+                0,
+                crate::plan::ValueType::Int
+            )),
         );
         assert_eq!(
             int_return.return_().runtime_id(),
@@ -195,7 +195,14 @@ mod tests {
         assert_eq!(
             list_return.return_().runtime_id(),
             RuntimeFunctionId::Function {
-                id: FunctionFunctionId::List(crate::plan::ListFunctionFunctionId(0)),
+                id: FunctionFunctionId::List(crate::plan::ListFunctionFunctionId::from_item_type(
+                    0,
+                    crate::plan::FunctionType::new(
+                        Vec::new(),
+                        crate::plan::ValueType::List(Box::new(crate::plan::ValueType::Int))
+                    ),
+                    crate::plan::ValueType::Int
+                )),
                 return_type: FunctionType::new(
                     Vec::new(),
                     ValueType::List(Box::new(ValueType::Int)),
@@ -260,10 +267,10 @@ mod tests {
         let list_return = function(
             "list",
             function_ref(
-                RuntimeFunctionId::List {
-                    id: ListFunctionId(0),
-                    return_type: Box::new(ValueType::Int),
-                },
+                RuntimeFunctionId::List(ListFunctionId::from_item_type(
+                    0,
+                    crate::plan::ValueType::Int,
+                )),
                 Vec::<ParamLocal>::new(),
             ),
         )
@@ -318,7 +325,14 @@ mod tests {
         assert_eq!(
             list_return.return_().runtime_id(),
             RuntimeFunctionId::Function {
-                id: FunctionFunctionId::List(crate::plan::ListFunctionFunctionId(0)),
+                id: FunctionFunctionId::List(crate::plan::ListFunctionFunctionId::from_item_type(
+                    0,
+                    crate::plan::FunctionType::new(
+                        Vec::new(),
+                        crate::plan::ValueType::List(Box::new(crate::plan::ValueType::Int))
+                    ),
+                    crate::plan::ValueType::Int
+                )),
                 return_type: FunctionType::new(
                     Vec::new(),
                     ValueType::List(Box::new(ValueType::Int)),

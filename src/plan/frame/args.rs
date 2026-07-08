@@ -76,9 +76,9 @@ mod tests {
         BoolExpr, BoolFunctionExpr, BoolFunctionLocalId, CallArg, CaptureArg, Expr, FloatExpr,
         FloatFunctionExpr, FloatFunctionLocalId, FloatLocalId, FunctionExpr, FunctionFunctionExpr,
         FunctionFunctionId, FunctionFunctionLocalId, IntExpr, IntFunctionFunctionId, IntFunctionId,
-        IntFunctionLocalId, IntListLocalId, ListExpr, ListFunctionExpr, ListFunctionLocalId,
-        ListLocal, ReturnExpr, Step, StringExpr, StringFunctionExpr, StringFunctionLocalId,
-        StringLocalId, TupleExpr, TupleFunctionExpr, TupleFunctionLocalId, TupleLocalId, ValueType,
+        IntFunctionLocalId, IntListLocalId, ListExpr, ListFunctionExpr, ListLocal, ReturnExpr,
+        Step, StringExpr, StringFunctionExpr, StringFunctionLocalId, StringLocalId, TupleExpr,
+        TupleFunctionExpr, TupleFunctionLocalId, TupleLocalId, ValueType,
     };
 
     #[test]
@@ -149,11 +149,26 @@ mod tests {
                         ListExpr::local_get(ListLocal::int(IntListLocalId(4)), "list_arg".into()),
                     ),
                     CallArg::list_function(
-                        ListFunctionLocalId(1),
+                        crate::plan::ListFunctionLocal::from_item_type(
+                            1,
+                            crate::plan::FunctionType::new(
+                                Vec::new(),
+                                crate::plan::ValueType::List(Box::new(crate::plan::ValueType::Int)),
+                            ),
+                            crate::plan::ValueType::Int,
+                        ),
                         ListFunctionExpr::local_get(
-                            ListFunctionLocalId(4),
+                            crate::plan::ListFunctionLocal::from_item_type(
+                                4,
+                                crate::plan::FunctionType::new(
+                                    Vec::new(),
+                                    crate::plan::ValueType::List(Box::new(
+                                        crate::plan::ValueType::Int,
+                                    )),
+                                ),
+                                crate::plan::ValueType::Int,
+                            ),
                             "list_function_arg".into(),
-                            list_function_type(),
                         ),
                     ),
                     CallArg::function_function(
@@ -265,11 +280,28 @@ mod tests {
                             ),
                         ),
                         CaptureArg::list_function(
-                            ListFunctionLocalId(2),
+                            crate::plan::ListFunctionLocal::from_item_type(
+                                2,
+                                crate::plan::FunctionType::new(
+                                    Vec::new(),
+                                    crate::plan::ValueType::List(Box::new(
+                                        crate::plan::ValueType::Int,
+                                    )),
+                                ),
+                                crate::plan::ValueType::Int,
+                            ),
                             ListFunctionExpr::local_get(
-                                ListFunctionLocalId(5),
+                                crate::plan::ListFunctionLocal::from_item_type(
+                                    5,
+                                    crate::plan::FunctionType::new(
+                                        Vec::new(),
+                                        crate::plan::ValueType::List(Box::new(
+                                            crate::plan::ValueType::Int,
+                                        )),
+                                    ),
+                                    crate::plan::ValueType::Int,
+                                ),
                                 "list_function_capture".into(),
-                                list_function_type(),
                             ),
                         ),
                         CaptureArg::function_function(
@@ -303,7 +335,27 @@ mod tests {
         assert_eq!(layout.tuples(), 3);
         assert_eq!(layout.tuple_functions(), 3);
         assert_eq!(layout.int_lists(), 6);
-        assert_eq!(layout.list_functions(), 6);
+        assert_eq!(
+            layout.list_functions(),
+            &[
+                crate::plan::ListFunctionLocal::from_item_type(
+                    4,
+                    crate::plan::FunctionType::new(
+                        Vec::new(),
+                        ValueType::List(Box::new(ValueType::Int)),
+                    ),
+                    ValueType::Int,
+                ),
+                crate::plan::ListFunctionLocal::from_item_type(
+                    5,
+                    crate::plan::FunctionType::new(
+                        Vec::new(),
+                        ValueType::List(Box::new(ValueType::Int)),
+                    ),
+                    ValueType::Int,
+                ),
+            ],
+        );
     }
 
     fn tuple_type() -> Vec<ValueType> {
@@ -314,17 +366,6 @@ mod tests {
         crate::plan::FunctionType::new(
             vec![ValueType::Tuple(tuple_type())],
             ValueType::Tuple(tuple_type()),
-        )
-    }
-
-    fn list_type() -> ValueType {
-        ValueType::Int
-    }
-
-    fn list_function_type() -> crate::plan::FunctionType {
-        crate::plan::FunctionType::new(
-            vec![ValueType::List(Box::new(list_type()))],
-            ValueType::List(Box::new(list_type())),
         )
     }
 }

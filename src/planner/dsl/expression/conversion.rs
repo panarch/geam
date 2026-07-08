@@ -409,7 +409,10 @@ mod tests {
                 ValueType::Int
             )),
             Expr::function(FunctionExpr::list(ListFunctionExpr::value(
-                ListFunctionValue::new(ListFunctionId(0), Vec::new(), ValueType::Int),
+                ListFunctionValue::new(
+                    ListFunctionId::from_item_type(0, crate::plan::ValueType::Int),
+                    Vec::new()
+                ),
             ))),
         );
         assert_eq!(
@@ -444,9 +447,8 @@ mod tests {
                 ValueType::Int
             )),
             FunctionExpr::list(ListFunctionExpr::value(ListFunctionValue::new(
-                ListFunctionId(0),
-                Vec::new(),
-                ValueType::Int,
+                ListFunctionId::from_item_type(0, crate::plan::ValueType::Int),
+                Vec::new()
             ))),
         );
         assert_eq!(
@@ -477,9 +479,8 @@ mod tests {
                 ValueType::Int,
             ))),
             FunctionExpr::list(ListFunctionExpr::value(ListFunctionValue::new(
-                ListFunctionId(0),
-                Vec::new(),
-                ValueType::Int,
+                ListFunctionId::from_item_type(0, crate::plan::ValueType::Int),
+                Vec::new()
             ))),
         );
         assert_eq!(

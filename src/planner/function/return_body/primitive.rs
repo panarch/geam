@@ -336,7 +336,9 @@ pub(super) fn tuple_return(expression: TupleExpr) -> TupleReturn {
 
 pub(super) fn list_return(expression: ListExpr) -> ListReturn {
     match expression.kind() {
-        ListExprKind::Call { function, args } => ReturnBody::tail_call(*function, args.clone()),
+        ListExprKind::Call { function, args } => {
+            ReturnBody::tail_call(function.clone(), args.clone())
+        }
         ListExprKind::BoolCase {
             subject,
             true_,

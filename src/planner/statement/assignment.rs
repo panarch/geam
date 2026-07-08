@@ -434,13 +434,14 @@ fn plan_variable_runtime_step_and_return(
                 )
             }
             FunctionExprKind::List(value) => {
-                let local = context.define_list_function_local(name.clone(), value.type_().clone());
-                let type_ = value.type_().clone();
+                let local = context.define_list_function_local(
+                    name.clone(),
+                    value.type_().clone(),
+                    value.return_item_type(),
+                );
                 (
-                    Step::let_list_function(local, name.clone(), value),
-                    Expr::function(FunctionExpr::list(ListFunctionExpr::local_get(
-                        local, name, type_,
-                    ))),
+                    Step::let_list_function(local.clone(), name.clone(), value),
+                    Expr::function(FunctionExpr::list(ListFunctionExpr::local_get(local, name))),
                 )
             }
             FunctionExprKind::Function(value) => {

@@ -124,6 +124,7 @@ impl From<ListFunction> for FunctionReturn {
     fn from(value: ListFunction) -> Self {
         let expression = ListFunctionExpr::from(value);
         Self::ListFunction {
+            item_type: expression.return_item_type(),
             type_: expression.type_().clone(),
             body: ReturnBody::expr(expression),
         }
@@ -168,6 +169,7 @@ impl From<Function> for FunctionReturn {
                 body: ReturnBody::expr(expression),
             },
             FunctionExprKind::List(expression) => Self::ListFunction {
+                item_type: expression.return_item_type(),
                 type_: expression.type_().clone(),
                 body: ReturnBody::expr(expression),
             },
@@ -319,6 +321,7 @@ mod tests {
                 ValueType::Int
             )),
             FunctionReturn::ListFunction {
+                item_type: ValueType::Int,
                 type_: FunctionType::new(Vec::new(), ValueType::List(Box::new(ValueType::Int))),
                 body: ReturnBody::expr(
                     list_function_ref(0, Vec::<ParamLocal>::new(), ValueType::Int).into(),
@@ -420,13 +423,14 @@ mod tests {
         );
         assert_eq!(
             FunctionReturn::from(function_ref(
-                RuntimeFunctionId::List {
-                    id: ListFunctionId(0),
-                    return_type: Box::new(ValueType::Int),
-                },
+                RuntimeFunctionId::List(ListFunctionId::from_item_type(
+                    0,
+                    crate::plan::ValueType::Int
+                )),
                 Vec::<ParamLocal>::new(),
             )),
             FunctionReturn::ListFunction {
+                item_type: ValueType::Int,
                 type_: FunctionType::new(Vec::new(), ValueType::List(Box::new(ValueType::Int))),
                 body: ReturnBody::expr(
                     list_function_ref(0, Vec::<ParamLocal>::new(), ValueType::Int).into(),

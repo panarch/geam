@@ -187,13 +187,14 @@ fn bind_function_case_subject(
             )
         }
         FunctionExprKind::List(subject) => {
-            let local = context.define_internal_list_function_local();
-            let name = internal_list_function_case_subject_name(local);
             let type_ = subject.type_().clone();
+            let local =
+                context.define_internal_list_function_local(type_, subject.return_item_type());
+            let name = internal_list_function_case_subject_name(&local);
             (
-                Step::let_list_function(local, name.clone(), subject),
+                Step::let_list_function(local.clone(), name.clone(), subject),
                 Expr::function(FunctionExpr::list(
-                    crate::plan::ListFunctionExpr::local_get(local, name, type_),
+                    crate::plan::ListFunctionExpr::local_get(local, name),
                 )),
             )
         }
@@ -241,8 +242,8 @@ fn internal_tuple_function_case_subject_name(
     format!("<case:tuple_function:{}>", local.0).into()
 }
 
-fn internal_list_function_case_subject_name(local: crate::plan::ListFunctionLocalId) -> EcoString {
-    format!("<case:list_function:{}>", local.0).into()
+fn internal_list_function_case_subject_name(local: &crate::plan::ListFunctionLocal) -> EcoString {
+    format!("<case:list_function:{}>", local.index()).into()
 }
 
 fn internal_function_function_case_subject_name(local: FunctionFunctionLocalId) -> EcoString {
@@ -499,15 +500,28 @@ pub fn main() {
             ),
             (
                 Step::let_list_function(
-                    crate::plan::ListFunctionLocalId(0),
+                    crate::plan::ListFunctionLocal::from_item_type(
+                        0,
+                        crate::plan::FunctionType::new(
+                            Vec::new(),
+                            crate::plan::ValueType::List(Box::new(crate::plan::ValueType::Int))
+                        ),
+                        crate::plan::ValueType::Int,
+                    ),
                     "<case:list_function:0>".into(),
                     list_function_ref(0, Vec::<LocalId>::new(), ValueType::Int).into(),
                 ),
                 Expr::function(FunctionExpr::list(
                     crate::plan::ListFunctionExpr::local_get(
-                        crate::plan::ListFunctionLocalId(0),
-                        "<case:list_function:0>".into(),
-                        FunctionType::new(Vec::new(), ValueType::List(Box::new(ValueType::Int))),
+                        crate::plan::ListFunctionLocal::from_item_type(
+                            0,
+                            crate::plan::FunctionType::new(
+                                Vec::new(),
+                                crate::plan::ValueType::List(Box::new(crate::plan::ValueType::Int))
+                            ),
+                            crate::plan::ValueType::Int,
+                        ),
+                        "<case:list_function:0>".into()
                     ),
                 )),
             ),

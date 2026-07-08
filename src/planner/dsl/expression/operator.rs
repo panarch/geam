@@ -232,6 +232,7 @@ impl Tuple {
         params: impl IntoIterator<Item = impl IntoValueType>,
         return_type: impl IntoValueType,
     ) -> ListFunction {
+        let item_type = return_type.into_value_type();
         ListFunction(ListFunctionExpr::tuple_index(
             self.into(),
             index,
@@ -240,8 +241,9 @@ impl Tuple {
                     .into_iter()
                     .map(IntoValueType::into_value_type)
                     .collect(),
-                ValueType::List(Box::new(return_type.into_value_type())),
+                ValueType::List(Box::new(item_type.clone())),
             ),
+            item_type,
         ))
     }
 
@@ -600,6 +602,7 @@ mod tests {
                     vec![ValueType::Int],
                     ValueType::List(Box::new(ValueType::Int)),
                 ),
+                ValueType::Int,
             ),
         );
 
