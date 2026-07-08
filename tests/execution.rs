@@ -420,15 +420,15 @@ mod rejection {
     mod functions {
         rejection_cases!("functions";
             generic_function,
-            unsupported_argument_type,
-            unsupported_function_argument_type,
-            unsupported_return_type,
-            unsupported_tuple_return_type,
-            unsupported_list_return_type,
+            bit_array_argument,
+            function_bit_array_argument,
+            bit_array_return,
+            tuple_bit_array_return,
+            list_bit_array_return,
             unsupported_body_before_main,
             unsupported_body_after_main,
-            anonymous_unsupported_argument_type,
-            anonymous_unsupported_return_type,
+            anonymous_bit_array_argument,
+            anonymous_bit_array_return,
         );
     }
 
@@ -437,7 +437,7 @@ mod rejection {
             echo,
             bit_array,
             result_constructor,
-            unsupported_list_element_type,
+            list_bit_array_element,
         );
     }
 
@@ -453,10 +453,10 @@ mod rejection {
         rejection_cases!("case_patterns";
             tuple_inner_list_pattern,
             multiple_subject_list_pattern,
-            multiple_subject_unsupported_subject_type,
+            multiple_subject_bit_array_subject,
             list_pattern,
             list_pattern_alias,
-            unsupported_subject_type,
+            bit_array_subject,
         );
     }
 

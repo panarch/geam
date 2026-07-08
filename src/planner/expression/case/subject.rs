@@ -701,7 +701,7 @@ pub fn main() {
     }
 
     #[test]
-    fn reject_profile_multi_subject_unsupported_subject_type() {
+    fn reject_profile_multi_subject_bit_array_subject() {
         assert_eq!(
             expect_plan_error(
                 r#"

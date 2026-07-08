@@ -121,7 +121,7 @@ mod tests {
     };
 
     #[test]
-    fn reject_profile_unsupported_case_subject_type() {
+    fn reject_profile_bit_array_case_subject() {
         assert_eq!(
             expect_plan_error(r#"pub fn main() { case <<1>> { _ -> 1 } }"#),
             PlanError::UnsupportedCase {
