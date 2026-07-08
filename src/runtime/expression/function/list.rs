@@ -438,8 +438,7 @@ mod tests {
         let plan = plan();
         let mut frame = Frame::default();
         let int_function_type = FunctionType::new(Vec::new(), ValueType::Int);
-        let list_function_type =
-            FunctionType::new(Vec::new(), ValueType::List(Box::new(element_type())));
+        let list_function_type = list_function_expr().type_().clone();
         let tuple = TupleExpr::value(
             vec![Expr::function(FunctionExpr::int(
                 crate::plan::IntFunctionExpr::value(IntFunctionValue::new(
@@ -500,8 +499,7 @@ mod tests {
         let plan = plan();
         let mut frame = Frame::default();
         let int_function_type = FunctionType::new(Vec::new(), ValueType::Int);
-        let list_function_type =
-            FunctionType::new(Vec::new(), ValueType::List(Box::new(element_type())));
+        let list_function_type = list_function_expr().type_().clone();
         let list = ListExpr::value(
             vec![Expr::function(FunctionExpr::list(list_function_expr()))],
             ValueType::Function(Box::new(list_function_type.clone())),
@@ -537,7 +535,7 @@ mod tests {
         );
 
         let mut layout = FrameLayout::default();
-        layout.include_list(ListLocalId(1));
+        layout.include_list(ListLocalId(1), ValueType::Int);
         let mut frame = Frame::new(layout);
         let int_function_type = FunctionType::new(Vec::new(), ValueType::Int);
         frame.set_list(
@@ -609,10 +607,7 @@ mod tests {
                 &ListFunctionExpr::list_index(list, 0, list_function_type),
             ),
             Err(ExecutionError::list_item_type_mismatch(
-                ValueType::Function(Box::new(FunctionType::new(
-                    Vec::new(),
-                    ValueType::List(Box::new(element_type())),
-                ))),
+                ValueType::Function(Box::new(list_function_expr().type_().clone())),
                 ValueType::Int,
             )),
         );

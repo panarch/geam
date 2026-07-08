@@ -493,7 +493,7 @@ mod tests {
         );
 
         let mut layout = FrameLayout::default();
-        layout.include_list(ListLocalId(0));
+        layout.include_list(ListLocalId(0), ValueType::Int);
         let mut frame = Frame::new(layout);
         let mismatch_type = FunctionType::new(Vec::new(), ValueType::String);
         frame.set_list(

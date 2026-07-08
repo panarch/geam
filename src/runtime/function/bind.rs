@@ -751,7 +751,7 @@ mod tests {
         layout.include_bool(BoolLocalId(0));
         layout.include_nil(NilLocalId(0));
         layout.include_tuple(TupleLocalId(0));
-        layout.include_list(ListLocalId(0));
+        layout.include_list(ListLocalId(0), ValueType::Int);
         layout.include_int_function(IntFunctionLocalId(0));
         layout.include_string_function(StringFunctionLocalId(0));
         layout.include_float_function(FloatFunctionLocalId(0));

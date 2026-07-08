@@ -252,16 +252,33 @@ impl ListValue {
                 values.extend(tail.iter().copied())
             }
             (ListValueKind::Nil(len), ListValueKind::Nil(tail)) => *len += tail,
-            (ListValueKind::Tuple { values, .. }, ListValueKind::Tuple { values: tail, .. }) => {
-                values.extend(tail.clone())
-            }
-            (ListValueKind::List { values, .. }, ListValueKind::List { values: tail, .. }) => {
-                values.extend(tail.clone())
-            }
             (
-                ListValueKind::Function { values, .. },
-                ListValueKind::Function { values: tail, .. },
-            ) => values.extend(tail.clone()),
+                ListValueKind::Tuple {
+                    item_type, values, ..
+                },
+                ListValueKind::Tuple {
+                    item_type: tail_type,
+                    values: tail,
+                },
+            ) if item_type == tail_type => values.extend(tail.clone()),
+            (
+                ListValueKind::List {
+                    item_type, values, ..
+                },
+                ListValueKind::List {
+                    item_type: tail_type,
+                    values: tail,
+                },
+            ) if item_type == tail_type => values.extend(tail.clone()),
+            (
+                ListValueKind::Function {
+                    item_type, values, ..
+                },
+                ListValueKind::Function {
+                    item_type: tail_type,
+                    values: tail,
+                },
+            ) if item_type == tail_type => values.extend(tail.clone()),
             _ => return Err(ListItemTypeMismatch { expected, actual }),
         }
 
@@ -485,6 +502,52 @@ mod tests {
             Err(ListItemTypeMismatch {
                 expected: ValueType::Int,
                 actual: ValueType::String,
+            }),
+        );
+    }
+
+    #[test]
+    fn append_rejects_nested_item_metadata_mismatch() {
+        let mut tuples = ListValue::tuple(vec![ValueType::Int], vec![vec![Value::Int(1.into())]]);
+        assert_eq!(
+            tuples.append(&ListValue::tuple(
+                vec![ValueType::String],
+                vec![vec![Value::String("one".into())]],
+            )),
+            Err(ListItemTypeMismatch {
+                expected: ValueType::Tuple(vec![ValueType::Int]),
+                actual: ValueType::Tuple(vec![ValueType::String]),
+            }),
+        );
+
+        let mut lists = ListValue::list(ValueType::Int, vec![ListValue::int(vec![1.into()])]);
+        assert_eq!(
+            lists.append(&ListValue::list(
+                ValueType::String,
+                vec![ListValue::string(vec!["one".into()])],
+            )),
+            Err(ListItemTypeMismatch {
+                expected: ValueType::List(Box::new(ValueType::Int)),
+                actual: ValueType::List(Box::new(ValueType::String)),
+            }),
+        );
+
+        let int_function_type = FunctionType::new(Vec::new(), ValueType::Int);
+        let string_function_type = FunctionType::new(Vec::new(), ValueType::String);
+        let int_function = FunctionValue::new(RuntimeFunctionId::Int(IntFunctionId(0)), Vec::new());
+        let string_function = FunctionValue::new(
+            RuntimeFunctionId::String(crate::plan::StringFunctionId(0)),
+            Vec::new(),
+        );
+        let mut functions = ListValue::function(int_function_type.clone(), vec![int_function]);
+        assert_eq!(
+            functions.append(&ListValue::function(
+                string_function_type.clone(),
+                vec![string_function],
+            )),
+            Err(ListItemTypeMismatch {
+                expected: ValueType::Function(Box::new(int_function_type)),
+                actual: ValueType::Function(Box::new(string_function_type)),
             }),
         );
     }

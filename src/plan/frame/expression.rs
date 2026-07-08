@@ -460,7 +460,9 @@ impl FrameLayout {
                 self.include_list_elements(elements);
                 self.include_list_expr(tail);
             }
-            ListExprKind::LocalGet { local, .. } => self.include_list(*local),
+            ListExprKind::LocalGet { local, .. } => {
+                self.include_list(*local, expression.element_type().clone());
+            }
             ListExprKind::Call { args, .. } => self.include_call_args(args),
             ListExprKind::FunctionCall { function, args } => {
                 self.include_list_function_expr(function);
@@ -634,7 +636,21 @@ mod tests {
 
         let layout = FrameLayout::from_function_parts(&[], &steps, &return_);
 
-        assert_eq!(layout.lists(), 10);
+        assert_eq!(
+            layout.lists(),
+            &[
+                ValueType::Int,
+                ValueType::String,
+                ValueType::Float,
+                ValueType::Bool,
+                ValueType::Nil,
+                ValueType::Tuple(tuple_type()),
+                ValueType::List(Box::new(ValueType::Int)),
+                ValueType::Int,
+                ValueType::Int,
+                ValueType::Int,
+            ],
+        );
     }
 
     #[test]
@@ -727,7 +743,7 @@ mod tests {
         assert_eq!(layout.bools(), 0);
         assert_eq!(layout.nils(), 0);
         assert_eq!(layout.tuples(), 0);
-        assert_eq!(layout.lists(), 0);
+        assert_eq!(layout.lists().len(), 0);
     }
 
     #[test]
@@ -1111,7 +1127,7 @@ mod tests {
         assert_eq!(layout.bools(), 15);
         assert_eq!(layout.nils(), 11);
         assert_eq!(layout.tuples(), 15);
-        assert_eq!(layout.lists(), 1);
+        assert_eq!(layout.lists().len(), 1);
         assert_eq!(layout.float_functions(), 1);
         assert_eq!(layout.tuple_functions(), 1);
     }
@@ -1216,7 +1232,7 @@ mod tests {
         assert_eq!(layout.floats(), 1);
         assert_eq!(layout.strings(), 1);
         assert_eq!(layout.bools(), 1);
-        assert_eq!(layout.lists(), 14);
+        assert_eq!(layout.lists().len(), 14);
         assert_eq!(layout.list_functions(), 1);
     }
 

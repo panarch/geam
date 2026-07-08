@@ -36,7 +36,7 @@ impl FrameLayout {
             }
             StepKind::LetList { local, value, .. } => {
                 self.include_list_expr(value);
-                self.include_list(*local);
+                self.include_list(*local, value.element_type().clone());
             }
             StepKind::LetIntFunction { local, value, .. } => {
                 self.include_int_function_expr(value);
@@ -72,11 +72,12 @@ impl FrameLayout {
             }
             StepKind::AssertList {
                 local,
+                element_type,
                 pattern,
                 message,
                 ..
             } => {
-                self.include_list(*local);
+                self.include_list(*local, element_type.clone());
                 self.include_assert_pattern(pattern);
                 if let Some(message) = message {
                     self.include_string_expr(message);
@@ -99,7 +100,7 @@ impl FrameLayout {
             self.include_assert_pattern(element);
         }
         if let Some(ListAssertTail::Bind(binding)) = pattern.tail() {
-            self.include_list(binding.local());
+            self.include_list(binding.local(), pattern.element_type().clone());
         }
     }
 
@@ -273,6 +274,7 @@ mod tests {
         let list_element_type = ValueType::Tuple(vec![ValueType::Int, ValueType::String]);
         let steps = [crate::plan::Step::assert_list_at(
             ListLocalId(0),
+            list_element_type.clone(),
             AssertPattern::list(ListAssertPattern::new(
                 list_element_type.clone(),
                 vec![AssertPattern::Tuple(vec![
@@ -297,7 +299,10 @@ mod tests {
 
         assert_eq!(layout.ints(), 1);
         assert_eq!(layout.strings(), 2);
-        assert_eq!(layout.lists(), 2);
+        assert_eq!(
+            layout.lists(),
+            &[list_element_type.clone(), list_element_type],
+        );
     }
 
     #[test]

@@ -299,7 +299,7 @@ mod tests {
         assert_eq!(layout.floats(), 21);
         assert_eq!(layout.tuples(), 3);
         assert_eq!(layout.tuple_functions(), 3);
-        assert_eq!(layout.lists(), 6);
+        assert_eq!(layout.lists().len(), 6);
         assert_eq!(layout.list_functions(), 6);
     }
 

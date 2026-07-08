@@ -372,7 +372,7 @@ impl ListElements {
                 .map(|value| match value {
                     Expr {
                         kind: super::ExprKind::Tuple(value),
-                    } => Ok(value),
+                    } if value.type_() == item_type.as_slice() => Ok(value),
                     value => Err(ListElementTypeMismatch {
                         expected: ValueType::Tuple(item_type.clone()),
                         actual: value.value_type(),
@@ -385,7 +385,7 @@ impl ListElements {
                 .map(|value| match value {
                     Expr {
                         kind: super::ExprKind::List(value),
-                    } => Ok(value),
+                    } if value.element_type() == item_type.as_ref() => Ok(value),
                     value => Err(ListElementTypeMismatch {
                         expected: ValueType::List(item_type.clone()),
                         actual: value.value_type(),
@@ -398,7 +398,7 @@ impl ListElements {
                 .map(|value| match value {
                     Expr {
                         kind: super::ExprKind::Function(value),
-                    } => Ok(value),
+                    } if value.type_() == item_type.as_ref() => Ok(value),
                     value => Err(ListElementTypeMismatch {
                         expected: ValueType::Function(item_type.clone()),
                         actual: value.value_type(),
@@ -684,6 +684,46 @@ mod tests {
             Err(ListElementTypeMismatch {
                 expected: ValueType::Function(Box::new(list_function_expr().type_().clone())),
                 actual: ValueType::Int,
+            }),
+        );
+    }
+
+    #[test]
+    fn list_elements_reject_nested_item_metadata_mismatch() {
+        assert_eq!(
+            ListElements::from_exprs(
+                ValueType::Tuple(vec![ValueType::String]),
+                vec![Expr::tuple(tuple_expr())],
+            ),
+            Err(ListElementTypeMismatch {
+                expected: ValueType::Tuple(vec![ValueType::String]),
+                actual: ValueType::Tuple(vec![ValueType::List(Box::new(element_type()))]),
+            }),
+        );
+        assert_eq!(
+            ListElements::from_exprs(
+                ValueType::List(Box::new(ValueType::String)),
+                vec![Expr::list(list_value())],
+            ),
+            Err(ListElementTypeMismatch {
+                expected: ValueType::List(Box::new(ValueType::String)),
+                actual: ValueType::List(Box::new(element_type())),
+            }),
+        );
+        assert_eq!(
+            ListElements::from_exprs(
+                ValueType::Function(Box::new(FunctionType::new(
+                    Vec::new(),
+                    ValueType::List(Box::new(element_type())),
+                ))),
+                vec![Expr::function(FunctionExpr::list(list_function_expr()))],
+            ),
+            Err(ListElementTypeMismatch {
+                expected: ValueType::Function(Box::new(FunctionType::new(
+                    Vec::new(),
+                    ValueType::List(Box::new(element_type())),
+                ))),
+                actual: ValueType::Function(Box::new(list_function_expr().type_().clone())),
             }),
         );
     }

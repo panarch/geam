@@ -731,13 +731,17 @@ pub fn main() {
             vec![Expr::function(FunctionExpr::function(
                 function_function_value(),
             ))],
-            ValueType::Function(Box::new(returned_int_function_type())),
+            ValueType::Function(Box::new(function_function_value().type_().clone())),
         );
         assert_eq!(
             eval_function_function_expr(
                 &plan,
                 &mut frame,
-                &FunctionFunctionExpr::list_index(list, 0, returned_int_function_type()),
+                &FunctionFunctionExpr::list_index(
+                    list,
+                    0,
+                    function_function_value().type_().clone()
+                ),
             )
             .expect("expression should evaluate")
             .runtime_id(),
@@ -756,18 +760,21 @@ pub fn main() {
             eval_function_function_expr(
                 &plan,
                 &mut frame,
-                &FunctionFunctionExpr::list_index(list, 0, returned_int_function_type()),
+                &FunctionFunctionExpr::list_index(
+                    list,
+                    0,
+                    function_function_value().type_().clone()
+                ),
             ),
             Err(ExecutionError::list_item_type_mismatch(
-                ValueType::Function(Box::new(returned_int_function_type())),
+                ValueType::Function(Box::new(function_function_value().type_().clone())),
                 ValueType::Function(Box::new(int_function_type)),
             )),
         );
 
         let mut layout = FrameLayout::default();
-        layout.include_list(ListLocalId(0));
+        layout.include_list(ListLocalId(0), ValueType::Int);
         let mut frame = Frame::new(layout);
-        let int_function_type = FunctionType::new(Vec::new(), ValueType::Int);
         frame.set_list(
             ListLocalId(0),
             ListValue::function(
@@ -784,10 +791,46 @@ pub fn main() {
             eval_function_function_expr(
                 &plan,
                 &mut frame,
-                &FunctionFunctionExpr::list_index(list, 0, returned_int_function_type()),
+                &FunctionFunctionExpr::list_index(
+                    list,
+                    0,
+                    function_function_value().type_().clone()
+                ),
             ),
             Err(ExecutionError::list_item_type_mismatch(
+                ValueType::Function(Box::new(function_function_value().type_().clone())),
                 ValueType::Function(Box::new(returned_int_function_type())),
+            )),
+        );
+
+        let expected_function_type = function_function_value().type_().clone();
+        let int_function_type = FunctionType::new(Vec::new(), ValueType::Int);
+        let mut layout = FrameLayout::default();
+        layout.include_list(
+            ListLocalId(0),
+            ValueType::Function(Box::new(expected_function_type.clone())),
+        );
+        let mut frame = Frame::new(layout);
+        frame.set_list(
+            ListLocalId(0),
+            ListValue::function(
+                expected_function_type.clone(),
+                vec![IntFunctionValue::new(IntFunctionId(0), Vec::new()).into()],
+            ),
+        );
+        let list = ListExpr::local_get(
+            ListLocalId(0),
+            "malformed_functions".into(),
+            ValueType::Function(Box::new(expected_function_type.clone())),
+        );
+        assert_eq!(
+            eval_function_function_expr(
+                &plan,
+                &mut frame,
+                &FunctionFunctionExpr::list_index(list, 0, expected_function_type.clone()),
+            ),
+            Err(ExecutionError::list_item_type_mismatch(
+                ValueType::Function(Box::new(expected_function_type)),
                 ValueType::Function(Box::new(int_function_type)),
             )),
         );
@@ -797,16 +840,20 @@ pub fn main() {
             vec![Expr::function(FunctionExpr::function(
                 function_function_value(),
             ))],
-            ValueType::Function(Box::new(returned_int_function_type())),
+            ValueType::Function(Box::new(function_function_value().type_().clone())),
         );
         assert_eq!(
             eval_function_function_expr(
                 &plan,
                 &mut frame,
-                &FunctionFunctionExpr::list_index(list, 1, returned_int_function_type()),
+                &FunctionFunctionExpr::list_index(
+                    list,
+                    1,
+                    function_function_value().type_().clone()
+                ),
             ),
             Err(ExecutionError::list_index_out_of_bounds(
-                ValueType::Function(Box::new(returned_int_function_type())),
+                ValueType::Function(Box::new(function_function_value().type_().clone())),
                 1,
                 1,
             )),

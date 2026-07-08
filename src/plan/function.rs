@@ -268,7 +268,7 @@ impl FunctionPlan {
     }
 
     pub(crate) fn frame_layout(&self) -> FrameLayout {
-        self.frame_layout
+        self.frame_layout.clone()
     }
 }
 
@@ -732,7 +732,7 @@ impl<Return> RuntimeFunction<Return> {
     }
 
     pub(crate) fn frame_layout(&self) -> FrameLayout {
-        self.frame_layout
+        self.frame_layout.clone()
     }
 
     pub(crate) fn steps(&self) -> &[Step] {

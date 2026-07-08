@@ -49,10 +49,10 @@ pub(super) fn plan_assert_assignment(
     let site = context.panic_site(location);
     let pattern_span = pattern.location().into();
     let pattern = plan_assert_pattern(pattern, context)?;
-    let list_local = ListExpr::local_get(local, name.clone(), element_type);
+    let list_local = ListExpr::local_get(local, name.clone(), element_type.clone());
     let steps = vec![
         Step::let_list(local, name, value),
-        Step::assert_list_at(local, pattern, message, site, pattern_span),
+        Step::assert_list_at(local, element_type, pattern, message, site, pattern_span),
     ];
 
     Ok(PlannedAssignment {
@@ -562,6 +562,7 @@ pub fn main() {
                 ))
                 .step(Step::assert_list_at(
                     ListLocalId(0),
+                    ValueType::Int,
                     AssertPattern::list(ListAssertPattern::new(
                         ValueType::Int,
                         vec![AssertPattern::Bind(AssertBinding::new(
@@ -597,6 +598,7 @@ pub fn main() {
                 .step(let_list_step(0, "<list:0>", list([int(1)], ValueType::Int)))
                 .step(Step::assert_list_at(
                     ListLocalId(0),
+                    ValueType::Int,
                     AssertPattern::list(ListAssertPattern::new(
                         ValueType::Int,
                         vec![AssertPattern::Bind(AssertBinding::new(

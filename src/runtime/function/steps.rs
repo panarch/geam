@@ -88,6 +88,7 @@ pub(in crate::runtime) fn execute_steps(
             }
             StepKind::AssertList {
                 local,
+                element_type: _,
                 pattern,
                 message,
                 site,
@@ -498,6 +499,7 @@ mod tests {
             &plan,
             &[Step::assert_list_at(
                 ListLocalId(0),
+                ValueType::Int,
                 list_pattern(),
                 None,
                 PanicSite::unknown(),
@@ -638,6 +640,7 @@ mod tests {
             &plan,
             &[Step::assert_list_at(
                 ListLocalId(0),
+                ValueType::Int,
                 list_pattern(),
                 Some(failing_string_expr()),
                 PanicSite::unknown(),
@@ -660,6 +663,7 @@ mod tests {
             &plan,
             &[Step::assert_list_at(
                 ListLocalId(0),
+                ValueType::Int,
                 list_pattern(),
                 Some(failing_string_expr()),
                 PanicSite::unknown(),
@@ -680,6 +684,7 @@ mod tests {
             &plan,
             &[Step::assert_list_at(
                 ListLocalId(0),
+                ValueType::Int,
                 list_pattern(),
                 None,
                 PanicSite::unknown(),
@@ -705,7 +710,7 @@ mod tests {
     fn execute_steps_assert_list_does_not_commit_partial_nested_bindings() {
         let plan = plan();
         let mut layout = FrameLayout::default();
-        layout.include_list(ListLocalId(0));
+        layout.include_list(ListLocalId(0), ValueType::Int);
         layout.include_int(IntLocalId(0));
         layout.include_int(IntLocalId(1));
         let mut frame = Frame::new(layout);
@@ -724,6 +729,7 @@ mod tests {
             &plan,
             &[Step::assert_list_at(
                 ListLocalId(0),
+                ValueType::List(Box::new(ValueType::Int)),
                 AssertPattern::list(ListAssertPattern::new(
                     ValueType::List(Box::new(ValueType::Int)),
                     vec![
@@ -777,7 +783,7 @@ mod tests {
     fn execute_steps_assert_list_accepts_empty_pattern_without_bindings() {
         let plan = plan();
         let mut layout = FrameLayout::default();
-        layout.include_list(ListLocalId(0));
+        layout.include_list(ListLocalId(0), ValueType::Int);
         let mut frame = Frame::new(layout);
         frame.set_list(ListLocalId(0), ListValue::empty(ValueType::Int));
 
@@ -785,6 +791,7 @@ mod tests {
             &plan,
             &[Step::assert_list_at(
                 ListLocalId(0),
+                ValueType::Int,
                 AssertPattern::list(ListAssertPattern::new(ValueType::Int, Vec::new(), None)),
                 None,
                 PanicSite::unknown(),
@@ -1322,7 +1329,7 @@ mod tests {
         layout.include_bool(BoolLocalId(0));
         layout.include_nil(NilLocalId(0));
         layout.include_tuple(TupleLocalId(0));
-        layout.include_list(ListLocalId(0));
+        layout.include_list(ListLocalId(0), ValueType::Int);
         layout.include_int_function(IntFunctionLocalId(0));
         layout.include_string_function(StringFunctionLocalId(0));
         layout.include_float_function(FloatFunctionLocalId(0));
@@ -1336,9 +1343,9 @@ mod tests {
 
     fn assert_list_layout() -> FrameLayout {
         let mut layout = FrameLayout::default();
-        layout.include_list(ListLocalId(0));
+        layout.include_list(ListLocalId(0), ValueType::Int);
         layout.include_int(IntLocalId(0));
-        layout.include_list(ListLocalId(1));
+        layout.include_list(ListLocalId(1), ValueType::Int);
         layout
     }
 

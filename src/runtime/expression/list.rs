@@ -966,7 +966,7 @@ mod tests {
 
     fn frame() -> Frame {
         let mut layout = FrameLayout::default();
-        layout.include_list(ListLocalId(0));
+        layout.include_list(ListLocalId(0), ValueType::Int);
         Frame::new(layout)
     }
 

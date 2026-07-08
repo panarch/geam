@@ -624,7 +624,7 @@ pub fn main() {
         let plan = plan();
         let mut frame = Frame::default();
         let int_function_type = FunctionType::new(Vec::new(), ValueType::Int);
-        let tuple_function_type = FunctionType::new(Vec::new(), ValueType::Tuple(tuple_type()));
+        let tuple_function_type = tuple_function_expr().type_().clone();
         let tuple = TupleExpr::value(
             vec![Expr::function(FunctionExpr::int(IntFunctionExpr::value(
                 IntFunctionValue::new(IntFunctionId(0), Vec::new()),
@@ -682,7 +682,7 @@ pub fn main() {
         let plan = plan();
         let mut frame = Frame::default();
         let int_function_type = FunctionType::new(Vec::new(), ValueType::Int);
-        let tuple_function_type = FunctionType::new(Vec::new(), ValueType::Tuple(tuple_type()));
+        let tuple_function_type = tuple_function_expr().type_().clone();
         let list = ListExpr::value(
             vec![Expr::function(FunctionExpr::tuple(tuple_function_expr()))],
             ValueType::Function(Box::new(tuple_function_type.clone())),
@@ -718,7 +718,7 @@ pub fn main() {
         );
 
         let mut layout = FrameLayout::default();
-        layout.include_list(ListLocalId(0));
+        layout.include_list(ListLocalId(0), ValueType::Int);
         let mut frame = Frame::new(layout);
         let int_function_type = FunctionType::new(Vec::new(), ValueType::Int);
         frame.set_list(
@@ -790,10 +790,7 @@ pub fn main() {
                 &TupleFunctionExpr::list_index(list, 0, tuple_function_type),
             ),
             Err(ExecutionError::list_item_type_mismatch(
-                ValueType::Function(Box::new(FunctionType::new(
-                    Vec::new(),
-                    ValueType::Tuple(tuple_type()),
-                ))),
+                ValueType::Function(Box::new(tuple_function_expr().type_().clone())),
                 ValueType::Int,
             )),
         );

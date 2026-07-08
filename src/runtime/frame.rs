@@ -34,7 +34,12 @@ impl Frame {
             strings: vec![EcoString::default(); layout.strings()],
             bools: vec![false; layout.bools()],
             tuples: vec![Vec::new(); layout.tuples()],
-            lists: vec![ListValue::empty(crate::plan::ValueType::Nil); layout.lists()],
+            lists: layout
+                .lists()
+                .iter()
+                .cloned()
+                .map(ListValue::empty)
+                .collect(),
             int_functions: HashMap::with_capacity(layout.int_functions()),
             float_functions: HashMap::with_capacity(layout.float_functions()),
             string_functions: HashMap::with_capacity(layout.string_functions()),
@@ -206,10 +211,10 @@ mod tests {
     use crate::plan::{
         BoolFunctionId, BoolFunctionLocalId, BoolFunctionValue, BoolLocalId, FloatFunctionId,
         FloatFunctionLocalId, FloatFunctionValue, FloatLocalId, FrameLayout, IntFunctionId,
-        IntFunctionLocalId, IntFunctionValue, IntLocalId, NilFunctionId, NilFunctionLocalId,
-        NilFunctionValue, NilLocalId, ParamLocal, StringFunctionId, StringFunctionLocalId,
-        StringFunctionValue, StringLocalId, TupleFunctionId, TupleFunctionLocalId,
-        TupleFunctionValue, TupleLocalId, Value, ValueType,
+        IntFunctionLocalId, IntFunctionValue, IntLocalId, ListLocalId, ListValue, NilFunctionId,
+        NilFunctionLocalId, NilFunctionValue, NilLocalId, ParamLocal, StringFunctionId,
+        StringFunctionLocalId, StringFunctionValue, StringLocalId, TupleFunctionId,
+        TupleFunctionLocalId, TupleFunctionValue, TupleLocalId, Value, ValueType,
     };
     use num_bigint::BigInt;
 
@@ -295,6 +300,24 @@ mod tests {
         assert_eq!(
             frame.get_tuple_function(TupleFunctionLocalId(0)),
             other_tuple_function_value(),
+        );
+    }
+
+    #[test]
+    fn frame_initializes_list_slots_from_layout_item_types() {
+        let mut layout = FrameLayout::default();
+        layout.include_list(ListLocalId(0), ValueType::Int);
+        layout.include_list(ListLocalId(1), ValueType::Tuple(vec![ValueType::String]));
+
+        let frame = Frame::new(layout);
+
+        assert_eq!(
+            frame.get_list(ListLocalId(0)),
+            ListValue::empty(ValueType::Int)
+        );
+        assert_eq!(
+            frame.get_list(ListLocalId(1)),
+            ListValue::empty(ValueType::Tuple(vec![ValueType::String])),
         );
     }
 

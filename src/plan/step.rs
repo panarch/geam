@@ -134,6 +134,7 @@ pub(crate) enum StepKind {
     },
     AssertList {
         local: ListLocalId,
+        element_type: ValueType,
         pattern: AssertPattern,
         message: Option<StringExpr>,
         site: PanicSite,
@@ -185,6 +186,10 @@ impl ListAssertPattern {
 
     pub(crate) fn elements(&self) -> &[AssertPattern] {
         &self.elements
+    }
+
+    pub(crate) fn element_type(&self) -> &ValueType {
+        &self.element_type
     }
 
     pub(crate) fn tail(&self) -> Option<&ListAssertTail> {
@@ -349,6 +354,7 @@ impl Step {
 
     pub(crate) fn assert_list_at(
         local: ListLocalId,
+        element_type: ValueType,
         pattern: AssertPattern,
         message: Option<StringExpr>,
         site: PanicSite,
@@ -357,6 +363,7 @@ impl Step {
         Self {
             kind: StepKind::AssertList {
                 local,
+                element_type,
                 pattern,
                 message,
                 site,
@@ -418,6 +425,7 @@ mod tests {
         assert_eq!(
             Step::assert_list_at(
                 ListLocalId(0),
+                ValueType::Int,
                 AssertPattern::list(ListAssertPattern::new(
                     ValueType::Int,
                     vec![AssertPattern::Discard],
@@ -430,6 +438,7 @@ mod tests {
             .kind(),
             &StepKind::AssertList {
                 local: ListLocalId(0),
+                element_type: ValueType::Int,
                 pattern: AssertPattern::list(ListAssertPattern::new(
                     ValueType::Int,
                     vec![AssertPattern::Discard],
