@@ -1,26 +1,26 @@
 use super::super::super::plan_float_expr;
 use super::super::invalid_case_shape;
-use super::{case_return_type, single_case_pattern, validate_clause_shape};
+use super::{CaseClause, OrderedCaseClauseInput, case_return_type};
 use crate::plan::{BoolExpr, Expr, ExprKind, FloatCaseBranches, FloatExpr, ValueType};
 use crate::planner::context::PlanContext;
 use crate::planner::error::{InvalidCaseShapeReason, PlanError};
 use ecow::EcoString;
-use gleam_core::ast::{Pattern, TypedClause, TypedExpr};
+use gleam_core::ast::{Pattern, TypedExpr};
 use gleam_core::type_::Type;
 use std::sync::Arc;
 
 pub(super) fn plan(
     type_: Arc<Type>,
     subject: TypedExpr,
-    clauses: Vec<TypedClause>,
+    clauses: Vec<CaseClause>,
     context: &mut PlanContext<'_>,
 ) -> Result<Expr, PlanError> {
     let subject = plan_float_expr(subject, context)?;
     let return_type = case_return_type(type_.as_ref())?;
-    for clause in &clauses {
-        validate_clause_shape(clause)?;
-    }
-    if clauses.iter().any(|clause| clause.guard.is_some()) {
+    if clauses
+        .iter()
+        .any(|clause| clause.guard.is_some() || clause.has_alternative_patterns())
+    {
         let (subject_step, subject) = super::bind_float_case_subject(subject, context);
         let case = plan_guarded_float_case(type_.as_ref(), return_type, subject, clauses, context)?;
         return Ok(super::case_subject_block(subject_step, case));
@@ -35,8 +35,7 @@ pub(super) fn plan(
     let mut literal_clauses = Vec::new();
     let mut fallback = None;
     for clause in clauses {
-        let pattern = single_case_pattern(clause.pattern)?;
-        let pattern = plan_float_case_pattern(pattern)?;
+        let pattern = plan_float_case_pattern(clause.pattern)?;
         let bindings = super::branch_bindings(pattern.bound_names(), Expr::float(subject.clone()));
         let branch =
             super::plan_case_branch(type_.as_ref(), &return_type, clause.then, bindings, context)?;
@@ -73,34 +72,37 @@ fn plan_guarded_float_case(
     case_type: &Type,
     return_type: ValueType,
     subject: FloatExpr,
-    clauses: Vec<TypedClause>,
+    clauses: Vec<CaseClause>,
     context: &mut PlanContext<'_>,
 ) -> Result<Expr, PlanError> {
-    let mut ordered_clauses = Vec::with_capacity(clauses.len());
+    let mut ordered_clauses = Vec::new();
     for clause in clauses {
-        let pattern = single_case_pattern(clause.pattern)?;
-        let pattern = plan_float_case_pattern(pattern)?;
-        let bindings = super::branch_bindings(pattern.bound_names(), Expr::float(subject.clone()));
-        let is_total = matches!(pattern, FloatCasePattern::Any { .. }) && clause.guard.is_none();
-        let match_condition = match pattern {
-            FloatCasePattern::Literal { value, .. } => BoolExpr::equal(
-                Expr::float(subject.clone()),
-                Expr::float(FloatExpr::value(value)),
-            ),
-            FloatCasePattern::Any { .. } => BoolExpr::value(true),
-        };
-        ordered_clauses.push(super::plan_ordered_case_clause(
-            super::OrderedCaseClauseInput {
-                case_type,
-                return_type: &return_type,
-                then: clause.then,
-                branch_bindings: bindings,
-                guard: clause.guard,
-                match_condition,
-                is_total,
-            },
-            context,
-        )?);
+        for pattern in clause.patterns() {
+            let pattern = plan_float_case_pattern(pattern)?;
+            let bindings =
+                super::branch_bindings(pattern.bound_names(), Expr::float(subject.clone()));
+            let is_total =
+                matches!(pattern, FloatCasePattern::Any { .. }) && clause.guard.is_none();
+            let match_condition = match pattern {
+                FloatCasePattern::Literal { value, .. } => BoolExpr::equal(
+                    Expr::float(subject.clone()),
+                    Expr::float(FloatExpr::value(value)),
+                ),
+                FloatCasePattern::Any { .. } => BoolExpr::value(true),
+            };
+            ordered_clauses.push(super::plan_ordered_case_clause(
+                OrderedCaseClauseInput {
+                    case_type,
+                    return_type: &return_type,
+                    then: clause.then.clone(),
+                    branch_bindings: bindings,
+                    guard: clause.guard.clone(),
+                    match_condition,
+                    is_total,
+                },
+                context,
+            )?);
+        }
     }
 
     super::ordered_case_expr(ordered_clauses)
@@ -172,8 +174,8 @@ fn plan_float_case_pattern(pattern: Pattern<Arc<Type>>) -> Result<FloatCasePatte
     }
 }
 
-fn clause_has_float_bound_name(clause: &TypedClause) -> bool {
-    clause.pattern.iter().any(float_pattern_has_bound_name)
+fn clause_has_float_bound_name(clause: &CaseClause) -> bool {
+    float_pattern_has_bound_name(&clause.pattern)
 }
 
 fn float_pattern_has_bound_name(pattern: &Pattern<Arc<Type>>) -> bool {
@@ -550,10 +552,9 @@ mod tests {
     use crate::planner::support::{dummy_span, expect_plan_error};
     use crate::planner::{
         InvalidCaseShapeReason, InvalidExpressionType, InvalidTypedAstReason, PlanError,
-        UnsupportedCaseReason, UnsupportedExpressionKind,
+        UnsupportedExpressionKind,
     };
     use gleam_core::ast::{ClauseGuard, Constant, Pattern, TypedModule};
-    use gleam_core::parse::LiteralFloatValue;
     use gleam_core::type_::{self, error::VariableOrigin};
     use num_bigint::BigInt;
 
@@ -1145,22 +1146,6 @@ pub fn main() {
 
     #[test]
     fn reject_margin_float_case_pattern_shapes() {
-        let mut alternative_pattern = compile_float_case_module();
-        let (_, _, clauses) = super::super::super::expect_case_statement_mut(
-            &mut alternative_pattern.definitions.functions[0].body[0],
-        );
-        clauses[0].alternative_patterns.push(vec![Pattern::Float {
-            location: dummy_span(),
-            value: "2.0".into(),
-            float_value: LiteralFloatValue::ONE,
-        }]);
-        assert_eq!(
-            plan_module(alternative_pattern),
-            Err(PlanError::UnsupportedCase {
-                reason: UnsupportedCaseReason::AlternativePatterns,
-            }),
-        );
-
         let mut variable_type_mismatch = compile_float_case_module();
         let (_, _, clauses) = super::super::super::expect_case_statement_mut(
             &mut variable_type_mismatch.definitions.functions[0].body[0],

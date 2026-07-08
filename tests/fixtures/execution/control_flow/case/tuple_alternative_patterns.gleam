@@ -5,3 +5,5 @@ pub fn main() {
     _ -> 0
   }
 }
+
+// geam:expect Int(2)

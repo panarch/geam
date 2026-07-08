@@ -1,26 +1,26 @@
 use super::super::super::plan_bool_expr;
 use super::super::invalid_case_shape;
-use super::{case_return_type, single_case_pattern, validate_clause_shape};
+use super::{CaseClause, OrderedCaseClause, OrderedCaseClauseInput, case_return_type};
 use crate::plan::{BoolExpr, Expr, ValueType};
 use crate::planner::context::PlanContext;
 use crate::planner::error::{InvalidCaseShapeReason, InvalidTypedAstReason, PlanError};
 use ecow::EcoString;
-use gleam_core::ast::{Pattern, TypedClause, TypedExpr};
+use gleam_core::ast::{Pattern, TypedExpr};
 use gleam_core::type_::Type;
 use std::sync::Arc;
 
 pub(super) fn plan(
     type_: Arc<Type>,
     subject: TypedExpr,
-    clauses: Vec<TypedClause>,
+    clauses: Vec<CaseClause>,
     context: &mut PlanContext<'_>,
 ) -> Result<Expr, PlanError> {
     let subject = plan_bool_expr(subject, context)?;
     let return_type = case_return_type(type_.as_ref())?;
-    for clause in &clauses {
-        validate_clause_shape(clause)?;
-    }
-    if clauses.iter().any(|clause| clause.guard.is_some()) {
+    if clauses
+        .iter()
+        .any(|clause| clause.guard.is_some() || clause.has_alternative_patterns())
+    {
         let (subject_step, subject) = super::bind_bool_case_subject(subject, context);
         let case = plan_guarded_bool_case(type_.as_ref(), return_type, subject, clauses, context)?;
         return Ok(super::case_subject_block(subject_step, case));
@@ -35,8 +35,7 @@ pub(super) fn plan(
     let mut true_branch = None;
     let mut false_branch = None;
     for clause in clauses {
-        let pattern = single_case_pattern(clause.pattern)?;
-        let pattern = plan_bool_case_pattern(pattern)?;
+        let pattern = plan_bool_case_pattern(clause.pattern)?;
         let bindings = super::branch_bindings(pattern.bound_names(), Expr::bool(subject.clone()));
         let branch =
             super::plan_case_branch(type_.as_ref(), &return_type, clause.then, bindings, context)?;
@@ -72,35 +71,37 @@ fn plan_guarded_bool_case(
     case_type: &Type,
     return_type: ValueType,
     subject: BoolExpr,
-    clauses: Vec<TypedClause>,
+    clauses: Vec<CaseClause>,
     context: &mut PlanContext<'_>,
 ) -> Result<Expr, PlanError> {
-    let mut true_clauses = Vec::with_capacity(clauses.len());
-    let mut false_clauses = Vec::with_capacity(clauses.len());
+    let mut true_clauses = Vec::new();
+    let mut false_clauses = Vec::new();
     for clause in clauses {
-        let pattern = single_case_pattern(clause.pattern)?;
-        let pattern = plan_bool_case_pattern(pattern)?;
-        let bindings = super::branch_bindings(pattern.bound_names(), Expr::bool(subject.clone()));
-        let is_total = clause.guard.is_none();
-        let ordered_clause = super::plan_ordered_case_clause(
-            super::OrderedCaseClauseInput {
-                case_type,
-                return_type: &return_type,
-                then: clause.then,
-                branch_bindings: bindings,
-                guard: clause.guard,
-                match_condition: BoolExpr::value(true),
-                is_total,
-            },
-            context,
-        )?;
+        for pattern in clause.patterns() {
+            let pattern = plan_bool_case_pattern(pattern)?;
+            let bindings =
+                super::branch_bindings(pattern.bound_names(), Expr::bool(subject.clone()));
+            let is_total = clause.guard.is_none();
+            let ordered_clause = super::plan_ordered_case_clause(
+                OrderedCaseClauseInput {
+                    case_type,
+                    return_type: &return_type,
+                    then: clause.then.clone(),
+                    branch_bindings: bindings,
+                    guard: clause.guard.clone(),
+                    match_condition: BoolExpr::value(true),
+                    is_total,
+                },
+                context,
+            )?;
 
-        match pattern {
-            BoolCasePattern::Literal { value: true, .. } => true_clauses.push(ordered_clause),
-            BoolCasePattern::Literal { value: false, .. } => false_clauses.push(ordered_clause),
-            BoolCasePattern::Any { .. } => {
-                true_clauses.push(ordered_clause.clone());
-                false_clauses.push(ordered_clause);
+            match pattern {
+                BoolCasePattern::Literal { value: true, .. } => true_clauses.push(ordered_clause),
+                BoolCasePattern::Literal { value: false, .. } => false_clauses.push(ordered_clause),
+                BoolCasePattern::Any { .. } => {
+                    true_clauses.push(ordered_clause.clone());
+                    false_clauses.push(ordered_clause);
+                }
             }
         }
     }
@@ -113,7 +114,7 @@ fn plan_guarded_bool_case(
 }
 
 fn ordered_bool_case_branch(
-    clauses: Vec<super::OrderedCaseClause>,
+    clauses: Vec<OrderedCaseClause>,
     missing_reason: InvalidCaseShapeReason,
 ) -> Result<Expr, PlanError> {
     super::ordered_case_expr(clauses).map_err(|error| match error {
@@ -209,8 +210,8 @@ fn plan_bool_case_pattern(pattern: Pattern<Arc<Type>>) -> Result<BoolCasePattern
     }
 }
 
-fn clause_has_bool_bound_name(clause: &TypedClause) -> bool {
-    clause.pattern.iter().any(bool_pattern_has_bound_name)
+fn clause_has_bool_bound_name(clause: &CaseClause) -> bool {
+    bool_pattern_has_bound_name(&clause.pattern)
 }
 
 fn bool_pattern_has_bound_name(pattern: &Pattern<Arc<Type>>) -> bool {

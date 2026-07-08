@@ -64,8 +64,6 @@ pub enum UnsupportedBinOpKind {
 
 #[derive(Debug, Error, Clone, Copy, PartialEq, Eq)]
 pub enum UnsupportedCaseReason {
-    #[error("alternative patterns are not supported")]
-    AlternativePatterns,
     #[error("multiple subjects are not supported")]
     MultipleSubjects,
     #[error("case subject type is not supported")]

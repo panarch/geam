@@ -25,6 +25,7 @@ pub(super) fn plan(
     clauses: Vec<TypedClause>,
     context: &mut PlanContext<'_>,
 ) -> Result<Expr, PlanError> {
+    let clauses = case_clauses(clauses)?;
     match ValueType::from_gleam(subject.type_().as_ref()) {
         Some(ValueType::Bool) => bool_::plan(type_, subject, clauses, context),
         Some(ValueType::Int) => int::plan(type_, subject, clauses, context),
@@ -46,14 +47,44 @@ pub(super) fn plan(
     }
 }
 
-fn validate_clause_shape(clause: &TypedClause) -> Result<(), PlanError> {
-    if !clause.alternative_patterns.is_empty() {
-        return Err(super::unsupported_case(
-            UnsupportedCaseReason::AlternativePatterns,
-        ));
+struct CaseClause {
+    pattern: Pattern<Arc<Type>>,
+    alternative_patterns: Vec<Pattern<Arc<Type>>>,
+    guard: Option<TypedClauseGuard>,
+    then: TypedExpr,
+}
+
+impl CaseClause {
+    fn from_typed(clause: TypedClause) -> Result<Self, PlanError> {
+        let TypedClause {
+            pattern,
+            alternative_patterns,
+            guard,
+            then,
+            ..
+        } = clause;
+        Ok(Self {
+            pattern: single_case_pattern(pattern)?,
+            alternative_patterns: alternative_patterns
+                .into_iter()
+                .map(single_case_pattern)
+                .collect::<Result<_, _>>()?,
+            guard,
+            then,
+        })
     }
 
-    Ok(())
+    fn has_alternative_patterns(&self) -> bool {
+        !self.alternative_patterns.is_empty()
+    }
+
+    fn patterns(&self) -> impl Iterator<Item = Pattern<Arc<Type>>> + '_ {
+        std::iter::once(self.pattern.clone()).chain(self.alternative_patterns.iter().cloned())
+    }
+}
+
+fn case_clauses(clauses: Vec<TypedClause>) -> Result<Vec<CaseClause>, PlanError> {
+    clauses.into_iter().map(CaseClause::from_typed).collect()
 }
 
 fn single_case_pattern(patterns: Vec<Pattern<Arc<Type>>>) -> Result<Pattern<Arc<Type>>, PlanError> {
@@ -355,23 +386,12 @@ mod tests {
     use crate::planner::plan_module;
     use crate::planner::support::{dummy_span, expect_plan_error};
     use crate::planner::{
-        InvalidCaseShapeReason, InvalidTypedAstReason, PlanError, UnsupportedCaseReason,
-        UnsupportedExpressionKind,
+        InvalidCaseShapeReason, InvalidTypedAstReason, PlanError, UnsupportedExpressionKind,
     };
     use ecow::EcoString;
     use gleam_core::ast::TypedExpr;
     use gleam_core::type_;
     use std::collections::HashMap;
-
-    #[test]
-    fn reject_profile_subject_clause_shapes() {
-        assert_eq!(
-            expect_plan_error(r#"pub fn main() { case True { True | False -> 1 } }"#),
-            PlanError::UnsupportedCase {
-                reason: UnsupportedCaseReason::AlternativePatterns,
-            },
-        );
-    }
 
     #[test]
     fn reject_profile_unreachable_subject_clause_body() {
@@ -448,6 +468,37 @@ pub fn main() {
         clauses[0].pattern.push(pattern);
         assert_eq!(
             plan_module(extra_pattern),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::CaseShape {
+                    reason: InvalidCaseShapeReason::PatternSubjectCountMismatch,
+                },
+            }),
+        );
+
+        let mut empty_alternative_pattern = super::super::compile_bool_case_module();
+        let (_, _, clauses) = super::super::expect_case_statement_mut(
+            &mut empty_alternative_pattern.definitions.functions[0].body[0],
+        );
+        clauses[0].alternative_patterns.push(Vec::new());
+        assert_eq!(
+            plan_module(empty_alternative_pattern),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::CaseShape {
+                    reason: InvalidCaseShapeReason::PatternSubjectCountMismatch,
+                },
+            }),
+        );
+
+        let mut extra_alternative_pattern = super::super::compile_bool_case_module();
+        let (_, _, clauses) = super::super::expect_case_statement_mut(
+            &mut extra_alternative_pattern.definitions.functions[0].body[0],
+        );
+        let pattern = clauses[0].pattern[0].clone();
+        clauses[0]
+            .alternative_patterns
+            .push(vec![pattern.clone(), pattern]);
+        assert_eq!(
+            plan_module(extra_alternative_pattern),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::CaseShape {
                     reason: InvalidCaseShapeReason::PatternSubjectCountMismatch,

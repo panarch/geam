@@ -1,11 +1,11 @@
 use super::super::super::plan_int_expr;
 use super::super::invalid_case_shape;
-use super::{case_return_type, single_case_pattern, validate_clause_shape};
+use super::{CaseClause, OrderedCaseClauseInput, case_return_type};
 use crate::plan::{BoolExpr, Expr, ExprKind, IntCaseBranches, IntExpr, ValueType};
 use crate::planner::context::PlanContext;
 use crate::planner::error::{InvalidCaseShapeReason, PlanError};
 use ecow::EcoString;
-use gleam_core::ast::{Pattern, TypedClause, TypedExpr};
+use gleam_core::ast::{Pattern, TypedExpr};
 use gleam_core::type_::Type;
 use num_bigint::BigInt;
 use std::sync::Arc;
@@ -13,15 +13,15 @@ use std::sync::Arc;
 pub(super) fn plan(
     type_: Arc<Type>,
     subject: TypedExpr,
-    clauses: Vec<TypedClause>,
+    clauses: Vec<CaseClause>,
     context: &mut PlanContext<'_>,
 ) -> Result<Expr, PlanError> {
     let subject = plan_int_expr(subject, context)?;
     let return_type = case_return_type(type_.as_ref())?;
-    for clause in &clauses {
-        validate_clause_shape(clause)?;
-    }
-    if clauses.iter().any(|clause| clause.guard.is_some()) {
+    if clauses
+        .iter()
+        .any(|clause| clause.guard.is_some() || clause.has_alternative_patterns())
+    {
         let (subject_step, subject) = super::bind_int_case_subject(subject, context);
         let case = plan_guarded_int_case(type_.as_ref(), return_type, subject, clauses, context)?;
         return Ok(super::case_subject_block(subject_step, case));
@@ -36,8 +36,7 @@ pub(super) fn plan(
     let mut literal_clauses = Vec::new();
     let mut fallback = None;
     for clause in clauses {
-        let pattern = single_case_pattern(clause.pattern)?;
-        let pattern = plan_int_case_pattern(pattern)?;
+        let pattern = plan_int_case_pattern(clause.pattern)?;
         let bindings = super::branch_bindings(pattern.bound_names(), Expr::int(subject.clone()));
         let branch =
             super::plan_case_branch(type_.as_ref(), &return_type, clause.then, bindings, context)?;
@@ -74,33 +73,35 @@ fn plan_guarded_int_case(
     case_type: &Type,
     return_type: ValueType,
     subject: IntExpr,
-    clauses: Vec<TypedClause>,
+    clauses: Vec<CaseClause>,
     context: &mut PlanContext<'_>,
 ) -> Result<Expr, PlanError> {
-    let mut ordered_clauses = Vec::with_capacity(clauses.len());
+    let mut ordered_clauses = Vec::new();
     for clause in clauses {
-        let pattern = single_case_pattern(clause.pattern)?;
-        let pattern = plan_int_case_pattern(pattern)?;
-        let bindings = super::branch_bindings(pattern.bound_names(), Expr::int(subject.clone()));
-        let is_total = matches!(pattern, IntCasePattern::Any { .. }) && clause.guard.is_none();
-        let match_condition = match pattern {
-            IntCasePattern::Literal { value, .. } => {
-                BoolExpr::equal(Expr::int(subject.clone()), Expr::int(IntExpr::value(value)))
-            }
-            IntCasePattern::Any { .. } => BoolExpr::value(true),
-        };
-        ordered_clauses.push(super::plan_ordered_case_clause(
-            super::OrderedCaseClauseInput {
-                case_type,
-                return_type: &return_type,
-                then: clause.then,
-                branch_bindings: bindings,
-                guard: clause.guard,
-                match_condition,
-                is_total,
-            },
-            context,
-        )?);
+        for pattern in clause.patterns() {
+            let pattern = plan_int_case_pattern(pattern)?;
+            let bindings =
+                super::branch_bindings(pattern.bound_names(), Expr::int(subject.clone()));
+            let is_total = matches!(pattern, IntCasePattern::Any { .. }) && clause.guard.is_none();
+            let match_condition = match pattern {
+                IntCasePattern::Literal { value, .. } => {
+                    BoolExpr::equal(Expr::int(subject.clone()), Expr::int(IntExpr::value(value)))
+                }
+                IntCasePattern::Any { .. } => BoolExpr::value(true),
+            };
+            ordered_clauses.push(super::plan_ordered_case_clause(
+                OrderedCaseClauseInput {
+                    case_type,
+                    return_type: &return_type,
+                    then: clause.then.clone(),
+                    branch_bindings: bindings,
+                    guard: clause.guard.clone(),
+                    match_condition,
+                    is_total,
+                },
+                context,
+            )?);
+        }
     }
 
     super::ordered_case_expr(ordered_clauses)
@@ -172,8 +173,8 @@ fn plan_int_case_pattern(pattern: Pattern<Arc<Type>>) -> Result<IntCasePattern, 
     }
 }
 
-fn clause_has_int_bound_name(clause: &TypedClause) -> bool {
-    clause.pattern.iter().any(int_pattern_has_bound_name)
+fn clause_has_int_bound_name(clause: &CaseClause) -> bool {
+    int_pattern_has_bound_name(&clause.pattern)
 }
 
 fn int_pattern_has_bound_name(pattern: &Pattern<Arc<Type>>) -> bool {
@@ -550,7 +551,7 @@ mod tests {
     use crate::planner::support::{dummy_span, expect_plan_error};
     use crate::planner::{
         InvalidCaseShapeReason, InvalidExpressionType, InvalidTypedAstReason, PlanError,
-        UnsupportedCaseReason, UnsupportedExpressionKind,
+        UnsupportedExpressionKind,
     };
     use gleam_core::ast::{ClauseGuard, Constant, Pattern, TypedModule};
     use gleam_core::type_::{self, error::VariableOrigin};
@@ -919,6 +920,44 @@ pub fn main() {
     }
 
     #[test]
+    fn plan_int_case_alternative_patterns_expand_to_ordered_fallthrough() {
+        let actual = plan_module(crate::planner::support::compile(
+            r#"
+pub fn main() {
+  case 1 {
+    1 | 2 -> 10
+    _ -> 0
+  }
+}
+"#,
+        ))
+        .expect("source should plan");
+        let first_condition = BoolExpr::equal(local_int(0, "<case:int:0>").into(), int(1).into());
+        let second_condition = BoolExpr::equal(local_int(0, "<case:int:0>").into(), int(2).into());
+        let expected = module(
+            "main",
+            function(
+                "main",
+                int_return_block(
+                    [let_int_step(0, "<case:int:0>", int(1))],
+                    IntReturn::bool_case(
+                        first_condition,
+                        int_return_expr(int(10)),
+                        IntReturn::bool_case(
+                            second_condition,
+                            int_return_expr(int(10)),
+                            int_return_expr(int(0)),
+                        ),
+                    ),
+                ),
+            ),
+            [],
+        );
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
     fn plan_int_case_function_expr_shape() {
         let actual = super::int_case_expr(
             int(1).into(),
@@ -1195,21 +1234,6 @@ pub fn main() {
                     .expect("function-returning function expression"),
             }),
         );
-    }
-
-    #[test]
-    fn reject_profile_int_case_patterns() {
-        let cases = [(
-            r#"pub fn main() { case 1 { 1 | 2 -> 1 _ -> 0 } }"#,
-            UnsupportedCaseReason::AlternativePatterns,
-        )];
-
-        for (src, reason) in cases {
-            assert_eq!(
-                expect_plan_error(src),
-                PlanError::UnsupportedCase { reason },
-            );
-        }
     }
 
     #[test]
