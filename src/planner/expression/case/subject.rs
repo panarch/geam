@@ -15,7 +15,7 @@ use crate::planner::context::PlanContext;
 use crate::planner::error::{InvalidCaseShapeReason, PlanError, UnsupportedCaseReason};
 use crate::planner::statement::plan_variable_runtime_step;
 use ecow::EcoString;
-use gleam_core::ast::{Pattern, TypedClause, TypedClauseGuard, TypedExpr};
+use gleam_core::ast::{Pattern, SrcSpan, TypedClause, TypedClauseGuard, TypedExpr};
 use gleam_core::type_::Type;
 use std::sync::Arc;
 
@@ -47,6 +47,37 @@ pub(super) fn plan(
     }
 }
 
+pub(super) fn plan_multi(
+    type_: Arc<Type>,
+    subjects: Vec<TypedExpr>,
+    clauses: Vec<TypedClause>,
+    context: &mut PlanContext<'_>,
+) -> Result<Expr, PlanError> {
+    let mut subject_types = Vec::with_capacity(subjects.len());
+    for subject in &subjects {
+        let Some(type_) = ValueType::from_gleam(subject.type_().as_ref()) else {
+            return Err(super::unsupported_case(
+                UnsupportedCaseReason::UnsupportedSubjectType,
+            ));
+        };
+        subject_types.push(type_);
+    }
+    let gleam_subject_type = gleam_core::type_::tuple(
+        subjects
+            .iter()
+            .map(|subject| subject.type_().clone())
+            .collect(),
+    );
+    let subject = TypedExpr::Tuple {
+        location: subject_group_location(&subjects),
+        type_: gleam_subject_type,
+        elements: subjects,
+    };
+    let clauses = multi_subject_case_clauses(clauses, subject_types.len())?;
+
+    tuple::plan(type_, subject, subject_types, clauses, context)
+}
+
 struct CaseClause {
     pattern: Pattern<Arc<Type>>,
     alternative_patterns: Vec<Pattern<Arc<Type>>>,
@@ -55,7 +86,7 @@ struct CaseClause {
 }
 
 impl CaseClause {
-    fn from_typed(clause: TypedClause) -> Result<Self, PlanError> {
+    fn from_single_subject_typed(clause: TypedClause) -> Result<Self, PlanError> {
         let TypedClause {
             pattern,
             alternative_patterns,
@@ -74,6 +105,28 @@ impl CaseClause {
         })
     }
 
+    fn from_multi_subject_typed(
+        clause: TypedClause,
+        subject_count: usize,
+    ) -> Result<Self, PlanError> {
+        let TypedClause {
+            pattern,
+            alternative_patterns,
+            guard,
+            then,
+            ..
+        } = clause;
+        Ok(Self {
+            pattern: tuple_case_pattern(pattern, subject_count)?,
+            alternative_patterns: alternative_patterns
+                .into_iter()
+                .map(|pattern| tuple_case_pattern(pattern, subject_count))
+                .collect::<Result<_, _>>()?,
+            guard,
+            then,
+        })
+    }
+
     fn has_alternative_patterns(&self) -> bool {
         !self.alternative_patterns.is_empty()
     }
@@ -84,7 +137,20 @@ impl CaseClause {
 }
 
 fn case_clauses(clauses: Vec<TypedClause>) -> Result<Vec<CaseClause>, PlanError> {
-    clauses.into_iter().map(CaseClause::from_typed).collect()
+    clauses
+        .into_iter()
+        .map(CaseClause::from_single_subject_typed)
+        .collect()
+}
+
+fn multi_subject_case_clauses(
+    clauses: Vec<TypedClause>,
+    subject_count: usize,
+) -> Result<Vec<CaseClause>, PlanError> {
+    clauses
+        .into_iter()
+        .map(|clause| CaseClause::from_multi_subject_typed(clause, subject_count))
+        .collect()
 }
 
 fn single_case_pattern(patterns: Vec<Pattern<Arc<Type>>>) -> Result<Pattern<Arc<Type>>, PlanError> {
@@ -99,6 +165,46 @@ fn single_case_pattern(patterns: Vec<Pattern<Arc<Type>>>) -> Result<Pattern<Arc<
     }
 
     Ok(pattern)
+}
+
+fn tuple_case_pattern(
+    patterns: Vec<Pattern<Arc<Type>>>,
+    subject_count: usize,
+) -> Result<Pattern<Arc<Type>>, PlanError> {
+    if patterns.len() != subject_count {
+        return Err(super::invalid_case_shape(
+            InvalidCaseShapeReason::PatternSubjectCountMismatch,
+        ));
+    }
+
+    Ok(Pattern::Tuple {
+        location: pattern_group_location(&patterns),
+        elements: patterns,
+    })
+}
+
+fn subject_group_location(subjects: &[TypedExpr]) -> SrcSpan {
+    let start = subjects
+        .first()
+        .map(|subject| subject.location().start)
+        .unwrap_or_default();
+    let end = subjects
+        .last()
+        .map(|subject| subject.location().end)
+        .unwrap_or_default();
+    SrcSpan::new(start, end)
+}
+
+fn pattern_group_location(patterns: &[Pattern<Arc<Type>>]) -> SrcSpan {
+    let start = patterns
+        .first()
+        .map(|pattern| pattern.location().start)
+        .unwrap_or_default();
+    let end = patterns
+        .last()
+        .map(|pattern| pattern.location().end)
+        .unwrap_or_default();
+    SrcSpan::new(start, end)
 }
 
 fn validate_case_branch_type(case_type: &Type, branch: &Expr) -> Result<(), PlanError> {
@@ -381,12 +487,17 @@ fn internal_bool_case_subject_name(local: BoolLocalId) -> EcoString {
 
 #[cfg(test)]
 mod tests {
-    use crate::plan::{BoolExpr, Expr, IntExpr};
+    use crate::plan::{BoolExpr, Expr, IntExpr, ValueType};
     use crate::planner::context::{AnonymousFunctions, PlanContext};
+    use crate::planner::dsl::{
+        function, int, int_return_block, int_return_expr, let_int_step, let_tuple_step, local_int,
+        local_tuple, module, tuple,
+    };
     use crate::planner::plan_module;
-    use crate::planner::support::{dummy_span, expect_plan_error};
+    use crate::planner::support::{compile, dummy_span, expect_plan_error};
     use crate::planner::{
-        InvalidCaseShapeReason, InvalidTypedAstReason, PlanError, UnsupportedExpressionKind,
+        InvalidCaseShapeReason, InvalidTypedAstReason, PlanError, UnsupportedCaseReason,
+        UnsupportedExpressionKind,
     };
     use ecow::EcoString;
     use gleam_core::ast::TypedExpr;
@@ -538,6 +649,193 @@ pub fn main() {
                 },
             }),
         );
+    }
+
+    #[test]
+    fn reject_margin_multi_subject_pattern_count_mismatch() {
+        let mut primary_mismatch = compile(
+            r#"
+pub fn main() {
+  case True, False {
+    True, False -> 1
+    _, _ -> 0
+  }
+}
+"#,
+        );
+        let (_, _, clauses) = super::super::expect_case_statement_mut(
+            &mut primary_mismatch.definitions.functions[0].body[0],
+        );
+        clauses[0].pattern.pop();
+        assert_eq!(
+            plan_module(primary_mismatch),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::CaseShape {
+                    reason: InvalidCaseShapeReason::PatternSubjectCountMismatch,
+                },
+            }),
+        );
+
+        let mut alternative_mismatch = compile(
+            r#"
+pub fn main() {
+  case True, False {
+    True, False | False, True -> 1
+    _, _ -> 0
+  }
+}
+"#,
+        );
+        let (_, _, clauses) = super::super::expect_case_statement_mut(
+            &mut alternative_mismatch.definitions.functions[0].body[0],
+        );
+        clauses[0].alternative_patterns[0].pop();
+        assert_eq!(
+            plan_module(alternative_mismatch),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::CaseShape {
+                    reason: InvalidCaseShapeReason::PatternSubjectCountMismatch,
+                },
+            }),
+        );
+    }
+
+    #[test]
+    fn reject_profile_multi_subject_unsupported_subject_type() {
+        assert_eq!(
+            expect_plan_error(
+                r#"
+pub fn main() {
+  case 1, <<2>> {
+    _, _ -> 0
+  }
+}
+"#,
+            ),
+            PlanError::UnsupportedCase {
+                reason: UnsupportedCaseReason::UnsupportedSubjectType,
+            },
+        );
+    }
+
+    #[test]
+    fn plan_multi_subject_binds_tuple_subject_once_and_projects_branch_bindings() {
+        let actual = plan_module(compile(
+            r#"
+pub fn main() {
+  case 11, 37 {
+    left, right -> left + right
+  }
+}
+"#,
+        ))
+        .expect("source should plan");
+        let tuple_type = vec![ValueType::Int, ValueType::Int];
+        let expected = module(
+            "main",
+            function(
+                "main",
+                int_return_block(
+                    [let_tuple_step(
+                        0,
+                        "<case:tuple:0>",
+                        tuple([int(11), int(37)]),
+                    )],
+                    int_return_block(
+                        [
+                            let_int_step(
+                                0,
+                                "left",
+                                local_tuple(0, "<case:tuple:0>", tuple_type.clone()).index_int(0),
+                            ),
+                            let_int_step(
+                                1,
+                                "right",
+                                local_tuple(0, "<case:tuple:0>", tuple_type.clone()).index_int(1),
+                            ),
+                        ],
+                        int_return_expr(local_int(0, "left").add_int(local_int(1, "right"))),
+                    ),
+                ),
+            ),
+            [],
+        );
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn plan_multi_subject_alternative_guard_wraps_each_pattern_binding() {
+        let actual = plan_module(compile(
+            r#"
+pub fn main() {
+  case 11, 37 {
+    left, 0 | 11, left if left > 20 -> left
+    _, _ -> 0
+  }
+}
+"#,
+        ))
+        .expect("source should plan");
+        let tuple_type = vec![ValueType::Int, ValueType::Int];
+        let first_binding = let_int_step(
+            0,
+            "left",
+            local_tuple(0, "<case:tuple:0>", tuple_type.clone()).index_int(0),
+        );
+        let second_binding = let_int_step(
+            1,
+            "left",
+            local_tuple(0, "<case:tuple:0>", tuple_type.clone()).index_int(1),
+        );
+        let first_condition = BoolExpr::and(
+            BoolExpr::equal(
+                Expr::from(local_tuple(0, "<case:tuple:0>", tuple_type.clone()).index_int(1)),
+                Expr::from(int(0)),
+            ),
+            BoolExpr::block(
+                vec![first_binding.clone()],
+                BoolExpr::gt_int(local_int(0, "left").into(), int(20).into()),
+            ),
+        );
+        let second_condition = BoolExpr::and(
+            BoolExpr::equal(
+                Expr::from(local_tuple(0, "<case:tuple:0>", tuple_type.clone()).index_int(0)),
+                Expr::from(int(11)),
+            ),
+            BoolExpr::block(
+                vec![second_binding.clone()],
+                BoolExpr::gt_int(local_int(1, "left").into(), int(20).into()),
+            ),
+        );
+        let expected = module(
+            "main",
+            function(
+                "main",
+                int_return_block(
+                    [let_tuple_step(
+                        0,
+                        "<case:tuple:0>",
+                        tuple([int(11), int(37)]),
+                    )],
+                    crate::plan::IntReturn::bool_case(
+                        first_condition,
+                        int_return_block([first_binding], int_return_expr(local_int(0, "left"))),
+                        crate::plan::IntReturn::bool_case(
+                            second_condition,
+                            int_return_block(
+                                [second_binding],
+                                int_return_expr(local_int(1, "left")),
+                            ),
+                            int_return_expr(int(0)),
+                        ),
+                    ),
+                ),
+            ),
+            [],
+        );
+
+        assert_eq!(actual, expected);
     }
 
     #[test]

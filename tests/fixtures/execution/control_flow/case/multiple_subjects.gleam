@@ -6,3 +6,5 @@ pub fn main() {
     _, _ -> 0
   }
 }
+
+// geam:expect Int(3)
