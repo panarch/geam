@@ -416,7 +416,7 @@ fn plan_list(
         )
     })?;
 
-    if tail.element_type() != &expected_element_type {
+    if tail.element_type() != expected_element_type {
         return Err(invalid_expression_type_for_value(
             ValueType::List(Box::new(expected_element_type.clone())),
             ValueType::List(Box::new(tail.element_type().clone())),
@@ -478,17 +478,38 @@ pub(super) fn tuple_index_expr(tuple: TupleExpr, index: usize, return_type: Valu
     }
 }
 
-pub(super) fn list_index_expr(list: ListExpr, index: usize, return_type: ValueType) -> Expr {
-    match return_type {
-        ValueType::Int => Expr::int(IntExpr::list_index(list, index)),
-        ValueType::String => Expr::string(StringExpr::list_index(list, index)),
-        ValueType::Float => Expr::float(FloatExpr::list_index(list, index)),
-        ValueType::Bool => Expr::bool(BoolExpr::list_index(list, index)),
-        ValueType::Nil => Expr::nil(crate::plan::NilExpr::list_index(list, index)),
-        ValueType::Tuple(type_) => Expr::tuple(TupleExpr::list_index(list, index, type_)),
-        ValueType::List(type_) => Expr::list(ListExpr::list_index(list, index, *type_)),
-        ValueType::Function(type_) => list_index_function_expr(list, index, *type_),
-    }
+pub(super) fn list_index_expr(
+    list: ListExpr,
+    index: usize,
+    return_type: ValueType,
+) -> Result<Expr, PlanError> {
+    let expected = ValueType::List(Box::new(return_type.clone()));
+    let actual = list.element_type();
+    Ok(match (return_type, list) {
+        (ValueType::Int, ListExpr::Int(list)) => Expr::int(IntExpr::list_index(list, index)),
+        (ValueType::String, ListExpr::String(list)) => {
+            Expr::string(StringExpr::list_index(list, index))
+        }
+        (ValueType::Float, ListExpr::Float(list)) => {
+            Expr::float(FloatExpr::list_index(list, index))
+        }
+        (ValueType::Bool, ListExpr::Bool(list)) => Expr::bool(BoolExpr::list_index(list, index)),
+        (ValueType::Nil, ListExpr::Nil(list)) => {
+            Expr::nil(crate::plan::NilExpr::list_index(list, index))
+        }
+        (ValueType::Tuple(type_), ListExpr::Tuple(list)) if list.item().item_type() == type_ => {
+            Expr::tuple(TupleExpr::list_index(list, index, type_))
+        }
+        (ValueType::List(type_), ListExpr::List(list)) if list.item().item_type() == type_ => {
+            Expr::list(ListExpr::list_index(list, index))
+        }
+        (ValueType::Function(type_), ListExpr::Function(list))
+            if list.item().item_type() == *type_.as_ref() =>
+        {
+            list_index_function_expr(list, index, *type_)
+        }
+        _ => return Err(invalid_expression_type_for_value(expected, actual)),
+    })
 }
 
 fn tuple_index_function_expr(tuple: TupleExpr, index: usize, type_: FunctionType) -> Expr {
@@ -520,28 +541,32 @@ fn tuple_index_function_expr(tuple: TupleExpr, index: usize, type_: FunctionType
     }
 }
 
-fn list_index_function_expr(list: ListExpr, index: usize, type_: FunctionType) -> Expr {
+fn list_index_function_expr(
+    list: crate::plan::FunctionListExpr,
+    index: usize,
+    type_: FunctionType,
+) -> Expr {
     match type_.return_().clone() {
         ValueType::Int => Expr::function(FunctionExpr::int(
-            crate::plan::IntFunctionExpr::list_index(list, index, type_),
+            crate::plan::IntFunctionExpr::list_index(list.clone(), index, type_),
         )),
         ValueType::String => Expr::function(FunctionExpr::string(
-            crate::plan::StringFunctionExpr::list_index(list, index, type_),
+            crate::plan::StringFunctionExpr::list_index(list.clone(), index, type_),
         )),
         ValueType::Float => Expr::function(FunctionExpr::float(
-            crate::plan::FloatFunctionExpr::list_index(list, index, type_),
+            crate::plan::FloatFunctionExpr::list_index(list.clone(), index, type_),
         )),
         ValueType::Bool => Expr::function(FunctionExpr::bool(
-            crate::plan::BoolFunctionExpr::list_index(list, index, type_),
+            crate::plan::BoolFunctionExpr::list_index(list.clone(), index, type_),
         )),
         ValueType::Nil => Expr::function(FunctionExpr::nil(
-            crate::plan::NilFunctionExpr::list_index(list, index, type_),
+            crate::plan::NilFunctionExpr::list_index(list.clone(), index, type_),
         )),
         ValueType::Tuple(_) => Expr::function(FunctionExpr::tuple(
-            crate::plan::TupleFunctionExpr::list_index(list, index, type_),
+            crate::plan::TupleFunctionExpr::list_index(list.clone(), index, type_),
         )),
         ValueType::List(item_type) => Expr::function(FunctionExpr::list(
-            crate::plan::ListFunctionExpr::list_index(list, index, type_, *item_type),
+            crate::plan::ListFunctionExpr::list_index(list.clone(), index, type_, *item_type),
         )),
         ValueType::Function(_) => Expr::function(FunctionExpr::function(
             FunctionFunctionExpr::list_index(list, index, type_),
@@ -727,10 +752,10 @@ mod tests {
     };
     use crate::plan::{
         BoolExpr, BoolFunctionId, BoolLocalId, Expr, FloatExpr, FunctionExpr, FunctionFunctionExpr,
-        FunctionFunctionId, FunctionType, FunctionValue, IntExpr, IntFunctionFunctionId,
-        IntFunctionId, IntLocalId, ListExpr, NilFunctionId, NilLocalId, PanicExpr, PanicSite,
-        ParamLocal, ReturnBody, RuntimeFunctionId, SourceSpan, StringExpr, StringLocalId,
-        TupleExpr, ValueType,
+        FunctionFunctionId, FunctionType, FunctionValue, IntExpr, IntFunctionExpr,
+        IntFunctionFunctionId, IntFunctionId, IntLocalId, ListExpr, NilExpr, NilFunctionId,
+        NilLocalId, PanicExpr, PanicSite, ParamLocal, ReturnBody, RuntimeFunctionId, SourceSpan,
+        StringExpr, StringLocalId, TupleExpr, ValueType,
     };
     use crate::planner::context::{AnonymousFunctions, PlanContext};
     use crate::planner::dsl::{
@@ -1272,6 +1297,7 @@ pub fn main() {
             Vec::new(),
         )));
         let list_expression = Expr::from(list([int(1)], ValueType::Int));
+        let nil_expression = Expr::from(nil());
 
         assert_eq!(
             invalid_expression_type(InvalidExpressionType::Int, expression_type(&expression)),
@@ -1295,11 +1321,32 @@ pub fn main() {
             },
         );
         assert_eq!(
+            invalid_expression_type(InvalidExpressionType::Int, expression_type(&nil_expression)),
+            PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionType {
+                    expected: InvalidExpressionType::Int,
+                    actual: InvalidExpressionType::Nil,
+                },
+            },
+        );
+        assert_eq!(
             invalid_expression_type_for_value(ValueType::Float, ValueType::Int),
             PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::ExpressionType {
                     expected: InvalidExpressionType::Float,
                     actual: InvalidExpressionType::Int,
+                },
+            },
+        );
+        assert_eq!(
+            invalid_expression_type_for_value(
+                ValueType::List(Box::new(ValueType::Nil)),
+                ValueType::Nil,
+            ),
+            PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionType {
+                    expected: InvalidExpressionType::List,
+                    actual: InvalidExpressionType::Nil,
                 },
             },
         );
@@ -2147,6 +2194,128 @@ pub fn main() {
                 Err(expected)
             );
         }
+    }
+
+    #[test]
+    fn list_index_expr_preserves_typed_item_family_shapes() {
+        let int_list = ListExpr::value(Vec::new(), ValueType::Int);
+        let typed_int_list = int_list
+            .clone()
+            .into_int()
+            .expect("int item list should build int list expression");
+        assert_eq!(
+            super::list_index_expr(int_list, 0, ValueType::Int),
+            Ok(Expr::int(IntExpr::list_index(typed_int_list, 0))),
+        );
+
+        let string_list = ListExpr::value(Vec::new(), ValueType::String);
+        let typed_string_list = string_list
+            .clone()
+            .into_string()
+            .expect("string item list should build string list expression");
+        assert_eq!(
+            super::list_index_expr(string_list, 0, ValueType::String),
+            Ok(Expr::string(StringExpr::list_index(typed_string_list, 0))),
+        );
+
+        let float_list = ListExpr::value(Vec::new(), ValueType::Float);
+        let typed_float_list = float_list
+            .clone()
+            .into_float()
+            .expect("float item list should build float list expression");
+        assert_eq!(
+            super::list_index_expr(float_list, 0, ValueType::Float),
+            Ok(Expr::float(FloatExpr::list_index(typed_float_list, 0))),
+        );
+
+        let bool_list = ListExpr::value(Vec::new(), ValueType::Bool);
+        let typed_bool_list = bool_list
+            .clone()
+            .into_bool()
+            .expect("bool item list should build bool list expression");
+        assert_eq!(
+            super::list_index_expr(bool_list, 0, ValueType::Bool),
+            Ok(Expr::bool(BoolExpr::list_index(typed_bool_list, 0))),
+        );
+
+        let nil_list = ListExpr::value(Vec::new(), ValueType::Nil);
+        let typed_nil_list = nil_list
+            .clone()
+            .into_nil()
+            .expect("nil item list should build nil list expression");
+        assert_eq!(
+            super::list_index_expr(nil_list, 0, ValueType::Nil),
+            Ok(Expr::nil(NilExpr::list_index(typed_nil_list, 0))),
+        );
+
+        let tuple_item_type = vec![ValueType::Int];
+        let tuple_list = ListExpr::value(Vec::new(), ValueType::Tuple(tuple_item_type.clone()));
+        let typed_tuple_list = tuple_list
+            .clone()
+            .into_tuple()
+            .expect("tuple item list should build tuple list expression");
+        assert_eq!(
+            super::list_index_expr(tuple_list, 0, ValueType::Tuple(tuple_item_type.clone())),
+            Ok(Expr::tuple(TupleExpr::list_index(
+                typed_tuple_list,
+                0,
+                tuple_item_type,
+            ))),
+        );
+
+        let nested_item_type = ValueType::String;
+        let nested_list = ListExpr::value(
+            Vec::new(),
+            ValueType::List(Box::new(nested_item_type.clone())),
+        );
+        let typed_nested_list = nested_list
+            .clone()
+            .into_list()
+            .expect("nested list item should build list list expression");
+        assert_eq!(
+            super::list_index_expr(nested_list, 0, ValueType::List(Box::new(nested_item_type)),),
+            Ok(Expr::list(ListExpr::list_index(typed_nested_list, 0))),
+        );
+
+        let function_type = FunctionType::new(Vec::new(), ValueType::Int);
+        let list = ListExpr::value(
+            Vec::new(),
+            ValueType::Function(Box::new(function_type.clone())),
+        );
+        let typed_list = list
+            .clone()
+            .into_function()
+            .expect("function item list should build function list expression");
+
+        assert_eq!(
+            super::list_index_expr(
+                list,
+                0,
+                ValueType::Function(Box::new(function_type.clone()))
+            ),
+            Ok(Expr::function(FunctionExpr::int(
+                IntFunctionExpr::list_index(typed_list, 0, function_type),
+            ))),
+        );
+
+        let expected_function_type = FunctionType::new(Vec::new(), ValueType::String);
+        let actual_function_type = FunctionType::new(Vec::new(), ValueType::Int);
+        assert_eq!(
+            super::list_index_expr(
+                ListExpr::value(
+                    Vec::new(),
+                    ValueType::Function(Box::new(actual_function_type)),
+                ),
+                0,
+                ValueType::Function(Box::new(expected_function_type)),
+            ),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionType {
+                    expected: InvalidExpressionType::List,
+                    actual: InvalidExpressionType::Function,
+                },
+            }),
+        );
     }
 
     #[test]

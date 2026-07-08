@@ -1,7 +1,7 @@
 use crate::plan::{
     BoolExpr, BoolFunctionFunctionId, BoolFunctionId, BoolFunctionLocalId, BoolFunctionValue,
-    CaptureArg, FloatExpr, FunctionFunctionExpr, FunctionType, IntExpr, ListExpr, PanicExpr,
-    ParamLocal, Step, StringExpr, TupleExpr,
+    CaptureArg, FloatExpr, FunctionFunctionExpr, FunctionListExpr, FunctionType, IntExpr,
+    PanicExpr, ParamLocal, Step, StringExpr, TupleExpr,
 };
 use ecow::EcoString;
 use num_bigint::BigInt;
@@ -40,7 +40,7 @@ pub(crate) enum BoolFunctionExprKind {
         type_: FunctionType,
     },
     ListIndex {
-        list: Box<ListExpr>,
+        list: Box<FunctionListExpr>,
         index: usize,
         type_: FunctionType,
     },
@@ -147,11 +147,15 @@ impl BoolFunctionExpr {
         }
     }
 
-    pub(crate) fn list_index(list: ListExpr, index: usize, type_: FunctionType) -> Self {
+    pub(crate) fn list_index(
+        list: impl Into<FunctionListExpr>,
+        index: usize,
+        type_: FunctionType,
+    ) -> Self {
         Self {
             type_: type_.clone(),
             kind: BoolFunctionExprKind::ListIndex {
-                list: Box::new(list),
+                list: Box::new(list.into()),
                 index,
                 type_,
             },

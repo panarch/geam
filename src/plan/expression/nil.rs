@@ -1,5 +1,5 @@
 use super::{
-    BoolExpr, CallArg, FloatExpr, IntExpr, ListExpr, NilFunctionExpr, PanicExpr, StringExpr,
+    BoolExpr, CallArg, FloatExpr, IntExpr, NilFunctionExpr, NilListExpr, PanicExpr, StringExpr,
     TupleExpr,
 };
 use crate::plan::{NilFunctionId, NilLocalId, Step};
@@ -31,7 +31,7 @@ pub(crate) enum NilExprKind {
         index: usize,
     },
     ListIndex {
-        list: Box<ListExpr>,
+        list: Box<NilListExpr>,
         index: usize,
     },
     Panic(PanicExpr),
@@ -98,10 +98,10 @@ impl NilExpr {
         }
     }
 
-    pub(crate) fn list_index(list: ListExpr, index: usize) -> Self {
+    pub(crate) fn list_index(list: impl Into<NilListExpr>, index: usize) -> Self {
         Self {
             kind: NilExprKind::ListIndex {
-                list: Box::new(list),
+                list: Box::new(list.into()),
                 index,
             },
         }

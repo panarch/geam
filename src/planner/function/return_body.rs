@@ -37,7 +37,7 @@ pub(super) fn function_return_expr(
             primitive::tuple_return(actual),
         )),
         (ValueType::List(expected), RuntimeFunctionId::List(id), ExprKind::List(actual))
-            if expected.as_ref() == actual.element_type()
+            if expected.as_ref() == &actual.element_type()
                 && expected.as_ref() == &id.item_type() =>
         {
             Ok(ReturnExpr::list_body(

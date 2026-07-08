@@ -31,13 +31,11 @@ pub(crate) enum ListValueKind {
     },
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct ListItemTypeMismatch {
-    pub(crate) expected: ValueType,
-    pub(crate) actual: ValueType,
-}
-
 impl ListValue {
+    pub(crate) fn into_kind(self) -> ListValueKind {
+        self.kind
+    }
+
     pub fn int(values: Vec<BigInt>) -> Self {
         Self {
             kind: ListValueKind::Int(values),
@@ -102,14 +100,6 @@ impl ListValue {
         }
     }
 
-    pub(crate) fn empty_list(item_type: ValueType) -> Self {
-        Self::list(item_type, Vec::new())
-    }
-
-    pub(crate) fn empty_function(item_type: FunctionType) -> Self {
-        Self::function(item_type, Vec::new())
-    }
-
     pub fn item_type(&self) -> ValueType {
         match &self.kind {
             ListValueKind::Int(_) => ValueType::Int,
@@ -159,43 +149,43 @@ impl ListValue {
         }
     }
 
-    pub(crate) fn int_values(&self) -> Option<&[BigInt]> {
-        match &self.kind {
+    pub(crate) fn into_int_values(self) -> Option<Vec<BigInt>> {
+        match self.kind {
             ListValueKind::Int(values) => Some(values),
             _ => None,
         }
     }
 
-    pub(crate) fn string_values(&self) -> Option<&[EcoString]> {
-        match &self.kind {
+    pub(crate) fn into_string_values(self) -> Option<Vec<EcoString>> {
+        match self.kind {
             ListValueKind::String(values) => Some(values),
             _ => None,
         }
     }
 
-    pub(crate) fn float_values(&self) -> Option<&[f64]> {
-        match &self.kind {
+    pub(crate) fn into_float_values(self) -> Option<Vec<f64>> {
+        match self.kind {
             ListValueKind::Float(values) => Some(values),
             _ => None,
         }
     }
 
-    pub(crate) fn bool_values(&self) -> Option<&[bool]> {
-        match &self.kind {
+    pub(crate) fn into_bool_values(self) -> Option<Vec<bool>> {
+        match self.kind {
             ListValueKind::Bool(values) => Some(values),
             _ => None,
         }
     }
 
-    pub(crate) fn nil_len(&self) -> Option<usize> {
-        match &self.kind {
-            ListValueKind::Nil(len) => Some(*len),
+    pub(crate) fn into_nil_len(self) -> Option<usize> {
+        match self.kind {
+            ListValueKind::Nil(len) => Some(len),
             _ => None,
         }
     }
 
-    pub(crate) fn tuple_values(&self, item_type: &[ValueType]) -> Option<&[Vec<Value>]> {
-        match &self.kind {
+    pub(crate) fn into_tuple_values(self, item_type: &[ValueType]) -> Option<Vec<Vec<Value>>> {
+        match self.kind {
             ListValueKind::Tuple {
                 item_type: actual,
                 values,
@@ -204,8 +194,8 @@ impl ListValue {
         }
     }
 
-    pub(crate) fn list_values(&self, item_type: &ValueType) -> Option<&[ListValue]> {
-        match &self.kind {
+    pub(crate) fn into_list_values(self, item_type: &ValueType) -> Option<Vec<ListValue>> {
+        match self.kind {
             ListValueKind::List {
                 item_type: actual,
                 values,
@@ -214,12 +204,15 @@ impl ListValue {
         }
     }
 
-    pub(crate) fn function_values(&self, item_type: &FunctionType) -> Option<&[FunctionValue]> {
-        match &self.kind {
+    pub(crate) fn into_function_values(
+        self,
+        item_type: &FunctionType,
+    ) -> Option<Vec<FunctionValue>> {
+        match self.kind {
             ListValueKind::Function {
                 item_type: actual,
                 values,
-            } if actual == item_type => Some(values),
+            } if actual == *item_type => Some(values),
             _ => None,
         }
     }
@@ -244,59 +237,65 @@ impl ListValue {
         }
     }
 
-    pub(crate) fn append(&mut self, tail: &Self) -> Result<(), ListItemTypeMismatch> {
+    pub(crate) fn append(&mut self, tail: Self) -> Result<(), (ValueType, ValueType)> {
         let expected = self.item_type();
         let actual = tail.item_type();
-
-        match (&mut self.kind, &tail.kind) {
-            (ListValueKind::Int(values), ListValueKind::Int(tail)) => values.extend(tail.clone()),
-            (ListValueKind::String(values), ListValueKind::String(tail)) => {
-                values.extend(tail.clone())
-            }
-            (ListValueKind::Float(values), ListValueKind::Float(tail)) => {
-                values.extend(tail.iter().copied())
-            }
-            (ListValueKind::Bool(values), ListValueKind::Bool(tail)) => {
-                values.extend(tail.iter().copied())
-            }
+        match (&mut self.kind, tail.kind) {
+            (ListValueKind::Int(values), ListValueKind::Int(tail)) => values.extend(tail),
+            (ListValueKind::String(values), ListValueKind::String(tail)) => values.extend(tail),
+            (ListValueKind::Float(values), ListValueKind::Float(tail)) => values.extend(tail),
+            (ListValueKind::Bool(values), ListValueKind::Bool(tail)) => values.extend(tail),
             (ListValueKind::Nil(len), ListValueKind::Nil(tail)) => *len += tail,
             (
-                ListValueKind::Tuple {
-                    item_type, values, ..
-                },
+                ListValueKind::Tuple { item_type, values },
                 ListValueKind::Tuple {
                     item_type: tail_type,
                     values: tail,
                 },
-            ) if item_type == tail_type => values.extend(tail.clone()),
+            ) if *item_type == tail_type => values.extend(tail),
             (
-                ListValueKind::List {
-                    item_type, values, ..
-                },
+                ListValueKind::List { item_type, values },
                 ListValueKind::List {
                     item_type: tail_type,
                     values: tail,
                 },
-            ) if item_type == tail_type => values.extend(tail.clone()),
+            ) if *item_type == tail_type => values.extend(tail),
             (
-                ListValueKind::Function {
-                    item_type, values, ..
-                },
+                ListValueKind::Function { item_type, values },
                 ListValueKind::Function {
                     item_type: tail_type,
                     values: tail,
                 },
-            ) if item_type == tail_type => values.extend(tail.clone()),
-            _ => return Err(ListItemTypeMismatch { expected, actual }),
+            ) if *item_type == tail_type => values.extend(tail),
+            _ => return Err((expected, actual)),
         }
-
         Ok(())
+    }
+
+    pub(crate) fn item_value_mismatch(&self) -> Option<ValueType> {
+        match &self.kind {
+            ListValueKind::Tuple { item_type, values } => values
+                .iter()
+                .map(|value| ValueType::Tuple(value.iter().map(Value::value_type).collect()))
+                .find(|actual| actual != &ValueType::Tuple(item_type.clone())),
+            ListValueKind::List { item_type, values } => values.iter().find_map(|value| {
+                value.item_value_mismatch().or_else(|| {
+                    let actual = ValueType::List(Box::new(value.item_type()));
+                    (actual != ValueType::List(item_type.clone())).then_some(actual)
+                })
+            }),
+            ListValueKind::Function { item_type, values } => values
+                .iter()
+                .map(|value| ValueType::Function(Box::new(value.type_())))
+                .find(|actual| actual != &ValueType::Function(Box::new(item_type.clone()))),
+            _ => None,
+        }
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{ListItemTypeMismatch, ListValue};
+    use super::ListValue;
     use crate::plan::{
         FunctionType, FunctionValue, IntFunctionId, ParamLocal, RuntimeFunctionId, Value, ValueType,
     };
@@ -425,62 +424,131 @@ mod tests {
     }
 
     #[test]
-    fn append_preserves_family_specific_storage() {
+    fn owned_accessors_preserve_family_specific_storage() {
         let function_type = FunctionType::new(vec![ValueType::Int], ValueType::Int);
         let function_value = FunctionValue::new(
             RuntimeFunctionId::Int(IntFunctionId(0)),
             vec![ParamLocal::int(crate::plan::IntLocalId(0))],
         );
 
-        let mut ints = ListValue::int(vec![1.into()]);
-        assert_eq!(ints.append(&ListValue::int(vec![2.into()])), Ok(()));
-        assert_eq!(ints, ListValue::int(vec![1.into(), 2.into()]));
-
-        let mut strings = ListValue::string(vec!["one".into()]);
         assert_eq!(
-            strings.append(&ListValue::string(vec!["two".into()])),
-            Ok(())
+            ListValue::int(vec![1.into(), 2.into()]).into_int_values(),
+            Some(vec![1.into(), 2.into()]),
         );
-        assert_eq!(strings, ListValue::string(vec!["one".into(), "two".into()]));
-
-        let mut floats = ListValue::float(vec![1.5]);
-        assert_eq!(floats.append(&ListValue::float(vec![2.5])), Ok(()));
-        assert_eq!(floats, ListValue::float(vec![1.5, 2.5]));
-
-        let mut bools = ListValue::bool(vec![true]);
-        assert_eq!(bools.append(&ListValue::bool(vec![false])), Ok(()));
-        assert_eq!(bools, ListValue::bool(vec![true, false]));
-
-        let mut nils = ListValue::nil(1);
-        assert_eq!(nils.append(&ListValue::nil(2)), Ok(()));
-        assert_eq!(nils, ListValue::nil(3));
-
-        let mut tuples = ListValue::tuple(vec![ValueType::Int], vec![vec![Value::Int(1.into())]]);
         assert_eq!(
-            tuples.append(&ListValue::tuple(
+            ListValue::string(vec!["one".into()]).into_string_values(),
+            Some(vec!["one".into()]),
+        );
+        assert_eq!(
+            ListValue::float(vec![1.5]).into_float_values(),
+            Some(vec![1.5])
+        );
+        assert_eq!(
+            ListValue::bool(vec![true]).into_bool_values(),
+            Some(vec![true])
+        );
+        assert_eq!(ListValue::nil(2).into_nil_len(), Some(2));
+        assert_eq!(
+            ListValue::tuple(vec![ValueType::Int], vec![vec![Value::Int(1.into())]],)
+                .into_tuple_values(&[ValueType::Int]),
+            Some(vec![vec![Value::Int(1.into())]]),
+        );
+        assert_eq!(
+            ListValue::list(ValueType::Int, vec![ListValue::int(vec![1.into()])])
+                .into_list_values(&ValueType::Int),
+            Some(vec![ListValue::int(vec![1.into()])]),
+        );
+        assert_eq!(
+            ListValue::function(function_type.clone(), vec![function_value.clone()])
+                .into_function_values(&function_type),
+            Some(vec![function_value.clone()]),
+        );
+
+        assert_eq!(
+            ListValue::string(vec!["wrong".into()]).into_int_values(),
+            None,
+        );
+        assert_eq!(ListValue::int(vec![1.into()]).into_string_values(), None);
+        assert_eq!(ListValue::int(vec![1.into()]).into_float_values(), None);
+        assert_eq!(ListValue::int(vec![1.into()]).into_bool_values(), None);
+        assert_eq!(ListValue::int(vec![1.into()]).into_nil_len(), None);
+        assert_eq!(
+            ListValue::tuple(
+                vec![ValueType::String],
+                vec![vec![Value::String("one".into())]],
+            )
+            .into_tuple_values(&[ValueType::Int]),
+            None,
+        );
+        assert_eq!(
+            ListValue::list(
+                ValueType::String,
+                vec![ListValue::string(vec!["one".into()])]
+            )
+            .into_list_values(&ValueType::Int),
+            None,
+        );
+        assert_eq!(
+            ListValue::function(function_type.clone(), vec![function_value])
+                .into_function_values(&FunctionType::new(Vec::new(), ValueType::Nil)),
+            None,
+        );
+    }
+
+    #[test]
+    fn append_preserves_same_family_storage_and_rejects_mismatch() {
+        let function_type = FunctionType::new(vec![ValueType::Int], ValueType::Int);
+        let function_value = FunctionValue::new(
+            RuntimeFunctionId::Int(IntFunctionId(0)),
+            vec![ParamLocal::int(crate::plan::IntLocalId(0))],
+        );
+
+        let mut int = ListValue::int(vec![1.into()]);
+        assert_eq!(int.append(ListValue::int(vec![2.into()])), Ok(()));
+        assert_eq!(int, ListValue::int(vec![1.into(), 2.into()]));
+
+        let mut string = ListValue::string(vec!["one".into()]);
+        assert_eq!(string.append(ListValue::string(vec!["two".into()])), Ok(()),);
+        assert_eq!(string, ListValue::string(vec!["one".into(), "two".into()]),);
+
+        let mut float = ListValue::float(vec![1.5]);
+        assert_eq!(float.append(ListValue::float(vec![2.5])), Ok(()));
+        assert_eq!(float, ListValue::float(vec![1.5, 2.5]));
+
+        let mut bool_ = ListValue::bool(vec![true]);
+        assert_eq!(bool_.append(ListValue::bool(vec![false])), Ok(()));
+        assert_eq!(bool_, ListValue::bool(vec![true, false]));
+
+        let mut nil = ListValue::nil(1);
+        assert_eq!(nil.append(ListValue::nil(2)), Ok(()));
+        assert_eq!(nil, ListValue::nil(3));
+
+        let mut tuple = ListValue::tuple(vec![ValueType::Int], vec![vec![Value::Int(1.into())]]);
+        assert_eq!(
+            tuple.append(ListValue::tuple(
                 vec![ValueType::Int],
                 vec![vec![Value::Int(2.into())]],
             )),
             Ok(()),
         );
         assert_eq!(
-            tuples,
+            tuple,
             ListValue::tuple(
                 vec![ValueType::Int],
                 vec![vec![Value::Int(1.into())], vec![Value::Int(2.into())]],
             ),
         );
 
-        let mut lists = ListValue::list(ValueType::Int, vec![ListValue::int(vec![1.into()])]);
+        let mut list = ListValue::list(ValueType::Int, vec![ListValue::int(vec![1.into()])]);
         assert_eq!(
-            lists.append(&ListValue::list(
+            list.append(ListValue::list(
                 ValueType::Int,
                 vec![ListValue::int(vec![2.into()])],
             )),
             Ok(()),
         );
         assert_eq!(
-            lists,
+            list,
             ListValue::list(
                 ValueType::Int,
                 vec![
@@ -490,73 +558,23 @@ mod tests {
             ),
         );
 
-        let mut functions =
-            ListValue::function(function_type.clone(), vec![function_value.clone()]);
+        let mut function = ListValue::function(function_type.clone(), vec![function_value.clone()]);
         assert_eq!(
-            functions.append(&ListValue::function(
+            function.append(ListValue::function(
                 function_type.clone(),
-                vec![function_value.clone()],
+                vec![function_value.clone()]
             )),
             Ok(()),
         );
         assert_eq!(
-            functions,
+            function,
             ListValue::function(function_type, vec![function_value.clone(), function_value]),
         );
 
-        let mut values = ListValue::int(vec![1.into()]);
+        let mut int = ListValue::int(vec![1.into()]);
         assert_eq!(
-            values.append(&ListValue::string(vec!["two".into()])),
-            Err(ListItemTypeMismatch {
-                expected: ValueType::Int,
-                actual: ValueType::String,
-            }),
-        );
-    }
-
-    #[test]
-    fn append_rejects_nested_item_metadata_mismatch() {
-        let mut tuples = ListValue::tuple(vec![ValueType::Int], vec![vec![Value::Int(1.into())]]);
-        assert_eq!(
-            tuples.append(&ListValue::tuple(
-                vec![ValueType::String],
-                vec![vec![Value::String("one".into())]],
-            )),
-            Err(ListItemTypeMismatch {
-                expected: ValueType::Tuple(vec![ValueType::Int]),
-                actual: ValueType::Tuple(vec![ValueType::String]),
-            }),
-        );
-
-        let mut lists = ListValue::list(ValueType::Int, vec![ListValue::int(vec![1.into()])]);
-        assert_eq!(
-            lists.append(&ListValue::list(
-                ValueType::String,
-                vec![ListValue::string(vec!["one".into()])],
-            )),
-            Err(ListItemTypeMismatch {
-                expected: ValueType::List(Box::new(ValueType::Int)),
-                actual: ValueType::List(Box::new(ValueType::String)),
-            }),
-        );
-
-        let int_function_type = FunctionType::new(Vec::new(), ValueType::Int);
-        let string_function_type = FunctionType::new(Vec::new(), ValueType::String);
-        let int_function = FunctionValue::new(RuntimeFunctionId::Int(IntFunctionId(0)), Vec::new());
-        let string_function = FunctionValue::new(
-            RuntimeFunctionId::String(crate::plan::StringFunctionId(0)),
-            Vec::new(),
-        );
-        let mut functions = ListValue::function(int_function_type.clone(), vec![int_function]);
-        assert_eq!(
-            functions.append(&ListValue::function(
-                string_function_type.clone(),
-                vec![string_function],
-            )),
-            Err(ListItemTypeMismatch {
-                expected: ValueType::Function(Box::new(int_function_type)),
-                actual: ValueType::Function(Box::new(string_function_type)),
-            }),
+            int.append(ListValue::string(vec!["wrong".into()])),
+            Err((ValueType::Int, ValueType::String)),
         );
     }
 }

@@ -118,7 +118,7 @@ mod tests {
     use crate::plan::{
         BoolFunctionFunctionId, BoolFunctionId, Expr, FloatFunctionFunctionId, FloatFunctionId,
         FunctionFunctionFunctionId, FunctionFunctionId, FunctionType, IntFunctionFunctionId,
-        IntFunctionId, ListFunctionFunctionId, ListFunctionId, NilFunctionFunctionId,
+        IntFunctionId, ListFunctionFunctionId, ListFunctionId, ListReturn, NilFunctionFunctionId,
         NilFunctionId, ParamLocal, ReturnBody, ReturnExpr, StringFunctionFunctionId,
         StringFunctionId, TupleFunctionFunctionId, TupleFunctionId, ValueType,
     };
@@ -168,7 +168,7 @@ mod tests {
             FunctionReturn::from(list([int(1)], ValueType::Int)).build(&mut runtime_ids),
             ReturnExpr::list_body(
                 ListFunctionId::from_item_type(0, ValueType::Int),
-                ReturnBody::expr(list([int(1)], ValueType::Int).into()),
+                ListReturn::expr(list([int(1)], ValueType::Int).into()),
             ),
         );
 

@@ -1,5 +1,6 @@
 use super::{
-    BoolFunctionExpr, CallArg, Expr, FloatExpr, IntExpr, ListExpr, PanicExpr, StringExpr, TupleExpr,
+    BoolFunctionExpr, BoolListExpr, CallArg, Expr, FloatExpr, IntExpr, ListExpr, PanicExpr,
+    StringExpr, TupleExpr,
 };
 use crate::plan::{BoolFunctionId, BoolLocalId, Step};
 use ecow::EcoString;
@@ -30,7 +31,7 @@ pub(crate) enum BoolExprKind {
         index: usize,
     },
     ListIndex {
-        list: Box<ListExpr>,
+        list: Box<BoolListExpr>,
         index: usize,
     },
     Panic(PanicExpr),
@@ -158,10 +159,10 @@ impl BoolExpr {
         }
     }
 
-    pub(crate) fn list_index(list: ListExpr, index: usize) -> Self {
+    pub(crate) fn list_index(list: impl Into<BoolListExpr>, index: usize) -> Self {
         Self {
             kind: BoolExprKind::ListIndex {
-                list: Box::new(list),
+                list: Box::new(list.into()),
                 index,
             },
         }

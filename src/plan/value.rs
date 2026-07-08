@@ -14,6 +14,7 @@ pub(crate) use self::function::{
     IntFunctionValue, ListFunctionValue, NilFunctionValue, StringFunctionValue, TupleFunctionValue,
 };
 pub use self::list::ListValue;
+pub(crate) use self::list::ListValueKind;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum ValueType {

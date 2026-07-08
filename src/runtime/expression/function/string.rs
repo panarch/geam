@@ -1,6 +1,6 @@
 use crate::plan::{
-    ExecutionPlan, FunctionValueKind, StringFunctionExpr, StringFunctionExprKind,
-    StringFunctionValue, Value, ValueType,
+    ExecutionPlan, FunctionReturnFamily, FunctionValueKind, StringFunctionExpr,
+    StringFunctionExprKind, StringFunctionValue, Value, ValueType,
 };
 use crate::runtime::ExecutionError;
 use crate::runtime::expression::{
@@ -56,13 +56,12 @@ pub(in crate::runtime) fn eval_string_function_expr(
             }
         }
         StringFunctionExprKind::ListIndex { list, index, type_ } => {
-            let expected = ValueType::Function(Box::new(type_.clone()));
             let function = project_function_list_expr(plan, frame, list, *index, type_)?;
             match function.kind() {
                 FunctionValueKind::String(value) => Ok(value.clone()),
-                _ => Err(ExecutionError::list_item_type_mismatch(
-                    expected,
-                    Value::Function(function).value_type(),
+                _ => Err(ExecutionError::function_return_family_mismatch(
+                    FunctionReturnFamily::String,
+                    function.kind().family(),
                 )),
             }
         }
@@ -131,11 +130,11 @@ mod tests {
     use crate::plan::{
         BoolExpr, BoolFunctionExpr, BoolFunctionId, BoolFunctionValue, CaptureArg, ExecutionPlan,
         Expr, FloatExpr, FunctionExpr, FunctionFunctionExpr, FunctionFunctionId,
-        FunctionFunctionValue, FunctionId, FunctionListLocalId, FunctionPlan, FunctionType,
-        IntExpr, IntFunctionId, ListExpr, ListLocal, ListValue, PanicExpr, PanicSite, ParamLocal,
-        ReturnExpr, Step, StringExpr, StringFunctionExpr, StringFunctionFunctionId,
-        StringFunctionId, StringFunctionLocalId, StringFunctionValue, StringLocalId, TupleExpr,
-        ValueType,
+        FunctionFunctionValue, FunctionId, FunctionListLocalId, FunctionPlan, FunctionReturnFamily,
+        FunctionType, IntExpr, IntFunctionId, ListElements, ListExpr, ListLocal, ListValue,
+        PanicExpr, PanicSite, ParamLocal, ReturnExpr, Step, StringExpr, StringFunctionExpr,
+        StringFunctionFunctionId, StringFunctionId, StringFunctionLocalId, StringFunctionValue,
+        StringLocalId, TupleExpr, ValueType,
     };
     use crate::runtime::frame::Frame;
     use crate::runtime::{ExecutionError, PanicKind};
@@ -550,6 +549,24 @@ mod tests {
             )),
         );
 
+        let list = ListExpr::from_elements(ListElements::Function {
+            item_type: type_(),
+            values: vec![FunctionExpr::bool(BoolFunctionExpr::value(
+                BoolFunctionValue::new(BoolFunctionId(0), Vec::new()),
+            ))],
+        });
+        assert_eq!(
+            eval_string_function_expr(
+                &plan,
+                &mut frame,
+                &StringFunctionExpr::list_index(list, 0, type_()),
+            ),
+            Err(ExecutionError::function_return_family_mismatch(
+                FunctionReturnFamily::String,
+                FunctionReturnFamily::Bool,
+            )),
+        );
+
         let mut layout = FrameLayout::default();
         layout.include_list(ListLocal::function(FunctionListLocalId(0), type_()));
         let mut frame = Frame::new(layout);
@@ -561,18 +578,6 @@ mod tests {
                     type_(),
                     vec![BoolFunctionValue::new(BoolFunctionId(0), Vec::new()).into()],
                 ),
-            ),
-            Ok(()),
-        );
-        let list = ListExpr::local_get(
-            ListLocal::function(FunctionListLocalId(0), type_()),
-            "functions".into(),
-        );
-        assert_eq!(
-            eval_string_function_expr(
-                &plan,
-                &mut frame,
-                &StringFunctionExpr::list_index(list, 0, type_()),
             ),
             Err(ExecutionError::list_item_type_mismatch(
                 ValueType::Function(Box::new(type_())),
@@ -608,19 +613,6 @@ mod tests {
             Err(ExecutionError::tuple_index_family_mismatch(
                 ValueType::List(Box::new(ValueType::Function(Box::new(type_())))),
                 ValueType::Tuple(Vec::new()),
-            )),
-        );
-
-        let list = ListExpr::value(vec![Expr::int(IntExpr::value(1.into()))], ValueType::Int);
-        assert_eq!(
-            eval_string_function_expr(
-                &plan,
-                &mut frame,
-                &StringFunctionExpr::list_index(list, 0, type_()),
-            ),
-            Err(ExecutionError::list_item_type_mismatch(
-                ValueType::Function(Box::new(type_())),
-                ValueType::Int,
             )),
         );
     }

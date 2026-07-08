@@ -483,20 +483,6 @@ pub fn main() {
                 1,
             )),
         );
-
-        let list = ListExpr::value(vec![Expr::int(IntExpr::value(1.into()))], ValueType::Int);
-
-        assert_eq!(
-            eval_tuple_expr(
-                &plan,
-                &mut frame,
-                &TupleExpr::list_index(list, 0, tuple_type.clone()),
-            ),
-            Err(ExecutionError::list_item_type_mismatch(
-                ValueType::Tuple(tuple_type),
-                ValueType::Int,
-            )),
-        );
     }
 
     #[test]

@@ -265,7 +265,7 @@ fn plan_list_structural_case_pattern(
     let element_count = elements.len();
     let mut patterns = Vec::with_capacity(elements.len());
     for (index, pattern) in elements.into_iter().enumerate() {
-        let value = list_index_expr(list.clone(), index, element_type.clone());
+        let value = list_index_expr(list.clone(), index, element_type.clone())?;
         patterns.push(plan_list_case_pattern(
             pattern,
             value,
@@ -411,7 +411,9 @@ mod tests {
     };
     use crate::planner::plan_module;
     use crate::planner::support::{dummy_span, expect_plan_error};
-    use crate::planner::{InvalidCaseShapeReason, InvalidTypedAstReason, PlanError};
+    use crate::planner::{
+        InvalidCaseShapeReason, InvalidExpressionType, InvalidTypedAstReason, PlanError,
+    };
     use gleam_core::type_::error::VariableOrigin;
 
     #[test]
@@ -869,6 +871,37 @@ pub fn main() {
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::CaseShape {
                     reason: InvalidCaseShapeReason::InvalidPattern,
+                },
+            }),
+        );
+    }
+
+    #[test]
+    fn reject_margin_list_structural_element_projection_type_mismatch() {
+        let int_list_subject = Expr::list(ListExpr::local_get(
+            ListLocal::int(IntListLocalId(0)),
+            "values".into(),
+        ));
+
+        assert_eq!(
+            super::plan_list_case_pattern(
+                gleam_core::ast::Pattern::List {
+                    location: dummy_span(),
+                    elements: vec![gleam_core::ast::Pattern::Discard {
+                        location: dummy_span(),
+                        name: "_".into(),
+                        type_: gleam_core::type_::string(),
+                    }],
+                    tail: None,
+                    type_: gleam_core::type_::list(gleam_core::type_::string()),
+                },
+                int_list_subject,
+                ValueType::List(Box::new(ValueType::String)),
+            ),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionType {
+                    expected: InvalidExpressionType::List,
+                    actual: InvalidExpressionType::Int,
                 },
             }),
         );

@@ -203,18 +203,6 @@ mod tests {
     fn list_projection_invariant_errors() {
         let plan = crate::runtime::plan_src("pub fn main() { True }");
         let mut frame = Frame::default();
-        let list = ListExpr::value(
-            vec![Expr::string(StringExpr::value("one".into()))],
-            ValueType::String,
-        );
-
-        assert_eq!(
-            eval_bool_expr(&plan, &mut frame, &BoolExpr::list_index(list, 0)),
-            Err(ExecutionError::list_item_type_mismatch(
-                ValueType::Bool,
-                ValueType::String,
-            )),
-        );
 
         let list = ListExpr::value(vec![Expr::bool(BoolExpr::value(true))], ValueType::Bool);
         assert_eq!(

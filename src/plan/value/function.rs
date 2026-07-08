@@ -1,7 +1,8 @@
 use super::{CaptureValue, FunctionType, ValueType};
 use crate::plan::{
-    BoolFunctionId, FloatFunctionId, FunctionFunctionId, IntFunctionId, ListFunctionId,
-    NilFunctionId, ParamLocal, RuntimeFunctionId, StringFunctionId, TupleFunctionId,
+    BoolFunctionId, FloatFunctionId, FunctionFunctionId, FunctionReturnFamily, IntFunctionId,
+    ListFunctionId, NilFunctionId, ParamLocal, RuntimeFunctionId, StringFunctionId,
+    TupleFunctionId,
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -147,6 +148,21 @@ impl FunctionValue {
             FunctionValueKind::Tuple(value) => value.params(),
             FunctionValueKind::List(value) => value.params(),
             FunctionValueKind::Function(value) => value.params(),
+        }
+    }
+}
+
+impl FunctionValueKind {
+    pub(crate) fn family(&self) -> FunctionReturnFamily {
+        match self {
+            Self::Int(_) => FunctionReturnFamily::Int,
+            Self::Float(_) => FunctionReturnFamily::Float,
+            Self::String(_) => FunctionReturnFamily::String,
+            Self::Bool(_) => FunctionReturnFamily::Bool,
+            Self::Nil(_) => FunctionReturnFamily::Nil,
+            Self::Tuple(_) => FunctionReturnFamily::Tuple,
+            Self::List(_) => FunctionReturnFamily::List,
+            Self::Function(_) => FunctionReturnFamily::Function,
         }
     }
 }
@@ -530,10 +546,10 @@ mod tests {
     };
     use crate::plan::{
         BoolFunctionId, BoolFunctionLocalId, BoolLocalId, FloatFunctionId, FloatFunctionLocalId,
-        FloatLocalId, FunctionFunctionId, FunctionType, IntFunctionFunctionId, IntFunctionId,
-        IntListLocalId, IntLocalId, ListFunctionId, ListLocal, NilFunctionId, NilLocalId,
-        ParamLocal, RuntimeFunctionId, StringFunctionId, StringLocalId, TupleFunctionId,
-        TupleFunctionLocalId, TupleLocalId, ValueType,
+        FloatLocalId, FunctionFunctionId, FunctionReturnFamily, FunctionType,
+        IntFunctionFunctionId, IntFunctionId, IntListLocalId, IntLocalId, ListFunctionId,
+        ListLocal, NilFunctionId, NilLocalId, ParamLocal, RuntimeFunctionId, StringFunctionId,
+        StringLocalId, TupleFunctionId, TupleFunctionLocalId, TupleLocalId, ValueType,
     };
 
     #[test]
@@ -599,6 +615,63 @@ mod tests {
             function.type_().return_(),
             &ValueType::Function(Box::new(function_return_type)),
         );
+    }
+
+    #[test]
+    fn function_value_kind_family_reports_return_family() {
+        let function_return_type = FunctionType::new(vec![ValueType::Int], ValueType::Int);
+        let cases = vec![
+            (
+                FunctionValueKind::Int(IntFunctionValue::new(IntFunctionId(0), Vec::new())),
+                FunctionReturnFamily::Int,
+            ),
+            (
+                FunctionValueKind::Float(FloatFunctionValue::new(FloatFunctionId(0), Vec::new())),
+                FunctionReturnFamily::Float,
+            ),
+            (
+                FunctionValueKind::String(StringFunctionValue::new(
+                    StringFunctionId(0),
+                    Vec::new(),
+                )),
+                FunctionReturnFamily::String,
+            ),
+            (
+                FunctionValueKind::Bool(BoolFunctionValue::new(BoolFunctionId(0), Vec::new())),
+                FunctionReturnFamily::Bool,
+            ),
+            (
+                FunctionValueKind::Nil(NilFunctionValue::new(NilFunctionId(0), Vec::new())),
+                FunctionReturnFamily::Nil,
+            ),
+            (
+                FunctionValueKind::Tuple(TupleFunctionValue::new(
+                    TupleFunctionId(0),
+                    Vec::new(),
+                    vec![ValueType::Int],
+                )),
+                FunctionReturnFamily::Tuple,
+            ),
+            (
+                FunctionValueKind::List(ListFunctionValue::new(
+                    ListFunctionId::from_item_type(0, ValueType::Int),
+                    Vec::new(),
+                )),
+                FunctionReturnFamily::List,
+            ),
+            (
+                FunctionValueKind::Function(FunctionFunctionValue::new(
+                    FunctionFunctionId::Int(IntFunctionFunctionId(0)),
+                    Vec::new(),
+                    function_return_type,
+                )),
+                FunctionReturnFamily::Function,
+            ),
+        ];
+
+        for (kind, family) in cases {
+            assert_eq!(kind.family(), family);
+        }
     }
 
     #[test]

@@ -217,7 +217,7 @@ fn plan_list_tail_assignment(
     let value = value
         .into_list()
         .ok_or_else(|| list_assignment_value_must_be_list(actual))?;
-    if value.element_type() != &element_type {
+    if value.element_type() != element_type {
         return Err(PlanError::InvalidTypedAst {
             reason: InvalidTypedAstReason::InvalidPattern,
         });

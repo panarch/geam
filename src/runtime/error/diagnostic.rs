@@ -168,6 +168,19 @@ mod tests {
     }
 
     #[test]
+    fn list_item_type_mismatch_diagnostic_has_invariant_code_only() {
+        let error = ExecutionError::list_item_type_mismatch(ValueType::Int, ValueType::String);
+
+        assert_eq!(
+            error.code().map(|code| code.to_string()),
+            Some("geam::list_item_type_mismatch".into()),
+        );
+        assert!(error.help().is_none());
+        assert!(error.source_code().is_none());
+        assert!(error.labels().is_none());
+    }
+
+    #[test]
     fn panic_diagnostic_has_source_labels_and_failed_value_help() {
         let source = SourceContext::new(
             "main.gleam",
@@ -244,10 +257,6 @@ mod tests {
             (
                 ExecutionError::list_index_out_of_bounds(ValueType::Int, 1, 1),
                 "geam::list_index_out_of_bounds",
-            ),
-            (
-                ExecutionError::list_item_type_mismatch(ValueType::Int, ValueType::String),
-                "geam::list_item_type_mismatch",
             ),
         ] {
             assert_eq!(

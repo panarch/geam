@@ -1,4 +1,4 @@
-use crate::plan::{FrameLayout, ReturnBodyKind};
+use crate::plan::{FrameLayout, ListItem, ListReturn, ReturnBody, ReturnBodyKind, TypedListExpr};
 
 impl FrameLayout {
     pub(in crate::plan::frame) fn include_int_return(&mut self, body: &crate::plan::IntReturn) {
@@ -323,8 +323,26 @@ impl FrameLayout {
     }
 
     pub(in crate::plan::frame) fn include_list_return(&mut self, body: &crate::plan::ListReturn) {
+        match body {
+            ListReturn::Int(body) => self.include_typed_list_return(body),
+            ListReturn::Float(body) => self.include_typed_list_return(body),
+            ListReturn::String(body) => self.include_typed_list_return(body),
+            ListReturn::Bool(body) => self.include_typed_list_return(body),
+            ListReturn::Nil(body) => self.include_typed_list_return(body),
+            ListReturn::Tuple { body, .. } => self.include_typed_list_return(body),
+            ListReturn::List { body, .. } => self.include_typed_list_return(body),
+            ListReturn::Function { body, .. } => self.include_typed_list_return(body),
+        }
+    }
+
+    fn include_typed_list_return<Item: ListItem>(
+        &mut self,
+        body: &ReturnBody<TypedListExpr<Item>, Item::Function>,
+    ) {
         match body.kind() {
-            ReturnBodyKind::Expr(expression) => self.include_list_expr(expression),
+            ReturnBodyKind::Expr(expression) => {
+                self.include_list_expr(&Item::expr_to_facade(expression.clone()))
+            }
             ReturnBodyKind::TailCall { args, .. } => self.include_call_args(args),
             ReturnBodyKind::BoolCase {
                 subject,
@@ -332,8 +350,8 @@ impl FrameLayout {
                 false_,
             } => {
                 self.include_bool_expr(subject);
-                self.include_list_return(true_);
-                self.include_list_return(false_);
+                self.include_typed_list_return(true_);
+                self.include_typed_list_return(false_);
             }
             ReturnBodyKind::IntCase {
                 subject,
@@ -342,9 +360,9 @@ impl FrameLayout {
             } => {
                 self.include_int_expr(subject);
                 for (_, branch) in clauses {
-                    self.include_list_return(branch);
+                    self.include_typed_list_return(branch);
                 }
-                self.include_list_return(fallback);
+                self.include_typed_list_return(fallback);
             }
             ReturnBodyKind::FloatCase {
                 subject,
@@ -353,9 +371,9 @@ impl FrameLayout {
             } => {
                 self.include_float_expr(subject);
                 for (_, branch) in clauses {
-                    self.include_list_return(branch);
+                    self.include_typed_list_return(branch);
                 }
-                self.include_list_return(fallback);
+                self.include_typed_list_return(fallback);
             }
             ReturnBodyKind::StringCase {
                 subject,
@@ -364,13 +382,13 @@ impl FrameLayout {
             } => {
                 self.include_string_expr(subject);
                 for (_, branch) in clauses {
-                    self.include_list_return(branch);
+                    self.include_typed_list_return(branch);
                 }
-                self.include_list_return(fallback);
+                self.include_typed_list_return(fallback);
             }
             ReturnBodyKind::Block { steps, return_ } => {
                 self.include_steps(steps);
-                self.include_list_return(return_);
+                self.include_typed_list_return(return_);
             }
         }
     }

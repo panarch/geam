@@ -268,14 +268,14 @@ pub(crate) fn list_return_tail_call(
     args: impl IntoIterator<Item = CallArg>,
     element_type: ValueType,
 ) -> ListReturn {
-    ReturnBody::tail_call(
+    ListReturn::tail_call(
         ListFunctionId::from_item_type(function, element_type),
         args.into_iter().collect(),
     )
 }
 
 pub(crate) fn list_return_expr(expression: List) -> ListReturn {
-    ReturnBody::expr(expression.into())
+    ListReturn::expr(expression.into())
 }
 
 pub(crate) fn list_return_bool_case(
@@ -283,7 +283,8 @@ pub(crate) fn list_return_bool_case(
     true_: ListReturn,
     false_: ListReturn,
 ) -> ListReturn {
-    ReturnBody::bool_case(subject.into(), true_, false_)
+    ListReturn::try_bool_case(subject.into(), true_, false_)
+        .expect("list return case branches must share an item family")
 }
 
 pub(crate) fn list_return_int_case(
@@ -291,7 +292,7 @@ pub(crate) fn list_return_int_case(
     clauses: impl IntoIterator<Item = (i64, ListReturn)>,
     fallback: ListReturn,
 ) -> ListReturn {
-    ReturnBody::int_case(
+    ListReturn::try_int_case(
         subject.into(),
         clauses
             .into_iter()
@@ -299,6 +300,7 @@ pub(crate) fn list_return_int_case(
             .collect(),
         fallback,
     )
+    .expect("list return case branches must share an item family")
 }
 
 pub(crate) fn list_return_string_case(
@@ -306,7 +308,7 @@ pub(crate) fn list_return_string_case(
     clauses: impl IntoIterator<Item = (&'static str, ListReturn)>,
     fallback: ListReturn,
 ) -> ListReturn {
-    ReturnBody::string_case(
+    ListReturn::try_string_case(
         subject.into(),
         clauses
             .into_iter()
@@ -314,6 +316,7 @@ pub(crate) fn list_return_string_case(
             .collect(),
         fallback,
     )
+    .expect("list return case branches must share an item family")
 }
 
 pub(crate) fn list_return_float_case(
@@ -321,14 +324,15 @@ pub(crate) fn list_return_float_case(
     clauses: impl IntoIterator<Item = (f64, ListReturn)>,
     fallback: ListReturn,
 ) -> ListReturn {
-    ReturnBody::float_case(subject.into(), clauses.into_iter().collect(), fallback)
+    ListReturn::try_float_case(subject.into(), clauses.into_iter().collect(), fallback)
+        .expect("list return case branches must share an item family")
 }
 
 pub(crate) fn list_return_block(
     steps: impl IntoIterator<Item = Step>,
     return_: ListReturn,
 ) -> ListReturn {
-    ReturnBody::block(steps.into_iter().collect(), return_)
+    ListReturn::try_block(steps.into_iter().collect(), return_)
 }
 
 pub(crate) fn return_list(element_type: ValueType, body: ListReturn) -> FunctionReturn {
@@ -415,8 +419,8 @@ mod tests {
         string_return_int_case, string_return_string_case, string_return_tail_call,
     };
     use crate::plan::{
-        BoolFunctionId, CallArg, FloatFunctionId, IntFunctionId, ListFunctionId, NilFunctionId,
-        ReturnBody, Step, StringFunctionId,
+        BoolFunctionId, CallArg, FloatFunctionId, IntFunctionId, ListFunctionId, ListReturn,
+        NilFunctionId, ReturnBody, Step, StringFunctionId,
     };
     use crate::planner::dsl::expression::{bool_, float, int, list, nil, string};
     use num_bigint::BigInt;
@@ -439,7 +443,7 @@ mod tests {
         assert_eq!(nil_return_expr(nil()), ReturnBody::expr(nil().into()));
         assert_eq!(
             list_return_expr(list([int(1)], crate::plan::ValueType::Int)),
-            ReturnBody::expr(list([int(1)], crate::plan::ValueType::Int).into()),
+            ListReturn::expr(list([int(1)], crate::plan::ValueType::Int).into()),
         );
     }
 
@@ -467,7 +471,7 @@ mod tests {
         );
         assert_eq!(
             list_return_tail_call(5, Vec::<CallArg>::new(), crate::plan::ValueType::Int),
-            ReturnBody::tail_call(
+            ListReturn::tail_call(
                 ListFunctionId::from_item_type(5, crate::plan::ValueType::Int),
                 Vec::new(),
             ),
@@ -538,11 +542,12 @@ mod tests {
                 list_return_expr(list([int(1)], crate::plan::ValueType::Int)),
                 list_return_expr(list([int(0)], crate::plan::ValueType::Int)),
             ),
-            ReturnBody::bool_case(
+            ListReturn::try_bool_case(
                 bool_(true).into(),
-                list_return_expr(list([int(1)], crate::plan::ValueType::Int)),
-                list_return_expr(list([int(0)], crate::plan::ValueType::Int)),
-            ),
+                ListReturn::expr(list([int(1)], crate::plan::ValueType::Int).into()),
+                ListReturn::expr(list([int(0)], crate::plan::ValueType::Int).into()),
+            )
+            .expect("list bool-case branches should share an item family"),
         );
 
         assert_eq!(
@@ -614,14 +619,15 @@ mod tests {
                 )],
                 list_return_expr(list([int(0)], crate::plan::ValueType::Int)),
             ),
-            ReturnBody::int_case(
+            ListReturn::try_int_case(
                 int(1).into(),
                 vec![(
                     BigInt::from(1),
-                    list_return_expr(list([int(1)], crate::plan::ValueType::Int)),
+                    ListReturn::expr(list([int(1)], crate::plan::ValueType::Int).into()),
                 )],
-                list_return_expr(list([int(0)], crate::plan::ValueType::Int)),
-            ),
+                ListReturn::expr(list([int(0)], crate::plan::ValueType::Int).into()),
+            )
+            .expect("list int-case branches should share an item family"),
         );
 
         assert_eq!(
@@ -729,14 +735,15 @@ mod tests {
                 )],
                 list_return_expr(list([int(0)], crate::plan::ValueType::Int)),
             ),
-            ReturnBody::string_case(
+            ListReturn::try_string_case(
                 string("key").into(),
                 vec![(
                     "one".into(),
-                    list_return_expr(list([int(1)], crate::plan::ValueType::Int)),
+                    ListReturn::expr(list([int(1)], crate::plan::ValueType::Int).into()),
                 )],
-                list_return_expr(list([int(0)], crate::plan::ValueType::Int)),
-            ),
+                ListReturn::expr(list([int(0)], crate::plan::ValueType::Int).into()),
+            )
+            .expect("list string-case branches should share an item family"),
         );
         assert_eq!(
             nil_return_float_case(
@@ -771,14 +778,15 @@ mod tests {
                 )],
                 list_return_expr(list([int(0)], crate::plan::ValueType::Int)),
             ),
-            ReturnBody::float_case(
+            ListReturn::try_float_case(
                 float(1.0).into(),
                 vec![(
                     1.0,
-                    list_return_expr(list([int(1)], crate::plan::ValueType::Int)),
+                    ListReturn::expr(list([int(1)], crate::plan::ValueType::Int).into()),
                 )],
-                list_return_expr(list([int(0)], crate::plan::ValueType::Int)),
-            ),
+                ListReturn::expr(list([int(0)], crate::plan::ValueType::Int).into()),
+            )
+            .expect("list float-case branches should share an item family"),
         );
     }
 
@@ -811,9 +819,9 @@ mod tests {
                 Vec::<Step>::new(),
                 list_return_expr(list([int(1)], crate::plan::ValueType::Int)),
             ),
-            ReturnBody::block(
+            ListReturn::try_block(
                 Vec::new(),
-                list_return_expr(list([int(1)], crate::plan::ValueType::Int)),
+                ListReturn::expr(list([int(1)], crate::plan::ValueType::Int).into()),
             ),
         );
     }

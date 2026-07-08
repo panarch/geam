@@ -38,7 +38,7 @@ impl FrameLayout {
                 self.include_call_args(args);
             }
             IntFunctionExprKind::TupleIndex { tuple, .. } => self.include_tuple_expr(tuple),
-            IntFunctionExprKind::ListIndex { list, .. } => self.include_list_expr(list),
+            IntFunctionExprKind::ListIndex { list, .. } => self.include_typed_list_expr(list),
             IntFunctionExprKind::BoolCase {
                 subject,
                 true_,
@@ -103,7 +103,7 @@ impl FrameLayout {
                 self.include_call_args(args);
             }
             FloatFunctionExprKind::TupleIndex { tuple, .. } => self.include_tuple_expr(tuple),
-            FloatFunctionExprKind::ListIndex { list, .. } => self.include_list_expr(list),
+            FloatFunctionExprKind::ListIndex { list, .. } => self.include_typed_list_expr(list),
             FloatFunctionExprKind::BoolCase {
                 subject,
                 true_,
@@ -170,7 +170,7 @@ impl FrameLayout {
                 self.include_call_args(args);
             }
             StringFunctionExprKind::TupleIndex { tuple, .. } => self.include_tuple_expr(tuple),
-            StringFunctionExprKind::ListIndex { list, .. } => self.include_list_expr(list),
+            StringFunctionExprKind::ListIndex { list, .. } => self.include_typed_list_expr(list),
             StringFunctionExprKind::BoolCase {
                 subject,
                 true_,
@@ -235,7 +235,7 @@ impl FrameLayout {
                 self.include_call_args(args);
             }
             BoolFunctionExprKind::TupleIndex { tuple, .. } => self.include_tuple_expr(tuple),
-            BoolFunctionExprKind::ListIndex { list, .. } => self.include_list_expr(list),
+            BoolFunctionExprKind::ListIndex { list, .. } => self.include_typed_list_expr(list),
             BoolFunctionExprKind::BoolCase {
                 subject,
                 true_,
@@ -300,7 +300,7 @@ impl FrameLayout {
                 self.include_call_args(args);
             }
             NilFunctionExprKind::TupleIndex { tuple, .. } => self.include_tuple_expr(tuple),
-            NilFunctionExprKind::ListIndex { list, .. } => self.include_list_expr(list),
+            NilFunctionExprKind::ListIndex { list, .. } => self.include_typed_list_expr(list),
             NilFunctionExprKind::BoolCase {
                 subject,
                 true_,
@@ -369,7 +369,7 @@ impl FrameLayout {
                 self.include_call_args(args);
             }
             FunctionFunctionExprKind::TupleIndex { tuple, .. } => self.include_tuple_expr(tuple),
-            FunctionFunctionExprKind::ListIndex { list, .. } => self.include_list_expr(list),
+            FunctionFunctionExprKind::ListIndex { list, .. } => self.include_typed_list_expr(list),
             FunctionFunctionExprKind::BoolCase {
                 subject,
                 true_,
@@ -434,7 +434,7 @@ impl FrameLayout {
                 self.include_call_args(args);
             }
             TupleFunctionExprKind::TupleIndex { tuple, .. } => self.include_tuple_expr(tuple),
-            TupleFunctionExprKind::ListIndex { list, .. } => self.include_list_expr(list),
+            TupleFunctionExprKind::ListIndex { list, .. } => self.include_typed_list_expr(list),
             TupleFunctionExprKind::BoolCase {
                 subject,
                 true_,
@@ -501,7 +501,7 @@ impl FrameLayout {
                 self.include_call_args(args);
             }
             ListFunctionExprKind::TupleIndex { tuple, .. } => self.include_tuple_expr(tuple),
-            ListFunctionExprKind::ListIndex { list, .. } => self.include_list_expr(list),
+            ListFunctionExprKind::ListIndex { list, .. } => self.include_typed_list_expr(list),
             ListFunctionExprKind::BoolCase {
                 subject,
                 true_,
@@ -686,6 +686,8 @@ mod tests {
                 ListLocal::function(FunctionListLocalId(local), type_),
                 name.into(),
             )
+            .into_function()
+            .expect("function list local should build a FunctionListExpr")
         };
         let steps = vec![
             Step::evaluate(Expr::function(FunctionExpr::int(

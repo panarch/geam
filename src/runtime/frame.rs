@@ -1,11 +1,15 @@
 use crate::plan::{
-    BoolFunctionLocalId, BoolFunctionValue, BoolLocalId, FloatFunctionLocalId, FloatFunctionValue,
-    FloatLocalId, FrameLayout, FunctionFunctionLocalId, FunctionFunctionValue, IntFunctionLocalId,
-    IntFunctionValue, IntLocalId, ListFunctionLocal, ListFunctionValue, ListLocal, ListValue,
-    NilFunctionLocalId, NilFunctionValue, NilLocalId, StringFunctionLocalId, StringFunctionValue,
-    StringLocalId, TupleFunctionLocalId, TupleFunctionValue, TupleLocalId, Value, ValueType,
+    BoolFunctionLocalId, BoolFunctionValue, BoolListLocalId, BoolLocalId, FloatFunctionLocalId,
+    FloatFunctionValue, FloatListLocalId, FloatLocalId, FrameLayout, FunctionFunctionLocalId,
+    FunctionFunctionValue, FunctionListLocalId, FunctionValue, IntFunctionLocalId,
+    IntFunctionValue, IntListLocalId, IntLocalId, ListFunctionLocal, ListFunctionValue,
+    ListListLocalId, ListLocal, ListValue, ListValueKind, NilFunctionLocalId, NilFunctionValue,
+    NilListLocalId, NilLocalId, StringFunctionLocalId, StringFunctionValue, StringListLocalId,
+    StringLocalId, TupleFunctionLocalId, TupleFunctionValue, TupleListLocalId, TupleLocalId, Value,
+    ValueType,
 };
 use crate::runtime::ExecutionError;
+use crate::runtime::error::ExecutionResult;
 use ecow::EcoString;
 use num_bigint::BigInt;
 use std::collections::HashMap;
@@ -16,14 +20,17 @@ pub(super) struct Frame {
     strings: Vec<EcoString>,
     bools: Vec<bool>,
     tuples: Vec<Vec<Value>>,
-    int_lists: Vec<ListValue>,
-    string_lists: Vec<ListValue>,
-    float_lists: Vec<ListValue>,
-    bool_lists: Vec<ListValue>,
-    nil_lists: Vec<ListValue>,
-    tuple_lists: Vec<ListValue>,
-    list_lists: Vec<ListValue>,
-    function_lists: Vec<ListValue>,
+    int_lists: Vec<Vec<BigInt>>,
+    string_lists: Vec<Vec<EcoString>>,
+    float_lists: Vec<Vec<f64>>,
+    bool_lists: Vec<Vec<bool>>,
+    nil_lists: Vec<usize>,
+    tuple_lists: Vec<Vec<Vec<Value>>>,
+    tuple_list_types: Vec<Vec<ValueType>>,
+    list_lists: Vec<Vec<ListValue>>,
+    list_list_types: Vec<ValueType>,
+    function_lists: Vec<Vec<FunctionValue>>,
+    function_list_types: Vec<crate::plan::FunctionType>,
     int_functions: HashMap<IntFunctionLocalId, IntFunctionValue>,
     float_functions: HashMap<FloatFunctionLocalId, FloatFunctionValue>,
     string_functions: HashMap<StringFunctionLocalId, StringFunctionValue>,
@@ -42,30 +49,17 @@ impl Frame {
             strings: vec![EcoString::default(); layout.strings()],
             bools: vec![false; layout.bools()],
             tuples: vec![Vec::new(); layout.tuples()],
-            int_lists: vec![ListValue::empty(ValueType::Int); layout.int_lists()],
-            string_lists: vec![ListValue::empty(ValueType::String); layout.string_lists()],
-            float_lists: vec![ListValue::empty(ValueType::Float); layout.float_lists()],
-            bool_lists: vec![ListValue::empty(ValueType::Bool); layout.bool_lists()],
-            nil_lists: vec![ListValue::empty(ValueType::Nil); layout.nil_lists()],
-            tuple_lists: layout
-                .tuple_lists()
-                .iter()
-                .cloned()
-                .map(ValueType::Tuple)
-                .map(ListValue::empty)
-                .collect(),
-            list_lists: layout
-                .list_lists()
-                .iter()
-                .cloned()
-                .map(ListValue::empty_list)
-                .collect(),
-            function_lists: layout
-                .function_lists()
-                .iter()
-                .cloned()
-                .map(ListValue::empty_function)
-                .collect(),
+            int_lists: vec![Vec::new(); layout.int_lists()],
+            string_lists: vec![Vec::new(); layout.string_lists()],
+            float_lists: vec![Vec::new(); layout.float_lists()],
+            bool_lists: vec![Vec::new(); layout.bool_lists()],
+            nil_lists: vec![0; layout.nil_lists()],
+            tuple_lists: vec![Vec::new(); layout.tuple_lists().len()],
+            tuple_list_types: layout.tuple_lists().to_vec(),
+            list_lists: vec![Vec::new(); layout.list_lists().len()],
+            list_list_types: layout.list_lists().to_vec(),
+            function_lists: vec![Vec::new(); layout.function_lists().len()],
+            function_list_types: layout.function_lists().to_vec(),
             int_functions: HashMap::with_capacity(layout.int_functions()),
             float_functions: HashMap::with_capacity(layout.float_functions()),
             string_functions: HashMap::with_capacity(layout.string_functions()),
@@ -121,50 +115,155 @@ impl Frame {
         self.tuples[local.0].clone()
     }
 
-    pub(super) fn set_list(
+    pub(super) fn set_int_list(&mut self, local: IntListLocalId, value: Vec<BigInt>) {
+        set_slot(&mut self.int_lists, local.0, value);
+    }
+
+    pub(super) fn get_int_list(&self, local: IntListLocalId) -> Vec<BigInt> {
+        self.int_lists[local.0].clone()
+    }
+
+    pub(super) fn set_string_list(&mut self, local: StringListLocalId, value: Vec<EcoString>) {
+        set_slot(&mut self.string_lists, local.0, value);
+    }
+
+    pub(super) fn get_string_list(&self, local: StringListLocalId) -> Vec<EcoString> {
+        self.string_lists[local.0].clone()
+    }
+
+    pub(super) fn set_float_list(&mut self, local: FloatListLocalId, value: Vec<f64>) {
+        set_slot(&mut self.float_lists, local.0, value);
+    }
+
+    pub(super) fn get_float_list(&self, local: FloatListLocalId) -> Vec<f64> {
+        self.float_lists[local.0].clone()
+    }
+
+    pub(super) fn set_bool_list(&mut self, local: BoolListLocalId, value: Vec<bool>) {
+        set_slot(&mut self.bool_lists, local.0, value);
+    }
+
+    pub(super) fn get_bool_list(&self, local: BoolListLocalId) -> Vec<bool> {
+        self.bool_lists[local.0].clone()
+    }
+
+    pub(super) fn set_nil_list(&mut self, local: NilListLocalId, len: usize) {
+        set_slot(&mut self.nil_lists, local.0, len);
+    }
+
+    pub(super) fn get_nil_list(&self, local: NilListLocalId) -> usize {
+        self.nil_lists[local.0]
+    }
+
+    pub(super) fn set_tuple_list(&mut self, local: TupleListLocalId, value: Vec<Vec<Value>>) {
+        set_slot(&mut self.tuple_lists, local.0, value);
+    }
+
+    pub(super) fn get_tuple_list(&self, local: TupleListLocalId) -> Vec<Vec<Value>> {
+        self.tuple_lists[local.0].clone()
+    }
+
+    pub(super) fn set_list_list(&mut self, local: ListListLocalId, value: Vec<ListValue>) {
+        set_slot(&mut self.list_lists, local.0, value);
+    }
+
+    pub(super) fn get_list_list(&self, local: ListListLocalId) -> Vec<ListValue> {
+        self.list_lists[local.0].clone()
+    }
+
+    pub(super) fn set_function_list(
         &mut self,
-        local: &ListLocal,
-        value: ListValue,
-    ) -> Result<(), ExecutionError> {
+        local: FunctionListLocalId,
+        value: Vec<FunctionValue>,
+    ) {
+        set_slot(&mut self.function_lists, local.0, value);
+    }
+
+    pub(super) fn get_function_list(&self, local: FunctionListLocalId) -> Vec<FunctionValue> {
+        self.function_lists[local.0].clone()
+    }
+
+    pub(super) fn get_list(&self, local: &ListLocal) -> ExecutionResult<ListValue> {
+        match local {
+            ListLocal::Int(local) => Ok(ListValue::int(self.get_int_list(*local))),
+            ListLocal::String(local) => Ok(ListValue::string(self.get_string_list(*local))),
+            ListLocal::Float(local) => Ok(ListValue::float(self.get_float_list(*local))),
+            ListLocal::Bool(local) => Ok(ListValue::bool(self.get_bool_list(*local))),
+            ListLocal::Nil(local) => Ok(ListValue::nil(self.get_nil_list(*local))),
+            ListLocal::Tuple { local, item_type } => {
+                let actual = self.tuple_list_types[local.0].clone();
+                if &actual != item_type {
+                    return Err(ExecutionError::list_item_type_mismatch(
+                        ValueType::Tuple(item_type.clone()),
+                        ValueType::Tuple(actual),
+                    ));
+                }
+                Ok(ListValue::tuple(
+                    item_type.clone(),
+                    self.get_tuple_list(*local),
+                ))
+            }
+            ListLocal::List { local, item_type } => {
+                let actual = self.list_list_types[local.0].clone();
+                if actual != item_type.as_ref().clone() {
+                    return Err(ExecutionError::list_item_type_mismatch(
+                        ValueType::List(item_type.clone()),
+                        ValueType::List(Box::new(actual)),
+                    ));
+                }
+                Ok(ListValue::list(
+                    item_type.as_ref().clone(),
+                    self.get_list_list(*local),
+                ))
+            }
+            ListLocal::Function { local, item_type } => {
+                let actual = self.function_list_types[local.0].clone();
+                if &actual != item_type {
+                    return Err(ExecutionError::list_item_type_mismatch(
+                        ValueType::Function(Box::new(item_type.clone())),
+                        ValueType::Function(Box::new(actual)),
+                    ));
+                }
+                Ok(ListValue::function(
+                    item_type.clone(),
+                    self.get_function_list(*local),
+                ))
+            }
+        }
+    }
+
+    pub(super) fn set_list(&mut self, local: &ListLocal, value: ListValue) -> ExecutionResult<()> {
         let expected = local.item_type();
         let actual = value.item_type();
-        if expected != actual {
+        if let Some(actual) = value.item_value_mismatch() {
             return Err(ExecutionError::list_item_type_mismatch(expected, actual));
         }
 
-        match local {
-            ListLocal::Int(local) => set_slot(&mut self.int_lists, local.0, value),
-            ListLocal::String(local) => set_slot(&mut self.string_lists, local.0, value),
-            ListLocal::Float(local) => set_slot(&mut self.float_lists, local.0, value),
-            ListLocal::Bool(local) => set_slot(&mut self.bool_lists, local.0, value),
-            ListLocal::Nil(local) => set_slot(&mut self.nil_lists, local.0, value),
-            ListLocal::Tuple { local, .. } => set_slot(&mut self.tuple_lists, local.0, value),
-            ListLocal::List { local, .. } => set_slot(&mut self.list_lists, local.0, value),
-            ListLocal::Function { local, .. } => {
-                set_slot(&mut self.function_lists, local.0, value);
+        match (local, value.into_kind()) {
+            (ListLocal::Int(local), ListValueKind::Int(value)) => self.set_int_list(*local, value),
+            (ListLocal::String(local), ListValueKind::String(value)) => {
+                self.set_string_list(*local, value)
             }
+            (ListLocal::Float(local), ListValueKind::Float(value)) => {
+                self.set_float_list(*local, value)
+            }
+            (ListLocal::Bool(local), ListValueKind::Bool(value)) => {
+                self.set_bool_list(*local, value)
+            }
+            (ListLocal::Nil(local), ListValueKind::Nil(value)) => self.set_nil_list(*local, value),
+            (ListLocal::Tuple { local, .. }, ListValueKind::Tuple { values, .. }) => {
+                self.set_tuple_list(*local, values)
+            }
+            (ListLocal::List { local, .. }, ListValueKind::List { values, .. }) => {
+                self.set_list_list(*local, values)
+            }
+            (ListLocal::Function { local, .. }, ListValueKind::Function { values, .. }) => {
+                self.set_function_list(*local, values)
+            }
+            _ => return Err(ExecutionError::list_item_type_mismatch(expected, actual)),
         }
-        Ok(())
-    }
 
-    pub(super) fn get_list(&self, local: &ListLocal) -> Result<ListValue, ExecutionError> {
-        let value = match local {
-            ListLocal::Int(local) => self.int_lists[local.0].clone(),
-            ListLocal::String(local) => self.string_lists[local.0].clone(),
-            ListLocal::Float(local) => self.float_lists[local.0].clone(),
-            ListLocal::Bool(local) => self.bool_lists[local.0].clone(),
-            ListLocal::Nil(local) => self.nil_lists[local.0].clone(),
-            ListLocal::Tuple { local, .. } => self.tuple_lists[local.0].clone(),
-            ListLocal::List { local, .. } => self.list_lists[local.0].clone(),
-            ListLocal::Function { local, .. } => self.function_lists[local.0].clone(),
-        };
-        let expected = local.item_type();
-        let actual = value.item_type();
-        if expected == actual {
-            Ok(value)
-        } else {
-            Err(ExecutionError::list_item_type_mismatch(expected, actual))
-        }
+        Ok(())
     }
 
     pub(super) fn set_int_function(&mut self, local: IntFunctionLocalId, value: IntFunctionValue) {
@@ -534,8 +633,17 @@ mod tests {
     fn frame_get_list_rejects_mismatched_item_metadata() {
         let tuple_slot = ListLocal::tuple(TupleListLocalId(0), vec![ValueType::String]);
         let wrong_tuple_metadata = ListLocal::tuple(TupleListLocalId(0), vec![ValueType::Int]);
+        let list_slot = ListLocal::list(ListListLocalId(0), ValueType::String);
+        let wrong_list_metadata = ListLocal::list(ListListLocalId(0), ValueType::Int);
+        let function_type = FunctionType::new(vec![ValueType::Int], ValueType::String);
+        let wrong_function_type = FunctionType::new(vec![ValueType::Int], ValueType::Int);
+        let function_slot = ListLocal::function(FunctionListLocalId(0), function_type.clone());
+        let wrong_function_metadata =
+            ListLocal::function(FunctionListLocalId(0), wrong_function_type.clone());
         let mut layout = FrameLayout::default();
         layout.include_list(tuple_slot.clone());
+        layout.include_list(list_slot.clone());
+        layout.include_list(function_slot.clone());
         let frame = Frame::new(layout);
 
         assert_eq!(
@@ -543,6 +651,20 @@ mod tests {
             Err(ExecutionError::list_item_type_mismatch(
                 ValueType::Tuple(vec![ValueType::Int]),
                 ValueType::Tuple(vec![ValueType::String]),
+            )),
+        );
+        assert_eq!(
+            frame.get_list(&wrong_list_metadata),
+            Err(ExecutionError::list_item_type_mismatch(
+                ValueType::List(Box::new(ValueType::Int)),
+                ValueType::List(Box::new(ValueType::String)),
+            )),
+        );
+        assert_eq!(
+            frame.get_list(&wrong_function_metadata),
+            Err(ExecutionError::list_item_type_mismatch(
+                ValueType::Function(Box::new(wrong_function_type)),
+                ValueType::Function(Box::new(function_type)),
             )),
         );
     }

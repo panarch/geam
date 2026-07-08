@@ -21,7 +21,7 @@ pub(super) use self::{
     },
     int::eval_int_expr,
     list::{
-        eval_list_expr, project_bool_list_expr, project_float_list_expr,
+        eval_list_expr, eval_typed_list_expr, project_bool_list_expr, project_float_list_expr,
         project_function_list_expr, project_int_list_expr, project_nil_list_expr,
         project_string_list_expr, project_tuple_list_expr,
     },

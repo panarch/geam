@@ -167,7 +167,7 @@ impl Expr {
                 ExprKind::Tuple(value),
             ) if value.type_() == expected => Some(CallArg::tuple(*local, value)),
             (ParamLocal::List(local), ExprKind::List(value))
-                if value.element_type() == &local.item_type() =>
+                if value.element_type() == local.item_type() =>
             {
                 Some(CallArg::list(local.clone(), value))
             }

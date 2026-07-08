@@ -620,9 +620,9 @@ mod tests {
         FunctionFunctionLocalId, FunctionFunctionValue, FunctionId, FunctionPlan,
         FunctionReturnFamily, FunctionType, FunctionValue, IntExpr, IntFunctionExpr,
         IntFunctionFunctionId, IntFunctionId, IntFunctionValue, IntLocalId, ListExpr,
-        ListFunctionExpr, ListFunctionFunctionId, ListFunctionId, ListFunctionValue, ListValue,
-        NilExpr, NilFunctionExpr, NilFunctionFunctionId, NilFunctionId, NilFunctionValue,
-        NilLocalId, ParamLocal, ReturnBody, ReturnExpr, RuntimeFunctionId, Step, StringExpr,
+        ListFunctionExpr, ListFunctionFunctionId, ListFunctionId, ListFunctionValue, ListReturn,
+        ListValue, NilExpr, NilFunctionExpr, NilFunctionFunctionId, NilFunctionId,
+        NilFunctionValue, NilLocalId, ParamLocal, ReturnExpr, RuntimeFunctionId, Step, StringExpr,
         StringFunctionExpr, StringFunctionFunctionId, StringFunctionId, StringFunctionValue,
         StringLocalId, TupleExpr, TupleFunctionExpr, TupleFunctionFunctionId, TupleFunctionId,
         TupleFunctionValue, ValueType,
@@ -1391,7 +1391,7 @@ pub fn main() {
             steps.clone(),
             ReturnExpr::list_body(
                 ListFunctionId::from_item_type(0, ValueType::Int),
-                ReturnBody::expr(ListExpr::value(
+                ListReturn::expr(ListExpr::value(
                     vec![Expr::int(IntExpr::value(1.into()))],
                     ValueType::Int,
                 )),
@@ -1758,7 +1758,7 @@ pub fn main() {
                     steps,
                     ReturnExpr::list_body(
                         ListFunctionId::from_item_type(0, ValueType::Int),
-                        ReturnBody::expr(ListExpr::value(
+                        ListReturn::expr(ListExpr::value(
                             vec![Expr::int(IntExpr::value(1.into()))],
                             ValueType::Int,
                         )),

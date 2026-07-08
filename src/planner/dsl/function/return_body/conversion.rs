@@ -216,7 +216,7 @@ mod tests {
     use super::FunctionReturn;
     use crate::plan::{
         BoolFunctionId, BoolReturn, Expr, FloatFunctionId, FloatReturn, FunctionFunctionId,
-        FunctionType, IntFunctionFunctionId, IntFunctionId, IntReturn, ListFunctionId,
+        FunctionType, IntFunctionFunctionId, IntFunctionId, IntReturn, ListFunctionId, ListReturn,
         NilFunctionId, NilReturn, ParamLocal, ReturnBody, RuntimeFunctionId, StringFunctionId,
         StringReturn, TupleFunctionId, ValueType,
     };
@@ -259,7 +259,7 @@ mod tests {
             FunctionReturn::from(list([int(1)], ValueType::Int)),
             FunctionReturn::List {
                 element_type: ValueType::Int,
-                body: ReturnBody::expr(list([int(1)], ValueType::Int).into()),
+                body: ListReturn::expr(list([int(1)], ValueType::Int).into()),
             },
         );
     }

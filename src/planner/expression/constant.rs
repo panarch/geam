@@ -157,7 +157,7 @@ fn plan_list(
             actual,
         ));
     };
-    if tail.element_type() != &expected_element_type {
+    if tail.element_type() != expected_element_type {
         return Err(invalid_expression_type_for_value(
             ValueType::List(Box::new(expected_element_type.clone())),
             ValueType::List(Box::new(tail.element_type().clone())),

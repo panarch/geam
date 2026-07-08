@@ -224,8 +224,8 @@ mod tests {
         FunctionFunctionValue, FunctionId, FunctionPlan, FunctionReturnFamily, FunctionType,
         IntExpr, IntFunctionExpr, IntFunctionFunctionId, IntFunctionId, IntFunctionLocalId,
         IntFunctionValue, IntListLocalId, IntLocalId, ListExpr, ListFunctionExpr, ListFunctionId,
-        ListFunctionValue, ListLocal, ListValue, NilExpr, NilFunctionExpr, NilFunctionId,
-        NilFunctionLocalId, NilFunctionValue, NilLocalId, ReturnBody, ReturnExpr, StringExpr,
+        ListFunctionValue, ListLocal, ListReturn, ListValue, NilExpr, NilFunctionExpr,
+        NilFunctionId, NilFunctionLocalId, NilFunctionValue, NilLocalId, ReturnExpr, StringExpr,
         StringFunctionExpr, StringFunctionId, StringFunctionLocalId, StringFunctionValue,
         StringLocalId, TupleExpr, TupleFunctionExpr, TupleFunctionId, TupleFunctionLocalId,
         TupleFunctionValue, TupleLocalId, Value, ValueType,
@@ -950,7 +950,7 @@ mod tests {
                 Vec::new(),
                 ReturnExpr::list_body(
                     ListFunctionId::from_item_type(0, ValueType::Int),
-                    ReturnBody::expr(ListExpr::value(
+                    ListReturn::expr(ListExpr::value(
                         vec![Expr::string(StringExpr::value("wrong".into()))],
                         ValueType::String,
                     )),

@@ -1,5 +1,5 @@
 use super::{
-    BoolExpr, CallArg, FloatExpr, IntExpr, ListExpr, PanicExpr, StringExpr, TupleFunctionExpr,
+    BoolExpr, CallArg, FloatExpr, IntExpr, PanicExpr, StringExpr, TupleFunctionExpr, TupleListExpr,
 };
 use crate::plan::{Step, TupleFunctionId, TupleLocalId, ValueType};
 use ecow::EcoString;
@@ -31,7 +31,7 @@ pub(crate) enum TupleExprKind {
         index: usize,
     },
     ListIndex {
-        list: Box<ListExpr>,
+        list: Box<TupleListExpr>,
         index: usize,
     },
     Panic(PanicExpr),
@@ -111,11 +111,15 @@ impl TupleExpr {
         }
     }
 
-    pub(crate) fn list_index(list: ListExpr, index: usize, type_: Vec<ValueType>) -> Self {
+    pub(crate) fn list_index(
+        list: impl Into<TupleListExpr>,
+        index: usize,
+        type_: Vec<ValueType>,
+    ) -> Self {
         Self {
             type_,
             kind: TupleExprKind::ListIndex {
-                list: Box::new(list),
+                list: Box::new(list.into()),
                 index,
             },
         }

@@ -307,7 +307,9 @@ fn frame_set_binding(frame: &mut Frame, binding: PendingBinding) -> ExecutionRes
         PendingBinding::Bool(local, value) => frame.set_bool(local, value),
         PendingBinding::Nil(local) => frame.set_nil(local),
         PendingBinding::Tuple(local, value) => frame.set_tuple(local, value),
-        PendingBinding::List(local, value) => frame.set_list(&local, value)?,
+        PendingBinding::List(local, value) => {
+            frame.set_list(&local, value)?;
+        }
         PendingBinding::IntFunction(local, value) => frame.set_int_function(local, value),
         PendingBinding::FloatFunction(local, value) => frame.set_float_function(local, value),
         PendingBinding::StringFunction(local, value) => frame.set_string_function(local, value),
@@ -336,12 +338,13 @@ mod tests {
         FunctionFunctionValue, FunctionId, FunctionPlan, FunctionReturnFamily, FunctionType,
         IntExpr, IntFunctionExpr, IntFunctionFunctionId, IntFunctionId, IntFunctionLocalId,
         IntFunctionValue, IntListLocalId, IntLocalId, ListAssertPattern, ListAssertTail, ListExpr,
-        ListFunctionExpr, ListFunctionId, ListFunctionValue, ListListLocalId, ListLocal, ListValue,
-        NilExpr, NilFunctionExpr, NilFunctionId, NilFunctionLocalId, NilFunctionValue, NilLocalId,
-        PanicExpr, PanicSite, ParamLocal, ReturnBody, ReturnExpr, SourceSpan, Step, StringExpr,
-        StringFunctionExpr, StringFunctionId, StringFunctionLocalId, StringFunctionValue,
-        StringListLocalId, StringLocalId, TupleExpr, TupleFunctionExpr, TupleFunctionId,
-        TupleFunctionLocalId, TupleFunctionValue, TupleListLocalId, TupleLocalId, Value, ValueType,
+        ListFunctionExpr, ListFunctionId, ListFunctionValue, ListListLocalId, ListLocal,
+        ListReturn, ListValue, NilExpr, NilFunctionExpr, NilFunctionId, NilFunctionLocalId,
+        NilFunctionValue, NilLocalId, PanicExpr, PanicSite, ParamLocal, ReturnExpr, SourceSpan,
+        Step, StringExpr, StringFunctionExpr, StringFunctionId, StringFunctionLocalId,
+        StringFunctionValue, StringListLocalId, StringLocalId, TupleExpr, TupleFunctionExpr,
+        TupleFunctionId, TupleFunctionLocalId, TupleFunctionValue, TupleListLocalId, TupleLocalId,
+        Value, ValueType,
     };
     use crate::runtime::frame::Frame;
     use crate::runtime::{ExecutionError, PanicKind};
@@ -1534,7 +1537,7 @@ mod tests {
                 Vec::new(),
                 ReturnExpr::list_body(
                     ListFunctionId::from_item_type(0, ValueType::Int),
-                    ReturnBody::expr(ListExpr::value(
+                    ListReturn::expr(ListExpr::value(
                         vec![Expr::string(StringExpr::value("wrong".into()))],
                         ValueType::String,
                     )),

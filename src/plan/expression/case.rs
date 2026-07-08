@@ -1,7 +1,7 @@
 use super::{
-    BoolExpr, BoolFunctionExpr, FloatExpr, FloatFunctionExpr, FunctionFunctionExpr, IntExpr,
-    IntFunctionExpr, ListExpr, ListFunctionExpr, NilExpr, NilFunctionExpr, StringExpr,
-    StringFunctionExpr, TupleExpr, TupleFunctionExpr,
+    BoolExpr, BoolFunctionExpr, BoolListCaseBranches, FloatExpr, FloatFunctionExpr,
+    FunctionFunctionExpr, IntExpr, IntFunctionExpr, ListExpr, ListFunctionExpr, NilExpr,
+    NilFunctionExpr, StringExpr, StringFunctionExpr, TupleExpr, TupleFunctionExpr,
 };
 use ecow::EcoString;
 use num_bigint::BigInt;
@@ -32,10 +32,7 @@ pub(crate) enum BoolCaseBranches {
         true_: TupleExpr,
         false_: TupleExpr,
     },
-    List {
-        true_: ListExpr,
-        false_: ListExpr,
-    },
+    List(BoolListCaseBranches),
     IntFunction {
         true_: IntFunctionExpr,
         false_: IntFunctionExpr,

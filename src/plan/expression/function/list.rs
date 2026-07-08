@@ -1,5 +1,5 @@
 use crate::plan::{
-    BoolExpr, CaptureArg, FloatExpr, FunctionFunctionExpr, FunctionType, IntExpr, ListExpr,
+    BoolExpr, CaptureArg, FloatExpr, FunctionFunctionExpr, FunctionListExpr, FunctionType, IntExpr,
     ListFunctionFunctionId, ListFunctionId, ListFunctionLocal, ListFunctionValue, PanicExpr,
     ParamLocal, Step, StringExpr, TupleExpr, ValueType,
 };
@@ -41,7 +41,7 @@ pub(crate) enum ListFunctionExprKind {
         type_: FunctionType,
     },
     ListIndex {
-        list: Box<ListExpr>,
+        list: Box<FunctionListExpr>,
         index: usize,
         type_: FunctionType,
     },
@@ -158,7 +158,7 @@ impl ListFunctionExpr {
     }
 
     pub(crate) fn list_index(
-        list: ListExpr,
+        list: impl Into<FunctionListExpr>,
         index: usize,
         type_: FunctionType,
         item_type: ValueType,
@@ -167,7 +167,7 @@ impl ListFunctionExpr {
             type_: type_.clone(),
             item_type,
             kind: ListFunctionExprKind::ListIndex {
-                list: Box::new(list),
+                list: Box::new(list.into()),
                 index,
                 type_,
             },
@@ -531,6 +531,6 @@ mod tests {
             .type_(),
             &FunctionType::new(Vec::new(), ValueType::List(Box::new(element_type()))),
         );
-        assert_eq!(list_expr().element_type(), &element_type(),);
+        assert_eq!(list_expr().element_type(), element_type(),);
     }
 }

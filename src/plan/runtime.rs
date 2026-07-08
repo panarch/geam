@@ -536,15 +536,15 @@ mod tests {
     use super::RuntimePlan;
     use crate::plan::{
         FunctionId, FunctionPlan, FunctionType, IntExpr, IntFunctionId, ListElements, ListExpr,
-        ListFunctionExpr, ListFunctionFunctionId, ListFunctionId, ListFunctionValue, ParamLocal,
-        ReturnBody, ReturnExpr, ValueType,
+        ListFunctionExpr, ListFunctionFunctionId, ListFunctionId, ListFunctionValue, ListReturn,
+        ParamLocal, ReturnBody, ReturnExpr, ValueType,
     };
 
     #[test]
     fn runtime_plan_stores_list_returning_functions_by_item_family() {
         for (function_index, item_type) in list_item_types().into_iter().enumerate() {
             let runtime_id = ListFunctionId::from_item_type(0, item_type.clone());
-            let return_ = ReturnBody::expr(empty_list_expr(item_type));
+            let return_ = ListReturn::expr(empty_list_expr(item_type));
             let function = FunctionPlan::new(
                 FunctionId::new(function_index + 1),
                 format!("list_{function_index}").into(),

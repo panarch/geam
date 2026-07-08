@@ -3,8 +3,9 @@ use super::{
     eval_panic_expr, eval_string_expr, eval_tuple_expr, project_tuple_expr,
 };
 use crate::plan::{
-    ExecutionPlan, FunctionType, FunctionValue, ListElements, ListExpr, ListExprKind, ListValue,
-    Value, ValueType,
+    BoolListExpr, ExecutionPlan, FloatListExpr, FunctionListExpr, FunctionType, FunctionValue,
+    IntListExpr, ListElements, ListExpr, ListItem, ListListExpr, ListValue, NilListExpr,
+    StringListExpr, TupleListExpr, TypedListExpr, TypedListExprKind, Value, ValueType,
 };
 use crate::runtime::ExecutionError;
 use crate::runtime::frame::Frame;
@@ -17,24 +18,48 @@ pub(in crate::runtime) fn eval_list_expr(
     frame: &mut Frame,
     expression: &ListExpr,
 ) -> Result<ListValue, ExecutionError> {
+    match expression {
+        ListExpr::Int(expression) => eval_typed_list_expr(plan, frame, expression),
+        ListExpr::String(expression) => eval_typed_list_expr(plan, frame, expression),
+        ListExpr::Float(expression) => eval_typed_list_expr(plan, frame, expression),
+        ListExpr::Bool(expression) => eval_typed_list_expr(plan, frame, expression),
+        ListExpr::Nil(expression) => eval_typed_list_expr(plan, frame, expression),
+        ListExpr::Tuple(expression) => eval_typed_list_expr(plan, frame, expression),
+        ListExpr::List(expression) => eval_typed_list_expr(plan, frame, expression),
+        ListExpr::Function(expression) => eval_typed_list_expr(plan, frame, expression),
+    }
+}
+
+pub(in crate::runtime) fn eval_typed_list_expr<Item: ListItem>(
+    plan: &ExecutionPlan,
+    frame: &mut Frame,
+    expression: &TypedListExpr<Item>,
+) -> Result<ListValue, ExecutionError> {
     match expression.kind() {
-        ListExprKind::Value(elements) => eval_list_elements(plan, frame, elements),
-        ListExprKind::Spread { elements, tail } => {
-            let mut values = eval_list_elements(plan, frame, elements)?;
-            let tail = eval_list_expr(plan, frame, tail)?;
-            values.append(&tail).map_err(|error| {
-                ExecutionError::list_item_type_mismatch(error.expected, error.actual)
+        TypedListExprKind::Value(elements) => {
+            eval_typed_list_elements(plan, frame, expression.item(), elements)
+        }
+        TypedListExprKind::Spread { elements, tail } => {
+            let mut values = eval_typed_list_elements(plan, frame, expression.item(), elements)?;
+            let tail = eval_typed_list_expr(plan, frame, tail)?;
+            values.append(tail).map_err(|(expected, actual)| {
+                ExecutionError::list_item_type_mismatch(expected, actual)
             })?;
             Ok(values)
         }
-        ListExprKind::LocalGet { local, .. } => frame.get_list(local),
-        ListExprKind::Call { function, args } => {
-            function::run_list_call(plan, function.clone(), args, frame)
+        TypedListExprKind::LocalGet { local, .. } => {
+            frame.get_list(&expression.item().local_to_facade(local.clone()))
         }
-        ListExprKind::FunctionCall { function, args } => {
+        TypedListExprKind::Call { function, args } => function::run_list_call(
+            plan,
+            expression.item().function_to_facade(function.clone()),
+            args,
+            frame,
+        ),
+        TypedListExprKind::FunctionCall { function, args } => {
             function::run_list_function_call(plan, function, args, frame)
         }
-        ListExprKind::TupleIndex { tuple, index } => {
+        TypedListExprKind::TupleIndex { tuple, index } => {
             let expected = ValueType::List(Box::new(expression.element_type().clone()));
             match project_tuple_expr(plan, frame, tuple, *index, expected.clone())? {
                 Value::List(value) => Ok(value),
@@ -44,26 +69,26 @@ pub(in crate::runtime) fn eval_list_expr(
                 )),
             }
         }
-        ListExprKind::ListIndex { list, index } => {
-            project_list_list_expr(plan, frame, list, *index, expression.element_type())
+        TypedListExprKind::ListIndex { list, index } => {
+            project_list_list_expr(plan, frame, list, *index, &expression.element_type())
         }
-        ListExprKind::DropFirst { list, count } => {
-            let list = eval_list_expr(plan, frame, list)?;
+        TypedListExprKind::DropFirst { list, count } => {
+            let list = eval_typed_list_expr(plan, frame, list)?;
             Ok(list.drop_first(*count))
         }
-        ListExprKind::Panic(panic) => eval_panic_expr(plan, frame, panic),
-        ListExprKind::BoolCase {
+        TypedListExprKind::Panic(panic) => eval_panic_expr(plan, frame, panic),
+        TypedListExprKind::BoolCase {
             subject,
             true_,
             false_,
         } => {
             if eval_bool_expr(plan, frame, subject)? {
-                eval_list_expr(plan, frame, true_)
+                eval_typed_list_expr(plan, frame, true_)
             } else {
-                eval_list_expr(plan, frame, false_)
+                eval_typed_list_expr(plan, frame, false_)
             }
         }
-        ListExprKind::IntCase {
+        TypedListExprKind::IntCase {
             subject,
             clauses,
             fallback,
@@ -71,12 +96,12 @@ pub(in crate::runtime) fn eval_list_expr(
             let subject = eval_int_expr(plan, frame, subject)?;
             for (pattern, branch) in clauses {
                 if pattern == &subject {
-                    return eval_list_expr(plan, frame, branch);
+                    return eval_typed_list_expr(plan, frame, branch);
                 }
             }
-            eval_list_expr(plan, frame, fallback)
+            eval_typed_list_expr(plan, frame, fallback)
         }
-        ListExprKind::StringCase {
+        TypedListExprKind::StringCase {
             subject,
             clauses,
             fallback,
@@ -84,12 +109,12 @@ pub(in crate::runtime) fn eval_list_expr(
             let subject = eval_string_expr(plan, frame, subject)?;
             for (pattern, branch) in clauses {
                 if pattern == &subject {
-                    return eval_list_expr(plan, frame, branch);
+                    return eval_typed_list_expr(plan, frame, branch);
                 }
             }
-            eval_list_expr(plan, frame, fallback)
+            eval_typed_list_expr(plan, frame, fallback)
         }
-        ListExprKind::FloatCase {
+        TypedListExprKind::FloatCase {
             subject,
             clauses,
             fallback,
@@ -97,16 +122,26 @@ pub(in crate::runtime) fn eval_list_expr(
             let subject = eval_float_expr(plan, frame, subject)?;
             for (pattern, branch) in clauses {
                 if pattern == &subject {
-                    return eval_list_expr(plan, frame, branch);
+                    return eval_typed_list_expr(plan, frame, branch);
                 }
             }
-            eval_list_expr(plan, frame, fallback)
+            eval_typed_list_expr(plan, frame, fallback)
         }
-        ListExprKind::Block { steps, return_ } => {
+        TypedListExprKind::Block { steps, return_ } => {
             function::execute_steps(plan, steps, frame)?;
-            eval_list_expr(plan, frame, return_)
+            eval_typed_list_expr(plan, frame, return_)
         }
     }
+}
+
+fn eval_typed_list_elements<Item: ListItem>(
+    plan: &ExecutionPlan,
+    frame: &mut Frame,
+    item: &Item,
+    elements: &[Item::ElementExpr],
+) -> Result<ListValue, ExecutionError> {
+    let elements = Item::elements_to_facade(item.clone(), elements.to_vec());
+    eval_list_elements(plan, frame, &elements)
 }
 
 fn eval_list_elements(
@@ -159,24 +194,24 @@ fn eval_list_elements(
     }
 }
 
-fn eval_projected_list(
+fn eval_projected_list<Item: ListItem>(
     plan: &ExecutionPlan,
     frame: &mut Frame,
-    list: &ListExpr,
+    list: &TypedListExpr<Item>,
 ) -> Result<ListValue, ExecutionError> {
-    eval_list_expr(plan, frame, list)
+    eval_typed_list_expr(plan, frame, list)
 }
 
 pub(in crate::runtime) fn project_int_list_expr(
     plan: &ExecutionPlan,
     frame: &mut Frame,
-    list: &ListExpr,
+    list: &IntListExpr,
     index: usize,
 ) -> Result<BigInt, ExecutionError> {
-    let list = eval_list_expr(plan, frame, list)?;
+    let list = eval_typed_list_expr(plan, frame, list)?;
     let actual = list.item_type();
     let values = list
-        .int_values()
+        .into_int_values()
         .ok_or_else(|| ExecutionError::list_item_type_mismatch(ValueType::Int, actual))?;
     values.get(index).cloned().ok_or_else(|| {
         ExecutionError::list_index_out_of_bounds(ValueType::Int, index, values.len())
@@ -186,13 +221,13 @@ pub(in crate::runtime) fn project_int_list_expr(
 pub(in crate::runtime) fn project_string_list_expr(
     plan: &ExecutionPlan,
     frame: &mut Frame,
-    list: &ListExpr,
+    list: &StringListExpr,
     index: usize,
 ) -> Result<EcoString, ExecutionError> {
     let list = eval_projected_list(plan, frame, list)?;
     let actual = list.item_type();
     let values = list
-        .string_values()
+        .into_string_values()
         .ok_or_else(|| ExecutionError::list_item_type_mismatch(ValueType::String, actual))?;
     values.get(index).cloned().ok_or_else(|| {
         ExecutionError::list_index_out_of_bounds(ValueType::String, index, values.len())
@@ -202,13 +237,13 @@ pub(in crate::runtime) fn project_string_list_expr(
 pub(in crate::runtime) fn project_float_list_expr(
     plan: &ExecutionPlan,
     frame: &mut Frame,
-    list: &ListExpr,
+    list: &FloatListExpr,
     index: usize,
 ) -> Result<f64, ExecutionError> {
     let list = eval_projected_list(plan, frame, list)?;
     let actual = list.item_type();
     let values = list
-        .float_values()
+        .into_float_values()
         .ok_or_else(|| ExecutionError::list_item_type_mismatch(ValueType::Float, actual))?;
     values.get(index).copied().ok_or_else(|| {
         ExecutionError::list_index_out_of_bounds(ValueType::Float, index, values.len())
@@ -218,13 +253,13 @@ pub(in crate::runtime) fn project_float_list_expr(
 pub(in crate::runtime) fn project_bool_list_expr(
     plan: &ExecutionPlan,
     frame: &mut Frame,
-    list: &ListExpr,
+    list: &BoolListExpr,
     index: usize,
 ) -> Result<bool, ExecutionError> {
     let list = eval_projected_list(plan, frame, list)?;
     let actual = list.item_type();
     let values = list
-        .bool_values()
+        .into_bool_values()
         .ok_or_else(|| ExecutionError::list_item_type_mismatch(ValueType::Bool, actual))?;
     values.get(index).copied().ok_or_else(|| {
         ExecutionError::list_index_out_of_bounds(ValueType::Bool, index, values.len())
@@ -234,13 +269,13 @@ pub(in crate::runtime) fn project_bool_list_expr(
 pub(in crate::runtime) fn project_nil_list_expr(
     plan: &ExecutionPlan,
     frame: &mut Frame,
-    list: &ListExpr,
+    list: &NilListExpr,
     index: usize,
 ) -> Result<(), ExecutionError> {
     let list = eval_projected_list(plan, frame, list)?;
     let actual = list.item_type();
     let len = list
-        .nil_len()
+        .into_nil_len()
         .ok_or_else(|| ExecutionError::list_item_type_mismatch(ValueType::Nil, actual))?;
     if index < len {
         Ok(())
@@ -256,70 +291,58 @@ pub(in crate::runtime) fn project_nil_list_expr(
 pub(in crate::runtime) fn project_tuple_list_expr(
     plan: &ExecutionPlan,
     frame: &mut Frame,
-    list: &ListExpr,
+    list: &TupleListExpr,
     index: usize,
     item_type: &[ValueType],
 ) -> Result<Vec<Value>, ExecutionError> {
     let list = eval_projected_list(plan, frame, list)?;
+    let expected = ValueType::Tuple(item_type.to_vec());
     let actual = list.item_type();
-    let values = list.tuple_values(item_type).ok_or_else(|| {
-        ExecutionError::list_item_type_mismatch(ValueType::Tuple(item_type.to_vec()), actual)
-    })?;
-    values.get(index).cloned().ok_or_else(|| {
-        ExecutionError::list_index_out_of_bounds(
-            ValueType::Tuple(item_type.to_vec()),
-            index,
-            values.len(),
-        )
-    })
+    let values = list
+        .into_tuple_values(item_type)
+        .ok_or_else(|| ExecutionError::list_item_type_mismatch(expected.clone(), actual))?;
+    values
+        .get(index)
+        .cloned()
+        .ok_or_else(|| ExecutionError::list_index_out_of_bounds(expected, index, values.len()))
 }
 
 pub(in crate::runtime) fn project_list_list_expr(
     plan: &ExecutionPlan,
     frame: &mut Frame,
-    list: &ListExpr,
+    list: &ListListExpr,
     index: usize,
     item_type: &ValueType,
 ) -> Result<ListValue, ExecutionError> {
     let list = eval_projected_list(plan, frame, list)?;
+    let expected = ValueType::List(Box::new(item_type.clone()));
     let actual = list.item_type();
-    let values = list.list_values(item_type).ok_or_else(|| {
-        ExecutionError::list_item_type_mismatch(
-            ValueType::List(Box::new(item_type.clone())),
-            actual,
-        )
-    })?;
-    values.get(index).cloned().ok_or_else(|| {
-        ExecutionError::list_index_out_of_bounds(
-            ValueType::List(Box::new(item_type.clone())),
-            index,
-            values.len(),
-        )
-    })
+    let values = list
+        .into_list_values(item_type)
+        .ok_or_else(|| ExecutionError::list_item_type_mismatch(expected.clone(), actual))?;
+    values
+        .get(index)
+        .cloned()
+        .ok_or_else(|| ExecutionError::list_index_out_of_bounds(expected, index, values.len()))
 }
 
 pub(in crate::runtime) fn project_function_list_expr(
     plan: &ExecutionPlan,
     frame: &mut Frame,
-    list: &ListExpr,
+    list: &FunctionListExpr,
     index: usize,
     item_type: &FunctionType,
 ) -> Result<FunctionValue, ExecutionError> {
     let list = eval_projected_list(plan, frame, list)?;
+    let expected = ValueType::Function(Box::new(item_type.clone()));
     let actual = list.item_type();
-    let values = list.function_values(item_type).ok_or_else(|| {
-        ExecutionError::list_item_type_mismatch(
-            ValueType::Function(Box::new(item_type.clone())),
-            actual,
-        )
-    })?;
-    values.get(index).cloned().ok_or_else(|| {
-        ExecutionError::list_index_out_of_bounds(
-            ValueType::Function(Box::new(item_type.clone())),
-            index,
-            values.len(),
-        )
-    })
+    let values = list
+        .into_function_values(item_type)
+        .ok_or_else(|| ExecutionError::list_item_type_mismatch(expected.clone(), actual))?;
+    values
+        .get(index)
+        .cloned()
+        .ok_or_else(|| ExecutionError::list_index_out_of_bounds(expected, index, values.len()))
 }
 
 #[cfg(test)]
@@ -331,10 +354,11 @@ mod tests {
     };
     use crate::plan::ListElements;
     use crate::plan::{
-        BoolExpr, ExecutionPlan, Expr, FloatExpr, FrameLayout, FunctionExpr, FunctionId,
-        FunctionPlan, FunctionType, IntExpr, IntFunctionExpr, IntFunctionId, IntFunctionValue,
-        IntListLocalId, ListExpr, ListFunctionId, ListLocal, ListValue, NilExpr, PanicExpr,
-        PanicSite, ReturnBody, ReturnExpr, Step, StringExpr, TupleExpr, ValueType,
+        BoolExpr, BoolListCaseBranches, ExecutionPlan, Expr, FloatExpr, FrameLayout, FunctionExpr,
+        FunctionId, FunctionPlan, FunctionType, IntExpr, IntFunctionExpr, IntFunctionId,
+        IntFunctionValue, IntListLocalId, ListExpr, ListFunctionId, ListLocal, ListReturn,
+        ListValue, NilExpr, PanicExpr, PanicSite, ReturnExpr, Step, StringExpr, TupleExpr,
+        ValueType,
     };
     use crate::runtime::frame::Frame;
     use crate::runtime::{ExecutionError, PanicKind};
@@ -476,7 +500,17 @@ mod tests {
             eval_list_expr(
                 &plan,
                 &mut frame,
-                &ListExpr::bool_case(BoolExpr::value(true), list_expr(1), list_expr(2),),
+                &ListExpr::bool_case(
+                    BoolExpr::value(true),
+                    BoolListCaseBranches::Int {
+                        true_: list_expr(1)
+                            .into_int()
+                            .expect("true branch should be List(Int)"),
+                        false_: list_expr(2)
+                            .into_int()
+                            .expect("false branch should be List(Int)"),
+                    },
+                ),
             ),
             Ok(list_value(1)),
         );
@@ -484,7 +518,17 @@ mod tests {
             eval_list_expr(
                 &plan,
                 &mut frame,
-                &ListExpr::bool_case(BoolExpr::value(false), list_expr(2), list_expr(1),),
+                &ListExpr::bool_case(
+                    BoolExpr::value(false),
+                    BoolListCaseBranches::Int {
+                        true_: list_expr(2)
+                            .into_int()
+                            .expect("true branch should be List(Int)"),
+                        false_: list_expr(1)
+                            .into_int()
+                            .expect("false branch should be List(Int)"),
+                    },
+                ),
             ),
             Ok(list_value(1)),
         );
@@ -632,7 +676,13 @@ mod tests {
             eval_list_expr(
                 &plan,
                 &mut frame,
-                &ListExpr::list_index(nested_list.clone(), 1, element_type()),
+                &ListExpr::list_index(
+                    nested_list
+                        .clone()
+                        .into_list()
+                        .expect("nested list should build a ListListExpr"),
+                    1,
+                ),
             ),
             Ok(list_value(2)),
         );
@@ -640,7 +690,13 @@ mod tests {
             eval_list_expr(
                 &plan,
                 &mut frame,
-                &ListExpr::list_index(nested_list.clone(), 2, element_type()),
+                &ListExpr::list_index(
+                    nested_list
+                        .clone()
+                        .into_list()
+                        .expect("nested list should build a ListListExpr"),
+                    2,
+                ),
             ),
             Err(ExecutionError::list_index_out_of_bounds(
                 ValueType::List(Box::new(element_type())),
@@ -652,27 +708,32 @@ mod tests {
             eval_list_expr(
                 &plan,
                 &mut frame,
-                &ListExpr::list_index(error_list_expr(), 0, element_type()),
-            ),
-            Err(tuple_index_error(ValueType::List(Box::new(element_type())))),
-        );
-        assert_eq!(
-            eval_list_expr(
-                &plan,
-                &mut frame,
                 &ListExpr::list_index(
-                    ListExpr::value(vec![Expr::int(IntExpr::value(1.into()))], element_type()),
+                    ListExpr::tuple_index(
+                        empty_tuple(),
+                        0,
+                        ValueType::List(Box::new(element_type())),
+                    )
+                    .into_list()
+                    .expect("error nested list should build a ListListExpr"),
                     0,
-                    element_type(),
                 ),
             ),
-            Err(ExecutionError::list_item_type_mismatch(
+            Err(tuple_index_error(ValueType::List(Box::new(
                 ValueType::List(Box::new(element_type())),
-                ValueType::Int,
-            )),
+            )))),
         );
         assert_eq!(
-            project_list_list_expr(&plan, &mut frame, &nested_list, 2, &element_type(),),
+            project_list_list_expr(
+                &plan,
+                &mut frame,
+                &nested_list
+                    .clone()
+                    .into_list()
+                    .expect("nested list should build a ListListExpr"),
+                2,
+                &element_type(),
+            ),
             Err(ExecutionError::list_index_out_of_bounds(
                 ValueType::List(Box::new(element_type())),
                 2,
@@ -730,7 +791,9 @@ mod tests {
                 &ListExpr::value(
                     vec![Expr::string(StringExpr::value("one".into()))],
                     ValueType::String,
-                ),
+                )
+                .into_string()
+                .expect("string list should build a StringListExpr"),
                 1,
             ),
             Err(ExecutionError::list_index_out_of_bounds(
@@ -743,7 +806,9 @@ mod tests {
             project_float_list_expr(
                 &plan,
                 &mut frame,
-                &ListExpr::value(vec![Expr::float(FloatExpr::value(1.5))], ValueType::Float),
+                &ListExpr::value(vec![Expr::float(FloatExpr::value(1.5))], ValueType::Float)
+                    .into_float()
+                    .expect("float list should build a FloatListExpr"),
                 1,
             ),
             Err(ExecutionError::list_index_out_of_bounds(
@@ -756,7 +821,9 @@ mod tests {
             project_bool_list_expr(
                 &plan,
                 &mut frame,
-                &ListExpr::value(vec![Expr::bool(BoolExpr::value(true))], ValueType::Bool),
+                &ListExpr::value(vec![Expr::bool(BoolExpr::value(true))], ValueType::Bool)
+                    .into_bool()
+                    .expect("bool list should build a BoolListExpr"),
                 1,
             ),
             Err(ExecutionError::list_index_out_of_bounds(
@@ -769,7 +836,9 @@ mod tests {
             project_nil_list_expr(
                 &plan,
                 &mut frame,
-                &ListExpr::value(vec![Expr::nil(NilExpr::value())], ValueType::Nil),
+                &ListExpr::value(vec![Expr::nil(NilExpr::value())], ValueType::Nil)
+                    .into_nil()
+                    .expect("nil list should build a NilListExpr"),
                 1,
             ),
             Err(ExecutionError::list_index_out_of_bounds(
@@ -788,7 +857,9 @@ mod tests {
                         vec![ValueType::Int],
                     ))],
                     ValueType::Tuple(vec![ValueType::Int]),
-                ),
+                )
+                .into_tuple()
+                .expect("tuple list should build a TupleListExpr"),
                 1,
                 &[ValueType::Int],
             ),
@@ -805,7 +876,9 @@ mod tests {
                 &ListExpr::value(
                     vec![Expr::list(list_expr(1))],
                     ValueType::List(Box::new(element_type())),
-                ),
+                )
+                .into_list()
+                .expect("nested list should build a ListListExpr"),
                 1,
                 &element_type(),
             ),
@@ -824,7 +897,9 @@ mod tests {
                         IntFunctionValue::new(IntFunctionId(0), Vec::new()),
                     )))],
                     ValueType::Function(Box::new(function_type.clone())),
-                ),
+                )
+                .into_function()
+                .expect("function list should build a FunctionListExpr"),
                 1,
                 &function_type,
             ),
@@ -837,42 +912,304 @@ mod tests {
     }
 
     #[test]
+    fn project_list_expr_rejects_mismatched_function_result_family() {
+        let mut frame = Frame::default();
+        let string_list = ListExpr::value(
+            vec![Expr::string(StringExpr::value("wrong".into()))],
+            ValueType::String,
+        );
+        let int_list = ListExpr::value(vec![Expr::int(IntExpr::value(1.into()))], ValueType::Int);
+        let function_type = FunctionType::new(Vec::new(), ValueType::Int);
+
+        let plan = plan_with_mismatched_list_function(ValueType::Int, string_list.clone());
+        assert_eq!(
+            project_int_list_expr(
+                &plan,
+                &mut frame,
+                &ListExpr::call(
+                    ListFunctionId::from_item_type(0, ValueType::Int),
+                    Vec::new()
+                )
+                .into_int()
+                .expect("int list call should build an IntListExpr"),
+                0,
+            ),
+            Err(ExecutionError::list_item_type_mismatch(
+                ValueType::Int,
+                ValueType::String,
+            )),
+        );
+
+        let plan = plan_with_mismatched_list_function(ValueType::String, int_list);
+        assert_eq!(
+            project_string_list_expr(
+                &plan,
+                &mut frame,
+                &ListExpr::call(
+                    ListFunctionId::from_item_type(0, ValueType::String),
+                    Vec::new()
+                )
+                .into_string()
+                .expect("string list call should build a StringListExpr"),
+                0,
+            ),
+            Err(ExecutionError::list_item_type_mismatch(
+                ValueType::String,
+                ValueType::Int,
+            )),
+        );
+
+        let plan = plan_with_mismatched_list_function(ValueType::Float, string_list.clone());
+        assert_eq!(
+            project_float_list_expr(
+                &plan,
+                &mut frame,
+                &ListExpr::call(
+                    ListFunctionId::from_item_type(0, ValueType::Float),
+                    Vec::new()
+                )
+                .into_float()
+                .expect("float list call should build a FloatListExpr"),
+                0,
+            ),
+            Err(ExecutionError::list_item_type_mismatch(
+                ValueType::Float,
+                ValueType::String,
+            )),
+        );
+
+        let plan = plan_with_mismatched_list_function(ValueType::Bool, string_list.clone());
+        assert_eq!(
+            project_bool_list_expr(
+                &plan,
+                &mut frame,
+                &ListExpr::call(
+                    ListFunctionId::from_item_type(0, ValueType::Bool),
+                    Vec::new()
+                )
+                .into_bool()
+                .expect("bool list call should build a BoolListExpr"),
+                0,
+            ),
+            Err(ExecutionError::list_item_type_mismatch(
+                ValueType::Bool,
+                ValueType::String,
+            )),
+        );
+
+        let plan = plan_with_mismatched_list_function(ValueType::Nil, string_list.clone());
+        assert_eq!(
+            project_nil_list_expr(
+                &plan,
+                &mut frame,
+                &ListExpr::call(
+                    ListFunctionId::from_item_type(0, ValueType::Nil),
+                    Vec::new()
+                )
+                .into_nil()
+                .expect("nil list call should build a NilListExpr"),
+                0,
+            ),
+            Err(ExecutionError::list_item_type_mismatch(
+                ValueType::Nil,
+                ValueType::String,
+            )),
+        );
+
+        let tuple_type = vec![ValueType::Int];
+        let plan = plan_with_mismatched_list_function(
+            ValueType::Tuple(tuple_type.clone()),
+            string_list.clone(),
+        );
+        assert_eq!(
+            project_tuple_list_expr(
+                &plan,
+                &mut frame,
+                &ListExpr::call(
+                    ListFunctionId::from_item_type(0, ValueType::Tuple(tuple_type.clone())),
+                    Vec::new(),
+                )
+                .into_tuple()
+                .expect("tuple list call should build a TupleListExpr"),
+                0,
+                &tuple_type,
+            ),
+            Err(ExecutionError::list_item_type_mismatch(
+                ValueType::Tuple(tuple_type),
+                ValueType::String,
+            )),
+        );
+
+        let nested_type = ValueType::Int;
+        let plan = plan_with_mismatched_list_function(
+            ValueType::List(Box::new(nested_type.clone())),
+            string_list.clone(),
+        );
+        assert_eq!(
+            project_list_list_expr(
+                &plan,
+                &mut frame,
+                &ListExpr::call(
+                    ListFunctionId::from_item_type(
+                        0,
+                        ValueType::List(Box::new(nested_type.clone())),
+                    ),
+                    Vec::new(),
+                )
+                .into_list()
+                .expect("nested list call should build a ListListExpr"),
+                0,
+                &nested_type,
+            ),
+            Err(ExecutionError::list_item_type_mismatch(
+                ValueType::List(Box::new(nested_type)),
+                ValueType::String,
+            )),
+        );
+
+        let plan = plan_with_mismatched_list_function(
+            ValueType::Function(Box::new(function_type.clone())),
+            string_list,
+        );
+        assert_eq!(
+            project_function_list_expr(
+                &plan,
+                &mut frame,
+                &ListExpr::call(
+                    ListFunctionId::from_item_type(
+                        0,
+                        ValueType::Function(Box::new(function_type.clone())),
+                    ),
+                    Vec::new(),
+                )
+                .into_function()
+                .expect("function list call should build a FunctionListExpr"),
+                0,
+                &function_type,
+            ),
+            Err(ExecutionError::list_item_type_mismatch(
+                ValueType::Function(Box::new(function_type)),
+                ValueType::String,
+            )),
+        );
+    }
+
+    #[test]
     fn project_list_expr_propagates_list_evaluation_errors() {
         let plan = plan();
         let mut frame = Frame::default();
         let function_type = FunctionType::new(Vec::new(), ValueType::Int);
 
         assert_eq!(
-            project_int_list_expr(&plan, &mut frame, &error_list_expr(), 0),
+            project_int_list_expr(
+                &plan,
+                &mut frame,
+                &error_list_expr()
+                    .into_int()
+                    .expect("int error list should build an IntListExpr"),
+                0,
+            ),
             Err(tuple_index_error(ValueType::List(Box::new(element_type())))),
         );
         assert_eq!(
-            project_string_list_expr(&plan, &mut frame, &error_list_expr(), 0),
-            Err(tuple_index_error(ValueType::List(Box::new(element_type())))),
+            project_string_list_expr(
+                &plan,
+                &mut frame,
+                &ListExpr::tuple_index(empty_tuple(), 0, ValueType::String)
+                    .into_string()
+                    .expect("string error list should build a StringListExpr"),
+                0,
+            ),
+            Err(tuple_index_error(ValueType::List(Box::new(
+                ValueType::String
+            )))),
         );
         assert_eq!(
-            project_float_list_expr(&plan, &mut frame, &error_list_expr(), 0),
-            Err(tuple_index_error(ValueType::List(Box::new(element_type())))),
+            project_float_list_expr(
+                &plan,
+                &mut frame,
+                &ListExpr::tuple_index(empty_tuple(), 0, ValueType::Float)
+                    .into_float()
+                    .expect("float error list should build a FloatListExpr"),
+                0,
+            ),
+            Err(tuple_index_error(ValueType::List(Box::new(
+                ValueType::Float
+            )))),
         );
         assert_eq!(
-            project_bool_list_expr(&plan, &mut frame, &error_list_expr(), 0),
-            Err(tuple_index_error(ValueType::List(Box::new(element_type())))),
+            project_bool_list_expr(
+                &plan,
+                &mut frame,
+                &ListExpr::tuple_index(empty_tuple(), 0, ValueType::Bool)
+                    .into_bool()
+                    .expect("bool error list should build a BoolListExpr"),
+                0,
+            ),
+            Err(tuple_index_error(ValueType::List(Box::new(
+                ValueType::Bool
+            )))),
         );
         assert_eq!(
-            project_nil_list_expr(&plan, &mut frame, &error_list_expr(), 0),
-            Err(tuple_index_error(ValueType::List(Box::new(element_type())))),
+            project_nil_list_expr(
+                &plan,
+                &mut frame,
+                &ListExpr::tuple_index(empty_tuple(), 0, ValueType::Nil)
+                    .into_nil()
+                    .expect("nil error list should build a NilListExpr"),
+                0,
+            ),
+            Err(tuple_index_error(ValueType::List(Box::new(ValueType::Nil)))),
         );
         assert_eq!(
-            project_tuple_list_expr(&plan, &mut frame, &error_list_expr(), 0, &[ValueType::Int],),
-            Err(tuple_index_error(ValueType::List(Box::new(element_type())))),
+            project_tuple_list_expr(
+                &plan,
+                &mut frame,
+                &ListExpr::tuple_index(empty_tuple(), 0, ValueType::Tuple(vec![ValueType::Int]))
+                    .into_tuple()
+                    .expect("tuple error list should build a TupleListExpr"),
+                0,
+                &[ValueType::Int],
+            ),
+            Err(tuple_index_error(ValueType::List(Box::new(
+                ValueType::Tuple(vec![ValueType::Int])
+            )))),
         );
         assert_eq!(
-            project_list_list_expr(&plan, &mut frame, &error_list_expr(), 0, &element_type(),),
-            Err(tuple_index_error(ValueType::List(Box::new(element_type())))),
+            project_list_list_expr(
+                &plan,
+                &mut frame,
+                &ListExpr::tuple_index(
+                    empty_tuple(),
+                    0,
+                    ValueType::List(Box::new(element_type())),
+                )
+                .into_list()
+                .expect("nested error list should build a ListListExpr"),
+                0,
+                &element_type(),
+            ),
+            Err(tuple_index_error(ValueType::List(Box::new(
+                ValueType::List(Box::new(element_type())),
+            )))),
         );
         assert_eq!(
-            project_function_list_expr(&plan, &mut frame, &error_list_expr(), 0, &function_type,),
-            Err(tuple_index_error(ValueType::List(Box::new(element_type())))),
+            project_function_list_expr(
+                &plan,
+                &mut frame,
+                &ListExpr::tuple_index(
+                    empty_tuple(),
+                    0,
+                    ValueType::Function(Box::new(function_type.clone())),
+                )
+                .into_function()
+                .expect("function error list should build a FunctionListExpr"),
+                0,
+                &function_type,
+            ),
+            Err(tuple_index_error(ValueType::List(Box::new(
+                ValueType::Function(Box::new(function_type))
+            )))),
         );
     }
 
@@ -906,7 +1243,17 @@ mod tests {
                 ValueType::List(Box::new(element_type())),
             ),
             (
-                ListExpr::bool_case(error_bool_expr(), list_expr(1), list_expr(2)),
+                ListExpr::bool_case(
+                    error_bool_expr(),
+                    BoolListCaseBranches::Int {
+                        true_: list_expr(1)
+                            .into_int()
+                            .expect("true branch should be List(Int)"),
+                        false_: list_expr(2)
+                            .into_int()
+                            .expect("false branch should be List(Int)"),
+                    },
+                ),
                 ValueType::Bool,
             ),
             (
@@ -1015,7 +1362,7 @@ mod tests {
                 Vec::new(),
                 ReturnExpr::list_body(
                     ListFunctionId::from_item_type(0, element_type()),
-                    ReturnBody::expr(list_expr(1)),
+                    ListReturn::expr(list_expr(1)),
                 ),
             )],
         )
@@ -1038,10 +1385,36 @@ mod tests {
                 Vec::new(),
                 ReturnExpr::list_body(
                     ListFunctionId::from_item_type(0, ValueType::Int),
-                    ReturnBody::expr(ListExpr::value(
+                    ListReturn::expr(ListExpr::value(
                         vec![Expr::string(StringExpr::value("tail".into()))],
                         ValueType::String,
                     )),
+                ),
+            )],
+        )
+    }
+
+    fn plan_with_mismatched_list_function(
+        expected_item_type: ValueType,
+        body: ListExpr,
+    ) -> ExecutionPlan {
+        ExecutionPlan::new(
+            "main".into(),
+            FunctionPlan::new(
+                FunctionId::new(0),
+                "main".into(),
+                Vec::new(),
+                Vec::new(),
+                ReturnExpr::int(IntFunctionId(0), IntExpr::value(0.into())),
+            ),
+            vec![FunctionPlan::new(
+                FunctionId::new(1),
+                "mismatched_list".into(),
+                Vec::new(),
+                Vec::new(),
+                ReturnExpr::list_body(
+                    ListFunctionId::from_item_type(0, expected_item_type),
+                    ListReturn::expr(body),
                 ),
             )],
         )

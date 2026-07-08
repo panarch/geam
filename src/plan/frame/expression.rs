@@ -1,8 +1,8 @@
 use super::FrameLayout;
 use crate::plan::{
     BoolExpr, BoolExprKind, Expr, ExprKind, FloatExpr, FloatExprKind, IntExpr, IntExprKind,
-    ListElements, ListExpr, ListExprKind, NilExpr, NilExprKind, PanicExpr, StringExpr,
-    StringExprKind, TupleExpr, TupleExprKind,
+    ListElements, ListExpr, ListItem, NilExpr, NilExprKind, PanicExpr, StringExpr, StringExprKind,
+    TupleExpr, TupleExprKind, TypedListExpr, TypedListExprKind,
 };
 
 impl FrameLayout {
@@ -36,7 +36,7 @@ impl FrameLayout {
                 self.include_call_args(args);
             }
             IntExprKind::TupleIndex { tuple, .. } => self.include_tuple_expr(tuple),
-            IntExprKind::ListIndex { list, .. } => self.include_list_expr(list),
+            IntExprKind::ListIndex { list, .. } => self.include_typed_list_expr(list),
             IntExprKind::Add { left, right }
             | IntExprKind::Sub { left, right }
             | IntExprKind::Mult { left, right }
@@ -106,7 +106,7 @@ impl FrameLayout {
                 self.include_call_args(args);
             }
             StringExprKind::TupleIndex { tuple, .. } => self.include_tuple_expr(tuple),
-            StringExprKind::ListIndex { list, .. } => self.include_list_expr(list),
+            StringExprKind::ListIndex { list, .. } => self.include_typed_list_expr(list),
             StringExprKind::Concatenate { left, right } => {
                 self.include_string_expr(left);
                 self.include_string_expr(right);
@@ -172,7 +172,7 @@ impl FrameLayout {
                 self.include_call_args(args);
             }
             BoolExprKind::TupleIndex { tuple, .. } => self.include_tuple_expr(tuple),
-            BoolExprKind::ListIndex { list, .. } => self.include_list_expr(list),
+            BoolExprKind::ListIndex { list, .. } => self.include_typed_list_expr(list),
             BoolExprKind::Not(value) => self.include_bool_expr(value),
             BoolExprKind::LtInt { left, right } => self.include_int_binary_expr(left, right),
             BoolExprKind::LtEqInt { left, right } => self.include_int_binary_expr(left, right),
@@ -269,7 +269,7 @@ impl FrameLayout {
                 self.include_call_args(args);
             }
             NilExprKind::TupleIndex { tuple, .. } => self.include_tuple_expr(tuple),
-            NilExprKind::ListIndex { list, .. } => self.include_list_expr(list),
+            NilExprKind::ListIndex { list, .. } => self.include_typed_list_expr(list),
             NilExprKind::BoolCase {
                 subject,
                 true_,
@@ -330,7 +330,7 @@ impl FrameLayout {
                 self.include_call_args(args);
             }
             FloatExprKind::TupleIndex { tuple, .. } => self.include_tuple_expr(tuple),
-            FloatExprKind::ListIndex { list, .. } => self.include_list_expr(list),
+            FloatExprKind::ListIndex { list, .. } => self.include_typed_list_expr(list),
             FloatExprKind::Add { left, right }
             | FloatExprKind::Sub { left, right }
             | FloatExprKind::Mult { left, right }
@@ -402,7 +402,7 @@ impl FrameLayout {
                 self.include_call_args(args);
             }
             TupleExprKind::TupleIndex { tuple, .. } => self.include_tuple_expr(tuple),
-            TupleExprKind::ListIndex { list, .. } => self.include_list_expr(list),
+            TupleExprKind::ListIndex { list, .. } => self.include_typed_list_expr(list),
             TupleExprKind::BoolCase {
                 subject,
                 true_,
@@ -453,72 +453,98 @@ impl FrameLayout {
     }
 
     pub(in crate::plan::frame) fn include_list_expr(&mut self, expression: &ListExpr) {
+        match expression {
+            ListExpr::Int(expression) => self.include_typed_list_expr(expression),
+            ListExpr::String(expression) => self.include_typed_list_expr(expression),
+            ListExpr::Float(expression) => self.include_typed_list_expr(expression),
+            ListExpr::Bool(expression) => self.include_typed_list_expr(expression),
+            ListExpr::Nil(expression) => self.include_typed_list_expr(expression),
+            ListExpr::Tuple(expression) => self.include_typed_list_expr(expression),
+            ListExpr::List(expression) => self.include_typed_list_expr(expression),
+            ListExpr::Function(expression) => self.include_typed_list_expr(expression),
+        }
+    }
+
+    pub(in crate::plan::frame) fn include_typed_list_expr<Item: ListItem>(
+        &mut self,
+        expression: &TypedListExpr<Item>,
+    ) {
         match expression.kind() {
-            ListExprKind::Value(elements) => self.include_list_elements(elements),
-            ListExprKind::Panic(panic) => self.include_panic_expr(panic),
-            ListExprKind::Spread { elements, tail } => {
-                self.include_list_elements(elements);
-                self.include_list_expr(tail);
+            TypedListExprKind::Value(elements) => {
+                self.include_typed_list_elements(expression.item(), elements)
             }
-            ListExprKind::LocalGet { local, .. } => {
-                self.include_list(local);
+            TypedListExprKind::Panic(panic) => self.include_panic_expr(panic),
+            TypedListExprKind::Spread { elements, tail } => {
+                self.include_typed_list_elements(expression.item(), elements);
+                self.include_typed_list_expr(tail);
             }
-            ListExprKind::Call { args, .. } => self.include_call_args(args),
-            ListExprKind::FunctionCall { function, args } => {
+            TypedListExprKind::LocalGet { local, .. } => {
+                self.include_list(expression.item().local_to_facade(local.clone()));
+            }
+            TypedListExprKind::Call { args, .. } => self.include_call_args(args),
+            TypedListExprKind::FunctionCall { function, args } => {
                 self.include_list_function_expr(function);
                 self.include_call_args(args);
             }
-            ListExprKind::TupleIndex { tuple, .. } => self.include_tuple_expr(tuple),
-            ListExprKind::ListIndex { list, .. } | ListExprKind::DropFirst { list, .. } => {
-                self.include_list_expr(list);
-            }
-            ListExprKind::BoolCase {
+            TypedListExprKind::TupleIndex { tuple, .. } => self.include_tuple_expr(tuple),
+            TypedListExprKind::ListIndex { list, .. } => self.include_typed_list_expr(list),
+            TypedListExprKind::DropFirst { list, .. } => self.include_typed_list_expr(list),
+            TypedListExprKind::BoolCase {
                 subject,
                 true_,
                 false_,
             } => {
                 self.include_bool_expr(subject);
-                self.include_list_expr(true_);
-                self.include_list_expr(false_);
+                self.include_typed_list_expr(true_);
+                self.include_typed_list_expr(false_);
             }
-            ListExprKind::IntCase {
+            TypedListExprKind::IntCase {
                 subject,
                 clauses,
                 fallback,
             } => {
                 self.include_int_expr(subject);
                 for (_, branch) in clauses {
-                    self.include_list_expr(branch);
+                    self.include_typed_list_expr(branch);
                 }
-                self.include_list_expr(fallback);
+                self.include_typed_list_expr(fallback);
             }
-            ListExprKind::StringCase {
+            TypedListExprKind::StringCase {
                 subject,
                 clauses,
                 fallback,
             } => {
                 self.include_string_expr(subject);
                 for (_, branch) in clauses {
-                    self.include_list_expr(branch);
+                    self.include_typed_list_expr(branch);
                 }
-                self.include_list_expr(fallback);
+                self.include_typed_list_expr(fallback);
             }
-            ListExprKind::FloatCase {
+            TypedListExprKind::FloatCase {
                 subject,
                 clauses,
                 fallback,
             } => {
                 self.include_float_expr(subject);
                 for (_, branch) in clauses {
-                    self.include_list_expr(branch);
+                    self.include_typed_list_expr(branch);
                 }
-                self.include_list_expr(fallback);
+                self.include_typed_list_expr(fallback);
             }
-            ListExprKind::Block { steps, return_ } => {
+            TypedListExprKind::Block { steps, return_ } => {
                 self.include_steps(steps);
-                self.include_list_expr(return_);
+                self.include_typed_list_expr(return_);
             }
         }
+    }
+
+    fn include_typed_list_elements<Item: ListItem>(
+        &mut self,
+        item: &Item,
+        elements: &[Item::ElementExpr],
+    ) {
+        let elements = Item::elements_to_facade(item.clone(), elements.to_vec());
+        self.include_list_elements(&elements);
     }
 
     fn include_list_elements(&mut self, elements: &ListElements) {
@@ -571,45 +597,58 @@ impl FrameLayout {
 mod tests {
     use super::FrameLayout;
     use crate::plan::{
-        BoolExpr, BoolListLocalId, BoolLocalId, CallArg, Expr, FloatExpr, FloatFunctionId,
-        FloatFunctionLocalId, FloatListLocalId, FloatLocalId, FunctionType, IntExpr, IntFunctionId,
-        IntListLocalId, IntLocalId, ListExpr, ListFunctionExpr, ListFunctionId, ListListLocalId,
-        ListLocal, NilExpr, NilListLocalId, NilLocalId, PanicExpr, PanicSite, ReturnExpr, Step,
-        StringExpr, StringListLocalId, StringLocalId, TupleExpr, TupleFunctionExpr,
-        TupleFunctionId, TupleFunctionLocalId, TupleListLocalId, TupleLocalId, ValueType,
+        BoolExpr, BoolListCaseBranches, BoolListLocalId, BoolLocalId, CallArg, Expr, FloatExpr,
+        FloatFunctionId, FloatFunctionLocalId, FloatListLocalId, FloatLocalId, FunctionType,
+        IntExpr, IntFunctionId, IntListLocalId, IntLocalId, ListExpr, ListFunctionExpr,
+        ListFunctionId, ListListLocalId, ListLocal, NilExpr, NilListLocalId, NilLocalId, PanicExpr,
+        PanicSite, ReturnExpr, Step, StringExpr, StringListLocalId, StringLocalId, TupleExpr,
+        TupleFunctionExpr, TupleFunctionId, TupleFunctionLocalId, TupleListLocalId, TupleLocalId,
+        ValueType,
     };
 
     #[test]
     fn frame_layout_includes_list_projection_expression_dependencies() {
         let steps = vec![
             Step::evaluate(Expr::int(IntExpr::list_index(
-                ListExpr::local_get(ListLocal::int(IntListLocalId(0)), "int_list".into()),
+                ListExpr::local_get(ListLocal::int(IntListLocalId(0)), "int_list".into())
+                    .into_int()
+                    .expect("int list local should build an IntListExpr"),
                 0,
             ))),
             Step::evaluate(Expr::string(StringExpr::list_index(
                 ListExpr::local_get(
                     ListLocal::string(StringListLocalId(0)),
                     "string_list".into(),
-                ),
+                )
+                .into_string()
+                .expect("string list local should build a StringListExpr"),
                 0,
             ))),
             Step::evaluate(Expr::float(FloatExpr::list_index(
-                ListExpr::local_get(ListLocal::float(FloatListLocalId(0)), "float_list".into()),
+                ListExpr::local_get(ListLocal::float(FloatListLocalId(0)), "float_list".into())
+                    .into_float()
+                    .expect("float list local should build a FloatListExpr"),
                 0,
             ))),
             Step::evaluate(Expr::bool(BoolExpr::list_index(
-                ListExpr::local_get(ListLocal::bool(BoolListLocalId(0)), "bool_list".into()),
+                ListExpr::local_get(ListLocal::bool(BoolListLocalId(0)), "bool_list".into())
+                    .into_bool()
+                    .expect("bool list local should build a BoolListExpr"),
                 0,
             ))),
             Step::evaluate(Expr::nil(NilExpr::list_index(
-                ListExpr::local_get(ListLocal::nil(NilListLocalId(0)), "nil_list".into()),
+                ListExpr::local_get(ListLocal::nil(NilListLocalId(0)), "nil_list".into())
+                    .into_nil()
+                    .expect("nil list local should build a NilListExpr"),
                 0,
             ))),
             Step::evaluate(Expr::tuple(TupleExpr::list_index(
                 ListExpr::local_get(
                     ListLocal::tuple(TupleListLocalId(0), tuple_type()),
                     "tuple_list".into(),
-                ),
+                )
+                .into_tuple()
+                .expect("tuple list local should build a TupleListExpr"),
                 0,
                 tuple_type(),
             ))),
@@ -617,9 +656,10 @@ mod tests {
                 ListExpr::local_get(
                     ListLocal::list(ListListLocalId(0), ValueType::Int),
                     "nested_list".into(),
-                ),
+                )
+                .into_list()
+                .expect("nested list local should build a ListListExpr"),
                 0,
-                ValueType::Int,
             ))),
             Step::evaluate(Expr::list(ListExpr::drop_first(
                 ListExpr::local_get(ListLocal::int(IntListLocalId(1)), "drop_list".into()),
@@ -906,7 +946,9 @@ mod tests {
                 ListExpr::local_get(
                     ListLocal::nil(NilListLocalId(0)),
                     "nil_list_index_subject".into(),
-                ),
+                )
+                .into_nil()
+                .expect("nil list local should build a NilListExpr"),
                 0,
             ))),
             Step::evaluate(Expr::float(FloatExpr::add(
@@ -1193,8 +1235,20 @@ mod tests {
             ))),
             Step::evaluate(Expr::list(ListExpr::bool_case(
                 BoolExpr::local_get(BoolLocalId(0), "bool_subject".into()),
-                ListExpr::local_get(ListLocal::int(IntListLocalId(4)), "bool_true".into()),
-                ListExpr::local_get(ListLocal::int(IntListLocalId(5)), "bool_false".into()),
+                BoolListCaseBranches::Int {
+                    true_: ListExpr::local_get(
+                        ListLocal::int(IntListLocalId(4)),
+                        "bool_true".into(),
+                    )
+                    .into_int()
+                    .expect("bool true branch should be List(Int)"),
+                    false_: ListExpr::local_get(
+                        ListLocal::int(IntListLocalId(5)),
+                        "bool_false".into(),
+                    )
+                    .into_int()
+                    .expect("bool false branch should be List(Int)"),
+                },
             ))),
             Step::evaluate(Expr::list(ListExpr::int_case(
                 IntExpr::local_get(IntLocalId(1), "int_subject".into()),

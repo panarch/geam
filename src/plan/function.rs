@@ -1,19 +1,27 @@
 use super::FrameLayout;
-use super::expression::{BoolExpr, CallArg, FloatExpr, IntExpr, NilExpr, StringExpr, TupleExpr};
+use super::expression::{
+    BoolExpr, BoolListExpr, CallArg, FloatExpr, FloatListExpr, FunctionListExpr, IntExpr,
+    IntListExpr, ListListExpr, NilExpr, NilListExpr, StringExpr, StringListExpr, TupleExpr,
+    TupleListExpr,
+};
 use super::id::{
-    BoolFunctionFunctionId, BoolFunctionId, BoolFunctionLocalId, BoolLocalId,
-    FloatFunctionFunctionId, FloatFunctionId, FloatFunctionLocalId, FloatLocalId,
-    FunctionFunctionFunctionId, FunctionFunctionId, FunctionFunctionLocalId, FunctionId,
-    IntFunctionFunctionId, IntFunctionId, IntFunctionLocalId, IntLocalId, ListFunctionFunctionId,
-    ListFunctionId, ListFunctionLocal, ListLocal, NilFunctionFunctionId, NilFunctionId,
-    NilFunctionLocalId, NilLocalId, RuntimeFunctionId, StringFunctionFunctionId, StringFunctionId,
-    StringFunctionLocalId, StringLocalId, TupleFunctionFunctionId, TupleFunctionId,
-    TupleFunctionLocalId, TupleLocalId,
+    BoolFunctionFunctionId, BoolFunctionId, BoolFunctionLocalId, BoolListFunctionId, BoolLocalId,
+    FloatFunctionFunctionId, FloatFunctionId, FloatFunctionLocalId, FloatListFunctionId,
+    FloatLocalId, FunctionFunctionFunctionId, FunctionFunctionId, FunctionFunctionLocalId,
+    FunctionId, FunctionListFunctionId, IntFunctionFunctionId, IntFunctionId, IntFunctionLocalId,
+    IntListFunctionId, IntLocalId, ListFunctionFunctionId, ListFunctionId, ListFunctionLocal,
+    ListListFunctionId, ListLocal, NilFunctionFunctionId, NilFunctionId, NilFunctionLocalId,
+    NilListFunctionId, NilLocalId, RuntimeFunctionId, StringFunctionFunctionId, StringFunctionId,
+    StringFunctionLocalId, StringListFunctionId, StringLocalId, TupleFunctionFunctionId,
+    TupleFunctionId, TupleFunctionLocalId, TupleListFunctionId, TupleLocalId,
 };
 use super::step::Step;
 use super::value::{FunctionType, ValueType};
 use ecow::EcoString;
 use num_bigint::BigInt;
+
+#[cfg(test)]
+use super::expression::ListExpr;
 
 #[derive(Debug, PartialEq)]
 pub struct FunctionPlan {
@@ -92,7 +100,14 @@ pub(crate) type StringReturn = ReturnBody<StringExpr, StringFunctionId>;
 pub(crate) type BoolReturn = ReturnBody<BoolExpr, BoolFunctionId>;
 pub(crate) type NilReturn = ReturnBody<NilExpr, NilFunctionId>;
 pub(crate) type TupleReturn = ReturnBody<TupleExpr, TupleFunctionId>;
-pub(crate) type ListReturn = ReturnBody<super::ListExpr, ListFunctionId>;
+pub(crate) type IntListReturn = ReturnBody<IntListExpr, IntListFunctionId>;
+pub(crate) type FloatListReturn = ReturnBody<FloatListExpr, FloatListFunctionId>;
+pub(crate) type StringListReturn = ReturnBody<StringListExpr, StringListFunctionId>;
+pub(crate) type BoolListReturn = ReturnBody<BoolListExpr, BoolListFunctionId>;
+pub(crate) type NilListReturn = ReturnBody<NilListExpr, NilListFunctionId>;
+pub(crate) type TupleListReturn = ReturnBody<TupleListExpr, TupleListFunctionId>;
+pub(crate) type ListListReturn = ReturnBody<ListListExpr, ListListFunctionId>;
+pub(crate) type FunctionListReturn = ReturnBody<FunctionListExpr, FunctionListFunctionId>;
 pub(crate) type IntFunctionReturn = ReturnBody<super::IntFunctionExpr, IntFunctionFunctionId>;
 pub(crate) type FloatFunctionReturn = ReturnBody<super::FloatFunctionExpr, FloatFunctionFunctionId>;
 pub(crate) type StringFunctionReturn =
@@ -103,6 +118,443 @@ pub(crate) type TupleFunctionReturn = ReturnBody<super::TupleFunctionExpr, Tuple
 pub(crate) type ListFunctionReturn = ReturnBody<super::ListFunctionExpr, ListFunctionFunctionId>;
 pub(crate) type FunctionFunctionReturn =
     ReturnBody<super::FunctionFunctionExpr, FunctionFunctionFunctionId>;
+
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) enum ListReturn {
+    Int(IntListReturn),
+    Float(FloatListReturn),
+    String(StringListReturn),
+    Bool(BoolListReturn),
+    Nil(NilListReturn),
+    Tuple {
+        item_type: Vec<ValueType>,
+        body: TupleListReturn,
+    },
+    List {
+        item_type: Box<ValueType>,
+        body: ListListReturn,
+    },
+    Function {
+        item_type: FunctionType,
+        body: FunctionListReturn,
+    },
+}
+
+impl ListReturn {
+    #[cfg(test)]
+    pub(crate) fn expr(expression: ListExpr) -> Self {
+        match expression {
+            ListExpr::Int(expression) => Self::Int(IntListReturn::expr(expression)),
+            ListExpr::Float(expression) => Self::Float(FloatListReturn::expr(expression)),
+            ListExpr::String(expression) => Self::String(StringListReturn::expr(expression)),
+            ListExpr::Bool(expression) => Self::Bool(BoolListReturn::expr(expression)),
+            ListExpr::Nil(expression) => Self::Nil(NilListReturn::expr(expression)),
+            ListExpr::Tuple(expression) => Self::Tuple {
+                item_type: expression.item().item_type(),
+                body: TupleListReturn::expr(expression),
+            },
+            ListExpr::List(expression) => Self::List {
+                item_type: expression.item().item_type(),
+                body: ListListReturn::expr(expression),
+            },
+            ListExpr::Function(expression) => Self::Function {
+                item_type: expression.item().item_type(),
+                body: FunctionListReturn::expr(expression),
+            },
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn tail_call(function: ListFunctionId, args: Vec<CallArg>) -> Self {
+        match function {
+            ListFunctionId::Int(function) => Self::Int(IntListReturn::tail_call(function, args)),
+            ListFunctionId::Float(function) => {
+                Self::Float(FloatListReturn::tail_call(function, args))
+            }
+            ListFunctionId::String(function) => {
+                Self::String(StringListReturn::tail_call(function, args))
+            }
+            ListFunctionId::Bool(function) => Self::Bool(BoolListReturn::tail_call(function, args)),
+            ListFunctionId::Nil(function) => Self::Nil(NilListReturn::tail_call(function, args)),
+            ListFunctionId::Tuple { id, item_type } => Self::Tuple {
+                item_type,
+                body: TupleListReturn::tail_call(id, args),
+            },
+            ListFunctionId::List { id, item_type } => Self::List {
+                item_type,
+                body: ListListReturn::tail_call(id, args),
+            },
+            ListFunctionId::Function { id, item_type } => Self::Function {
+                item_type,
+                body: FunctionListReturn::tail_call(id, args),
+            },
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn try_bool_case(subject: BoolExpr, true_: Self, false_: Self) -> Option<Self> {
+        Some(match (true_, false_) {
+            (Self::Int(true_), Self::Int(false_)) => {
+                Self::Int(IntListReturn::bool_case(subject, true_, false_))
+            }
+            (Self::Float(true_), Self::Float(false_)) => {
+                Self::Float(FloatListReturn::bool_case(subject, true_, false_))
+            }
+            (Self::String(true_), Self::String(false_)) => {
+                Self::String(StringListReturn::bool_case(subject, true_, false_))
+            }
+            (Self::Bool(true_), Self::Bool(false_)) => {
+                Self::Bool(BoolListReturn::bool_case(subject, true_, false_))
+            }
+            (Self::Nil(true_), Self::Nil(false_)) => {
+                Self::Nil(NilListReturn::bool_case(subject, true_, false_))
+            }
+            (
+                Self::Tuple {
+                    item_type: true_type,
+                    body: true_,
+                },
+                Self::Tuple {
+                    item_type: false_type,
+                    body: false_,
+                },
+            ) if true_type == false_type => Self::Tuple {
+                item_type: true_type,
+                body: TupleListReturn::bool_case(subject, true_, false_),
+            },
+            (
+                Self::List {
+                    item_type: true_type,
+                    body: true_,
+                },
+                Self::List {
+                    item_type: false_type,
+                    body: false_,
+                },
+            ) if true_type == false_type => Self::List {
+                item_type: true_type,
+                body: ListListReturn::bool_case(subject, true_, false_),
+            },
+            (
+                Self::Function {
+                    item_type: true_type,
+                    body: true_,
+                },
+                Self::Function {
+                    item_type: false_type,
+                    body: false_,
+                },
+            ) if true_type == false_type => Self::Function {
+                item_type: true_type,
+                body: FunctionListReturn::bool_case(subject, true_, false_),
+            },
+            _ => return None,
+        })
+    }
+
+    #[cfg(test)]
+    pub(crate) fn try_int_case(
+        subject: IntExpr,
+        clauses: Vec<(BigInt, Self)>,
+        fallback: Self,
+    ) -> Option<Self> {
+        match fallback {
+            Self::Int(fallback) => Some(Self::Int(IntListReturn::int_case(
+                subject,
+                into_list_return_clauses(clauses)?,
+                fallback,
+            ))),
+            Self::Float(fallback) => Some(Self::Float(FloatListReturn::int_case(
+                subject,
+                into_list_return_clauses(clauses)?,
+                fallback,
+            ))),
+            Self::String(fallback) => Some(Self::String(StringListReturn::int_case(
+                subject,
+                into_list_return_clauses(clauses)?,
+                fallback,
+            ))),
+            Self::Bool(fallback) => Some(Self::Bool(BoolListReturn::int_case(
+                subject,
+                into_list_return_clauses(clauses)?,
+                fallback,
+            ))),
+            Self::Nil(fallback) => Some(Self::Nil(NilListReturn::int_case(
+                subject,
+                into_list_return_clauses(clauses)?,
+                fallback,
+            ))),
+            Self::Tuple {
+                item_type,
+                body: fallback,
+            } => Some(Self::Tuple {
+                item_type,
+                body: TupleListReturn::int_case(
+                    subject,
+                    into_list_return_clauses(clauses)?,
+                    fallback,
+                ),
+            }),
+            Self::List {
+                item_type,
+                body: fallback,
+            } => Some(Self::List {
+                item_type,
+                body: ListListReturn::int_case(
+                    subject,
+                    into_list_return_clauses(clauses)?,
+                    fallback,
+                ),
+            }),
+            Self::Function {
+                item_type,
+                body: fallback,
+            } => Some(Self::Function {
+                item_type,
+                body: FunctionListReturn::int_case(
+                    subject,
+                    into_list_return_clauses(clauses)?,
+                    fallback,
+                ),
+            }),
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn try_float_case(
+        subject: FloatExpr,
+        clauses: Vec<(f64, Self)>,
+        fallback: Self,
+    ) -> Option<Self> {
+        match fallback {
+            Self::Int(fallback) => Some(Self::Int(IntListReturn::float_case(
+                subject,
+                into_list_return_clauses(clauses)?,
+                fallback,
+            ))),
+            Self::Float(fallback) => Some(Self::Float(FloatListReturn::float_case(
+                subject,
+                into_list_return_clauses(clauses)?,
+                fallback,
+            ))),
+            Self::String(fallback) => Some(Self::String(StringListReturn::float_case(
+                subject,
+                into_list_return_clauses(clauses)?,
+                fallback,
+            ))),
+            Self::Bool(fallback) => Some(Self::Bool(BoolListReturn::float_case(
+                subject,
+                into_list_return_clauses(clauses)?,
+                fallback,
+            ))),
+            Self::Nil(fallback) => Some(Self::Nil(NilListReturn::float_case(
+                subject,
+                into_list_return_clauses(clauses)?,
+                fallback,
+            ))),
+            Self::Tuple {
+                item_type,
+                body: fallback,
+            } => Some(Self::Tuple {
+                item_type,
+                body: TupleListReturn::float_case(
+                    subject,
+                    into_list_return_clauses(clauses)?,
+                    fallback,
+                ),
+            }),
+            Self::List {
+                item_type,
+                body: fallback,
+            } => Some(Self::List {
+                item_type,
+                body: ListListReturn::float_case(
+                    subject,
+                    into_list_return_clauses(clauses)?,
+                    fallback,
+                ),
+            }),
+            Self::Function {
+                item_type,
+                body: fallback,
+            } => Some(Self::Function {
+                item_type,
+                body: FunctionListReturn::float_case(
+                    subject,
+                    into_list_return_clauses(clauses)?,
+                    fallback,
+                ),
+            }),
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn try_string_case(
+        subject: StringExpr,
+        clauses: Vec<(EcoString, Self)>,
+        fallback: Self,
+    ) -> Option<Self> {
+        match fallback {
+            Self::Int(fallback) => Some(Self::Int(IntListReturn::string_case(
+                subject,
+                into_list_return_clauses(clauses)?,
+                fallback,
+            ))),
+            Self::Float(fallback) => Some(Self::Float(FloatListReturn::string_case(
+                subject,
+                into_list_return_clauses(clauses)?,
+                fallback,
+            ))),
+            Self::String(fallback) => Some(Self::String(StringListReturn::string_case(
+                subject,
+                into_list_return_clauses(clauses)?,
+                fallback,
+            ))),
+            Self::Bool(fallback) => Some(Self::Bool(BoolListReturn::string_case(
+                subject,
+                into_list_return_clauses(clauses)?,
+                fallback,
+            ))),
+            Self::Nil(fallback) => Some(Self::Nil(NilListReturn::string_case(
+                subject,
+                into_list_return_clauses(clauses)?,
+                fallback,
+            ))),
+            Self::Tuple {
+                item_type,
+                body: fallback,
+            } => Some(Self::Tuple {
+                item_type,
+                body: TupleListReturn::string_case(
+                    subject,
+                    into_list_return_clauses(clauses)?,
+                    fallback,
+                ),
+            }),
+            Self::List {
+                item_type,
+                body: fallback,
+            } => Some(Self::List {
+                item_type,
+                body: ListListReturn::string_case(
+                    subject,
+                    into_list_return_clauses(clauses)?,
+                    fallback,
+                ),
+            }),
+            Self::Function {
+                item_type,
+                body: fallback,
+            } => Some(Self::Function {
+                item_type,
+                body: FunctionListReturn::string_case(
+                    subject,
+                    into_list_return_clauses(clauses)?,
+                    fallback,
+                ),
+            }),
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn try_block(steps: Vec<Step>, return_: Self) -> Self {
+        match return_ {
+            Self::Int(return_) => Self::Int(IntListReturn::block(steps, return_)),
+            Self::Float(return_) => Self::Float(FloatListReturn::block(steps, return_)),
+            Self::String(return_) => Self::String(StringListReturn::block(steps, return_)),
+            Self::Bool(return_) => Self::Bool(BoolListReturn::block(steps, return_)),
+            Self::Nil(return_) => Self::Nil(NilListReturn::block(steps, return_)),
+            Self::Tuple { item_type, body } => Self::Tuple {
+                item_type,
+                body: TupleListReturn::block(steps, body),
+            },
+            Self::List { item_type, body } => Self::List {
+                item_type,
+                body: ListListReturn::block(steps, body),
+            },
+            Self::Function { item_type, body } => Self::Function {
+                item_type,
+                body: FunctionListReturn::block(steps, body),
+            },
+        }
+    }
+}
+
+#[cfg(test)]
+fn into_list_return_clauses<Pattern, Body>(
+    clauses: Vec<(Pattern, ListReturn)>,
+) -> Option<Vec<(Pattern, Body)>>
+where
+    Body: TryFrom<ListReturn>,
+{
+    clauses
+        .into_iter()
+        .map(|(pattern, branch)| Body::try_from(branch).ok().map(|branch| (pattern, branch)))
+        .collect()
+}
+
+#[cfg(test)]
+macro_rules! impl_list_return_body_try_from {
+    ($body:ty, $variant:ident) => {
+        impl TryFrom<ListReturn> for $body {
+            type Error = ();
+
+            fn try_from(value: ListReturn) -> Result<Self, Self::Error> {
+                match value {
+                    ListReturn::$variant(value) => Ok(value),
+                    _ => Err(()),
+                }
+            }
+        }
+    };
+}
+
+#[cfg(test)]
+impl_list_return_body_try_from!(IntListReturn, Int);
+#[cfg(test)]
+impl_list_return_body_try_from!(FloatListReturn, Float);
+#[cfg(test)]
+impl_list_return_body_try_from!(StringListReturn, String);
+#[cfg(test)]
+impl_list_return_body_try_from!(BoolListReturn, Bool);
+#[cfg(test)]
+impl_list_return_body_try_from!(NilListReturn, Nil);
+
+#[cfg(test)]
+impl TryFrom<ListReturn> for TupleListReturn {
+    type Error = ();
+
+    fn try_from(value: ListReturn) -> Result<Self, Self::Error> {
+        match value {
+            ListReturn::Tuple { body, .. } => Ok(body),
+            _ => Err(()),
+        }
+    }
+}
+
+#[cfg(test)]
+impl TryFrom<ListReturn> for ListListReturn {
+    type Error = ();
+
+    fn try_from(value: ListReturn) -> Result<Self, Self::Error> {
+        match value {
+            ListReturn::List { body, .. } => Ok(body),
+            _ => Err(()),
+        }
+    }
+}
+
+#[cfg(test)]
+impl TryFrom<ListReturn> for FunctionListReturn {
+    type Error = ();
+
+    fn try_from(value: ListReturn) -> Result<Self, Self::Error> {
+        match value {
+            ListReturn::Function { body, .. } => Ok(body),
+            _ => Err(()),
+        }
+    }
+}
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct ReturnBody<Expression, Function> {
@@ -830,21 +1282,26 @@ impl ParamLocal {
 
 #[cfg(test)]
 mod tests {
-    use super::{FunctionPlan, Param, ParamBinding, ParamLocal, ReturnExpr, RuntimeFunction};
+    use super::{
+        BoolListReturn, FloatListReturn, FunctionListReturn, FunctionPlan, IntListReturn,
+        ListListReturn, ListReturn, NilListReturn, Param, ParamBinding, ParamLocal, ReturnBodyKind,
+        ReturnExpr, RuntimeFunction, StringListReturn, TupleListReturn,
+    };
     use crate::plan::{
         BoolExpr, BoolFunctionExpr, BoolFunctionFunctionId, BoolFunctionId, BoolFunctionLocalId,
         BoolFunctionValue, BoolLocalId, FloatExpr, FloatFunctionExpr, FloatFunctionFunctionId,
-        FloatFunctionId, FloatFunctionLocalId, FloatFunctionValue, FloatLocalId, FrameLayout,
-        FunctionFunctionExpr, FunctionFunctionFunctionId, FunctionFunctionId,
-        FunctionFunctionLocalId, FunctionFunctionValue, FunctionId, FunctionType, IntExpr,
-        IntFunctionExpr, IntFunctionFunctionId, IntFunctionId, IntFunctionLocalId,
-        IntFunctionValue, IntListLocalId, IntLocalId, ListExpr, ListFunctionExpr,
-        ListFunctionFunctionId, ListFunctionId, ListFunctionValue, ListLocal, NilExpr,
-        NilFunctionExpr, NilFunctionFunctionId, NilFunctionId, NilFunctionLocalId,
-        NilFunctionValue, StringExpr, StringFunctionExpr, StringFunctionFunctionId,
-        StringFunctionId, StringFunctionLocalId, StringFunctionValue, TupleExpr, TupleFunctionExpr,
-        TupleFunctionFunctionId, TupleFunctionId, TupleFunctionLocalId, TupleFunctionValue,
-        ValueType,
+        FloatFunctionId, FloatFunctionLocalId, FloatFunctionValue, FloatListFunctionId,
+        FloatLocalId, FrameLayout, FunctionFunctionExpr, FunctionFunctionFunctionId,
+        FunctionFunctionId, FunctionFunctionLocalId, FunctionFunctionValue, FunctionId,
+        FunctionListFunctionId, FunctionType, IntExpr, IntFunctionExpr, IntFunctionFunctionId,
+        IntFunctionId, IntFunctionLocalId, IntFunctionValue, IntListFunctionId, IntListLocalId,
+        IntLocalId, ListExpr, ListFunctionExpr, ListFunctionFunctionId, ListFunctionId,
+        ListFunctionValue, ListListFunctionId, ListLocal, NilExpr, NilFunctionExpr,
+        NilFunctionFunctionId, NilFunctionId, NilFunctionLocalId, NilFunctionValue,
+        NilListFunctionId, StringExpr, StringFunctionExpr, StringFunctionFunctionId,
+        StringFunctionId, StringFunctionLocalId, StringFunctionValue, StringListFunctionId,
+        TupleExpr, TupleFunctionExpr, TupleFunctionFunctionId, TupleFunctionId,
+        TupleFunctionLocalId, TupleFunctionValue, TupleListFunctionId, ValueType,
     };
     use num_bigint::BigInt;
 
@@ -912,7 +1369,7 @@ mod tests {
         assert_eq!(
             ReturnExpr::list_body(
                 ListFunctionId::from_item_type(0, ValueType::Int),
-                super::ReturnBody::expr(ListExpr::value(
+                ListReturn::expr(ListExpr::value(
                     vec![crate::plan::Expr::int(IntExpr::value(BigInt::from(1)))],
                     ValueType::Int,
                 )),
@@ -1161,5 +1618,553 @@ mod tests {
         assert_eq!(function.frame_layout().ints(), 1);
         assert_eq!(function.steps(), &[]);
         assert_eq!(function.return_(), &IntExpr::value(BigInt::from(1)));
+    }
+
+    #[test]
+    fn list_return_expr_preserves_item_family() {
+        let int = ListExpr::value(
+            vec![crate::plan::Expr::int(IntExpr::value(1.into()))],
+            ValueType::Int,
+        );
+        assert_eq!(
+            ListReturn::expr(int.clone()),
+            ListReturn::Int(IntListReturn::expr(int.into_int().expect("int list"))),
+        );
+
+        let float = ListExpr::value(
+            vec![crate::plan::Expr::float(FloatExpr::value(1.5))],
+            ValueType::Float,
+        );
+        assert_eq!(
+            ListReturn::expr(float.clone()),
+            ListReturn::Float(FloatListReturn::expr(
+                float.into_float().expect("float list")
+            )),
+        );
+
+        let string = ListExpr::value(
+            vec![crate::plan::Expr::string(StringExpr::value("one".into()))],
+            ValueType::String,
+        );
+        assert_eq!(
+            ListReturn::expr(string.clone()),
+            ListReturn::String(StringListReturn::expr(
+                string.into_string().expect("string list"),
+            )),
+        );
+
+        let bool_ = ListExpr::value(
+            vec![crate::plan::Expr::bool(BoolExpr::value(true))],
+            ValueType::Bool,
+        );
+        assert_eq!(
+            ListReturn::expr(bool_.clone()),
+            ListReturn::Bool(BoolListReturn::expr(bool_.into_bool().expect("bool list"))),
+        );
+
+        let nil = ListExpr::value(
+            vec![crate::plan::Expr::nil(NilExpr::value())],
+            ValueType::Nil,
+        );
+        assert_eq!(
+            ListReturn::expr(nil.clone()),
+            ListReturn::Nil(NilListReturn::expr(nil.into_nil().expect("nil list"))),
+        );
+
+        let tuple = ListExpr::value(
+            vec![crate::plan::Expr::tuple(TupleExpr::value(
+                vec![crate::plan::Expr::int(IntExpr::value(1.into()))],
+                vec![ValueType::Int],
+            ))],
+            ValueType::Tuple(vec![ValueType::Int]),
+        );
+        assert_eq!(
+            ListReturn::expr(tuple.clone()),
+            ListReturn::Tuple {
+                item_type: vec![ValueType::Int],
+                body: TupleListReturn::expr(tuple.into_tuple().expect("tuple list")),
+            },
+        );
+
+        let nested = ListExpr::value(
+            vec![crate::plan::Expr::list(ListExpr::value(
+                vec![crate::plan::Expr::int(IntExpr::value(1.into()))],
+                ValueType::Int,
+            ))],
+            ValueType::List(Box::new(ValueType::Int)),
+        );
+        assert_eq!(
+            ListReturn::expr(nested.clone()),
+            ListReturn::List {
+                item_type: Box::new(ValueType::Int),
+                body: ListListReturn::expr(nested.into_list().expect("nested list")),
+            },
+        );
+
+        let function_type = FunctionType::new(Vec::new(), ValueType::Int);
+        let function = ListExpr::value(
+            vec![crate::plan::Expr::function(
+                crate::plan::FunctionExpr::value(crate::plan::FunctionValue::new(
+                    crate::plan::RuntimeFunctionId::Int(IntFunctionId(0)),
+                    Vec::new(),
+                )),
+            )],
+            ValueType::Function(Box::new(function_type.clone())),
+        );
+        assert_eq!(
+            ListReturn::expr(function.clone()),
+            ListReturn::Function {
+                item_type: function_type,
+                body: FunctionListReturn::expr(function.into_function().expect("function list")),
+            },
+        );
+    }
+
+    #[test]
+    fn list_return_tail_call_preserves_item_family() {
+        assert_eq!(
+            ListReturn::tail_call(ListFunctionId::Int(IntListFunctionId(0)), Vec::new()),
+            ListReturn::Int(IntListReturn::tail_call(IntListFunctionId(0), Vec::new())),
+        );
+        assert_eq!(
+            ListReturn::tail_call(ListFunctionId::Float(FloatListFunctionId(0)), Vec::new()),
+            ListReturn::Float(FloatListReturn::tail_call(
+                FloatListFunctionId(0),
+                Vec::new()
+            )),
+        );
+        assert_eq!(
+            ListReturn::tail_call(ListFunctionId::String(StringListFunctionId(0)), Vec::new()),
+            ListReturn::String(StringListReturn::tail_call(
+                StringListFunctionId(0),
+                Vec::new(),
+            )),
+        );
+        assert_eq!(
+            ListReturn::tail_call(
+                ListFunctionId::Bool(crate::plan::BoolListFunctionId(0)),
+                Vec::new()
+            ),
+            ListReturn::Bool(BoolListReturn::tail_call(
+                crate::plan::BoolListFunctionId(0),
+                Vec::new(),
+            )),
+        );
+        assert_eq!(
+            ListReturn::tail_call(ListFunctionId::Nil(NilListFunctionId(0)), Vec::new()),
+            ListReturn::Nil(NilListReturn::tail_call(NilListFunctionId(0), Vec::new())),
+        );
+        assert_eq!(
+            ListReturn::tail_call(
+                ListFunctionId::Tuple {
+                    id: TupleListFunctionId(0),
+                    item_type: vec![ValueType::Int],
+                },
+                Vec::new(),
+            ),
+            ListReturn::Tuple {
+                item_type: vec![ValueType::Int],
+                body: TupleListReturn::tail_call(TupleListFunctionId(0), Vec::new()),
+            },
+        );
+        assert_eq!(
+            ListReturn::tail_call(
+                ListFunctionId::List {
+                    id: ListListFunctionId(0),
+                    item_type: Box::new(ValueType::Int),
+                },
+                Vec::new(),
+            ),
+            ListReturn::List {
+                item_type: Box::new(ValueType::Int),
+                body: ListListReturn::tail_call(ListListFunctionId(0), Vec::new()),
+            },
+        );
+        let function_type = FunctionType::new(Vec::new(), ValueType::Int);
+        assert_eq!(
+            ListReturn::tail_call(
+                ListFunctionId::Function {
+                    id: FunctionListFunctionId(0),
+                    item_type: function_type.clone(),
+                },
+                Vec::new(),
+            ),
+            ListReturn::Function {
+                item_type: function_type,
+                body: FunctionListReturn::tail_call(FunctionListFunctionId(0), Vec::new()),
+            },
+        );
+    }
+
+    #[test]
+    fn list_return_cases_and_block_preserve_typed_body() {
+        let true_ = IntListReturn::expr(
+            ListExpr::value(
+                vec![crate::plan::Expr::int(IntExpr::value(1.into()))],
+                ValueType::Int,
+            )
+            .into_int()
+            .expect("int list"),
+        );
+        let false_ = IntListReturn::expr(
+            ListExpr::value(
+                vec![crate::plan::Expr::int(IntExpr::value(2.into()))],
+                ValueType::Int,
+            )
+            .into_int()
+            .expect("int list"),
+        );
+        assert_eq!(
+            ListReturn::try_bool_case(
+                BoolExpr::value(true),
+                ListReturn::Int(true_.clone()),
+                ListReturn::Int(false_.clone()),
+            ),
+            Some(ListReturn::Int(IntListReturn::bool_case(
+                BoolExpr::value(true),
+                true_,
+                false_,
+            ))),
+        );
+
+        let fallback = StringListReturn::expr(
+            ListExpr::value(
+                vec![crate::plan::Expr::string(StringExpr::value(
+                    "fallback".into(),
+                ))],
+                ValueType::String,
+            )
+            .into_string()
+            .expect("string list"),
+        );
+        let branch = StringListReturn::expr(
+            ListExpr::value(
+                vec![crate::plan::Expr::string(StringExpr::value(
+                    "branch".into(),
+                ))],
+                ValueType::String,
+            )
+            .into_string()
+            .expect("string list"),
+        );
+        assert_eq!(
+            ListReturn::try_int_case(
+                IntExpr::value(1.into()),
+                vec![(BigInt::from(1), ListReturn::String(branch.clone()))],
+                ListReturn::String(fallback.clone()),
+            ),
+            Some(ListReturn::String(StringListReturn::int_case(
+                IntExpr::value(1.into()),
+                vec![(BigInt::from(1), branch)],
+                fallback,
+            ))),
+        );
+
+        let fallback = FloatListReturn::expr(
+            ListExpr::value(
+                vec![crate::plan::Expr::float(FloatExpr::value(1.5))],
+                ValueType::Float,
+            )
+            .into_float()
+            .expect("float list"),
+        );
+        let branch = FloatListReturn::expr(
+            ListExpr::value(
+                vec![crate::plan::Expr::float(FloatExpr::value(2.5))],
+                ValueType::Float,
+            )
+            .into_float()
+            .expect("float list"),
+        );
+        assert_eq!(
+            ListReturn::try_string_case(
+                StringExpr::value("key".into()),
+                vec![("key".into(), ListReturn::Float(branch.clone()))],
+                ListReturn::Float(fallback.clone()),
+            ),
+            Some(ListReturn::Float(FloatListReturn::string_case(
+                StringExpr::value("key".into()),
+                vec![("key".into(), branch)],
+                fallback,
+            ))),
+        );
+
+        let fallback = BoolListReturn::expr(
+            ListExpr::value(
+                vec![crate::plan::Expr::bool(BoolExpr::value(false))],
+                ValueType::Bool,
+            )
+            .into_bool()
+            .expect("bool list"),
+        );
+        let branch = BoolListReturn::expr(
+            ListExpr::value(
+                vec![crate::plan::Expr::bool(BoolExpr::value(true))],
+                ValueType::Bool,
+            )
+            .into_bool()
+            .expect("bool list"),
+        );
+        assert_eq!(
+            ListReturn::try_float_case(
+                FloatExpr::value(1.5),
+                vec![(1.5, ListReturn::Bool(branch.clone()))],
+                ListReturn::Bool(fallback.clone()),
+            ),
+            Some(ListReturn::Bool(BoolListReturn::float_case(
+                FloatExpr::value(1.5),
+                vec![(1.5, branch)],
+                fallback,
+            ))),
+        );
+
+        let return_ = NilListReturn::expr(
+            ListExpr::value(
+                vec![crate::plan::Expr::nil(NilExpr::value())],
+                ValueType::Nil,
+            )
+            .into_nil()
+            .expect("nil list"),
+        );
+        assert_eq!(
+            ListReturn::try_block(
+                Vec::<crate::plan::Step>::new(),
+                ListReturn::Nil(return_.clone()),
+            ),
+            ListReturn::Nil(NilListReturn::block(
+                Vec::<crate::plan::Step>::new(),
+                return_,
+            )),
+        );
+    }
+
+    #[test]
+    fn list_return_case_rejects_mismatched_item_families() {
+        assert_eq!(
+            ListReturn::try_bool_case(
+                BoolExpr::value(true),
+                ListReturn::expr(ListExpr::value(
+                    vec![crate::plan::Expr::int(IntExpr::value(1.into()))],
+                    ValueType::Int,
+                )),
+                ListReturn::expr(ListExpr::value(
+                    vec![crate::plan::Expr::string(StringExpr::value("wrong".into()))],
+                    ValueType::String,
+                )),
+            ),
+            None,
+        );
+        assert_eq!(
+            ListReturn::try_int_case(
+                IntExpr::value(1.into()),
+                vec![(
+                    BigInt::from(1),
+                    ListReturn::expr(ListExpr::value(
+                        vec![crate::plan::Expr::string(StringExpr::value("wrong".into()))],
+                        ValueType::String,
+                    )),
+                )],
+                ListReturn::expr(ListExpr::value(
+                    vec![crate::plan::Expr::int(IntExpr::value(1.into()))],
+                    ValueType::Int,
+                )),
+            ),
+            None,
+        );
+        assert_eq!(
+            ListReturn::try_int_case(
+                IntExpr::value(1.into()),
+                vec![(
+                    BigInt::from(1),
+                    ListReturn::expr(ListExpr::value(
+                        Vec::new(),
+                        ValueType::List(Box::new(ValueType::String)),
+                    )),
+                )],
+                ListReturn::expr(ListExpr::value(
+                    Vec::new(),
+                    ValueType::Tuple(vec![ValueType::Int])
+                )),
+            ),
+            None,
+        );
+        assert_eq!(
+            ListReturn::try_int_case(
+                IntExpr::value(1.into()),
+                vec![(
+                    BigInt::from(1),
+                    ListReturn::expr(ListExpr::value(
+                        Vec::new(),
+                        ValueType::Function(Box::new(FunctionType::new(
+                            Vec::new(),
+                            ValueType::Bool
+                        ))),
+                    )),
+                )],
+                ListReturn::expr(ListExpr::value(
+                    Vec::new(),
+                    ValueType::List(Box::new(ValueType::String)),
+                )),
+            ),
+            None,
+        );
+        assert_eq!(
+            ListReturn::try_int_case(
+                IntExpr::value(1.into()),
+                vec![(
+                    BigInt::from(1),
+                    ListReturn::expr(ListExpr::value(
+                        Vec::new(),
+                        ValueType::Tuple(vec![ValueType::Int])
+                    )),
+                )],
+                ListReturn::expr(ListExpr::value(
+                    Vec::new(),
+                    ValueType::Function(Box::new(FunctionType::new(Vec::new(), ValueType::Bool))),
+                )),
+            ),
+            None,
+        );
+    }
+
+    #[test]
+    fn return_body_kind_accessor_exposes_exact_shape() {
+        let expression = ListExpr::value(
+            vec![crate::plan::Expr::int(IntExpr::value(1.into()))],
+            ValueType::Int,
+        )
+        .into_int()
+        .expect("int list");
+        let body = IntListReturn::expr(expression.clone());
+        assert_eq!(body.kind(), &ReturnBodyKind::Expr(expression));
+    }
+
+    #[test]
+    fn list_return_case_helpers_preserve_all_item_families() {
+        let item_types = vec![
+            ValueType::Int,
+            ValueType::Float,
+            ValueType::String,
+            ValueType::Bool,
+            ValueType::Nil,
+            ValueType::Tuple(vec![ValueType::Int]),
+            ValueType::List(Box::new(ValueType::String)),
+            ValueType::Function(Box::new(FunctionType::new(Vec::new(), ValueType::Bool))),
+        ];
+
+        for item_type in item_types {
+            let true_ = ListReturn::expr(ListExpr::value(Vec::new(), item_type.clone()));
+            let false_ = ListReturn::expr(ListExpr::value(Vec::new(), item_type.clone()));
+            let bool_case = ListReturn::try_bool_case(BoolExpr::value(true), true_, false_);
+            assert_eq!(
+                bool_case.as_ref().map(list_return_item_type),
+                Some(item_type.clone())
+            );
+
+            let branch = ListReturn::expr(ListExpr::value(Vec::new(), item_type.clone()));
+            let fallback = ListReturn::expr(ListExpr::value(Vec::new(), item_type.clone()));
+            let int_case = ListReturn::try_int_case(
+                IntExpr::value(1.into()),
+                vec![(BigInt::from(1), branch)],
+                fallback,
+            );
+            assert_eq!(
+                int_case.as_ref().map(list_return_item_type),
+                Some(item_type.clone())
+            );
+
+            let branch = ListReturn::expr(ListExpr::value(Vec::new(), item_type.clone()));
+            let fallback = ListReturn::expr(ListExpr::value(Vec::new(), item_type.clone()));
+            let float_case =
+                ListReturn::try_float_case(FloatExpr::value(1.5), vec![(1.5, branch)], fallback);
+            assert_eq!(
+                float_case.as_ref().map(list_return_item_type),
+                Some(item_type.clone()),
+            );
+
+            let branch = ListReturn::expr(ListExpr::value(Vec::new(), item_type.clone()));
+            let fallback = ListReturn::expr(ListExpr::value(Vec::new(), item_type.clone()));
+            let string_case = ListReturn::try_string_case(
+                StringExpr::value("one".into()),
+                vec![("one".into(), branch)],
+                fallback,
+            );
+            assert_eq!(
+                string_case.as_ref().map(list_return_item_type),
+                Some(item_type.clone()),
+            );
+
+            let block = ListReturn::try_block(
+                Vec::<crate::plan::Step>::new(),
+                ListReturn::expr(ListExpr::value(Vec::new(), item_type.clone())),
+            );
+            assert_eq!(list_return_item_type(&block), item_type);
+        }
+    }
+
+    #[test]
+    fn list_return_case_helpers_reject_clause_mismatch_for_all_item_families() {
+        fn empty_return(item_type: ValueType) -> ListReturn {
+            ListReturn::expr(ListExpr::value(Vec::new(), item_type))
+        }
+
+        let item_types = vec![
+            ValueType::Int,
+            ValueType::Float,
+            ValueType::String,
+            ValueType::Bool,
+            ValueType::Nil,
+            ValueType::Tuple(vec![ValueType::Int]),
+            ValueType::List(Box::new(ValueType::String)),
+            ValueType::Function(Box::new(FunctionType::new(Vec::new(), ValueType::Bool))),
+        ];
+
+        for item_type in item_types {
+            let mismatched_type = if item_type == ValueType::Int {
+                ValueType::String
+            } else {
+                ValueType::Int
+            };
+
+            assert_eq!(
+                ListReturn::try_int_case(
+                    IntExpr::value(1.into()),
+                    vec![(BigInt::from(1), empty_return(mismatched_type.clone()))],
+                    empty_return(item_type.clone()),
+                ),
+                None,
+            );
+            assert_eq!(
+                ListReturn::try_float_case(
+                    FloatExpr::value(1.5),
+                    vec![(1.5, empty_return(mismatched_type.clone()))],
+                    empty_return(item_type.clone()),
+                ),
+                None,
+            );
+            assert_eq!(
+                ListReturn::try_string_case(
+                    StringExpr::value("one".into()),
+                    vec![("one".into(), empty_return(mismatched_type))],
+                    empty_return(item_type),
+                ),
+                None,
+            );
+        }
+    }
+
+    fn list_return_item_type(return_: &ListReturn) -> ValueType {
+        match return_ {
+            ListReturn::Int(_) => ValueType::Int,
+            ListReturn::Float(_) => ValueType::Float,
+            ListReturn::String(_) => ValueType::String,
+            ListReturn::Bool(_) => ValueType::Bool,
+            ListReturn::Nil(_) => ValueType::Nil,
+            ListReturn::Tuple { item_type, .. } => ValueType::Tuple(item_type.clone()),
+            ListReturn::List { item_type, .. } => ValueType::List(item_type.clone()),
+            ListReturn::Function { item_type, .. } => {
+                ValueType::Function(Box::new(item_type.clone()))
+            }
+        }
     }
 }

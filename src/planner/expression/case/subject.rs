@@ -8,8 +8,9 @@ mod string;
 mod tuple;
 
 use crate::plan::{
-    BoolCaseBranches, BoolExpr, BoolLocalId, Expr, ExprKind, FloatExpr, FloatLocalId,
-    FunctionExprKind, IntExpr, IntLocalId, Step, StringExpr, StringLocalId, ValueType,
+    BoolCaseBranches, BoolExpr, BoolListCaseBranches, BoolLocalId, Expr, ExprKind, FloatExpr,
+    FloatLocalId, FunctionExprKind, IntExpr, IntLocalId, ListExpr, Step, StringExpr, StringLocalId,
+    ValueType,
 };
 use crate::planner::context::PlanContext;
 use crate::planner::error::{InvalidCaseShapeReason, PlanError, UnsupportedCaseReason};
@@ -231,7 +232,9 @@ fn bool_case_expr(subject: BoolExpr, true_: Expr, false_: Expr) -> Result<Expr, 
         (ExprKind::Tuple(true_), ExprKind::Tuple(false_)) => {
             BoolCaseBranches::Tuple { true_, false_ }
         }
-        (ExprKind::List(true_), ExprKind::List(false_)) => BoolCaseBranches::List { true_, false_ },
+        (ExprKind::List(true_), ExprKind::List(false_)) => {
+            BoolCaseBranches::List(bool_list_case_branches(true_, false_)?)
+        }
         (ExprKind::Function(true_), ExprKind::Function(false_)) => {
             bool_function_case_branches(true_, false_)?
         }
@@ -243,6 +246,45 @@ fn bool_case_expr(subject: BoolExpr, true_: Expr, false_: Expr) -> Result<Expr, 
     };
 
     Ok(Expr::bool_case(subject, branches))
+}
+
+fn bool_list_case_branches(
+    true_: ListExpr,
+    false_: ListExpr,
+) -> Result<BoolListCaseBranches, PlanError> {
+    Ok(match (true_, false_) {
+        (ListExpr::Int(true_), ListExpr::Int(false_)) => {
+            BoolListCaseBranches::Int { true_, false_ }
+        }
+        (ListExpr::String(true_), ListExpr::String(false_)) => {
+            BoolListCaseBranches::String { true_, false_ }
+        }
+        (ListExpr::Float(true_), ListExpr::Float(false_)) => {
+            BoolListCaseBranches::Float { true_, false_ }
+        }
+        (ListExpr::Bool(true_), ListExpr::Bool(false_)) => {
+            BoolListCaseBranches::Bool { true_, false_ }
+        }
+        (ListExpr::Nil(true_), ListExpr::Nil(false_)) => {
+            BoolListCaseBranches::Nil { true_, false_ }
+        }
+        (ListExpr::Tuple(true_), ListExpr::Tuple(false_)) if true_.item() == false_.item() => {
+            BoolListCaseBranches::Tuple { true_, false_ }
+        }
+        (ListExpr::List(true_), ListExpr::List(false_)) if true_.item() == false_.item() => {
+            BoolListCaseBranches::List { true_, false_ }
+        }
+        (ListExpr::Function(true_), ListExpr::Function(false_))
+            if true_.item() == false_.item() =>
+        {
+            BoolListCaseBranches::Function { true_, false_ }
+        }
+        _ => {
+            return Err(super::invalid_case_shape(
+                InvalidCaseShapeReason::BranchReturnTypeMismatch,
+            ));
+        }
+    })
 }
 
 fn bool_function_case_branches(
@@ -487,7 +529,9 @@ fn internal_bool_case_subject_name(local: BoolLocalId) -> EcoString {
 
 #[cfg(test)]
 mod tests {
-    use crate::plan::{BoolExpr, Expr, IntExpr, ValueType};
+    use crate::plan::{
+        BoolExpr, BoolListCaseBranches, Expr, FunctionType, IntExpr, ListExpr, ValueType,
+    };
     use crate::planner::context::{AnonymousFunctions, PlanContext};
     use crate::planner::dsl::{
         function, int, int_return_block, int_return_expr, let_int_step, let_tuple_step, local_int,
@@ -503,6 +547,154 @@ mod tests {
     use gleam_core::ast::TypedExpr;
     use gleam_core::type_;
     use std::collections::HashMap;
+
+    #[test]
+    fn bool_list_case_branches_preserves_typed_item_family() {
+        let true_ = ListExpr::value(Vec::new(), ValueType::String)
+            .into_string()
+            .expect("string list should build StringListExpr");
+        let false_ = ListExpr::value(Vec::new(), ValueType::String)
+            .into_string()
+            .expect("string list should build StringListExpr");
+        assert_eq!(
+            super::bool_list_case_branches(
+                ListExpr::String(true_.clone()),
+                ListExpr::String(false_.clone()),
+            ),
+            Ok(BoolListCaseBranches::String { true_, false_ }),
+        );
+        let true_ = ListExpr::value(Vec::new(), ValueType::String)
+            .into_string()
+            .expect("string list should build StringListExpr");
+        let false_ = ListExpr::value(Vec::new(), ValueType::String)
+            .into_string()
+            .expect("string list should build StringListExpr");
+        assert_eq!(
+            super::bool_case_expr(
+                BoolExpr::value(true),
+                Expr::list(ListExpr::String(true_.clone())),
+                Expr::list(ListExpr::String(false_.clone())),
+            ),
+            Ok(Expr::list(ListExpr::bool_case(
+                BoolExpr::value(true),
+                BoolListCaseBranches::String { true_, false_ },
+            ))),
+        );
+
+        let true_ = ListExpr::value(Vec::new(), ValueType::Float)
+            .into_float()
+            .expect("float list should build FloatListExpr");
+        let false_ = ListExpr::value(Vec::new(), ValueType::Float)
+            .into_float()
+            .expect("float list should build FloatListExpr");
+        assert_eq!(
+            super::bool_list_case_branches(
+                ListExpr::Float(true_.clone()),
+                ListExpr::Float(false_.clone()),
+            ),
+            Ok(BoolListCaseBranches::Float { true_, false_ }),
+        );
+
+        let true_ = ListExpr::value(Vec::new(), ValueType::Bool)
+            .into_bool()
+            .expect("bool list should build BoolListExpr");
+        let false_ = ListExpr::value(Vec::new(), ValueType::Bool)
+            .into_bool()
+            .expect("bool list should build BoolListExpr");
+        assert_eq!(
+            super::bool_list_case_branches(
+                ListExpr::Bool(true_.clone()),
+                ListExpr::Bool(false_.clone()),
+            ),
+            Ok(BoolListCaseBranches::Bool { true_, false_ }),
+        );
+
+        let true_ = ListExpr::value(Vec::new(), ValueType::Nil)
+            .into_nil()
+            .expect("nil list should build NilListExpr");
+        let false_ = ListExpr::value(Vec::new(), ValueType::Nil)
+            .into_nil()
+            .expect("nil list should build NilListExpr");
+        assert_eq!(
+            super::bool_list_case_branches(
+                ListExpr::Nil(true_.clone()),
+                ListExpr::Nil(false_.clone()),
+            ),
+            Ok(BoolListCaseBranches::Nil { true_, false_ }),
+        );
+
+        let true_ = ListExpr::value(Vec::new(), ValueType::Tuple(vec![ValueType::Int]))
+            .into_tuple()
+            .expect("tuple list should build TupleListExpr");
+        let false_ = ListExpr::value(Vec::new(), ValueType::Tuple(vec![ValueType::Int]))
+            .into_tuple()
+            .expect("tuple list should build TupleListExpr");
+        assert_eq!(
+            super::bool_list_case_branches(
+                ListExpr::Tuple(true_.clone()),
+                ListExpr::Tuple(false_.clone()),
+            ),
+            Ok(BoolListCaseBranches::Tuple { true_, false_ }),
+        );
+
+        let true_ = ListExpr::value(Vec::new(), ValueType::List(Box::new(ValueType::String)))
+            .into_list()
+            .expect("nested list should build ListListExpr");
+        let false_ = ListExpr::value(Vec::new(), ValueType::List(Box::new(ValueType::String)))
+            .into_list()
+            .expect("nested list should build ListListExpr");
+        assert_eq!(
+            super::bool_list_case_branches(
+                ListExpr::List(true_.clone()),
+                ListExpr::List(false_.clone()),
+            ),
+            Ok(BoolListCaseBranches::List { true_, false_ }),
+        );
+
+        let function_type = FunctionType::new(Vec::new(), ValueType::Bool);
+        let true_ = ListExpr::value(
+            Vec::new(),
+            ValueType::Function(Box::new(function_type.clone())),
+        )
+        .into_function()
+        .expect("function list should build FunctionListExpr");
+        let false_ = ListExpr::value(Vec::new(), ValueType::Function(Box::new(function_type)))
+            .into_function()
+            .expect("function list should build FunctionListExpr");
+        assert_eq!(
+            super::bool_list_case_branches(
+                ListExpr::Function(true_.clone()),
+                ListExpr::Function(false_.clone()),
+            ),
+            Ok(BoolListCaseBranches::Function { true_, false_ }),
+        );
+
+        assert_eq!(
+            super::bool_list_case_branches(
+                ListExpr::value(Vec::new(), ValueType::Tuple(vec![ValueType::Int])),
+                ListExpr::value(Vec::new(), ValueType::Tuple(vec![ValueType::String])),
+            ),
+            Err(super::super::invalid_case_shape(
+                InvalidCaseShapeReason::BranchReturnTypeMismatch,
+            )),
+        );
+        assert_eq!(
+            super::bool_case_expr(
+                BoolExpr::value(true),
+                Expr::list(ListExpr::value(
+                    Vec::new(),
+                    ValueType::Tuple(vec![ValueType::Int]),
+                )),
+                Expr::list(ListExpr::value(
+                    Vec::new(),
+                    ValueType::Tuple(vec![ValueType::String]),
+                )),
+            ),
+            Err(super::super::invalid_case_shape(
+                InvalidCaseShapeReason::BranchReturnTypeMismatch,
+            )),
+        );
+    }
 
     #[test]
     fn reject_profile_unreachable_subject_clause_body() {

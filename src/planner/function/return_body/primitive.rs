@@ -1,7 +1,8 @@
 use crate::plan::{
     BoolExpr, BoolExprKind, BoolReturn, FloatExpr, FloatExprKind, FloatReturn, IntExpr,
-    IntExprKind, IntReturn, ListExpr, ListExprKind, ListReturn, NilExpr, NilExprKind, NilReturn,
+    IntExprKind, IntReturn, ListExpr, ListItem, ListReturn, NilExpr, NilExprKind, NilReturn,
     ReturnBody, StringExpr, StringExprKind, StringReturn, TupleExpr, TupleExprKind, TupleReturn,
+    TypedListExpr, TypedListExprKind,
 };
 
 pub(super) fn int_return(expression: IntExpr) -> IntReturn {
@@ -335,20 +336,44 @@ pub(super) fn tuple_return(expression: TupleExpr) -> TupleReturn {
 }
 
 pub(super) fn list_return(expression: ListExpr) -> ListReturn {
+    match expression {
+        ListExpr::Int(expression) => ListReturn::Int(typed_list_return_body(expression)),
+        ListExpr::String(expression) => ListReturn::String(typed_list_return_body(expression)),
+        ListExpr::Float(expression) => ListReturn::Float(typed_list_return_body(expression)),
+        ListExpr::Bool(expression) => ListReturn::Bool(typed_list_return_body(expression)),
+        ListExpr::Nil(expression) => ListReturn::Nil(typed_list_return_body(expression)),
+        ListExpr::Tuple(expression) => ListReturn::Tuple {
+            item_type: expression.item().item_type(),
+            body: typed_list_return_body(expression),
+        },
+        ListExpr::List(expression) => ListReturn::List {
+            item_type: expression.item().item_type(),
+            body: typed_list_return_body(expression),
+        },
+        ListExpr::Function(expression) => ListReturn::Function {
+            item_type: expression.item().item_type(),
+            body: typed_list_return_body(expression),
+        },
+    }
+}
+
+fn typed_list_return_body<Item: ListItem>(
+    expression: TypedListExpr<Item>,
+) -> ReturnBody<TypedListExpr<Item>, Item::Function> {
     match expression.kind() {
-        ListExprKind::Call { function, args } => {
+        TypedListExprKind::Call { function, args } => {
             ReturnBody::tail_call(function.clone(), args.clone())
         }
-        ListExprKind::BoolCase {
+        TypedListExprKind::BoolCase {
             subject,
             true_,
             false_,
         } => ReturnBody::bool_case(
             (**subject).clone(),
-            list_return((**true_).clone()),
-            list_return((**false_).clone()),
+            typed_list_return_body((**true_).clone()),
+            typed_list_return_body((**false_).clone()),
         ),
-        ListExprKind::IntCase {
+        TypedListExprKind::IntCase {
             subject,
             clauses,
             fallback,
@@ -356,11 +381,11 @@ pub(super) fn list_return(expression: ListExpr) -> ListReturn {
             (**subject).clone(),
             clauses
                 .iter()
-                .map(|(value, branch)| (value.clone(), list_return(branch.clone())))
+                .map(|(value, branch)| (value.clone(), typed_list_return_body(branch.clone())))
                 .collect(),
-            list_return((**fallback).clone()),
+            typed_list_return_body((**fallback).clone()),
         ),
-        ListExprKind::StringCase {
+        TypedListExprKind::StringCase {
             subject,
             clauses,
             fallback,
@@ -368,11 +393,11 @@ pub(super) fn list_return(expression: ListExpr) -> ListReturn {
             (**subject).clone(),
             clauses
                 .iter()
-                .map(|(value, branch)| (value.clone(), list_return(branch.clone())))
+                .map(|(value, branch)| (value.clone(), typed_list_return_body(branch.clone())))
                 .collect(),
-            list_return((**fallback).clone()),
+            typed_list_return_body((**fallback).clone()),
         ),
-        ListExprKind::FloatCase {
+        TypedListExprKind::FloatCase {
             subject,
             clauses,
             fallback,
@@ -380,12 +405,12 @@ pub(super) fn list_return(expression: ListExpr) -> ListReturn {
             (**subject).clone(),
             clauses
                 .iter()
-                .map(|(value, branch)| (*value, list_return(branch.clone())))
+                .map(|(value, branch)| (*value, typed_list_return_body(branch.clone())))
                 .collect(),
-            list_return((**fallback).clone()),
+            typed_list_return_body((**fallback).clone()),
         ),
-        ListExprKind::Block { steps, return_ } => {
-            ReturnBody::block(steps.clone(), list_return((**return_).clone()))
+        TypedListExprKind::Block { steps, return_ } => {
+            ReturnBody::block(steps.clone(), typed_list_return_body((**return_).clone()))
         }
         _ => ReturnBody::expr(expression),
     }
@@ -397,8 +422,8 @@ mod tests {
         bool_return, float_return, int_return, list_return, nil_return, string_return, tuple_return,
     };
     use crate::plan::{
-        BoolExpr, Expr, FloatExpr, FloatFunctionId, IntExpr, ListExpr, NilExpr, ReturnBody,
-        StringExpr, TupleExpr, ValueType,
+        BoolExpr, Expr, FloatExpr, FloatFunctionId, FunctionType, IntExpr, ListExpr, ListReturn,
+        NilExpr, ReturnBody, StringExpr, TupleExpr, ValueType,
     };
     use num_bigint::BigInt;
 
@@ -454,11 +479,58 @@ mod tests {
         );
         assert_eq!(
             list_return(list_float_case()),
-            ReturnBody::float_case(
+            ListReturn::try_float_case(
                 FloatExpr::value(1.0),
-                vec![(1.0, ReturnBody::expr(list_value()))],
-                ReturnBody::expr(list_value()),
-            ),
+                vec![(1.0, ListReturn::expr(list_value()))],
+                ListReturn::expr(list_value()),
+            )
+            .expect("float list case branches should share an item family"),
+        );
+    }
+
+    #[test]
+    fn list_return_preserves_every_item_family() {
+        assert_eq!(
+            list_return(ListExpr::value(Vec::new(), ValueType::String)),
+            ListReturn::expr(ListExpr::value(Vec::new(), ValueType::String)),
+        );
+        assert_eq!(
+            list_return(ListExpr::value(Vec::new(), ValueType::Bool)),
+            ListReturn::expr(ListExpr::value(Vec::new(), ValueType::Bool)),
+        );
+        assert_eq!(
+            list_return(ListExpr::value(Vec::new(), ValueType::Nil)),
+            ListReturn::expr(ListExpr::value(Vec::new(), ValueType::Nil)),
+        );
+        assert_eq!(
+            list_return(ListExpr::value(
+                Vec::new(),
+                ValueType::Tuple(vec![ValueType::Int])
+            )),
+            ListReturn::expr(ListExpr::value(
+                Vec::new(),
+                ValueType::Tuple(vec![ValueType::Int])
+            )),
+        );
+        assert_eq!(
+            list_return(ListExpr::value(
+                Vec::new(),
+                ValueType::List(Box::new(ValueType::String)),
+            )),
+            ListReturn::expr(ListExpr::value(
+                Vec::new(),
+                ValueType::List(Box::new(ValueType::String)),
+            )),
+        );
+        assert_eq!(
+            list_return(ListExpr::value(
+                Vec::new(),
+                ValueType::Function(Box::new(FunctionType::new(Vec::new(), ValueType::Bool))),
+            )),
+            ListReturn::expr(ListExpr::value(
+                Vec::new(),
+                ValueType::Function(Box::new(FunctionType::new(Vec::new(), ValueType::Bool))),
+            )),
         );
     }
 

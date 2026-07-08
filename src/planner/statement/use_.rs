@@ -43,7 +43,7 @@ mod tests {
     use super::invalid_use_shape;
     use crate::plan::{
         Expr, IntListLocalId, IntLocalId, ListFunctionId, ListLocal, LocalId, Param, ParamLocal,
-        ReturnBody, ReturnExpr, TupleLocalId, ValueType,
+        ReturnExpr, TupleLocalId, ValueType,
     };
     use crate::planner::dsl::{
         call_int_function, capture_int, function, int, int_arg, int_function_arg,
@@ -351,7 +351,7 @@ pub fn main() {
             callback.return_(),
             &ReturnExpr::list_body(
                 ListFunctionId::from_item_type(2, ValueType::Int),
-                ReturnBody::expr(local_list(1, "rest", ValueType::Int).into()),
+                crate::plan::ListReturn::expr(local_list(1, "rest", ValueType::Int).into()),
             ),
         );
     }

@@ -24,7 +24,6 @@ pub use self::{
         ListFunctionExpr, NilFunctionExpr, StringFunctionExpr, TupleFunctionExpr,
     },
     int::IntExpr,
-    list::ListExpr,
     nil::NilExpr,
     string::StringExpr,
     tuple::TupleExpr,
@@ -39,7 +38,11 @@ pub(crate) use self::{
         TupleFunctionExprKind,
     },
     int::IntExprKind,
-    list::{ListElements, ListExprKind},
+    list::{
+        BoolListCaseBranches, BoolListExpr, FloatListExpr, FunctionListExpr, IntListExpr,
+        ListElements, ListExpr, ListItem, ListListExpr, NilListExpr, StringListExpr, TupleListExpr,
+        TypedListExpr, TypedListExprKind,
+    },
     nil::NilExprKind,
     panic::{PanicExpr, PanicExprKind},
     string::StringExprKind,
@@ -132,9 +135,7 @@ impl Expr {
             BoolCaseBranches::Tuple { true_, false_ } => {
                 Self::tuple(TupleExpr::bool_case(subject, true_, false_))
             }
-            BoolCaseBranches::List { true_, false_ } => {
-                Self::list(ListExpr::bool_case(subject, true_, false_))
-            }
+            BoolCaseBranches::List(branches) => Self::list(ListExpr::bool_case(subject, branches)),
             BoolCaseBranches::IntFunction { true_, false_ } => Self::function(FunctionExpr::int(
                 IntFunctionExpr::bool_case(subject, true_, false_),
             )),
@@ -423,10 +424,10 @@ impl From<Value> for Expr {
 #[cfg(test)]
 mod tests {
     use super::{
-        BoolCaseBranches, BoolExpr, BoolFunctionExpr, Expr, FloatCaseBranches, FloatExpr,
-        FloatFunctionExpr, FunctionExpr, FunctionFunctionExpr, IntCaseBranches, IntExpr,
-        IntFunctionExpr, ListExpr, ListFunctionExpr, NilExpr, NilFunctionExpr, StringCaseBranches,
-        StringExpr, StringFunctionExpr, TupleExpr,
+        BoolCaseBranches, BoolExpr, BoolFunctionExpr, BoolListCaseBranches, Expr,
+        FloatCaseBranches, FloatExpr, FloatFunctionExpr, FunctionExpr, FunctionFunctionExpr,
+        IntCaseBranches, IntExpr, IntFunctionExpr, ListExpr, ListFunctionExpr, NilExpr,
+        NilFunctionExpr, StringCaseBranches, StringExpr, StringFunctionExpr, TupleExpr,
     };
     use crate::plan::{
         BoolFunctionId, BoolFunctionValue, BoolLocalId, FloatFunctionId, FloatFunctionValue,
@@ -552,15 +553,25 @@ mod tests {
         assert_eq!(
             Expr::bool_case(
                 BoolExpr::value(true),
-                BoolCaseBranches::List {
-                    true_: list_expr(),
-                    false_: list_expr(),
-                },
+                BoolCaseBranches::List(BoolListCaseBranches::Int {
+                    true_: list_expr()
+                        .into_int()
+                        .expect("test list expression should be List(Int)"),
+                    false_: list_expr()
+                        .into_int()
+                        .expect("test list expression should be List(Int)"),
+                }),
             ),
             Expr::list(ListExpr::bool_case(
                 BoolExpr::value(true),
-                list_expr(),
-                list_expr(),
+                BoolListCaseBranches::Int {
+                    true_: list_expr()
+                        .into_int()
+                        .expect("test list expression should be List(Int)"),
+                    false_: list_expr()
+                        .into_int()
+                        .expect("test list expression should be List(Int)"),
+                },
             )),
         );
         assert_eq!(

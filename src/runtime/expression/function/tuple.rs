@@ -1,6 +1,6 @@
 use crate::plan::{
-    ExecutionPlan, FunctionValueKind, TupleFunctionExpr, TupleFunctionExprKind, TupleFunctionValue,
-    Value, ValueType,
+    ExecutionPlan, FunctionReturnFamily, FunctionValueKind, TupleFunctionExpr,
+    TupleFunctionExprKind, TupleFunctionValue, Value, ValueType,
 };
 use crate::runtime::ExecutionError;
 use crate::runtime::expression::{
@@ -63,13 +63,12 @@ pub(in crate::runtime) fn eval_tuple_function_expr(
             }
         }
         TupleFunctionExprKind::ListIndex { list, index, type_ } => {
-            let expected = ValueType::Function(Box::new(type_.clone()));
             let function = project_function_list_expr(plan, frame, list, *index, type_)?;
             match function.kind() {
                 FunctionValueKind::Tuple(value) => Ok(value.clone()),
-                _ => Err(ExecutionError::list_item_type_mismatch(
-                    expected,
-                    Value::Function(function).value_type(),
+                _ => Err(ExecutionError::function_return_family_mismatch(
+                    FunctionReturnFamily::Tuple,
+                    function.kind().family(),
                 )),
             }
         }
@@ -138,10 +137,11 @@ mod tests {
     use crate::plan::{
         BoolExpr, CaptureArg, ExecutionPlan, Expr, FloatExpr, FunctionExpr, FunctionFunctionExpr,
         FunctionFunctionId, FunctionFunctionValue, FunctionId, FunctionListLocalId, FunctionPlan,
-        FunctionType, IntExpr, IntFunctionExpr, IntFunctionId, IntFunctionValue, ListExpr,
-        ListLocal, ListValue, PanicExpr, PanicSite, ParamLocal, ReturnExpr, Step, StringExpr,
-        TupleExpr, TupleFunctionExpr, TupleFunctionFunctionId, TupleFunctionId,
-        TupleFunctionLocalId, TupleFunctionValue, TupleLocalId, Value, ValueType,
+        FunctionReturnFamily, FunctionType, IntExpr, IntFunctionExpr, IntFunctionId,
+        IntFunctionValue, ListElements, ListExpr, ListLocal, ListValue, PanicExpr, PanicSite,
+        ParamLocal, ReturnExpr, Step, StringExpr, TupleExpr, TupleFunctionExpr,
+        TupleFunctionFunctionId, TupleFunctionId, TupleFunctionLocalId, TupleFunctionValue,
+        TupleLocalId, Value, ValueType,
     };
     use crate::runtime::frame::Frame;
     use crate::runtime::run_src;
@@ -717,6 +717,24 @@ pub fn main() {
             )),
         );
 
+        let list = ListExpr::from_elements(ListElements::Function {
+            item_type: tuple_function_type.clone(),
+            values: vec![FunctionExpr::int(IntFunctionExpr::value(
+                IntFunctionValue::new(IntFunctionId(0), Vec::new()),
+            ))],
+        });
+        assert_eq!(
+            eval_tuple_function_expr(
+                &plan,
+                &mut frame,
+                &TupleFunctionExpr::list_index(list, 0, tuple_function_type.clone()),
+            ),
+            Err(ExecutionError::function_return_family_mismatch(
+                FunctionReturnFamily::Tuple,
+                FunctionReturnFamily::Int,
+            )),
+        );
+
         let mut layout = FrameLayout::default();
         layout.include_list(ListLocal::function(
             FunctionListLocalId(0),
@@ -731,18 +749,6 @@ pub fn main() {
                     tuple_function_type.clone(),
                     vec![IntFunctionValue::new(IntFunctionId(0), Vec::new()).into()],
                 ),
-            ),
-            Ok(()),
-        );
-        let list = ListExpr::local_get(
-            ListLocal::function(FunctionListLocalId(0), tuple_function_type.clone()),
-            "functions".into(),
-        );
-        assert_eq!(
-            eval_tuple_function_expr(
-                &plan,
-                &mut frame,
-                &TupleFunctionExpr::list_index(list, 0, tuple_function_type.clone()),
             ),
             Err(ExecutionError::list_item_type_mismatch(
                 ValueType::Function(Box::new(tuple_function_type.clone())),
@@ -784,19 +790,6 @@ pub fn main() {
                     tuple_function_type.clone(),
                 )))),
                 ValueType::Tuple(Vec::new()),
-            )),
-        );
-
-        let list = ListExpr::value(vec![Expr::int(IntExpr::value(1.into()))], ValueType::Int);
-        assert_eq!(
-            eval_tuple_function_expr(
-                &plan,
-                &mut frame,
-                &TupleFunctionExpr::list_index(list, 0, tuple_function_type),
-            ),
-            Err(ExecutionError::list_item_type_mismatch(
-                ValueType::Function(Box::new(tuple_function_expr().type_().clone())),
-                ValueType::Int,
             )),
         );
     }

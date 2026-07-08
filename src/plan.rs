@@ -15,14 +15,19 @@ pub(crate) use expression::{
     BoolCaseBranches, BoolExprKind, BoolFunctionExprKind, CallArgKind, CaptureArg, CaptureArgKind,
     ExprKind, FloatCaseBranches, FloatExprKind, FloatFunctionExprKind, FunctionExprKind,
     FunctionFunctionExprKind, IntCaseBranches, IntExprKind, IntFunctionExprKind, ListElements,
-    ListExprKind, ListFunctionExprKind, NilExprKind, NilFunctionExprKind, PanicExpr, PanicExprKind,
+    ListFunctionExprKind, NilExprKind, NilFunctionExprKind, PanicExpr, PanicExprKind,
     StringCaseBranches, StringExprKind, StringFunctionExprKind, TupleExprKind,
     TupleFunctionExprKind,
 };
 pub use expression::{
     BoolExpr, BoolFunctionExpr, CallArg, Expr, FloatExpr, FloatFunctionExpr, FunctionExpr,
-    FunctionFunctionExpr, IntExpr, IntFunctionExpr, ListExpr, ListFunctionExpr, NilExpr,
-    NilFunctionExpr, StringExpr, StringFunctionExpr, TupleExpr, TupleFunctionExpr,
+    FunctionFunctionExpr, IntExpr, IntFunctionExpr, ListFunctionExpr, NilExpr, NilFunctionExpr,
+    StringExpr, StringFunctionExpr, TupleExpr, TupleFunctionExpr,
+};
+pub(crate) use expression::{
+    BoolListCaseBranches, BoolListExpr, FloatListExpr, FunctionListExpr, IntListExpr, ListExpr,
+    ListItem, ListListExpr, NilListExpr, StringListExpr, TupleListExpr, TypedListExpr,
+    TypedListExprKind,
 };
 pub(crate) use frame::FrameLayout;
 pub(crate) use function::{
@@ -57,8 +62,8 @@ pub use step::Step;
 pub(crate) use step::{AssertBinding, AssertPattern, ListAssertPattern, ListAssertTail, StepKind};
 pub(crate) use value::{
     BoolFunctionValue, CaptureValue, CaptureValueKind, FloatFunctionValue, FunctionFunctionValue,
-    FunctionValueKind, IntFunctionValue, ListFunctionValue, NilFunctionValue, StringFunctionValue,
-    TupleFunctionValue,
+    FunctionValueKind, IntFunctionValue, ListFunctionValue, ListValueKind, NilFunctionValue,
+    StringFunctionValue, TupleFunctionValue,
 };
 pub use value::{FunctionType, FunctionValue, ListValue, Value, ValueType};
 

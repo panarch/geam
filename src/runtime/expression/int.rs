@@ -185,19 +185,6 @@ mod tests {
                 1,
             )),
         );
-
-        let list = ListExpr::value(
-            vec![Expr::string(StringExpr::value("one".into()))],
-            ValueType::String,
-        );
-
-        assert_eq!(
-            eval_int_expr(&plan, &mut frame, &IntExpr::list_index(list, 0)),
-            Err(ExecutionError::list_item_type_mismatch(
-                ValueType::Int,
-                ValueType::String,
-            )),
-        );
     }
 
     #[test]
