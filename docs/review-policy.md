@@ -136,6 +136,10 @@ Errors make boundaries visible:
 - Use `Option` for lookups or partial conversions when the caller owns the
   boundary meaning of absence. If all callers translate `None` into the same
   failure boundary, return `Result` or a structured reason instead.
+- Do not erase a boundary-carrying `Result` into `Option` with `.ok()`. If the
+  caller needs a failure boundary, propagate a structured `Result`; if failure
+  should be impossible after prior typed matching, make the construction
+  infallible by shape instead.
 - Keep fallibility meaningful: an internal helper may return `Result` only when
   it creates or propagates a real failure boundary.
 - When the accepted profile grows into an area that was previously rejected by a
