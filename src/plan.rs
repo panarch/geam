@@ -25,16 +25,19 @@ pub use expression::{
     StringExpr, StringFunctionExpr, TupleExpr, TupleFunctionExpr,
 };
 pub(crate) use expression::{
-    BoolListCaseBranches, BoolListExpr, FloatListExpr, FunctionListExpr, IntListExpr, ListExpr,
-    ListItem, ListListExpr, NilListExpr, StringListExpr, TupleListExpr, TypedListExpr,
-    TypedListExprKind,
+    BoolListCaseBranches, BoolListExpr, BoolListItem, FloatListExpr, FloatListItem,
+    FunctionListExpr, FunctionListItem, IntListExpr, IntListItem, ListExpr, ListItem, ListListExpr,
+    ListListItem, ListLocalExpr, NilListExpr, NilListItem, StringListExpr, StringListItem,
+    TupleListExpr, TupleListItem, TypedListExpr, TypedListExprKind,
 };
 pub(crate) use frame::FrameLayout;
 pub(crate) use function::{
-    BoolFunctionReturn, BoolReturn, FloatFunctionReturn, FloatReturn, FunctionFunctionReturn,
-    IntFunctionReturn, IntReturn, ListFunctionReturn, ListReturn, NilFunctionReturn, NilReturn,
-    ParamLocal, ReturnBody, ReturnBodyKind, ReturnExprKind, RuntimeFunction, StringFunctionReturn,
-    StringReturn, TupleFunctionReturn, TupleReturn,
+    BoolFunctionReturn, BoolListReturn, BoolReturn, FloatFunctionReturn, FloatListReturn,
+    FloatReturn, FunctionFunctionReturn, FunctionListReturn, IntFunctionReturn, IntListReturn,
+    IntReturn, ListFunctionReturn, ListListReturn, ListReturn, NilFunctionReturn, NilListReturn,
+    NilReturn, ParamLocal, ReturnBody, ReturnBodyKind, ReturnExprKind, RuntimeFunction,
+    StringFunctionReturn, StringListReturn, StringReturn, TupleFunctionReturn, TupleListReturn,
+    TupleReturn,
 };
 pub use function::{FunctionPlan, Param, ParamBinding, ReturnExpr};
 pub use id::{
@@ -62,7 +65,7 @@ pub use step::Step;
 pub(crate) use step::{AssertBinding, AssertPattern, ListAssertPattern, ListAssertTail, StepKind};
 pub(crate) use value::{
     BoolFunctionValue, CaptureValue, CaptureValueKind, FloatFunctionValue, FunctionFunctionValue,
-    FunctionValueKind, IntFunctionValue, ListFunctionValue, ListValueKind, NilFunctionValue,
+    FunctionValueKind, IntFunctionValue, ListFunctionValue, ListLocalValue, NilFunctionValue,
     StringFunctionValue, TupleFunctionValue,
 };
 pub use value::{FunctionType, FunctionValue, ListValue, Value, ValueType};
@@ -154,8 +157,60 @@ impl ExecutionPlan {
         self.runtime.tuple_function(id)
     }
 
-    pub(crate) fn list_function(&self, id: &ListFunctionId) -> &RuntimeFunction<ListReturn> {
-        self.runtime.list_function(id)
+    pub(crate) fn int_list_function(
+        &self,
+        id: IntListFunctionId,
+    ) -> &RuntimeFunction<IntListReturn> {
+        self.runtime.int_list_function(id)
+    }
+
+    pub(crate) fn string_list_function(
+        &self,
+        id: StringListFunctionId,
+    ) -> &RuntimeFunction<StringListReturn> {
+        self.runtime.string_list_function(id)
+    }
+
+    pub(crate) fn float_list_function(
+        &self,
+        id: FloatListFunctionId,
+    ) -> &RuntimeFunction<FloatListReturn> {
+        self.runtime.float_list_function(id)
+    }
+
+    pub(crate) fn bool_list_function(
+        &self,
+        id: BoolListFunctionId,
+    ) -> &RuntimeFunction<BoolListReturn> {
+        self.runtime.bool_list_function(id)
+    }
+
+    pub(crate) fn nil_list_function(
+        &self,
+        id: NilListFunctionId,
+    ) -> &RuntimeFunction<NilListReturn> {
+        self.runtime.nil_list_function(id)
+    }
+
+    pub(crate) fn tuple_list_function(
+        &self,
+        id: TupleListFunctionId,
+    ) -> &RuntimeFunction<TupleListReturn> {
+        self.runtime.tuple_list_function(id)
+    }
+
+    pub(crate) fn list_list_function(
+        &self,
+        id: ListListFunctionId,
+    ) -> &RuntimeFunction<ListListReturn> {
+        self.runtime.list_list_function(id)
+    }
+
+    pub(crate) fn function_list_function(
+        &self,
+        id: FunctionListFunctionId,
+    ) -> &RuntimeFunction<FunctionListReturn> {
+        self.runtime.function_list_function(id)
     }
 
     pub(crate) fn int_function_function(

@@ -28,11 +28,6 @@ pub enum ExecutionError {
         index: usize,
         length: usize,
     },
-    #[error("list item type mismatch (expected {expected:?}, got {actual:?})")]
-    ListItemTypeMismatch {
-        expected: ValueType,
-        actual: ValueType,
-    },
 }
 
 impl ExecutionError {
@@ -92,10 +87,6 @@ impl ExecutionError {
             length,
         }
     }
-
-    pub(crate) fn list_item_type_mismatch(expected: ValueType, actual: ValueType) -> Self {
-        Self::ListItemTypeMismatch { expected, actual }
-    }
 }
 
 #[cfg(test)]
@@ -136,16 +127,6 @@ mod tests {
         assert_eq!(
             error.to_string(),
             "list index out of bounds for Int list (index 1, length 1)",
-        );
-    }
-
-    #[test]
-    fn list_item_type_mismatch_display() {
-        let error = ExecutionError::list_item_type_mismatch(ValueType::Int, ValueType::String);
-
-        assert_eq!(
-            error.to_string(),
-            "list item type mismatch (expected Int, got String)",
         );
     }
 }

@@ -11,7 +11,7 @@ impl FrameLayout {
                 CallArgKind::Bool { value, .. } => self.include_bool_expr(value),
                 CallArgKind::Nil { value, .. } => self.include_nil_expr(value),
                 CallArgKind::Tuple { value, .. } => self.include_tuple_expr(value),
-                CallArgKind::List { value, .. } => self.include_list_expr(value),
+                CallArgKind::List(value) => self.include_list_local_expr(value),
                 CallArgKind::IntFunction { value, .. } => self.include_int_function_expr(value),
                 CallArgKind::StringFunction { value, .. } => {
                     self.include_string_function_expr(value);
@@ -43,7 +43,7 @@ impl FrameLayout {
                 CaptureArgKind::Bool { value, .. } => self.include_bool_expr(value),
                 CaptureArgKind::Nil { value, .. } => self.include_nil_expr(value),
                 CaptureArgKind::Tuple { value, .. } => self.include_tuple_expr(value),
-                CaptureArgKind::List { value, .. } => self.include_list_expr(value),
+                CaptureArgKind::List(value) => self.include_list_local_expr(value),
                 CaptureArgKind::IntFunction { value, .. } => self.include_int_function_expr(value),
                 CaptureArgKind::StringFunction { value, .. } => {
                     self.include_string_function_expr(value);
@@ -145,8 +145,14 @@ mod tests {
                         ),
                     ),
                     CallArg::list(
-                        ListLocal::int(IntListLocalId(1)),
-                        ListExpr::local_get(ListLocal::int(IntListLocalId(4)), "list_arg".into()),
+                        crate::plan::ListLocalExpr::try_new(
+                            ListLocal::int(IntListLocalId(1)),
+                            ListExpr::local_get(
+                                ListLocal::int(IntListLocalId(4)),
+                                "list_arg".into(),
+                            ),
+                        )
+                        .expect("list arg should match local item type"),
                     ),
                     CallArg::list_function(
                         crate::plan::ListFunctionLocal::from_item_type(
@@ -273,11 +279,14 @@ mod tests {
                             ),
                         ),
                         CaptureArg::list(
-                            ListLocal::int(IntListLocalId(2)),
-                            ListExpr::local_get(
-                                ListLocal::int(IntListLocalId(5)),
-                                "list_capture".into(),
-                            ),
+                            crate::plan::ListLocalExpr::try_new(
+                                ListLocal::int(IntListLocalId(2)),
+                                ListExpr::local_get(
+                                    ListLocal::int(IntListLocalId(5)),
+                                    "list_capture".into(),
+                                ),
+                            )
+                            .expect("list capture should match local item type"),
                         ),
                         CaptureArg::list_function(
                             crate::plan::ListFunctionLocal::from_item_type(

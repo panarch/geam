@@ -34,10 +34,7 @@ impl FrameLayout {
                 self.include_tuple_expr(value);
                 self.include_tuple(*local);
             }
-            StepKind::LetList { local, value, .. } => {
-                self.include_list_expr(value);
-                self.include_list(local);
-            }
+            StepKind::LetList { value, .. } => self.include_list_local_expr(value),
             StepKind::LetIntFunction { local, value, .. } => {
                 self.include_int_function_expr(value);
                 self.include_int_function(*local);

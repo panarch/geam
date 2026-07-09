@@ -1,8 +1,8 @@
 use super::FrameLayout;
 use crate::plan::{
     BoolExpr, BoolExprKind, Expr, ExprKind, FloatExpr, FloatExprKind, IntExpr, IntExprKind,
-    ListElements, ListExpr, ListItem, NilExpr, NilExprKind, PanicExpr, StringExpr, StringExprKind,
-    TupleExpr, TupleExprKind, TypedListExpr, TypedListExprKind,
+    ListElements, ListExpr, ListItem, ListLocalExpr, NilExpr, NilExprKind, PanicExpr, StringExpr,
+    StringExprKind, TupleExpr, TupleExprKind, TypedListExpr, TypedListExprKind,
 };
 
 impl FrameLayout {
@@ -462,6 +462,55 @@ impl FrameLayout {
             ListExpr::Tuple(expression) => self.include_typed_list_expr(expression),
             ListExpr::List(expression) => self.include_typed_list_expr(expression),
             ListExpr::Function(expression) => self.include_typed_list_expr(expression),
+        }
+    }
+
+    pub(in crate::plan::frame) fn include_list_local_expr(&mut self, binding: &ListLocalExpr) {
+        match binding {
+            ListLocalExpr::Int { local, value } => {
+                self.include_typed_list_expr(value);
+                self.include_int_list(*local);
+            }
+            ListLocalExpr::String { local, value } => {
+                self.include_typed_list_expr(value);
+                self.include_string_list(*local);
+            }
+            ListLocalExpr::Float { local, value } => {
+                self.include_typed_list_expr(value);
+                self.include_float_list(*local);
+            }
+            ListLocalExpr::Bool { local, value } => {
+                self.include_typed_list_expr(value);
+                self.include_bool_list(*local);
+            }
+            ListLocalExpr::Nil { local, value } => {
+                self.include_typed_list_expr(value);
+                self.include_nil_list(*local);
+            }
+            ListLocalExpr::Tuple {
+                local,
+                item_type,
+                value,
+            } => {
+                self.include_typed_list_expr(value);
+                self.include_tuple_list(*local, item_type.clone());
+            }
+            ListLocalExpr::List {
+                local,
+                item_type,
+                value,
+            } => {
+                self.include_typed_list_expr(value);
+                self.include_list_list(*local, item_type.as_ref().clone());
+            }
+            ListLocalExpr::Function {
+                local,
+                item_type,
+                value,
+            } => {
+                self.include_typed_list_expr(value);
+                self.include_function_list(*local, item_type.clone());
+            }
         }
     }
 
@@ -1198,8 +1247,11 @@ mod tests {
             Step::evaluate(Expr::list(ListExpr::call(
                 ListFunctionId::from_item_type(0, crate::plan::ValueType::Int),
                 vec![CallArg::list(
-                    ListLocal::int(IntListLocalId(0)),
-                    ListExpr::local_get(ListLocal::int(IntListLocalId(1)), "call_arg".into()),
+                    crate::plan::ListLocalExpr::try_new(
+                        ListLocal::int(IntListLocalId(0)),
+                        ListExpr::local_get(ListLocal::int(IntListLocalId(1)), "call_arg".into()),
+                    )
+                    .expect("list arg should match local item type"),
                 )],
             ))),
             Step::evaluate(Expr::list(ListExpr::function_call(
@@ -1215,11 +1267,14 @@ mod tests {
                     "callee".into(),
                 ),
                 vec![CallArg::list(
-                    ListLocal::int(IntListLocalId(1)),
-                    ListExpr::local_get(
-                        ListLocal::int(IntListLocalId(2)),
-                        "function_call_arg".into(),
-                    ),
+                    crate::plan::ListLocalExpr::try_new(
+                        ListLocal::int(IntListLocalId(1)),
+                        ListExpr::local_get(
+                            ListLocal::int(IntListLocalId(2)),
+                            "function_call_arg".into(),
+                        ),
+                    )
+                    .expect("list arg should match local item type"),
                 )],
             ))),
             Step::evaluate(Expr::list(ListExpr::tuple_index(

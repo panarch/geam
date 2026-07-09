@@ -51,12 +51,11 @@ Typed projection has two approved execution invariants:
   evaluation when the runtime list value lacks the planner-selected element.
   Source-reachable list matching must guard list-index projections with the
   planner-selected length condition.
-- `ExecutionError::list_item_type_mismatch` is only for typed list-value plan
-  evaluation when a direct-mutated plan produces a list with a different
-  planner-selected item type.
 
-Tuple/list index validation, profile boundaries, and typed-AST margins remain
-planner responsibilities.
+List item-family mismatches must be prevented by typed plan, value, frame, and
+function boundaries rather than represented as execution errors. Tuple/list
+index validation, profile boundaries, and typed-AST margins remain planner
+responsibilities.
 
 ## Plan Construction Rules
 

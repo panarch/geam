@@ -126,15 +126,14 @@ pub(in crate::runtime) fn eval_float_function_expr(
 #[cfg(test)]
 mod tests {
     use super::eval_float_function_expr;
-    use crate::plan::FrameLayout;
     use crate::plan::{
         BoolExpr, BoolFunctionExpr, CaptureArg, ExecutionPlan, Expr, FloatExpr, FloatFunctionExpr,
         FloatFunctionFunctionId, FloatFunctionId, FloatFunctionLocalId, FloatFunctionValue,
         FloatLocalId, FunctionExpr, FunctionFunctionExpr, FunctionFunctionId,
-        FunctionFunctionValue, FunctionId, FunctionListLocalId, FunctionPlan, FunctionReturnFamily,
-        FunctionType, IntExpr, IntFunctionExpr, IntFunctionId, ListElements, ListExpr, ListLocal,
-        ListValue, PanicExpr, PanicSite, ParamLocal, ReturnExpr, Step, StringExpr,
-        StringFunctionExpr, StringFunctionFunctionId, TupleExpr, ValueType,
+        FunctionFunctionValue, FunctionId, FunctionPlan, FunctionReturnFamily, FunctionType,
+        IntExpr, IntFunctionExpr, IntFunctionId, ListElements, ListExpr, PanicExpr, PanicSite,
+        ParamLocal, ReturnExpr, Step, StringExpr, StringFunctionExpr, StringFunctionFunctionId,
+        TupleExpr, ValueType,
     };
     use crate::runtime::frame::Frame;
     use crate::runtime::{ExecutionError, PanicKind};
@@ -468,29 +467,6 @@ mod tests {
             FloatFunctionId(0),
         );
 
-        let mismatch_type = FunctionType::new(Vec::new(), ValueType::String);
-        let list = ListExpr::value(
-            vec![Expr::function(FunctionExpr::string(
-                StringFunctionExpr::value(crate::plan::StringFunctionValue::new(
-                    crate::plan::StringFunctionId(0),
-                    Vec::new(),
-                )),
-            ))],
-            ValueType::Function(Box::new(mismatch_type.clone())),
-        );
-
-        assert_eq!(
-            eval_float_function_expr(
-                &plan,
-                &mut frame,
-                &FloatFunctionExpr::list_index(list, 0, type_()),
-            ),
-            Err(ExecutionError::list_item_type_mismatch(
-                ValueType::Function(Box::new(type_())),
-                ValueType::Function(Box::new(mismatch_type)),
-            )),
-        );
-
         let list = ListExpr::from_elements(ListElements::Function {
             item_type: type_(),
             values: vec![FunctionExpr::string(StringFunctionExpr::value(
@@ -506,30 +482,6 @@ mod tests {
             Err(ExecutionError::function_return_family_mismatch(
                 FunctionReturnFamily::Float,
                 FunctionReturnFamily::String,
-            )),
-        );
-
-        let mut layout = FrameLayout::default();
-        layout.include_list(ListLocal::function(FunctionListLocalId(0), type_()));
-        let mut frame = Frame::new(layout);
-        let mismatch_type = FunctionType::new(Vec::new(), ValueType::String);
-        assert_eq!(
-            frame.set_list(
-                &ListLocal::function(FunctionListLocalId(0), type_()),
-                ListValue::function(
-                    type_(),
-                    vec![
-                        crate::plan::StringFunctionValue::new(
-                            crate::plan::StringFunctionId(0),
-                            Vec::new(),
-                        )
-                        .into(),
-                    ],
-                ),
-            ),
-            Err(ExecutionError::list_item_type_mismatch(
-                ValueType::Function(Box::new(type_())),
-                ValueType::Function(Box::new(mismatch_type)),
             )),
         );
 

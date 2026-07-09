@@ -225,9 +225,9 @@ fn plan_list_tail_assignment(
 
     match tail {
         ListTailBinding::Named(name) => {
-            let local = context.define_list_local(name.clone(), element_type.clone());
+            let (local, value) = context.define_list_value(name.clone(), value);
             Ok(PlannedAssignment {
-                steps: vec![Step::let_list(local.clone(), name.clone(), value)],
+                steps: vec![Step::let_list_expr(name.clone(), value)],
                 value: Expr::list(ListExpr::local_get(local, name)),
             })
         }
@@ -363,9 +363,9 @@ fn plan_variable_runtime_step_and_return(
             )
         }
         ExprKind::List(value) => {
-            let local = context.define_list_local(name.clone(), value.element_type().clone());
+            let (local, value) = context.define_list_value(name.clone(), value);
             (
-                Step::let_list(local.clone(), name.clone(), value),
+                Step::let_list_expr(name.clone(), value),
                 Expr::list(ListExpr::local_get(local, name)),
             )
         }

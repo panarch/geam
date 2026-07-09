@@ -44,14 +44,14 @@ pub(super) fn plan_assert_assignment(
         .map(|message| plan_assert_message(message, context))
         .transpose()?;
 
-    let local = context.define_internal_list_local(element_type.clone());
+    let (local, list_value) = context.define_internal_list_value(value);
     let name = internal_list_name(&local);
     let site = context.panic_site(location);
     let pattern_span = pattern.location().into();
     let pattern = plan_assert_pattern(pattern, context)?;
     let list_local = ListExpr::local_get(local.clone(), name.clone());
     let steps = vec![
-        Step::let_list(local.clone(), name, value),
+        Step::let_list_expr(name, list_value),
         Step::assert_list_at(local, pattern, message, site, pattern_span),
     ];
 

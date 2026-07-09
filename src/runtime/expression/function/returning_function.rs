@@ -128,13 +128,12 @@ pub(in crate::runtime) fn eval_function_function_expr(
 #[cfg(test)]
 mod tests {
     use super::eval_function_function_expr;
-    use crate::plan::FrameLayout;
     use crate::plan::{
         BoolExpr, CaptureArg, ExecutionPlan, Expr, FloatExpr, FunctionExpr, FunctionFunctionExpr,
-        FunctionFunctionId, FunctionFunctionValue, FunctionId, FunctionListLocalId, FunctionPlan,
-        FunctionReturnFamily, FunctionType, IntExpr, IntFunctionExpr, IntFunctionFunctionId,
-        IntFunctionId, IntFunctionValue, IntLocalId, ListElements, ListExpr, ListLocal, ListValue,
-        PanicExpr, PanicSite, ReturnExpr, Step, StringExpr, TupleExpr, ValueType,
+        FunctionFunctionId, FunctionFunctionValue, FunctionId, FunctionPlan, FunctionReturnFamily,
+        FunctionType, IntExpr, IntFunctionExpr, IntFunctionFunctionId, IntFunctionId,
+        IntFunctionValue, IntLocalId, ListElements, ListExpr, PanicExpr, PanicSite, ReturnExpr,
+        Step, StringExpr, TupleExpr, ValueType,
     };
     use crate::runtime::frame::Frame;
     use crate::runtime::{ExecutionError, PanicKind};
@@ -747,30 +746,6 @@ pub fn main() {
             FunctionFunctionId::Int(IntFunctionFunctionId(0)),
         );
 
-        let int_function_type = FunctionType::new(Vec::new(), ValueType::Int);
-        let list = ListExpr::value(
-            vec![Expr::function(FunctionExpr::int(IntFunctionExpr::value(
-                IntFunctionValue::new(IntFunctionId(0), Vec::new()),
-            )))],
-            ValueType::Function(Box::new(int_function_type.clone())),
-        );
-
-        assert_eq!(
-            eval_function_function_expr(
-                &plan,
-                &mut frame,
-                &FunctionFunctionExpr::list_index(
-                    list,
-                    0,
-                    function_function_value().type_().clone()
-                ),
-            ),
-            Err(ExecutionError::list_item_type_mismatch(
-                ValueType::Function(Box::new(function_function_value().type_().clone())),
-                ValueType::Function(Box::new(int_function_type)),
-            )),
-        );
-
         let list = ListExpr::from_elements(ListElements::Function {
             item_type: function_function_value().type_().clone(),
             values: vec![FunctionExpr::int(IntFunctionExpr::value(
@@ -790,48 +765,6 @@ pub fn main() {
             Err(ExecutionError::function_return_family_mismatch(
                 FunctionReturnFamily::Function,
                 FunctionReturnFamily::Int,
-            )),
-        );
-
-        let mut layout = FrameLayout::default();
-        layout.include_list(ListLocal::function(
-            FunctionListLocalId(0),
-            returned_int_function_type(),
-        ));
-        let mut frame = Frame::new(layout);
-        assert_eq!(
-            frame.set_list(
-                &ListLocal::function(FunctionListLocalId(0), returned_int_function_type()),
-                ListValue::function(
-                    returned_int_function_type(),
-                    vec![IntFunctionValue::new(IntFunctionId(0), Vec::new()).into()],
-                ),
-            ),
-            Err(ExecutionError::list_item_type_mismatch(
-                ValueType::Function(Box::new(returned_int_function_type())),
-                ValueType::Function(Box::new(FunctionType::new(Vec::new(), ValueType::Int))),
-            )),
-        );
-
-        let expected_function_type = function_function_value().type_().clone();
-        let int_function_type = FunctionType::new(Vec::new(), ValueType::Int);
-        let mut layout = FrameLayout::default();
-        layout.include_list(ListLocal::function(
-            FunctionListLocalId(0),
-            expected_function_type.clone(),
-        ));
-        let mut frame = Frame::new(layout);
-        assert_eq!(
-            frame.set_list(
-                &ListLocal::function(FunctionListLocalId(0), expected_function_type.clone()),
-                ListValue::function(
-                    expected_function_type.clone(),
-                    vec![IntFunctionValue::new(IntFunctionId(0), Vec::new()).into()],
-                ),
-            ),
-            Err(ExecutionError::list_item_type_mismatch(
-                ValueType::Function(Box::new(expected_function_type)),
-                ValueType::Function(Box::new(int_function_type)),
             )),
         );
 

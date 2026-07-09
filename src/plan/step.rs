@@ -1,6 +1,6 @@
 use super::expression::{
     BoolExpr, BoolFunctionExpr, Expr, FloatExpr, FloatFunctionExpr, FunctionFunctionExpr, IntExpr,
-    IntFunctionExpr, ListExpr, ListFunctionExpr, NilExpr, NilFunctionExpr, StringExpr,
+    IntFunctionExpr, ListFunctionExpr, ListLocalExpr, NilExpr, NilFunctionExpr, StringExpr,
     StringFunctionExpr, TupleExpr, TupleFunctionExpr,
 };
 use super::function::ParamLocal;
@@ -12,6 +12,9 @@ use super::id::{
 use super::source::{PanicSite, SourceSpan};
 use super::value::ValueType;
 use ecow::EcoString;
+
+#[cfg(test)]
+use super::expression::{ListElementTypeMismatch, ListExpr};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Step {
@@ -88,9 +91,8 @@ pub(crate) enum StepKind {
         value: TupleExpr,
     },
     LetList {
-        local: ListLocal,
         name: EcoString,
-        value: ListExpr,
+        value: ListLocalExpr,
     },
     LetIntFunction {
         local: IntFunctionLocalId,
@@ -241,9 +243,25 @@ impl Step {
         }
     }
 
+    #[cfg(test)]
+    pub(crate) fn try_let_list(
+        local: ListLocal,
+        name: EcoString,
+        value: ListExpr,
+    ) -> Result<Self, ListElementTypeMismatch> {
+        let value = ListLocalExpr::try_new(local, value)?;
+        Ok(Self::let_list_expr(name, value))
+    }
+
+    #[cfg(test)]
     pub(crate) fn let_list(local: ListLocal, name: EcoString, value: ListExpr) -> Self {
+        Self::try_let_list(local, name, value)
+            .expect("list let binding local must match expression item type")
+    }
+
+    pub(crate) fn let_list_expr(name: EcoString, value: ListLocalExpr) -> Self {
         Self {
-            kind: StepKind::LetList { local, name, value },
+            kind: StepKind::LetList { name, value },
         }
     }
 
@@ -372,11 +390,11 @@ impl Step {
 
 #[cfg(test)]
 mod tests {
-    use super::{Step, StepKind};
+    use super::{ListElementTypeMismatch, Step, StepKind};
     use crate::plan::{
         AssertPattern, BoolExpr, Expr, IntExpr, IntFunctionId, IntFunctionLocalId,
-        IntFunctionValue, IntListLocalId, IntLocalId, ListAssertPattern, ListAssertTail, ListLocal,
-        ParamLocal, StringExpr, ValueType,
+        IntFunctionValue, IntListLocalId, IntLocalId, ListAssertPattern, ListAssertTail, ListExpr,
+        ListLocal, ParamLocal, StringExpr, StringListLocalId, ValueType,
     };
     use num_bigint::BigInt;
 
@@ -445,6 +463,46 @@ mod tests {
                 site: crate::plan::PanicSite::unknown(),
                 pattern_span: crate::plan::SourceSpan::new(0, 0),
             },
+        );
+    }
+
+    #[test]
+    fn try_let_list_requires_matching_list_item_family() {
+        let int_list = ListExpr::value(vec![Expr::int(IntExpr::value(1.into()))], ValueType::Int);
+        assert_eq!(
+            Step::try_let_list(
+                ListLocal::int(IntListLocalId(0)),
+                "xs".into(),
+                int_list.clone()
+            ),
+            Ok(Step::let_list(
+                ListLocal::int(IntListLocalId(0)),
+                "xs".into(),
+                int_list,
+            )),
+        );
+
+        let string_list = ListExpr::value(Vec::new(), ValueType::String);
+        assert_eq!(
+            Step::try_let_list(ListLocal::int(IntListLocalId(0)), "xs".into(), string_list).err(),
+            Some(ListElementTypeMismatch {
+                expected: ValueType::List(Box::new(ValueType::Int)),
+                actual: ValueType::List(Box::new(ValueType::String)),
+            }),
+        );
+
+        let string_list = ListExpr::value(Vec::new(), ValueType::String);
+        assert_eq!(
+            Step::try_let_list(
+                ListLocal::string(StringListLocalId(0)),
+                "names".into(),
+                string_list.clone(),
+            ),
+            Ok(Step::let_list(
+                ListLocal::string(StringListLocalId(0)),
+                "names".into(),
+                string_list,
+            )),
         );
     }
 

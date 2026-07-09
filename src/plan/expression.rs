@@ -39,15 +39,20 @@ pub(crate) use self::{
     },
     int::IntExprKind,
     list::{
-        BoolListCaseBranches, BoolListExpr, FloatListExpr, FunctionListExpr, IntListExpr,
-        ListElements, ListExpr, ListItem, ListListExpr, NilListExpr, StringListExpr, TupleListExpr,
-        TypedListExpr, TypedListExprKind,
+        BoolListCaseBranches, BoolListExpr, BoolListItem, FloatListExpr, FloatListItem,
+        FunctionListExpr, FunctionListItem, IntListExpr, IntListItem, ListElements, ListExpr,
+        ListItem, ListListExpr, ListListItem, ListLocalExpr, NilListExpr, NilListItem,
+        StringListExpr, StringListItem, TupleListExpr, TupleListItem, TypedListExpr,
+        TypedListExprKind,
     },
     nil::NilExprKind,
     panic::{PanicExpr, PanicExprKind},
     string::StringExprKind,
     tuple::TupleExprKind,
 };
+
+#[cfg(test)]
+pub(crate) use list::ListElementTypeMismatch;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Expr {

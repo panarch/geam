@@ -3,11 +3,12 @@ use num_bigint::BigInt;
 
 use super::{
     BoolFunctionValue, FloatFunctionValue, FunctionFunctionValue, IntFunctionValue,
-    ListFunctionValue, ListValue, NilFunctionValue, StringFunctionValue, TupleFunctionValue, Value,
+    ListFunctionValue, ListLocalValue, NilFunctionValue, StringFunctionValue, TupleFunctionValue,
+    Value,
 };
 use crate::plan::{
     BoolFunctionLocalId, BoolLocalId, FloatFunctionLocalId, FloatLocalId, FunctionFunctionLocalId,
-    IntFunctionLocalId, IntLocalId, ListFunctionLocal, ListLocal, NilFunctionLocalId, NilLocalId,
+    IntFunctionLocalId, IntLocalId, ListFunctionLocal, NilFunctionLocalId, NilLocalId,
     StringFunctionLocalId, StringLocalId, TupleFunctionLocalId, TupleLocalId,
 };
 
@@ -41,10 +42,7 @@ pub(crate) enum CaptureValueKind {
         local: TupleLocalId,
         value: Vec<Value>,
     },
-    List {
-        local: ListLocal,
-        value: ListValue,
-    },
+    List(ListLocalValue),
     IntFunction {
         local: IntFunctionLocalId,
         value: IntFunctionValue,
@@ -116,9 +114,9 @@ impl CaptureValue {
         }
     }
 
-    pub(crate) fn list(local: ListLocal, value: ListValue) -> Self {
+    pub(crate) fn list(value: ListLocalValue) -> Self {
         Self {
-            kind: CaptureValueKind::List { local, value },
+            kind: CaptureValueKind::List(value),
         }
     }
 
@@ -234,13 +232,16 @@ mod tests {
     #[test]
     fn capture_value_preserves_list_shapes() {
         let list_value = ListValue::int(vec![1.into()]);
-        let list = CaptureValue::list(ListLocal::int(IntListLocalId(0)), list_value.clone());
+        let list = CaptureValue::list(
+            crate::plan::ListLocalValue::try_new(ListLocal::int(IntListLocalId(0)), list_value)
+                .expect("list capture should match local item type"),
+        );
         assert_eq!(
             list.kind(),
-            &CaptureValueKind::List {
-                local: ListLocal::int(IntListLocalId(0)),
-                value: list_value,
-            },
+            &CaptureValueKind::List(crate::plan::ListLocalValue::Int {
+                local: IntListLocalId(0),
+                value: vec![1.into()],
+            }),
         );
 
         let list_function = ListFunctionValue::new(

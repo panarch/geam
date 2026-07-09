@@ -45,7 +45,6 @@ impl Diagnostic for ExecutionError {
             }
             Self::TupleIndexFamilyMismatch { .. } => Some(Box::new("geam::tuple_index_mismatch")),
             Self::ListIndexOutOfBounds { .. } => Some(Box::new("geam::list_index_out_of_bounds")),
-            Self::ListItemTypeMismatch { .. } => Some(Box::new("geam::list_item_type_mismatch")),
         }
     }
 
@@ -54,8 +53,7 @@ impl Diagnostic for ExecutionError {
             Self::Panic(panic) => panic.help(),
             Self::FunctionReturnFamilyMismatch { .. }
             | Self::TupleIndexFamilyMismatch { .. }
-            | Self::ListIndexOutOfBounds { .. }
-            | Self::ListItemTypeMismatch { .. } => None,
+            | Self::ListIndexOutOfBounds { .. } => None,
         }
     }
 
@@ -64,8 +62,7 @@ impl Diagnostic for ExecutionError {
             Self::Panic(panic) => panic.source_code(),
             Self::FunctionReturnFamilyMismatch { .. }
             | Self::TupleIndexFamilyMismatch { .. }
-            | Self::ListIndexOutOfBounds { .. }
-            | Self::ListItemTypeMismatch { .. } => None,
+            | Self::ListIndexOutOfBounds { .. } => None,
         }
     }
 
@@ -74,8 +71,7 @@ impl Diagnostic for ExecutionError {
             Self::Panic(panic) => panic.labels(),
             Self::FunctionReturnFamilyMismatch { .. }
             | Self::TupleIndexFamilyMismatch { .. }
-            | Self::ListIndexOutOfBounds { .. }
-            | Self::ListItemTypeMismatch { .. } => None,
+            | Self::ListIndexOutOfBounds { .. } => None,
         }
     }
 }
@@ -161,19 +157,6 @@ mod tests {
         assert_eq!(
             error.code().map(|code| code.to_string()),
             Some("geam::panic".into()),
-        );
-        assert!(error.help().is_none());
-        assert!(error.source_code().is_none());
-        assert!(error.labels().is_none());
-    }
-
-    #[test]
-    fn list_item_type_mismatch_diagnostic_has_invariant_code_only() {
-        let error = ExecutionError::list_item_type_mismatch(ValueType::Int, ValueType::String);
-
-        assert_eq!(
-            error.code().map(|code| code.to_string()),
-            Some("geam::list_item_type_mismatch".into()),
         );
         assert!(error.help().is_none());
         assert!(error.source_code().is_none());

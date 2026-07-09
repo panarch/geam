@@ -386,11 +386,10 @@ fn matches_type(type_: &Type, subject_type: &ValueType) -> bool {
 }
 
 fn bind_list_case_subject(subject: ListExpr, context: &mut PlanContext<'_>) -> (Step, Expr) {
-    let element_type = subject.element_type().clone();
-    let local = context.define_internal_list_local(element_type);
+    let (local, value) = context.define_internal_list_value(subject);
     let name = internal_list_case_subject_name(&local);
     (
-        Step::let_list(local.clone(), name.clone(), subject),
+        Step::let_list_expr(name.clone(), value),
         Expr::list(ListExpr::local_get(local, name)),
     )
 }

@@ -129,12 +129,11 @@ mod tests {
     use crate::plan::{
         BoolExpr, BoolFunctionExpr, BoolFunctionId, BoolFunctionValue, BoolLocalId, CaptureArg,
         ExecutionPlan, Expr, FloatExpr, FunctionExpr, FunctionFunctionExpr, FunctionFunctionId,
-        FunctionFunctionValue, FunctionId, FunctionListLocalId, FunctionPlan, FunctionReturnFamily,
-        FunctionType, IntExpr, IntFunctionExpr, IntFunctionId, IntFunctionValue, ListElements,
-        ListExpr, ListLocal, ListValue, PanicExpr, PanicSite, ParamLocal, ReturnExpr, Step,
-        StringExpr, TupleExpr, ValueType,
+        FunctionFunctionValue, FunctionId, FunctionPlan, FunctionReturnFamily, FunctionType,
+        IntExpr, IntFunctionExpr, IntFunctionId, IntFunctionValue, ListElements, ListExpr,
+        PanicExpr, PanicSite, ParamLocal, ReturnExpr, Step, StringExpr, TupleExpr, ValueType,
     };
-    use crate::plan::{BoolFunctionFunctionId, BoolFunctionLocalId, FrameLayout};
+    use crate::plan::{BoolFunctionFunctionId, BoolFunctionLocalId};
     use crate::runtime::frame::Frame;
     use crate::runtime::{ExecutionError, PanicKind};
 
@@ -521,26 +520,6 @@ mod tests {
             BoolFunctionId(0),
         );
 
-        let mismatch_type = FunctionType::new(Vec::new(), ValueType::Int);
-        let list = ListExpr::value(
-            vec![Expr::function(FunctionExpr::int(IntFunctionExpr::value(
-                IntFunctionValue::new(IntFunctionId(0), Vec::new()),
-            )))],
-            ValueType::Function(Box::new(mismatch_type.clone())),
-        );
-
-        assert_eq!(
-            eval_bool_function_expr(
-                &plan,
-                &mut frame,
-                &BoolFunctionExpr::list_index(list, 0, type_()),
-            ),
-            Err(ExecutionError::list_item_type_mismatch(
-                ValueType::Function(Box::new(type_())),
-                ValueType::Function(Box::new(mismatch_type)),
-            )),
-        );
-
         let list = ListExpr::from_elements(ListElements::Function {
             item_type: type_(),
             values: vec![FunctionExpr::int(IntFunctionExpr::value(
@@ -556,24 +535,6 @@ mod tests {
             Err(ExecutionError::function_return_family_mismatch(
                 FunctionReturnFamily::Bool,
                 FunctionReturnFamily::Int,
-            )),
-        );
-
-        let mut layout = FrameLayout::default();
-        layout.include_list(ListLocal::function(FunctionListLocalId(0), type_()));
-        let mut frame = Frame::new(layout);
-        let mismatch_type = FunctionType::new(Vec::new(), ValueType::Int);
-        assert_eq!(
-            frame.set_list(
-                &ListLocal::function(FunctionListLocalId(0), type_()),
-                ListValue::function(
-                    type_(),
-                    vec![IntFunctionValue::new(IntFunctionId(0), Vec::new()).into()],
-                ),
-            ),
-            Err(ExecutionError::list_item_type_mismatch(
-                ValueType::Function(Box::new(type_())),
-                ValueType::Function(Box::new(mismatch_type)),
             )),
         );
 

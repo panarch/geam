@@ -1,12 +1,12 @@
 use super::{
     BoolExpr, BoolFunctionExpr, Expr, ExprKind, FloatExpr, FloatFunctionExpr, FunctionFunctionExpr,
-    IntExpr, IntFunctionExpr, ListExpr, ListFunctionExpr, NilExpr, NilFunctionExpr, StringExpr,
-    StringFunctionExpr, TupleExpr, TupleFunctionExpr,
+    IntExpr, IntFunctionExpr, ListFunctionExpr, ListLocalExpr, NilExpr, NilFunctionExpr,
+    StringExpr, StringFunctionExpr, TupleExpr, TupleFunctionExpr,
 };
 use crate::plan::{
     BoolFunctionLocalId, BoolLocalId, FloatFunctionLocalId, FloatLocalId, FunctionFunctionLocalId,
-    IntFunctionLocalId, IntLocalId, ListFunctionLocal, ListLocal, NilFunctionLocalId, NilLocalId,
-    ParamLocal, StringFunctionLocalId, StringLocalId, TupleFunctionLocalId, TupleLocalId,
+    IntFunctionLocalId, IntLocalId, ListFunctionLocal, NilFunctionLocalId, NilLocalId, ParamLocal,
+    StringFunctionLocalId, StringLocalId, TupleFunctionLocalId, TupleLocalId,
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -40,10 +40,7 @@ pub(crate) enum CallArgKind {
         local: TupleLocalId,
         value: TupleExpr,
     },
-    List {
-        local: ListLocal,
-        value: ListExpr,
-    },
+    List(ListLocalExpr),
     IntFunction {
         local: IntFunctionLocalId,
         value: IntFunctionExpr,
@@ -109,10 +106,7 @@ pub(crate) enum CaptureArgKind {
         local: TupleLocalId,
         value: TupleExpr,
     },
-    List {
-        local: ListLocal,
-        value: ListExpr,
-    },
+    List(ListLocalExpr),
     IntFunction {
         local: IntFunctionLocalId,
         value: IntFunctionExpr,
@@ -169,7 +163,9 @@ impl Expr {
             (ParamLocal::List(local), ExprKind::List(value))
                 if value.element_type() == local.item_type() =>
             {
-                Some(CallArg::list(local.clone(), value))
+                ListLocalExpr::try_new(local.clone(), value)
+                    .ok()
+                    .map(CallArg::list)
             }
             (
                 ParamLocal::IntFunction {
@@ -283,9 +279,9 @@ impl CallArg {
         }
     }
 
-    pub(crate) fn list(local: ListLocal, value: ListExpr) -> Self {
+    pub(crate) fn list(value: ListLocalExpr) -> Self {
         Self {
-            kind: CallArgKind::List { local, value },
+            kind: CallArgKind::List(value),
         }
     }
 
@@ -382,9 +378,9 @@ impl CaptureArg {
         }
     }
 
-    pub(crate) fn list(local: ListLocal, value: ListExpr) -> Self {
+    pub(crate) fn list(value: ListLocalExpr) -> Self {
         Self {
-            kind: CaptureArgKind::List { local, value },
+            kind: CaptureArgKind::List(value),
         }
     }
 
@@ -454,11 +450,11 @@ mod tests {
         FunctionFunctionLocalId, FunctionFunctionValue, FunctionType, FunctionValue, IntExpr,
         IntFunctionExpr, IntFunctionFunctionId, IntFunctionId, IntFunctionLocalId,
         IntFunctionValue, IntListLocalId, IntLocalId, ListExpr, ListFunctionExpr, ListFunctionId,
-        ListFunctionValue, ListLocal, NilExpr, NilFunctionExpr, NilFunctionId, NilFunctionLocalId,
-        NilFunctionValue, NilLocalId, ParamLocal, RuntimeFunctionId, StringExpr,
-        StringFunctionExpr, StringFunctionId, StringFunctionLocalId, StringFunctionValue,
-        StringLocalId, TupleExpr, TupleFunctionExpr, TupleFunctionId, TupleFunctionLocalId,
-        TupleFunctionValue, TupleLocalId, ValueType,
+        ListFunctionValue, ListLocal, ListLocalExpr, NilExpr, NilFunctionExpr, NilFunctionId,
+        NilFunctionLocalId, NilFunctionValue, NilLocalId, ParamLocal, RuntimeFunctionId,
+        StringExpr, StringFunctionExpr, StringFunctionId, StringFunctionLocalId,
+        StringFunctionValue, StringLocalId, TupleExpr, TupleFunctionExpr, TupleFunctionId,
+        TupleFunctionLocalId, TupleFunctionValue, TupleLocalId, ValueType,
     };
     use num_bigint::BigInt;
 
@@ -503,8 +499,8 @@ mod tests {
             Expr::list(list_expr())
                 .into_call_arg(&ParamLocal::list(ListLocal::int(IntListLocalId(0)))),
             Some(CallArg::list(
-                ListLocal::int(IntListLocalId(0)),
-                list_expr()
+                ListLocalExpr::try_new(ListLocal::int(IntListLocalId(0)), list_expr())
+                    .expect("list arg should match local item type")
             )),
         );
         assert_eq!(
