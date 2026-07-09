@@ -410,10 +410,9 @@ mod tests {
             Step::let_bool(BoolLocalId(0), "x".into(), failing_bool_expr()),
             Step::let_nil(NilLocalId(0), "x".into(), failing_nil_expr()),
             Step::let_tuple(TupleLocalId(0), "x".into(), failing_tuple_expr()),
-            Step::let_list(
-                ListLocal::int(IntListLocalId(0)),
+            Step::let_list_expr(
                 "x".into(),
-                failing_list_expr(),
+                failing_list_let_value(ListLocal::int(IntListLocalId(0))),
             ),
             Step::let_int_function(
                 IntFunctionLocalId(0),
@@ -497,7 +496,7 @@ mod tests {
             Step::let_bool(BoolLocalId(0), "x".into(), BoolExpr::value(true)),
             Step::let_nil(NilLocalId(0), "x".into(), NilExpr::value()),
             Step::let_tuple(TupleLocalId(0), "x".into(), tuple_expr()),
-            Step::let_list(ListLocal::int(IntListLocalId(0)), "x".into(), list_expr()),
+            Step::let_list_expr("x".into(), int_list_let_value(IntListLocalId(0))),
             Step::let_int_function(IntFunctionLocalId(0), "x".into(), int_function_expr()),
             Step::let_string_function(StringFunctionLocalId(0), "x".into(), string_function_expr()),
             Step::let_float_function(FloatFunctionLocalId(0), "x".into(), float_function_expr()),
@@ -588,48 +587,16 @@ mod tests {
         let plan = plan();
         let mut frame = Frame::new(all_family_layout());
         let steps = [
-            Step::let_list(
-                ListLocal::int(IntListLocalId(0)),
+            Step::let_list_expr("values".into(), int_list_let_value(IntListLocalId(0))),
+            Step::let_list_expr("values".into(), string_list_let_value(StringListLocalId(1))),
+            Step::let_list_expr("values".into(), float_list_let_value(FloatListLocalId(2))),
+            Step::let_list_expr("values".into(), bool_list_let_value(BoolListLocalId(3))),
+            Step::let_list_expr("values".into(), nil_list_let_value(NilListLocalId(4))),
+            Step::let_list_expr("values".into(), tuple_list_let_value(TupleListLocalId(5))),
+            Step::let_list_expr("values".into(), nested_list_let_value(ListListLocalId(6))),
+            Step::let_list_expr(
                 "values".into(),
-                int_list_expr(),
-            ),
-            Step::let_list(
-                ListLocal::string(StringListLocalId(1)),
-                "values".into(),
-                string_list_expr(),
-            ),
-            Step::let_list(
-                ListLocal::float(FloatListLocalId(2)),
-                "values".into(),
-                float_list_expr(),
-            ),
-            Step::let_list(
-                ListLocal::bool(BoolListLocalId(3)),
-                "values".into(),
-                bool_list_expr(),
-            ),
-            Step::let_list(
-                ListLocal::nil(NilListLocalId(4)),
-                "values".into(),
-                nil_list_expr(),
-            ),
-            Step::let_list(
-                ListLocal::tuple(TupleListLocalId(5), vec![ValueType::Int]),
-                "values".into(),
-                tuple_list_expr(),
-            ),
-            Step::let_list(
-                ListLocal::list(ListListLocalId(6), ValueType::Int),
-                "values".into(),
-                nested_list_expr(),
-            ),
-            Step::let_list(
-                ListLocal::function(
-                    FunctionListLocalId(7),
-                    FunctionType::new(Vec::new(), ValueType::Int),
-                ),
-                "values".into(),
-                function_list_expr(),
+                function_list_let_value(FunctionListLocalId(7)),
             ),
         ];
 
@@ -1427,44 +1394,76 @@ mod tests {
         )
     }
 
-    fn failing_list_expr() -> ListExpr {
-        ListExpr::function_call(failing_list_function_expr(), Vec::new())
-    }
-
     fn failing_list_let_values() -> Vec<ListLocalExpr> {
         vec![
-            failing_list_let_value(ListLocal::int(IntListLocalId(0)), ValueType::Int),
-            failing_list_let_value(ListLocal::string(StringListLocalId(1)), ValueType::String),
-            failing_list_let_value(
-                ListLocal::float(crate::plan::FloatListLocalId(2)),
-                ValueType::Float,
-            ),
-            failing_list_let_value(
-                ListLocal::bool(crate::plan::BoolListLocalId(3)),
-                ValueType::Bool,
-            ),
-            failing_list_let_value(ListLocal::nil(NilListLocalId(4)), ValueType::Nil),
-            failing_list_let_value(
-                ListLocal::tuple(TupleListLocalId(5), vec![ValueType::Int]),
-                ValueType::Tuple(vec![ValueType::Int]),
-            ),
-            failing_list_let_value(
-                ListLocal::list(ListListLocalId(6), ValueType::Int),
-                ValueType::List(Box::new(ValueType::Int)),
-            ),
-            failing_list_let_value(
-                ListLocal::function(
-                    crate::plan::FunctionListLocalId(7),
-                    FunctionType::new(Vec::new(), ValueType::Int),
-                ),
-                ValueType::Function(Box::new(FunctionType::new(Vec::new(), ValueType::Int))),
-            ),
+            failing_list_let_value(ListLocal::int(IntListLocalId(0))),
+            failing_list_let_value(ListLocal::string(StringListLocalId(1))),
+            failing_list_let_value(ListLocal::float(crate::plan::FloatListLocalId(2))),
+            failing_list_let_value(ListLocal::bool(crate::plan::BoolListLocalId(3))),
+            failing_list_let_value(ListLocal::nil(NilListLocalId(4))),
+            failing_list_let_value(ListLocal::tuple(TupleListLocalId(5), vec![ValueType::Int])),
+            failing_list_let_value(ListLocal::list(ListListLocalId(6), ValueType::Int)),
+            failing_list_let_value(ListLocal::function(
+                crate::plan::FunctionListLocalId(7),
+                FunctionType::new(Vec::new(), ValueType::Int),
+            )),
         ]
     }
 
-    fn failing_list_let_value(local: ListLocal, item_type: ValueType) -> ListLocalExpr {
-        ListLocalExpr::try_new(local, failing_list_expr_for_item(item_type))
-            .expect("failing list expression should match local item type")
+    fn failing_list_let_value(local: ListLocal) -> ListLocalExpr {
+        match local {
+            ListLocal::Int(local) => ListLocalExpr::Int {
+                local,
+                value: failing_list_expr_for_item(ValueType::Int)
+                    .into_int()
+                    .expect("expected int list expression"),
+            },
+            ListLocal::String(local) => ListLocalExpr::String {
+                local,
+                value: failing_list_expr_for_item(ValueType::String)
+                    .into_string()
+                    .expect("expected string list expression"),
+            },
+            ListLocal::Float(local) => ListLocalExpr::Float {
+                local,
+                value: failing_list_expr_for_item(ValueType::Float)
+                    .into_float()
+                    .expect("expected float list expression"),
+            },
+            ListLocal::Bool(local) => ListLocalExpr::Bool {
+                local,
+                value: failing_list_expr_for_item(ValueType::Bool)
+                    .into_bool()
+                    .expect("expected bool list expression"),
+            },
+            ListLocal::Nil(local) => ListLocalExpr::Nil {
+                local,
+                value: failing_list_expr_for_item(ValueType::Nil)
+                    .into_nil()
+                    .expect("expected nil list expression"),
+            },
+            ListLocal::Tuple { local, item_type } => ListLocalExpr::Tuple {
+                value: failing_list_expr_for_item(ValueType::Tuple(item_type.clone()))
+                    .into_tuple()
+                    .expect("expected tuple list expression"),
+                local,
+                item_type,
+            },
+            ListLocal::List { local, item_type } => ListLocalExpr::List {
+                value: failing_list_expr_for_item(ValueType::List(item_type.clone()))
+                    .into_list()
+                    .expect("expected nested list expression"),
+                local,
+                item_type,
+            },
+            ListLocal::Function { local, item_type } => ListLocalExpr::Function {
+                value: failing_list_expr_for_item(ValueType::Function(Box::new(item_type.clone())))
+                    .into_function()
+                    .expect("expected function list expression"),
+                local,
+                item_type,
+            },
+        }
     }
 
     fn failing_list_expr_for_item(item_type: ValueType) -> ListExpr {
@@ -1479,8 +1478,69 @@ mod tests {
         )
     }
 
-    fn list_expr() -> ListExpr {
-        ListExpr::value(vec![Expr::int(IntExpr::value(1.into()))], ValueType::Int)
+    fn int_list_let_value(local: IntListLocalId) -> ListLocalExpr {
+        ListLocalExpr::Int {
+            local,
+            value: int_list_expr().into_int().expect("expected int list"),
+        }
+    }
+
+    fn string_list_let_value(local: StringListLocalId) -> ListLocalExpr {
+        ListLocalExpr::String {
+            local,
+            value: string_list_expr()
+                .into_string()
+                .expect("expected string list"),
+        }
+    }
+
+    fn float_list_let_value(local: FloatListLocalId) -> ListLocalExpr {
+        ListLocalExpr::Float {
+            local,
+            value: float_list_expr().into_float().expect("expected float list"),
+        }
+    }
+
+    fn bool_list_let_value(local: BoolListLocalId) -> ListLocalExpr {
+        ListLocalExpr::Bool {
+            local,
+            value: bool_list_expr().into_bool().expect("expected bool list"),
+        }
+    }
+
+    fn nil_list_let_value(local: NilListLocalId) -> ListLocalExpr {
+        ListLocalExpr::Nil {
+            local,
+            value: nil_list_expr().into_nil().expect("expected nil list"),
+        }
+    }
+
+    fn tuple_list_let_value(local: TupleListLocalId) -> ListLocalExpr {
+        ListLocalExpr::Tuple {
+            local,
+            item_type: vec![ValueType::Int],
+            value: tuple_list_expr().into_tuple().expect("expected tuple list"),
+        }
+    }
+
+    fn nested_list_let_value(local: ListListLocalId) -> ListLocalExpr {
+        ListLocalExpr::List {
+            local,
+            item_type: Box::new(ValueType::Int),
+            value: nested_list_expr()
+                .into_list()
+                .expect("expected nested list"),
+        }
+    }
+
+    fn function_list_let_value(local: FunctionListLocalId) -> ListLocalExpr {
+        ListLocalExpr::Function {
+            local,
+            item_type: FunctionType::new(Vec::new(), ValueType::Int),
+            value: function_list_expr()
+                .into_function()
+                .expect("expected function list"),
+        }
     }
 
     fn int_list_expr() -> ListExpr {

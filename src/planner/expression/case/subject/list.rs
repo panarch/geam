@@ -627,10 +627,14 @@ pub fn main() {
                                     "first".into(),
                                     crate::plan::IntExpr::list_index(subject.clone(), 0),
                                 ),
-                                Step::let_list(
-                                    ListLocal::int(IntListLocalId(1)),
+                                Step::let_list_expr(
                                     "rest".into(),
-                                    ListExpr::drop_first(subject.clone(), 1),
+                                    crate::plan::ListLocalExpr::Int {
+                                        local: IntListLocalId(1),
+                                        value: ListExpr::drop_first(subject.clone(), 1)
+                                            .into_int()
+                                            .expect("expected int list"),
+                                    },
                                 ),
                             ],
                             bool_return_expr(equal(rest, list([int(2), int(3)], ValueType::Int))),

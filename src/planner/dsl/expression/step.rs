@@ -3,8 +3,10 @@ use super::{
     StringFunction, Tuple,
 };
 use crate::plan::{
-    BoolFunctionLocalId, BoolLocalId, Expr, FloatFunctionLocalId, FloatLocalId, IntFunctionLocalId,
-    IntLocalId, NilFunctionLocalId, NilLocalId, Step, StringFunctionLocalId, StringLocalId,
+    BoolFunctionLocalId, BoolListLocalId, BoolLocalId, Expr, FloatFunctionLocalId,
+    FloatListLocalId, FloatLocalId, FunctionListLocalId, IntFunctionLocalId, IntListLocalId,
+    IntLocalId, ListExpr, ListListLocalId, ListLocalExpr, NilFunctionLocalId, NilListLocalId,
+    NilLocalId, Step, StringFunctionLocalId, StringListLocalId, StringLocalId, TupleListLocalId,
     TupleLocalId,
 };
 use ecow::EcoString;
@@ -34,8 +36,45 @@ pub(crate) fn let_tuple_step(local: usize, name: impl Into<EcoString>, value: Tu
 }
 
 pub(crate) fn let_list_step(local: usize, name: impl Into<EcoString>, value: List) -> Step {
-    let local = super::local::list_local(local, value.0.element_type().clone());
-    Step::let_list(local, name.into(), value.into())
+    let value = match value.0 {
+        ListExpr::Int(value) => ListLocalExpr::Int {
+            local: IntListLocalId(local),
+            value,
+        },
+        ListExpr::String(value) => ListLocalExpr::String {
+            local: StringListLocalId(local),
+            value,
+        },
+        ListExpr::Float(value) => ListLocalExpr::Float {
+            local: FloatListLocalId(local),
+            value,
+        },
+        ListExpr::Bool(value) => ListLocalExpr::Bool {
+            local: BoolListLocalId(local),
+            value,
+        },
+        ListExpr::Nil(value) => ListLocalExpr::Nil {
+            local: NilListLocalId(local),
+            value,
+        },
+        ListExpr::Tuple(value) => ListLocalExpr::Tuple {
+            local: TupleListLocalId(local),
+            item_type: value.item().item_type(),
+            value,
+        },
+        ListExpr::List(value) => ListLocalExpr::List {
+            local: ListListLocalId(local),
+            item_type: value.item().item_type(),
+            value,
+        },
+        ListExpr::Function(value) => ListLocalExpr::Function {
+            local: FunctionListLocalId(local),
+            item_type: value.item().item_type(),
+            value,
+        },
+    };
+
+    Step::let_list_expr(name.into(), value)
 }
 
 pub(crate) fn let_int_function_step(
@@ -90,9 +129,11 @@ mod tests {
         let_nil_step, let_string_function_step, let_string_step, let_tuple_step,
     };
     use crate::plan::{
-        BoolFunctionLocalId, BoolLocalId, Expr, FloatFunctionLocalId, FloatLocalId,
-        IntFunctionLocalId, IntListLocalId, IntLocalId, ListLocal, NilFunctionLocalId, NilLocalId,
-        Step, StringFunctionLocalId, StringListLocalId, StringLocalId, TupleLocalId, ValueType,
+        BoolFunctionLocalId, BoolListLocalId, BoolLocalId, Expr, FloatFunctionLocalId,
+        FloatListLocalId, FloatLocalId, FunctionListLocalId, FunctionType, IntFunctionLocalId,
+        IntListLocalId, IntLocalId, ListExpr, ListListLocalId, ListLocalExpr, NilFunctionLocalId,
+        NilListLocalId, NilLocalId, Step, StringFunctionLocalId, StringListLocalId, StringLocalId,
+        TupleListLocalId, TupleLocalId, ValueType,
     };
     use crate::planner::dsl::expression::{
         bool_, bool_function_ref, float, float_function_ref, int, int_function_ref, list, nil,
@@ -135,18 +176,138 @@ mod tests {
         );
         assert_eq!(
             let_list_step(6, "values", list([int(1)], ValueType::Int)),
-            Step::let_list(
-                ListLocal::int(IntListLocalId(6)),
+            Step::let_list_expr(
                 "values".into(),
-                list([int(1)], ValueType::Int).into(),
+                ListLocalExpr::Int {
+                    local: IntListLocalId(6),
+                    value: ListExpr::from(list([int(1)], ValueType::Int))
+                        .into_int()
+                        .expect("expected int list"),
+                },
             ),
         );
         assert_eq!(
             let_list_step(7, "names", list([string("a")], ValueType::String)),
-            Step::let_list(
-                ListLocal::string(StringListLocalId(7)),
+            Step::let_list_expr(
                 "names".into(),
-                list([string("a")], ValueType::String).into(),
+                ListLocalExpr::String {
+                    local: StringListLocalId(7),
+                    value: ListExpr::from(list([string("a")], ValueType::String))
+                        .into_string()
+                        .expect("expected string list"),
+                },
+            ),
+        );
+        assert_eq!(
+            let_list_step(8, "ratios", list([float(1.5)], ValueType::Float)),
+            Step::let_list_expr(
+                "ratios".into(),
+                ListLocalExpr::Float {
+                    local: FloatListLocalId(8),
+                    value: ListExpr::from(list([float(1.5)], ValueType::Float))
+                        .into_float()
+                        .expect("expected float list"),
+                },
+            ),
+        );
+        assert_eq!(
+            let_list_step(9, "flags", list([bool_(true)], ValueType::Bool)),
+            Step::let_list_expr(
+                "flags".into(),
+                ListLocalExpr::Bool {
+                    local: BoolListLocalId(9),
+                    value: ListExpr::from(list([bool_(true)], ValueType::Bool))
+                        .into_bool()
+                        .expect("expected bool list"),
+                },
+            ),
+        );
+        assert_eq!(
+            let_list_step(10, "nils", list([nil()], ValueType::Nil)),
+            Step::let_list_expr(
+                "nils".into(),
+                ListLocalExpr::Nil {
+                    local: NilListLocalId(10),
+                    value: ListExpr::from(list([nil()], ValueType::Nil))
+                        .into_nil()
+                        .expect("expected nil list"),
+                },
+            ),
+        );
+        assert_eq!(
+            let_list_step(
+                11,
+                "pairs",
+                list(
+                    [tuple([Expr::from(int(1)), Expr::from(string("one"))])],
+                    ValueType::Tuple(vec![ValueType::Int, ValueType::String]),
+                ),
+            ),
+            Step::let_list_expr(
+                "pairs".into(),
+                ListLocalExpr::Tuple {
+                    local: TupleListLocalId(11),
+                    item_type: vec![ValueType::Int, ValueType::String],
+                    value: ListExpr::from(list(
+                        [tuple([Expr::from(int(1)), Expr::from(string("one"))])],
+                        ValueType::Tuple(vec![ValueType::Int, ValueType::String]),
+                    ))
+                    .into_tuple()
+                    .expect("expected tuple list"),
+                },
+            ),
+        );
+        assert_eq!(
+            let_list_step(
+                12,
+                "nested",
+                list(
+                    [list([int(1)], ValueType::Int)],
+                    ValueType::List(Box::new(ValueType::Int)),
+                ),
+            ),
+            Step::let_list_expr(
+                "nested".into(),
+                ListLocalExpr::List {
+                    local: ListListLocalId(12),
+                    item_type: Box::new(ValueType::Int),
+                    value: ListExpr::from(list(
+                        [list([int(1)], ValueType::Int)],
+                        ValueType::List(Box::new(ValueType::Int)),
+                    ))
+                    .into_list()
+                    .expect("expected nested list"),
+                },
+            ),
+        );
+        let function_type = FunctionType::new(vec![ValueType::Int], ValueType::Int);
+        assert_eq!(
+            let_list_step(
+                13,
+                "functions",
+                list(
+                    [int_function_ref(
+                        0,
+                        [crate::plan::LocalId::Int(crate::plan::IntLocalId(0))]
+                    )],
+                    ValueType::Function(Box::new(function_type.clone())),
+                ),
+            ),
+            Step::let_list_expr(
+                "functions".into(),
+                ListLocalExpr::Function {
+                    local: FunctionListLocalId(13),
+                    item_type: function_type.clone(),
+                    value: ListExpr::from(list(
+                        [int_function_ref(
+                            0,
+                            [crate::plan::LocalId::Int(crate::plan::IntLocalId(0))]
+                        )],
+                        ValueType::Function(Box::new(function_type)),
+                    ))
+                    .into_function()
+                    .expect("expected function list"),
+                },
             ),
         );
         assert_eq!(

@@ -396,13 +396,12 @@ mod tests {
             ListFunctionExpr::closure(
                 ListFunctionId::from_item_type(0, crate::plan::ValueType::Int),
                 vec![ParamLocal::list(ListLocal::int(IntListLocalId(0)))],
-                vec![CaptureArg::list(
-                    crate::plan::ListLocalExpr::try_new(
-                        ListLocal::int(IntListLocalId(0)),
-                        error_list_expr(),
-                    )
-                    .expect("list capture should match local item type"),
-                )],
+                vec![CaptureArg::list(crate::plan::ListLocalExpr::Int {
+                    local: IntListLocalId(0),
+                    value: error_list_expr()
+                        .into_int()
+                        .expect("expected int list expression"),
+                })],
             ),
         );
         assert_function_tuple_index_error(ListFunctionExpr::tuple_index(

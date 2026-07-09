@@ -1515,10 +1515,12 @@ mod tests {
                 &plan,
                 &mut frame,
                 &ListExpr::block(
-                    vec![Step::let_list(
-                        ListLocal::int(IntListLocalId(0)),
+                    vec![Step::let_list_expr(
                         "values".into(),
-                        list_expr(1)
+                        crate::plan::ListLocalExpr::Int {
+                            local: IntListLocalId(0),
+                            value: list_expr(1).into_int().expect("expected int list"),
+                        },
                     )],
                     ListExpr::local_get(ListLocal::int(IntListLocalId(0)), "values".into()),
                 ),

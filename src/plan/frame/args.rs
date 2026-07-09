@@ -144,16 +144,15 @@ mod tests {
                             tuple_function_type(),
                         ),
                     ),
-                    CallArg::list(
-                        crate::plan::ListLocalExpr::try_new(
-                            ListLocal::int(IntListLocalId(1)),
-                            ListExpr::local_get(
-                                ListLocal::int(IntListLocalId(4)),
-                                "list_arg".into(),
-                            ),
+                    CallArg::list(crate::plan::ListLocalExpr::Int {
+                        local: IntListLocalId(1),
+                        value: ListExpr::local_get(
+                            ListLocal::int(IntListLocalId(4)),
+                            "list_arg".into(),
                         )
-                        .expect("list arg should match local item type"),
-                    ),
+                        .into_int()
+                        .expect("expected int list"),
+                    }),
                     CallArg::list_function(
                         crate::plan::ListFunctionLocal::from_item_type(
                             1,
@@ -278,16 +277,15 @@ mod tests {
                                 tuple_function_type(),
                             ),
                         ),
-                        CaptureArg::list(
-                            crate::plan::ListLocalExpr::try_new(
-                                ListLocal::int(IntListLocalId(2)),
-                                ListExpr::local_get(
-                                    ListLocal::int(IntListLocalId(5)),
-                                    "list_capture".into(),
-                                ),
+                        CaptureArg::list(crate::plan::ListLocalExpr::Int {
+                            local: IntListLocalId(2),
+                            value: ListExpr::local_get(
+                                ListLocal::int(IntListLocalId(5)),
+                                "list_capture".into(),
                             )
-                            .expect("list capture should match local item type"),
-                        ),
+                            .into_int()
+                            .expect("expected int list"),
+                        }),
                         CaptureArg::list_function(
                             crate::plan::ListFunctionLocal::from_item_type(
                                 2,

@@ -51,9 +51,6 @@ pub(crate) use self::{
     tuple::TupleExprKind,
 };
 
-#[cfg(test)]
-pub(crate) use list::ListElementTypeMismatch;
-
 #[derive(Debug, Clone, PartialEq)]
 pub struct Expr {
     kind: ExprKind,

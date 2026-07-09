@@ -1,12 +1,12 @@
 use super::{
     BoolExpr, BoolFunctionExpr, Expr, ExprKind, FloatExpr, FloatFunctionExpr, FunctionFunctionExpr,
-    IntExpr, IntFunctionExpr, ListFunctionExpr, ListLocalExpr, NilExpr, NilFunctionExpr,
+    IntExpr, IntFunctionExpr, ListExpr, ListFunctionExpr, ListLocalExpr, NilExpr, NilFunctionExpr,
     StringExpr, StringFunctionExpr, TupleExpr, TupleFunctionExpr,
 };
 use crate::plan::{
     BoolFunctionLocalId, BoolLocalId, FloatFunctionLocalId, FloatLocalId, FunctionFunctionLocalId,
-    IntFunctionLocalId, IntLocalId, ListFunctionLocal, NilFunctionLocalId, NilLocalId, ParamLocal,
-    StringFunctionLocalId, StringLocalId, TupleFunctionLocalId, TupleLocalId,
+    IntFunctionLocalId, IntLocalId, ListFunctionLocal, ListLocal, NilFunctionLocalId, NilLocalId,
+    ParamLocal, StringFunctionLocalId, StringLocalId, TupleFunctionLocalId, TupleLocalId,
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -160,12 +160,66 @@ impl Expr {
                 },
                 ExprKind::Tuple(value),
             ) if value.type_() == expected => Some(CallArg::tuple(*local, value)),
-            (ParamLocal::List(local), ExprKind::List(value))
-                if value.element_type() == local.item_type() =>
-            {
-                ListLocalExpr::try_new(local.clone(), value)
-                    .ok()
-                    .map(CallArg::list)
+            (ParamLocal::List(ListLocal::Int(local)), ExprKind::List(ListExpr::Int(value))) => {
+                Some(CallArg::list(ListLocalExpr::Int {
+                    local: *local,
+                    value,
+                }))
+            }
+            (
+                ParamLocal::List(ListLocal::String(local)),
+                ExprKind::List(ListExpr::String(value)),
+            ) => Some(CallArg::list(ListLocalExpr::String {
+                local: *local,
+                value,
+            })),
+            (ParamLocal::List(ListLocal::Float(local)), ExprKind::List(ListExpr::Float(value))) => {
+                Some(CallArg::list(ListLocalExpr::Float {
+                    local: *local,
+                    value,
+                }))
+            }
+            (ParamLocal::List(ListLocal::Bool(local)), ExprKind::List(ListExpr::Bool(value))) => {
+                Some(CallArg::list(ListLocalExpr::Bool {
+                    local: *local,
+                    value,
+                }))
+            }
+            (ParamLocal::List(ListLocal::Nil(local)), ExprKind::List(ListExpr::Nil(value))) => {
+                Some(CallArg::list(ListLocalExpr::Nil {
+                    local: *local,
+                    value,
+                }))
+            }
+            (
+                ParamLocal::List(ListLocal::Tuple { local, item_type }),
+                ExprKind::List(ListExpr::Tuple(value)),
+            ) if value.item().item_type() == item_type.clone() => {
+                Some(CallArg::list(ListLocalExpr::Tuple {
+                    local: *local,
+                    item_type: item_type.clone(),
+                    value,
+                }))
+            }
+            (
+                ParamLocal::List(ListLocal::List { local, item_type }),
+                ExprKind::List(ListExpr::List(value)),
+            ) if value.item().item_type() == item_type.clone() => {
+                Some(CallArg::list(ListLocalExpr::List {
+                    local: *local,
+                    item_type: item_type.clone(),
+                    value,
+                }))
+            }
+            (
+                ParamLocal::List(ListLocal::Function { local, item_type }),
+                ExprKind::List(ListExpr::Function(value)),
+            ) if value.item().item_type() == item_type.clone() => {
+                Some(CallArg::list(ListLocalExpr::Function {
+                    local: *local,
+                    item_type: item_type.clone(),
+                    value,
+                }))
             }
             (
                 ParamLocal::IntFunction {
@@ -445,16 +499,17 @@ mod tests {
     use super::CallArg;
     use crate::plan::{
         BoolExpr, BoolFunctionExpr, BoolFunctionId, BoolFunctionLocalId, BoolFunctionValue,
-        BoolLocalId, Expr, FloatExpr, FloatFunctionExpr, FloatFunctionId, FloatFunctionLocalId,
-        FloatFunctionValue, FloatLocalId, FunctionExpr, FunctionFunctionExpr, FunctionFunctionId,
-        FunctionFunctionLocalId, FunctionFunctionValue, FunctionType, FunctionValue, IntExpr,
-        IntFunctionExpr, IntFunctionFunctionId, IntFunctionId, IntFunctionLocalId,
-        IntFunctionValue, IntListLocalId, IntLocalId, ListExpr, ListFunctionExpr, ListFunctionId,
-        ListFunctionValue, ListLocal, ListLocalExpr, NilExpr, NilFunctionExpr, NilFunctionId,
-        NilFunctionLocalId, NilFunctionValue, NilLocalId, ParamLocal, RuntimeFunctionId,
-        StringExpr, StringFunctionExpr, StringFunctionId, StringFunctionLocalId,
-        StringFunctionValue, StringLocalId, TupleExpr, TupleFunctionExpr, TupleFunctionId,
-        TupleFunctionLocalId, TupleFunctionValue, TupleLocalId, ValueType,
+        BoolListLocalId, BoolLocalId, Expr, FloatExpr, FloatFunctionExpr, FloatFunctionId,
+        FloatFunctionLocalId, FloatFunctionValue, FloatListLocalId, FloatLocalId, FunctionExpr,
+        FunctionFunctionExpr, FunctionFunctionId, FunctionFunctionLocalId, FunctionFunctionValue,
+        FunctionListLocalId, FunctionType, FunctionValue, IntExpr, IntFunctionExpr,
+        IntFunctionFunctionId, IntFunctionId, IntFunctionLocalId, IntFunctionValue, IntListLocalId,
+        IntLocalId, ListExpr, ListFunctionExpr, ListFunctionId, ListFunctionValue, ListListLocalId,
+        ListLocal, ListLocalExpr, NilExpr, NilFunctionExpr, NilFunctionId, NilFunctionLocalId,
+        NilFunctionValue, NilListLocalId, NilLocalId, ParamLocal, RuntimeFunctionId, StringExpr,
+        StringFunctionExpr, StringFunctionId, StringFunctionLocalId, StringFunctionValue,
+        StringListLocalId, StringLocalId, TupleExpr, TupleFunctionExpr, TupleFunctionId,
+        TupleFunctionLocalId, TupleFunctionValue, TupleListLocalId, TupleLocalId, ValueType,
     };
     use num_bigint::BigInt;
 
@@ -498,10 +553,10 @@ mod tests {
         assert_eq!(
             Expr::list(list_expr())
                 .into_call_arg(&ParamLocal::list(ListLocal::int(IntListLocalId(0)))),
-            Some(CallArg::list(
-                ListLocalExpr::try_new(ListLocal::int(IntListLocalId(0)), list_expr())
-                    .expect("list arg should match local item type")
-            )),
+            Some(CallArg::list(ListLocalExpr::Int {
+                local: IntListLocalId(0),
+                value: list_expr().into_int().expect("expected int list"),
+            })),
         );
         assert_eq!(
             Expr::function(FunctionExpr::value(function_value())).into_call_arg(
@@ -669,6 +724,170 @@ mod tests {
         assert_eq!(
             Expr::int(IntExpr::value(BigInt::from(1)))
                 .into_call_arg(&ParamLocal::bool(BoolLocalId(0))),
+            None,
+        );
+    }
+
+    #[test]
+    fn into_call_arg_preserves_list_param_family() {
+        let int = ListExpr::value(vec![Expr::int(IntExpr::value(1.into()))], ValueType::Int);
+        assert_eq!(
+            Expr::list(int.clone())
+                .into_call_arg(&ParamLocal::list(ListLocal::int(IntListLocalId(0),))),
+            Some(CallArg::list(ListLocalExpr::Int {
+                local: IntListLocalId(0),
+                value: int.into_int().expect("expected int list"),
+            })),
+        );
+
+        let string = ListExpr::value(
+            vec![Expr::string(StringExpr::value("one".into()))],
+            ValueType::String,
+        );
+        assert_eq!(
+            Expr::list(string.clone())
+                .into_call_arg(&ParamLocal::list(ListLocal::string(StringListLocalId(1),))),
+            Some(CallArg::list(ListLocalExpr::String {
+                local: StringListLocalId(1),
+                value: string.into_string().expect("expected string list"),
+            })),
+        );
+
+        let float = ListExpr::value(vec![Expr::float(FloatExpr::value(1.5))], ValueType::Float);
+        assert_eq!(
+            Expr::list(float.clone())
+                .into_call_arg(&ParamLocal::list(ListLocal::float(FloatListLocalId(2),))),
+            Some(CallArg::list(ListLocalExpr::Float {
+                local: FloatListLocalId(2),
+                value: float.into_float().expect("expected float list"),
+            })),
+        );
+
+        let bool_ = ListExpr::value(vec![Expr::bool(BoolExpr::value(true))], ValueType::Bool);
+        assert_eq!(
+            Expr::list(bool_.clone())
+                .into_call_arg(&ParamLocal::list(ListLocal::bool(BoolListLocalId(3),))),
+            Some(CallArg::list(ListLocalExpr::Bool {
+                local: BoolListLocalId(3),
+                value: bool_.into_bool().expect("expected bool list"),
+            })),
+        );
+
+        let nil = ListExpr::value(vec![Expr::nil(NilExpr::value())], ValueType::Nil);
+        assert_eq!(
+            Expr::list(nil.clone())
+                .into_call_arg(&ParamLocal::list(ListLocal::nil(NilListLocalId(4),))),
+            Some(CallArg::list(ListLocalExpr::Nil {
+                local: NilListLocalId(4),
+                value: nil.into_nil().expect("expected nil list"),
+            })),
+        );
+
+        let tuple_item_type = vec![ValueType::Int];
+        let tuple = ListExpr::value(
+            vec![Expr::tuple(TupleExpr::value(
+                vec![Expr::int(IntExpr::value(2.into()))],
+                tuple_item_type.clone(),
+            ))],
+            ValueType::Tuple(tuple_item_type.clone()),
+        );
+        assert_eq!(
+            Expr::list(tuple.clone()).into_call_arg(&ParamLocal::list(ListLocal::tuple(
+                TupleListLocalId(5),
+                tuple_item_type.clone(),
+            ))),
+            Some(CallArg::list(ListLocalExpr::Tuple {
+                local: TupleListLocalId(5),
+                item_type: tuple_item_type,
+                value: tuple.into_tuple().expect("expected tuple list"),
+            })),
+        );
+
+        let nested_item_type = ValueType::Int;
+        let nested = ListExpr::value(
+            vec![Expr::list(ListExpr::value(
+                vec![Expr::int(IntExpr::value(3.into()))],
+                nested_item_type.clone(),
+            ))],
+            ValueType::List(Box::new(nested_item_type.clone())),
+        );
+        assert_eq!(
+            Expr::list(nested.clone()).into_call_arg(&ParamLocal::list(ListLocal::list(
+                ListListLocalId(6),
+                nested_item_type.clone(),
+            ))),
+            Some(CallArg::list(ListLocalExpr::List {
+                local: ListListLocalId(6),
+                item_type: Box::new(nested_item_type),
+                value: nested.into_list().expect("expected nested list"),
+            })),
+        );
+
+        let function_item_type = FunctionType::new(Vec::new(), ValueType::Int);
+        let function = ListExpr::value(
+            vec![Expr::function(FunctionExpr::value(FunctionValue::new(
+                RuntimeFunctionId::Int(IntFunctionId(0)),
+                Vec::new(),
+            )))],
+            ValueType::Function(Box::new(function_item_type.clone())),
+        );
+        assert_eq!(
+            Expr::list(function.clone()).into_call_arg(&ParamLocal::list(ListLocal::function(
+                FunctionListLocalId(7),
+                function_item_type.clone(),
+            ))),
+            Some(CallArg::list(ListLocalExpr::Function {
+                local: FunctionListLocalId(7),
+                item_type: function_item_type,
+                value: function.into_function().expect("expected function list"),
+            })),
+        );
+    }
+
+    #[test]
+    fn into_call_arg_rejects_list_param_nested_metadata_mismatch() {
+        let tuple = ListExpr::value(
+            vec![Expr::tuple(TupleExpr::value(
+                vec![Expr::string(StringExpr::value("wrong".into()))],
+                vec![ValueType::String],
+            ))],
+            ValueType::Tuple(vec![ValueType::String]),
+        );
+        assert_eq!(
+            Expr::list(tuple).into_call_arg(&ParamLocal::list(ListLocal::tuple(
+                TupleListLocalId(0),
+                vec![ValueType::Int],
+            ))),
+            None,
+        );
+
+        let nested = ListExpr::value(
+            vec![Expr::list(ListExpr::value(
+                vec![Expr::string(StringExpr::value("wrong".into()))],
+                ValueType::String,
+            ))],
+            ValueType::List(Box::new(ValueType::String)),
+        );
+        assert_eq!(
+            Expr::list(nested).into_call_arg(&ParamLocal::list(ListLocal::list(
+                ListListLocalId(0),
+                ValueType::Int,
+            ))),
+            None,
+        );
+
+        let function = ListExpr::value(
+            vec![Expr::function(FunctionExpr::value(FunctionValue::new(
+                RuntimeFunctionId::String(StringFunctionId(0)),
+                Vec::new(),
+            )))],
+            ValueType::Function(Box::new(FunctionType::new(Vec::new(), ValueType::String))),
+        );
+        assert_eq!(
+            Expr::list(function).into_call_arg(&ParamLocal::list(ListLocal::function(
+                FunctionListLocalId(0),
+                FunctionType::new(Vec::new(), ValueType::Int),
+            ))),
             None,
         );
     }

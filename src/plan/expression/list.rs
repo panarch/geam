@@ -1079,54 +1079,6 @@ impl ListExpr {
     }
 }
 
-impl ListLocalExpr {
-    pub(crate) fn try_new(
-        local: ListLocal,
-        value: ListExpr,
-    ) -> Result<Self, ListElementTypeMismatch> {
-        let expected = local.value_type();
-        let actual = ValueType::List(Box::new(value.element_type()));
-
-        match (local, value) {
-            (ListLocal::Int(local), ListExpr::Int(value)) => Ok(Self::Int { local, value }),
-            (ListLocal::String(local), ListExpr::String(value)) => {
-                Ok(Self::String { local, value })
-            }
-            (ListLocal::Float(local), ListExpr::Float(value)) => Ok(Self::Float { local, value }),
-            (ListLocal::Bool(local), ListExpr::Bool(value)) => Ok(Self::Bool { local, value }),
-            (ListLocal::Nil(local), ListExpr::Nil(value)) => Ok(Self::Nil { local, value }),
-            (ListLocal::Tuple { local, item_type }, ListExpr::Tuple(value))
-                if value.item().item_type() == item_type =>
-            {
-                Ok(Self::Tuple {
-                    local,
-                    item_type,
-                    value,
-                })
-            }
-            (ListLocal::List { local, item_type }, ListExpr::List(value))
-                if value.item().item_type() == item_type =>
-            {
-                Ok(Self::List {
-                    local,
-                    item_type,
-                    value,
-                })
-            }
-            (ListLocal::Function { local, item_type }, ListExpr::Function(value))
-                if value.item().item_type() == item_type =>
-            {
-                Ok(Self::Function {
-                    local,
-                    item_type,
-                    value,
-                })
-            }
-            _ => Err(ListElementTypeMismatch { expected, actual }),
-        }
-    }
-}
-
 #[cfg(test)]
 macro_rules! impl_typed_list_expr_from_facade {
     ($type:ty, $method:ident, $name:literal) => {
@@ -1634,18 +1586,15 @@ mod tests {
     use super::{
         BoolListCaseBranches, BoolListExpr, BoolListItem, FloatListExpr, FloatListItem,
         FunctionListExpr, FunctionListItem, IntListExpr, IntListItem, ListElementTypeMismatch,
-        ListElements, ListExpr, ListListExpr, ListListItem, ListLocalExpr, NilListExpr,
-        NilListItem, StringListExpr, StringListItem, TupleListExpr, TupleListItem,
-        TypedListExprKind, into_function_clauses, into_list_clauses, into_nil_clauses,
-        into_tuple_clauses,
+        ListElements, ListExpr, ListListExpr, ListListItem, NilListExpr, NilListItem,
+        StringListExpr, StringListItem, TupleListExpr, TupleListItem, TypedListExprKind,
+        into_function_clauses, into_list_clauses, into_nil_clauses, into_tuple_clauses,
     };
     use crate::plan::{
-        BoolExpr, BoolListLocalId, Expr, FloatExpr, FloatListLocalId, FunctionExpr,
-        FunctionListLocalId, FunctionType, FunctionValue, IntExpr, IntFunctionId,
-        IntListFunctionId, IntListLocalId, ListFunctionExpr, ListFunctionId, ListFunctionValue,
-        ListListLocalId, ListLocal, NilExpr, NilListLocalId, PanicExpr, PanicSite,
-        RuntimeFunctionId, Step, StringExpr, StringListLocalId, TupleExpr, TupleListLocalId,
-        ValueType,
+        BoolExpr, Expr, FloatExpr, FunctionExpr, FunctionType, FunctionValue, IntExpr,
+        IntFunctionId, IntListFunctionId, IntListLocalId, ListFunctionExpr, ListFunctionId,
+        ListFunctionValue, ListLocal, NilExpr, PanicExpr, PanicSite, RuntimeFunctionId, Step,
+        StringExpr, TupleExpr, ValueType,
     };
     use num_bigint::BigInt;
 
@@ -1924,209 +1873,6 @@ mod tests {
         assert_eq!(
             ListExpr::list_index(nested.clone(), 0),
             ListExpr::String(StringListExpr::list_index(StringListItem, nested, 0)),
-        );
-    }
-
-    #[test]
-    fn local_expression_constructor_preserves_typed_list_local_family() {
-        let function_type = FunctionType::new(Vec::new(), ValueType::Int);
-
-        assert_eq!(
-            ListLocalExpr::try_new(
-                ListLocal::int(IntListLocalId(0)),
-                ListExpr::value(vec![Expr::int(IntExpr::value(1.into()))], ValueType::Int),
-            ),
-            Ok(ListLocalExpr::Int {
-                local: IntListLocalId(0),
-                value: IntListExpr::value(IntListItem, vec![IntExpr::value(1.into())]),
-            }),
-        );
-        assert_eq!(
-            ListLocalExpr::try_new(
-                ListLocal::string(StringListLocalId(1)),
-                ListExpr::value(
-                    vec![Expr::string(StringExpr::value("one".into()))],
-                    ValueType::String,
-                ),
-            ),
-            Ok(ListLocalExpr::String {
-                local: StringListLocalId(1),
-                value: StringListExpr::value(StringListItem, vec![StringExpr::value("one".into())],),
-            }),
-        );
-        assert_eq!(
-            ListLocalExpr::try_new(
-                ListLocal::float(FloatListLocalId(2)),
-                ListExpr::value(vec![Expr::float(FloatExpr::value(1.5))], ValueType::Float),
-            ),
-            Ok(ListLocalExpr::Float {
-                local: FloatListLocalId(2),
-                value: FloatListExpr::value(FloatListItem, vec![FloatExpr::value(1.5)]),
-            }),
-        );
-        assert_eq!(
-            ListLocalExpr::try_new(
-                ListLocal::bool(BoolListLocalId(3)),
-                ListExpr::value(vec![Expr::bool(BoolExpr::value(true))], ValueType::Bool),
-            ),
-            Ok(ListLocalExpr::Bool {
-                local: BoolListLocalId(3),
-                value: BoolListExpr::value(BoolListItem, vec![BoolExpr::value(true)]),
-            }),
-        );
-        assert_eq!(
-            ListLocalExpr::try_new(
-                ListLocal::nil(NilListLocalId(4)),
-                ListExpr::value(vec![Expr::nil(NilExpr::value())], ValueType::Nil),
-            ),
-            Ok(ListLocalExpr::Nil {
-                local: NilListLocalId(4),
-                value: NilListExpr::value(NilListItem, vec![NilExpr::value()]),
-            }),
-        );
-
-        let tuple = TupleExpr::value(
-            vec![Expr::int(IntExpr::value(2.into()))],
-            vec![ValueType::Int],
-        );
-        assert_eq!(
-            ListLocalExpr::try_new(
-                ListLocal::tuple(TupleListLocalId(5), vec![ValueType::Int]),
-                ListExpr::value(
-                    vec![Expr::tuple(tuple.clone())],
-                    ValueType::Tuple(vec![ValueType::Int]),
-                ),
-            ),
-            Ok(ListLocalExpr::Tuple {
-                local: TupleListLocalId(5),
-                item_type: vec![ValueType::Int],
-                value: TupleListExpr::value(
-                    TupleListItem {
-                        item_type: vec![ValueType::Int],
-                    },
-                    vec![tuple],
-                ),
-            }),
-        );
-
-        let nested = ListExpr::value(
-            vec![Expr::string(StringExpr::value("nested".into()))],
-            ValueType::String,
-        );
-        assert_eq!(
-            ListLocalExpr::try_new(
-                ListLocal::list(ListListLocalId(6), ValueType::String),
-                ListExpr::value(
-                    vec![Expr::list(nested.clone())],
-                    ValueType::List(Box::new(ValueType::String)),
-                ),
-            ),
-            Ok(ListLocalExpr::List {
-                local: ListListLocalId(6),
-                item_type: Box::new(ValueType::String),
-                value: ListListExpr::value(
-                    ListListItem {
-                        item_type: Box::new(ValueType::String),
-                    },
-                    vec![nested],
-                ),
-            }),
-        );
-
-        let function = FunctionExpr::value(FunctionValue::new(
-            RuntimeFunctionId::Int(IntFunctionId(0)),
-            Vec::new(),
-        ));
-        assert_eq!(
-            ListLocalExpr::try_new(
-                ListLocal::function(FunctionListLocalId(7), function_type.clone()),
-                ListExpr::value(
-                    vec![Expr::function(function.clone())],
-                    ValueType::Function(Box::new(function_type.clone())),
-                ),
-            ),
-            Ok(ListLocalExpr::Function {
-                local: FunctionListLocalId(7),
-                item_type: function_type.clone(),
-                value: FunctionListExpr::value(
-                    FunctionListItem {
-                        item_type: function_type,
-                    },
-                    vec![function],
-                ),
-            }),
-        );
-    }
-
-    #[test]
-    fn local_expression_constructor_rejects_wrong_item_family_and_nested_metadata() {
-        assert_eq!(
-            ListLocalExpr::try_new(
-                ListLocal::int(IntListLocalId(0)),
-                ListExpr::value(
-                    vec![Expr::string(StringExpr::value("wrong".into()))],
-                    ValueType::String,
-                ),
-            ),
-            Err(ListElementTypeMismatch {
-                expected: ValueType::List(Box::new(ValueType::Int)),
-                actual: ValueType::List(Box::new(ValueType::String)),
-            }),
-        );
-        assert_eq!(
-            ListLocalExpr::try_new(
-                ListLocal::tuple(TupleListLocalId(1), vec![ValueType::Int]),
-                ListExpr::value(
-                    vec![Expr::tuple(TupleExpr::value(
-                        vec![Expr::string(StringExpr::value("wrong".into()))],
-                        vec![ValueType::String],
-                    ))],
-                    ValueType::Tuple(vec![ValueType::String]),
-                ),
-            ),
-            Err(ListElementTypeMismatch {
-                expected: ValueType::List(Box::new(ValueType::Tuple(vec![ValueType::Int]))),
-                actual: ValueType::List(Box::new(ValueType::Tuple(vec![ValueType::String]))),
-            }),
-        );
-        assert_eq!(
-            ListLocalExpr::try_new(
-                ListLocal::list(ListListLocalId(2), ValueType::Int),
-                ListExpr::value(
-                    vec![Expr::list(ListExpr::value(
-                        vec![Expr::string(StringExpr::value("wrong".into()))],
-                        ValueType::String,
-                    ))],
-                    ValueType::List(Box::new(ValueType::String)),
-                ),
-            ),
-            Err(ListElementTypeMismatch {
-                expected: ValueType::List(Box::new(ValueType::List(Box::new(ValueType::Int)))),
-                actual: ValueType::List(Box::new(ValueType::List(Box::new(ValueType::String)))),
-            }),
-        );
-        assert_eq!(
-            ListLocalExpr::try_new(
-                ListLocal::function(
-                    FunctionListLocalId(3),
-                    FunctionType::new(Vec::new(), ValueType::Int),
-                ),
-                ListExpr::value(
-                    vec![Expr::function(FunctionExpr::value(FunctionValue::new(
-                        RuntimeFunctionId::String(crate::plan::StringFunctionId(0)),
-                        Vec::new(),
-                    )))],
-                    ValueType::Function(Box::new(FunctionType::new(Vec::new(), ValueType::String))),
-                ),
-            ),
-            Err(ListElementTypeMismatch {
-                expected: ValueType::List(Box::new(ValueType::Function(Box::new(
-                    FunctionType::new(Vec::new(), ValueType::Int),
-                )))),
-                actual: ValueType::List(Box::new(ValueType::Function(Box::new(
-                    FunctionType::new(Vec::new(), ValueType::String),
-                )))),
-            }),
         );
     }
 

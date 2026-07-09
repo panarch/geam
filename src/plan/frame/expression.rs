@@ -1246,13 +1246,15 @@ mod tests {
             ))),
             Step::evaluate(Expr::list(ListExpr::call(
                 ListFunctionId::from_item_type(0, crate::plan::ValueType::Int),
-                vec![CallArg::list(
-                    crate::plan::ListLocalExpr::try_new(
-                        ListLocal::int(IntListLocalId(0)),
-                        ListExpr::local_get(ListLocal::int(IntListLocalId(1)), "call_arg".into()),
+                vec![CallArg::list(crate::plan::ListLocalExpr::Int {
+                    local: IntListLocalId(0),
+                    value: ListExpr::local_get(
+                        ListLocal::int(IntListLocalId(1)),
+                        "call_arg".into(),
                     )
-                    .expect("list arg should match local item type"),
-                )],
+                    .into_int()
+                    .expect("expected int list"),
+                })],
             ))),
             Step::evaluate(Expr::list(ListExpr::function_call(
                 ListFunctionExpr::local_get(
@@ -1266,16 +1268,15 @@ mod tests {
                     ),
                     "callee".into(),
                 ),
-                vec![CallArg::list(
-                    crate::plan::ListLocalExpr::try_new(
-                        ListLocal::int(IntListLocalId(1)),
-                        ListExpr::local_get(
-                            ListLocal::int(IntListLocalId(2)),
-                            "function_call_arg".into(),
-                        ),
+                vec![CallArg::list(crate::plan::ListLocalExpr::Int {
+                    local: IntListLocalId(1),
+                    value: ListExpr::local_get(
+                        ListLocal::int(IntListLocalId(2)),
+                        "function_call_arg".into(),
                     )
-                    .expect("list arg should match local item type"),
-                )],
+                    .into_int()
+                    .expect("expected int list"),
+                })],
             ))),
             Step::evaluate(Expr::list(ListExpr::tuple_index(
                 TupleExpr::value(

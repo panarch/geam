@@ -785,13 +785,15 @@ mod tests {
         BoolListFunctionLocalId, FloatFunctionFunctionId, FloatFunctionLocalId,
         FloatListFunctionFunctionId, FloatListFunctionLocalId, FunctionFunctionFunctionId,
         FunctionFunctionId, FunctionFunctionLocalId, FunctionId, FunctionListFunctionFunctionId,
-        FunctionListFunctionLocalId, IntFunctionFunctionId, IntFunctionLocalId,
-        IntListFunctionFunctionId, IntListFunctionLocalId, ListFunctionFunctionId,
-        ListFunctionLocal, ListListFunctionFunctionId, ListListFunctionLocalId,
-        NilFunctionFunctionId, NilFunctionLocalId, NilListFunctionFunctionId,
-        NilListFunctionLocalId, StringFunctionFunctionId, StringFunctionLocalId,
-        StringListFunctionFunctionId, StringListFunctionLocalId, TupleFunctionFunctionId,
+        FunctionListFunctionLocalId, FunctionListLocalId, IntFunctionFunctionId,
+        IntFunctionLocalId, IntListFunctionFunctionId, IntListFunctionLocalId, IntListLocalId,
+        ListFunctionFunctionId, ListFunctionLocal, ListListFunctionFunctionId,
+        ListListFunctionLocalId, ListListLocalId, ListLocal, NilFunctionFunctionId,
+        NilFunctionLocalId, NilListFunctionFunctionId, NilListFunctionLocalId, NilListLocalId,
+        StringFunctionFunctionId, StringFunctionLocalId, StringListFunctionFunctionId,
+        StringListFunctionLocalId, StringListLocalId, TupleFunctionFunctionId,
         TupleFunctionLocalId, TupleListFunctionFunctionId, TupleListFunctionLocalId,
+        TupleListLocalId,
     };
     use crate::plan::{FunctionType, ValueType};
 
@@ -989,6 +991,33 @@ mod tests {
         assert_eq!(
             super::FunctionReturnFamily::Function.to_string(),
             "Function"
+        );
+    }
+
+    #[test]
+    fn list_locals_preserve_item_family() {
+        let item_types = list_item_types();
+        let locals = [
+            ListLocal::int(IntListLocalId(3)),
+            ListLocal::string(StringListLocalId(3)),
+            ListLocal::float(super::FloatListLocalId(3)),
+            ListLocal::bool(super::BoolListLocalId(3)),
+            ListLocal::nil(NilListLocalId(3)),
+            ListLocal::tuple(TupleListLocalId(3), vec![ValueType::Int, ValueType::String]),
+            ListLocal::list(ListListLocalId(3), ValueType::Int),
+            ListLocal::function(
+                FunctionListLocalId(3),
+                FunctionType::new(vec![ValueType::Int], ValueType::String),
+            ),
+        ];
+
+        assert_eq!(
+            locals.iter().map(ListLocal::item_type).collect::<Vec<_>>(),
+            item_types,
+        );
+        assert_eq!(
+            locals.iter().map(ListLocal::index).collect::<Vec<_>>(),
+            vec![3; 8],
         );
     }
 
