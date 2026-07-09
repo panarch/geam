@@ -261,62 +261,92 @@ impl ListReturn {
         match fallback {
             Self::Int(fallback) => Some(Self::Int(IntListReturn::int_case(
                 subject,
-                into_list_return_clauses(clauses)?,
+                into_list_return_clauses(clauses, |branch| match branch {
+                    Self::Int(branch) => Some(branch),
+                    _ => None,
+                })?,
                 fallback,
             ))),
             Self::Float(fallback) => Some(Self::Float(FloatListReturn::int_case(
                 subject,
-                into_list_return_clauses(clauses)?,
+                into_list_return_clauses(clauses, |branch| match branch {
+                    Self::Float(branch) => Some(branch),
+                    _ => None,
+                })?,
                 fallback,
             ))),
             Self::String(fallback) => Some(Self::String(StringListReturn::int_case(
                 subject,
-                into_list_return_clauses(clauses)?,
+                into_list_return_clauses(clauses, |branch| match branch {
+                    Self::String(branch) => Some(branch),
+                    _ => None,
+                })?,
                 fallback,
             ))),
             Self::Bool(fallback) => Some(Self::Bool(BoolListReturn::int_case(
                 subject,
-                into_list_return_clauses(clauses)?,
+                into_list_return_clauses(clauses, |branch| match branch {
+                    Self::Bool(branch) => Some(branch),
+                    _ => None,
+                })?,
                 fallback,
             ))),
             Self::Nil(fallback) => Some(Self::Nil(NilListReturn::int_case(
                 subject,
-                into_list_return_clauses(clauses)?,
+                into_list_return_clauses(clauses, |branch| match branch {
+                    Self::Nil(branch) => Some(branch),
+                    _ => None,
+                })?,
                 fallback,
             ))),
             Self::Tuple {
                 item_type,
                 body: fallback,
-            } => Some(Self::Tuple {
-                item_type,
-                body: TupleListReturn::int_case(
-                    subject,
-                    into_list_return_clauses(clauses)?,
-                    fallback,
-                ),
-            }),
+            } => {
+                let clauses = into_list_return_clauses(clauses, |branch| match branch {
+                    Self::Tuple {
+                        item_type: branch_type,
+                        body,
+                    } if branch_type == item_type => Some(body),
+                    _ => None,
+                })?;
+                Some(Self::Tuple {
+                    item_type,
+                    body: TupleListReturn::int_case(subject, clauses, fallback),
+                })
+            }
             Self::List {
                 item_type,
                 body: fallback,
-            } => Some(Self::List {
-                item_type,
-                body: ListListReturn::int_case(
-                    subject,
-                    into_list_return_clauses(clauses)?,
-                    fallback,
-                ),
-            }),
+            } => {
+                let clauses = into_list_return_clauses(clauses, |branch| match branch {
+                    Self::List {
+                        item_type: branch_type,
+                        body,
+                    } if branch_type == item_type => Some(body),
+                    _ => None,
+                })?;
+                Some(Self::List {
+                    item_type,
+                    body: ListListReturn::int_case(subject, clauses, fallback),
+                })
+            }
             Self::Function {
                 item_type,
                 body: fallback,
-            } => Some(Self::Function {
-                item_type,
-                body: FunctionListReturn::int_case(
-                    subject,
-                    into_list_return_clauses(clauses)?,
-                    fallback,
-                ),
-            }),
+            } => {
+                let clauses = into_list_return_clauses(clauses, |branch| match branch {
+                    Self::Function {
+                        item_type: branch_type,
+                        body,
+                    } if branch_type == item_type => Some(body),
+                    _ => None,
+                })?;
+                Some(Self::Function {
+                    item_type,
+                    body: FunctionListReturn::int_case(subject, clauses, fallback),
+                })
+            }
         }
     }
 
@@ -329,62 +359,92 @@ impl ListReturn {
         match fallback {
             Self::Int(fallback) => Some(Self::Int(IntListReturn::float_case(
                 subject,
-                into_list_return_clauses(clauses)?,
+                into_list_return_clauses(clauses, |branch| match branch {
+                    Self::Int(branch) => Some(branch),
+                    _ => None,
+                })?,
                 fallback,
             ))),
             Self::Float(fallback) => Some(Self::Float(FloatListReturn::float_case(
                 subject,
-                into_list_return_clauses(clauses)?,
+                into_list_return_clauses(clauses, |branch| match branch {
+                    Self::Float(branch) => Some(branch),
+                    _ => None,
+                })?,
                 fallback,
             ))),
             Self::String(fallback) => Some(Self::String(StringListReturn::float_case(
                 subject,
-                into_list_return_clauses(clauses)?,
+                into_list_return_clauses(clauses, |branch| match branch {
+                    Self::String(branch) => Some(branch),
+                    _ => None,
+                })?,
                 fallback,
             ))),
             Self::Bool(fallback) => Some(Self::Bool(BoolListReturn::float_case(
                 subject,
-                into_list_return_clauses(clauses)?,
+                into_list_return_clauses(clauses, |branch| match branch {
+                    Self::Bool(branch) => Some(branch),
+                    _ => None,
+                })?,
                 fallback,
             ))),
             Self::Nil(fallback) => Some(Self::Nil(NilListReturn::float_case(
                 subject,
-                into_list_return_clauses(clauses)?,
+                into_list_return_clauses(clauses, |branch| match branch {
+                    Self::Nil(branch) => Some(branch),
+                    _ => None,
+                })?,
                 fallback,
             ))),
             Self::Tuple {
                 item_type,
                 body: fallback,
-            } => Some(Self::Tuple {
-                item_type,
-                body: TupleListReturn::float_case(
-                    subject,
-                    into_list_return_clauses(clauses)?,
-                    fallback,
-                ),
-            }),
+            } => {
+                let clauses = into_list_return_clauses(clauses, |branch| match branch {
+                    Self::Tuple {
+                        item_type: branch_type,
+                        body,
+                    } if branch_type == item_type => Some(body),
+                    _ => None,
+                })?;
+                Some(Self::Tuple {
+                    item_type,
+                    body: TupleListReturn::float_case(subject, clauses, fallback),
+                })
+            }
             Self::List {
                 item_type,
                 body: fallback,
-            } => Some(Self::List {
-                item_type,
-                body: ListListReturn::float_case(
-                    subject,
-                    into_list_return_clauses(clauses)?,
-                    fallback,
-                ),
-            }),
+            } => {
+                let clauses = into_list_return_clauses(clauses, |branch| match branch {
+                    Self::List {
+                        item_type: branch_type,
+                        body,
+                    } if branch_type == item_type => Some(body),
+                    _ => None,
+                })?;
+                Some(Self::List {
+                    item_type,
+                    body: ListListReturn::float_case(subject, clauses, fallback),
+                })
+            }
             Self::Function {
                 item_type,
                 body: fallback,
-            } => Some(Self::Function {
-                item_type,
-                body: FunctionListReturn::float_case(
-                    subject,
-                    into_list_return_clauses(clauses)?,
-                    fallback,
-                ),
-            }),
+            } => {
+                let clauses = into_list_return_clauses(clauses, |branch| match branch {
+                    Self::Function {
+                        item_type: branch_type,
+                        body,
+                    } if branch_type == item_type => Some(body),
+                    _ => None,
+                })?;
+                Some(Self::Function {
+                    item_type,
+                    body: FunctionListReturn::float_case(subject, clauses, fallback),
+                })
+            }
         }
     }
 
@@ -397,62 +457,92 @@ impl ListReturn {
         match fallback {
             Self::Int(fallback) => Some(Self::Int(IntListReturn::string_case(
                 subject,
-                into_list_return_clauses(clauses)?,
+                into_list_return_clauses(clauses, |branch| match branch {
+                    Self::Int(branch) => Some(branch),
+                    _ => None,
+                })?,
                 fallback,
             ))),
             Self::Float(fallback) => Some(Self::Float(FloatListReturn::string_case(
                 subject,
-                into_list_return_clauses(clauses)?,
+                into_list_return_clauses(clauses, |branch| match branch {
+                    Self::Float(branch) => Some(branch),
+                    _ => None,
+                })?,
                 fallback,
             ))),
             Self::String(fallback) => Some(Self::String(StringListReturn::string_case(
                 subject,
-                into_list_return_clauses(clauses)?,
+                into_list_return_clauses(clauses, |branch| match branch {
+                    Self::String(branch) => Some(branch),
+                    _ => None,
+                })?,
                 fallback,
             ))),
             Self::Bool(fallback) => Some(Self::Bool(BoolListReturn::string_case(
                 subject,
-                into_list_return_clauses(clauses)?,
+                into_list_return_clauses(clauses, |branch| match branch {
+                    Self::Bool(branch) => Some(branch),
+                    _ => None,
+                })?,
                 fallback,
             ))),
             Self::Nil(fallback) => Some(Self::Nil(NilListReturn::string_case(
                 subject,
-                into_list_return_clauses(clauses)?,
+                into_list_return_clauses(clauses, |branch| match branch {
+                    Self::Nil(branch) => Some(branch),
+                    _ => None,
+                })?,
                 fallback,
             ))),
             Self::Tuple {
                 item_type,
                 body: fallback,
-            } => Some(Self::Tuple {
-                item_type,
-                body: TupleListReturn::string_case(
-                    subject,
-                    into_list_return_clauses(clauses)?,
-                    fallback,
-                ),
-            }),
+            } => {
+                let clauses = into_list_return_clauses(clauses, |branch| match branch {
+                    Self::Tuple {
+                        item_type: branch_type,
+                        body,
+                    } if branch_type == item_type => Some(body),
+                    _ => None,
+                })?;
+                Some(Self::Tuple {
+                    item_type,
+                    body: TupleListReturn::string_case(subject, clauses, fallback),
+                })
+            }
             Self::List {
                 item_type,
                 body: fallback,
-            } => Some(Self::List {
-                item_type,
-                body: ListListReturn::string_case(
-                    subject,
-                    into_list_return_clauses(clauses)?,
-                    fallback,
-                ),
-            }),
+            } => {
+                let clauses = into_list_return_clauses(clauses, |branch| match branch {
+                    Self::List {
+                        item_type: branch_type,
+                        body,
+                    } if branch_type == item_type => Some(body),
+                    _ => None,
+                })?;
+                Some(Self::List {
+                    item_type,
+                    body: ListListReturn::string_case(subject, clauses, fallback),
+                })
+            }
             Self::Function {
                 item_type,
                 body: fallback,
-            } => Some(Self::Function {
-                item_type,
-                body: FunctionListReturn::string_case(
-                    subject,
-                    into_list_return_clauses(clauses)?,
-                    fallback,
-                ),
-            }),
+            } => {
+                let clauses = into_list_return_clauses(clauses, |branch| match branch {
+                    Self::Function {
+                        item_type: branch_type,
+                        body,
+                    } if branch_type == item_type => Some(body),
+                    _ => None,
+                })?;
+                Some(Self::Function {
+                    item_type,
+                    body: FunctionListReturn::string_case(subject, clauses, fallback),
+                })
+            }
         }
     }
 
@@ -483,77 +573,12 @@ impl ListReturn {
 #[cfg(test)]
 fn into_list_return_clauses<Pattern, Body>(
     clauses: Vec<(Pattern, ListReturn)>,
-) -> Option<Vec<(Pattern, Body)>>
-where
-    Body: TryFrom<ListReturn>,
-{
+    mut into_body: impl FnMut(ListReturn) -> Option<Body>,
+) -> Option<Vec<(Pattern, Body)>> {
     clauses
         .into_iter()
-        .map(|(pattern, branch)| Body::try_from(branch).ok().map(|branch| (pattern, branch)))
+        .map(|(pattern, branch)| into_body(branch).map(|branch| (pattern, branch)))
         .collect()
-}
-
-#[cfg(test)]
-macro_rules! impl_list_return_body_try_from {
-    ($body:ty, $variant:ident) => {
-        impl TryFrom<ListReturn> for $body {
-            type Error = ();
-
-            fn try_from(value: ListReturn) -> Result<Self, Self::Error> {
-                match value {
-                    ListReturn::$variant(value) => Ok(value),
-                    _ => Err(()),
-                }
-            }
-        }
-    };
-}
-
-#[cfg(test)]
-impl_list_return_body_try_from!(IntListReturn, Int);
-#[cfg(test)]
-impl_list_return_body_try_from!(FloatListReturn, Float);
-#[cfg(test)]
-impl_list_return_body_try_from!(StringListReturn, String);
-#[cfg(test)]
-impl_list_return_body_try_from!(BoolListReturn, Bool);
-#[cfg(test)]
-impl_list_return_body_try_from!(NilListReturn, Nil);
-
-#[cfg(test)]
-impl TryFrom<ListReturn> for TupleListReturn {
-    type Error = ();
-
-    fn try_from(value: ListReturn) -> Result<Self, Self::Error> {
-        match value {
-            ListReturn::Tuple { body, .. } => Ok(body),
-            _ => Err(()),
-        }
-    }
-}
-
-#[cfg(test)]
-impl TryFrom<ListReturn> for ListListReturn {
-    type Error = ();
-
-    fn try_from(value: ListReturn) -> Result<Self, Self::Error> {
-        match value {
-            ListReturn::List { body, .. } => Ok(body),
-            _ => Err(()),
-        }
-    }
-}
-
-#[cfg(test)]
-impl TryFrom<ListReturn> for FunctionListReturn {
-    type Error = ();
-
-    fn try_from(value: ListReturn) -> Result<Self, Self::Error> {
-        match value {
-            ListReturn::Function { body, .. } => Ok(body),
-            _ => Err(()),
-        }
-    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -2151,6 +2176,61 @@ mod tests {
                 None,
             );
         }
+    }
+
+    #[test]
+    fn list_return_case_helpers_reject_nested_item_metadata_mismatch() {
+        fn empty_return(item_type: ValueType) -> ListReturn {
+            ListReturn::expr(ListExpr::value(Vec::new(), item_type))
+        }
+
+        fn assert_case_helpers_reject(branch_type: ValueType, fallback_type: ValueType) {
+            assert_eq!(
+                ListReturn::try_bool_case(
+                    BoolExpr::value(true),
+                    empty_return(branch_type.clone()),
+                    empty_return(fallback_type.clone()),
+                ),
+                None,
+            );
+            assert_eq!(
+                ListReturn::try_int_case(
+                    IntExpr::value(1.into()),
+                    vec![(BigInt::from(1), empty_return(branch_type.clone()))],
+                    empty_return(fallback_type.clone()),
+                ),
+                None,
+            );
+            assert_eq!(
+                ListReturn::try_float_case(
+                    FloatExpr::value(1.5),
+                    vec![(1.5, empty_return(branch_type.clone()))],
+                    empty_return(fallback_type.clone()),
+                ),
+                None,
+            );
+            assert_eq!(
+                ListReturn::try_string_case(
+                    StringExpr::value("one".into()),
+                    vec![("one".into(), empty_return(branch_type))],
+                    empty_return(fallback_type),
+                ),
+                None,
+            );
+        }
+
+        assert_case_helpers_reject(
+            ValueType::Tuple(vec![ValueType::String]),
+            ValueType::Tuple(vec![ValueType::Int]),
+        );
+        assert_case_helpers_reject(
+            ValueType::List(Box::new(ValueType::String)),
+            ValueType::List(Box::new(ValueType::Int)),
+        );
+        assert_case_helpers_reject(
+            ValueType::Function(Box::new(FunctionType::new(Vec::new(), ValueType::String))),
+            ValueType::Function(Box::new(FunctionType::new(Vec::new(), ValueType::Int))),
+        );
     }
 
     fn list_return_item_type(return_: &ListReturn) -> ValueType {
