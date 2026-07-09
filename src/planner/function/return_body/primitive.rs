@@ -422,8 +422,8 @@ mod tests {
         bool_return, float_return, int_return, list_return, nil_return, string_return, tuple_return,
     };
     use crate::plan::{
-        BoolExpr, Expr, FloatExpr, FloatFunctionId, FunctionType, IntExpr, ListExpr, ListReturn,
-        NilExpr, ReturnBody, StringExpr, TupleExpr, ValueType,
+        BoolExpr, Expr, FloatExpr, FloatFunctionId, FunctionType, IntExpr, ListCaseBranches,
+        ListExpr, ListReturn, NilExpr, ReturnBody, StringExpr, TupleExpr, ValueType,
     };
     use num_bigint::BigInt;
 
@@ -672,8 +672,8 @@ mod tests {
     fn list_float_case() -> ListExpr {
         ListExpr::float_case(
             FloatExpr::value(1.0),
-            vec![(1.0, list_value())],
-            list_value(),
+            ListCaseBranches::from_exprs(vec![(1.0, list_value())], list_value())
+                .expect("list case branches"),
         )
     }
 

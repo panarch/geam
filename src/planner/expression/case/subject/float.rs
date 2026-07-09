@@ -216,10 +216,7 @@ fn float_case_expr(
             clauses: tuple_case_clauses(clauses)?,
             fallback,
         },
-        ExprKind::List(fallback) => FloatCaseBranches::List {
-            clauses: list_case_clauses(clauses)?,
-            fallback,
-        },
+        ExprKind::List(fallback) => FloatCaseBranches::List(list_case_branches(clauses, fallback)?),
         ExprKind::Function(fallback) => function_case_branches(clauses, fallback)?,
     };
 
@@ -329,6 +326,14 @@ fn list_case_clauses(
         typed_clauses.push((value, clause));
     }
     Ok(typed_clauses)
+}
+
+fn list_case_branches(
+    clauses: Vec<(f64, Expr)>,
+    fallback: crate::plan::ListExpr,
+) -> Result<crate::plan::ListCaseBranches<f64>, PlanError> {
+    crate::plan::ListCaseBranches::from_exprs(list_case_clauses(clauses)?, fallback)
+        .map_err(|_| invalid_case_shape(InvalidCaseShapeReason::BranchReturnTypeMismatch))
 }
 
 fn function_case_branches(
@@ -1488,6 +1493,14 @@ fn add_one(value: Float) {
             super::float_case_expr(
                 float(1.0).into(),
                 vec![(1.0, int(10).into())],
+                Expr::from(list([int(0)], ValueType::Int)),
+            ),
+            Err(case_branch_return_type_mismatch()),
+        );
+        assert_eq!(
+            super::float_case_expr(
+                float(1.0).into(),
+                vec![(1.0, Expr::from(list([string("wrong")], ValueType::String)))],
                 Expr::from(list([int(0)], ValueType::Int)),
             ),
             Err(case_branch_return_type_mismatch()),

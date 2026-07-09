@@ -26,9 +26,10 @@ pub use expression::{
 };
 pub(crate) use expression::{
     BoolListCaseBranches, BoolListExpr, BoolListItem, FloatListExpr, FloatListItem,
-    FunctionListExpr, FunctionListItem, IntListExpr, IntListItem, ListExpr, ListItem, ListListExpr,
-    ListListItem, ListLocalExpr, NilListExpr, NilListItem, StringListExpr, StringListItem,
-    TupleListExpr, TupleListItem, TypedListExpr, TypedListExprKind,
+    FunctionListExpr, FunctionListItem, IntListExpr, IntListItem, ListCaseBranches, ListExpr,
+    ListItem, ListListExpr, ListListItem, ListLocalExpr, ListSpreadElements, NilListExpr,
+    NilListItem, StringListExpr, StringListItem, TupleListExpr, TupleListItem, TypedListExpr,
+    TypedListExprKind,
 };
 pub(crate) use frame::FrameLayout;
 pub(crate) use function::{

@@ -157,17 +157,17 @@ fn plan_list(
             actual,
         ));
     };
-    if tail.element_type() != expected_element_type {
-        return Err(invalid_expression_type_for_value(
-            ValueType::List(Box::new(expected_element_type.clone())),
-            ValueType::List(Box::new(tail.element_type().clone())),
-        ));
-    }
-
     let elements =
-        crate::plan::ListElements::from_exprs(expected_element_type, planned_elements)
+        crate::plan::ListElements::from_exprs(expected_element_type.clone(), planned_elements)
             .map_err(|error| invalid_expression_type_for_value(error.expected, error.actual))?;
-    Ok(Expr::list(ListExpr::from_spread_elements(elements, tail)))
+    let elements =
+        crate::plan::ListSpreadElements::from_parts(elements, tail).map_err(|error| {
+            invalid_expression_type_for_value(
+                ValueType::List(Box::new(error.expected)),
+                ValueType::List(Box::new(error.actual)),
+            )
+        })?;
+    Ok(Expr::list(ListExpr::from_spread_elements(elements)))
 }
 
 fn plan_var(

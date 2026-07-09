@@ -4,14 +4,9 @@ mod item;
 mod local;
 mod typed;
 
-use self::case::{
-    into_bool_clauses, into_float_clauses, into_function_clauses, into_int_clauses,
-    into_list_clauses, into_nil_clauses, into_string_clauses, into_tuple_clauses,
-};
-use self::item::ListItemTag;
 pub(crate) use self::{
-    case::BoolListCaseBranches,
-    elements::{ListElementTypeMismatch, ListElements},
+    case::{BoolListCaseBranches, ListCaseBranches},
+    elements::{ListElementTypeMismatch, ListElements, ListSpreadElements},
     item::{
         BoolListItem, FloatListItem, FunctionListItem, IntListItem, ListItem, ListListItem,
         NilListItem, StringListItem, TupleListItem,
@@ -20,9 +15,11 @@ pub(crate) use self::{
     typed::{TypedListExpr, TypedListExprKind},
 };
 use super::{
-    BoolExpr, CallArg, Expr, FloatExpr, IntExpr, ListFunctionExpr, PanicExpr, StringExpr, TupleExpr,
+    BoolExpr, CallArg, Expr, FloatExpr, FunctionExpr, IntExpr, ListFunctionExpr, PanicExpr,
+    StringExpr, TupleExpr,
 };
-use crate::plan::{ListFunctionId, ListLocal, Step, ValueType};
+use crate::plan::value::ListValueKind;
+use crate::plan::{ListFunctionId, ListLocal, ListValue, Step, ValueType};
 use ecow::EcoString;
 use num_bigint::BigInt;
 
@@ -48,20 +45,13 @@ pub(crate) type ListListExpr = TypedListExpr<ListListItem>;
 pub(crate) type FunctionListExpr = TypedListExpr<FunctionListItem>;
 
 impl ListExpr {
-    pub(crate) fn value(elements: Vec<Expr>, element_type: ValueType) -> Self {
-        Self::try_value(elements, element_type)
-            .expect("list expression elements must match declared item type")
-    }
-
     pub(crate) fn try_value(
         elements: Vec<Expr>,
         element_type: ValueType,
     ) -> Result<Self, ListElementTypeMismatch> {
-        let item = ListItemTag::from_value_type(element_type.clone());
-        item.expr_from_values(elements)
+        ListElements::from_exprs(element_type, elements).map(Self::from_elements)
     }
 
-    #[cfg(test)]
     pub(crate) fn from_elements(elements: ListElements) -> Self {
         match elements {
             ListElements::Int(values) => Self::Int(IntListExpr::value(IntListItem, values)),
@@ -86,77 +76,93 @@ impl ListExpr {
         }
     }
 
-    #[cfg(test)]
-    pub(crate) fn spread(elements: Vec<Expr>, tail: ListExpr, element_type: ValueType) -> Self {
-        let elements = ListElements::from_exprs(element_type, elements)
-            .expect("list spread elements must match declared item type");
-        Self::try_spread(elements, tail).expect("list spread tail must match prefix item type")
-    }
-
-    #[cfg(test)]
-    pub(crate) fn try_spread(
-        elements: ListElements,
-        tail: ListExpr,
-    ) -> Result<Self, ListElementTypeMismatch> {
-        let expected = elements.item_type();
-        let actual = tail.element_type();
-        if expected != actual {
-            return Err(ListElementTypeMismatch { expected, actual });
+    pub(crate) fn from_value(value: ListValue) -> Self {
+        match value.into_kind() {
+            ListValueKind::Int(values) => Self::Int(IntListExpr::value(
+                IntListItem,
+                values.into_iter().map(IntExpr::value).collect(),
+            )),
+            ListValueKind::String(values) => Self::String(StringListExpr::value(
+                StringListItem,
+                values.into_iter().map(StringExpr::value).collect(),
+            )),
+            ListValueKind::Float(values) => Self::Float(FloatListExpr::value(
+                FloatListItem,
+                values.into_iter().map(FloatExpr::value).collect(),
+            )),
+            ListValueKind::Bool(values) => Self::Bool(BoolListExpr::value(
+                BoolListItem,
+                values.into_iter().map(BoolExpr::value).collect(),
+            )),
+            ListValueKind::Nil(len) => Self::Nil(NilListExpr::value(
+                NilListItem,
+                vec![crate::plan::NilExpr::value(); len],
+            )),
+            ListValueKind::Tuple { item_type, values } => {
+                let tuples = values
+                    .into_iter()
+                    .map(|values| {
+                        TupleExpr::value(
+                            values.into_iter().map(Expr::from).collect(),
+                            item_type.clone(),
+                        )
+                    })
+                    .collect();
+                Self::Tuple(TupleListExpr::value(TupleListItem { item_type }, tuples))
+            }
+            ListValueKind::List { item_type, values } => {
+                let values = values.into_iter().map(Self::from_value).collect();
+                Self::List(ListListExpr::value(ListListItem { item_type }, values))
+            }
+            ListValueKind::Function { item_type, values } => {
+                let values = values.into_iter().map(FunctionExpr::value).collect();
+                Self::Function(FunctionListExpr::value(
+                    FunctionListItem { item_type },
+                    values,
+                ))
+            }
         }
-
-        Ok(Self::from_spread_elements(elements, tail))
     }
 
-    pub(crate) fn from_spread_elements(elements: ListElements, tail: ListExpr) -> Self {
+    pub(crate) fn from_spread_elements(elements: ListSpreadElements) -> Self {
         match elements {
-            ListElements::Int(values) => {
-                let tail = tail.into_int().expect("list spread tail must be List(Int)");
+            ListSpreadElements::Int { values, tail } => {
                 Self::Int(IntListExpr::spread(IntListItem, values, tail))
             }
-            ListElements::String(values) => {
-                let tail = tail
-                    .into_string()
-                    .expect("list spread tail must be List(String)");
+            ListSpreadElements::String { values, tail } => {
                 Self::String(StringListExpr::spread(StringListItem, values, tail))
             }
-            ListElements::Float(values) => {
-                let tail = tail
-                    .into_float()
-                    .expect("list spread tail must be List(Float)");
+            ListSpreadElements::Float { values, tail } => {
                 Self::Float(FloatListExpr::spread(FloatListItem, values, tail))
             }
-            ListElements::Bool(values) => {
-                let tail = tail
-                    .into_bool()
-                    .expect("list spread tail must be List(Bool)");
+            ListSpreadElements::Bool { values, tail } => {
                 Self::Bool(BoolListExpr::spread(BoolListItem, values, tail))
             }
-            ListElements::Nil(values) => {
-                let tail = tail.into_nil().expect("list spread tail must be List(Nil)");
+            ListSpreadElements::Nil { values, tail } => {
                 Self::Nil(NilListExpr::spread(NilListItem, values, tail))
             }
-            ListElements::Tuple { item_type, values } => {
+            ListSpreadElements::Tuple {
+                item_type,
+                values,
+                tail,
+            } => {
                 let item = TupleListItem { item_type };
-                let tail = tail
-                    .into_tuple()
-                    .filter(|tail| tail.item == item)
-                    .expect("list spread tail must be List(tuple item type)");
                 Self::Tuple(TupleListExpr::spread(item, values, tail))
             }
-            ListElements::List { item_type, values } => {
+            ListSpreadElements::List {
+                item_type,
+                values,
+                tail,
+            } => {
                 let item = ListListItem { item_type };
-                let tail = tail
-                    .into_list()
-                    .filter(|tail| tail.item == item)
-                    .expect("list spread tail must be List(list item type)");
                 Self::List(ListListExpr::spread(item, values, tail))
             }
-            ListElements::Function { item_type, values } => {
+            ListSpreadElements::Function {
+                item_type,
+                values,
+                tail,
+            } => {
                 let item = FunctionListItem { item_type };
-                let tail = tail
-                    .into_function()
-                    .filter(|tail| tail.item == item)
-                    .expect("list spread tail must be List(function item type)");
                 Self::Function(FunctionListExpr::spread(item, values, tail))
             }
         }
@@ -393,199 +399,131 @@ impl ListExpr {
         }
     }
 
-    pub(crate) fn int_case(
-        subject: IntExpr,
-        clauses: Vec<(BigInt, ListExpr)>,
-        fallback: ListExpr,
-    ) -> Self {
-        match fallback {
-            Self::Int(fallback) => Self::Int(IntListExpr::int_case(
+    pub(crate) fn int_case(subject: IntExpr, branches: ListCaseBranches<BigInt>) -> Self {
+        match branches {
+            ListCaseBranches::Int { clauses, fallback } => Self::Int(IntListExpr::int_case(
                 IntListItem,
                 subject,
-                into_int_clauses(clauses),
+                clauses,
                 fallback,
             )),
-            Self::String(fallback) => Self::String(StringListExpr::int_case(
-                StringListItem,
-                subject,
-                into_string_clauses(clauses),
-                fallback,
-            )),
-            Self::Float(fallback) => Self::Float(FloatListExpr::int_case(
+            ListCaseBranches::String { clauses, fallback } => Self::String(
+                StringListExpr::int_case(StringListItem, subject, clauses, fallback),
+            ),
+            ListCaseBranches::Float { clauses, fallback } => Self::Float(FloatListExpr::int_case(
                 FloatListItem,
                 subject,
-                into_float_clauses(clauses),
+                clauses,
                 fallback,
             )),
-            Self::Bool(fallback) => Self::Bool(BoolListExpr::int_case(
+            ListCaseBranches::Bool { clauses, fallback } => Self::Bool(BoolListExpr::int_case(
                 BoolListItem,
                 subject,
-                into_bool_clauses(clauses),
+                clauses,
                 fallback,
             )),
-            Self::Nil(fallback) => Self::Nil(NilListExpr::int_case(
+            ListCaseBranches::Nil { clauses, fallback } => Self::Nil(NilListExpr::int_case(
                 NilListItem,
                 subject,
-                into_nil_clauses(clauses),
+                clauses,
                 fallback,
             )),
-            Self::Tuple(fallback) => {
+            ListCaseBranches::Tuple { clauses, fallback } => {
                 let item = fallback.item.clone();
-                Self::Tuple(TupleListExpr::int_case(
-                    item.clone(),
-                    subject,
-                    into_tuple_clauses(clauses, &item),
-                    fallback,
-                ))
+                Self::Tuple(TupleListExpr::int_case(item, subject, clauses, fallback))
             }
-            Self::List(fallback) => {
+            ListCaseBranches::List { clauses, fallback } => {
                 let item = fallback.item.clone();
-                Self::List(ListListExpr::int_case(
-                    item.clone(),
-                    subject,
-                    into_list_clauses(clauses, &item),
-                    fallback,
-                ))
+                Self::List(ListListExpr::int_case(item, subject, clauses, fallback))
             }
-            Self::Function(fallback) => {
+            ListCaseBranches::Function { clauses, fallback } => {
                 let item = fallback.item.clone();
-                Self::Function(FunctionListExpr::int_case(
-                    item.clone(),
-                    subject,
-                    into_function_clauses(clauses, &item),
-                    fallback,
-                ))
+                Self::Function(FunctionListExpr::int_case(item, subject, clauses, fallback))
             }
         }
     }
 
-    pub(crate) fn string_case(
-        subject: StringExpr,
-        clauses: Vec<(EcoString, ListExpr)>,
-        fallback: ListExpr,
-    ) -> Self {
-        match fallback {
-            Self::Int(fallback) => Self::Int(IntListExpr::string_case(
+    pub(crate) fn string_case(subject: StringExpr, branches: ListCaseBranches<EcoString>) -> Self {
+        match branches {
+            ListCaseBranches::Int { clauses, fallback } => Self::Int(IntListExpr::string_case(
                 IntListItem,
                 subject,
-                into_int_clauses(clauses),
+                clauses,
                 fallback,
             )),
-            Self::String(fallback) => Self::String(StringListExpr::string_case(
-                StringListItem,
-                subject,
-                into_string_clauses(clauses),
-                fallback,
-            )),
-            Self::Float(fallback) => Self::Float(FloatListExpr::string_case(
-                FloatListItem,
-                subject,
-                into_float_clauses(clauses),
-                fallback,
-            )),
-            Self::Bool(fallback) => Self::Bool(BoolListExpr::string_case(
+            ListCaseBranches::String { clauses, fallback } => Self::String(
+                StringListExpr::string_case(StringListItem, subject, clauses, fallback),
+            ),
+            ListCaseBranches::Float { clauses, fallback } => Self::Float(
+                FloatListExpr::string_case(FloatListItem, subject, clauses, fallback),
+            ),
+            ListCaseBranches::Bool { clauses, fallback } => Self::Bool(BoolListExpr::string_case(
                 BoolListItem,
                 subject,
-                into_bool_clauses(clauses),
+                clauses,
                 fallback,
             )),
-            Self::Nil(fallback) => Self::Nil(NilListExpr::string_case(
+            ListCaseBranches::Nil { clauses, fallback } => Self::Nil(NilListExpr::string_case(
                 NilListItem,
                 subject,
-                into_nil_clauses(clauses),
+                clauses,
                 fallback,
             )),
-            Self::Tuple(fallback) => {
+            ListCaseBranches::Tuple { clauses, fallback } => {
                 let item = fallback.item.clone();
-                Self::Tuple(TupleListExpr::string_case(
-                    item.clone(),
-                    subject,
-                    into_tuple_clauses(clauses, &item),
-                    fallback,
-                ))
+                Self::Tuple(TupleListExpr::string_case(item, subject, clauses, fallback))
             }
-            Self::List(fallback) => {
+            ListCaseBranches::List { clauses, fallback } => {
                 let item = fallback.item.clone();
-                Self::List(ListListExpr::string_case(
-                    item.clone(),
-                    subject,
-                    into_list_clauses(clauses, &item),
-                    fallback,
-                ))
+                Self::List(ListListExpr::string_case(item, subject, clauses, fallback))
             }
-            Self::Function(fallback) => {
+            ListCaseBranches::Function { clauses, fallback } => {
                 let item = fallback.item.clone();
                 Self::Function(FunctionListExpr::string_case(
-                    item.clone(),
-                    subject,
-                    into_function_clauses(clauses, &item),
-                    fallback,
+                    item, subject, clauses, fallback,
                 ))
             }
         }
     }
 
-    pub(crate) fn float_case(
-        subject: FloatExpr,
-        clauses: Vec<(f64, ListExpr)>,
-        fallback: ListExpr,
-    ) -> Self {
-        match fallback {
-            Self::Int(fallback) => Self::Int(IntListExpr::float_case(
+    pub(crate) fn float_case(subject: FloatExpr, branches: ListCaseBranches<f64>) -> Self {
+        match branches {
+            ListCaseBranches::Int { clauses, fallback } => Self::Int(IntListExpr::float_case(
                 IntListItem,
                 subject,
-                into_int_clauses(clauses),
+                clauses,
                 fallback,
             )),
-            Self::String(fallback) => Self::String(StringListExpr::float_case(
-                StringListItem,
-                subject,
-                into_string_clauses(clauses),
-                fallback,
-            )),
-            Self::Float(fallback) => Self::Float(FloatListExpr::float_case(
-                FloatListItem,
-                subject,
-                into_float_clauses(clauses),
-                fallback,
-            )),
-            Self::Bool(fallback) => Self::Bool(BoolListExpr::float_case(
+            ListCaseBranches::String { clauses, fallback } => Self::String(
+                StringListExpr::float_case(StringListItem, subject, clauses, fallback),
+            ),
+            ListCaseBranches::Float { clauses, fallback } => Self::Float(
+                FloatListExpr::float_case(FloatListItem, subject, clauses, fallback),
+            ),
+            ListCaseBranches::Bool { clauses, fallback } => Self::Bool(BoolListExpr::float_case(
                 BoolListItem,
                 subject,
-                into_bool_clauses(clauses),
+                clauses,
                 fallback,
             )),
-            Self::Nil(fallback) => Self::Nil(NilListExpr::float_case(
+            ListCaseBranches::Nil { clauses, fallback } => Self::Nil(NilListExpr::float_case(
                 NilListItem,
                 subject,
-                into_nil_clauses(clauses),
+                clauses,
                 fallback,
             )),
-            Self::Tuple(fallback) => {
+            ListCaseBranches::Tuple { clauses, fallback } => {
                 let item = fallback.item.clone();
-                Self::Tuple(TupleListExpr::float_case(
-                    item.clone(),
-                    subject,
-                    into_tuple_clauses(clauses, &item),
-                    fallback,
-                ))
+                Self::Tuple(TupleListExpr::float_case(item, subject, clauses, fallback))
             }
-            Self::List(fallback) => {
+            ListCaseBranches::List { clauses, fallback } => {
                 let item = fallback.item.clone();
-                Self::List(ListListExpr::float_case(
-                    item.clone(),
-                    subject,
-                    into_list_clauses(clauses, &item),
-                    fallback,
-                ))
+                Self::List(ListListExpr::float_case(item, subject, clauses, fallback))
             }
-            Self::Function(fallback) => {
+            ListCaseBranches::Function { clauses, fallback } => {
                 let item = fallback.item.clone();
                 Self::Function(FunctionListExpr::float_case(
-                    item.clone(),
-                    subject,
-                    into_function_clauses(clauses, &item),
-                    fallback,
+                    item, subject, clauses, fallback,
                 ))
             }
         }
@@ -688,18 +626,39 @@ impl ListExpr {
 }
 
 #[cfg(test)]
+impl ListExpr {
+    pub(crate) fn value(elements: Vec<Expr>, element_type: ValueType) -> Self {
+        Self::try_value(elements, element_type)
+            .expect("list expression elements must match declared item type")
+    }
+
+    pub(crate) fn spread(elements: Vec<Expr>, tail: ListExpr, element_type: ValueType) -> Self {
+        let elements = ListElements::from_exprs(element_type, elements)
+            .expect("list spread elements must match declared item type");
+        Self::try_spread(elements, tail).expect("list spread tail must match prefix item type")
+    }
+
+    pub(crate) fn try_spread(
+        elements: ListElements,
+        tail: ListExpr,
+    ) -> Result<Self, ListElementTypeMismatch> {
+        ListSpreadElements::from_parts(elements, tail).map(Self::from_spread_elements)
+    }
+}
+
+#[cfg(test)]
 mod tests {
     use super::{
         BoolListCaseBranches, BoolListExpr, BoolListItem, FloatListExpr, FloatListItem,
-        FunctionListExpr, FunctionListItem, IntListExpr, IntListItem, ListElementTypeMismatch,
-        ListElements, ListExpr, ListListExpr, ListListItem, NilListExpr, NilListItem,
-        StringListExpr, StringListItem, TupleListExpr, TupleListItem,
+        FunctionListExpr, FunctionListItem, IntListExpr, IntListItem, ListCaseBranches,
+        ListElementTypeMismatch, ListElements, ListExpr, ListListExpr, ListListItem, NilListExpr,
+        NilListItem, StringListExpr, StringListItem, TupleListExpr, TupleListItem,
     };
     use crate::plan::{
         BoolExpr, Expr, FloatExpr, FunctionExpr, FunctionType, FunctionValue, IntExpr,
         IntFunctionId, IntListFunctionId, IntListLocalId, ListFunctionExpr, ListFunctionId,
-        ListFunctionValue, ListLocal, NilExpr, PanicExpr, PanicSite, RuntimeFunctionId, Step,
-        StringExpr, TupleExpr, ValueType,
+        ListFunctionValue, ListLocal, ListValue, NilExpr, PanicExpr, PanicSite, RuntimeFunctionId,
+        Step, StringExpr, TupleExpr, ValueType,
     };
     use num_bigint::BigInt;
 
@@ -787,6 +746,91 @@ mod tests {
                     item_type: function_type,
                 },
                 vec![function],
+            )),
+        );
+    }
+
+    #[test]
+    fn from_value_preserves_typed_item_family() {
+        assert_eq!(
+            ListExpr::from_value(ListValue::int(vec![1.into()])),
+            ListExpr::Int(IntListExpr::value(
+                IntListItem,
+                vec![IntExpr::value(1.into())]
+            )),
+        );
+        assert_eq!(
+            ListExpr::from_value(ListValue::string(vec!["one".into()])),
+            ListExpr::String(StringListExpr::value(
+                StringListItem,
+                vec![StringExpr::value("one".into())],
+            )),
+        );
+        assert_eq!(
+            ListExpr::from_value(ListValue::float(vec![1.5])),
+            ListExpr::Float(FloatListExpr::value(
+                FloatListItem,
+                vec![FloatExpr::value(1.5)]
+            )),
+        );
+        assert_eq!(
+            ListExpr::from_value(ListValue::bool(vec![true])),
+            ListExpr::Bool(BoolListExpr::value(
+                BoolListItem,
+                vec![BoolExpr::value(true)]
+            )),
+        );
+        assert_eq!(
+            ListExpr::from_value(ListValue::nil(2)),
+            ListExpr::Nil(NilListExpr::value(
+                NilListItem,
+                vec![NilExpr::value(), NilExpr::value()],
+            )),
+        );
+        assert_eq!(
+            ListExpr::from_value(ListValue::tuple(
+                vec![ValueType::Int],
+                vec![vec![crate::plan::Value::Int(1.into())]],
+            )),
+            ListExpr::Tuple(TupleListExpr::value(
+                TupleListItem {
+                    item_type: vec![ValueType::Int],
+                },
+                vec![TupleExpr::value(
+                    vec![Expr::int(IntExpr::value(1.into()))],
+                    vec![ValueType::Int],
+                )],
+            )),
+        );
+        assert_eq!(
+            ListExpr::from_value(ListValue::list(
+                ValueType::String,
+                vec![ListValue::string(vec!["child".into()])],
+            )),
+            ListExpr::List(ListListExpr::value(
+                ListListItem {
+                    item_type: Box::new(ValueType::String),
+                },
+                vec![ListExpr::String(StringListExpr::value(
+                    StringListItem,
+                    vec![StringExpr::value("child".into())],
+                ))],
+            )),
+        );
+
+        let function_type = FunctionType::new(Vec::new(), ValueType::Int);
+        let function_value =
+            FunctionValue::new(RuntimeFunctionId::Int(IntFunctionId(0)), Vec::new());
+        assert_eq!(
+            ListExpr::from_value(ListValue::function(
+                function_type.clone(),
+                vec![function_value.clone()],
+            )),
+            ListExpr::Function(FunctionListExpr::value(
+                FunctionListItem {
+                    item_type: function_type,
+                },
+                vec![FunctionExpr::value(function_value)],
             )),
         );
     }
@@ -978,8 +1022,11 @@ mod tests {
         assert_eq!(
             ListExpr::int_case(
                 IntExpr::value(1.into()),
-                vec![(BigInt::from(1), branch.clone())],
-                fallback.clone(),
+                ListCaseBranches::from_exprs(
+                    vec![(BigInt::from(1), branch.clone())],
+                    fallback.clone()
+                )
+                .expect("list case branches"),
             ),
             ListExpr::Tuple(TupleListExpr::int_case(
                 item.clone(),
@@ -1065,11 +1112,14 @@ mod tests {
             assert_eq!(
                 ListExpr::int_case(
                     IntExpr::value(1.into()),
-                    vec![(
-                        BigInt::from(1),
-                        ListExpr::value(Vec::new(), item_type.clone())
-                    )],
-                    ListExpr::value(Vec::new(), item_type.clone()),
+                    ListCaseBranches::from_exprs(
+                        vec![(
+                            BigInt::from(1),
+                            ListExpr::value(Vec::new(), item_type.clone()),
+                        )],
+                        ListExpr::value(Vec::new(), item_type.clone()),
+                    )
+                    .expect("list case branches"),
                 )
                 .element_type(),
                 item_type,
@@ -1077,8 +1127,11 @@ mod tests {
             assert_eq!(
                 ListExpr::string_case(
                     StringExpr::value("one".into()),
-                    vec![("one".into(), ListExpr::value(Vec::new(), item_type.clone()))],
-                    ListExpr::value(Vec::new(), item_type.clone()),
+                    ListCaseBranches::from_exprs(
+                        vec![("one".into(), ListExpr::value(Vec::new(), item_type.clone()))],
+                        ListExpr::value(Vec::new(), item_type.clone()),
+                    )
+                    .expect("list case branches"),
                 )
                 .element_type(),
                 item_type,
@@ -1086,8 +1139,11 @@ mod tests {
             assert_eq!(
                 ListExpr::float_case(
                     FloatExpr::value(1.5),
-                    vec![(1.5, ListExpr::value(Vec::new(), item_type.clone()))],
-                    ListExpr::value(Vec::new(), item_type.clone()),
+                    ListCaseBranches::from_exprs(
+                        vec![(1.5, ListExpr::value(Vec::new(), item_type.clone()))],
+                        ListExpr::value(Vec::new(), item_type.clone()),
+                    )
+                    .expect("list case branches"),
                 )
                 .element_type(),
                 item_type,

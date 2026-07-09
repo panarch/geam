@@ -59,18 +59,6 @@ pub(crate) struct FunctionListItem {
     pub(super) item_type: FunctionType,
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub(super) enum ListItemTag {
-    Int(IntListItem),
-    String(StringListItem),
-    Float(FloatListItem),
-    Bool(BoolListItem),
-    Nil(NilListItem),
-    Tuple(TupleListItem),
-    List(ListListItem),
-    Function(FunctionListItem),
-}
-
 impl TupleListItem {
     pub(crate) fn new(item_type: Vec<ValueType>) -> Self {
         Self { item_type }
@@ -98,48 +86,6 @@ impl FunctionListItem {
 
     pub(crate) fn item_type(&self) -> FunctionType {
         self.item_type.clone()
-    }
-}
-
-impl ListItemTag {
-    pub(super) fn from_value_type(value: ValueType) -> Self {
-        match value {
-            ValueType::Int => Self::Int(IntListItem),
-            ValueType::String => Self::String(StringListItem),
-            ValueType::Float => Self::Float(FloatListItem),
-            ValueType::Bool => Self::Bool(BoolListItem),
-            ValueType::Nil => Self::Nil(NilListItem),
-            ValueType::Tuple(item_type) => Self::Tuple(TupleListItem { item_type }),
-            ValueType::List(item_type) => Self::List(ListListItem { item_type }),
-            ValueType::Function(item_type) => Self::Function(FunctionListItem {
-                item_type: *item_type,
-            }),
-        }
-    }
-
-    pub(super) fn expr_from_values(
-        self,
-        values: Vec<Expr>,
-    ) -> Result<ListExpr, ListElementTypeMismatch> {
-        match self {
-            Self::Int(item) => ItemExprBuilder(item).build(values).map(ListExpr::Int),
-            Self::String(item) => ItemExprBuilder(item).build(values).map(ListExpr::String),
-            Self::Float(item) => ItemExprBuilder(item).build(values).map(ListExpr::Float),
-            Self::Bool(item) => ItemExprBuilder(item).build(values).map(ListExpr::Bool),
-            Self::Nil(item) => ItemExprBuilder(item).build(values).map(ListExpr::Nil),
-            Self::Tuple(item) => ItemExprBuilder(item).build(values).map(ListExpr::Tuple),
-            Self::List(item) => ItemExprBuilder(item).build(values).map(ListExpr::List),
-            Self::Function(item) => ItemExprBuilder(item).build(values).map(ListExpr::Function),
-        }
-    }
-}
-
-struct ItemExprBuilder<Item>(Item);
-
-impl<Item: ListItem> ItemExprBuilder<Item> {
-    fn build(self, values: Vec<Expr>) -> Result<TypedListExpr<Item>, ListElementTypeMismatch> {
-        let elements = Item::elements_from_exprs(&self.0, values)?;
-        Ok(TypedListExpr::value(self.0, elements))
     }
 }
 

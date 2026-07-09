@@ -720,10 +720,10 @@ mod tests {
         BoolExpr, BoolListCaseBranches, BoolListLocalId, CallArg, ExecutionPlan, Expr, FloatExpr,
         FloatListLocalId, FrameLayout, FunctionExpr, FunctionId, FunctionListLocalId, FunctionPlan,
         FunctionReturnFamily, FunctionType, IntExpr, IntFunctionExpr, IntFunctionId,
-        IntFunctionValue, IntListLocalId, IntLocalId, ListExpr, ListFunctionExpr, ListFunctionId,
-        ListFunctionValue, ListListLocalId, ListLocal, ListReturn, ListValue, NilExpr,
-        NilListLocalId, PanicExpr, PanicSite, ReturnExpr, Step, StringExpr, StringListItem,
-        StringListLocalId, TupleExpr, TupleListLocalId, ValueType,
+        IntFunctionValue, IntListLocalId, IntLocalId, ListCaseBranches, ListExpr, ListFunctionExpr,
+        ListFunctionId, ListFunctionValue, ListListLocalId, ListLocal, ListReturn, ListValue,
+        NilExpr, NilListLocalId, PanicExpr, PanicSite, ReturnExpr, Step, StringExpr,
+        StringListItem, StringListLocalId, TupleExpr, TupleListLocalId, ValueType,
     };
     use crate::runtime::frame::Frame;
     use crate::runtime::{ExecutionError, PanicKind};
@@ -1437,8 +1437,8 @@ mod tests {
                 &mut frame,
                 &ListExpr::int_case(
                     IntExpr::value(1.into()),
-                    vec![(1.into(), list_expr(1))],
-                    list_expr(2),
+                    ListCaseBranches::from_exprs(vec![(1.into(), list_expr(1))], list_expr(2))
+                        .expect("list case branches"),
                 ),
             ),
             Ok(list_value(1)),
@@ -1449,8 +1449,8 @@ mod tests {
                 &mut frame,
                 &ListExpr::int_case(
                     IntExpr::value(2.into()),
-                    vec![(1.into(), list_expr(2))],
-                    list_expr(1),
+                    ListCaseBranches::from_exprs(vec![(1.into(), list_expr(2))], list_expr(1))
+                        .expect("list case branches"),
                 ),
             ),
             Ok(list_value(1)),
@@ -1461,8 +1461,8 @@ mod tests {
                 &mut frame,
                 &ListExpr::string_case(
                     StringExpr::value("hit".into()),
-                    vec![("hit".into(), list_expr(1))],
-                    list_expr(2),
+                    ListCaseBranches::from_exprs(vec![("hit".into(), list_expr(1))], list_expr(2))
+                        .expect("list case branches"),
                 ),
             ),
             Ok(list_value(1)),
@@ -1473,8 +1473,8 @@ mod tests {
                 &mut frame,
                 &ListExpr::string_case(
                     StringExpr::value("miss".into()),
-                    vec![("hit".into(), list_expr(2))],
-                    list_expr(1),
+                    ListCaseBranches::from_exprs(vec![("hit".into(), list_expr(2))], list_expr(1))
+                        .expect("list case branches"),
                 ),
             ),
             Ok(list_value(1)),
@@ -1485,8 +1485,8 @@ mod tests {
                 &mut frame,
                 &ListExpr::float_case(
                     FloatExpr::value(1.0),
-                    vec![(1.0, list_expr(1))],
-                    list_expr(2),
+                    ListCaseBranches::from_exprs(vec![(1.0, list_expr(1))], list_expr(2))
+                        .expect("list case branches"),
                 ),
             ),
             Ok(list_value(1)),
@@ -1497,8 +1497,8 @@ mod tests {
                 &mut frame,
                 &ListExpr::float_case(
                     FloatExpr::value(2.0),
-                    vec![(1.0, list_expr(2))],
-                    list_expr(1),
+                    ListCaseBranches::from_exprs(vec![(1.0, list_expr(2))], list_expr(1))
+                        .expect("list case branches"),
                 ),
             ),
             Ok(list_value(1)),
@@ -2114,21 +2114,25 @@ mod tests {
             (
                 ListExpr::int_case(
                     error_int_expr(),
-                    vec![(1.into(), list_expr(1))],
-                    list_expr(2),
+                    ListCaseBranches::from_exprs(vec![(1.into(), list_expr(1))], list_expr(2))
+                        .expect("list case branches"),
                 ),
                 ValueType::Int,
             ),
             (
                 ListExpr::string_case(
                     error_string_expr(),
-                    vec![("hit".into(), list_expr(1))],
-                    list_expr(2),
+                    ListCaseBranches::from_exprs(vec![("hit".into(), list_expr(1))], list_expr(2))
+                        .expect("list case branches"),
                 ),
                 ValueType::String,
             ),
             (
-                ListExpr::float_case(error_float_expr(), vec![(1.0, list_expr(1))], list_expr(2)),
+                ListExpr::float_case(
+                    error_float_expr(),
+                    ListCaseBranches::from_exprs(vec![(1.0, list_expr(1))], list_expr(2))
+                        .expect("list case branches"),
+                ),
                 ValueType::Float,
             ),
             (

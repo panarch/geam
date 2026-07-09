@@ -388,10 +388,9 @@ fn string_case_expr(
             clauses: tuple_case_clauses(clauses)?,
             fallback,
         },
-        ExprKind::List(fallback) => StringCaseBranches::List {
-            clauses: list_case_clauses(clauses)?,
-            fallback,
-        },
+        ExprKind::List(fallback) => {
+            StringCaseBranches::List(list_case_branches(clauses, fallback)?)
+        }
         ExprKind::Function(fallback) => function_case_branches(clauses, fallback)?,
     };
 
@@ -501,6 +500,14 @@ fn list_case_clauses(
         typed_clauses.push((value, clause));
     }
     Ok(typed_clauses)
+}
+
+fn list_case_branches(
+    clauses: Vec<(EcoString, Expr)>,
+    fallback: crate::plan::ListExpr,
+) -> Result<crate::plan::ListCaseBranches<EcoString>, PlanError> {
+    crate::plan::ListCaseBranches::from_exprs(list_case_clauses(clauses)?, fallback)
+        .map_err(|_| invalid_case_shape(InvalidCaseShapeReason::BranchReturnTypeMismatch))
 }
 
 fn function_case_branches(
@@ -1763,6 +1770,17 @@ fn return_value(value: String) {
             super::string_case_expr(
                 string("one").into(),
                 vec![("one".into(), int(10).into())],
+                Expr::from(list([int(0)], ValueType::Int)),
+            ),
+            Err(case_branch_return_type_mismatch()),
+        );
+        assert_eq!(
+            super::string_case_expr(
+                string("one").into(),
+                vec![(
+                    "one".into(),
+                    Expr::from(list([string("wrong")], ValueType::String)),
+                )],
                 Expr::from(list([int(0)], ValueType::Int)),
             ),
             Err(case_branch_return_type_mismatch()),

@@ -40,10 +40,10 @@ pub(crate) use self::{
     int::IntExprKind,
     list::{
         BoolListCaseBranches, BoolListExpr, BoolListItem, FloatListExpr, FloatListItem,
-        FunctionListExpr, FunctionListItem, IntListExpr, IntListItem, ListElements, ListExpr,
-        ListItem, ListListExpr, ListListItem, ListLocalExpr, NilListExpr, NilListItem,
-        StringListExpr, StringListItem, TupleListExpr, TupleListItem, TypedListExpr,
-        TypedListExprKind,
+        FunctionListExpr, FunctionListItem, IntListExpr, IntListItem, ListCaseBranches,
+        ListElements, ListExpr, ListItem, ListListExpr, ListListItem, ListLocalExpr,
+        ListSpreadElements, NilListExpr, NilListItem, StringListExpr, StringListItem,
+        TupleListExpr, TupleListItem, TypedListExpr, TypedListExprKind,
     },
     nil::NilExprKind,
     panic::{PanicExpr, PanicExprKind},
@@ -185,9 +185,7 @@ impl Expr {
             IntCaseBranches::Tuple { clauses, fallback } => {
                 Self::tuple(TupleExpr::int_case(subject, clauses, fallback))
             }
-            IntCaseBranches::List { clauses, fallback } => {
-                Self::list(ListExpr::int_case(subject, clauses, fallback))
-            }
+            IntCaseBranches::List(branches) => Self::list(ListExpr::int_case(subject, branches)),
             IntCaseBranches::IntFunction { clauses, fallback } => Self::function(
                 FunctionExpr::int(IntFunctionExpr::int_case(subject, clauses, fallback)),
             ),
@@ -235,8 +233,8 @@ impl Expr {
             StringCaseBranches::Tuple { clauses, fallback } => {
                 Self::tuple(TupleExpr::string_case(subject, clauses, fallback))
             }
-            StringCaseBranches::List { clauses, fallback } => {
-                Self::list(ListExpr::string_case(subject, clauses, fallback))
+            StringCaseBranches::List(branches) => {
+                Self::list(ListExpr::string_case(subject, branches))
             }
             StringCaseBranches::IntFunction { clauses, fallback } => Self::function(
                 FunctionExpr::int(IntFunctionExpr::string_case(subject, clauses, fallback)),
@@ -287,8 +285,8 @@ impl Expr {
             FloatCaseBranches::Tuple { clauses, fallback } => {
                 Self::tuple(TupleExpr::float_case(subject, clauses, fallback))
             }
-            FloatCaseBranches::List { clauses, fallback } => {
-                Self::list(ListExpr::float_case(subject, clauses, fallback))
+            FloatCaseBranches::List(branches) => {
+                Self::list(ListExpr::float_case(subject, branches))
             }
             FloatCaseBranches::IntFunction { clauses, fallback } => Self::function(
                 FunctionExpr::int(IntFunctionExpr::float_case(subject, clauses, fallback)),
@@ -414,10 +412,7 @@ impl From<Value> for Expr {
                 value.iter().cloned().map(Self::from).collect(),
                 value.iter().map(Value::value_type).collect(),
             )),
-            Value::List(value) => Self::list(ListExpr::value(
-                value.to_values().into_iter().map(Self::from).collect(),
-                value.item_type(),
-            )),
+            Value::List(value) => Self::list(ListExpr::from_value(value)),
             Value::Function(value) => Self::function(FunctionExpr::value(value)),
         }
     }
@@ -428,8 +423,8 @@ mod tests {
     use super::{
         BoolCaseBranches, BoolExpr, BoolFunctionExpr, BoolListCaseBranches, Expr,
         FloatCaseBranches, FloatExpr, FloatFunctionExpr, FunctionExpr, FunctionFunctionExpr,
-        IntCaseBranches, IntExpr, IntFunctionExpr, ListExpr, ListFunctionExpr, NilExpr,
-        NilFunctionExpr, StringCaseBranches, StringExpr, StringFunctionExpr, TupleExpr,
+        IntCaseBranches, IntExpr, IntFunctionExpr, ListCaseBranches, ListExpr, ListFunctionExpr,
+        NilExpr, NilFunctionExpr, StringCaseBranches, StringExpr, StringFunctionExpr, TupleExpr,
     };
     use crate::plan::{
         BoolFunctionId, BoolFunctionValue, BoolLocalId, FloatFunctionId, FloatFunctionValue,
@@ -737,15 +732,15 @@ mod tests {
         assert_eq!(
             Expr::int_case(
                 IntExpr::value(BigInt::from(1)),
-                IntCaseBranches::List {
-                    clauses: vec![(BigInt::from(1), list_expr())],
-                    fallback: list_expr(),
-                },
+                IntCaseBranches::List(
+                    ListCaseBranches::from_exprs(vec![(BigInt::from(1), list_expr())], list_expr())
+                        .expect("list case branches"),
+                ),
             ),
             Expr::list(ListExpr::int_case(
                 IntExpr::value(BigInt::from(1)),
-                vec![(BigInt::from(1), list_expr())],
-                list_expr(),
+                ListCaseBranches::from_exprs(vec![(BigInt::from(1), list_expr())], list_expr())
+                    .expect("list case branches"),
             )),
         );
         assert_eq!(
@@ -909,15 +904,15 @@ mod tests {
         assert_eq!(
             Expr::float_case(
                 FloatExpr::value(1.0),
-                FloatCaseBranches::List {
-                    clauses: vec![(1.0, list_expr())],
-                    fallback: list_expr(),
-                },
+                FloatCaseBranches::List(
+                    ListCaseBranches::from_exprs(vec![(1.0, list_expr())], list_expr())
+                        .expect("list case branches"),
+                ),
             ),
             Expr::list(ListExpr::float_case(
                 FloatExpr::value(1.0),
-                vec![(1.0, list_expr())],
-                list_expr(),
+                ListCaseBranches::from_exprs(vec![(1.0, list_expr())], list_expr())
+                    .expect("list case branches"),
             )),
         );
         assert_eq!(
@@ -1039,15 +1034,15 @@ mod tests {
         assert_eq!(
             Expr::string_case(
                 StringExpr::value("one".into()),
-                StringCaseBranches::List {
-                    clauses: vec![("one".into(), list_expr())],
-                    fallback: list_expr(),
-                },
+                StringCaseBranches::List(
+                    ListCaseBranches::from_exprs(vec![("one".into(), list_expr())], list_expr())
+                        .expect("list case branches"),
+                ),
             ),
             Expr::list(ListExpr::string_case(
                 StringExpr::value("one".into()),
-                vec![("one".into(), list_expr())],
-                list_expr(),
+                ListCaseBranches::from_exprs(vec![("one".into(), list_expr())], list_expr())
+                    .expect("list case branches"),
             )),
         );
         assert_eq!(

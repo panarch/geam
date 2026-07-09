@@ -648,11 +648,11 @@ mod tests {
     use crate::plan::{
         BoolExpr, BoolListCaseBranches, BoolListLocalId, BoolLocalId, CallArg, Expr, FloatExpr,
         FloatFunctionId, FloatFunctionLocalId, FloatListLocalId, FloatLocalId, FunctionType,
-        IntExpr, IntFunctionId, IntListLocalId, IntLocalId, ListExpr, ListFunctionExpr,
-        ListFunctionId, ListListLocalId, ListLocal, NilExpr, NilListLocalId, NilLocalId, PanicExpr,
-        PanicSite, ReturnExpr, Step, StringExpr, StringListLocalId, StringLocalId, TupleExpr,
-        TupleFunctionExpr, TupleFunctionId, TupleFunctionLocalId, TupleListLocalId, TupleLocalId,
-        ValueType,
+        IntExpr, IntFunctionId, IntListLocalId, IntLocalId, ListCaseBranches, ListExpr,
+        ListFunctionExpr, ListFunctionId, ListListLocalId, ListLocal, NilExpr, NilListLocalId,
+        NilLocalId, PanicExpr, PanicSite, ReturnExpr, Step, StringExpr, StringListLocalId,
+        StringLocalId, TupleExpr, TupleFunctionExpr, TupleFunctionId, TupleFunctionLocalId,
+        TupleListLocalId, TupleLocalId, ValueType,
     };
 
     #[test]
@@ -1308,27 +1308,48 @@ mod tests {
             ))),
             Step::evaluate(Expr::list(ListExpr::int_case(
                 IntExpr::local_get(IntLocalId(1), "int_subject".into()),
-                vec![(
-                    1.into(),
-                    ListExpr::local_get(ListLocal::int(IntListLocalId(6)), "int_branch".into()),
-                )],
-                ListExpr::local_get(ListLocal::int(IntListLocalId(7)), "int_fallback".into()),
+                ListCaseBranches::from_exprs(
+                    vec![(
+                        1.into(),
+                        ListExpr::local_get(ListLocal::int(IntListLocalId(6)), "int_branch".into()),
+                    )],
+                    ListExpr::local_get(ListLocal::int(IntListLocalId(7)), "int_fallback".into()),
+                )
+                .expect("list case branches"),
             ))),
             Step::evaluate(Expr::list(ListExpr::string_case(
                 StringExpr::local_get(StringLocalId(0), "string_subject".into()),
-                vec![(
-                    "hit".into(),
-                    ListExpr::local_get(ListLocal::int(IntListLocalId(8)), "string_branch".into()),
-                )],
-                ListExpr::local_get(ListLocal::int(IntListLocalId(9)), "string_fallback".into()),
+                ListCaseBranches::from_exprs(
+                    vec![(
+                        "hit".into(),
+                        ListExpr::local_get(
+                            ListLocal::int(IntListLocalId(8)),
+                            "string_branch".into(),
+                        ),
+                    )],
+                    ListExpr::local_get(
+                        ListLocal::int(IntListLocalId(9)),
+                        "string_fallback".into(),
+                    ),
+                )
+                .expect("list case branches"),
             ))),
             Step::evaluate(Expr::list(ListExpr::float_case(
                 FloatExpr::local_get(FloatLocalId(0), "float_subject".into()),
-                vec![(
-                    1.0,
-                    ListExpr::local_get(ListLocal::int(IntListLocalId(10)), "float_branch".into()),
-                )],
-                ListExpr::local_get(ListLocal::int(IntListLocalId(11)), "float_fallback".into()),
+                ListCaseBranches::from_exprs(
+                    vec![(
+                        1.0,
+                        ListExpr::local_get(
+                            ListLocal::int(IntListLocalId(10)),
+                            "float_branch".into(),
+                        ),
+                    )],
+                    ListExpr::local_get(
+                        ListLocal::int(IntListLocalId(11)),
+                        "float_fallback".into(),
+                    ),
+                )
+                .expect("list case branches"),
             ))),
             Step::evaluate(Expr::list(ListExpr::block(
                 vec![Step::evaluate(Expr::int(IntExpr::local_get(
