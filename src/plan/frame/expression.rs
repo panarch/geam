@@ -518,17 +518,23 @@ impl FrameLayout {
         &mut self,
         expression: &TypedListExpr<Item>,
     ) {
-        match expression.kind() {
-            TypedListExprKind::Value(elements) => {
-                self.include_typed_list_elements(expression.item(), elements)
-            }
+        self.include_typed_list_expr_kind(expression.item(), expression.kind());
+    }
+
+    fn include_typed_list_expr_kind<Item: ListItem>(
+        &mut self,
+        item: &Item,
+        kind: &TypedListExprKind<Item>,
+    ) {
+        match kind {
+            TypedListExprKind::Value(elements) => self.include_typed_list_elements(item, elements),
             TypedListExprKind::Panic(panic) => self.include_panic_expr(panic),
             TypedListExprKind::Spread { elements, tail } => {
-                self.include_typed_list_elements(expression.item(), elements);
-                self.include_typed_list_expr(tail);
+                self.include_typed_list_elements(item, elements);
+                self.include_typed_list_expr_kind(item, tail);
             }
             TypedListExprKind::LocalGet { local, .. } => {
-                self.include_list(expression.item().local_to_facade(local.clone()));
+                self.include_list(item.local_to_facade(local.clone()));
             }
             TypedListExprKind::Call { args, .. } => self.include_call_args(args),
             TypedListExprKind::FunctionCall { function, args } => {
@@ -537,15 +543,17 @@ impl FrameLayout {
             }
             TypedListExprKind::TupleIndex { tuple, .. } => self.include_tuple_expr(tuple),
             TypedListExprKind::ListIndex { list, .. } => self.include_typed_list_expr(list),
-            TypedListExprKind::DropFirst { list, .. } => self.include_typed_list_expr(list),
+            TypedListExprKind::DropFirst { list, .. } => {
+                self.include_typed_list_expr_kind(item, list)
+            }
             TypedListExprKind::BoolCase {
                 subject,
                 true_,
                 false_,
             } => {
                 self.include_bool_expr(subject);
-                self.include_typed_list_expr(true_);
-                self.include_typed_list_expr(false_);
+                self.include_typed_list_expr_kind(item, true_);
+                self.include_typed_list_expr_kind(item, false_);
             }
             TypedListExprKind::IntCase {
                 subject,
@@ -554,9 +562,9 @@ impl FrameLayout {
             } => {
                 self.include_int_expr(subject);
                 for (_, branch) in clauses {
-                    self.include_typed_list_expr(branch);
+                    self.include_typed_list_expr_kind(item, branch);
                 }
-                self.include_typed_list_expr(fallback);
+                self.include_typed_list_expr_kind(item, fallback);
             }
             TypedListExprKind::StringCase {
                 subject,
@@ -565,9 +573,9 @@ impl FrameLayout {
             } => {
                 self.include_string_expr(subject);
                 for (_, branch) in clauses {
-                    self.include_typed_list_expr(branch);
+                    self.include_typed_list_expr_kind(item, branch);
                 }
-                self.include_typed_list_expr(fallback);
+                self.include_typed_list_expr_kind(item, fallback);
             }
             TypedListExprKind::FloatCase {
                 subject,
@@ -576,13 +584,13 @@ impl FrameLayout {
             } => {
                 self.include_float_expr(subject);
                 for (_, branch) in clauses {
-                    self.include_typed_list_expr(branch);
+                    self.include_typed_list_expr_kind(item, branch);
                 }
-                self.include_typed_list_expr(fallback);
+                self.include_typed_list_expr_kind(item, fallback);
             }
             TypedListExprKind::Block { steps, return_ } => {
                 self.include_steps(steps);
-                self.include_typed_list_expr(return_);
+                self.include_typed_list_expr_kind(item, return_);
             }
         }
     }

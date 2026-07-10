@@ -114,14 +114,22 @@ fn eval_typed_list_expr<Item: RuntimeListItem>(
     frame: &mut Frame,
     expression: &TypedListExpr<Item>,
 ) -> Result<Item::RuntimeValue, ExecutionError> {
-    match expression.kind() {
-        TypedListExprKind::Value(elements) => {
-            Item::eval_elements(plan, frame, expression.item(), elements)
-        }
+    eval_typed_list_expr_kind(plan, frame, expression.item(), expression.kind())
+}
+
+fn eval_typed_list_expr_kind<Item: RuntimeListItem>(
+    plan: &ExecutionPlan,
+    frame: &mut Frame,
+    item: &Item,
+    kind: &TypedListExprKind<Item>,
+) -> Result<Item::RuntimeValue, ExecutionError> {
+    match kind {
+        TypedListExprKind::Value(elements) => Item::eval_elements(plan, frame, item, elements),
         TypedListExprKind::Spread { elements, tail } => {
-            let values = Item::eval_elements(plan, frame, expression.item(), elements)?;
-            let tail_values = eval_typed_list_expr(plan, frame, tail)?;
-            append_spread(expression.item(), values, tail.item(), tail_values)
+            let mut values = Item::eval_elements(plan, frame, item, elements)?;
+            let tail_values = eval_typed_list_expr_kind(plan, frame, item, tail)?;
+            Item::append(&mut values, tail_values);
+            Ok(values)
         }
         TypedListExprKind::LocalGet { local, .. } => Ok(Item::get_local(frame, local.clone())),
         TypedListExprKind::Call { function, args } => {
@@ -131,11 +139,11 @@ fn eval_typed_list_expr<Item: RuntimeListItem>(
             Item::run_function_call(plan, function, args, frame)
         }
         TypedListExprKind::TupleIndex { tuple, index } => {
-            let expected = ValueType::List(Box::new(expression.element_type().clone()));
+            let expected = ValueType::List(Box::new(item.value_type()));
             match project_tuple_expr(plan, frame, tuple, *index, expected.clone())? {
                 Value::List(value) => {
                     let actual = value.item_type();
-                    Item::from_facade(expression.item(), value).ok_or_else(|| {
+                    Item::from_facade(item, value).ok_or_else(|| {
                         ExecutionError::tuple_index_family_mismatch(
                             expected,
                             ValueType::List(Box::new(actual)),
@@ -149,10 +157,10 @@ fn eval_typed_list_expr<Item: RuntimeListItem>(
             }
         }
         TypedListExprKind::ListIndex { list, index } => {
-            Item::project_nested_list(plan, frame, expression.item(), list, *index)
+            Item::project_nested_list(plan, frame, item, list, *index)
         }
         TypedListExprKind::DropFirst { list, count } => {
-            let list = eval_typed_list_expr(plan, frame, list)?;
+            let list = eval_typed_list_expr_kind(plan, frame, item, list)?;
             Ok(Item::drop_first(&list, *count))
         }
         TypedListExprKind::Panic(panic) => eval_panic_expr(plan, frame, panic),
@@ -162,9 +170,9 @@ fn eval_typed_list_expr<Item: RuntimeListItem>(
             false_,
         } => {
             if eval_bool_expr(plan, frame, subject)? {
-                eval_typed_list_expr(plan, frame, true_)
+                eval_typed_list_expr_kind(plan, frame, item, true_)
             } else {
-                eval_typed_list_expr(plan, frame, false_)
+                eval_typed_list_expr_kind(plan, frame, item, false_)
             }
         }
         TypedListExprKind::IntCase {
@@ -175,10 +183,10 @@ fn eval_typed_list_expr<Item: RuntimeListItem>(
             let subject = eval_int_expr(plan, frame, subject)?;
             for (pattern, branch) in clauses {
                 if pattern == &subject {
-                    return eval_typed_list_expr(plan, frame, branch);
+                    return eval_typed_list_expr_kind(plan, frame, item, branch);
                 }
             }
-            eval_typed_list_expr(plan, frame, fallback)
+            eval_typed_list_expr_kind(plan, frame, item, fallback)
         }
         TypedListExprKind::StringCase {
             subject,
@@ -188,10 +196,10 @@ fn eval_typed_list_expr<Item: RuntimeListItem>(
             let subject = eval_string_expr(plan, frame, subject)?;
             for (pattern, branch) in clauses {
                 if pattern == &subject {
-                    return eval_typed_list_expr(plan, frame, branch);
+                    return eval_typed_list_expr_kind(plan, frame, item, branch);
                 }
             }
-            eval_typed_list_expr(plan, frame, fallback)
+            eval_typed_list_expr_kind(plan, frame, item, fallback)
         }
         TypedListExprKind::FloatCase {
             subject,
@@ -201,14 +209,14 @@ fn eval_typed_list_expr<Item: RuntimeListItem>(
             let subject = eval_float_expr(plan, frame, subject)?;
             for (pattern, branch) in clauses {
                 if pattern == &subject {
-                    return eval_typed_list_expr(plan, frame, branch);
+                    return eval_typed_list_expr_kind(plan, frame, item, branch);
                 }
             }
-            eval_typed_list_expr(plan, frame, fallback)
+            eval_typed_list_expr_kind(plan, frame, item, fallback)
         }
         TypedListExprKind::Block { steps, return_ } => {
             function::execute_steps(plan, steps, frame)?;
-            eval_typed_list_expr(plan, frame, return_)
+            eval_typed_list_expr_kind(plan, frame, item, return_)
         }
     }
 }
@@ -266,22 +274,6 @@ trait RuntimeListItem: ListItem {
             expected: ValueType::List(Box::new(item.value_type())),
             actual: ValueType::List(Box::new(actual)),
         })
-    }
-}
-
-fn append_spread<Item: RuntimeListItem>(
-    expected_item: &Item,
-    mut values: Item::RuntimeValue,
-    actual_item: &Item,
-    tail: Item::RuntimeValue,
-) -> Result<Item::RuntimeValue, ExecutionError> {
-    let expected = expected_item.value_type();
-    let actual = actual_item.value_type();
-    if expected == actual {
-        Item::append(&mut values, tail);
-        Ok(values)
-    } else {
-        Err(ExecutionError::ListSpreadFamilyMismatch { expected, actual })
     }
 }
 
@@ -724,20 +716,19 @@ pub(in crate::runtime) fn project_function_list_expr(
 #[cfg(test)]
 mod tests {
     use super::{
-        RuntimeListItem, append_spread, eval_list_expr, get_list_value, project_bool_list_expr,
+        RuntimeListItem, eval_list_expr, get_list_value, project_bool_list_expr,
         project_float_list_expr, project_function_list_expr, project_int_list_expr,
         project_list_list_expr, project_nil_list_expr, project_string_list_expr,
         project_tuple_list_expr,
     };
     use crate::plan::{
         BoolExpr, BoolListCaseBranches, BoolListLocalId, CallArg, ExecutionPlan, Expr, FloatExpr,
-        FloatListLocalId, FrameLayout, FunctionExpr, FunctionId, FunctionListItem,
-        FunctionListLocalId, FunctionPlan, FunctionReturnFamily, FunctionType, IntExpr,
-        IntFunctionExpr, IntFunctionId, IntFunctionValue, IntListLocalId, IntLocalId,
-        ListCaseBranches, ListExpr, ListFunctionExpr, ListFunctionId, ListFunctionValue,
-        ListListItem, ListListLocalId, ListLocal, ListReturn, ListValue, NilExpr, NilListLocalId,
-        PanicExpr, PanicSite, ReturnExpr, Step, StringExpr, StringFunctionId, StringListItem,
-        StringListLocalId, TupleExpr, TupleListItem, TupleListLocalId, ValueType,
+        FloatListLocalId, FrameLayout, FunctionExpr, FunctionId, FunctionListLocalId, FunctionPlan,
+        FunctionReturnFamily, FunctionType, IntExpr, IntFunctionExpr, IntFunctionId,
+        IntFunctionValue, IntListLocalId, IntLocalId, ListCaseBranches, ListExpr, ListFunctionExpr,
+        ListFunctionId, ListFunctionValue, ListListLocalId, ListLocal, ListReturn, ListValue,
+        NilExpr, NilListLocalId, PanicExpr, PanicSite, ReturnExpr, Step, StringExpr,
+        StringListItem, StringListLocalId, TupleExpr, TupleListLocalId, ValueType,
     };
     use crate::runtime::frame::Frame;
     use crate::runtime::{ExecutionError, PanicKind};
@@ -1357,6 +1348,51 @@ mod tests {
     }
 
     #[test]
+    fn eval_compound_spread_uses_root_item_through_recursive_tail() {
+        let plan = plan();
+        let mut frame = Frame::default();
+        let item_type = ValueType::Tuple(vec![ValueType::Int]);
+        let tuple = |value| {
+            Expr::tuple(TupleExpr::value(
+                vec![Expr::int(IntExpr::value(value))],
+                vec![ValueType::Int],
+            ))
+        };
+
+        let true_ = ListExpr::drop_first(
+            ListExpr::value(vec![tuple(2.into()), tuple(3.into())], item_type.clone()),
+            1,
+        )
+        .into_tuple()
+        .expect("tuple list drop should preserve its item family");
+        let false_ = ListExpr::value(vec![tuple(4.into())], item_type.clone())
+            .into_tuple()
+            .expect("tuple list fallback should preserve its item family");
+        let tail = ListExpr::block(
+            Vec::new(),
+            ListExpr::bool_case(
+                BoolExpr::value(true),
+                BoolListCaseBranches::Tuple { true_, false_ },
+            ),
+        );
+
+        assert_eq!(
+            eval_list_expr(
+                &plan,
+                &mut frame,
+                &ListExpr::spread(vec![tuple(1.into())], tail, item_type),
+            ),
+            Ok(ListValue::tuple(
+                vec![ValueType::Int],
+                vec![
+                    vec![crate::plan::Value::Int(1.into())],
+                    vec![crate::plan::Value::Int(3.into())],
+                ],
+            )),
+        );
+    }
+
+    #[test]
     fn get_list_value_preserves_every_item_family_from_frame() {
         let frame = all_list_family_frame();
 
@@ -1826,57 +1862,6 @@ mod tests {
             Err(ExecutionError::ListIndexFamilyMismatch {
                 expected: ValueType::List(Box::new(ValueType::String)),
                 actual: ValueType::List(Box::new(ValueType::Int)),
-            }),
-        );
-    }
-
-    #[test]
-    fn append_spread_reports_compound_family_mismatch() {
-        let int_function = FunctionType::new(Vec::new(), ValueType::Int);
-        let string_function = FunctionType::new(Vec::new(), ValueType::String);
-        let int_function_value = crate::plan::FunctionValue::new(
-            crate::plan::RuntimeFunctionId::Int(IntFunctionId(0)),
-            Vec::new(),
-        );
-        let string_function_value = crate::plan::FunctionValue::new(
-            crate::plan::RuntimeFunctionId::String(StringFunctionId(0)),
-            Vec::new(),
-        );
-
-        assert_eq!(
-            append_spread(
-                &TupleListItem::new(vec![ValueType::Int]),
-                vec![vec![crate::plan::Value::Int(1.into())]],
-                &TupleListItem::new(vec![ValueType::String]),
-                vec![vec![crate::plan::Value::String("wrong".into())]],
-            ),
-            Err(ExecutionError::ListSpreadFamilyMismatch {
-                expected: ValueType::Tuple(vec![ValueType::Int]),
-                actual: ValueType::Tuple(vec![ValueType::String]),
-            }),
-        );
-        assert_eq!(
-            append_spread(
-                &ListListItem::new(Box::new(ValueType::Int)),
-                vec![ListValue::int(vec![1.into()])],
-                &ListListItem::new(Box::new(ValueType::String)),
-                vec![ListValue::string(vec!["wrong".into()])],
-            ),
-            Err(ExecutionError::ListSpreadFamilyMismatch {
-                expected: ValueType::List(Box::new(ValueType::Int)),
-                actual: ValueType::List(Box::new(ValueType::String)),
-            }),
-        );
-        assert_eq!(
-            append_spread(
-                &FunctionListItem::new(int_function.clone()),
-                vec![int_function_value],
-                &FunctionListItem::new(string_function.clone()),
-                vec![string_function_value],
-            ),
-            Err(ExecutionError::ListSpreadFamilyMismatch {
-                expected: ValueType::Function(Box::new(int_function)),
-                actual: ValueType::Function(Box::new(string_function)),
             }),
         );
     }

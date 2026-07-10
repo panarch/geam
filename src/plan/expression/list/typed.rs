@@ -17,7 +17,7 @@ pub(crate) enum TypedListExprKind<Item: ListItem> {
     Value(Vec<Item::ElementExpr>),
     Spread {
         elements: Vec<Item::ElementExpr>,
-        tail: Box<TypedListExpr<Item>>,
+        tail: Box<TypedListExprKind<Item>>,
     },
     LocalGet {
         local: Item::Local,
@@ -40,33 +40,33 @@ pub(crate) enum TypedListExprKind<Item: ListItem> {
         index: usize,
     },
     DropFirst {
-        list: Box<TypedListExpr<Item>>,
+        list: Box<TypedListExprKind<Item>>,
         count: usize,
     },
     Panic(PanicExpr),
     BoolCase {
         subject: Box<BoolExpr>,
-        true_: Box<TypedListExpr<Item>>,
-        false_: Box<TypedListExpr<Item>>,
+        true_: Box<TypedListExprKind<Item>>,
+        false_: Box<TypedListExprKind<Item>>,
     },
     IntCase {
         subject: Box<IntExpr>,
-        clauses: Vec<(BigInt, TypedListExpr<Item>)>,
-        fallback: Box<TypedListExpr<Item>>,
+        clauses: Vec<(BigInt, TypedListExprKind<Item>)>,
+        fallback: Box<TypedListExprKind<Item>>,
     },
     StringCase {
         subject: Box<StringExpr>,
-        clauses: Vec<(EcoString, TypedListExpr<Item>)>,
-        fallback: Box<TypedListExpr<Item>>,
+        clauses: Vec<(EcoString, TypedListExprKind<Item>)>,
+        fallback: Box<TypedListExprKind<Item>>,
     },
     FloatCase {
         subject: Box<FloatExpr>,
-        clauses: Vec<(f64, TypedListExpr<Item>)>,
-        fallback: Box<TypedListExpr<Item>>,
+        clauses: Vec<(f64, TypedListExprKind<Item>)>,
+        fallback: Box<TypedListExprKind<Item>>,
     },
     Block {
         steps: Vec<Step>,
-        return_: Box<TypedListExpr<Item>>,
+        return_: Box<TypedListExprKind<Item>>,
     },
 }
 
@@ -87,15 +87,20 @@ impl<Item: ListItem> TypedListExpr<Item> {
         &self.kind
     }
 
+    pub(crate) fn from_item_and_kind(item: Item, kind: TypedListExprKind<Item>) -> Self {
+        Self::new(item, kind)
+    }
+
+    pub(crate) fn into_item_and_kind(self) -> (Item, TypedListExprKind<Item>) {
+        (self.item, self.kind)
+    }
+
     pub(super) fn value(item: Item, elements: Vec<Item::ElementExpr>) -> Self {
         Self::new(item, TypedListExprKind::Value(elements))
     }
 
-    pub(super) fn spread(
-        item: Item,
-        elements: Vec<Item::ElementExpr>,
-        tail: TypedListExpr<Item>,
-    ) -> Self {
+    pub(super) fn spread(elements: Vec<Item::ElementExpr>, tail: TypedListExpr<Item>) -> Self {
+        let (item, tail) = tail.into_item_and_kind();
         Self::new(
             item,
             TypedListExprKind::Spread {
@@ -147,7 +152,8 @@ impl<Item: ListItem> TypedListExpr<Item> {
         )
     }
 
-    pub(super) fn drop_first(item: Item, list: TypedListExpr<Item>, count: usize) -> Self {
+    pub(super) fn drop_first(list: TypedListExpr<Item>, count: usize) -> Self {
+        let (item, list) = list.into_item_and_kind();
         Self::new(
             item,
             TypedListExprKind::DropFirst {
@@ -162,11 +168,12 @@ impl<Item: ListItem> TypedListExpr<Item> {
     }
 
     pub(super) fn bool_case(
-        item: Item,
         subject: BoolExpr,
         true_: TypedListExpr<Item>,
         false_: TypedListExpr<Item>,
     ) -> Self {
+        let (item, true_) = true_.into_item_and_kind();
+        let (_, false_) = false_.into_item_and_kind();
         Self::new(
             item,
             TypedListExprKind::BoolCase {
@@ -178,11 +185,18 @@ impl<Item: ListItem> TypedListExpr<Item> {
     }
 
     pub(super) fn int_case(
-        item: Item,
         subject: IntExpr,
         clauses: Vec<(BigInt, TypedListExpr<Item>)>,
         fallback: TypedListExpr<Item>,
     ) -> Self {
+        let clauses = clauses
+            .into_iter()
+            .map(|(pattern, branch)| {
+                let (_, branch) = branch.into_item_and_kind();
+                (pattern, branch)
+            })
+            .collect();
+        let (item, fallback) = fallback.into_item_and_kind();
         Self::new(
             item,
             TypedListExprKind::IntCase {
@@ -194,11 +208,18 @@ impl<Item: ListItem> TypedListExpr<Item> {
     }
 
     pub(super) fn string_case(
-        item: Item,
         subject: StringExpr,
         clauses: Vec<(EcoString, TypedListExpr<Item>)>,
         fallback: TypedListExpr<Item>,
     ) -> Self {
+        let clauses = clauses
+            .into_iter()
+            .map(|(pattern, branch)| {
+                let (_, branch) = branch.into_item_and_kind();
+                (pattern, branch)
+            })
+            .collect();
+        let (item, fallback) = fallback.into_item_and_kind();
         Self::new(
             item,
             TypedListExprKind::StringCase {
@@ -210,11 +231,18 @@ impl<Item: ListItem> TypedListExpr<Item> {
     }
 
     pub(super) fn float_case(
-        item: Item,
         subject: FloatExpr,
         clauses: Vec<(f64, TypedListExpr<Item>)>,
         fallback: TypedListExpr<Item>,
     ) -> Self {
+        let clauses = clauses
+            .into_iter()
+            .map(|(pattern, branch)| {
+                let (_, branch) = branch.into_item_and_kind();
+                (pattern, branch)
+            })
+            .collect();
+        let (item, fallback) = fallback.into_item_and_kind();
         Self::new(
             item,
             TypedListExprKind::FloatCase {
@@ -225,7 +253,8 @@ impl<Item: ListItem> TypedListExpr<Item> {
         )
     }
 
-    pub(super) fn block(item: Item, steps: Vec<Step>, return_: TypedListExpr<Item>) -> Self {
+    pub(super) fn block(steps: Vec<Step>, return_: TypedListExpr<Item>) -> Self {
+        let (item, return_) = return_.into_item_and_kind();
         Self::new(
             item,
             TypedListExprKind::Block {
@@ -269,7 +298,10 @@ impl_typed_list_expr_from_facade!(super::FunctionListExpr, into_function, "funct
 #[cfg(test)]
 mod tests {
     use super::TypedListExprKind;
-    use crate::plan::{Expr, FloatExpr, FloatListItem, ListExpr, ValueType};
+    use crate::plan::{
+        BoolExpr, Expr, FloatExpr, FloatListItem, IntExpr, ListExpr, TupleExpr, TupleListExpr,
+        TupleListItem, ValueType,
+    };
 
     #[test]
     fn accessors_report_item_type_and_kind() {
@@ -283,6 +315,51 @@ mod tests {
         assert_eq!(
             expression.kind(),
             &TypedListExprKind::Value(vec![FloatExpr::value(1.5)]),
+        );
+    }
+
+    #[test]
+    fn same_result_children_share_the_root_item() {
+        let item = TupleListItem::new(vec![ValueType::Int]);
+        let first = TupleExpr::value(
+            vec![Expr::int(IntExpr::value(1.into()))],
+            vec![ValueType::Int],
+        );
+        let second = TupleExpr::value(
+            vec![Expr::int(IntExpr::value(2.into()))],
+            vec![ValueType::Int],
+        );
+        let third = TupleExpr::value(
+            vec![Expr::int(IntExpr::value(3.into()))],
+            vec![ValueType::Int],
+        );
+
+        let true_ =
+            TupleListExpr::drop_first(TupleListExpr::value(item.clone(), vec![second.clone()]), 0);
+        let false_ = TupleListExpr::value(item.clone(), vec![third.clone()]);
+        let tail = TupleListExpr::block(
+            Vec::new(),
+            TupleListExpr::bool_case(BoolExpr::value(true), true_, false_),
+        );
+        let expression = TupleListExpr::spread(vec![first.clone()], tail);
+
+        assert_eq!(expression.item(), &item);
+        assert_eq!(
+            expression.kind(),
+            &TypedListExprKind::Spread {
+                elements: vec![first],
+                tail: Box::new(TypedListExprKind::Block {
+                    steps: Vec::new(),
+                    return_: Box::new(TypedListExprKind::BoolCase {
+                        subject: Box::new(BoolExpr::value(true)),
+                        true_: Box::new(TypedListExprKind::DropFirst {
+                            list: Box::new(TypedListExprKind::Value(vec![second])),
+                            count: 0,
+                        }),
+                        false_: Box::new(TypedListExprKind::Value(vec![third])),
+                    }),
+                }),
+            },
         );
     }
 }

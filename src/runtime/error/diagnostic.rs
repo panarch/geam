@@ -47,9 +47,6 @@ impl Diagnostic for ExecutionError {
             Self::ListIndexFamilyMismatch { .. } => {
                 Some(Box::new("geam::list_index_family_mismatch"))
             }
-            Self::ListSpreadFamilyMismatch { .. } => {
-                Some(Box::new("geam::list_spread_family_mismatch"))
-            }
             Self::ListIndexOutOfBounds { .. } => Some(Box::new("geam::list_index_out_of_bounds")),
         }
     }
@@ -60,7 +57,6 @@ impl Diagnostic for ExecutionError {
             Self::FunctionReturnFamilyMismatch { .. }
             | Self::TupleIndexFamilyMismatch { .. }
             | Self::ListIndexFamilyMismatch { .. }
-            | Self::ListSpreadFamilyMismatch { .. }
             | Self::ListIndexOutOfBounds { .. } => None,
         }
     }
@@ -71,7 +67,6 @@ impl Diagnostic for ExecutionError {
             Self::FunctionReturnFamilyMismatch { .. }
             | Self::TupleIndexFamilyMismatch { .. }
             | Self::ListIndexFamilyMismatch { .. }
-            | Self::ListSpreadFamilyMismatch { .. }
             | Self::ListIndexOutOfBounds { .. } => None,
         }
     }
@@ -82,7 +77,6 @@ impl Diagnostic for ExecutionError {
             Self::FunctionReturnFamilyMismatch { .. }
             | Self::TupleIndexFamilyMismatch { .. }
             | Self::ListIndexFamilyMismatch { .. }
-            | Self::ListSpreadFamilyMismatch { .. }
             | Self::ListIndexOutOfBounds { .. } => None,
         }
     }
@@ -259,13 +253,6 @@ mod tests {
                     actual: ValueType::List(Box::new(ValueType::String)),
                 },
                 "geam::list_index_family_mismatch",
-            ),
-            (
-                ExecutionError::ListSpreadFamilyMismatch {
-                    expected: ValueType::List(Box::new(ValueType::Int)),
-                    actual: ValueType::List(Box::new(ValueType::String)),
-                },
-                "geam::list_spread_family_mismatch",
             ),
         ] {
             assert_eq!(

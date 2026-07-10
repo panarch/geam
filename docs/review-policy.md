@@ -42,8 +42,7 @@ Runtime tag dispatch is allowed only for planner-validated recursive plan
 shapes, and only as execution routing. It must not become validation, fallback
 behavior, or a source-visible semantic difference.
 
-Typed projection and list spread have the following approved execution
-invariants:
+Typed projections have the following approved execution invariants:
 
 - `ExecutionError::tuple_index_family_mismatch` is only for typed tuple-index
   plan evaluation when the runtime tuple value lacks the planner-selected
@@ -56,16 +55,12 @@ invariants:
   nested list-index plan evaluation when the selected nested list item type is
   not the typed projection item type. It must not stand in for missing index,
   tuple-index, or spread-tail failures.
-- `ExecutionError::list_spread_family_mismatch` is only for direct-mutated list
-  spread evaluation when the prefix and tail declare different item types.
-  It must not stand in for list-index, tuple-index, or source-level pattern
-  failure.
 
 List item-family mismatches must be prevented by typed plan, value, frame, and
 function boundaries whenever the current plan shape can encode the contract.
-The two operation-scoped variants above expose the remaining direct-mutated
-recursive plan margins; they must not be reused, generalized, or treated as
-runtime validation. Remove either variant if a later plan shape makes its
+The list-index family variant above exposes one current operation-scoped
+direct-mutated recursive plan margin; it must not be reused, generalized, or
+treated as runtime validation. Remove it if a later plan shape makes its
 boundary unrepresentable. Tuple/list index validation, profile boundaries, and
 typed-AST margins remain planner responsibilities.
 

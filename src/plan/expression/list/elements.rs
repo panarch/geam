@@ -52,17 +52,14 @@ pub(crate) enum ListSpreadElements {
         tail: NilListExpr,
     },
     Tuple {
-        item_type: Vec<ValueType>,
         values: Vec<TupleExpr>,
         tail: TupleListExpr,
     },
     List {
-        item_type: Box<ValueType>,
         values: Vec<ListExpr>,
         tail: ListListExpr,
     },
     Function {
-        item_type: FunctionType,
         values: Vec<FunctionExpr>,
         tail: FunctionListExpr,
     },
@@ -153,7 +150,10 @@ impl ListSpreadElements {
                 };
                 Ok(Self::Nil { values, tail })
             }
-            ListElements::Tuple { item_type, values } => {
+            ListElements::Tuple {
+                item_type: _,
+                values,
+            } => {
                 let Some(tail) = tail.into_tuple() else {
                     return Err(ListElementTypeMismatch { expected, actual });
                 };
@@ -163,13 +163,12 @@ impl ListSpreadElements {
                         actual: tail.element_type(),
                     });
                 }
-                Ok(Self::Tuple {
-                    item_type,
-                    values,
-                    tail,
-                })
+                Ok(Self::Tuple { values, tail })
             }
-            ListElements::List { item_type, values } => {
+            ListElements::List {
+                item_type: _,
+                values,
+            } => {
                 let Some(tail) = tail.into_list() else {
                     return Err(ListElementTypeMismatch { expected, actual });
                 };
@@ -179,13 +178,12 @@ impl ListSpreadElements {
                         actual: tail.element_type(),
                     });
                 }
-                Ok(Self::List {
-                    item_type,
-                    values,
-                    tail,
-                })
+                Ok(Self::List { values, tail })
             }
-            ListElements::Function { item_type, values } => {
+            ListElements::Function {
+                item_type: _,
+                values,
+            } => {
                 let Some(tail) = tail.into_function() else {
                     return Err(ListElementTypeMismatch { expected, actual });
                 };
@@ -195,11 +193,7 @@ impl ListSpreadElements {
                         actual: tail.element_type(),
                     });
                 }
-                Ok(Self::Function {
-                    item_type,
-                    values,
-                    tail,
-                })
+                Ok(Self::Function { values, tail })
             }
         }
     }

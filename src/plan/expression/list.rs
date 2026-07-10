@@ -127,43 +127,28 @@ impl ListExpr {
     pub(crate) fn from_spread_elements(elements: ListSpreadElements) -> Self {
         match elements {
             ListSpreadElements::Int { values, tail } => {
-                Self::Int(IntListExpr::spread(IntListItem, values, tail))
+                Self::Int(IntListExpr::spread(values, tail))
             }
             ListSpreadElements::String { values, tail } => {
-                Self::String(StringListExpr::spread(StringListItem, values, tail))
+                Self::String(StringListExpr::spread(values, tail))
             }
             ListSpreadElements::Float { values, tail } => {
-                Self::Float(FloatListExpr::spread(FloatListItem, values, tail))
+                Self::Float(FloatListExpr::spread(values, tail))
             }
             ListSpreadElements::Bool { values, tail } => {
-                Self::Bool(BoolListExpr::spread(BoolListItem, values, tail))
+                Self::Bool(BoolListExpr::spread(values, tail))
             }
             ListSpreadElements::Nil { values, tail } => {
-                Self::Nil(NilListExpr::spread(NilListItem, values, tail))
+                Self::Nil(NilListExpr::spread(values, tail))
             }
-            ListSpreadElements::Tuple {
-                item_type,
-                values,
-                tail,
-            } => {
-                let item = TupleListItem { item_type };
-                Self::Tuple(TupleListExpr::spread(item, values, tail))
+            ListSpreadElements::Tuple { values, tail } => {
+                Self::Tuple(TupleListExpr::spread(values, tail))
             }
-            ListSpreadElements::List {
-                item_type,
-                values,
-                tail,
-            } => {
-                let item = ListListItem { item_type };
-                Self::List(ListListExpr::spread(item, values, tail))
+            ListSpreadElements::List { values, tail } => {
+                Self::List(ListListExpr::spread(values, tail))
             }
-            ListSpreadElements::Function {
-                item_type,
-                values,
-                tail,
-            } => {
-                let item = FunctionListItem { item_type };
-                Self::Function(FunctionListExpr::spread(item, values, tail))
+            ListSpreadElements::Function { values, tail } => {
+                Self::Function(FunctionListExpr::spread(values, tail))
             }
         }
     }
@@ -317,25 +302,14 @@ impl ListExpr {
 
     pub(crate) fn drop_first(list: ListExpr, count: usize) -> Self {
         match list {
-            Self::Int(list) => Self::Int(IntListExpr::drop_first(IntListItem, list, count)),
-            Self::String(list) => {
-                Self::String(StringListExpr::drop_first(StringListItem, list, count))
-            }
-            Self::Float(list) => Self::Float(FloatListExpr::drop_first(FloatListItem, list, count)),
-            Self::Bool(list) => Self::Bool(BoolListExpr::drop_first(BoolListItem, list, count)),
-            Self::Nil(list) => Self::Nil(NilListExpr::drop_first(NilListItem, list, count)),
-            Self::Tuple(list) => {
-                let item = list.item.clone();
-                Self::Tuple(TupleListExpr::drop_first(item, list, count))
-            }
-            Self::List(list) => {
-                let item = list.item.clone();
-                Self::List(ListListExpr::drop_first(item, list, count))
-            }
-            Self::Function(list) => {
-                let item = list.item.clone();
-                Self::Function(FunctionListExpr::drop_first(item, list, count))
-            }
+            Self::Int(list) => Self::Int(IntListExpr::drop_first(list, count)),
+            Self::String(list) => Self::String(StringListExpr::drop_first(list, count)),
+            Self::Float(list) => Self::Float(FloatListExpr::drop_first(list, count)),
+            Self::Bool(list) => Self::Bool(BoolListExpr::drop_first(list, count)),
+            Self::Nil(list) => Self::Nil(NilListExpr::drop_first(list, count)),
+            Self::Tuple(list) => Self::Tuple(TupleListExpr::drop_first(list, count)),
+            Self::List(list) => Self::List(ListListExpr::drop_first(list, count)),
+            Self::Function(list) => Self::Function(FunctionListExpr::drop_first(list, count)),
         }
     }
 
@@ -364,194 +338,129 @@ impl ListExpr {
     pub(crate) fn bool_case(subject: BoolExpr, branches: BoolListCaseBranches) -> Self {
         match branches {
             BoolListCaseBranches::Int { true_, false_ } => {
-                Self::Int(IntListExpr::bool_case(IntListItem, subject, true_, false_))
+                Self::Int(IntListExpr::bool_case(subject, true_, false_))
             }
-            BoolListCaseBranches::String { true_, false_ } => Self::String(
-                StringListExpr::bool_case(StringListItem, subject, true_, false_),
-            ),
-            BoolListCaseBranches::Float { true_, false_ } => Self::Float(FloatListExpr::bool_case(
-                FloatListItem,
-                subject,
-                true_,
-                false_,
-            )),
-            BoolListCaseBranches::Bool { true_, false_ } => Self::Bool(BoolListExpr::bool_case(
-                BoolListItem,
-                subject,
-                true_,
-                false_,
-            )),
+            BoolListCaseBranches::String { true_, false_ } => {
+                Self::String(StringListExpr::bool_case(subject, true_, false_))
+            }
+            BoolListCaseBranches::Float { true_, false_ } => {
+                Self::Float(FloatListExpr::bool_case(subject, true_, false_))
+            }
+            BoolListCaseBranches::Bool { true_, false_ } => {
+                Self::Bool(BoolListExpr::bool_case(subject, true_, false_))
+            }
             BoolListCaseBranches::Nil { true_, false_ } => {
-                Self::Nil(NilListExpr::bool_case(NilListItem, subject, true_, false_))
+                Self::Nil(NilListExpr::bool_case(subject, true_, false_))
             }
             BoolListCaseBranches::Tuple { true_, false_ } => {
-                let item = true_.item.clone();
-                Self::Tuple(TupleListExpr::bool_case(item, subject, true_, false_))
+                Self::Tuple(TupleListExpr::bool_case(subject, true_, false_))
             }
             BoolListCaseBranches::List { true_, false_ } => {
-                let item = true_.item.clone();
-                Self::List(ListListExpr::bool_case(item, subject, true_, false_))
+                Self::List(ListListExpr::bool_case(subject, true_, false_))
             }
             BoolListCaseBranches::Function { true_, false_ } => {
-                let item = true_.item.clone();
-                Self::Function(FunctionListExpr::bool_case(item, subject, true_, false_))
+                Self::Function(FunctionListExpr::bool_case(subject, true_, false_))
             }
         }
     }
 
     pub(crate) fn int_case(subject: IntExpr, branches: ListCaseBranches<BigInt>) -> Self {
         match branches {
-            ListCaseBranches::Int { clauses, fallback } => Self::Int(IntListExpr::int_case(
-                IntListItem,
-                subject,
-                clauses,
-                fallback,
-            )),
-            ListCaseBranches::String { clauses, fallback } => Self::String(
-                StringListExpr::int_case(StringListItem, subject, clauses, fallback),
-            ),
-            ListCaseBranches::Float { clauses, fallback } => Self::Float(FloatListExpr::int_case(
-                FloatListItem,
-                subject,
-                clauses,
-                fallback,
-            )),
-            ListCaseBranches::Bool { clauses, fallback } => Self::Bool(BoolListExpr::int_case(
-                BoolListItem,
-                subject,
-                clauses,
-                fallback,
-            )),
-            ListCaseBranches::Nil { clauses, fallback } => Self::Nil(NilListExpr::int_case(
-                NilListItem,
-                subject,
-                clauses,
-                fallback,
-            )),
+            ListCaseBranches::Int { clauses, fallback } => {
+                Self::Int(IntListExpr::int_case(subject, clauses, fallback))
+            }
+            ListCaseBranches::String { clauses, fallback } => {
+                Self::String(StringListExpr::int_case(subject, clauses, fallback))
+            }
+            ListCaseBranches::Float { clauses, fallback } => {
+                Self::Float(FloatListExpr::int_case(subject, clauses, fallback))
+            }
+            ListCaseBranches::Bool { clauses, fallback } => {
+                Self::Bool(BoolListExpr::int_case(subject, clauses, fallback))
+            }
+            ListCaseBranches::Nil { clauses, fallback } => {
+                Self::Nil(NilListExpr::int_case(subject, clauses, fallback))
+            }
             ListCaseBranches::Tuple { clauses, fallback } => {
-                let item = fallback.item.clone();
-                Self::Tuple(TupleListExpr::int_case(item, subject, clauses, fallback))
+                Self::Tuple(TupleListExpr::int_case(subject, clauses, fallback))
             }
             ListCaseBranches::List { clauses, fallback } => {
-                let item = fallback.item.clone();
-                Self::List(ListListExpr::int_case(item, subject, clauses, fallback))
+                Self::List(ListListExpr::int_case(subject, clauses, fallback))
             }
             ListCaseBranches::Function { clauses, fallback } => {
-                let item = fallback.item.clone();
-                Self::Function(FunctionListExpr::int_case(item, subject, clauses, fallback))
+                Self::Function(FunctionListExpr::int_case(subject, clauses, fallback))
             }
         }
     }
 
     pub(crate) fn string_case(subject: StringExpr, branches: ListCaseBranches<EcoString>) -> Self {
         match branches {
-            ListCaseBranches::Int { clauses, fallback } => Self::Int(IntListExpr::string_case(
-                IntListItem,
-                subject,
-                clauses,
-                fallback,
-            )),
-            ListCaseBranches::String { clauses, fallback } => Self::String(
-                StringListExpr::string_case(StringListItem, subject, clauses, fallback),
-            ),
-            ListCaseBranches::Float { clauses, fallback } => Self::Float(
-                FloatListExpr::string_case(FloatListItem, subject, clauses, fallback),
-            ),
-            ListCaseBranches::Bool { clauses, fallback } => Self::Bool(BoolListExpr::string_case(
-                BoolListItem,
-                subject,
-                clauses,
-                fallback,
-            )),
-            ListCaseBranches::Nil { clauses, fallback } => Self::Nil(NilListExpr::string_case(
-                NilListItem,
-                subject,
-                clauses,
-                fallback,
-            )),
+            ListCaseBranches::Int { clauses, fallback } => {
+                Self::Int(IntListExpr::string_case(subject, clauses, fallback))
+            }
+            ListCaseBranches::String { clauses, fallback } => {
+                Self::String(StringListExpr::string_case(subject, clauses, fallback))
+            }
+            ListCaseBranches::Float { clauses, fallback } => {
+                Self::Float(FloatListExpr::string_case(subject, clauses, fallback))
+            }
+            ListCaseBranches::Bool { clauses, fallback } => {
+                Self::Bool(BoolListExpr::string_case(subject, clauses, fallback))
+            }
+            ListCaseBranches::Nil { clauses, fallback } => {
+                Self::Nil(NilListExpr::string_case(subject, clauses, fallback))
+            }
             ListCaseBranches::Tuple { clauses, fallback } => {
-                let item = fallback.item.clone();
-                Self::Tuple(TupleListExpr::string_case(item, subject, clauses, fallback))
+                Self::Tuple(TupleListExpr::string_case(subject, clauses, fallback))
             }
             ListCaseBranches::List { clauses, fallback } => {
-                let item = fallback.item.clone();
-                Self::List(ListListExpr::string_case(item, subject, clauses, fallback))
+                Self::List(ListListExpr::string_case(subject, clauses, fallback))
             }
             ListCaseBranches::Function { clauses, fallback } => {
-                let item = fallback.item.clone();
-                Self::Function(FunctionListExpr::string_case(
-                    item, subject, clauses, fallback,
-                ))
+                Self::Function(FunctionListExpr::string_case(subject, clauses, fallback))
             }
         }
     }
 
     pub(crate) fn float_case(subject: FloatExpr, branches: ListCaseBranches<f64>) -> Self {
         match branches {
-            ListCaseBranches::Int { clauses, fallback } => Self::Int(IntListExpr::float_case(
-                IntListItem,
-                subject,
-                clauses,
-                fallback,
-            )),
-            ListCaseBranches::String { clauses, fallback } => Self::String(
-                StringListExpr::float_case(StringListItem, subject, clauses, fallback),
-            ),
-            ListCaseBranches::Float { clauses, fallback } => Self::Float(
-                FloatListExpr::float_case(FloatListItem, subject, clauses, fallback),
-            ),
-            ListCaseBranches::Bool { clauses, fallback } => Self::Bool(BoolListExpr::float_case(
-                BoolListItem,
-                subject,
-                clauses,
-                fallback,
-            )),
-            ListCaseBranches::Nil { clauses, fallback } => Self::Nil(NilListExpr::float_case(
-                NilListItem,
-                subject,
-                clauses,
-                fallback,
-            )),
+            ListCaseBranches::Int { clauses, fallback } => {
+                Self::Int(IntListExpr::float_case(subject, clauses, fallback))
+            }
+            ListCaseBranches::String { clauses, fallback } => {
+                Self::String(StringListExpr::float_case(subject, clauses, fallback))
+            }
+            ListCaseBranches::Float { clauses, fallback } => {
+                Self::Float(FloatListExpr::float_case(subject, clauses, fallback))
+            }
+            ListCaseBranches::Bool { clauses, fallback } => {
+                Self::Bool(BoolListExpr::float_case(subject, clauses, fallback))
+            }
+            ListCaseBranches::Nil { clauses, fallback } => {
+                Self::Nil(NilListExpr::float_case(subject, clauses, fallback))
+            }
             ListCaseBranches::Tuple { clauses, fallback } => {
-                let item = fallback.item.clone();
-                Self::Tuple(TupleListExpr::float_case(item, subject, clauses, fallback))
+                Self::Tuple(TupleListExpr::float_case(subject, clauses, fallback))
             }
             ListCaseBranches::List { clauses, fallback } => {
-                let item = fallback.item.clone();
-                Self::List(ListListExpr::float_case(item, subject, clauses, fallback))
+                Self::List(ListListExpr::float_case(subject, clauses, fallback))
             }
             ListCaseBranches::Function { clauses, fallback } => {
-                let item = fallback.item.clone();
-                Self::Function(FunctionListExpr::float_case(
-                    item, subject, clauses, fallback,
-                ))
+                Self::Function(FunctionListExpr::float_case(subject, clauses, fallback))
             }
         }
     }
 
     pub(crate) fn block(steps: Vec<Step>, return_: ListExpr) -> Self {
         match return_ {
-            Self::Int(return_) => Self::Int(IntListExpr::block(IntListItem, steps, return_)),
-            Self::String(return_) => {
-                Self::String(StringListExpr::block(StringListItem, steps, return_))
-            }
-            Self::Float(return_) => {
-                Self::Float(FloatListExpr::block(FloatListItem, steps, return_))
-            }
-            Self::Bool(return_) => Self::Bool(BoolListExpr::block(BoolListItem, steps, return_)),
-            Self::Nil(return_) => Self::Nil(NilListExpr::block(NilListItem, steps, return_)),
-            Self::Tuple(return_) => {
-                let item = return_.item.clone();
-                Self::Tuple(TupleListExpr::block(item, steps, return_))
-            }
-            Self::List(return_) => {
-                let item = return_.item.clone();
-                Self::List(ListListExpr::block(item, steps, return_))
-            }
-            Self::Function(return_) => {
-                let item = return_.item.clone();
-                Self::Function(FunctionListExpr::block(item, steps, return_))
-            }
+            Self::Int(return_) => Self::Int(IntListExpr::block(steps, return_)),
+            Self::String(return_) => Self::String(StringListExpr::block(steps, return_)),
+            Self::Float(return_) => Self::Float(FloatListExpr::block(steps, return_)),
+            Self::Bool(return_) => Self::Bool(BoolListExpr::block(steps, return_)),
+            Self::Nil(return_) => Self::Nil(NilListExpr::block(steps, return_)),
+            Self::Tuple(return_) => Self::Tuple(TupleListExpr::block(steps, return_)),
+            Self::List(return_) => Self::List(ListListExpr::block(steps, return_)),
+            Self::Function(return_) => Self::Function(FunctionListExpr::block(steps, return_)),
         }
     }
 
@@ -844,7 +753,6 @@ mod tests {
                 int_tail.clone(),
             ),
             Ok(ListExpr::Int(IntListExpr::spread(
-                IntListItem,
                 vec![IntExpr::value(1.into())],
                 int_tail.into_int().expect("int list"),
             ))),
@@ -869,9 +777,6 @@ mod tests {
                 tuple_tail.clone(),
             ),
             Ok(ListExpr::Tuple(TupleListExpr::spread(
-                TupleListItem {
-                    item_type: vec![ValueType::Int],
-                },
                 vec![TupleExpr::value(
                     vec![Expr::int(IntExpr::value(1.into()))],
                     vec![ValueType::Int],
@@ -999,7 +904,7 @@ mod tests {
                     false_: false_.clone(),
                 },
             ),
-            ListExpr::Int(IntListExpr::bool_case(IntListItem, subject, true_, false_,)),
+            ListExpr::Int(IntListExpr::bool_case(subject, true_, false_)),
         );
 
         let fallback = ListExpr::value(
@@ -1016,9 +921,6 @@ mod tests {
             ))],
             ValueType::Tuple(vec![ValueType::Int]),
         );
-        let item = TupleListItem {
-            item_type: vec![ValueType::Int],
-        };
         assert_eq!(
             ListExpr::int_case(
                 IntExpr::value(1.into()),
@@ -1029,7 +931,6 @@ mod tests {
                 .expect("list case branches"),
             ),
             ListExpr::Tuple(TupleListExpr::int_case(
-                item.clone(),
                 IntExpr::value(1.into()),
                 vec![(BigInt::from(1), branch.into_tuple().expect("tuple list"))],
                 fallback.into_tuple().expect("tuple list"),
@@ -1043,7 +944,6 @@ mod tests {
         assert_eq!(
             ListExpr::block(Vec::<Step>::new(), string_list.clone()),
             ListExpr::String(StringListExpr::block(
-                StringListItem,
                 Vec::<Step>::new(),
                 string_list.into_string().expect("string list"),
             )),
