@@ -119,10 +119,9 @@ fn eval_typed_list_expr<Item: RuntimeListItem>(
             Item::eval_elements(plan, frame, expression.item(), elements)
         }
         TypedListExprKind::Spread { elements, tail } => {
-            let mut values = Item::eval_elements(plan, frame, expression.item(), elements)?;
-            let tail = eval_typed_list_expr(plan, frame, tail)?;
-            Item::append(&mut values, tail);
-            Ok(values)
+            let values = Item::eval_elements(plan, frame, expression.item(), elements)?;
+            let tail_values = eval_typed_list_expr(plan, frame, tail)?;
+            append_spread(expression.item(), values, tail.item(), tail_values)
         }
         TypedListExprKind::LocalGet { local, .. } => Ok(Item::get_local(frame, local.clone())),
         TypedListExprKind::Call { function, args } => {
@@ -263,12 +262,26 @@ trait RuntimeListItem: ListItem {
             ));
         };
         let actual = value.item_type();
-        Self::from_facade(item, value).ok_or_else(|| {
-            ExecutionError::tuple_index_family_mismatch(
-                ValueType::List(Box::new(item.value_type())),
-                ValueType::List(Box::new(actual)),
-            )
+        Self::from_facade(item, value).ok_or_else(|| ExecutionError::ListIndexFamilyMismatch {
+            expected: ValueType::List(Box::new(item.value_type())),
+            actual: ValueType::List(Box::new(actual)),
         })
+    }
+}
+
+fn append_spread<Item: RuntimeListItem>(
+    expected_item: &Item,
+    mut values: Item::RuntimeValue,
+    actual_item: &Item,
+    tail: Item::RuntimeValue,
+) -> Result<Item::RuntimeValue, ExecutionError> {
+    let expected = expected_item.value_type();
+    let actual = actual_item.value_type();
+    if expected == actual {
+        Item::append(&mut values, tail);
+        Ok(values)
+    } else {
+        Err(ExecutionError::ListSpreadFamilyMismatch { expected, actual })
     }
 }
 
@@ -711,19 +724,20 @@ pub(in crate::runtime) fn project_function_list_expr(
 #[cfg(test)]
 mod tests {
     use super::{
-        RuntimeListItem, eval_list_expr, get_list_value, project_bool_list_expr,
+        RuntimeListItem, append_spread, eval_list_expr, get_list_value, project_bool_list_expr,
         project_float_list_expr, project_function_list_expr, project_int_list_expr,
         project_list_list_expr, project_nil_list_expr, project_string_list_expr,
         project_tuple_list_expr,
     };
     use crate::plan::{
         BoolExpr, BoolListCaseBranches, BoolListLocalId, CallArg, ExecutionPlan, Expr, FloatExpr,
-        FloatListLocalId, FrameLayout, FunctionExpr, FunctionId, FunctionListLocalId, FunctionPlan,
-        FunctionReturnFamily, FunctionType, IntExpr, IntFunctionExpr, IntFunctionId,
-        IntFunctionValue, IntListLocalId, IntLocalId, ListCaseBranches, ListExpr, ListFunctionExpr,
-        ListFunctionId, ListFunctionValue, ListListLocalId, ListLocal, ListReturn, ListValue,
-        NilExpr, NilListLocalId, PanicExpr, PanicSite, ReturnExpr, Step, StringExpr,
-        StringListItem, StringListLocalId, TupleExpr, TupleListLocalId, ValueType,
+        FloatListLocalId, FrameLayout, FunctionExpr, FunctionId, FunctionListItem,
+        FunctionListLocalId, FunctionPlan, FunctionReturnFamily, FunctionType, IntExpr,
+        IntFunctionExpr, IntFunctionId, IntFunctionValue, IntListLocalId, IntLocalId,
+        ListCaseBranches, ListExpr, ListFunctionExpr, ListFunctionId, ListFunctionValue,
+        ListListItem, ListListLocalId, ListLocal, ListReturn, ListValue, NilExpr, NilListLocalId,
+        PanicExpr, PanicSite, ReturnExpr, Step, StringExpr, StringFunctionId, StringListItem,
+        StringListLocalId, TupleExpr, TupleListItem, TupleListLocalId, ValueType,
     };
     use crate::runtime::frame::Frame;
     use crate::runtime::{ExecutionError, PanicKind};
@@ -1791,7 +1805,7 @@ mod tests {
     }
 
     #[test]
-    fn runtime_list_item_project_nested_list_rejects_item_family_mismatch() {
+    fn runtime_list_item_project_nested_list_reports_list_index_family_mismatch() {
         let plan = plan();
         let mut frame = Frame::default();
         let nested = ListExpr::value(
@@ -1809,10 +1823,61 @@ mod tests {
                 &nested,
                 0,
             ),
-            Err(ExecutionError::tuple_index_family_mismatch(
-                ValueType::List(Box::new(ValueType::String)),
-                ValueType::List(Box::new(ValueType::Int)),
-            )),
+            Err(ExecutionError::ListIndexFamilyMismatch {
+                expected: ValueType::List(Box::new(ValueType::String)),
+                actual: ValueType::List(Box::new(ValueType::Int)),
+            }),
+        );
+    }
+
+    #[test]
+    fn append_spread_reports_compound_family_mismatch() {
+        let int_function = FunctionType::new(Vec::new(), ValueType::Int);
+        let string_function = FunctionType::new(Vec::new(), ValueType::String);
+        let int_function_value = crate::plan::FunctionValue::new(
+            crate::plan::RuntimeFunctionId::Int(IntFunctionId(0)),
+            Vec::new(),
+        );
+        let string_function_value = crate::plan::FunctionValue::new(
+            crate::plan::RuntimeFunctionId::String(StringFunctionId(0)),
+            Vec::new(),
+        );
+
+        assert_eq!(
+            append_spread(
+                &TupleListItem::new(vec![ValueType::Int]),
+                vec![vec![crate::plan::Value::Int(1.into())]],
+                &TupleListItem::new(vec![ValueType::String]),
+                vec![vec![crate::plan::Value::String("wrong".into())]],
+            ),
+            Err(ExecutionError::ListSpreadFamilyMismatch {
+                expected: ValueType::Tuple(vec![ValueType::Int]),
+                actual: ValueType::Tuple(vec![ValueType::String]),
+            }),
+        );
+        assert_eq!(
+            append_spread(
+                &ListListItem::new(Box::new(ValueType::Int)),
+                vec![ListValue::int(vec![1.into()])],
+                &ListListItem::new(Box::new(ValueType::String)),
+                vec![ListValue::string(vec!["wrong".into()])],
+            ),
+            Err(ExecutionError::ListSpreadFamilyMismatch {
+                expected: ValueType::List(Box::new(ValueType::Int)),
+                actual: ValueType::List(Box::new(ValueType::String)),
+            }),
+        );
+        assert_eq!(
+            append_spread(
+                &FunctionListItem::new(int_function.clone()),
+                vec![int_function_value],
+                &FunctionListItem::new(string_function.clone()),
+                vec![string_function_value],
+            ),
+            Err(ExecutionError::ListSpreadFamilyMismatch {
+                expected: ValueType::Function(Box::new(int_function)),
+                actual: ValueType::Function(Box::new(string_function)),
+            }),
         );
     }
 
