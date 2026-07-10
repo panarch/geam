@@ -2,7 +2,7 @@ use crate::plan::{
     BoolExpr, BoolExprKind, BoolReturn, FloatExpr, FloatExprKind, FloatReturn, IntExpr,
     IntExprKind, IntReturn, ListExpr, ListItem, ListReturn, NilExpr, NilExprKind, NilReturn,
     ReturnBody, StringExpr, StringExprKind, StringReturn, TupleExpr, TupleExprKind, TupleReturn,
-    TypedListExpr, TypedListExprKind,
+    TypedListExpr, TypedListReturnKind,
 };
 
 pub(super) fn int_return(expression: IntExpr) -> IntReturn {
@@ -360,65 +360,57 @@ pub(super) fn list_return(expression: ListExpr) -> ListReturn {
 fn typed_list_return_body<Item: ListItem>(
     expression: TypedListExpr<Item>,
 ) -> ReturnBody<TypedListExpr<Item>, Item::Function> {
-    let (item, kind) = expression.into_item_and_kind();
-    typed_list_return_kind(item, kind)
-}
-
-fn typed_list_return_kind<Item: ListItem>(
-    item: Item,
-    kind: TypedListExprKind<Item>,
-) -> ReturnBody<TypedListExpr<Item>, Item::Function> {
-    match kind {
-        TypedListExprKind::Call { function, args } => ReturnBody::tail_call(function, args),
-        TypedListExprKind::BoolCase {
+    match expression.into_return_kind() {
+        TypedListReturnKind::Call { function, args } => ReturnBody::tail_call(function, args),
+        TypedListReturnKind::BoolCase {
             subject,
             true_,
             false_,
         } => ReturnBody::bool_case(
-            *subject,
-            typed_list_return_kind(item.clone(), *true_),
-            typed_list_return_kind(item, *false_),
+            subject,
+            typed_list_return_body(true_),
+            typed_list_return_body(false_),
         ),
-        TypedListExprKind::IntCase {
+        TypedListReturnKind::IntCase {
             subject,
             clauses,
             fallback,
         } => ReturnBody::int_case(
-            *subject,
+            subject,
             clauses
                 .into_iter()
-                .map(|(value, branch)| (value, typed_list_return_kind(item.clone(), branch)))
+                .map(|(value, branch)| (value, typed_list_return_body(branch)))
                 .collect(),
-            typed_list_return_kind(item, *fallback),
+            typed_list_return_body(fallback),
         ),
-        TypedListExprKind::StringCase {
+        TypedListReturnKind::StringCase {
             subject,
             clauses,
             fallback,
         } => ReturnBody::string_case(
-            *subject,
+            subject,
             clauses
                 .into_iter()
-                .map(|(value, branch)| (value, typed_list_return_kind(item.clone(), branch)))
+                .map(|(value, branch)| (value, typed_list_return_body(branch)))
                 .collect(),
-            typed_list_return_kind(item, *fallback),
+            typed_list_return_body(fallback),
         ),
-        TypedListExprKind::FloatCase {
+        TypedListReturnKind::FloatCase {
             subject,
             clauses,
             fallback,
         } => ReturnBody::float_case(
-            *subject,
+            subject,
             clauses
                 .into_iter()
-                .map(|(value, branch)| (value, typed_list_return_kind(item.clone(), branch)))
+                .map(|(value, branch)| (value, typed_list_return_body(branch)))
                 .collect(),
-            typed_list_return_kind(item, *fallback),
+            typed_list_return_body(fallback),
         ),
-        TypedListExprKind::Block { steps, return_ } => {
-            ReturnBody::block(steps, typed_list_return_kind(item, *return_))
+        TypedListReturnKind::Block { steps, return_ } => {
+            ReturnBody::block(steps, typed_list_return_body(return_))
         }
-        kind => ReturnBody::expr(TypedListExpr::from_item_and_kind(item, kind)),
+        TypedListReturnKind::Expr(expression) => ReturnBody::expr(expression),
     }
 }
 

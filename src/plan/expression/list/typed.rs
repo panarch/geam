@@ -5,11 +5,19 @@ use crate::plan::{
 };
 use ecow::EcoString;
 use num_bigint::BigInt;
+use std::marker::PhantomData;
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct TypedListExpr<Item: ListItem> {
     pub(super) item: Item,
     pub(super) kind: TypedListExprKind<Item>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct ListIndexSource<Item: ListItem> {
+    list: Box<ListListExpr>,
+    index: usize,
+    result_item: PhantomData<fn() -> Item>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -35,10 +43,7 @@ pub(crate) enum TypedListExprKind<Item: ListItem> {
         tuple: Box<TupleExpr>,
         index: usize,
     },
-    ListIndex {
-        list: Box<ListListExpr>,
-        index: usize,
-    },
+    ListIndex(ListIndexSource<Item>),
     DropFirst {
         list: Box<TypedListExprKind<Item>>,
         count: usize,
@@ -70,6 +75,56 @@ pub(crate) enum TypedListExprKind<Item: ListItem> {
     },
 }
 
+pub(crate) enum TypedListReturnKind<Item: ListItem> {
+    Call {
+        function: Item::Function,
+        args: Vec<CallArg>,
+    },
+    BoolCase {
+        subject: BoolExpr,
+        true_: TypedListExpr<Item>,
+        false_: TypedListExpr<Item>,
+    },
+    IntCase {
+        subject: IntExpr,
+        clauses: Vec<(BigInt, TypedListExpr<Item>)>,
+        fallback: TypedListExpr<Item>,
+    },
+    StringCase {
+        subject: StringExpr,
+        clauses: Vec<(EcoString, TypedListExpr<Item>)>,
+        fallback: TypedListExpr<Item>,
+    },
+    FloatCase {
+        subject: FloatExpr,
+        clauses: Vec<(f64, TypedListExpr<Item>)>,
+        fallback: TypedListExpr<Item>,
+    },
+    Block {
+        steps: Vec<Step>,
+        return_: TypedListExpr<Item>,
+    },
+    Expr(TypedListExpr<Item>),
+}
+
+impl<Item: ListItem> ListIndexSource<Item> {
+    pub(super) fn new(list: ListListExpr, index: usize) -> Self {
+        Self {
+            list: Box::new(list),
+            index,
+            result_item: PhantomData,
+        }
+    }
+
+    pub(crate) fn list(&self) -> &ListListExpr {
+        &self.list
+    }
+
+    pub(crate) fn index(&self) -> usize {
+        self.index
+    }
+}
+
 impl<Item: ListItem> TypedListExpr<Item> {
     fn new(item: Item, kind: TypedListExprKind<Item>) -> Self {
         Self { item, kind }
@@ -87,12 +142,71 @@ impl<Item: ListItem> TypedListExpr<Item> {
         &self.kind
     }
 
-    pub(crate) fn from_item_and_kind(item: Item, kind: TypedListExprKind<Item>) -> Self {
+    fn from_item_and_kind(item: Item, kind: TypedListExprKind<Item>) -> Self {
         Self::new(item, kind)
     }
 
-    pub(crate) fn into_item_and_kind(self) -> (Item, TypedListExprKind<Item>) {
+    fn into_item_and_kind(self) -> (Item, TypedListExprKind<Item>) {
         (self.item, self.kind)
+    }
+
+    pub(crate) fn into_return_kind(self) -> TypedListReturnKind<Item> {
+        let (item, kind) = self.into_item_and_kind();
+        match kind {
+            TypedListExprKind::Call { function, args } => {
+                TypedListReturnKind::Call { function, args }
+            }
+            TypedListExprKind::BoolCase {
+                subject,
+                true_,
+                false_,
+            } => TypedListReturnKind::BoolCase {
+                subject: *subject,
+                true_: Self::from_item_and_kind(item.clone(), *true_),
+                false_: Self::from_item_and_kind(item, *false_),
+            },
+            TypedListExprKind::IntCase {
+                subject,
+                clauses,
+                fallback,
+            } => TypedListReturnKind::IntCase {
+                subject: *subject,
+                clauses: clauses
+                    .into_iter()
+                    .map(|(value, branch)| (value, Self::from_item_and_kind(item.clone(), branch)))
+                    .collect(),
+                fallback: Self::from_item_and_kind(item, *fallback),
+            },
+            TypedListExprKind::StringCase {
+                subject,
+                clauses,
+                fallback,
+            } => TypedListReturnKind::StringCase {
+                subject: *subject,
+                clauses: clauses
+                    .into_iter()
+                    .map(|(value, branch)| (value, Self::from_item_and_kind(item.clone(), branch)))
+                    .collect(),
+                fallback: Self::from_item_and_kind(item, *fallback),
+            },
+            TypedListExprKind::FloatCase {
+                subject,
+                clauses,
+                fallback,
+            } => TypedListReturnKind::FloatCase {
+                subject: *subject,
+                clauses: clauses
+                    .into_iter()
+                    .map(|(value, branch)| (value, Self::from_item_and_kind(item.clone(), branch)))
+                    .collect(),
+                fallback: Self::from_item_and_kind(item, *fallback),
+            },
+            TypedListExprKind::Block { steps, return_ } => TypedListReturnKind::Block {
+                steps,
+                return_: Self::from_item_and_kind(item, *return_),
+            },
+            kind => TypedListReturnKind::Expr(Self::from_item_and_kind(item, kind)),
+        }
     }
 
     pub(super) fn value(item: Item, elements: Vec<Item::ElementExpr>) -> Self {
@@ -142,14 +256,8 @@ impl<Item: ListItem> TypedListExpr<Item> {
         )
     }
 
-    pub(super) fn list_index(item: Item, list: ListListExpr, index: usize) -> Self {
-        Self::new(
-            item,
-            TypedListExprKind::ListIndex {
-                list: Box::new(list),
-                index,
-            },
-        )
+    pub(super) fn from_list_index(item: Item, source: ListIndexSource<Item>) -> Self {
+        Self::new(item, TypedListExprKind::ListIndex(source))
     }
 
     pub(super) fn drop_first(list: TypedListExpr<Item>, count: usize) -> Self {

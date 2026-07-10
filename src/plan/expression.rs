@@ -43,7 +43,7 @@ pub(crate) use self::{
         FunctionListExpr, FunctionListItem, IntListExpr, IntListItem, ListCaseBranches,
         ListElements, ListExpr, ListItem, ListListExpr, ListListItem, ListLocalExpr,
         ListSpreadElements, NilListExpr, NilListItem, StringListExpr, StringListItem,
-        TupleListExpr, TupleListItem, TypedListExpr, TypedListExprKind,
+        TupleListExpr, TupleListItem, TypedListExpr, TypedListExprKind, TypedListReturnKind,
     },
     nil::NilExprKind,
     panic::{PanicExpr, PanicExprKind},

@@ -921,7 +921,7 @@ mod tests {
                 None,
                 None,
                 PanicSite::unknown(),
-                Value::List(ListValue::list(
+                Value::List(ListValue::from_evaluated_list(
                     ValueType::Int,
                     vec![
                         ListValue::int(vec![1.into()]),

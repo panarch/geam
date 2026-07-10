@@ -29,7 +29,7 @@ pub(crate) use expression::{
     FunctionListExpr, FunctionListItem, IntListExpr, IntListItem, ListCaseBranches, ListExpr,
     ListItem, ListListExpr, ListListItem, ListLocalExpr, ListSpreadElements, NilListExpr,
     NilListItem, StringListExpr, StringListItem, TupleListExpr, TupleListItem, TypedListExpr,
-    TypedListExprKind,
+    TypedListExprKind, TypedListReturnKind,
 };
 pub(crate) use frame::FrameLayout;
 pub(crate) use function::{
@@ -69,7 +69,9 @@ pub(crate) use value::{
     FunctionValueKind, IntFunctionValue, ListFunctionValue, ListLocalValue, NilFunctionValue,
     StringFunctionValue, TupleFunctionValue,
 };
-pub use value::{FunctionType, FunctionValue, ListValue, Value, ValueType};
+pub use value::{
+    FunctionType, FunctionValue, ListValue, ListValueItemTypeMismatch, Value, ValueType,
+};
 
 pub struct ExecutionPlan {
     module: EcoString,

@@ -272,13 +272,12 @@ pub(super) fn run_list_loop(
         ListFunctionId::Nil(function) => {
             run_nil_list_loop(plan, function, frame).map(ListValue::nil)
         }
-        ListFunctionId::Tuple { id, item_type } => {
-            run_tuple_list_loop(plan, id, frame).map(|values| ListValue::tuple(item_type, values))
-        }
+        ListFunctionId::Tuple { id, item_type } => run_tuple_list_loop(plan, id, frame)
+            .map(|values| ListValue::from_evaluated_tuple(item_type, values)),
         ListFunctionId::List { id, item_type } => run_list_list_loop(plan, id, frame)
-            .map(|values| ListValue::list(item_type.as_ref().clone(), values)),
+            .map(|values| ListValue::from_evaluated_list(item_type.as_ref().clone(), values)),
         ListFunctionId::Function { id, item_type } => run_function_list_loop(plan, id, frame)
-            .map(|values| ListValue::function(item_type, values)),
+            .map(|values| ListValue::from_evaluated_function(item_type, values)),
     }
 }
 
@@ -540,7 +539,7 @@ fn eval_list_return_body<'a>(
         ),
         ListReturn::Tuple { item_type, body } => map_list_return_outcome(
             eval_return_body(plan, frame, body, eval_tuple_list_expr)?,
-            |value| ListValue::tuple(item_type.clone(), value),
+            |value| ListValue::from_evaluated_tuple(item_type.clone(), value),
             |id| ListFunctionId::Tuple {
                 id,
                 item_type: item_type.clone(),
@@ -548,7 +547,7 @@ fn eval_list_return_body<'a>(
         ),
         ListReturn::List { item_type, body } => map_list_return_outcome(
             eval_return_body(plan, frame, body, eval_list_list_expr)?,
-            |value| ListValue::list(item_type.as_ref().clone(), value),
+            |value| ListValue::from_evaluated_list(item_type.as_ref().clone(), value),
             |id| ListFunctionId::List {
                 id,
                 item_type: item_type.clone(),
@@ -556,7 +555,7 @@ fn eval_list_return_body<'a>(
         ),
         ListReturn::Function { item_type, body } => map_list_return_outcome(
             eval_return_body(plan, frame, body, eval_function_list_expr)?,
-            |value| ListValue::function(item_type.clone(), value),
+            |value| ListValue::from_evaluated_function(item_type.clone(), value),
             |id| ListFunctionId::Function {
                 id,
                 item_type: item_type.clone(),
@@ -1264,7 +1263,7 @@ mod tests {
                 ListFunctionId::from_item_type(0, ValueType::Tuple(vec![ValueType::Int])),
                 Frame::default(),
             ),
-            Ok(ListValue::tuple(
+            Ok(ListValue::from_evaluated_tuple(
                 vec![ValueType::Int],
                 vec![vec![Value::Int(2.into())]],
             )),
@@ -1275,7 +1274,7 @@ mod tests {
                 ListFunctionId::from_item_type(0, ValueType::List(Box::new(ValueType::Int))),
                 Frame::default(),
             ),
-            Ok(ListValue::list(
+            Ok(ListValue::from_evaluated_list(
                 ValueType::Int,
                 vec![ListValue::int(vec![2.into()])],
             )),
@@ -1289,7 +1288,7 @@ mod tests {
                 ),
                 Frame::default(),
             ),
-            Ok(ListValue::function(
+            Ok(ListValue::from_evaluated_function(
                 function_type,
                 vec![crate::plan::FunctionValue::new(
                     crate::plan::RuntimeFunctionId::Int(IntFunctionId(0)),
@@ -1404,21 +1403,21 @@ mod tests {
                     Vec::new(),
                     ValueType::Tuple(tuple_item.clone()),
                 )),
-                ListValue::tuple(tuple_item.clone(), Vec::new()),
+                ListValue::from_evaluated_tuple(tuple_item.clone(), Vec::new()),
             ),
             (
                 ListReturn::expr(ListExpr::value(
                     Vec::new(),
                     ValueType::List(Box::new(list_item.clone())),
                 )),
-                ListValue::list(list_item.clone(), Vec::new()),
+                ListValue::from_evaluated_list(list_item.clone(), Vec::new()),
             ),
             (
                 ListReturn::expr(ListExpr::value(
                     Vec::new(),
                     ValueType::Function(Box::new(function_item.clone())),
                 )),
-                ListValue::function(function_item.clone(), Vec::new()),
+                ListValue::from_evaluated_function(function_item.clone(), Vec::new()),
             ),
         ] {
             assert_eq!(

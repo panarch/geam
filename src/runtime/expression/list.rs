@@ -37,11 +37,15 @@ pub(in crate::runtime) fn eval_list_expr(
             eval_nil_list_expr(plan, frame, expression).map(ListValue::nil)
         }
         ListExpr::Tuple(expression) => eval_tuple_list_expr(plan, frame, expression)
-            .map(|values| ListValue::tuple(expression.item().item_type(), values)),
-        ListExpr::List(expression) => eval_list_list_expr(plan, frame, expression)
-            .map(|values| ListValue::list(expression.item().item_type().as_ref().clone(), values)),
-        ListExpr::Function(expression) => eval_function_list_expr(plan, frame, expression)
-            .map(|values| ListValue::function(expression.item().item_type(), values)),
+            .map(|values| ListValue::from_evaluated_tuple(expression.item().item_type(), values)),
+        ListExpr::List(expression) => eval_list_list_expr(plan, frame, expression).map(|values| {
+            ListValue::from_evaluated_list(expression.item().item_type().as_ref().clone(), values)
+        }),
+        ListExpr::Function(expression) => {
+            eval_function_list_expr(plan, frame, expression).map(|values| {
+                ListValue::from_evaluated_function(expression.item().item_type(), values)
+            })
+        }
     }
 }
 
@@ -156,8 +160,8 @@ fn eval_typed_list_expr_kind<Item: RuntimeListItem>(
                 )),
             }
         }
-        TypedListExprKind::ListIndex { list, index } => {
-            Item::project_nested_list(plan, frame, item, list, *index)
+        TypedListExprKind::ListIndex(source) => {
+            Item::project_nested_list(plan, frame, item, source.list(), source.index())
         }
         TypedListExprKind::DropFirst { list, count } => {
             let list = eval_typed_list_expr_kind(plan, frame, item, list)?;
@@ -590,13 +594,13 @@ pub(in crate::runtime) fn get_list_value(
         crate::plan::ListLocal::Bool(local) => ListValue::bool(frame.get_bool_list(*local)),
         crate::plan::ListLocal::Nil(local) => ListValue::nil(frame.get_nil_list(*local)),
         crate::plan::ListLocal::Tuple { local, item_type } => {
-            ListValue::tuple(item_type.clone(), frame.get_tuple_list(*local))
+            ListValue::from_evaluated_tuple(item_type.clone(), frame.get_tuple_list(*local))
         }
         crate::plan::ListLocal::List { local, item_type } => {
-            ListValue::list(item_type.as_ref().clone(), frame.get_list_list(*local))
+            ListValue::from_evaluated_list(item_type.as_ref().clone(), frame.get_list_list(*local))
         }
         crate::plan::ListLocal::Function { local, item_type } => {
-            ListValue::function(item_type.clone(), frame.get_function_list(*local))
+            ListValue::from_evaluated_function(item_type.clone(), frame.get_function_list(*local))
         }
     }
 }
@@ -716,19 +720,18 @@ pub(in crate::runtime) fn project_function_list_expr(
 #[cfg(test)]
 mod tests {
     use super::{
-        RuntimeListItem, eval_list_expr, get_list_value, project_bool_list_expr,
-        project_float_list_expr, project_function_list_expr, project_int_list_expr,
-        project_list_list_expr, project_nil_list_expr, project_string_list_expr,
-        project_tuple_list_expr,
+        eval_list_expr, get_list_value, project_bool_list_expr, project_float_list_expr,
+        project_function_list_expr, project_int_list_expr, project_list_list_expr,
+        project_nil_list_expr, project_string_list_expr, project_tuple_list_expr,
     };
     use crate::plan::{
         BoolExpr, BoolListCaseBranches, BoolListLocalId, CallArg, ExecutionPlan, Expr, FloatExpr,
         FloatListLocalId, FrameLayout, FunctionExpr, FunctionId, FunctionListLocalId, FunctionPlan,
         FunctionReturnFamily, FunctionType, IntExpr, IntFunctionExpr, IntFunctionId,
         IntFunctionValue, IntListLocalId, IntLocalId, ListCaseBranches, ListExpr, ListFunctionExpr,
-        ListFunctionId, ListFunctionValue, ListListLocalId, ListLocal, ListReturn, ListValue,
-        NilExpr, NilListLocalId, PanicExpr, PanicSite, ReturnExpr, Step, StringExpr,
-        StringListItem, StringListLocalId, TupleExpr, TupleListLocalId, ValueType,
+        ListFunctionId, ListFunctionValue, ListListExpr, ListListItem, ListListLocalId, ListLocal,
+        ListReturn, ListValue, NilExpr, NilListLocalId, PanicExpr, PanicSite, ReturnExpr, Step,
+        StringExpr, StringListLocalId, TupleExpr, TupleListLocalId, ValueType,
     };
     use crate::runtime::frame::Frame;
     use crate::runtime::{ExecutionError, PanicKind};
@@ -816,21 +819,24 @@ mod tests {
             ),
             (
                 ListFunctionId::from_item_type(0, ValueType::Tuple(vec![ValueType::Int])),
-                ListValue::tuple(
+                ListValue::from_evaluated_tuple(
                     vec![ValueType::Int],
                     vec![vec![crate::plan::Value::Int(2.into())]],
                 ),
             ),
             (
                 ListFunctionId::from_item_type(0, ValueType::List(Box::new(ValueType::Int))),
-                ListValue::list(ValueType::Int, vec![ListValue::int(vec![3.into()])]),
+                ListValue::from_evaluated_list(
+                    ValueType::Int,
+                    vec![ListValue::int(vec![3.into()])],
+                ),
             ),
             (
                 ListFunctionId::from_item_type(
                     0,
                     ValueType::Function(Box::new(function_type.clone())),
                 ),
-                ListValue::function(
+                ListValue::from_evaluated_function(
                     function_type,
                     vec![crate::plan::FunctionValue::new(
                         crate::plan::RuntimeFunctionId::Int(IntFunctionId(0)),
@@ -979,21 +985,24 @@ mod tests {
             ),
             (
                 ListFunctionId::from_item_type(0, ValueType::Tuple(vec![ValueType::Int])),
-                ListValue::tuple(
+                ListValue::from_evaluated_tuple(
                     vec![ValueType::Int],
                     vec![vec![crate::plan::Value::Int(2.into())]],
                 ),
             ),
             (
                 ListFunctionId::from_item_type(0, ValueType::List(Box::new(ValueType::Int))),
-                ListValue::list(ValueType::Int, vec![ListValue::int(vec![3.into()])]),
+                ListValue::from_evaluated_list(
+                    ValueType::Int,
+                    vec![ListValue::int(vec![3.into()])],
+                ),
             ),
             (
                 ListFunctionId::from_item_type(
                     0,
                     ValueType::Function(Box::new(function_type.clone())),
                 ),
-                ListValue::function(
+                ListValue::from_evaluated_function(
                     function_type,
                     vec![crate::plan::FunctionValue::new(
                         crate::plan::RuntimeFunctionId::Int(IntFunctionId(0)),
@@ -1171,7 +1180,7 @@ mod tests {
                     "values".into(),
                 ),
             ),
-            Ok(ListValue::tuple(
+            Ok(ListValue::from_evaluated_tuple(
                 vec![ValueType::Int],
                 vec![vec![crate::plan::Value::Int(2.into())]],
             )),
@@ -1185,7 +1194,7 @@ mod tests {
                     "values".into(),
                 ),
             ),
-            Ok(ListValue::list(
+            Ok(ListValue::from_evaluated_list(
                 ValueType::Int,
                 vec![ListValue::int(vec![3.into()])],
             )),
@@ -1202,7 +1211,7 @@ mod tests {
                     "values".into(),
                 ),
             ),
-            Ok(ListValue::function(
+            Ok(ListValue::from_evaluated_function(
                 FunctionType::new(Vec::new(), ValueType::Int),
                 vec![crate::plan::FunctionValue::new(
                     crate::plan::RuntimeFunctionId::Int(IntFunctionId(0)),
@@ -1239,7 +1248,7 @@ mod tests {
                     ValueType::Tuple(vec![ValueType::Int]),
                 ),
             ),
-            Ok(ListValue::tuple(
+            Ok(ListValue::from_evaluated_tuple(
                 vec![ValueType::Int],
                 vec![
                     vec![crate::plan::Value::Int(1.into())],
@@ -1281,7 +1290,7 @@ mod tests {
                     1,
                 ),
             ),
-            Ok(ListValue::tuple(
+            Ok(ListValue::from_evaluated_tuple(
                 vec![ValueType::Int],
                 vec![vec![crate::plan::Value::Int(2.into())]],
             )),
@@ -1305,7 +1314,7 @@ mod tests {
                     1,
                 ),
             ),
-            Ok(ListValue::list(
+            Ok(ListValue::from_evaluated_list(
                 ValueType::Int,
                 vec![ListValue::int(vec![3.into()])],
             )),
@@ -1337,7 +1346,7 @@ mod tests {
                     1,
                 ),
             ),
-            Ok(ListValue::function(
+            Ok(ListValue::from_evaluated_function(
                 FunctionType::new(Vec::new(), ValueType::Int),
                 vec![crate::plan::FunctionValue::new(
                     crate::plan::RuntimeFunctionId::Int(IntFunctionId(0)),
@@ -1382,7 +1391,7 @@ mod tests {
                 &mut frame,
                 &ListExpr::spread(vec![tuple(1.into())], tail, item_type),
             ),
-            Ok(ListValue::tuple(
+            Ok(ListValue::from_evaluated_tuple(
                 vec![ValueType::Int],
                 vec![
                     vec![crate::plan::Value::Int(1.into())],
@@ -1417,7 +1426,7 @@ mod tests {
                 &frame,
                 &ListLocal::tuple(TupleListLocalId(5), vec![ValueType::Int]),
             ),
-            ListValue::tuple(
+            ListValue::from_evaluated_tuple(
                 vec![ValueType::Int],
                 vec![vec![crate::plan::Value::Int(2.into())]],
             ),
@@ -1430,7 +1439,7 @@ mod tests {
                     FunctionType::new(Vec::new(), ValueType::Int),
                 ),
             ),
-            ListValue::function(
+            ListValue::from_evaluated_function(
                 FunctionType::new(Vec::new(), ValueType::Int),
                 vec![crate::plan::FunctionValue::new(
                     crate::plan::RuntimeFunctionId::Int(IntFunctionId(0)),
@@ -1663,7 +1672,7 @@ mod tests {
                 &mut frame,
                 &ListExpr::tuple_index(tuple, 0, ValueType::Tuple(vec![ValueType::Int])),
             ),
-            Ok(ListValue::tuple(
+            Ok(ListValue::from_evaluated_tuple(
                 vec![ValueType::Int],
                 vec![vec![crate::plan::Value::Int(2.into())]],
             )),
@@ -1684,7 +1693,7 @@ mod tests {
                 &mut frame,
                 &ListExpr::tuple_index(tuple, 0, ValueType::List(Box::new(ValueType::Int))),
             ),
-            Ok(ListValue::list(
+            Ok(ListValue::from_evaluated_list(
                 ValueType::Int,
                 vec![ListValue::int(vec![3.into()])],
             )),
@@ -1715,7 +1724,7 @@ mod tests {
                     ValueType::Function(Box::new(function_type.clone())),
                 ),
             ),
-            Ok(ListValue::function(
+            Ok(ListValue::from_evaluated_function(
                 function_type,
                 vec![crate::plan::FunctionValue::new(
                     crate::plan::RuntimeFunctionId::Int(IntFunctionId(0)),
@@ -1841,24 +1850,21 @@ mod tests {
     }
 
     #[test]
-    fn runtime_list_item_project_nested_list_reports_list_index_family_mismatch() {
+    fn nested_list_projection_reports_direct_mutated_frame_item_family_mismatch() {
         let plan = plan();
-        let mut frame = Frame::default();
-        let nested = ListExpr::value(
-            vec![Expr::list(list_expr(1))],
-            ValueType::List(Box::new(ValueType::Int)),
-        )
-        .into_list()
-        .expect("nested list should build");
+        let local = ListLocal::list(ListListLocalId(0), ValueType::String);
+        let mut layout = FrameLayout::default();
+        layout.include_list(local.clone());
+        let mut frame = Frame::new(layout);
+        frame.set_list_list(ListListLocalId(0), vec![ListValue::int(vec![1.into()])]);
+        let nested = ListListExpr::local_get(
+            ListListItem::new(Box::new(ValueType::String)),
+            ListListLocalId(0),
+            "values".into(),
+        );
 
         assert_eq!(
-            <StringListItem as RuntimeListItem>::project_nested_list(
-                &plan,
-                &mut frame,
-                &StringListItem,
-                &nested,
-                0,
-            ),
+            eval_list_expr(&plan, &mut frame, &ListExpr::list_index(nested, 0),),
             Err(ExecutionError::ListIndexFamilyMismatch {
                 expected: ValueType::List(Box::new(ValueType::String)),
                 actual: ValueType::List(Box::new(ValueType::Int)),

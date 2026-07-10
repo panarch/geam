@@ -542,7 +542,7 @@ impl FrameLayout {
                 self.include_call_args(args);
             }
             TypedListExprKind::TupleIndex { tuple, .. } => self.include_tuple_expr(tuple),
-            TypedListExprKind::ListIndex { list, .. } => self.include_typed_list_expr(list),
+            TypedListExprKind::ListIndex(source) => self.include_typed_list_expr(source.list()),
             TypedListExprKind::DropFirst { list, .. } => {
                 self.include_typed_list_expr_kind(item, list)
             }

@@ -13,8 +13,8 @@ pub(crate) use self::function::{
     BoolFunctionValue, FloatFunctionValue, FunctionFunctionValue, FunctionValueKind,
     IntFunctionValue, ListFunctionValue, NilFunctionValue, StringFunctionValue, TupleFunctionValue,
 };
-pub use self::list::ListValue;
 pub(crate) use self::list::{ListLocalValue, ListValueKind};
+pub use self::list::{ListValue, ListValueItemTypeMismatch};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum ValueType {

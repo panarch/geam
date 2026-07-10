@@ -4,6 +4,7 @@ mod item;
 mod local;
 mod typed;
 
+use self::typed::ListIndexSource;
 pub(crate) use self::{
     case::{BoolListCaseBranches, ListCaseBranches},
     elements::{ListElementTypeMismatch, ListElements, ListSpreadElements},
@@ -12,7 +13,7 @@ pub(crate) use self::{
         NilListItem, StringListItem, TupleListItem,
     },
     local::ListLocalExpr,
-    typed::{TypedListExpr, TypedListExprKind},
+    typed::{TypedListExpr, TypedListExprKind, TypedListReturnKind},
 };
 use super::{
     BoolExpr, CallArg, Expr, FloatExpr, FunctionExpr, IntExpr, ListFunctionExpr, PanicExpr,
@@ -276,26 +277,48 @@ impl ListExpr {
     pub(crate) fn list_index(list: ListListExpr, index: usize) -> Self {
         let element_type = list.item().item_type().as_ref().clone();
         match element_type {
-            ValueType::Int => Self::Int(IntListExpr::list_index(IntListItem, list, index)),
-            ValueType::String => {
-                Self::String(StringListExpr::list_index(StringListItem, list, index))
-            }
-            ValueType::Float => Self::Float(FloatListExpr::list_index(FloatListItem, list, index)),
-            ValueType::Bool => Self::Bool(BoolListExpr::list_index(BoolListItem, list, index)),
-            ValueType::Nil => Self::Nil(NilListExpr::list_index(NilListItem, list, index)),
+            ValueType::Int => Self::Int(IntListExpr::from_list_index(
+                IntListItem,
+                ListIndexSource::new(list, index),
+            )),
+            ValueType::String => Self::String(StringListExpr::from_list_index(
+                StringListItem,
+                ListIndexSource::new(list, index),
+            )),
+            ValueType::Float => Self::Float(FloatListExpr::from_list_index(
+                FloatListItem,
+                ListIndexSource::new(list, index),
+            )),
+            ValueType::Bool => Self::Bool(BoolListExpr::from_list_index(
+                BoolListItem,
+                ListIndexSource::new(list, index),
+            )),
+            ValueType::Nil => Self::Nil(NilListExpr::from_list_index(
+                NilListItem,
+                ListIndexSource::new(list, index),
+            )),
             ValueType::Tuple(item_type) => {
                 let item = TupleListItem { item_type };
-                Self::Tuple(TupleListExpr::list_index(item, list, index))
+                Self::Tuple(TupleListExpr::from_list_index(
+                    item,
+                    ListIndexSource::new(list, index),
+                ))
             }
             ValueType::List(item_type) => {
                 let item = ListListItem { item_type };
-                Self::List(ListListExpr::list_index(item, list, index))
+                Self::List(ListListExpr::from_list_index(
+                    item,
+                    ListIndexSource::new(list, index),
+                ))
             }
             ValueType::Function(item_type) => {
                 let item = FunctionListItem {
                     item_type: *item_type,
                 };
-                Self::Function(FunctionListExpr::list_index(item, list, index))
+                Self::Function(FunctionListExpr::from_list_index(
+                    item,
+                    ListIndexSource::new(list, index),
+                ))
             }
         }
     }
@@ -560,8 +583,9 @@ mod tests {
     use super::{
         BoolListCaseBranches, BoolListExpr, BoolListItem, FloatListExpr, FloatListItem,
         FunctionListExpr, FunctionListItem, IntListExpr, IntListItem, ListCaseBranches,
-        ListElementTypeMismatch, ListElements, ListExpr, ListListExpr, ListListItem, NilListExpr,
-        NilListItem, StringListExpr, StringListItem, TupleListExpr, TupleListItem,
+        ListElementTypeMismatch, ListElements, ListExpr, ListIndexSource, ListListExpr,
+        ListListItem, NilListExpr, NilListItem, StringListExpr, StringListItem, TupleListExpr,
+        TupleListItem,
     };
     use crate::plan::{
         BoolExpr, Expr, FloatExpr, FunctionExpr, FunctionType, FunctionValue, IntExpr,
@@ -696,11 +720,19 @@ mod tests {
                 vec![NilExpr::value(), NilExpr::value()],
             )),
         );
+        let tuple_value = ListValue::from_evaluated_tuple(
+            vec![ValueType::Int],
+            vec![vec![crate::plan::Value::Int(1.into())]],
+        );
         assert_eq!(
-            ListExpr::from_value(ListValue::tuple(
+            ListValue::try_tuple(
                 vec![ValueType::Int],
                 vec![vec![crate::plan::Value::Int(1.into())]],
-            )),
+            ),
+            Ok(tuple_value.clone()),
+        );
+        assert_eq!(
+            ListExpr::from_value(tuple_value),
             ListExpr::Tuple(TupleListExpr::value(
                 TupleListItem {
                     item_type: vec![ValueType::Int],
@@ -711,11 +743,19 @@ mod tests {
                 )],
             )),
         );
+        let nested_value = ListValue::from_evaluated_list(
+            ValueType::String,
+            vec![ListValue::string(vec!["child".into()])],
+        );
         assert_eq!(
-            ListExpr::from_value(ListValue::list(
+            ListValue::try_list(
                 ValueType::String,
                 vec![ListValue::string(vec!["child".into()])],
-            )),
+            ),
+            Ok(nested_value.clone()),
+        );
+        assert_eq!(
+            ListExpr::from_value(nested_value),
             ListExpr::List(ListListExpr::value(
                 ListListItem {
                     item_type: Box::new(ValueType::String),
@@ -730,11 +770,14 @@ mod tests {
         let function_type = FunctionType::new(Vec::new(), ValueType::Int);
         let function_value =
             FunctionValue::new(RuntimeFunctionId::Int(IntFunctionId(0)), Vec::new());
+        let function_list =
+            ListValue::from_evaluated_function(function_type.clone(), vec![function_value.clone()]);
         assert_eq!(
-            ListExpr::from_value(ListValue::function(
-                function_type.clone(),
-                vec![function_value.clone()],
-            )),
+            ListValue::try_function(function_type.clone(), vec![function_value.clone()]),
+            Ok(function_list.clone()),
+        );
+        assert_eq!(
+            ListExpr::from_value(function_list),
             ListExpr::Function(FunctionListExpr::value(
                 FunctionListItem {
                     item_type: function_type,
@@ -882,7 +925,10 @@ mod tests {
         .expect("nested list");
         assert_eq!(
             ListExpr::list_index(nested.clone(), 0),
-            ListExpr::String(StringListExpr::list_index(StringListItem, nested, 0)),
+            ListExpr::String(StringListExpr::from_list_index(
+                StringListItem,
+                ListIndexSource::new(nested, 0),
+            )),
         );
     }
 
@@ -1063,6 +1109,8 @@ mod tests {
     fn nested_list_index_dispatch_preserves_every_item_type() {
         let function_type = FunctionType::new(Vec::new(), ValueType::Int);
         let item_types = vec![
+            ValueType::Int,
+            ValueType::String,
             ValueType::Float,
             ValueType::Bool,
             ValueType::Nil,
@@ -1078,8 +1126,47 @@ mod tests {
             )
             .into_list()
             .expect("list item list");
+            let expected = match item_type.clone() {
+                ValueType::Int => ListExpr::Int(IntListExpr::from_list_index(
+                    IntListItem,
+                    ListIndexSource::new(list.clone(), 3),
+                )),
+                ValueType::String => ListExpr::String(StringListExpr::from_list_index(
+                    StringListItem,
+                    ListIndexSource::new(list.clone(), 3),
+                )),
+                ValueType::Float => ListExpr::Float(FloatListExpr::from_list_index(
+                    FloatListItem,
+                    ListIndexSource::new(list.clone(), 3),
+                )),
+                ValueType::Bool => ListExpr::Bool(BoolListExpr::from_list_index(
+                    BoolListItem,
+                    ListIndexSource::new(list.clone(), 3),
+                )),
+                ValueType::Nil => ListExpr::Nil(NilListExpr::from_list_index(
+                    NilListItem,
+                    ListIndexSource::new(list.clone(), 3),
+                )),
+                ValueType::Tuple(item_type) => ListExpr::Tuple(TupleListExpr::from_list_index(
+                    TupleListItem { item_type },
+                    ListIndexSource::new(list.clone(), 3),
+                )),
+                ValueType::List(item_type) => ListExpr::List(ListListExpr::from_list_index(
+                    ListListItem { item_type },
+                    ListIndexSource::new(list.clone(), 3),
+                )),
+                ValueType::Function(item_type) => {
+                    ListExpr::Function(FunctionListExpr::from_list_index(
+                        FunctionListItem {
+                            item_type: *item_type,
+                        },
+                        ListIndexSource::new(list.clone(), 3),
+                    ))
+                }
+            };
 
-            assert_eq!(ListExpr::list_index(list, 0).element_type(), item_type);
+            assert_eq!(ListExpr::list_index(list, 3), expected);
+            assert_eq!(expected.element_type(), item_type);
         }
     }
 
