@@ -1,7 +1,7 @@
 use crate::plan::{FrameLayout, ReturnBodyKind};
 
 impl FrameLayout {
-    pub(in crate::plan::frame) fn include_int_function_return(
+    pub(in crate::plan::module::frame) fn include_int_function_return(
         &mut self,
         body: &crate::plan::IntFunctionReturn,
     ) {
@@ -57,7 +57,7 @@ impl FrameLayout {
         }
     }
 
-    pub(in crate::plan::frame) fn include_float_function_return(
+    pub(in crate::plan::module::frame) fn include_float_function_return(
         &mut self,
         body: &crate::plan::FloatFunctionReturn,
     ) {
@@ -113,7 +113,7 @@ impl FrameLayout {
         }
     }
 
-    pub(in crate::plan::frame) fn include_string_function_return(
+    pub(in crate::plan::module::frame) fn include_string_function_return(
         &mut self,
         body: &crate::plan::StringFunctionReturn,
     ) {
@@ -169,7 +169,7 @@ impl FrameLayout {
         }
     }
 
-    pub(in crate::plan::frame) fn include_bool_function_return(
+    pub(in crate::plan::module::frame) fn include_bool_function_return(
         &mut self,
         body: &crate::plan::BoolFunctionReturn,
     ) {
@@ -225,7 +225,7 @@ impl FrameLayout {
         }
     }
 
-    pub(in crate::plan::frame) fn include_nil_function_return(
+    pub(in crate::plan::module::frame) fn include_nil_function_return(
         &mut self,
         body: &crate::plan::NilFunctionReturn,
     ) {
@@ -281,7 +281,7 @@ impl FrameLayout {
         }
     }
 
-    pub(in crate::plan::frame) fn include_tuple_function_return(
+    pub(in crate::plan::module::frame) fn include_tuple_function_return(
         &mut self,
         body: &crate::plan::TupleFunctionReturn,
     ) {
@@ -337,7 +337,7 @@ impl FrameLayout {
         }
     }
 
-    pub(in crate::plan::frame) fn include_list_function_return(
+    pub(in crate::plan::module::frame) fn include_list_function_return(
         &mut self,
         body: &crate::plan::ListFunctionReturn,
     ) {
@@ -393,7 +393,7 @@ impl FrameLayout {
         }
     }
 
-    pub(in crate::plan::frame) fn include_function_function_return(
+    pub(in crate::plan::module::frame) fn include_function_function_return(
         &mut self,
         body: &crate::plan::FunctionFunctionReturn,
     ) {

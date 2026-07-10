@@ -1,8 +1,8 @@
 use super::bind::bind_arguments;
 use super::steps::execute_steps;
-use crate::execution::ExecutionPlan;
 #[cfg(test)]
 use crate::plan::ListReturn;
+use crate::plan::execution::ExecutionPlan;
 use crate::plan::{
     BoolFunctionFunctionId, BoolFunctionId, BoolListFunctionId, CallArg, FloatFunctionFunctionId,
     FloatFunctionId, FloatListFunctionId, FunctionFunctionFunctionId, FunctionFunctionValue,
@@ -780,7 +780,7 @@ mod tests {
         run_int_loop, run_list_function_loop, run_list_loop, run_nil_function_loop, run_nil_loop,
         run_string_function_loop, run_string_loop, run_tuple_function_loop, run_tuple_loop,
     };
-    use crate::execution::ExecutionPlan;
+    use crate::plan::execution::ExecutionPlan;
     use crate::plan::{
         BoolExpr, BoolFunctionExpr, BoolFunctionFunctionId, BoolFunctionId, BoolFunctionValue,
         BoolListFunctionId, CallArg, Expr, FloatExpr, FloatFunctionExpr, FloatFunctionFunctionId,

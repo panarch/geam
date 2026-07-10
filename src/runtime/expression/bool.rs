@@ -2,7 +2,7 @@ use super::{
     eval_expr, eval_float_expr, eval_int_expr, eval_list_expr, eval_panic_expr, eval_string_expr,
     project_bool_list_expr, project_tuple_expr,
 };
-use crate::execution::ExecutionPlan;
+use crate::plan::execution::ExecutionPlan;
 use crate::plan::{BoolExpr, BoolExprKind, Value, ValueType};
 use crate::runtime::ExecutionError;
 use crate::runtime::frame::Frame;
@@ -157,7 +157,7 @@ fn eval_or(
 #[cfg(test)]
 mod tests {
     use super::{eval_and, eval_bool_expr, eval_or};
-    use crate::execution::ExecutionPlan;
+    use crate::plan::execution::ExecutionPlan;
     use crate::plan::{
         BoolExpr, BoolFunctionExpr, Expr, FloatExpr, FloatFunctionExpr, FunctionFunctionExpr,
         FunctionFunctionId, FunctionFunctionValue, FunctionId, FunctionPlan, FunctionReturnFamily,

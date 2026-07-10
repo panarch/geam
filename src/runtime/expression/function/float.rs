@@ -1,4 +1,4 @@
-use crate::execution::ExecutionPlan;
+use crate::plan::execution::ExecutionPlan;
 use crate::plan::{
     FloatFunctionExpr, FloatFunctionExprKind, FloatFunctionValue, FunctionReturnFamily,
     FunctionValueKind, Value, ValueType,
@@ -127,7 +127,7 @@ pub(in crate::runtime) fn eval_float_function_expr(
 #[cfg(test)]
 mod tests {
     use super::eval_float_function_expr;
-    use crate::execution::ExecutionPlan;
+    use crate::plan::execution::ExecutionPlan;
     use crate::plan::{
         BoolExpr, BoolFunctionExpr, CaptureArg, Expr, FloatExpr, FloatFunctionExpr,
         FloatFunctionFunctionId, FloatFunctionId, FloatFunctionLocalId, FloatFunctionValue,

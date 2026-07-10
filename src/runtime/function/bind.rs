@@ -1,4 +1,4 @@
-use crate::execution::ExecutionPlan;
+use crate::plan::execution::ExecutionPlan;
 use crate::plan::{
     CallArg, CallArgKind, CaptureArg, CaptureArgKind, CaptureValue, CaptureValueKind, FrameLayout,
 };
@@ -348,7 +348,7 @@ fn bind_list_capture(frame: &mut Frame, value: &crate::plan::ListLocalValue) {
 #[cfg(test)]
 mod tests {
     use super::{bind_arguments, bind_function_value_arguments, eval_capture_args};
-    use crate::execution::ExecutionPlan;
+    use crate::plan::execution::ExecutionPlan;
     use crate::plan::{
         BoolExpr, BoolFunctionExpr, BoolFunctionId, BoolFunctionLocalId, BoolFunctionValue,
         BoolLocalId, CallArg, CaptureArg, CaptureValue, Expr, FloatExpr, FloatFunctionExpr,

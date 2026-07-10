@@ -2,7 +2,7 @@ use super::FrameLayout;
 use crate::plan::{CallArg, CallArgKind, CaptureArg, CaptureArgKind};
 
 impl FrameLayout {
-    pub(in crate::plan::frame) fn include_call_args(&mut self, args: &[CallArg]) {
+    pub(in crate::plan::module::frame) fn include_call_args(&mut self, args: &[CallArg]) {
         for arg in args {
             match arg.kind() {
                 CallArgKind::Int { value, .. } => self.include_int_expr(value),
@@ -34,7 +34,7 @@ impl FrameLayout {
         }
     }
 
-    pub(in crate::plan::frame) fn include_capture_args(&mut self, args: &[CaptureArg]) {
+    pub(in crate::plan::module::frame) fn include_capture_args(&mut self, args: &[CaptureArg]) {
         for arg in args {
             match arg.kind() {
                 CaptureArgKind::Int { value, .. } => self.include_int_expr(value),

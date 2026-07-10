@@ -1,4 +1,4 @@
-use crate::execution::ExecutionPlan;
+use crate::plan::execution::ExecutionPlan;
 use crate::plan::{
     FunctionFunctionExpr, FunctionFunctionExprKind, FunctionFunctionValue, FunctionReturnFamily,
     FunctionValueKind, Value, ValueType,
@@ -129,7 +129,7 @@ pub(in crate::runtime) fn eval_function_function_expr(
 #[cfg(test)]
 mod tests {
     use super::eval_function_function_expr;
-    use crate::execution::ExecutionPlan;
+    use crate::plan::execution::ExecutionPlan;
     use crate::plan::{
         BoolExpr, CaptureArg, Expr, FloatExpr, FunctionExpr, FunctionFunctionExpr,
         FunctionFunctionId, FunctionFunctionValue, FunctionId, FunctionPlan, FunctionReturnFamily,

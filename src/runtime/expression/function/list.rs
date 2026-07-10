@@ -1,4 +1,4 @@
-use crate::execution::ExecutionPlan;
+use crate::plan::execution::ExecutionPlan;
 use crate::plan::{
     FunctionReturnFamily, FunctionValueKind, ListFunctionExpr, ListFunctionExprKind,
     ListFunctionValue, Value, ValueType,
@@ -132,7 +132,7 @@ pub(in crate::runtime) fn eval_list_function_expr(
 #[cfg(test)]
 mod tests {
     use super::eval_list_function_expr;
-    use crate::execution::ExecutionPlan;
+    use crate::plan::execution::ExecutionPlan;
     use crate::plan::{
         BoolExpr, CaptureArg, Expr, FloatExpr, FunctionExpr, FunctionFunctionExpr,
         FunctionFunctionId, FunctionFunctionValue, FunctionId, FunctionPlan, FunctionReturnFamily,

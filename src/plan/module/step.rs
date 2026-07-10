@@ -9,8 +9,7 @@ use super::id::{
     IntFunctionLocalId, IntLocalId, ListFunctionLocal, ListLocal, NilFunctionLocalId, NilLocalId,
     StringFunctionLocalId, StringLocalId, TupleFunctionLocalId, TupleLocalId,
 };
-use super::source::{PanicSite, SourceSpan};
-use super::value::ValueType;
+use crate::plan::{PanicSite, SourceSpan, ValueType};
 use ecow::EcoString;
 
 #[derive(Debug, Clone, PartialEq)]

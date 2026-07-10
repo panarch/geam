@@ -5,7 +5,7 @@ use super::FrameLayout;
 use crate::plan::{ReturnExpr, ReturnExprKind};
 
 impl FrameLayout {
-    pub(in crate::plan::frame) fn include_return_expr(&mut self, expression: &ReturnExpr) {
+    pub(in crate::plan::module::frame) fn include_return_expr(&mut self, expression: &ReturnExpr) {
         match expression.kind() {
             ReturnExprKind::Int { body, .. } => self.include_int_return(body),
             ReturnExprKind::Float { body, .. } => self.include_float_return(body),

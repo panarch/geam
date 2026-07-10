@@ -1,7 +1,10 @@
 use crate::plan::{FrameLayout, ListItem, ReturnBody, ReturnBodyKind, TypedListExpr};
 
 impl FrameLayout {
-    pub(in crate::plan::frame) fn include_int_return(&mut self, body: &crate::plan::IntReturn) {
+    pub(in crate::plan::module::frame) fn include_int_return(
+        &mut self,
+        body: &crate::plan::IntReturn,
+    ) {
         match body.kind() {
             ReturnBodyKind::Expr(expression) => self.include_int_expr(expression),
             ReturnBodyKind::TailCall { args, .. } => self.include_call_args(args),
@@ -54,7 +57,10 @@ impl FrameLayout {
         }
     }
 
-    pub(in crate::plan::frame) fn include_float_return(&mut self, body: &crate::plan::FloatReturn) {
+    pub(in crate::plan::module::frame) fn include_float_return(
+        &mut self,
+        body: &crate::plan::FloatReturn,
+    ) {
         match body.kind() {
             ReturnBodyKind::Expr(expression) => self.include_float_expr(expression),
             ReturnBodyKind::TailCall { args, .. } => self.include_call_args(args),
@@ -107,7 +113,7 @@ impl FrameLayout {
         }
     }
 
-    pub(in crate::plan::frame) fn include_string_return(
+    pub(in crate::plan::module::frame) fn include_string_return(
         &mut self,
         body: &crate::plan::StringReturn,
     ) {
@@ -163,7 +169,10 @@ impl FrameLayout {
         }
     }
 
-    pub(in crate::plan::frame) fn include_bool_return(&mut self, body: &crate::plan::BoolReturn) {
+    pub(in crate::plan::module::frame) fn include_bool_return(
+        &mut self,
+        body: &crate::plan::BoolReturn,
+    ) {
         match body.kind() {
             ReturnBodyKind::Expr(expression) => self.include_bool_expr(expression),
             ReturnBodyKind::TailCall { args, .. } => self.include_call_args(args),
@@ -216,7 +225,10 @@ impl FrameLayout {
         }
     }
 
-    pub(in crate::plan::frame) fn include_nil_return(&mut self, body: &crate::plan::NilReturn) {
+    pub(in crate::plan::module::frame) fn include_nil_return(
+        &mut self,
+        body: &crate::plan::NilReturn,
+    ) {
         match body.kind() {
             ReturnBodyKind::Expr(expression) => self.include_nil_expr(expression),
             ReturnBodyKind::TailCall { args, .. } => self.include_call_args(args),
@@ -269,7 +281,10 @@ impl FrameLayout {
         }
     }
 
-    pub(in crate::plan::frame) fn include_tuple_return(&mut self, body: &crate::plan::TupleReturn) {
+    pub(in crate::plan::module::frame) fn include_tuple_return(
+        &mut self,
+        body: &crate::plan::TupleReturn,
+    ) {
         match body.kind() {
             ReturnBodyKind::Expr(expression) => self.include_tuple_expr(expression),
             ReturnBodyKind::TailCall { args, .. } => self.include_call_args(args),
@@ -322,7 +337,7 @@ impl FrameLayout {
         }
     }
 
-    pub(in crate::plan::frame) fn include_typed_list_return<Item: ListItem>(
+    pub(in crate::plan::module::frame) fn include_typed_list_return<Item: ListItem>(
         &mut self,
         body: &ReturnBody<TypedListExpr<Item>, Item::Function>,
     ) {

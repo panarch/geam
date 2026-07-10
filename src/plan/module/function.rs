@@ -16,7 +16,7 @@ use super::id::{
     TupleFunctionId, TupleFunctionLocalId, TupleListFunctionId, TupleLocalId,
 };
 use super::step::Step;
-use super::value::{FunctionType, ValueType};
+use crate::plan::{FunctionType, ValueType};
 use ecow::EcoString;
 use num_bigint::BigInt;
 

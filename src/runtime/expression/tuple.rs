@@ -2,7 +2,7 @@ use super::{
     eval_bool_expr, eval_float_expr, eval_int_expr, eval_panic_expr, eval_string_expr,
     project_tuple_list_expr,
 };
-use crate::execution::ExecutionPlan;
+use crate::plan::execution::ExecutionPlan;
 use crate::plan::{TupleExpr, TupleExprKind, Value, ValueType};
 use crate::runtime::ExecutionError;
 use crate::runtime::frame::Frame;
@@ -119,7 +119,7 @@ pub(in crate::runtime) fn project_tuple_expr(
 #[cfg(test)]
 mod tests {
     use super::{eval_tuple_expr, project_tuple_expr};
-    use crate::execution::ExecutionPlan;
+    use crate::plan::execution::ExecutionPlan;
     use crate::plan::{
         BoolExpr, Expr, FloatExpr, FunctionId, FunctionPlan, IntExpr, IntFunctionId, ListExpr,
         PanicExpr, PanicSite, ReturnExpr, Step, StringExpr, TupleExpr, TupleFunctionId, Value,

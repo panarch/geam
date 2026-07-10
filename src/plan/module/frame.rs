@@ -15,7 +15,7 @@ use super::id::{
     TupleListLocalId, TupleLocalId,
 };
 use super::step::Step;
-use super::value::ValueType;
+use crate::plan::{FunctionType, ValueType};
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub(crate) struct FrameLayout {
@@ -32,7 +32,7 @@ pub(crate) struct FrameLayout {
     nil_lists: usize,
     tuple_lists: Vec<Vec<ValueType>>,
     list_lists: Vec<ValueType>,
-    function_lists: Vec<super::FunctionType>,
+    function_lists: Vec<FunctionType>,
     int_functions: usize,
     float_functions: usize,
     string_functions: usize,
@@ -165,13 +165,11 @@ impl FrameLayout {
     pub(crate) fn include_function_list(
         &mut self,
         local: FunctionListLocalId,
-        item_type: super::FunctionType,
+        item_type: FunctionType,
     ) {
         if self.function_lists.len() <= local.0 {
-            self.function_lists.resize(
-                local.0 + 1,
-                super::FunctionType::new(Vec::new(), ValueType::Nil),
-            );
+            self.function_lists
+                .resize(local.0 + 1, FunctionType::new(Vec::new(), ValueType::Nil));
         }
         self.function_lists[local.0] = item_type;
     }
@@ -263,7 +261,7 @@ impl FrameLayout {
         &self.list_lists
     }
 
-    pub(crate) fn function_lists(&self) -> &[super::FunctionType] {
+    pub(crate) fn function_lists(&self) -> &[FunctionType] {
         &self.function_lists
     }
 

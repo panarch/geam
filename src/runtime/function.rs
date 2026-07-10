@@ -5,7 +5,7 @@ mod steps;
 pub(in crate::runtime) use bind::eval_capture_args;
 pub(in crate::runtime) use steps::execute_steps;
 
-use crate::execution::ExecutionPlan;
+use crate::plan::execution::ExecutionPlan;
 use crate::plan::{
     BoolFunctionFunctionId, BoolFunctionId, CallArg, FloatFunctionFunctionId, FloatFunctionId,
     FunctionFunctionFunctionId, FunctionFunctionValue, FunctionReturnFamily, FunctionValue,
@@ -935,7 +935,7 @@ mod tests {
         run_string_function_returning_function_call, run_tuple_call, run_tuple_function_call,
         run_tuple_function_function_call, run_tuple_function_returning_function_call,
     };
-    use crate::execution::ExecutionPlan;
+    use crate::plan::execution::ExecutionPlan;
     use crate::plan::{
         BoolExpr, BoolFunctionExpr, BoolFunctionFunctionId, BoolFunctionId, BoolFunctionValue,
         BoolLocalId, CallArg, Expr, FloatExpr, FloatFunctionExpr, FloatFunctionFunctionId,

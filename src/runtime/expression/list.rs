@@ -2,7 +2,7 @@ use super::{
     eval_bool_expr, eval_float_expr, eval_function_expr, eval_int_expr, eval_nil_expr,
     eval_panic_expr, eval_string_expr, eval_tuple_expr, project_tuple_expr,
 };
-use crate::execution::ExecutionPlan;
+use crate::plan::execution::ExecutionPlan;
 use crate::plan::{
     BoolListExpr, BoolListItem, FloatListExpr, FloatListItem, FunctionListExpr, FunctionListItem,
     FunctionType, FunctionValue, IntListExpr, IntListItem, ListExpr, ListItem, ListListExpr,
@@ -724,7 +724,7 @@ mod tests {
         project_function_list_expr, project_int_list_expr, project_list_list_expr,
         project_nil_list_expr, project_string_list_expr, project_tuple_list_expr,
     };
-    use crate::execution::ExecutionPlan;
+    use crate::plan::execution::ExecutionPlan;
     use crate::plan::{
         BoolExpr, BoolListCaseBranches, BoolListLocalId, CallArg, Expr, FloatExpr,
         FloatListLocalId, FrameLayout, FunctionExpr, FunctionId, FunctionListLocalId, FunctionPlan,

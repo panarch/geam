@@ -8,7 +8,10 @@ use crate::plan::{
 };
 
 impl FrameLayout {
-    pub(in crate::plan::frame) fn include_function_expr(&mut self, expression: &FunctionExpr) {
+    pub(in crate::plan::module::frame) fn include_function_expr(
+        &mut self,
+        expression: &FunctionExpr,
+    ) {
         match expression.kind() {
             FunctionExprKind::Int(expression) => self.include_int_function_expr(expression),
             FunctionExprKind::String(expression) => self.include_string_function_expr(expression),
@@ -23,7 +26,7 @@ impl FrameLayout {
         }
     }
 
-    pub(in crate::plan::frame) fn include_int_function_expr(
+    pub(in crate::plan::module::frame) fn include_int_function_expr(
         &mut self,
         expression: &IntFunctionExpr,
     ) {
@@ -88,7 +91,7 @@ impl FrameLayout {
         }
     }
 
-    pub(in crate::plan::frame) fn include_float_function_expr(
+    pub(in crate::plan::module::frame) fn include_float_function_expr(
         &mut self,
         expression: &FloatFunctionExpr,
     ) {
@@ -153,7 +156,7 @@ impl FrameLayout {
         }
     }
 
-    pub(in crate::plan::frame) fn include_string_function_expr(
+    pub(in crate::plan::module::frame) fn include_string_function_expr(
         &mut self,
         expression: &StringFunctionExpr,
     ) {
@@ -220,7 +223,7 @@ impl FrameLayout {
         }
     }
 
-    pub(in crate::plan::frame) fn include_bool_function_expr(
+    pub(in crate::plan::module::frame) fn include_bool_function_expr(
         &mut self,
         expression: &BoolFunctionExpr,
     ) {
@@ -285,7 +288,7 @@ impl FrameLayout {
         }
     }
 
-    pub(in crate::plan::frame) fn include_nil_function_expr(
+    pub(in crate::plan::module::frame) fn include_nil_function_expr(
         &mut self,
         expression: &NilFunctionExpr,
     ) {
@@ -350,7 +353,7 @@ impl FrameLayout {
         }
     }
 
-    pub(in crate::plan::frame) fn include_function_function_expr(
+    pub(in crate::plan::module::frame) fn include_function_function_expr(
         &mut self,
         expression: &FunctionFunctionExpr,
     ) {
@@ -419,7 +422,7 @@ impl FrameLayout {
         }
     }
 
-    pub(in crate::plan::frame) fn include_tuple_function_expr(
+    pub(in crate::plan::module::frame) fn include_tuple_function_expr(
         &mut self,
         expression: &TupleFunctionExpr,
     ) {
@@ -484,7 +487,7 @@ impl FrameLayout {
         }
     }
 
-    pub(in crate::plan::frame) fn include_list_function_expr(
+    pub(in crate::plan::module::frame) fn include_list_function_expr(
         &mut self,
         expression: &ListFunctionExpr,
     ) {

@@ -1,4 +1,4 @@
-use crate::execution::ExecutionPlan;
+use crate::plan::execution::ExecutionPlan;
 use crate::plan::{
     AssertBinding, AssertPattern, BoolFunctionLocalId, BoolFunctionValue, BoolLocalId,
     FloatFunctionLocalId, FloatFunctionValue, FloatLocalId, FunctionFunctionLocalId,
@@ -380,7 +380,7 @@ mod tests {
         PendingBinding, execute_steps, frame_set_binding, match_assert_pattern,
         match_list_assert_pattern, pending_binding,
     };
-    use crate::execution::ExecutionPlan;
+    use crate::plan::execution::ExecutionPlan;
     use crate::plan::{
         AssertBinding, AssertPattern, BoolExpr, BoolFunctionExpr, BoolFunctionId,
         BoolFunctionLocalId, BoolFunctionValue, BoolListLocalId, BoolLocalId, Expr, FloatExpr,

@@ -2,7 +2,7 @@ use super::FrameLayout;
 use crate::plan::{AssertPattern, ListAssertPattern, ListAssertTail, Step, StepKind};
 
 impl FrameLayout {
-    pub(in crate::plan::frame) fn include_steps(&mut self, steps: &[Step]) {
+    pub(in crate::plan::module::frame) fn include_steps(&mut self, steps: &[Step]) {
         for step in steps {
             self.include_step(step);
         }

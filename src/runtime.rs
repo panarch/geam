@@ -6,7 +6,7 @@ mod function;
 pub use crate::plan::Value;
 pub use error::{ExecutionError, Panic, PanicDetails, PanicKind, PanicMessage};
 
-use crate::execution::ExecutionPlan;
+use crate::plan::execution::ExecutionPlan;
 
 pub fn run_main(plan: &ExecutionPlan) -> Result<Value, ExecutionError> {
     function::run_main(plan)

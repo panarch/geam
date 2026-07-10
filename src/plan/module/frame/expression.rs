@@ -6,7 +6,7 @@ use crate::plan::{
 };
 
 impl FrameLayout {
-    pub(in crate::plan::frame) fn include_expr(&mut self, expression: &Expr) {
+    pub(in crate::plan::module::frame) fn include_expr(&mut self, expression: &Expr) {
         match expression.kind() {
             ExprKind::Int(expression) => self.include_int_expr(expression),
             ExprKind::String(expression) => self.include_string_expr(expression),
@@ -19,13 +19,13 @@ impl FrameLayout {
         }
     }
 
-    pub(in crate::plan::frame) fn include_panic_expr(&mut self, expression: &PanicExpr) {
+    pub(in crate::plan::module::frame) fn include_panic_expr(&mut self, expression: &PanicExpr) {
         if let Some(message) = expression.message() {
             self.include_string_expr(message);
         }
     }
 
-    pub(in crate::plan::frame) fn include_int_expr(&mut self, expression: &IntExpr) {
+    pub(in crate::plan::module::frame) fn include_int_expr(&mut self, expression: &IntExpr) {
         match expression.kind() {
             IntExprKind::Value(_) => {}
             IntExprKind::Panic(panic) => self.include_panic_expr(panic),
@@ -95,7 +95,7 @@ impl FrameLayout {
         }
     }
 
-    pub(in crate::plan::frame) fn include_string_expr(&mut self, expression: &StringExpr) {
+    pub(in crate::plan::module::frame) fn include_string_expr(&mut self, expression: &StringExpr) {
         match expression.kind() {
             StringExprKind::Value(_) => {}
             StringExprKind::Panic(panic) => self.include_panic_expr(panic),
@@ -161,7 +161,7 @@ impl FrameLayout {
         }
     }
 
-    pub(in crate::plan::frame) fn include_bool_expr(&mut self, expression: &BoolExpr) {
+    pub(in crate::plan::module::frame) fn include_bool_expr(&mut self, expression: &BoolExpr) {
         match expression.kind() {
             BoolExprKind::Value(_) => {}
             BoolExprKind::Panic(panic) => self.include_panic_expr(panic),
@@ -258,7 +258,7 @@ impl FrameLayout {
         self.include_bool_expr(right);
     }
 
-    pub(in crate::plan::frame) fn include_nil_expr(&mut self, expression: &NilExpr) {
+    pub(in crate::plan::module::frame) fn include_nil_expr(&mut self, expression: &NilExpr) {
         match expression.kind() {
             NilExprKind::Value => {}
             NilExprKind::Panic(panic) => self.include_panic_expr(panic),
@@ -319,7 +319,7 @@ impl FrameLayout {
         }
     }
 
-    pub(in crate::plan::frame) fn include_float_expr(&mut self, expression: &FloatExpr) {
+    pub(in crate::plan::module::frame) fn include_float_expr(&mut self, expression: &FloatExpr) {
         match expression.kind() {
             FloatExprKind::Value(_) => {}
             FloatExprKind::Panic(panic) => self.include_panic_expr(panic),
@@ -387,7 +387,7 @@ impl FrameLayout {
         }
     }
 
-    pub(in crate::plan::frame) fn include_tuple_expr(&mut self, expression: &TupleExpr) {
+    pub(in crate::plan::module::frame) fn include_tuple_expr(&mut self, expression: &TupleExpr) {
         match expression.kind() {
             TupleExprKind::Value(elements) => {
                 for element in elements {
@@ -452,7 +452,7 @@ impl FrameLayout {
         }
     }
 
-    pub(in crate::plan::frame) fn include_list_expr(&mut self, expression: &ListExpr) {
+    pub(in crate::plan::module::frame) fn include_list_expr(&mut self, expression: &ListExpr) {
         match expression {
             ListExpr::Int(expression) => self.include_typed_list_expr(expression),
             ListExpr::String(expression) => self.include_typed_list_expr(expression),
@@ -465,7 +465,10 @@ impl FrameLayout {
         }
     }
 
-    pub(in crate::plan::frame) fn include_list_local_expr(&mut self, binding: &ListLocalExpr) {
+    pub(in crate::plan::module::frame) fn include_list_local_expr(
+        &mut self,
+        binding: &ListLocalExpr,
+    ) {
         match binding {
             ListLocalExpr::Int { local, value } => {
                 self.include_typed_list_expr(value);
@@ -514,7 +517,7 @@ impl FrameLayout {
         }
     }
 
-    pub(in crate::plan::frame) fn include_typed_list_expr<Item: ListItem>(
+    pub(in crate::plan::module::frame) fn include_typed_list_expr<Item: ListItem>(
         &mut self,
         expression: &TypedListExpr<Item>,
     ) {

@@ -1,4 +1,4 @@
-use crate::execution::ExecutionPlan;
+use crate::plan::execution::ExecutionPlan;
 use crate::plan::{
     BoolFunctionExpr, BoolFunctionExprKind, BoolFunctionValue, FunctionReturnFamily,
     FunctionValueKind, Value, ValueType,
@@ -127,7 +127,7 @@ pub(in crate::runtime) fn eval_bool_function_expr(
 #[cfg(test)]
 mod tests {
     use super::eval_bool_function_expr;
-    use crate::execution::ExecutionPlan;
+    use crate::plan::execution::ExecutionPlan;
     use crate::plan::{
         BoolExpr, BoolFunctionExpr, BoolFunctionId, BoolFunctionValue, BoolLocalId, CaptureArg,
         Expr, FloatExpr, FunctionExpr, FunctionFunctionExpr, FunctionFunctionId,

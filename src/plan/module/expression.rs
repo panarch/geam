@@ -10,7 +10,7 @@ mod panic;
 mod string;
 mod tuple;
 
-use super::value::{Value, ValueType};
+use crate::plan::{Value, ValueType};
 
 pub(crate) use self::case::{
     BoolCaseBranches, FloatCaseBranches, IntCaseBranches, StringCaseBranches,

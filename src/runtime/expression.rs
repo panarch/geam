@@ -7,7 +7,7 @@ mod nil;
 mod string;
 mod tuple;
 
-use crate::execution::ExecutionPlan;
+use crate::plan::execution::ExecutionPlan;
 use crate::plan::{Expr, ExprKind, PanicExpr, PanicExprKind, Value};
 use crate::runtime::frame::Frame;
 use crate::runtime::{ExecutionError, PanicKind};
@@ -99,7 +99,7 @@ fn eval_panic_message(
 #[cfg(test)]
 mod tests {
     use super::eval_panic_expr;
-    use crate::execution::ExecutionPlan;
+    use crate::plan::execution::ExecutionPlan;
     use crate::plan::{
         FunctionId, FunctionPlan, IntExpr, IntFunctionId, PanicExpr, PanicSite, ReturnExpr,
         StringExpr,

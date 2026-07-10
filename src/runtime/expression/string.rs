@@ -2,7 +2,7 @@ use super::{
     eval_bool_expr, eval_float_expr, eval_int_expr, eval_panic_expr, project_string_list_expr,
     project_tuple_expr,
 };
-use crate::execution::ExecutionPlan;
+use crate::plan::execution::ExecutionPlan;
 use crate::plan::{StringExpr, StringExprKind, Value, ValueType};
 use crate::runtime::ExecutionError;
 use crate::runtime::frame::Frame;
@@ -106,7 +106,7 @@ pub(in crate::runtime) fn eval_string_expr(
 #[cfg(test)]
 mod tests {
     use super::eval_string_expr;
-    use crate::execution::ExecutionPlan;
+    use crate::plan::execution::ExecutionPlan;
     use crate::plan::{
         BoolExpr, BoolFunctionExpr, Expr, FloatExpr, FunctionFunctionExpr, FunctionFunctionId,
         FunctionFunctionValue, FunctionId, FunctionPlan, FunctionReturnFamily, FunctionType,

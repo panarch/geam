@@ -1,11 +1,10 @@
-pub mod execution;
 pub mod frontend;
 pub mod plan;
 pub mod planner;
 pub mod runtime;
 
-pub use execution::ExecutionPlan;
 pub use frontend::{FrontendError, compile_typed_module};
+pub use plan::execution::ExecutionPlan;
 pub use plan::{
     BoolExpr, BoolLocalId, Expr, FunctionId, FunctionPlan, FunctionType, FunctionValue, IntExpr,
     IntLocalId, LocalId, ModulePlan, NilExpr, NilLocalId, PanicSite, Param, ParamBinding,
