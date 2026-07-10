@@ -13,7 +13,14 @@ impl FrameLayout {
             ReturnExprKind::Bool { body, .. } => self.include_bool_return(body),
             ReturnExprKind::Nil { body, .. } => self.include_nil_return(body),
             ReturnExprKind::Tuple { body, .. } => self.include_tuple_return(body),
-            ReturnExprKind::List { body, .. } => self.include_list_return(body),
+            ReturnExprKind::IntList { body, .. } => self.include_typed_list_return(body),
+            ReturnExprKind::StringList { body, .. } => self.include_typed_list_return(body),
+            ReturnExprKind::FloatList { body, .. } => self.include_typed_list_return(body),
+            ReturnExprKind::BoolList { body, .. } => self.include_typed_list_return(body),
+            ReturnExprKind::NilList { body, .. } => self.include_typed_list_return(body),
+            ReturnExprKind::TupleList { body, .. } => self.include_typed_list_return(body),
+            ReturnExprKind::ListList { body, .. } => self.include_typed_list_return(body),
+            ReturnExprKind::FunctionList { body, .. } => self.include_typed_list_return(body),
             ReturnExprKind::IntFunction { body, .. } => {
                 self.include_int_function_return(body);
             }

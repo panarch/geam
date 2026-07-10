@@ -6,7 +6,7 @@ mod function;
 pub use crate::plan::Value;
 pub use error::{ExecutionError, Panic, PanicDetails, PanicKind, PanicMessage};
 
-use crate::plan::ExecutionPlan;
+use crate::execution::ExecutionPlan;
 
 pub fn run_main(plan: &ExecutionPlan) -> Result<Value, ExecutionError> {
     function::run_main(plan)
@@ -22,7 +22,8 @@ fn run_src(src: &str) -> Value {
 fn plan_src(src: &str) -> crate::ExecutionPlan {
     let module =
         crate::compile_typed_module("main", "main.gleam", src).expect("source should compile");
-    crate::plan_module(module).expect("source should plan")
+    let module_plan = crate::plan_module(module).expect("source should plan");
+    crate::ExecutionPlan::from_module_plan(module_plan)
 }
 
 #[cfg(test)]

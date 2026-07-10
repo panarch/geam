@@ -1,6 +1,7 @@
+use crate::execution::ExecutionPlan;
 use crate::plan::{
-    ExecutionPlan, FloatFunctionExpr, FloatFunctionExprKind, FloatFunctionValue,
-    FunctionReturnFamily, FunctionValueKind, Value, ValueType,
+    FloatFunctionExpr, FloatFunctionExprKind, FloatFunctionValue, FunctionReturnFamily,
+    FunctionValueKind, Value, ValueType,
 };
 use crate::runtime::ExecutionError;
 use crate::runtime::expression::{
@@ -126,8 +127,9 @@ pub(in crate::runtime) fn eval_float_function_expr(
 #[cfg(test)]
 mod tests {
     use super::eval_float_function_expr;
+    use crate::execution::ExecutionPlan;
     use crate::plan::{
-        BoolExpr, BoolFunctionExpr, CaptureArg, ExecutionPlan, Expr, FloatExpr, FloatFunctionExpr,
+        BoolExpr, BoolFunctionExpr, CaptureArg, Expr, FloatExpr, FloatFunctionExpr,
         FloatFunctionFunctionId, FloatFunctionId, FloatFunctionLocalId, FloatFunctionValue,
         FloatLocalId, FunctionExpr, FunctionFunctionExpr, FunctionFunctionId,
         FunctionFunctionValue, FunctionId, FunctionPlan, FunctionReturnFamily, FunctionType,
@@ -518,7 +520,7 @@ mod tests {
     }
 
     fn plan() -> ExecutionPlan {
-        ExecutionPlan::new(
+        ExecutionPlan::from_module_plan(crate::plan::ModulePlan::new(
             "main".into(),
             FunctionPlan::new(
                 FunctionId::new(0),
@@ -543,7 +545,7 @@ mod tests {
                     ReturnExpr::float_function(FloatFunctionFunctionId(0), function_value()),
                 ),
             ],
-        )
+        ))
     }
 
     fn function_return_family_error_value(

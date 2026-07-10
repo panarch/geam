@@ -823,14 +823,11 @@ pub fn list_case(value: String) {
                 .param_string(0, "value"),
                 function(
                     "list_case",
-                    return_list(
-                        ValueType::Int,
-                        list_return_string_case(
-                            local_string(0, "value"),
-                            [("one", list_return_expr(list([int(1)], ValueType::Int)))],
-                            list_return_expr(list([int(0)], ValueType::Int)),
-                        ),
-                    ),
+                    return_list(list_return_string_case(
+                        local_string(0, "value"),
+                        [("one", list_return_expr(list([int(1)], ValueType::Int)))],
+                        list_return_expr(list([int(0)], ValueType::Int)),
+                    )),
                 )
                 .param_string(0, "value"),
             ],

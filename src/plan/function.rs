@@ -88,10 +88,10 @@ pub(crate) enum ParamLocal {
     },
 }
 
-pub(crate) struct RuntimeFunction<Return> {
-    frame_layout: FrameLayout,
-    steps: Vec<Step>,
-    return_: Return,
+pub(crate) struct FunctionExecutionParts {
+    pub(crate) frame_layout: FrameLayout,
+    pub(crate) steps: Vec<Step>,
+    pub(crate) return_: ReturnExpr,
 }
 
 pub(crate) type IntReturn = ReturnBody<IntExpr, IntFunctionId>;
@@ -119,6 +119,7 @@ pub(crate) type ListFunctionReturn = ReturnBody<super::ListFunctionExpr, ListFun
 pub(crate) type FunctionFunctionReturn =
     ReturnBody<super::FunctionFunctionExpr, FunctionFunctionFunctionId>;
 
+#[cfg(test)]
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum ListReturn {
     Int(IntListReturn),
@@ -140,6 +141,7 @@ pub(crate) enum ListReturn {
     },
 }
 
+#[cfg(test)]
 impl ListReturn {
     #[cfg(test)]
     pub(crate) fn expr(expression: ListExpr) -> Self {
@@ -651,9 +653,40 @@ pub(crate) enum ReturnExprKind {
         type_: Vec<ValueType>,
         body: TupleReturn,
     },
-    List {
-        runtime_id: ListFunctionId,
-        body: ListReturn,
+    IntList {
+        runtime_id: IntListFunctionId,
+        body: IntListReturn,
+    },
+    StringList {
+        runtime_id: StringListFunctionId,
+        body: StringListReturn,
+    },
+    FloatList {
+        runtime_id: FloatListFunctionId,
+        body: FloatListReturn,
+    },
+    BoolList {
+        runtime_id: BoolListFunctionId,
+        body: BoolListReturn,
+    },
+    NilList {
+        runtime_id: NilListFunctionId,
+        body: NilListReturn,
+    },
+    TupleList {
+        runtime_id: TupleListFunctionId,
+        item_type: Vec<ValueType>,
+        body: TupleListReturn,
+    },
+    ListList {
+        runtime_id: ListListFunctionId,
+        item_type: Box<ValueType>,
+        body: ListListReturn,
+    },
+    FunctionList {
+        runtime_id: FunctionListFunctionId,
+        item_type: FunctionType,
+        body: FunctionListReturn,
     },
     IntFunction {
         runtime_id: IntFunctionFunctionId,
@@ -736,8 +769,17 @@ impl FunctionPlan {
         &self.return_
     }
 
+    #[cfg(test)]
     pub(crate) fn frame_layout(&self) -> FrameLayout {
         self.frame_layout.clone()
+    }
+
+    pub(crate) fn into_execution_parts(self) -> FunctionExecutionParts {
+        FunctionExecutionParts {
+            frame_layout: self.frame_layout,
+            steps: self.steps,
+            return_: self.return_,
+        }
     }
 }
 
@@ -817,9 +859,78 @@ impl ReturnExpr {
         }
     }
 
-    pub(crate) fn list_body(runtime_id: ListFunctionId, body: ListReturn) -> Self {
+    pub(crate) fn int_list_body(runtime_id: IntListFunctionId, body: IntListReturn) -> Self {
         Self {
-            kind: ReturnExprKind::List { runtime_id, body },
+            kind: ReturnExprKind::IntList { runtime_id, body },
+        }
+    }
+
+    pub(crate) fn string_list_body(
+        runtime_id: StringListFunctionId,
+        body: StringListReturn,
+    ) -> Self {
+        Self {
+            kind: ReturnExprKind::StringList { runtime_id, body },
+        }
+    }
+
+    pub(crate) fn float_list_body(runtime_id: FloatListFunctionId, body: FloatListReturn) -> Self {
+        Self {
+            kind: ReturnExprKind::FloatList { runtime_id, body },
+        }
+    }
+
+    pub(crate) fn bool_list_body(runtime_id: BoolListFunctionId, body: BoolListReturn) -> Self {
+        Self {
+            kind: ReturnExprKind::BoolList { runtime_id, body },
+        }
+    }
+
+    pub(crate) fn nil_list_body(runtime_id: NilListFunctionId, body: NilListReturn) -> Self {
+        Self {
+            kind: ReturnExprKind::NilList { runtime_id, body },
+        }
+    }
+
+    pub(crate) fn tuple_list_body(
+        runtime_id: TupleListFunctionId,
+        item_type: Vec<ValueType>,
+        body: TupleListReturn,
+    ) -> Self {
+        Self {
+            kind: ReturnExprKind::TupleList {
+                runtime_id,
+                item_type,
+                body,
+            },
+        }
+    }
+
+    pub(crate) fn list_list_body(
+        runtime_id: ListListFunctionId,
+        item_type: Box<ValueType>,
+        body: ListListReturn,
+    ) -> Self {
+        Self {
+            kind: ReturnExprKind::ListList {
+                runtime_id,
+                item_type,
+                body,
+            },
+        }
+    }
+
+    pub(crate) fn function_list_body(
+        runtime_id: FunctionListFunctionId,
+        item_type: FunctionType,
+        body: FunctionListReturn,
+    ) -> Self {
+        Self {
+            kind: ReturnExprKind::FunctionList {
+                runtime_id,
+                item_type,
+                body,
+            },
         }
     }
 
@@ -1005,6 +1116,10 @@ impl ReturnExpr {
         &self.kind
     }
 
+    pub(crate) fn into_kind(self) -> ReturnExprKind {
+        self.kind
+    }
+
     pub fn value_type(&self) -> ValueType {
         match self.kind() {
             ReturnExprKind::Int { .. } => ValueType::Int,
@@ -1013,8 +1128,19 @@ impl ReturnExpr {
             ReturnExprKind::Bool { .. } => ValueType::Bool,
             ReturnExprKind::Nil { .. } => ValueType::Nil,
             ReturnExprKind::Tuple { type_, .. } => ValueType::Tuple(type_.clone()),
-            ReturnExprKind::List { runtime_id, .. } => {
-                ValueType::List(Box::new(runtime_id.item_type()))
+            ReturnExprKind::IntList { .. } => ValueType::List(Box::new(ValueType::Int)),
+            ReturnExprKind::StringList { .. } => ValueType::List(Box::new(ValueType::String)),
+            ReturnExprKind::FloatList { .. } => ValueType::List(Box::new(ValueType::Float)),
+            ReturnExprKind::BoolList { .. } => ValueType::List(Box::new(ValueType::Bool)),
+            ReturnExprKind::NilList { .. } => ValueType::List(Box::new(ValueType::Nil)),
+            ReturnExprKind::TupleList { item_type, .. } => {
+                ValueType::List(Box::new(ValueType::Tuple(item_type.clone())))
+            }
+            ReturnExprKind::ListList { item_type, .. } => {
+                ValueType::List(Box::new(ValueType::List(item_type.clone())))
+            }
+            ReturnExprKind::FunctionList { item_type, .. } => {
+                ValueType::List(Box::new(ValueType::Function(Box::new(item_type.clone()))))
             }
             ReturnExprKind::IntFunction { type_, .. }
             | ReturnExprKind::FloatFunction { type_, .. }
@@ -1044,7 +1170,45 @@ impl ReturnExpr {
                 id: *runtime_id,
                 return_type: type_.clone(),
             },
-            ReturnExprKind::List { runtime_id, .. } => RuntimeFunctionId::List(runtime_id.clone()),
+            ReturnExprKind::IntList { runtime_id, .. } => {
+                RuntimeFunctionId::List(ListFunctionId::Int(*runtime_id))
+            }
+            ReturnExprKind::StringList { runtime_id, .. } => {
+                RuntimeFunctionId::List(ListFunctionId::String(*runtime_id))
+            }
+            ReturnExprKind::FloatList { runtime_id, .. } => {
+                RuntimeFunctionId::List(ListFunctionId::Float(*runtime_id))
+            }
+            ReturnExprKind::BoolList { runtime_id, .. } => {
+                RuntimeFunctionId::List(ListFunctionId::Bool(*runtime_id))
+            }
+            ReturnExprKind::NilList { runtime_id, .. } => {
+                RuntimeFunctionId::List(ListFunctionId::Nil(*runtime_id))
+            }
+            ReturnExprKind::TupleList {
+                runtime_id,
+                item_type,
+                ..
+            } => RuntimeFunctionId::List(ListFunctionId::Tuple {
+                id: *runtime_id,
+                item_type: item_type.clone(),
+            }),
+            ReturnExprKind::ListList {
+                runtime_id,
+                item_type,
+                ..
+            } => RuntimeFunctionId::List(ListFunctionId::List {
+                id: *runtime_id,
+                item_type: item_type.clone(),
+            }),
+            ReturnExprKind::FunctionList {
+                runtime_id,
+                item_type,
+                ..
+            } => RuntimeFunctionId::List(ListFunctionId::Function {
+                id: *runtime_id,
+                item_type: item_type.clone(),
+            }),
             ReturnExprKind::IntFunction {
                 runtime_id, type_, ..
             } => RuntimeFunctionId::Function {
@@ -1170,28 +1334,6 @@ impl<Expression, Function> ReturnBody<Expression, Function> {
     }
 }
 
-impl<Return> RuntimeFunction<Return> {
-    pub(crate) fn new(frame_layout: FrameLayout, steps: Vec<Step>, return_: Return) -> Self {
-        Self {
-            frame_layout,
-            steps,
-            return_,
-        }
-    }
-
-    pub(crate) fn frame_layout(&self) -> FrameLayout {
-        self.frame_layout.clone()
-    }
-
-    pub(crate) fn steps(&self) -> &[Step] {
-        &self.steps
-    }
-
-    pub(crate) fn return_(&self) -> &Return {
-        &self.return_
-    }
-}
-
 impl Param {
     pub(crate) fn named(local: ParamLocal, name: EcoString) -> Self {
         Self {
@@ -1310,23 +1452,23 @@ mod tests {
     use super::{
         BoolListReturn, FloatListReturn, FunctionListReturn, FunctionPlan, IntListReturn,
         ListListReturn, ListReturn, NilListReturn, Param, ParamBinding, ParamLocal, ReturnBodyKind,
-        ReturnExpr, RuntimeFunction, StringListReturn, TupleListReturn,
+        ReturnExpr, StringListReturn, TupleListReturn,
     };
     use crate::plan::{
         BoolExpr, BoolFunctionExpr, BoolFunctionFunctionId, BoolFunctionId, BoolFunctionLocalId,
         BoolFunctionValue, BoolLocalId, FloatExpr, FloatFunctionExpr, FloatFunctionFunctionId,
         FloatFunctionId, FloatFunctionLocalId, FloatFunctionValue, FloatListFunctionId,
-        FloatLocalId, FrameLayout, FunctionFunctionExpr, FunctionFunctionFunctionId,
-        FunctionFunctionId, FunctionFunctionLocalId, FunctionFunctionValue, FunctionId,
-        FunctionListFunctionId, FunctionType, IntExpr, IntFunctionExpr, IntFunctionFunctionId,
-        IntFunctionId, IntFunctionLocalId, IntFunctionValue, IntListFunctionId, IntListLocalId,
-        IntLocalId, ListExpr, ListFunctionExpr, ListFunctionFunctionId, ListFunctionId,
-        ListFunctionValue, ListListFunctionId, ListLocal, NilExpr, NilFunctionExpr,
-        NilFunctionFunctionId, NilFunctionId, NilFunctionLocalId, NilFunctionValue,
-        NilListFunctionId, StringExpr, StringFunctionExpr, StringFunctionFunctionId,
-        StringFunctionId, StringFunctionLocalId, StringFunctionValue, StringListFunctionId,
-        TupleExpr, TupleFunctionExpr, TupleFunctionFunctionId, TupleFunctionId,
-        TupleFunctionLocalId, TupleFunctionValue, TupleListFunctionId, ValueType,
+        FloatLocalId, FunctionFunctionExpr, FunctionFunctionFunctionId, FunctionFunctionId,
+        FunctionFunctionLocalId, FunctionFunctionValue, FunctionId, FunctionListFunctionId,
+        FunctionType, IntExpr, IntFunctionExpr, IntFunctionFunctionId, IntFunctionId,
+        IntFunctionLocalId, IntFunctionValue, IntListFunctionId, IntListLocalId, IntLocalId,
+        ListExpr, ListFunctionExpr, ListFunctionFunctionId, ListFunctionId, ListFunctionValue,
+        ListListFunctionId, ListLocal, NilExpr, NilFunctionExpr, NilFunctionFunctionId,
+        NilFunctionId, NilFunctionLocalId, NilFunctionValue, NilListFunctionId, RuntimeFunctionId,
+        StringExpr, StringFunctionExpr, StringFunctionFunctionId, StringFunctionId,
+        StringFunctionLocalId, StringFunctionValue, StringListFunctionId, TupleExpr,
+        TupleFunctionExpr, TupleFunctionFunctionId, TupleFunctionId, TupleFunctionLocalId,
+        TupleFunctionValue, TupleListFunctionId, ValueType,
     };
     use num_bigint::BigInt;
 
@@ -1392,12 +1534,16 @@ mod tests {
             ValueType::Tuple(vec![ValueType::Int]),
         );
         assert_eq!(
-            ReturnExpr::list_body(
-                ListFunctionId::from_item_type(0, ValueType::Int),
-                ListReturn::expr(ListExpr::value(
-                    vec![crate::plan::Expr::int(IntExpr::value(BigInt::from(1)))],
-                    ValueType::Int,
-                )),
+            ReturnExpr::int_list_body(
+                IntListFunctionId(0),
+                IntListReturn::expr(
+                    ListExpr::value(
+                        vec![crate::plan::Expr::int(IntExpr::value(BigInt::from(1)))],
+                        ValueType::Int,
+                    )
+                    .into_int()
+                    .expect("expression should be List(Int)"),
+                ),
             )
             .value_type(),
             ValueType::List(Box::new(ValueType::Int)),
@@ -1497,6 +1643,134 @@ mod tests {
                 ValueType::Function(Box::new(return_type)),
             ))),
         );
+    }
+
+    #[test]
+    fn list_return_expr_preserves_value_type_and_runtime_id_by_item_family() {
+        let tuple_item = vec![ValueType::Int];
+        let list_item = Box::new(ValueType::Int);
+        let function_item = FunctionType::new(Vec::new(), ValueType::Int);
+        let expressions = vec![
+            (
+                ReturnExpr::int_list_body(
+                    IntListFunctionId(1),
+                    IntListReturn::expr(
+                        ListExpr::value(Vec::new(), ValueType::Int)
+                            .into_int()
+                            .expect("expression should be List(Int)"),
+                    ),
+                ),
+                ValueType::Int,
+                ListFunctionId::Int(IntListFunctionId(1)),
+            ),
+            (
+                ReturnExpr::string_list_body(
+                    StringListFunctionId(2),
+                    StringListReturn::expr(
+                        ListExpr::value(Vec::new(), ValueType::String)
+                            .into_string()
+                            .expect("expression should be List(String)"),
+                    ),
+                ),
+                ValueType::String,
+                ListFunctionId::String(StringListFunctionId(2)),
+            ),
+            (
+                ReturnExpr::float_list_body(
+                    FloatListFunctionId(3),
+                    FloatListReturn::expr(
+                        ListExpr::value(Vec::new(), ValueType::Float)
+                            .into_float()
+                            .expect("expression should be List(Float)"),
+                    ),
+                ),
+                ValueType::Float,
+                ListFunctionId::Float(FloatListFunctionId(3)),
+            ),
+            (
+                ReturnExpr::bool_list_body(
+                    crate::plan::BoolListFunctionId(4),
+                    BoolListReturn::expr(
+                        ListExpr::value(Vec::new(), ValueType::Bool)
+                            .into_bool()
+                            .expect("expression should be List(Bool)"),
+                    ),
+                ),
+                ValueType::Bool,
+                ListFunctionId::Bool(crate::plan::BoolListFunctionId(4)),
+            ),
+            (
+                ReturnExpr::nil_list_body(
+                    NilListFunctionId(5),
+                    NilListReturn::expr(
+                        ListExpr::value(Vec::new(), ValueType::Nil)
+                            .into_nil()
+                            .expect("expression should be List(Nil)"),
+                    ),
+                ),
+                ValueType::Nil,
+                ListFunctionId::Nil(NilListFunctionId(5)),
+            ),
+            (
+                ReturnExpr::tuple_list_body(
+                    TupleListFunctionId(6),
+                    tuple_item.clone(),
+                    TupleListReturn::expr(
+                        ListExpr::value(Vec::new(), ValueType::Tuple(tuple_item.clone()))
+                            .into_tuple()
+                            .expect("expression should be List(Tuple)"),
+                    ),
+                ),
+                ValueType::Tuple(tuple_item.clone()),
+                ListFunctionId::Tuple {
+                    id: TupleListFunctionId(6),
+                    item_type: tuple_item,
+                },
+            ),
+            (
+                ReturnExpr::list_list_body(
+                    ListListFunctionId(7),
+                    list_item.clone(),
+                    ListListReturn::expr(
+                        ListExpr::value(Vec::new(), ValueType::List(list_item.clone()))
+                            .into_list()
+                            .expect("expression should be List(List)"),
+                    ),
+                ),
+                ValueType::List(list_item.clone()),
+                ListFunctionId::List {
+                    id: ListListFunctionId(7),
+                    item_type: list_item,
+                },
+            ),
+            (
+                ReturnExpr::function_list_body(
+                    FunctionListFunctionId(8),
+                    function_item.clone(),
+                    FunctionListReturn::expr(
+                        ListExpr::value(
+                            Vec::new(),
+                            ValueType::Function(Box::new(function_item.clone())),
+                        )
+                        .into_function()
+                        .expect("expression should be List(Function)"),
+                    ),
+                ),
+                ValueType::Function(Box::new(function_item.clone())),
+                ListFunctionId::Function {
+                    id: FunctionListFunctionId(8),
+                    item_type: function_item,
+                },
+            ),
+        ];
+
+        for (expression, item_type, runtime_id) in expressions {
+            assert_eq!(
+                expression.value_type(),
+                ValueType::List(Box::new(item_type)),
+            );
+            assert_eq!(expression.runtime_id(), RuntimeFunctionId::List(runtime_id),);
+        }
     }
 
     #[test]
@@ -1631,18 +1905,6 @@ mod tests {
                 ValueType::Function(Box::new(FunctionType::new(Vec::new(), ValueType::Int))),
             ))),
         );
-    }
-
-    #[test]
-    fn runtime_function_accessors() {
-        let return_ = IntExpr::value(BigInt::from(1));
-        let mut layout = FrameLayout::default();
-        layout.include_int(IntLocalId(0));
-        let function = RuntimeFunction::new(layout, Vec::new(), return_);
-
-        assert_eq!(function.frame_layout().ints(), 1);
-        assert_eq!(function.steps(), &[]);
-        assert_eq!(function.return_(), &IntExpr::value(BigInt::from(1)));
     }
 
     #[test]

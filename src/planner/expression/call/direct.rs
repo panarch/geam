@@ -294,10 +294,7 @@ pub fn main() {
             "main",
             function(
                 "main",
-                return_list(
-                    ValueType::Int,
-                    list_return_expr(local_list(0, "values", ValueType::Int)),
-                ),
+                return_list(list_return_expr(local_list(0, "values", ValueType::Int))),
             )
             .step(let_float_step(
                 0,

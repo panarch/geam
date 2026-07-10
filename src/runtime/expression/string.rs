@@ -2,7 +2,8 @@ use super::{
     eval_bool_expr, eval_float_expr, eval_int_expr, eval_panic_expr, project_string_list_expr,
     project_tuple_expr,
 };
-use crate::plan::{ExecutionPlan, StringExpr, StringExprKind, Value, ValueType};
+use crate::execution::ExecutionPlan;
+use crate::plan::{StringExpr, StringExprKind, Value, ValueType};
 use crate::runtime::ExecutionError;
 use crate::runtime::frame::Frame;
 use crate::runtime::function;
@@ -105,11 +106,12 @@ pub(in crate::runtime) fn eval_string_expr(
 #[cfg(test)]
 mod tests {
     use super::eval_string_expr;
+    use crate::execution::ExecutionPlan;
     use crate::plan::{
-        BoolExpr, BoolFunctionExpr, ExecutionPlan, Expr, FloatExpr, FunctionFunctionExpr,
-        FunctionFunctionId, FunctionFunctionValue, FunctionId, FunctionPlan, FunctionReturnFamily,
-        FunctionType, IntExpr, IntFunctionExpr, IntFunctionId, ListExpr, ReturnExpr, Step,
-        StringExpr, StringFunctionExpr, StringFunctionFunctionId, TupleExpr, ValueType,
+        BoolExpr, BoolFunctionExpr, Expr, FloatExpr, FunctionFunctionExpr, FunctionFunctionId,
+        FunctionFunctionValue, FunctionId, FunctionPlan, FunctionReturnFamily, FunctionType,
+        IntExpr, IntFunctionExpr, IntFunctionId, ListExpr, ReturnExpr, Step, StringExpr,
+        StringFunctionExpr, StringFunctionFunctionId, TupleExpr, ValueType,
     };
     use crate::runtime::ExecutionError;
     use crate::runtime::frame::Frame;
@@ -598,7 +600,7 @@ pub fn main() {
     }
 
     fn plan() -> ExecutionPlan {
-        ExecutionPlan::new(
+        ExecutionPlan::from_module_plan(crate::plan::ModulePlan::new(
             "main".into(),
             FunctionPlan::new(
                 FunctionId::new(0),
@@ -608,7 +610,7 @@ pub fn main() {
                 ReturnExpr::int(IntFunctionId(0), IntExpr::value(0.into())),
             ),
             Vec::new(),
-        )
+        ))
     }
 
     fn error_string_expr() -> crate::plan::StringExpr {

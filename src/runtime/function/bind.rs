@@ -1,6 +1,6 @@
+use crate::execution::ExecutionPlan;
 use crate::plan::{
-    CallArg, CallArgKind, CaptureArg, CaptureArgKind, CaptureValue, CaptureValueKind,
-    ExecutionPlan, FrameLayout,
+    CallArg, CallArgKind, CaptureArg, CaptureArgKind, CaptureValue, CaptureValueKind, FrameLayout,
 };
 use crate::runtime::error::ExecutionResult;
 use crate::runtime::expression::{
@@ -348,20 +348,21 @@ fn bind_list_capture(frame: &mut Frame, value: &crate::plan::ListLocalValue) {
 #[cfg(test)]
 mod tests {
     use super::{bind_arguments, bind_function_value_arguments, eval_capture_args};
+    use crate::execution::ExecutionPlan;
     use crate::plan::{
         BoolExpr, BoolFunctionExpr, BoolFunctionId, BoolFunctionLocalId, BoolFunctionValue,
-        BoolLocalId, CallArg, CaptureArg, CaptureValue, ExecutionPlan, Expr, FloatExpr,
-        FloatFunctionExpr, FloatFunctionId, FloatFunctionLocalId, FloatFunctionValue, FloatLocalId,
-        FrameLayout, FunctionExpr, FunctionFunctionExpr, FunctionFunctionId,
-        FunctionFunctionLocalId, FunctionFunctionValue, FunctionId, FunctionPlan,
-        FunctionReturnFamily, FunctionType, IntExpr, IntFunctionExpr, IntFunctionFunctionId,
-        IntFunctionId, IntFunctionLocalId, IntFunctionValue, IntListLocalId, IntLocalId, ListExpr,
-        ListFunctionExpr, ListFunctionId, ListFunctionValue, ListListLocalId, ListLocal,
-        ListLocalExpr, ListLocalValue, NilExpr, NilFunctionExpr, NilFunctionId, NilFunctionLocalId,
-        NilFunctionValue, NilListLocalId, NilLocalId, ReturnExpr, StringExpr, StringFunctionExpr,
-        StringFunctionId, StringFunctionLocalId, StringFunctionValue, StringListLocalId,
-        StringLocalId, TupleExpr, TupleFunctionExpr, TupleFunctionId, TupleFunctionLocalId,
-        TupleFunctionValue, TupleListLocalId, TupleLocalId, Value, ValueType,
+        BoolLocalId, CallArg, CaptureArg, CaptureValue, Expr, FloatExpr, FloatFunctionExpr,
+        FloatFunctionId, FloatFunctionLocalId, FloatFunctionValue, FloatLocalId, FrameLayout,
+        FunctionExpr, FunctionFunctionExpr, FunctionFunctionId, FunctionFunctionLocalId,
+        FunctionFunctionValue, FunctionId, FunctionPlan, FunctionReturnFamily, FunctionType,
+        IntExpr, IntFunctionExpr, IntFunctionFunctionId, IntFunctionId, IntFunctionLocalId,
+        IntFunctionValue, IntListLocalId, IntLocalId, ListExpr, ListFunctionExpr, ListFunctionId,
+        ListFunctionValue, ListListLocalId, ListLocal, ListLocalExpr, ListLocalValue, NilExpr,
+        NilFunctionExpr, NilFunctionId, NilFunctionLocalId, NilFunctionValue, NilListLocalId,
+        NilLocalId, ReturnExpr, StringExpr, StringFunctionExpr, StringFunctionId,
+        StringFunctionLocalId, StringFunctionValue, StringListLocalId, StringLocalId, TupleExpr,
+        TupleFunctionExpr, TupleFunctionId, TupleFunctionLocalId, TupleFunctionValue,
+        TupleListLocalId, TupleLocalId, Value, ValueType,
     };
     use crate::runtime::ExecutionError;
     use crate::runtime::frame::Frame;
@@ -1386,7 +1387,7 @@ mod tests {
     }
 
     fn plan() -> ExecutionPlan {
-        ExecutionPlan::new(
+        ExecutionPlan::from_module_plan(crate::plan::ModulePlan::new(
             "main".into(),
             FunctionPlan::new(
                 FunctionId::new(0),
@@ -1396,6 +1397,6 @@ mod tests {
                 ReturnExpr::int(crate::plan::IntFunctionId(0), IntExpr::value(1.into())),
             ),
             Vec::new(),
-        )
+        ))
     }
 }

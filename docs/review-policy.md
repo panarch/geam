@@ -10,11 +10,12 @@ Gleam remains the source language. Geam starts after Gleam has produced a typed
 AST:
 
 ```text
-Gleam source -> Gleam TypedModule -> Geam ExecutionPlan -> Geam runtime Value
+Gleam source -> Gleam TypedModule -> Geam ModulePlan -> Geam ExecutionPlan -> Geam runtime Value
 ```
 
 The planner is the Geam profile validation boundary. Unsupported Gleam semantics
-must be rejected while lowering into `ExecutionPlan`, not deferred to runtime.
+must be rejected while lowering into `ModulePlan`, not deferred to execution
+lowering or runtime.
 
 Use these categories consistently:
 
@@ -24,9 +25,11 @@ Use these categories consistently:
   by compiling valid Gleam source through Gleam's frontend, but still need
   explicit planner behavior.
 
-Runtime code assumes it receives a valid `ExecutionPlan`. Structural execution
-failures belong in plan construction as `PlanError`, not in a runtime error
-enum.
+`ModulePlan` is the canonical inspectable planner output. Converting it with
+`ExecutionPlan::from_module_plan` is an infallible, consuming ownership
+lowering, not another validation boundary. Runtime code assumes it receives a
+valid `ExecutionPlan`. Structural execution failures belong in ModulePlan
+planning as `PlanError`, not in execution lowering or a runtime error enum.
 
 `ExecutionError` has two allowed roles:
 
@@ -66,18 +69,19 @@ profile boundaries, and typed-AST margins remain planner responsibilities.
 
 ## Plan Construction Rules
 
-Plan construction is not a validation layer. Reaching an `ExecutionPlan` or plan
+Plan construction is not a validation layer. Reaching a `ModulePlan` or plan
 node constructor means the planner has already accepted a runtime-executable
-shape.
+shape. Reaching `ExecutionPlan` means the accepted ModulePlan has been consumed
+into runtime-owned function tables.
 
 Do not use `Option` or `Result` in internal plan constructors to represent
 unsupported profile features, typed-AST margin cases, or runtime executability
 checks. Reject those cases before constructing plan data.
 
-`ExecutionPlan` shapes must not contain runtime state for features that are
-outside the current Geam profile. If a feature is profile-out, its storage,
-ids, frame slots, and executable plan variants must also stay out unless they
-are required by an accepted source path.
+`ModulePlan` and `ExecutionPlan` shapes must not contain state for features that
+are outside the current Geam profile. If a feature is profile-out, its storage,
+ids, frame slots, and executable variants must also stay out unless they are
+required by an accepted source path.
 
 Treat over-wide execution plan state as a blocking design issue, even when no
 current source fixture executes incorrectly. The plan model is the validation
@@ -168,7 +172,7 @@ that owns that helper's domain.
 
 Planner test names must identify the source of the case:
 
-- `plan_*`: supported lowering from Gleam source into a Geam `ExecutionPlan`.
+- `plan_*`: supported lowering from Gleam source into a Geam `ModulePlan`.
 - `reject_profile_*`: valid Gleam source that Geam's current execution profile
   intentionally rejects.
 - `reject_margin_*`: synthetic typed AST margin cases.
@@ -176,7 +180,7 @@ Planner test names must identify the source of the case:
 `reject_profile_*` tests are source-based. `reject_margin_*` tests are direct
 typed-AST based and expect `InvalidTypedAst`.
 
-Planner accept tests should compare the expected `ExecutionPlan` whenever the
+Planner accept tests should compare the expected `ModulePlan` whenever the
 plan shape is meaningful. Avoid `is_ok()` for planner accept coverage unless the
 exact shape is irrelevant to the test.
 

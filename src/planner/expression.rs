@@ -1794,7 +1794,7 @@ pub fn main() {
         );
     }
 
-    fn assert_tuple_index_plan(src: &str, expected: crate::plan::ExecutionPlan) {
+    fn assert_tuple_index_plan(src: &str, expected: crate::plan::ModulePlan) {
         let actual = plan_module(compile(src)).expect("source should plan");
 
         assert_eq!(actual, expected);

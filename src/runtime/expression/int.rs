@@ -2,7 +2,8 @@ use super::{
     eval_bool_expr, eval_float_expr, eval_panic_expr, eval_string_expr, project_int_list_expr,
     project_tuple_expr,
 };
-use crate::plan::{ExecutionPlan, IntExpr, IntExprKind, Value, ValueType};
+use crate::execution::ExecutionPlan;
+use crate::plan::{IntExpr, IntExprKind, Value, ValueType};
 use crate::runtime::ExecutionError;
 use crate::runtime::frame::Frame;
 use crate::runtime::function;

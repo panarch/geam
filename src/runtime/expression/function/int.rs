@@ -1,5 +1,6 @@
+use crate::execution::ExecutionPlan;
 use crate::plan::{
-    ExecutionPlan, FunctionReturnFamily, FunctionValueKind, IntFunctionExpr, IntFunctionExprKind,
+    FunctionReturnFamily, FunctionValueKind, IntFunctionExpr, IntFunctionExprKind,
     IntFunctionValue, Value, ValueType,
 };
 use crate::runtime::ExecutionError;
@@ -126,13 +127,14 @@ pub(in crate::runtime) fn eval_int_function_expr(
 #[cfg(test)]
 mod tests {
     use super::eval_int_function_expr;
+    use crate::execution::ExecutionPlan;
     use crate::plan::{
-        BoolExpr, BoolFunctionExpr, BoolFunctionId, BoolFunctionValue, CaptureArg, ExecutionPlan,
-        Expr, FloatExpr, FunctionExpr, FunctionFunctionExpr, FunctionFunctionId,
-        FunctionFunctionValue, FunctionId, FunctionPlan, FunctionReturnFamily, FunctionType,
-        IntExpr, IntFunctionExpr, IntFunctionFunctionId, IntFunctionId, IntFunctionLocalId,
-        IntFunctionValue, IntLocalId, ListElements, ListExpr, PanicExpr, PanicSite, ParamLocal,
-        ReturnExpr, Step, StringExpr, TupleExpr, ValueType,
+        BoolExpr, BoolFunctionExpr, BoolFunctionId, BoolFunctionValue, CaptureArg, Expr, FloatExpr,
+        FunctionExpr, FunctionFunctionExpr, FunctionFunctionId, FunctionFunctionValue, FunctionId,
+        FunctionPlan, FunctionReturnFamily, FunctionType, IntExpr, IntFunctionExpr,
+        IntFunctionFunctionId, IntFunctionId, IntFunctionLocalId, IntFunctionValue, IntLocalId,
+        ListElements, ListExpr, PanicExpr, PanicSite, ParamLocal, ReturnExpr, Step, StringExpr,
+        TupleExpr, ValueType,
     };
     use crate::runtime::frame::Frame;
     use crate::runtime::{ExecutionError, PanicKind};
@@ -545,7 +547,7 @@ mod tests {
     }
 
     fn plan() -> ExecutionPlan {
-        ExecutionPlan::new(
+        ExecutionPlan::from_module_plan(crate::plan::ModulePlan::new(
             "main".into(),
             FunctionPlan::new(
                 FunctionId::new(0),
@@ -561,7 +563,7 @@ mod tests {
                 Vec::new(),
                 ReturnExpr::int_function(IntFunctionFunctionId(0), function_value()),
             )],
-        )
+        ))
     }
 
     fn function_value() -> IntFunctionExpr {

@@ -7,7 +7,8 @@ mod returning_function;
 mod string;
 mod tuple;
 
-use crate::plan::{ExecutionPlan, FunctionExpr, FunctionExprKind, FunctionValue};
+use crate::execution::ExecutionPlan;
+use crate::plan::{FunctionExpr, FunctionExprKind, FunctionValue};
 use crate::runtime::ExecutionError;
 use crate::runtime::frame::Frame;
 
@@ -274,8 +275,8 @@ mod tests {
         );
     }
 
-    fn plan() -> crate::plan::ExecutionPlan {
-        crate::plan::ExecutionPlan::new(
+    fn plan() -> crate::execution::ExecutionPlan {
+        crate::execution::ExecutionPlan::from_module_plan(crate::plan::ModulePlan::new(
             "main".into(),
             FunctionPlan::new(
                 crate::plan::FunctionId::new(0),
@@ -288,6 +289,6 @@ mod tests {
                 ),
             ),
             Vec::new(),
-        )
+        ))
     }
 }

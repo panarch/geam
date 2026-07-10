@@ -2,12 +2,12 @@ use super::{
     eval_bool_expr, eval_float_expr, eval_function_expr, eval_int_expr, eval_nil_expr,
     eval_panic_expr, eval_string_expr, eval_tuple_expr, project_tuple_expr,
 };
+use crate::execution::ExecutionPlan;
 use crate::plan::{
-    BoolListExpr, BoolListItem, ExecutionPlan, FloatListExpr, FloatListItem, FunctionListExpr,
-    FunctionListItem, FunctionType, FunctionValue, IntListExpr, IntListItem, ListExpr, ListItem,
-    ListListExpr, ListListItem, ListValue, NilListExpr, NilListItem, StringListExpr,
-    StringListItem, TupleListExpr, TupleListItem, TypedListExpr, TypedListExprKind, Value,
-    ValueType,
+    BoolListExpr, BoolListItem, FloatListExpr, FloatListItem, FunctionListExpr, FunctionListItem,
+    FunctionType, FunctionValue, IntListExpr, IntListItem, ListExpr, ListItem, ListListExpr,
+    ListListItem, ListValue, NilListExpr, NilListItem, StringListExpr, StringListItem,
+    TupleListExpr, TupleListItem, TypedListExpr, TypedListExprKind, Value, ValueType,
 };
 use crate::runtime::ExecutionError;
 use crate::runtime::frame::Frame;
@@ -724,14 +724,15 @@ mod tests {
         project_function_list_expr, project_int_list_expr, project_list_list_expr,
         project_nil_list_expr, project_string_list_expr, project_tuple_list_expr,
     };
+    use crate::execution::ExecutionPlan;
     use crate::plan::{
-        BoolExpr, BoolListCaseBranches, BoolListLocalId, CallArg, ExecutionPlan, Expr, FloatExpr,
+        BoolExpr, BoolListCaseBranches, BoolListLocalId, CallArg, Expr, FloatExpr,
         FloatListLocalId, FrameLayout, FunctionExpr, FunctionId, FunctionListLocalId, FunctionPlan,
         FunctionReturnFamily, FunctionType, IntExpr, IntFunctionExpr, IntFunctionId,
         IntFunctionValue, IntListLocalId, IntLocalId, ListCaseBranches, ListExpr, ListFunctionExpr,
         ListFunctionId, ListFunctionValue, ListListExpr, ListListItem, ListListLocalId, ListLocal,
-        ListReturn, ListValue, NilExpr, NilListLocalId, PanicExpr, PanicSite, ReturnExpr, Step,
-        StringExpr, StringListLocalId, TupleExpr, TupleListLocalId, ValueType,
+        ListValue, NilExpr, NilListLocalId, PanicExpr, PanicSite, ReturnExpr, Step, StringExpr,
+        StringListLocalId, TupleExpr, TupleListLocalId, ValueType,
     };
     use crate::runtime::frame::Frame;
     use crate::runtime::{ExecutionError, PanicKind};
@@ -2295,7 +2296,7 @@ mod tests {
     }
 
     fn plan() -> ExecutionPlan {
-        ExecutionPlan::new(
+        ExecutionPlan::from_module_plan(crate::plan::ModulePlan::new(
             "main".into(),
             FunctionPlan::new(
                 FunctionId::new(0),
@@ -2309,17 +2310,21 @@ mod tests {
                 "list_value".into(),
                 Vec::new(),
                 Vec::new(),
-                ReturnExpr::list_body(
-                    ListFunctionId::from_item_type(0, element_type()),
-                    ListReturn::expr(list_expr(1)),
+                ReturnExpr::int_list_body(
+                    crate::plan::IntListFunctionId(0),
+                    crate::plan::IntListReturn::expr(
+                        list_expr(1)
+                            .into_int()
+                            .expect("expression should be List(Int)"),
+                    ),
                 ),
             )],
-        )
+        ))
     }
 
     fn all_list_family_plan() -> ExecutionPlan {
         let function_type = FunctionType::new(Vec::new(), ValueType::Int);
-        ExecutionPlan::new(
+        ExecutionPlan::from_module_plan(crate::plan::ModulePlan::new(
             "main".into(),
             FunctionPlan::new(
                 FunctionId::new(0),
@@ -2332,13 +2337,11 @@ mod tests {
                 list_function_plan(
                     1,
                     "int_list",
-                    ListFunctionId::from_item_type(0, ValueType::Int),
                     ListExpr::value(vec![Expr::int(IntExpr::value(1.into()))], ValueType::Int),
                 ),
                 list_function_plan(
                     2,
                     "string_list",
-                    ListFunctionId::from_item_type(0, ValueType::String),
                     ListExpr::value(
                         vec![Expr::string(StringExpr::value("one".into()))],
                         ValueType::String,
@@ -2347,25 +2350,21 @@ mod tests {
                 list_function_plan(
                     3,
                     "float_list",
-                    ListFunctionId::from_item_type(0, ValueType::Float),
                     ListExpr::value(vec![Expr::float(FloatExpr::value(1.5))], ValueType::Float),
                 ),
                 list_function_plan(
                     4,
                     "bool_list",
-                    ListFunctionId::from_item_type(0, ValueType::Bool),
                     ListExpr::value(vec![Expr::bool(BoolExpr::value(true))], ValueType::Bool),
                 ),
                 list_function_plan(
                     5,
                     "nil_list",
-                    ListFunctionId::from_item_type(0, ValueType::Nil),
                     ListExpr::value(vec![Expr::nil(NilExpr::value())], ValueType::Nil),
                 ),
                 list_function_plan(
                     6,
                     "tuple_list",
-                    ListFunctionId::from_item_type(0, ValueType::Tuple(vec![ValueType::Int])),
                     ListExpr::value(
                         vec![Expr::tuple(TupleExpr::value(
                             vec![Expr::int(IntExpr::value(2.into()))],
@@ -2377,7 +2376,6 @@ mod tests {
                 list_function_plan(
                     7,
                     "list_list",
-                    ListFunctionId::from_item_type(0, ValueType::List(Box::new(ValueType::Int))),
                     ListExpr::value(
                         vec![Expr::list(ListExpr::value(
                             vec![Expr::int(IntExpr::value(3.into()))],
@@ -2389,10 +2387,6 @@ mod tests {
                 list_function_plan(
                     8,
                     "function_list",
-                    ListFunctionId::from_item_type(
-                        0,
-                        ValueType::Function(Box::new(function_type.clone())),
-                    ),
                     ListExpr::value(
                         vec![Expr::function(FunctionExpr::value(
                             crate::plan::FunctionValue::new(
@@ -2404,21 +2398,54 @@ mod tests {
                     ),
                 ),
             ],
-        )
+        ))
     }
 
-    fn list_function_plan(
-        function_index: usize,
-        name: &str,
-        runtime_id: ListFunctionId,
-        expression: ListExpr,
-    ) -> FunctionPlan {
+    fn list_function_plan(function_index: usize, name: &str, expression: ListExpr) -> FunctionPlan {
+        let return_ = match expression {
+            ListExpr::Int(expression) => ReturnExpr::int_list_body(
+                crate::plan::IntListFunctionId(0),
+                crate::plan::IntListReturn::expr(expression),
+            ),
+            ListExpr::String(expression) => ReturnExpr::string_list_body(
+                crate::plan::StringListFunctionId(0),
+                crate::plan::StringListReturn::expr(expression),
+            ),
+            ListExpr::Float(expression) => ReturnExpr::float_list_body(
+                crate::plan::FloatListFunctionId(0),
+                crate::plan::FloatListReturn::expr(expression),
+            ),
+            ListExpr::Bool(expression) => ReturnExpr::bool_list_body(
+                crate::plan::BoolListFunctionId(0),
+                crate::plan::BoolListReturn::expr(expression),
+            ),
+            ListExpr::Nil(expression) => ReturnExpr::nil_list_body(
+                crate::plan::NilListFunctionId(0),
+                crate::plan::NilListReturn::expr(expression),
+            ),
+            ListExpr::Tuple(expression) => ReturnExpr::tuple_list_body(
+                crate::plan::TupleListFunctionId(0),
+                expression.item().item_type(),
+                crate::plan::TupleListReturn::expr(expression),
+            ),
+            ListExpr::List(expression) => ReturnExpr::list_list_body(
+                crate::plan::ListListFunctionId(0),
+                expression.item().item_type(),
+                crate::plan::ListListReturn::expr(expression),
+            ),
+            ListExpr::Function(expression) => ReturnExpr::function_list_body(
+                crate::plan::FunctionListFunctionId(0),
+                expression.item().item_type(),
+                crate::plan::FunctionListReturn::expr(expression),
+            ),
+        };
+
         FunctionPlan::new(
             FunctionId::new(function_index),
             name.into(),
             Vec::new(),
             Vec::new(),
-            ReturnExpr::list_body(runtime_id, ListReturn::expr(expression)),
+            return_,
         )
     }
 

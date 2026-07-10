@@ -1,6 +1,7 @@
+use crate::execution::ExecutionPlan;
 use crate::plan::{
-    ExecutionPlan, FunctionFunctionExpr, FunctionFunctionExprKind, FunctionFunctionValue,
-    FunctionReturnFamily, FunctionValueKind, Value, ValueType,
+    FunctionFunctionExpr, FunctionFunctionExprKind, FunctionFunctionValue, FunctionReturnFamily,
+    FunctionValueKind, Value, ValueType,
 };
 use crate::runtime::ExecutionError;
 use crate::runtime::expression::{
@@ -128,8 +129,9 @@ pub(in crate::runtime) fn eval_function_function_expr(
 #[cfg(test)]
 mod tests {
     use super::eval_function_function_expr;
+    use crate::execution::ExecutionPlan;
     use crate::plan::{
-        BoolExpr, CaptureArg, ExecutionPlan, Expr, FloatExpr, FunctionExpr, FunctionFunctionExpr,
+        BoolExpr, CaptureArg, Expr, FloatExpr, FunctionExpr, FunctionFunctionExpr,
         FunctionFunctionId, FunctionFunctionValue, FunctionId, FunctionPlan, FunctionReturnFamily,
         FunctionType, IntExpr, IntFunctionExpr, IntFunctionFunctionId, IntFunctionId,
         IntFunctionValue, IntLocalId, ListElements, ListExpr, PanicExpr, PanicSite, ReturnExpr,
@@ -854,7 +856,7 @@ pub fn main() {
     }
 
     fn plan() -> ExecutionPlan {
-        ExecutionPlan::new(
+        ExecutionPlan::from_module_plan(crate::plan::ModulePlan::new(
             "main".into(),
             FunctionPlan::new(
                 FunctionId::new(0),
@@ -864,7 +866,7 @@ pub fn main() {
                 ReturnExpr::int(IntFunctionId(0), IntExpr::value(0.into())),
             ),
             Vec::new(),
-        )
+        ))
     }
 
     fn assert_tuple_index_error(expected: ValueType, expression: FunctionFunctionExpr) {

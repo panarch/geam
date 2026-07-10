@@ -20,7 +20,7 @@ pub fn main() {
 ```
 
 The integration runner reads those fixtures through the public Geam API:
-`compile_typed_module -> plan_module -> run_main`.
+`compile_typed_module -> plan_module -> ExecutionPlan::from_module_plan -> run_main`.
 
 Source-level rejection fixtures live under categorized
 `tests/fixtures/rejection/**/*.gleam` paths. They are reserved for public

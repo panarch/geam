@@ -1,5 +1,5 @@
 use crate::plan::{
-    ExecutionPlan, FunctionFunctionLocalId, FunctionId, FunctionType, IntFunctionLocalId,
+    FunctionFunctionLocalId, FunctionId, FunctionType, IntFunctionLocalId, ModulePlan,
     ParamBinding, ParamLocal, SourceContext, ValueType,
 };
 use crate::planner::context::{
@@ -16,18 +16,18 @@ use gleam_core::type_::{Type, TypeVar};
 use std::collections::HashMap;
 use std::ops::Deref;
 
-pub fn plan_module(module: TypedModule) -> Result<ExecutionPlan, PlanError> {
+pub fn plan_module(module: TypedModule) -> Result<ModulePlan, PlanError> {
     plan_module_inner(module)
 }
 
 pub fn plan_module_with_source(
     module: TypedModule,
     source_context: SourceContext,
-) -> Result<ExecutionPlan, PlanError> {
+) -> Result<ModulePlan, PlanError> {
     plan_module_inner(module).map(|plan| plan.with_source_context(source_context))
 }
 
-fn plan_module_inner(module: TypedModule) -> Result<ExecutionPlan, PlanError> {
+fn plan_module_inner(module: TypedModule) -> Result<ModulePlan, PlanError> {
     let definitions = module.definitions;
 
     let imports = definitions.imports.len();
@@ -86,12 +86,7 @@ fn plan_module_inner(module: TypedModule) -> Result<ExecutionPlan, PlanError> {
     }
     let anonymous_functions = anonymous_functions.into_functions();
 
-    Ok(ExecutionPlan::new_with_anonymous(
-        module_name,
-        main,
-        functions,
-        anonymous_functions,
-    ))
+    Ok(ModulePlan::new(module_name, main, functions).with_anonymous_functions(anonymous_functions))
 }
 
 struct FunctionTable {

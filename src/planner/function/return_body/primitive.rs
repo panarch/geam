@@ -1,9 +1,12 @@
 use crate::plan::{
     BoolExpr, BoolExprKind, BoolReturn, FloatExpr, FloatExprKind, FloatReturn, IntExpr,
-    IntExprKind, IntReturn, ListExpr, ListItem, ListReturn, NilExpr, NilExprKind, NilReturn,
-    ReturnBody, StringExpr, StringExprKind, StringReturn, TupleExpr, TupleExprKind, TupleReturn,
-    TypedListExpr, TypedListReturnKind,
+    IntExprKind, IntReturn, ListItem, NilExpr, NilExprKind, NilReturn, ReturnBody, StringExpr,
+    StringExprKind, StringReturn, TupleExpr, TupleExprKind, TupleReturn, TypedListExpr,
+    TypedListReturnKind,
 };
+
+#[cfg(test)]
+use crate::plan::{ListExpr, ListReturn};
 
 pub(super) fn int_return(expression: IntExpr) -> IntReturn {
     match expression.kind() {
@@ -335,6 +338,7 @@ pub(super) fn tuple_return(expression: TupleExpr) -> TupleReturn {
     }
 }
 
+#[cfg(test)]
 pub(super) fn list_return(expression: ListExpr) -> ListReturn {
     match expression {
         ListExpr::Int(expression) => ListReturn::Int(typed_list_return_body(expression)),
@@ -357,7 +361,7 @@ pub(super) fn list_return(expression: ListExpr) -> ListReturn {
     }
 }
 
-fn typed_list_return_body<Item: ListItem>(
+pub(super) fn typed_list_return_body<Item: ListItem>(
     expression: TypedListExpr<Item>,
 ) -> ReturnBody<TypedListExpr<Item>, Item::Function> {
     match expression.into_return_kind() {
@@ -488,6 +492,10 @@ mod tests {
 
     #[test]
     fn list_return_preserves_every_item_family() {
+        assert_eq!(
+            list_return(ListExpr::value(Vec::new(), ValueType::Int)),
+            ListReturn::expr(ListExpr::value(Vec::new(), ValueType::Int)),
+        );
         assert_eq!(
             list_return(ListExpr::value(Vec::new(), ValueType::String)),
             ListReturn::expr(ListExpr::value(Vec::new(), ValueType::String)),

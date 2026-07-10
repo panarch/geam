@@ -1,4 +1,4 @@
-use crate::plan::{ExecutionPlan, FunctionId};
+use crate::plan::{FunctionId, ModulePlan};
 use crate::planner::context::FunctionRuntimeIds;
 use crate::planner::dsl::function::FunctionDsl;
 use ecow::EcoString;
@@ -7,7 +7,7 @@ pub(crate) fn module(
     name: impl Into<EcoString>,
     main: FunctionDsl,
     functions: impl IntoIterator<Item = FunctionDsl>,
-) -> ExecutionPlan {
+) -> ModulePlan {
     module_with_anonymous(name, main, functions, [])
 }
 
@@ -16,7 +16,7 @@ pub(crate) fn module_with_anonymous(
     main: FunctionDsl,
     functions: impl IntoIterator<Item = FunctionDsl>,
     anonymous_functions: impl IntoIterator<Item = FunctionDsl>,
-) -> ExecutionPlan {
+) -> ModulePlan {
     let mut runtime_ids = FunctionRuntimeIds::default();
 
     let main = main.build(FunctionId::new(0), &mut runtime_ids);
@@ -37,7 +37,7 @@ pub(crate) fn module_with_anonymous(
         })
         .collect();
 
-    ExecutionPlan::new_with_anonymous(name.into(), main, functions, anonymous_functions)
+    ModulePlan::new(name.into(), main, functions).with_anonymous_functions(anonymous_functions)
 }
 
 #[cfg(test)]

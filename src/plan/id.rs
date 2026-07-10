@@ -568,6 +568,7 @@ impl ListFunctionLocal {
 }
 
 impl ListFunctionId {
+    #[cfg(test)]
     pub(crate) fn from_item_type(index: usize, item_type: crate::plan::ValueType) -> Self {
         match item_type {
             crate::plan::ValueType::Int => Self::Int(IntListFunctionId(index)),

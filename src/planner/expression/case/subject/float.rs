@@ -660,14 +660,11 @@ pub fn list_case(value: Float) {
                 .param_float(0, "value"),
                 function(
                     "list_case",
-                    return_list(
-                        ValueType::Int,
-                        list_return_float_case(
-                            local_float(0, "value"),
-                            [(1.0, list_return_expr(list([int(1)], ValueType::Int)))],
-                            list_return_expr(list([int(0)], ValueType::Int)),
-                        ),
-                    ),
+                    return_list(list_return_float_case(
+                        local_float(0, "value"),
+                        [(1.0, list_return_expr(list([int(1)], ValueType::Int)))],
+                        list_return_expr(list([int(0)], ValueType::Int)),
+                    )),
                 )
                 .param_float(0, "value"),
             ],

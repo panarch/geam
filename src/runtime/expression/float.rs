@@ -2,7 +2,8 @@ use super::{
     eval_bool_expr, eval_int_expr, eval_panic_expr, eval_string_expr, project_float_list_expr,
     project_tuple_expr,
 };
-use crate::plan::{ExecutionPlan, FloatExpr, FloatExprKind, Value, ValueType};
+use crate::execution::ExecutionPlan;
+use crate::plan::{FloatExpr, FloatExprKind, Value, ValueType};
 use crate::runtime::ExecutionError;
 use crate::runtime::frame::Frame;
 use crate::runtime::function;
@@ -113,12 +114,13 @@ fn eval_div_float(left: f64, right: f64) -> f64 {
 #[cfg(test)]
 mod tests {
     use super::{eval_div_float, eval_float_expr};
+    use crate::execution::ExecutionPlan;
     use crate::plan::{
-        BoolExpr, BoolFunctionExpr, ExecutionPlan, Expr, FloatExpr, FloatFunctionExpr,
-        FloatFunctionId, FloatLocalId, FrameLayout, FunctionFunctionExpr, FunctionFunctionId,
-        FunctionFunctionValue, FunctionId, FunctionPlan, FunctionReturnFamily, FunctionType,
-        IntExpr, IntFunctionExpr, ListExpr, PanicExpr, PanicSite, ReturnExpr, Step, StringExpr,
-        StringFunctionExpr, StringFunctionFunctionId, TupleExpr, ValueType,
+        BoolExpr, BoolFunctionExpr, Expr, FloatExpr, FloatFunctionExpr, FloatFunctionId,
+        FloatLocalId, FrameLayout, FunctionFunctionExpr, FunctionFunctionId, FunctionFunctionValue,
+        FunctionId, FunctionPlan, FunctionReturnFamily, FunctionType, IntExpr, IntFunctionExpr,
+        ListExpr, PanicExpr, PanicSite, ReturnExpr, Step, StringExpr, StringFunctionExpr,
+        StringFunctionFunctionId, TupleExpr, ValueType,
     };
     use crate::runtime::frame::Frame;
     use crate::runtime::{ExecutionError, PanicKind};
@@ -525,7 +527,7 @@ mod tests {
     }
 
     fn plan() -> ExecutionPlan {
-        ExecutionPlan::new(
+        ExecutionPlan::from_module_plan(crate::plan::ModulePlan::new(
             "main".into(),
             FunctionPlan::new(
                 FunctionId::new(0),
@@ -541,6 +543,6 @@ mod tests {
                 Vec::new(),
                 ReturnExpr::float(FloatFunctionId(0), FloatExpr::value(3.5)),
             )],
-        )
+        ))
     }
 }

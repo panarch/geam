@@ -1,5 +1,6 @@
+use crate::execution::ExecutionPlan;
 use crate::plan::{
-    BoolFunctionExpr, BoolFunctionExprKind, BoolFunctionValue, ExecutionPlan, FunctionReturnFamily,
+    BoolFunctionExpr, BoolFunctionExprKind, BoolFunctionValue, FunctionReturnFamily,
     FunctionValueKind, Value, ValueType,
 };
 use crate::runtime::ExecutionError;
@@ -126,9 +127,10 @@ pub(in crate::runtime) fn eval_bool_function_expr(
 #[cfg(test)]
 mod tests {
     use super::eval_bool_function_expr;
+    use crate::execution::ExecutionPlan;
     use crate::plan::{
         BoolExpr, BoolFunctionExpr, BoolFunctionId, BoolFunctionValue, BoolLocalId, CaptureArg,
-        ExecutionPlan, Expr, FloatExpr, FunctionExpr, FunctionFunctionExpr, FunctionFunctionId,
+        Expr, FloatExpr, FunctionExpr, FunctionFunctionExpr, FunctionFunctionId,
         FunctionFunctionValue, FunctionId, FunctionPlan, FunctionReturnFamily, FunctionType,
         IntExpr, IntFunctionExpr, IntFunctionId, IntFunctionValue, ListElements, ListExpr,
         PanicExpr, PanicSite, ParamLocal, ReturnExpr, Step, StringExpr, TupleExpr, ValueType,
@@ -571,7 +573,7 @@ mod tests {
     }
 
     fn plan() -> ExecutionPlan {
-        ExecutionPlan::new(
+        ExecutionPlan::from_module_plan(crate::plan::ModulePlan::new(
             "main".into(),
             FunctionPlan::new(
                 FunctionId::new(0),
@@ -587,7 +589,7 @@ mod tests {
                 Vec::new(),
                 ReturnExpr::bool_function(BoolFunctionFunctionId(0), function_value()),
             )],
-        )
+        ))
     }
 
     fn function_value() -> BoolFunctionExpr {

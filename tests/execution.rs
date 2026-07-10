@@ -481,7 +481,8 @@ fn run_fixture(file_name: &str) {
     let src = std::fs::read_to_string(&path).expect("fixture should be readable");
     let expected = expected_text_with_prefix(&src, "// geam:expect ");
     let module = compile_typed_module("main", path, &src).expect("fixture should compile");
-    let plan = plan_module(module).expect("fixture should plan");
+    let module_plan = plan_module(module).expect("fixture should plan");
+    let plan = geam::ExecutionPlan::from_module_plan(module_plan);
     let actual = run_main(&plan).expect("fixture should run");
 
     assert_eq!(render_value(&actual), expected);
@@ -496,7 +497,8 @@ fn run_error_fixture(file_name: &str) {
         format!("tests/fixtures/execution_errors/{file_name}"),
         src.clone(),
     );
-    let plan = plan_module_with_source(module, source_context).expect("fixture should plan");
+    let module_plan = plan_module_with_source(module, source_context).expect("fixture should plan");
+    let plan = geam::ExecutionPlan::from_module_plan(module_plan);
     let error = run_main(&plan).expect_err("fixture should fail during execution");
     assert!(
         matches!(error, ExecutionError::Panic(_)),

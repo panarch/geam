@@ -1,5 +1,6 @@
+use crate::execution::ExecutionPlan;
 use crate::plan::{
-    ExecutionPlan, FunctionReturnFamily, FunctionValueKind, NilFunctionExpr, NilFunctionExprKind,
+    FunctionReturnFamily, FunctionValueKind, NilFunctionExpr, NilFunctionExprKind,
     NilFunctionValue, Value, ValueType,
 };
 use crate::runtime::ExecutionError;
@@ -126,13 +127,14 @@ pub(in crate::runtime) fn eval_nil_function_expr(
 #[cfg(test)]
 mod tests {
     use super::eval_nil_function_expr;
+    use crate::execution::ExecutionPlan;
     use crate::plan::{
-        BoolExpr, BoolFunctionExpr, BoolFunctionId, BoolFunctionValue, CaptureArg, ExecutionPlan,
-        Expr, FloatExpr, FunctionExpr, FunctionFunctionExpr, FunctionFunctionId,
-        FunctionFunctionValue, FunctionId, FunctionPlan, FunctionReturnFamily, FunctionType,
-        IntExpr, IntFunctionId, ListElements, ListExpr, NilFunctionExpr, NilFunctionFunctionId,
-        NilFunctionId, NilFunctionLocalId, NilFunctionValue, NilLocalId, PanicExpr, PanicSite,
-        ParamLocal, ReturnExpr, Step, StringExpr, TupleExpr, ValueType,
+        BoolExpr, BoolFunctionExpr, BoolFunctionId, BoolFunctionValue, CaptureArg, Expr, FloatExpr,
+        FunctionExpr, FunctionFunctionExpr, FunctionFunctionId, FunctionFunctionValue, FunctionId,
+        FunctionPlan, FunctionReturnFamily, FunctionType, IntExpr, IntFunctionId, ListElements,
+        ListExpr, NilFunctionExpr, NilFunctionFunctionId, NilFunctionId, NilFunctionLocalId,
+        NilFunctionValue, NilLocalId, PanicExpr, PanicSite, ParamLocal, ReturnExpr, Step,
+        StringExpr, TupleExpr, ValueType,
     };
     use crate::runtime::frame::Frame;
     use crate::runtime::{ExecutionError, PanicKind};
@@ -567,7 +569,7 @@ mod tests {
     }
 
     fn plan() -> ExecutionPlan {
-        ExecutionPlan::new(
+        ExecutionPlan::from_module_plan(crate::plan::ModulePlan::new(
             "main".into(),
             FunctionPlan::new(
                 FunctionId::new(0),
@@ -583,7 +585,7 @@ mod tests {
                 Vec::new(),
                 ReturnExpr::nil_function(NilFunctionFunctionId(0), function_value()),
             )],
-        )
+        ))
     }
 
     fn function_value() -> NilFunctionExpr {

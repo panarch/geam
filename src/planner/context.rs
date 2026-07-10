@@ -1,19 +1,20 @@
 use crate::plan::{
     BoolExpr, BoolFunctionExpr, BoolFunctionFunctionId, BoolFunctionId, BoolFunctionLocalId,
-    BoolListItem, BoolListLocalId, BoolLocalId, CaptureArg, FloatExpr, FloatFunctionExpr,
-    FloatFunctionFunctionId, FloatFunctionId, FloatFunctionLocalId, FloatListItem,
-    FloatListLocalId, FloatLocalId, FunctionFunctionExpr, FunctionFunctionFunctionId,
-    FunctionFunctionId, FunctionFunctionLocalId, FunctionId, FunctionListItem, FunctionListLocalId,
-    FunctionPlan, FunctionType, FunctionValue, IntExpr, IntFunctionExpr, IntFunctionFunctionId,
-    IntFunctionId, IntFunctionLocalId, IntListItem, IntListLocalId, IntLocalId, ListExpr,
-    ListFunctionExpr, ListFunctionFunctionId, ListFunctionId, ListFunctionLocal, ListListItem,
-    ListListLocalId, ListLocal, ListLocalExpr, LocalId, NilExpr, NilFunctionExpr,
-    NilFunctionFunctionId, NilFunctionId, NilFunctionLocalId, NilListItem, NilListLocalId,
-    NilLocalId, PanicSite, ParamBinding, ParamLocal, RuntimeFunctionId, StringExpr,
-    StringFunctionExpr, StringFunctionFunctionId, StringFunctionId, StringFunctionLocalId,
-    StringListItem, StringListLocalId, StringLocalId, TupleExpr, TupleFunctionExpr,
-    TupleFunctionFunctionId, TupleFunctionId, TupleFunctionLocalId, TupleListItem,
-    TupleListLocalId, TupleLocalId, ValueType,
+    BoolListFunctionId, BoolListItem, BoolListLocalId, BoolLocalId, CaptureArg, FloatExpr,
+    FloatFunctionExpr, FloatFunctionFunctionId, FloatFunctionId, FloatFunctionLocalId,
+    FloatListFunctionId, FloatListItem, FloatListLocalId, FloatLocalId, FunctionFunctionExpr,
+    FunctionFunctionFunctionId, FunctionFunctionId, FunctionFunctionLocalId, FunctionId,
+    FunctionListFunctionId, FunctionListItem, FunctionListLocalId, FunctionPlan, FunctionType,
+    FunctionValue, IntExpr, IntFunctionExpr, IntFunctionFunctionId, IntFunctionId,
+    IntFunctionLocalId, IntListFunctionId, IntListItem, IntListLocalId, IntLocalId, ListExpr,
+    ListFunctionExpr, ListFunctionFunctionId, ListFunctionId, ListFunctionLocal,
+    ListListFunctionId, ListListItem, ListListLocalId, ListLocal, ListLocalExpr, LocalId, NilExpr,
+    NilFunctionExpr, NilFunctionFunctionId, NilFunctionId, NilFunctionLocalId, NilListFunctionId,
+    NilListItem, NilListLocalId, NilLocalId, PanicSite, ParamBinding, ParamLocal,
+    RuntimeFunctionId, StringExpr, StringFunctionExpr, StringFunctionFunctionId, StringFunctionId,
+    StringFunctionLocalId, StringListFunctionId, StringListItem, StringListLocalId, StringLocalId,
+    TupleExpr, TupleFunctionExpr, TupleFunctionFunctionId, TupleFunctionId, TupleFunctionLocalId,
+    TupleListFunctionId, TupleListItem, TupleListLocalId, TupleLocalId, ValueType,
 };
 use crate::planner::error::{InvalidTypedAstReason, PlanError};
 use ecow::EcoString;
@@ -1268,54 +1269,72 @@ impl FunctionRuntimeIds {
 
     pub(in crate::planner) fn next_list_id(&mut self, item_type: ValueType) -> ListFunctionId {
         match item_type {
-            ValueType::Int => {
-                let id = ListFunctionId::from_item_type(self.next_int_list, ValueType::Int);
-                self.next_int_list += 1;
-                id
-            }
-            ValueType::String => {
-                let id = ListFunctionId::from_item_type(self.next_string_list, ValueType::String);
-                self.next_string_list += 1;
-                id
-            }
-            ValueType::Float => {
-                let id = ListFunctionId::from_item_type(self.next_float_list, ValueType::Float);
-                self.next_float_list += 1;
-                id
-            }
-            ValueType::Bool => {
-                let id = ListFunctionId::from_item_type(self.next_bool_list, ValueType::Bool);
-                self.next_bool_list += 1;
-                id
-            }
-            ValueType::Nil => {
-                let id = ListFunctionId::from_item_type(self.next_nil_list, ValueType::Nil);
-                self.next_nil_list += 1;
-                id
-            }
-            ValueType::Tuple(item_type) => {
-                let id = ListFunctionId::from_item_type(
-                    self.next_tuple_list,
-                    ValueType::Tuple(item_type),
-                );
-                self.next_tuple_list += 1;
-                id
-            }
-            ValueType::List(item_type) => {
-                let id =
-                    ListFunctionId::from_item_type(self.next_list_list, ValueType::List(item_type));
-                self.next_list_list += 1;
-                id
-            }
-            ValueType::Function(item_type) => {
-                let id = ListFunctionId::from_item_type(
-                    self.next_function_list,
-                    ValueType::Function(item_type),
-                );
-                self.next_function_list += 1;
-                id
-            }
+            ValueType::Int => ListFunctionId::Int(self.next_int_list_id()),
+            ValueType::String => ListFunctionId::String(self.next_string_list_id()),
+            ValueType::Float => ListFunctionId::Float(self.next_float_list_id()),
+            ValueType::Bool => ListFunctionId::Bool(self.next_bool_list_id()),
+            ValueType::Nil => ListFunctionId::Nil(self.next_nil_list_id()),
+            ValueType::Tuple(item_type) => ListFunctionId::Tuple {
+                id: self.next_tuple_list_id(),
+                item_type,
+            },
+            ValueType::List(item_type) => ListFunctionId::List {
+                id: self.next_list_list_id(),
+                item_type,
+            },
+            ValueType::Function(item_type) => ListFunctionId::Function {
+                id: self.next_function_list_id(),
+                item_type: *item_type,
+            },
         }
+    }
+
+    pub(in crate::planner) fn next_int_list_id(&mut self) -> IntListFunctionId {
+        let id = IntListFunctionId(self.next_int_list);
+        self.next_int_list += 1;
+        id
+    }
+
+    pub(in crate::planner) fn next_string_list_id(&mut self) -> StringListFunctionId {
+        let id = StringListFunctionId(self.next_string_list);
+        self.next_string_list += 1;
+        id
+    }
+
+    pub(in crate::planner) fn next_float_list_id(&mut self) -> FloatListFunctionId {
+        let id = FloatListFunctionId(self.next_float_list);
+        self.next_float_list += 1;
+        id
+    }
+
+    pub(in crate::planner) fn next_bool_list_id(&mut self) -> BoolListFunctionId {
+        let id = BoolListFunctionId(self.next_bool_list);
+        self.next_bool_list += 1;
+        id
+    }
+
+    pub(in crate::planner) fn next_nil_list_id(&mut self) -> NilListFunctionId {
+        let id = NilListFunctionId(self.next_nil_list);
+        self.next_nil_list += 1;
+        id
+    }
+
+    pub(in crate::planner) fn next_tuple_list_id(&mut self) -> TupleListFunctionId {
+        let id = TupleListFunctionId(self.next_tuple_list);
+        self.next_tuple_list += 1;
+        id
+    }
+
+    pub(in crate::planner) fn next_list_list_id(&mut self) -> ListListFunctionId {
+        let id = ListListFunctionId(self.next_list_list);
+        self.next_list_list += 1;
+        id
+    }
+
+    pub(in crate::planner) fn next_function_list_id(&mut self) -> FunctionListFunctionId {
+        let id = FunctionListFunctionId(self.next_function_list);
+        self.next_function_list += 1;
+        id
     }
 
     pub(in crate::planner) fn next_int_function_id(&mut self) -> IntFunctionFunctionId {

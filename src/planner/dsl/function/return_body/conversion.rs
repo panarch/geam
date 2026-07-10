@@ -53,10 +53,7 @@ impl From<Tuple> for FunctionReturn {
 impl From<List> for FunctionReturn {
     fn from(value: List) -> Self {
         let expression = crate::plan::ListExpr::from(value);
-        Self::List {
-            element_type: expression.element_type().clone(),
-            body: ListReturn::expr(expression),
-        }
+        Self::List(ListReturn::expr(expression))
     }
 }
 
@@ -257,10 +254,7 @@ mod tests {
         );
         assert_eq!(
             FunctionReturn::from(list([int(1)], ValueType::Int)),
-            FunctionReturn::List {
-                element_type: ValueType::Int,
-                body: ListReturn::expr(list([int(1)], ValueType::Int).into()),
-            },
+            FunctionReturn::List(ListReturn::expr(list([int(1)], ValueType::Int).into())),
         );
     }
 

@@ -335,8 +335,8 @@ pub(crate) fn list_return_block(
     ListReturn::try_block(steps.into_iter().collect(), return_)
 }
 
-pub(crate) fn return_list(element_type: ValueType, body: ListReturn) -> FunctionReturn {
-    FunctionReturn::List { element_type, body }
+pub(crate) fn return_list(body: ListReturn) -> FunctionReturn {
+    FunctionReturn::List(body)
 }
 
 pub(crate) fn nil_return_tail_call(

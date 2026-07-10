@@ -1,7 +1,9 @@
 mod function_value;
 mod primitive;
 
-use crate::plan::{Expr, ExprKind, ReturnExpr, RuntimeFunctionId, ValueType};
+use crate::plan::{
+    Expr, ExprKind, ListExpr, ListFunctionId, ReturnExpr, RuntimeFunctionId, ValueType,
+};
 use crate::planner::error::{InvalidFunctionShapeReason, InvalidTypedAstReason, PlanError};
 use ecow::EcoString;
 
@@ -36,13 +38,92 @@ pub(super) fn function_return_expr(
             expected.clone(),
             primitive::tuple_return(actual),
         )),
-        (ValueType::List(expected), RuntimeFunctionId::List(id), ExprKind::List(actual))
-            if expected.as_ref() == &actual.element_type()
-                && expected.as_ref() == &id.item_type() =>
+        (
+            ValueType::List(expected),
+            RuntimeFunctionId::List(ListFunctionId::Int(runtime_id)),
+            ExprKind::List(ListExpr::Int(actual)),
+        ) if expected.as_ref() == &ValueType::Int => Ok(ReturnExpr::int_list_body(
+            *runtime_id,
+            primitive::typed_list_return_body(actual),
+        )),
+        (
+            ValueType::List(expected),
+            RuntimeFunctionId::List(ListFunctionId::String(runtime_id)),
+            ExprKind::List(ListExpr::String(actual)),
+        ) if expected.as_ref() == &ValueType::String => Ok(ReturnExpr::string_list_body(
+            *runtime_id,
+            primitive::typed_list_return_body(actual),
+        )),
+        (
+            ValueType::List(expected),
+            RuntimeFunctionId::List(ListFunctionId::Float(runtime_id)),
+            ExprKind::List(ListExpr::Float(actual)),
+        ) if expected.as_ref() == &ValueType::Float => Ok(ReturnExpr::float_list_body(
+            *runtime_id,
+            primitive::typed_list_return_body(actual),
+        )),
+        (
+            ValueType::List(expected),
+            RuntimeFunctionId::List(ListFunctionId::Bool(runtime_id)),
+            ExprKind::List(ListExpr::Bool(actual)),
+        ) if expected.as_ref() == &ValueType::Bool => Ok(ReturnExpr::bool_list_body(
+            *runtime_id,
+            primitive::typed_list_return_body(actual),
+        )),
+        (
+            ValueType::List(expected),
+            RuntimeFunctionId::List(ListFunctionId::Nil(runtime_id)),
+            ExprKind::List(ListExpr::Nil(actual)),
+        ) if expected.as_ref() == &ValueType::Nil => Ok(ReturnExpr::nil_list_body(
+            *runtime_id,
+            primitive::typed_list_return_body(actual),
+        )),
+        (
+            ValueType::List(expected),
+            RuntimeFunctionId::List(ListFunctionId::Tuple {
+                id: runtime_id,
+                item_type,
+            }),
+            ExprKind::List(ListExpr::Tuple(actual)),
+        ) if expected.as_ref() == &ValueType::Tuple(item_type.clone())
+            && item_type == actual.item().item_type().as_slice() =>
         {
-            Ok(ReturnExpr::list_body(
-                id.clone(),
-                primitive::list_return(actual),
+            Ok(ReturnExpr::tuple_list_body(
+                *runtime_id,
+                item_type.clone(),
+                primitive::typed_list_return_body(actual),
+            ))
+        }
+        (
+            ValueType::List(expected),
+            RuntimeFunctionId::List(ListFunctionId::List {
+                id: runtime_id,
+                item_type,
+            }),
+            ExprKind::List(ListExpr::List(actual)),
+        ) if expected.as_ref() == &ValueType::List(item_type.clone())
+            && item_type.as_ref() == actual.item().item_type().as_ref() =>
+        {
+            Ok(ReturnExpr::list_list_body(
+                *runtime_id,
+                item_type.clone(),
+                primitive::typed_list_return_body(actual),
+            ))
+        }
+        (
+            ValueType::List(expected),
+            RuntimeFunctionId::List(ListFunctionId::Function {
+                id: runtime_id,
+                item_type,
+            }),
+            ExprKind::List(ListExpr::Function(actual)),
+        ) if expected.as_ref() == &ValueType::Function(Box::new(item_type.clone()))
+            && item_type == &actual.item().item_type() =>
+        {
+            Ok(ReturnExpr::function_list_body(
+                *runtime_id,
+                item_type.clone(),
+                primitive::typed_list_return_body(actual),
             ))
         }
         (
@@ -65,9 +146,12 @@ pub(super) fn function_return_expr(
 mod tests {
     use super::function_return_expr;
     use crate::plan::{
-        Expr, FloatExpr, FunctionExpr, FunctionFunctionId, FunctionType, IntFunctionExpr,
-        IntFunctionFunctionId, IntFunctionId, IntFunctionValue, IntLocalId, ParamLocal,
-        RuntimeFunctionId, StringFunctionFunctionId, ValueType,
+        BoolListFunctionId, Expr, FloatExpr, FloatListFunctionId, FunctionExpr, FunctionFunctionId,
+        FunctionListFunctionId, FunctionType, IntFunctionExpr, IntFunctionFunctionId,
+        IntFunctionId, IntFunctionValue, IntListFunctionId, IntLocalId, ListExpr, ListFunctionId,
+        ListListFunctionId, NilListFunctionId, ParamLocal, ReturnBody, ReturnExpr,
+        RuntimeFunctionId, StringFunctionFunctionId, StringListFunctionId, TupleListFunctionId,
+        ValueType,
     };
     use crate::planner::{InvalidFunctionShapeReason, InvalidTypedAstReason, PlanError};
 
@@ -151,6 +235,157 @@ mod tests {
                     reason: InvalidFunctionShapeReason::ReturnTypeMismatch,
                 },
             }),
+        );
+    }
+
+    #[test]
+    fn plan_list_return_preserves_every_item_family() {
+        let string = ListExpr::value(Vec::new(), ValueType::String);
+        assert_eq!(
+            function_return_expr(
+                &"strings".into(),
+                &ValueType::List(Box::new(ValueType::String)),
+                &RuntimeFunctionId::List(ListFunctionId::String(StringListFunctionId(0))),
+                Expr::list(string.clone()),
+            ),
+            Ok(ReturnExpr::string_list_body(
+                StringListFunctionId(0),
+                ReturnBody::expr(
+                    string
+                        .into_string()
+                        .expect("expression should be List(String)"),
+                ),
+            )),
+        );
+
+        let float = ListExpr::value(Vec::new(), ValueType::Float);
+        assert_eq!(
+            function_return_expr(
+                &"floats".into(),
+                &ValueType::List(Box::new(ValueType::Float)),
+                &RuntimeFunctionId::List(ListFunctionId::Float(FloatListFunctionId(0))),
+                Expr::list(float.clone()),
+            ),
+            Ok(ReturnExpr::float_list_body(
+                FloatListFunctionId(0),
+                ReturnBody::expr(
+                    float
+                        .into_float()
+                        .expect("expression should be List(Float)")
+                ),
+            )),
+        );
+
+        let bool_ = ListExpr::value(Vec::new(), ValueType::Bool);
+        assert_eq!(
+            function_return_expr(
+                &"bools".into(),
+                &ValueType::List(Box::new(ValueType::Bool)),
+                &RuntimeFunctionId::List(ListFunctionId::Bool(BoolListFunctionId(0))),
+                Expr::list(bool_.clone()),
+            ),
+            Ok(ReturnExpr::bool_list_body(
+                BoolListFunctionId(0),
+                ReturnBody::expr(bool_.into_bool().expect("expression should be List(Bool)")),
+            )),
+        );
+
+        let nil = ListExpr::value(Vec::new(), ValueType::Nil);
+        assert_eq!(
+            function_return_expr(
+                &"nils".into(),
+                &ValueType::List(Box::new(ValueType::Nil)),
+                &RuntimeFunctionId::List(ListFunctionId::Nil(NilListFunctionId(0))),
+                Expr::list(nil.clone()),
+            ),
+            Ok(ReturnExpr::nil_list_body(
+                NilListFunctionId(0),
+                ReturnBody::expr(nil.into_nil().expect("expression should be List(Nil)")),
+            )),
+        );
+
+        let tuple_item = vec![ValueType::Int];
+        let tuple = ListExpr::value(Vec::new(), ValueType::Tuple(tuple_item.clone()));
+        assert_eq!(
+            function_return_expr(
+                &"tuples".into(),
+                &ValueType::List(Box::new(ValueType::Tuple(tuple_item.clone()))),
+                &RuntimeFunctionId::List(ListFunctionId::Tuple {
+                    id: TupleListFunctionId(0),
+                    item_type: tuple_item.clone(),
+                }),
+                Expr::list(tuple.clone()),
+            ),
+            Ok(ReturnExpr::tuple_list_body(
+                TupleListFunctionId(0),
+                tuple_item,
+                ReturnBody::expr(
+                    tuple
+                        .into_tuple()
+                        .expect("expression should be List(Tuple)"),
+                ),
+            )),
+        );
+
+        let list_item = Box::new(ValueType::Int);
+        let list = ListExpr::value(Vec::new(), ValueType::List(list_item.clone()));
+        assert_eq!(
+            function_return_expr(
+                &"lists".into(),
+                &ValueType::List(Box::new(ValueType::List(list_item.clone()))),
+                &RuntimeFunctionId::List(ListFunctionId::List {
+                    id: ListListFunctionId(0),
+                    item_type: list_item.clone(),
+                }),
+                Expr::list(list.clone()),
+            ),
+            Ok(ReturnExpr::list_list_body(
+                ListListFunctionId(0),
+                list_item,
+                ReturnBody::expr(list.into_list().expect("expression should be List(List)")),
+            )),
+        );
+
+        let function_item = FunctionType::new(Vec::new(), ValueType::Int);
+        let functions = ListExpr::value(
+            Vec::new(),
+            ValueType::Function(Box::new(function_item.clone())),
+        );
+        assert_eq!(
+            function_return_expr(
+                &"functions".into(),
+                &ValueType::List(Box::new(ValueType::Function(Box::new(
+                    function_item.clone(),
+                )))),
+                &RuntimeFunctionId::List(ListFunctionId::Function {
+                    id: FunctionListFunctionId(0),
+                    item_type: function_item.clone(),
+                }),
+                Expr::list(functions.clone()),
+            ),
+            Ok(ReturnExpr::function_list_body(
+                FunctionListFunctionId(0),
+                function_item,
+                ReturnBody::expr(
+                    functions
+                        .into_function()
+                        .expect("expression should be List(Function)"),
+                ),
+            )),
+        );
+
+        let int = ListExpr::value(Vec::new(), ValueType::Int);
+        assert_eq!(
+            function_return_expr(
+                &"ints".into(),
+                &ValueType::List(Box::new(ValueType::Int)),
+                &RuntimeFunctionId::List(ListFunctionId::Int(IntListFunctionId(0))),
+                Expr::list(int.clone()),
+            ),
+            Ok(ReturnExpr::int_list_body(
+                IntListFunctionId(0),
+                ReturnBody::expr(int.into_int().expect("expression should be List(Int)")),
+            )),
         );
     }
 }

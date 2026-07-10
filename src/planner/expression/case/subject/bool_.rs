@@ -332,14 +332,11 @@ pub fn list_case(value: Bool) {
                 ),
                 function(
                     "list_case",
-                    return_list(
-                        ValueType::Int,
-                        list_return_bool_case(
-                            local_bool(0, "value"),
-                            list_return_expr(list([int(1)], ValueType::Int)),
-                            list_return_expr(list([int(0)], ValueType::Int)),
-                        ),
-                    ),
+                    return_list(list_return_bool_case(
+                        local_bool(0, "value"),
+                        list_return_expr(list([int(1)], ValueType::Int)),
+                        list_return_expr(list([int(0)], ValueType::Int)),
+                    )),
                 )
                 .param_bool(0, "value"),
             ],

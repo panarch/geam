@@ -1,5 +1,6 @@
+use crate::execution::ExecutionPlan;
 use crate::plan::{
-    ExecutionPlan, FunctionReturnFamily, FunctionValueKind, ListFunctionExpr, ListFunctionExprKind,
+    FunctionReturnFamily, FunctionValueKind, ListFunctionExpr, ListFunctionExprKind,
     ListFunctionValue, Value, ValueType,
 };
 use crate::runtime::ExecutionError;
@@ -131,13 +132,14 @@ pub(in crate::runtime) fn eval_list_function_expr(
 #[cfg(test)]
 mod tests {
     use super::eval_list_function_expr;
+    use crate::execution::ExecutionPlan;
     use crate::plan::{
-        BoolExpr, CaptureArg, ExecutionPlan, Expr, FloatExpr, FunctionExpr, FunctionFunctionExpr,
+        BoolExpr, CaptureArg, Expr, FloatExpr, FunctionExpr, FunctionFunctionExpr,
         FunctionFunctionId, FunctionFunctionValue, FunctionId, FunctionPlan, FunctionReturnFamily,
         FunctionType, IntExpr, IntFunctionExpr, IntFunctionId, IntFunctionValue, IntListLocalId,
         ListElements, ListExpr, ListFunctionExpr, ListFunctionFunctionId, ListFunctionId,
-        ListFunctionValue, ListLocal, ListReturn, PanicExpr, PanicSite, ParamLocal, ReturnBody,
-        ReturnExpr, Step, StringExpr, TupleExpr, ValueType,
+        ListFunctionValue, ListLocal, PanicExpr, PanicSite, ParamLocal, ReturnBody, ReturnExpr,
+        Step, StringExpr, TupleExpr, ValueType,
     };
     use crate::runtime::frame::Frame;
     use crate::runtime::{ExecutionError, PanicKind};
@@ -690,7 +692,7 @@ mod tests {
     }
 
     fn plan() -> ExecutionPlan {
-        ExecutionPlan::new(
+        ExecutionPlan::from_module_plan(crate::plan::ModulePlan::new(
             "main".into(),
             FunctionPlan::new(
                 FunctionId::new(0),
@@ -708,9 +710,13 @@ mod tests {
                         "value".into(),
                     )],
                     Vec::new(),
-                    ReturnExpr::list_body(
-                        ListFunctionId::from_item_type(0, element_type()),
-                        ListReturn::expr(list_expr(1)),
+                    ReturnExpr::int_list_body(
+                        crate::plan::IntListFunctionId(0),
+                        crate::plan::IntListReturn::expr(
+                            list_expr(1)
+                                .into_int()
+                                .expect("expression should be List(Int)"),
+                        ),
                     ),
                 ),
                 FunctionPlan::new(
@@ -728,6 +734,6 @@ mod tests {
                     ),
                 ),
             ],
-        )
+        ))
     }
 }

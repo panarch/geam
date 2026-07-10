@@ -1,6 +1,7 @@
+use crate::execution::ExecutionPlan;
 use crate::plan::{
     AssertBinding, AssertPattern, BoolFunctionLocalId, BoolFunctionValue, BoolLocalId,
-    ExecutionPlan, FloatFunctionLocalId, FloatFunctionValue, FloatLocalId, FunctionFunctionLocalId,
+    FloatFunctionLocalId, FloatFunctionValue, FloatLocalId, FunctionFunctionLocalId,
     FunctionFunctionValue, FunctionValue, FunctionValueKind, IntFunctionLocalId, IntFunctionValue,
     IntLocalId, ListAssertPattern, ListAssertTail, ListFunctionLocal, ListFunctionValue,
     ListLocalValue, ListValue, NilFunctionLocalId, NilFunctionValue, NilLocalId, ParamLocal,
@@ -379,10 +380,11 @@ mod tests {
         PendingBinding, execute_steps, frame_set_binding, match_assert_pattern,
         match_list_assert_pattern, pending_binding,
     };
+    use crate::execution::ExecutionPlan;
     use crate::plan::{
         AssertBinding, AssertPattern, BoolExpr, BoolFunctionExpr, BoolFunctionId,
-        BoolFunctionLocalId, BoolFunctionValue, BoolListLocalId, BoolLocalId, ExecutionPlan, Expr,
-        FloatExpr, FloatFunctionExpr, FloatFunctionId, FloatFunctionLocalId, FloatFunctionValue,
+        BoolFunctionLocalId, BoolFunctionValue, BoolListLocalId, BoolLocalId, Expr, FloatExpr,
+        FloatFunctionExpr, FloatFunctionId, FloatFunctionLocalId, FloatFunctionValue,
         FloatListLocalId, FloatLocalId, FrameLayout, FunctionExpr, FunctionFunctionExpr,
         FunctionFunctionId, FunctionFunctionLocalId, FunctionFunctionValue, FunctionId,
         FunctionListLocalId, FunctionPlan, FunctionReturnFamily, FunctionType, FunctionValue,
@@ -1723,7 +1725,7 @@ mod tests {
     }
 
     fn plan() -> ExecutionPlan {
-        ExecutionPlan::new(
+        ExecutionPlan::from_module_plan(crate::plan::ModulePlan::new(
             "main".into(),
             FunctionPlan::new(
                 FunctionId::new(0),
@@ -1733,7 +1735,7 @@ mod tests {
                 ReturnExpr::int(crate::plan::IntFunctionId(0), IntExpr::value(1.into())),
             ),
             Vec::new(),
-        )
+        ))
     }
 
     fn all_family_layout() -> FrameLayout {

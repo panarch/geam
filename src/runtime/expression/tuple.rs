@@ -2,7 +2,8 @@ use super::{
     eval_bool_expr, eval_float_expr, eval_int_expr, eval_panic_expr, eval_string_expr,
     project_tuple_list_expr,
 };
-use crate::plan::{ExecutionPlan, TupleExpr, TupleExprKind, Value, ValueType};
+use crate::execution::ExecutionPlan;
+use crate::plan::{TupleExpr, TupleExprKind, Value, ValueType};
 use crate::runtime::ExecutionError;
 use crate::runtime::frame::Frame;
 use crate::runtime::function;
@@ -118,10 +119,11 @@ pub(in crate::runtime) fn project_tuple_expr(
 #[cfg(test)]
 mod tests {
     use super::{eval_tuple_expr, project_tuple_expr};
+    use crate::execution::ExecutionPlan;
     use crate::plan::{
-        BoolExpr, ExecutionPlan, Expr, FloatExpr, FunctionId, FunctionPlan, IntExpr, IntFunctionId,
-        ListExpr, PanicExpr, PanicSite, ReturnExpr, Step, StringExpr, TupleExpr, TupleFunctionId,
-        Value, ValueType,
+        BoolExpr, Expr, FloatExpr, FunctionId, FunctionPlan, IntExpr, IntFunctionId, ListExpr,
+        PanicExpr, PanicSite, ReturnExpr, Step, StringExpr, TupleExpr, TupleFunctionId, Value,
+        ValueType,
     };
     use crate::runtime::frame::Frame;
     use crate::runtime::{ExecutionError, PanicKind};
@@ -602,7 +604,7 @@ pub fn main() {
     }
 
     fn plan() -> ExecutionPlan {
-        ExecutionPlan::new(
+        ExecutionPlan::from_module_plan(crate::plan::ModulePlan::new(
             "main".into(),
             FunctionPlan::new(
                 FunctionId::new(0),
@@ -618,6 +620,6 @@ pub fn main() {
                 Vec::new(),
                 ReturnExpr::tuple(TupleFunctionId(0), tuple_expr(1, "hit")),
             )],
-        )
+        ))
     }
 }

@@ -27,9 +27,9 @@ Gleam source
 ```
 
 Unsupported execution semantics are rejected while planning from Gleam's typed
-AST, before runtime evaluation.
-The resulting execution plan is an opaque validated value, not public raw AST
-data assembled by runtime callers.
+AST, before runtime evaluation. The resulting `ModulePlan` is the canonical
+inspectable planner output. Consuming it produces an opaque `ExecutionPlan` for
+runtime use rather than public raw AST data assembled by runtime callers.
 
 ## Status
 

@@ -1,4 +1,4 @@
-use crate::plan::{FrameLayout, ListItem, ListReturn, ReturnBody, ReturnBodyKind, TypedListExpr};
+use crate::plan::{FrameLayout, ListItem, ReturnBody, ReturnBodyKind, TypedListExpr};
 
 impl FrameLayout {
     pub(in crate::plan::frame) fn include_int_return(&mut self, body: &crate::plan::IntReturn) {
@@ -322,20 +322,7 @@ impl FrameLayout {
         }
     }
 
-    pub(in crate::plan::frame) fn include_list_return(&mut self, body: &crate::plan::ListReturn) {
-        match body {
-            ListReturn::Int(body) => self.include_typed_list_return(body),
-            ListReturn::Float(body) => self.include_typed_list_return(body),
-            ListReturn::String(body) => self.include_typed_list_return(body),
-            ListReturn::Bool(body) => self.include_typed_list_return(body),
-            ListReturn::Nil(body) => self.include_typed_list_return(body),
-            ListReturn::Tuple { body, .. } => self.include_typed_list_return(body),
-            ListReturn::List { body, .. } => self.include_typed_list_return(body),
-            ListReturn::Function { body, .. } => self.include_typed_list_return(body),
-        }
-    }
-
-    fn include_typed_list_return<Item: ListItem>(
+    pub(in crate::plan::frame) fn include_typed_list_return<Item: ListItem>(
         &mut self,
         body: &ReturnBody<TypedListExpr<Item>, Item::Function>,
     ) {

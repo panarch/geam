@@ -131,10 +131,10 @@ pub fn list_main() {
                 function("nil_main", nil_return_block([], nil_return_expr(nil()))),
                 function(
                     "list_main",
-                    return_list(
-                        ValueType::Int,
-                        list_return_block([], list_return_expr(list([int(1)], ValueType::Int))),
-                    ),
+                    return_list(list_return_block(
+                        [],
+                        list_return_expr(list([int(1)], ValueType::Int)),
+                    )),
                 ),
             ],
         );

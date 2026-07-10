@@ -1,6 +1,7 @@
+use crate::execution::ExecutionPlan;
 use crate::plan::{
-    ExecutionPlan, FunctionReturnFamily, FunctionValueKind, TupleFunctionExpr,
-    TupleFunctionExprKind, TupleFunctionValue, Value, ValueType,
+    FunctionReturnFamily, FunctionValueKind, TupleFunctionExpr, TupleFunctionExprKind,
+    TupleFunctionValue, Value, ValueType,
 };
 use crate::runtime::ExecutionError;
 use crate::runtime::expression::{
@@ -133,8 +134,9 @@ pub(in crate::runtime) fn eval_tuple_function_expr(
 #[cfg(test)]
 mod tests {
     use super::eval_tuple_function_expr;
+    use crate::execution::ExecutionPlan;
     use crate::plan::{
-        BoolExpr, CaptureArg, ExecutionPlan, Expr, FloatExpr, FunctionExpr, FunctionFunctionExpr,
+        BoolExpr, CaptureArg, Expr, FloatExpr, FunctionExpr, FunctionFunctionExpr,
         FunctionFunctionId, FunctionFunctionValue, FunctionId, FunctionPlan, FunctionReturnFamily,
         FunctionType, IntExpr, IntFunctionExpr, IntFunctionId, IntFunctionValue, ListElements,
         ListExpr, PanicExpr, PanicSite, ParamLocal, ReturnExpr, Step, StringExpr, TupleExpr,
@@ -844,7 +846,7 @@ pub fn main() {
     }
 
     fn plan() -> ExecutionPlan {
-        ExecutionPlan::new(
+        ExecutionPlan::from_module_plan(crate::plan::ModulePlan::new(
             "main".into(),
             FunctionPlan::new(
                 FunctionId::new(0),
@@ -884,6 +886,6 @@ pub fn main() {
                     ReturnExpr::tuple_function(TupleFunctionFunctionId(0), tuple_function_expr()),
                 ),
             ],
-        )
+        ))
     }
 }

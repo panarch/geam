@@ -5,10 +5,11 @@ mod steps;
 pub(in crate::runtime) use bind::eval_capture_args;
 pub(in crate::runtime) use steps::execute_steps;
 
+use crate::execution::ExecutionPlan;
 use crate::plan::{
-    BoolFunctionFunctionId, BoolFunctionId, CallArg, ExecutionPlan, FloatFunctionFunctionId,
-    FloatFunctionId, FunctionFunctionFunctionId, FunctionFunctionValue, FunctionReturnFamily,
-    FunctionValue, IntFunctionFunctionId, IntFunctionId, ListFunctionFunctionId, ListFunctionId,
+    BoolFunctionFunctionId, BoolFunctionId, CallArg, FloatFunctionFunctionId, FloatFunctionId,
+    FunctionFunctionFunctionId, FunctionFunctionValue, FunctionReturnFamily, FunctionValue,
+    IntFunctionFunctionId, IntFunctionId, ListFunctionFunctionId, ListFunctionId,
     NilFunctionFunctionId, NilFunctionId, RuntimeFunctionId, StringFunctionFunctionId,
     StringFunctionId, TupleFunctionFunctionId, TupleFunctionId, Value,
 };
@@ -934,20 +935,20 @@ mod tests {
         run_string_function_returning_function_call, run_tuple_call, run_tuple_function_call,
         run_tuple_function_function_call, run_tuple_function_returning_function_call,
     };
+    use crate::execution::ExecutionPlan;
     use crate::plan::{
         BoolExpr, BoolFunctionExpr, BoolFunctionFunctionId, BoolFunctionId, BoolFunctionValue,
-        BoolLocalId, CallArg, ExecutionPlan, Expr, FloatExpr, FloatFunctionExpr,
-        FloatFunctionFunctionId, FloatFunctionId, FloatFunctionValue, FunctionExpr,
-        FunctionExprKind, FunctionFunctionExpr, FunctionFunctionFunctionId, FunctionFunctionId,
-        FunctionFunctionLocalId, FunctionFunctionValue, FunctionId, FunctionPlan,
-        FunctionReturnFamily, FunctionType, FunctionValue, IntExpr, IntFunctionExpr,
-        IntFunctionFunctionId, IntFunctionId, IntFunctionValue, IntLocalId, ListExpr,
-        ListFunctionExpr, ListFunctionFunctionId, ListFunctionId, ListFunctionValue, ListReturn,
-        ListValue, NilExpr, NilFunctionExpr, NilFunctionFunctionId, NilFunctionId,
-        NilFunctionValue, NilLocalId, ParamLocal, ReturnExpr, RuntimeFunctionId, Step, StringExpr,
-        StringFunctionExpr, StringFunctionFunctionId, StringFunctionId, StringFunctionValue,
-        StringLocalId, TupleExpr, TupleFunctionExpr, TupleFunctionFunctionId, TupleFunctionId,
-        TupleFunctionValue, ValueType,
+        BoolLocalId, CallArg, Expr, FloatExpr, FloatFunctionExpr, FloatFunctionFunctionId,
+        FloatFunctionId, FloatFunctionValue, FunctionExpr, FunctionExprKind, FunctionFunctionExpr,
+        FunctionFunctionFunctionId, FunctionFunctionId, FunctionFunctionLocalId,
+        FunctionFunctionValue, FunctionId, FunctionPlan, FunctionReturnFamily, FunctionType,
+        FunctionValue, IntExpr, IntFunctionExpr, IntFunctionFunctionId, IntFunctionId,
+        IntFunctionValue, IntLocalId, ListExpr, ListFunctionExpr, ListFunctionFunctionId,
+        ListFunctionId, ListFunctionValue, ListValue, NilExpr, NilFunctionExpr,
+        NilFunctionFunctionId, NilFunctionId, NilFunctionValue, NilLocalId, ParamLocal, ReturnExpr,
+        RuntimeFunctionId, Step, StringExpr, StringFunctionExpr, StringFunctionFunctionId,
+        StringFunctionId, StringFunctionValue, StringLocalId, TupleExpr, TupleFunctionExpr,
+        TupleFunctionFunctionId, TupleFunctionId, TupleFunctionValue, ValueType,
     };
     use crate::runtime::frame::Frame;
     use crate::runtime::{ExecutionError, Value, run_src};
@@ -1711,12 +1712,13 @@ pub fn main() {
         )));
         assert_expected_function_got_int(run_main(&plan_with_main(
             steps.clone(),
-            ReturnExpr::list_body(
-                ListFunctionId::from_item_type(0, ValueType::Int),
-                ListReturn::expr(ListExpr::value(
-                    vec![Expr::int(IntExpr::value(1.into()))],
-                    ValueType::Int,
-                )),
+            ReturnExpr::int_list_body(
+                crate::plan::IntListFunctionId(0),
+                crate::plan::IntListReturn::expr(
+                    ListExpr::value(vec![Expr::int(IntExpr::value(1.into()))], ValueType::Int)
+                        .into_int()
+                        .expect("expression should be List(Int)"),
+                ),
             ),
         )));
         assert_expected_function_got_int(run_main(&plan_with_main(
@@ -1971,7 +1973,7 @@ pub fn main() {
     }
 
     fn plan_with_function_function_steps(steps: Vec<Step>) -> ExecutionPlan {
-        ExecutionPlan::new(
+        ExecutionPlan::from_module_plan(crate::plan::ModulePlan::new(
             "main".into(),
             FunctionPlan::new(
                 FunctionId::new(0),
@@ -1995,11 +1997,11 @@ pub fn main() {
                     function_function_expr_value(),
                 ),
             ],
-        )
+        ))
     }
 
     fn plan_with_main(steps: Vec<Step>, return_: ReturnExpr) -> ExecutionPlan {
-        ExecutionPlan::new(
+        ExecutionPlan::from_module_plan(crate::plan::ModulePlan::new(
             "main".into(),
             FunctionPlan::new(
                 FunctionId::new(0),
@@ -2014,7 +2016,7 @@ pub fn main() {
                 Vec::new(),
                 int_function_expr(),
             )],
-        )
+        ))
     }
 
     fn primitive_function_plan() -> ExecutionPlan {
@@ -2022,7 +2024,7 @@ pub fn main() {
     }
 
     fn primitive_function_plan_with_steps(steps: Vec<Step>) -> ExecutionPlan {
-        ExecutionPlan::new(
+        ExecutionPlan::from_module_plan(crate::plan::ModulePlan::new(
             "main".into(),
             FunctionPlan::new(
                 FunctionId::new(0),
@@ -2078,16 +2080,20 @@ pub fn main() {
                     "list".into(),
                     Vec::new(),
                     steps,
-                    ReturnExpr::list_body(
-                        ListFunctionId::from_item_type(0, ValueType::Int),
-                        ListReturn::expr(ListExpr::value(
-                            vec![Expr::int(IntExpr::value(1.into()))],
-                            ValueType::Int,
-                        )),
+                    ReturnExpr::int_list_body(
+                        crate::plan::IntListFunctionId(0),
+                        crate::plan::IntListReturn::expr(
+                            ListExpr::value(
+                                vec![Expr::int(IntExpr::value(1.into()))],
+                                ValueType::Int,
+                            )
+                            .into_int()
+                            .expect("expression should be List(Int)"),
+                        ),
                     ),
                 ),
             ],
-        )
+        ))
     }
 
     fn function_plan(
@@ -2199,7 +2205,7 @@ pub fn main() {
     }
 
     fn plan() -> ExecutionPlan {
-        ExecutionPlan::new(
+        ExecutionPlan::from_module_plan(crate::plan::ModulePlan::new(
             "main".into(),
             FunctionPlan::new(
                 FunctionId::new(0),
@@ -2209,6 +2215,6 @@ pub fn main() {
                 ReturnExpr::int(IntFunctionId(0), IntExpr::value(1.into())),
             ),
             Vec::new(),
-        )
+        ))
     }
 }
