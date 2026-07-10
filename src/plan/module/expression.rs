@@ -10,7 +10,7 @@ mod panic;
 mod string;
 mod tuple;
 
-use crate::plan::{Value, ValueType};
+use crate::plan::ValueType;
 
 pub(crate) use self::case::{
     BoolCaseBranches, FloatCaseBranches, IntCaseBranches, StringCaseBranches,
@@ -400,24 +400,6 @@ impl Expr {
     }
 }
 
-impl From<Value> for Expr {
-    fn from(value: Value) -> Self {
-        match value {
-            Value::Int(value) => Self::int(IntExpr::value(value)),
-            Value::String(value) => Self::string(StringExpr::value(value)),
-            Value::Float(value) => Self::float(FloatExpr::value(value)),
-            Value::Bool(value) => Self::bool(BoolExpr::value(value)),
-            Value::Nil => Self::nil(NilExpr::value()),
-            Value::Tuple(value) => Self::tuple(TupleExpr::value(
-                value.iter().cloned().map(Self::from).collect(),
-                value.iter().map(Value::value_type).collect(),
-            )),
-            Value::List(value) => Self::list(ListExpr::from_value(value)),
-            Value::Function(value) => Self::function(FunctionExpr::value(value)),
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::{
@@ -427,53 +409,14 @@ mod tests {
         NilExpr, NilFunctionExpr, StringCaseBranches, StringExpr, StringFunctionExpr, TupleExpr,
     };
     use crate::plan::{
-        BoolFunctionId, BoolFunctionValue, BoolLocalId, FloatFunctionId, FloatFunctionValue,
-        FloatLocalId, FunctionFunctionId, FunctionFunctionValue, FunctionType, FunctionValue,
-        IntFunctionFunctionId, IntFunctionId, IntFunctionValue, IntListLocalId, IntLocalId,
-        ListFunctionId, ListFunctionValue, ListLocal, ListValue, NilFunctionId, NilFunctionValue,
-        NilLocalId, ParamLocal, RuntimeFunctionId, StringFunctionId, StringFunctionValue,
-        StringLocalId, Value, ValueType,
+        BoolFunctionId, BoolFunctionReference, BoolLocalId, FloatFunctionId,
+        FloatFunctionReference, FloatLocalId, FunctionFunctionId, FunctionFunctionReference,
+        FunctionReference, FunctionType, IntFunctionFunctionId, IntFunctionId,
+        IntFunctionReference, IntListLocalId, IntLocalId, ListFunctionId, ListFunctionReference,
+        ListLocal, NilFunctionId, NilFunctionReference, NilLocalId, ParamLocal, RuntimeFunctionId,
+        StringFunctionId, StringFunctionReference, StringLocalId, ValueType,
     };
     use num_bigint::BigInt;
-
-    #[test]
-    fn expr_value_shapes() {
-        assert_eq!(
-            Expr::int(IntExpr::value(BigInt::from(1))),
-            Expr::from(Value::Int(BigInt::from(1)))
-        );
-        assert_eq!(
-            Expr::string(StringExpr::value("geam".into())),
-            Expr::from(Value::String("geam".into()))
-        );
-        assert_eq!(
-            Expr::float(FloatExpr::value(1.5)),
-            Expr::from(Value::Float(1.5))
-        );
-        assert_eq!(
-            Expr::bool(BoolExpr::value(true)),
-            Expr::from(Value::Bool(true))
-        );
-        assert_eq!(Expr::nil(NilExpr::value()), Expr::from(Value::Nil));
-        assert_eq!(
-            Expr::tuple(TupleExpr::value(
-                vec![Expr::int(IntExpr::value(BigInt::from(1)))],
-                vec![ValueType::Int],
-            )),
-            Expr::from(Value::Tuple(vec![Value::Int(BigInt::from(1))])),
-        );
-        assert_eq!(
-            Expr::list(ListExpr::value(
-                vec![Expr::int(IntExpr::value(BigInt::from(1)))],
-                ValueType::Int,
-            )),
-            Expr::from(Value::List(ListValue::int(vec![BigInt::from(1)]))),
-        );
-        assert_eq!(
-            Expr::function(FunctionExpr::value(function_value())),
-            Expr::from(Value::Function(function_value())),
-        );
-    }
 
     #[test]
     fn expr_bool_case_shapes() {
@@ -1078,26 +1021,40 @@ mod tests {
     #[test]
     fn expr_value_type() {
         assert_eq!(
-            Expr::from(Value::Int(BigInt::from(1))).value_type(),
+            Expr::int(IntExpr::value(BigInt::from(1))).value_type(),
             ValueType::Int
         );
         assert_eq!(
-            Expr::from(Value::String("geam".into())).value_type(),
+            Expr::string(StringExpr::value("geam".into())).value_type(),
             ValueType::String,
         );
-        assert_eq!(Expr::from(Value::Float(1.5)).value_type(), ValueType::Float);
-        assert_eq!(Expr::from(Value::Bool(true)).value_type(), ValueType::Bool);
-        assert_eq!(Expr::from(Value::Nil).value_type(), ValueType::Nil);
         assert_eq!(
-            Expr::from(Value::Tuple(vec![Value::Int(BigInt::from(1))])).value_type(),
+            Expr::float(FloatExpr::value(1.5)).value_type(),
+            ValueType::Float
+        );
+        assert_eq!(
+            Expr::bool(BoolExpr::value(true)).value_type(),
+            ValueType::Bool
+        );
+        assert_eq!(Expr::nil(NilExpr::value()).value_type(), ValueType::Nil);
+        assert_eq!(
+            Expr::tuple(TupleExpr::value(
+                vec![Expr::int(IntExpr::value(BigInt::from(1)))],
+                vec![ValueType::Int],
+            ))
+            .value_type(),
             ValueType::Tuple(vec![ValueType::Int]),
         );
         assert_eq!(
-            Expr::from(Value::List(ListValue::int(vec![BigInt::from(1)]))).value_type(),
+            Expr::list(ListExpr::value(
+                vec![Expr::int(IntExpr::value(BigInt::from(1)))],
+                ValueType::Int,
+            ))
+            .value_type(),
             ValueType::List(Box::new(ValueType::Int)),
         );
         assert_eq!(
-            Expr::from(Value::Function(function_value())).value_type(),
+            Expr::function(FunctionExpr::reference(function_value())).value_type(),
             ValueType::Function(Box::new(function_type())),
         );
     }
@@ -1105,87 +1062,101 @@ mod tests {
     #[test]
     fn expr_into_typed_expression() {
         assert_eq!(
-            Expr::from(Value::Int(BigInt::from(1))).into_int(),
+            Expr::int(IntExpr::value(BigInt::from(1))).into_int(),
             Some(IntExpr::value(BigInt::from(1))),
         );
         assert_eq!(
-            Expr::from(Value::String("geam".into())).into_string(),
+            Expr::string(StringExpr::value("geam".into())).into_string(),
             Some(StringExpr::value("geam".into())),
         );
         assert_eq!(
-            Expr::from(Value::Float(1.5)).into_float(),
+            Expr::float(FloatExpr::value(1.5)).into_float(),
             Some(FloatExpr::value(1.5)),
         );
-        assert_eq!(Expr::from(Value::Int(BigInt::from(1))).into_float(), None);
         assert_eq!(
-            Expr::from(Value::Bool(true)).into_bool(),
+            Expr::int(IntExpr::value(BigInt::from(1))).into_float(),
+            None
+        );
+        assert_eq!(
+            Expr::bool(BoolExpr::value(true)).into_bool(),
             Some(BoolExpr::value(true)),
         );
-        assert_eq!(Expr::from(Value::Nil).into_nil(), Some(NilExpr::value()));
         assert_eq!(
-            Expr::from(Value::Tuple(vec![Value::Int(BigInt::from(1))])).into_tuple(),
+            Expr::nil(NilExpr::value()).into_nil(),
+            Some(NilExpr::value())
+        );
+        assert_eq!(
+            Expr::tuple(TupleExpr::value(
+                vec![Expr::int(IntExpr::value(BigInt::from(1)))],
+                vec![ValueType::Int],
+            ))
+            .into_tuple(),
             Some(TupleExpr::value(
                 vec![Expr::int(IntExpr::value(BigInt::from(1)))],
                 vec![ValueType::Int],
             )),
         );
         assert_eq!(
-            Expr::from(Value::List(ListValue::int(vec![BigInt::from(1)]))).into_list(),
+            Expr::list(ListExpr::value(
+                vec![Expr::int(IntExpr::value(BigInt::from(1)))],
+                ValueType::Int,
+            ))
+            .into_list(),
             Some(ListExpr::value(
                 vec![Expr::int(IntExpr::value(BigInt::from(1)))],
                 ValueType::Int,
             )),
         );
-        assert_eq!(Expr::from(Value::Int(BigInt::from(1))).into_list(), None);
-        assert_eq!(Expr::from(Value::Nil).into_int(), None);
-        assert_eq!(Expr::from(Value::Int(BigInt::from(1))).into_nil(), None);
+        assert_eq!(Expr::int(IntExpr::value(BigInt::from(1))).into_list(), None);
+        assert_eq!(Expr::nil(NilExpr::value()).into_int(), None);
+        assert_eq!(Expr::int(IntExpr::value(BigInt::from(1))).into_nil(), None);
         assert_eq!(
-            Expr::from(Value::Int(BigInt::from(1))).into_function(),
+            Expr::int(IntExpr::value(BigInt::from(1))).into_function(),
             None,
         );
         assert_eq!(
-            Expr::function(FunctionExpr::value(function_value())).into_function(),
-            Some(FunctionExpr::value(function_value())),
+            Expr::function(FunctionExpr::reference(function_value())).into_function(),
+            Some(FunctionExpr::reference(function_value())),
         );
     }
 
-    fn function_value() -> FunctionValue {
-        FunctionValue::new(
+    fn function_value() -> FunctionReference {
+        FunctionReference::new(
             RuntimeFunctionId::Int(IntFunctionId(0)),
             vec![ParamLocal::int(IntLocalId(0))],
         )
     }
 
     fn int_function_expr() -> IntFunctionExpr {
-        IntFunctionExpr::value(IntFunctionValue::new(
+        IntFunctionExpr::reference(IntFunctionReference::new(
             IntFunctionId(0),
             vec![ParamLocal::int(IntLocalId(0))],
         ))
     }
 
     fn string_function_expr() -> StringFunctionExpr {
-        StringFunctionExpr::value(StringFunctionValue::new(
+        StringFunctionExpr::reference(StringFunctionReference::new(
             StringFunctionId(0),
             vec![ParamLocal::string(StringLocalId(0))],
         ))
     }
 
     fn float_function_expr() -> FloatFunctionExpr {
-        FloatFunctionExpr::value(FloatFunctionValue::new(
+        FloatFunctionExpr::reference(FloatFunctionReference::new(
             FloatFunctionId(0),
             vec![ParamLocal::float(FloatLocalId(0))],
         ))
     }
 
     fn bool_function_expr() -> BoolFunctionExpr {
-        BoolFunctionExpr::value(BoolFunctionValue::new(
+        BoolFunctionExpr::reference(BoolFunctionReference::new(
             BoolFunctionId(0),
             vec![ParamLocal::bool(BoolLocalId(0))],
         ))
     }
 
     fn nil_function_expr() -> NilFunctionExpr {
-        NilFunctionExpr::value(NilFunctionValue::new(
+        NilFunctionExpr::reference(NilFunctionReference::new(
             NilFunctionId(0),
             vec![ParamLocal::nil(NilLocalId(0))],
         ))
@@ -1199,18 +1170,20 @@ mod tests {
     }
 
     fn list_function_expr() -> ListFunctionExpr {
-        ListFunctionExpr::value(ListFunctionValue::new(
+        ListFunctionExpr::reference(ListFunctionReference::new(
             ListFunctionId::from_item_type(0, crate::plan::ValueType::Int),
             vec![ParamLocal::list(ListLocal::int(IntListLocalId(0)))],
         ))
     }
 
     fn function_function_expr() -> FunctionFunctionExpr {
-        FunctionFunctionExpr::value(FunctionFunctionValue::new(
-            FunctionFunctionId::Int(IntFunctionFunctionId(0)),
-            Vec::new(),
+        FunctionFunctionExpr::reference(
+            FunctionFunctionReference::new(
+                FunctionFunctionId::Int(IntFunctionFunctionId(0)),
+                Vec::new(),
+            ),
             function_type(),
-        ))
+        )
     }
 
     fn function_type() -> FunctionType {

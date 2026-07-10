@@ -61,10 +61,10 @@ current boundary is:
 source text -> Gleam TypedModule -> Geam ModulePlan -> Geam ExecutionPlan -> Geam runtime Value
 ```
 
-Geam-specific profile validation belongs in the lowering phase from Gleam's typed
-AST into Geam's runtime representation. That phase rejects unsupported execution
-semantics before evaluation instead of accepting a program and failing inside the
-runtime.
+Geam-specific profile validation belongs in planning from Gleam's typed AST
+into `ModulePlan`. The following consuming lowering into `ExecutionPlan` is
+total and does not add another validation boundary. Unsupported execution
+semantics are therefore rejected before executable lowering and evaluation.
 
 The earlier Geam-owned parser and analyse prototype has been removed. The active
 direction is to rely on Gleam's typed AST and build Geam profile validation,

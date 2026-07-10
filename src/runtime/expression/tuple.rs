@@ -2,9 +2,11 @@ use super::{
     eval_bool_expr, eval_float_expr, eval_int_expr, eval_panic_expr, eval_string_expr,
     project_tuple_list_expr,
 };
+use crate::plan::ValueType;
 use crate::plan::execution::ExecutionPlan;
-use crate::plan::{TupleExpr, TupleExprKind, Value, ValueType};
+use crate::plan::execution::{TupleExpr, TupleExprKind};
 use crate::runtime::ExecutionError;
+use crate::runtime::Value;
 use crate::runtime::frame::Frame;
 use crate::runtime::function;
 
@@ -41,7 +43,9 @@ pub(in crate::runtime) fn eval_tuple_expr(
         TupleExprKind::ListIndex { list, index } => {
             project_tuple_list_expr(plan, frame, list, *index, expression.type_())
         }
-        TupleExprKind::Panic(panic) => eval_panic_expr(plan, frame, panic),
+        TupleExprKind::Panic(panic) => {
+            eval_panic_expr(plan, frame, panic).map(|never| match never {})
+        }
         TupleExprKind::BoolCase {
             subject,
             true_,
@@ -118,508 +122,127 @@ pub(in crate::runtime) fn project_tuple_expr(
 
 #[cfg(test)]
 mod tests {
-    use super::{eval_tuple_expr, project_tuple_expr};
-    use crate::plan::execution::ExecutionPlan;
     use crate::plan::{
-        BoolExpr, Expr, FloatExpr, FunctionId, FunctionPlan, IntExpr, IntFunctionId, ListExpr,
-        PanicExpr, PanicSite, ReturnExpr, Step, StringExpr, TupleExpr, TupleFunctionId, Value,
-        ValueType,
+        BoolExpr, Expr, FloatExpr, FunctionId, FunctionPlan, IntExpr, ModulePlan, PanicExpr,
+        PanicSite, ReturnExpr, Step, StringExpr, TupleExpr, TupleFunctionId, ValueType,
     };
-    use crate::runtime::frame::Frame;
-    use crate::runtime::{ExecutionError, PanicKind};
-    use crate::runtime::{int, run_src};
+    use crate::runtime::{ExecutionError, run_main};
 
     #[test]
-    fn eval_tuple_panic_returns_error() {
-        let plan = crate::runtime::plan_src("pub fn main() { #(1) }");
-        let mut frame = Frame::default();
+    fn source_tuple_expression_variants_evaluate_exact_values() {
+        let source = r#"
+fn pair(value: Int) { #(value) }
+
+pub fn main() {
+  let local = #(1)
+  let function = pair
+  #(
+    #(0),
+    local,
+    pair(2),
+    function(3),
+    #(#(4)).0,
+    case [#(5)] { [value] -> value _ -> #(0) },
+    case True { True -> #(6) False -> #(0) },
+    case False { True -> #(0) False -> #(7) },
+    case 1 { 1 -> #(8) _ -> #(0) },
+    case 2 { 1 -> #(0) _ -> #(9) },
+    case "one" { "one" -> #(10) _ -> #(0) },
+    case "two" { "one" -> #(0) _ -> #(11) },
+    case 1.0 { 1.0 -> #(12) _ -> #(0) },
+    case 2.0 { 1.0 -> #(0) _ -> #(13) },
+    { let _ = 0 #(14) },
+  )
+}
+"#;
 
         assert_eq!(
-            eval_tuple_expr(
-                &plan,
-                &mut frame,
-                &TupleExpr::panic(
-                    PanicExpr::panic_at(None, PanicSite::unknown()),
-                    vec![ValueType::Int],
-                ),
+            crate::runtime::run_src(source),
+            crate::runtime::Value::Tuple(
+                (0_i64..=14)
+                    .map(|value| {
+                        crate::runtime::Value::Tuple(vec![crate::runtime::Value::Int(value.into())])
+                    })
+                    .collect(),
             ),
-            Err(ExecutionError::source_panic(
-                None,
-                PanicKind::Panic,
-                None,
-                PanicSite::unknown()
-            )),
         );
     }
 
     #[test]
-    fn eval_tuple_expr_source_paths() {
-        assert_eq!(
-            run_src(
+    fn source_operand_errors_propagate_through_tuple_expressions() {
+        let expressions = [
+            "#(fail_int())",
+            "case fail_bool() { True -> #(1) False -> #(0) }",
+            "case fail_int() { 0 -> #(0) _ -> #(1) }",
+            "case fail_string() { \"zero\" -> #(0) _ -> #(1) }",
+            "case fail_float() { 0.0 -> #(0) _ -> #(1) }",
+            "{ let _ = fail_bool() #(1) }",
+            "{ let function = fail_tuple function() }",
+        ];
+
+        for expression in expressions {
+            let source = format!(
                 r#"
-pub fn main() {
-  #(1, "one")
-}
+fn fail_bool() -> Bool {{ panic }}
+fn fail_int() -> Int {{ panic }}
+fn fail_string() -> String {{ panic }}
+fn fail_float() -> Float {{ panic }}
+fn fail_tuple() -> #(Int) {{ panic }}
+pub fn main() -> #(Int) {{ {expression} }}
 "#,
-            ),
-            tuple(vec![int(1), string("one")]),
-        );
+            );
 
-        assert_eq!(
-            run_src(
-                r#"
-pub fn main() {
-  let pair = #(1, "one")
-  pair
-}
-"#,
-            ),
-            tuple(vec![int(1), string("one")]),
-        );
-
-        assert_eq!(
-            run_src(
-                r#"
-fn pair() {
-  #(1, "one")
-}
-
-pub fn main() {
-  pair()
-}
-"#,
-            ),
-            tuple(vec![int(1), string("one")]),
-        );
-
-        assert_eq!(
-            run_src(
-                r#"
-fn pair() {
-  #(1, "one")
-}
-
-pub fn main() {
-  let f = pair
-  f()
-}
-"#,
-            ),
-            tuple(vec![int(1), string("one")]),
-        );
-
-        assert_eq!(
-            run_src(
-                r#"
-pub fn main() {
-  let nested = #(#(1, "one"), 2)
-  nested.0
-}
-"#,
-            ),
-            tuple(vec![int(1), string("one")]),
-        );
-    }
-
-    #[test]
-    fn eval_tuple_expr_case_and_block_paths() {
-        assert_eq!(
-            run_src(
-                r#"
-pub fn main() {
-  case True {
-    True -> #(1, "hit")
-    False -> #(2, "miss")
-  }
-}
-"#,
-            ),
-            tuple(vec![int(1), string("hit")]),
-        );
-
-        assert_eq!(
-            run_src(
-                r#"
-pub fn main() {
-  case 2 {
-    1 -> #(1, "hit")
-    _ -> #(2, "miss")
-  }
-}
-"#,
-            ),
-            tuple(vec![int(2), string("miss")]),
-        );
-
-        assert_eq!(
-            run_src(
-                r#"
-pub fn main() {
-  case "hit" {
-    "hit" -> #(1, "hit")
-    _ -> #(2, "miss")
-  }
-}
-"#,
-            ),
-            tuple(vec![int(1), string("hit")]),
-        );
-
-        assert_eq!(
-            run_src(
-                r#"
-pub fn main() {
-  case 1.0 {
-    2.0 -> #(1, "hit")
-    _ -> #(2, "miss")
-  }
-}
-"#,
-            ),
-            tuple(vec![int(2), string("miss")]),
-        );
-
-        assert_eq!(
-            run_src(
-                r#"
-pub fn main() {
-  {
-    let value = 1
-    #(value, "block")
-  }
-}
-"#,
-            ),
-            tuple(vec![int(1), string("block")]),
-        );
-    }
-
-    #[test]
-    fn eval_tuple_expr_direct_case_and_block_paths() {
-        let plan = plan();
-        let mut frame = Frame::default();
-
-        assert_eq!(
-            eval_tuple_expr(
-                &plan,
-                &mut frame,
-                &TupleExpr::call(TupleFunctionId(0), Vec::new(), tuple_type()),
-            ),
-            Ok(vec![int(1), string("hit")]),
-        );
-        assert_eq!(
-            eval_tuple_expr(
-                &plan,
-                &mut frame,
-                &TupleExpr::bool_case(BoolExpr::value(true), tuple_expr(1, "hit"), other_tuple(),),
-            ),
-            Ok(vec![int(1), string("hit")]),
-        );
-        assert_eq!(
-            eval_tuple_expr(
-                &plan,
-                &mut frame,
-                &TupleExpr::bool_case(BoolExpr::value(false), other_tuple(), tuple_expr(1, "hit"),),
-            ),
-            Ok(vec![int(1), string("hit")]),
-        );
-        assert_eq!(
-            eval_tuple_expr(
-                &plan,
-                &mut frame,
-                &TupleExpr::int_case(
-                    IntExpr::value(1.into()),
-                    vec![(1.into(), tuple_expr(1, "hit"))],
-                    other_tuple(),
-                ),
-            ),
-            Ok(vec![int(1), string("hit")]),
-        );
-        assert_eq!(
-            eval_tuple_expr(
-                &plan,
-                &mut frame,
-                &TupleExpr::int_case(
-                    IntExpr::value(2.into()),
-                    vec![(1.into(), other_tuple())],
-                    tuple_expr(1, "hit"),
-                ),
-            ),
-            Ok(vec![int(1), string("hit")]),
-        );
-        assert_eq!(
-            eval_tuple_expr(
-                &plan,
-                &mut frame,
-                &TupleExpr::string_case(
-                    StringExpr::value("hit".into()),
-                    vec![("hit".into(), tuple_expr(1, "hit"))],
-                    other_tuple(),
-                ),
-            ),
-            Ok(vec![int(1), string("hit")]),
-        );
-        assert_eq!(
-            eval_tuple_expr(
-                &plan,
-                &mut frame,
-                &TupleExpr::string_case(
-                    StringExpr::value("miss".into()),
-                    vec![("hit".into(), other_tuple())],
-                    tuple_expr(1, "hit"),
-                ),
-            ),
-            Ok(vec![int(1), string("hit")]),
-        );
-        assert_eq!(
-            eval_tuple_expr(
-                &plan,
-                &mut frame,
-                &TupleExpr::float_case(
-                    FloatExpr::value(1.0),
-                    vec![(1.0, tuple_expr(1, "hit"))],
-                    other_tuple(),
-                ),
-            ),
-            Ok(vec![int(1), string("hit")]),
-        );
-        assert_eq!(
-            eval_tuple_expr(
-                &plan,
-                &mut frame,
-                &TupleExpr::float_case(
-                    FloatExpr::value(2.0),
-                    vec![(1.0, other_tuple())],
-                    tuple_expr(1, "hit"),
-                ),
-            ),
-            Ok(vec![int(1), string("hit")]),
-        );
-        assert_eq!(
-            eval_tuple_expr(
-                &plan,
-                &mut frame,
-                &TupleExpr::block(
-                    vec![Step::evaluate(Expr::int(IntExpr::value(0.into())))],
-                    tuple_expr(1, "hit"),
-                ),
-            ),
-            Ok(vec![int(1), string("hit")]),
-        );
-    }
-
-    #[test]
-    fn tuple_projection_invariant_errors() {
-        let plan = plan();
-        let mut frame = Frame::default();
-        let tuple_expr = TupleExpr::value(
-            vec![Expr::int(IntExpr::value(1.into()))],
-            vec![ValueType::Int],
-        );
-
-        assert_eq!(
-            project_tuple_expr(&plan, &mut frame, &tuple_expr, 1, ValueType::String),
-            Err(ExecutionError::tuple_index_family_mismatch(
-                ValueType::String,
-                ValueType::Tuple(vec![ValueType::Int]),
-            )),
-        );
-
-        assert_eq!(
-            eval_tuple_expr(
-                &plan,
-                &mut frame,
-                &TupleExpr::tuple_index(tuple_expr, 0, vec![ValueType::String]),
-            ),
-            Err(ExecutionError::tuple_index_family_mismatch(
-                ValueType::Tuple(vec![ValueType::String]),
-                ValueType::Int,
-            )),
-        );
-    }
-
-    #[test]
-    fn list_projection_invariant_errors() {
-        let plan = plan();
-        let mut frame = Frame::default();
-        let tuple_type = vec![ValueType::Int, ValueType::String];
-        let list = ListExpr::value(
-            vec![Expr::tuple(TupleExpr::value(
-                vec![
-                    Expr::int(IntExpr::value(1.into())),
-                    Expr::string(StringExpr::value("one".into())),
-                ],
-                tuple_type.clone(),
-            ))],
-            ValueType::Tuple(tuple_type.clone()),
-        );
-
-        assert_eq!(
-            eval_tuple_expr(
-                &plan,
-                &mut frame,
-                &TupleExpr::list_index(list, 0, tuple_type.clone()),
-            ),
-            Ok(vec![Value::Int(1.into()), Value::String("one".into())]),
-        );
-
-        let list = ListExpr::value(
-            vec![Expr::tuple(TupleExpr::value(
-                vec![
-                    Expr::int(IntExpr::value(1.into())),
-                    Expr::string(StringExpr::value("one".into())),
-                ],
-                tuple_type.clone(),
-            ))],
-            ValueType::Tuple(tuple_type.clone()),
-        );
-        assert_eq!(
-            eval_tuple_expr(
-                &plan,
-                &mut frame,
-                &TupleExpr::list_index(list, 1, tuple_type.clone()),
-            ),
-            Err(ExecutionError::list_index_out_of_bounds(
-                ValueType::Tuple(tuple_type.clone()),
-                1,
-                1,
-            )),
-        );
-    }
-
-    #[test]
-    fn eval_tuple_expr_propagates_operand_errors() {
-        let plan = plan();
-        let mut frame = Frame::default();
-
-        for (expression, expected) in [
-            (
-                TupleExpr::value(vec![Expr::int(error_int_expr())], vec![ValueType::Int]),
-                ValueType::Int,
-            ),
-            (
-                TupleExpr::bool_case(error_bool_expr(), tuple_expr(1, "hit"), other_tuple()),
-                ValueType::Bool,
-            ),
-            (
-                TupleExpr::int_case(
-                    error_int_expr(),
-                    vec![(1.into(), tuple_expr(1, "hit"))],
-                    other_tuple(),
-                ),
-                ValueType::Int,
-            ),
-            (
-                TupleExpr::string_case(
-                    error_string_expr(),
-                    vec![("hit".into(), tuple_expr(1, "hit"))],
-                    other_tuple(),
-                ),
-                ValueType::String,
-            ),
-            (
-                TupleExpr::float_case(
-                    error_float_expr(),
-                    vec![(1.0, tuple_expr(1, "hit"))],
-                    other_tuple(),
-                ),
-                ValueType::Float,
-            ),
-            (
-                TupleExpr::block(
-                    vec![Step::evaluate(Expr::bool(error_bool_expr()))],
-                    tuple_expr(1, "hit"),
-                ),
-                ValueType::Bool,
-            ),
-        ] {
             assert_eq!(
-                eval_tuple_expr(&plan, &mut frame, &expression),
-                Err(tuple_index_error(expected)),
+                crate::runtime::run_src_error(&source).to_string(),
+                "panic: `panic` expression evaluated.",
             );
         }
-
-        assert_eq!(
-            eval_tuple_expr(&plan, &mut frame, &error_tuple_expr()),
-            Err(tuple_index_error(ValueType::Tuple(tuple_type()))),
-        );
-        assert_eq!(
-            project_tuple_expr(&plan, &mut frame, &error_tuple_expr(), 0, ValueType::Int),
-            Err(tuple_index_error(ValueType::Tuple(tuple_type()))),
-        );
     }
 
-    fn error_int_expr() -> IntExpr {
-        IntExpr::tuple_index(empty_tuple(), 0)
-    }
-
-    fn error_bool_expr() -> BoolExpr {
-        BoolExpr::tuple_index(empty_tuple(), 0)
-    }
-
-    fn error_string_expr() -> StringExpr {
-        StringExpr::tuple_index(empty_tuple(), 0)
-    }
-
-    fn error_float_expr() -> FloatExpr {
-        FloatExpr::tuple_index(empty_tuple(), 0)
-    }
-
-    fn error_tuple_expr() -> TupleExpr {
-        TupleExpr::tuple_index(empty_tuple(), 0, tuple_type())
-    }
-
-    fn empty_tuple() -> TupleExpr {
-        TupleExpr::value(Vec::new(), Vec::new())
-    }
-
-    fn tuple_index_error(expected: ValueType) -> ExecutionError {
-        ExecutionError::tuple_index_family_mismatch(expected, ValueType::Tuple(Vec::new()))
-    }
-
-    fn tuple(values: Vec<Value>) -> Value {
-        Value::Tuple(values)
-    }
-
-    fn string(value: &str) -> Value {
-        Value::String(value.into())
-    }
-
-    fn tuple_expr(int_value: i64, string_value: &str) -> TupleExpr {
-        TupleExpr::value(
-            vec![
-                Expr::int(IntExpr::value(int_value.into())),
-                Expr::string(StringExpr::value(string_value.into())),
-            ],
-            tuple_type(),
-        )
-    }
-
-    fn other_tuple() -> TupleExpr {
-        tuple_expr(2, "miss")
-    }
-
-    fn tuple_type() -> Vec<ValueType> {
-        vec![ValueType::Int, ValueType::String]
-    }
-
-    fn plan() -> ExecutionPlan {
-        ExecutionPlan::from_module_plan(crate::plan::ModulePlan::new(
-            "main".into(),
-            FunctionPlan::new(
-                FunctionId::new(0),
-                "main".into(),
-                Vec::new(),
-                Vec::new(),
-                ReturnExpr::int(IntFunctionId(0), IntExpr::value(0.into())),
+    #[test]
+    fn module_expression_errors_propagate_through_tuple_wrappers() {
+        let panic = || PanicExpr::panic_at(None, PanicSite::unknown());
+        let value = || {
+            TupleExpr::value(
+                vec![Expr::int(IntExpr::value(0.into()))],
+                vec![ValueType::Int],
+            )
+        };
+        let expressions = [
+            TupleExpr::tuple_index(
+                TupleExpr::panic(panic(), vec![ValueType::Tuple(vec![ValueType::Int])]),
+                0,
+                vec![ValueType::Int],
             ),
-            vec![FunctionPlan::new(
-                FunctionId::new(1),
-                "tuple_value".into(),
-                Vec::new(),
-                Vec::new(),
-                ReturnExpr::tuple(TupleFunctionId(0), tuple_expr(1, "hit")),
-            )],
-        ))
+            TupleExpr::bool_case(BoolExpr::panic(panic()), value(), value()),
+            TupleExpr::int_case(IntExpr::panic(panic()), Vec::new(), value()),
+            TupleExpr::string_case(StringExpr::panic(panic()), Vec::new(), value()),
+            TupleExpr::float_case(FloatExpr::panic(panic()), Vec::new(), value()),
+            TupleExpr::block(
+                vec![Step::evaluate(Expr::bool(BoolExpr::panic(panic())))],
+                value(),
+            ),
+        ];
+
+        for expression in expressions {
+            assert_eq!(
+                run_module_tuple_expression(expression).to_string(),
+                "panic: `panic` expression evaluated.",
+            );
+        }
+    }
+
+    fn run_module_tuple_expression(expression: TupleExpr) -> ExecutionError {
+        let main = FunctionPlan::new(
+            FunctionId::new(0),
+            "main".into(),
+            Vec::new(),
+            Vec::new(),
+            ReturnExpr::tuple(TupleFunctionId(0), expression),
+        );
+        let module = ModulePlan::new("main".into(), main, Vec::new());
+        let plan = crate::ExecutionPlan::from_module_plan(module);
+
+        run_main(&plan).expect_err("module expression should fail at runtime")
     }
 }

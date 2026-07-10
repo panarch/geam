@@ -401,7 +401,7 @@ mod tests {
     use crate::plan::{
         BoolExpr, BoolLocalId, CallArg, Expr, FloatExpr, FloatLocalId, FrameLayout, IntExpr,
         IntFunctionId, IntLocalId, NilExpr, NilLocalId, ReturnBody, ReturnExpr, Step, StringExpr,
-        StringLocalId,
+        StringLocalId, TupleExpr, TupleFunctionId, TupleLocalId,
     };
 
     #[test]
@@ -630,5 +630,29 @@ mod tests {
         assert_eq!(layout.ints(), 26);
         assert_eq!(layout.bools(), 26);
         assert_eq!(layout.nils(), 23);
+    }
+
+    #[test]
+    fn frame_layout_includes_tuple_return_blocks() {
+        let return_ = ReturnExpr::tuple_body(
+            TupleFunctionId(0),
+            vec![crate::plan::ValueType::Int],
+            ReturnBody::block(
+                vec![Step::evaluate(Expr::int(IntExpr::local_get(
+                    IntLocalId(2),
+                    "tuple_step".into(),
+                )))],
+                ReturnBody::expr(TupleExpr::local_get(
+                    TupleLocalId(3),
+                    "tuple_return".into(),
+                    vec![crate::plan::ValueType::Int],
+                )),
+            ),
+        );
+
+        let layout = FrameLayout::from_function_parts(&[], &[], &return_);
+
+        assert_eq!(layout.ints(), 3);
+        assert_eq!(layout.tuples(), 4);
     }
 }

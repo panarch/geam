@@ -544,15 +544,16 @@ fn function_function_return(expression: FunctionFunctionExpr) -> FunctionFunctio
 mod tests {
     use super::{float_function_return, function_returning_function_expr, list_function_return};
     use crate::plan::{
-        BoolExpr, BoolFunctionExpr, BoolFunctionFunctionId, BoolFunctionId, BoolFunctionValue,
-        FloatExpr, FloatFunctionExpr, FloatFunctionFunctionId, FloatFunctionId, FloatFunctionValue,
-        FunctionExpr, FunctionFunctionExpr, FunctionFunctionFunctionId, FunctionFunctionId,
-        FunctionFunctionValue, FunctionType, IntExpr, IntFunctionExpr, IntFunctionFunctionId,
-        IntFunctionId, IntFunctionValue, IntLocalId, ListFunctionExpr, ListFunctionFunctionId,
-        ListFunctionId, ListFunctionValue, NilFunctionExpr, NilFunctionFunctionId, NilFunctionId,
-        NilFunctionValue, ParamLocal, ReturnBody, ReturnExpr, StringExpr, StringFunctionExpr,
-        StringFunctionFunctionId, StringFunctionId, StringFunctionValue, TupleFunctionExpr,
-        TupleFunctionFunctionId, TupleFunctionId, TupleFunctionValue, ValueType,
+        BoolExpr, BoolFunctionExpr, BoolFunctionFunctionId, BoolFunctionId, BoolFunctionReference,
+        FloatExpr, FloatFunctionExpr, FloatFunctionFunctionId, FloatFunctionId,
+        FloatFunctionReference, FunctionExpr, FunctionFunctionExpr, FunctionFunctionFunctionId,
+        FunctionFunctionId, FunctionFunctionReference, FunctionType, IntExpr, IntFunctionExpr,
+        IntFunctionFunctionId, IntFunctionId, IntFunctionReference, IntLocalId, ListFunctionExpr,
+        ListFunctionFunctionId, ListFunctionId, ListFunctionReference, NilFunctionExpr,
+        NilFunctionFunctionId, NilFunctionId, NilFunctionReference, ParamLocal, ReturnBody,
+        ReturnExpr, StringExpr, StringFunctionExpr, StringFunctionFunctionId, StringFunctionId,
+        StringFunctionReference, TupleFunctionExpr, TupleFunctionFunctionId, TupleFunctionId,
+        TupleFunctionReference, ValueType,
     };
     use crate::planner::{InvalidFunctionShapeReason, InvalidTypedAstReason, PlanError};
     use num_bigint::BigInt;
@@ -563,7 +564,7 @@ mod tests {
             function_returning_function_expr(
                 &"main".into(),
                 FunctionFunctionId::Float(FloatFunctionFunctionId(0)),
-                FunctionExpr::int(IntFunctionExpr::value(IntFunctionValue::new(
+                FunctionExpr::int(IntFunctionExpr::reference(IntFunctionReference::new(
                     IntFunctionId(0),
                     Vec::new(),
                 ))),
@@ -585,14 +586,14 @@ mod tests {
             function_returning_function_expr(
                 &"main".into(),
                 FunctionFunctionId::Int(IntFunctionFunctionId(0)),
-                FunctionExpr::int(IntFunctionExpr::value(IntFunctionValue::new(
+                FunctionExpr::int(IntFunctionExpr::reference(IntFunctionReference::new(
                     IntFunctionId(0),
                     Vec::new(),
                 ))),
             ),
             Ok(ReturnExpr::int_function(
                 IntFunctionFunctionId(0),
-                IntFunctionExpr::value(IntFunctionValue::new(IntFunctionId(0), Vec::new())),
+                IntFunctionExpr::reference(IntFunctionReference::new(IntFunctionId(0), Vec::new())),
             )),
         );
 
@@ -600,14 +601,14 @@ mod tests {
             function_returning_function_expr(
                 &"main".into(),
                 FunctionFunctionId::String(StringFunctionFunctionId(0)),
-                FunctionExpr::string(StringFunctionExpr::value(StringFunctionValue::new(
+                FunctionExpr::string(StringFunctionExpr::reference(StringFunctionReference::new(
                     StringFunctionId(0),
                     Vec::new(),
                 ))),
             ),
             Ok(ReturnExpr::string_function(
                 StringFunctionFunctionId(0),
-                StringFunctionExpr::value(StringFunctionValue::new(
+                StringFunctionExpr::reference(StringFunctionReference::new(
                     StringFunctionId(0),
                     Vec::new(),
                 )),
@@ -618,14 +619,17 @@ mod tests {
             function_returning_function_expr(
                 &"main".into(),
                 FunctionFunctionId::Float(FloatFunctionFunctionId(0)),
-                FunctionExpr::float(FloatFunctionExpr::value(FloatFunctionValue::new(
+                FunctionExpr::float(FloatFunctionExpr::reference(FloatFunctionReference::new(
                     FloatFunctionId(0),
                     Vec::new(),
                 ))),
             ),
             Ok(ReturnExpr::float_function(
                 FloatFunctionFunctionId(0),
-                FloatFunctionExpr::value(FloatFunctionValue::new(FloatFunctionId(0), Vec::new(),)),
+                FloatFunctionExpr::reference(FloatFunctionReference::new(
+                    FloatFunctionId(0),
+                    Vec::new(),
+                )),
             )),
         );
 
@@ -633,14 +637,17 @@ mod tests {
             function_returning_function_expr(
                 &"main".into(),
                 FunctionFunctionId::Bool(BoolFunctionFunctionId(0)),
-                FunctionExpr::bool(BoolFunctionExpr::value(BoolFunctionValue::new(
+                FunctionExpr::bool(BoolFunctionExpr::reference(BoolFunctionReference::new(
                     BoolFunctionId(0),
                     Vec::new(),
                 ))),
             ),
             Ok(ReturnExpr::bool_function(
                 BoolFunctionFunctionId(0),
-                BoolFunctionExpr::value(BoolFunctionValue::new(BoolFunctionId(0), Vec::new())),
+                BoolFunctionExpr::reference(BoolFunctionReference::new(
+                    BoolFunctionId(0),
+                    Vec::new()
+                )),
             )),
         );
 
@@ -648,14 +655,14 @@ mod tests {
             function_returning_function_expr(
                 &"main".into(),
                 FunctionFunctionId::Nil(NilFunctionFunctionId(0)),
-                FunctionExpr::nil(NilFunctionExpr::value(NilFunctionValue::new(
+                FunctionExpr::nil(NilFunctionExpr::reference(NilFunctionReference::new(
                     NilFunctionId(0),
                     Vec::new(),
                 ))),
             ),
             Ok(ReturnExpr::nil_function(
                 NilFunctionFunctionId(0),
-                NilFunctionExpr::value(NilFunctionValue::new(NilFunctionId(0), Vec::new())),
+                NilFunctionExpr::reference(NilFunctionReference::new(NilFunctionId(0), Vec::new())),
             )),
         );
 
@@ -663,19 +670,17 @@ mod tests {
             function_returning_function_expr(
                 &"main".into(),
                 FunctionFunctionId::Tuple(TupleFunctionFunctionId(0)),
-                FunctionExpr::tuple(TupleFunctionExpr::value(TupleFunctionValue::new(
-                    TupleFunctionId(0),
-                    Vec::new(),
+                FunctionExpr::tuple(TupleFunctionExpr::reference(
+                    TupleFunctionReference::new(TupleFunctionId(0), Vec::new()),
                     vec![ValueType::Float],
-                ))),
+                )),
             ),
             Ok(ReturnExpr::tuple_function(
                 TupleFunctionFunctionId(0),
-                TupleFunctionExpr::value(TupleFunctionValue::new(
-                    TupleFunctionId(0),
-                    Vec::new(),
+                TupleFunctionExpr::reference(
+                    TupleFunctionReference::new(TupleFunctionId(0), Vec::new()),
                     vec![ValueType::Float],
-                )),
+                ),
             )),
         );
 
@@ -690,7 +695,7 @@ mod tests {
                     ),
                     crate::plan::ValueType::Int
                 )),
-                FunctionExpr::list(ListFunctionExpr::value(ListFunctionValue::new(
+                FunctionExpr::list(ListFunctionExpr::reference(ListFunctionReference::new(
                     ListFunctionId::from_item_type(0, crate::plan::ValueType::Int),
                     Vec::new()
                 ))),
@@ -704,7 +709,7 @@ mod tests {
                     ),
                     crate::plan::ValueType::Int
                 ),
-                ListFunctionExpr::value(ListFunctionValue::new(
+                ListFunctionExpr::reference(ListFunctionReference::new(
                     ListFunctionId::from_item_type(0, crate::plan::ValueType::Int),
                     Vec::new()
                 )),
@@ -715,19 +720,23 @@ mod tests {
             function_returning_function_expr(
                 &"main".into(),
                 FunctionFunctionId::Function(FunctionFunctionFunctionId(0)),
-                FunctionExpr::function(FunctionFunctionExpr::value(FunctionFunctionValue::new(
-                    FunctionFunctionId::Int(IntFunctionFunctionId(0)),
-                    Vec::new(),
+                FunctionExpr::function(FunctionFunctionExpr::reference(
+                    FunctionFunctionReference::new(
+                        FunctionFunctionId::Int(IntFunctionFunctionId(0)),
+                        Vec::new(),
+                    ),
                     function_return_type.clone(),
-                ))),
+                )),
             ),
             Ok(ReturnExpr::function_function(
                 FunctionFunctionFunctionId(0),
-                FunctionFunctionExpr::value(FunctionFunctionValue::new(
-                    FunctionFunctionId::Int(IntFunctionFunctionId(0)),
-                    Vec::new(),
+                FunctionFunctionExpr::reference(
+                    FunctionFunctionReference::new(
+                        FunctionFunctionId::Int(IntFunctionFunctionId(0)),
+                        Vec::new(),
+                    ),
                     function_return_type,
-                )),
+                ),
             )),
         );
     }
@@ -1125,60 +1134,64 @@ mod tests {
     }
 
     fn int_function_value() -> IntFunctionExpr {
-        IntFunctionExpr::value(IntFunctionValue::new(
+        IntFunctionExpr::reference(IntFunctionReference::new(
             IntFunctionId(0),
             vec![ParamLocal::int(IntLocalId(0))],
         ))
     }
 
     fn string_function_value() -> StringFunctionExpr {
-        StringFunctionExpr::value(StringFunctionValue::new(
+        StringFunctionExpr::reference(StringFunctionReference::new(
             StringFunctionId(0),
             vec![ParamLocal::float(crate::plan::FloatLocalId(0))],
         ))
     }
 
     fn float_function_value() -> FloatFunctionExpr {
-        FloatFunctionExpr::value(FloatFunctionValue::new(
+        FloatFunctionExpr::reference(FloatFunctionReference::new(
             FloatFunctionId(0),
             vec![ParamLocal::float(crate::plan::FloatLocalId(0))],
         ))
     }
 
     fn bool_function_value() -> BoolFunctionExpr {
-        BoolFunctionExpr::value(BoolFunctionValue::new(
+        BoolFunctionExpr::reference(BoolFunctionReference::new(
             BoolFunctionId(0),
             vec![ParamLocal::float(crate::plan::FloatLocalId(0))],
         ))
     }
 
     fn nil_function_value() -> NilFunctionExpr {
-        NilFunctionExpr::value(NilFunctionValue::new(
+        NilFunctionExpr::reference(NilFunctionReference::new(
             NilFunctionId(0),
             vec![ParamLocal::float(crate::plan::FloatLocalId(0))],
         ))
     }
 
     fn tuple_function_value() -> TupleFunctionExpr {
-        TupleFunctionExpr::value(TupleFunctionValue::new(
-            TupleFunctionId(0),
-            vec![ParamLocal::float(crate::plan::FloatLocalId(0))],
+        TupleFunctionExpr::reference(
+            TupleFunctionReference::new(
+                TupleFunctionId(0),
+                vec![ParamLocal::float(crate::plan::FloatLocalId(0))],
+            ),
             vec![ValueType::Float],
-        ))
+        )
     }
 
     fn list_function_value() -> ListFunctionExpr {
-        ListFunctionExpr::value(ListFunctionValue::new(
+        ListFunctionExpr::reference(ListFunctionReference::new(
             ListFunctionId::from_item_type(0, crate::plan::ValueType::Int),
             vec![ParamLocal::float(crate::plan::FloatLocalId(0))],
         ))
     }
 
     fn function_function_value() -> FunctionFunctionExpr {
-        FunctionFunctionExpr::value(FunctionFunctionValue::new(
-            FunctionFunctionId::Float(FloatFunctionFunctionId(0)),
-            Vec::new(),
+        FunctionFunctionExpr::reference(
+            FunctionFunctionReference::new(
+                FunctionFunctionId::Float(FloatFunctionFunctionId(0)),
+                Vec::new(),
+            ),
             float_function_type(),
-        ))
+        )
     }
 }

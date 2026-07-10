@@ -43,16 +43,24 @@ fn get_by_block() {
 
 pub fn main() {
   let bool_add = get_by_bool(True)
+  let bool_fallback = get_by_bool(False)
   let int_add = get_by_int(1)
+  let int_fallback = get_by_int(0)
   let string_add = get_by_string("hit")
+  let string_fallback = get_by_string("miss")
   let float_add = get_by_float(1.0)
+  let float_fallback = get_by_float(0.0)
   let block_add = get_by_block()
 
   bool_add(1.0)
+  +. bool_fallback(1.0)
   +. int_add(1.0)
+  +. int_fallback(1.0)
   +. string_add(1.0)
+  +. string_fallback(1.0)
   +. float_add(1.0)
+  +. float_fallback(1.0)
   +. block_add(1.0)
 }
 
-// geam:expect Float(7.5)
+// geam:expect Float(15.5)

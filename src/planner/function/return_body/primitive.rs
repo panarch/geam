@@ -425,7 +425,7 @@ mod tests {
     };
     use crate::plan::{
         BoolExpr, Expr, FloatExpr, FloatFunctionId, FunctionType, IntExpr, ListCaseBranches,
-        ListExpr, ListReturn, NilExpr, ReturnBody, StringExpr, TupleExpr, ValueType,
+        ListExpr, ListReturn, NilExpr, ReturnBody, Step, StringExpr, TupleExpr, ValueType,
     };
     use num_bigint::BigInt;
 
@@ -487,6 +487,17 @@ mod tests {
                 ListReturn::expr(list_value()),
             )
             .expect("float list case branches should share an item family"),
+        );
+    }
+
+    #[test]
+    fn tuple_return_preserves_block_return_body_shape() {
+        let step = Step::evaluate(Expr::int(IntExpr::value(0.into())));
+        let value = tuple_value();
+
+        assert_eq!(
+            tuple_return(TupleExpr::block(vec![step.clone()], value.clone())),
+            ReturnBody::block(vec![step], ReturnBody::expr(value)),
         );
     }
 

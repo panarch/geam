@@ -2,6 +2,7 @@ mod expression;
 mod frame;
 mod function;
 mod id;
+mod reference;
 mod step;
 
 use crate::plan::SourceContext;
@@ -59,6 +60,11 @@ pub use id::{
     TupleListFunctionLocalId, TupleListLocalId, TupleLocalId,
 };
 pub(crate) use id::{FunctionFunctionId, RuntimeFunctionId};
+pub(crate) use reference::{
+    BoolFunctionReference, FloatFunctionReference, FunctionFunctionReference, FunctionReference,
+    IntFunctionReference, ListFunctionReference, NilFunctionReference, StringFunctionReference,
+    TupleFunctionReference, TypedFunctionReference,
+};
 pub use step::Step;
 pub(crate) use step::{AssertBinding, AssertPattern, ListAssertPattern, ListAssertTail, StepKind};
 

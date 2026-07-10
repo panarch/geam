@@ -1,15 +1,13 @@
+use crate::plan::ValueType;
 use crate::plan::execution::ExecutionPlan;
-use crate::plan::{
-    FloatFunctionExpr, FloatFunctionExprKind, FloatFunctionValue, FunctionReturnFamily,
-    FunctionValueKind, Value, ValueType,
-};
-use crate::runtime::ExecutionError;
+use crate::plan::execution::{FloatFunctionExpr, FloatFunctionExprKind, FunctionReturnFamily};
 use crate::runtime::expression::{
     eval_bool_expr, eval_float_expr, eval_int_expr, eval_panic_expr, eval_string_expr,
     project_function_list_expr, project_tuple_expr,
 };
 use crate::runtime::frame::Frame;
 use crate::runtime::function;
+use crate::runtime::{ExecutionError, FloatFunctionValue, FunctionValueKind, Value};
 
 pub(in crate::runtime) fn eval_float_function_expr(
     plan: &ExecutionPlan,
@@ -17,15 +15,15 @@ pub(in crate::runtime) fn eval_float_function_expr(
     expression: &FloatFunctionExpr,
 ) -> Result<FloatFunctionValue, ExecutionError> {
     match expression.kind() {
-        FloatFunctionExprKind::Value(value) => Ok(value.clone()),
-        FloatFunctionExprKind::Closure {
-            runtime_id,
-            params,
-            captures,
-        } => Ok(FloatFunctionValue::new_with_captures(
-            *runtime_id,
-            params.clone(),
-            function::eval_capture_args(plan, frame, captures)?,
+        FloatFunctionExprKind::Reference(reference) => Ok(FloatFunctionValue::new_with_captures(
+            *reference.function(),
+            reference.params().to_vec(),
+            Vec::new(),
+        )),
+        FloatFunctionExprKind::Closure(template) => Ok(FloatFunctionValue::new_with_captures(
+            *template.function(),
+            template.params().to_vec(),
+            function::eval_capture_args(plan, frame, template.captures())?,
         )),
         FloatFunctionExprKind::LocalGet { local, .. } => Ok(frame.get_float_function(*local)),
         FloatFunctionExprKind::Call { function, args, .. } => {
@@ -35,7 +33,7 @@ pub(in crate::runtime) fn eval_float_function_expr(
             function: callee,
             args,
             ..
-        } => function::run_float_function_function_call(plan, callee, args, frame),
+        } => function::run_float_function_function_call(plan, callee.as_ref(), args, frame),
         FloatFunctionExprKind::TupleIndex {
             tuple,
             index,
@@ -66,7 +64,9 @@ pub(in crate::runtime) fn eval_float_function_expr(
                 )),
             }
         }
-        FloatFunctionExprKind::Panic(panic) => eval_panic_expr(plan, frame, panic),
+        FloatFunctionExprKind::Panic(panic) => {
+            eval_panic_expr(plan, frame, panic).map(|never| match never {})
+        }
         FloatFunctionExprKind::BoolCase {
             subject,
             true_,
@@ -126,526 +126,165 @@ pub(in crate::runtime) fn eval_float_function_expr(
 
 #[cfg(test)]
 mod tests {
-    use super::eval_float_function_expr;
-    use crate::plan::execution::ExecutionPlan;
     use crate::plan::{
-        BoolExpr, BoolFunctionExpr, CaptureArg, Expr, FloatExpr, FloatFunctionExpr,
-        FloatFunctionFunctionId, FloatFunctionId, FloatFunctionLocalId, FloatFunctionValue,
-        FloatLocalId, FunctionExpr, FunctionFunctionExpr, FunctionFunctionId,
-        FunctionFunctionValue, FunctionId, FunctionPlan, FunctionReturnFamily, FunctionType,
-        IntExpr, IntFunctionExpr, IntFunctionId, ListElements, ListExpr, PanicExpr, PanicSite,
-        ParamLocal, ReturnExpr, Step, StringExpr, StringFunctionExpr, StringFunctionFunctionId,
-        TupleExpr, ValueType,
+        BoolExpr, CaptureArg, Expr, FloatExpr, FloatFunctionExpr, FloatFunctionFunctionId,
+        FloatFunctionId, FunctionId, FunctionPlan, FunctionType, IntExpr, IntLocalId, ListExpr,
+        ModulePlan, PanicExpr, PanicSite, ReturnExpr, Step, StringExpr, TupleExpr, ValueType,
     };
-    use crate::runtime::frame::Frame;
-    use crate::runtime::{ExecutionError, PanicKind};
+    use crate::runtime::{ExecutionError, run_main};
 
     #[test]
-    fn eval_float_function_value_local_function_call_and_block() {
-        let plan = plan();
-        let mut frame = Frame::default();
-        frame.set_float_function(FloatFunctionLocalId(0), function_runtime_value());
+    fn source_float_function_expression_variants_evaluate_exact_values() {
+        let source = r#"
+fn add_half(value: Float) -> Float { value +. 0.5 }
+fn identity(value: Float) -> Float { value }
+fn make_adder(offset: Float) -> fn(Float) -> Float {
+  fn(value) { value +. offset }
+}
 
-        let function = eval_float_function_expr(
-            &plan,
-            &mut frame,
-            &FloatFunctionExpr::local_get(FloatFunctionLocalId(0), "value".into(), type_()),
-        )
-        .expect("expression should evaluate");
-        assert_eq!(function.runtime_id(), FloatFunctionId(0));
+pub fn main() {
+  let local = add_half
+  let maker = make_adder
+  #(
+    add_half(0.0),
+    { let captured = 1.0 fn(value) { value +. captured } }(1.0),
+    local(2.0),
+    make_adder(1.0)(3.0),
+    maker(1.0)(4.0),
+    #(add_half).0(5.0),
+    case [add_half] { [function] -> function(6.0) _ -> 0.0 },
+    case True { True -> add_half False -> identity }(7.0),
+    case False { True -> identity False -> add_half }(8.0),
+    case 1 { 1 -> add_half _ -> identity }(9.0),
+    case 0 { 1 -> identity _ -> add_half }(10.0),
+    case "hit" { "hit" -> add_half _ -> identity }(11.0),
+    case "miss" { "hit" -> identity _ -> add_half }(12.0),
+    case 1.0 { 1.0 -> add_half _ -> identity }(13.0),
+    case 0.0 { 1.0 -> identity _ -> add_half }(14.0),
+    { let _ = 0 add_half }(15.0),
+  )
+}
+"#;
+
         assert_eq!(
-            eval_float_function_expr(
-                &plan,
-                &mut frame,
-                &FloatFunctionExpr::panic(PanicExpr::panic_at(None, PanicSite::unknown()), type_()),
+            crate::runtime::run_src(source),
+            crate::runtime::Value::Tuple(
+                [
+                    0.5, 2.0, 2.5, 4.0, 5.0, 5.5, 6.5, 7.5, 8.5, 9.5, 10.5, 11.5, 12.5, 13.5, 14.5,
+                    15.5,
+                ]
+                .into_iter()
+                .map(crate::runtime::Value::Float)
+                .collect(),
             ),
-            Err(ExecutionError::source_panic(
-                None,
-                PanicKind::Panic,
-                None,
-                PanicSite::unknown()
-            )),
         );
+    }
 
-        let function = eval_float_function_expr(
-            &plan,
-            &mut frame,
-            &FloatFunctionExpr::closure(
-                FloatFunctionId(0),
-                vec![ParamLocal::float(FloatLocalId(0))],
-                Vec::new(),
-                type_(),
-            ),
-        )
-        .expect("expression should evaluate");
-        assert_eq!(function.runtime_id(), FloatFunctionId(0));
-
-        let function = eval_float_function_expr(
-            &plan,
-            &mut frame,
-            &FloatFunctionExpr::function_call(
-                FunctionFunctionExpr::value(FunctionFunctionValue::new(
-                    FunctionFunctionId::Float(FloatFunctionFunctionId(0)),
+    #[test]
+    fn module_expression_errors_propagate_through_float_function_wrappers() {
+        let type_ = FunctionType::new(Vec::new(), ValueType::Float);
+        let panic = |message: &str| {
+            PanicExpr::panic_at(
+                Some(StringExpr::value(message.into())),
+                PanicSite::unknown(),
+            )
+        };
+        let fallback = || FloatFunctionExpr::panic(panic("fallback"), type_.clone());
+        let expressions = [
+            (
+                FloatFunctionExpr::closure(
+                    FloatFunctionId(1),
                     Vec::new(),
-                    type_(),
-                )),
-                Vec::new(),
-                type_(),
-            ),
-        )
-        .expect("expression should evaluate");
-        assert_eq!(function.runtime_id(), FloatFunctionId(0));
-
-        let function = eval_float_function_expr(
-            &plan,
-            &mut frame,
-            &FloatFunctionExpr::block(
-                vec![Step::evaluate(Expr::float(FloatExpr::value(1.0)))],
-                function_value(),
-            ),
-        )
-        .expect("expression should evaluate");
-        assert_eq!(function.runtime_id(), FloatFunctionId(0));
-    }
-
-    #[test]
-    fn eval_float_function_case_branches() {
-        let plan = plan();
-        let mut frame = Frame::default();
-
-        let function = eval_float_function_expr(
-            &plan,
-            &mut frame,
-            &FloatFunctionExpr::bool_case(BoolExpr::value(true), function_value(), other_value()),
-        )
-        .expect("expression should evaluate");
-        assert_eq!(function.runtime_id(), FloatFunctionId(0));
-
-        let function = eval_float_function_expr(
-            &plan,
-            &mut frame,
-            &FloatFunctionExpr::bool_case(BoolExpr::value(false), other_value(), function_value()),
-        )
-        .expect("expression should evaluate");
-        assert_eq!(function.runtime_id(), FloatFunctionId(0));
-
-        let function = eval_float_function_expr(
-            &plan,
-            &mut frame,
-            &FloatFunctionExpr::int_case(
-                IntExpr::value(1.into()),
-                vec![(1.into(), function_value())],
-                other_value(),
-            ),
-        )
-        .expect("expression should evaluate");
-        assert_eq!(function.runtime_id(), FloatFunctionId(0));
-
-        let function = eval_float_function_expr(
-            &plan,
-            &mut frame,
-            &FloatFunctionExpr::int_case(
-                IntExpr::value(2.into()),
-                vec![(1.into(), other_value())],
-                function_value(),
-            ),
-        )
-        .expect("expression should evaluate");
-        assert_eq!(function.runtime_id(), FloatFunctionId(0));
-
-        let function = eval_float_function_expr(
-            &plan,
-            &mut frame,
-            &FloatFunctionExpr::string_case(
-                StringExpr::value("hit".into()),
-                vec![("hit".into(), function_value())],
-                other_value(),
-            ),
-        )
-        .expect("expression should evaluate");
-        assert_eq!(function.runtime_id(), FloatFunctionId(0));
-
-        let function = eval_float_function_expr(
-            &plan,
-            &mut frame,
-            &FloatFunctionExpr::string_case(
-                StringExpr::value("miss".into()),
-                vec![("hit".into(), other_value())],
-                function_value(),
-            ),
-        )
-        .expect("expression should evaluate");
-        assert_eq!(function.runtime_id(), FloatFunctionId(0));
-
-        let function = eval_float_function_expr(
-            &plan,
-            &mut frame,
-            &FloatFunctionExpr::float_case(
-                FloatExpr::value(1.0),
-                vec![(1.0, function_value())],
-                other_value(),
-            ),
-        )
-        .expect("expression should evaluate");
-        assert_eq!(function.runtime_id(), FloatFunctionId(0));
-
-        let function = eval_float_function_expr(
-            &plan,
-            &mut frame,
-            &FloatFunctionExpr::float_case(
-                FloatExpr::value(2.0),
-                vec![(1.0, other_value())],
-                function_value(),
-            ),
-        )
-        .expect("expression should evaluate");
-        assert_eq!(function.runtime_id(), FloatFunctionId(0));
-    }
-
-    #[test]
-    fn eval_float_function_expr_propagates_operand_errors() {
-        let execution_plan = plan();
-        let mut frame = Frame::default();
-
-        assert_float_error(FloatFunctionExpr::closure(
-            FloatFunctionId(0),
-            vec![ParamLocal::float(FloatLocalId(0))],
-            vec![CaptureArg::float(FloatLocalId(0), error_float_expr())],
-            type_(),
-        ));
-        assert_eq!(
-            eval_float_function_expr(
-                &execution_plan,
-                &mut frame,
-                &FloatFunctionExpr::bool_case(error_bool_expr(), function_value(), other_value(),),
-            ),
-            Err(function_return_family_error_value(
-                FunctionReturnFamily::Bool,
-                FunctionReturnFamily::String,
-            )),
-        );
-        assert_eq!(
-            eval_float_function_expr(
-                &execution_plan,
-                &mut frame,
-                &FloatFunctionExpr::int_case(
-                    error_int_expr(),
-                    vec![(1.into(), function_value())],
-                    other_value(),
+                    vec![CaptureArg::int(
+                        IntLocalId(0),
+                        IntExpr::panic(panic("capture")),
+                    )],
+                    type_.clone(),
                 ),
+                "capture",
             ),
-            Err(function_return_family_error_value(
-                FunctionReturnFamily::Int,
-                FunctionReturnFamily::String,
-            )),
-        );
-        assert_eq!(
-            eval_float_function_expr(
-                &execution_plan,
-                &mut frame,
-                &FloatFunctionExpr::string_case(
-                    error_string_expr(),
-                    vec![("hit".into(), function_value())],
-                    other_value(),
+            (
+                FloatFunctionExpr::tuple_index(
+                    TupleExpr::panic(
+                        panic("tuple"),
+                        vec![ValueType::Function(Box::new(type_.clone()))],
+                    ),
+                    0,
+                    type_.clone(),
                 ),
+                "tuple",
             ),
-            Err(function_return_family_error_value(
-                FunctionReturnFamily::String,
-                FunctionReturnFamily::Int,
-            )),
-        );
-        assert_float_error(FloatFunctionExpr::float_case(
-            error_float_expr(),
-            vec![(1.0, function_value())],
-            other_value(),
-        ));
-        assert_float_error(FloatFunctionExpr::block(
-            vec![Step::evaluate(Expr::float(error_float_expr()))],
-            function_value(),
-        ));
+            (
+                FloatFunctionExpr::list_index(
+                    super::super::expect_function_list(ListExpr::panic(
+                        panic("list"),
+                        ValueType::Function(Box::new(type_.clone())),
+                    )),
+                    0,
+                    type_.clone(),
+                ),
+                "list",
+            ),
+            (
+                FloatFunctionExpr::bool_case(
+                    BoolExpr::panic(panic("bool subject")),
+                    fallback(),
+                    fallback(),
+                ),
+                "bool subject",
+            ),
+            (
+                FloatFunctionExpr::int_case(
+                    IntExpr::panic(panic("int subject")),
+                    Vec::new(),
+                    fallback(),
+                ),
+                "int subject",
+            ),
+            (
+                FloatFunctionExpr::string_case(
+                    StringExpr::panic(panic("string subject")),
+                    Vec::new(),
+                    fallback(),
+                ),
+                "string subject",
+            ),
+            (
+                FloatFunctionExpr::float_case(
+                    FloatExpr::panic(panic("float subject")),
+                    Vec::new(),
+                    fallback(),
+                ),
+                "float subject",
+            ),
+            (
+                FloatFunctionExpr::block(
+                    vec![Step::evaluate(Expr::int(IntExpr::panic(panic("step"))))],
+                    fallback(),
+                ),
+                "step",
+            ),
+        ];
 
-        fn assert_float_error(expression: FloatFunctionExpr) {
-            let plan = plan();
-            let mut frame = Frame::default();
-
+        for (expression, message) in expressions {
             assert_eq!(
-                eval_float_function_expr(&plan, &mut frame, &expression),
-                Err(function_return_family_error_value(
-                    FunctionReturnFamily::Float,
-                    FunctionReturnFamily::String,
-                )),
+                run_module_float_function_expression(expression).to_string(),
+                format!("panic: {message}"),
             );
         }
     }
 
-    #[test]
-    fn eval_float_function_tuple_index() {
-        let plan = plan();
-        let mut frame = Frame::default();
-        let tuple = TupleExpr::value(
-            vec![Expr::function(FunctionExpr::float(function_value()))],
-            vec![ValueType::Function(Box::new(type_()))],
-        );
-
-        assert_eq!(
-            eval_float_function_expr(
-                &plan,
-                &mut frame,
-                &FloatFunctionExpr::tuple_index(tuple, 0, type_()),
-            )
-            .expect("expression should evaluate")
-            .runtime_id(),
-            FloatFunctionId(0),
-        );
-
-        let mismatch_type = FunctionType::new(Vec::new(), ValueType::String);
-        let tuple = TupleExpr::value(
-            vec![Expr::function(FunctionExpr::string(
-                StringFunctionExpr::value(crate::plan::StringFunctionValue::new(
-                    crate::plan::StringFunctionId(0),
-                    Vec::new(),
-                )),
-            ))],
-            vec![ValueType::Function(Box::new(mismatch_type.clone()))],
-        );
-
-        assert_eq!(
-            eval_float_function_expr(
-                &plan,
-                &mut frame,
-                &FloatFunctionExpr::tuple_index(tuple, 0, type_()),
-            ),
-            Err(ExecutionError::tuple_index_family_mismatch(
-                ValueType::Function(Box::new(type_())),
-                ValueType::Function(Box::new(mismatch_type)),
-            )),
-        );
-
-        let tuple = TupleExpr::value(
-            vec![Expr::int(IntExpr::value(1.into()))],
-            vec![ValueType::Int],
-        );
-        assert_eq!(
-            eval_float_function_expr(
-                &plan,
-                &mut frame,
-                &FloatFunctionExpr::tuple_index(tuple, 0, type_()),
-            ),
-            Err(ExecutionError::tuple_index_family_mismatch(
-                ValueType::Function(Box::new(type_())),
-                ValueType::Int,
-            )),
-        );
-
-        let tuple = error_tuple_expr();
-        assert_eq!(
-            eval_float_function_expr(
-                &plan,
-                &mut frame,
-                &FloatFunctionExpr::tuple_index(tuple, 0, type_()),
-            ),
-            Err(tuple_index_error(ValueType::Tuple(vec![
-                ValueType::Function(Box::new(type_()))
-            ]))),
-        );
-    }
-
-    #[test]
-    fn eval_float_function_list_index() {
-        let plan = plan();
-        let mut frame = Frame::default();
-        let list = ListExpr::value(
-            vec![Expr::function(FunctionExpr::float(function_value()))],
-            ValueType::Function(Box::new(type_())),
-        );
-        assert_eq!(
-            eval_float_function_expr(
-                &plan,
-                &mut frame,
-                &FloatFunctionExpr::list_index(list, 0, type_()),
-            )
-            .expect("expression should evaluate")
-            .runtime_id(),
-            FloatFunctionId(0),
-        );
-
-        let list = ListExpr::from_elements(ListElements::Function {
-            item_type: type_(),
-            values: vec![FunctionExpr::string(StringFunctionExpr::value(
-                crate::plan::StringFunctionValue::new(crate::plan::StringFunctionId(0), Vec::new()),
-            ))],
-        });
-        assert_eq!(
-            eval_float_function_expr(
-                &plan,
-                &mut frame,
-                &FloatFunctionExpr::list_index(list, 0, type_()),
-            ),
-            Err(ExecutionError::function_return_family_mismatch(
-                FunctionReturnFamily::Float,
-                FunctionReturnFamily::String,
-            )),
-        );
-
-        let mut frame = Frame::default();
-        let list = ListExpr::value(
-            vec![Expr::function(FunctionExpr::float(function_value()))],
-            ValueType::Function(Box::new(type_())),
-        );
-        assert_eq!(
-            eval_float_function_expr(
-                &plan,
-                &mut frame,
-                &FloatFunctionExpr::list_index(list, 1, type_()),
-            ),
-            Err(ExecutionError::list_index_out_of_bounds(
-                ValueType::Function(Box::new(type_())),
-                1,
-                1,
-            )),
-        );
-
-        let list = ListExpr::tuple_index(empty_tuple(), 0, ValueType::Function(Box::new(type_())));
-        assert_eq!(
-            eval_float_function_expr(
-                &plan,
-                &mut frame,
-                &FloatFunctionExpr::list_index(list, 0, type_()),
-            ),
-            Err(ExecutionError::tuple_index_family_mismatch(
-                ValueType::List(Box::new(ValueType::Function(Box::new(type_())))),
-                ValueType::Tuple(Vec::new()),
-            )),
-        );
-    }
-
-    fn plan() -> ExecutionPlan {
-        ExecutionPlan::from_module_plan(crate::plan::ModulePlan::new(
+    fn run_module_float_function_expression(expression: FloatFunctionExpr) -> ExecutionError {
+        let main = FunctionPlan::new(
+            FunctionId::new(0),
             "main".into(),
-            FunctionPlan::new(
-                FunctionId::new(0),
-                "main".into(),
-                Vec::new(),
-                Vec::new(),
-                ReturnExpr::int(IntFunctionId(0), IntExpr::value(1.into())),
-            ),
-            vec![
-                FunctionPlan::new(
-                    FunctionId::new(1),
-                    "float_value".into(),
-                    Vec::new(),
-                    Vec::new(),
-                    ReturnExpr::float(FloatFunctionId(0), FloatExpr::value(1.0)),
-                ),
-                FunctionPlan::new(
-                    FunctionId::new(2),
-                    "get_float_value".into(),
-                    Vec::new(),
-                    Vec::new(),
-                    ReturnExpr::float_function(FloatFunctionFunctionId(0), function_value()),
-                ),
-            ],
-        ))
-    }
-
-    fn function_return_family_error_value(
-        expected: FunctionReturnFamily,
-        actual: FunctionReturnFamily,
-    ) -> ExecutionError {
-        ExecutionError::function_return_family_mismatch(expected, actual)
-    }
-
-    fn error_bool_expr() -> BoolExpr {
-        BoolExpr::function_call(
-            BoolFunctionExpr::function_call(
-                function_function_expr(),
-                Vec::new(),
-                FunctionType::new(Vec::new(), ValueType::Bool),
-            ),
             Vec::new(),
-        )
-    }
-
-    fn error_int_expr() -> IntExpr {
-        IntExpr::function_call(
-            IntFunctionExpr::function_call(
-                function_function_expr(),
-                Vec::new(),
-                FunctionType::new(Vec::new(), ValueType::Int),
-            ),
             Vec::new(),
-        )
-    }
+            ReturnExpr::float_function(FloatFunctionFunctionId(0), expression),
+        );
+        let module = ModulePlan::new("main".into(), main, Vec::new());
+        let plan = crate::ExecutionPlan::from_module_plan(module);
 
-    fn error_string_expr() -> StringExpr {
-        StringExpr::function_call(
-            StringFunctionExpr::function_call(
-                FunctionFunctionExpr::value(FunctionFunctionValue::new(
-                    FunctionFunctionId::Int(crate::plan::IntFunctionFunctionId(0)),
-                    Vec::new(),
-                    FunctionType::new(Vec::new(), ValueType::Int),
-                )),
-                Vec::new(),
-                FunctionType::new(Vec::new(), ValueType::String),
-            ),
-            Vec::new(),
-        )
-    }
-
-    fn error_float_expr() -> FloatExpr {
-        FloatExpr::function_call(
-            FloatFunctionExpr::function_call(
-                function_function_expr(),
-                Vec::new(),
-                FunctionType::new(Vec::new(), ValueType::Float),
-            ),
-            Vec::new(),
-        )
-    }
-
-    fn function_function_expr() -> FunctionFunctionExpr {
-        FunctionFunctionExpr::value(FunctionFunctionValue::new(
-            FunctionFunctionId::String(StringFunctionFunctionId(0)),
-            Vec::new(),
-            FunctionType::new(Vec::new(), ValueType::String),
-        ))
-    }
-
-    fn error_tuple_expr() -> TupleExpr {
-        TupleExpr::tuple_index(
-            empty_tuple(),
-            0,
-            vec![ValueType::Function(Box::new(type_()))],
-        )
-    }
-
-    fn empty_tuple() -> TupleExpr {
-        TupleExpr::value(Vec::new(), Vec::new())
-    }
-
-    fn tuple_index_error(expected: ValueType) -> ExecutionError {
-        ExecutionError::tuple_index_family_mismatch(expected, ValueType::Tuple(Vec::new()))
-    }
-
-    fn function_value() -> FloatFunctionExpr {
-        FloatFunctionExpr::value(function_runtime_value())
-    }
-
-    fn other_value() -> FloatFunctionExpr {
-        FloatFunctionExpr::value(FloatFunctionValue::new(
-            FloatFunctionId(1),
-            vec![ParamLocal::float(crate::plan::FloatLocalId(0))],
-        ))
-    }
-
-    fn function_runtime_value() -> FloatFunctionValue {
-        FloatFunctionValue::new(
-            FloatFunctionId(0),
-            vec![ParamLocal::float(crate::plan::FloatLocalId(0))],
-        )
-    }
-
-    fn type_() -> FunctionType {
-        FunctionType::new(vec![ValueType::Float], ValueType::Float)
+        run_main(&plan).expect_err("module expression should fail at runtime")
     }
 }

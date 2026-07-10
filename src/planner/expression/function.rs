@@ -81,7 +81,7 @@ fn plan_anonymous_with_captures(
     let planned = planned?;
     let (name, info) = context.allocate_anonymous_function(name, return_type, params, runtime_id);
     let value = if planned.captures.is_empty() {
-        FunctionExpr::value(info.value())
+        FunctionExpr::reference(info.reference())
     } else {
         closure_expr(
             &info.runtime_id,

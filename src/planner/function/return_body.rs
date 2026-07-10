@@ -148,8 +148,8 @@ mod tests {
     use crate::plan::{
         BoolListFunctionId, Expr, FloatExpr, FloatListFunctionId, FunctionExpr, FunctionFunctionId,
         FunctionListFunctionId, FunctionType, IntFunctionExpr, IntFunctionFunctionId,
-        IntFunctionId, IntFunctionValue, IntListFunctionId, IntLocalId, ListExpr, ListFunctionId,
-        ListListFunctionId, NilListFunctionId, ParamLocal, ReturnBody, ReturnExpr,
+        IntFunctionId, IntFunctionReference, IntListFunctionId, IntLocalId, ListExpr,
+        ListFunctionId, ListListFunctionId, NilListFunctionId, ParamLocal, ReturnBody, ReturnExpr,
         RuntimeFunctionId, StringFunctionFunctionId, StringListFunctionId, TupleListFunctionId,
         ValueType,
     };
@@ -180,8 +180,8 @@ mod tests {
                     id: FunctionFunctionId::String(StringFunctionFunctionId(0)),
                     return_type: FunctionType::new(Vec::new(), ValueType::Int),
                 },
-                Expr::function(FunctionExpr::int(IntFunctionExpr::value(
-                    IntFunctionValue::new(IntFunctionId(0), Vec::new()),
+                Expr::function(FunctionExpr::int(IntFunctionExpr::reference(
+                    IntFunctionReference::new(IntFunctionId(0), Vec::new()),
                 ))),
             ),
             Err(PlanError::InvalidTypedAst {
@@ -204,8 +204,11 @@ mod tests {
                     id: FunctionFunctionId::Int(IntFunctionFunctionId(0)),
                     return_type: expected,
                 },
-                Expr::function(FunctionExpr::int(IntFunctionExpr::value(
-                    IntFunctionValue::new(IntFunctionId(0), vec![ParamLocal::int(IntLocalId(0))]),
+                Expr::function(FunctionExpr::int(IntFunctionExpr::reference(
+                    IntFunctionReference::new(
+                        IntFunctionId(0),
+                        vec![ParamLocal::int(IntLocalId(0))]
+                    ),
                 ))),
             ),
             Err(PlanError::InvalidTypedAst {
@@ -225,8 +228,8 @@ mod tests {
                     id: FunctionFunctionId::Int(IntFunctionFunctionId(0)),
                     return_type: FunctionType::new(vec![ValueType::Int], ValueType::Int),
                 },
-                Expr::function(FunctionExpr::int(IntFunctionExpr::value(
-                    IntFunctionValue::new(IntFunctionId(0), Vec::new()),
+                Expr::function(FunctionExpr::int(IntFunctionExpr::reference(
+                    IntFunctionReference::new(IntFunctionId(0), Vec::new()),
                 ))),
             ),
             Err(PlanError::InvalidTypedAst {

@@ -1,7 +1,7 @@
 use crate::plan::{
     BoolExpr, CaptureArg, FloatExpr, FunctionFunctionFunctionId, FunctionFunctionId,
-    FunctionFunctionLocalId, FunctionFunctionValue, FunctionListExpr, FunctionType, IntExpr,
-    PanicExpr, ParamLocal, Step, StringExpr, TupleExpr,
+    FunctionFunctionLocalId, FunctionFunctionReference, FunctionListExpr, FunctionType, IntExpr,
+    PanicExpr, ParamLocal, Step, StringExpr, TupleExpr, ValueType,
 };
 use ecow::EcoString;
 use num_bigint::BigInt;
@@ -14,7 +14,7 @@ pub struct FunctionFunctionExpr {
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum FunctionFunctionExprKind {
-    Value(FunctionFunctionValue),
+    Reference(FunctionFunctionReference),
     Closure {
         runtime_id: FunctionFunctionId,
         params: Vec<ParamLocal>,
@@ -74,10 +74,14 @@ pub(crate) enum FunctionFunctionExprKind {
 }
 
 impl FunctionFunctionExpr {
-    pub(crate) fn value(value: FunctionFunctionValue) -> Self {
+    pub(crate) fn reference(value: FunctionFunctionReference, return_type: FunctionType) -> Self {
+        let type_ = FunctionType::new(
+            value.params().iter().map(ParamLocal::value_type).collect(),
+            ValueType::Function(Box::new(return_type)),
+        );
         Self {
-            type_: value.type_(),
-            kind: FunctionFunctionExprKind::Value(value),
+            type_,
+            kind: FunctionFunctionExprKind::Reference(value),
         }
     }
 
@@ -250,13 +254,17 @@ impl FunctionFunctionExpr {
     pub(crate) fn kind(&self) -> &FunctionFunctionExprKind {
         &self.kind
     }
+
+    pub(crate) fn into_parts(self) -> (FunctionType, FunctionFunctionExprKind) {
+        (self.type_, self.kind)
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::{FunctionFunctionExpr, FunctionFunctionExprKind};
     use crate::plan::{
-        BoolExpr, Expr, FunctionFunctionId, FunctionFunctionLocalId, FunctionFunctionValue,
+        BoolExpr, Expr, FunctionFunctionId, FunctionFunctionLocalId, FunctionFunctionReference,
         FunctionType, IntExpr, IntFunctionFunctionId, ParamLocal, Step, StringExpr, ValueType,
     };
 
@@ -264,10 +272,9 @@ mod tests {
     fn function_function_expr_kind_accessors() {
         assert_eq!(
             function_value().kind(),
-            &FunctionFunctionExprKind::Value(FunctionFunctionValue::new(
+            &FunctionFunctionExprKind::Reference(FunctionFunctionReference::new(
                 FunctionFunctionId::Int(IntFunctionFunctionId(0)),
                 vec![ParamLocal::int(crate::plan::IntLocalId(0))],
-                FunctionType::new(vec![ValueType::Int], ValueType::Int),
             )),
         );
         assert_eq!(
@@ -409,11 +416,13 @@ mod tests {
     }
 
     fn function_value() -> FunctionFunctionExpr {
-        FunctionFunctionExpr::value(FunctionFunctionValue::new(
-            FunctionFunctionId::Int(IntFunctionFunctionId(0)),
-            vec![ParamLocal::int(crate::plan::IntLocalId(0))],
+        FunctionFunctionExpr::reference(
+            FunctionFunctionReference::new(
+                FunctionFunctionId::Int(IntFunctionFunctionId(0)),
+                vec![ParamLocal::int(crate::plan::IntLocalId(0))],
+            ),
             FunctionType::new(vec![ValueType::Int], ValueType::Int),
-        ))
+        )
     }
 
     fn function_type() -> FunctionType {

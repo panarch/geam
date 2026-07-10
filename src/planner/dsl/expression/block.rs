@@ -111,12 +111,13 @@ mod tests {
         block_tuple_function,
     };
     use crate::plan::{
-        BoolExpr, BoolFunctionId, BoolFunctionValue, FloatExpr, FloatFunctionId,
-        FloatFunctionValue, FunctionExpr, FunctionFunctionExpr, FunctionFunctionId,
-        FunctionFunctionValue, FunctionType, IntExpr, IntFunctionExpr, IntFunctionFunctionId,
-        IntFunctionId, IntFunctionValue, ListExpr, ListFunctionExpr, ListFunctionValue, NilExpr,
-        NilFunctionId, NilFunctionValue, ParamLocal, RuntimeFunctionId, StringExpr,
-        StringFunctionId, StringFunctionValue, TupleFunctionExpr, TupleFunctionValue, ValueType,
+        BoolExpr, BoolFunctionId, BoolFunctionReference, FloatExpr, FloatFunctionId,
+        FloatFunctionReference, FunctionExpr, FunctionFunctionExpr, FunctionFunctionId,
+        FunctionFunctionReference, FunctionType, IntExpr, IntFunctionExpr, IntFunctionFunctionId,
+        IntFunctionId, IntFunctionReference, ListExpr, ListFunctionExpr, ListFunctionReference,
+        NilExpr, NilFunctionId, NilFunctionReference, ParamLocal, RuntimeFunctionId, StringExpr,
+        StringFunctionId, StringFunctionReference, TupleFunctionExpr, TupleFunctionReference,
+        ValueType,
     };
     use crate::planner::dsl::expression::{
         Function, bool_, float, function_function_ref, function_ref, int, int_function_ref,
@@ -170,7 +171,7 @@ mod tests {
             )),
             FunctionExpr::int(IntFunctionExpr::block(
                 Vec::new(),
-                IntFunctionExpr::value(IntFunctionValue::new(
+                IntFunctionExpr::reference(IntFunctionReference::new(
                     IntFunctionId(0),
                     vec![ParamLocal::int(crate::plan::IntLocalId(0))],
                 )),
@@ -186,7 +187,7 @@ mod tests {
             )),
             FunctionExpr::string(crate::plan::StringFunctionExpr::block(
                 Vec::new(),
-                crate::plan::StringFunctionExpr::value(StringFunctionValue::new(
+                crate::plan::StringFunctionExpr::reference(StringFunctionReference::new(
                     StringFunctionId(0),
                     vec![ParamLocal::string(crate::plan::StringLocalId(0))],
                 )),
@@ -202,7 +203,7 @@ mod tests {
             )),
             FunctionExpr::float(crate::plan::FloatFunctionExpr::block(
                 Vec::new(),
-                crate::plan::FloatFunctionExpr::value(FloatFunctionValue::new(
+                crate::plan::FloatFunctionExpr::reference(FloatFunctionReference::new(
                     FloatFunctionId(0),
                     vec![ParamLocal::float(crate::plan::FloatLocalId(0))],
                 )),
@@ -218,7 +219,7 @@ mod tests {
             )),
             FunctionExpr::bool(crate::plan::BoolFunctionExpr::block(
                 Vec::new(),
-                crate::plan::BoolFunctionExpr::value(BoolFunctionValue::new(
+                crate::plan::BoolFunctionExpr::reference(BoolFunctionReference::new(
                     BoolFunctionId(0),
                     vec![ParamLocal::bool(crate::plan::BoolLocalId(0))],
                 )),
@@ -234,7 +235,7 @@ mod tests {
             )),
             FunctionExpr::nil(crate::plan::NilFunctionExpr::block(
                 Vec::new(),
-                crate::plan::NilFunctionExpr::value(NilFunctionValue::new(
+                crate::plan::NilFunctionExpr::reference(NilFunctionReference::new(
                     NilFunctionId(0),
                     vec![ParamLocal::nil(crate::plan::NilLocalId(0))],
                 )),
@@ -251,11 +252,13 @@ mod tests {
             )),
             FunctionExpr::tuple(TupleFunctionExpr::block(
                 Vec::new(),
-                TupleFunctionExpr::value(TupleFunctionValue::new(
-                    crate::plan::TupleFunctionId(0),
-                    vec![ParamLocal::int(crate::plan::IntLocalId(0))],
+                TupleFunctionExpr::reference(
+                    TupleFunctionReference::new(
+                        crate::plan::TupleFunctionId(0),
+                        vec![ParamLocal::int(crate::plan::IntLocalId(0))],
+                    ),
                     vec![ValueType::Int, ValueType::String],
-                )),
+                ),
             )),
         );
         assert_eq!(
@@ -269,7 +272,7 @@ mod tests {
             )),
             FunctionExpr::list(ListFunctionExpr::block(
                 Vec::new(),
-                ListFunctionExpr::value(ListFunctionValue::new(
+                ListFunctionExpr::reference(ListFunctionReference::new(
                     crate::plan::ListFunctionId::from_item_type(0, crate::plan::ValueType::Int),
                     Vec::new()
                 )),
@@ -287,11 +290,13 @@ mod tests {
             )),
             FunctionExpr::function(FunctionFunctionExpr::block(
                 Vec::new(),
-                FunctionFunctionExpr::value(FunctionFunctionValue::new(
-                    FunctionFunctionId::Int(IntFunctionFunctionId(0)),
-                    Vec::new(),
+                FunctionFunctionExpr::reference(
+                    FunctionFunctionReference::new(
+                        FunctionFunctionId::Int(IntFunctionFunctionId(0)),
+                        Vec::new(),
+                    ),
                     returned_function_type.clone(),
-                )),
+                ),
             )),
         );
         assert_eq!(

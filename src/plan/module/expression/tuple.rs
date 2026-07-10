@@ -205,6 +205,10 @@ impl TupleExpr {
     pub(crate) fn kind(&self) -> &TupleExprKind {
         &self.kind
     }
+
+    pub(crate) fn into_parts(self) -> (Vec<ValueType>, TupleExprKind) {
+        (self.type_, self.kind)
+    }
 }
 
 #[cfg(test)]
@@ -212,7 +216,7 @@ mod tests {
     use super::{TupleExpr, TupleExprKind};
     use crate::plan::{
         BoolExpr, Expr, FunctionType, IntExpr, Step, TupleFunctionExpr, TupleFunctionId,
-        TupleFunctionValue, TupleLocalId, ValueType,
+        TupleFunctionReference, TupleLocalId, ValueType,
     };
 
     #[test]
@@ -361,11 +365,10 @@ mod tests {
     }
 
     fn tuple_function_expr() -> TupleFunctionExpr {
-        TupleFunctionExpr::value(TupleFunctionValue::new(
-            TupleFunctionId(0),
-            Vec::new(),
+        TupleFunctionExpr::reference(
+            TupleFunctionReference::new(TupleFunctionId(0), Vec::new()),
             tuple_type(),
-        ))
+        )
     }
 
     #[test]

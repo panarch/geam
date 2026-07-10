@@ -6,14 +6,13 @@ pub(in crate::runtime) use bind::eval_capture_args;
 pub(in crate::runtime) use steps::execute_steps;
 
 use crate::plan::execution::ExecutionPlan;
-use crate::plan::{
+use crate::plan::execution::{
     BoolFunctionFunctionId, BoolFunctionId, CallArg, FloatFunctionFunctionId, FloatFunctionId,
-    FunctionFunctionFunctionId, FunctionFunctionValue, FunctionReturnFamily, FunctionValue,
-    IntFunctionFunctionId, IntFunctionId, ListFunctionFunctionId, ListFunctionId,
-    NilFunctionFunctionId, NilFunctionId, RuntimeFunctionId, StringFunctionFunctionId,
-    StringFunctionId, TupleFunctionFunctionId, TupleFunctionId, Value,
+    FunctionFunctionFunctionId, FunctionReturnFamily, IntFunctionFunctionId, IntFunctionId,
+    ListFunctionFunctionId, ListFunctionId, NilFunctionFunctionId, NilFunctionId,
+    RuntimeFunctionId, StringFunctionFunctionId, StringFunctionId, TupleFunctionFunctionId,
+    TupleFunctionId,
 };
-use crate::runtime::ExecutionError;
 use crate::runtime::error::ExecutionResult;
 use crate::runtime::expression::{
     eval_bool_function_expr, eval_float_function_expr, eval_function_function_expr,
@@ -21,6 +20,7 @@ use crate::runtime::expression::{
     eval_string_function_expr, eval_tuple_function_expr,
 };
 use crate::runtime::frame::Frame;
+use crate::runtime::{ExecutionError, FunctionFunctionValue, FunctionValue, Value};
 use bind::{bind_arguments, bind_function_value_arguments};
 use ecow::EcoString;
 use num_bigint::BigInt;
@@ -159,7 +159,7 @@ pub(super) fn run_list_call(
     function: ListFunctionId,
     args: &[CallArg],
     caller_frame: &mut Frame,
-) -> ExecutionResult<crate::plan::ListValue> {
+) -> ExecutionResult<crate::runtime::ListValue> {
     let frame = bind_arguments(
         plan,
         args,
@@ -171,7 +171,7 @@ pub(super) fn run_list_call(
 
 pub(in crate::runtime) fn run_int_list_call(
     plan: &ExecutionPlan,
-    function: crate::plan::IntListFunctionId,
+    function: crate::plan::execution::IntListFunctionId,
     args: &[CallArg],
     caller_frame: &mut Frame,
 ) -> ExecutionResult<Vec<BigInt>> {
@@ -186,7 +186,7 @@ pub(in crate::runtime) fn run_int_list_call(
 
 pub(in crate::runtime) fn run_string_list_call(
     plan: &ExecutionPlan,
-    function: crate::plan::StringListFunctionId,
+    function: crate::plan::execution::StringListFunctionId,
     args: &[CallArg],
     caller_frame: &mut Frame,
 ) -> ExecutionResult<Vec<EcoString>> {
@@ -201,7 +201,7 @@ pub(in crate::runtime) fn run_string_list_call(
 
 pub(in crate::runtime) fn run_float_list_call(
     plan: &ExecutionPlan,
-    function: crate::plan::FloatListFunctionId,
+    function: crate::plan::execution::FloatListFunctionId,
     args: &[CallArg],
     caller_frame: &mut Frame,
 ) -> ExecutionResult<Vec<f64>> {
@@ -216,7 +216,7 @@ pub(in crate::runtime) fn run_float_list_call(
 
 pub(in crate::runtime) fn run_bool_list_call(
     plan: &ExecutionPlan,
-    function: crate::plan::BoolListFunctionId,
+    function: crate::plan::execution::BoolListFunctionId,
     args: &[CallArg],
     caller_frame: &mut Frame,
 ) -> ExecutionResult<Vec<bool>> {
@@ -231,7 +231,7 @@ pub(in crate::runtime) fn run_bool_list_call(
 
 pub(in crate::runtime) fn run_nil_list_call(
     plan: &ExecutionPlan,
-    function: crate::plan::NilListFunctionId,
+    function: crate::plan::execution::NilListFunctionId,
     args: &[CallArg],
     caller_frame: &mut Frame,
 ) -> ExecutionResult<usize> {
@@ -246,7 +246,7 @@ pub(in crate::runtime) fn run_nil_list_call(
 
 pub(in crate::runtime) fn run_tuple_list_call(
     plan: &ExecutionPlan,
-    function: crate::plan::TupleListFunctionId,
+    function: crate::plan::execution::TupleListFunctionId,
     args: &[CallArg],
     caller_frame: &mut Frame,
 ) -> ExecutionResult<Vec<Vec<Value>>> {
@@ -261,10 +261,10 @@ pub(in crate::runtime) fn run_tuple_list_call(
 
 pub(in crate::runtime) fn run_list_list_call(
     plan: &ExecutionPlan,
-    function: crate::plan::ListListFunctionId,
+    function: crate::plan::execution::ListListFunctionId,
     args: &[CallArg],
     caller_frame: &mut Frame,
-) -> ExecutionResult<Vec<crate::plan::ListValue>> {
+) -> ExecutionResult<Vec<crate::runtime::ListValue>> {
     let frame = bind_arguments(
         plan,
         args,
@@ -276,7 +276,7 @@ pub(in crate::runtime) fn run_list_list_call(
 
 pub(in crate::runtime) fn run_function_list_call(
     plan: &ExecutionPlan,
-    function: crate::plan::FunctionListFunctionId,
+    function: crate::plan::execution::FunctionListFunctionId,
     args: &[CallArg],
     caller_frame: &mut Frame,
 ) -> ExecutionResult<Vec<FunctionValue>> {
@@ -291,7 +291,7 @@ pub(in crate::runtime) fn run_function_list_call(
 
 pub(in crate::runtime) fn run_int_function_call(
     plan: &ExecutionPlan,
-    function: &crate::plan::IntFunctionExpr,
+    function: &crate::plan::execution::IntFunctionExpr,
     args: &[CallArg],
     caller_frame: &mut Frame,
 ) -> ExecutionResult<BigInt> {
@@ -305,7 +305,7 @@ pub(in crate::runtime) fn run_int_function_call(
 
 pub(in crate::runtime) fn run_string_function_call(
     plan: &ExecutionPlan,
-    function: &crate::plan::StringFunctionExpr,
+    function: &crate::plan::execution::StringFunctionExpr,
     args: &[CallArg],
     caller_frame: &mut Frame,
 ) -> ExecutionResult<EcoString> {
@@ -319,7 +319,7 @@ pub(in crate::runtime) fn run_string_function_call(
 
 pub(in crate::runtime) fn run_float_function_call(
     plan: &ExecutionPlan,
-    function: &crate::plan::FloatFunctionExpr,
+    function: &crate::plan::execution::FloatFunctionExpr,
     args: &[CallArg],
     caller_frame: &mut Frame,
 ) -> ExecutionResult<f64> {
@@ -333,7 +333,7 @@ pub(in crate::runtime) fn run_float_function_call(
 
 pub(in crate::runtime) fn run_bool_function_call(
     plan: &ExecutionPlan,
-    function: &crate::plan::BoolFunctionExpr,
+    function: &crate::plan::execution::BoolFunctionExpr,
     args: &[CallArg],
     caller_frame: &mut Frame,
 ) -> ExecutionResult<bool> {
@@ -347,7 +347,7 @@ pub(in crate::runtime) fn run_bool_function_call(
 
 pub(in crate::runtime) fn run_nil_function_call(
     plan: &ExecutionPlan,
-    function: &crate::plan::NilFunctionExpr,
+    function: &crate::plan::execution::NilFunctionExpr,
     args: &[CallArg],
     caller_frame: &mut Frame,
 ) -> ExecutionResult<()> {
@@ -361,7 +361,7 @@ pub(in crate::runtime) fn run_nil_function_call(
 
 pub(in crate::runtime) fn run_tuple_function_call(
     plan: &ExecutionPlan,
-    function: &crate::plan::TupleFunctionExpr,
+    function: &crate::plan::execution::TupleFunctionExpr,
     args: &[CallArg],
     caller_frame: &mut Frame,
 ) -> ExecutionResult<Vec<Value>> {
@@ -373,24 +373,9 @@ pub(in crate::runtime) fn run_tuple_function_call(
     run_tuple_loop(plan, function.runtime_id(), frame)
 }
 
-#[cfg(test)]
-pub(in crate::runtime) fn run_list_function_call(
-    plan: &ExecutionPlan,
-    function: &crate::plan::ListFunctionExpr,
-    args: &[CallArg],
-    caller_frame: &mut Frame,
-) -> ExecutionResult<crate::plan::ListValue> {
-    let function = eval_list_function_expr(plan, caller_frame, function)?;
-    let runtime_id = function.runtime_id();
-    let frame_layout = list_function_frame_layout(plan, &runtime_id);
-    let frame =
-        bind_function_value_arguments(plan, args, caller_frame, frame_layout, function.captures())?;
-    run_list_loop(plan, runtime_id, frame)
-}
-
 pub(in crate::runtime) fn run_int_list_function_call(
     plan: &ExecutionPlan,
-    function: &crate::plan::ListFunctionExpr,
+    function: &crate::plan::execution::ListFunctionExpr,
     args: &[CallArg],
     caller_frame: &mut Frame,
 ) -> ExecutionResult<Vec<BigInt>> {
@@ -413,7 +398,7 @@ pub(in crate::runtime) fn run_int_list_function_call(
 
 pub(in crate::runtime) fn run_string_list_function_call(
     plan: &ExecutionPlan,
-    function: &crate::plan::ListFunctionExpr,
+    function: &crate::plan::execution::ListFunctionExpr,
     args: &[CallArg],
     caller_frame: &mut Frame,
 ) -> ExecutionResult<Vec<EcoString>> {
@@ -436,7 +421,7 @@ pub(in crate::runtime) fn run_string_list_function_call(
 
 pub(in crate::runtime) fn run_float_list_function_call(
     plan: &ExecutionPlan,
-    function: &crate::plan::ListFunctionExpr,
+    function: &crate::plan::execution::ListFunctionExpr,
     args: &[CallArg],
     caller_frame: &mut Frame,
 ) -> ExecutionResult<Vec<f64>> {
@@ -459,7 +444,7 @@ pub(in crate::runtime) fn run_float_list_function_call(
 
 pub(in crate::runtime) fn run_bool_list_function_call(
     plan: &ExecutionPlan,
-    function: &crate::plan::ListFunctionExpr,
+    function: &crate::plan::execution::ListFunctionExpr,
     args: &[CallArg],
     caller_frame: &mut Frame,
 ) -> ExecutionResult<Vec<bool>> {
@@ -482,7 +467,7 @@ pub(in crate::runtime) fn run_bool_list_function_call(
 
 pub(in crate::runtime) fn run_nil_list_function_call(
     plan: &ExecutionPlan,
-    function: &crate::plan::ListFunctionExpr,
+    function: &crate::plan::execution::ListFunctionExpr,
     args: &[CallArg],
     caller_frame: &mut Frame,
 ) -> ExecutionResult<usize> {
@@ -505,7 +490,7 @@ pub(in crate::runtime) fn run_nil_list_function_call(
 
 pub(in crate::runtime) fn run_tuple_list_function_call(
     plan: &ExecutionPlan,
-    function: &crate::plan::ListFunctionExpr,
+    function: &crate::plan::execution::ListFunctionExpr,
     args: &[CallArg],
     caller_frame: &mut Frame,
 ) -> ExecutionResult<Vec<Vec<Value>>> {
@@ -528,10 +513,10 @@ pub(in crate::runtime) fn run_tuple_list_function_call(
 
 pub(in crate::runtime) fn run_list_list_function_call(
     plan: &ExecutionPlan,
-    function: &crate::plan::ListFunctionExpr,
+    function: &crate::plan::execution::ListFunctionExpr,
     args: &[CallArg],
     caller_frame: &mut Frame,
-) -> ExecutionResult<Vec<crate::plan::ListValue>> {
+) -> ExecutionResult<Vec<crate::runtime::ListValue>> {
     let function = eval_list_function_expr(plan, caller_frame, function)?;
     let ListFunctionId::List { id: runtime_id, .. } = function.runtime_id() else {
         return Err(ExecutionError::function_return_family_mismatch(
@@ -551,7 +536,7 @@ pub(in crate::runtime) fn run_list_list_function_call(
 
 pub(in crate::runtime) fn run_function_list_function_call(
     plan: &ExecutionPlan,
-    function: &crate::plan::ListFunctionExpr,
+    function: &crate::plan::execution::ListFunctionExpr,
     args: &[CallArg],
     caller_frame: &mut Frame,
 ) -> ExecutionResult<Vec<FunctionValue>> {
@@ -572,10 +557,10 @@ pub(in crate::runtime) fn run_function_list_function_call(
     run_function_list_loop(plan, runtime_id, frame)
 }
 
-fn list_function_frame_layout(
-    plan: &ExecutionPlan,
+fn list_function_frame_layout<'a>(
+    plan: &'a ExecutionPlan,
     function: &ListFunctionId,
-) -> crate::plan::FrameLayout {
+) -> &'a crate::plan::execution::FrameLayout {
     match function {
         ListFunctionId::Int(function) => plan.int_list_function(*function).frame_layout(),
         ListFunctionId::String(function) => plan.string_list_function(*function).frame_layout(),
@@ -593,7 +578,7 @@ pub(in crate::runtime) fn run_int_function_returning_function_call(
     function: IntFunctionFunctionId,
     args: &[CallArg],
     caller_frame: &mut Frame,
-) -> ExecutionResult<crate::plan::IntFunctionValue> {
+) -> ExecutionResult<crate::runtime::IntFunctionValue> {
     let frame = bind_arguments(
         plan,
         args,
@@ -608,7 +593,7 @@ pub(in crate::runtime) fn run_float_function_returning_function_call(
     function: FloatFunctionFunctionId,
     args: &[CallArg],
     caller_frame: &mut Frame,
-) -> ExecutionResult<crate::plan::FloatFunctionValue> {
+) -> ExecutionResult<crate::runtime::FloatFunctionValue> {
     let frame = bind_arguments(
         plan,
         args,
@@ -623,7 +608,7 @@ pub(in crate::runtime) fn run_string_function_returning_function_call(
     function: StringFunctionFunctionId,
     args: &[CallArg],
     caller_frame: &mut Frame,
-) -> ExecutionResult<crate::plan::StringFunctionValue> {
+) -> ExecutionResult<crate::runtime::StringFunctionValue> {
     let frame = bind_arguments(
         plan,
         args,
@@ -638,7 +623,7 @@ pub(in crate::runtime) fn run_bool_function_returning_function_call(
     function: BoolFunctionFunctionId,
     args: &[CallArg],
     caller_frame: &mut Frame,
-) -> ExecutionResult<crate::plan::BoolFunctionValue> {
+) -> ExecutionResult<crate::runtime::BoolFunctionValue> {
     let frame = bind_arguments(
         plan,
         args,
@@ -653,7 +638,7 @@ pub(in crate::runtime) fn run_nil_function_returning_function_call(
     function: NilFunctionFunctionId,
     args: &[CallArg],
     caller_frame: &mut Frame,
-) -> ExecutionResult<crate::plan::NilFunctionValue> {
+) -> ExecutionResult<crate::runtime::NilFunctionValue> {
     let frame = bind_arguments(
         plan,
         args,
@@ -668,7 +653,7 @@ pub(in crate::runtime) fn run_tuple_function_returning_function_call(
     function: TupleFunctionFunctionId,
     args: &[CallArg],
     caller_frame: &mut Frame,
-) -> ExecutionResult<crate::plan::TupleFunctionValue> {
+) -> ExecutionResult<crate::runtime::TupleFunctionValue> {
     let frame = bind_arguments(
         plan,
         args,
@@ -683,7 +668,7 @@ pub(in crate::runtime) fn run_list_function_returning_function_call(
     function: ListFunctionFunctionId,
     args: &[CallArg],
     caller_frame: &mut Frame,
-) -> ExecutionResult<crate::plan::ListFunctionValue> {
+) -> ExecutionResult<crate::runtime::ListFunctionValue> {
     let frame = bind_arguments(
         plan,
         args,
@@ -710,10 +695,10 @@ pub(in crate::runtime) fn run_function_function_returning_function_call(
 
 pub(in crate::runtime) fn run_int_function_function_call(
     plan: &ExecutionPlan,
-    function: &crate::plan::FunctionFunctionExpr,
+    function: &crate::plan::execution::FunctionFunctionExpr,
     args: &[CallArg],
     caller_frame: &mut Frame,
-) -> ExecutionResult<crate::plan::IntFunctionValue> {
+) -> ExecutionResult<crate::runtime::IntFunctionValue> {
     let function = eval_function_function_expr(plan, caller_frame, function)?;
     let runtime_id = function.runtime_id();
     let function_id = runtime_id
@@ -731,10 +716,10 @@ pub(in crate::runtime) fn run_int_function_function_call(
 
 pub(in crate::runtime) fn run_float_function_function_call(
     plan: &ExecutionPlan,
-    function: &crate::plan::FunctionFunctionExpr,
+    function: &crate::plan::execution::FunctionFunctionExpr,
     args: &[CallArg],
     caller_frame: &mut Frame,
-) -> ExecutionResult<crate::plan::FloatFunctionValue> {
+) -> ExecutionResult<crate::runtime::FloatFunctionValue> {
     let function = eval_function_function_expr(plan, caller_frame, function)?;
     let runtime_id = function.runtime_id();
     let function_id = runtime_id
@@ -752,10 +737,10 @@ pub(in crate::runtime) fn run_float_function_function_call(
 
 pub(in crate::runtime) fn run_string_function_function_call(
     plan: &ExecutionPlan,
-    function: &crate::plan::FunctionFunctionExpr,
+    function: &crate::plan::execution::FunctionFunctionExpr,
     args: &[CallArg],
     caller_frame: &mut Frame,
-) -> ExecutionResult<crate::plan::StringFunctionValue> {
+) -> ExecutionResult<crate::runtime::StringFunctionValue> {
     let function = eval_function_function_expr(plan, caller_frame, function)?;
     let runtime_id = function.runtime_id();
     let function_id =
@@ -774,10 +759,10 @@ pub(in crate::runtime) fn run_string_function_function_call(
 
 pub(in crate::runtime) fn run_bool_function_function_call(
     plan: &ExecutionPlan,
-    function: &crate::plan::FunctionFunctionExpr,
+    function: &crate::plan::execution::FunctionFunctionExpr,
     args: &[CallArg],
     caller_frame: &mut Frame,
-) -> ExecutionResult<crate::plan::BoolFunctionValue> {
+) -> ExecutionResult<crate::runtime::BoolFunctionValue> {
     let function = eval_function_function_expr(plan, caller_frame, function)?;
     let runtime_id = function.runtime_id();
     let function_id = runtime_id
@@ -795,10 +780,10 @@ pub(in crate::runtime) fn run_bool_function_function_call(
 
 pub(in crate::runtime) fn run_nil_function_function_call(
     plan: &ExecutionPlan,
-    function: &crate::plan::FunctionFunctionExpr,
+    function: &crate::plan::execution::FunctionFunctionExpr,
     args: &[CallArg],
     caller_frame: &mut Frame,
-) -> ExecutionResult<crate::plan::NilFunctionValue> {
+) -> ExecutionResult<crate::runtime::NilFunctionValue> {
     let function = eval_function_function_expr(plan, caller_frame, function)?;
     let runtime_id = function.runtime_id();
     let function_id = runtime_id
@@ -816,10 +801,10 @@ pub(in crate::runtime) fn run_nil_function_function_call(
 
 pub(in crate::runtime) fn run_tuple_function_function_call(
     plan: &ExecutionPlan,
-    function: &crate::plan::FunctionFunctionExpr,
+    function: &crate::plan::execution::FunctionFunctionExpr,
     args: &[CallArg],
     caller_frame: &mut Frame,
-) -> ExecutionResult<crate::plan::TupleFunctionValue> {
+) -> ExecutionResult<crate::runtime::TupleFunctionValue> {
     let function = eval_function_function_expr(plan, caller_frame, function)?;
     let runtime_id = function.runtime_id();
     let function_id = runtime_id
@@ -837,10 +822,10 @@ pub(in crate::runtime) fn run_tuple_function_function_call(
 
 pub(in crate::runtime) fn run_list_function_function_call(
     plan: &ExecutionPlan,
-    function: &crate::plan::FunctionFunctionExpr,
+    function: &crate::plan::execution::FunctionFunctionExpr,
     args: &[CallArg],
     caller_frame: &mut Frame,
-) -> ExecutionResult<crate::plan::ListFunctionValue> {
+) -> ExecutionResult<crate::runtime::ListFunctionValue> {
     let function = eval_function_function_expr(plan, caller_frame, function)?;
     let runtime_id = function.runtime_id();
     let function_id = runtime_id
@@ -858,7 +843,7 @@ pub(in crate::runtime) fn run_list_function_function_call(
 
 pub(in crate::runtime) fn run_function_function_function_call(
     plan: &ExecutionPlan,
-    function: &crate::plan::FunctionFunctionExpr,
+    function: &crate::plan::execution::FunctionFunctionExpr,
     args: &[CallArg],
     caller_frame: &mut Frame,
 ) -> ExecutionResult<FunctionFunctionValue> {
@@ -879,40 +864,40 @@ pub(in crate::runtime) fn run_function_function_function_call(
 }
 fn run_function_returning_function_call(
     plan: &ExecutionPlan,
-    function: crate::plan::FunctionFunctionId,
+    function: crate::plan::execution::FunctionFunctionId,
     args: &[CallArg],
     caller_frame: &mut Frame,
 ) -> ExecutionResult<FunctionValue> {
     match function {
-        crate::plan::FunctionFunctionId::Int(function) => {
+        crate::plan::execution::FunctionFunctionId::Int(function) => {
             run_int_function_returning_function_call(plan, function, args, caller_frame)
                 .map(Into::into)
         }
-        crate::plan::FunctionFunctionId::Float(function) => {
+        crate::plan::execution::FunctionFunctionId::Float(function) => {
             run_float_function_returning_function_call(plan, function, args, caller_frame)
                 .map(Into::into)
         }
-        crate::plan::FunctionFunctionId::String(function) => {
+        crate::plan::execution::FunctionFunctionId::String(function) => {
             run_string_function_returning_function_call(plan, function, args, caller_frame)
                 .map(Into::into)
         }
-        crate::plan::FunctionFunctionId::Bool(function) => {
+        crate::plan::execution::FunctionFunctionId::Bool(function) => {
             run_bool_function_returning_function_call(plan, function, args, caller_frame)
                 .map(Into::into)
         }
-        crate::plan::FunctionFunctionId::Nil(function) => {
+        crate::plan::execution::FunctionFunctionId::Nil(function) => {
             run_nil_function_returning_function_call(plan, function, args, caller_frame)
                 .map(Into::into)
         }
-        crate::plan::FunctionFunctionId::Tuple(function) => {
+        crate::plan::execution::FunctionFunctionId::Tuple(function) => {
             run_tuple_function_returning_function_call(plan, function, args, caller_frame)
                 .map(Into::into)
         }
-        crate::plan::FunctionFunctionId::List(function) => {
+        crate::plan::execution::FunctionFunctionId::List(function) => {
             run_list_function_returning_function_call(plan, function, args, caller_frame)
                 .map(Into::into)
         }
-        crate::plan::FunctionFunctionId::Function(function) => {
+        crate::plan::execution::FunctionFunctionId::Function(function) => {
             run_function_function_returning_function_call(plan, function, args, caller_frame)
                 .map(Into::into)
         }
@@ -922,1299 +907,668 @@ fn run_function_returning_function_call(
 #[cfg(test)]
 mod tests {
     use super::{
-        run_bool_call, run_bool_function_call, run_bool_function_function_call,
-        run_bool_function_returning_function_call, run_float_call, run_float_function_call,
-        run_float_function_function_call, run_float_function_returning_function_call,
-        run_function_function_function_call, run_function_function_returning_function_call,
-        run_function_returning_function_call, run_int_call, run_int_function_call,
-        run_int_function_function_call, run_int_function_returning_function_call, run_list_call,
-        run_list_function_call, run_list_function_function_call,
-        run_list_function_returning_function_call, run_main, run_nil_call, run_nil_function_call,
-        run_nil_function_function_call, run_nil_function_returning_function_call, run_string_call,
-        run_string_function_call, run_string_function_function_call,
-        run_string_function_returning_function_call, run_tuple_call, run_tuple_function_call,
-        run_tuple_function_function_call, run_tuple_function_returning_function_call,
+        run_bool_function_loop, run_bool_list_loop, run_float_function_loop, run_float_list_loop,
+        run_function_function_loop, run_function_list_loop, run_int_function_loop,
+        run_int_list_loop, run_list_function_loop, run_list_list_loop, run_nil_function_loop,
+        run_nil_list_loop, run_string_function_loop, run_string_list_loop, run_tuple_function_loop,
+        run_tuple_list_loop,
     };
-    use crate::plan::execution::ExecutionPlan;
-    use crate::plan::{
-        BoolExpr, BoolFunctionExpr, BoolFunctionFunctionId, BoolFunctionId, BoolFunctionValue,
-        BoolLocalId, CallArg, Expr, FloatExpr, FloatFunctionExpr, FloatFunctionFunctionId,
-        FloatFunctionId, FloatFunctionValue, FunctionExpr, FunctionExprKind, FunctionFunctionExpr,
-        FunctionFunctionFunctionId, FunctionFunctionId, FunctionFunctionLocalId,
-        FunctionFunctionValue, FunctionId, FunctionPlan, FunctionReturnFamily, FunctionType,
-        FunctionValue, IntExpr, IntFunctionExpr, IntFunctionFunctionId, IntFunctionId,
-        IntFunctionValue, IntLocalId, ListExpr, ListFunctionExpr, ListFunctionFunctionId,
-        ListFunctionId, ListFunctionValue, ListValue, NilExpr, NilFunctionExpr,
-        NilFunctionFunctionId, NilFunctionId, NilFunctionValue, NilLocalId, ParamLocal, ReturnExpr,
-        RuntimeFunctionId, Step, StringExpr, StringFunctionExpr, StringFunctionFunctionId,
-        StringFunctionId, StringFunctionValue, StringLocalId, TupleExpr, TupleFunctionExpr,
-        TupleFunctionFunctionId, TupleFunctionId, TupleFunctionValue, ValueType,
+    use crate::plan::execution::{
+        BoolFunctionFunctionId, BoolListFunctionId, CallArg, FloatFunctionFunctionId,
+        FloatListFunctionId, FunctionFunctionFunctionId, FunctionFunctionId,
+        FunctionFunctionLocalId, FunctionListFunctionId, FunctionListFunctionLocalId,
+        FunctionListLocalId, FunctionReturnFamily, IntFunctionFunctionId, IntFunctionId,
+        IntListFunctionFunctionId, IntListFunctionId, IntListFunctionLocalId,
+        ListFunctionFunctionId, ListFunctionId, ListFunctionLocal, ListListFunctionId,
+        ListListFunctionLocalId, NilFunctionFunctionId, NilListFunctionId, ReturnBody,
+        ReturnBodyKind, RuntimeFunctionId, StringFunctionFunctionId, StringFunctionId,
+        StringListFunctionId, StringListFunctionLocalId, TupleFunctionFunctionId,
+        TupleListFunctionId, TupleListFunctionLocalId,
     };
+    use crate::plan::{FunctionType, ValueType};
     use crate::runtime::frame::Frame;
-    use crate::runtime::{ExecutionError, Value, run_src};
+    use crate::runtime::{ExecutionError, run_main};
+    use crate::runtime::{FunctionFunctionValue, FunctionValue, ListFunctionValue};
 
     #[test]
-    fn function_function_call_returns_execution_error_on_return_family_mismatch() {
-        let plan = plan();
+    fn primitive_function_value_calls_propagate_callee_and_argument_panics() {
+        let callee_sources = [
+            "pub fn main() -> Int { case True { True -> panic as \"callee\" False -> fn() { 0 } }() }",
+            "pub fn main() -> String { case True { True -> panic as \"callee\" False -> fn() { \"\" } }() }",
+            "pub fn main() -> Float { case True { True -> panic as \"callee\" False -> fn() { 0.0 } }() }",
+            "pub fn main() -> Bool { case True { True -> panic as \"callee\" False -> fn() { False } }() }",
+            "pub fn main() -> Nil { case True { True -> panic as \"callee\" False -> fn() { Nil } }() }",
+            "pub fn main() -> #(Int) { case True { True -> panic as \"callee\" False -> fn() { #(0) } }() }",
+        ];
+        let argument_sources = [
+            "fn callee(value: Int) -> Int { value } pub fn main() { let function = callee function(panic as \"argument\") }",
+            "fn callee(value: Int) -> String { \"value\" } pub fn main() { let function = callee function(panic as \"argument\") }",
+            "fn callee(value: Int) -> Float { 1.0 } pub fn main() { let function = callee function(panic as \"argument\") }",
+            "fn callee(value: Int) -> Bool { True } pub fn main() { let function = callee function(panic as \"argument\") }",
+            "fn callee(value: Int) -> Nil { Nil } pub fn main() { let function = callee function(panic as \"argument\") }",
+            "fn callee(value: Int) -> #(Int) { #(value) } pub fn main() { let function = callee function(panic as \"argument\") }",
+        ];
 
-        assert_function_return_family_mismatch(
-            run_int_function_function_call(
-                &plan,
-                &function_function_expr(FunctionFunctionId::String(StringFunctionFunctionId(0))),
-                &[],
-                &mut Frame::default(),
-            ),
-            FunctionReturnFamily::Int,
-            FunctionReturnFamily::String,
-        );
-        assert_function_return_family_mismatch(
-            run_string_function_function_call(
-                &plan,
-                &function_function_expr(FunctionFunctionId::Int(IntFunctionFunctionId(0))),
-                &[],
-                &mut Frame::default(),
-            ),
-            FunctionReturnFamily::String,
-            FunctionReturnFamily::Int,
-        );
-        assert_function_return_family_mismatch(
-            run_float_function_function_call(
-                &plan,
-                &function_function_expr(FunctionFunctionId::Int(IntFunctionFunctionId(0))),
-                &[],
-                &mut Frame::default(),
-            ),
-            FunctionReturnFamily::Float,
-            FunctionReturnFamily::Int,
-        );
-        assert_function_return_family_mismatch(
-            run_bool_function_function_call(
-                &plan,
-                &function_function_expr(FunctionFunctionId::Int(IntFunctionFunctionId(0))),
-                &[],
-                &mut Frame::default(),
-            ),
-            FunctionReturnFamily::Bool,
-            FunctionReturnFamily::Int,
-        );
-        assert_function_return_family_mismatch(
-            run_nil_function_function_call(
-                &plan,
-                &function_function_expr(FunctionFunctionId::Int(IntFunctionFunctionId(0))),
-                &[],
-                &mut Frame::default(),
-            ),
-            FunctionReturnFamily::Nil,
-            FunctionReturnFamily::Int,
-        );
-        assert_function_return_family_mismatch(
-            run_tuple_function_function_call(
-                &plan,
-                &function_function_expr(FunctionFunctionId::Int(IntFunctionFunctionId(0))),
-                &[],
-                &mut Frame::default(),
-            ),
-            FunctionReturnFamily::Tuple,
-            FunctionReturnFamily::Int,
-        );
-        assert_function_return_family_mismatch(
-            run_list_function_function_call(
-                &plan,
-                &function_function_expr(FunctionFunctionId::Int(IntFunctionFunctionId(0))),
-                &[],
-                &mut Frame::default(),
-            ),
-            FunctionReturnFamily::List,
-            FunctionReturnFamily::Int,
-        );
-        assert_expected_function_got_int(run_function_function_function_call(
-            &plan,
-            &function_function_expr(FunctionFunctionId::Int(IntFunctionFunctionId(0))),
-            &[],
-            &mut Frame::default(),
-        ));
-    }
-
-    #[test]
-    fn function_function_call_returns_function_values() {
-        assert_eq!(
-            run_src(
-                r#"
-fn int_identity(value: Int) {
-  value
-}
-
-fn string_identity(value: String) {
-  value
-}
-
-fn float_identity(value: Float) {
-  value
-}
-
-fn bool_identity(value: Bool) {
-  value
-}
-
-fn nil_identity(value: Nil) {
-  value
-}
-
-fn get_int() {
-  int_identity
-}
-
-fn get_string() {
-  string_identity
-}
-
-fn get_float() {
-  float_identity
-}
-
-fn get_bool() {
-  bool_identity
-}
-
-fn get_nil() {
-  nil_identity
-}
-
-fn get_list() {
-  list_identity
-}
-
-fn list_identity(value: List(Int)) {
-  value
-}
-
-fn get_get_int() {
-  get_int
-}
-
-fn get_get_get_int() {
-  get_get_int
-}
-
-pub fn main() {
-  let int_ok = get_int()(1) + get_get_get_int()()()(2) == 3
-  let float_ok = get_float()(1.5) == 1.5
-  let bool_ok = get_bool()(True)
-  let list_ok = get_list()([1]) == [1]
-
-  get_nil()(Nil)
-
-  case int_ok && float_ok && bool_ok && list_ok {
-    True -> get_string()("ge") <> get_string()("am")
-    False -> "bad"
-  }
-}
-"#,
-            ),
-            Value::String("geam".into()),
-        );
-    }
-
-    #[test]
-    fn run_src_returns_function_value_shapes() {
-        assert_eq!(
-            run_src(
-                r#"
-fn identity(value: Int) {
-  value
-}
-
-pub fn main() {
-  identity
-}
-"#,
-            ),
-            Value::Function(FunctionValue::new(
-                RuntimeFunctionId::Int(IntFunctionId(0)),
-                vec![ParamLocal::int(IntLocalId(0))],
-            )),
-        );
-        assert_eq!(
-            run_src(
-                r#"
-fn identity(value: String) {
-  value
-}
-
-pub fn main() {
-  identity
-}
-"#,
-            ),
-            Value::Function(FunctionValue::new(
-                RuntimeFunctionId::String(StringFunctionId(0)),
-                vec![ParamLocal::string(StringLocalId(0))],
-            )),
-        );
-        assert_eq!(
-            run_src(
-                r#"
-fn identity(value: Float) {
-  value
-}
-
-pub fn main() {
-  identity
-}
-"#,
-            ),
-            Value::Function(FunctionValue::new(
-                RuntimeFunctionId::Float(FloatFunctionId(0)),
-                vec![ParamLocal::float(crate::plan::FloatLocalId(0))],
-            )),
-        );
-        assert_eq!(
-            run_src(
-                r#"
-fn identity(value: Bool) {
-  value
-}
-
-pub fn main() {
-  identity
-}
-"#,
-            ),
-            Value::Function(FunctionValue::new(
-                RuntimeFunctionId::Bool(BoolFunctionId(0)),
-                vec![ParamLocal::bool(BoolLocalId(0))],
-            )),
-        );
-        assert_eq!(
-            run_src(
-                r#"
-fn identity(value: Nil) {
-  value
-}
-
-pub fn main() {
-  identity
-}
-"#,
-            ),
-            Value::Function(FunctionValue::new(
-                RuntimeFunctionId::Nil(NilFunctionId(0)),
-                vec![ParamLocal::nil(NilLocalId(0))],
-            )),
-        );
-        assert_eq!(
-            run_src(
-                r#"
-fn identity(value: List(Int)) {
-  value
-}
-
-pub fn main() {
-  identity
-}
-"#,
-            ),
-            Value::Function(FunctionValue::new(
-                RuntimeFunctionId::List(ListFunctionId::from_item_type(
-                    0,
-                    crate::plan::ValueType::Int
-                )),
-                vec![ParamLocal::list(crate::plan::ListLocal::int(
-                    crate::plan::IntListLocalId(0),
-                ))],
-            )),
-        );
-        assert_eq!(
-            run_src(
-                r#"
-fn add_one(value: Int) {
-  value + 1
-}
-
-fn get() {
-  add_one
-}
-
-pub fn main() {
-  get
-}
-"#,
-            ),
-            Value::Function(FunctionValue::new(
-                RuntimeFunctionId::Function {
-                    id: FunctionFunctionId::Int(IntFunctionFunctionId(0)),
-                    return_type: FunctionType::new(vec![ValueType::Int], ValueType::Int),
-                },
-                Vec::new(),
-            )),
-        );
-    }
-
-    #[test]
-    fn function_function_projection_returns_typed_function_values() {
-        let plan = plan_with_function_function_steps(Vec::new());
-
-        assert_eq!(
-            run_int_function_function_call(
-                &plan,
-                &function_function_expr(FunctionFunctionId::Int(IntFunctionFunctionId(0))),
-                &[],
-                &mut Frame::default(),
-            )
-            .map(|value| value.type_().return_().clone()),
-            Ok(ValueType::Int),
-        );
-        assert_eq!(
-            run_string_function_function_call(
-                &plan,
-                &function_function_expr(FunctionFunctionId::String(StringFunctionFunctionId(0))),
-                &[],
-                &mut Frame::default(),
-            )
-            .map(|value| value.type_().return_().clone()),
-            Ok(ValueType::String),
-        );
-        assert_eq!(
-            run_float_function_function_call(
-                &plan,
-                &function_function_expr(FunctionFunctionId::Float(FloatFunctionFunctionId(0))),
-                &[],
-                &mut Frame::default(),
-            )
-            .map(|value| value.type_().return_().clone()),
-            Ok(ValueType::Float),
-        );
-        assert_eq!(
-            run_bool_function_function_call(
-                &plan,
-                &function_function_expr(FunctionFunctionId::Bool(BoolFunctionFunctionId(0))),
-                &[],
-                &mut Frame::default(),
-            )
-            .map(|value| value.type_().return_().clone()),
-            Ok(ValueType::Bool),
-        );
-        assert_eq!(
-            run_nil_function_function_call(
-                &plan,
-                &function_function_expr(FunctionFunctionId::Nil(NilFunctionFunctionId(0))),
-                &[],
-                &mut Frame::default(),
-            )
-            .map(|value| value.type_().return_().clone()),
-            Ok(ValueType::Nil),
-        );
-        assert_eq!(
-            run_tuple_function_function_call(
-                &plan,
-                &function_function_expr(FunctionFunctionId::Tuple(TupleFunctionFunctionId(0))),
-                &[],
-                &mut Frame::default(),
-            )
-            .map(|value| value.type_().return_().clone()),
-            Ok(ValueType::Tuple(vec![ValueType::Int])),
-        );
-        assert_eq!(
-            run_list_function_function_call(
-                &plan,
-                &function_function_expr(FunctionFunctionId::List(
-                    ListFunctionFunctionId::from_item_type(
-                        0,
-                        crate::plan::FunctionType::new(
-                            Vec::new(),
-                            crate::plan::ValueType::List(Box::new(crate::plan::ValueType::Int))
-                        ),
-                        crate::plan::ValueType::Int
-                    )
-                )),
-                &[],
-                &mut Frame::default(),
-            )
-            .map(|value| value.type_().return_().clone()),
-            Ok(ValueType::List(Box::new(ValueType::Int))),
-        );
-        assert_eq!(
-            run_function_function_function_call(
-                &plan,
-                &function_function_expr(FunctionFunctionId::Function(FunctionFunctionFunctionId(
-                    0
-                ))),
-                &[],
-                &mut Frame::default(),
-            )
-            .map(|value| value.type_().return_().clone()),
-            Ok(ValueType::Function(Box::new(FunctionType::new(
-                Vec::new(),
-                ValueType::Int,
-            )))),
-        );
-    }
-
-    #[test]
-    fn primitive_function_call_returns_values() {
-        let plan = primitive_function_plan();
-
-        assert_eq!(
-            run_int_call(&plan, IntFunctionId(0), &[], &mut Frame::default()),
-            Ok(1.into()),
-        );
-        assert_eq!(
-            run_string_call(&plan, StringFunctionId(0), &[], &mut Frame::default()),
-            Ok("geam".into()),
-        );
-        assert_eq!(
-            run_float_call(&plan, FloatFunctionId(0), &[], &mut Frame::default()),
-            Ok(1.5),
-        );
-        assert_eq!(
-            run_bool_call(&plan, BoolFunctionId(0), &[], &mut Frame::default()),
-            Ok(true),
-        );
-        assert_eq!(
-            run_nil_call(&plan, NilFunctionId(0), &[], &mut Frame::default()),
-            Ok(()),
-        );
-        assert_eq!(
-            run_tuple_call(&plan, TupleFunctionId(0), &[], &mut Frame::default()),
-            Ok(vec![Value::Int(1.into())]),
-        );
-        assert_eq!(
-            run_list_call(
-                &plan,
-                ListFunctionId::from_item_type(0, crate::plan::ValueType::Int),
-                &[],
-                &mut Frame::default()
-            ),
-            Ok(ListValue::int(vec![1.into()])),
-        );
-    }
-
-    #[test]
-    fn direct_function_returning_function_call_returns_function_values() {
-        let plan = plan_with_function_function_steps(Vec::new());
-
-        assert_eq!(
-            run_int_function_returning_function_call(
-                &plan,
-                IntFunctionFunctionId(0),
-                &[],
-                &mut Frame::default(),
-            )
-            .map(|value| value.type_().return_().clone()),
-            Ok(ValueType::Int),
-        );
-        assert_eq!(
-            run_string_function_returning_function_call(
-                &plan,
-                StringFunctionFunctionId(0),
-                &[],
-                &mut Frame::default(),
-            )
-            .map(|value| value.type_().return_().clone()),
-            Ok(ValueType::String),
-        );
-        assert_eq!(
-            run_float_function_returning_function_call(
-                &plan,
-                FloatFunctionFunctionId(0),
-                &[],
-                &mut Frame::default(),
-            )
-            .map(|value| value.type_().return_().clone()),
-            Ok(ValueType::Float),
-        );
-        assert_eq!(
-            run_function_returning_function_call(
-                &plan,
-                FunctionFunctionId::Float(FloatFunctionFunctionId(0)),
-                &[],
-                &mut Frame::default(),
-            )
-            .map(|value| value.type_().return_().clone()),
-            Ok(ValueType::Float),
-        );
-        assert_eq!(
-            run_bool_function_returning_function_call(
-                &plan,
-                BoolFunctionFunctionId(0),
-                &[],
-                &mut Frame::default(),
-            )
-            .map(|value| value.type_().return_().clone()),
-            Ok(ValueType::Bool),
-        );
-        assert_eq!(
-            run_nil_function_returning_function_call(
-                &plan,
-                NilFunctionFunctionId(0),
-                &[],
-                &mut Frame::default(),
-            )
-            .map(|value| value.type_().return_().clone()),
-            Ok(ValueType::Nil),
-        );
-        assert_eq!(
-            run_tuple_function_returning_function_call(
-                &plan,
-                TupleFunctionFunctionId(0),
-                &[],
-                &mut Frame::default(),
-            )
-            .map(|value| value.type_().return_().clone()),
-            Ok(ValueType::Tuple(vec![ValueType::Int])),
-        );
-        assert_eq!(
-            run_list_function_returning_function_call(
-                &plan,
-                ListFunctionFunctionId::from_item_type(
-                    0,
-                    crate::plan::FunctionType::new(
-                        Vec::new(),
-                        crate::plan::ValueType::List(Box::new(crate::plan::ValueType::Int))
-                    ),
-                    crate::plan::ValueType::Int
-                ),
-                &[],
-                &mut Frame::default(),
-            )
-            .map(|value| value.type_().return_().clone()),
-            Ok(ValueType::List(Box::new(ValueType::Int))),
-        );
-        assert_eq!(
-            run_function_returning_function_call(
-                &plan,
-                FunctionFunctionId::List(ListFunctionFunctionId::from_item_type(
-                    0,
-                    crate::plan::FunctionType::new(
-                        Vec::new(),
-                        crate::plan::ValueType::List(Box::new(crate::plan::ValueType::Int))
-                    ),
-                    crate::plan::ValueType::Int
-                )),
-                &[],
-                &mut Frame::default(),
-            )
-            .map(|value| value.type_().return_().clone()),
-            Ok(ValueType::List(Box::new(ValueType::Int))),
-        );
-        assert_eq!(
-            run_function_returning_function_call(
-                &plan,
-                FunctionFunctionId::Tuple(TupleFunctionFunctionId(0)),
-                &[],
-                &mut Frame::default(),
-            )
-            .map(|value| value.type_().return_().clone()),
-            Ok(ValueType::Tuple(vec![ValueType::Int])),
-        );
-        assert_eq!(
-            run_function_function_returning_function_call(
-                &plan,
-                FunctionFunctionFunctionId(0),
-                &[],
-                &mut Frame::default(),
-            )
-            .map(|value| value.type_().return_().clone()),
-            Ok(ValueType::Function(Box::new(FunctionType::new(
-                Vec::new(),
-                ValueType::Int,
-            )))),
-        );
-    }
-
-    #[test]
-    fn primitive_function_calls_propagate_frame_binding_errors() {
-        let plan = primitive_function_plan();
-
-        assert_expected_function_got_int(run_int_call(
-            &plan,
-            IntFunctionId(0),
-            &[failing_function_function_arg()],
-            &mut Frame::default(),
-        ));
-        assert_expected_function_got_int(run_string_call(
-            &plan,
-            StringFunctionId(0),
-            &[failing_function_function_arg()],
-            &mut Frame::default(),
-        ));
-        assert_expected_function_got_int(run_float_call(
-            &plan,
-            FloatFunctionId(0),
-            &[failing_function_function_arg()],
-            &mut Frame::default(),
-        ));
-        assert_expected_function_got_int(run_bool_call(
-            &plan,
-            BoolFunctionId(0),
-            &[failing_function_function_arg()],
-            &mut Frame::default(),
-        ));
-        assert_expected_function_got_int(run_nil_call(
-            &plan,
-            NilFunctionId(0),
-            &[failing_function_function_arg()],
-            &mut Frame::default(),
-        ));
-        assert_expected_function_got_int(run_tuple_call(
-            &plan,
-            TupleFunctionId(0),
-            &[failing_function_function_arg()],
-            &mut Frame::default(),
-        ));
-        assert_expected_function_got_int(run_list_call(
-            &plan,
-            ListFunctionId::from_item_type(0, crate::plan::ValueType::Int),
-            &[failing_function_function_arg()],
-            &mut Frame::default(),
-        ));
-    }
-
-    #[test]
-    fn function_returning_function_calls_propagate_frame_binding_errors() {
-        let plan = plan_with_function_function_steps(Vec::new());
-
-        assert_expected_function_got_int(run_int_function_returning_function_call(
-            &plan,
-            IntFunctionFunctionId(0),
-            &[failing_function_function_arg()],
-            &mut Frame::default(),
-        ));
-        assert_expected_function_got_int(run_string_function_returning_function_call(
-            &plan,
-            StringFunctionFunctionId(0),
-            &[failing_function_function_arg()],
-            &mut Frame::default(),
-        ));
-        assert_expected_function_got_int(run_float_function_returning_function_call(
-            &plan,
-            FloatFunctionFunctionId(0),
-            &[failing_function_function_arg()],
-            &mut Frame::default(),
-        ));
-        assert_expected_function_got_int(run_bool_function_returning_function_call(
-            &plan,
-            BoolFunctionFunctionId(0),
-            &[failing_function_function_arg()],
-            &mut Frame::default(),
-        ));
-        assert_expected_function_got_int(run_nil_function_returning_function_call(
-            &plan,
-            NilFunctionFunctionId(0),
-            &[failing_function_function_arg()],
-            &mut Frame::default(),
-        ));
-        assert_expected_function_got_int(run_tuple_function_returning_function_call(
-            &plan,
-            TupleFunctionFunctionId(0),
-            &[failing_function_function_arg()],
-            &mut Frame::default(),
-        ));
-        assert_expected_function_got_int(run_list_function_returning_function_call(
-            &plan,
-            ListFunctionFunctionId::from_item_type(
-                0,
-                crate::plan::FunctionType::new(
-                    Vec::new(),
-                    crate::plan::ValueType::List(Box::new(crate::plan::ValueType::Int)),
-                ),
-                crate::plan::ValueType::Int,
-            ),
-            &[failing_function_function_arg()],
-            &mut Frame::default(),
-        ));
-        assert_expected_function_got_int(run_function_function_returning_function_call(
-            &plan,
-            FunctionFunctionFunctionId(0),
-            &[failing_function_function_arg()],
-            &mut Frame::default(),
-        ));
-    }
-
-    #[test]
-    fn function_function_call_propagates_callee_evaluation_error() {
-        let plan = plan();
-        let expression = failing_function_function_expr();
-
-        assert_expected_function_got_int(run_int_function_function_call(
-            &plan,
-            &expression,
-            &[],
-            &mut Frame::default(),
-        ));
-        assert_expected_function_got_int(run_string_function_function_call(
-            &plan,
-            &expression,
-            &[],
-            &mut Frame::default(),
-        ));
-        assert_expected_function_got_int(run_bool_function_function_call(
-            &plan,
-            &expression,
-            &[],
-            &mut Frame::default(),
-        ));
-        assert_expected_function_got_int(run_nil_function_function_call(
-            &plan,
-            &expression,
-            &[],
-            &mut Frame::default(),
-        ));
-        assert_expected_function_got_int(run_tuple_function_function_call(
-            &plan,
-            &expression,
-            &[],
-            &mut Frame::default(),
-        ));
-        assert_expected_function_got_int(run_list_function_function_call(
-            &plan,
-            &expression,
-            &[],
-            &mut Frame::default(),
-        ));
-        assert_expected_function_got_int(run_function_function_function_call(
-            &plan,
-            &expression,
-            &[],
-            &mut Frame::default(),
-        ));
-    }
-
-    #[test]
-    fn run_main_propagates_function_body_error_by_return_family() {
-        let steps = vec![failing_step()];
-
-        assert_expected_function_got_int(run_main(&plan_with_main(
-            steps.clone(),
-            ReturnExpr::int(IntFunctionId(0), IntExpr::value(1.into())),
-        )));
-        assert_expected_function_got_int(run_main(&plan_with_main(
-            steps.clone(),
-            ReturnExpr::string(StringFunctionId(0), StringExpr::value("geam".into())),
-        )));
-        assert_expected_function_got_int(run_main(&plan_with_main(
-            steps.clone(),
-            ReturnExpr::bool(BoolFunctionId(0), BoolExpr::value(true)),
-        )));
-        assert_expected_function_got_int(run_main(&plan_with_main(
-            steps.clone(),
-            ReturnExpr::nil(NilFunctionId(0), NilExpr::value()),
-        )));
-        assert_expected_function_got_int(run_main(&plan_with_main(
-            steps.clone(),
-            ReturnExpr::tuple(
-                TupleFunctionId(0),
-                TupleExpr::value(
-                    vec![Expr::int(IntExpr::value(1.into()))],
-                    vec![ValueType::Int],
-                ),
-            ),
-        )));
-        assert_expected_function_got_int(run_main(&plan_with_main(
-            steps.clone(),
-            ReturnExpr::int_list_body(
-                crate::plan::IntListFunctionId(0),
-                crate::plan::IntListReturn::expr(
-                    ListExpr::value(vec![Expr::int(IntExpr::value(1.into()))], ValueType::Int)
-                        .into_int()
-                        .expect("expression should be List(Int)"),
-                ),
-            ),
-        )));
-        assert_expected_function_got_int(run_main(&plan_with_main(
-            steps,
-            function_return_expr(function_function_expr_value()),
-        )));
-    }
-
-    #[test]
-    fn primitive_function_value_call_propagates_callee_evaluation_error() {
-        let plan = primitive_function_plan();
-
-        assert_expected_function_got_int(run_int_function_call(
-            &plan,
-            &IntFunctionExpr::function_call(
-                failing_function_function_expr(),
-                Vec::new(),
-                FunctionType::new(Vec::new(), ValueType::Int),
-            ),
-            &[],
-            &mut Frame::default(),
-        ));
-        assert_expected_function_got_int(run_string_function_call(
-            &plan,
-            &StringFunctionExpr::function_call(
-                failing_function_function_expr(),
-                Vec::new(),
-                FunctionType::new(Vec::new(), ValueType::String),
-            ),
-            &[],
-            &mut Frame::default(),
-        ));
-        assert_expected_function_got_int(run_float_function_call(
-            &plan,
-            &FloatFunctionExpr::function_call(
-                failing_function_function_expr(),
-                Vec::new(),
-                FunctionType::new(Vec::new(), ValueType::Float),
-            ),
-            &[],
-            &mut Frame::default(),
-        ));
-        assert_expected_function_got_int(run_bool_function_call(
-            &plan,
-            &BoolFunctionExpr::function_call(
-                failing_function_function_expr(),
-                Vec::new(),
-                FunctionType::new(Vec::new(), ValueType::Bool),
-            ),
-            &[],
-            &mut Frame::default(),
-        ));
-        assert_expected_function_got_int(run_nil_function_call(
-            &plan,
-            &NilFunctionExpr::function_call(
-                failing_function_function_expr(),
-                Vec::new(),
-                FunctionType::new(Vec::new(), ValueType::Nil),
-            ),
-            &[],
-            &mut Frame::default(),
-        ));
-        assert_expected_function_got_int(run_tuple_function_call(
-            &plan,
-            &TupleFunctionExpr::function_call(
-                failing_function_function_expr(),
-                Vec::new(),
-                FunctionType::new(Vec::new(), ValueType::Tuple(vec![ValueType::Int])),
-            ),
-            &[],
-            &mut Frame::default(),
-        ));
-        assert_expected_function_got_int(run_list_function_call(
-            &plan,
-            &ListFunctionExpr::function_call(
-                failing_function_function_expr(),
-                Vec::new(),
-                FunctionType::new(Vec::new(), ValueType::List(Box::new(ValueType::Int))),
-                ValueType::Int,
-            ),
-            &[],
-            &mut Frame::default(),
-        ));
-    }
-
-    #[test]
-    fn primitive_function_value_calls_propagate_frame_binding_errors() {
-        let plan = primitive_function_plan();
-
-        assert_expected_function_got_int(run_int_function_call(
-            &plan,
-            &IntFunctionExpr::value(IntFunctionValue::new(IntFunctionId(0), Vec::new())),
-            &[failing_function_function_arg()],
-            &mut Frame::default(),
-        ));
-        assert_expected_function_got_int(run_string_function_call(
-            &plan,
-            &StringFunctionExpr::value(StringFunctionValue::new(StringFunctionId(0), Vec::new())),
-            &[failing_function_function_arg()],
-            &mut Frame::default(),
-        ));
-        assert_expected_function_got_int(run_float_function_call(
-            &plan,
-            &FloatFunctionExpr::value(FloatFunctionValue::new(FloatFunctionId(0), Vec::new())),
-            &[failing_function_function_arg()],
-            &mut Frame::default(),
-        ));
-        assert_expected_function_got_int(run_bool_function_call(
-            &plan,
-            &BoolFunctionExpr::value(BoolFunctionValue::new(BoolFunctionId(0), Vec::new())),
-            &[failing_function_function_arg()],
-            &mut Frame::default(),
-        ));
-        assert_expected_function_got_int(run_nil_function_call(
-            &plan,
-            &NilFunctionExpr::value(NilFunctionValue::new(NilFunctionId(0), Vec::new())),
-            &[failing_function_function_arg()],
-            &mut Frame::default(),
-        ));
-        assert_expected_function_got_int(run_tuple_function_call(
-            &plan,
-            &TupleFunctionExpr::value(TupleFunctionValue::new(
-                TupleFunctionId(0),
-                Vec::new(),
-                vec![ValueType::Int],
-            )),
-            &[failing_function_function_arg()],
-            &mut Frame::default(),
-        ));
-        assert_expected_function_got_int(run_list_function_call(
-            &plan,
-            &ListFunctionExpr::value(ListFunctionValue::new(
-                ListFunctionId::from_item_type(0, crate::plan::ValueType::Int),
-                Vec::new(),
-            )),
-            &[failing_function_function_arg()],
-            &mut Frame::default(),
-        ));
-    }
-
-    #[test]
-    fn function_function_calls_propagate_frame_binding_errors() {
-        let plan = plan_with_function_function_steps(Vec::new());
-
-        assert_expected_function_got_int(run_int_function_function_call(
-            &plan,
-            &function_function_expr(FunctionFunctionId::Int(IntFunctionFunctionId(0))),
-            &[failing_function_function_arg()],
-            &mut Frame::default(),
-        ));
-        assert_expected_function_got_int(run_string_function_function_call(
-            &plan,
-            &function_function_expr(FunctionFunctionId::String(StringFunctionFunctionId(0))),
-            &[failing_function_function_arg()],
-            &mut Frame::default(),
-        ));
-        assert_expected_function_got_int(run_float_function_function_call(
-            &plan,
-            &function_function_expr(FunctionFunctionId::Float(FloatFunctionFunctionId(0))),
-            &[failing_function_function_arg()],
-            &mut Frame::default(),
-        ));
-        assert_expected_function_got_int(run_bool_function_function_call(
-            &plan,
-            &function_function_expr(FunctionFunctionId::Bool(BoolFunctionFunctionId(0))),
-            &[failing_function_function_arg()],
-            &mut Frame::default(),
-        ));
-        assert_expected_function_got_int(run_nil_function_function_call(
-            &plan,
-            &function_function_expr(FunctionFunctionId::Nil(NilFunctionFunctionId(0))),
-            &[failing_function_function_arg()],
-            &mut Frame::default(),
-        ));
-        assert_expected_function_got_int(run_tuple_function_function_call(
-            &plan,
-            &function_function_expr(FunctionFunctionId::Tuple(TupleFunctionFunctionId(0))),
-            &[failing_function_function_arg()],
-            &mut Frame::default(),
-        ));
-        assert_expected_function_got_int(run_list_function_function_call(
-            &plan,
-            &function_function_expr(FunctionFunctionId::List(
-                ListFunctionFunctionId::from_item_type(
-                    0,
-                    crate::plan::FunctionType::new(
-                        Vec::new(),
-                        crate::plan::ValueType::List(Box::new(crate::plan::ValueType::Int)),
-                    ),
-                    crate::plan::ValueType::Int,
-                ),
-            )),
-            &[failing_function_function_arg()],
-            &mut Frame::default(),
-        ));
-        assert_expected_function_got_int(run_function_function_function_call(
-            &plan,
-            &function_function_expr(FunctionFunctionId::Function(FunctionFunctionFunctionId(0))),
-            &[failing_function_function_arg()],
-            &mut Frame::default(),
-        ));
-    }
-
-    fn assert_expected_function_got_int<T>(actual: Result<T, ExecutionError>) {
-        assert_function_return_family_mismatch(
-            actual,
-            FunctionReturnFamily::Function,
-            FunctionReturnFamily::Int,
-        );
-    }
-
-    fn assert_function_return_family_mismatch<T>(
-        actual: Result<T, ExecutionError>,
-        expected: FunctionReturnFamily,
-        actual_family: FunctionReturnFamily,
-    ) {
-        let error = actual.err().expect("call should fail");
-
-        assert_eq!(
-            error,
-            ExecutionError::function_return_family_mismatch(expected, actual_family),
-        );
-    }
-
-    fn function_function_expr(runtime_id: FunctionFunctionId) -> FunctionFunctionExpr {
-        FunctionFunctionExpr::value(FunctionFunctionValue::new(
-            runtime_id,
-            Vec::new(),
-            FunctionType::new(Vec::new(), ValueType::Int),
-        ))
-    }
-
-    fn failing_function_function_expr() -> FunctionFunctionExpr {
-        FunctionFunctionExpr::function_call(
-            function_function_expr(FunctionFunctionId::Int(IntFunctionFunctionId(0))),
-            Vec::new(),
-            FunctionType::new(
-                Vec::new(),
-                ValueType::Function(Box::new(FunctionType::new(Vec::new(), ValueType::Int))),
-            ),
-        )
-    }
-
-    fn failing_function_function_arg() -> CallArg {
-        CallArg::function_function(FunctionFunctionLocalId(0), failing_function_function_expr())
-    }
-
-    fn failing_step() -> Step {
-        Step::evaluate(Expr::function(FunctionExpr::function(
-            failing_function_function_expr(),
-        )))
-    }
-
-    fn plan_with_function_function_steps(steps: Vec<Step>) -> ExecutionPlan {
-        ExecutionPlan::from_module_plan(crate::plan::ModulePlan::new(
-            "main".into(),
-            FunctionPlan::new(
-                FunctionId::new(0),
-                "main".into(),
-                Vec::new(),
-                Vec::new(),
-                ReturnExpr::int(IntFunctionId(0), IntExpr::value(1.into())),
-            ),
-            vec![
-                function_plan(1, "int_function", steps.clone(), int_function_expr()),
-                function_plan(2, "string_function", steps.clone(), string_function_expr()),
-                function_plan(3, "float_function", steps.clone(), float_function_expr()),
-                function_plan(4, "bool_function", steps.clone(), bool_function_expr()),
-                function_plan(5, "nil_function", steps.clone(), nil_function_expr()),
-                function_plan(6, "tuple_function", steps.clone(), tuple_function_expr()),
-                function_plan(7, "list_function", steps.clone(), list_function_expr()),
-                function_plan(
-                    8,
-                    "function_function",
-                    steps,
-                    function_function_expr_value(),
-                ),
-            ],
-        ))
-    }
-
-    fn plan_with_main(steps: Vec<Step>, return_: ReturnExpr) -> ExecutionPlan {
-        ExecutionPlan::from_module_plan(crate::plan::ModulePlan::new(
-            "main".into(),
-            FunctionPlan::new(
-                FunctionId::new(0),
-                "main".into(),
-                Vec::new(),
-                steps,
-                return_,
-            ),
-            vec![function_plan(
-                1,
-                "int_function",
-                Vec::new(),
-                int_function_expr(),
-            )],
-        ))
-    }
-
-    fn primitive_function_plan() -> ExecutionPlan {
-        primitive_function_plan_with_steps(Vec::new())
-    }
-
-    fn primitive_function_plan_with_steps(steps: Vec<Step>) -> ExecutionPlan {
-        ExecutionPlan::from_module_plan(crate::plan::ModulePlan::new(
-            "main".into(),
-            FunctionPlan::new(
-                FunctionId::new(0),
-                "main".into(),
-                Vec::new(),
-                steps.clone(),
-                ReturnExpr::int(IntFunctionId(0), IntExpr::value(1.into())),
-            ),
-            vec![
-                FunctionPlan::new(
-                    FunctionId::new(1),
-                    "string".into(),
-                    Vec::new(),
-                    steps.clone(),
-                    ReturnExpr::string(StringFunctionId(0), StringExpr::value("geam".into())),
-                ),
-                FunctionPlan::new(
-                    FunctionId::new(2),
-                    "float".into(),
-                    Vec::new(),
-                    steps.clone(),
-                    ReturnExpr::float(FloatFunctionId(0), FloatExpr::value(1.5)),
-                ),
-                FunctionPlan::new(
-                    FunctionId::new(3),
-                    "bool".into(),
-                    Vec::new(),
-                    steps.clone(),
-                    ReturnExpr::bool(BoolFunctionId(0), BoolExpr::value(true)),
-                ),
-                FunctionPlan::new(
-                    FunctionId::new(4),
-                    "nil".into(),
-                    Vec::new(),
-                    steps.clone(),
-                    ReturnExpr::nil(NilFunctionId(0), NilExpr::value()),
-                ),
-                FunctionPlan::new(
-                    FunctionId::new(5),
-                    "tuple".into(),
-                    Vec::new(),
-                    steps.clone(),
-                    ReturnExpr::tuple(
-                        TupleFunctionId(0),
-                        TupleExpr::value(
-                            vec![Expr::int(IntExpr::value(1.into()))],
-                            vec![ValueType::Int],
-                        ),
-                    ),
-                ),
-                FunctionPlan::new(
-                    FunctionId::new(6),
-                    "list".into(),
-                    Vec::new(),
-                    steps,
-                    ReturnExpr::int_list_body(
-                        crate::plan::IntListFunctionId(0),
-                        crate::plan::IntListReturn::expr(
-                            ListExpr::value(
-                                vec![Expr::int(IntExpr::value(1.into()))],
-                                ValueType::Int,
-                            )
-                            .into_int()
-                            .expect("expression should be List(Int)"),
-                        ),
-                    ),
-                ),
-            ],
-        ))
-    }
-
-    fn function_plan(
-        id: usize,
-        name: &str,
-        steps: Vec<Step>,
-        return_: FunctionExpr,
-    ) -> FunctionPlan {
-        FunctionPlan::new(
-            FunctionId::new(id),
-            name.into(),
-            Vec::new(),
-            steps,
-            function_return_expr(return_),
-        )
-    }
-
-    fn function_return_expr(return_: FunctionExpr) -> ReturnExpr {
-        match return_.into_kind() {
-            FunctionExprKind::Int(return_) => {
-                ReturnExpr::int_function(IntFunctionFunctionId(0), return_)
-            }
-            FunctionExprKind::String(return_) => {
-                ReturnExpr::string_function(StringFunctionFunctionId(0), return_)
-            }
-            FunctionExprKind::Float(return_) => {
-                ReturnExpr::float_function(FloatFunctionFunctionId(0), return_)
-            }
-            FunctionExprKind::Bool(return_) => {
-                ReturnExpr::bool_function(BoolFunctionFunctionId(0), return_)
-            }
-            FunctionExprKind::Nil(return_) => {
-                ReturnExpr::nil_function(NilFunctionFunctionId(0), return_)
-            }
-            FunctionExprKind::Tuple(return_) => {
-                ReturnExpr::tuple_function(TupleFunctionFunctionId(0), return_)
-            }
-            FunctionExprKind::List(return_) => ReturnExpr::list_function(
-                crate::plan::ListFunctionFunctionId::from_item_type(
-                    0,
-                    crate::plan::FunctionType::new(
-                        Vec::new(),
-                        crate::plan::ValueType::List(Box::new(crate::plan::ValueType::Int)),
-                    ),
-                    crate::plan::ValueType::Int,
-                ),
-                return_,
-            ),
-            FunctionExprKind::Function(return_) => {
-                ReturnExpr::function_function(FunctionFunctionFunctionId(0), return_)
-            }
+        for source in callee_sources {
+            assert_eq!(
+                crate::runtime::run_src_error(source).to_string(),
+                "panic: callee",
+            );
+        }
+        for source in argument_sources {
+            assert_eq!(
+                crate::runtime::run_src_error(source).to_string(),
+                "panic: argument",
+            );
         }
     }
 
-    fn int_function_expr() -> FunctionExpr {
-        FunctionExpr::int(IntFunctionExpr::value(IntFunctionValue::new(
-            IntFunctionId(0),
+    #[test]
+    fn list_function_value_calls_propagate_callee_panics() {
+        let sources = [
+            "pub fn main() -> List(Int) { case True { True -> panic as \"callee\" False -> fn() { [] } }() }",
+            "pub fn main() -> List(String) { case True { True -> panic as \"callee\" False -> fn() { [] } }() }",
+            "pub fn main() -> List(Float) { case True { True -> panic as \"callee\" False -> fn() { [] } }() }",
+            "pub fn main() -> List(Bool) { case True { True -> panic as \"callee\" False -> fn() { [] } }() }",
+            "pub fn main() -> List(Nil) { case True { True -> panic as \"callee\" False -> fn() { [] } }() }",
+            "pub fn main() -> List(#(Int)) { case True { True -> panic as \"callee\" False -> fn() { [] } }() }",
+            "pub fn main() -> List(List(Int)) { case True { True -> panic as \"callee\" False -> fn() { [] } }() }",
+            "pub fn main() -> List(fn() -> Int) { case True { True -> panic as \"callee\" False -> fn() { [] } }() }",
+        ];
+
+        for source in sources {
+            assert_eq!(
+                crate::runtime::run_src_error(source).to_string(),
+                "panic: callee",
+            );
+        }
+    }
+
+    #[test]
+    fn function_returning_function_value_calls_propagate_callee_and_argument_panics() {
+        let callee_sources = [
+            "pub fn main() -> fn() -> Int { case True { True -> panic as \"callee\" False -> fn() { fn() { 0 } } }() }",
+            "pub fn main() -> fn() -> String { case True { True -> panic as \"callee\" False -> fn() { fn() { \"\" } } }() }",
+            "pub fn main() -> fn() -> Float { case True { True -> panic as \"callee\" False -> fn() { fn() { 0.0 } } }() }",
+            "pub fn main() -> fn() -> Bool { case True { True -> panic as \"callee\" False -> fn() { fn() { False } } }() }",
+            "pub fn main() -> fn() -> Nil { case True { True -> panic as \"callee\" False -> fn() { fn() { Nil } } }() }",
+            "pub fn main() -> fn() -> #(Int) { case True { True -> panic as \"callee\" False -> fn() { fn() { #(0) } } }() }",
+            "pub fn main() -> fn() -> List(Int) { case True { True -> panic as \"callee\" False -> fn() { fn() { [] } } }() }",
+            "pub fn main() -> fn() -> fn() -> Int { case True { True -> panic as \"callee\" False -> fn() { fn() { fn() { 0 } } } }() }",
+        ];
+        let argument_sources = [
+            "fn callee(value: Int) -> fn() -> Int { fn() { value } } pub fn main() { let function = callee function(panic as \"argument\") }",
+            "fn callee(value: Int) -> fn() -> String { fn() { \"value\" } } pub fn main() { let function = callee function(panic as \"argument\") }",
+            "fn callee(value: Int) -> fn() -> Float { fn() { 1.0 } } pub fn main() { let function = callee function(panic as \"argument\") }",
+            "fn callee(value: Int) -> fn() -> Bool { fn() { True } } pub fn main() { let function = callee function(panic as \"argument\") }",
+            "fn callee(value: Int) -> fn() -> Nil { fn() { Nil } } pub fn main() { let function = callee function(panic as \"argument\") }",
+            "fn callee(value: Int) -> fn() -> #(Int) { fn() { #(value) } } pub fn main() { let function = callee function(panic as \"argument\") }",
+            "fn callee(value: Int) -> fn() -> List(Int) { fn() { [value] } } pub fn main() { let function = callee function(panic as \"argument\") }",
+            "fn callee(value: Int) -> fn() -> fn() -> Int { fn() { fn() { value } } } pub fn main() { let function = callee function(panic as \"argument\") }",
+        ];
+
+        for source in callee_sources {
+            assert_eq!(
+                crate::runtime::run_src_error(source).to_string(),
+                "panic: callee",
+            );
+        }
+        for source in argument_sources {
+            assert_eq!(
+                crate::runtime::run_src_error(source).to_string(),
+                "panic: argument",
+            );
+        }
+    }
+
+    #[test]
+    fn direct_calls_propagate_argument_panics_for_every_return_family() {
+        let sources = [
+            "fn callee(value: Int) -> Int { value } pub fn main() { let _ = callee(panic) 0 }",
+            "fn callee(value: Int) -> String { \"value\" } pub fn main() { let _ = callee(panic) 0 }",
+            "fn callee(value: Int) -> Float { 1.0 } pub fn main() { let _ = callee(panic) 0 }",
+            "fn callee(value: Int) -> Bool { True } pub fn main() { let _ = callee(panic) 0 }",
+            "fn callee(value: Int) -> Nil { Nil } pub fn main() { let _ = callee(panic) 0 }",
+            "fn callee(value: Int) -> #(Int) { #(value) } pub fn main() { let _ = callee(panic) 0 }",
+            "fn callee(value: Int) -> List(Int) { [] } pub fn main() { let _ = callee(panic) 0 }",
+            "fn callee(value: Int) -> List(String) { [] } pub fn main() { let _ = callee(panic) 0 }",
+            "fn callee(value: Int) -> List(Float) { [] } pub fn main() { let _ = callee(panic) 0 }",
+            "fn callee(value: Int) -> List(Bool) { [] } pub fn main() { let _ = callee(panic) 0 }",
+            "fn callee(value: Int) -> List(Nil) { [] } pub fn main() { let _ = callee(panic) 0 }",
+            "fn callee(value: Int) -> List(#(Int)) { [] } pub fn main() { let _ = callee(panic) 0 }",
+            "fn callee(value: Int) -> List(List(Int)) { [] } pub fn main() { let _ = callee(panic) 0 }",
+            "fn callee(value: Int) -> List(fn() -> Int) { [] } pub fn main() { let _ = callee(panic) 0 }",
+        ];
+
+        for source in sources {
+            let plan = crate::runtime::plan_src(source);
+            let error = run_main(&plan).expect_err("panic argument should fail execution");
+
+            assert_eq!(error.to_string(), "panic: `panic` expression evaluated.");
+        }
+    }
+
+    #[test]
+    fn generic_list_call_propagates_tail_call_argument_panics() {
+        let plan = crate::runtime::plan_src(
+            "fn callee(value: Int) -> List(Int) { [] } pub fn main() { callee(panic) }",
+        );
+        let main = plan.int_list_function(IntListFunctionId(0));
+        let args = expect_tail_call_args(main.return_());
+        let mut caller_frame = Frame::default();
+
+        let error = super::run_list_call(
+            &plan,
+            ListFunctionId::Int(IntListFunctionId(1)),
+            args,
+            &mut caller_frame,
+        )
+        .expect_err("panic argument should fail execution");
+
+        assert_eq!(error.to_string(), "panic: `panic` expression evaluated.");
+    }
+
+    #[test]
+    #[should_panic(expected = "expected a tail-call return body")]
+    fn tail_call_shape_guard_rejects_expression_returns() {
+        let plan = crate::runtime::plan_src("pub fn main() -> List(Int) { [] }");
+        let main = plan.int_list_function(IntListFunctionId(0));
+
+        let _ = expect_tail_call_args(main.return_());
+    }
+
+    #[test]
+    fn list_function_value_calls_reject_wrong_item_families() {
+        let plan = crate::runtime::plan_src(
+            r#"
+fn int_values(provider: fn() -> List(Int)) { provider() }
+fn string_values(provider: fn() -> List(String)) { provider() }
+fn float_values(provider: fn() -> List(Float)) { provider() }
+fn bool_values(provider: fn() -> List(Bool)) { provider() }
+fn nil_values(provider: fn() -> List(Nil)) { provider() }
+fn tuple_values(provider: fn() -> List(#(Int))) { provider() }
+fn nested_values(provider: fn() -> List(List(Int))) { provider() }
+fn function_values(provider: fn() -> List(fn() -> Int)) { provider() }
+
+pub fn main() { Nil }
+"#,
+        );
+        let expected_error = || {
+            ExecutionError::function_return_family_mismatch(
+                FunctionReturnFamily::List,
+                FunctionReturnFamily::List,
+            )
+        };
+        let int_type = FunctionType::new(Vec::new(), ValueType::List(Box::new(ValueType::Int)));
+        let string_type =
+            FunctionType::new(Vec::new(), ValueType::List(Box::new(ValueType::String)));
+        let float_type = FunctionType::new(Vec::new(), ValueType::List(Box::new(ValueType::Float)));
+        let bool_type = FunctionType::new(Vec::new(), ValueType::List(Box::new(ValueType::Bool)));
+        let nil_type = FunctionType::new(Vec::new(), ValueType::List(Box::new(ValueType::Nil)));
+        let tuple_item_type = vec![ValueType::Int];
+        let tuple_type = FunctionType::new(
             Vec::new(),
-        )))
-    }
-
-    fn string_function_expr() -> FunctionExpr {
-        FunctionExpr::string(StringFunctionExpr::value(StringFunctionValue::new(
-            StringFunctionId(0),
+            ValueType::List(Box::new(ValueType::Tuple(tuple_item_type.clone()))),
+        );
+        let nested_item_type = Box::new(ValueType::Int);
+        let nested_type = FunctionType::new(
             Vec::new(),
-        )))
-    }
-
-    fn float_function_expr() -> FunctionExpr {
-        FunctionExpr::float(FloatFunctionExpr::value(FloatFunctionValue::new(
-            FloatFunctionId(0),
+            ValueType::List(Box::new(ValueType::List(nested_item_type.clone()))),
+        );
+        let function_item_type = FunctionType::new(Vec::new(), ValueType::Int);
+        let function_type = FunctionType::new(
             Vec::new(),
-        )))
-    }
+            ValueType::List(Box::new(ValueType::Function(Box::new(
+                function_item_type.clone(),
+            )))),
+        );
 
-    fn bool_function_expr() -> FunctionExpr {
-        FunctionExpr::bool(BoolFunctionExpr::value(BoolFunctionValue::new(
-            BoolFunctionId(0),
-            Vec::new(),
-        )))
-    }
-
-    fn nil_function_expr() -> FunctionExpr {
-        FunctionExpr::nil(NilFunctionExpr::value(NilFunctionValue::new(
-            NilFunctionId(0),
-            Vec::new(),
-        )))
-    }
-
-    fn tuple_function_expr() -> FunctionExpr {
-        FunctionExpr::tuple(TupleFunctionExpr::value(TupleFunctionValue::new(
-            TupleFunctionId(0),
-            Vec::new(),
-            vec![ValueType::Int],
-        )))
-    }
-
-    fn list_function_expr() -> FunctionExpr {
-        FunctionExpr::list(ListFunctionExpr::value(ListFunctionValue::new(
-            ListFunctionId::from_item_type(0, crate::plan::ValueType::Int),
-            Vec::new(),
-        )))
-    }
-
-    fn function_function_expr_value() -> FunctionExpr {
-        FunctionExpr::function(function_function_expr(FunctionFunctionId::Int(
-            IntFunctionFunctionId(0),
-        )))
-    }
-
-    fn plan() -> ExecutionPlan {
-        ExecutionPlan::from_module_plan(crate::plan::ModulePlan::new(
-            "main".into(),
-            FunctionPlan::new(
-                FunctionId::new(0),
-                "main".into(),
+        let function = plan.int_list_function(IntListFunctionId(0));
+        let mut frame = Frame::new(function.frame_layout());
+        frame.set_list_function(
+            ListFunctionLocal::Int {
+                local: IntListFunctionLocalId(0),
+                type_: int_type,
+            },
+            ListFunctionValue::new_with_captures(
+                ListFunctionId::String(StringListFunctionId(0)),
                 Vec::new(),
                 Vec::new(),
-                ReturnExpr::int(IntFunctionId(0), IntExpr::value(1.into())),
             ),
+        );
+        assert_eq!(
+            run_int_list_loop(&plan, IntListFunctionId(0), frame),
+            Err(expected_error())
+        );
+
+        let function = plan.string_list_function(StringListFunctionId(0));
+        let mut frame = Frame::new(function.frame_layout());
+        frame.set_list_function(
+            ListFunctionLocal::String {
+                local: StringListFunctionLocalId(0),
+                type_: string_type,
+            },
+            ListFunctionValue::new_with_captures(
+                ListFunctionId::Int(IntListFunctionId(0)),
+                Vec::new(),
+                Vec::new(),
+            ),
+        );
+        assert_eq!(
+            run_string_list_loop(&plan, StringListFunctionId(0), frame),
+            Err(expected_error())
+        );
+
+        let function = plan.float_list_function(FloatListFunctionId(0));
+        let mut frame = Frame::new(function.frame_layout());
+        frame.set_list_function(
+            ListFunctionLocal::Float {
+                local: crate::plan::execution::FloatListFunctionLocalId(0),
+                type_: float_type,
+            },
+            ListFunctionValue::new_with_captures(
+                ListFunctionId::Int(IntListFunctionId(0)),
+                Vec::new(),
+                Vec::new(),
+            ),
+        );
+        assert_eq!(
+            run_float_list_loop(&plan, FloatListFunctionId(0), frame),
+            Err(expected_error())
+        );
+
+        let function = plan.bool_list_function(BoolListFunctionId(0));
+        let mut frame = Frame::new(function.frame_layout());
+        frame.set_list_function(
+            ListFunctionLocal::Bool {
+                local: crate::plan::execution::BoolListFunctionLocalId(0),
+                type_: bool_type,
+            },
+            ListFunctionValue::new_with_captures(
+                ListFunctionId::Int(IntListFunctionId(0)),
+                Vec::new(),
+                Vec::new(),
+            ),
+        );
+        assert_eq!(
+            run_bool_list_loop(&plan, BoolListFunctionId(0), frame),
+            Err(expected_error())
+        );
+
+        let function = plan.nil_list_function(NilListFunctionId(0));
+        let mut frame = Frame::new(function.frame_layout());
+        frame.set_list_function(
+            ListFunctionLocal::Nil {
+                local: crate::plan::execution::NilListFunctionLocalId(0),
+                type_: nil_type,
+            },
+            ListFunctionValue::new_with_captures(
+                ListFunctionId::Int(IntListFunctionId(0)),
+                Vec::new(),
+                Vec::new(),
+            ),
+        );
+        assert_eq!(
+            run_nil_list_loop(&plan, NilListFunctionId(0), frame),
+            Err(expected_error())
+        );
+
+        let function = plan.tuple_list_function(TupleListFunctionId(0));
+        let mut frame = Frame::new(function.frame_layout());
+        frame.set_list_function(
+            ListFunctionLocal::Tuple {
+                local: TupleListFunctionLocalId(0),
+                type_: tuple_type,
+                item_type: tuple_item_type,
+            },
+            ListFunctionValue::new_with_captures(
+                ListFunctionId::Int(IntListFunctionId(0)),
+                Vec::new(),
+                Vec::new(),
+            ),
+        );
+        assert_eq!(
+            run_tuple_list_loop(&plan, TupleListFunctionId(0), frame),
+            Err(expected_error())
+        );
+
+        let function = plan.list_list_function(ListListFunctionId(0));
+        let mut frame = Frame::new(function.frame_layout());
+        frame.set_list_function(
+            ListFunctionLocal::List {
+                local: ListListFunctionLocalId(0),
+                type_: nested_type,
+                item_type: nested_item_type,
+            },
+            ListFunctionValue::new_with_captures(
+                ListFunctionId::Int(IntListFunctionId(0)),
+                Vec::new(),
+                Vec::new(),
+            ),
+        );
+        assert_eq!(
+            run_list_list_loop(&plan, ListListFunctionId(0), frame),
+            Err(expected_error())
+        );
+
+        let function = plan.function_list_function(FunctionListFunctionId(0));
+        let mut frame = Frame::new(function.frame_layout());
+        frame.set_list_function(
+            ListFunctionLocal::Function {
+                local: FunctionListFunctionLocalId(0),
+                type_: function_type,
+                item_type: Box::new(function_item_type),
+            },
+            ListFunctionValue::new_with_captures(
+                ListFunctionId::Int(IntListFunctionId(0)),
+                Vec::new(),
+                Vec::new(),
+            ),
+        );
+        assert_eq!(
+            run_function_list_loop(&plan, FunctionListFunctionId(0), frame),
+            Err(expected_error())
+        );
+    }
+
+    #[test]
+    fn list_function_value_calls_propagate_argument_panics() {
+        let sources = [
+            "fn callee(value: Int) -> List(Int) { [] } pub fn main() { let function = callee function(panic) }",
+            "fn callee(value: Int) -> List(String) { [] } pub fn main() { let function = callee function(panic) }",
+            "fn callee(value: Int) -> List(Float) { [] } pub fn main() { let function = callee function(panic) }",
+            "fn callee(value: Int) -> List(Bool) { [] } pub fn main() { let function = callee function(panic) }",
+            "fn callee(value: Int) -> List(Nil) { [] } pub fn main() { let function = callee function(panic) }",
+            "fn callee(value: Int) -> List(#(Int)) { [] } pub fn main() { let function = callee function(panic) }",
+            "fn callee(value: Int) -> List(List(Int)) { [] } pub fn main() { let function = callee function(panic) }",
+            "fn callee(value: Int) -> List(fn() -> Int) { [] } pub fn main() { let function = callee function(panic) }",
+        ];
+
+        for source in sources {
+            let plan = crate::runtime::plan_src(source);
+            let error = run_main(&plan).expect_err("panic argument should fail execution");
+
+            assert_eq!(error.to_string(), "panic: `panic` expression evaluated.");
+        }
+    }
+
+    #[test]
+    fn non_tail_function_returning_calls_propagate_argument_panics() {
+        let sources = [
+            "fn callee(value: Int) -> fn() -> Int { panic } pub fn main() { let _ = callee(panic) 0 }",
+            "fn callee(value: Int) -> fn() -> String { panic } pub fn main() { let _ = callee(panic) 0 }",
+            "fn callee(value: Int) -> fn() -> Float { panic } pub fn main() { let _ = callee(panic) 0 }",
+            "fn callee(value: Int) -> fn() -> Bool { panic } pub fn main() { let _ = callee(panic) 0 }",
+            "fn callee(value: Int) -> fn() -> Nil { panic } pub fn main() { let _ = callee(panic) 0 }",
+            "fn callee(value: Int) -> fn() -> #(Int) { panic } pub fn main() { let _ = callee(panic) 0 }",
+            "fn callee(value: Int) -> fn() -> List(Int) { panic } pub fn main() { let _ = callee(panic) 0 }",
+            "fn callee(value: Int) -> fn() -> fn() -> Int { panic } pub fn main() { let _ = callee(panic) 0 }",
+        ];
+
+        for source in sources {
+            let plan = crate::runtime::plan_src(source);
+            let error = run_main(&plan).expect_err("panic argument should fail execution");
+
+            assert_eq!(error.to_string(), "panic: `panic` expression evaluated.");
+        }
+    }
+
+    #[test]
+    fn function_function_calls_reject_wrong_return_families() {
+        let plan = crate::runtime::plan_src(
+            r#"
+fn int_function(provider: fn() -> fn() -> Int) { provider() }
+fn string_function(provider: fn() -> fn() -> String) { provider() }
+fn float_function(provider: fn() -> fn() -> Float) { provider() }
+fn bool_function(provider: fn() -> fn() -> Bool) { provider() }
+fn nil_function(provider: fn() -> fn() -> Nil) { provider() }
+fn tuple_function(provider: fn() -> fn() -> #(Int)) { provider() }
+fn list_function(provider: fn() -> fn() -> List(Int)) { provider() }
+fn function_function(provider: fn() -> fn() -> fn() -> Int) { provider() }
+
+pub fn main() { Nil }
+"#,
+        );
+        let int_return = FunctionType::new(Vec::new(), ValueType::Int);
+        let wrong_string = FunctionFunctionValue::new(
+            FunctionFunctionId::String(StringFunctionFunctionId(0)),
             Vec::new(),
-        ))
+            FunctionType::new(Vec::new(), ValueType::String),
+        );
+        let wrong_int = FunctionFunctionValue::new(
+            FunctionFunctionId::Int(IntFunctionFunctionId(0)),
+            Vec::new(),
+            int_return.clone(),
+        );
+
+        let function = plan.int_function_function(IntFunctionFunctionId(0));
+        let mut frame = Frame::new(function.frame_layout());
+        frame.set_function_function(FunctionFunctionLocalId(0), wrong_string);
+        assert_eq!(
+            run_int_function_loop(&plan, IntFunctionFunctionId(0), frame),
+            Err(ExecutionError::function_return_family_mismatch(
+                FunctionReturnFamily::Int,
+                FunctionReturnFamily::String,
+            )),
+        );
+
+        let function = plan.string_function_function(StringFunctionFunctionId(0));
+        let mut frame = Frame::new(function.frame_layout());
+        frame.set_function_function(FunctionFunctionLocalId(0), wrong_int.clone());
+        assert_eq!(
+            run_string_function_loop(&plan, StringFunctionFunctionId(0), frame),
+            Err(ExecutionError::function_return_family_mismatch(
+                FunctionReturnFamily::String,
+                FunctionReturnFamily::Int,
+            )),
+        );
+
+        let function = plan.float_function_function(FloatFunctionFunctionId(0));
+        let mut frame = Frame::new(function.frame_layout());
+        frame.set_function_function(FunctionFunctionLocalId(0), wrong_int.clone());
+        assert_eq!(
+            run_float_function_loop(&plan, FloatFunctionFunctionId(0), frame),
+            Err(ExecutionError::function_return_family_mismatch(
+                FunctionReturnFamily::Float,
+                FunctionReturnFamily::Int,
+            )),
+        );
+
+        let function = plan.bool_function_function(BoolFunctionFunctionId(0));
+        let mut frame = Frame::new(function.frame_layout());
+        frame.set_function_function(FunctionFunctionLocalId(0), wrong_int.clone());
+        assert_eq!(
+            run_bool_function_loop(&plan, BoolFunctionFunctionId(0), frame),
+            Err(ExecutionError::function_return_family_mismatch(
+                FunctionReturnFamily::Bool,
+                FunctionReturnFamily::Int,
+            )),
+        );
+
+        let function = plan.nil_function_function(NilFunctionFunctionId(0));
+        let mut frame = Frame::new(function.frame_layout());
+        frame.set_function_function(FunctionFunctionLocalId(0), wrong_int.clone());
+        assert_eq!(
+            run_nil_function_loop(&plan, NilFunctionFunctionId(0), frame),
+            Err(ExecutionError::function_return_family_mismatch(
+                FunctionReturnFamily::Nil,
+                FunctionReturnFamily::Int,
+            )),
+        );
+
+        let function = plan.tuple_function_function(TupleFunctionFunctionId(0));
+        let mut frame = Frame::new(function.frame_layout());
+        frame.set_function_function(FunctionFunctionLocalId(0), wrong_int.clone());
+        assert_eq!(
+            run_tuple_function_loop(&plan, TupleFunctionFunctionId(0), frame),
+            Err(ExecutionError::function_return_family_mismatch(
+                FunctionReturnFamily::Tuple,
+                FunctionReturnFamily::Int,
+            )),
+        );
+
+        let list_id = ListFunctionFunctionId::Int {
+            id: IntListFunctionFunctionId(0),
+            type_: FunctionType::new(Vec::new(), ValueType::List(Box::new(ValueType::Int))),
+        };
+        let function = plan.list_function_function(&list_id);
+        let mut frame = Frame::new(function.frame_layout());
+        frame.set_function_function(FunctionFunctionLocalId(0), wrong_int.clone());
+        assert_eq!(
+            run_list_function_loop(&plan, list_id, frame),
+            Err(ExecutionError::function_return_family_mismatch(
+                FunctionReturnFamily::List,
+                FunctionReturnFamily::Int,
+            )),
+        );
+
+        let function = plan.function_function_function(FunctionFunctionFunctionId(0));
+        let mut frame = Frame::new(function.frame_layout());
+        frame.set_function_function(FunctionFunctionLocalId(0), wrong_int);
+        assert_eq!(
+            run_function_function_loop(&plan, FunctionFunctionFunctionId(0), frame),
+            Err(ExecutionError::function_return_family_mismatch(
+                FunctionReturnFamily::Function,
+                FunctionReturnFamily::Int,
+            )),
+        );
+    }
+
+    #[test]
+    fn function_list_projections_reject_wrong_return_families() {
+        let plan = crate::runtime::plan_src(
+            r#"
+fn int_function(values: List(fn() -> Int)) {
+  case values { [value, ..] -> value _ -> panic }
+}
+fn string_function(values: List(fn() -> String)) {
+  case values { [value, ..] -> value _ -> panic }
+}
+fn float_function(values: List(fn() -> Float)) {
+  case values { [value, ..] -> value _ -> panic }
+}
+fn bool_function(values: List(fn() -> Bool)) {
+  case values { [value, ..] -> value _ -> panic }
+}
+fn nil_function(values: List(fn() -> Nil)) {
+  case values { [value, ..] -> value _ -> panic }
+}
+fn tuple_function(values: List(fn() -> #(Int))) {
+  case values { [value, ..] -> value _ -> panic }
+}
+fn list_function(values: List(fn() -> List(Int))) {
+  case values { [value, ..] -> value _ -> panic }
+}
+fn function_function(values: List(fn() -> fn() -> Int)) {
+  case values { [value, ..] -> value _ -> panic }
+}
+
+pub fn main() { Nil }
+"#,
+        );
+        let wrong_string =
+            FunctionValue::new(RuntimeFunctionId::String(StringFunctionId(0)), Vec::new());
+        let wrong_int = FunctionValue::new(RuntimeFunctionId::Int(IntFunctionId(0)), Vec::new());
+
+        let function = plan.int_function_function(IntFunctionFunctionId(0));
+        let mut frame = Frame::new(function.frame_layout());
+        frame.set_function_list(FunctionListLocalId(0), vec![wrong_string]);
+        assert_eq!(
+            run_int_function_loop(&plan, IntFunctionFunctionId(0), frame),
+            Err(ExecutionError::function_return_family_mismatch(
+                FunctionReturnFamily::Int,
+                FunctionReturnFamily::String,
+            )),
+        );
+
+        let function = plan.string_function_function(StringFunctionFunctionId(0));
+        let mut frame = Frame::new(function.frame_layout());
+        frame.set_function_list(FunctionListLocalId(0), vec![wrong_int.clone()]);
+        assert_eq!(
+            run_string_function_loop(&plan, StringFunctionFunctionId(0), frame),
+            Err(ExecutionError::function_return_family_mismatch(
+                FunctionReturnFamily::String,
+                FunctionReturnFamily::Int,
+            )),
+        );
+
+        let function = plan.float_function_function(FloatFunctionFunctionId(0));
+        let mut frame = Frame::new(function.frame_layout());
+        frame.set_function_list(FunctionListLocalId(0), vec![wrong_int.clone()]);
+        assert_eq!(
+            run_float_function_loop(&plan, FloatFunctionFunctionId(0), frame),
+            Err(ExecutionError::function_return_family_mismatch(
+                FunctionReturnFamily::Float,
+                FunctionReturnFamily::Int,
+            )),
+        );
+
+        let function = plan.bool_function_function(BoolFunctionFunctionId(0));
+        let mut frame = Frame::new(function.frame_layout());
+        frame.set_function_list(FunctionListLocalId(0), vec![wrong_int.clone()]);
+        assert_eq!(
+            run_bool_function_loop(&plan, BoolFunctionFunctionId(0), frame),
+            Err(ExecutionError::function_return_family_mismatch(
+                FunctionReturnFamily::Bool,
+                FunctionReturnFamily::Int,
+            )),
+        );
+
+        let function = plan.nil_function_function(NilFunctionFunctionId(0));
+        let mut frame = Frame::new(function.frame_layout());
+        frame.set_function_list(FunctionListLocalId(0), vec![wrong_int.clone()]);
+        assert_eq!(
+            run_nil_function_loop(&plan, NilFunctionFunctionId(0), frame),
+            Err(ExecutionError::function_return_family_mismatch(
+                FunctionReturnFamily::Nil,
+                FunctionReturnFamily::Int,
+            )),
+        );
+
+        let function = plan.tuple_function_function(TupleFunctionFunctionId(0));
+        let mut frame = Frame::new(function.frame_layout());
+        frame.set_function_list(FunctionListLocalId(0), vec![wrong_int.clone()]);
+        assert_eq!(
+            run_tuple_function_loop(&plan, TupleFunctionFunctionId(0), frame),
+            Err(ExecutionError::function_return_family_mismatch(
+                FunctionReturnFamily::Tuple,
+                FunctionReturnFamily::Int,
+            )),
+        );
+
+        let list_id = ListFunctionFunctionId::Int {
+            id: IntListFunctionFunctionId(0),
+            type_: FunctionType::new(Vec::new(), ValueType::List(Box::new(ValueType::Int))),
+        };
+        let function = plan.list_function_function(&list_id);
+        let mut frame = Frame::new(function.frame_layout());
+        frame.set_function_list(FunctionListLocalId(0), vec![wrong_int.clone()]);
+        assert_eq!(
+            run_list_function_loop(&plan, list_id, frame),
+            Err(ExecutionError::function_return_family_mismatch(
+                FunctionReturnFamily::List,
+                FunctionReturnFamily::Int,
+            )),
+        );
+
+        let function = plan.function_function_function(FunctionFunctionFunctionId(0));
+        let mut frame = Frame::new(function.frame_layout());
+        frame.set_function_list(FunctionListLocalId(0), vec![wrong_int]);
+        assert_eq!(
+            run_function_function_loop(&plan, FunctionFunctionFunctionId(0), frame),
+            Err(ExecutionError::function_return_family_mismatch(
+                FunctionReturnFamily::Function,
+                FunctionReturnFamily::Int,
+            )),
+        );
+    }
+
+    fn expect_tail_call_args<Expression, Function>(
+        body: &ReturnBody<Expression, Function>,
+    ) -> &[CallArg] {
+        match body.kind() {
+            ReturnBodyKind::TailCall { args, .. } => args,
+            _ => panic!("expected a tail-call return body"),
+        }
     }
 }

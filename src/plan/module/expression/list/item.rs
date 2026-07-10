@@ -67,6 +67,10 @@ impl TupleListItem {
     pub(crate) fn item_type(&self) -> Vec<ValueType> {
         self.item_type.clone()
     }
+
+    pub(crate) fn into_item_type(self) -> Vec<ValueType> {
+        self.item_type
+    }
 }
 
 impl ListListItem {
@@ -77,6 +81,10 @@ impl ListListItem {
     pub(crate) fn item_type(&self) -> Box<ValueType> {
         self.item_type.clone()
     }
+
+    pub(crate) fn into_item_type(self) -> Box<ValueType> {
+        self.item_type
+    }
 }
 
 impl FunctionListItem {
@@ -86,6 +94,10 @@ impl FunctionListItem {
 
     pub(crate) fn item_type(&self) -> FunctionType {
         self.item_type.clone()
+    }
+
+    pub(crate) fn into_item_type(self) -> FunctionType {
+        self.item_type
     }
 }
 

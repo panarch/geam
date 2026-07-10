@@ -1,5 +1,5 @@
 use crate::plan::{
-    BoolExpr, BoolFunctionFunctionId, BoolFunctionId, BoolFunctionLocalId, BoolFunctionValue,
+    BoolExpr, BoolFunctionFunctionId, BoolFunctionId, BoolFunctionLocalId, BoolFunctionReference,
     CaptureArg, FloatExpr, FunctionFunctionExpr, FunctionListExpr, FunctionType, IntExpr,
     PanicExpr, ParamLocal, Step, StringExpr, TupleExpr,
 };
@@ -14,7 +14,7 @@ pub struct BoolFunctionExpr {
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum BoolFunctionExprKind {
-    Value(BoolFunctionValue),
+    Reference(BoolFunctionReference),
     Closure {
         runtime_id: BoolFunctionId,
         params: Vec<ParamLocal>,
@@ -72,10 +72,14 @@ pub(crate) enum BoolFunctionExprKind {
 }
 
 impl BoolFunctionExpr {
-    pub(crate) fn value(value: BoolFunctionValue) -> Self {
+    pub(crate) fn reference(value: BoolFunctionReference) -> Self {
+        let type_ = FunctionType::new(
+            value.params().iter().map(ParamLocal::value_type).collect(),
+            crate::plan::ValueType::Bool,
+        );
         Self {
-            type_: value.type_(),
-            kind: BoolFunctionExprKind::Value(value),
+            type_,
+            kind: BoolFunctionExprKind::Reference(value),
         }
     }
 
@@ -246,22 +250,26 @@ impl BoolFunctionExpr {
     pub(crate) fn kind(&self) -> &BoolFunctionExprKind {
         &self.kind
     }
+
+    pub(crate) fn into_parts(self) -> (FunctionType, BoolFunctionExprKind) {
+        (self.type_, self.kind)
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::{BoolFunctionExpr, BoolFunctionExprKind};
     use crate::plan::{
-        BoolExpr, BoolFunctionFunctionId, BoolFunctionId, BoolFunctionLocalId, BoolFunctionValue,
-        BoolLocalId, Expr, FunctionFunctionExpr, FunctionFunctionId, FunctionFunctionValue,
-        FunctionType, IntExpr, ParamLocal, Step, StringExpr, ValueType,
+        BoolExpr, BoolFunctionFunctionId, BoolFunctionId, BoolFunctionLocalId,
+        BoolFunctionReference, BoolLocalId, Expr, FunctionFunctionExpr, FunctionFunctionId,
+        FunctionFunctionReference, FunctionType, IntExpr, ParamLocal, Step, StringExpr, ValueType,
     };
 
     #[test]
     fn bool_function_expr_kind_accessors() {
         assert_eq!(
             function_value().kind(),
-            &BoolFunctionExprKind::Value(BoolFunctionValue::new(
+            &BoolFunctionExprKind::Reference(BoolFunctionReference::new(
                 BoolFunctionId(0),
                 vec![ParamLocal::bool(BoolLocalId(0))],
             )),
@@ -379,7 +387,7 @@ mod tests {
     }
 
     fn function_value() -> BoolFunctionExpr {
-        BoolFunctionExpr::value(BoolFunctionValue::new(
+        BoolFunctionExpr::reference(BoolFunctionReference::new(
             BoolFunctionId(0),
             vec![ParamLocal::bool(BoolLocalId(0))],
         ))
@@ -390,11 +398,13 @@ mod tests {
     }
 
     fn function_function_value() -> FunctionFunctionExpr {
-        FunctionFunctionExpr::value(FunctionFunctionValue::new(
-            FunctionFunctionId::Bool(BoolFunctionFunctionId(0)),
-            Vec::new(),
+        FunctionFunctionExpr::reference(
+            FunctionFunctionReference::new(
+                FunctionFunctionId::Bool(BoolFunctionFunctionId(0)),
+                Vec::new(),
+            ),
             function_type(),
-        ))
+        )
     }
 
     fn tuple_expr() -> crate::plan::TupleExpr {

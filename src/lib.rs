@@ -6,9 +6,12 @@ pub mod runtime;
 pub use frontend::{FrontendError, compile_typed_module};
 pub use plan::execution::ExecutionPlan;
 pub use plan::{
-    BoolExpr, BoolLocalId, Expr, FunctionId, FunctionPlan, FunctionType, FunctionValue, IntExpr,
-    IntLocalId, LocalId, ModulePlan, NilExpr, NilLocalId, PanicSite, Param, ParamBinding,
-    SourceContext, SourceSpan, Step, StringExpr, StringLocalId, Value, ValueType,
+    BoolExpr, BoolLocalId, Expr, FunctionId, FunctionPlan, FunctionType, IntExpr, IntLocalId,
+    LocalId, ModulePlan, NilExpr, NilLocalId, PanicSite, Param, ParamBinding, SourceContext,
+    SourceSpan, Step, StringExpr, StringLocalId, ValueType,
 };
 pub use planner::{PlanError, plan_module, plan_module_with_source};
-pub use runtime::{ExecutionError, Panic, PanicDetails, PanicKind, PanicMessage, run_main};
+pub use runtime::{
+    ExecutionError, FunctionValue, ListValue, ListValueItemTypeMismatch, Panic, PanicDetails,
+    PanicKind, PanicMessage, Value, run_main,
+};

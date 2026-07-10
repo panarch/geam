@@ -198,7 +198,9 @@ fn plan_var(
                 });
             };
 
-            Ok(Expr::function(FunctionExpr::value(function.value())))
+            Ok(Expr::function(FunctionExpr::reference(
+                function.reference(),
+            )))
         }
         ValueConstructorVariant::ModuleConstant { .. }
         | ValueConstructorVariant::ModuleFn { .. } => {

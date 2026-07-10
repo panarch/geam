@@ -76,9 +76,9 @@ pub(super) fn plan_var(
                         reason: InvalidTypedAstReason::UnknownLocal { name: name.clone() },
                     })?;
 
-            let value = function.value();
+            let reference = function.reference();
 
-            Ok(Expr::function(FunctionExpr::value(value)))
+            Ok(Expr::function(FunctionExpr::reference(reference)))
         }
         ValueConstructorVariant::ModuleFn { .. } => Err(PlanError::InvalidTypedAst {
             reason: InvalidTypedAstReason::ExpressionShape {

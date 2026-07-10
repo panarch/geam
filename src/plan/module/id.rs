@@ -369,6 +369,7 @@ impl FunctionId {
     }
 }
 
+#[cfg(test)]
 impl FunctionFunctionId {
     pub(crate) fn family(&self) -> FunctionReturnFamily {
         match self {

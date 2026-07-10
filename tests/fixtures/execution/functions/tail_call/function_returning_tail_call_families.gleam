@@ -14,6 +14,14 @@ fn to_tuple(value: Int) {
   #(value, "ok")
 }
 
+fn to_float(value: Int) {
+  1.0
+}
+
+fn to_list(value: Int) {
+  [value]
+}
+
 fn get_string(n: Int) {
   case n {
     0 -> to_string
@@ -42,6 +50,20 @@ fn get_tuple(n: Int) {
   }
 }
 
+fn get_float(n: Int) {
+  case n {
+    0 -> to_float
+    _ -> get_float(n - 1)
+  }
+}
+
+fn get_list(n: Int) {
+  case n {
+    0 -> to_list
+    _ -> get_list(n - 1)
+  }
+}
+
 fn get_getter(n: Int) {
   case n {
     0 -> get_string
@@ -54,9 +76,13 @@ pub fn main() {
   let bool_fn = get_bool(10000)
   let nil_fn = get_nil(10000)
   let tuple_fn = get_tuple(10000)
+  let float_fn = get_float(10000)
+  let list_fn = get_list(10000)
   let getter = get_getter(10000)
 
   nil_fn(0)
+  assert float_fn(0) == 1.0
+  assert list_fn(1) == [1]
 
   case bool_fn(0) {
     True -> string_fn(0) <> getter(0)(0) <> tuple_fn(0).1

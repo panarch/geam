@@ -120,8 +120,8 @@ impl<Item: ListItem> ListIndexSource<Item> {
         &self.list
     }
 
-    pub(crate) fn index(&self) -> usize {
-        self.index
+    pub(crate) fn into_parts(self) -> (ListListExpr, usize) {
+        (*self.list, self.index)
     }
 }
 
@@ -146,7 +146,7 @@ impl<Item: ListItem> TypedListExpr<Item> {
         Self::new(item, kind)
     }
 
-    fn into_item_and_kind(self) -> (Item, TypedListExprKind<Item>) {
+    pub(crate) fn into_item_and_kind(self) -> (Item, TypedListExprKind<Item>) {
         (self.item, self.kind)
     }
 

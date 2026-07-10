@@ -1,7 +1,7 @@
 use crate::plan::{
     BoolExpr, CaptureArg, FloatExpr, FloatFunctionFunctionId, FloatFunctionId,
-    FloatFunctionLocalId, FloatFunctionValue, FunctionFunctionExpr, FunctionListExpr, FunctionType,
-    IntExpr, PanicExpr, ParamLocal, Step, StringExpr, TupleExpr,
+    FloatFunctionLocalId, FloatFunctionReference, FunctionFunctionExpr, FunctionListExpr,
+    FunctionType, IntExpr, PanicExpr, ParamLocal, Step, StringExpr, TupleExpr,
 };
 use ecow::EcoString;
 use num_bigint::BigInt;
@@ -14,7 +14,7 @@ pub struct FloatFunctionExpr {
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum FloatFunctionExprKind {
-    Value(FloatFunctionValue),
+    Reference(FloatFunctionReference),
     Closure {
         runtime_id: FloatFunctionId,
         params: Vec<ParamLocal>,
@@ -72,10 +72,14 @@ pub(crate) enum FloatFunctionExprKind {
 }
 
 impl FloatFunctionExpr {
-    pub(crate) fn value(value: FloatFunctionValue) -> Self {
+    pub(crate) fn reference(value: FloatFunctionReference) -> Self {
+        let type_ = FunctionType::new(
+            value.params().iter().map(ParamLocal::value_type).collect(),
+            crate::plan::ValueType::Float,
+        );
         Self {
-            type_: value.type_(),
-            kind: FloatFunctionExprKind::Value(value),
+            type_,
+            kind: FloatFunctionExprKind::Reference(value),
         }
     }
 
@@ -246,6 +250,10 @@ impl FloatFunctionExpr {
     pub(crate) fn kind(&self) -> &FloatFunctionExprKind {
         &self.kind
     }
+
+    pub(crate) fn into_parts(self) -> (FunctionType, FloatFunctionExprKind) {
+        (self.type_, self.kind)
+    }
 }
 
 #[cfg(test)]
@@ -253,8 +261,8 @@ mod tests {
     use super::{FloatFunctionExpr, FloatFunctionExprKind};
     use crate::plan::{
         BoolExpr, Expr, FloatExpr, FloatFunctionFunctionId, FloatFunctionId, FloatFunctionLocalId,
-        FloatFunctionValue, FloatLocalId, FunctionFunctionExpr, FunctionFunctionId,
-        FunctionFunctionValue, FunctionType, IntExpr, ParamLocal, Step, StringExpr, ValueType,
+        FloatFunctionReference, FloatLocalId, FunctionFunctionExpr, FunctionFunctionId,
+        FunctionFunctionReference, FunctionType, IntExpr, ParamLocal, Step, StringExpr, ValueType,
     };
 
     #[test]
@@ -265,7 +273,7 @@ mod tests {
         );
         assert_eq!(
             float_function_value().kind(),
-            &FloatFunctionExprKind::Value(FloatFunctionValue::new(
+            &FloatFunctionExprKind::Reference(FloatFunctionReference::new(
                 FloatFunctionId(0),
                 vec![ParamLocal::float(FloatLocalId(0))],
             )),
@@ -423,7 +431,7 @@ mod tests {
     }
 
     fn float_function_value() -> FloatFunctionExpr {
-        FloatFunctionExpr::value(FloatFunctionValue::new(
+        FloatFunctionExpr::reference(FloatFunctionReference::new(
             FloatFunctionId(0),
             vec![ParamLocal::float(FloatLocalId(0))],
         ))
@@ -434,11 +442,13 @@ mod tests {
     }
 
     fn function_function_value() -> FunctionFunctionExpr {
-        FunctionFunctionExpr::value(FunctionFunctionValue::new(
-            FunctionFunctionId::Float(FloatFunctionFunctionId(0)),
-            Vec::new(),
+        FunctionFunctionExpr::reference(
+            FunctionFunctionReference::new(
+                FunctionFunctionId::Float(FloatFunctionFunctionId(0)),
+                Vec::new(),
+            ),
             float_function_type(),
-        ))
+        )
     }
 
     fn tuple_expr() -> crate::plan::TupleExpr {

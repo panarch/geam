@@ -5,7 +5,7 @@ mod list;
 use ecow::EcoString;
 use num_bigint::BigInt;
 
-use super::ParamLocal;
+use crate::plan::ValueType;
 
 pub(crate) use self::capture::{CaptureValue, CaptureValueKind};
 pub use self::function::FunctionValue;
@@ -13,26 +13,8 @@ pub(crate) use self::function::{
     BoolFunctionValue, FloatFunctionValue, FunctionFunctionValue, FunctionValueKind,
     IntFunctionValue, ListFunctionValue, NilFunctionValue, StringFunctionValue, TupleFunctionValue,
 };
-pub(crate) use self::list::{ListLocalValue, ListValueKind};
+pub(crate) use self::list::ListLocalValue;
 pub use self::list::{ListValue, ListValueItemTypeMismatch};
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum ValueType {
-    Int,
-    Float,
-    String,
-    Bool,
-    Nil,
-    Tuple(Vec<ValueType>),
-    List(Box<ValueType>),
-    Function(Box<FunctionType>),
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct FunctionType {
-    arguments: Vec<ValueType>,
-    return_: Box<ValueType>,
-}
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Value {
@@ -58,27 +40,6 @@ impl Value {
             Self::List(value) => ValueType::List(Box::new(value.item_type())),
             Self::Function(value) => ValueType::Function(Box::new(value.type_())),
         }
-    }
-}
-
-impl FunctionType {
-    pub(crate) fn new(arguments: Vec<ValueType>, return_: ValueType) -> Self {
-        Self {
-            arguments,
-            return_: Box::new(return_),
-        }
-    }
-
-    pub(crate) fn from_params(params: &[ParamLocal], return_: ValueType) -> Self {
-        Self::new(params.iter().map(ParamLocal::value_type).collect(), return_)
-    }
-
-    pub fn return_(&self) -> &ValueType {
-        &self.return_
-    }
-
-    pub fn argument_types(&self) -> &[ValueType] {
-        &self.arguments
     }
 }
 

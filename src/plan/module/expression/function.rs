@@ -7,7 +7,11 @@ mod returning_function;
 mod string;
 mod tuple;
 
-use crate::plan::{FunctionType, FunctionValue, FunctionValueKind};
+use crate::plan::{
+    BoolFunctionReference, FloatFunctionReference, FunctionFunctionReference, FunctionReference,
+    FunctionType, IntFunctionReference, ListFunctionReference, NilFunctionReference,
+    RuntimeFunctionId, StringFunctionReference, TupleFunctionReference,
+};
 
 pub use self::{
     bool::BoolFunctionExpr, float::FloatFunctionExpr, int::IntFunctionExpr, list::ListFunctionExpr,
@@ -39,19 +43,35 @@ pub(crate) enum FunctionExprKind {
 }
 
 impl FunctionExpr {
-    pub(crate) fn value(value: FunctionValue) -> Self {
-        match value.kind() {
-            FunctionValueKind::Int(value) => Self::int(IntFunctionExpr::value(value.clone())),
-            FunctionValueKind::String(value) => {
-                Self::string(StringFunctionExpr::value(value.clone()))
-            }
-            FunctionValueKind::Float(value) => Self::float(FloatFunctionExpr::value(value.clone())),
-            FunctionValueKind::Bool(value) => Self::bool(BoolFunctionExpr::value(value.clone())),
-            FunctionValueKind::Nil(value) => Self::nil(NilFunctionExpr::value(value.clone())),
-            FunctionValueKind::Tuple(value) => Self::tuple(TupleFunctionExpr::value(value.clone())),
-            FunctionValueKind::List(value) => Self::list(ListFunctionExpr::value(value.clone())),
-            FunctionValueKind::Function(value) => {
-                Self::function(FunctionFunctionExpr::value(value.clone()))
+    pub(crate) fn reference(reference: FunctionReference) -> Self {
+        let (runtime_id, params) = reference.into_parts();
+        match runtime_id {
+            RuntimeFunctionId::Int(id) => Self::int(IntFunctionExpr::reference(
+                IntFunctionReference::new(id, params),
+            )),
+            RuntimeFunctionId::Float(id) => Self::float(FloatFunctionExpr::reference(
+                FloatFunctionReference::new(id, params),
+            )),
+            RuntimeFunctionId::String(id) => Self::string(StringFunctionExpr::reference(
+                StringFunctionReference::new(id, params),
+            )),
+            RuntimeFunctionId::Bool(id) => Self::bool(BoolFunctionExpr::reference(
+                BoolFunctionReference::new(id, params),
+            )),
+            RuntimeFunctionId::Nil(id) => Self::nil(NilFunctionExpr::reference(
+                NilFunctionReference::new(id, params),
+            )),
+            RuntimeFunctionId::Tuple { id, return_type } => Self::tuple(
+                TupleFunctionExpr::reference(TupleFunctionReference::new(id, params), return_type),
+            ),
+            RuntimeFunctionId::List(id) => Self::list(ListFunctionExpr::reference(
+                ListFunctionReference::new(id, params),
+            )),
+            RuntimeFunctionId::Function { id, return_type } => {
+                Self::function(FunctionFunctionExpr::reference(
+                    FunctionFunctionReference::new(id, params),
+                    return_type,
+                ))
             }
         }
     }
@@ -237,11 +257,12 @@ mod tests {
         IntFunctionExpr, ListFunctionExpr, NilFunctionExpr, StringFunctionExpr, TupleFunctionExpr,
     };
     use crate::plan::{
-        BoolFunctionId, BoolFunctionValue, FloatFunctionId, FloatFunctionValue, FunctionFunctionId,
-        FunctionFunctionValue, FunctionType, FunctionValue, IntFunctionFunctionId, IntFunctionId,
-        IntFunctionValue, ListFunctionId, ListFunctionValue, NilFunctionId, NilFunctionValue,
-        ParamLocal, RuntimeFunctionId, StringFunctionId, StringFunctionValue, TupleFunctionId,
-        TupleFunctionValue, ValueType,
+        BoolFunctionId, BoolFunctionReference, FloatFunctionId, FloatFunctionReference,
+        FunctionFunctionId, FunctionFunctionReference, FunctionReference, FunctionType,
+        IntFunctionFunctionId, IntFunctionId, IntFunctionReference, ListFunctionId,
+        ListFunctionReference, NilFunctionId, NilFunctionReference, ParamLocal, RuntimeFunctionId,
+        StringFunctionId, StringFunctionReference, TupleFunctionId, TupleFunctionReference,
+        ValueType,
     };
 
     #[test]
@@ -281,37 +302,37 @@ mod tests {
     }
 
     #[test]
-    fn function_expr_value_preserves_runtime_family() {
+    fn function_expr_reference_preserves_runtime_family() {
         assert_eq!(
-            FunctionExpr::value(int_runtime_function_value()).kind(),
+            FunctionExpr::reference(int_function_reference()).kind(),
             &FunctionExprKind::Int(int_function_value()),
         );
         assert_eq!(
-            FunctionExpr::value(string_runtime_function_value()).kind(),
+            FunctionExpr::reference(string_function_reference()).kind(),
             &FunctionExprKind::String(string_function_value()),
         );
         assert_eq!(
-            FunctionExpr::value(float_runtime_function_value()).kind(),
+            FunctionExpr::reference(float_function_reference()).kind(),
             &FunctionExprKind::Float(float_function_value()),
         );
         assert_eq!(
-            FunctionExpr::value(bool_runtime_function_value()).kind(),
+            FunctionExpr::reference(bool_function_reference()).kind(),
             &FunctionExprKind::Bool(bool_function_value()),
         );
         assert_eq!(
-            FunctionExpr::value(nil_runtime_function_value()).kind(),
+            FunctionExpr::reference(nil_function_reference()).kind(),
             &FunctionExprKind::Nil(nil_function_value()),
         );
         assert_eq!(
-            FunctionExpr::value(tuple_runtime_function_value()).kind(),
+            FunctionExpr::reference(tuple_function_reference()).kind(),
             &FunctionExprKind::Tuple(tuple_function_value()),
         );
         assert_eq!(
-            FunctionExpr::value(list_runtime_function_value()).kind(),
+            FunctionExpr::reference(list_function_reference()).kind(),
             &FunctionExprKind::List(list_function_value()),
         );
         assert_eq!(
-            FunctionExpr::value(function_runtime_function_value()).kind(),
+            FunctionExpr::reference(function_function_reference()).kind(),
             &FunctionExprKind::Function(function_function_value()),
         );
     }
@@ -433,43 +454,43 @@ mod tests {
         );
     }
 
-    fn int_runtime_function_value() -> FunctionValue {
-        FunctionValue::new(
+    fn int_function_reference() -> FunctionReference {
+        FunctionReference::new(
             RuntimeFunctionId::Int(IntFunctionId(0)),
             vec![ParamLocal::int(crate::plan::IntLocalId(0))],
         )
     }
 
-    fn string_runtime_function_value() -> FunctionValue {
-        FunctionValue::new(
+    fn string_function_reference() -> FunctionReference {
+        FunctionReference::new(
             RuntimeFunctionId::String(StringFunctionId(0)),
             vec![ParamLocal::string(crate::plan::StringLocalId(0))],
         )
     }
 
-    fn float_runtime_function_value() -> FunctionValue {
-        FunctionValue::new(
+    fn float_function_reference() -> FunctionReference {
+        FunctionReference::new(
             RuntimeFunctionId::Float(FloatFunctionId(0)),
             vec![ParamLocal::float(crate::plan::FloatLocalId(0))],
         )
     }
 
-    fn bool_runtime_function_value() -> FunctionValue {
-        FunctionValue::new(
+    fn bool_function_reference() -> FunctionReference {
+        FunctionReference::new(
             RuntimeFunctionId::Bool(BoolFunctionId(0)),
             vec![ParamLocal::bool(crate::plan::BoolLocalId(0))],
         )
     }
 
-    fn nil_runtime_function_value() -> FunctionValue {
-        FunctionValue::new(
+    fn nil_function_reference() -> FunctionReference {
+        FunctionReference::new(
             RuntimeFunctionId::Nil(NilFunctionId(0)),
             vec![ParamLocal::nil(crate::plan::NilLocalId(0))],
         )
     }
 
-    fn tuple_runtime_function_value() -> FunctionValue {
-        FunctionValue::new(
+    fn tuple_function_reference() -> FunctionReference {
+        FunctionReference::new(
             RuntimeFunctionId::Tuple {
                 id: TupleFunctionId(0),
                 return_type: vec![ValueType::Int],
@@ -481,8 +502,8 @@ mod tests {
         )
     }
 
-    fn list_runtime_function_value() -> FunctionValue {
-        FunctionValue::new(
+    fn list_function_reference() -> FunctionReference {
+        FunctionReference::new(
             RuntimeFunctionId::List(ListFunctionId::from_item_type(
                 0,
                 crate::plan::ValueType::Int,
@@ -493,8 +514,8 @@ mod tests {
         )
     }
 
-    fn function_runtime_function_value() -> FunctionValue {
-        FunctionValue::new(
+    fn function_function_reference() -> FunctionReference {
+        FunctionReference::new(
             RuntimeFunctionId::Function {
                 id: FunctionFunctionId::Int(IntFunctionFunctionId(0)),
                 return_type: FunctionType::new(vec![ValueType::Int], ValueType::Int),
@@ -504,53 +525,55 @@ mod tests {
     }
 
     fn int_function_value() -> IntFunctionExpr {
-        IntFunctionExpr::value(IntFunctionValue::new(
+        IntFunctionExpr::reference(IntFunctionReference::new(
             IntFunctionId(0),
             vec![ParamLocal::int(crate::plan::IntLocalId(0))],
         ))
     }
 
     fn string_function_value() -> StringFunctionExpr {
-        StringFunctionExpr::value(StringFunctionValue::new(
+        StringFunctionExpr::reference(StringFunctionReference::new(
             StringFunctionId(0),
             vec![ParamLocal::string(crate::plan::StringLocalId(0))],
         ))
     }
 
     fn float_function_value() -> FloatFunctionExpr {
-        FloatFunctionExpr::value(FloatFunctionValue::new(
+        FloatFunctionExpr::reference(FloatFunctionReference::new(
             FloatFunctionId(0),
             vec![ParamLocal::float(crate::plan::FloatLocalId(0))],
         ))
     }
 
     fn bool_function_value() -> BoolFunctionExpr {
-        BoolFunctionExpr::value(BoolFunctionValue::new(
+        BoolFunctionExpr::reference(BoolFunctionReference::new(
             BoolFunctionId(0),
             vec![ParamLocal::bool(crate::plan::BoolLocalId(0))],
         ))
     }
 
     fn nil_function_value() -> NilFunctionExpr {
-        NilFunctionExpr::value(NilFunctionValue::new(
+        NilFunctionExpr::reference(NilFunctionReference::new(
             NilFunctionId(0),
             vec![ParamLocal::nil(crate::plan::NilLocalId(0))],
         ))
     }
 
     fn tuple_function_value() -> TupleFunctionExpr {
-        TupleFunctionExpr::value(TupleFunctionValue::new(
-            TupleFunctionId(0),
-            vec![ParamLocal::tuple(
-                crate::plan::TupleLocalId(0),
-                vec![ValueType::Int],
-            )],
+        TupleFunctionExpr::reference(
+            TupleFunctionReference::new(
+                TupleFunctionId(0),
+                vec![ParamLocal::tuple(
+                    crate::plan::TupleLocalId(0),
+                    vec![ValueType::Int],
+                )],
+            ),
             vec![ValueType::Int],
-        ))
+        )
     }
 
     fn list_function_value() -> ListFunctionExpr {
-        ListFunctionExpr::value(ListFunctionValue::new(
+        ListFunctionExpr::reference(ListFunctionReference::new(
             ListFunctionId::from_item_type(0, crate::plan::ValueType::Int),
             vec![ParamLocal::list(crate::plan::ListLocal::int(
                 crate::plan::IntListLocalId(0),
@@ -559,11 +582,13 @@ mod tests {
     }
 
     fn function_function_value() -> FunctionFunctionExpr {
-        FunctionFunctionExpr::value(FunctionFunctionValue::new(
-            FunctionFunctionId::Int(IntFunctionFunctionId(0)),
-            Vec::new(),
+        FunctionFunctionExpr::reference(
+            FunctionFunctionReference::new(
+                FunctionFunctionId::Int(IntFunctionFunctionId(0)),
+                Vec::new(),
+            ),
             int_function_type(),
-        ))
+        )
     }
 
     fn int_function_type() -> FunctionType {

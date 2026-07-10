@@ -153,6 +153,10 @@ impl AssertBinding {
     pub(crate) fn local(&self) -> &ParamLocal {
         &self.local
     }
+
+    pub(crate) fn into_parts(self) -> (ParamLocal, EcoString) {
+        (self.local, self.name)
+    }
 }
 
 impl AssertPattern {
@@ -188,11 +192,21 @@ impl ListAssertPattern {
     pub(crate) fn tail(&self) -> Option<&ListAssertTail> {
         self.tail.as_ref()
     }
+
+    pub(crate) fn into_parts(self) -> (ValueType, Vec<AssertPattern>, Option<ListAssertTail>) {
+        (self.element_type, self.elements, self.tail)
+    }
 }
 
 impl ListAssertTail {
     pub(crate) fn bind(local: ListLocal, name: EcoString) -> Self {
         Self::Bind(ListAssertTailBinding { local, name })
+    }
+}
+
+impl ListAssertTailBinding {
+    pub(crate) fn into_parts(self) -> (ListLocal, EcoString) {
+        (self.local, self.name)
     }
 }
 
@@ -366,6 +380,10 @@ impl Step {
     pub(crate) fn kind(&self) -> &StepKind {
         &self.kind
     }
+
+    pub(crate) fn into_kind(self) -> StepKind {
+        self.kind
+    }
 }
 
 #[cfg(test)]
@@ -373,8 +391,8 @@ mod tests {
     use super::{Step, StepKind};
     use crate::plan::{
         AssertPattern, BoolExpr, Expr, IntExpr, IntFunctionId, IntFunctionLocalId,
-        IntFunctionValue, IntListLocalId, IntLocalId, ListAssertPattern, ListAssertTail, ListLocal,
-        ParamLocal, StringExpr, ValueType,
+        IntFunctionReference, IntListLocalId, IntLocalId, ListAssertPattern, ListAssertTail,
+        ListLocal, ParamLocal, StringExpr, ValueType,
     };
     use num_bigint::BigInt;
 
@@ -447,7 +465,7 @@ mod tests {
     }
 
     fn function_expr() -> crate::plan::IntFunctionExpr {
-        crate::plan::IntFunctionExpr::value(IntFunctionValue::new(
+        crate::plan::IntFunctionExpr::reference(IntFunctionReference::new(
             IntFunctionId(0),
             vec![ParamLocal::int(IntLocalId(0))],
         ))

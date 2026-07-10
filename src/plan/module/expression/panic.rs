@@ -56,12 +56,13 @@ impl PanicExpr {
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn kind(&self) -> &PanicExprKind {
         &self.kind
     }
 
-    pub(crate) fn site(&self) -> &PanicSite {
-        &self.site
+    pub(crate) fn into_parts(self) -> (PanicSite, PanicExprKind) {
+        (self.site, self.kind)
     }
 
     pub(crate) fn message(&self) -> Option<&StringExpr> {

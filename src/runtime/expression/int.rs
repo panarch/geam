@@ -2,9 +2,11 @@ use super::{
     eval_bool_expr, eval_float_expr, eval_panic_expr, eval_string_expr, project_int_list_expr,
     project_tuple_expr,
 };
+use crate::plan::ValueType;
 use crate::plan::execution::ExecutionPlan;
-use crate::plan::{IntExpr, IntExprKind, Value, ValueType};
+use crate::plan::execution::{IntExpr, IntExprKind};
 use crate::runtime::ExecutionError;
+use crate::runtime::Value;
 use crate::runtime::frame::Frame;
 use crate::runtime::function;
 use num_bigint::BigInt;
@@ -33,7 +35,9 @@ pub(in crate::runtime) fn eval_int_expr(
             }
         }
         IntExprKind::ListIndex { list, index } => project_int_list_expr(plan, frame, list, *index),
-        IntExprKind::Panic(panic) => eval_panic_expr(plan, frame, panic),
+        IntExprKind::Panic(panic) => {
+            eval_panic_expr(plan, frame, panic).map(|never| match never {})
+        }
         IntExprKind::Add { left, right } => {
             Ok(eval_int_expr(plan, frame, left)? + eval_int_expr(plan, frame, right)?)
         }
@@ -129,600 +133,151 @@ fn eval_remainder_int(left: BigInt, right: BigInt) -> BigInt {
 
 #[cfg(test)]
 mod tests {
-    use super::eval_int_expr;
     use crate::plan::{
-        BoolExpr, Expr, FloatExpr, IntExpr, ListExpr, PanicExpr, PanicSite, Step, StringExpr,
-        TupleExpr, ValueType,
+        BoolExpr, Expr, FloatExpr, FunctionId, FunctionPlan, IntExpr, IntFunctionId, ModulePlan,
+        PanicExpr, PanicSite, ReturnExpr, Step, StringExpr, TupleExpr, ValueType,
     };
-    use crate::runtime::frame::Frame;
-    use crate::runtime::{ExecutionError, PanicKind};
-    use crate::runtime::{int, run_src};
+    use crate::runtime::{ExecutionError, run_main};
+    use num_bigint::BigInt;
 
     #[test]
-    fn tuple_index_family_mismatch_returns_error() {
-        let plan = crate::runtime::plan_src("pub fn main() { 1 }");
-        let mut frame = Frame::default();
-        let tuple = TupleExpr::value(
-            vec![Expr::int(IntExpr::value(1.into()))],
-            vec![ValueType::Int],
-        );
+    fn source_int_expression_variants_evaluate_exact_values() {
+        let source = r#"
+fn add_one(value: Int) -> Int { value + 1 }
+
+pub fn main() {
+  let local = 1
+  let function = add_one
+  #(
+    local,
+    add_one(1),
+    function(1),
+    #(3).0,
+    case [4] { [value] -> value _ -> 0 },
+    1 + 2,
+    5 - 2,
+    2 * 3,
+    7 / 2,
+    7 / 0,
+    7 % 3,
+    7 % 0,
+    -1,
+    case True { True -> 1 False -> 0 },
+    case False { True -> 1 False -> 0 },
+    case 1 { 1 -> 2 _ -> 0 },
+    case 2 { 1 -> 2 _ -> 3 },
+    case "one" { "one" -> 1 _ -> 0 },
+    case "two" { "one" -> 1 _ -> 2 },
+    case 1.0 { 1.0 -> 1 _ -> 0 },
+    case 2.0 { 1.0 -> 1 _ -> 2 },
+    { let _ = 0 4 },
+  )
+}
+"#;
 
         assert_eq!(
-            eval_int_expr(&plan, &mut frame, &IntExpr::tuple_index(tuple, 0)),
-            Ok(1.into()),
-        );
-
-        let tuple = TupleExpr::value(
-            vec![Expr::string(StringExpr::value("one".into()))],
-            vec![ValueType::String],
-        );
-
-        assert_eq!(
-            eval_int_expr(&plan, &mut frame, &IntExpr::tuple_index(tuple, 0)),
-            Err(ExecutionError::tuple_index_family_mismatch(
-                ValueType::Int,
-                ValueType::String,
-            )),
+            crate::runtime::run_src(source),
+            crate::runtime::Value::Tuple(
+                vec![
+                    1_i64, 2, 2, 3, 4, 3, 3, 6, 3, 0, 1, 0, -1, 1, 0, 2, 3, 1, 2, 1, 2, 4
+                ]
+                .into_iter()
+                .map(|value| crate::runtime::Value::Int(value.into()))
+                .collect(),
+            ),
         );
     }
 
     #[test]
-    fn list_projection_invariant_errors() {
-        let plan = crate::runtime::plan_src("pub fn main() { 1 }");
-        let mut frame = Frame::default();
-        let list = ListExpr::value(vec![Expr::int(IntExpr::value(1.into()))], ValueType::Int);
+    fn source_operand_errors_propagate_through_int_expressions() {
+        let expressions = [
+            "fail_int() + 1",
+            "1 + fail_int()",
+            "fail_int() - 1",
+            "1 - fail_int()",
+            "fail_int() * 1",
+            "1 * fail_int()",
+            "fail_int() / 1",
+            "1 / fail_int()",
+            "fail_int() % 1",
+            "1 % fail_int()",
+            "-fail_int()",
+            "case fail_bool() { True -> 1 False -> 0 }",
+            "case fail_int() { 0 -> 0 _ -> 1 }",
+            "case fail_string() { \"zero\" -> 0 _ -> 1 }",
+            "case fail_float() { 0.0 -> 0 _ -> 1 }",
+            "{ let _ = fail_bool() 1 }",
+            "{ let function = fail_int function() }",
+        ];
 
-        assert_eq!(
-            eval_int_expr(&plan, &mut frame, &IntExpr::list_index(list, 0)),
-            Ok(1.into()),
-        );
-
-        let list = ListExpr::value(vec![Expr::int(IntExpr::value(1.into()))], ValueType::Int);
-        assert_eq!(
-            eval_int_expr(&plan, &mut frame, &IntExpr::list_index(list, 1)),
-            Err(ExecutionError::list_index_out_of_bounds(
-                ValueType::Int,
-                1,
-                1,
-            )),
-        );
-    }
-
-    #[test]
-    fn eval_int_panic_returns_error() {
-        let plan = crate::runtime::plan_src("pub fn main() { 1 }");
-        let mut frame = Frame::default();
-
-        assert_eq!(
-            eval_int_expr(
-                &plan,
-                &mut frame,
-                &IntExpr::panic(PanicExpr::panic_at(None, PanicSite::unknown())),
-            ),
-            Err(ExecutionError::source_panic(
-                None,
-                PanicKind::Panic,
-                None,
-                PanicSite::unknown()
-            )),
-        );
-    }
-
-    #[test]
-    fn eval_integer_arithmetic() {
-        assert_eq!(
-            run_src(
+        for expression in expressions {
+            let source = format!(
                 r#"
-pub fn main() {
-  1 + 2 * 3
-}
+fn fail_bool() -> Bool {{ panic }}
+fn fail_int() -> Int {{ panic }}
+fn fail_string() -> String {{ panic }}
+fn fail_float() -> Float {{ panic }}
+pub fn main() -> Int {{ {expression} }}
 "#,
-            ),
-            int(7),
-        );
+            );
 
-        assert_eq!(
-            run_src(
-                r#"
-pub fn main() {
-  7 - 2
-}
-"#,
-            ),
-            int(5),
-        );
-
-        assert_eq!(
-            run_src(
-                r#"
-pub fn main() {
-  -3
-}
-"#,
-            ),
-            int(-3),
-        );
-
-        assert_eq!(
-            run_src(
-                r#"
-fn negate(value: Int) {
-  -value
-}
-
-pub fn main() {
-  negate(3)
-}
-"#,
-            ),
-            int(-3),
-        );
-    }
-
-    #[test]
-    fn eval_integer_division() {
-        assert_eq!(
-            run_src(
-                r#"
-pub fn main() {
-  11 / 3
-}
-"#,
-            ),
-            int(3),
-        );
-
-        assert_eq!(
-            run_src(
-                r#"
-pub fn main() {
-  -11 / 3
-}
-"#,
-            ),
-            int(-3),
-        );
-
-        assert_eq!(
-            run_src(
-                r#"
-pub fn main() {
-  11 / -3
-}
-"#,
-            ),
-            int(-3),
-        );
-
-        assert_eq!(
-            run_src(
-                r#"
-pub fn main() {
-  -11 / -3
-}
-"#,
-            ),
-            int(3),
-        );
-
-        assert_eq!(
-            run_src(
-                r#"
-pub fn main() {
-  1 / 0
-}
-"#,
-            ),
-            int(0),
-        );
-    }
-
-    #[test]
-    fn eval_integer_remainder() {
-        assert_eq!(
-            run_src(
-                r#"
-pub fn main() {
-  11 % 3
-}
-"#,
-            ),
-            int(2),
-        );
-
-        assert_eq!(
-            run_src(
-                r#"
-pub fn main() {
-  -11 % 3
-}
-"#,
-            ),
-            int(-2),
-        );
-
-        assert_eq!(
-            run_src(
-                r#"
-pub fn main() {
-  11 % -3
-}
-"#,
-            ),
-            int(2),
-        );
-
-        assert_eq!(
-            run_src(
-                r#"
-pub fn main() {
-  -11 % -3
-}
-"#,
-            ),
-            int(-2),
-        );
-
-        assert_eq!(
-            run_src(
-                r#"
-pub fn main() {
-  1 % 0
-}
-"#,
-            ),
-            int(0),
-        );
-    }
-
-    #[test]
-    fn eval_local_function_call() {
-        assert_eq!(
-            run_src(
-                r#"
-fn one() {
-  1
-}
-
-pub fn main() {
-  one()
-}
-"#,
-            ),
-            int(1),
-        );
-
-        assert_eq!(
-            run_src(
-                r#"
-fn one() {
-  1
-}
-
-pub fn main() {
-  let value = one()
-  value
-}
-"#,
-            ),
-            int(1),
-        );
-    }
-
-    #[test]
-    fn eval_bool_case_int() {
-        assert_eq!(
-            run_src(
-                r#"
-pub fn main() {
-  let value = case True {
-    True -> 1
-    False -> 0
-  }
-  value
-}
-"#,
-            ),
-            int(1),
-        );
-
-        assert_eq!(
-            run_src(
-                r#"
-pub fn main() {
-  let value = case False {
-    True -> 1
-    False -> 0
-  }
-  value
-}
-"#,
-            ),
-            int(0),
-        );
-    }
-
-    #[test]
-    fn eval_int_case_int() {
-        assert_eq!(
-            run_src(
-                r#"
-pub fn main() {
-  let value = case 1 {
-    1 -> 10
-    _ -> 0
-  }
-  value
-}
-"#,
-            ),
-            int(10),
-        );
-
-        assert_eq!(
-            run_src(
-                r#"
-pub fn main() {
-  let value = case 9 {
-    1 -> 10
-    _ -> 0
-  }
-  value
-}
-"#,
-            ),
-            int(0),
-        );
-
-        assert_eq!(
-            run_src(
-                r#"
-pub fn main() {
-  let value = case 1 {
-    _ -> 7
-    1 -> 10
-  }
-  value
-}
-"#,
-            ),
-            int(7),
-        );
-
-        assert_eq!(
-            run_src(
-                r#"
-pub fn main() {
-  let value = case 1 {
-    1 -> 10
-    1 -> 20
-    _ -> 0
-  }
-  value
-}
-"#,
-            ),
-            int(10),
-        );
-    }
-
-    #[test]
-    fn eval_string_case_int() {
-        assert_eq!(
-            run_src(
-                r#"
-pub fn main() {
-  let value = case "one" {
-    "one" -> 10
-    _ -> 0
-  }
-  value
-}
-"#,
-            ),
-            int(10),
-        );
-
-        assert_eq!(
-            run_src(
-                r#"
-pub fn main() {
-  let value = case "many" {
-    "one" -> 10
-    _ -> 0
-  }
-  value
-}
-"#,
-            ),
-            int(0),
-        );
-    }
-
-    #[test]
-    fn eval_float_case_int() {
-        assert_eq!(
-            run_src(
-                r#"
-pub fn main() {
-  let value = case 1.0 {
-    1.0 -> 10
-    _ -> 0
-  }
-  value
-}
-"#,
-            ),
-            int(10),
-        );
-
-        assert_eq!(
-            run_src(
-                r#"
-pub fn main() {
-  let value = case 2.0 {
-    1.0 -> 10
-    _ -> 0
-  }
-  value
-}
-"#,
-            ),
-            int(0),
-        );
-    }
-
-    #[test]
-    fn eval_block_int() {
-        assert_eq!(
-            run_src(
-                r#"
-pub fn main() {
-  {
-    let x = 1
-    x + 2
-  }
-}
-"#,
-            ),
-            int(3),
-        );
-    }
-
-    #[test]
-    fn eval_block_shadowing() {
-        assert_eq!(
-            run_src(
-                r#"
-pub fn main() {
-  let x = 1
-  {
-    let x = 2
-    x + 1
-  }
-  x
-}
-"#,
-            ),
-            int(1),
-        );
-    }
-
-    #[test]
-    fn eval_int_expr_propagates_operand_errors() {
-        let plan = crate::runtime::plan_src("pub fn main() { 1 }");
-        let mut frame = Frame::default();
-
-        for (expression, expected) in [
-            (
-                IntExpr::add(error_int_expr(), IntExpr::value(1.into())),
-                ValueType::Int,
-            ),
-            (
-                IntExpr::add(IntExpr::value(1.into()), error_int_expr()),
-                ValueType::Int,
-            ),
-            (
-                IntExpr::sub(error_int_expr(), IntExpr::value(1.into())),
-                ValueType::Int,
-            ),
-            (
-                IntExpr::sub(IntExpr::value(1.into()), error_int_expr()),
-                ValueType::Int,
-            ),
-            (
-                IntExpr::mult(error_int_expr(), IntExpr::value(1.into())),
-                ValueType::Int,
-            ),
-            (
-                IntExpr::mult(IntExpr::value(1.into()), error_int_expr()),
-                ValueType::Int,
-            ),
-            (
-                IntExpr::div(error_int_expr(), IntExpr::value(1.into())),
-                ValueType::Int,
-            ),
-            (
-                IntExpr::div(IntExpr::value(1.into()), error_int_expr()),
-                ValueType::Int,
-            ),
-            (
-                IntExpr::remainder(error_int_expr(), IntExpr::value(1.into())),
-                ValueType::Int,
-            ),
-            (
-                IntExpr::remainder(IntExpr::value(1.into()), error_int_expr()),
-                ValueType::Int,
-            ),
-            (IntExpr::negate(error_int_expr()), ValueType::Int),
-            (
-                IntExpr::bool_case(
-                    error_bool_expr(),
-                    IntExpr::value(1.into()),
-                    IntExpr::value(0.into()),
-                ),
-                ValueType::Bool,
-            ),
-            (
-                IntExpr::int_case(
-                    error_int_expr(),
-                    vec![(1.into(), IntExpr::value(1.into()))],
-                    IntExpr::value(0.into()),
-                ),
-                ValueType::Int,
-            ),
-            (
-                IntExpr::string_case(
-                    error_string_expr(),
-                    vec![("one".into(), IntExpr::value(1.into()))],
-                    IntExpr::value(0.into()),
-                ),
-                ValueType::String,
-            ),
-            (
-                IntExpr::float_case(
-                    error_float_expr(),
-                    vec![(1.0, IntExpr::value(1.into()))],
-                    IntExpr::value(0.into()),
-                ),
-                ValueType::Float,
-            ),
-            (
-                IntExpr::block(
-                    vec![Step::evaluate(Expr::bool(error_bool_expr()))],
-                    IntExpr::value(1.into()),
-                ),
-                ValueType::Bool,
-            ),
-        ] {
             assert_eq!(
-                eval_int_expr(&plan, &mut frame, &expression),
-                Err(tuple_index_error(expected)),
+                crate::runtime::run_src_error(&source).to_string(),
+                "panic: `panic` expression evaluated.",
             );
         }
     }
 
-    fn error_int_expr() -> IntExpr {
-        IntExpr::tuple_index(empty_tuple(), 0)
+    #[test]
+    fn module_expression_errors_propagate_through_int_wrappers() {
+        let panic = || PanicExpr::panic_at(None, PanicSite::unknown());
+        let expressions = [
+            IntExpr::tuple_index(TupleExpr::panic(panic(), vec![ValueType::Int]), 0),
+            IntExpr::bool_case(
+                BoolExpr::panic(panic()),
+                IntExpr::value(BigInt::from(1)),
+                IntExpr::value(BigInt::from(0)),
+            ),
+            IntExpr::int_case(
+                IntExpr::panic(panic()),
+                Vec::new(),
+                IntExpr::value(BigInt::from(0)),
+            ),
+            IntExpr::string_case(
+                StringExpr::panic(panic()),
+                Vec::new(),
+                IntExpr::value(BigInt::from(0)),
+            ),
+            IntExpr::float_case(
+                FloatExpr::panic(panic()),
+                Vec::new(),
+                IntExpr::value(BigInt::from(0)),
+            ),
+            IntExpr::block(
+                vec![Step::evaluate(Expr::bool(BoolExpr::panic(panic())))],
+                IntExpr::value(BigInt::from(0)),
+            ),
+        ];
+
+        for expression in expressions {
+            assert_eq!(
+                run_module_int_expression(expression).to_string(),
+                "panic: `panic` expression evaluated.",
+            );
+        }
     }
 
-    fn error_bool_expr() -> BoolExpr {
-        BoolExpr::tuple_index(empty_tuple(), 0)
-    }
+    fn run_module_int_expression(expression: IntExpr) -> ExecutionError {
+        let main = FunctionPlan::new(
+            FunctionId::new(0),
+            "main".into(),
+            Vec::new(),
+            Vec::new(),
+            ReturnExpr::int(IntFunctionId(0), expression),
+        );
+        let module = ModulePlan::new("main".into(), main, Vec::new());
+        let plan = crate::ExecutionPlan::from_module_plan(module);
 
-    fn error_string_expr() -> StringExpr {
-        StringExpr::tuple_index(empty_tuple(), 0)
-    }
-
-    fn error_float_expr() -> FloatExpr {
-        FloatExpr::tuple_index(empty_tuple(), 0)
-    }
-
-    fn empty_tuple() -> TupleExpr {
-        TupleExpr::value(Vec::new(), Vec::new())
-    }
-
-    fn tuple_index_error(expected: ValueType) -> ExecutionError {
-        ExecutionError::tuple_index_family_mismatch(expected, ValueType::Tuple(Vec::new()))
+        run_main(&plan).expect_err("module expression should fail at runtime")
     }
 }

@@ -1,5 +1,6 @@
 use super::{ExecutionError, Panic, PanicDetails};
-use crate::plan::{FunctionType, Value, ValueType};
+use crate::plan::{FunctionType, ValueType};
+use crate::runtime::Value;
 use miette::{Diagnostic, LabeledSpan, SourceCode};
 use std::fmt;
 
@@ -148,11 +149,12 @@ fn render_value_type(type_: &ValueType) -> String {
 #[cfg(test)]
 mod tests {
     use super::{render_value, render_value_type};
-    use crate::plan::{
-        FunctionReturnFamily, FunctionType, FunctionValue, IntFunctionId, IntLocalId, ListValue,
-        PanicSite, ParamLocal, RuntimeFunctionId, SourceContext, SourceSpan, Value, ValueType,
+    use crate::plan::execution::{
+        FunctionReturnFamily, IntFunctionId, IntLocalId, ParamLocal, RuntimeFunctionId,
     };
+    use crate::plan::{FunctionType, PanicSite, SourceContext, SourceSpan, ValueType};
     use crate::runtime::{ExecutionError, Panic, PanicDetails, PanicKind, PanicMessage};
+    use crate::runtime::{FunctionValue, ListValue, Value};
     use miette::Diagnostic;
 
     #[test]
@@ -181,7 +183,7 @@ mod tests {
             PanicSite::new("main".into(), "main".into(), SourceSpan::new(18, 43)),
             Some(&source),
             Some(PanicDetails::LetAssert {
-                value: Value::List(crate::plan::ListValue::empty(ValueType::Int)),
+                value: Value::List(crate::runtime::ListValue::empty(ValueType::Int)),
                 pattern_span: SourceSpan::new(29, 36),
             }),
         );
@@ -269,7 +271,7 @@ mod tests {
     fn render_value_preserves_every_runtime_value_family() {
         let function = Value::Function(FunctionValue::new(
             RuntimeFunctionId::Int(IntFunctionId(0)),
-            vec![ParamLocal::int(IntLocalId(0))],
+            vec![ParamLocal::Int(IntLocalId(0))],
         ));
 
         for (value, expected) in [

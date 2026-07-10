@@ -2,9 +2,11 @@ use super::{
     eval_bool_expr, eval_float_expr, eval_int_expr, eval_panic_expr, eval_string_expr,
     project_nil_list_expr, project_tuple_expr,
 };
+use crate::plan::ValueType;
 use crate::plan::execution::ExecutionPlan;
-use crate::plan::{NilExpr, NilExprKind, Value, ValueType};
+use crate::plan::execution::{NilExpr, NilExprKind};
 use crate::runtime::ExecutionError;
+use crate::runtime::Value;
 use crate::runtime::frame::Frame;
 use crate::runtime::function;
 
@@ -35,7 +37,9 @@ pub(in crate::runtime) fn eval_nil_expr(
             }
         }
         NilExprKind::ListIndex { list, index } => project_nil_list_expr(plan, frame, list, *index),
-        NilExprKind::Panic(panic) => eval_panic_expr(plan, frame, panic),
+        NilExprKind::Panic(panic) => {
+            eval_panic_expr(plan, frame, panic).map(|never| match never {})
+        }
         NilExprKind::BoolCase {
             subject,
             true_,
@@ -95,520 +99,109 @@ pub(in crate::runtime) fn eval_nil_expr(
 
 #[cfg(test)]
 mod tests {
-    use super::eval_nil_expr;
-    use crate::plan::execution::ExecutionPlan;
     use crate::plan::{
-        BoolExpr, BoolFunctionExpr, Expr, FloatExpr, FloatFunctionExpr, FunctionFunctionExpr,
-        FunctionFunctionId, FunctionFunctionValue, FunctionId, FunctionPlan, FunctionReturnFamily,
-        FunctionType, IntExpr, IntFunctionExpr, IntFunctionFunctionId, IntFunctionId, ListExpr,
-        NilExpr, NilFunctionExpr, PanicExpr, PanicSite, ReturnExpr, Step, StringExpr,
-        StringFunctionExpr, StringFunctionFunctionId, TupleExpr, ValueType,
+        BoolExpr, Expr, FloatExpr, FunctionId, FunctionPlan, IntExpr, ModulePlan, NilExpr,
+        NilFunctionId, PanicExpr, PanicSite, ReturnExpr, Step, StringExpr, TupleExpr, ValueType,
     };
-    use crate::runtime::frame::Frame;
-    use crate::runtime::{ExecutionError, PanicKind};
-    use crate::runtime::{Value, run_src};
+    use crate::runtime::{ExecutionError, run_main};
 
     #[test]
-    fn tuple_index_family_mismatch_returns_error() {
-        let plan = crate::runtime::plan_src("pub fn main() { Nil }");
-        let mut frame = Frame::default();
-        let tuple = TupleExpr::value(
-            vec![Expr::int(IntExpr::value(1.into()))],
-            vec![ValueType::Int],
-        );
-
-        assert_eq!(
-            eval_nil_expr(&plan, &mut frame, &NilExpr::tuple_index(tuple, 0)),
-            Err(ExecutionError::tuple_index_family_mismatch(
-                ValueType::Nil,
-                ValueType::Int,
-            )),
-        );
-
-        let tuple = TupleExpr::value(vec![Expr::nil(NilExpr::value())], vec![ValueType::Nil]);
-        assert_eq!(
-            eval_nil_expr(&plan, &mut frame, &NilExpr::tuple_index(tuple, 0)),
-            Ok(()),
-        );
-    }
-
-    #[test]
-    fn list_projection_invariant_errors() {
-        let plan = crate::runtime::plan_src("pub fn main() { Nil }");
-        let mut frame = Frame::default();
-        let list = ListExpr::value(vec![Expr::nil(NilExpr::value())], ValueType::Nil);
-
-        assert_eq!(
-            eval_nil_expr(&plan, &mut frame, &NilExpr::list_index(list, 0)),
-            Ok(()),
-        );
-
-        let list = ListExpr::value(vec![Expr::nil(NilExpr::value())], ValueType::Nil);
-        assert_eq!(
-            eval_nil_expr(&plan, &mut frame, &NilExpr::list_index(list, 1)),
-            Err(ExecutionError::list_index_out_of_bounds(
-                ValueType::Nil,
-                1,
-                1,
-            )),
-        );
-    }
-
-    #[test]
-    fn eval_nil_panic_returns_error() {
-        let plan = crate::runtime::plan_src("pub fn main() { Nil }");
-        let mut frame = Frame::default();
-
-        assert_eq!(
-            eval_nil_expr(
-                &plan,
-                &mut frame,
-                &NilExpr::panic(PanicExpr::panic_at(None, PanicSite::unknown())),
-            ),
-            Err(ExecutionError::source_panic(
-                None,
-                PanicKind::Panic,
-                None,
-                PanicSite::unknown()
-            )),
-        );
-    }
-
-    #[test]
-    fn eval_nil_value() {
-        assert_eq!(
-            run_src(
-                r#"
-pub fn main() {
-  Nil
-}
-"#,
-            ),
-            Value::Nil,
-        );
-    }
-
-    #[test]
-    fn eval_bool_case_nil() {
-        assert_eq!(
-            run_src(
-                r#"
-fn flag() {
-  True
-}
+    fn source_nil_expression_variants_evaluate_exact_values() {
+        let source = r#"
+fn nil_value() -> Nil { Nil }
 
 pub fn main() {
-  case flag() {
-    True -> Nil
-    False -> Nil
-  }
+  let local = Nil
+  let function = nil_value
+  #(
+    local,
+    nil_value(),
+    function(),
+    #(Nil).0,
+    case [Nil] { [value] -> value _ -> Nil },
+    case True { True -> Nil False -> Nil },
+    case False { True -> Nil False -> Nil },
+    case 1 { 1 -> Nil _ -> Nil },
+    case 2 { 1 -> Nil _ -> Nil },
+    case "one" { "one" -> Nil _ -> Nil },
+    case "two" { "one" -> Nil _ -> Nil },
+    case 1.0 { 1.0 -> Nil _ -> Nil },
+    case 2.0 { 1.0 -> Nil _ -> Nil },
+    { let _ = 0 Nil },
+  )
 }
-"#,
-            ),
-            Value::Nil,
-        );
+"#;
 
         assert_eq!(
-            run_src(
-                r#"
-fn flag() {
-  False
-}
-
-pub fn main() {
-  case flag() {
-    True -> Nil
-    False -> Nil
-  }
-}
-"#,
-            ),
-            Value::Nil,
+            crate::runtime::run_src(source),
+            crate::runtime::Value::Tuple(vec![crate::runtime::Value::Nil; 14]),
         );
     }
 
     #[test]
-    fn eval_int_case_nil() {
-        assert_eq!(
-            run_src(
-                r#"
-pub fn main() {
-  case 1 {
-    1 -> Nil
-    _ -> Nil
-  }
-}
-"#,
-            ),
-            Value::Nil,
-        );
+    fn source_operand_errors_propagate_through_nil_expressions() {
+        let expressions = [
+            "case fail_bool() { True -> Nil False -> Nil }",
+            "case fail_int() { 0 -> Nil _ -> Nil }",
+            "case fail_string() { \"zero\" -> Nil _ -> Nil }",
+            "case fail_float() { 0.0 -> Nil _ -> Nil }",
+            "{ let _ = fail_bool() Nil }",
+            "{ let function = fail_nil function() }",
+        ];
 
-        assert_eq!(
-            run_src(
+        for expression in expressions {
+            let source = format!(
                 r#"
-pub fn main() {
-  case 2 {
-    1 -> Nil
-    _ -> Nil
-  }
-}
+fn fail_bool() -> Bool {{ panic }}
+fn fail_int() -> Int {{ panic }}
+fn fail_string() -> String {{ panic }}
+fn fail_float() -> Float {{ panic }}
+fn fail_nil() -> Nil {{ panic }}
+pub fn main() -> Nil {{ {expression} }}
 "#,
-            ),
-            Value::Nil,
-        );
+            );
+
+            assert_eq!(
+                crate::runtime::run_src_error(&source).to_string(),
+                "panic: `panic` expression evaluated.",
+            );
+        }
     }
 
     #[test]
-    fn eval_string_case_nil() {
-        assert_eq!(
-            run_src(
-                r#"
-pub fn main() {
-  let value = case "one" {
-    "one" -> Nil
-    _ -> Nil
-  }
-  value
-}
-"#,
+    fn module_expression_errors_propagate_through_nil_wrappers() {
+        let panic = || PanicExpr::panic_at(None, PanicSite::unknown());
+        let expressions = [
+            NilExpr::tuple_index(TupleExpr::panic(panic(), vec![ValueType::Nil]), 0),
+            NilExpr::bool_case(BoolExpr::panic(panic()), NilExpr::value(), NilExpr::value()),
+            NilExpr::int_case(IntExpr::panic(panic()), Vec::new(), NilExpr::value()),
+            NilExpr::string_case(StringExpr::panic(panic()), Vec::new(), NilExpr::value()),
+            NilExpr::float_case(FloatExpr::panic(panic()), Vec::new(), NilExpr::value()),
+            NilExpr::block(
+                vec![Step::evaluate(Expr::bool(BoolExpr::panic(panic())))],
+                NilExpr::value(),
             ),
-            Value::Nil,
-        );
+        ];
 
-        assert_eq!(
-            run_src(
-                r#"
-pub fn main() {
-  let value = case "many" {
-    "one" -> Nil
-    _ -> Nil
-  }
-  value
-}
-"#,
-            ),
-            Value::Nil,
-        );
+        for expression in expressions {
+            assert_eq!(
+                run_module_nil_expression(expression).to_string(),
+                "panic: `panic` expression evaluated.",
+            );
+        }
     }
 
-    #[test]
-    fn eval_block_nil() {
-        assert_eq!(
-            run_src(
-                r#"
-pub fn main() {
-  {
-    1
-    Nil
-  }
-}
-"#,
-            ),
-            Value::Nil,
-        );
-    }
-
-    #[test]
-    fn eval_nil_expr_local_and_calls() {
-        assert_eq!(
-            run_src(
-                r#"
-fn called() {
-  Nil
-}
-
-fn get_called() {
-  called
-}
-
-pub fn main() {
-  let value = Nil
-  value
-  called()
-  get_called()()
-}
-"#,
-            ),
-            Value::Nil,
-        );
-    }
-
-    #[test]
-    fn eval_nil_expr_propagates_operand_errors() {
-        let plan = plan();
-        let mut frame = Frame::default();
-
-        assert_eq!(
-            eval_nil_expr(
-                &plan,
-                &mut frame,
-                &crate::plan::NilExpr::bool_case(
-                    error_bool_expr(),
-                    crate::plan::NilExpr::value(),
-                    crate::plan::NilExpr::value(),
-                ),
-            ),
-            Err(function_return_family_error_value(
-                FunctionReturnFamily::Bool
-            )),
-        );
-        assert_eq!(
-            eval_nil_expr(
-                &plan,
-                &mut frame,
-                &crate::plan::NilExpr::int_case(
-                    error_int_expr(),
-                    vec![(1.into(), crate::plan::NilExpr::value())],
-                    crate::plan::NilExpr::value(),
-                ),
-            ),
-            Err(function_return_family_error_value(
-                FunctionReturnFamily::Int
-            )),
-        );
-        assert_eq!(
-            eval_nil_expr(
-                &plan,
-                &mut frame,
-                &crate::plan::NilExpr::string_case(
-                    error_string_expr(),
-                    vec![("one".into(), crate::plan::NilExpr::value())],
-                    crate::plan::NilExpr::value(),
-                ),
-            ),
-            Err(function_return_family_error(
-                FunctionReturnFamily::String,
-                FunctionReturnFamily::Int,
-            )),
-        );
-        assert_eq!(
-            eval_nil_expr(
-                &plan,
-                &mut frame,
-                &crate::plan::NilExpr::float_case(
-                    error_float_expr(),
-                    vec![(1.0, crate::plan::NilExpr::value())],
-                    crate::plan::NilExpr::value(),
-                ),
-            ),
-            Err(function_return_family_error_value(
-                FunctionReturnFamily::Float
-            )),
-        );
-        assert_eq!(
-            eval_nil_expr(
-                &plan,
-                &mut frame,
-                &crate::plan::NilExpr::block(
-                    vec![Step::evaluate(Expr::bool(error_bool_expr()))],
-                    crate::plan::NilExpr::value(),
-                ),
-            ),
-            Err(function_return_family_error_value(
-                FunctionReturnFamily::Bool
-            )),
-        );
-    }
-
-    #[test]
-    fn eval_nil_expr_propagates_return_expression_errors() {
-        let plan = plan();
-        let mut frame = Frame::default();
-
-        assert_eq!(
-            eval_nil_expr(
-                &plan,
-                &mut frame,
-                &crate::plan::NilExpr::bool_case(
-                    BoolExpr::value(true),
-                    error_nil_expr(),
-                    crate::plan::NilExpr::value(),
-                ),
-            ),
-            Err(function_return_family_error_value(
-                FunctionReturnFamily::Nil
-            )),
-        );
-        assert_eq!(
-            eval_nil_expr(
-                &plan,
-                &mut frame,
-                &crate::plan::NilExpr::bool_case(
-                    BoolExpr::value(false),
-                    crate::plan::NilExpr::value(),
-                    error_nil_expr(),
-                ),
-            ),
-            Err(function_return_family_error_value(
-                FunctionReturnFamily::Nil
-            )),
-        );
-        assert_eq!(
-            eval_nil_expr(
-                &plan,
-                &mut frame,
-                &crate::plan::NilExpr::int_case(
-                    IntExpr::value(1.into()),
-                    vec![(1.into(), error_nil_expr())],
-                    crate::plan::NilExpr::value(),
-                ),
-            ),
-            Err(function_return_family_error_value(
-                FunctionReturnFamily::Nil
-            )),
-        );
-        assert_eq!(
-            eval_nil_expr(
-                &plan,
-                &mut frame,
-                &crate::plan::NilExpr::int_case(
-                    IntExpr::value(2.into()),
-                    vec![(1.into(), crate::plan::NilExpr::value())],
-                    error_nil_expr(),
-                ),
-            ),
-            Err(function_return_family_error_value(
-                FunctionReturnFamily::Nil
-            )),
-        );
-        assert_eq!(
-            eval_nil_expr(
-                &plan,
-                &mut frame,
-                &crate::plan::NilExpr::block(Vec::new(), error_nil_expr()),
-            ),
-            Err(function_return_family_error_value(
-                FunctionReturnFamily::Nil
-            )),
-        );
-    }
-
-    #[test]
-    fn eval_float_case_nil() {
-        assert_eq!(
-            run_src(
-                r#"
-pub fn main() {
-  let value = case 1.0 {
-    1.0 -> Nil
-    _ -> Nil
-  }
-  value
-}
-"#,
-            ),
-            Value::Nil,
-        );
-
-        assert_eq!(
-            run_src(
-                r#"
-pub fn main() {
-  let value = case 2.0 {
-    1.0 -> Nil
-    _ -> Nil
-  }
-  value
-}
-"#,
-            ),
-            Value::Nil,
-        );
-    }
-
-    fn plan() -> ExecutionPlan {
-        ExecutionPlan::from_module_plan(crate::plan::ModulePlan::new(
+    fn run_module_nil_expression(expression: NilExpr) -> ExecutionError {
+        let main = FunctionPlan::new(
+            FunctionId::new(0),
             "main".into(),
-            FunctionPlan::new(
-                FunctionId::new(0),
-                "main".into(),
-                Vec::new(),
-                Vec::new(),
-                ReturnExpr::int(IntFunctionId(0), IntExpr::value(0.into())),
-            ),
             Vec::new(),
-        ))
-    }
-
-    fn error_bool_expr() -> BoolExpr {
-        BoolExpr::function_call(
-            BoolFunctionExpr::function_call(
-                function_function_expr(),
-                Vec::new(),
-                FunctionType::new(Vec::new(), ValueType::Bool),
-            ),
             Vec::new(),
-        )
-    }
+            ReturnExpr::nil(NilFunctionId(0), expression),
+        );
+        let module = ModulePlan::new("main".into(), main, Vec::new());
+        let plan = crate::ExecutionPlan::from_module_plan(module);
 
-    fn error_float_expr() -> FloatExpr {
-        FloatExpr::function_call(
-            FloatFunctionExpr::function_call(
-                function_function_expr(),
-                Vec::new(),
-                FunctionType::new(Vec::new(), ValueType::Float),
-            ),
-            Vec::new(),
-        )
-    }
-
-    fn error_int_expr() -> IntExpr {
-        IntExpr::function_call(
-            IntFunctionExpr::function_call(
-                function_function_expr(),
-                Vec::new(),
-                FunctionType::new(Vec::new(), ValueType::Int),
-            ),
-            Vec::new(),
-        )
-    }
-
-    fn error_string_expr() -> StringExpr {
-        StringExpr::function_call(
-            StringFunctionExpr::function_call(
-                int_function_function_expr(),
-                Vec::new(),
-                FunctionType::new(Vec::new(), ValueType::String),
-            ),
-            Vec::new(),
-        )
-    }
-
-    fn error_nil_expr() -> crate::plan::NilExpr {
-        crate::plan::NilExpr::function_call(
-            NilFunctionExpr::function_call(
-                function_function_expr(),
-                Vec::new(),
-                FunctionType::new(Vec::new(), ValueType::Nil),
-            ),
-            Vec::new(),
-        )
-    }
-
-    fn function_function_expr() -> FunctionFunctionExpr {
-        FunctionFunctionExpr::value(FunctionFunctionValue::new(
-            FunctionFunctionId::String(StringFunctionFunctionId(0)),
-            Vec::new(),
-            FunctionType::new(Vec::new(), ValueType::String),
-        ))
-    }
-
-    fn int_function_function_expr() -> FunctionFunctionExpr {
-        FunctionFunctionExpr::value(FunctionFunctionValue::new(
-            FunctionFunctionId::Int(IntFunctionFunctionId(0)),
-            Vec::new(),
-            FunctionType::new(Vec::new(), ValueType::Int),
-        ))
-    }
-
-    fn function_return_family_error_value(expected: FunctionReturnFamily) -> ExecutionError {
-        function_return_family_error(expected, FunctionReturnFamily::String)
-    }
-
-    fn function_return_family_error(
-        expected: FunctionReturnFamily,
-        actual: FunctionReturnFamily,
-    ) -> ExecutionError {
-        ExecutionError::function_return_family_mismatch(expected, actual)
+        run_main(&plan).expect_err("module expression should fail at runtime")
     }
 }

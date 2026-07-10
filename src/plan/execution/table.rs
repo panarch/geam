@@ -1,5 +1,5 @@
 use super::function::ExecutableFunction;
-use crate::plan::{
+use super::{
     BoolFunctionFunctionId, BoolFunctionId, BoolFunctionReturn, BoolListFunctionId, BoolListReturn,
     BoolReturn, FloatFunctionFunctionId, FloatFunctionId, FloatFunctionReturn, FloatListFunctionId,
     FloatListReturn, FloatReturn, FunctionFunctionFunctionId, FunctionFunctionReturn,

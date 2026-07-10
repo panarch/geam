@@ -248,13 +248,17 @@ impl IntExpr {
     pub(crate) fn kind(&self) -> &IntExprKind {
         &self.kind
     }
+
+    pub(crate) fn into_kind(self) -> IntExprKind {
+        self.kind
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::{IntExpr, IntExprKind};
     use crate::plan::{
-        BoolExpr, Expr, IntFunctionId, IntFunctionValue, IntLocalId, Step, TupleExpr, ValueType,
+        BoolExpr, Expr, IntFunctionId, IntFunctionReference, IntLocalId, Step, TupleExpr, ValueType,
     };
     use num_bigint::BigInt;
 
@@ -397,7 +401,10 @@ mod tests {
     }
 
     fn function_expr() -> crate::plan::IntFunctionExpr {
-        crate::plan::IntFunctionExpr::value(IntFunctionValue::new(IntFunctionId(0), Vec::new()))
+        crate::plan::IntFunctionExpr::reference(IntFunctionReference::new(
+            IntFunctionId(0),
+            Vec::new(),
+        ))
     }
 
     fn tuple_expr() -> TupleExpr {

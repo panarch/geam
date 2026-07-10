@@ -1,15 +1,15 @@
+use crate::plan::ValueType;
 use crate::plan::execution::ExecutionPlan;
-use crate::plan::{
-    FunctionFunctionExpr, FunctionFunctionExprKind, FunctionFunctionValue, FunctionReturnFamily,
-    FunctionValueKind, Value, ValueType,
+use crate::plan::execution::{
+    FunctionFunctionExpr, FunctionFunctionExprKind, FunctionReturnFamily,
 };
-use crate::runtime::ExecutionError;
 use crate::runtime::expression::{
     eval_bool_expr, eval_float_expr, eval_int_expr, eval_panic_expr, eval_string_expr,
     project_function_list_expr, project_tuple_expr,
 };
 use crate::runtime::frame::Frame;
 use crate::runtime::function;
+use crate::runtime::{ExecutionError, FunctionFunctionValue, FunctionValueKind, Value};
 
 pub(in crate::runtime) fn eval_function_function_expr(
     plan: &ExecutionPlan,
@@ -17,17 +17,19 @@ pub(in crate::runtime) fn eval_function_function_expr(
     expression: &FunctionFunctionExpr,
 ) -> Result<FunctionFunctionValue, ExecutionError> {
     match expression.kind() {
-        FunctionFunctionExprKind::Value(value) => Ok(value.clone()),
-        FunctionFunctionExprKind::Closure {
-            runtime_id,
-            params,
-            captures,
-            return_type,
-        } => Ok(FunctionFunctionValue::new_with_captures(
-            runtime_id.clone(),
-            params.clone(),
-            function::eval_capture_args(plan, frame, captures)?,
-            return_type.clone(),
+        FunctionFunctionExprKind::Reference(reference) => {
+            Ok(FunctionFunctionValue::from_evaluated(
+                reference.function().clone(),
+                reference.params().to_vec(),
+                Vec::new(),
+                expression.type_().clone(),
+            ))
+        }
+        FunctionFunctionExprKind::Closure(template) => Ok(FunctionFunctionValue::from_evaluated(
+            template.function().clone(),
+            template.params().to_vec(),
+            function::eval_capture_args(plan, frame, template.captures())?,
+            expression.type_().clone(),
         )),
         FunctionFunctionExprKind::LocalGet { local, .. } => Ok(frame.get_function_function(*local)),
         FunctionFunctionExprKind::Call { function, args, .. } => {
@@ -37,7 +39,7 @@ pub(in crate::runtime) fn eval_function_function_expr(
             function: callee,
             args,
             ..
-        } => function::run_function_function_function_call(plan, callee, args, frame),
+        } => function::run_function_function_function_call(plan, callee.as_ref(), args, frame),
         FunctionFunctionExprKind::TupleIndex {
             tuple,
             index,
@@ -68,7 +70,9 @@ pub(in crate::runtime) fn eval_function_function_expr(
                 )),
             }
         }
-        FunctionFunctionExprKind::Panic(panic) => eval_panic_expr(plan, frame, panic),
+        FunctionFunctionExprKind::Panic(panic) => {
+            eval_panic_expr(plan, frame, panic).map(|never| match never {})
+        }
         FunctionFunctionExprKind::BoolCase {
             subject,
             true_,
@@ -128,790 +132,169 @@ pub(in crate::runtime) fn eval_function_function_expr(
 
 #[cfg(test)]
 mod tests {
-    use super::eval_function_function_expr;
-    use crate::plan::execution::ExecutionPlan;
     use crate::plan::{
-        BoolExpr, CaptureArg, Expr, FloatExpr, FunctionExpr, FunctionFunctionExpr,
-        FunctionFunctionId, FunctionFunctionValue, FunctionId, FunctionPlan, FunctionReturnFamily,
-        FunctionType, IntExpr, IntFunctionExpr, IntFunctionFunctionId, IntFunctionId,
-        IntFunctionValue, IntLocalId, ListElements, ListExpr, PanicExpr, PanicSite, ReturnExpr,
-        Step, StringExpr, TupleExpr, ValueType,
+        BoolExpr, CaptureArg, Expr, FloatExpr, FunctionFunctionExpr, FunctionFunctionFunctionId,
+        FunctionFunctionId, FunctionId, FunctionPlan, FunctionType, IntExpr, IntFunctionFunctionId,
+        IntLocalId, ListExpr, ModulePlan, PanicExpr, PanicSite, ReturnExpr, Step, StringExpr,
+        TupleExpr, ValueType,
     };
-    use crate::runtime::frame::Frame;
-    use crate::runtime::{ExecutionError, PanicKind};
-    use crate::runtime::{Value, run_src};
+    use crate::runtime::{ExecutionError, run_main};
 
     #[test]
-    fn eval_function_function_value() {
-        assert_returns_function_returning_int(
-            r#"
-fn add_one(value: Int) {
-  value + 1
-}
-
-fn get() {
-  add_one
-}
+    fn source_function_function_expression_variants_evaluate_exact_values() {
+        let source = r#"
+fn add_one(value: Int) -> Int { value + 1 }
+fn identity(value: Int) -> Int { value }
+fn factory() -> fn(Int) -> Int { add_one }
+fn other_factory() -> fn(Int) -> Int { identity }
+fn return_factory() -> fn() -> fn(Int) -> Int { factory }
+fn pass_factory(value: fn() -> fn(Int) -> Int) { value }
 
 pub fn main() {
-  get
+  let local = factory
+  let pass = pass_factory
+  #(
+    factory()(0),
+    { let captured = 1 fn() { fn(value) { value + captured } } }()(0),
+    local()(2),
+    return_factory()()(3),
+    pass(factory)()(4),
+    #(factory).0()(5),
+    case [factory] { [value] -> value()(6) _ -> 0 },
+    case True { True -> factory False -> other_factory }()(7),
+    case False { True -> other_factory False -> factory }()(8),
+    case 1 { 1 -> factory _ -> other_factory }()(9),
+    case 0 { 1 -> other_factory _ -> factory }()(10),
+    case "hit" { "hit" -> factory _ -> other_factory }()(11),
+    case "miss" { "hit" -> other_factory _ -> factory }()(12),
+    case 1.0 { 1.0 -> factory _ -> other_factory }()(13),
+    case 0.0 { 1.0 -> other_factory _ -> factory }()(14),
+    { let _ = 0 factory }()(15),
+  )
 }
-"#,
-        );
-    }
-
-    #[test]
-    fn eval_function_function_local_get() {
-        assert_returns_function_returning_int(
-            r#"
-fn add_one(value: Int) {
-  value + 1
-}
-
-fn get() {
-  add_one
-}
-
-pub fn main() {
-  let getter = get
-  getter
-}
-"#,
-        );
-    }
-
-    #[test]
-    fn eval_function_function_panic_returns_error() {
-        let plan = plan();
-        let mut frame = Frame::default();
+"#;
 
         assert_eq!(
-            eval_function_function_expr(
-                &plan,
-                &mut frame,
-                &FunctionFunctionExpr::panic(
-                    PanicExpr::panic_at(None, PanicSite::unknown()),
-                    returned_int_function_type(),
-                ),
-            ),
-            Err(ExecutionError::source_panic(
-                None,
-                PanicKind::Panic,
-                None,
-                PanicSite::unknown()
-            )),
-        );
-    }
-
-    #[test]
-    fn eval_function_function_direct_call() {
-        assert_returns_function_returning_int(
-            r#"
-fn add_one(value: Int) {
-  value + 1
-}
-
-fn get() {
-  add_one
-}
-
-fn select() {
-  get
-}
-
-pub fn main() {
-  select()
-}
-"#,
-        );
-    }
-
-    #[test]
-    fn eval_function_function_value_call() {
-        assert_returns_function_returning_int(
-            r#"
-fn add_one(value: Int) {
-  value + 1
-}
-
-fn get() {
-  add_one
-}
-
-fn select() {
-  get
-}
-
-pub fn main() {
-  let selector = select
-  selector()
-}
-"#,
-        );
-    }
-
-    #[test]
-    fn eval_function_function_bool_case_branches() {
-        assert_returns_function_returning_int(
-            r#"
-fn add_one(value: Int) {
-  value + 1
-}
-
-fn add_two(value: Int) {
-  value + 2
-}
-
-fn get() {
-  add_one
-}
-
-fn get_other() {
-  add_two
-}
-
-pub fn main() {
-  case True {
-    True -> get
-    False -> get_other
-  }
-}
-"#,
-        );
-
-        assert_returns_function_returning_int(
-            r#"
-fn add_one(value: Int) {
-  value + 1
-}
-
-fn add_two(value: Int) {
-  value + 2
-}
-
-fn get() {
-  add_one
-}
-
-fn get_other() {
-  add_two
-}
-
-pub fn main() {
-  case False {
-    True -> get_other
-    False -> get
-  }
-}
-"#,
-        );
-    }
-
-    #[test]
-    fn eval_function_function_int_case_branches() {
-        assert_returns_function_returning_int(
-            r#"
-fn add_one(value: Int) {
-  value + 1
-}
-
-fn add_two(value: Int) {
-  value + 2
-}
-
-fn get() {
-  add_one
-}
-
-fn get_other() {
-  add_two
-}
-
-pub fn main() {
-  case 1 {
-    1 -> get
-    _ -> get_other
-  }
-}
-"#,
-        );
-
-        assert_returns_function_returning_int(
-            r#"
-fn add_one(value: Int) {
-  value + 1
-}
-
-fn add_two(value: Int) {
-  value + 2
-}
-
-fn get() {
-  add_one
-}
-
-fn get_other() {
-  add_two
-}
-
-pub fn main() {
-  case 2 {
-    1 -> get_other
-    _ -> get
-  }
-}
-"#,
-        );
-    }
-
-    #[test]
-    fn eval_function_function_float_case_branches() {
-        assert_returns_function_returning_int(
-            r#"
-fn add_one(value: Int) {
-  value + 1
-}
-
-fn add_two(value: Int) {
-  value + 2
-}
-
-fn get() {
-  add_one
-}
-
-fn get_other() {
-  add_two
-}
-
-pub fn main() {
-  case 1.0 {
-    1.0 -> get
-    _ -> get_other
-  }
-}
-"#,
-        );
-
-        assert_returns_function_returning_int(
-            r#"
-fn add_one(value: Int) {
-  value + 1
-}
-
-fn add_two(value: Int) {
-  value + 2
-}
-
-fn get() {
-  add_one
-}
-
-fn get_other() {
-  add_two
-}
-
-pub fn main() {
-  case 2.0 {
-    1.0 -> get_other
-    _ -> get
-  }
-}
-"#,
-        );
-    }
-
-    #[test]
-    fn eval_function_function_float_case_branches_direct() {
-        let plan = plan();
-        let mut frame = Frame::default();
-
-        let function = eval_function_function_expr(
-            &plan,
-            &mut frame,
-            &FunctionFunctionExpr::float_case(
-                FloatExpr::value(1.0),
-                vec![(1.0, function_function_value())],
-                other_function_function_value(),
-            ),
-        )
-        .expect("expression should evaluate");
-        assert_eq!(
-            function.runtime_id(),
-            FunctionFunctionId::Int(IntFunctionFunctionId(0))
-        );
-
-        let function = eval_function_function_expr(
-            &plan,
-            &mut frame,
-            &FunctionFunctionExpr::float_case(
-                FloatExpr::value(2.0),
-                vec![(1.0, other_function_function_value())],
-                function_function_value(),
-            ),
-        )
-        .expect("expression should evaluate");
-        assert_eq!(
-            function.runtime_id(),
-            FunctionFunctionId::Int(IntFunctionFunctionId(0))
-        );
-    }
-
-    #[test]
-    fn eval_function_function_direct_closure_case_and_block_paths() {
-        let plan = plan();
-        let mut frame = Frame::default();
-
-        let function = eval_function_function_expr(
-            &plan,
-            &mut frame,
-            &FunctionFunctionExpr::closure(
-                FunctionFunctionId::Int(IntFunctionFunctionId(0)),
-                Vec::new(),
-                Vec::new(),
-                function_function_type(),
-                returned_int_function_type(),
-            ),
-        )
-        .expect("expression should evaluate");
-        assert_eq!(
-            function.runtime_id(),
-            FunctionFunctionId::Int(IntFunctionFunctionId(0))
-        );
-
-        let function = eval_function_function_expr(
-            &plan,
-            &mut frame,
-            &FunctionFunctionExpr::bool_case(
-                BoolExpr::value(true),
-                function_function_value(),
-                other_function_function_value(),
-            ),
-        )
-        .expect("expression should evaluate");
-        assert_eq!(
-            function.runtime_id(),
-            FunctionFunctionId::Int(IntFunctionFunctionId(0))
-        );
-
-        let function = eval_function_function_expr(
-            &plan,
-            &mut frame,
-            &FunctionFunctionExpr::bool_case(
-                BoolExpr::value(false),
-                other_function_function_value(),
-                function_function_value(),
-            ),
-        )
-        .expect("expression should evaluate");
-        assert_eq!(
-            function.runtime_id(),
-            FunctionFunctionId::Int(IntFunctionFunctionId(0))
-        );
-
-        let function = eval_function_function_expr(
-            &plan,
-            &mut frame,
-            &FunctionFunctionExpr::int_case(
-                IntExpr::value(1.into()),
-                vec![(1.into(), function_function_value())],
-                other_function_function_value(),
-            ),
-        )
-        .expect("expression should evaluate");
-        assert_eq!(
-            function.runtime_id(),
-            FunctionFunctionId::Int(IntFunctionFunctionId(0))
-        );
-
-        let function = eval_function_function_expr(
-            &plan,
-            &mut frame,
-            &FunctionFunctionExpr::int_case(
-                IntExpr::value(2.into()),
-                vec![(1.into(), other_function_function_value())],
-                function_function_value(),
-            ),
-        )
-        .expect("expression should evaluate");
-        assert_eq!(
-            function.runtime_id(),
-            FunctionFunctionId::Int(IntFunctionFunctionId(0))
-        );
-
-        let function = eval_function_function_expr(
-            &plan,
-            &mut frame,
-            &FunctionFunctionExpr::string_case(
-                StringExpr::value("hit".into()),
-                vec![("hit".into(), function_function_value())],
-                other_function_function_value(),
-            ),
-        )
-        .expect("expression should evaluate");
-        assert_eq!(
-            function.runtime_id(),
-            FunctionFunctionId::Int(IntFunctionFunctionId(0))
-        );
-
-        let function = eval_function_function_expr(
-            &plan,
-            &mut frame,
-            &FunctionFunctionExpr::string_case(
-                StringExpr::value("miss".into()),
-                vec![("hit".into(), other_function_function_value())],
-                function_function_value(),
-            ),
-        )
-        .expect("expression should evaluate");
-        assert_eq!(
-            function.runtime_id(),
-            FunctionFunctionId::Int(IntFunctionFunctionId(0))
-        );
-
-        let function = eval_function_function_expr(
-            &plan,
-            &mut frame,
-            &FunctionFunctionExpr::block(
-                vec![Step::evaluate(Expr::int(IntExpr::value(1.into())))],
-                function_function_value(),
-            ),
-        )
-        .expect("expression should evaluate");
-        assert_eq!(
-            function.runtime_id(),
-            FunctionFunctionId::Int(IntFunctionFunctionId(0))
-        );
-    }
-
-    #[test]
-    fn eval_function_function_expr_propagates_operand_errors() {
-        assert_tuple_index_error(
-            ValueType::Int,
-            FunctionFunctionExpr::closure(
-                FunctionFunctionId::Int(IntFunctionFunctionId(0)),
-                Vec::new(),
-                vec![CaptureArg::int(IntLocalId(0), error_int_expr())],
-                function_function_type(),
-                returned_int_function_type(),
-            ),
-        );
-        assert_function_tuple_index_error(FunctionFunctionExpr::tuple_index(
-            empty_tuple(),
-            0,
-            returned_int_function_type(),
-        ));
-        assert_tuple_index_error(
-            ValueType::Bool,
-            FunctionFunctionExpr::bool_case(
-                error_bool_expr(),
-                function_function_value(),
-                other_function_function_value(),
-            ),
-        );
-        assert_tuple_index_error(
-            ValueType::Int,
-            FunctionFunctionExpr::int_case(
-                error_int_expr(),
-                vec![(1.into(), function_function_value())],
-                other_function_function_value(),
-            ),
-        );
-        assert_tuple_index_error(
-            ValueType::String,
-            FunctionFunctionExpr::string_case(
-                error_string_expr(),
-                vec![("hit".into(), function_function_value())],
-                other_function_function_value(),
-            ),
-        );
-        assert_tuple_index_error(
-            ValueType::Float,
-            FunctionFunctionExpr::float_case(
-                error_float_expr(),
-                vec![(1.0, function_function_value())],
-                other_function_function_value(),
-            ),
-        );
-        assert_tuple_index_error(
-            ValueType::Int,
-            FunctionFunctionExpr::block(
-                vec![Step::evaluate(Expr::int(error_int_expr()))],
-                function_function_value(),
+            crate::runtime::run_src(source),
+            crate::runtime::Value::Tuple(
+                [1_i64, 1, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]
+                    .into_iter()
+                    .map(|value| crate::runtime::Value::Int(value.into()))
+                    .collect(),
             ),
         );
     }
 
     #[test]
-    fn eval_function_function_block() {
-        assert_returns_function_returning_int(
-            r#"
-fn add_one(value: Int) {
-  value + 1
-}
-
-fn get() {
-  add_one
-}
-
-pub fn main() {
-  {
-    let getter = get
-    getter
-  }
-}
-"#,
+    fn module_expression_errors_propagate_through_function_function_wrappers() {
+        let return_type = FunctionType::new(Vec::new(), ValueType::Int);
+        let type_ = FunctionType::new(
+            Vec::new(),
+            ValueType::Function(Box::new(return_type.clone())),
         );
-    }
-
-    #[test]
-    fn eval_function_function_tuple_index() {
-        let plan = plan();
-        let mut frame = Frame::default();
-        let tuple = TupleExpr::value(
-            vec![Expr::function(FunctionExpr::function(
-                function_function_value(),
-            ))],
-            vec![ValueType::Function(Box::new(returned_int_function_type()))],
-        );
-
-        let function = eval_function_function_expr(
-            &plan,
-            &mut frame,
-            &FunctionFunctionExpr::tuple_index(tuple, 0, returned_int_function_type()),
-        )
-        .expect("expression should evaluate");
-        assert_eq!(
-            function.runtime_id(),
-            FunctionFunctionId::Int(IntFunctionFunctionId(0)),
-        );
-
-        let int_function_type = FunctionType::new(Vec::new(), ValueType::Int);
-        let tuple = TupleExpr::value(
-            vec![Expr::function(FunctionExpr::int(IntFunctionExpr::value(
-                IntFunctionValue::new(IntFunctionId(0), Vec::new()),
-            )))],
-            vec![ValueType::Function(Box::new(int_function_type.clone()))],
-        );
-
-        assert_eq!(
-            eval_function_function_expr(
-                &plan,
-                &mut frame,
-                &FunctionFunctionExpr::tuple_index(tuple, 0, returned_int_function_type()),
-            ),
-            Err(ExecutionError::tuple_index_family_mismatch(
-                ValueType::Function(Box::new(returned_int_function_type())),
-                ValueType::Function(Box::new(int_function_type)),
-            )),
-        );
-
-        let tuple = TupleExpr::value(
-            vec![Expr::int(IntExpr::value(1.into()))],
-            vec![ValueType::Int],
-        );
-        assert_eq!(
-            eval_function_function_expr(
-                &plan,
-                &mut frame,
-                &FunctionFunctionExpr::tuple_index(tuple, 0, returned_int_function_type()),
-            ),
-            Err(ExecutionError::tuple_index_family_mismatch(
-                ValueType::Function(Box::new(returned_int_function_type())),
-                ValueType::Int,
-            )),
-        );
-    }
-
-    #[test]
-    fn eval_function_function_list_index() {
-        let plan = plan();
-        let mut frame = Frame::default();
-        let list = ListExpr::value(
-            vec![Expr::function(FunctionExpr::function(
-                function_function_value(),
-            ))],
-            ValueType::Function(Box::new(function_function_value().type_().clone())),
-        );
-        assert_eq!(
-            eval_function_function_expr(
-                &plan,
-                &mut frame,
-                &FunctionFunctionExpr::list_index(
-                    list,
-                    0,
-                    function_function_value().type_().clone()
-                ),
+        let panic = |message: &str| {
+            PanicExpr::panic_at(
+                Some(StringExpr::value(message.into())),
+                PanicSite::unknown(),
             )
-            .expect("expression should evaluate")
-            .runtime_id(),
-            FunctionFunctionId::Int(IntFunctionFunctionId(0)),
-        );
-
-        let list = ListExpr::from_elements(ListElements::Function {
-            item_type: function_function_value().type_().clone(),
-            values: vec![FunctionExpr::int(IntFunctionExpr::value(
-                IntFunctionValue::new(IntFunctionId(0), Vec::new()),
-            ))],
-        });
-        assert_eq!(
-            eval_function_function_expr(
-                &plan,
-                &mut frame,
-                &FunctionFunctionExpr::list_index(
-                    list,
-                    0,
-                    function_function_value().type_().clone()
-                ),
-            ),
-            Err(ExecutionError::function_return_family_mismatch(
-                FunctionReturnFamily::Function,
-                FunctionReturnFamily::Int,
-            )),
-        );
-
-        let mut frame = Frame::default();
-        let list = ListExpr::value(
-            vec![Expr::function(FunctionExpr::function(
-                function_function_value(),
-            ))],
-            ValueType::Function(Box::new(function_function_value().type_().clone())),
-        );
-        assert_eq!(
-            eval_function_function_expr(
-                &plan,
-                &mut frame,
-                &FunctionFunctionExpr::list_index(
-                    list,
-                    1,
-                    function_function_value().type_().clone()
-                ),
-            ),
-            Err(ExecutionError::list_index_out_of_bounds(
-                ValueType::Function(Box::new(function_function_value().type_().clone())),
-                1,
-                1,
-            )),
-        );
-
-        let list = ListExpr::tuple_index(
-            empty_tuple(),
-            0,
-            ValueType::Function(Box::new(returned_int_function_type())),
-        );
-        assert_eq!(
-            eval_function_function_expr(
-                &plan,
-                &mut frame,
-                &FunctionFunctionExpr::list_index(list, 0, returned_int_function_type()),
-            ),
-            Err(ExecutionError::tuple_index_family_mismatch(
-                ValueType::List(Box::new(ValueType::Function(Box::new(
-                    returned_int_function_type(),
-                )))),
-                ValueType::Tuple(Vec::new()),
-            )),
-        );
-    }
-
-    fn assert_returns_function_returning_int(src: &str) {
-        assert_eq!(
-            run_src(src),
-            Value::Function(
-                FunctionFunctionValue::new(
-                    FunctionFunctionId::Int(IntFunctionFunctionId(0)),
+        };
+        let fallback = || FunctionFunctionExpr::panic(panic("fallback"), type_.clone());
+        let expressions = [
+            (
+                FunctionFunctionExpr::closure(
+                    FunctionFunctionId::Int(IntFunctionFunctionId(1)),
                     Vec::new(),
-                    returned_int_function_type(),
-                )
-                .into(),
+                    vec![CaptureArg::int(
+                        IntLocalId(0),
+                        IntExpr::panic(panic("capture")),
+                    )],
+                    type_.clone(),
+                    return_type,
+                ),
+                "capture",
             ),
-        );
+            (
+                FunctionFunctionExpr::tuple_index(
+                    TupleExpr::panic(
+                        panic("tuple"),
+                        vec![ValueType::Function(Box::new(type_.clone()))],
+                    ),
+                    0,
+                    type_.clone(),
+                ),
+                "tuple",
+            ),
+            (
+                FunctionFunctionExpr::list_index(
+                    super::super::expect_function_list(ListExpr::panic(
+                        panic("list"),
+                        ValueType::Function(Box::new(type_.clone())),
+                    )),
+                    0,
+                    type_.clone(),
+                ),
+                "list",
+            ),
+            (
+                FunctionFunctionExpr::bool_case(
+                    BoolExpr::panic(panic("bool subject")),
+                    fallback(),
+                    fallback(),
+                ),
+                "bool subject",
+            ),
+            (
+                FunctionFunctionExpr::int_case(
+                    IntExpr::panic(panic("int subject")),
+                    Vec::new(),
+                    fallback(),
+                ),
+                "int subject",
+            ),
+            (
+                FunctionFunctionExpr::string_case(
+                    StringExpr::panic(panic("string subject")),
+                    Vec::new(),
+                    fallback(),
+                ),
+                "string subject",
+            ),
+            (
+                FunctionFunctionExpr::float_case(
+                    FloatExpr::panic(panic("float subject")),
+                    Vec::new(),
+                    fallback(),
+                ),
+                "float subject",
+            ),
+            (
+                FunctionFunctionExpr::block(
+                    vec![Step::evaluate(Expr::int(IntExpr::panic(panic("step"))))],
+                    fallback(),
+                ),
+                "step",
+            ),
+        ];
+
+        for (expression, message) in expressions {
+            assert_eq!(
+                run_module_function_function_expression(expression).to_string(),
+                format!("panic: {message}"),
+            );
+        }
     }
 
-    fn returned_int_function_type() -> FunctionType {
-        FunctionType::new(vec![ValueType::Int], ValueType::Int)
-    }
-
-    fn function_function_type() -> FunctionType {
-        FunctionType::new(
-            Vec::new(),
-            ValueType::Function(Box::new(returned_int_function_type())),
-        )
-    }
-
-    fn function_function_value() -> FunctionFunctionExpr {
-        FunctionFunctionExpr::value(FunctionFunctionValue::new(
-            FunctionFunctionId::Int(IntFunctionFunctionId(0)),
-            Vec::new(),
-            returned_int_function_type(),
-        ))
-    }
-
-    fn other_function_function_value() -> FunctionFunctionExpr {
-        FunctionFunctionExpr::value(FunctionFunctionValue::new(
-            FunctionFunctionId::Int(IntFunctionFunctionId(1)),
-            Vec::new(),
-            returned_int_function_type(),
-        ))
-    }
-
-    fn plan() -> ExecutionPlan {
-        ExecutionPlan::from_module_plan(crate::plan::ModulePlan::new(
+    fn run_module_function_function_expression(expression: FunctionFunctionExpr) -> ExecutionError {
+        let main = FunctionPlan::new(
+            FunctionId::new(0),
             "main".into(),
-            FunctionPlan::new(
-                FunctionId::new(0),
-                "main".into(),
-                Vec::new(),
-                Vec::new(),
-                ReturnExpr::int(IntFunctionId(0), IntExpr::value(0.into())),
-            ),
             Vec::new(),
-        ))
-    }
-
-    fn assert_tuple_index_error(expected: ValueType, expression: FunctionFunctionExpr) {
-        let plan = plan();
-        let mut frame = Frame::default();
-
-        assert_eq!(
-            eval_function_function_expr(&plan, &mut frame, &expression),
-            Err(tuple_index_error(expected)),
+            Vec::new(),
+            ReturnExpr::function_function(FunctionFunctionFunctionId(0), expression),
         );
-    }
+        let module = ModulePlan::new("main".into(), main, Vec::new());
+        let plan = crate::ExecutionPlan::from_module_plan(module);
 
-    fn assert_function_tuple_index_error(expression: FunctionFunctionExpr) {
-        let plan = plan();
-        let mut frame = Frame::default();
-
-        assert_eq!(
-            eval_function_function_expr(&plan, &mut frame, &expression),
-            Err(tuple_index_error(ValueType::Function(Box::new(
-                returned_int_function_type()
-            )))),
-        );
-    }
-
-    fn tuple_index_error(expected: ValueType) -> ExecutionError {
-        ExecutionError::tuple_index_family_mismatch(expected, ValueType::Tuple(Vec::new()))
-    }
-
-    fn empty_tuple() -> TupleExpr {
-        TupleExpr::value(Vec::new(), Vec::new())
-    }
-
-    fn error_bool_expr() -> BoolExpr {
-        BoolExpr::tuple_index(empty_tuple(), 0)
-    }
-
-    fn error_int_expr() -> IntExpr {
-        IntExpr::tuple_index(empty_tuple(), 0)
-    }
-
-    fn error_string_expr() -> StringExpr {
-        StringExpr::tuple_index(empty_tuple(), 0)
-    }
-
-    fn error_float_expr() -> FloatExpr {
-        FloatExpr::tuple_index(empty_tuple(), 0)
+        run_main(&plan).expect_err("module expression should fail at runtime")
     }
 }

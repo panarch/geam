@@ -177,13 +177,17 @@ impl NilExpr {
     pub(crate) fn kind(&self) -> &NilExprKind {
         &self.kind
     }
+
+    pub(crate) fn into_kind(self) -> NilExprKind {
+        self.kind
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::{NilExpr, NilExprKind};
     use crate::plan::{
-        BoolExpr, Expr, IntExpr, NilFunctionId, NilFunctionValue, NilLocalId, Step, TupleExpr,
+        BoolExpr, Expr, IntExpr, NilFunctionId, NilFunctionReference, NilLocalId, Step, TupleExpr,
         ValueType,
     };
     use num_bigint::BigInt;
@@ -280,7 +284,10 @@ mod tests {
     }
 
     fn function_expr() -> crate::plan::NilFunctionExpr {
-        crate::plan::NilFunctionExpr::value(NilFunctionValue::new(NilFunctionId(0), Vec::new()))
+        crate::plan::NilFunctionExpr::reference(NilFunctionReference::new(
+            NilFunctionId(0),
+            Vec::new(),
+        ))
     }
 
     fn tuple_expr() -> TupleExpr {

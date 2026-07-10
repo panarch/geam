@@ -752,7 +752,7 @@ mod tests {
     };
     use crate::plan::{
         BoolExpr, BoolFunctionId, BoolLocalId, Expr, FloatExpr, FunctionExpr, FunctionFunctionExpr,
-        FunctionFunctionId, FunctionType, FunctionValue, IntExpr, IntFunctionExpr,
+        FunctionFunctionId, FunctionReference, FunctionType, IntExpr, IntFunctionExpr,
         IntFunctionFunctionId, IntFunctionId, IntLocalId, ListExpr, NilExpr, NilFunctionId,
         NilLocalId, PanicExpr, PanicSite, ParamLocal, ReturnBody, RuntimeFunctionId, SourceSpan,
         StringExpr, StringLocalId, TupleExpr, ValueType,
@@ -1292,7 +1292,7 @@ pub fn main() {
 
     #[test]
     fn reject_margin_function_expression_type() {
-        let expression = Expr::function(FunctionExpr::value(FunctionValue::new(
+        let expression = Expr::function(FunctionExpr::reference(FunctionReference::new(
             RuntimeFunctionId::Nil(NilFunctionId(0)),
             Vec::new(),
         )));

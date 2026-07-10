@@ -1,7 +1,7 @@
 use crate::plan::{
     BoolExpr, CaptureArg, FloatExpr, FunctionFunctionExpr, FunctionListExpr, FunctionType, IntExpr,
     PanicExpr, ParamLocal, Step, StringExpr, TupleExpr, TupleFunctionFunctionId, TupleFunctionId,
-    TupleFunctionLocalId, TupleFunctionValue, ValueType,
+    TupleFunctionLocalId, TupleFunctionReference, ValueType,
 };
 use ecow::EcoString;
 use num_bigint::BigInt;
@@ -14,7 +14,7 @@ pub struct TupleFunctionExpr {
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum TupleFunctionExprKind {
-    Value(TupleFunctionValue),
+    Reference(TupleFunctionReference),
     Closure {
         runtime_id: TupleFunctionId,
         params: Vec<ParamLocal>,
@@ -73,10 +73,14 @@ pub(crate) enum TupleFunctionExprKind {
 }
 
 impl TupleFunctionExpr {
-    pub(crate) fn value(value: TupleFunctionValue) -> Self {
+    pub(crate) fn reference(value: TupleFunctionReference, return_type: Vec<ValueType>) -> Self {
+        let type_ = FunctionType::new(
+            value.params().iter().map(ParamLocal::value_type).collect(),
+            ValueType::Tuple(return_type),
+        );
         Self {
-            type_: value.type_(),
-            kind: TupleFunctionExprKind::Value(value),
+            type_,
+            kind: TupleFunctionExprKind::Reference(value),
         }
     }
 
@@ -249,25 +253,28 @@ impl TupleFunctionExpr {
     pub(crate) fn kind(&self) -> &TupleFunctionExprKind {
         &self.kind
     }
+
+    pub(crate) fn into_parts(self) -> (FunctionType, TupleFunctionExprKind) {
+        (self.type_, self.kind)
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::{TupleFunctionExpr, TupleFunctionExprKind};
     use crate::plan::{
-        BoolExpr, Expr, FunctionFunctionExpr, FunctionFunctionId, FunctionFunctionValue,
+        BoolExpr, Expr, FunctionFunctionExpr, FunctionFunctionId, FunctionFunctionReference,
         FunctionType, IntExpr, ParamLocal, Step, TupleExpr, TupleFunctionFunctionId,
-        TupleFunctionId, TupleFunctionLocalId, TupleFunctionValue, ValueType,
+        TupleFunctionId, TupleFunctionLocalId, TupleFunctionReference, ValueType,
     };
 
     #[test]
     fn tuple_function_expr_kind_accessors() {
         assert_eq!(
             tuple_function_value().kind(),
-            &TupleFunctionExprKind::Value(TupleFunctionValue::new(
+            &TupleFunctionExprKind::Reference(TupleFunctionReference::new(
                 TupleFunctionId(0),
                 vec![ParamLocal::int(crate::plan::IntLocalId(0))],
-                tuple_type(),
             )),
         );
         assert_eq!(
@@ -436,11 +443,13 @@ mod tests {
     }
 
     fn tuple_function_value() -> TupleFunctionExpr {
-        TupleFunctionExpr::value(TupleFunctionValue::new(
-            TupleFunctionId(0),
-            vec![ParamLocal::int(crate::plan::IntLocalId(0))],
+        TupleFunctionExpr::reference(
+            TupleFunctionReference::new(
+                TupleFunctionId(0),
+                vec![ParamLocal::int(crate::plan::IntLocalId(0))],
+            ),
             tuple_type(),
-        ))
+        )
     }
 
     fn tuple_function_type() -> FunctionType {
@@ -459,10 +468,12 @@ mod tests {
     }
 
     fn function_function_value() -> FunctionFunctionExpr {
-        FunctionFunctionExpr::value(FunctionFunctionValue::new(
-            FunctionFunctionId::Tuple(TupleFunctionFunctionId(0)),
-            Vec::new(),
+        FunctionFunctionExpr::reference(
+            FunctionFunctionReference::new(
+                FunctionFunctionId::Tuple(TupleFunctionFunctionId(0)),
+                Vec::new(),
+            ),
             tuple_function_type(),
-        ))
+        )
     }
 }

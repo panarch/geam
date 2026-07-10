@@ -1,15 +1,13 @@
+use crate::plan::ValueType;
 use crate::plan::execution::ExecutionPlan;
-use crate::plan::{
-    FunctionReturnFamily, FunctionValueKind, ListFunctionExpr, ListFunctionExprKind,
-    ListFunctionValue, Value, ValueType,
-};
-use crate::runtime::ExecutionError;
+use crate::plan::execution::{FunctionReturnFamily, ListFunctionExpr, ListFunctionExprKind};
 use crate::runtime::expression::{
     eval_bool_expr, eval_float_expr, eval_int_expr, eval_panic_expr, eval_string_expr,
     project_function_list_expr, project_tuple_expr,
 };
 use crate::runtime::frame::Frame;
 use crate::runtime::function;
+use crate::runtime::{ExecutionError, FunctionValueKind, ListFunctionValue, Value};
 
 pub(in crate::runtime) fn eval_list_function_expr(
     plan: &ExecutionPlan,
@@ -17,15 +15,15 @@ pub(in crate::runtime) fn eval_list_function_expr(
     expression: &ListFunctionExpr,
 ) -> Result<ListFunctionValue, ExecutionError> {
     match expression.kind() {
-        ListFunctionExprKind::Value(value) => Ok(value.clone()),
-        ListFunctionExprKind::Closure {
-            runtime_id,
-            params,
-            captures,
-        } => Ok(ListFunctionValue::new_with_captures(
-            runtime_id.clone(),
-            params.clone(),
-            function::eval_capture_args(plan, frame, captures)?,
+        ListFunctionExprKind::Reference(reference) => Ok(ListFunctionValue::new_with_captures(
+            reference.function().clone(),
+            reference.params().to_vec(),
+            Vec::new(),
+        )),
+        ListFunctionExprKind::Closure(template) => Ok(ListFunctionValue::new_with_captures(
+            template.function().clone(),
+            template.params().to_vec(),
+            function::eval_capture_args(plan, frame, template.captures())?,
         )),
         ListFunctionExprKind::LocalGet { local, .. } => Ok(frame.get_list_function(local)),
         ListFunctionExprKind::Call { function, args, .. } => {
@@ -35,7 +33,7 @@ pub(in crate::runtime) fn eval_list_function_expr(
             function: callee,
             args,
             ..
-        } => function::run_list_function_function_call(plan, callee, args, frame),
+        } => function::run_list_function_function_call(plan, callee.as_ref(), args, frame),
         ListFunctionExprKind::TupleIndex {
             tuple,
             index,
@@ -71,7 +69,9 @@ pub(in crate::runtime) fn eval_list_function_expr(
                 )),
             }
         }
-        ListFunctionExprKind::Panic(panic) => eval_panic_expr(plan, frame, panic),
+        ListFunctionExprKind::Panic(panic) => {
+            eval_panic_expr(plan, frame, panic).map(|never| match never {})
+        }
         ListFunctionExprKind::BoolCase {
             subject,
             true_,
@@ -131,609 +131,174 @@ pub(in crate::runtime) fn eval_list_function_expr(
 
 #[cfg(test)]
 mod tests {
-    use super::eval_list_function_expr;
-    use crate::plan::execution::ExecutionPlan;
     use crate::plan::{
-        BoolExpr, CaptureArg, Expr, FloatExpr, FunctionExpr, FunctionFunctionExpr,
-        FunctionFunctionId, FunctionFunctionValue, FunctionId, FunctionPlan, FunctionReturnFamily,
-        FunctionType, IntExpr, IntFunctionExpr, IntFunctionId, IntFunctionValue, IntListLocalId,
-        ListElements, ListExpr, ListFunctionExpr, ListFunctionFunctionId, ListFunctionId,
-        ListFunctionValue, ListLocal, PanicExpr, PanicSite, ParamLocal, ReturnBody, ReturnExpr,
-        Step, StringExpr, TupleExpr, ValueType,
+        BoolExpr, CaptureArg, Expr, FloatExpr, FunctionId, FunctionPlan, FunctionType, IntExpr,
+        IntListFunctionId, IntLocalId, ListExpr, ListFunctionExpr, ListFunctionFunctionId,
+        ListFunctionId, ModulePlan, PanicExpr, PanicSite, ReturnExpr, Step, StringExpr, TupleExpr,
+        ValueType,
     };
-    use crate::runtime::frame::Frame;
-    use crate::runtime::{ExecutionError, PanicKind};
-    use num_bigint::BigInt;
+    use crate::runtime::{ExecutionError, run_main};
 
     #[test]
-    fn eval_list_function_direct_expression_paths() {
-        let plan = plan();
-        let mut frame = Frame::default();
-        frame.set_list_function(
-            crate::plan::ListFunctionLocal::from_item_type(
-                0,
-                list_function_type(),
-                crate::plan::ValueType::Int,
-            ),
-            list_function_value(),
-        );
+    fn source_list_function_expression_variants_evaluate_exact_values() {
+        let source = r#"
+fn list(value: Int) { [value] }
+fn identity(value: Int) { [value] }
+fn make_list(offset: Int) -> fn(Int) -> List(Int) {
+  fn(value) { [value + offset] }
+}
+
+pub fn main() {
+  let local = list
+  let maker = make_list
+  #(
+    list(0),
+    { let captured = 1 fn(value) { [value + captured] } }(0),
+    local(2),
+    make_list(1)(2),
+    maker(1)(3),
+    #(list).0(5),
+    case [list] { [function] -> function(6) _ -> [] },
+    case True { True -> list False -> identity }(7),
+    case False { True -> identity False -> list }(8),
+    case 1 { 1 -> list _ -> identity }(9),
+    case 0 { 1 -> identity _ -> list }(10),
+    case "hit" { "hit" -> list _ -> identity }(11),
+    case "miss" { "hit" -> identity _ -> list }(12),
+    case 1.0 { 1.0 -> list _ -> identity }(13),
+    case 0.0 { 1.0 -> identity _ -> list }(14),
+    { let _ = 0 list }(15),
+  )
+}
+"#;
 
         assert_eq!(
-            eval_list_function_expr(
-                &plan,
-                &mut frame,
-                &ListFunctionExpr::closure(
-                    ListFunctionId::from_item_type(0, crate::plan::ValueType::Int),
-                    vec![ParamLocal::int(crate::plan::IntLocalId(0))],
-                    Vec::new()
-                ),
-            )
-            .expect("expression should evaluate")
-            .runtime_id(),
-            ListFunctionId::from_item_type(0, crate::plan::ValueType::Int),
-        );
-        assert_eq!(
-            eval_list_function_expr(
-                &plan,
-                &mut frame,
-                &ListFunctionExpr::panic(
-                    PanicExpr::panic_at(None, PanicSite::unknown()),
-                    list_function_type(),
-                    ValueType::Int,
-                ),
+            crate::runtime::run_src(source),
+            crate::runtime::Value::Tuple(
+                [0_i64, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
+                    .into_iter()
+                    .map(|value| {
+                        crate::runtime::Value::List(crate::runtime::ListValue::int(vec![
+                            value.into(),
+                        ]))
+                    })
+                    .collect(),
             ),
-            Err(ExecutionError::source_panic(
-                None,
-                PanicKind::Panic,
-                None,
-                PanicSite::unknown()
-            )),
         );
-        assert_eq!(
-            eval_list_function_expr(
-                &plan,
-                &mut frame,
-                &ListFunctionExpr::local_get(
-                    crate::plan::ListFunctionLocal::from_item_type(
-                        0,
-                        list_function_type(),
-                        crate::plan::ValueType::Int
-                    ),
-                    "make".into(),
-                ),
+    }
+
+    #[test]
+    fn module_expression_errors_propagate_through_list_function_wrappers() {
+        let item_type = ValueType::Int;
+        let type_ = FunctionType::new(Vec::new(), ValueType::List(Box::new(item_type.clone())));
+        let panic = |message: &str| {
+            PanicExpr::panic_at(
+                Some(StringExpr::value(message.into())),
+                PanicSite::unknown(),
             )
-            .expect("expression should evaluate")
-            .runtime_id(),
-            ListFunctionId::from_item_type(0, crate::plan::ValueType::Int),
-        );
-        assert_eq!(
-            eval_list_function_expr(
-                &plan,
-                &mut frame,
-                &ListFunctionExpr::call(
-                    ListFunctionFunctionId::from_item_type(
-                        0,
-                        list_function_type(),
-                        crate::plan::ValueType::Int
-                    ),
+        };
+        let fallback =
+            || ListFunctionExpr::panic(panic("fallback"), type_.clone(), item_type.clone());
+        let expressions = [
+            (
+                ListFunctionExpr::closure(
+                    ListFunctionId::Int(IntListFunctionId(1)),
                     Vec::new(),
-                ),
-            )
-            .expect("expression should evaluate")
-            .runtime_id(),
-            ListFunctionId::from_item_type(0, crate::plan::ValueType::Int),
-        );
-        assert_eq!(
-            eval_list_function_expr(
-                &plan,
-                &mut frame,
-                &ListFunctionExpr::function_call(
-                    FunctionFunctionExpr::value(FunctionFunctionValue::new(
-                        FunctionFunctionId::List(ListFunctionFunctionId::from_item_type(
-                            0,
-                            list_function_type(),
-                            crate::plan::ValueType::Int,
-                        )),
-                        Vec::new(),
-                        list_function_type(),
-                    )),
-                    Vec::new(),
-                    list_function_type(),
-                    ValueType::Int,
-                ),
-            )
-            .expect("expression should evaluate")
-            .runtime_id(),
-            ListFunctionId::from_item_type(0, crate::plan::ValueType::Int),
-        );
-        assert_eq!(
-            eval_list_function_expr(
-                &plan,
-                &mut frame,
-                &ListFunctionExpr::tuple_index(
-                    TupleExpr::value(
-                        vec![Expr::function(FunctionExpr::list(list_function_expr()))],
-                        vec![ValueType::Function(Box::new(list_function_type()))],
-                    ),
-                    0,
-                    list_function_type(),
-                    ValueType::Int,
-                ),
-            )
-            .expect("expression should evaluate")
-            .runtime_id(),
-            ListFunctionId::from_item_type(0, crate::plan::ValueType::Int),
-        );
-        assert_eq!(
-            eval_list_function_expr(
-                &plan,
-                &mut frame,
-                &ListFunctionExpr::bool_case(
-                    BoolExpr::value(true),
-                    list_function_expr(),
-                    other_list_function_expr(),
-                ),
-            )
-            .expect("expression should evaluate")
-            .runtime_id(),
-            ListFunctionId::from_item_type(0, crate::plan::ValueType::Int),
-        );
-        assert_eq!(
-            eval_list_function_expr(
-                &plan,
-                &mut frame,
-                &ListFunctionExpr::bool_case(
-                    BoolExpr::value(false),
-                    other_list_function_expr(),
-                    list_function_expr(),
-                ),
-            )
-            .expect("expression should evaluate")
-            .runtime_id(),
-            ListFunctionId::from_item_type(0, crate::plan::ValueType::Int),
-        );
-        assert_eq!(
-            eval_list_function_expr(
-                &plan,
-                &mut frame,
-                &ListFunctionExpr::int_case(
-                    IntExpr::value(1.into()),
-                    vec![(1.into(), list_function_expr())],
-                    other_list_function_expr(),
-                ),
-            )
-            .expect("expression should evaluate")
-            .runtime_id(),
-            ListFunctionId::from_item_type(0, crate::plan::ValueType::Int),
-        );
-        assert_eq!(
-            eval_list_function_expr(
-                &plan,
-                &mut frame,
-                &ListFunctionExpr::int_case(
-                    IntExpr::value(2.into()),
-                    vec![(1.into(), other_list_function_expr())],
-                    list_function_expr(),
-                ),
-            )
-            .expect("expression should evaluate")
-            .runtime_id(),
-            ListFunctionId::from_item_type(0, crate::plan::ValueType::Int),
-        );
-        assert_eq!(
-            eval_list_function_expr(
-                &plan,
-                &mut frame,
-                &ListFunctionExpr::string_case(
-                    StringExpr::value("hit".into()),
-                    vec![("hit".into(), list_function_expr())],
-                    other_list_function_expr(),
-                ),
-            )
-            .expect("expression should evaluate")
-            .runtime_id(),
-            ListFunctionId::from_item_type(0, crate::plan::ValueType::Int),
-        );
-        assert_eq!(
-            eval_list_function_expr(
-                &plan,
-                &mut frame,
-                &ListFunctionExpr::string_case(
-                    StringExpr::value("miss".into()),
-                    vec![("hit".into(), other_list_function_expr())],
-                    list_function_expr(),
-                ),
-            )
-            .expect("expression should evaluate")
-            .runtime_id(),
-            ListFunctionId::from_item_type(0, crate::plan::ValueType::Int),
-        );
-        assert_eq!(
-            eval_list_function_expr(
-                &plan,
-                &mut frame,
-                &ListFunctionExpr::float_case(
-                    FloatExpr::value(1.0),
-                    vec![(1.0, list_function_expr())],
-                    other_list_function_expr(),
-                ),
-            )
-            .expect("expression should evaluate")
-            .runtime_id(),
-            ListFunctionId::from_item_type(0, crate::plan::ValueType::Int),
-        );
-        assert_eq!(
-            eval_list_function_expr(
-                &plan,
-                &mut frame,
-                &ListFunctionExpr::float_case(
-                    FloatExpr::value(2.0),
-                    vec![(1.0, other_list_function_expr())],
-                    list_function_expr(),
-                ),
-            )
-            .expect("expression should evaluate")
-            .runtime_id(),
-            ListFunctionId::from_item_type(0, crate::plan::ValueType::Int),
-        );
-        assert_eq!(
-            eval_list_function_expr(
-                &plan,
-                &mut frame,
-                &ListFunctionExpr::block(
-                    vec![Step::evaluate(Expr::int(IntExpr::value(1.into())))],
-                    list_function_expr(),
-                ),
-            )
-            .expect("expression should evaluate")
-            .runtime_id(),
-            ListFunctionId::from_item_type(0, crate::plan::ValueType::Int),
-        );
-    }
-
-    #[test]
-    fn eval_list_function_expr_propagates_operand_errors() {
-        assert_tuple_index_error(
-            ValueType::List(Box::new(element_type())),
-            ListFunctionExpr::closure(
-                ListFunctionId::from_item_type(0, crate::plan::ValueType::Int),
-                vec![ParamLocal::list(ListLocal::int(IntListLocalId(0)))],
-                vec![CaptureArg::list(crate::plan::ListLocalExpr::Int {
-                    local: IntListLocalId(0),
-                    value: error_list_expr()
-                        .into_int()
-                        .expect("expected int list expression"),
-                })],
-            ),
-        );
-        assert_function_tuple_index_error(ListFunctionExpr::tuple_index(
-            empty_tuple(),
-            0,
-            list_function_type(),
-            ValueType::Int,
-        ));
-        assert_tuple_index_error(
-            ValueType::Bool,
-            ListFunctionExpr::bool_case(
-                error_bool_expr(),
-                list_function_expr(),
-                other_list_function_expr(),
-            ),
-        );
-        assert_tuple_index_error(
-            ValueType::Int,
-            ListFunctionExpr::int_case(
-                error_int_expr(),
-                vec![(1.into(), list_function_expr())],
-                other_list_function_expr(),
-            ),
-        );
-        assert_tuple_index_error(
-            ValueType::String,
-            ListFunctionExpr::string_case(
-                error_string_expr(),
-                vec![("hit".into(), list_function_expr())],
-                other_list_function_expr(),
-            ),
-        );
-        assert_tuple_index_error(
-            ValueType::Float,
-            ListFunctionExpr::float_case(
-                error_float_expr(),
-                vec![(1.0, list_function_expr())],
-                other_list_function_expr(),
-            ),
-        );
-        assert_tuple_index_error(
-            ValueType::List(Box::new(element_type())),
-            ListFunctionExpr::block(
-                vec![Step::evaluate(Expr::list(error_list_expr()))],
-                list_function_expr(),
-            ),
-        );
-    }
-
-    #[test]
-    fn list_function_projection_invariant_error() {
-        let plan = plan();
-        let mut frame = Frame::default();
-        let int_function_type = FunctionType::new(Vec::new(), ValueType::Int);
-        let list_function_type = list_function_expr().type_().clone();
-        let tuple = TupleExpr::value(
-            vec![Expr::function(FunctionExpr::int(
-                crate::plan::IntFunctionExpr::value(IntFunctionValue::new(
-                    crate::plan::IntFunctionId(0),
-                    Vec::new(),
-                )),
-            ))],
-            vec![ValueType::Function(Box::new(int_function_type.clone()))],
-        );
-
-        assert_eq!(
-            eval_list_function_expr(
-                &plan,
-                &mut frame,
-                &ListFunctionExpr::tuple_index(
-                    tuple,
-                    0,
-                    list_function_type.clone(),
-                    ValueType::Int
-                ),
-            ),
-            Err(ExecutionError::tuple_index_family_mismatch(
-                ValueType::Function(Box::new(list_function_type.clone())),
-                ValueType::Function(Box::new(int_function_type)),
-            )),
-        );
-
-        let tuple = TupleExpr::value(
-            vec![Expr::int(IntExpr::value(1.into()))],
-            vec![ValueType::Int],
-        );
-        assert_eq!(
-            eval_list_function_expr(
-                &plan,
-                &mut frame,
-                &ListFunctionExpr::tuple_index(
-                    tuple,
-                    0,
-                    list_function_type.clone(),
-                    ValueType::Int
-                ),
-            ),
-            Err(ExecutionError::tuple_index_family_mismatch(
-                ValueType::Function(Box::new(list_function_type.clone())),
-                ValueType::Int,
-            )),
-        );
-
-        let tuple = TupleExpr::value(
-            vec![Expr::int(IntExpr::value(1.into()))],
-            vec![ValueType::Int],
-        );
-        assert_eq!(
-            eval_list_function_expr(
-                &plan,
-                &mut frame,
-                &ListFunctionExpr::tuple_index(
-                    tuple,
-                    1,
-                    list_function_type.clone(),
-                    ValueType::Int
-                ),
-            ),
-            Err(ExecutionError::tuple_index_family_mismatch(
-                ValueType::Function(Box::new(list_function_type)),
-                ValueType::Tuple(vec![ValueType::Int]),
-            )),
-        );
-    }
-
-    #[test]
-    fn list_function_list_projection() {
-        let plan = plan();
-        let mut frame = Frame::default();
-        let list_function_type = list_function_expr().type_().clone();
-        let list = ListExpr::value(
-            vec![Expr::function(FunctionExpr::list(list_function_expr()))],
-            ValueType::Function(Box::new(list_function_type.clone())),
-        );
-        assert_eq!(
-            eval_list_function_expr(
-                &plan,
-                &mut frame,
-                &ListFunctionExpr::list_index(list, 0, list_function_type.clone(), ValueType::Int),
-            )
-            .expect("expression should evaluate")
-            .runtime_id(),
-            ListFunctionId::from_item_type(0, crate::plan::ValueType::Int),
-        );
-
-        let list = ListExpr::from_elements(ListElements::Function {
-            item_type: list_function_type.clone(),
-            values: vec![FunctionExpr::int(IntFunctionExpr::value(
-                IntFunctionValue::new(IntFunctionId(0), Vec::new()),
-            ))],
-        });
-        assert_eq!(
-            eval_list_function_expr(
-                &plan,
-                &mut frame,
-                &ListFunctionExpr::list_index(list, 0, list_function_type.clone(), ValueType::Int),
-            ),
-            Err(ExecutionError::function_return_family_mismatch(
-                FunctionReturnFamily::List,
-                FunctionReturnFamily::Int,
-            )),
-        );
-
-        let mut frame = Frame::default();
-        let list = ListExpr::value(
-            vec![Expr::function(FunctionExpr::list(list_function_expr()))],
-            ValueType::Function(Box::new(list_function_type.clone())),
-        );
-        assert_eq!(
-            eval_list_function_expr(
-                &plan,
-                &mut frame,
-                &ListFunctionExpr::list_index(list, 1, list_function_type.clone(), ValueType::Int),
-            ),
-            Err(ExecutionError::list_index_out_of_bounds(
-                ValueType::Function(Box::new(list_function_type.clone())),
-                1,
-                1,
-            )),
-        );
-
-        let list = ListExpr::tuple_index(
-            empty_tuple(),
-            0,
-            ValueType::Function(Box::new(list_function_type.clone())),
-        );
-        assert_eq!(
-            eval_list_function_expr(
-                &plan,
-                &mut frame,
-                &ListFunctionExpr::list_index(list, 0, list_function_type.clone(), ValueType::Int),
-            ),
-            Err(ExecutionError::tuple_index_family_mismatch(
-                ValueType::List(Box::new(ValueType::Function(Box::new(
-                    list_function_type.clone(),
-                )))),
-                ValueType::Tuple(Vec::new()),
-            )),
-        );
-    }
-
-    fn assert_tuple_index_error(expected: ValueType, expression: ListFunctionExpr) {
-        let plan = plan();
-        let mut frame = Frame::default();
-
-        assert_eq!(
-            eval_list_function_expr(&plan, &mut frame, &expression),
-            Err(tuple_index_error(expected)),
-        );
-    }
-
-    fn assert_function_tuple_index_error(expression: ListFunctionExpr) {
-        let plan = plan();
-        let mut frame = Frame::default();
-
-        assert_eq!(
-            eval_list_function_expr(&plan, &mut frame, &expression),
-            Err(tuple_index_error(ValueType::Function(Box::new(
-                list_function_type()
-            )))),
-        );
-    }
-
-    fn error_int_expr() -> IntExpr {
-        IntExpr::tuple_index(empty_tuple(), 0)
-    }
-
-    fn error_bool_expr() -> BoolExpr {
-        BoolExpr::tuple_index(empty_tuple(), 0)
-    }
-
-    fn error_string_expr() -> StringExpr {
-        StringExpr::tuple_index(empty_tuple(), 0)
-    }
-
-    fn error_float_expr() -> FloatExpr {
-        FloatExpr::tuple_index(empty_tuple(), 0)
-    }
-
-    fn error_list_expr() -> ListExpr {
-        ListExpr::tuple_index(empty_tuple(), 0, element_type())
-    }
-
-    fn empty_tuple() -> TupleExpr {
-        TupleExpr::value(Vec::new(), Vec::new())
-    }
-
-    fn tuple_index_error(expected: ValueType) -> ExecutionError {
-        ExecutionError::tuple_index_family_mismatch(expected, ValueType::Tuple(Vec::new()))
-    }
-
-    fn list_function_expr() -> ListFunctionExpr {
-        ListFunctionExpr::value(list_function_value())
-    }
-
-    fn other_list_function_expr() -> ListFunctionExpr {
-        ListFunctionExpr::value(ListFunctionValue::new(
-            ListFunctionId::from_item_type(1, crate::plan::ValueType::Int),
-            vec![ParamLocal::int(crate::plan::IntLocalId(0))],
-        ))
-    }
-
-    fn list_function_value() -> ListFunctionValue {
-        ListFunctionValue::new(
-            ListFunctionId::from_item_type(0, crate::plan::ValueType::Int),
-            vec![ParamLocal::int(crate::plan::IntLocalId(0))],
-        )
-    }
-
-    fn list_function_type() -> FunctionType {
-        FunctionType::new(
-            vec![ValueType::Int],
-            ValueType::List(Box::new(element_type())),
-        )
-    }
-
-    fn list_expr(value: i64) -> ListExpr {
-        ListExpr::value(
-            vec![Expr::int(IntExpr::value(BigInt::from(value)))],
-            element_type(),
-        )
-    }
-
-    fn element_type() -> ValueType {
-        ValueType::Int
-    }
-
-    fn plan() -> ExecutionPlan {
-        ExecutionPlan::from_module_plan(crate::plan::ModulePlan::new(
-            "main".into(),
-            FunctionPlan::new(
-                FunctionId::new(0),
-                "main".into(),
-                Vec::new(),
-                Vec::new(),
-                ReturnExpr::int(IntFunctionId(0), IntExpr::value(0.into())),
-            ),
-            vec![
-                FunctionPlan::new(
-                    FunctionId::new(1),
-                    "make".into(),
-                    vec![crate::plan::Param::named(
-                        ParamLocal::int(crate::plan::IntLocalId(0)),
-                        "value".into(),
+                    vec![CaptureArg::int(
+                        IntLocalId(0),
+                        IntExpr::panic(panic("capture")),
                     )],
-                    Vec::new(),
-                    ReturnExpr::int_list_body(
-                        crate::plan::IntListFunctionId(0),
-                        crate::plan::IntListReturn::expr(
-                            list_expr(1)
-                                .into_int()
-                                .expect("expression should be List(Int)"),
-                        ),
-                    ),
                 ),
-                FunctionPlan::new(
-                    FunctionId::new(2),
-                    "get".into(),
-                    Vec::new(),
-                    Vec::new(),
-                    ReturnExpr::list_function_body(
-                        ListFunctionFunctionId::from_item_type(
-                            0,
-                            list_function_type(),
-                            crate::plan::ValueType::Int,
-                        ),
-                        ReturnBody::expr(list_function_expr()),
+                "capture",
+            ),
+            (
+                ListFunctionExpr::tuple_index(
+                    TupleExpr::panic(
+                        panic("tuple"),
+                        vec![ValueType::Function(Box::new(type_.clone()))],
                     ),
+                    0,
+                    type_.clone(),
+                    item_type.clone(),
                 ),
-            ],
-        ))
+                "tuple",
+            ),
+            (
+                ListFunctionExpr::list_index(
+                    super::super::expect_function_list(ListExpr::panic(
+                        panic("list"),
+                        ValueType::Function(Box::new(type_.clone())),
+                    )),
+                    0,
+                    type_.clone(),
+                    item_type.clone(),
+                ),
+                "list",
+            ),
+            (
+                ListFunctionExpr::bool_case(
+                    BoolExpr::panic(panic("bool subject")),
+                    fallback(),
+                    fallback(),
+                ),
+                "bool subject",
+            ),
+            (
+                ListFunctionExpr::int_case(
+                    IntExpr::panic(panic("int subject")),
+                    Vec::new(),
+                    fallback(),
+                ),
+                "int subject",
+            ),
+            (
+                ListFunctionExpr::string_case(
+                    StringExpr::panic(panic("string subject")),
+                    Vec::new(),
+                    fallback(),
+                ),
+                "string subject",
+            ),
+            (
+                ListFunctionExpr::float_case(
+                    FloatExpr::panic(panic("float subject")),
+                    Vec::new(),
+                    fallback(),
+                ),
+                "float subject",
+            ),
+            (
+                ListFunctionExpr::block(
+                    vec![Step::evaluate(Expr::int(IntExpr::panic(panic("step"))))],
+                    fallback(),
+                ),
+                "step",
+            ),
+        ];
+
+        for (expression, message) in expressions {
+            assert_eq!(
+                run_module_list_function_expression(expression, type_.clone()).to_string(),
+                format!("panic: {message}"),
+            );
+        }
+    }
+
+    fn run_module_list_function_expression(
+        expression: ListFunctionExpr,
+        type_: FunctionType,
+    ) -> ExecutionError {
+        let runtime_id = ListFunctionFunctionId::from_item_type(0, type_, ValueType::Int);
+        let main = FunctionPlan::new(
+            FunctionId::new(0),
+            "main".into(),
+            Vec::new(),
+            Vec::new(),
+            ReturnExpr::list_function(runtime_id, expression),
+        );
+        let module = ModulePlan::new("main".into(), main, Vec::new());
+        let plan = crate::ExecutionPlan::from_module_plan(module);
+
+        run_main(&plan).expect_err("module expression should fail at runtime")
     }
 }

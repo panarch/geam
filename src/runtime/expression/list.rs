@@ -3,15 +3,16 @@ use super::{
     eval_panic_expr, eval_string_expr, eval_tuple_expr, project_tuple_expr,
 };
 use crate::plan::execution::ExecutionPlan;
-use crate::plan::{
+use crate::plan::execution::{
     BoolListExpr, BoolListItem, FloatListExpr, FloatListItem, FunctionListExpr, FunctionListItem,
-    FunctionType, FunctionValue, IntListExpr, IntListItem, ListExpr, ListItem, ListListExpr,
-    ListListItem, ListValue, NilListExpr, NilListItem, StringListExpr, StringListItem,
-    TupleListExpr, TupleListItem, TypedListExpr, TypedListExprKind, Value, ValueType,
+    IntListExpr, IntListItem, ListExpr, ListItem, ListListExpr, ListListItem, NilListExpr,
+    NilListItem, StringListExpr, StringListItem, TupleListExpr, TupleListItem, TypedListExpr,
+    TypedListExprKind,
 };
-use crate::runtime::ExecutionError;
+use crate::plan::{FunctionType, ValueType};
 use crate::runtime::frame::Frame;
 use crate::runtime::function;
+use crate::runtime::{ExecutionError, FunctionValue, ListValue, Value};
 use ecow::EcoString;
 use num_bigint::BigInt;
 
@@ -167,7 +168,9 @@ fn eval_typed_list_expr_kind<Item: RuntimeListItem>(
             let list = eval_typed_list_expr_kind(plan, frame, item, list)?;
             Ok(Item::drop_first(&list, *count))
         }
-        TypedListExprKind::Panic(panic) => eval_panic_expr(plan, frame, panic),
+        TypedListExprKind::Panic(panic) => {
+            eval_panic_expr(plan, frame, panic).map(|never| match never {})
+        }
         TypedListExprKind::BoolCase {
             subject,
             true_,
@@ -246,14 +249,14 @@ trait RuntimeListItem: ListItem {
     fn run_call(
         plan: &ExecutionPlan,
         function: Self::Function,
-        args: &[crate::plan::CallArg],
+        args: &[crate::plan::execution::CallArg],
         frame: &mut Frame,
     ) -> Result<Self::RuntimeValue, ExecutionError>;
 
     fn run_function_call(
         plan: &ExecutionPlan,
-        function: &crate::plan::ListFunctionExpr,
-        args: &[crate::plan::CallArg],
+        function: &crate::plan::execution::ListFunctionExpr,
+        args: &[crate::plan::execution::CallArg],
         frame: &mut Frame,
     ) -> Result<Self::RuntimeValue, ExecutionError>;
 
@@ -325,7 +328,7 @@ macro_rules! primitive_runtime_list_item {
             fn run_call(
                 plan: &ExecutionPlan,
                 function: Self::Function,
-                args: &[crate::plan::CallArg],
+                args: &[crate::plan::execution::CallArg],
                 frame: &mut Frame,
             ) -> Result<Self::RuntimeValue, ExecutionError> {
                 function::$run_call(plan, function, args, frame)
@@ -333,8 +336,8 @@ macro_rules! primitive_runtime_list_item {
 
             fn run_function_call(
                 plan: &ExecutionPlan,
-                function: &crate::plan::ListFunctionExpr,
-                args: &[crate::plan::CallArg],
+                function: &crate::plan::execution::ListFunctionExpr,
+                args: &[crate::plan::execution::CallArg],
                 frame: &mut Frame,
             ) -> Result<Self::RuntimeValue, ExecutionError> {
                 function::$run_function_call(plan, function, args, frame)
@@ -417,7 +420,7 @@ impl RuntimeListItem for NilListItem {
     fn run_call(
         plan: &ExecutionPlan,
         function: Self::Function,
-        args: &[crate::plan::CallArg],
+        args: &[crate::plan::execution::CallArg],
         frame: &mut Frame,
     ) -> Result<Self::RuntimeValue, ExecutionError> {
         function::run_nil_list_call(plan, function, args, frame)
@@ -425,8 +428,8 @@ impl RuntimeListItem for NilListItem {
 
     fn run_function_call(
         plan: &ExecutionPlan,
-        function: &crate::plan::ListFunctionExpr,
-        args: &[crate::plan::CallArg],
+        function: &crate::plan::execution::ListFunctionExpr,
+        args: &[crate::plan::execution::CallArg],
         frame: &mut Frame,
     ) -> Result<Self::RuntimeValue, ExecutionError> {
         function::run_nil_list_function_call(plan, function, args, frame)
@@ -467,7 +470,7 @@ impl RuntimeListItem for TupleListItem {
     fn run_call(
         plan: &ExecutionPlan,
         function: Self::Function,
-        args: &[crate::plan::CallArg],
+        args: &[crate::plan::execution::CallArg],
         frame: &mut Frame,
     ) -> Result<Self::RuntimeValue, ExecutionError> {
         function::run_tuple_list_call(plan, function, args, frame)
@@ -475,8 +478,8 @@ impl RuntimeListItem for TupleListItem {
 
     fn run_function_call(
         plan: &ExecutionPlan,
-        function: &crate::plan::ListFunctionExpr,
-        args: &[crate::plan::CallArg],
+        function: &crate::plan::execution::ListFunctionExpr,
+        args: &[crate::plan::execution::CallArg],
         frame: &mut Frame,
     ) -> Result<Self::RuntimeValue, ExecutionError> {
         function::run_tuple_list_function_call(plan, function, args, frame)
@@ -517,7 +520,7 @@ impl RuntimeListItem for ListListItem {
     fn run_call(
         plan: &ExecutionPlan,
         function: Self::Function,
-        args: &[crate::plan::CallArg],
+        args: &[crate::plan::execution::CallArg],
         frame: &mut Frame,
     ) -> Result<Self::RuntimeValue, ExecutionError> {
         function::run_list_list_call(plan, function, args, frame)
@@ -525,8 +528,8 @@ impl RuntimeListItem for ListListItem {
 
     fn run_function_call(
         plan: &ExecutionPlan,
-        function: &crate::plan::ListFunctionExpr,
-        args: &[crate::plan::CallArg],
+        function: &crate::plan::execution::ListFunctionExpr,
+        args: &[crate::plan::execution::CallArg],
         frame: &mut Frame,
     ) -> Result<Self::RuntimeValue, ExecutionError> {
         function::run_list_list_function_call(plan, function, args, frame)
@@ -567,7 +570,7 @@ impl RuntimeListItem for FunctionListItem {
     fn run_call(
         plan: &ExecutionPlan,
         function: Self::Function,
-        args: &[crate::plan::CallArg],
+        args: &[crate::plan::execution::CallArg],
         frame: &mut Frame,
     ) -> Result<Self::RuntimeValue, ExecutionError> {
         function::run_function_list_call(plan, function, args, frame)
@@ -575,8 +578,8 @@ impl RuntimeListItem for FunctionListItem {
 
     fn run_function_call(
         plan: &ExecutionPlan,
-        function: &crate::plan::ListFunctionExpr,
-        args: &[crate::plan::CallArg],
+        function: &crate::plan::execution::ListFunctionExpr,
+        args: &[crate::plan::execution::CallArg],
         frame: &mut Frame,
     ) -> Result<Self::RuntimeValue, ExecutionError> {
         function::run_function_list_function_call(plan, function, args, frame)
@@ -585,21 +588,27 @@ impl RuntimeListItem for FunctionListItem {
 
 pub(in crate::runtime) fn get_list_value(
     frame: &Frame,
-    local: &crate::plan::ListLocal,
+    local: &crate::plan::execution::ListLocal,
 ) -> ListValue {
     match local {
-        crate::plan::ListLocal::Int(local) => ListValue::int(frame.get_int_list(*local)),
-        crate::plan::ListLocal::String(local) => ListValue::string(frame.get_string_list(*local)),
-        crate::plan::ListLocal::Float(local) => ListValue::float(frame.get_float_list(*local)),
-        crate::plan::ListLocal::Bool(local) => ListValue::bool(frame.get_bool_list(*local)),
-        crate::plan::ListLocal::Nil(local) => ListValue::nil(frame.get_nil_list(*local)),
-        crate::plan::ListLocal::Tuple { local, item_type } => {
+        crate::plan::execution::ListLocal::Int(local) => ListValue::int(frame.get_int_list(*local)),
+        crate::plan::execution::ListLocal::String(local) => {
+            ListValue::string(frame.get_string_list(*local))
+        }
+        crate::plan::execution::ListLocal::Float(local) => {
+            ListValue::float(frame.get_float_list(*local))
+        }
+        crate::plan::execution::ListLocal::Bool(local) => {
+            ListValue::bool(frame.get_bool_list(*local))
+        }
+        crate::plan::execution::ListLocal::Nil(local) => ListValue::nil(frame.get_nil_list(*local)),
+        crate::plan::execution::ListLocal::Tuple { local, item_type } => {
             ListValue::from_evaluated_tuple(item_type.clone(), frame.get_tuple_list(*local))
         }
-        crate::plan::ListLocal::List { local, item_type } => {
+        crate::plan::execution::ListLocal::List { local, item_type } => {
             ListValue::from_evaluated_list(item_type.as_ref().clone(), frame.get_list_list(*local))
         }
-        crate::plan::ListLocal::Function { local, item_type } => {
+        crate::plan::execution::ListLocal::Function { local, item_type } => {
             ListValue::from_evaluated_function(item_type.clone(), frame.get_function_list(*local))
         }
     }
@@ -686,22 +695,6 @@ pub(in crate::runtime) fn project_tuple_list_expr(
         .ok_or_else(|| ExecutionError::list_index_out_of_bounds(expected, index, values.len()))
 }
 
-#[cfg(test)]
-fn project_list_list_expr(
-    plan: &ExecutionPlan,
-    frame: &mut Frame,
-    list: &ListListExpr,
-    index: usize,
-    item_type: &ValueType,
-) -> Result<ListValue, ExecutionError> {
-    let expected = ValueType::List(Box::new(item_type.clone()));
-    let values = eval_list_list_expr(plan, frame, list)?;
-    values
-        .get(index)
-        .cloned()
-        .ok_or_else(|| ExecutionError::list_index_out_of_bounds(expected, index, values.len()))
-}
-
 pub(in crate::runtime) fn project_function_list_expr(
     plan: &ExecutionPlan,
     frame: &mut Frame,
@@ -720,1757 +713,535 @@ pub(in crate::runtime) fn project_function_list_expr(
 #[cfg(test)]
 mod tests {
     use super::{
-        eval_list_expr, get_list_value, project_bool_list_expr, project_float_list_expr,
-        project_function_list_expr, project_int_list_expr, project_list_list_expr,
-        project_nil_list_expr, project_string_list_expr, project_tuple_list_expr,
+        RuntimeListItem, project_bool_list_expr, project_float_list_expr,
+        project_function_list_expr, project_int_list_expr, project_nil_list_expr,
+        project_string_list_expr, project_tuple_list_expr,
     };
-    use crate::plan::execution::ExecutionPlan;
+    use crate::plan::execution::{
+        BoolListFunctionId, FloatListFunctionId, FunctionListFunctionId, IntListFunctionId,
+        IntListItem, ListListFunctionId, ListListLocalId, NilListFunctionId, ReturnBody,
+        ReturnBodyKind, StringListFunctionId, TupleListFunctionId,
+    };
     use crate::plan::{
-        BoolExpr, BoolListCaseBranches, BoolListLocalId, CallArg, Expr, FloatExpr,
-        FloatListLocalId, FrameLayout, FunctionExpr, FunctionId, FunctionListLocalId, FunctionPlan,
-        FunctionReturnFamily, FunctionType, IntExpr, IntFunctionExpr, IntFunctionId,
-        IntFunctionValue, IntListLocalId, IntLocalId, ListCaseBranches, ListExpr, ListFunctionExpr,
-        ListFunctionId, ListFunctionValue, ListListExpr, ListListItem, ListListLocalId, ListLocal,
-        ListValue, NilExpr, NilListLocalId, PanicExpr, PanicSite, ReturnExpr, Step, StringExpr,
-        StringListLocalId, TupleExpr, TupleListLocalId, ValueType,
+        BoolExpr as ModuleBoolExpr, BoolListCaseBranches, Expr as ModuleExpr,
+        FloatExpr as ModuleFloatExpr, FunctionId as ModuleFunctionId,
+        FunctionPlan as ModuleFunctionPlan, FunctionType, IntExpr as ModuleIntExpr,
+        IntListExpr as ModuleIntListExpr, IntListFunctionId as ModuleIntListFunctionId,
+        ListCaseBranches, ListExpr as ModuleListExpr, ListListExpr as ModuleListListExpr,
+        ModulePlan, NilExpr as ModuleNilExpr, NilListFunctionId as ModuleNilListFunctionId,
+        PanicExpr as ModulePanicExpr, PanicSite, ReturnBody as ModuleReturnBody,
+        ReturnExpr as ModuleReturnExpr, Step as ModuleStep, StringExpr as ModuleStringExpr,
+        TupleExpr as ModuleTupleExpr, ValueType,
     };
     use crate::runtime::frame::Frame;
-    use crate::runtime::{ExecutionError, PanicKind};
+    use crate::runtime::{ExecutionError, ListValue};
     use num_bigint::BigInt;
 
     #[test]
-    fn eval_list_panic_returns_error() {
-        let plan = plan();
-        let mut frame = Frame::default();
+    fn source_list_expression_item_families_evaluate_exact_values() {
+        let source = include_str!(
+            "../../../tests/fixtures/execution/values/list_expression_item_families.gleam"
+        );
 
         assert_eq!(
-            eval_list_expr(
-                &plan,
-                &mut frame,
-                &ListExpr::panic(
-                    PanicExpr::panic_at(None, PanicSite::unknown()),
-                    element_type()
-                ),
-            ),
-            Err(ExecutionError::source_panic(
-                None,
-                PanicKind::Panic,
-                None,
-                PanicSite::unknown()
-            )),
+            crate::runtime::run_src(source),
+            crate::runtime::Value::Int(BigInt::from(42)),
         );
     }
 
     #[test]
-    fn eval_list_expr_evaluates_value_local_and_direct_call() {
-        let plan = plan();
-        let mut frame = frame();
-        frame.set_int_list(IntListLocalId(0), vec![1.into()]);
+    fn list_projection_reports_out_of_bounds_for_every_item_family() {
+        let plan = crate::runtime::plan_src(
+            r#"
+fn int_values(values: List(Int)) { values }
+fn string_values(values: List(String)) { values }
+fn float_values(values: List(Float)) { values }
+fn bool_values(values: List(Bool)) { values }
+fn nil_values(values: List(Nil)) { values }
+fn tuple_values(values: List(#(Int))) { values }
+fn nested_values(values: List(List(Int))) { values }
+fn function_values(values: List(fn() -> Int)) { values }
 
-        assert_eq!(
-            eval_list_expr(&plan, &mut frame, &list_expr(1)),
-            Ok(list_value(1)),
-        );
-        assert_eq!(
-            eval_list_expr(
-                &plan,
-                &mut frame,
-                &ListExpr::local_get(ListLocal::int(IntListLocalId(0)), "values".into()),
-            ),
-            Ok(list_value(1)),
-        );
-        assert_eq!(
-            eval_list_expr(
-                &plan,
-                &mut frame,
-                &ListExpr::call(
-                    ListFunctionId::from_item_type(0, crate::plan::ValueType::Int),
-                    Vec::new()
-                ),
-            ),
-            Ok(list_value(1)),
-        );
-    }
-
-    #[test]
-    fn eval_list_expr_evaluates_direct_and_function_value_calls_for_every_item_family() {
-        let plan = all_list_family_plan();
-        let mut frame = Frame::default();
-        let function_type = FunctionType::new(Vec::new(), ValueType::Int);
-        let cases = [
-            (
-                ListFunctionId::from_item_type(0, ValueType::Int),
-                ListValue::int(vec![1.into()]),
-            ),
-            (
-                ListFunctionId::from_item_type(0, ValueType::String),
-                ListValue::string(vec!["one".into()]),
-            ),
-            (
-                ListFunctionId::from_item_type(0, ValueType::Float),
-                ListValue::float(vec![1.5]),
-            ),
-            (
-                ListFunctionId::from_item_type(0, ValueType::Bool),
-                ListValue::bool(vec![true]),
-            ),
-            (
-                ListFunctionId::from_item_type(0, ValueType::Nil),
-                ListValue::nil(1),
-            ),
-            (
-                ListFunctionId::from_item_type(0, ValueType::Tuple(vec![ValueType::Int])),
-                ListValue::from_evaluated_tuple(
-                    vec![ValueType::Int],
-                    vec![vec![crate::plan::Value::Int(2.into())]],
-                ),
-            ),
-            (
-                ListFunctionId::from_item_type(0, ValueType::List(Box::new(ValueType::Int))),
-                ListValue::from_evaluated_list(
-                    ValueType::Int,
-                    vec![ListValue::int(vec![3.into()])],
-                ),
-            ),
-            (
-                ListFunctionId::from_item_type(
-                    0,
-                    ValueType::Function(Box::new(function_type.clone())),
-                ),
-                ListValue::from_evaluated_function(
-                    function_type,
-                    vec![crate::plan::FunctionValue::new(
-                        crate::plan::RuntimeFunctionId::Int(IntFunctionId(0)),
-                        Vec::new(),
-                    )],
-                ),
-            ),
-        ];
-
-        for (function, expected) in cases {
-            assert_eq!(
-                eval_list_expr(
-                    &plan,
-                    &mut frame,
-                    &ListExpr::call(function.clone(), Vec::new())
-                ),
-                Ok(expected.clone()),
-            );
-            assert_eq!(
-                eval_list_expr(
-                    &plan,
-                    &mut frame,
-                    &ListExpr::function_call(
-                        ListFunctionExpr::value(ListFunctionValue::new(function, Vec::new())),
-                        Vec::new(),
-                    ),
-                ),
-                Ok(expected),
-            );
-        }
-    }
-
-    #[test]
-    fn eval_list_expr_direct_calls_propagate_argument_errors_for_every_item_family() {
-        let plan = all_list_family_plan();
-        let mut frame = Frame::default();
-        let function_type = FunctionType::new(Vec::new(), ValueType::Int);
-
-        for function in [
-            ListFunctionId::from_item_type(0, ValueType::Int),
-            ListFunctionId::from_item_type(0, ValueType::String),
-            ListFunctionId::from_item_type(0, ValueType::Float),
-            ListFunctionId::from_item_type(0, ValueType::Bool),
-            ListFunctionId::from_item_type(0, ValueType::Nil),
-            ListFunctionId::from_item_type(0, ValueType::Tuple(vec![ValueType::Int])),
-            ListFunctionId::from_item_type(0, ValueType::List(Box::new(ValueType::Int))),
-            ListFunctionId::from_item_type(0, ValueType::Function(Box::new(function_type.clone()))),
-        ] {
-            assert_eq!(
-                eval_list_expr(
-                    &plan,
-                    &mut frame,
-                    &ListExpr::call(
-                        function,
-                        vec![CallArg::int(IntLocalId(0), error_int_expr())],
-                    ),
-                ),
-                Err(tuple_index_error(ValueType::Int)),
-            );
-        }
-    }
-
-    #[test]
-    fn eval_list_expr_function_value_calls_reject_wrong_list_return_family() {
-        let plan = all_list_family_plan();
-        let mut frame = Frame::default();
-
-        assert_wrong_list_function_family(crate::runtime::function::run_int_list_function_call(
-            &plan,
-            &wrong_list_function_value(ValueType::String),
-            &[],
-            &mut frame,
-        ));
-        assert_wrong_list_function_family(crate::runtime::function::run_string_list_function_call(
-            &plan,
-            &wrong_list_function_value(ValueType::Int),
-            &[],
-            &mut frame,
-        ));
-        assert_wrong_list_function_family(crate::runtime::function::run_float_list_function_call(
-            &plan,
-            &wrong_list_function_value(ValueType::Int),
-            &[],
-            &mut frame,
-        ));
-        assert_wrong_list_function_family(crate::runtime::function::run_bool_list_function_call(
-            &plan,
-            &wrong_list_function_value(ValueType::Int),
-            &[],
-            &mut frame,
-        ));
-        assert_wrong_list_function_family(crate::runtime::function::run_nil_list_function_call(
-            &plan,
-            &wrong_list_function_value(ValueType::Int),
-            &[],
-            &mut frame,
-        ));
-        assert_wrong_list_function_family(crate::runtime::function::run_tuple_list_function_call(
-            &plan,
-            &wrong_list_function_value(ValueType::Int),
-            &[],
-            &mut frame,
-        ));
-        assert_wrong_list_function_family(crate::runtime::function::run_list_list_function_call(
-            &plan,
-            &wrong_list_function_value(ValueType::Int),
-            &[],
-            &mut frame,
-        ));
-        assert_wrong_list_function_family(
-            crate::runtime::function::run_function_list_function_call(
-                &plan,
-                &wrong_list_function_value(ValueType::Int),
-                &[],
-                &mut frame,
-            ),
-        );
-    }
-
-    #[test]
-    fn generic_list_function_value_call_dispatches_every_item_family() {
-        let plan = all_list_family_plan();
-        let mut frame = Frame::default();
-        let function_type = FunctionType::new(Vec::new(), ValueType::Int);
-
-        for (function, expected) in [
-            (
-                ListFunctionId::from_item_type(0, ValueType::Int),
-                ListValue::int(vec![1.into()]),
-            ),
-            (
-                ListFunctionId::from_item_type(0, ValueType::String),
-                ListValue::string(vec!["one".into()]),
-            ),
-            (
-                ListFunctionId::from_item_type(0, ValueType::Float),
-                ListValue::float(vec![1.5]),
-            ),
-            (
-                ListFunctionId::from_item_type(0, ValueType::Bool),
-                ListValue::bool(vec![true]),
-            ),
-            (
-                ListFunctionId::from_item_type(0, ValueType::Nil),
-                ListValue::nil(1),
-            ),
-            (
-                ListFunctionId::from_item_type(0, ValueType::Tuple(vec![ValueType::Int])),
-                ListValue::from_evaluated_tuple(
-                    vec![ValueType::Int],
-                    vec![vec![crate::plan::Value::Int(2.into())]],
-                ),
-            ),
-            (
-                ListFunctionId::from_item_type(0, ValueType::List(Box::new(ValueType::Int))),
-                ListValue::from_evaluated_list(
-                    ValueType::Int,
-                    vec![ListValue::int(vec![3.into()])],
-                ),
-            ),
-            (
-                ListFunctionId::from_item_type(
-                    0,
-                    ValueType::Function(Box::new(function_type.clone())),
-                ),
-                ListValue::from_evaluated_function(
-                    function_type,
-                    vec![crate::plan::FunctionValue::new(
-                        crate::plan::RuntimeFunctionId::Int(IntFunctionId(0)),
-                        Vec::new(),
-                    )],
-                ),
-            ),
-        ] {
-            assert_eq!(
-                crate::runtime::function::run_list_function_call(
-                    &plan,
-                    &list_function_value(function),
-                    &[],
-                    &mut frame,
-                ),
-                Ok(expected),
-            );
-        }
-    }
-
-    #[test]
-    fn list_function_value_calls_propagate_argument_errors_for_every_item_family() {
-        let plan = all_list_family_plan();
-        let mut frame = Frame::default();
-        let function_type = FunctionType::new(Vec::new(), ValueType::Int);
-
-        assert_int_argument_error(crate::runtime::function::run_int_list_function_call(
-            &plan,
-            &list_function_value(ListFunctionId::from_item_type(0, ValueType::Int)),
-            &[CallArg::int(IntLocalId(0), error_int_expr())],
-            &mut frame,
-        ));
-        assert_int_argument_error(crate::runtime::function::run_string_list_function_call(
-            &plan,
-            &list_function_value(ListFunctionId::from_item_type(0, ValueType::String)),
-            &[CallArg::int(IntLocalId(0), error_int_expr())],
-            &mut frame,
-        ));
-        assert_int_argument_error(crate::runtime::function::run_float_list_function_call(
-            &plan,
-            &list_function_value(ListFunctionId::from_item_type(0, ValueType::Float)),
-            &[CallArg::int(IntLocalId(0), error_int_expr())],
-            &mut frame,
-        ));
-        assert_int_argument_error(crate::runtime::function::run_bool_list_function_call(
-            &plan,
-            &list_function_value(ListFunctionId::from_item_type(0, ValueType::Bool)),
-            &[CallArg::int(IntLocalId(0), error_int_expr())],
-            &mut frame,
-        ));
-        assert_int_argument_error(crate::runtime::function::run_nil_list_function_call(
-            &plan,
-            &list_function_value(ListFunctionId::from_item_type(0, ValueType::Nil)),
-            &[CallArg::int(IntLocalId(0), error_int_expr())],
-            &mut frame,
-        ));
-        assert_int_argument_error(crate::runtime::function::run_tuple_list_function_call(
-            &plan,
-            &list_function_value(ListFunctionId::from_item_type(
-                0,
-                ValueType::Tuple(vec![ValueType::Int]),
-            )),
-            &[CallArg::int(IntLocalId(0), error_int_expr())],
-            &mut frame,
-        ));
-        assert_int_argument_error(crate::runtime::function::run_list_list_function_call(
-            &plan,
-            &list_function_value(ListFunctionId::from_item_type(
-                0,
-                ValueType::List(Box::new(ValueType::Int)),
-            )),
-            &[CallArg::int(IntLocalId(0), error_int_expr())],
-            &mut frame,
-        ));
-        assert_int_argument_error(crate::runtime::function::run_function_list_function_call(
-            &plan,
-            &list_function_value(ListFunctionId::from_item_type(
-                0,
-                ValueType::Function(Box::new(function_type)),
-            )),
-            &[CallArg::int(IntLocalId(0), error_int_expr())],
-            &mut frame,
-        ));
-    }
-
-    #[test]
-    fn eval_list_expr_evaluates_spread_prefix_before_tail() {
-        let plan = plan();
-        let mut default_frame = Frame::default();
-
-        assert_eq!(
-            eval_list_expr(
-                &plan,
-                &mut default_frame,
-                &ListExpr::spread(
-                    vec![Expr::int(IntExpr::value(0.into()))],
-                    list_expr(1),
-                    element_type(),
-                ),
-            ),
-            Ok(ListValue::int(vec![0.into(), 1.into()])),
-        );
-        assert_eq!(
-            eval_list_expr(
-                &plan,
-                &mut default_frame,
-                &ListExpr::spread(
-                    vec![Expr::int(error_int_expr())],
-                    error_list_expr(),
-                    element_type(),
-                ),
-            ),
-            Err(tuple_index_error(ValueType::Int)),
+pub fn main() { Nil }
+"#,
         );
 
-        let mut frame = frame();
-        frame.set_int_list(IntListLocalId(0), vec![1.into()]);
+        let function = plan.int_list_function(IntListFunctionId(0));
+        let expression = expect_expression_return(function.return_());
+        let mut frame = Frame::new(function.frame_layout());
         assert_eq!(
-            eval_list_expr(
-                &plan,
-                &mut frame,
-                &ListExpr::spread(
-                    vec![Expr::int(IntExpr::value(0.into()))],
-                    ListExpr::local_get(ListLocal::int(IntListLocalId(0)), "tail".into()),
-                    element_type(),
-                ),
-            ),
-            Ok(ListValue::int(vec![0.into(), 1.into()])),
-        );
-    }
-
-    #[test]
-    fn eval_list_expr_preserves_every_item_family_through_local_spread_and_drop() {
-        let plan = plan();
-        let mut frame = all_list_family_frame();
-
-        assert_eq!(
-            eval_list_expr(
-                &plan,
-                &mut frame,
-                &ListExpr::local_get(ListLocal::string(StringListLocalId(1)), "values".into()),
-            ),
-            Ok(ListValue::string(vec!["one".into()])),
-        );
-        assert_eq!(
-            eval_list_expr(
-                &plan,
-                &mut frame,
-                &ListExpr::local_get(ListLocal::float(FloatListLocalId(2)), "values".into()),
-            ),
-            Ok(ListValue::float(vec![1.5])),
-        );
-        assert_eq!(
-            eval_list_expr(
-                &plan,
-                &mut frame,
-                &ListExpr::local_get(ListLocal::bool(BoolListLocalId(3)), "values".into()),
-            ),
-            Ok(ListValue::bool(vec![true])),
-        );
-        assert_eq!(
-            eval_list_expr(
-                &plan,
-                &mut frame,
-                &ListExpr::local_get(ListLocal::nil(NilListLocalId(4)), "values".into()),
-            ),
-            Ok(ListValue::nil(1)),
-        );
-        assert_eq!(
-            eval_list_expr(
-                &plan,
-                &mut frame,
-                &ListExpr::local_get(
-                    ListLocal::tuple(TupleListLocalId(5), vec![ValueType::Int]),
-                    "values".into(),
-                ),
-            ),
-            Ok(ListValue::from_evaluated_tuple(
-                vec![ValueType::Int],
-                vec![vec![crate::plan::Value::Int(2.into())]],
-            )),
-        );
-        assert_eq!(
-            eval_list_expr(
-                &plan,
-                &mut frame,
-                &ListExpr::local_get(
-                    ListLocal::list(ListListLocalId(6), ValueType::Int),
-                    "values".into(),
-                ),
-            ),
-            Ok(ListValue::from_evaluated_list(
+            project_int_list_expr(&plan, &mut frame, expression, 0),
+            Err(ExecutionError::list_index_out_of_bounds(
                 ValueType::Int,
-                vec![ListValue::int(vec![3.into()])],
-            )),
-        );
-        assert_eq!(
-            eval_list_expr(
-                &plan,
-                &mut frame,
-                &ListExpr::local_get(
-                    ListLocal::function(
-                        FunctionListLocalId(7),
-                        FunctionType::new(Vec::new(), ValueType::Int),
-                    ),
-                    "values".into(),
-                ),
-            ),
-            Ok(ListValue::from_evaluated_function(
-                FunctionType::new(Vec::new(), ValueType::Int),
-                vec![crate::plan::FunctionValue::new(
-                    crate::plan::RuntimeFunctionId::Int(IntFunctionId(0)),
-                    Vec::new(),
-                )],
+                0,
+                0,
             )),
         );
 
+        let function = plan.string_list_function(StringListFunctionId(0));
+        let expression = expect_expression_return(function.return_());
+        let mut frame = Frame::new(function.frame_layout());
         assert_eq!(
-            eval_list_expr(
-                &plan,
-                &mut frame,
-                &ListExpr::spread(
-                    vec![Expr::nil(NilExpr::value())],
-                    ListExpr::local_get(ListLocal::nil(NilListLocalId(4)), "tail".into()),
-                    ValueType::Nil,
-                ),
-            ),
-            Ok(ListValue::nil(2)),
-        );
-        assert_eq!(
-            eval_list_expr(
-                &plan,
-                &mut frame,
-                &ListExpr::spread(
-                    vec![Expr::tuple(TupleExpr::value(
-                        vec![Expr::int(IntExpr::value(1.into()))],
-                        vec![ValueType::Int],
-                    ))],
-                    ListExpr::local_get(
-                        ListLocal::tuple(TupleListLocalId(5), vec![ValueType::Int]),
-                        "tail".into(),
-                    ),
-                    ValueType::Tuple(vec![ValueType::Int]),
-                ),
-            ),
-            Ok(ListValue::from_evaluated_tuple(
-                vec![ValueType::Int],
-                vec![
-                    vec![crate::plan::Value::Int(1.into())],
-                    vec![crate::plan::Value::Int(2.into())],
-                ],
-            )),
-        );
-        assert_eq!(
-            eval_list_expr(
-                &plan,
-                &mut frame,
-                &ListExpr::drop_first(
-                    ListExpr::spread(
-                        vec![Expr::nil(NilExpr::value())],
-                        ListExpr::local_get(ListLocal::nil(NilListLocalId(4)), "tail".into()),
-                        ValueType::Nil,
-                    ),
-                    1,
-                ),
-            ),
-            Ok(ListValue::nil(1)),
-        );
-        assert_eq!(
-            eval_list_expr(
-                &plan,
-                &mut frame,
-                &ListExpr::drop_first(
-                    ListExpr::spread(
-                        vec![Expr::tuple(TupleExpr::value(
-                            vec![Expr::int(IntExpr::value(1.into()))],
-                            vec![ValueType::Int],
-                        ))],
-                        ListExpr::local_get(
-                            ListLocal::tuple(TupleListLocalId(5), vec![ValueType::Int]),
-                            "tail".into(),
-                        ),
-                        ValueType::Tuple(vec![ValueType::Int]),
-                    ),
-                    1,
-                ),
-            ),
-            Ok(ListValue::from_evaluated_tuple(
-                vec![ValueType::Int],
-                vec![vec![crate::plan::Value::Int(2.into())]],
-            )),
-        );
-        assert_eq!(
-            eval_list_expr(
-                &plan,
-                &mut frame,
-                &ListExpr::drop_first(
-                    ListExpr::spread(
-                        vec![Expr::list(ListExpr::value(
-                            vec![Expr::int(IntExpr::value(1.into()))],
-                            ValueType::Int,
-                        ))],
-                        ListExpr::local_get(
-                            ListLocal::list(ListListLocalId(6), ValueType::Int),
-                            "tail".into(),
-                        ),
-                        ValueType::List(Box::new(ValueType::Int)),
-                    ),
-                    1,
-                ),
-            ),
-            Ok(ListValue::from_evaluated_list(
-                ValueType::Int,
-                vec![ListValue::int(vec![3.into()])],
-            )),
-        );
-        assert_eq!(
-            eval_list_expr(
-                &plan,
-                &mut frame,
-                &ListExpr::drop_first(
-                    ListExpr::spread(
-                        vec![Expr::function(FunctionExpr::value(
-                            crate::plan::FunctionValue::new(
-                                crate::plan::RuntimeFunctionId::Int(IntFunctionId(0)),
-                                Vec::new(),
-                            ),
-                        ))],
-                        ListExpr::local_get(
-                            ListLocal::function(
-                                FunctionListLocalId(7),
-                                FunctionType::new(Vec::new(), ValueType::Int),
-                            ),
-                            "tail".into(),
-                        ),
-                        ValueType::Function(Box::new(FunctionType::new(
-                            Vec::new(),
-                            ValueType::Int,
-                        ))),
-                    ),
-                    1,
-                ),
-            ),
-            Ok(ListValue::from_evaluated_function(
-                FunctionType::new(Vec::new(), ValueType::Int),
-                vec![crate::plan::FunctionValue::new(
-                    crate::plan::RuntimeFunctionId::Int(IntFunctionId(0)),
-                    Vec::new(),
-                )],
-            )),
-        );
-    }
-
-    #[test]
-    fn eval_compound_spread_uses_root_item_through_recursive_tail() {
-        let plan = plan();
-        let mut frame = Frame::default();
-        let item_type = ValueType::Tuple(vec![ValueType::Int]);
-        let tuple = |value| {
-            Expr::tuple(TupleExpr::value(
-                vec![Expr::int(IntExpr::value(value))],
-                vec![ValueType::Int],
-            ))
-        };
-
-        let true_ = ListExpr::drop_first(
-            ListExpr::value(vec![tuple(2.into()), tuple(3.into())], item_type.clone()),
-            1,
-        )
-        .into_tuple()
-        .expect("tuple list drop should preserve its item family");
-        let false_ = ListExpr::value(vec![tuple(4.into())], item_type.clone())
-            .into_tuple()
-            .expect("tuple list fallback should preserve its item family");
-        let tail = ListExpr::block(
-            Vec::new(),
-            ListExpr::bool_case(
-                BoolExpr::value(true),
-                BoolListCaseBranches::Tuple { true_, false_ },
-            ),
-        );
-
-        assert_eq!(
-            eval_list_expr(
-                &plan,
-                &mut frame,
-                &ListExpr::spread(vec![tuple(1.into())], tail, item_type),
-            ),
-            Ok(ListValue::from_evaluated_tuple(
-                vec![ValueType::Int],
-                vec![
-                    vec![crate::plan::Value::Int(1.into())],
-                    vec![crate::plan::Value::Int(3.into())],
-                ],
-            )),
-        );
-    }
-
-    #[test]
-    fn get_list_value_preserves_every_item_family_from_frame() {
-        let frame = all_list_family_frame();
-
-        assert_eq!(
-            get_list_value(&frame, &ListLocal::string(StringListLocalId(1))),
-            ListValue::string(vec!["one".into()]),
-        );
-        assert_eq!(
-            get_list_value(&frame, &ListLocal::float(FloatListLocalId(2))),
-            ListValue::float(vec![1.5]),
-        );
-        assert_eq!(
-            get_list_value(&frame, &ListLocal::bool(BoolListLocalId(3))),
-            ListValue::bool(vec![true]),
-        );
-        assert_eq!(
-            get_list_value(&frame, &ListLocal::nil(NilListLocalId(4))),
-            ListValue::nil(1),
-        );
-        assert_eq!(
-            get_list_value(
-                &frame,
-                &ListLocal::tuple(TupleListLocalId(5), vec![ValueType::Int]),
-            ),
-            ListValue::from_evaluated_tuple(
-                vec![ValueType::Int],
-                vec![vec![crate::plan::Value::Int(2.into())]],
-            ),
-        );
-        assert_eq!(
-            get_list_value(
-                &frame,
-                &ListLocal::function(
-                    FunctionListLocalId(7),
-                    FunctionType::new(Vec::new(), ValueType::Int),
-                ),
-            ),
-            ListValue::from_evaluated_function(
-                FunctionType::new(Vec::new(), ValueType::Int),
-                vec![crate::plan::FunctionValue::new(
-                    crate::plan::RuntimeFunctionId::Int(IntFunctionId(0)),
-                    Vec::new(),
-                )],
-            ),
-        );
-    }
-
-    #[test]
-    fn eval_list_expr_selects_case_branches() {
-        let plan = plan();
-        let mut frame = Frame::default();
-
-        assert_eq!(
-            eval_list_expr(
-                &plan,
-                &mut frame,
-                &ListExpr::bool_case(
-                    BoolExpr::value(true),
-                    BoolListCaseBranches::Int {
-                        true_: list_expr(1)
-                            .into_int()
-                            .expect("true branch should be List(Int)"),
-                        false_: list_expr(2)
-                            .into_int()
-                            .expect("false branch should be List(Int)"),
-                    },
-                ),
-            ),
-            Ok(list_value(1)),
-        );
-        assert_eq!(
-            eval_list_expr(
-                &plan,
-                &mut frame,
-                &ListExpr::bool_case(
-                    BoolExpr::value(false),
-                    BoolListCaseBranches::Int {
-                        true_: list_expr(2)
-                            .into_int()
-                            .expect("true branch should be List(Int)"),
-                        false_: list_expr(1)
-                            .into_int()
-                            .expect("false branch should be List(Int)"),
-                    },
-                ),
-            ),
-            Ok(list_value(1)),
-        );
-        assert_eq!(
-            eval_list_expr(
-                &plan,
-                &mut frame,
-                &ListExpr::int_case(
-                    IntExpr::value(1.into()),
-                    ListCaseBranches::from_exprs(vec![(1.into(), list_expr(1))], list_expr(2))
-                        .expect("list case branches"),
-                ),
-            ),
-            Ok(list_value(1)),
-        );
-        assert_eq!(
-            eval_list_expr(
-                &plan,
-                &mut frame,
-                &ListExpr::int_case(
-                    IntExpr::value(2.into()),
-                    ListCaseBranches::from_exprs(vec![(1.into(), list_expr(2))], list_expr(1))
-                        .expect("list case branches"),
-                ),
-            ),
-            Ok(list_value(1)),
-        );
-        assert_eq!(
-            eval_list_expr(
-                &plan,
-                &mut frame,
-                &ListExpr::string_case(
-                    StringExpr::value("hit".into()),
-                    ListCaseBranches::from_exprs(vec![("hit".into(), list_expr(1))], list_expr(2))
-                        .expect("list case branches"),
-                ),
-            ),
-            Ok(list_value(1)),
-        );
-        assert_eq!(
-            eval_list_expr(
-                &plan,
-                &mut frame,
-                &ListExpr::string_case(
-                    StringExpr::value("miss".into()),
-                    ListCaseBranches::from_exprs(vec![("hit".into(), list_expr(2))], list_expr(1))
-                        .expect("list case branches"),
-                ),
-            ),
-            Ok(list_value(1)),
-        );
-        assert_eq!(
-            eval_list_expr(
-                &plan,
-                &mut frame,
-                &ListExpr::float_case(
-                    FloatExpr::value(1.0),
-                    ListCaseBranches::from_exprs(vec![(1.0, list_expr(1))], list_expr(2))
-                        .expect("list case branches"),
-                ),
-            ),
-            Ok(list_value(1)),
-        );
-        assert_eq!(
-            eval_list_expr(
-                &plan,
-                &mut frame,
-                &ListExpr::float_case(
-                    FloatExpr::value(2.0),
-                    ListCaseBranches::from_exprs(vec![(1.0, list_expr(2))], list_expr(1))
-                        .expect("list case branches"),
-                ),
-            ),
-            Ok(list_value(1)),
-        );
-    }
-
-    #[test]
-    fn eval_list_expr_executes_block_steps_before_return() {
-        let plan = plan();
-        let mut frame = frame();
-
-        assert_eq!(
-            eval_list_expr(
-                &plan,
-                &mut frame,
-                &ListExpr::block(
-                    vec![Step::let_list_expr(
-                        "values".into(),
-                        crate::plan::ListLocalExpr::Int {
-                            local: IntListLocalId(0),
-                            value: list_expr(1).into_int().expect("expected int list"),
-                        },
-                    )],
-                    ListExpr::local_get(ListLocal::int(IntListLocalId(0)), "values".into()),
-                ),
-            ),
-            Ok(list_value(1)),
-        );
-    }
-
-    #[test]
-    fn eval_list_tuple_index_paths() {
-        let plan = plan();
-        let mut frame = Frame::default();
-        let tuple = TupleExpr::value(
-            vec![Expr::list(list_expr(1))],
-            vec![ValueType::List(Box::new(element_type()))],
-        );
-
-        assert_eq!(
-            eval_list_expr(
-                &plan,
-                &mut frame,
-                &ListExpr::tuple_index(tuple, 0, element_type()),
-            ),
-            Ok(list_value(1)),
-        );
-
-        let tuple = TupleExpr::value(
-            vec![Expr::int(IntExpr::value(1.into()))],
-            vec![ValueType::Int],
-        );
-        assert_eq!(
-            eval_list_expr(
-                &plan,
-                &mut frame,
-                &ListExpr::tuple_index(tuple, 0, element_type()),
-            ),
-            Err(ExecutionError::tuple_index_family_mismatch(
-                ValueType::List(Box::new(element_type())),
-                ValueType::Int,
+            project_string_list_expr(&plan, &mut frame, expression, 0),
+            Err(ExecutionError::list_index_out_of_bounds(
+                ValueType::String,
+                0,
+                0,
             )),
         );
 
-        let tuple = TupleExpr::value(
-            vec![Expr::list(list_expr(1))],
-            vec![ValueType::List(Box::new(element_type()))],
-        );
+        let function = plan.float_list_function(FloatListFunctionId(0));
+        let expression = expect_expression_return(function.return_());
+        let mut frame = Frame::new(function.frame_layout());
         assert_eq!(
-            eval_list_expr(
-                &plan,
-                &mut frame,
-                &ListExpr::tuple_index(tuple, 0, ValueType::String),
-            ),
-            Err(ExecutionError::tuple_index_family_mismatch(
-                ValueType::List(Box::new(ValueType::String)),
-                ValueType::List(Box::new(ValueType::Int)),
+            project_float_list_expr(&plan, &mut frame, expression, 0),
+            Err(ExecutionError::list_index_out_of_bounds(
+                ValueType::Float,
+                0,
+                0,
             )),
         );
 
-        let tuple = TupleExpr::value(
-            vec![Expr::list(ListExpr::value(
-                vec![Expr::nil(NilExpr::value())],
+        let function = plan.bool_list_function(BoolListFunctionId(0));
+        let expression = expect_expression_return(function.return_());
+        let mut frame = Frame::new(function.frame_layout());
+        assert_eq!(
+            project_bool_list_expr(&plan, &mut frame, expression, 0),
+            Err(ExecutionError::list_index_out_of_bounds(
+                ValueType::Bool,
+                0,
+                0,
+            )),
+        );
+
+        let function = plan.nil_list_function(NilListFunctionId(0));
+        let expression = expect_expression_return(function.return_());
+        let mut frame = Frame::new(function.frame_layout());
+        assert_eq!(
+            project_nil_list_expr(&plan, &mut frame, expression, 0),
+            Err(ExecutionError::list_index_out_of_bounds(
                 ValueType::Nil,
-            ))],
-            vec![ValueType::List(Box::new(ValueType::Nil))],
-        );
-        assert_eq!(
-            eval_list_expr(
-                &plan,
-                &mut frame,
-                &ListExpr::tuple_index(tuple, 0, ValueType::Nil),
-            ),
-            Ok(ListValue::nil(1)),
+                0,
+                0,
+            )),
         );
 
-        let tuple = TupleExpr::value(
-            vec![Expr::list(ListExpr::value(
-                vec![Expr::tuple(TupleExpr::value(
-                    vec![Expr::int(IntExpr::value(2.into()))],
-                    vec![ValueType::Int],
-                ))],
+        let function = plan.tuple_list_function(TupleListFunctionId(0));
+        let expression = expect_expression_return(function.return_());
+        let mut frame = Frame::new(function.frame_layout());
+        assert_eq!(
+            project_tuple_list_expr(&plan, &mut frame, expression, 0, &[ValueType::Int]),
+            Err(ExecutionError::list_index_out_of_bounds(
                 ValueType::Tuple(vec![ValueType::Int]),
-            ))],
-            vec![ValueType::List(Box::new(ValueType::Tuple(vec![
-                ValueType::Int,
-            ])))],
-        );
-        assert_eq!(
-            eval_list_expr(
-                &plan,
-                &mut frame,
-                &ListExpr::tuple_index(tuple, 0, ValueType::Tuple(vec![ValueType::Int])),
-            ),
-            Ok(ListValue::from_evaluated_tuple(
-                vec![ValueType::Int],
-                vec![vec![crate::plan::Value::Int(2.into())]],
+                0,
+                0,
             )),
         );
 
-        let tuple = TupleExpr::value(
-            vec![Expr::list(ListExpr::value(
-                vec![Expr::list(list_expr(3))],
-                ValueType::List(Box::new(ValueType::Int)),
-            ))],
-            vec![ValueType::List(Box::new(ValueType::List(Box::new(
-                ValueType::Int,
-            ))))],
-        );
-        assert_eq!(
-            eval_list_expr(
-                &plan,
-                &mut frame,
-                &ListExpr::tuple_index(tuple, 0, ValueType::List(Box::new(ValueType::Int))),
-            ),
-            Ok(ListValue::from_evaluated_list(
-                ValueType::Int,
-                vec![ListValue::int(vec![3.into()])],
-            )),
-        );
-
+        let function = plan.function_list_function(FunctionListFunctionId(0));
+        let expression = expect_expression_return(function.return_());
+        let mut frame = Frame::new(function.frame_layout());
         let function_type = FunctionType::new(Vec::new(), ValueType::Int);
-        let tuple = TupleExpr::value(
-            vec![Expr::list(ListExpr::value(
-                vec![Expr::function(FunctionExpr::value(
-                    crate::plan::FunctionValue::new(
-                        crate::plan::RuntimeFunctionId::Int(IntFunctionId(0)),
-                        Vec::new(),
-                    ),
-                ))],
-                ValueType::Function(Box::new(function_type.clone())),
-            ))],
-            vec![ValueType::List(Box::new(ValueType::Function(Box::new(
-                function_type.clone(),
-            ))))],
-        );
         assert_eq!(
-            eval_list_expr(
-                &plan,
-                &mut frame,
-                &ListExpr::tuple_index(
-                    tuple,
-                    0,
-                    ValueType::Function(Box::new(function_type.clone())),
-                ),
-            ),
-            Ok(ListValue::from_evaluated_function(
-                function_type,
-                vec![crate::plan::FunctionValue::new(
-                    crate::plan::RuntimeFunctionId::Int(IntFunctionId(0)),
-                    Vec::new(),
-                )],
+            project_function_list_expr(&plan, &mut frame, expression, 0, &function_type),
+            Err(ExecutionError::list_index_out_of_bounds(
+                ValueType::Function(Box::new(function_type)),
+                0,
+                0,
             )),
         );
     }
 
     #[test]
-    fn eval_list_index_and_drop_first_paths() {
-        let plan = plan();
-        let mut frame = Frame::default();
-        let nested_list = ListExpr::value(
-            vec![Expr::list(list_expr(1)), Expr::list(list_expr(2))],
-            ValueType::List(Box::new(element_type())),
+    fn nested_list_projection_has_only_index_and_family_invariants() {
+        let plan = crate::runtime::plan_src(
+            r#"
+fn nested_values(values: List(List(Int))) { values }
+pub fn main() { Nil }
+"#,
         );
+        let function = plan.list_list_function(ListListFunctionId(0));
+        let expression = expect_expression_return(function.return_());
+        let mut frame = Frame::new(function.frame_layout());
 
         assert_eq!(
-            eval_list_expr(
-                &plan,
-                &mut frame,
-                &ListExpr::list_index(
-                    nested_list
-                        .clone()
-                        .into_list()
-                        .expect("nested list should build a ListListExpr"),
-                    1,
-                ),
-            ),
-            Ok(list_value(2)),
-        );
-        assert_eq!(
-            eval_list_expr(
-                &plan,
-                &mut frame,
-                &ListExpr::list_index(
-                    nested_list
-                        .clone()
-                        .into_list()
-                        .expect("nested list should build a ListListExpr"),
-                    2,
-                ),
-            ),
+            IntListItem::project_nested_list(&plan, &mut frame, &IntListItem, expression, 0),
             Err(ExecutionError::list_index_out_of_bounds(
-                ValueType::List(Box::new(element_type())),
-                2,
-                2,
+                ValueType::List(Box::new(ValueType::Int)),
+                0,
+                0,
             )),
         );
-        assert_eq!(
-            eval_list_expr(
-                &plan,
-                &mut frame,
-                &ListExpr::list_index(
-                    ListExpr::tuple_index(
-                        empty_tuple(),
-                        0,
-                        ValueType::List(Box::new(element_type())),
-                    )
-                    .into_list()
-                    .expect("error nested list should build a ListListExpr"),
-                    0,
-                ),
-            ),
-            Err(tuple_index_error(ValueType::List(Box::new(
-                ValueType::List(Box::new(element_type())),
-            )))),
-        );
-        assert_eq!(
-            project_list_list_expr(
-                &plan,
-                &mut frame,
-                &nested_list
-                    .clone()
-                    .into_list()
-                    .expect("nested list should build a ListListExpr"),
-                2,
-                &element_type(),
-            ),
-            Err(ExecutionError::list_index_out_of_bounds(
-                ValueType::List(Box::new(element_type())),
-                2,
-                2,
-            )),
-        );
-        assert_eq!(
-            eval_list_expr(
-                &plan,
-                &mut frame,
-                &ListExpr::drop_first(
-                    ListExpr::value(
-                        vec![
-                            Expr::int(IntExpr::value(1.into())),
-                            Expr::int(IntExpr::value(2.into())),
-                        ],
-                        element_type(),
-                    ),
-                    1,
-                ),
-            ),
-            Ok(list_value(2)),
-        );
-        assert_eq!(
-            eval_list_expr(
-                &plan,
-                &mut frame,
-                &ListExpr::drop_first(
-                    ListExpr::value(vec![Expr::int(IntExpr::value(1.into()))], element_type()),
-                    2,
-                ),
-            ),
-            Ok(ListValue::empty(element_type())),
-        );
-        assert_eq!(
-            eval_list_expr(
-                &plan,
-                &mut frame,
-                &ListExpr::drop_first(error_list_expr(), 1),
-            ),
-            Err(tuple_index_error(ValueType::List(Box::new(element_type())))),
-        );
-    }
 
-    #[test]
-    fn nested_list_projection_reports_direct_mutated_frame_item_family_mismatch() {
-        let plan = plan();
-        let local = ListLocal::list(ListListLocalId(0), ValueType::String);
-        let mut layout = FrameLayout::default();
-        layout.include_list(local.clone());
-        let mut frame = Frame::new(layout);
-        frame.set_list_list(ListListLocalId(0), vec![ListValue::int(vec![1.into()])]);
-        let nested = ListListExpr::local_get(
-            ListListItem::new(Box::new(ValueType::String)),
+        frame.set_list_list(
             ListListLocalId(0),
-            "values".into(),
+            vec![ListValue::string(vec!["wrong".into()])],
         );
-
         assert_eq!(
-            eval_list_expr(&plan, &mut frame, &ListExpr::list_index(nested, 0),),
+            IntListItem::project_nested_list(&plan, &mut frame, &IntListItem, expression, 0),
             Err(ExecutionError::ListIndexFamilyMismatch {
-                expected: ValueType::List(Box::new(ValueType::String)),
-                actual: ValueType::List(Box::new(ValueType::Int)),
+                expected: ValueType::List(Box::new(ValueType::Int)),
+                actual: ValueType::List(Box::new(ValueType::String)),
             }),
         );
     }
 
     #[test]
-    fn project_list_expr_out_of_bounds_for_each_item_family() {
-        let plan = plan();
-        let mut frame = Frame::default();
-        let function_type = FunctionType::new(Vec::new(), ValueType::Int);
-
-        assert_eq!(
-            project_string_list_expr(
-                &plan,
-                &mut frame,
-                &ListExpr::value(
-                    vec![Expr::string(StringExpr::value("one".into()))],
-                    ValueType::String,
-                )
-                .into_string()
-                .expect("string list should build a StringListExpr"),
-                1,
-            ),
-            Err(ExecutionError::list_index_out_of_bounds(
-                ValueType::String,
-                1,
-                1,
-            )),
-        );
-        assert_eq!(
-            project_float_list_expr(
-                &plan,
-                &mut frame,
-                &ListExpr::value(vec![Expr::float(FloatExpr::value(1.5))], ValueType::Float)
-                    .into_float()
-                    .expect("float list should build a FloatListExpr"),
-                1,
-            ),
-            Err(ExecutionError::list_index_out_of_bounds(
-                ValueType::Float,
-                1,
-                1,
-            )),
-        );
-        assert_eq!(
-            project_bool_list_expr(
-                &plan,
-                &mut frame,
-                &ListExpr::value(vec![Expr::bool(BoolExpr::value(true))], ValueType::Bool)
-                    .into_bool()
-                    .expect("bool list should build a BoolListExpr"),
-                1,
-            ),
-            Err(ExecutionError::list_index_out_of_bounds(
-                ValueType::Bool,
-                1,
-                1,
-            )),
-        );
-        assert_eq!(
-            project_nil_list_expr(
-                &plan,
-                &mut frame,
-                &ListExpr::value(vec![Expr::nil(NilExpr::value())], ValueType::Nil)
-                    .into_nil()
-                    .expect("nil list should build a NilListExpr"),
-                1,
-            ),
-            Err(ExecutionError::list_index_out_of_bounds(
-                ValueType::Nil,
-                1,
-                1,
-            )),
-        );
-        assert_eq!(
-            project_tuple_list_expr(
-                &plan,
-                &mut frame,
-                &ListExpr::value(
-                    vec![Expr::tuple(TupleExpr::value(
-                        vec![Expr::int(IntExpr::value(1.into()))],
-                        vec![ValueType::Int],
-                    ))],
-                    ValueType::Tuple(vec![ValueType::Int]),
-                )
-                .into_tuple()
-                .expect("tuple list should build a TupleListExpr"),
-                1,
-                &[ValueType::Int],
-            ),
-            Err(ExecutionError::list_index_out_of_bounds(
-                ValueType::Tuple(vec![ValueType::Int]),
-                1,
-                1,
-            )),
-        );
-        assert_eq!(
-            project_list_list_expr(
-                &plan,
-                &mut frame,
-                &ListExpr::value(
-                    vec![Expr::list(list_expr(1))],
-                    ValueType::List(Box::new(element_type())),
-                )
-                .into_list()
-                .expect("nested list should build a ListListExpr"),
-                1,
-                &element_type(),
-            ),
-            Err(ExecutionError::list_index_out_of_bounds(
-                ValueType::List(Box::new(element_type())),
-                1,
-                1,
-            )),
-        );
-        assert_eq!(
-            project_function_list_expr(
-                &plan,
-                &mut frame,
-                &ListExpr::value(
-                    vec![Expr::function(FunctionExpr::int(IntFunctionExpr::value(
-                        IntFunctionValue::new(IntFunctionId(0), Vec::new()),
-                    )))],
-                    ValueType::Function(Box::new(function_type.clone())),
-                )
-                .into_function()
-                .expect("function list should build a FunctionListExpr"),
-                1,
-                &function_type,
-            ),
-            Err(ExecutionError::list_index_out_of_bounds(
-                ValueType::Function(Box::new(function_type)),
-                1,
-                1,
-            )),
-        );
-    }
-
-    #[test]
-    fn project_list_expr_propagates_list_evaluation_errors() {
-        let plan = plan();
-        let mut frame = Frame::default();
-        let function_type = FunctionType::new(Vec::new(), ValueType::Int);
-
-        assert_eq!(
-            project_int_list_expr(
-                &plan,
-                &mut frame,
-                &error_list_expr()
-                    .into_int()
-                    .expect("int error list should build an IntListExpr"),
-                0,
-            ),
-            Err(tuple_index_error(ValueType::List(Box::new(element_type())))),
-        );
-        assert_eq!(
-            project_string_list_expr(
-                &plan,
-                &mut frame,
-                &ListExpr::tuple_index(empty_tuple(), 0, ValueType::String)
-                    .into_string()
-                    .expect("string error list should build a StringListExpr"),
-                0,
-            ),
-            Err(tuple_index_error(ValueType::List(Box::new(
-                ValueType::String
-            )))),
-        );
-        assert_eq!(
-            project_float_list_expr(
-                &plan,
-                &mut frame,
-                &ListExpr::tuple_index(empty_tuple(), 0, ValueType::Float)
-                    .into_float()
-                    .expect("float error list should build a FloatListExpr"),
-                0,
-            ),
-            Err(tuple_index_error(ValueType::List(Box::new(
-                ValueType::Float
-            )))),
-        );
-        assert_eq!(
-            project_bool_list_expr(
-                &plan,
-                &mut frame,
-                &ListExpr::tuple_index(empty_tuple(), 0, ValueType::Bool)
-                    .into_bool()
-                    .expect("bool error list should build a BoolListExpr"),
-                0,
-            ),
-            Err(tuple_index_error(ValueType::List(Box::new(
-                ValueType::Bool
-            )))),
-        );
-        assert_eq!(
-            project_nil_list_expr(
-                &plan,
-                &mut frame,
-                &ListExpr::tuple_index(empty_tuple(), 0, ValueType::Nil)
-                    .into_nil()
-                    .expect("nil error list should build a NilListExpr"),
-                0,
-            ),
-            Err(tuple_index_error(ValueType::List(Box::new(ValueType::Nil)))),
-        );
-        assert_eq!(
-            project_tuple_list_expr(
-                &plan,
-                &mut frame,
-                &ListExpr::tuple_index(empty_tuple(), 0, ValueType::Tuple(vec![ValueType::Int]))
-                    .into_tuple()
-                    .expect("tuple error list should build a TupleListExpr"),
-                0,
-                &[ValueType::Int],
-            ),
-            Err(tuple_index_error(ValueType::List(Box::new(
-                ValueType::Tuple(vec![ValueType::Int])
-            )))),
-        );
-        assert_eq!(
-            project_list_list_expr(
-                &plan,
-                &mut frame,
-                &ListExpr::tuple_index(
-                    empty_tuple(),
-                    0,
-                    ValueType::List(Box::new(element_type())),
-                )
-                .into_list()
-                .expect("nested error list should build a ListListExpr"),
-                0,
-                &element_type(),
-            ),
-            Err(tuple_index_error(ValueType::List(Box::new(
-                ValueType::List(Box::new(element_type())),
-            )))),
-        );
-        assert_eq!(
-            project_function_list_expr(
-                &plan,
-                &mut frame,
-                &ListExpr::tuple_index(
-                    empty_tuple(),
-                    0,
-                    ValueType::Function(Box::new(function_type.clone())),
-                )
-                .into_function()
-                .expect("function error list should build a FunctionListExpr"),
-                0,
-                &function_type,
-            ),
-            Err(tuple_index_error(ValueType::List(Box::new(
-                ValueType::Function(Box::new(function_type))
-            )))),
-        );
-    }
-
-    #[test]
-    fn eval_list_expr_propagates_operand_errors() {
-        let plan = plan();
-        let mut frame = Frame::default();
-
-        for (expression, expected) in [
+    fn module_expression_errors_propagate_through_list_wrappers() {
+        let panic = |message: &str| {
+            ModulePanicExpr::panic_at(
+                Some(ModuleStringExpr::value(message.into())),
+                PanicSite::unknown(),
+            )
+        };
+        let int_panic =
+            |message| expect_module_int_list(ModuleListExpr::panic(panic(message), ValueType::Int));
+        let fallback = || int_panic("fallback");
+        let expressions = [
             (
-                ListExpr::value(vec![Expr::int(error_int_expr())], element_type()),
-                ValueType::Int,
-            ),
-            (
-                ListExpr::value(
-                    vec![Expr::nil(NilExpr::tuple_index(empty_tuple(), 0))],
-                    ValueType::Nil,
-                ),
-                ValueType::Nil,
-            ),
-            (
-                ListExpr::spread(
-                    vec![Expr::int(error_int_expr())],
-                    list_expr(1),
-                    element_type(),
-                ),
-                ValueType::Int,
-            ),
-            (
-                ListExpr::spread(Vec::new(), error_list_expr(), element_type()),
-                ValueType::List(Box::new(element_type())),
-            ),
-            (
-                ListExpr::bool_case(
-                    error_bool_expr(),
-                    BoolListCaseBranches::Int {
-                        true_: list_expr(1)
-                            .into_int()
-                            .expect("true branch should be List(Int)"),
-                        false_: list_expr(2)
-                            .into_int()
-                            .expect("false branch should be List(Int)"),
+                expect_module_int_list(ModuleListExpr::from_spread_elements(
+                    crate::plan::ListSpreadElements::Int {
+                        values: vec![ModuleIntExpr::panic(panic("prefix"))],
+                        tail: int_panic("tail fallback"),
                     },
-                ),
-                ValueType::Bool,
+                )),
+                "prefix",
             ),
             (
-                ListExpr::int_case(
-                    error_int_expr(),
-                    ListCaseBranches::from_exprs(vec![(1.into(), list_expr(1))], list_expr(2))
-                        .expect("list case branches"),
-                ),
-                ValueType::Int,
+                expect_module_int_list(ModuleListExpr::from_spread_elements(
+                    crate::plan::ListSpreadElements::Int {
+                        values: Vec::new(),
+                        tail: int_panic("tail"),
+                    },
+                )),
+                "tail",
             ),
             (
-                ListExpr::string_case(
-                    error_string_expr(),
-                    ListCaseBranches::from_exprs(vec![("hit".into(), list_expr(1))], list_expr(2))
-                        .expect("list case branches"),
-                ),
-                ValueType::String,
+                expect_module_int_list(ModuleListExpr::tuple_index(
+                    ModuleTupleExpr::panic(
+                        panic("tuple"),
+                        vec![ValueType::List(Box::new(ValueType::Int))],
+                    ),
+                    0,
+                    ValueType::Int,
+                )),
+                "tuple",
             ),
             (
-                ListExpr::float_case(
-                    error_float_expr(),
-                    ListCaseBranches::from_exprs(vec![(1.0, list_expr(1))], list_expr(2))
-                        .expect("list case branches"),
-                ),
-                ValueType::Float,
+                expect_module_int_list(ModuleListExpr::drop_first(
+                    ModuleListExpr::panic(panic("drop"), ValueType::Int),
+                    1,
+                )),
+                "drop",
             ),
             (
-                ListExpr::block(
-                    vec![Step::evaluate(Expr::bool(error_bool_expr()))],
-                    list_expr(1),
-                ),
-                ValueType::Bool,
+                expect_module_int_list(ModuleListExpr::bool_case(
+                    ModuleBoolExpr::panic(panic("bool subject")),
+                    BoolListCaseBranches::Int {
+                        true_: fallback(),
+                        false_: fallback(),
+                    },
+                )),
+                "bool subject",
             ),
-        ] {
+            (
+                expect_module_int_list(ModuleListExpr::int_case(
+                    ModuleIntExpr::panic(panic("int subject")),
+                    ListCaseBranches::Int {
+                        clauses: Vec::new(),
+                        fallback: fallback(),
+                    },
+                )),
+                "int subject",
+            ),
+            (
+                expect_module_int_list(ModuleListExpr::string_case(
+                    ModuleStringExpr::panic(panic("string subject")),
+                    ListCaseBranches::Int {
+                        clauses: Vec::new(),
+                        fallback: fallback(),
+                    },
+                )),
+                "string subject",
+            ),
+            (
+                expect_module_int_list(ModuleListExpr::float_case(
+                    ModuleFloatExpr::panic(panic("float subject")),
+                    ListCaseBranches::Int {
+                        clauses: Vec::new(),
+                        fallback: fallback(),
+                    },
+                )),
+                "float subject",
+            ),
+            (
+                expect_module_int_list(ModuleListExpr::block(
+                    vec![ModuleStep::evaluate(ModuleExpr::bool(
+                        ModuleBoolExpr::panic(panic("step")),
+                    ))],
+                    ModuleListExpr::panic(panic("fallback"), ValueType::Int),
+                )),
+                "step",
+            ),
+            (
+                expect_module_int_list(ModuleListExpr::list_index(
+                    expect_module_list_list(ModuleListExpr::panic(
+                        panic("nested list"),
+                        ValueType::List(Box::new(ValueType::Int)),
+                    )),
+                    0,
+                )),
+                "nested list",
+            ),
+        ];
+
+        for (expression, message) in expressions {
             assert_eq!(
-                eval_list_expr(&plan, &mut frame, &expression),
-                Err(tuple_index_error(expected)),
+                run_module_int_list_expression(expression).to_string(),
+                format!("panic: {message}"),
             );
         }
+    }
 
-        assert_eq!(
-            eval_list_expr(&plan, &mut frame, &error_list_expr()),
-            Err(tuple_index_error(ValueType::List(Box::new(element_type())))),
+    #[test]
+    fn nil_list_element_errors_propagate() {
+        let panic = ModulePanicExpr::panic_at(
+            Some(ModuleStringExpr::value("nil element".into())),
+            PanicSite::unknown(),
         );
-    }
-
-    fn error_int_expr() -> IntExpr {
-        IntExpr::tuple_index(empty_tuple(), 0)
-    }
-
-    fn error_bool_expr() -> BoolExpr {
-        BoolExpr::tuple_index(empty_tuple(), 0)
-    }
-
-    fn error_string_expr() -> StringExpr {
-        StringExpr::tuple_index(empty_tuple(), 0)
-    }
-
-    fn error_float_expr() -> FloatExpr {
-        FloatExpr::tuple_index(empty_tuple(), 0)
-    }
-
-    fn error_list_expr() -> ListExpr {
-        ListExpr::tuple_index(empty_tuple(), 0, element_type())
-    }
-
-    fn empty_tuple() -> TupleExpr {
-        TupleExpr::value(Vec::new(), Vec::new())
-    }
-
-    fn tuple_index_error(expected: ValueType) -> ExecutionError {
-        ExecutionError::tuple_index_family_mismatch(expected, ValueType::Tuple(Vec::new()))
-    }
-
-    fn list_expr(value: i64) -> ListExpr {
-        ListExpr::value(
-            vec![Expr::int(IntExpr::value(BigInt::from(value)))],
-            element_type(),
-        )
-    }
-
-    fn list_value(value: i64) -> ListValue {
-        ListValue::int(vec![BigInt::from(value)])
-    }
-
-    fn element_type() -> ValueType {
-        ValueType::Int
-    }
-
-    fn frame() -> Frame {
-        let mut layout = FrameLayout::default();
-        layout.include_list(ListLocal::int(IntListLocalId(0)));
-        Frame::new(layout)
-    }
-
-    fn all_list_family_frame() -> Frame {
-        let mut layout = FrameLayout::default();
-        layout.include_list(ListLocal::int(IntListLocalId(0)));
-        layout.include_list(ListLocal::string(StringListLocalId(1)));
-        layout.include_list(ListLocal::float(FloatListLocalId(2)));
-        layout.include_list(ListLocal::bool(BoolListLocalId(3)));
-        layout.include_list(ListLocal::nil(NilListLocalId(4)));
-        layout.include_list(ListLocal::tuple(TupleListLocalId(5), vec![ValueType::Int]));
-        layout.include_list(ListLocal::list(ListListLocalId(6), ValueType::Int));
-        layout.include_list(ListLocal::function(
-            FunctionListLocalId(7),
-            FunctionType::new(Vec::new(), ValueType::Int),
+        let expression = expect_module_nil_list(ModuleListExpr::from_elements(
+            crate::plan::ListElements::Nil(vec![ModuleNilExpr::panic(panic)]),
         ));
-        let mut frame = Frame::new(layout);
-        frame.set_int_list(IntListLocalId(0), vec![1.into()]);
-        frame.set_string_list(StringListLocalId(1), vec!["one".into()]);
-        frame.set_float_list(FloatListLocalId(2), vec![1.5]);
-        frame.set_bool_list(BoolListLocalId(3), vec![true]);
-        frame.set_nil_list(NilListLocalId(4), 1);
-        frame.set_tuple_list(
-            TupleListLocalId(5),
-            vec![vec![crate::plan::Value::Int(2.into())]],
+
+        assert_eq!(
+            run_module_nil_list_expression(expression).to_string(),
+            "panic: nil element",
         );
-        frame.set_list_list(ListListLocalId(6), vec![ListValue::int(vec![3.into()])]);
-        frame.set_function_list(
-            FunctionListLocalId(7),
-            vec![crate::plan::FunctionValue::new(
-                crate::plan::RuntimeFunctionId::Int(IntFunctionId(0)),
-                Vec::new(),
-            )],
+    }
+
+    #[test]
+    fn list_projection_propagates_source_errors_for_every_item_family() {
+        let plans = [
+            crate::runtime::plan_src("pub fn main() -> List(Int) { panic as \"int\" }"),
+            crate::runtime::plan_src("pub fn main() -> List(String) { panic as \"string\" }"),
+            crate::runtime::plan_src("pub fn main() -> List(Float) { panic as \"float\" }"),
+            crate::runtime::plan_src("pub fn main() -> List(Bool) { panic as \"bool\" }"),
+            crate::runtime::plan_src("pub fn main() -> List(Nil) { panic as \"nil\" }"),
+            crate::runtime::plan_src("pub fn main() -> List(#(Int)) { panic as \"tuple\" }"),
+            crate::runtime::plan_src(
+                "pub fn main() -> List(fn() -> Int) { panic as \"function\" }",
+            ),
+        ];
+
+        let function = plans[0].int_list_function(IntListFunctionId(0));
+        let mut frame = Frame::new(function.frame_layout());
+        assert_eq!(
+            project_int_list_expr(
+                &plans[0],
+                &mut frame,
+                expect_expression_return(function.return_()),
+                0,
+            )
+            .expect_err("list source should fail")
+            .to_string(),
+            "panic: int",
         );
-        frame
+
+        let function = plans[1].string_list_function(StringListFunctionId(0));
+        let mut frame = Frame::new(function.frame_layout());
+        assert_eq!(
+            project_string_list_expr(
+                &plans[1],
+                &mut frame,
+                expect_expression_return(function.return_()),
+                0,
+            )
+            .expect_err("list source should fail")
+            .to_string(),
+            "panic: string",
+        );
+
+        let function = plans[2].float_list_function(FloatListFunctionId(0));
+        let mut frame = Frame::new(function.frame_layout());
+        assert_eq!(
+            project_float_list_expr(
+                &plans[2],
+                &mut frame,
+                expect_expression_return(function.return_()),
+                0,
+            )
+            .expect_err("list source should fail")
+            .to_string(),
+            "panic: float",
+        );
+
+        let function = plans[3].bool_list_function(BoolListFunctionId(0));
+        let mut frame = Frame::new(function.frame_layout());
+        assert_eq!(
+            project_bool_list_expr(
+                &plans[3],
+                &mut frame,
+                expect_expression_return(function.return_()),
+                0,
+            )
+            .expect_err("list source should fail")
+            .to_string(),
+            "panic: bool",
+        );
+
+        let function = plans[4].nil_list_function(NilListFunctionId(0));
+        let mut frame = Frame::new(function.frame_layout());
+        assert_eq!(
+            project_nil_list_expr(
+                &plans[4],
+                &mut frame,
+                expect_expression_return(function.return_()),
+                0,
+            )
+            .expect_err("list source should fail")
+            .to_string(),
+            "panic: nil",
+        );
+
+        let function = plans[5].tuple_list_function(TupleListFunctionId(0));
+        let mut frame = Frame::new(function.frame_layout());
+        assert_eq!(
+            project_tuple_list_expr(
+                &plans[5],
+                &mut frame,
+                expect_expression_return(function.return_()),
+                0,
+                &[ValueType::Int],
+            )
+            .expect_err("list source should fail")
+            .to_string(),
+            "panic: tuple",
+        );
+
+        let function = plans[6].function_list_function(FunctionListFunctionId(0));
+        let mut frame = Frame::new(function.frame_layout());
+        assert_eq!(
+            project_function_list_expr(
+                &plans[6],
+                &mut frame,
+                expect_expression_return(function.return_()),
+                0,
+                &FunctionType::new(Vec::new(), ValueType::Int),
+            )
+            .expect_err("list source should fail")
+            .to_string(),
+            "panic: function",
+        );
     }
 
-    fn plan() -> ExecutionPlan {
-        ExecutionPlan::from_module_plan(crate::plan::ModulePlan::new(
+    #[test]
+    #[should_panic(expected = "expected a list expression return body")]
+    fn list_expression_return_shape_guard_rejects_tail_calls() {
+        let plan = crate::runtime::plan_src(
+            r#"
+fn recurse() -> List(Int) { recurse() }
+pub fn main() { Nil }
+"#,
+        );
+        let function = plan.int_list_function(IntListFunctionId(0));
+
+        let _ = expect_expression_return(function.return_());
+    }
+
+    #[test]
+    #[should_panic(expected = "expected an Int list expression")]
+    fn int_list_shape_guard_rejects_string_lists() {
+        let expression = ModuleListExpr::panic(
+            ModulePanicExpr::panic_at(None, PanicSite::unknown()),
+            ValueType::String,
+        );
+
+        let _ = expect_module_int_list(expression);
+    }
+
+    #[test]
+    #[should_panic(expected = "expected a nested list expression")]
+    fn nested_list_shape_guard_rejects_int_lists() {
+        let expression = ModuleListExpr::panic(
+            ModulePanicExpr::panic_at(None, PanicSite::unknown()),
+            ValueType::Int,
+        );
+
+        let _ = expect_module_list_list(expression);
+    }
+
+    #[test]
+    #[should_panic(expected = "expected a Nil list expression")]
+    fn nil_list_shape_guard_rejects_int_lists() {
+        let expression = ModuleListExpr::panic(
+            ModulePanicExpr::panic_at(None, PanicSite::unknown()),
+            ValueType::Int,
+        );
+
+        let _ = expect_module_nil_list(expression);
+    }
+
+    fn run_module_int_list_expression(expression: ModuleIntListExpr) -> ExecutionError {
+        let main = ModuleFunctionPlan::new(
+            ModuleFunctionId::new(0),
             "main".into(),
-            FunctionPlan::new(
-                FunctionId::new(0),
-                "main".into(),
-                Vec::new(),
-                Vec::new(),
-                ReturnExpr::int(IntFunctionId(0), IntExpr::value(0.into())),
-            ),
-            vec![FunctionPlan::new(
-                FunctionId::new(1),
-                "list_value".into(),
-                Vec::new(),
-                Vec::new(),
-                ReturnExpr::int_list_body(
-                    crate::plan::IntListFunctionId(0),
-                    crate::plan::IntListReturn::expr(
-                        list_expr(1)
-                            .into_int()
-                            .expect("expression should be List(Int)"),
-                    ),
-                ),
-            )],
-        ))
-    }
-
-    fn all_list_family_plan() -> ExecutionPlan {
-        let function_type = FunctionType::new(Vec::new(), ValueType::Int);
-        ExecutionPlan::from_module_plan(crate::plan::ModulePlan::new(
-            "main".into(),
-            FunctionPlan::new(
-                FunctionId::new(0),
-                "main".into(),
-                Vec::new(),
-                Vec::new(),
-                ReturnExpr::int(IntFunctionId(0), IntExpr::value(0.into())),
-            ),
-            vec![
-                list_function_plan(
-                    1,
-                    "int_list",
-                    ListExpr::value(vec![Expr::int(IntExpr::value(1.into()))], ValueType::Int),
-                ),
-                list_function_plan(
-                    2,
-                    "string_list",
-                    ListExpr::value(
-                        vec![Expr::string(StringExpr::value("one".into()))],
-                        ValueType::String,
-                    ),
-                ),
-                list_function_plan(
-                    3,
-                    "float_list",
-                    ListExpr::value(vec![Expr::float(FloatExpr::value(1.5))], ValueType::Float),
-                ),
-                list_function_plan(
-                    4,
-                    "bool_list",
-                    ListExpr::value(vec![Expr::bool(BoolExpr::value(true))], ValueType::Bool),
-                ),
-                list_function_plan(
-                    5,
-                    "nil_list",
-                    ListExpr::value(vec![Expr::nil(NilExpr::value())], ValueType::Nil),
-                ),
-                list_function_plan(
-                    6,
-                    "tuple_list",
-                    ListExpr::value(
-                        vec![Expr::tuple(TupleExpr::value(
-                            vec![Expr::int(IntExpr::value(2.into()))],
-                            vec![ValueType::Int],
-                        ))],
-                        ValueType::Tuple(vec![ValueType::Int]),
-                    ),
-                ),
-                list_function_plan(
-                    7,
-                    "list_list",
-                    ListExpr::value(
-                        vec![Expr::list(ListExpr::value(
-                            vec![Expr::int(IntExpr::value(3.into()))],
-                            ValueType::Int,
-                        ))],
-                        ValueType::List(Box::new(ValueType::Int)),
-                    ),
-                ),
-                list_function_plan(
-                    8,
-                    "function_list",
-                    ListExpr::value(
-                        vec![Expr::function(FunctionExpr::value(
-                            crate::plan::FunctionValue::new(
-                                crate::plan::RuntimeFunctionId::Int(IntFunctionId(0)),
-                                Vec::new(),
-                            ),
-                        ))],
-                        ValueType::Function(Box::new(function_type)),
-                    ),
-                ),
-            ],
-        ))
-    }
-
-    fn list_function_plan(function_index: usize, name: &str, expression: ListExpr) -> FunctionPlan {
-        let return_ = match expression {
-            ListExpr::Int(expression) => ReturnExpr::int_list_body(
-                crate::plan::IntListFunctionId(0),
-                crate::plan::IntListReturn::expr(expression),
-            ),
-            ListExpr::String(expression) => ReturnExpr::string_list_body(
-                crate::plan::StringListFunctionId(0),
-                crate::plan::StringListReturn::expr(expression),
-            ),
-            ListExpr::Float(expression) => ReturnExpr::float_list_body(
-                crate::plan::FloatListFunctionId(0),
-                crate::plan::FloatListReturn::expr(expression),
-            ),
-            ListExpr::Bool(expression) => ReturnExpr::bool_list_body(
-                crate::plan::BoolListFunctionId(0),
-                crate::plan::BoolListReturn::expr(expression),
-            ),
-            ListExpr::Nil(expression) => ReturnExpr::nil_list_body(
-                crate::plan::NilListFunctionId(0),
-                crate::plan::NilListReturn::expr(expression),
-            ),
-            ListExpr::Tuple(expression) => ReturnExpr::tuple_list_body(
-                crate::plan::TupleListFunctionId(0),
-                expression.item().item_type(),
-                crate::plan::TupleListReturn::expr(expression),
-            ),
-            ListExpr::List(expression) => ReturnExpr::list_list_body(
-                crate::plan::ListListFunctionId(0),
-                expression.item().item_type(),
-                crate::plan::ListListReturn::expr(expression),
-            ),
-            ListExpr::Function(expression) => ReturnExpr::function_list_body(
-                crate::plan::FunctionListFunctionId(0),
-                expression.item().item_type(),
-                crate::plan::FunctionListReturn::expr(expression),
-            ),
-        };
-
-        FunctionPlan::new(
-            FunctionId::new(function_index),
-            name.into(),
             Vec::new(),
             Vec::new(),
-            return_,
-        )
-    }
-
-    fn wrong_list_function_value(item_type: ValueType) -> ListFunctionExpr {
-        list_function_value(ListFunctionId::from_item_type(0, item_type))
-    }
-
-    fn list_function_value(function: ListFunctionId) -> ListFunctionExpr {
-        ListFunctionExpr::value(ListFunctionValue::new(function, Vec::new()))
-    }
-
-    fn assert_wrong_list_function_family<T>(actual: Result<T, ExecutionError>) {
-        assert_eq!(
-            actual.err().expect("call should fail"),
-            ExecutionError::function_return_family_mismatch(
-                FunctionReturnFamily::List,
-                FunctionReturnFamily::List,
+            ModuleReturnExpr::int_list_body(
+                ModuleIntListFunctionId(0),
+                ModuleReturnBody::expr(expression),
             ),
         );
+        let module = ModulePlan::new("main".into(), main, Vec::new());
+        let plan = crate::ExecutionPlan::from_module_plan(module);
+
+        crate::runtime::run_main(&plan).expect_err("module expression should fail at runtime")
     }
 
-    fn assert_int_argument_error<T>(actual: Result<T, ExecutionError>) {
-        assert_eq!(
-            actual.err().expect("call should fail"),
-            tuple_index_error(ValueType::Int),
+    fn run_module_nil_list_expression(expression: crate::plan::NilListExpr) -> ExecutionError {
+        let main = ModuleFunctionPlan::new(
+            ModuleFunctionId::new(0),
+            "main".into(),
+            Vec::new(),
+            Vec::new(),
+            ModuleReturnExpr::nil_list_body(
+                ModuleNilListFunctionId(0),
+                ModuleReturnBody::expr(expression),
+            ),
         );
+        let module = ModulePlan::new("main".into(), main, Vec::new());
+        let plan = crate::ExecutionPlan::from_module_plan(module);
+
+        crate::runtime::run_main(&plan).expect_err("module expression should fail at runtime")
+    }
+
+    fn expect_module_int_list(expression: ModuleListExpr) -> ModuleIntListExpr {
+        match expression {
+            ModuleListExpr::Int(expression) => expression,
+            _ => panic!("expected an Int list expression"),
+        }
+    }
+
+    fn expect_module_list_list(expression: ModuleListExpr) -> ModuleListListExpr {
+        match expression {
+            ModuleListExpr::List(expression) => expression,
+            _ => panic!("expected a nested list expression"),
+        }
+    }
+
+    fn expect_module_nil_list(expression: ModuleListExpr) -> crate::plan::NilListExpr {
+        match expression {
+            ModuleListExpr::Nil(expression) => expression,
+            _ => panic!("expected a Nil list expression"),
+        }
+    }
+
+    fn expect_expression_return<Expression, Function>(
+        body: &ReturnBody<Expression, Function>,
+    ) -> &Expression {
+        match body.kind() {
+            ReturnBodyKind::Expr(expression) => expression,
+            _ => panic!("expected a list expression return body"),
+        }
     }
 }

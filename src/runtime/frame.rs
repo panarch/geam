@@ -1,11 +1,13 @@
-use crate::plan::{
-    BoolFunctionLocalId, BoolFunctionValue, BoolListLocalId, BoolLocalId, FloatFunctionLocalId,
-    FloatFunctionValue, FloatListLocalId, FloatLocalId, FrameLayout, FunctionFunctionLocalId,
-    FunctionFunctionValue, FunctionListLocalId, FunctionValue, IntFunctionLocalId,
-    IntFunctionValue, IntListLocalId, IntLocalId, ListFunctionLocal, ListFunctionValue,
-    ListListLocalId, ListValue, NilFunctionLocalId, NilFunctionValue, NilListLocalId, NilLocalId,
-    StringFunctionLocalId, StringFunctionValue, StringListLocalId, StringLocalId,
-    TupleFunctionLocalId, TupleFunctionValue, TupleListLocalId, TupleLocalId, Value,
+use crate::plan::execution::{
+    BoolFunctionLocalId, BoolListLocalId, BoolLocalId, FloatFunctionLocalId, FloatListLocalId,
+    FloatLocalId, FrameLayout, FunctionFunctionLocalId, FunctionListLocalId, IntFunctionLocalId,
+    IntListLocalId, IntLocalId, ListFunctionLocal, ListListLocalId, NilFunctionLocalId,
+    NilListLocalId, NilLocalId, StringFunctionLocalId, StringListLocalId, StringLocalId,
+    TupleFunctionLocalId, TupleListLocalId, TupleLocalId,
+};
+use crate::runtime::{
+    BoolFunctionValue, FloatFunctionValue, FunctionFunctionValue, FunctionValue, IntFunctionValue,
+    ListFunctionValue, ListValue, NilFunctionValue, StringFunctionValue, TupleFunctionValue, Value,
 };
 use ecow::EcoString;
 use num_bigint::BigInt;
@@ -36,7 +38,7 @@ pub(super) struct Frame {
 }
 
 impl Frame {
-    pub(super) fn new(layout: FrameLayout) -> Self {
+    pub(super) fn new(layout: &FrameLayout) -> Self {
         Self {
             ints: vec![BigInt::from(0); layout.ints()],
             floats: vec![0.0; layout.floats()],
@@ -264,291 +266,10 @@ impl Frame {
 
 impl Default for Frame {
     fn default() -> Self {
-        Self::new(FrameLayout::default())
+        Self::new(&FrameLayout::default())
     }
 }
 
 fn set_slot<T>(slots: &mut [T], index: usize, value: T) {
     slots[index] = value;
-}
-
-#[cfg(test)]
-mod tests {
-    use super::Frame;
-    use crate::plan::{
-        BoolFunctionId, BoolFunctionLocalId, BoolFunctionValue, BoolListLocalId, BoolLocalId,
-        FloatFunctionId, FloatFunctionLocalId, FloatFunctionValue, FloatListLocalId, FloatLocalId,
-        FrameLayout, FunctionListLocalId, FunctionType, IntFunctionId, IntFunctionLocalId,
-        IntFunctionValue, IntListLocalId, IntLocalId, ListListLocalId, ListLocal, ListValue,
-        NilFunctionId, NilFunctionLocalId, NilFunctionValue, NilListLocalId, NilLocalId,
-        ParamLocal, StringFunctionId, StringFunctionLocalId, StringFunctionValue,
-        StringListLocalId, StringLocalId, TupleFunctionId, TupleFunctionLocalId,
-        TupleFunctionValue, TupleListLocalId, TupleLocalId, Value, ValueType,
-    };
-    use num_bigint::BigInt;
-
-    #[test]
-    fn frame_set_and_get_local() {
-        let frame = frame_with_all_slots();
-        let mut frame = frame;
-        let int_function = int_function_value();
-        let float_function = float_function_value();
-        let string_function = string_function_value();
-        let bool_function = bool_function_value();
-        let nil_function = nil_function_value();
-        let tuple_function = tuple_function_value();
-
-        frame.set_int(IntLocalId(0), int(1));
-        frame.set_float(FloatLocalId(0), 1.5);
-        frame.set_string(StringLocalId(0), "geam".into());
-        frame.set_bool(BoolLocalId(0), true);
-        frame.set_nil(NilLocalId(0));
-        frame.set_tuple(TupleLocalId(0), vec![Value::Int(1.into())]);
-        frame.set_int_function(IntFunctionLocalId(0), int_function.clone());
-        frame.set_float_function(FloatFunctionLocalId(0), float_function.clone());
-        frame.set_string_function(StringFunctionLocalId(0), string_function.clone());
-        frame.set_bool_function(BoolFunctionLocalId(0), bool_function.clone());
-        frame.set_nil_function(NilFunctionLocalId(0), nil_function.clone());
-        frame.set_tuple_function(TupleFunctionLocalId(0), tuple_function.clone());
-
-        assert_eq!(frame.get_int(IntLocalId(0)), int(1));
-        assert_eq!(frame.get_float(FloatLocalId(0)), 1.5);
-        assert_eq!(frame.get_string(StringLocalId(0)), "geam");
-        assert!(frame.get_bool(BoolLocalId(0)));
-        assert_eq!(frame.get_nil(NilLocalId(0)), ());
-        assert_eq!(frame.get_tuple(TupleLocalId(0)), vec![Value::Int(1.into())]);
-        assert_eq!(frame.get_int_function(IntFunctionLocalId(0)), int_function);
-        assert_eq!(
-            frame.get_float_function(FloatFunctionLocalId(0)),
-            float_function,
-        );
-        assert_eq!(
-            frame.get_string_function(StringFunctionLocalId(0)),
-            string_function,
-        );
-        assert_eq!(
-            frame.get_bool_function(BoolFunctionLocalId(0)),
-            bool_function,
-        );
-        assert_eq!(frame.get_nil_function(NilFunctionLocalId(0)), nil_function);
-        assert_eq!(
-            frame.get_tuple_function(TupleFunctionLocalId(0)),
-            tuple_function,
-        );
-    }
-
-    #[test]
-    fn frame_set_overwrites_local() {
-        let mut frame = frame_with_overwrite_slots();
-        let _ = Frame::default();
-
-        frame.set_int(IntLocalId(0), int(1));
-        frame.set_int(IntLocalId(0), int(2));
-        frame.set_float(FloatLocalId(0), 1.0);
-        frame.set_float(FloatLocalId(0), 2.0);
-        frame.set_tuple(TupleLocalId(0), vec![Value::Int(1.into())]);
-        frame.set_tuple(TupleLocalId(0), vec![Value::Int(2.into())]);
-        frame.set_int_function(IntFunctionLocalId(0), int_function_value());
-        frame.set_int_function(IntFunctionLocalId(0), other_int_function_value());
-        frame.set_float_function(FloatFunctionLocalId(0), float_function_value());
-        frame.set_float_function(FloatFunctionLocalId(0), other_float_function_value());
-        frame.set_tuple_function(TupleFunctionLocalId(0), tuple_function_value());
-        frame.set_tuple_function(TupleFunctionLocalId(0), other_tuple_function_value());
-
-        assert_eq!(frame.get_int(IntLocalId(0)), int(2));
-        assert_eq!(frame.get_float(FloatLocalId(0)), 2.0);
-        assert_eq!(frame.get_tuple(TupleLocalId(0)), vec![Value::Int(2.into())]);
-        assert_eq!(
-            frame.get_int_function(IntFunctionLocalId(0)),
-            other_int_function_value(),
-        );
-        assert_eq!(
-            frame.get_float_function(FloatFunctionLocalId(0)),
-            other_float_function_value(),
-        );
-        assert_eq!(
-            frame.get_tuple_function(TupleFunctionLocalId(0)),
-            other_tuple_function_value(),
-        );
-    }
-
-    #[test]
-    fn frame_initializes_list_slots_from_layout_item_types() {
-        let function_type = FunctionType::new(vec![ValueType::Int], ValueType::String);
-        let mut layout = FrameLayout::default();
-        layout.include_list(ListLocal::int(IntListLocalId(0)));
-        layout.include_list(ListLocal::string(StringListLocalId(0)));
-        layout.include_list(ListLocal::float(FloatListLocalId(0)));
-        layout.include_list(ListLocal::bool(BoolListLocalId(0)));
-        layout.include_list(ListLocal::nil(NilListLocalId(0)));
-        layout.include_list(ListLocal::tuple(
-            TupleListLocalId(0),
-            vec![ValueType::String],
-        ));
-        layout.include_list(ListLocal::list(ListListLocalId(0), ValueType::Float));
-        layout.include_list(ListLocal::function(
-            FunctionListLocalId(0),
-            function_type.clone(),
-        ));
-
-        let frame = Frame::new(layout);
-
-        assert_eq!(frame.get_int_list(IntListLocalId(0)), Vec::<BigInt>::new());
-        assert_eq!(
-            frame.get_string_list(StringListLocalId(0)),
-            Vec::<ecow::EcoString>::new(),
-        );
-        assert_eq!(frame.get_float_list(FloatListLocalId(0)), Vec::<f64>::new());
-        assert_eq!(frame.get_bool_list(BoolListLocalId(0)), Vec::<bool>::new());
-        assert_eq!(frame.get_nil_list(NilListLocalId(0)), 0);
-        assert_eq!(
-            frame.get_tuple_list(TupleListLocalId(0)),
-            Vec::<Vec<Value>>::new(),
-        );
-        assert_eq!(
-            frame.get_list_list(ListListLocalId(0)),
-            Vec::<ListValue>::new()
-        );
-        assert_eq!(
-            frame.get_function_list(FunctionListLocalId(0)),
-            Vec::<crate::plan::FunctionValue>::new(),
-        );
-        assert_eq!(
-            ValueType::Function(Box::new(function_type)),
-            ListLocal::function(
-                FunctionListLocalId(0),
-                FunctionType::new(vec![ValueType::Int], ValueType::String)
-            )
-            .item_type(),
-        );
-    }
-
-    #[test]
-    fn frame_set_list_preserves_typed_family_slots() {
-        let function_type = FunctionType::new(vec![ValueType::Int], ValueType::String);
-        let int = ListLocal::int(IntListLocalId(0));
-        let string = ListLocal::string(StringListLocalId(0));
-        let float = ListLocal::float(FloatListLocalId(0));
-        let bool_ = ListLocal::bool(BoolListLocalId(0));
-        let nil = ListLocal::nil(NilListLocalId(0));
-        let tuple = ListLocal::tuple(TupleListLocalId(0), vec![ValueType::String]);
-        let list = ListLocal::list(ListListLocalId(0), ValueType::Float);
-        let function = ListLocal::function(FunctionListLocalId(0), function_type.clone());
-        let mut layout = FrameLayout::default();
-        layout.include_list(&int);
-        layout.include_list(&string);
-        layout.include_list(&float);
-        layout.include_list(&bool_);
-        layout.include_list(&nil);
-        layout.include_list(&tuple);
-        layout.include_list(&list);
-        layout.include_list(&function);
-        let mut frame = Frame::new(layout);
-
-        frame.set_int_list(IntListLocalId(0), vec![1.into()]);
-        frame.set_string_list(StringListLocalId(0), vec!["one".into()]);
-        frame.set_float_list(FloatListLocalId(0), vec![1.5]);
-        frame.set_bool_list(BoolListLocalId(0), vec![true]);
-        frame.set_nil_list(NilListLocalId(0), 1);
-        frame.set_tuple_list(TupleListLocalId(0), vec![vec![Value::String("one".into())]]);
-        frame.set_list_list(ListListLocalId(0), vec![ListValue::float(vec![1.5])]);
-        frame.set_function_list(FunctionListLocalId(0), Vec::new());
-
-        assert_eq!(frame.get_int_list(IntListLocalId(0)), vec![1.into()]);
-        assert_eq!(frame.get_string_list(StringListLocalId(0)), vec!["one"]);
-        assert_eq!(frame.get_float_list(FloatListLocalId(0)), vec![1.5]);
-        assert_eq!(frame.get_bool_list(BoolListLocalId(0)), vec![true]);
-        assert_eq!(frame.get_nil_list(NilListLocalId(0)), 1);
-        assert_eq!(
-            frame.get_tuple_list(TupleListLocalId(0)),
-            vec![vec![Value::String("one".into())]],
-        );
-        assert_eq!(
-            frame.get_list_list(ListListLocalId(0)),
-            vec![ListValue::float(vec![1.5])],
-        );
-        assert_eq!(
-            frame.get_function_list(FunctionListLocalId(0)),
-            Vec::<crate::plan::FunctionValue>::new(),
-        );
-    }
-
-    fn frame_with_all_slots() -> Frame {
-        let mut layout = FrameLayout::default();
-        layout.include_int(IntLocalId(0));
-        layout.include_float(FloatLocalId(0));
-        layout.include_string(StringLocalId(0));
-        layout.include_bool(BoolLocalId(0));
-        layout.include_nil(NilLocalId(0));
-        layout.include_tuple(TupleLocalId(0));
-        layout.include_int_function(IntFunctionLocalId(0));
-        layout.include_float_function(FloatFunctionLocalId(0));
-        layout.include_string_function(StringFunctionLocalId(0));
-        layout.include_bool_function(BoolFunctionLocalId(0));
-        layout.include_nil_function(NilFunctionLocalId(0));
-        layout.include_tuple_function(TupleFunctionLocalId(0));
-        Frame::new(layout)
-    }
-
-    fn frame_with_overwrite_slots() -> Frame {
-        let mut layout = FrameLayout::default();
-        layout.include_int(IntLocalId(0));
-        layout.include_float(FloatLocalId(0));
-        layout.include_tuple(TupleLocalId(0));
-        layout.include_int_function(IntFunctionLocalId(0));
-        layout.include_float_function(FloatFunctionLocalId(0));
-        layout.include_tuple_function(TupleFunctionLocalId(0));
-        Frame::new(layout)
-    }
-
-    fn int(value: i64) -> BigInt {
-        BigInt::from(value)
-    }
-
-    fn int_function_value() -> IntFunctionValue {
-        IntFunctionValue::new(IntFunctionId(0), vec![ParamLocal::int(IntLocalId(0))])
-    }
-
-    fn other_int_function_value() -> IntFunctionValue {
-        IntFunctionValue::new(IntFunctionId(1), vec![ParamLocal::int(IntLocalId(0))])
-    }
-
-    fn float_function_value() -> FloatFunctionValue {
-        FloatFunctionValue::new(FloatFunctionId(0), vec![ParamLocal::float(FloatLocalId(0))])
-    }
-
-    fn other_float_function_value() -> FloatFunctionValue {
-        FloatFunctionValue::new(FloatFunctionId(1), vec![ParamLocal::float(FloatLocalId(0))])
-    }
-
-    fn string_function_value() -> StringFunctionValue {
-        StringFunctionValue::new(
-            StringFunctionId(0),
-            vec![ParamLocal::string(StringLocalId(0))],
-        )
-    }
-
-    fn bool_function_value() -> BoolFunctionValue {
-        BoolFunctionValue::new(BoolFunctionId(0), vec![ParamLocal::bool(BoolLocalId(0))])
-    }
-
-    fn nil_function_value() -> NilFunctionValue {
-        NilFunctionValue::new(NilFunctionId(0), vec![ParamLocal::int(IntLocalId(0))])
-    }
-
-    fn tuple_function_value() -> TupleFunctionValue {
-        TupleFunctionValue::new(
-            TupleFunctionId(0),
-            vec![ParamLocal::int(IntLocalId(0))],
-            vec![ValueType::Int],
-        )
-    }
-
-    fn other_tuple_function_value() -> TupleFunctionValue {
-        TupleFunctionValue::new(
-            TupleFunctionId(1),
-            vec![ParamLocal::int(IntLocalId(0))],
-            vec![ValueType::Int],
-        )
-    }
 }

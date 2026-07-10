@@ -1,7 +1,7 @@
 use crate::plan::{
     BoolExpr, CaptureArg, FloatExpr, FunctionFunctionExpr, FunctionListExpr, FunctionType, IntExpr,
     PanicExpr, ParamLocal, Step, StringExpr, StringFunctionFunctionId, StringFunctionId,
-    StringFunctionLocalId, StringFunctionValue, TupleExpr,
+    StringFunctionLocalId, StringFunctionReference, TupleExpr,
 };
 use ecow::EcoString;
 use num_bigint::BigInt;
@@ -14,7 +14,7 @@ pub struct StringFunctionExpr {
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum StringFunctionExprKind {
-    Value(StringFunctionValue),
+    Reference(StringFunctionReference),
     Closure {
         runtime_id: StringFunctionId,
         params: Vec<ParamLocal>,
@@ -72,10 +72,14 @@ pub(crate) enum StringFunctionExprKind {
 }
 
 impl StringFunctionExpr {
-    pub(crate) fn value(value: StringFunctionValue) -> Self {
+    pub(crate) fn reference(value: StringFunctionReference) -> Self {
+        let type_ = FunctionType::new(
+            value.params().iter().map(ParamLocal::value_type).collect(),
+            crate::plan::ValueType::String,
+        );
         Self {
-            type_: value.type_(),
-            kind: StringFunctionExprKind::Value(value),
+            type_,
+            kind: StringFunctionExprKind::Reference(value),
         }
     }
 
@@ -246,22 +250,26 @@ impl StringFunctionExpr {
     pub(crate) fn kind(&self) -> &StringFunctionExprKind {
         &self.kind
     }
+
+    pub(crate) fn into_parts(self) -> (FunctionType, StringFunctionExprKind) {
+        (self.type_, self.kind)
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::{StringFunctionExpr, StringFunctionExprKind};
     use crate::plan::{
-        BoolExpr, Expr, FunctionFunctionExpr, FunctionFunctionId, FunctionFunctionValue,
+        BoolExpr, Expr, FunctionFunctionExpr, FunctionFunctionId, FunctionFunctionReference,
         FunctionType, IntExpr, ParamLocal, Step, StringExpr, StringFunctionFunctionId,
-        StringFunctionId, StringFunctionLocalId, StringFunctionValue, StringLocalId, ValueType,
+        StringFunctionId, StringFunctionLocalId, StringFunctionReference, StringLocalId, ValueType,
     };
 
     #[test]
     fn string_function_expr_kind_accessors() {
         assert_eq!(
             function_value().kind(),
-            &StringFunctionExprKind::Value(StringFunctionValue::new(
+            &StringFunctionExprKind::Reference(StringFunctionReference::new(
                 StringFunctionId(0),
                 vec![ParamLocal::string(StringLocalId(0))],
             )),
@@ -389,7 +397,7 @@ mod tests {
     }
 
     fn function_value() -> StringFunctionExpr {
-        StringFunctionExpr::value(StringFunctionValue::new(
+        StringFunctionExpr::reference(StringFunctionReference::new(
             StringFunctionId(0),
             vec![ParamLocal::string(StringLocalId(0))],
         ))
@@ -400,11 +408,13 @@ mod tests {
     }
 
     fn function_function_value() -> FunctionFunctionExpr {
-        FunctionFunctionExpr::value(FunctionFunctionValue::new(
-            FunctionFunctionId::String(StringFunctionFunctionId(0)),
-            Vec::new(),
+        FunctionFunctionExpr::reference(
+            FunctionFunctionReference::new(
+                FunctionFunctionId::String(StringFunctionFunctionId(0)),
+                Vec::new(),
+            ),
             function_type(),
-        ))
+        )
     }
 
     fn tuple_expr() -> crate::plan::TupleExpr {

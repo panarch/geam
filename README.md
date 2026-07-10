@@ -22,6 +22,7 @@ resulting typed module into a Rust-owned plan.
 ```text
 Gleam source
 -> Gleam typed module
+-> Geam module plan
 -> Geam execution plan
 -> Geam runtime value
 ```

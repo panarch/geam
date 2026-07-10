@@ -1,4 +1,5 @@
-use crate::plan::{PanicSite, SourceContext, SourceSpan, Value};
+use crate::plan::{PanicSite, SourceContext, SourceSpan};
+use crate::runtime::Value;
 use ecow::EcoString;
 use miette::NamedSource;
 use std::fmt;
@@ -176,8 +177,9 @@ impl PanicMessage {
 #[cfg(test)]
 mod tests {
     use super::{Panic, PanicDetails, PanicKind, PanicMessage};
-    use crate::plan::{PanicSite, SourceContext, SourceSpan, Value, ValueType};
+    use crate::plan::{PanicSite, SourceContext, SourceSpan, ValueType};
     use crate::runtime::ExecutionError;
+    use crate::runtime::Value;
 
     #[test]
     fn panic_display_uses_kind_and_default_or_explicit_message() {
@@ -248,7 +250,7 @@ mod tests {
     fn panic_accessors_preserve_kind_message_site_and_details() {
         let site = PanicSite::new("main".into(), "main".into(), SourceSpan::new(12, 18));
         let details = PanicDetails::LetAssert {
-            value: Value::List(crate::plan::ListValue::empty(ValueType::Int)),
+            value: Value::List(crate::runtime::ListValue::empty(ValueType::Int)),
             pattern_span: SourceSpan::new(23, 32),
         };
         let panic = Panic::new(

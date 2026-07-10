@@ -228,13 +228,17 @@ impl FloatExpr {
     pub(crate) fn kind(&self) -> &FloatExprKind {
         &self.kind
     }
+
+    pub(crate) fn into_kind(self) -> FloatExprKind {
+        self.kind
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::{FloatExpr, FloatExprKind};
     use crate::plan::{
-        BoolExpr, Expr, FloatFunctionId, FloatFunctionValue, FloatLocalId, IntExpr, Step,
+        BoolExpr, Expr, FloatFunctionId, FloatFunctionReference, FloatLocalId, IntExpr, Step,
         TupleExpr, ValueType,
     };
     use num_bigint::BigInt;
@@ -364,7 +368,7 @@ mod tests {
     }
 
     fn function_expr() -> crate::plan::FloatFunctionExpr {
-        crate::plan::FloatFunctionExpr::value(FloatFunctionValue::new(
+        crate::plan::FloatFunctionExpr::reference(FloatFunctionReference::new(
             FloatFunctionId(0),
             Vec::new(),
         ))

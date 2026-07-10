@@ -1,7 +1,9 @@
 mod diagnostic;
 mod panic;
 
-use crate::plan::{FunctionReturnFamily, PanicSite, SourceContext, SourceSpan, Value, ValueType};
+use crate::plan::execution::FunctionReturnFamily;
+use crate::plan::{PanicSite, SourceContext, SourceSpan, ValueType};
+use crate::runtime::Value;
 use ecow::EcoString;
 
 pub use self::panic::{Panic, PanicDetails, PanicKind, PanicMessage};
@@ -97,7 +99,8 @@ impl ExecutionError {
 #[cfg(test)]
 mod tests {
     use super::ExecutionError;
-    use crate::plan::{FunctionReturnFamily, ValueType};
+    use crate::plan::ValueType;
+    use crate::plan::execution::FunctionReturnFamily;
 
     #[test]
     fn function_return_family_mismatch_display() {

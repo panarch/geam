@@ -2,9 +2,11 @@ use super::{
     eval_expr, eval_float_expr, eval_int_expr, eval_list_expr, eval_panic_expr, eval_string_expr,
     project_bool_list_expr, project_tuple_expr,
 };
+use crate::plan::ValueType;
 use crate::plan::execution::ExecutionPlan;
-use crate::plan::{BoolExpr, BoolExprKind, Value, ValueType};
+use crate::plan::execution::{BoolExpr, BoolExprKind};
 use crate::runtime::ExecutionError;
+use crate::runtime::Value;
 use crate::runtime::frame::Frame;
 use crate::runtime::function;
 
@@ -34,7 +36,9 @@ pub(in crate::runtime) fn eval_bool_expr(
         BoolExprKind::ListIndex { list, index } => {
             project_bool_list_expr(plan, frame, list, *index)
         }
-        BoolExprKind::Panic(panic) => eval_panic_expr(plan, frame, panic),
+        BoolExprKind::Panic(panic) => {
+            eval_panic_expr(plan, frame, panic).map(|never| match never {})
+        }
         BoolExprKind::Not(value) => Ok(!eval_bool_expr(plan, frame, value)?),
         BoolExprKind::LtInt { left, right } => {
             Ok(eval_int_expr(plan, frame, left)? < eval_int_expr(plan, frame, right)?)
@@ -156,1002 +160,179 @@ fn eval_or(
 
 #[cfg(test)]
 mod tests {
-    use super::{eval_and, eval_bool_expr, eval_or};
-    use crate::plan::execution::ExecutionPlan;
     use crate::plan::{
-        BoolExpr, BoolFunctionExpr, Expr, FloatExpr, FloatFunctionExpr, FunctionFunctionExpr,
-        FunctionFunctionId, FunctionFunctionValue, FunctionId, FunctionPlan, FunctionReturnFamily,
-        FunctionType, IntExpr, IntFunctionExpr, IntFunctionId, ListExpr, PanicExpr, PanicSite,
-        ReturnExpr, Step, StringExpr, StringFunctionExpr, StringFunctionFunctionId, TupleExpr,
-        ValueType,
+        BoolExpr, BoolFunctionId, Expr, FloatExpr, FunctionId, FunctionPlan, IntExpr, ListExpr,
+        ModulePlan, PanicExpr, PanicSite, ReturnExpr, Step, StringExpr, TupleExpr, ValueType,
     };
-    use crate::runtime::frame::Frame;
-    use crate::runtime::{ExecutionError, PanicKind};
-    use crate::runtime::{Value, run_src};
-    use std::cell::Cell;
-
-    thread_local! {
-        static RIGHT_CALLED: Cell<bool> = const { Cell::new(false) };
-    }
+    use crate::runtime::{ExecutionError, run_main};
 
     #[test]
-    fn tuple_index_family_mismatch_returns_error() {
-        let plan = crate::runtime::plan_src("pub fn main() { True }");
-        let mut frame = Frame::default();
-        let tuple = TupleExpr::value(
-            vec![Expr::string(StringExpr::value("one".into()))],
-            vec![ValueType::String],
-        );
+    fn source_bool_expression_variants_evaluate_exact_values() {
+        let source = r#"
+fn invert(value: Bool) -> Bool { !value }
 
-        assert_eq!(
-            eval_bool_expr(&plan, &mut frame, &BoolExpr::tuple_index(tuple, 0)),
-            Err(ExecutionError::tuple_index_family_mismatch(
-                ValueType::Bool,
-                ValueType::String,
-            )),
-        );
-
-        let tuple = TupleExpr::value(
-            vec![Expr::bool(BoolExpr::value(true))],
-            vec![ValueType::Bool],
-        );
-        assert_eq!(
-            eval_bool_expr(&plan, &mut frame, &BoolExpr::tuple_index(tuple, 0)),
-            Ok(true),
-        );
-    }
-
-    #[test]
-    fn list_projection_invariant_errors() {
-        let plan = crate::runtime::plan_src("pub fn main() { True }");
-        let mut frame = Frame::default();
-
-        let list = ListExpr::value(vec![Expr::bool(BoolExpr::value(true))], ValueType::Bool);
-        assert_eq!(
-            eval_bool_expr(&plan, &mut frame, &BoolExpr::list_index(list, 0)),
-            Ok(true),
-        );
-
-        let list = ListExpr::value(vec![Expr::bool(BoolExpr::value(true))], ValueType::Bool);
-        assert_eq!(
-            eval_bool_expr(&plan, &mut frame, &BoolExpr::list_index(list, 1)),
-            Err(ExecutionError::list_index_out_of_bounds(
-                ValueType::Bool,
-                1,
-                1,
-            )),
-        );
-    }
-
-    #[test]
-    fn eval_list_length_conditions() {
-        let plan = crate::runtime::plan_src("pub fn main() { True }");
-        let mut frame = Frame::default();
-        let list = ListExpr::value(
-            vec![
-                Expr::int(IntExpr::value(1.into())),
-                Expr::int(IntExpr::value(2.into())),
-            ],
-            ValueType::Int,
-        );
-
-        assert_eq!(
-            eval_bool_expr(
-                &plan,
-                &mut frame,
-                &BoolExpr::list_length_equals(list.clone(), 2),
-            ),
-            Ok(true),
-        );
-        assert_eq!(
-            eval_bool_expr(
-                &plan,
-                &mut frame,
-                &BoolExpr::list_length_equals(list.clone(), 1),
-            ),
-            Ok(false),
-        );
-        assert_eq!(
-            eval_bool_expr(
-                &plan,
-                &mut frame,
-                &BoolExpr::list_length_at_least(list.clone(), 2),
-            ),
-            Ok(true),
-        );
-        assert_eq!(
-            eval_bool_expr(&plan, &mut frame, &BoolExpr::list_length_at_least(list, 3),),
-            Ok(false),
-        );
-
-        let invalid_list =
-            ListExpr::tuple_index(TupleExpr::value(Vec::new(), Vec::new()), 0, ValueType::Int);
-        assert_eq!(
-            eval_bool_expr(
-                &plan,
-                &mut frame,
-                &BoolExpr::list_length_equals(invalid_list.clone(), 0),
-            ),
-            Err(ExecutionError::tuple_index_family_mismatch(
-                ValueType::List(Box::new(ValueType::Int)),
-                ValueType::Tuple(Vec::new()),
-            )),
-        );
-        assert_eq!(
-            eval_bool_expr(
-                &plan,
-                &mut frame,
-                &BoolExpr::list_length_at_least(invalid_list, 0),
-            ),
-            Err(ExecutionError::tuple_index_family_mismatch(
-                ValueType::List(Box::new(ValueType::Int)),
-                ValueType::Tuple(Vec::new()),
-            )),
-        );
-    }
-
-    #[test]
-    fn eval_bool_panic_returns_error() {
-        let plan = crate::runtime::plan_src("pub fn main() { True }");
-        let mut frame = Frame::default();
-
-        assert_eq!(
-            eval_bool_expr(
-                &plan,
-                &mut frame,
-                &BoolExpr::panic(PanicExpr::panic_at(None, PanicSite::unknown())),
-            ),
-            Err(ExecutionError::source_panic(
-                None,
-                PanicKind::Panic,
-                None,
-                PanicSite::unknown()
-            )),
-        );
-    }
-
-    #[test]
-    fn eval_integer_comparisons() {
-        assert_eq!(
-            run_src(
-                r#"
 pub fn main() {
-  1 < 2
+  let local = True
+  let function = invert
+  #(
+    local,
+    invert(True),
+    function(False),
+    #(True).0,
+    case [True] { [value] -> value _ -> False },
+    !False,
+    1 < 2,
+    1 <= 1,
+    2 > 1,
+    2 >= 2,
+    1.0 <. 2.0,
+    1.0 <=. 1.0,
+    2.0 >. 1.0,
+    2.0 >=. 2.0,
+    #(1, "one") == #(1, "one"),
+    [1] != [2],
+    case "prefix-rest" { "prefix-" <> _ -> True _ -> False },
+    case [1, 2] { [_, _] -> True _ -> False },
+    case [1, 2] { [_, ..] -> True _ -> False },
+    True && True,
+    False && True,
+    True || False,
+    False || True,
+    case True { True -> True False -> False },
+    case False { True -> True False -> False },
+    case 1 { 1 -> True _ -> False },
+    case 2 { 1 -> True _ -> False },
+    case "one" { "one" -> True _ -> False },
+    case "two" { "one" -> True _ -> False },
+    case 1.0 { 1.0 -> True _ -> False },
+    case 2.0 { 1.0 -> True _ -> False },
+    { let _ = 0 True },
+  )
 }
-"#,
-            ),
-            Value::Bool(true),
-        );
+"#;
 
         assert_eq!(
-            run_src(
-                r#"
-pub fn main() {
-  2 <= 2
-}
-"#,
+            crate::runtime::run_src(source),
+            crate::runtime::Value::Tuple(
+                vec![
+                    true, false, true, true, true, true, true, true, true, true, true, true, true,
+                    true, true, true, true, true, true, true, false, true, true, true, false, true,
+                    false, true, false, true, false, true,
+                ]
+                .into_iter()
+                .map(crate::runtime::Value::Bool)
+                .collect(),
             ),
-            Value::Bool(true),
-        );
-
-        assert_eq!(
-            run_src(
-                r#"
-pub fn main() {
-  2 > 1
-}
-"#,
-            ),
-            Value::Bool(true),
-        );
-
-        assert_eq!(
-            run_src(
-                r#"
-pub fn main() {
-  1 >= 2
-}
-"#,
-            ),
-            Value::Bool(false),
         );
     }
 
     #[test]
-    fn eval_string_starts_with() {
-        let plan = crate::runtime::plan_src("pub fn main() { True }");
-        let mut frame = Frame::default();
+    fn source_operand_errors_propagate_through_bool_expressions() {
+        let expressions = [
+            "!fail_bool()",
+            "fail_int() < 1",
+            "1 < fail_int()",
+            "fail_int() <= 1",
+            "1 <= fail_int()",
+            "fail_int() > 1",
+            "1 > fail_int()",
+            "fail_int() >= 1",
+            "1 >= fail_int()",
+            "fail_float() <. 1.0",
+            "1.0 <. fail_float()",
+            "fail_float() <=. 1.0",
+            "1.0 <=. fail_float()",
+            "fail_float() >. 1.0",
+            "1.0 >. fail_float()",
+            "fail_float() >=. 1.0",
+            "1.0 >=. fail_float()",
+            "fail_int() == 1",
+            "1 == fail_int()",
+            "fail_int() != 1",
+            "1 != fail_int()",
+            "case fail_string() { \"prefix\" <> _ -> True _ -> False }",
+            "case fail_int_list() { [_, _] -> True _ -> False }",
+            "case fail_int_list() { [_, ..] -> True _ -> False }",
+            "fail_bool() && True",
+            "True && fail_bool()",
+            "fail_bool() || False",
+            "False || fail_bool()",
+            "case fail_bool() { True -> True False -> False }",
+            "case fail_int() { 0 -> False _ -> True }",
+            "case fail_string() { \"zero\" -> False _ -> True }",
+            "case fail_float() { 0.0 -> False _ -> True }",
+            "{ let _ = fail_int() True }",
+            "{ let function = fail_bool function() }",
+        ];
 
-        assert_eq!(
-            eval_bool_expr(
-                &plan,
-                &mut frame,
-                &BoolExpr::string_starts_with(
-                    StringExpr::value("Hello, Geam".into()),
-                    "Hello, ".into()
-                ),
-            ),
-            Ok(true),
-        );
-        assert_eq!(
-            eval_bool_expr(
-                &plan,
-                &mut frame,
-                &BoolExpr::string_starts_with(
-                    StringExpr::value("안녕, 글림".into()),
-                    "안녕, ".into()
-                ),
-            ),
-            Ok(true),
-        );
-        assert_eq!(
-            eval_bool_expr(
-                &plan,
-                &mut frame,
-                &BoolExpr::string_starts_with(
-                    StringExpr::value("Hello, Geam".into()),
-                    "Goodbye".into()
-                ),
-            ),
-            Ok(false),
-        );
-        assert_eq!(
-            eval_bool_expr(
-                &plan,
-                &mut frame,
-                &BoolExpr::string_starts_with(StringExpr::value("abc".into()), "".into()),
-            ),
-            Ok(true),
-        );
-    }
-
-    #[test]
-    fn eval_string_starts_with_propagates_value_error() {
-        let plan = plan();
-        let mut frame = Frame::default();
-
-        assert_eq!(
-            eval_bool_expr(
-                &plan,
-                &mut frame,
-                &BoolExpr::string_starts_with(error_string_expr(), "prefix".into()),
-            ),
-            Err(function_return_family_error_value(
-                FunctionReturnFamily::String,
-                FunctionReturnFamily::Int,
-            )),
-        );
-    }
-
-    #[test]
-    fn eval_bool_values() {
-        assert_eq!(
-            run_src(
+        for expression in expressions {
+            let source = format!(
                 r#"
-pub fn main() {
-  True != False
-}
+fn fail_bool() -> Bool {{ panic }}
+fn fail_int() -> Int {{ panic }}
+fn fail_string() -> String {{ panic }}
+fn fail_float() -> Float {{ panic }}
+fn fail_int_list() -> List(Int) {{ panic }}
+pub fn main() -> Bool {{ {expression} }}
 "#,
-            ),
-            Value::Bool(true),
-        );
+            );
 
-        assert_eq!(
-            run_src(
-                r#"
-pub fn main() {
-  !False
-}
-"#,
-            ),
-            Value::Bool(true),
-        );
+            assert_eq!(
+                crate::runtime::run_src_error(&source).to_string(),
+                "panic: `panic` expression evaluated.",
+            );
+        }
     }
 
     #[test]
-    fn eval_bool_operators() {
-        assert_eq!(
-            run_src(
-                r#"
-pub fn main() {
-  True && True
-}
-"#,
+    fn module_expression_errors_propagate_through_bool_wrappers() {
+        let panic = || PanicExpr::panic_at(None, PanicSite::unknown());
+        let expressions = [
+            BoolExpr::tuple_index(TupleExpr::panic(panic(), vec![ValueType::Bool]), 0),
+            BoolExpr::string_starts_with(StringExpr::panic(panic()), "prefix".into()),
+            BoolExpr::list_length_equals(ListExpr::panic(panic(), ValueType::Int), 1),
+            BoolExpr::list_length_at_least(ListExpr::panic(panic(), ValueType::Int), 1),
+            BoolExpr::bool_case(
+                BoolExpr::panic(panic()),
+                BoolExpr::value(true),
+                BoolExpr::value(false),
             ),
-            Value::Bool(true),
-        );
-        assert_eq!(
-            run_src(
-                r#"
-pub fn main() {
-  False && True
-}
-"#,
+            BoolExpr::int_case(IntExpr::panic(panic()), Vec::new(), BoolExpr::value(false)),
+            BoolExpr::string_case(
+                StringExpr::panic(panic()),
+                Vec::new(),
+                BoolExpr::value(false),
             ),
-            Value::Bool(false),
-        );
-        assert_eq!(
-            run_src(
-                r#"
-pub fn main() {
-  True || False
-}
-"#,
+            BoolExpr::float_case(
+                FloatExpr::panic(panic()),
+                Vec::new(),
+                BoolExpr::value(false),
             ),
-            Value::Bool(true),
-        );
-        assert_eq!(
-            run_src(
-                r#"
-pub fn main() {
-  False || False
-}
-"#,
+            BoolExpr::block(
+                vec![Step::evaluate(Expr::int(IntExpr::panic(panic())))],
+                BoolExpr::value(false),
             ),
-            Value::Bool(false),
-        );
+        ];
+
+        for expression in expressions {
+            assert_eq!(
+                run_module_bool_expression(expression).to_string(),
+                "panic: `panic` expression evaluated.",
+            );
+        }
     }
 
-    #[test]
-    fn eval_string_case_bool() {
-        assert_eq!(
-            run_src(
-                r#"
-pub fn main() {
-  let value = case "yes" {
-    "yes" -> True
-    _ -> False
-  }
-  value
-}
-"#,
-            ),
-            Value::Bool(true),
-        );
-
-        assert_eq!(
-            run_src(
-                r#"
-pub fn main() {
-  let value = case "no" {
-    "yes" -> True
-    _ -> False
-  }
-  value
-}
-"#,
-            ),
-            Value::Bool(false),
-        );
-    }
-
-    #[test]
-    fn eval_float_case_bool() {
-        assert_eq!(
-            run_src(
-                r#"
-pub fn main() {
-  let value = case 1.0 {
-    1.0 -> True
-    _ -> False
-  }
-  value
-}
-"#,
-            ),
-            Value::Bool(true),
-        );
-
-        assert_eq!(
-            run_src(
-                r#"
-pub fn main() {
-  let value = case 2.0 {
-    1.0 -> True
-    _ -> False
-  }
-  value
-}
-"#,
-            ),
-            Value::Bool(false),
-        );
-    }
-
-    #[test]
-    fn eval_and_short_circuits_false_left() {
-        reset_called();
-        let actual = eval_and(false, mark_called_true_result).expect("and should evaluate");
-
-        assert!(!actual);
-        assert!(!right_called());
-    }
-
-    #[test]
-    fn eval_and_evaluates_true_left() {
-        reset_called();
-        let actual = eval_and(true, mark_called_true_result).expect("and should evaluate");
-
-        assert!(actual);
-        assert!(right_called());
-    }
-
-    #[test]
-    fn eval_or_short_circuits_true_left() {
-        reset_called();
-        let actual = eval_or(true, mark_called_false_result).expect("or should evaluate");
-
-        assert!(actual);
-        assert!(!right_called());
-    }
-
-    #[test]
-    fn eval_or_evaluates_false_left() {
-        reset_called();
-        let actual = eval_or(false, mark_called_false_result).expect("or should evaluate");
-
-        assert!(!actual);
-        assert!(right_called());
-    }
-
-    #[test]
-    fn eval_and_propagates_right_error() {
-        let actual = eval_and(true, function_return_family_error);
-
-        assert_eq!(
-            actual.err().map(|error| error.to_string()),
-            Some("function return family mismatch (expected Bool, got Int)".into()),
-        );
-    }
-
-    #[test]
-    fn eval_or_propagates_right_error() {
-        let actual = eval_or(false, function_return_family_error);
-
-        assert_eq!(
-            actual.err().map(|error| error.to_string()),
-            Some("function return family mismatch (expected Bool, got Int)".into()),
-        );
-    }
-
-    #[test]
-    fn eval_bool_expr_propagates_operand_errors() {
-        let plan = plan();
-        let mut frame = Frame::default();
-
-        assert_eq!(
-            eval_bool_expr(&plan, &mut frame, &BoolExpr::not(error_bool_expr())),
-            Err(function_return_family_error_value(
-                FunctionReturnFamily::Bool,
-                FunctionReturnFamily::String,
-            )),
-        );
-        assert_eq!(
-            eval_bool_expr(
-                &plan,
-                &mut frame,
-                &BoolExpr::lt_int(error_int_expr(), IntExpr::value(1.into())),
-            ),
-            Err(function_return_family_error_value(
-                FunctionReturnFamily::Int,
-                FunctionReturnFamily::String,
-            )),
-        );
-        assert_eq!(
-            eval_bool_expr(
-                &plan,
-                &mut frame,
-                &BoolExpr::lt_int(IntExpr::value(1.into()), error_int_expr()),
-            ),
-            Err(function_return_family_error_value(
-                FunctionReturnFamily::Int,
-                FunctionReturnFamily::String,
-            )),
-        );
-        assert_eq!(
-            eval_bool_expr(
-                &plan,
-                &mut frame,
-                &BoolExpr::lte_int(error_int_expr(), IntExpr::value(1.into())),
-            ),
-            Err(function_return_family_error_value(
-                FunctionReturnFamily::Int,
-                FunctionReturnFamily::String,
-            )),
-        );
-        assert_eq!(
-            eval_bool_expr(
-                &plan,
-                &mut frame,
-                &BoolExpr::lte_int(IntExpr::value(1.into()), error_int_expr()),
-            ),
-            Err(function_return_family_error_value(
-                FunctionReturnFamily::Int,
-                FunctionReturnFamily::String,
-            )),
-        );
-        assert_eq!(
-            eval_bool_expr(
-                &plan,
-                &mut frame,
-                &BoolExpr::gt_int(error_int_expr(), IntExpr::value(1.into())),
-            ),
-            Err(function_return_family_error_value(
-                FunctionReturnFamily::Int,
-                FunctionReturnFamily::String,
-            )),
-        );
-        assert_eq!(
-            eval_bool_expr(
-                &plan,
-                &mut frame,
-                &BoolExpr::gt_int(IntExpr::value(1.into()), error_int_expr()),
-            ),
-            Err(function_return_family_error_value(
-                FunctionReturnFamily::Int,
-                FunctionReturnFamily::String,
-            )),
-        );
-        assert_eq!(
-            eval_bool_expr(
-                &plan,
-                &mut frame,
-                &BoolExpr::gte_int(error_int_expr(), IntExpr::value(1.into())),
-            ),
-            Err(function_return_family_error_value(
-                FunctionReturnFamily::Int,
-                FunctionReturnFamily::String,
-            )),
-        );
-        assert_eq!(
-            eval_bool_expr(
-                &plan,
-                &mut frame,
-                &BoolExpr::gte_int(IntExpr::value(1.into()), error_int_expr()),
-            ),
-            Err(function_return_family_error_value(
-                FunctionReturnFamily::Int,
-                FunctionReturnFamily::String,
-            )),
-        );
-        assert_eq!(
-            eval_bool_expr(
-                &plan,
-                &mut frame,
-                &BoolExpr::lt_float(error_float_expr(), FloatExpr::value(1.0)),
-            ),
-            Err(function_return_family_error_value(
-                FunctionReturnFamily::Float,
-                FunctionReturnFamily::String,
-            )),
-        );
-        assert_eq!(
-            eval_bool_expr(
-                &plan,
-                &mut frame,
-                &BoolExpr::lt_float(FloatExpr::value(1.0), error_float_expr()),
-            ),
-            Err(function_return_family_error_value(
-                FunctionReturnFamily::Float,
-                FunctionReturnFamily::String,
-            )),
-        );
-        assert_eq!(
-            eval_bool_expr(
-                &plan,
-                &mut frame,
-                &BoolExpr::lte_float(error_float_expr(), FloatExpr::value(1.0)),
-            ),
-            Err(function_return_family_error_value(
-                FunctionReturnFamily::Float,
-                FunctionReturnFamily::String,
-            )),
-        );
-        assert_eq!(
-            eval_bool_expr(
-                &plan,
-                &mut frame,
-                &BoolExpr::lte_float(FloatExpr::value(1.0), error_float_expr()),
-            ),
-            Err(function_return_family_error_value(
-                FunctionReturnFamily::Float,
-                FunctionReturnFamily::String,
-            )),
-        );
-        assert_eq!(
-            eval_bool_expr(
-                &plan,
-                &mut frame,
-                &BoolExpr::gt_float(error_float_expr(), FloatExpr::value(1.0)),
-            ),
-            Err(function_return_family_error_value(
-                FunctionReturnFamily::Float,
-                FunctionReturnFamily::String,
-            )),
-        );
-        assert_eq!(
-            eval_bool_expr(
-                &plan,
-                &mut frame,
-                &BoolExpr::gt_float(FloatExpr::value(1.0), error_float_expr()),
-            ),
-            Err(function_return_family_error_value(
-                FunctionReturnFamily::Float,
-                FunctionReturnFamily::String,
-            )),
-        );
-        assert_eq!(
-            eval_bool_expr(
-                &plan,
-                &mut frame,
-                &BoolExpr::gte_float(error_float_expr(), FloatExpr::value(1.0)),
-            ),
-            Err(function_return_family_error_value(
-                FunctionReturnFamily::Float,
-                FunctionReturnFamily::String,
-            )),
-        );
-        assert_eq!(
-            eval_bool_expr(
-                &plan,
-                &mut frame,
-                &BoolExpr::gte_float(FloatExpr::value(1.0), error_float_expr()),
-            ),
-            Err(function_return_family_error_value(
-                FunctionReturnFamily::Float,
-                FunctionReturnFamily::String,
-            )),
-        );
-        assert_eq!(
-            eval_bool_expr(
-                &plan,
-                &mut frame,
-                &BoolExpr::equal(
-                    Expr::bool(error_bool_expr()),
-                    Expr::bool(BoolExpr::value(true))
-                ),
-            ),
-            Err(function_return_family_error_value(
-                FunctionReturnFamily::Bool,
-                FunctionReturnFamily::String,
-            )),
-        );
-        assert_eq!(
-            eval_bool_expr(
-                &plan,
-                &mut frame,
-                &BoolExpr::equal(
-                    Expr::bool(BoolExpr::value(true)),
-                    Expr::bool(error_bool_expr()),
-                ),
-            ),
-            Err(function_return_family_error_value(
-                FunctionReturnFamily::Bool,
-                FunctionReturnFamily::String,
-            )),
-        );
-        assert_eq!(
-            eval_bool_expr(
-                &plan,
-                &mut frame,
-                &BoolExpr::not_equal(
-                    Expr::bool(error_bool_expr()),
-                    Expr::bool(BoolExpr::value(true)),
-                ),
-            ),
-            Err(function_return_family_error_value(
-                FunctionReturnFamily::Bool,
-                FunctionReturnFamily::String,
-            )),
-        );
-        assert_eq!(
-            eval_bool_expr(
-                &plan,
-                &mut frame,
-                &BoolExpr::not_equal(
-                    Expr::bool(BoolExpr::value(true)),
-                    Expr::bool(error_bool_expr()),
-                ),
-            ),
-            Err(function_return_family_error_value(
-                FunctionReturnFamily::Bool,
-                FunctionReturnFamily::String,
-            )),
-        );
-        assert_eq!(
-            eval_bool_expr(
-                &plan,
-                &mut frame,
-                &BoolExpr::and(error_bool_expr(), BoolExpr::value(true)),
-            ),
-            Err(function_return_family_error_value(
-                FunctionReturnFamily::Bool,
-                FunctionReturnFamily::String,
-            )),
-        );
-        assert_eq!(
-            eval_bool_expr(
-                &plan,
-                &mut frame,
-                &BoolExpr::string_case(
-                    error_string_expr(),
-                    vec![("hit".into(), BoolExpr::value(true))],
-                    BoolExpr::value(false),
-                ),
-            ),
-            Err(function_return_family_error_value(
-                FunctionReturnFamily::String,
-                FunctionReturnFamily::Int,
-            )),
-        );
-        assert_eq!(
-            eval_bool_expr(
-                &plan,
-                &mut frame,
-                &BoolExpr::float_case(
-                    error_float_expr(),
-                    vec![(1.0, BoolExpr::value(true))],
-                    BoolExpr::value(false),
-                ),
-            ),
-            Err(function_return_family_error_value(
-                FunctionReturnFamily::Float,
-                FunctionReturnFamily::String,
-            )),
-        );
-        assert_eq!(
-            eval_bool_expr(
-                &plan,
-                &mut frame,
-                &BoolExpr::or(error_bool_expr(), BoolExpr::value(false)),
-            ),
-            Err(function_return_family_error_value(
-                FunctionReturnFamily::Bool,
-                FunctionReturnFamily::String,
-            )),
-        );
-        assert_eq!(
-            eval_bool_expr(
-                &plan,
-                &mut frame,
-                &BoolExpr::bool_case(
-                    error_bool_expr(),
-                    BoolExpr::value(true),
-                    BoolExpr::value(false),
-                ),
-            ),
-            Err(function_return_family_error_value(
-                FunctionReturnFamily::Bool,
-                FunctionReturnFamily::String,
-            )),
-        );
-        assert_eq!(
-            eval_bool_expr(
-                &plan,
-                &mut frame,
-                &BoolExpr::int_case(
-                    error_int_expr(),
-                    vec![(1.into(), BoolExpr::value(true))],
-                    BoolExpr::value(false),
-                ),
-            ),
-            Err(function_return_family_error_value(
-                FunctionReturnFamily::Int,
-                FunctionReturnFamily::String,
-            )),
-        );
-        assert_eq!(
-            eval_bool_expr(
-                &plan,
-                &mut frame,
-                &BoolExpr::block(
-                    vec![Step::evaluate(Expr::bool(error_bool_expr()))],
-                    BoolExpr::value(true),
-                ),
-            ),
-            Err(function_return_family_error_value(
-                FunctionReturnFamily::Bool,
-                FunctionReturnFamily::String,
-            )),
-        );
-    }
-
-    fn reset_called() {
-        RIGHT_CALLED.set(false);
-    }
-
-    fn right_called() -> bool {
-        RIGHT_CALLED.get()
-    }
-
-    fn mark_called_true() -> bool {
-        mark_called(true)
-    }
-
-    fn mark_called_false() -> bool {
-        mark_called(false)
-    }
-
-    fn mark_called_true_result() -> Result<bool, ExecutionError> {
-        Ok(mark_called_true())
-    }
-
-    fn mark_called_false_result() -> Result<bool, ExecutionError> {
-        Ok(mark_called_false())
-    }
-
-    fn function_return_family_error() -> Result<bool, ExecutionError> {
-        Err(function_return_family_error_value(
-            FunctionReturnFamily::Bool,
-            FunctionReturnFamily::Int,
-        ))
-    }
-
-    fn function_return_family_error_value(
-        expected: FunctionReturnFamily,
-        actual: FunctionReturnFamily,
-    ) -> ExecutionError {
-        ExecutionError::function_return_family_mismatch(expected, actual)
-    }
-
-    fn mark_called(value: bool) -> bool {
-        RIGHT_CALLED.set(true);
-        value
-    }
-
-    fn plan() -> ExecutionPlan {
-        ExecutionPlan::from_module_plan(crate::plan::ModulePlan::new(
+    fn run_module_bool_expression(expression: BoolExpr) -> ExecutionError {
+        let main = FunctionPlan::new(
+            FunctionId::new(0),
             "main".into(),
-            FunctionPlan::new(
-                FunctionId::new(0),
-                "main".into(),
-                Vec::new(),
-                Vec::new(),
-                ReturnExpr::int(IntFunctionId(0), IntExpr::value(0.into())),
-            ),
             Vec::new(),
-        ))
-    }
-
-    fn error_bool_expr() -> BoolExpr {
-        BoolExpr::function_call(
-            BoolFunctionExpr::function_call(
-                function_function_expr(),
-                Vec::new(),
-                FunctionType::new(Vec::new(), ValueType::Bool),
-            ),
             Vec::new(),
-        )
-    }
-
-    fn error_int_expr() -> IntExpr {
-        IntExpr::function_call(
-            IntFunctionExpr::function_call(
-                function_function_expr(),
-                Vec::new(),
-                FunctionType::new(Vec::new(), ValueType::Int),
-            ),
-            Vec::new(),
-        )
-    }
-
-    fn error_string_expr() -> StringExpr {
-        StringExpr::function_call(
-            StringFunctionExpr::function_call(
-                FunctionFunctionExpr::value(FunctionFunctionValue::new(
-                    FunctionFunctionId::Int(crate::plan::IntFunctionFunctionId(0)),
-                    Vec::new(),
-                    FunctionType::new(Vec::new(), ValueType::Int),
-                )),
-                Vec::new(),
-                FunctionType::new(Vec::new(), ValueType::String),
-            ),
-            Vec::new(),
-        )
-    }
-
-    fn error_float_expr() -> FloatExpr {
-        FloatExpr::function_call(
-            FloatFunctionExpr::function_call(
-                function_function_expr(),
-                Vec::new(),
-                FunctionType::new(Vec::new(), ValueType::Float),
-            ),
-            Vec::new(),
-        )
-    }
-
-    fn function_function_expr() -> FunctionFunctionExpr {
-        FunctionFunctionExpr::value(FunctionFunctionValue::new(
-            FunctionFunctionId::String(StringFunctionFunctionId(0)),
-            Vec::new(),
-            FunctionType::new(Vec::new(), ValueType::String),
-        ))
-    }
-
-    #[test]
-    fn eval_bool_case_bool() {
-        assert_eq!(
-            run_src(
-                r#"
-pub fn main() {
-  let value = True
-  let result = case value {
-    True -> False
-    False -> True
-  }
-  result
-}
-"#,
-            ),
-            Value::Bool(false),
+            ReturnExpr::bool(BoolFunctionId(0), expression),
         );
+        let module = ModulePlan::new("main".into(), main, Vec::new());
+        let plan = crate::ExecutionPlan::from_module_plan(module);
 
-        assert_eq!(
-            run_src(
-                r#"
-pub fn main() {
-  let value = False
-  let result = case value {
-    True -> False
-    False -> True
-  }
-  result
-}
-"#,
-            ),
-            Value::Bool(true),
-        );
-    }
-
-    #[test]
-    fn eval_int_case_bool() {
-        assert_eq!(
-            run_src(
-                r#"
-pub fn main() {
-  let value = case 1 {
-    1 -> True
-    _ -> False
-  }
-  value
-}
-"#,
-            ),
-            Value::Bool(true),
-        );
-
-        assert_eq!(
-            run_src(
-                r#"
-pub fn main() {
-  let value = case 2 {
-    1 -> True
-    _ -> False
-  }
-  value
-}
-"#,
-            ),
-            Value::Bool(false),
-        );
-    }
-
-    #[test]
-    fn eval_block_bool() {
-        assert_eq!(
-            run_src(
-                r#"
-pub fn main() {
-  let value = {
-    1
-    True
-  }
-  value
-}
-"#,
-            ),
-            Value::Bool(true),
-        );
+        run_main(&plan).expect_err("module expression should fail at runtime")
     }
 }

@@ -309,10 +309,10 @@ mod tests {
     use super::{IntoParamLocal, IntoValueType};
     use crate::plan::{
         BoolExpr, Expr, FloatExpr, FunctionExpr, FunctionFunctionExpr, FunctionFunctionId,
-        FunctionFunctionValue, FunctionType, IntExpr, IntFunctionExpr, IntFunctionFunctionId,
-        IntFunctionId, IntFunctionValue, ListExpr, ListFunctionExpr, ListFunctionId,
-        ListFunctionValue, NilExpr, ParamLocal, StringExpr, TupleExpr, TupleFunctionExpr,
-        TupleFunctionId, TupleFunctionValue, ValueType,
+        FunctionFunctionReference, FunctionType, IntExpr, IntFunctionExpr, IntFunctionFunctionId,
+        IntFunctionId, IntFunctionReference, ListExpr, ListFunctionExpr, ListFunctionId,
+        ListFunctionReference, NilExpr, ParamLocal, StringExpr, TupleExpr, TupleFunctionExpr,
+        TupleFunctionId, TupleFunctionReference, ValueType,
     };
     use crate::planner::dsl::expression::{
         Function, bool_, float, float_function_ref, function_function_ref, int, int_function_ref,
@@ -398,8 +398,8 @@ mod tests {
 
         assert_eq!(
             Expr::from(int_function_ref(0, Vec::<ParamLocal>::new())),
-            Expr::function(FunctionExpr::int(IntFunctionExpr::value(
-                IntFunctionValue::new(IntFunctionId(0), Vec::new()),
+            Expr::function(FunctionExpr::int(IntFunctionExpr::reference(
+                IntFunctionReference::new(IntFunctionId(0), Vec::new()),
             ))),
         );
         assert_eq!(
@@ -408,8 +408,8 @@ mod tests {
                 Vec::<ParamLocal>::new(),
                 ValueType::Int
             )),
-            Expr::function(FunctionExpr::list(ListFunctionExpr::value(
-                ListFunctionValue::new(
+            Expr::function(FunctionExpr::list(ListFunctionExpr::reference(
+                ListFunctionReference::new(
                     ListFunctionId::from_item_type(0, crate::plan::ValueType::Int),
                     Vec::new()
                 ),
@@ -417,15 +417,18 @@ mod tests {
         );
         assert_eq!(
             FunctionExpr::from(int_function_ref(0, Vec::<ParamLocal>::new())),
-            FunctionExpr::int(IntFunctionExpr::value(IntFunctionValue::new(
+            FunctionExpr::int(IntFunctionExpr::reference(IntFunctionReference::new(
                 IntFunctionId(0),
                 Vec::new(),
             ))),
         );
         assert_eq!(
             FunctionExpr::from(float_function_ref(0, Vec::<ParamLocal>::new())),
-            FunctionExpr::float(crate::plan::FloatFunctionExpr::value(
-                crate::plan::FloatFunctionValue::new(crate::plan::FloatFunctionId(0), Vec::new()),
+            FunctionExpr::float(crate::plan::FloatFunctionExpr::reference(
+                crate::plan::FloatFunctionReference::new(
+                    crate::plan::FloatFunctionId(0),
+                    Vec::new()
+                ),
             )),
         );
         assert_eq!(
@@ -434,11 +437,10 @@ mod tests {
                 Vec::<ParamLocal>::new(),
                 [ValueType::Int]
             )),
-            FunctionExpr::tuple(TupleFunctionExpr::value(TupleFunctionValue::new(
-                TupleFunctionId(0),
-                Vec::new(),
+            FunctionExpr::tuple(TupleFunctionExpr::reference(
+                TupleFunctionReference::new(TupleFunctionId(0), Vec::new()),
                 vec![ValueType::Int],
-            ))),
+            )),
         );
         assert_eq!(
             FunctionExpr::from(list_function_ref(
@@ -446,7 +448,7 @@ mod tests {
                 Vec::<ParamLocal>::new(),
                 ValueType::Int
             )),
-            FunctionExpr::list(ListFunctionExpr::value(ListFunctionValue::new(
+            FunctionExpr::list(ListFunctionExpr::reference(ListFunctionReference::new(
                 ListFunctionId::from_item_type(0, crate::plan::ValueType::Int),
                 Vec::new()
             ))),
@@ -456,8 +458,11 @@ mod tests {
                 0,
                 Vec::<ParamLocal>::new()
             ))),
-            FunctionExpr::float(crate::plan::FloatFunctionExpr::value(
-                crate::plan::FloatFunctionValue::new(crate::plan::FloatFunctionId(0), Vec::new()),
+            FunctionExpr::float(crate::plan::FloatFunctionExpr::reference(
+                crate::plan::FloatFunctionReference::new(
+                    crate::plan::FloatFunctionId(0),
+                    Vec::new()
+                ),
             )),
         );
         assert_eq!(
@@ -466,11 +471,10 @@ mod tests {
                 Vec::<ParamLocal>::new(),
                 [ValueType::Int],
             ))),
-            FunctionExpr::tuple(TupleFunctionExpr::value(TupleFunctionValue::new(
-                TupleFunctionId(0),
-                Vec::new(),
+            FunctionExpr::tuple(TupleFunctionExpr::reference(
+                TupleFunctionReference::new(TupleFunctionId(0), Vec::new()),
                 vec![ValueType::Int],
-            ))),
+            )),
         );
         assert_eq!(
             FunctionExpr::from(Function::from(list_function_ref(
@@ -478,7 +482,7 @@ mod tests {
                 Vec::<ParamLocal>::new(),
                 ValueType::Int,
             ))),
-            FunctionExpr::list(ListFunctionExpr::value(ListFunctionValue::new(
+            FunctionExpr::list(ListFunctionExpr::reference(ListFunctionReference::new(
                 ListFunctionId::from_item_type(0, crate::plan::ValueType::Int),
                 Vec::new()
             ))),
@@ -489,11 +493,13 @@ mod tests {
                 Vec::<ParamLocal>::new(),
                 FunctionType::new(vec![ValueType::Int], ValueType::Int),
             ))),
-            FunctionExpr::function(FunctionFunctionExpr::value(FunctionFunctionValue::new(
-                FunctionFunctionId::Int(IntFunctionFunctionId(0)),
-                Vec::new(),
+            FunctionExpr::function(FunctionFunctionExpr::reference(
+                FunctionFunctionReference::new(
+                    FunctionFunctionId::Int(IntFunctionFunctionId(0)),
+                    Vec::new(),
+                ),
                 FunctionType::new(vec![ValueType::Int], ValueType::Int),
-            ))),
+            )),
         );
     }
 }

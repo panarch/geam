@@ -393,6 +393,10 @@ impl CallArg {
     pub(crate) fn kind(&self) -> &CallArgKind {
         &self.kind
     }
+
+    pub(crate) fn into_kind(self) -> CallArgKind {
+        self.kind
+    }
 }
 
 impl CaptureArg {
@@ -492,24 +496,29 @@ impl CaptureArg {
     pub(crate) fn kind(&self) -> &CaptureArgKind {
         &self.kind
     }
+
+    pub(crate) fn into_kind(self) -> CaptureArgKind {
+        self.kind
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::CallArg;
     use crate::plan::{
-        BoolExpr, BoolFunctionExpr, BoolFunctionId, BoolFunctionLocalId, BoolFunctionValue,
+        BoolExpr, BoolFunctionExpr, BoolFunctionId, BoolFunctionLocalId, BoolFunctionReference,
         BoolListLocalId, BoolLocalId, Expr, FloatExpr, FloatFunctionExpr, FloatFunctionId,
-        FloatFunctionLocalId, FloatFunctionValue, FloatListLocalId, FloatLocalId, FunctionExpr,
-        FunctionFunctionExpr, FunctionFunctionId, FunctionFunctionLocalId, FunctionFunctionValue,
-        FunctionListLocalId, FunctionType, FunctionValue, IntExpr, IntFunctionExpr,
-        IntFunctionFunctionId, IntFunctionId, IntFunctionLocalId, IntFunctionValue, IntListLocalId,
-        IntLocalId, ListExpr, ListFunctionExpr, ListFunctionId, ListFunctionValue, ListListLocalId,
-        ListLocal, ListLocalExpr, NilExpr, NilFunctionExpr, NilFunctionId, NilFunctionLocalId,
-        NilFunctionValue, NilListLocalId, NilLocalId, ParamLocal, RuntimeFunctionId, StringExpr,
-        StringFunctionExpr, StringFunctionId, StringFunctionLocalId, StringFunctionValue,
-        StringListLocalId, StringLocalId, TupleExpr, TupleFunctionExpr, TupleFunctionId,
-        TupleFunctionLocalId, TupleFunctionValue, TupleListLocalId, TupleLocalId, ValueType,
+        FloatFunctionLocalId, FloatFunctionReference, FloatListLocalId, FloatLocalId, FunctionExpr,
+        FunctionFunctionExpr, FunctionFunctionId, FunctionFunctionLocalId,
+        FunctionFunctionReference, FunctionListLocalId, FunctionReference, FunctionType, IntExpr,
+        IntFunctionExpr, IntFunctionFunctionId, IntFunctionId, IntFunctionLocalId,
+        IntFunctionReference, IntListLocalId, IntLocalId, ListExpr, ListFunctionExpr,
+        ListFunctionId, ListFunctionReference, ListListLocalId, ListLocal, ListLocalExpr, NilExpr,
+        NilFunctionExpr, NilFunctionId, NilFunctionLocalId, NilFunctionReference, NilListLocalId,
+        NilLocalId, ParamLocal, RuntimeFunctionId, StringExpr, StringFunctionExpr,
+        StringFunctionId, StringFunctionLocalId, StringFunctionReference, StringListLocalId,
+        StringLocalId, TupleExpr, TupleFunctionExpr, TupleFunctionId, TupleFunctionLocalId,
+        TupleFunctionReference, TupleListLocalId, TupleLocalId, ValueType,
     };
     use num_bigint::BigInt;
 
@@ -559,7 +568,7 @@ mod tests {
             })),
         );
         assert_eq!(
-            Expr::function(FunctionExpr::value(function_value())).into_call_arg(
+            Expr::function(FunctionExpr::reference(function_value())).into_call_arg(
                 &ParamLocal::int_function(
                     IntFunctionLocalId(0),
                     FunctionType::new(vec![ValueType::Int], ValueType::Int),
@@ -717,7 +726,7 @@ mod tests {
             None,
         );
         assert_eq!(
-            Expr::function(FunctionExpr::value(function_value()))
+            Expr::function(FunctionExpr::reference(function_value()))
                 .into_call_arg(&ParamLocal::int(IntLocalId(0))),
             None,
         );
@@ -825,10 +834,9 @@ mod tests {
 
         let function_item_type = FunctionType::new(Vec::new(), ValueType::Int);
         let function = ListExpr::value(
-            vec![Expr::function(FunctionExpr::value(FunctionValue::new(
-                RuntimeFunctionId::Int(IntFunctionId(0)),
-                Vec::new(),
-            )))],
+            vec![Expr::function(FunctionExpr::reference(
+                FunctionReference::new(RuntimeFunctionId::Int(IntFunctionId(0)), Vec::new()),
+            ))],
             ValueType::Function(Box::new(function_item_type.clone())),
         );
         assert_eq!(
@@ -877,10 +885,9 @@ mod tests {
         );
 
         let function = ListExpr::value(
-            vec![Expr::function(FunctionExpr::value(FunctionValue::new(
-                RuntimeFunctionId::String(StringFunctionId(0)),
-                Vec::new(),
-            )))],
+            vec![Expr::function(FunctionExpr::reference(
+                FunctionReference::new(RuntimeFunctionId::String(StringFunctionId(0)), Vec::new()),
+            ))],
             ValueType::Function(Box::new(FunctionType::new(Vec::new(), ValueType::String))),
         );
         assert_eq!(
@@ -892,43 +899,43 @@ mod tests {
         );
     }
 
-    fn function_value() -> FunctionValue {
-        FunctionValue::new(
+    fn function_value() -> FunctionReference {
+        FunctionReference::new(
             RuntimeFunctionId::Int(IntFunctionId(0)),
             vec![ParamLocal::int(IntLocalId(0))],
         )
     }
 
     fn int_function_expr() -> IntFunctionExpr {
-        IntFunctionExpr::value(IntFunctionValue::new(
+        IntFunctionExpr::reference(IntFunctionReference::new(
             IntFunctionId(0),
             vec![ParamLocal::int(IntLocalId(0))],
         ))
     }
 
     fn string_function_expr() -> StringFunctionExpr {
-        StringFunctionExpr::value(StringFunctionValue::new(
+        StringFunctionExpr::reference(StringFunctionReference::new(
             StringFunctionId(0),
             vec![ParamLocal::string(StringLocalId(0))],
         ))
     }
 
     fn float_function_expr() -> FloatFunctionExpr {
-        FloatFunctionExpr::value(FloatFunctionValue::new(
+        FloatFunctionExpr::reference(FloatFunctionReference::new(
             FloatFunctionId(0),
             vec![ParamLocal::float(FloatLocalId(0))],
         ))
     }
 
     fn bool_function_expr() -> BoolFunctionExpr {
-        BoolFunctionExpr::value(BoolFunctionValue::new(
+        BoolFunctionExpr::reference(BoolFunctionReference::new(
             BoolFunctionId(0),
             vec![ParamLocal::bool(BoolLocalId(0))],
         ))
     }
 
     fn nil_function_expr() -> NilFunctionExpr {
-        NilFunctionExpr::value(NilFunctionValue::new(
+        NilFunctionExpr::reference(NilFunctionReference::new(
             NilFunctionId(0),
             vec![ParamLocal::nil(NilLocalId(0))],
         ))
@@ -949,15 +956,17 @@ mod tests {
     }
 
     fn tuple_function_expr() -> TupleFunctionExpr {
-        TupleFunctionExpr::value(TupleFunctionValue::new(
-            TupleFunctionId(0),
-            vec![ParamLocal::tuple(TupleLocalId(0), vec![ValueType::Int])],
+        TupleFunctionExpr::reference(
+            TupleFunctionReference::new(
+                TupleFunctionId(0),
+                vec![ParamLocal::tuple(TupleLocalId(0), vec![ValueType::Int])],
+            ),
             vec![ValueType::Int],
-        ))
+        )
     }
 
     fn list_function_expr() -> ListFunctionExpr {
-        ListFunctionExpr::value(ListFunctionValue::new(
+        ListFunctionExpr::reference(ListFunctionReference::new(
             ListFunctionId::from_item_type(0, crate::plan::ValueType::Int),
             vec![ParamLocal::list(ListLocal::int(IntListLocalId(0)))],
         ))
@@ -971,11 +980,13 @@ mod tests {
     }
 
     fn function_function_expr() -> FunctionFunctionExpr {
-        FunctionFunctionExpr::value(FunctionFunctionValue::new(
-            FunctionFunctionId::Int(IntFunctionFunctionId(0)),
-            Vec::new(),
+        FunctionFunctionExpr::reference(
+            FunctionFunctionReference::new(
+                FunctionFunctionId::Int(IntFunctionFunctionId(0)),
+                Vec::new(),
+            ),
             function_type(),
-        ))
+        )
     }
 
     fn malformed_int_function_expr(type_: FunctionType) -> IntFunctionExpr {

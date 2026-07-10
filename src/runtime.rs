@@ -2,9 +2,15 @@ mod error;
 mod expression;
 mod frame;
 mod function;
+mod value;
 
-pub use crate::plan::Value;
 pub use error::{ExecutionError, Panic, PanicDetails, PanicKind, PanicMessage};
+pub(crate) use value::{
+    BoolFunctionValue, CaptureValue, CaptureValueKind, FloatFunctionValue, FunctionFunctionValue,
+    FunctionValueKind, IntFunctionValue, ListFunctionValue, ListLocalValue, NilFunctionValue,
+    StringFunctionValue, TupleFunctionValue,
+};
+pub use value::{FunctionValue, ListValue, ListValueItemTypeMismatch, Value};
 
 use crate::plan::execution::ExecutionPlan;
 
@@ -14,8 +20,20 @@ pub fn run_main(plan: &ExecutionPlan) -> Result<Value, ExecutionError> {
 
 #[cfg(test)]
 fn run_src(src: &str) -> Value {
-    let plan = plan_src(src);
+    let module =
+        crate::compile_typed_module("main", "main.gleam", src).expect("source should compile");
+    let module_plan = crate::plan_module(module).expect("source should plan");
+    let plan = crate::ExecutionPlan::from_module_plan(module_plan);
     run_main(&plan).expect("source should run")
+}
+
+#[cfg(test)]
+fn run_src_error(src: &str) -> ExecutionError {
+    let module =
+        crate::compile_typed_module("main", "main.gleam", src).expect("source should compile");
+    let module_plan = crate::plan_module(module).expect("source should plan");
+    let plan = crate::ExecutionPlan::from_module_plan(module_plan);
+    run_main(&plan).expect_err("source should fail at runtime")
 }
 
 #[cfg(test)]

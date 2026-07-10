@@ -2,8 +2,10 @@ use ecow::EcoString;
 use num_bigint::BigInt;
 use thiserror::Error;
 
-use super::{FunctionType, FunctionValue, Value, ValueType};
-use crate::plan::{
+use super::{FunctionValue, Value};
+use crate::plan::{FunctionType, ValueType};
+
+use crate::plan::execution::{
     BoolListLocalId, FloatListLocalId, FunctionListLocalId, IntListLocalId, ListListLocalId,
     ListLocal, NilListLocalId, StringListLocalId, TupleListLocalId,
 };
@@ -440,11 +442,13 @@ impl ListLocalValue {
 #[cfg(test)]
 mod tests {
     use super::{ListLocalValue, ListValue, ListValueItemTypeMismatch};
-    use crate::plan::{
-        BoolListLocalId, FloatListLocalId, FunctionListLocalId, FunctionType, FunctionValue,
-        IntFunctionId, IntListLocalId, ListListLocalId, ListLocal, NilListLocalId, ParamLocal,
-        RuntimeFunctionId, StringListLocalId, TupleListLocalId, Value, ValueType,
+    use crate::plan::execution::{
+        BoolListLocalId, FloatListLocalId, FunctionListLocalId, IntFunctionId, IntListLocalId,
+        ListListLocalId, ListLocal, NilListLocalId, ParamLocal, RuntimeFunctionId,
+        StringListLocalId, TupleListLocalId,
     };
+    use crate::plan::{FunctionType, ValueType};
+    use crate::runtime::{FunctionValue, Value};
 
     #[test]
     fn empty_preserves_item_type_for_every_family() {
@@ -474,7 +478,7 @@ mod tests {
         let function_type = FunctionType::new(vec![ValueType::Int], ValueType::Int);
         let function_value = FunctionValue::new(
             RuntimeFunctionId::Int(IntFunctionId(0)),
-            vec![ParamLocal::int(crate::plan::IntLocalId(0))],
+            vec![ParamLocal::Int(crate::plan::execution::IntLocalId(0))],
         );
 
         assert_eq!(
@@ -522,7 +526,7 @@ mod tests {
         let function_type = FunctionType::new(vec![ValueType::Int], ValueType::Int);
         let function_value = FunctionValue::new(
             RuntimeFunctionId::Int(IntFunctionId(0)),
-            vec![ParamLocal::int(crate::plan::IntLocalId(0))],
+            vec![ParamLocal::Int(crate::plan::execution::IntLocalId(0))],
         );
 
         assert_eq!(
@@ -576,7 +580,7 @@ mod tests {
         let function_type = FunctionType::new(vec![ValueType::Int], ValueType::Int);
         let function_value = FunctionValue::new(
             RuntimeFunctionId::Int(IntFunctionId(0)),
-            vec![ParamLocal::int(crate::plan::IntLocalId(0))],
+            vec![ParamLocal::Int(crate::plan::execution::IntLocalId(0))],
         );
 
         assert_eq!(
@@ -788,12 +792,12 @@ mod tests {
         let function_type = FunctionType::new(vec![ValueType::Int], ValueType::Int);
         let function_value = FunctionValue::new(
             RuntimeFunctionId::Int(IntFunctionId(0)),
-            vec![ParamLocal::int(crate::plan::IntLocalId(0))],
+            vec![ParamLocal::Int(crate::plan::execution::IntLocalId(0))],
         );
 
         assert_eq!(
             ListLocalValue::try_new(
-                ListLocal::int(IntListLocalId(0)),
+                ListLocal::Int(IntListLocalId(0)),
                 ListValue::int(vec![1.into()]),
             ),
             Some(ListLocalValue::Int {
@@ -803,7 +807,7 @@ mod tests {
         );
         assert_eq!(
             ListLocalValue::try_new(
-                ListLocal::string(StringListLocalId(1)),
+                ListLocal::String(StringListLocalId(1)),
                 ListValue::string(vec!["one".into()]),
             ),
             Some(ListLocalValue::String {
@@ -813,7 +817,7 @@ mod tests {
         );
         assert_eq!(
             ListLocalValue::try_new(
-                ListLocal::float(FloatListLocalId(2)),
+                ListLocal::Float(FloatListLocalId(2)),
                 ListValue::float(vec![1.5]),
             ),
             Some(ListLocalValue::Float {
@@ -823,7 +827,7 @@ mod tests {
         );
         assert_eq!(
             ListLocalValue::try_new(
-                ListLocal::bool(BoolListLocalId(3)),
+                ListLocal::Bool(BoolListLocalId(3)),
                 ListValue::bool(vec![true]),
             ),
             Some(ListLocalValue::Bool {
@@ -832,7 +836,7 @@ mod tests {
             }),
         );
         assert_eq!(
-            ListLocalValue::try_new(ListLocal::nil(NilListLocalId(4)), ListValue::nil(2),),
+            ListLocalValue::try_new(ListLocal::Nil(NilListLocalId(4)), ListValue::nil(2),),
             Some(ListLocalValue::Nil {
                 local: NilListLocalId(4),
                 len: 2,
@@ -840,7 +844,10 @@ mod tests {
         );
         assert_eq!(
             ListLocalValue::try_new(
-                ListLocal::tuple(TupleListLocalId(5), vec![ValueType::Int]),
+                ListLocal::Tuple {
+                    local: TupleListLocalId(5),
+                    item_type: vec![ValueType::Int],
+                },
                 ListValue::from_evaluated_tuple(
                     vec![ValueType::Int],
                     vec![vec![Value::Int(1.into())]],
@@ -854,7 +861,10 @@ mod tests {
         );
         assert_eq!(
             ListLocalValue::try_new(
-                ListLocal::list(ListListLocalId(6), ValueType::String),
+                ListLocal::List {
+                    local: ListListLocalId(6),
+                    item_type: Box::new(ValueType::String),
+                },
                 ListValue::from_evaluated_list(
                     ValueType::String,
                     vec![ListValue::string(vec!["one".into()])]
@@ -868,7 +878,10 @@ mod tests {
         );
         assert_eq!(
             ListLocalValue::try_new(
-                ListLocal::function(FunctionListLocalId(7), function_type.clone()),
+                ListLocal::Function {
+                    local: FunctionListLocalId(7),
+                    item_type: function_type.clone(),
+                },
                 ListValue::from_evaluated_function(
                     function_type.clone(),
                     vec![function_value.clone()],
@@ -883,24 +896,30 @@ mod tests {
 
         assert_eq!(
             ListLocalValue::try_new(
-                ListLocal::tuple(TupleListLocalId(8), vec![ValueType::Int]),
+                ListLocal::Tuple {
+                    local: TupleListLocalId(8),
+                    item_type: vec![ValueType::Int],
+                },
                 ListValue::from_evaluated_tuple(vec![ValueType::String], Vec::new()),
             ),
             None,
         );
         assert_eq!(
             ListLocalValue::try_new(
-                ListLocal::list(ListListLocalId(9), ValueType::Int),
+                ListLocal::List {
+                    local: ListListLocalId(9),
+                    item_type: Box::new(ValueType::Int),
+                },
                 ListValue::from_evaluated_list(ValueType::String, Vec::new()),
             ),
             None,
         );
         assert_eq!(
             ListLocalValue::try_new(
-                ListLocal::function(
-                    FunctionListLocalId(10),
-                    FunctionType::new(Vec::new(), ValueType::Int),
-                ),
+                ListLocal::Function {
+                    local: FunctionListLocalId(10),
+                    item_type: FunctionType::new(Vec::new(), ValueType::Int),
+                },
                 ListValue::from_evaluated_function(
                     FunctionType::new(Vec::new(), ValueType::String),
                     Vec::new(),
@@ -910,7 +929,7 @@ mod tests {
         );
         assert_eq!(
             ListLocalValue::try_new(
-                ListLocal::int(IntListLocalId(11)),
+                ListLocal::Int(IntListLocalId(11)),
                 ListValue::string(Vec::new()),
             ),
             None,

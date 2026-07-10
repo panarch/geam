@@ -1,27 +1,28 @@
 pub mod execution;
 pub mod module;
 mod source;
-mod value;
+mod value_type;
 
 #[cfg(test)]
 pub(crate) use module::ListReturn;
 pub(crate) use module::{
     AssertBinding, AssertPattern, BoolCaseBranches, BoolExprKind, BoolFunctionExprKind,
-    BoolFunctionReturn, BoolListCaseBranches, BoolListExpr, BoolListItem, BoolListReturn,
+    BoolFunctionReference, BoolFunctionReturn, BoolListCaseBranches, BoolListExpr, BoolListItem,
     BoolReturn, CallArgKind, CaptureArg, CaptureArgKind, ExprKind, FloatCaseBranches,
-    FloatExprKind, FloatFunctionExprKind, FloatFunctionReturn, FloatListExpr, FloatListItem,
-    FloatListReturn, FloatReturn, FrameLayout, FunctionExecutionParts, FunctionExprKind,
-    FunctionFunctionExprKind, FunctionFunctionId, FunctionFunctionReturn, FunctionListExpr,
-    FunctionListItem, FunctionListReturn, IntCaseBranches, IntExprKind, IntFunctionExprKind,
-    IntFunctionReturn, IntListExpr, IntListItem, IntListReturn, IntReturn, ListAssertPattern,
-    ListAssertTail, ListCaseBranches, ListElements, ListExpr, ListFunctionExprKind,
-    ListFunctionReturn, ListItem, ListListExpr, ListListItem, ListListReturn, ListLocalExpr,
-    ListSpreadElements, NilExprKind, NilFunctionExprKind, NilFunctionReturn, NilListExpr,
-    NilListItem, NilListReturn, NilReturn, PanicExpr, PanicExprKind, ParamLocal, ReturnBody,
-    ReturnBodyKind, ReturnExprKind, RuntimeFunctionId, StepKind, StringCaseBranches,
-    StringExprKind, StringFunctionExprKind, StringFunctionReturn, StringListExpr, StringListItem,
-    StringListReturn, StringReturn, TupleExprKind, TupleFunctionExprKind, TupleFunctionReturn,
-    TupleListExpr, TupleListItem, TupleListReturn, TupleReturn, TypedListExpr, TypedListExprKind,
+    FloatExprKind, FloatFunctionExprKind, FloatFunctionReference, FloatFunctionReturn,
+    FloatListExpr, FloatListItem, FloatReturn, FrameLayout, FunctionExprKind,
+    FunctionFunctionExprKind, FunctionFunctionId, FunctionFunctionReference,
+    FunctionFunctionReturn, FunctionListExpr, FunctionListItem, FunctionReference, IntCaseBranches,
+    IntExprKind, IntFunctionExprKind, IntFunctionReference, IntFunctionReturn, IntListExpr,
+    IntListItem, IntReturn, ListAssertPattern, ListAssertTail, ListCaseBranches, ListElements,
+    ListExpr, ListFunctionExprKind, ListFunctionReference, ListFunctionReturn, ListItem,
+    ListListExpr, ListListItem, ListLocalExpr, ListSpreadElements, NilExprKind,
+    NilFunctionExprKind, NilFunctionReference, NilFunctionReturn, NilListExpr, NilListItem,
+    NilReturn, PanicExpr, ParamLocal, ReturnBody, ReturnBodyKind, ReturnExprKind,
+    RuntimeFunctionId, StepKind, StringCaseBranches, StringExprKind, StringFunctionExprKind,
+    StringFunctionReference, StringFunctionReturn, StringListExpr, StringListItem, StringReturn,
+    TupleExprKind, TupleFunctionExprKind, TupleFunctionReference, TupleFunctionReturn,
+    TupleListExpr, TupleListItem, TupleReturn, TypedListExpr, TypedListExprKind,
     TypedListReturnKind,
 };
 pub use module::{
@@ -46,12 +47,10 @@ pub use module::{
     TupleFunctionId, TupleFunctionLocalId, TupleListFunctionFunctionId, TupleListFunctionId,
     TupleListFunctionLocalId, TupleListLocalId, TupleLocalId,
 };
+#[cfg(test)]
+pub(crate) use module::{
+    BoolListReturn, FloatListReturn, FunctionListReturn, IntListReturn, ListListReturn,
+    NilListReturn, StringListReturn, TupleListReturn,
+};
 pub use source::{PanicSite, SourceContext, SourceSpan};
-pub(crate) use value::{
-    BoolFunctionValue, CaptureValue, CaptureValueKind, FloatFunctionValue, FunctionFunctionValue,
-    FunctionValueKind, IntFunctionValue, ListFunctionValue, ListLocalValue, NilFunctionValue,
-    StringFunctionValue, TupleFunctionValue,
-};
-pub use value::{
-    FunctionType, FunctionValue, ListValue, ListValueItemTypeMismatch, Value, ValueType,
-};
+pub use value_type::{FunctionType, ValueType};

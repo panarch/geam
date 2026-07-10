@@ -6,7 +6,7 @@ use super::{
     ListFunctionValue, ListLocalValue, NilFunctionValue, StringFunctionValue, TupleFunctionValue,
     Value,
 };
-use crate::plan::{
+use crate::plan::execution::{
     BoolFunctionLocalId, BoolLocalId, FloatFunctionLocalId, FloatLocalId, FunctionFunctionLocalId,
     IntFunctionLocalId, IntLocalId, ListFunctionLocal, NilFunctionLocalId, NilLocalId,
     StringFunctionLocalId, StringLocalId, TupleFunctionLocalId, TupleLocalId,
@@ -182,10 +182,14 @@ impl CaptureValue {
 #[cfg(test)]
 mod tests {
     use super::{CaptureValue, CaptureValueKind};
-    use crate::plan::{
-        FloatFunctionId, FloatFunctionLocalId, FloatFunctionValue, FloatLocalId, IntListLocalId,
-        ListFunctionId, ListFunctionValue, ListLocal, ListValue, ParamLocal, TupleFunctionId,
-        TupleFunctionLocalId, TupleFunctionValue, TupleLocalId, Value, ValueType,
+    use crate::plan::ValueType;
+    use crate::plan::execution::{
+        FloatFunctionId, FloatFunctionLocalId, FloatLocalId, IntListFunctionLocalId,
+        IntListLocalId, ListFunctionId, ListFunctionLocal, ListLocal, ParamLocal, TupleFunctionId,
+        TupleFunctionLocalId, TupleLocalId,
+    };
+    use crate::runtime::{
+        FloatFunctionValue, ListFunctionValue, ListValue, TupleFunctionValue, Value,
     };
 
     #[test]
@@ -233,57 +237,58 @@ mod tests {
     fn capture_value_preserves_list_shapes() {
         let list_value = ListValue::int(vec![1.into()]);
         let list = CaptureValue::list(
-            crate::plan::ListLocalValue::try_new(ListLocal::int(IntListLocalId(0)), list_value)
+            crate::runtime::ListLocalValue::try_new(ListLocal::Int(IntListLocalId(0)), list_value)
                 .expect("list capture should match local item type"),
         );
         assert_eq!(
             list.kind(),
-            &CaptureValueKind::List(crate::plan::ListLocalValue::Int {
+            &CaptureValueKind::List(crate::runtime::ListLocalValue::Int {
                 local: IntListLocalId(0),
                 value: vec![1.into()],
             }),
         );
 
         let list_function = ListFunctionValue::new(
-            ListFunctionId::from_item_type(0, crate::plan::ValueType::Int),
+            ListFunctionId::Int(crate::plan::execution::IntListFunctionId(0)),
             vec![list_param(0)],
         );
         let function = CaptureValue::list_function(
-            crate::plan::ListFunctionLocal::from_item_type(
-                0,
-                crate::plan::FunctionType::new(
+            ListFunctionLocal::Int {
+                local: IntListFunctionLocalId(0),
+                type_: crate::plan::FunctionType::new(
                     Vec::new(),
                     crate::plan::ValueType::List(Box::new(crate::plan::ValueType::Int)),
                 ),
-                crate::plan::ValueType::Int,
-            ),
+            },
             list_function.clone(),
         );
         assert_eq!(
             function.kind(),
             &CaptureValueKind::ListFunction {
-                local: crate::plan::ListFunctionLocal::from_item_type(
-                    0,
-                    crate::plan::FunctionType::new(
+                local: ListFunctionLocal::Int {
+                    local: IntListFunctionLocalId(0),
+                    type_: crate::plan::FunctionType::new(
                         Vec::new(),
                         crate::plan::ValueType::List(Box::new(crate::plan::ValueType::Int))
                     ),
-                    crate::plan::ValueType::Int,
-                ),
+                },
                 value: list_function,
             },
         );
     }
 
     fn float_param(index: usize) -> ParamLocal {
-        ParamLocal::float(FloatLocalId(index))
+        ParamLocal::Float(FloatLocalId(index))
     }
 
     fn tuple_param(index: usize) -> ParamLocal {
-        ParamLocal::tuple(TupleLocalId(index), vec![ValueType::Int])
+        ParamLocal::Tuple {
+            local: TupleLocalId(index),
+            type_: vec![ValueType::Int],
+        }
     }
 
     fn list_param(index: usize) -> ParamLocal {
-        ParamLocal::list(ListLocal::int(IntListLocalId(index)))
+        ParamLocal::List(ListLocal::Int(IntListLocalId(index)))
     }
 }

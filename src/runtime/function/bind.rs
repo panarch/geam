@@ -1,7 +1,5 @@
 use crate::plan::execution::ExecutionPlan;
-use crate::plan::{
-    CallArg, CallArgKind, CaptureArg, CaptureArgKind, CaptureValue, CaptureValueKind, FrameLayout,
-};
+use crate::plan::execution::{CallArg, CallArgKind, CaptureArg, CaptureArgKind, FrameLayout};
 use crate::runtime::error::ExecutionResult;
 use crate::runtime::expression::{
     eval_bool_expr, eval_bool_function_expr, eval_bool_list_expr, eval_float_expr,
@@ -12,12 +10,13 @@ use crate::runtime::expression::{
     eval_tuple_expr, eval_tuple_function_expr, eval_tuple_list_expr,
 };
 use crate::runtime::frame::Frame;
+use crate::runtime::{CaptureValue, CaptureValueKind, ListLocalValue};
 
 pub(super) fn bind_arguments(
     plan: &ExecutionPlan,
     args: &[CallArg],
     caller_frame: &mut Frame,
-    frame_layout: FrameLayout,
+    frame_layout: &FrameLayout,
 ) -> ExecutionResult<Frame> {
     let mut frame = Frame::new(frame_layout);
     bind_arguments_into(plan, args, caller_frame, &mut frame)?;
@@ -28,7 +27,7 @@ pub(super) fn bind_function_value_arguments(
     plan: &ExecutionPlan,
     args: &[CallArg],
     caller_frame: &mut Frame,
-    frame_layout: FrameLayout,
+    frame_layout: &FrameLayout,
     captures: &[CaptureValue],
 ) -> ExecutionResult<Frame> {
     let mut frame = Frame::new(frame_layout);
@@ -211,38 +210,38 @@ fn bind_list_argument(
     plan: &ExecutionPlan,
     caller_frame: &mut Frame,
     frame: &mut Frame,
-    value: &crate::plan::ListLocalExpr,
+    value: &crate::plan::execution::ListLocalExpr,
 ) -> ExecutionResult<()> {
     match value {
-        crate::plan::ListLocalExpr::Int { local, value } => {
+        crate::plan::execution::ListLocalExpr::Int { local, value } => {
             let value = eval_int_list_expr(plan, caller_frame, value)?;
             frame.set_int_list(*local, value);
         }
-        crate::plan::ListLocalExpr::String { local, value } => {
+        crate::plan::execution::ListLocalExpr::String { local, value } => {
             let value = eval_string_list_expr(plan, caller_frame, value)?;
             frame.set_string_list(*local, value);
         }
-        crate::plan::ListLocalExpr::Float { local, value } => {
+        crate::plan::execution::ListLocalExpr::Float { local, value } => {
             let value = eval_float_list_expr(plan, caller_frame, value)?;
             frame.set_float_list(*local, value);
         }
-        crate::plan::ListLocalExpr::Bool { local, value } => {
+        crate::plan::execution::ListLocalExpr::Bool { local, value } => {
             let value = eval_bool_list_expr(plan, caller_frame, value)?;
             frame.set_bool_list(*local, value);
         }
-        crate::plan::ListLocalExpr::Nil { local, value } => {
+        crate::plan::execution::ListLocalExpr::Nil { local, value } => {
             let value = eval_nil_list_expr(plan, caller_frame, value)?;
             frame.set_nil_list(*local, value);
         }
-        crate::plan::ListLocalExpr::Tuple { local, value, .. } => {
+        crate::plan::execution::ListLocalExpr::Tuple { local, value, .. } => {
             let value = eval_tuple_list_expr(plan, caller_frame, value)?;
             frame.set_tuple_list(*local, value);
         }
-        crate::plan::ListLocalExpr::List { local, value, .. } => {
+        crate::plan::execution::ListLocalExpr::List { local, value, .. } => {
             let value = eval_list_list_expr(plan, caller_frame, value)?;
             frame.set_list_list(*local, value);
         }
-        crate::plan::ListLocalExpr::Function { local, value, .. } => {
+        crate::plan::execution::ListLocalExpr::Function { local, value, .. } => {
             let value = eval_function_list_expr(plan, caller_frame, value)?;
             frame.set_function_list(*local, value);
         }
@@ -253,62 +252,62 @@ fn bind_list_argument(
 fn eval_list_capture(
     plan: &ExecutionPlan,
     frame: &mut Frame,
-    value: &crate::plan::ListLocalExpr,
+    value: &crate::plan::execution::ListLocalExpr,
 ) -> ExecutionResult<CaptureValue> {
     Ok(match value {
-        crate::plan::ListLocalExpr::Int { local, value } => {
-            CaptureValue::list(crate::plan::ListLocalValue::Int {
+        crate::plan::execution::ListLocalExpr::Int { local, value } => {
+            CaptureValue::list(ListLocalValue::Int {
                 local: *local,
                 value: eval_int_list_expr(plan, frame, value)?,
             })
         }
-        crate::plan::ListLocalExpr::String { local, value } => {
-            CaptureValue::list(crate::plan::ListLocalValue::String {
+        crate::plan::execution::ListLocalExpr::String { local, value } => {
+            CaptureValue::list(ListLocalValue::String {
                 local: *local,
                 value: eval_string_list_expr(plan, frame, value)?,
             })
         }
-        crate::plan::ListLocalExpr::Float { local, value } => {
-            CaptureValue::list(crate::plan::ListLocalValue::Float {
+        crate::plan::execution::ListLocalExpr::Float { local, value } => {
+            CaptureValue::list(ListLocalValue::Float {
                 local: *local,
                 value: eval_float_list_expr(plan, frame, value)?,
             })
         }
-        crate::plan::ListLocalExpr::Bool { local, value } => {
-            CaptureValue::list(crate::plan::ListLocalValue::Bool {
+        crate::plan::execution::ListLocalExpr::Bool { local, value } => {
+            CaptureValue::list(ListLocalValue::Bool {
                 local: *local,
                 value: eval_bool_list_expr(plan, frame, value)?,
             })
         }
-        crate::plan::ListLocalExpr::Nil { local, value } => {
-            CaptureValue::list(crate::plan::ListLocalValue::Nil {
+        crate::plan::execution::ListLocalExpr::Nil { local, value } => {
+            CaptureValue::list(ListLocalValue::Nil {
                 local: *local,
                 len: eval_nil_list_expr(plan, frame, value)?,
             })
         }
-        crate::plan::ListLocalExpr::Tuple {
+        crate::plan::execution::ListLocalExpr::Tuple {
             local,
             item_type,
             value,
-        } => CaptureValue::list(crate::plan::ListLocalValue::Tuple {
+        } => CaptureValue::list(ListLocalValue::Tuple {
             local: *local,
             item_type: item_type.clone(),
             value: eval_tuple_list_expr(plan, frame, value)?,
         }),
-        crate::plan::ListLocalExpr::List {
+        crate::plan::execution::ListLocalExpr::List {
             local,
             item_type,
             value,
-        } => CaptureValue::list(crate::plan::ListLocalValue::List {
+        } => CaptureValue::list(ListLocalValue::List {
             local: *local,
             item_type: item_type.clone(),
             value: eval_list_list_expr(plan, frame, value)?,
         }),
-        crate::plan::ListLocalExpr::Function {
+        crate::plan::execution::ListLocalExpr::Function {
             local,
             item_type,
             value,
-        } => CaptureValue::list(crate::plan::ListLocalValue::Function {
+        } => CaptureValue::list(ListLocalValue::Function {
             local: *local,
             item_type: item_type.clone(),
             value: eval_function_list_expr(plan, frame, value)?,
@@ -316,30 +315,30 @@ fn eval_list_capture(
     })
 }
 
-fn bind_list_capture(frame: &mut Frame, value: &crate::plan::ListLocalValue) {
+fn bind_list_capture(frame: &mut Frame, value: &ListLocalValue) {
     match value {
-        crate::plan::ListLocalValue::Int { local, value } => {
+        ListLocalValue::Int { local, value } => {
             frame.set_int_list(*local, value.clone());
         }
-        crate::plan::ListLocalValue::String { local, value } => {
+        ListLocalValue::String { local, value } => {
             frame.set_string_list(*local, value.clone());
         }
-        crate::plan::ListLocalValue::Float { local, value } => {
+        ListLocalValue::Float { local, value } => {
             frame.set_float_list(*local, value.clone());
         }
-        crate::plan::ListLocalValue::Bool { local, value } => {
+        ListLocalValue::Bool { local, value } => {
             frame.set_bool_list(*local, value.clone());
         }
-        crate::plan::ListLocalValue::Nil { local, len } => {
+        ListLocalValue::Nil { local, len } => {
             frame.set_nil_list(*local, *len);
         }
-        crate::plan::ListLocalValue::Tuple { local, value, .. } => {
+        ListLocalValue::Tuple { local, value, .. } => {
             frame.set_tuple_list(*local, value.clone());
         }
-        crate::plan::ListLocalValue::List { local, value, .. } => {
+        ListLocalValue::List { local, value, .. } => {
             frame.set_list_list(*local, value.clone());
         }
-        crate::plan::ListLocalValue::Function { local, value, .. } => {
+        ListLocalValue::Function { local, value, .. } => {
             frame.set_function_list(*local, value.clone());
         }
     }
@@ -347,1056 +346,323 @@ fn bind_list_capture(frame: &mut Frame, value: &crate::plan::ListLocalValue) {
 
 #[cfg(test)]
 mod tests {
-    use super::{bind_arguments, bind_function_value_arguments, eval_capture_args};
-    use crate::plan::execution::ExecutionPlan;
     use crate::plan::{
-        BoolExpr, BoolFunctionExpr, BoolFunctionId, BoolFunctionLocalId, BoolFunctionValue,
-        BoolLocalId, CallArg, CaptureArg, CaptureValue, Expr, FloatExpr, FloatFunctionExpr,
-        FloatFunctionId, FloatFunctionLocalId, FloatFunctionValue, FloatLocalId, FrameLayout,
-        FunctionExpr, FunctionFunctionExpr, FunctionFunctionId, FunctionFunctionLocalId,
-        FunctionFunctionValue, FunctionId, FunctionPlan, FunctionReturnFamily, FunctionType,
-        IntExpr, IntFunctionExpr, IntFunctionFunctionId, IntFunctionId, IntFunctionLocalId,
-        IntFunctionValue, IntListLocalId, IntLocalId, ListExpr, ListFunctionExpr, ListFunctionId,
-        ListFunctionValue, ListListLocalId, ListLocal, ListLocalExpr, ListLocalValue, NilExpr,
-        NilFunctionExpr, NilFunctionId, NilFunctionLocalId, NilFunctionValue, NilListLocalId,
-        NilLocalId, ReturnExpr, StringExpr, StringFunctionExpr, StringFunctionId,
-        StringFunctionLocalId, StringFunctionValue, StringListLocalId, StringLocalId, TupleExpr,
-        TupleFunctionExpr, TupleFunctionId, TupleFunctionLocalId, TupleFunctionValue,
-        TupleListLocalId, TupleLocalId, Value, ValueType,
+        BoolExpr, BoolFunctionExpr, BoolFunctionLocalId, BoolListExpr, BoolListLocalId, CaptureArg,
+        FloatExpr, FloatFunctionExpr, FloatFunctionLocalId, FloatListExpr, FloatListLocalId,
+        FunctionFunctionExpr, FunctionFunctionLocalId, FunctionId, FunctionListLocalId,
+        FunctionPlan, FunctionType, IntExpr, IntFunctionExpr, IntFunctionFunctionId, IntFunctionId,
+        IntFunctionLocalId, IntListExpr, IntListLocalId, IntLocalId, ListExpr, ListFunctionExpr,
+        ListFunctionLocal, ListListExpr, ListListLocalId, ListLocalExpr, ModulePlan, NilExpr,
+        NilFunctionExpr, NilFunctionLocalId, NilListExpr, NilListLocalId, NilLocalId, PanicExpr,
+        PanicSite, ReturnExpr, StringExpr, StringFunctionExpr, StringFunctionLocalId,
+        StringListExpr, StringListLocalId, StringLocalId, TupleExpr, TupleFunctionExpr,
+        TupleFunctionLocalId, TupleListExpr, TupleListLocalId, TupleLocalId, ValueType,
     };
-    use crate::runtime::ExecutionError;
-    use crate::runtime::frame::Frame;
+    use crate::runtime::{ExecutionError, run_main};
 
     #[test]
-    fn bind_arguments_propagates_typed_argument_evaluation_errors() {
-        let plan = plan();
-
+    fn source_arguments_and_captures_preserve_every_value_family() {
         let cases = [
-            CallArg::int(IntLocalId(0), failing_int_expr()),
-            CallArg::string(StringLocalId(0), failing_string_expr()),
-            CallArg::float(FloatLocalId(0), failing_float_expr()),
-            CallArg::bool(BoolLocalId(0), failing_bool_expr()),
-            CallArg::nil(NilLocalId(0), failing_nil_expr()),
-            CallArg::tuple(TupleLocalId(0), failing_tuple_expr()),
-            CallArg::list(failing_list_local_expr(ListLocal::int(IntListLocalId(0)))),
-            CallArg::int_function(IntFunctionLocalId(0), failing_int_function_expr()),
-            CallArg::string_function(StringFunctionLocalId(0), failing_string_function_expr()),
-            CallArg::float_function(FloatFunctionLocalId(0), failing_float_function_expr()),
-            CallArg::bool_function(BoolFunctionLocalId(0), failing_bool_function_expr()),
-            CallArg::nil_function(NilFunctionLocalId(0), failing_nil_function_expr()),
-            CallArg::tuple_function(TupleFunctionLocalId(0), failing_tuple_function_expr()),
-            CallArg::list_function(
-                crate::plan::ListFunctionLocal::from_item_type(
-                    0,
-                    crate::plan::FunctionType::new(
-                        Vec::new(),
-                        crate::plan::ValueType::List(Box::new(crate::plan::ValueType::Int)),
-                    ),
-                    crate::plan::ValueType::Int,
+            (
+                include_str!(
+                    "../../../tests/fixtures/execution/functions/argument/list_boundary_item_families.gleam"
                 ),
-                failing_list_function_expr(),
+                crate::runtime::Value::Int(1.into()),
             ),
-            CallArg::function_function(
-                FunctionFunctionLocalId(0),
-                failing_function_function_expr(),
+            (
+                include_str!(
+                    "../../../tests/fixtures/execution/functions/anonymous/capturing_closure_value_families.gleam"
+                ),
+                crate::runtime::Value::Int(42.into()),
+            ),
+            (
+                include_str!(
+                    "../../../tests/fixtures/execution/functions/anonymous/capturing_closure_return_shapes.gleam"
+                ),
+                crate::runtime::Value::Int(42.into()),
             ),
         ];
 
-        for arg in cases {
-            assert_expected_function_got_int(bind_arguments(
-                &plan,
-                &[arg],
-                &mut Frame::default(),
-                FrameLayout::default(),
-            ));
+        for (source, expected) in cases {
+            assert_eq!(crate::runtime::run_src(source), expected);
+        }
+
+        assert_eq!(
+            crate::runtime::run_src(include_str!(
+                "../../../tests/fixtures/execution/functions/anonymous/capturing_closure_list_function.gleam"
+            )),
+            crate::runtime::Value::List(crate::runtime::ListValue::int(vec![1.into(), 2.into()])),
+        );
+
+        assert_eq!(
+            crate::runtime::run_src(
+                r#"
+fn int_value() { 1 }
+fn string_value() { "one" }
+fn float_value() { 1.0 }
+fn bool_value() { True }
+fn nil_value() { Nil }
+fn tuple_value() { #(1) }
+fn list_value() { [1] }
+fn function_value() { int_value }
+
+pub fn main() {
+  let int = 1
+  let string = "one"
+  let float = 1.0
+  let bool = True
+  let nil = Nil
+  let tuple = #(1)
+  let int_list = [1]
+  let string_list = ["one"]
+  let float_list = [1.0]
+  let bool_list = [True]
+  let nil_list = [Nil]
+  let tuple_list = [#(1)]
+  let list_list = [[1]]
+  let function_list = [int_value]
+  let int_function = int_value
+  let string_function = string_value
+  let float_function = float_value
+  let bool_function = bool_value
+  let nil_function = nil_value
+  let tuple_function = tuple_value
+  let list_function = list_value
+  let function_function = function_value
+
+  let closure = fn() {
+    assert int == 1
+    assert string == "one"
+    assert float == 1.0
+    assert bool
+    nil
+    assert tuple == #(1)
+    assert int_list == [1]
+    assert string_list == ["one"]
+    assert float_list == [1.0]
+    assert bool_list == [True]
+    assert nil_list == [Nil]
+    assert tuple_list == [#(1)]
+    assert list_list == [[1]]
+    assert case function_list { [function] -> function() == 1 _ -> False }
+    assert int_function() == 1
+    assert string_function() == "one"
+    assert float_function() == 1.0
+    assert bool_function()
+    nil_function()
+    assert tuple_function() == #(1)
+    assert list_function() == [1]
+    assert function_function()() == 1
+    42
+  }
+
+  closure()
+}
+"#,
+            ),
+            crate::runtime::Value::Int(42.into()),
+        );
+
+        assert_eq!(
+            crate::runtime::run_src(
+                r#"
+fn int_value() { 1 }
+fn string_value() { "one" }
+fn float_value() { 1.0 }
+fn bool_value() { True }
+fn nil_value() { Nil }
+fn tuple_value() { #(1) }
+fn list_value() { [1] }
+fn function_value() { int_value }
+
+fn accept_int(function: fn() -> Int) { function() }
+fn accept_string(function: fn() -> String) { function() }
+fn accept_float(function: fn() -> Float) { function() }
+fn accept_bool(function: fn() -> Bool) { function() }
+fn accept_nil(function: fn() -> Nil) { function() }
+fn accept_tuple(function: fn() -> #(Int)) { function() }
+fn accept_list(function: fn() -> List(Int)) { function() }
+fn accept_function(function: fn() -> fn() -> Int) { function()() }
+
+pub fn main() {
+  assert accept_int(int_value) == 1
+  assert accept_string(string_value) == "one"
+  assert accept_float(float_value) == 1.0
+  assert accept_bool(bool_value)
+  accept_nil(nil_value)
+  assert accept_tuple(tuple_value) == #(1)
+  assert accept_list(list_value) == [1]
+  assert accept_function(function_value) == 1
+  42
+}
+"#,
+            ),
+            crate::runtime::Value::Int(42.into()),
+        );
+    }
+
+    #[test]
+    fn source_argument_errors_propagate_for_every_value_family() {
+        let parameter_types = [
+            "Int",
+            "String",
+            "Float",
+            "Bool",
+            "Nil",
+            "#(Int)",
+            "List(Int)",
+            "List(String)",
+            "List(Float)",
+            "List(Bool)",
+            "List(Nil)",
+            "List(#(Int))",
+            "List(List(Int))",
+            "List(fn() -> Int)",
+            "fn() -> Int",
+            "fn() -> String",
+            "fn() -> Float",
+            "fn() -> Bool",
+            "fn() -> Nil",
+            "fn() -> #(Int)",
+            "fn() -> List(Int)",
+            "fn() -> fn() -> Int",
+        ];
+
+        for parameter_type in parameter_types {
+            let source = format!(
+                "fn callee(value: {parameter_type}) -> Nil {{ Nil }} pub fn main() {{ callee(panic as \"argument\") }}",
+            );
+
+            assert_eq!(
+                crate::runtime::run_src_error(&source).to_string(),
+                "panic: argument",
+            );
         }
     }
 
     #[test]
-    fn bind_arguments_evaluates_and_binds_all_value_families() {
-        let plan = plan();
-        let frame = bind_arguments(
-            &plan,
-            &[
-                CallArg::int(IntLocalId(0), IntExpr::value(1.into())),
-                CallArg::string(StringLocalId(0), StringExpr::value("one".into())),
-                CallArg::float(FloatLocalId(0), FloatExpr::value(1.5)),
-                CallArg::bool(BoolLocalId(0), BoolExpr::value(true)),
-                CallArg::nil(NilLocalId(0), NilExpr::value()),
-                CallArg::tuple(TupleLocalId(0), tuple_expr()),
-                CallArg::list(int_list_local_expr(IntListLocalId(0))),
-                CallArg::int_function(IntFunctionLocalId(0), int_function_expr()),
-                CallArg::string_function(StringFunctionLocalId(0), string_function_expr()),
-                CallArg::float_function(FloatFunctionLocalId(0), float_function_expr()),
-                CallArg::bool_function(BoolFunctionLocalId(0), bool_function_expr()),
-                CallArg::nil_function(NilFunctionLocalId(0), nil_function_expr()),
-                CallArg::tuple_function(TupleFunctionLocalId(0), tuple_function_expr()),
-                CallArg::list_function(
-                    crate::plan::ListFunctionLocal::from_item_type(
-                        0,
-                        crate::plan::FunctionType::new(
-                            Vec::new(),
-                            crate::plan::ValueType::List(Box::new(crate::plan::ValueType::Int)),
-                        ),
-                        crate::plan::ValueType::Int,
-                    ),
-                    list_function_expr(),
-                ),
-                CallArg::function_function(FunctionFunctionLocalId(0), function_function_expr()),
-            ],
-            &mut Frame::default(),
-            all_family_layout(),
-        )
-        .expect("arguments should bind");
-
-        assert_eq!(frame.get_int(IntLocalId(0)), 1.into());
-        assert_eq!(frame.get_string(StringLocalId(0)), "one");
-        assert_eq!(frame.get_float(FloatLocalId(0)), 1.5);
-        assert!(frame.get_bool(BoolLocalId(0)));
-        assert_eq!(frame.get_nil(NilLocalId(0)), ());
-        assert_eq!(frame.get_tuple(TupleLocalId(0)), vec![Value::Int(1.into())]);
-        assert_eq!(frame.get_int_list(IntListLocalId(0)), vec![1.into()]);
-        assert_eq!(
-            frame.get_int_function(IntFunctionLocalId(0)).runtime_id(),
-            IntFunctionId(0),
-        );
-        assert_eq!(
-            frame
-                .get_string_function(StringFunctionLocalId(0))
-                .runtime_id(),
-            StringFunctionId(0),
-        );
-        assert_eq!(
-            frame
-                .get_float_function(FloatFunctionLocalId(0))
-                .runtime_id(),
-            FloatFunctionId(0),
-        );
-        assert_eq!(
-            frame.get_bool_function(BoolFunctionLocalId(0)).runtime_id(),
-            BoolFunctionId(0),
-        );
-        assert_eq!(
-            frame.get_nil_function(NilFunctionLocalId(0)).runtime_id(),
-            NilFunctionId(0),
-        );
-        assert_eq!(
-            frame
-                .get_tuple_function(TupleFunctionLocalId(0))
-                .runtime_id(),
-            TupleFunctionId(0),
-        );
-        assert_eq!(
-            frame
-                .get_list_function(&crate::plan::ListFunctionLocal::from_item_type(
-                    0,
-                    crate::plan::FunctionType::new(
-                        Vec::new(),
-                        crate::plan::ValueType::List(Box::new(crate::plan::ValueType::Int))
-                    ),
-                    crate::plan::ValueType::Int,
-                ))
-                .runtime_id(),
-            ListFunctionId::from_item_type(0, crate::plan::ValueType::Int),
-        );
-        assert_eq!(
-            frame
-                .get_function_function(FunctionFunctionLocalId(0))
-                .runtime_id(),
-            FunctionFunctionId::Int(IntFunctionFunctionId(0)),
-        );
-    }
-
-    #[test]
-    fn bind_arguments_evaluates_and_binds_every_list_item_family() {
-        let plan = plan();
-        let frame = bind_arguments(
-            &plan,
-            &[
-                CallArg::list(int_list_local_expr(IntListLocalId(0))),
-                CallArg::list(string_list_local_expr(StringListLocalId(1))),
-                CallArg::list(float_list_local_expr(crate::plan::FloatListLocalId(2))),
-                CallArg::list(bool_list_local_expr(crate::plan::BoolListLocalId(3))),
-                CallArg::list(nil_list_local_expr(NilListLocalId(4))),
-                CallArg::list(tuple_list_local_expr(TupleListLocalId(5))),
-                CallArg::list(list_list_local_expr(ListListLocalId(6))),
-                CallArg::list(function_list_local_expr(crate::plan::FunctionListLocalId(
-                    7,
-                ))),
-            ],
-            &mut Frame::default(),
-            all_family_layout(),
-        )
-        .expect("list arguments should bind");
-
-        assert_all_list_family_values(&frame);
-    }
-
-    #[test]
-    fn bind_arguments_propagates_list_argument_errors_for_every_item_family() {
-        let plan = plan();
-
-        for arg in failing_list_call_args() {
-            assert_expected_function_got_int(bind_arguments(
-                &plan,
-                &[arg],
-                &mut Frame::default(),
-                all_family_layout(),
-            ));
-        }
-    }
-
-    #[test]
-    fn tuple_function_arguments_are_evaluated_and_bound() {
-        let plan = plan();
-        let frame = bind_arguments(
-            &plan,
-            &[CallArg::tuple_function(
+    fn module_capture_errors_propagate_for_every_value_family() {
+        let panic = || {
+            PanicExpr::panic_at(
+                Some(StringExpr::value("capture".into())),
+                PanicSite::unknown(),
+            )
+        };
+        let function_type = |return_: ValueType| FunctionType::new(Vec::new(), return_);
+        let int_function_type = function_type(ValueType::Int);
+        let list_function_type = function_type(ValueType::List(Box::new(ValueType::Int)));
+        let function_function_type =
+            function_type(ValueType::Function(Box::new(int_function_type.clone())));
+        let captures = [
+            CaptureArg::int(IntLocalId(0), IntExpr::panic(panic())),
+            CaptureArg::string(StringLocalId(0), StringExpr::panic(panic())),
+            CaptureArg::float(crate::plan::FloatLocalId(0), FloatExpr::panic(panic())),
+            CaptureArg::bool(crate::plan::BoolLocalId(0), BoolExpr::panic(panic())),
+            CaptureArg::nil(NilLocalId(0), NilExpr::panic(panic())),
+            CaptureArg::tuple(
+                TupleLocalId(0),
+                TupleExpr::panic(panic(), vec![ValueType::Int]),
+            ),
+            CaptureArg::list(ListLocalExpr::Int {
+                local: IntListLocalId(0),
+                value: IntListExpr::from(ListExpr::panic(panic(), ValueType::Int)),
+            }),
+            CaptureArg::list(ListLocalExpr::String {
+                local: StringListLocalId(0),
+                value: StringListExpr::from(ListExpr::panic(panic(), ValueType::String)),
+            }),
+            CaptureArg::list(ListLocalExpr::Float {
+                local: FloatListLocalId(0),
+                value: FloatListExpr::from(ListExpr::panic(panic(), ValueType::Float)),
+            }),
+            CaptureArg::list(ListLocalExpr::Bool {
+                local: BoolListLocalId(0),
+                value: BoolListExpr::from(ListExpr::panic(panic(), ValueType::Bool)),
+            }),
+            CaptureArg::list(ListLocalExpr::Nil {
+                local: NilListLocalId(0),
+                value: NilListExpr::from(ListExpr::panic(panic(), ValueType::Nil)),
+            }),
+            CaptureArg::list(ListLocalExpr::Tuple {
+                local: TupleListLocalId(0),
+                item_type: vec![ValueType::Int],
+                value: TupleListExpr::from(ListExpr::panic(
+                    panic(),
+                    ValueType::Tuple(vec![ValueType::Int]),
+                )),
+            }),
+            CaptureArg::list(ListLocalExpr::List {
+                local: ListListLocalId(0),
+                item_type: Box::new(ValueType::Int),
+                value: ListListExpr::from(ListExpr::panic(
+                    panic(),
+                    ValueType::List(Box::new(ValueType::Int)),
+                )),
+            }),
+            CaptureArg::list(ListLocalExpr::Function {
+                local: FunctionListLocalId(0),
+                item_type: int_function_type.clone(),
+                value: crate::plan::FunctionListExpr::from(ListExpr::panic(
+                    panic(),
+                    ValueType::Function(Box::new(int_function_type.clone())),
+                )),
+            }),
+            CaptureArg::int_function(
+                IntFunctionLocalId(0),
+                IntFunctionExpr::panic(panic(), int_function_type.clone()),
+            ),
+            CaptureArg::string_function(
+                StringFunctionLocalId(0),
+                StringFunctionExpr::panic(panic(), function_type(ValueType::String)),
+            ),
+            CaptureArg::float_function(
+                FloatFunctionLocalId(0),
+                FloatFunctionExpr::panic(panic(), function_type(ValueType::Float)),
+            ),
+            CaptureArg::bool_function(
+                BoolFunctionLocalId(0),
+                BoolFunctionExpr::panic(panic(), function_type(ValueType::Bool)),
+            ),
+            CaptureArg::nil_function(
+                NilFunctionLocalId(0),
+                NilFunctionExpr::panic(panic(), function_type(ValueType::Nil)),
+            ),
+            CaptureArg::tuple_function(
                 TupleFunctionLocalId(0),
-                tuple_function_expr(),
-            )],
-            &mut Frame::default(),
-            FrameLayout::default(),
-        )
-        .expect("arguments should bind");
-
-        assert_eq!(
-            frame
-                .get_tuple_function(TupleFunctionLocalId(0))
-                .runtime_id(),
-            TupleFunctionId(0),
-        );
-    }
-
-    #[test]
-    fn bind_function_value_arguments_propagates_argument_evaluation_errors_after_captures() {
-        let plan = plan();
-        let captures = [CaptureValue::int(IntLocalId(1), 10.into())];
-        let mut frame_layout = FrameLayout::default();
-        frame_layout.include_int(IntLocalId(1));
-
-        assert_expected_function_got_int(bind_function_value_arguments(
-            &plan,
-            &[CallArg::int(IntLocalId(0), failing_int_expr())],
-            &mut Frame::default(),
-            frame_layout,
-            &captures,
-        ));
-    }
-
-    #[test]
-    fn eval_capture_args_propagates_typed_argument_evaluation_errors() {
-        let plan = plan();
-
-        let cases = [
-            CaptureArg::int(IntLocalId(0), failing_int_expr()),
-            CaptureArg::string(StringLocalId(0), failing_string_expr()),
-            CaptureArg::float(FloatLocalId(0), failing_float_expr()),
-            CaptureArg::bool(BoolLocalId(0), failing_bool_expr()),
-            CaptureArg::nil(NilLocalId(0), failing_nil_expr()),
-            CaptureArg::tuple(TupleLocalId(0), failing_tuple_expr()),
-            CaptureArg::list(failing_list_local_expr(ListLocal::int(IntListLocalId(0)))),
-            CaptureArg::int_function(IntFunctionLocalId(0), failing_int_function_expr()),
-            CaptureArg::string_function(StringFunctionLocalId(0), failing_string_function_expr()),
-            CaptureArg::float_function(FloatFunctionLocalId(0), failing_float_function_expr()),
-            CaptureArg::bool_function(BoolFunctionLocalId(0), failing_bool_function_expr()),
-            CaptureArg::nil_function(NilFunctionLocalId(0), failing_nil_function_expr()),
-            CaptureArg::tuple_function(TupleFunctionLocalId(0), failing_tuple_function_expr()),
-            CaptureArg::list_function(
-                crate::plan::ListFunctionLocal::from_item_type(
-                    0,
-                    crate::plan::FunctionType::new(
-                        Vec::new(),
-                        crate::plan::ValueType::List(Box::new(crate::plan::ValueType::Int)),
-                    ),
-                    crate::plan::ValueType::Int,
+                TupleFunctionExpr::panic(
+                    panic(),
+                    function_type(ValueType::Tuple(vec![ValueType::Int])),
                 ),
-                failing_list_function_expr(),
+            ),
+            CaptureArg::list_function(
+                ListFunctionLocal::from_item_type(0, list_function_type.clone(), ValueType::Int),
+                ListFunctionExpr::panic(panic(), list_function_type, ValueType::Int),
             ),
             CaptureArg::function_function(
                 FunctionFunctionLocalId(0),
-                failing_function_function_expr(),
+                FunctionFunctionExpr::panic(panic(), function_function_type),
             ),
         ];
 
-        for arg in cases {
-            assert_expected_function_got_int(eval_capture_args(
-                &plan,
-                &mut Frame::default(),
-                &[arg],
-            ));
+        for capture in captures {
+            assert_eq!(run_module_capture(capture).to_string(), "panic: capture",);
         }
     }
 
-    #[test]
-    fn eval_capture_args_evaluates_all_capture_families() {
-        let plan = plan();
-        let captures = eval_capture_args(
-            &plan,
-            &mut Frame::default(),
-            &[
-                CaptureArg::int(IntLocalId(0), IntExpr::value(1.into())),
-                CaptureArg::string(StringLocalId(0), StringExpr::value("one".into())),
-                CaptureArg::float(FloatLocalId(0), FloatExpr::value(1.5)),
-                CaptureArg::bool(BoolLocalId(0), BoolExpr::value(true)),
-                CaptureArg::nil(NilLocalId(0), NilExpr::value()),
-                CaptureArg::tuple(TupleLocalId(0), tuple_expr()),
-                CaptureArg::list(int_list_local_expr(IntListLocalId(0))),
-                CaptureArg::int_function(IntFunctionLocalId(0), int_function_expr()),
-                CaptureArg::string_function(StringFunctionLocalId(0), string_function_expr()),
-                CaptureArg::float_function(FloatFunctionLocalId(0), float_function_expr()),
-                CaptureArg::bool_function(BoolFunctionLocalId(0), bool_function_expr()),
-                CaptureArg::nil_function(NilFunctionLocalId(0), nil_function_expr()),
-                CaptureArg::tuple_function(TupleFunctionLocalId(0), tuple_function_expr()),
-                CaptureArg::list_function(
-                    crate::plan::ListFunctionLocal::from_item_type(
-                        0,
-                        crate::plan::FunctionType::new(
-                            Vec::new(),
-                            crate::plan::ValueType::List(Box::new(crate::plan::ValueType::Int)),
-                        ),
-                        crate::plan::ValueType::Int,
-                    ),
-                    list_function_expr(),
-                ),
-                CaptureArg::function_function(FunctionFunctionLocalId(0), function_function_expr()),
-            ],
-        )
-        .expect("capture args should evaluate");
-
-        assert_eq!(
-            captures,
-            vec![
-                CaptureValue::int(IntLocalId(0), 1.into()),
-                CaptureValue::string(StringLocalId(0), "one".into()),
-                CaptureValue::float(FloatLocalId(0), 1.5),
-                CaptureValue::bool(BoolLocalId(0), true),
-                CaptureValue::nil(NilLocalId(0)),
-                CaptureValue::tuple(TupleLocalId(0), vec![Value::Int(1.into())]),
-                CaptureValue::list(crate::plan::ListLocalValue::Int {
-                    local: IntListLocalId(0),
-                    value: vec![1.into()],
-                }),
-                CaptureValue::int_function(IntFunctionLocalId(0), int_function_value()),
-                CaptureValue::string_function(StringFunctionLocalId(0), string_function_value()),
-                CaptureValue::float_function(FloatFunctionLocalId(0), float_function_value()),
-                CaptureValue::bool_function(BoolFunctionLocalId(0), bool_function_value()),
-                CaptureValue::nil_function(NilFunctionLocalId(0), nil_function_value()),
-                CaptureValue::tuple_function(TupleFunctionLocalId(0), tuple_function_value()),
-                CaptureValue::list_function(
-                    crate::plan::ListFunctionLocal::from_item_type(
-                        0,
-                        crate::plan::FunctionType::new(
-                            Vec::new(),
-                            crate::plan::ValueType::List(Box::new(crate::plan::ValueType::Int))
-                        ),
-                        crate::plan::ValueType::Int,
-                    ),
-                    list_function_value(),
-                ),
-                CaptureValue::function_function(
-                    FunctionFunctionLocalId(0),
-                    function_function_value(),
-                ),
-            ],
-        );
-    }
-
-    #[test]
-    fn eval_capture_args_evaluates_every_list_item_family() {
-        let plan = plan();
-        let captures = eval_capture_args(
-            &plan,
-            &mut Frame::default(),
-            &[
-                CaptureArg::list(int_list_local_expr(IntListLocalId(0))),
-                CaptureArg::list(string_list_local_expr(StringListLocalId(1))),
-                CaptureArg::list(float_list_local_expr(crate::plan::FloatListLocalId(2))),
-                CaptureArg::list(bool_list_local_expr(crate::plan::BoolListLocalId(3))),
-                CaptureArg::list(nil_list_local_expr(NilListLocalId(4))),
-                CaptureArg::list(tuple_list_local_expr(TupleListLocalId(5))),
-                CaptureArg::list(list_list_local_expr(ListListLocalId(6))),
-                CaptureArg::list(function_list_local_expr(crate::plan::FunctionListLocalId(
-                    7,
-                ))),
-            ],
-        )
-        .expect("list capture args should evaluate");
-
-        assert_eq!(
-            captures,
-            vec![
-                CaptureValue::list(ListLocalValue::Int {
-                    local: IntListLocalId(0),
-                    value: vec![1.into()],
-                }),
-                CaptureValue::list(ListLocalValue::String {
-                    local: StringListLocalId(1),
-                    value: vec!["one".into()],
-                }),
-                CaptureValue::list(ListLocalValue::Float {
-                    local: crate::plan::FloatListLocalId(2),
-                    value: vec![1.5],
-                }),
-                CaptureValue::list(ListLocalValue::Bool {
-                    local: crate::plan::BoolListLocalId(3),
-                    value: vec![true],
-                }),
-                CaptureValue::list(ListLocalValue::Nil {
-                    local: NilListLocalId(4),
-                    len: 1,
-                }),
-                CaptureValue::list(ListLocalValue::Tuple {
-                    local: TupleListLocalId(5),
-                    item_type: vec![ValueType::Int],
-                    value: vec![vec![Value::Int(2.into())]],
-                }),
-                CaptureValue::list(ListLocalValue::List {
-                    local: ListListLocalId(6),
-                    item_type: Box::new(ValueType::Int),
-                    value: vec![crate::plan::ListValue::int(vec![3.into()])],
-                }),
-                CaptureValue::list(ListLocalValue::Function {
-                    local: crate::plan::FunctionListLocalId(7),
-                    item_type: FunctionType::new(Vec::new(), ValueType::Int),
-                    value: vec![crate::plan::FunctionValue::new(
-                        crate::plan::RuntimeFunctionId::Int(IntFunctionId(0)),
-                        Vec::new(),
-                    )],
-                }),
-            ],
-        );
-    }
-
-    #[test]
-    fn eval_capture_args_propagates_list_capture_errors_for_every_item_family() {
-        let plan = plan();
-
-        for value in failing_list_local_exprs() {
-            assert_expected_function_got_int(eval_capture_args(
-                &plan,
-                &mut Frame::default(),
-                &[CaptureArg::list(value)],
-            ));
-        }
-    }
-
-    #[test]
-    fn bind_function_value_arguments_binds_all_capture_families() {
-        let plan = plan();
-        let frame = bind_function_value_arguments(
-            &plan,
-            &[],
-            &mut Frame::default(),
-            all_family_layout(),
-            &[
-                CaptureValue::int(IntLocalId(0), 1.into()),
-                CaptureValue::string(StringLocalId(0), "one".into()),
-                CaptureValue::float(FloatLocalId(0), 1.5),
-                CaptureValue::bool(BoolLocalId(0), true),
-                CaptureValue::nil(NilLocalId(0)),
-                CaptureValue::tuple(TupleLocalId(0), vec![Value::Int(1.into())]),
-                CaptureValue::list(crate::plan::ListLocalValue::Int {
-                    local: IntListLocalId(0),
-                    value: vec![1.into()],
-                }),
-                CaptureValue::int_function(IntFunctionLocalId(0), int_function_value()),
-                CaptureValue::string_function(StringFunctionLocalId(0), string_function_value()),
-                CaptureValue::float_function(FloatFunctionLocalId(0), float_function_value()),
-                CaptureValue::bool_function(BoolFunctionLocalId(0), bool_function_value()),
-                CaptureValue::nil_function(NilFunctionLocalId(0), nil_function_value()),
-                CaptureValue::tuple_function(TupleFunctionLocalId(0), tuple_function_value()),
-                CaptureValue::list_function(
-                    crate::plan::ListFunctionLocal::from_item_type(
-                        0,
-                        crate::plan::FunctionType::new(
-                            Vec::new(),
-                            crate::plan::ValueType::List(Box::new(crate::plan::ValueType::Int)),
-                        ),
-                        crate::plan::ValueType::Int,
-                    ),
-                    list_function_value(),
-                ),
-                CaptureValue::function_function(
-                    FunctionFunctionLocalId(0),
-                    function_function_value(),
-                ),
-            ],
-        )
-        .expect("captures should bind");
-
-        assert_eq!(frame.get_int(IntLocalId(0)), 1.into());
-        assert_eq!(frame.get_string(StringLocalId(0)), "one");
-        assert_eq!(frame.get_float(FloatLocalId(0)), 1.5);
-        assert!(frame.get_bool(BoolLocalId(0)));
-        assert_eq!(frame.get_nil(NilLocalId(0)), ());
-        assert_eq!(frame.get_tuple(TupleLocalId(0)), vec![Value::Int(1.into())]);
-        assert_eq!(frame.get_int_list(IntListLocalId(0)), vec![1.into()]);
-        assert_eq!(
-            frame.get_int_function(IntFunctionLocalId(0)).runtime_id(),
-            IntFunctionId(0),
-        );
-        assert_eq!(
-            frame
-                .get_string_function(StringFunctionLocalId(0))
-                .runtime_id(),
-            StringFunctionId(0),
-        );
-        assert_eq!(
-            frame
-                .get_float_function(FloatFunctionLocalId(0))
-                .runtime_id(),
-            FloatFunctionId(0),
-        );
-        assert_eq!(
-            frame.get_bool_function(BoolFunctionLocalId(0)).runtime_id(),
-            BoolFunctionId(0),
-        );
-        assert_eq!(
-            frame.get_nil_function(NilFunctionLocalId(0)).runtime_id(),
-            NilFunctionId(0),
-        );
-        assert_eq!(
-            frame
-                .get_tuple_function(TupleFunctionLocalId(0))
-                .runtime_id(),
-            TupleFunctionId(0),
-        );
-        assert_eq!(
-            frame
-                .get_list_function(&crate::plan::ListFunctionLocal::from_item_type(
-                    0,
-                    crate::plan::FunctionType::new(
-                        Vec::new(),
-                        crate::plan::ValueType::List(Box::new(crate::plan::ValueType::Int))
-                    ),
-                    crate::plan::ValueType::Int,
-                ))
-                .runtime_id(),
-            ListFunctionId::from_item_type(0, crate::plan::ValueType::Int),
-        );
-        assert_eq!(
-            frame
-                .get_function_function(FunctionFunctionLocalId(0))
-                .runtime_id(),
-            FunctionFunctionId::Int(IntFunctionFunctionId(0)),
-        );
-    }
-
-    #[test]
-    fn bind_function_value_arguments_binds_every_list_capture_family() {
-        let plan = plan();
-        let frame = bind_function_value_arguments(
-            &plan,
-            &[],
-            &mut Frame::default(),
-            all_family_layout(),
-            &[
-                CaptureValue::list(ListLocalValue::Int {
-                    local: IntListLocalId(0),
-                    value: vec![1.into()],
-                }),
-                CaptureValue::list(ListLocalValue::String {
-                    local: StringListLocalId(1),
-                    value: vec!["one".into()],
-                }),
-                CaptureValue::list(ListLocalValue::Float {
-                    local: crate::plan::FloatListLocalId(2),
-                    value: vec![1.5],
-                }),
-                CaptureValue::list(ListLocalValue::Bool {
-                    local: crate::plan::BoolListLocalId(3),
-                    value: vec![true],
-                }),
-                CaptureValue::list(ListLocalValue::Nil {
-                    local: NilListLocalId(4),
-                    len: 1,
-                }),
-                CaptureValue::list(ListLocalValue::Tuple {
-                    local: TupleListLocalId(5),
-                    item_type: vec![ValueType::Int],
-                    value: vec![vec![Value::Int(2.into())]],
-                }),
-                CaptureValue::list(ListLocalValue::List {
-                    local: ListListLocalId(6),
-                    item_type: Box::new(ValueType::Int),
-                    value: vec![crate::plan::ListValue::int(vec![3.into()])],
-                }),
-                CaptureValue::list(ListLocalValue::Function {
-                    local: crate::plan::FunctionListLocalId(7),
-                    item_type: FunctionType::new(Vec::new(), ValueType::Int),
-                    value: vec![crate::plan::FunctionValue::new(
-                        crate::plan::RuntimeFunctionId::Int(IntFunctionId(0)),
-                        Vec::new(),
-                    )],
-                }),
-            ],
-        )
-        .expect("list captures should bind");
-
-        assert_all_list_family_values(&frame);
-    }
-
-    fn assert_expected_function_got_int<T>(actual: Result<T, ExecutionError>) {
-        let error = actual.err().expect("call should fail");
-
-        assert_eq!(
-            error,
-            ExecutionError::function_return_family_mismatch(
-                FunctionReturnFamily::Function,
-                FunctionReturnFamily::Int,
-            ),
-        );
-    }
-
-    fn failing_function_function_expr() -> FunctionFunctionExpr {
-        FunctionFunctionExpr::function_call(
-            FunctionFunctionExpr::value(FunctionFunctionValue::new(
-                FunctionFunctionId::Int(IntFunctionFunctionId(0)),
-                Vec::new(),
-                FunctionType::new(Vec::new(), ValueType::Int),
-            )),
-            Vec::new(),
-            FunctionType::new(
-                Vec::new(),
-                ValueType::Function(Box::new(FunctionType::new(Vec::new(), ValueType::Int))),
-            ),
-        )
-    }
-
-    fn failing_int_expr() -> IntExpr {
-        IntExpr::function_call(failing_int_function_expr(), Vec::new())
-    }
-
-    fn failing_string_expr() -> StringExpr {
-        StringExpr::function_call(failing_string_function_expr(), Vec::new())
-    }
-
-    fn failing_float_expr() -> FloatExpr {
-        FloatExpr::function_call(failing_float_function_expr(), Vec::new())
-    }
-
-    fn failing_bool_expr() -> BoolExpr {
-        BoolExpr::function_call(failing_bool_function_expr(), Vec::new())
-    }
-
-    fn failing_nil_expr() -> NilExpr {
-        NilExpr::function_call(failing_nil_function_expr(), Vec::new())
-    }
-
-    fn failing_tuple_expr() -> TupleExpr {
-        TupleExpr::function_call(
-            failing_tuple_function_expr(),
-            Vec::new(),
-            vec![ValueType::Int],
-        )
-    }
-
-    fn failing_list_call_args() -> Vec<CallArg> {
-        failing_list_local_exprs()
-            .into_iter()
-            .map(CallArg::list)
-            .collect()
-    }
-
-    fn failing_list_local_exprs() -> Vec<ListLocalExpr> {
-        vec![
-            failing_list_local_expr(ListLocal::int(IntListLocalId(0))),
-            failing_list_local_expr(ListLocal::string(StringListLocalId(1))),
-            failing_list_local_expr(ListLocal::float(crate::plan::FloatListLocalId(2))),
-            failing_list_local_expr(ListLocal::bool(crate::plan::BoolListLocalId(3))),
-            failing_list_local_expr(ListLocal::nil(NilListLocalId(4))),
-            failing_list_local_expr(ListLocal::tuple(TupleListLocalId(5), vec![ValueType::Int])),
-            failing_list_local_expr(ListLocal::list(ListListLocalId(6), ValueType::Int)),
-            failing_list_local_expr(ListLocal::function(
-                crate::plan::FunctionListLocalId(7),
-                FunctionType::new(Vec::new(), ValueType::Int),
-            )),
-        ]
-    }
-
-    fn failing_list_local_expr(local: ListLocal) -> ListLocalExpr {
-        match local {
-            ListLocal::Int(local) => ListLocalExpr::Int {
-                local,
-                value: failing_list_expr_for_item(ValueType::Int)
-                    .into_int()
-                    .expect("expected int list expression"),
-            },
-            ListLocal::String(local) => ListLocalExpr::String {
-                local,
-                value: failing_list_expr_for_item(ValueType::String)
-                    .into_string()
-                    .expect("expected string list expression"),
-            },
-            ListLocal::Float(local) => ListLocalExpr::Float {
-                local,
-                value: failing_list_expr_for_item(ValueType::Float)
-                    .into_float()
-                    .expect("expected float list expression"),
-            },
-            ListLocal::Bool(local) => ListLocalExpr::Bool {
-                local,
-                value: failing_list_expr_for_item(ValueType::Bool)
-                    .into_bool()
-                    .expect("expected bool list expression"),
-            },
-            ListLocal::Nil(local) => ListLocalExpr::Nil {
-                local,
-                value: failing_list_expr_for_item(ValueType::Nil)
-                    .into_nil()
-                    .expect("expected nil list expression"),
-            },
-            ListLocal::Tuple { local, item_type } => ListLocalExpr::Tuple {
-                value: failing_list_expr_for_item(ValueType::Tuple(item_type.clone()))
-                    .into_tuple()
-                    .expect("expected tuple list expression"),
-                local,
-                item_type,
-            },
-            ListLocal::List { local, item_type } => ListLocalExpr::List {
-                value: failing_list_expr_for_item(ValueType::List(item_type.clone()))
-                    .into_list()
-                    .expect("expected nested list expression"),
-                local,
-                item_type,
-            },
-            ListLocal::Function { local, item_type } => ListLocalExpr::Function {
-                value: failing_list_expr_for_item(ValueType::Function(Box::new(item_type.clone())))
-                    .into_function()
-                    .expect("expected function list expression"),
-                local,
-                item_type,
-            },
-        }
-    }
-
-    fn failing_list_expr_for_item(item_type: ValueType) -> ListExpr {
-        ListExpr::function_call(
-            ListFunctionExpr::function_call(
-                failing_function_function_expr(),
-                Vec::new(),
-                FunctionType::new(Vec::new(), ValueType::List(Box::new(item_type.clone()))),
-                item_type,
-            ),
-            Vec::new(),
-        )
-    }
-
-    fn tuple_expr() -> TupleExpr {
-        TupleExpr::value(
-            vec![Expr::int(IntExpr::value(1.into()))],
-            vec![ValueType::Int],
-        )
-    }
-
-    fn int_list_local_expr(local: IntListLocalId) -> ListLocalExpr {
-        ListLocalExpr::Int {
-            local,
-            value: ListExpr::value(vec![Expr::int(IntExpr::value(1.into()))], ValueType::Int)
-                .into_int()
-                .expect("expected int list expression"),
-        }
-    }
-
-    fn string_list_local_expr(local: StringListLocalId) -> ListLocalExpr {
-        ListLocalExpr::String {
-            local,
-            value: ListExpr::value(
-                vec![Expr::string(StringExpr::value("one".into()))],
-                ValueType::String,
-            )
-            .into_string()
-            .expect("expected string list expression"),
-        }
-    }
-
-    fn float_list_local_expr(local: crate::plan::FloatListLocalId) -> ListLocalExpr {
-        ListLocalExpr::Float {
-            local,
-            value: ListExpr::value(vec![Expr::float(FloatExpr::value(1.5))], ValueType::Float)
-                .into_float()
-                .expect("expected float list expression"),
-        }
-    }
-
-    fn bool_list_local_expr(local: crate::plan::BoolListLocalId) -> ListLocalExpr {
-        ListLocalExpr::Bool {
-            local,
-            value: ListExpr::value(vec![Expr::bool(BoolExpr::value(true))], ValueType::Bool)
-                .into_bool()
-                .expect("expected bool list expression"),
-        }
-    }
-
-    fn nil_list_local_expr(local: NilListLocalId) -> ListLocalExpr {
-        ListLocalExpr::Nil {
-            local,
-            value: ListExpr::value(vec![Expr::nil(NilExpr::value())], ValueType::Nil)
-                .into_nil()
-                .expect("expected nil list expression"),
-        }
-    }
-
-    fn tuple_list_local_expr(local: TupleListLocalId) -> ListLocalExpr {
-        ListLocalExpr::Tuple {
-            local,
-            item_type: vec![ValueType::Int],
-            value: ListExpr::value(
-                vec![Expr::tuple(TupleExpr::value(
-                    vec![Expr::int(IntExpr::value(2.into()))],
-                    vec![ValueType::Int],
-                ))],
-                ValueType::Tuple(vec![ValueType::Int]),
-            )
-            .into_tuple()
-            .expect("expected tuple list expression"),
-        }
-    }
-
-    fn list_list_local_expr(local: ListListLocalId) -> ListLocalExpr {
-        ListLocalExpr::List {
-            local,
-            item_type: Box::new(ValueType::Int),
-            value: ListExpr::value(
-                vec![Expr::list(ListExpr::value(
-                    vec![Expr::int(IntExpr::value(3.into()))],
-                    ValueType::Int,
-                ))],
-                ValueType::List(Box::new(ValueType::Int)),
-            )
-            .into_list()
-            .expect("expected nested list expression"),
-        }
-    }
-
-    fn function_list_local_expr(local: crate::plan::FunctionListLocalId) -> ListLocalExpr {
-        let item_type = FunctionType::new(Vec::new(), ValueType::Int);
-        ListLocalExpr::Function {
-            local,
-            item_type: item_type.clone(),
-            value: ListExpr::value(
-                vec![Expr::function(FunctionExpr::value(
-                    crate::plan::FunctionValue::new(
-                        crate::plan::RuntimeFunctionId::Int(IntFunctionId(0)),
-                        Vec::new(),
-                    ),
-                ))],
-                ValueType::Function(Box::new(item_type)),
-            )
-            .into_function()
-            .expect("expected function list expression"),
-        }
-    }
-
-    fn assert_all_list_family_values(frame: &Frame) {
-        assert_eq!(frame.get_int_list(IntListLocalId(0)), vec![1.into()]);
-        assert_eq!(
-            frame.get_string_list(StringListLocalId(1)),
-            vec![ecow::EcoString::from("one")]
-        );
-        assert_eq!(
-            frame.get_float_list(crate::plan::FloatListLocalId(2)),
-            vec![1.5]
-        );
-        assert_eq!(
-            frame.get_bool_list(crate::plan::BoolListLocalId(3)),
-            vec![true]
-        );
-        assert_eq!(frame.get_nil_list(NilListLocalId(4)), 1);
-        assert_eq!(
-            frame.get_tuple_list(TupleListLocalId(5)),
-            vec![vec![Value::Int(2.into())]],
-        );
-        assert_eq!(
-            frame.get_list_list(ListListLocalId(6)),
-            vec![crate::plan::ListValue::int(vec![3.into()])],
-        );
-        assert_eq!(
-            frame.get_function_list(crate::plan::FunctionListLocalId(7)),
-            vec![crate::plan::FunctionValue::new(
-                crate::plan::RuntimeFunctionId::Int(IntFunctionId(0)),
-                Vec::new(),
-            )],
-        );
-    }
-
-    fn int_function_expr() -> IntFunctionExpr {
-        IntFunctionExpr::value(int_function_value())
-    }
-
-    fn int_function_value() -> IntFunctionValue {
-        IntFunctionValue::new(IntFunctionId(0), Vec::new())
-    }
-
-    fn string_function_expr() -> StringFunctionExpr {
-        StringFunctionExpr::value(string_function_value())
-    }
-
-    fn string_function_value() -> StringFunctionValue {
-        StringFunctionValue::new(StringFunctionId(0), Vec::new())
-    }
-
-    fn failing_int_function_expr() -> IntFunctionExpr {
-        IntFunctionExpr::function_call(
-            failing_function_function_expr(),
-            Vec::new(),
-            FunctionType::new(Vec::new(), ValueType::Int),
-        )
-    }
-
-    fn failing_string_function_expr() -> StringFunctionExpr {
-        StringFunctionExpr::function_call(
-            failing_function_function_expr(),
-            Vec::new(),
-            FunctionType::new(Vec::new(), ValueType::String),
-        )
-    }
-
-    fn failing_float_function_expr() -> FloatFunctionExpr {
-        FloatFunctionExpr::function_call(
-            failing_function_function_expr(),
-            Vec::new(),
-            FunctionType::new(Vec::new(), ValueType::Float),
-        )
-    }
-
-    fn float_function_expr() -> FloatFunctionExpr {
-        FloatFunctionExpr::value(float_function_value())
-    }
-
-    fn float_function_value() -> FloatFunctionValue {
-        FloatFunctionValue::new(FloatFunctionId(0), Vec::new())
-    }
-
-    fn failing_bool_function_expr() -> BoolFunctionExpr {
-        BoolFunctionExpr::function_call(
-            failing_function_function_expr(),
-            Vec::new(),
-            FunctionType::new(Vec::new(), ValueType::Bool),
-        )
-    }
-
-    fn bool_function_expr() -> BoolFunctionExpr {
-        BoolFunctionExpr::value(bool_function_value())
-    }
-
-    fn bool_function_value() -> BoolFunctionValue {
-        BoolFunctionValue::new(BoolFunctionId(0), Vec::new())
-    }
-
-    fn failing_nil_function_expr() -> NilFunctionExpr {
-        NilFunctionExpr::function_call(
-            failing_function_function_expr(),
-            Vec::new(),
-            FunctionType::new(Vec::new(), ValueType::Nil),
-        )
-    }
-
-    fn nil_function_expr() -> NilFunctionExpr {
-        NilFunctionExpr::value(nil_function_value())
-    }
-
-    fn nil_function_value() -> NilFunctionValue {
-        NilFunctionValue::new(NilFunctionId(0), Vec::new())
-    }
-
-    fn failing_tuple_function_expr() -> TupleFunctionExpr {
-        TupleFunctionExpr::function_call(
-            failing_function_function_expr(),
-            Vec::new(),
-            FunctionType::new(Vec::new(), ValueType::Tuple(vec![ValueType::Int])),
-        )
-    }
-
-    fn failing_list_function_expr() -> ListFunctionExpr {
-        ListFunctionExpr::function_call(
-            failing_function_function_expr(),
-            Vec::new(),
-            FunctionType::new(Vec::new(), ValueType::List(Box::new(ValueType::Int))),
-            ValueType::Int,
-        )
-    }
-
-    fn tuple_function_expr() -> TupleFunctionExpr {
-        TupleFunctionExpr::value(tuple_function_value())
-    }
-
-    fn tuple_function_value() -> TupleFunctionValue {
-        TupleFunctionValue::new(TupleFunctionId(0), Vec::new(), vec![ValueType::Int])
-    }
-
-    fn list_function_expr() -> ListFunctionExpr {
-        ListFunctionExpr::value(list_function_value())
-    }
-
-    fn list_function_value() -> ListFunctionValue {
-        ListFunctionValue::new(
-            ListFunctionId::from_item_type(0, crate::plan::ValueType::Int),
-            Vec::new(),
-        )
-    }
-
-    fn function_function_expr() -> FunctionFunctionExpr {
-        FunctionFunctionExpr::value(function_function_value())
-    }
-
-    fn function_function_value() -> FunctionFunctionValue {
-        FunctionFunctionValue::new(
-            FunctionFunctionId::Int(IntFunctionFunctionId(0)),
-            Vec::new(),
-            FunctionType::new(Vec::new(), ValueType::Int),
-        )
-    }
-
-    fn all_family_layout() -> FrameLayout {
-        let mut layout = FrameLayout::default();
-        layout.include_int(IntLocalId(0));
-        layout.include_string(StringLocalId(0));
-        layout.include_float(FloatLocalId(0));
-        layout.include_bool(BoolLocalId(0));
-        layout.include_nil(NilLocalId(0));
-        layout.include_tuple(TupleLocalId(0));
-        layout.include_list(ListLocal::int(IntListLocalId(0)));
-        layout.include_list(ListLocal::string(StringListLocalId(1)));
-        layout.include_list(ListLocal::float(crate::plan::FloatListLocalId(2)));
-        layout.include_list(ListLocal::bool(crate::plan::BoolListLocalId(3)));
-        layout.include_list(ListLocal::nil(NilListLocalId(4)));
-        layout.include_list(ListLocal::tuple(TupleListLocalId(5), vec![ValueType::Int]));
-        layout.include_list(ListLocal::list(ListListLocalId(6), ValueType::Int));
-        layout.include_list(ListLocal::function(
-            crate::plan::FunctionListLocalId(7),
-            FunctionType::new(Vec::new(), ValueType::Int),
-        ));
-        layout.include_int_function(IntFunctionLocalId(0));
-        layout.include_string_function(StringFunctionLocalId(0));
-        layout.include_float_function(FloatFunctionLocalId(0));
-        layout.include_bool_function(BoolFunctionLocalId(0));
-        layout.include_nil_function(NilFunctionLocalId(0));
-        layout.include_tuple_function(TupleFunctionLocalId(0));
-        layout.include_list_function(crate::plan::ListFunctionLocal::from_item_type(
-            0,
-            crate::plan::FunctionType::new(
-                Vec::new(),
-                crate::plan::ValueType::List(Box::new(crate::plan::ValueType::Int)),
-            ),
-            crate::plan::ValueType::Int,
-        ));
-        layout.include_function_function(FunctionFunctionLocalId(0));
-        layout
-    }
-
-    fn plan() -> ExecutionPlan {
-        ExecutionPlan::from_module_plan(crate::plan::ModulePlan::new(
+    fn run_module_capture(capture: CaptureArg) -> ExecutionError {
+        let function_type = FunctionType::new(Vec::new(), ValueType::Int);
+        let expression =
+            IntFunctionExpr::closure(IntFunctionId(1), Vec::new(), vec![capture], function_type);
+        let main = FunctionPlan::new(
+            FunctionId::new(0),
             "main".into(),
-            FunctionPlan::new(
-                FunctionId::new(0),
-                "main".into(),
-                Vec::new(),
-                Vec::new(),
-                ReturnExpr::int(crate::plan::IntFunctionId(0), IntExpr::value(1.into())),
-            ),
             Vec::new(),
-        ))
+            Vec::new(),
+            ReturnExpr::int_function(IntFunctionFunctionId(0), expression),
+        );
+        let module = ModulePlan::new("main".into(), main, Vec::new());
+        let plan = crate::ExecutionPlan::from_module_plan(module);
+
+        run_main(&plan).expect_err("capture expression should fail at runtime")
     }
 }

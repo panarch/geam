@@ -31,7 +31,7 @@ impl FrameLayout {
         expression: &IntFunctionExpr,
     ) {
         match expression.kind() {
-            IntFunctionExprKind::Value(_) => {}
+            IntFunctionExprKind::Reference(_) => {}
             IntFunctionExprKind::Panic(panic) => self.include_panic_expr(panic),
             IntFunctionExprKind::Closure { captures, .. } => self.include_capture_args(captures),
             IntFunctionExprKind::LocalGet { local, .. } => self.include_int_function(*local),
@@ -96,7 +96,7 @@ impl FrameLayout {
         expression: &FloatFunctionExpr,
     ) {
         match expression.kind() {
-            FloatFunctionExprKind::Value(_) => {}
+            FloatFunctionExprKind::Reference(_) => {}
             FloatFunctionExprKind::Panic(panic) => self.include_panic_expr(panic),
             FloatFunctionExprKind::Closure { captures, .. } => self.include_capture_args(captures),
             FloatFunctionExprKind::LocalGet { local, .. } => self.include_float_function(*local),
@@ -161,7 +161,7 @@ impl FrameLayout {
         expression: &StringFunctionExpr,
     ) {
         match expression.kind() {
-            StringFunctionExprKind::Value(_) => {}
+            StringFunctionExprKind::Reference(_) => {}
             StringFunctionExprKind::Panic(panic) => self.include_panic_expr(panic),
             StringFunctionExprKind::Closure { captures, .. } => self.include_capture_args(captures),
             StringFunctionExprKind::LocalGet { local, .. } => {
@@ -228,7 +228,7 @@ impl FrameLayout {
         expression: &BoolFunctionExpr,
     ) {
         match expression.kind() {
-            BoolFunctionExprKind::Value(_) => {}
+            BoolFunctionExprKind::Reference(_) => {}
             BoolFunctionExprKind::Panic(panic) => self.include_panic_expr(panic),
             BoolFunctionExprKind::Closure { captures, .. } => self.include_capture_args(captures),
             BoolFunctionExprKind::LocalGet { local, .. } => self.include_bool_function(*local),
@@ -293,7 +293,7 @@ impl FrameLayout {
         expression: &NilFunctionExpr,
     ) {
         match expression.kind() {
-            NilFunctionExprKind::Value(_) => {}
+            NilFunctionExprKind::Reference(_) => {}
             NilFunctionExprKind::Panic(panic) => self.include_panic_expr(panic),
             NilFunctionExprKind::Closure { captures, .. } => self.include_capture_args(captures),
             NilFunctionExprKind::LocalGet { local, .. } => self.include_nil_function(*local),
@@ -358,7 +358,7 @@ impl FrameLayout {
         expression: &FunctionFunctionExpr,
     ) {
         match expression.kind() {
-            FunctionFunctionExprKind::Value(_) => {}
+            FunctionFunctionExprKind::Reference(_) => {}
             FunctionFunctionExprKind::Panic(panic) => self.include_panic_expr(panic),
             FunctionFunctionExprKind::Closure { captures, .. } => {
                 self.include_capture_args(captures);
@@ -427,7 +427,7 @@ impl FrameLayout {
         expression: &TupleFunctionExpr,
     ) {
         match expression.kind() {
-            TupleFunctionExprKind::Value(_) => {}
+            TupleFunctionExprKind::Reference(_) => {}
             TupleFunctionExprKind::Panic(panic) => self.include_panic_expr(panic),
             TupleFunctionExprKind::Closure { captures, .. } => self.include_capture_args(captures),
             TupleFunctionExprKind::LocalGet { local, .. } => self.include_tuple_function(*local),
@@ -492,7 +492,7 @@ impl FrameLayout {
         expression: &ListFunctionExpr,
     ) {
         match expression.kind() {
-            ListFunctionExprKind::Value(_) => {}
+            ListFunctionExprKind::Reference(_) => {}
             ListFunctionExprKind::Panic(panic) => self.include_panic_expr(panic),
             ListFunctionExprKind::Closure { captures, .. } => self.include_capture_args(captures),
             ListFunctionExprKind::LocalGet { local, .. } => {

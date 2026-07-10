@@ -4,8 +4,8 @@ use crate::plan::{
     FloatFunctionExpr, FloatFunctionFunctionId, FloatFunctionId, FloatFunctionLocalId,
     FloatListFunctionId, FloatListItem, FloatListLocalId, FloatLocalId, FunctionFunctionExpr,
     FunctionFunctionFunctionId, FunctionFunctionId, FunctionFunctionLocalId, FunctionId,
-    FunctionListFunctionId, FunctionListItem, FunctionListLocalId, FunctionPlan, FunctionType,
-    FunctionValue, IntExpr, IntFunctionExpr, IntFunctionFunctionId, IntFunctionId,
+    FunctionListFunctionId, FunctionListItem, FunctionListLocalId, FunctionPlan, FunctionReference,
+    FunctionType, IntExpr, IntFunctionExpr, IntFunctionFunctionId, IntFunctionId,
     IntFunctionLocalId, IntListFunctionId, IntListItem, IntListLocalId, IntLocalId, ListExpr,
     ListFunctionExpr, ListFunctionFunctionId, ListFunctionId, ListFunctionLocal,
     ListListFunctionId, ListListItem, ListListLocalId, ListLocal, ListLocalExpr, LocalId, NilExpr,
@@ -1148,8 +1148,8 @@ impl FunctionInfo {
         self.return_type.clone()
     }
 
-    pub(super) fn value(&self) -> FunctionValue {
-        FunctionValue::new(self.runtime_id.clone(), self.param_locals())
+    pub(super) fn reference(&self) -> FunctionReference {
+        FunctionReference::new(self.runtime_id.clone(), self.param_locals())
     }
 
     pub(super) fn param_locals(&self) -> Vec<ParamLocal> {
@@ -1513,13 +1513,13 @@ mod tests {
         BoolLocalId, CaptureArg, FloatFunctionExpr, FloatFunctionId, FloatFunctionLocalId,
         FloatListExpr, FloatListItem, FloatListLocalId, FloatLocalId, FunctionFunctionExpr,
         FunctionFunctionLocalId, FunctionListExpr, FunctionListItem, FunctionListLocalId,
-        FunctionType, FunctionValue, IntFunctionId, IntFunctionLocalId, IntListExpr, IntListItem,
-        IntListLocalId, IntLocalId, ListExpr, ListFunctionExpr, ListListExpr, ListListItem,
-        ListListLocalId, ListLocal, ListLocalExpr, LocalId, NilFunctionExpr, NilFunctionLocalId,
-        NilListExpr, NilListItem, NilListLocalId, NilLocalId, ParamLocal, RuntimeFunctionId,
-        StringFunctionExpr, StringFunctionLocalId, StringListExpr, StringListItem,
-        StringListLocalId, StringLocalId, TupleFunctionExpr, TupleFunctionLocalId, TupleListExpr,
-        TupleListItem, TupleListLocalId, TupleLocalId, ValueType,
+        FunctionType, IntFunctionId, IntFunctionLocalId, IntListExpr, IntListItem, IntListLocalId,
+        IntLocalId, ListExpr, ListFunctionExpr, ListListExpr, ListListItem, ListListLocalId,
+        ListLocal, ListLocalExpr, LocalId, NilFunctionExpr, NilFunctionLocalId, NilListExpr,
+        NilListItem, NilListLocalId, NilLocalId, ParamLocal, RuntimeFunctionId, StringFunctionExpr,
+        StringFunctionLocalId, StringListExpr, StringListItem, StringListLocalId, StringLocalId,
+        TupleFunctionExpr, TupleFunctionLocalId, TupleListExpr, TupleListItem, TupleListLocalId,
+        TupleLocalId, ValueType,
     };
     use ecow::EcoString;
     use gleam_core::type_;
@@ -1552,16 +1552,13 @@ mod tests {
         let functions = HashMap::<EcoString, FunctionInfo>::new();
         let mut anonymous = AnonymousFunctions::default();
         let mut context = PlanContext::new(&module, &functions, &mut anonymous);
-        let value = function_value();
+        let type_ = int_function_type();
 
-        let local = context.define_int_function_local("f".into(), value.type_());
+        let local = context.define_int_function_local("f".into(), type_.clone());
 
         assert_eq!(
             context.lookup_function_local(&"f".into()),
-            Some(FunctionLocalBinding::Int {
-                local,
-                type_: value.type_(),
-            })
+            Some(FunctionLocalBinding::Int { local, type_ })
         );
         assert_eq!(context.lookup_local(&"f".into()), None);
     }
@@ -2120,16 +2117,16 @@ mod tests {
         let functions = HashMap::<EcoString, FunctionInfo>::new();
         let mut anonymous = AnonymousFunctions::default();
         let mut context = PlanContext::new(&module, &functions, &mut anonymous);
-        let value = function_value();
+        let type_ = int_function_type();
 
         context.define_int_local("f".into());
-        context.define_int_function_local("f".into(), value.type_());
+        context.define_int_function_local("f".into(), type_.clone());
 
         assert_eq!(
             context.lookup_function_local(&"f".into()),
             Some(FunctionLocalBinding::Int {
                 local: IntFunctionLocalId(0),
-                type_: value.type_(),
+                type_,
             })
         );
         assert_eq!(context.lookup_local(&"f".into()), None);
@@ -2142,7 +2139,7 @@ mod tests {
         let mut anonymous = AnonymousFunctions::default();
         let mut context = PlanContext::new(&module, &functions, &mut anonymous);
 
-        context.define_int_function_local("f".into(), function_value().type_());
+        context.define_int_function_local("f".into(), int_function_type());
         let local = context.define_int_local("f".into());
 
         assert_eq!(context.lookup_function_local(&"f".into()), None);
@@ -2472,7 +2469,7 @@ mod tests {
         FunctionType::new(vec![ValueType::Int], ValueType::String)
     }
 
-    fn function_value() -> FunctionValue {
-        FunctionValue::new(RuntimeFunctionId::Int(IntFunctionId(0)), Vec::new())
+    fn int_function_type() -> FunctionType {
+        FunctionType::new(Vec::new(), ValueType::Int)
     }
 }

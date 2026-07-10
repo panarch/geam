@@ -3,22 +3,28 @@ use super::{
     IntoValueType, ListFunction, NilFunction, StringFunction, TupleFunction,
 };
 use crate::plan::{
-    BoolFunctionExpr, BoolFunctionId, BoolFunctionLocalId, BoolFunctionValue, CaptureArg,
-    FloatFunctionExpr, FloatFunctionId, FloatFunctionLocalId, FloatFunctionValue, FunctionExpr,
-    FunctionFunctionExpr, FunctionFunctionId, FunctionFunctionLocalId, FunctionFunctionValue,
-    FunctionType, FunctionValue, IntFunctionExpr, IntFunctionId, IntFunctionLocalId,
-    IntFunctionValue, ListFunctionExpr, ListFunctionId, ListFunctionLocal, ListFunctionValue,
-    NilFunctionExpr, NilFunctionId, NilFunctionLocalId, NilFunctionValue, RuntimeFunctionId,
-    StringFunctionExpr, StringFunctionId, StringFunctionLocalId, StringFunctionValue,
-    TupleFunctionExpr, TupleFunctionId, TupleFunctionLocalId, TupleFunctionValue, ValueType,
+    BoolFunctionExpr, BoolFunctionId, BoolFunctionLocalId, BoolFunctionReference, CaptureArg,
+    FloatFunctionExpr, FloatFunctionId, FloatFunctionLocalId, FloatFunctionReference, FunctionExpr,
+    FunctionFunctionExpr, FunctionFunctionId, FunctionFunctionLocalId, FunctionFunctionReference,
+    FunctionReference, FunctionType, IntFunctionExpr, IntFunctionId, IntFunctionLocalId,
+    IntFunctionReference, ListFunctionExpr, ListFunctionId, ListFunctionLocal,
+    ListFunctionReference, NilFunctionExpr, NilFunctionId, NilFunctionLocalId,
+    NilFunctionReference, ParamLocal, RuntimeFunctionId, StringFunctionExpr, StringFunctionId,
+    StringFunctionLocalId, StringFunctionReference, TupleFunctionExpr, TupleFunctionId,
+    TupleFunctionLocalId, TupleFunctionReference, ValueType,
 };
+
 use ecow::EcoString;
+
+fn function_type(params: &[ParamLocal], return_: ValueType) -> FunctionType {
+    FunctionType::new(params.iter().map(ParamLocal::value_type).collect(), return_)
+}
 
 pub(crate) fn function_ref(
     runtime_id: RuntimeFunctionId,
     params: impl IntoIterator<Item = impl IntoParamLocal>,
 ) -> Function {
-    Function(FunctionExpr::value(FunctionValue::new(
+    Function(FunctionExpr::reference(FunctionReference::new(
         runtime_id,
         params
             .into_iter()
@@ -31,7 +37,7 @@ pub(crate) fn int_function_ref(
     runtime_id: usize,
     params: impl IntoIterator<Item = impl IntoParamLocal>,
 ) -> IntFunction {
-    IntFunction(IntFunctionExpr::value(IntFunctionValue::new(
+    IntFunction(IntFunctionExpr::reference(IntFunctionReference::new(
         IntFunctionId(runtime_id),
         params
             .into_iter()
@@ -49,7 +55,7 @@ pub(crate) fn int_function_closure(
         .into_iter()
         .map(IntoParamLocal::into_param_local)
         .collect::<Vec<_>>();
-    let type_ = FunctionType::from_params(&params, ValueType::Int);
+    let type_ = function_type(&params, ValueType::Int);
 
     IntFunction(IntFunctionExpr::closure(
         IntFunctionId(runtime_id),
@@ -63,7 +69,7 @@ pub(crate) fn string_function_ref(
     runtime_id: usize,
     params: impl IntoIterator<Item = impl IntoParamLocal>,
 ) -> StringFunction {
-    StringFunction(StringFunctionExpr::value(StringFunctionValue::new(
+    StringFunction(StringFunctionExpr::reference(StringFunctionReference::new(
         StringFunctionId(runtime_id),
         params
             .into_iter()
@@ -76,7 +82,7 @@ pub(crate) fn float_function_ref(
     runtime_id: usize,
     params: impl IntoIterator<Item = impl IntoParamLocal>,
 ) -> FloatFunction {
-    FloatFunction(FloatFunctionExpr::value(FloatFunctionValue::new(
+    FloatFunction(FloatFunctionExpr::reference(FloatFunctionReference::new(
         FloatFunctionId(runtime_id),
         params
             .into_iter()
@@ -94,7 +100,7 @@ pub(crate) fn float_function_closure(
         .into_iter()
         .map(IntoParamLocal::into_param_local)
         .collect::<Vec<_>>();
-    let type_ = FunctionType::from_params(&params, ValueType::Float);
+    let type_ = function_type(&params, ValueType::Float);
 
     FloatFunction(FloatFunctionExpr::closure(
         FloatFunctionId(runtime_id),
@@ -108,7 +114,7 @@ pub(crate) fn bool_function_ref(
     runtime_id: usize,
     params: impl IntoIterator<Item = impl IntoParamLocal>,
 ) -> BoolFunction {
-    BoolFunction(BoolFunctionExpr::value(BoolFunctionValue::new(
+    BoolFunction(BoolFunctionExpr::reference(BoolFunctionReference::new(
         BoolFunctionId(runtime_id),
         params
             .into_iter()
@@ -121,7 +127,7 @@ pub(crate) fn nil_function_ref(
     runtime_id: usize,
     params: impl IntoIterator<Item = impl IntoParamLocal>,
 ) -> NilFunction {
-    NilFunction(NilFunctionExpr::value(NilFunctionValue::new(
+    NilFunction(NilFunctionExpr::reference(NilFunctionReference::new(
         NilFunctionId(runtime_id),
         params
             .into_iter()
@@ -135,17 +141,19 @@ pub(crate) fn tuple_function_ref(
     params: impl IntoIterator<Item = impl IntoParamLocal>,
     return_type: impl IntoIterator<Item = impl IntoValueType>,
 ) -> TupleFunction {
-    TupleFunction(TupleFunctionExpr::value(TupleFunctionValue::new(
-        TupleFunctionId(runtime_id),
-        params
-            .into_iter()
-            .map(IntoParamLocal::into_param_local)
-            .collect(),
+    TupleFunction(TupleFunctionExpr::reference(
+        TupleFunctionReference::new(
+            TupleFunctionId(runtime_id),
+            params
+                .into_iter()
+                .map(IntoParamLocal::into_param_local)
+                .collect(),
+        ),
         return_type
             .into_iter()
             .map(IntoValueType::into_value_type)
             .collect(),
-    )))
+    ))
 }
 
 pub(crate) fn list_function_ref(
@@ -154,7 +162,7 @@ pub(crate) fn list_function_ref(
     item_type: impl IntoValueType,
 ) -> ListFunction {
     let item_type = item_type.into_value_type();
-    ListFunction(ListFunctionExpr::value(ListFunctionValue::new(
+    ListFunction(ListFunctionExpr::reference(ListFunctionReference::new(
         ListFunctionId::from_item_type(runtime_id, item_type),
         params
             .into_iter()
@@ -177,7 +185,7 @@ pub(crate) fn tuple_function_closure(
         .into_iter()
         .map(IntoValueType::into_value_type)
         .collect::<Vec<_>>();
-    let type_ = FunctionType::from_params(&params, ValueType::Tuple(return_type.clone()));
+    let type_ = function_type(&params, ValueType::Tuple(return_type.clone()));
 
     TupleFunction(TupleFunctionExpr::closure(
         TupleFunctionId(runtime_id),
@@ -224,14 +232,16 @@ pub(crate) fn function_function_ref(
     params: impl IntoIterator<Item = impl IntoParamLocal>,
     return_type: FunctionType,
 ) -> FunctionFunction {
-    FunctionFunction(FunctionFunctionExpr::value(FunctionFunctionValue::new(
-        runtime_id,
-        params
-            .into_iter()
-            .map(IntoParamLocal::into_param_local)
-            .collect(),
+    FunctionFunction(FunctionFunctionExpr::reference(
+        FunctionFunctionReference::new(
+            runtime_id,
+            params
+                .into_iter()
+                .map(IntoParamLocal::into_param_local)
+                .collect(),
+        ),
         return_type,
-    )))
+    ))
 }
 
 pub(crate) fn function_function_closure(
@@ -244,8 +254,7 @@ pub(crate) fn function_function_closure(
         .into_iter()
         .map(IntoParamLocal::into_param_local)
         .collect::<Vec<_>>();
-    let type_ =
-        FunctionType::from_params(&params, ValueType::Function(Box::new(return_type.clone())));
+    let type_ = function_type(&params, ValueType::Function(Box::new(return_type.clone())));
 
     FunctionFunction(FunctionFunctionExpr::closure(
         runtime_id,
@@ -313,7 +322,7 @@ pub(crate) fn local_tuple_function(
     TupleFunction(TupleFunctionExpr::local_get(
         TupleFunctionLocalId(local),
         name.into(),
-        function_type(
+        dsl_function_type(
             params,
             ValueType::Tuple(
                 return_type
@@ -356,26 +365,26 @@ pub(crate) fn local_function_function(
 }
 
 fn int_function_type(params: impl IntoIterator<Item = impl IntoValueType>) -> FunctionType {
-    function_type(params, ValueType::Int)
+    dsl_function_type(params, ValueType::Int)
 }
 
 fn string_function_type(params: impl IntoIterator<Item = impl IntoValueType>) -> FunctionType {
-    function_type(params, ValueType::String)
+    dsl_function_type(params, ValueType::String)
 }
 
 fn float_function_type(params: impl IntoIterator<Item = impl IntoValueType>) -> FunctionType {
-    function_type(params, ValueType::Float)
+    dsl_function_type(params, ValueType::Float)
 }
 
 fn bool_function_type(params: impl IntoIterator<Item = impl IntoValueType>) -> FunctionType {
-    function_type(params, ValueType::Bool)
+    dsl_function_type(params, ValueType::Bool)
 }
 
 fn nil_function_type(params: impl IntoIterator<Item = impl IntoValueType>) -> FunctionType {
-    function_type(params, ValueType::Nil)
+    dsl_function_type(params, ValueType::Nil)
 }
 
-fn function_type(
+fn dsl_function_type(
     params: impl IntoIterator<Item = impl IntoValueType>,
     return_: ValueType,
 ) -> FunctionType {
@@ -399,14 +408,15 @@ mod tests {
         tuple_function_closure, tuple_function_ref,
     };
     use crate::plan::{
-        BoolFunctionExpr, BoolFunctionId, BoolFunctionLocalId, BoolFunctionValue,
-        FloatFunctionExpr, FloatFunctionId, FloatFunctionLocalId, FloatFunctionValue, FunctionExpr,
-        FunctionFunctionExpr, FunctionFunctionId, FunctionFunctionLocalId, FunctionType,
-        FunctionValue, IntFunctionExpr, IntFunctionFunctionId, IntFunctionId, IntFunctionLocalId,
-        IntFunctionValue, ListFunctionExpr, ListFunctionId, ListFunctionValue, NilFunctionExpr,
-        NilFunctionId, NilFunctionLocalId, NilFunctionValue, ParamLocal, RuntimeFunctionId,
-        StringFunctionExpr, StringFunctionId, StringFunctionLocalId, StringFunctionValue,
-        TupleFunctionExpr, TupleFunctionId, TupleFunctionLocalId, TupleFunctionValue, ValueType,
+        BoolFunctionExpr, BoolFunctionId, BoolFunctionLocalId, BoolFunctionReference,
+        FloatFunctionExpr, FloatFunctionId, FloatFunctionLocalId, FloatFunctionReference,
+        FunctionExpr, FunctionFunctionExpr, FunctionFunctionId, FunctionFunctionLocalId,
+        FunctionReference, FunctionType, IntFunctionExpr, IntFunctionFunctionId, IntFunctionId,
+        IntFunctionLocalId, IntFunctionReference, ListFunctionExpr, ListFunctionId,
+        ListFunctionReference, NilFunctionExpr, NilFunctionId, NilFunctionLocalId,
+        NilFunctionReference, ParamLocal, RuntimeFunctionId, StringFunctionExpr, StringFunctionId,
+        StringFunctionLocalId, StringFunctionReference, TupleFunctionExpr, TupleFunctionId,
+        TupleFunctionLocalId, TupleFunctionReference, ValueType,
     };
     use crate::planner::dsl::expression::{Function, float, int};
 
@@ -417,7 +427,7 @@ mod tests {
                 RuntimeFunctionId::Int(crate::plan::IntFunctionId(0)),
                 [crate::plan::LocalId::Int(crate::plan::IntLocalId(0))],
             )),
-            FunctionExpr::value(FunctionValue::new(
+            FunctionExpr::reference(FunctionReference::new(
                 RuntimeFunctionId::Int(IntFunctionId(0)),
                 vec![ParamLocal::int(crate::plan::IntLocalId(0))],
             )),
@@ -428,7 +438,7 @@ mod tests {
                 [crate::plan::LocalId::String(crate::plan::StringLocalId(0))]
             )
             .0,
-            StringFunctionExpr::value(StringFunctionValue::new(
+            StringFunctionExpr::reference(StringFunctionReference::new(
                 StringFunctionId(1),
                 vec![ParamLocal::string(crate::plan::StringLocalId(0))],
             )),
@@ -439,21 +449,21 @@ mod tests {
                 [crate::plan::LocalId::Float(crate::plan::FloatLocalId(0))]
             )
             .0,
-            FloatFunctionExpr::value(FloatFunctionValue::new(
+            FloatFunctionExpr::reference(FloatFunctionReference::new(
                 FloatFunctionId(2),
                 vec![ParamLocal::float(crate::plan::FloatLocalId(0))],
             )),
         );
         assert_eq!(
             bool_function_ref(3, [crate::plan::LocalId::Bool(crate::plan::BoolLocalId(0))]).0,
-            BoolFunctionExpr::value(BoolFunctionValue::new(
+            BoolFunctionExpr::reference(BoolFunctionReference::new(
                 BoolFunctionId(3),
                 vec![ParamLocal::bool(crate::plan::BoolLocalId(0))],
             )),
         );
         assert_eq!(
             nil_function_ref(4, [crate::plan::LocalId::Nil(crate::plan::NilLocalId(0))]).0,
-            NilFunctionExpr::value(NilFunctionValue::new(
+            NilFunctionExpr::reference(NilFunctionReference::new(
                 NilFunctionId(4),
                 vec![ParamLocal::nil(crate::plan::NilLocalId(0))],
             )),
@@ -465,11 +475,13 @@ mod tests {
                 [ValueType::Int, ValueType::String],
             )
             .0,
-            TupleFunctionExpr::value(TupleFunctionValue::new(
-                TupleFunctionId(5),
-                vec![ParamLocal::int(crate::plan::IntLocalId(0))],
+            TupleFunctionExpr::reference(
+                TupleFunctionReference::new(
+                    TupleFunctionId(5),
+                    vec![ParamLocal::int(crate::plan::IntLocalId(0))],
+                ),
                 vec![ValueType::Int, ValueType::String],
-            )),
+            ),
         );
         assert_eq!(
             list_function_ref(
@@ -478,7 +490,7 @@ mod tests {
                 ValueType::Int,
             )
             .0,
-            ListFunctionExpr::value(ListFunctionValue::new(
+            ListFunctionExpr::reference(ListFunctionReference::new(
                 ListFunctionId::from_item_type(6, crate::plan::ValueType::Int),
                 vec![ParamLocal::int(crate::plan::IntLocalId(0))]
             )),
@@ -488,7 +500,7 @@ mod tests {
                 7,
                 [crate::plan::LocalId::Int(crate::plan::IntLocalId(0))],
             ))),
-            FunctionExpr::int(IntFunctionExpr::value(IntFunctionValue::new(
+            FunctionExpr::int(IntFunctionExpr::reference(IntFunctionReference::new(
                 IntFunctionId(7),
                 vec![ParamLocal::int(crate::plan::IntLocalId(0))],
             ))),

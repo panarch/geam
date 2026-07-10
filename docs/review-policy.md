@@ -31,6 +31,14 @@ lowering, not another validation boundary. Runtime code assumes it receives a
 valid `ExecutionPlan`. Structural execution failures belong in ModulePlan
 planning as `PlanError`, not in execution lowering or a runtime error enum.
 
+The two plan layers own independent executable node families. `ModulePlan`
+owns canonical expressions, steps, returns, arguments, captures, ids, and frame
+layouts for planner review. `ExecutionPlan` owns runtime-only equivalents.
+Production runtime code must not import module-plan nodes, and execution node
+definitions must not import them outside the consuming lowering modules.
+Source spans/sites and immutable value/function type metadata are the narrow
+shared domains; runtime `Value` and evaluated captures are not plan data.
+
 `ExecutionError` has two allowed roles:
 
 - Source-reachable execution stops accepted by the Geam profile use
@@ -72,7 +80,7 @@ profile boundaries, and typed-AST margins remain planner responsibilities.
 Plan construction is not a validation layer. Reaching a `ModulePlan` or plan
 node constructor means the planner has already accepted a runtime-executable
 shape. Reaching `ExecutionPlan` means the accepted ModulePlan has been consumed
-into runtime-owned function tables.
+into execution-owned nodes and function tables.
 
 Do not use `Option` or `Result` in internal plan constructors to represent
 unsupported profile features, typed-AST margin cases, or runtime executability

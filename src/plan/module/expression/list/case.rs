@@ -268,7 +268,7 @@ fn typed_function_clauses<Pattern>(
 mod tests {
     use super::{BoolListCaseBranches, ListCaseBranchTypeMismatch, ListCaseBranches};
     use crate::plan::{
-        BoolExpr, Expr, FunctionExpr, FunctionType, FunctionValue, IntExpr, ListExpr, NilExpr,
+        BoolExpr, Expr, FunctionExpr, FunctionReference, FunctionType, IntExpr, ListExpr, NilExpr,
         RuntimeFunctionId, StringExpr, TupleExpr, ValueType,
     };
     use num_bigint::BigInt;
@@ -525,10 +525,12 @@ mod tests {
                 vec![(
                     "function",
                     ListExpr::value(
-                        vec![Expr::function(FunctionExpr::value(FunctionValue::new(
-                            RuntimeFunctionId::Bool(crate::plan::BoolFunctionId(0)),
-                            Vec::new(),
-                        )))],
+                        vec![Expr::function(FunctionExpr::reference(
+                            FunctionReference::new(
+                                RuntimeFunctionId::Bool(crate::plan::BoolFunctionId(0)),
+                                Vec::new(),
+                            )
+                        ))],
                         ValueType::Function(Box::new(FunctionType::new(
                             Vec::new(),
                             ValueType::Bool,
@@ -544,10 +546,12 @@ mod tests {
                 clauses: vec![(
                     "function",
                     ListExpr::value(
-                        vec![Expr::function(FunctionExpr::value(FunctionValue::new(
-                            RuntimeFunctionId::Bool(crate::plan::BoolFunctionId(0)),
-                            Vec::new(),
-                        )))],
+                        vec![Expr::function(FunctionExpr::reference(
+                            FunctionReference::new(
+                                RuntimeFunctionId::Bool(crate::plan::BoolFunctionId(0)),
+                                Vec::new(),
+                            )
+                        ))],
                         ValueType::Function(Box::new(FunctionType::new(
                             Vec::new(),
                             ValueType::Bool,

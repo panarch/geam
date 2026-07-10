@@ -43,7 +43,59 @@ pub(crate) struct FrameLayout {
     function_functions: usize,
 }
 
+pub(crate) struct FrameLayoutParts {
+    pub(crate) ints: usize,
+    pub(crate) floats: usize,
+    pub(crate) strings: usize,
+    pub(crate) bools: usize,
+    pub(crate) nils: usize,
+    pub(crate) tuples: usize,
+    pub(crate) int_lists: usize,
+    pub(crate) string_lists: usize,
+    pub(crate) float_lists: usize,
+    pub(crate) bool_lists: usize,
+    pub(crate) nil_lists: usize,
+    pub(crate) tuple_lists: Vec<Vec<ValueType>>,
+    pub(crate) list_lists: Vec<ValueType>,
+    pub(crate) function_lists: Vec<FunctionType>,
+    pub(crate) int_functions: usize,
+    pub(crate) float_functions: usize,
+    pub(crate) string_functions: usize,
+    pub(crate) bool_functions: usize,
+    pub(crate) nil_functions: usize,
+    pub(crate) tuple_functions: usize,
+    pub(crate) list_functions: Vec<ListFunctionLocal>,
+    pub(crate) function_functions: usize,
+}
+
 impl FrameLayout {
+    pub(crate) fn into_parts(self) -> FrameLayoutParts {
+        FrameLayoutParts {
+            ints: self.ints,
+            floats: self.floats,
+            strings: self.strings,
+            bools: self.bools,
+            nils: self.nils,
+            tuples: self.tuples,
+            int_lists: self.int_lists,
+            string_lists: self.string_lists,
+            float_lists: self.float_lists,
+            bool_lists: self.bool_lists,
+            nil_lists: self.nil_lists,
+            tuple_lists: self.tuple_lists,
+            list_lists: self.list_lists,
+            function_lists: self.function_lists,
+            int_functions: self.int_functions,
+            float_functions: self.float_functions,
+            string_functions: self.string_functions,
+            bool_functions: self.bool_functions,
+            nil_functions: self.nil_functions,
+            tuple_functions: self.tuple_functions,
+            list_functions: self.list_functions,
+            function_functions: self.function_functions,
+        }
+    }
+
     pub(crate) fn from_function_parts(
         params: &[Param],
         steps: &[Step],
@@ -208,18 +260,22 @@ impl FrameLayout {
         self.function_functions = self.function_functions.max(local.0 + 1);
     }
 
+    #[cfg(test)]
     pub(crate) fn ints(&self) -> usize {
         self.ints
     }
 
+    #[cfg(test)]
     pub(crate) fn floats(&self) -> usize {
         self.floats
     }
 
+    #[cfg(test)]
     pub(crate) fn strings(&self) -> usize {
         self.strings
     }
 
+    #[cfg(test)]
     pub(crate) fn bools(&self) -> usize {
         self.bools
     }
@@ -229,70 +285,87 @@ impl FrameLayout {
         self.nils
     }
 
+    #[cfg(test)]
     pub(crate) fn tuples(&self) -> usize {
         self.tuples
     }
 
+    #[cfg(test)]
     pub(crate) fn int_lists(&self) -> usize {
         self.int_lists
     }
 
+    #[cfg(test)]
     pub(crate) fn string_lists(&self) -> usize {
         self.string_lists
     }
 
+    #[cfg(test)]
     pub(crate) fn float_lists(&self) -> usize {
         self.float_lists
     }
 
+    #[cfg(test)]
     pub(crate) fn bool_lists(&self) -> usize {
         self.bool_lists
     }
 
+    #[cfg(test)]
     pub(crate) fn nil_lists(&self) -> usize {
         self.nil_lists
     }
 
+    #[cfg(test)]
     pub(crate) fn tuple_lists(&self) -> &[Vec<ValueType>] {
         &self.tuple_lists
     }
 
+    #[cfg(test)]
     pub(crate) fn list_lists(&self) -> &[ValueType] {
         &self.list_lists
     }
 
+    #[cfg(test)]
     pub(crate) fn function_lists(&self) -> &[FunctionType] {
         &self.function_lists
     }
 
+    #[cfg(test)]
     pub(crate) fn int_functions(&self) -> usize {
         self.int_functions
     }
 
+    #[cfg(test)]
     pub(crate) fn float_functions(&self) -> usize {
         self.float_functions
     }
 
+    #[cfg(test)]
     pub(crate) fn string_functions(&self) -> usize {
         self.string_functions
     }
 
+    #[cfg(test)]
     pub(crate) fn bool_functions(&self) -> usize {
         self.bool_functions
     }
 
+    #[cfg(test)]
     pub(crate) fn nil_functions(&self) -> usize {
         self.nil_functions
     }
 
+    #[cfg(test)]
     pub(crate) fn tuple_functions(&self) -> usize {
         self.tuple_functions
     }
 
+    #[cfg(test)]
     pub(crate) fn list_functions(&self) -> &[ListFunctionLocal] {
         &self.list_functions
     }
 
+    #[cfg(test)]
     pub(crate) fn function_functions(&self) -> usize {
         self.function_functions
     }
@@ -301,43 +374,43 @@ impl FrameLayout {
 #[cfg(test)]
 pub(super) mod test_helpers {
     use crate::plan::{
-        BoolFunctionExpr, BoolFunctionId, BoolFunctionValue, BoolLocalId, FloatFunctionExpr,
-        FloatFunctionId, FloatFunctionValue, FloatLocalId, FunctionType, IntFunctionExpr,
-        IntFunctionId, IntFunctionValue, IntLocalId, NilFunctionExpr, NilFunctionId,
-        NilFunctionValue, NilLocalId, ParamLocal, StringFunctionExpr, StringFunctionId,
-        StringFunctionValue, StringLocalId, ValueType,
+        BoolFunctionExpr, BoolFunctionId, BoolFunctionReference, BoolLocalId, FloatFunctionExpr,
+        FloatFunctionId, FloatFunctionReference, FloatLocalId, FunctionType, IntFunctionExpr,
+        IntFunctionId, IntFunctionReference, IntLocalId, NilFunctionExpr, NilFunctionId,
+        NilFunctionReference, NilLocalId, ParamLocal, StringFunctionExpr, StringFunctionId,
+        StringFunctionReference, StringLocalId, ValueType,
     };
 
     pub(super) fn int_function_expr() -> IntFunctionExpr {
-        IntFunctionExpr::value(IntFunctionValue::new(
+        IntFunctionExpr::reference(IntFunctionReference::new(
             IntFunctionId(0),
             vec![ParamLocal::int(IntLocalId(0))],
         ))
     }
 
     pub(super) fn string_function_expr() -> StringFunctionExpr {
-        StringFunctionExpr::value(StringFunctionValue::new(
+        StringFunctionExpr::reference(StringFunctionReference::new(
             StringFunctionId(0),
             vec![ParamLocal::string(StringLocalId(0))],
         ))
     }
 
     pub(super) fn float_function_expr() -> FloatFunctionExpr {
-        FloatFunctionExpr::value(FloatFunctionValue::new(
+        FloatFunctionExpr::reference(FloatFunctionReference::new(
             FloatFunctionId(0),
             vec![ParamLocal::float(FloatLocalId(0))],
         ))
     }
 
     pub(super) fn bool_function_expr() -> BoolFunctionExpr {
-        BoolFunctionExpr::value(BoolFunctionValue::new(
+        BoolFunctionExpr::reference(BoolFunctionReference::new(
             BoolFunctionId(0),
             vec![ParamLocal::bool(BoolLocalId(0))],
         ))
     }
 
     pub(super) fn nil_function_expr() -> NilFunctionExpr {
-        NilFunctionExpr::value(NilFunctionValue::new(
+        NilFunctionExpr::reference(NilFunctionReference::new(
             NilFunctionId(0),
             vec![ParamLocal::nil(NilLocalId(0))],
         ))

@@ -38,10 +38,17 @@ mod values {
         integer_return,
         float_value,
         tuple_value,
+        tuple_expression_shapes,
         list_value,
         list_spread,
+        list_expression_item_families,
+        list_tuple_return,
+        list_nested_return,
+        list_function_return,
+        primitive_case_branch_matrix,
         bool_value,
         nil_value,
+        nil_expression_shapes,
     );
 }
 
@@ -246,7 +253,11 @@ mod functions {
             float_function_value_shapes,
             float_function_value_expressions,
             tuple_function_value_projection,
+            tuple_function_value_shapes,
+            tuple_function_value_expressions,
             list_function_value,
+            list_function_value_shapes,
+            list_function_value_expressions,
             function_value_block_list_spread,
             function_value_expression_steps,
             function_value_shadowing,
@@ -265,6 +276,7 @@ mod functions {
             function_value_argument_float,
             list_function_argument,
             list_function_value_argument,
+            list_boundary_item_families,
             function_value_argument_higher_order_alias,
             function_value_argument_higher_order_return_shapes,
             function_value_argument_input_shapes,
@@ -294,6 +306,7 @@ mod functions {
             float_tail_recursion,
             tuple_tail_recursion,
             list_tail_recursion,
+            list_tail_recursion_item_families,
             block_case_tail_call,
             function_returning_tail_call,
             function_returning_tail_call_families,
@@ -366,6 +379,13 @@ mod execution_errors {
             panic_bool,
             panic_tuple,
             panic_list,
+            panic_list_string,
+            panic_list_float,
+            panic_list_bool,
+            panic_list_nil,
+            panic_list_tuple,
+            panic_list_nested,
+            panic_function_list,
             panic_int_function,
             panic_string_function,
             panic_float_function,
@@ -383,6 +403,14 @@ mod execution_errors {
     }
 
     mod functions {
+        execution_error_cases!("functions";
+            return_bool_case_subject,
+            return_int_case_subject,
+            return_float_case_subject,
+            return_string_case_subject,
+            return_block_step,
+        );
+
         mod use_syntax {
             execution_error_cases!("functions/use";
                 incomplete_use,

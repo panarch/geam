@@ -1,22 +1,63 @@
+mod expression;
+mod frame;
 mod function;
+mod id;
 mod lowering;
+mod param;
+mod reference;
+mod return_;
+mod step;
 mod table;
+
+pub(crate) use expression::{
+    BoolExpr, BoolExprKind, BoolFunctionExpr, BoolFunctionExprKind, BoolListExpr, BoolListItem,
+    CallArg, CallArgKind, CaptureArg, CaptureArgKind, Expr, ExprKind, FloatExpr, FloatExprKind,
+    FloatFunctionExpr, FloatFunctionExprKind, FloatListExpr, FloatListItem, FunctionExpr,
+    FunctionExprKind, FunctionFunctionExpr, FunctionFunctionExprKind, FunctionListExpr,
+    FunctionListItem, IntExpr, IntExprKind, IntFunctionExpr, IntFunctionExprKind, IntListExpr,
+    IntListItem, ListExpr, ListFunctionExpr, ListFunctionExprKind, ListIndexSource, ListItem,
+    ListListExpr, ListListItem, ListLocalExpr, NilExpr, NilExprKind, NilFunctionExpr,
+    NilFunctionExprKind, NilListExpr, NilListItem, PanicExpr, PanicExprKind, StringExpr,
+    StringExprKind, StringFunctionExpr, StringFunctionExprKind, StringListExpr, StringListItem,
+    TupleExpr, TupleExprKind, TupleFunctionExpr, TupleFunctionExprKind, TupleListExpr,
+    TupleListItem, TypedListExpr, TypedListExprKind,
+};
+pub(crate) use frame::FrameLayout;
+pub(crate) use id::{
+    BoolFunctionFunctionId, BoolFunctionId, BoolFunctionLocalId, BoolListFunctionFunctionId,
+    BoolListFunctionId, BoolListFunctionLocalId, BoolListLocalId, BoolLocalId,
+    FloatFunctionFunctionId, FloatFunctionId, FloatFunctionLocalId, FloatListFunctionFunctionId,
+    FloatListFunctionId, FloatListFunctionLocalId, FloatListLocalId, FloatLocalId,
+    FunctionFunctionFunctionId, FunctionFunctionId, FunctionFunctionLocalId,
+    FunctionListFunctionFunctionId, FunctionListFunctionId, FunctionListFunctionLocalId,
+    FunctionListLocalId, FunctionReturnFamily, IntFunctionFunctionId, IntFunctionId,
+    IntFunctionLocalId, IntListFunctionFunctionId, IntListFunctionId, IntListFunctionLocalId,
+    IntListLocalId, IntLocalId, ListFunctionFunctionId, ListFunctionId, ListFunctionLocal,
+    ListListFunctionFunctionId, ListListFunctionId, ListListFunctionLocalId, ListListLocalId,
+    ListLocal, NilFunctionFunctionId, NilFunctionId, NilFunctionLocalId, NilListFunctionFunctionId,
+    NilListFunctionId, NilListFunctionLocalId, NilListLocalId, NilLocalId, RuntimeFunctionId,
+    StringFunctionFunctionId, StringFunctionId, StringFunctionLocalId,
+    StringListFunctionFunctionId, StringListFunctionId, StringListFunctionLocalId,
+    StringListLocalId, StringLocalId, TupleFunctionFunctionId, TupleFunctionId,
+    TupleFunctionLocalId, TupleListFunctionFunctionId, TupleListFunctionId,
+    TupleListFunctionLocalId, TupleListLocalId, TupleLocalId,
+};
+pub(crate) use param::ParamLocal;
+pub(crate) use reference::{ClosureTemplate, FunctionReference};
+pub(crate) use return_::{
+    BoolFunctionReturn, BoolListReturn, BoolReturn, FloatFunctionReturn, FloatListReturn,
+    FloatReturn, FunctionFunctionReturn, FunctionListReturn, IntFunctionReturn, IntListReturn,
+    IntReturn, ListFunctionReturn, ListListReturn, NilFunctionReturn, NilListReturn, NilReturn,
+    ReturnBody, ReturnBodyKind, StringFunctionReturn, StringListReturn, StringReturn,
+    TupleFunctionReturn, TupleListReturn, TupleReturn,
+};
+pub(crate) use step::{
+    AssertBinding, AssertPattern, ListAssertPattern, ListAssertTail, Step, StepKind,
+};
 
 use self::function::ExecutableFunction;
 use self::table::FunctionTables;
-use crate::plan::{
-    BoolFunctionFunctionId, BoolFunctionId, BoolFunctionReturn, BoolListFunctionId, BoolListReturn,
-    BoolReturn, FloatFunctionFunctionId, FloatFunctionId, FloatFunctionReturn, FloatListFunctionId,
-    FloatListReturn, FloatReturn, FunctionFunctionFunctionId, FunctionFunctionReturn,
-    FunctionListFunctionId, FunctionListReturn, IntFunctionFunctionId, IntFunctionId,
-    IntFunctionReturn, IntListFunctionId, IntListReturn, IntReturn, ListFunctionFunctionId,
-    ListFunctionReturn, ListListFunctionId, ListListReturn, ModulePlan, NilFunctionFunctionId,
-    NilFunctionId, NilFunctionReturn, NilListFunctionId, NilListReturn, NilReturn,
-    RuntimeFunctionId, SourceContext, StringFunctionFunctionId, StringFunctionId,
-    StringFunctionReturn, StringListFunctionId, StringListReturn, StringReturn,
-    TupleFunctionFunctionId, TupleFunctionId, TupleFunctionReturn, TupleListFunctionId,
-    TupleListReturn, TupleReturn,
-};
+use crate::plan::{ModulePlan, SourceContext};
 use ecow::EcoString;
 
 pub struct ExecutionPlan {

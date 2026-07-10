@@ -2,9 +2,11 @@ use super::{
     eval_bool_expr, eval_float_expr, eval_int_expr, eval_panic_expr, project_string_list_expr,
     project_tuple_expr,
 };
+use crate::plan::ValueType;
 use crate::plan::execution::ExecutionPlan;
-use crate::plan::{StringExpr, StringExprKind, Value, ValueType};
+use crate::plan::execution::{StringExpr, StringExprKind};
 use crate::runtime::ExecutionError;
+use crate::runtime::Value;
 use crate::runtime::frame::Frame;
 use crate::runtime::function;
 use ecow::EcoString;
@@ -35,7 +37,9 @@ pub(in crate::runtime) fn eval_string_expr(
         StringExprKind::ListIndex { list, index } => {
             project_string_list_expr(plan, frame, list, *index)
         }
-        StringExprKind::Panic(panic) => eval_panic_expr(plan, frame, panic),
+        StringExprKind::Panic(panic) => {
+            eval_panic_expr(plan, frame, panic).map(|never| match never {})
+        }
         StringExprKind::Concatenate { left, right } => Ok(format!(
             "{}{}",
             eval_string_expr(plan, frame, left)?,
@@ -105,571 +109,151 @@ pub(in crate::runtime) fn eval_string_expr(
 
 #[cfg(test)]
 mod tests {
-    use super::eval_string_expr;
-    use crate::plan::execution::ExecutionPlan;
     use crate::plan::{
-        BoolExpr, BoolFunctionExpr, Expr, FloatExpr, FunctionFunctionExpr, FunctionFunctionId,
-        FunctionFunctionValue, FunctionId, FunctionPlan, FunctionReturnFamily, FunctionType,
-        IntExpr, IntFunctionExpr, IntFunctionId, ListExpr, ReturnExpr, Step, StringExpr,
-        StringFunctionExpr, StringFunctionFunctionId, TupleExpr, ValueType,
+        BoolExpr, Expr, FloatExpr, FunctionId, FunctionPlan, IntExpr, ModulePlan, PanicExpr,
+        PanicSite, ReturnExpr, Step, StringExpr, StringFunctionId, TupleExpr, ValueType,
     };
-    use crate::runtime::ExecutionError;
-    use crate::runtime::frame::Frame;
-    use crate::runtime::{Value, run_src};
+    use crate::runtime::{ExecutionError, run_main};
 
     #[test]
-    fn tuple_index_family_mismatch_returns_error() {
-        let plan = crate::runtime::plan_src(r#"pub fn main() { "one" }"#);
-        let mut frame = Frame::default();
-        let tuple = TupleExpr::value(
-            vec![Expr::string(StringExpr::value("one".into()))],
-            vec![ValueType::String],
-        );
-
-        assert_eq!(
-            eval_string_expr(&plan, &mut frame, &StringExpr::tuple_index(tuple, 0)),
-            Ok("one".into()),
-        );
-
-        let tuple = TupleExpr::value(
-            vec![Expr::int(IntExpr::value(1.into()))],
-            vec![ValueType::Int],
-        );
-
-        assert_eq!(
-            eval_string_expr(&plan, &mut frame, &StringExpr::tuple_index(tuple, 0)),
-            Err(ExecutionError::tuple_index_family_mismatch(
-                ValueType::String,
-                ValueType::Int,
-            )),
-        );
-    }
-
-    #[test]
-    fn list_projection_invariant_errors() {
-        let plan = crate::runtime::plan_src(r#"pub fn main() { "one" }"#);
-        let mut frame = Frame::default();
-        let list = ListExpr::value(
-            vec![Expr::string(StringExpr::value("one".into()))],
-            ValueType::String,
-        );
-
-        assert_eq!(
-            eval_string_expr(&plan, &mut frame, &StringExpr::list_index(list, 0)),
-            Ok("one".into()),
-        );
-
-        let list = ListExpr::value(
-            vec![Expr::string(StringExpr::value("one".into()))],
-            ValueType::String,
-        );
-        assert_eq!(
-            eval_string_expr(&plan, &mut frame, &StringExpr::list_index(list, 1)),
-            Err(ExecutionError::list_index_out_of_bounds(
-                ValueType::String,
-                1,
-                1,
-            )),
-        );
-    }
-
-    #[test]
-    fn eval_string_concatenation() {
-        assert_eq!(
-            run_src(
-                r#"
-pub fn main() {
-  "hello, " <> "geam"
-}
-"#,
-            ),
-            Value::String("hello, geam".into()),
-        );
-    }
-
-    #[test]
-    fn eval_string_drop_prefix() {
-        let plan = crate::runtime::plan_src(r#"pub fn main() { "value" }"#);
-        let mut frame = Frame::default();
-
-        assert_eq!(
-            eval_string_expr(
-                &plan,
-                &mut frame,
-                &StringExpr::drop_prefix(StringExpr::value("Hello, Geam".into()), "Hello, ".into()),
-            ),
-            Ok("Geam".into()),
-        );
-        assert_eq!(
-            eval_string_expr(
-                &plan,
-                &mut frame,
-                &StringExpr::drop_prefix(StringExpr::value("안녕, 글림".into()), "안녕, ".into()),
-            ),
-            Ok("글림".into()),
-        );
-        assert_eq!(
-            eval_string_expr(
-                &plan,
-                &mut frame,
-                &StringExpr::drop_prefix(StringExpr::value("abc".into()), "".into()),
-            ),
-            Ok("abc".into()),
-        );
-        assert_eq!(
-            eval_string_expr(
-                &plan,
-                &mut frame,
-                &StringExpr::drop_prefix(StringExpr::value("Hello, Geam".into()), "Goodbye".into()),
-            ),
-            Ok("".into()),
-        );
-    }
-
-    #[test]
-    fn eval_string_drop_prefix_propagates_value_error() {
-        let plan = plan();
-        let mut frame = Frame::default();
-
-        assert_eq!(
-            eval_string_expr(
-                &plan,
-                &mut frame,
-                &StringExpr::drop_prefix(error_string_expr(), "prefix".into()),
-            ),
-            Err(function_return_family_error_value(
-                FunctionReturnFamily::String,
-                FunctionReturnFamily::Bool,
-            )),
-        );
-    }
-
-    #[test]
-    fn eval_bool_case_string() {
-        assert_eq!(
-            run_src(
-                r#"
-pub fn main() {
-  case True {
-    True -> "yes"
-    False -> "no"
-  }
-}
-"#,
-            ),
-            Value::String("yes".into()),
-        );
-
-        assert_eq!(
-            run_src(
-                r#"
-pub fn main() {
-  case False {
-    True -> "yes"
-    False -> "no"
-  }
-}
-"#,
-            ),
-            Value::String("no".into()),
-        );
-    }
-
-    #[test]
-    fn eval_int_case_string() {
-        assert_eq!(
-            run_src(
-                r#"
-pub fn main() {
-  case 1 {
-    1 -> "one"
-    _ -> "other"
-  }
-}
-"#,
-            ),
-            Value::String("one".into()),
-        );
-
-        assert_eq!(
-            run_src(
-                r#"
-pub fn main() {
-  case 2 {
-    1 -> "one"
-    _ -> "other"
-  }
-}
-"#,
-            ),
-            Value::String("other".into()),
-        );
-    }
-
-    #[test]
-    fn eval_string_case_string() {
-        assert_eq!(
-            run_src(
-                r#"
-pub fn main() {
-  let value = case "one" {
-    "one" -> "one"
-    _ -> "other"
-  }
-  value
-}
-"#,
-            ),
-            Value::String("one".into()),
-        );
-
-        assert_eq!(
-            run_src(
-                r#"
-pub fn main() {
-  let value = case "many" {
-    "one" -> "one"
-    _ -> "other"
-  }
-  value
-}
-"#,
-            ),
-            Value::String("other".into()),
-        );
-    }
-
-    #[test]
-    fn eval_float_case_string() {
-        assert_eq!(
-            run_src(
-                r#"
-pub fn main() {
-  let value = case 1.0 {
-    1.0 -> "one"
-    _ -> "other"
-  }
-  value
-}
-"#,
-            ),
-            Value::String("one".into()),
-        );
-
-        assert_eq!(
-            run_src(
-                r#"
-pub fn main() {
-  let value = case 2.0 {
-    1.0 -> "one"
-    _ -> "other"
-  }
-  value
-}
-"#,
-            ),
-            Value::String("other".into()),
-        );
-    }
-
-    #[test]
-    fn eval_block_string() {
-        assert_eq!(
-            run_src(
-                r#"
-pub fn main() {
-  {
-    "ignored"
-    "geam"
-  }
-}
-"#,
-            ),
-            Value::String("geam".into()),
-        );
-    }
-
-    #[test]
-    fn eval_string_expr_local_and_calls() {
-        assert_eq!(
-            run_src(
-                r#"
-fn called() {
-  "called"
-}
-
-fn get_called() {
-  called
-}
+    fn source_string_expression_variants_evaluate_exact_values() {
+        let source = r#"
+fn suffix(value: String) -> String { value <> "!" }
 
 pub fn main() {
-  let value = "local"
-  value <> called() <> get_called()()
+  let local = "local"
+  let function = suffix
+  #(
+    local,
+    suffix("call"),
+    function("function"),
+    #("tuple").0,
+    case ["list"] { [value] -> value _ -> "missing" },
+    "left" <> "right",
+    case "prefix-rest" { "prefix-" <> rest -> rest _ -> "missing" },
+    case True { True -> "true" False -> "false" },
+    case False { True -> "true" False -> "false" },
+    case 1 { 1 -> "one" _ -> "other" },
+    case 2 { 1 -> "one" _ -> "other" },
+    case "one" { "one" -> "match" _ -> "other" },
+    case "two" { "one" -> "match" _ -> "other" },
+    case 1.0 { 1.0 -> "match" _ -> "other" },
+    case 2.0 { 1.0 -> "match" _ -> "other" },
+    { let _ = 0 "block" },
+  )
 }
+"#;
+
+        assert_eq!(
+            crate::runtime::run_src(source),
+            crate::runtime::Value::Tuple(
+                [
+                    "local",
+                    "call!",
+                    "function!",
+                    "tuple",
+                    "list",
+                    "leftright",
+                    "rest",
+                    "true",
+                    "false",
+                    "one",
+                    "other",
+                    "match",
+                    "other",
+                    "match",
+                    "other",
+                    "block",
+                ]
+                .into_iter()
+                .map(|value| crate::runtime::Value::String(value.into()))
+                .collect(),
+            ),
+        );
+    }
+
+    #[test]
+    fn source_operand_errors_propagate_through_string_expressions() {
+        let expressions = [
+            "fail_string() <> \"suffix\"",
+            "\"prefix\" <> fail_string()",
+            "case fail_bool() { True -> \"true\" False -> \"false\" }",
+            "case fail_int() { 0 -> \"zero\" _ -> \"other\" }",
+            "case fail_string() { \"zero\" -> \"zero\" _ -> \"other\" }",
+            "case fail_float() { 0.0 -> \"zero\" _ -> \"other\" }",
+            "{ let _ = fail_bool() \"value\" }",
+            "{ let function = fail_string function() }",
+        ];
+
+        for expression in expressions {
+            let source = format!(
+                r#"
+fn fail_bool() -> Bool {{ panic }}
+fn fail_int() -> Int {{ panic }}
+fn fail_string() -> String {{ panic }}
+fn fail_float() -> Float {{ panic }}
+pub fn main() -> String {{ {expression} }}
 "#,
-            ),
-            Value::String("localcalledcalled".into()),
-        );
+            );
+
+            assert_eq!(
+                crate::runtime::run_src_error(&source).to_string(),
+                "panic: `panic` expression evaluated.",
+            );
+        }
     }
 
     #[test]
-    fn eval_string_expr_propagates_operand_errors() {
-        let plan = plan();
-        let mut frame = Frame::default();
+    fn module_expression_errors_propagate_through_string_wrappers() {
+        let panic = || PanicExpr::panic_at(None, PanicSite::unknown());
+        let expressions = [
+            StringExpr::tuple_index(TupleExpr::panic(panic(), vec![ValueType::String]), 0),
+            StringExpr::drop_prefix(StringExpr::panic(panic()), "prefix".into()),
+            StringExpr::bool_case(
+                BoolExpr::panic(panic()),
+                StringExpr::value("true".into()),
+                StringExpr::value("false".into()),
+            ),
+            StringExpr::int_case(
+                IntExpr::panic(panic()),
+                Vec::new(),
+                StringExpr::value("fallback".into()),
+            ),
+            StringExpr::string_case(
+                StringExpr::panic(panic()),
+                Vec::new(),
+                StringExpr::value("fallback".into()),
+            ),
+            StringExpr::float_case(
+                FloatExpr::panic(panic()),
+                Vec::new(),
+                StringExpr::value("fallback".into()),
+            ),
+            StringExpr::block(
+                vec![Step::evaluate(Expr::bool(BoolExpr::panic(panic())))],
+                StringExpr::value("value".into()),
+            ),
+        ];
 
-        assert_eq!(
-            eval_string_expr(
-                &plan,
-                &mut frame,
-                &crate::plan::StringExpr::concatenate(
-                    error_string_expr(),
-                    crate::plan::StringExpr::value("right".into()),
-                ),
-            ),
-            Err(function_return_family_error_value(
-                FunctionReturnFamily::String,
-                FunctionReturnFamily::Bool,
-            )),
-        );
-        assert_eq!(
-            eval_string_expr(
-                &plan,
-                &mut frame,
-                &crate::plan::StringExpr::concatenate(
-                    crate::plan::StringExpr::value("left".into()),
-                    error_string_expr(),
-                ),
-            ),
-            Err(function_return_family_error_value(
-                FunctionReturnFamily::String,
-                FunctionReturnFamily::Bool,
-            )),
-        );
-        assert_eq!(
-            eval_string_expr(
-                &plan,
-                &mut frame,
-                &crate::plan::StringExpr::bool_case(
-                    error_bool_expr(),
-                    crate::plan::StringExpr::value("true".into()),
-                    crate::plan::StringExpr::value("false".into()),
-                ),
-            ),
-            Err(function_return_family_error_value(
-                FunctionReturnFamily::Bool,
-                FunctionReturnFamily::String,
-            )),
-        );
-        assert_eq!(
-            eval_string_expr(
-                &plan,
-                &mut frame,
-                &crate::plan::StringExpr::int_case(
-                    error_int_expr(),
-                    vec![(1.into(), crate::plan::StringExpr::value("one".into()))],
-                    crate::plan::StringExpr::value("other".into()),
-                ),
-            ),
-            Err(function_return_family_error_value(
-                FunctionReturnFamily::Int,
-                FunctionReturnFamily::String,
-            )),
-        );
-        assert_eq!(
-            eval_string_expr(
-                &plan,
-                &mut frame,
-                &crate::plan::StringExpr::string_case(
-                    error_string_expr(),
-                    vec![("one".into(), crate::plan::StringExpr::value("one".into()))],
-                    crate::plan::StringExpr::value("other".into()),
-                ),
-            ),
-            Err(function_return_family_error_value(
-                FunctionReturnFamily::String,
-                FunctionReturnFamily::Bool,
-            )),
-        );
-        assert_eq!(
-            eval_string_expr(
-                &plan,
-                &mut frame,
-                &crate::plan::StringExpr::float_case(
-                    error_float_expr(),
-                    vec![(1.0, crate::plan::StringExpr::value("one".into()))],
-                    crate::plan::StringExpr::value("other".into()),
-                ),
-            ),
-            Err(ExecutionError::tuple_index_family_mismatch(
-                ValueType::Float,
-                ValueType::Tuple(Vec::new()),
-            )),
-        );
-        assert_eq!(
-            eval_string_expr(
-                &plan,
-                &mut frame,
-                &crate::plan::StringExpr::block(
-                    vec![Step::evaluate(Expr::bool(error_bool_expr()))],
-                    crate::plan::StringExpr::value("return".into()),
-                ),
-            ),
-            Err(function_return_family_error_value(
-                FunctionReturnFamily::Bool,
-                FunctionReturnFamily::String,
-            )),
-        );
+        for expression in expressions {
+            assert_eq!(
+                run_module_string_expression(expression).to_string(),
+                "panic: `panic` expression evaluated.",
+            );
+        }
     }
 
-    #[test]
-    fn eval_string_expr_propagates_return_expression_errors() {
-        let plan = plan();
-        let mut frame = Frame::default();
-
-        assert_eq!(
-            eval_string_expr(
-                &plan,
-                &mut frame,
-                &StringExpr::bool_case(
-                    BoolExpr::value(true),
-                    error_string_expr(),
-                    StringExpr::value("false".into()),
-                ),
-            ),
-            Err(function_return_family_error_value(
-                FunctionReturnFamily::String,
-                FunctionReturnFamily::Bool,
-            )),
-        );
-        assert_eq!(
-            eval_string_expr(
-                &plan,
-                &mut frame,
-                &StringExpr::bool_case(
-                    BoolExpr::value(false),
-                    StringExpr::value("true".into()),
-                    error_string_expr(),
-                ),
-            ),
-            Err(function_return_family_error_value(
-                FunctionReturnFamily::String,
-                FunctionReturnFamily::Bool,
-            )),
-        );
-        assert_eq!(
-            eval_string_expr(
-                &plan,
-                &mut frame,
-                &StringExpr::int_case(
-                    IntExpr::value(1.into()),
-                    vec![(1.into(), error_string_expr())],
-                    StringExpr::value("other".into()),
-                ),
-            ),
-            Err(function_return_family_error_value(
-                FunctionReturnFamily::String,
-                FunctionReturnFamily::Bool,
-            )),
-        );
-        assert_eq!(
-            eval_string_expr(
-                &plan,
-                &mut frame,
-                &StringExpr::int_case(
-                    IntExpr::value(2.into()),
-                    vec![(1.into(), StringExpr::value("one".into()))],
-                    error_string_expr(),
-                ),
-            ),
-            Err(function_return_family_error_value(
-                FunctionReturnFamily::String,
-                FunctionReturnFamily::Bool,
-            )),
-        );
-        assert_eq!(
-            eval_string_expr(
-                &plan,
-                &mut frame,
-                &StringExpr::block(Vec::new(), error_string_expr()),
-            ),
-            Err(function_return_family_error_value(
-                FunctionReturnFamily::String,
-                FunctionReturnFamily::Bool,
-            )),
-        );
-    }
-
-    fn plan() -> ExecutionPlan {
-        ExecutionPlan::from_module_plan(crate::plan::ModulePlan::new(
+    fn run_module_string_expression(expression: StringExpr) -> ExecutionError {
+        let main = FunctionPlan::new(
+            FunctionId::new(0),
             "main".into(),
-            FunctionPlan::new(
-                FunctionId::new(0),
-                "main".into(),
-                Vec::new(),
-                Vec::new(),
-                ReturnExpr::int(IntFunctionId(0), IntExpr::value(0.into())),
-            ),
             Vec::new(),
-        ))
-    }
-
-    fn error_string_expr() -> crate::plan::StringExpr {
-        crate::plan::StringExpr::function_call(
-            StringFunctionExpr::function_call(
-                bool_function_function_expr(),
-                Vec::new(),
-                FunctionType::new(Vec::new(), ValueType::String),
-            ),
             Vec::new(),
-        )
-    }
+            ReturnExpr::string(StringFunctionId(0), expression),
+        );
+        let module = ModulePlan::new("main".into(), main, Vec::new());
+        let plan = crate::ExecutionPlan::from_module_plan(module);
 
-    fn error_bool_expr() -> BoolExpr {
-        BoolExpr::function_call(
-            BoolFunctionExpr::function_call(
-                string_function_function_expr(),
-                Vec::new(),
-                FunctionType::new(Vec::new(), ValueType::Bool),
-            ),
-            Vec::new(),
-        )
-    }
-
-    fn error_int_expr() -> IntExpr {
-        IntExpr::function_call(
-            IntFunctionExpr::function_call(
-                string_function_function_expr(),
-                Vec::new(),
-                FunctionType::new(Vec::new(), ValueType::Int),
-            ),
-            Vec::new(),
-        )
-    }
-
-    fn error_float_expr() -> FloatExpr {
-        FloatExpr::tuple_index(TupleExpr::value(Vec::new(), Vec::new()), 0)
-    }
-
-    fn string_function_function_expr() -> FunctionFunctionExpr {
-        FunctionFunctionExpr::value(FunctionFunctionValue::new(
-            FunctionFunctionId::String(StringFunctionFunctionId(0)),
-            Vec::new(),
-            FunctionType::new(Vec::new(), ValueType::String),
-        ))
-    }
-
-    fn bool_function_function_expr() -> FunctionFunctionExpr {
-        FunctionFunctionExpr::value(FunctionFunctionValue::new(
-            FunctionFunctionId::Bool(crate::plan::BoolFunctionFunctionId(0)),
-            Vec::new(),
-            FunctionType::new(Vec::new(), ValueType::Bool),
-        ))
-    }
-
-    fn function_return_family_error_value(
-        expected: FunctionReturnFamily,
-        actual: FunctionReturnFamily,
-    ) -> ExecutionError {
-        ExecutionError::function_return_family_mismatch(expected, actual)
+        run_main(&plan).expect_err("module expression should fail at runtime")
     }
 }

@@ -202,13 +202,17 @@ impl StringExpr {
     pub(crate) fn kind(&self) -> &StringExprKind {
         &self.kind
     }
+
+    pub(crate) fn into_kind(self) -> StringExprKind {
+        self.kind
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::{StringExpr, StringExprKind};
     use crate::plan::{
-        BoolExpr, Expr, IntExpr, Step, StringFunctionId, StringFunctionValue, StringLocalId,
+        BoolExpr, Expr, IntExpr, Step, StringFunctionId, StringFunctionReference, StringLocalId,
         TupleExpr, ValueType,
     };
     use num_bigint::BigInt;
@@ -328,7 +332,7 @@ mod tests {
     }
 
     fn function_expr() -> crate::plan::StringFunctionExpr {
-        crate::plan::StringFunctionExpr::value(StringFunctionValue::new(
+        crate::plan::StringFunctionExpr::reference(StringFunctionReference::new(
             StringFunctionId(0),
             Vec::new(),
         ))

@@ -211,8 +211,8 @@ fn list_elements_from_exprs<Item: ListItem>(
 mod tests {
     use super::{ListElementTypeMismatch, ListElements, ListSpreadElements};
     use crate::plan::{
-        BoolExpr, Expr, FloatExpr, FunctionExpr, FunctionType, FunctionValue, IntExpr, ListExpr,
-        NilExpr, RuntimeFunctionId, StringExpr, TupleExpr, ValueType,
+        BoolExpr, Expr, FloatExpr, FunctionExpr, FunctionReference, FunctionType, IntExpr,
+        ListExpr, NilExpr, RuntimeFunctionId, StringExpr, TupleExpr, ValueType,
     };
 
     #[test]
@@ -258,7 +258,7 @@ mod tests {
             }),
         );
 
-        let function = FunctionExpr::value(FunctionValue::new(
+        let function = FunctionExpr::reference(FunctionReference::new(
             RuntimeFunctionId::Int(crate::plan::IntFunctionId(0)),
             Vec::new(),
         ));

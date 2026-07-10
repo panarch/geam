@@ -1,6 +1,6 @@
 use crate::plan::{
     BoolExpr, CaptureArg, FloatExpr, FunctionFunctionExpr, FunctionListExpr, FunctionType, IntExpr,
-    NilFunctionFunctionId, NilFunctionId, NilFunctionLocalId, NilFunctionValue, PanicExpr,
+    NilFunctionFunctionId, NilFunctionId, NilFunctionLocalId, NilFunctionReference, PanicExpr,
     ParamLocal, Step, StringExpr, TupleExpr,
 };
 use ecow::EcoString;
@@ -14,7 +14,7 @@ pub struct NilFunctionExpr {
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum NilFunctionExprKind {
-    Value(NilFunctionValue),
+    Reference(NilFunctionReference),
     Closure {
         runtime_id: NilFunctionId,
         params: Vec<ParamLocal>,
@@ -72,10 +72,14 @@ pub(crate) enum NilFunctionExprKind {
 }
 
 impl NilFunctionExpr {
-    pub(crate) fn value(value: NilFunctionValue) -> Self {
+    pub(crate) fn reference(value: NilFunctionReference) -> Self {
+        let type_ = FunctionType::new(
+            value.params().iter().map(ParamLocal::value_type).collect(),
+            crate::plan::ValueType::Nil,
+        );
         Self {
-            type_: value.type_(),
-            kind: NilFunctionExprKind::Value(value),
+            type_,
+            kind: NilFunctionExprKind::Reference(value),
         }
     }
 
@@ -246,22 +250,26 @@ impl NilFunctionExpr {
     pub(crate) fn kind(&self) -> &NilFunctionExprKind {
         &self.kind
     }
+
+    pub(crate) fn into_parts(self) -> (FunctionType, NilFunctionExprKind) {
+        (self.type_, self.kind)
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::{NilFunctionExpr, NilFunctionExprKind};
     use crate::plan::{
-        BoolExpr, Expr, FunctionFunctionExpr, FunctionFunctionId, FunctionFunctionValue,
+        BoolExpr, Expr, FunctionFunctionExpr, FunctionFunctionId, FunctionFunctionReference,
         FunctionType, IntExpr, NilFunctionFunctionId, NilFunctionId, NilFunctionLocalId,
-        NilFunctionValue, NilLocalId, ParamLocal, Step, StringExpr, ValueType,
+        NilFunctionReference, NilLocalId, ParamLocal, Step, StringExpr, ValueType,
     };
 
     #[test]
     fn nil_function_expr_kind_accessors() {
         assert_eq!(
             function_value().kind(),
-            &NilFunctionExprKind::Value(NilFunctionValue::new(
+            &NilFunctionExprKind::Reference(NilFunctionReference::new(
                 NilFunctionId(0),
                 vec![ParamLocal::nil(NilLocalId(0))],
             )),
@@ -379,7 +387,7 @@ mod tests {
     }
 
     fn function_value() -> NilFunctionExpr {
-        NilFunctionExpr::value(NilFunctionValue::new(
+        NilFunctionExpr::reference(NilFunctionReference::new(
             NilFunctionId(0),
             vec![ParamLocal::nil(NilLocalId(0))],
         ))
@@ -390,11 +398,13 @@ mod tests {
     }
 
     fn function_function_value() -> FunctionFunctionExpr {
-        FunctionFunctionExpr::value(FunctionFunctionValue::new(
-            FunctionFunctionId::Nil(NilFunctionFunctionId(0)),
-            Vec::new(),
+        FunctionFunctionExpr::reference(
+            FunctionFunctionReference::new(
+                FunctionFunctionId::Nil(NilFunctionFunctionId(0)),
+                Vec::new(),
+            ),
             function_type(),
-        ))
+        )
     }
 
     fn tuple_expr() -> crate::plan::TupleExpr {
