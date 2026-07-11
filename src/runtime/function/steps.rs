@@ -96,9 +96,9 @@ pub(in crate::runtime) fn execute_steps(
                 site,
                 pattern_span,
             } => {
-                let value = get_list_value(frame, local);
+                let value = get_list_value(plan, frame, local);
                 let mut bindings = Vec::new();
-                if match_assert_pattern(pattern, &Value::List(value.clone()), &mut bindings)
+                if match_assert_pattern(plan, pattern, &Value::List(value.clone()), &mut bindings)
                     .is_none()
                 {
                     let message = match message {
@@ -164,6 +164,7 @@ enum PendingBinding {
 }
 
 fn match_list_assert_pattern(
+    plan: &ExecutionPlan,
     pattern: &ListAssertPattern,
     value: &ListValue,
 ) -> Option<Vec<PendingBinding>> {
@@ -173,9 +174,10 @@ fn match_list_assert_pattern(
             return None;
         }
 
-        let mut bindings = match_prefix_assert_patterns(pattern.elements(), &values)?;
+        let mut bindings = match_prefix_assert_patterns(plan, pattern.elements(), &values)?;
         if let ListAssertTail::Bind(binding) = tail {
             bindings.push(PendingBinding::List(ListLocalValue::try_new(
+                plan,
                 binding.local().clone(),
                 value.drop_first(pattern.elements().len()),
             )?));
@@ -186,29 +188,31 @@ fn match_list_assert_pattern(
             return None;
         }
 
-        match_prefix_assert_patterns(pattern.elements(), &values)
+        match_prefix_assert_patterns(plan, pattern.elements(), &values)
     }
 }
 
 fn match_prefix_assert_patterns(
+    plan: &ExecutionPlan,
     patterns: &[AssertPattern],
     values: &[Value],
 ) -> Option<Vec<PendingBinding>> {
     let mut bindings = Vec::new();
     for (pattern, value) in patterns.iter().zip(values) {
-        match_assert_pattern(pattern, value, &mut bindings)?;
+        match_assert_pattern(plan, pattern, value, &mut bindings)?;
     }
     Some(bindings)
 }
 
 fn match_assert_pattern(
+    plan: &ExecutionPlan,
     pattern: &AssertPattern,
     value: &Value,
     bindings: &mut Vec<PendingBinding>,
 ) -> Option<()> {
     match pattern {
         AssertPattern::Bind(binding) => {
-            bindings.push(pending_binding(binding, value)?);
+            bindings.push(pending_binding(plan, binding, value)?);
             Some(())
         }
         AssertPattern::Discard => Some(()),
@@ -220,7 +224,7 @@ fn match_assert_pattern(
                 return None;
             }
             for (pattern, value) in patterns.iter().zip(values) {
-                match_assert_pattern(pattern, value, bindings)?;
+                match_assert_pattern(plan, pattern, value, bindings)?;
             }
             Some(())
         }
@@ -228,18 +232,22 @@ fn match_assert_pattern(
             let Value::List(value) = value else {
                 return None;
             };
-            bindings.extend(match_list_assert_pattern(pattern, value)?);
+            bindings.extend(match_list_assert_pattern(plan, pattern, value)?);
             Some(())
         }
         AssertPattern::Alias { pattern, binding } => {
-            match_assert_pattern(pattern, value, bindings)?;
-            bindings.push(pending_binding(binding, value)?);
+            match_assert_pattern(plan, pattern, value, bindings)?;
+            bindings.push(pending_binding(plan, binding, value)?);
             Some(())
         }
     }
 }
 
-fn pending_binding(target: &AssertBinding, value: &Value) -> Option<PendingBinding> {
+fn pending_binding(
+    plan: &ExecutionPlan,
+    target: &AssertBinding,
+    value: &Value,
+) -> Option<PendingBinding> {
     match (target.local(), value) {
         (ParamLocal::Int(local), Value::Int(value)) => {
             Some(PendingBinding::Int(*local, value.clone()))
@@ -253,21 +261,25 @@ fn pending_binding(target: &AssertBinding, value: &Value) -> Option<PendingBindi
         (ParamLocal::Bool(local), Value::Bool(value)) => Some(PendingBinding::Bool(*local, *value)),
         (ParamLocal::Nil(local), Value::Nil) => Some(PendingBinding::Nil(*local)),
         (ParamLocal::Tuple { local, .. }, Value::Tuple(value))
-            if target.local().value_type()
+            if plan.value_type(&target.local().value_type())
                 == ValueType::Tuple(value.iter().map(Value::value_type).collect()) =>
         {
             Some(PendingBinding::Tuple(*local, value.clone()))
         }
         (ParamLocal::List(local), Value::List(value)) => {
-            ListLocalValue::try_new(local.clone(), value.clone()).map(PendingBinding::List)
+            ListLocalValue::try_new(plan, local.clone(), value.clone()).map(PendingBinding::List)
         }
-        (_, Value::Function(value)) => pending_function_binding(target.local(), value),
+        (_, Value::Function(value)) => pending_function_binding(plan, target.local(), value),
         _ => None,
     }
 }
 
-fn pending_function_binding(target: &ParamLocal, value: &FunctionValue) -> Option<PendingBinding> {
-    if target.value_type() != ValueType::Function(Box::new(value.type_())) {
+fn pending_function_binding(
+    plan: &ExecutionPlan,
+    target: &ParamLocal,
+    value: &FunctionValue,
+) -> Option<PendingBinding> {
+    if plan.value_type(&target.value_type()) != ValueType::Function(Box::new(value.type_())) {
         return None;
     }
 
@@ -381,9 +393,8 @@ fn frame_set_list_binding(frame: &mut Frame, value: ListLocalValue) {
 mod tests {
     use super::{PendingBinding, match_assert_pattern, match_list_assert_pattern};
     use crate::plan::execution::{
-        AssertBinding, AssertPattern, FunctionFunctionId, IntFunctionFunctionId, IntFunctionId,
-        IntListFunctionId, IntListLocalId, IntLocalId, ListAssertPattern, ListAssertTail,
-        ListLocal, ParamLocal, RuntimeFunctionId, StepKind,
+        AssertPattern, FunctionFunctionId, IntFunctionFunctionId, IntFunctionId, IntListLocalId,
+        IntLocalId, ListAssertPattern, RuntimeFunctionId, StepKind,
     };
     use crate::plan::{FunctionType, ValueType};
     use crate::runtime::{FunctionFunctionValue, FunctionValue, ListLocalValue, ListValue, Value};
@@ -592,12 +603,18 @@ pub fn main() {
         let tuple_pattern = &expect_list_assert_pattern(pattern).elements()[0];
         let mut bindings = Vec::new();
         assert_eq!(
-            match_assert_pattern(tuple_pattern, &Value::Int(1.into()), &mut bindings),
+            match_assert_pattern(
+                &tuple_plan,
+                tuple_pattern,
+                &Value::Int(1.into()),
+                &mut bindings
+            ),
             None,
         );
         assert_eq!(bindings, Vec::new());
         assert_eq!(
             match_assert_pattern(
+                &tuple_plan,
                 tuple_pattern,
                 &Value::Tuple(vec![Value::Int(1.into())]),
                 &mut bindings,
@@ -625,7 +642,12 @@ pub fn main() {
             .expect("source should lower an assert-list step");
         let nested_pattern = &expect_list_assert_pattern(pattern).elements()[0];
         assert_eq!(
-            match_assert_pattern(nested_pattern, &Value::Int(1.into()), &mut bindings),
+            match_assert_pattern(
+                &list_plan,
+                nested_pattern,
+                &Value::Int(1.into()),
+                &mut bindings,
+            ),
             None,
         );
         assert_eq!(bindings, Vec::new());
@@ -649,7 +671,12 @@ pub fn main() {
             .expect("source should lower an assert-list step");
         let binding = &expect_list_assert_pattern(pattern).elements()[0];
         assert_eq!(
-            match_assert_pattern(binding, &Value::String("wrong".into()), &mut bindings),
+            match_assert_pattern(
+                &binding_plan,
+                binding,
+                &Value::String("wrong".into()),
+                &mut bindings,
+            ),
             None,
         );
         assert_eq!(bindings, Vec::new());
@@ -665,7 +692,7 @@ pub fn main() {
 }
 "#,
         );
-        let function = tail_plan.int_list_function(IntListFunctionId(0));
+        let function = tail_plan.int_list_function(tail_plan.int_list_function_id(0));
         let pattern = function
             .steps()
             .iter()
@@ -676,7 +703,7 @@ pub fn main() {
             .expect("source should lower an assert-list step");
         let list_pattern = expect_list_assert_pattern(pattern);
         assert_eq!(
-            match_list_assert_pattern(list_pattern, &ListValue::string(Vec::new())),
+            match_list_assert_pattern(&tail_plan, list_pattern, &ListValue::string(Vec::new())),
             None,
         );
 
@@ -700,7 +727,11 @@ pub fn main() {
             .expect("source should lower an assert-list step");
         let list_pattern = expect_list_assert_pattern(pattern);
         assert_eq!(
-            match_list_assert_pattern(list_pattern, &ListValue::string(vec!["wrong".into()]),),
+            match_list_assert_pattern(
+                &prefix_plan,
+                list_pattern,
+                &ListValue::string(vec!["wrong".into()]),
+            ),
             None,
         );
 
@@ -726,10 +757,16 @@ pub fn main() {
         let wrong_type = FunctionValue::new(
             RuntimeFunctionId::String(crate::plan::execution::StringFunctionId(0)),
             Vec::new(),
+            FunctionType::new(Vec::new(), ValueType::String),
         );
         let mut bindings = Vec::new();
         assert_eq!(
-            match_assert_pattern(binding, &Value::Function(wrong_type), &mut bindings),
+            match_assert_pattern(
+                &function_plan,
+                binding,
+                &Value::Function(wrong_type),
+                &mut bindings,
+            ),
             None,
         );
         assert_eq!(bindings, Vec::new());
@@ -741,7 +778,12 @@ pub fn main() {
             FunctionType::new(Vec::new(), ValueType::Int),
         ));
         assert_eq!(
-            match_assert_pattern(binding, &Value::Function(wrong_kind), &mut bindings),
+            match_assert_pattern(
+                &function_plan,
+                binding,
+                &Value::Function(wrong_kind),
+                &mut bindings,
+            ),
             None,
         );
         assert_eq!(bindings, Vec::new());
@@ -749,32 +791,57 @@ pub fn main() {
 
     #[test]
     fn list_assert_tail_binding_preserves_the_typed_local_and_value() {
-        let pattern = ListAssertPattern::new(
-            vec![AssertPattern::Bind(AssertBinding::new(ParamLocal::Int(
-                IntLocalId(0),
-            )))],
-            Some(ListAssertTail::bind(ListLocal::Int(IntListLocalId(0)))),
+        let plan = crate::runtime::plan_src(
+            r#"
+pub fn main() {
+  let assert [first, ..rest] = [1, 2, 3]
+  rest
+}
+"#,
         );
-        let ignored_tail = ListAssertPattern::new(
-            vec![AssertPattern::Bind(AssertBinding::new(ParamLocal::Int(
-                IntLocalId(0),
-            )))],
-            Some(ListAssertTail::Ignore),
+        let function = plan.int_list_function(plan.int_list_function_id(0));
+        let pattern = function
+            .steps()
+            .iter()
+            .find_map(|step| match step.kind() {
+                StepKind::AssertList { pattern, .. } => Some(pattern),
+                _ => None,
+            })
+            .expect("source should lower an assert-list step");
+        let pattern = expect_list_assert_pattern(pattern);
+
+        let ignored_plan = crate::runtime::plan_src(
+            r#"
+pub fn main() {
+  let assert [first, ..] = [1, 2, 3]
+  first
+}
+"#,
         );
+        let function = ignored_plan.int_function(IntFunctionId(0));
+        let ignored_tail = function
+            .steps()
+            .iter()
+            .find_map(|step| match step.kind() {
+                StepKind::AssertList { pattern, .. } => Some(pattern),
+                _ => None,
+            })
+            .expect("source should lower an assert-list step");
+        let ignored_tail = expect_list_assert_pattern(ignored_tail);
         let value = ListValue::int(vec![1.into(), 2.into(), 3.into()]);
 
         assert_eq!(
-            match_list_assert_pattern(&pattern, &value),
+            match_list_assert_pattern(&plan, pattern, &value),
             Some(vec![
                 PendingBinding::Int(IntLocalId(0), 1.into()),
                 PendingBinding::List(ListLocalValue::Int {
-                    local: IntListLocalId(0),
+                    local: IntListLocalId(1),
                     value: vec![2.into(), 3.into()],
                 }),
             ]),
         );
         assert_eq!(
-            match_list_assert_pattern(&ignored_tail, &value),
+            match_list_assert_pattern(&ignored_plan, ignored_tail, &value),
             Some(vec![PendingBinding::Int(IntLocalId(0), 1.into())]),
         );
     }
@@ -802,6 +869,7 @@ pub fn main() {
         let mut bindings = Vec::new();
         assert_eq!(
             match_assert_pattern(
+                &nested_plan,
                 tuple_pattern,
                 &Value::Tuple(vec![Value::Int(1.into()), Value::String("wrong".into())]),
                 &mut bindings,
@@ -830,7 +898,12 @@ pub fn main() {
         let alias_pattern = &expect_list_assert_pattern(pattern).elements()[0];
         bindings.clear();
         assert_eq!(
-            match_assert_pattern(alias_pattern, &Value::Int(1.into()), &mut bindings),
+            match_assert_pattern(
+                &alias_plan,
+                alias_pattern,
+                &Value::Int(1.into()),
+                &mut bindings,
+            ),
             None,
         );
         assert_eq!(bindings, Vec::new());
@@ -861,7 +934,12 @@ pub fn main() {
             FunctionType::new(Vec::new(), ValueType::Int),
         ));
         assert_eq!(
-            match_assert_pattern(alias_pattern, &Value::Function(wrong_kind), &mut bindings,),
+            match_assert_pattern(
+                &function_alias_plan,
+                alias_pattern,
+                &Value::Function(wrong_kind),
+                &mut bindings,
+            ),
             None,
         );
         assert_eq!(bindings, Vec::new());

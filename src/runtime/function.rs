@@ -1,5 +1,5 @@
 mod bind;
-mod return_body;
+pub(in crate::runtime) mod return_body;
 mod steps;
 
 pub(in crate::runtime) use bind::eval_capture_args;
@@ -495,7 +495,7 @@ pub(in crate::runtime) fn run_tuple_list_function_call(
     caller_frame: &mut Frame,
 ) -> ExecutionResult<Vec<Vec<Value>>> {
     let function = eval_list_function_expr(plan, caller_frame, function)?;
-    let ListFunctionId::Tuple { id: runtime_id, .. } = function.runtime_id() else {
+    let ListFunctionId::Tuple(runtime_id) = function.runtime_id() else {
         return Err(ExecutionError::function_return_family_mismatch(
             FunctionReturnFamily::List,
             FunctionReturnFamily::List,
@@ -518,7 +518,7 @@ pub(in crate::runtime) fn run_list_list_function_call(
     caller_frame: &mut Frame,
 ) -> ExecutionResult<Vec<crate::runtime::ListValue>> {
     let function = eval_list_function_expr(plan, caller_frame, function)?;
-    let ListFunctionId::List { id: runtime_id, .. } = function.runtime_id() else {
+    let ListFunctionId::List(runtime_id) = function.runtime_id() else {
         return Err(ExecutionError::function_return_family_mismatch(
             FunctionReturnFamily::List,
             FunctionReturnFamily::List,
@@ -541,7 +541,7 @@ pub(in crate::runtime) fn run_function_list_function_call(
     caller_frame: &mut Frame,
 ) -> ExecutionResult<Vec<FunctionValue>> {
     let function = eval_list_function_expr(plan, caller_frame, function)?;
-    let ListFunctionId::Function { id: runtime_id, .. } = function.runtime_id() else {
+    let ListFunctionId::Function(runtime_id) = function.runtime_id() else {
         return Err(ExecutionError::function_return_family_mismatch(
             FunctionReturnFamily::List,
             FunctionReturnFamily::List,
@@ -562,14 +562,14 @@ fn list_function_frame_layout<'a>(
     function: &ListFunctionId,
 ) -> &'a crate::plan::execution::FrameLayout {
     match function {
-        ListFunctionId::Int(function) => plan.int_list_function(*function).frame_layout(),
-        ListFunctionId::String(function) => plan.string_list_function(*function).frame_layout(),
-        ListFunctionId::Float(function) => plan.float_list_function(*function).frame_layout(),
-        ListFunctionId::Bool(function) => plan.bool_list_function(*function).frame_layout(),
-        ListFunctionId::Nil(function) => plan.nil_list_function(*function).frame_layout(),
-        ListFunctionId::Tuple { id, .. } => plan.tuple_list_function(*id).frame_layout(),
-        ListFunctionId::List { id, .. } => plan.list_list_function(*id).frame_layout(),
-        ListFunctionId::Function { id, .. } => plan.function_list_function(*id).frame_layout(),
+        ListFunctionId::Int(id) => plan.int_list_function(*id).frame_layout(),
+        ListFunctionId::String(id) => plan.string_list_function(*id).frame_layout(),
+        ListFunctionId::Float(id) => plan.float_list_function(*id).frame_layout(),
+        ListFunctionId::Bool(id) => plan.bool_list_function(*id).frame_layout(),
+        ListFunctionId::Nil(id) => plan.nil_list_function(*id).frame_layout(),
+        ListFunctionId::Tuple(id) => plan.tuple_list_function(*id).frame_layout(),
+        ListFunctionId::List(id) => plan.list_list_function(*id).frame_layout(),
+        ListFunctionId::Function(id) => plan.function_list_function(*id).frame_layout(),
     }
 }
 
@@ -914,21 +914,18 @@ mod tests {
         run_tuple_list_loop,
     };
     use crate::plan::execution::{
-        BoolFunctionFunctionId, BoolListFunctionId, CallArg, FloatFunctionFunctionId,
-        FloatListFunctionId, FunctionFunctionFunctionId, FunctionFunctionId,
-        FunctionFunctionLocalId, FunctionListFunctionId, FunctionListFunctionLocalId,
-        FunctionListLocalId, FunctionReturnFamily, IntFunctionFunctionId, IntFunctionId,
-        IntListFunctionFunctionId, IntListFunctionId, IntListFunctionLocalId,
-        ListFunctionFunctionId, ListFunctionId, ListFunctionLocal, ListListFunctionId,
-        ListListFunctionLocalId, NilFunctionFunctionId, NilListFunctionId, ReturnBody,
-        ReturnBodyKind, RuntimeFunctionId, StringFunctionFunctionId, StringFunctionId,
-        StringListFunctionId, StringListFunctionLocalId, TupleFunctionFunctionId,
-        TupleListFunctionId, TupleListFunctionLocalId,
+        BoolFunctionFunctionId, CallArg, FloatFunctionFunctionId, FunctionFunctionFunctionId,
+        FunctionFunctionId, FunctionFunctionLocalId, FunctionListLocalId, FunctionReturnFamily,
+        IntFunctionFunctionId, IntFunctionId, ListFunctionFunctionId, ListFunctionId,
+        NilFunctionFunctionId, ReturnBody, ReturnBodyKind, RuntimeFunctionId,
+        StringFunctionFunctionId, StringFunctionId, TupleFunctionFunctionId,
     };
     use crate::plan::{FunctionType, ValueType};
     use crate::runtime::frame::Frame;
-    use crate::runtime::{ExecutionError, run_main};
-    use crate::runtime::{FunctionFunctionValue, FunctionValue, ListFunctionValue};
+    use crate::runtime::{ExecutionError, Value, run_main};
+    use crate::runtime::{
+        FunctionFunctionValue, FunctionValue, FunctionValueKind, ListFunctionValue,
+    };
 
     #[test]
     fn primitive_function_value_calls_propagate_callee_and_argument_panics() {
@@ -982,6 +979,125 @@ mod tests {
                 "panic: callee",
             );
         }
+    }
+
+    #[test]
+    fn list_function_calls_reject_wrong_item_families_at_the_transitional_runtime_boundary() {
+        let plan = crate::runtime::plan_src(
+            r#"
+fn int_values(provider: fn() -> List(Int)) { provider() }
+fn string_values(provider: fn() -> List(String)) { provider() }
+fn float_values(provider: fn() -> List(Float)) { provider() }
+fn bool_values(provider: fn() -> List(Bool)) { provider() }
+fn nil_values(provider: fn() -> List(Nil)) { provider() }
+fn tuple_values(provider: fn() -> List(#(Int))) { provider() }
+fn list_values(provider: fn() -> List(List(Int))) { provider() }
+fn function_values(provider: fn() -> List(fn() -> Int)) { provider() }
+fn wrong_int() -> List(Int) { [] }
+fn wrong_string() -> List(String) { [] }
+
+pub fn main() { Nil }
+"#,
+        );
+        let wrong_int = ListFunctionValue::new_with_captures(
+            ListFunctionId::Int(plan.int_list_function_id(1)),
+            Vec::new(),
+            Vec::new(),
+            FunctionType::new(Vec::new(), ValueType::List(Box::new(ValueType::Int))),
+        );
+        let wrong_string = ListFunctionValue::new_with_captures(
+            ListFunctionId::String(plan.string_list_function_id(1)),
+            Vec::new(),
+            Vec::new(),
+            FunctionType::new(Vec::new(), ValueType::List(Box::new(ValueType::String))),
+        );
+        let function = plan.int_list_function(plan.int_list_function_id(0));
+        let mut frame = Frame::new(function.frame_layout());
+        frame.set_list_function(
+            function.frame_layout().list_functions()[0].clone(),
+            wrong_string,
+        );
+        assert_eq!(
+            run_int_list_loop(&plan, plan.int_list_function_id(0), frame),
+            Err(list_item_family_mismatch()),
+        );
+
+        let function = plan.string_list_function(plan.string_list_function_id(0));
+        let mut frame = Frame::new(function.frame_layout());
+        frame.set_list_function(
+            function.frame_layout().list_functions()[0].clone(),
+            wrong_int.clone(),
+        );
+        assert_eq!(
+            run_string_list_loop(&plan, plan.string_list_function_id(0), frame),
+            Err(list_item_family_mismatch()),
+        );
+
+        let function = plan.float_list_function(plan.float_list_function_id(0));
+        let mut frame = Frame::new(function.frame_layout());
+        frame.set_list_function(
+            function.frame_layout().list_functions()[0].clone(),
+            wrong_int.clone(),
+        );
+        assert_eq!(
+            run_float_list_loop(&plan, plan.float_list_function_id(0), frame),
+            Err(list_item_family_mismatch()),
+        );
+
+        let function = plan.bool_list_function(plan.bool_list_function_id(0));
+        let mut frame = Frame::new(function.frame_layout());
+        frame.set_list_function(
+            function.frame_layout().list_functions()[0].clone(),
+            wrong_int.clone(),
+        );
+        assert_eq!(
+            run_bool_list_loop(&plan, plan.bool_list_function_id(0), frame),
+            Err(list_item_family_mismatch()),
+        );
+
+        let function = plan.nil_list_function(plan.nil_list_function_id(0));
+        let mut frame = Frame::new(function.frame_layout());
+        frame.set_list_function(
+            function.frame_layout().list_functions()[0].clone(),
+            wrong_int.clone(),
+        );
+        assert_eq!(
+            run_nil_list_loop(&plan, plan.nil_list_function_id(0), frame),
+            Err(list_item_family_mismatch()),
+        );
+
+        let function = plan.tuple_list_function(plan.tuple_list_function_id(0));
+        let mut frame = Frame::new(function.frame_layout());
+        frame.set_list_function(
+            function.frame_layout().list_functions()[0].clone(),
+            wrong_int.clone(),
+        );
+        assert_eq!(
+            run_tuple_list_loop(&plan, plan.tuple_list_function_id(0), frame),
+            Err(list_item_family_mismatch()),
+        );
+
+        let function = plan.list_list_function(plan.list_list_function_id(0));
+        let mut frame = Frame::new(function.frame_layout());
+        frame.set_list_function(
+            function.frame_layout().list_functions()[0].clone(),
+            wrong_int.clone(),
+        );
+        assert_eq!(
+            run_list_list_loop(&plan, plan.list_list_function_id(0), frame),
+            Err(list_item_family_mismatch()),
+        );
+
+        let function = plan.function_list_function(plan.function_list_function_id(0));
+        let mut frame = Frame::new(function.frame_layout());
+        frame.set_list_function(
+            function.frame_layout().list_functions()[0].clone(),
+            wrong_int,
+        );
+        assert_eq!(
+            run_function_list_loop(&plan, plan.function_list_function_id(0), frame),
+            Err(list_item_family_mismatch()),
+        );
     }
 
     #[test]
@@ -1053,13 +1169,13 @@ mod tests {
         let plan = crate::runtime::plan_src(
             "fn callee(value: Int) -> List(Int) { [] } pub fn main() { callee(panic) }",
         );
-        let main = plan.int_list_function(IntListFunctionId(0));
+        let main = plan.int_list_function(plan.int_list_function_id(0));
         let args = expect_tail_call_args(main.return_());
         let mut caller_frame = Frame::default();
 
         let error = super::run_list_call(
             &plan,
-            ListFunctionId::Int(IntListFunctionId(1)),
+            ListFunctionId::Int(plan.int_list_function_id(1)),
             args,
             &mut caller_frame,
         )
@@ -1072,203 +1188,9 @@ mod tests {
     #[should_panic(expected = "expected a tail-call return body")]
     fn tail_call_shape_guard_rejects_expression_returns() {
         let plan = crate::runtime::plan_src("pub fn main() -> List(Int) { [] }");
-        let main = plan.int_list_function(IntListFunctionId(0));
+        let main = plan.int_list_function(plan.int_list_function_id(0));
 
         let _ = expect_tail_call_args(main.return_());
-    }
-
-    #[test]
-    fn list_function_value_calls_reject_wrong_item_families() {
-        let plan = crate::runtime::plan_src(
-            r#"
-fn int_values(provider: fn() -> List(Int)) { provider() }
-fn string_values(provider: fn() -> List(String)) { provider() }
-fn float_values(provider: fn() -> List(Float)) { provider() }
-fn bool_values(provider: fn() -> List(Bool)) { provider() }
-fn nil_values(provider: fn() -> List(Nil)) { provider() }
-fn tuple_values(provider: fn() -> List(#(Int))) { provider() }
-fn nested_values(provider: fn() -> List(List(Int))) { provider() }
-fn function_values(provider: fn() -> List(fn() -> Int)) { provider() }
-
-pub fn main() { Nil }
-"#,
-        );
-        let expected_error = || {
-            ExecutionError::function_return_family_mismatch(
-                FunctionReturnFamily::List,
-                FunctionReturnFamily::List,
-            )
-        };
-        let int_type = FunctionType::new(Vec::new(), ValueType::List(Box::new(ValueType::Int)));
-        let string_type =
-            FunctionType::new(Vec::new(), ValueType::List(Box::new(ValueType::String)));
-        let float_type = FunctionType::new(Vec::new(), ValueType::List(Box::new(ValueType::Float)));
-        let bool_type = FunctionType::new(Vec::new(), ValueType::List(Box::new(ValueType::Bool)));
-        let nil_type = FunctionType::new(Vec::new(), ValueType::List(Box::new(ValueType::Nil)));
-        let tuple_item_type = vec![ValueType::Int];
-        let tuple_type = FunctionType::new(
-            Vec::new(),
-            ValueType::List(Box::new(ValueType::Tuple(tuple_item_type.clone()))),
-        );
-        let nested_item_type = Box::new(ValueType::Int);
-        let nested_type = FunctionType::new(
-            Vec::new(),
-            ValueType::List(Box::new(ValueType::List(nested_item_type.clone()))),
-        );
-        let function_item_type = FunctionType::new(Vec::new(), ValueType::Int);
-        let function_type = FunctionType::new(
-            Vec::new(),
-            ValueType::List(Box::new(ValueType::Function(Box::new(
-                function_item_type.clone(),
-            )))),
-        );
-
-        let function = plan.int_list_function(IntListFunctionId(0));
-        let mut frame = Frame::new(function.frame_layout());
-        frame.set_list_function(
-            ListFunctionLocal::Int {
-                local: IntListFunctionLocalId(0),
-                type_: int_type,
-            },
-            ListFunctionValue::new_with_captures(
-                ListFunctionId::String(StringListFunctionId(0)),
-                Vec::new(),
-                Vec::new(),
-            ),
-        );
-        assert_eq!(
-            run_int_list_loop(&plan, IntListFunctionId(0), frame),
-            Err(expected_error())
-        );
-
-        let function = plan.string_list_function(StringListFunctionId(0));
-        let mut frame = Frame::new(function.frame_layout());
-        frame.set_list_function(
-            ListFunctionLocal::String {
-                local: StringListFunctionLocalId(0),
-                type_: string_type,
-            },
-            ListFunctionValue::new_with_captures(
-                ListFunctionId::Int(IntListFunctionId(0)),
-                Vec::new(),
-                Vec::new(),
-            ),
-        );
-        assert_eq!(
-            run_string_list_loop(&plan, StringListFunctionId(0), frame),
-            Err(expected_error())
-        );
-
-        let function = plan.float_list_function(FloatListFunctionId(0));
-        let mut frame = Frame::new(function.frame_layout());
-        frame.set_list_function(
-            ListFunctionLocal::Float {
-                local: crate::plan::execution::FloatListFunctionLocalId(0),
-                type_: float_type,
-            },
-            ListFunctionValue::new_with_captures(
-                ListFunctionId::Int(IntListFunctionId(0)),
-                Vec::new(),
-                Vec::new(),
-            ),
-        );
-        assert_eq!(
-            run_float_list_loop(&plan, FloatListFunctionId(0), frame),
-            Err(expected_error())
-        );
-
-        let function = plan.bool_list_function(BoolListFunctionId(0));
-        let mut frame = Frame::new(function.frame_layout());
-        frame.set_list_function(
-            ListFunctionLocal::Bool {
-                local: crate::plan::execution::BoolListFunctionLocalId(0),
-                type_: bool_type,
-            },
-            ListFunctionValue::new_with_captures(
-                ListFunctionId::Int(IntListFunctionId(0)),
-                Vec::new(),
-                Vec::new(),
-            ),
-        );
-        assert_eq!(
-            run_bool_list_loop(&plan, BoolListFunctionId(0), frame),
-            Err(expected_error())
-        );
-
-        let function = plan.nil_list_function(NilListFunctionId(0));
-        let mut frame = Frame::new(function.frame_layout());
-        frame.set_list_function(
-            ListFunctionLocal::Nil {
-                local: crate::plan::execution::NilListFunctionLocalId(0),
-                type_: nil_type,
-            },
-            ListFunctionValue::new_with_captures(
-                ListFunctionId::Int(IntListFunctionId(0)),
-                Vec::new(),
-                Vec::new(),
-            ),
-        );
-        assert_eq!(
-            run_nil_list_loop(&plan, NilListFunctionId(0), frame),
-            Err(expected_error())
-        );
-
-        let function = plan.tuple_list_function(TupleListFunctionId(0));
-        let mut frame = Frame::new(function.frame_layout());
-        frame.set_list_function(
-            ListFunctionLocal::Tuple {
-                local: TupleListFunctionLocalId(0),
-                type_: tuple_type,
-                item_type: tuple_item_type,
-            },
-            ListFunctionValue::new_with_captures(
-                ListFunctionId::Int(IntListFunctionId(0)),
-                Vec::new(),
-                Vec::new(),
-            ),
-        );
-        assert_eq!(
-            run_tuple_list_loop(&plan, TupleListFunctionId(0), frame),
-            Err(expected_error())
-        );
-
-        let function = plan.list_list_function(ListListFunctionId(0));
-        let mut frame = Frame::new(function.frame_layout());
-        frame.set_list_function(
-            ListFunctionLocal::List {
-                local: ListListFunctionLocalId(0),
-                type_: nested_type,
-                item_type: nested_item_type,
-            },
-            ListFunctionValue::new_with_captures(
-                ListFunctionId::Int(IntListFunctionId(0)),
-                Vec::new(),
-                Vec::new(),
-            ),
-        );
-        assert_eq!(
-            run_list_list_loop(&plan, ListListFunctionId(0), frame),
-            Err(expected_error())
-        );
-
-        let function = plan.function_list_function(FunctionListFunctionId(0));
-        let mut frame = Frame::new(function.frame_layout());
-        frame.set_list_function(
-            ListFunctionLocal::Function {
-                local: FunctionListFunctionLocalId(0),
-                type_: function_type,
-                item_type: Box::new(function_item_type),
-            },
-            ListFunctionValue::new_with_captures(
-                ListFunctionId::Int(IntListFunctionId(0)),
-                Vec::new(),
-                Vec::new(),
-            ),
-        );
-        assert_eq!(
-            run_function_list_loop(&plan, FunctionListFunctionId(0), frame),
-            Err(expected_error())
-        );
     }
 
     #[test]
@@ -1326,8 +1248,11 @@ fn tuple_function(provider: fn() -> fn() -> #(Int)) { provider() }
 fn list_function(provider: fn() -> fn() -> List(Int)) { provider() }
 fn function_function(provider: fn() -> fn() -> fn() -> Int) { provider() }
 
-pub fn main() { Nil }
+pub fn main() { list_function }
 "#,
+        );
+        let list_function_id = expect_list_function_function_id(
+            run_main(&plan).expect("main should return list_function"),
         );
         let int_return = FunctionType::new(Vec::new(), ValueType::Int);
         let wrong_string = FunctionFunctionValue::new(
@@ -1407,26 +1332,22 @@ pub fn main() { Nil }
             )),
         );
 
-        let list_id = ListFunctionFunctionId::Int {
-            id: IntListFunctionFunctionId(0),
-            type_: FunctionType::new(Vec::new(), ValueType::List(Box::new(ValueType::Int))),
-        };
-        let function = plan.list_function_function(&list_id);
+        let function = plan.list_function_function(&list_function_id);
         let mut frame = Frame::new(function.frame_layout());
         frame.set_function_function(FunctionFunctionLocalId(0), wrong_int.clone());
         assert_eq!(
-            run_list_function_loop(&plan, list_id, frame),
+            run_list_function_loop(&plan, list_function_id, frame),
             Err(ExecutionError::function_return_family_mismatch(
                 FunctionReturnFamily::List,
                 FunctionReturnFamily::Int,
             )),
         );
 
-        let function = plan.function_function_function(FunctionFunctionFunctionId(0));
+        let function = plan.function_function_function(FunctionFunctionFunctionId(1));
         let mut frame = Frame::new(function.frame_layout());
         frame.set_function_function(FunctionFunctionLocalId(0), wrong_int);
         assert_eq!(
-            run_function_function_loop(&plan, FunctionFunctionFunctionId(0), frame),
+            run_function_function_loop(&plan, FunctionFunctionFunctionId(1), frame),
             Err(ExecutionError::function_return_family_mismatch(
                 FunctionReturnFamily::Function,
                 FunctionReturnFamily::Int,
@@ -1463,12 +1384,22 @@ fn function_function(values: List(fn() -> fn() -> Int)) {
   case values { [value, ..] -> value _ -> panic }
 }
 
-pub fn main() { Nil }
+pub fn main() { list_function }
 "#,
         );
-        let wrong_string =
-            FunctionValue::new(RuntimeFunctionId::String(StringFunctionId(0)), Vec::new());
-        let wrong_int = FunctionValue::new(RuntimeFunctionId::Int(IntFunctionId(0)), Vec::new());
+        let list_function_id = expect_list_function_function_id(
+            run_main(&plan).expect("main should return list_function"),
+        );
+        let wrong_string = FunctionValue::new(
+            RuntimeFunctionId::String(StringFunctionId(0)),
+            Vec::new(),
+            FunctionType::new(Vec::new(), ValueType::String),
+        );
+        let wrong_int = FunctionValue::new(
+            RuntimeFunctionId::Int(IntFunctionId(0)),
+            Vec::new(),
+            FunctionType::new(Vec::new(), ValueType::Int),
+        );
 
         let function = plan.int_function_function(IntFunctionFunctionId(0));
         let mut frame = Frame::new(function.frame_layout());
@@ -1536,31 +1467,47 @@ pub fn main() { Nil }
             )),
         );
 
-        let list_id = ListFunctionFunctionId::Int {
-            id: IntListFunctionFunctionId(0),
-            type_: FunctionType::new(Vec::new(), ValueType::List(Box::new(ValueType::Int))),
-        };
-        let function = plan.list_function_function(&list_id);
+        let function = plan.list_function_function(&list_function_id);
         let mut frame = Frame::new(function.frame_layout());
         frame.set_function_list(FunctionListLocalId(0), vec![wrong_int.clone()]);
         assert_eq!(
-            run_list_function_loop(&plan, list_id, frame),
+            run_list_function_loop(&plan, list_function_id, frame),
             Err(ExecutionError::function_return_family_mismatch(
                 FunctionReturnFamily::List,
                 FunctionReturnFamily::Int,
             )),
         );
 
-        let function = plan.function_function_function(FunctionFunctionFunctionId(0));
+        let function = plan.function_function_function(FunctionFunctionFunctionId(1));
         let mut frame = Frame::new(function.frame_layout());
         frame.set_function_list(FunctionListLocalId(0), vec![wrong_int]);
         assert_eq!(
-            run_function_function_loop(&plan, FunctionFunctionFunctionId(0), frame),
+            run_function_function_loop(&plan, FunctionFunctionFunctionId(1), frame),
             Err(ExecutionError::function_return_family_mismatch(
                 FunctionReturnFamily::Function,
                 FunctionReturnFamily::Int,
             )),
         );
+    }
+
+    #[test]
+    #[should_panic(expected = "expected a function returning a list function")]
+    fn list_function_function_fixture_guard_rejects_non_function_value() {
+        let _ = expect_list_function_function_id(Value::Int(0.into()));
+    }
+
+    #[test]
+    #[should_panic(expected = "expected a function returning a list function")]
+    fn list_function_function_fixture_guard_rejects_primitive_function() {
+        let value = crate::runtime::run_src("pub fn main() { fn() { 1 } }");
+        let _ = expect_list_function_function_id(value);
+    }
+
+    #[test]
+    #[should_panic(expected = "expected a function returning a list function")]
+    fn list_function_function_fixture_guard_rejects_int_function_function() {
+        let value = crate::runtime::run_src("pub fn main() { fn() { fn() { 1 } } }");
+        let _ = expect_list_function_function_id(value);
     }
 
     fn expect_tail_call_args<Expression, Function>(
@@ -1570,5 +1517,25 @@ pub fn main() { Nil }
             ReturnBodyKind::TailCall { args, .. } => args,
             _ => panic!("expected a tail-call return body"),
         }
+    }
+
+    fn expect_list_function_function_id(value: Value) -> ListFunctionFunctionId {
+        match value {
+            Value::Function(function) => match function.kind() {
+                FunctionValueKind::Function(function) => match function.runtime_id() {
+                    FunctionFunctionId::List(function) => function,
+                    _ => panic!("expected a function returning a list function"),
+                },
+                _ => panic!("expected a function returning a list function"),
+            },
+            _ => panic!("expected a function returning a list function"),
+        }
+    }
+
+    fn list_item_family_mismatch() -> ExecutionError {
+        ExecutionError::function_return_family_mismatch(
+            FunctionReturnFamily::List,
+            FunctionReturnFamily::List,
+        )
     }
 }

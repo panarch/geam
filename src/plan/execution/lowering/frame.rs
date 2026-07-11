@@ -1,7 +1,10 @@
 use super::id::list_function_local;
 use crate::plan::module;
 
-pub(super) fn frame_layout(layout: module::FrameLayout) -> super::super::FrameLayout {
+pub(super) fn frame_layout(
+    layout: module::FrameLayout,
+    context: &mut super::LoweringContext,
+) -> super::super::FrameLayout {
     let parts = layout.into_parts();
     let _ = parts.nils;
 
@@ -11,14 +14,36 @@ pub(super) fn frame_layout(layout: module::FrameLayout) -> super::super::FrameLa
         strings: parts.strings,
         bools: parts.bools,
         tuples: parts.tuples,
-        int_lists: parts.int_lists,
-        string_lists: parts.string_lists,
-        float_lists: parts.float_lists,
-        bool_lists: parts.bool_lists,
-        nil_lists: parts.nil_lists,
-        tuple_lists: parts.tuple_lists,
-        list_lists: parts.list_lists,
-        function_lists: parts.function_lists,
+        int_lists: (0..parts.int_lists)
+            .map(|_| context.int_list_type())
+            .collect(),
+        string_lists: (0..parts.string_lists)
+            .map(|_| context.string_list_type())
+            .collect(),
+        float_lists: (0..parts.float_lists)
+            .map(|_| context.float_list_type())
+            .collect(),
+        bool_lists: (0..parts.bool_lists)
+            .map(|_| context.bool_list_type())
+            .collect(),
+        nil_lists: (0..parts.nil_lists)
+            .map(|_| context.nil_list_type())
+            .collect(),
+        tuple_lists: parts
+            .tuple_lists
+            .into_iter()
+            .map(|item| context.tuple_list_type(item))
+            .collect(),
+        list_lists: parts
+            .list_lists
+            .into_iter()
+            .map(|item| context.list_list_type(item))
+            .collect(),
+        function_lists: parts
+            .function_lists
+            .into_iter()
+            .map(|item| context.function_list_type(item))
+            .collect(),
         int_functions: parts.int_functions,
         float_functions: parts.float_functions,
         string_functions: parts.string_functions,
@@ -28,7 +53,7 @@ pub(super) fn frame_layout(layout: module::FrameLayout) -> super::super::FrameLa
         list_functions: parts
             .list_functions
             .into_iter()
-            .map(list_function_local)
+            .map(|local| list_function_local(local, context))
             .collect(),
         function_functions: parts.function_functions,
     })
@@ -36,12 +61,7 @@ pub(super) fn frame_layout(layout: module::FrameLayout) -> super::super::FrameLa
 
 #[cfg(test)]
 mod tests {
-    use super::super::super::{
-        BoolListFunctionLocalId, ExecutionPlan, FloatListFunctionLocalId,
-        FunctionListFunctionLocalId, IntFunctionId, IntListFunctionLocalId, ListFunctionLocal,
-        ListListFunctionLocalId, NilListFunctionLocalId, StringListFunctionLocalId,
-        TupleListFunctionLocalId,
-    };
+    use super::super::super::{ExecutionPlan, IntFunctionId};
     use crate::plan::{FunctionType, ValueType};
 
     #[test]
@@ -94,16 +114,25 @@ pub fn main() { 0 }
         assert_eq!(layout.strings(), 1);
         assert_eq!(layout.bools(), 1);
         assert_eq!(layout.tuples(), 1);
-        assert_eq!(layout.int_lists(), 1);
-        assert_eq!(layout.string_lists(), 1);
-        assert_eq!(layout.float_lists(), 1);
-        assert_eq!(layout.bool_lists(), 1);
-        assert_eq!(layout.nil_lists(), 1);
-        assert_eq!(layout.tuple_lists(), &[vec![ValueType::Int]]);
-        assert_eq!(layout.list_lists(), &[ValueType::Int]);
+        assert_eq!(layout.int_lists().len(), 1);
+        assert_eq!(layout.string_lists().len(), 1);
+        assert_eq!(layout.float_lists().len(), 1);
+        assert_eq!(layout.bool_lists().len(), 1);
+        assert_eq!(layout.nil_lists().len(), 1);
+        assert_eq!(layout.tuple_lists().len(), 1);
+        assert_eq!(layout.list_lists().len(), 1);
+        assert_eq!(layout.function_lists().len(), 1);
         assert_eq!(
-            layout.function_lists(),
-            &[FunctionType::new(Vec::new(), ValueType::Int)]
+            plan.tuple_list_item_type(layout.tuple_lists()[0]),
+            vec![ValueType::Int]
+        );
+        assert_eq!(
+            plan.nested_list_item_type(layout.list_lists()[0]),
+            ValueType::Int
+        );
+        assert_eq!(
+            plan.function_list_item_type(layout.function_lists()[0]),
+            FunctionType::new(Vec::new(), ValueType::Int)
         );
         assert_eq!(layout.int_functions(), 1);
         assert_eq!(layout.float_functions(), 1);
@@ -113,66 +142,25 @@ pub fn main() { 0 }
         assert_eq!(layout.tuple_functions(), 1);
         assert_eq!(layout.function_functions(), 1);
 
-        let int_type = FunctionType::new(Vec::new(), ValueType::List(Box::new(ValueType::Int)));
-        let string_type =
-            FunctionType::new(Vec::new(), ValueType::List(Box::new(ValueType::String)));
-        let float_type = FunctionType::new(Vec::new(), ValueType::List(Box::new(ValueType::Float)));
-        let bool_type = FunctionType::new(Vec::new(), ValueType::List(Box::new(ValueType::Bool)));
-        let nil_type = FunctionType::new(Vec::new(), ValueType::List(Box::new(ValueType::Nil)));
-        let tuple_type = FunctionType::new(
-            Vec::new(),
-            ValueType::List(Box::new(ValueType::Tuple(vec![ValueType::Int]))),
-        );
-        let list_type = FunctionType::new(
-            Vec::new(),
-            ValueType::List(Box::new(ValueType::List(Box::new(ValueType::Int)))),
-        );
         let item_function_type = FunctionType::new(Vec::new(), ValueType::Int);
-        let function_type = FunctionType::new(
-            Vec::new(),
-            ValueType::List(Box::new(ValueType::Function(Box::new(
-                item_function_type.clone(),
-            )))),
-        );
-        assert_eq!(
-            layout.list_functions(),
-            &[
-                ListFunctionLocal::Int {
-                    local: IntListFunctionLocalId(0),
-                    type_: int_type,
-                },
-                ListFunctionLocal::String {
-                    local: StringListFunctionLocalId(1),
-                    type_: string_type,
-                },
-                ListFunctionLocal::Float {
-                    local: FloatListFunctionLocalId(2),
-                    type_: float_type,
-                },
-                ListFunctionLocal::Bool {
-                    local: BoolListFunctionLocalId(3),
-                    type_: bool_type,
-                },
-                ListFunctionLocal::Nil {
-                    local: NilListFunctionLocalId(4),
-                    type_: nil_type,
-                },
-                ListFunctionLocal::Tuple {
-                    local: TupleListFunctionLocalId(5),
-                    type_: tuple_type,
-                    item_type: vec![ValueType::Int],
-                },
-                ListFunctionLocal::List {
-                    local: ListListFunctionLocalId(6),
-                    type_: list_type,
-                    item_type: Box::new(ValueType::Int),
-                },
-                ListFunctionLocal::Function {
-                    local: FunctionListFunctionLocalId(7),
-                    type_: function_type,
-                    item_type: Box::new(item_function_type),
-                },
-            ]
-        );
+        let expected_returns = [
+            ValueType::List(Box::new(ValueType::Int)),
+            ValueType::List(Box::new(ValueType::String)),
+            ValueType::List(Box::new(ValueType::Float)),
+            ValueType::List(Box::new(ValueType::Bool)),
+            ValueType::List(Box::new(ValueType::Nil)),
+            ValueType::List(Box::new(ValueType::Tuple(vec![ValueType::Int]))),
+            ValueType::List(Box::new(ValueType::List(Box::new(ValueType::Int)))),
+            ValueType::List(Box::new(ValueType::Function(Box::new(item_function_type)))),
+        ];
+        let list_functions = layout.list_functions();
+        assert_eq!(list_functions.len(), expected_returns.len());
+        for (local, expected_return) in list_functions.iter().zip(expected_returns) {
+            assert_eq!(
+                plan.function_type(local.type_()),
+                FunctionType::new(Vec::new(), expected_return.clone())
+            );
+            assert_eq!(plan.list_value_type(local.list_type()), expected_return);
+        }
     }
 }

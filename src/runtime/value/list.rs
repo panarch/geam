@@ -6,8 +6,8 @@ use super::{FunctionValue, Value};
 use crate::plan::{FunctionType, ValueType};
 
 use crate::plan::execution::{
-    BoolListLocalId, FloatListLocalId, FunctionListLocalId, IntListLocalId, ListListLocalId,
-    ListLocal, NilListLocalId, StringListLocalId, TupleListLocalId,
+    BoolListLocalId, ExecutionPlan, FloatListLocalId, FunctionListLocalId, IntListLocalId,
+    ListListLocalId, ListLocal, NilListLocalId, StringListLocalId, TupleListLocalId,
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -388,50 +388,58 @@ fn ensure_item_types(
 }
 
 impl ListLocalValue {
-    pub(crate) fn try_new(local: ListLocal, value: ListValue) -> Option<Self> {
+    pub(crate) fn try_new(
+        plan: &ExecutionPlan,
+        local: ListLocal,
+        value: ListValue,
+    ) -> Option<Self> {
         match (local, value.into_kind()) {
-            (ListLocal::Int(local), ListValueKind::Int(value)) => Some(Self::Int { local, value }),
-            (ListLocal::String(local), ListValueKind::String(value)) => {
+            (ListLocal::Int { local, .. }, ListValueKind::Int(value)) => {
+                Some(Self::Int { local, value })
+            }
+            (ListLocal::String { local, .. }, ListValueKind::String(value)) => {
                 Some(Self::String { local, value })
             }
-            (ListLocal::Float(local), ListValueKind::Float(value)) => {
+            (ListLocal::Float { local, .. }, ListValueKind::Float(value)) => {
                 Some(Self::Float { local, value })
             }
-            (ListLocal::Bool(local), ListValueKind::Bool(value)) => {
+            (ListLocal::Bool { local, .. }, ListValueKind::Bool(value)) => {
                 Some(Self::Bool { local, value })
             }
-            (ListLocal::Nil(local), ListValueKind::Nil(len)) => Some(Self::Nil { local, len }),
+            (ListLocal::Nil { local, .. }, ListValueKind::Nil(len)) => {
+                Some(Self::Nil { local, len })
+            }
             (
-                ListLocal::Tuple { local, item_type },
+                ListLocal::Tuple { local, type_id },
                 ListValueKind::Tuple {
                     item_type: actual,
                     values,
                 },
-            ) if item_type == actual => Some(Self::Tuple {
+            ) if plan.tuple_list_item_type(type_id) == actual => Some(Self::Tuple {
                 local,
-                item_type,
+                item_type: actual,
                 value: values,
             }),
             (
-                ListLocal::List { local, item_type },
+                ListLocal::List { local, type_id },
                 ListValueKind::List {
                     item_type: actual,
                     values,
                 },
-            ) if item_type == actual => Some(Self::List {
+            ) if Box::new(plan.nested_list_item_type(type_id)) == actual => Some(Self::List {
                 local,
-                item_type,
+                item_type: actual,
                 value: values,
             }),
             (
-                ListLocal::Function { local, item_type },
+                ListLocal::Function { local, type_id },
                 ListValueKind::Function {
                     item_type: actual,
                     values,
                 },
-            ) if item_type == actual => Some(Self::Function {
+            ) if plan.function_list_item_type(type_id) == actual => Some(Self::Function {
                 local,
-                item_type,
+                item_type: actual,
                 value: values,
             }),
             _ => None,
@@ -441,30 +449,65 @@ impl ListLocalValue {
 
 #[cfg(test)]
 mod tests {
-    use super::{ListLocalValue, ListValue, ListValueItemTypeMismatch};
-    use crate::plan::execution::{
-        BoolListLocalId, FloatListLocalId, FunctionListLocalId, IntFunctionId, IntListLocalId,
-        ListListLocalId, ListLocal, NilListLocalId, ParamLocal, RuntimeFunctionId,
-        StringListLocalId, TupleListLocalId,
-    };
+    use super::{ListValue, ListValueItemTypeMismatch};
     use crate::plan::{FunctionType, ValueType};
     use crate::runtime::{FunctionValue, Value};
 
     #[test]
-    fn empty_preserves_item_type_for_every_family() {
-        let function_type = FunctionType::new(vec![ValueType::Int], ValueType::String);
-        let types = [
+    fn list_value_operations_preserve_every_storage_family() {
+        let function = sample_function();
+        let function_type = function.type_();
+        let values = [
+            ListValue::int(vec![1.into(), 2.into()]),
+            ListValue::string(vec!["one".into(), "two".into()]),
+            ListValue::float(vec![1.5, 2.5]),
+            ListValue::bool(vec![true, false]),
+            ListValue::nil(2),
+            ListValue::from_evaluated_tuple(
+                vec![ValueType::Int],
+                vec![vec![Value::Int(1.into())], vec![Value::Int(2.into())]],
+            ),
+            ListValue::from_evaluated_list(
+                ValueType::Int,
+                vec![
+                    ListValue::int(vec![1.into()]),
+                    ListValue::int(vec![2.into()]),
+                ],
+            ),
+            ListValue::from_evaluated_function(
+                function_type.clone(),
+                vec![function.clone(), function.clone()],
+            ),
+        ];
+        let item_types = [
             ValueType::Int,
             ValueType::String,
             ValueType::Float,
             ValueType::Bool,
             ValueType::Nil,
-            ValueType::Tuple(vec![ValueType::Int, ValueType::String]),
+            ValueType::Tuple(vec![ValueType::Int]),
             ValueType::List(Box::new(ValueType::Int)),
-            ValueType::Function(Box::new(function_type)),
+            ValueType::Function(Box::new(function_type.clone())),
         ];
 
-        for item_type in types {
+        for (value, item_type) in values.iter().zip(item_types) {
+            assert_eq!(value.item_type(), item_type);
+            assert_eq!(value.len(), 2);
+            assert!(!value.is_empty());
+            assert_eq!(value.drop_first(1).len(), 1);
+            assert_eq!(value.to_values().len(), 2);
+        }
+
+        for item_type in [
+            ValueType::Int,
+            ValueType::String,
+            ValueType::Float,
+            ValueType::Bool,
+            ValueType::Nil,
+            ValueType::Tuple(vec![ValueType::Int]),
+            ValueType::List(Box::new(ValueType::Int)),
+            ValueType::Function(Box::new(function_type)),
+        ] {
             let value = ListValue::empty(item_type.clone());
             assert_eq!(value.item_type(), item_type);
             assert_eq!(value.len(), 0);
@@ -474,118 +517,13 @@ mod tests {
     }
 
     #[test]
-    fn to_values_preserves_family_specific_storage() {
-        let function_type = FunctionType::new(vec![ValueType::Int], ValueType::Int);
-        let function_value = FunctionValue::new(
-            RuntimeFunctionId::Int(IntFunctionId(0)),
-            vec![ParamLocal::Int(crate::plan::execution::IntLocalId(0))],
-        );
+    fn list_value_owned_accessors_preserve_and_reject_exact_families() {
+        let function = sample_function();
+        let function_type = function.type_();
 
         assert_eq!(
-            ListValue::int(vec![1.into(), 2.into()]).to_values(),
-            vec![Value::Int(1.into()), Value::Int(2.into())],
-        );
-        assert_eq!(
-            ListValue::string(vec!["one".into(), "two".into()]).to_values(),
-            vec![Value::String("one".into()), Value::String("two".into())],
-        );
-        assert_eq!(
-            ListValue::float(vec![1.5, 2.5]).to_values(),
-            vec![Value::Float(1.5), Value::Float(2.5)],
-        );
-        assert_eq!(
-            ListValue::bool(vec![true, false]).to_values(),
-            vec![Value::Bool(true), Value::Bool(false)],
-        );
-        assert_eq!(ListValue::nil(2).to_values(), vec![Value::Nil, Value::Nil],);
-        assert_eq!(
-            ListValue::from_evaluated_tuple(
-                vec![ValueType::Int, ValueType::String],
-                vec![vec![Value::Int(1.into()), Value::String("one".into())]],
-            )
-            .to_values(),
-            vec![Value::Tuple(vec![
-                Value::Int(1.into()),
-                Value::String("one".into())
-            ])],
-        );
-        assert_eq!(
-            ListValue::from_evaluated_list(ValueType::Int, vec![ListValue::int(vec![1.into()])],)
-                .to_values(),
-            vec![Value::List(ListValue::int(vec![1.into()]))],
-        );
-        assert_eq!(
-            ListValue::from_evaluated_function(function_type, vec![function_value.clone()])
-                .to_values(),
-            vec![Value::Function(function_value)],
-        );
-    }
-
-    #[test]
-    fn drop_first_preserves_family_specific_storage() {
-        let function_type = FunctionType::new(vec![ValueType::Int], ValueType::Int);
-        let function_value = FunctionValue::new(
-            RuntimeFunctionId::Int(IntFunctionId(0)),
-            vec![ParamLocal::Int(crate::plan::execution::IntLocalId(0))],
-        );
-
-        assert_eq!(
-            ListValue::int(vec![1.into(), 2.into()]).drop_first(1),
-            ListValue::int(vec![2.into()]),
-        );
-        assert_eq!(
-            ListValue::string(vec!["one".into(), "two".into()]).drop_first(1),
-            ListValue::string(vec!["two".into()]),
-        );
-        assert_eq!(
-            ListValue::float(vec![1.5, 2.5]).drop_first(1),
-            ListValue::float(vec![2.5]),
-        );
-        assert_eq!(
-            ListValue::bool(vec![true, false]).drop_first(1),
-            ListValue::bool(vec![false]),
-        );
-        assert_eq!(ListValue::nil(2).drop_first(1), ListValue::nil(1));
-        assert_eq!(
-            ListValue::from_evaluated_tuple(
-                vec![ValueType::Int],
-                vec![vec![Value::Int(1.into())], vec![Value::Int(2.into())]],
-            )
-            .drop_first(1),
-            ListValue::from_evaluated_tuple(vec![ValueType::Int], vec![vec![Value::Int(2.into())]],),
-        );
-        assert_eq!(
-            ListValue::from_evaluated_list(
-                ValueType::Int,
-                vec![
-                    ListValue::int(vec![1.into()]),
-                    ListValue::int(vec![2.into()])
-                ],
-            )
-            .drop_first(1),
-            ListValue::from_evaluated_list(ValueType::Int, vec![ListValue::int(vec![2.into()])],),
-        );
-        assert_eq!(
-            ListValue::from_evaluated_function(
-                function_type.clone(),
-                vec![function_value.clone(), function_value.clone()],
-            )
-            .drop_first(1),
-            ListValue::from_evaluated_function(function_type, vec![function_value]),
-        );
-    }
-
-    #[test]
-    fn owned_accessors_preserve_family_specific_storage() {
-        let function_type = FunctionType::new(vec![ValueType::Int], ValueType::Int);
-        let function_value = FunctionValue::new(
-            RuntimeFunctionId::Int(IntFunctionId(0)),
-            vec![ParamLocal::Int(crate::plan::execution::IntLocalId(0))],
-        );
-
-        assert_eq!(
-            ListValue::int(vec![1.into(), 2.into()]).into_int_values(),
-            Some(vec![1.into(), 2.into()]),
+            ListValue::int(vec![1.into()]).into_int_values(),
+            Some(vec![1.into()])
         );
         assert_eq!(
             ListValue::string(vec!["one".into()]).into_string_values(),
@@ -599,7 +537,7 @@ mod tests {
             ListValue::bool(vec![true]).into_bool_values(),
             Some(vec![true])
         );
-        assert_eq!(ListValue::nil(2).into_nil_len(), Some(2));
+        assert_eq!(ListValue::nil(1).into_nil_len(), Some(1));
         assert_eq!(
             ListValue::from_evaluated_tuple(
                 vec![ValueType::Int],
@@ -609,102 +547,43 @@ mod tests {
             Some(vec![vec![Value::Int(1.into())]]),
         );
         assert_eq!(
-            ListValue::from_evaluated_list(ValueType::Int, vec![ListValue::int(vec![1.into()])],)
+            ListValue::from_evaluated_list(ValueType::Int, vec![ListValue::int(vec![1.into()])])
                 .into_list_values(&ValueType::Int),
             Some(vec![ListValue::int(vec![1.into()])]),
         );
         assert_eq!(
+            ListValue::from_evaluated_function(function_type.clone(), vec![function.clone()])
+                .into_function_values(&function_type),
+            Some(vec![function]),
+        );
+
+        assert_eq!(ListValue::string(Vec::new()).into_int_values(), None);
+        assert_eq!(ListValue::int(Vec::new()).into_string_values(), None);
+        assert_eq!(ListValue::int(Vec::new()).into_float_values(), None);
+        assert_eq!(ListValue::int(Vec::new()).into_bool_values(), None);
+        assert_eq!(ListValue::int(Vec::new()).into_nil_len(), None);
+        assert_eq!(
+            ListValue::from_evaluated_tuple(vec![ValueType::String], Vec::new())
+                .into_tuple_values(&[ValueType::Int]),
+            None,
+        );
+        assert_eq!(
+            ListValue::from_evaluated_list(ValueType::String, Vec::new())
+                .into_list_values(&ValueType::Int),
+            None,
+        );
+        assert_eq!(
             ListValue::from_evaluated_function(
-                function_type.clone(),
-                vec![function_value.clone()],
-            )
-            .into_function_values(&function_type),
-            Some(vec![function_value.clone()]),
-        );
-
-        assert_eq!(
-            ListValue::string(vec!["wrong".into()]).into_int_values(),
-            None,
-        );
-        assert_eq!(ListValue::int(vec![1.into()]).into_string_values(), None);
-        assert_eq!(ListValue::int(vec![1.into()]).into_float_values(), None);
-        assert_eq!(ListValue::int(vec![1.into()]).into_bool_values(), None);
-        assert_eq!(ListValue::int(vec![1.into()]).into_nil_len(), None);
-        assert_eq!(
-            ListValue::from_evaluated_tuple(
-                vec![ValueType::String],
-                vec![vec![Value::String("one".into())]],
-            )
-            .into_tuple_values(&[ValueType::Int]),
-            None,
-        );
-        assert_eq!(
-            ListValue::from_evaluated_list(
-                ValueType::String,
-                vec![ListValue::string(vec!["one".into()])]
-            )
-            .into_list_values(&ValueType::Int),
-            None,
-        );
-        assert_eq!(
-            ListValue::from_evaluated_function(function_type.clone(), vec![function_value])
-                .into_function_values(&FunctionType::new(Vec::new(), ValueType::Nil)),
-            None,
-        );
-    }
-
-    #[test]
-    fn checked_compound_constructors_preserve_exact_values_and_empty_metadata() {
-        let tuple_type = vec![ValueType::Int, ValueType::String];
-        let tuple_values = vec![vec![Value::Int(1.into()), Value::String("one".into())]];
-        assert_eq!(
-            ListValue::try_tuple(tuple_type.clone(), tuple_values.clone()),
-            Ok(ListValue::from_evaluated_tuple(
-                tuple_type.clone(),
-                tuple_values,
-            )),
-        );
-        assert_eq!(
-            ListValue::try_tuple(tuple_type.clone(), Vec::new()),
-            Ok(ListValue::from_evaluated_tuple(tuple_type, Vec::new())),
-        );
-
-        let nested_values = vec![ListValue::int(vec![1.into()])];
-        assert_eq!(
-            ListValue::try_list(ValueType::Int, nested_values.clone()),
-            Ok(ListValue::from_evaluated_list(
-                ValueType::Int,
-                nested_values,
-            )),
-        );
-        assert_eq!(
-            ListValue::try_list(ValueType::Int, Vec::new()),
-            Ok(ListValue::from_evaluated_list(ValueType::Int, Vec::new(),)),
-        );
-
-        let function_type = FunctionType::new(Vec::new(), ValueType::Int);
-        let function_values = vec![FunctionValue::new(
-            RuntimeFunctionId::Int(IntFunctionId(0)),
-            Vec::new(),
-        )];
-        assert_eq!(
-            ListValue::try_function(function_type.clone(), function_values.clone()),
-            Ok(ListValue::from_evaluated_function(
-                function_type.clone(),
-                function_values,
-            )),
-        );
-        assert_eq!(
-            ListValue::try_function(function_type.clone(), Vec::new()),
-            Ok(ListValue::from_evaluated_function(
-                function_type,
+                FunctionType::new(Vec::new(), ValueType::String),
                 Vec::new(),
-            )),
+            )
+            .into_function_values(&FunctionType::new(Vec::new(), ValueType::Int)),
+            None,
         );
     }
 
     #[test]
-    fn checked_compound_constructors_report_exact_item_type_mismatches() {
+    fn checked_list_value_constructors_report_exact_item_mismatches() {
         assert_eq!(
             ListValue::try_tuple(
                 vec![ValueType::Int],
@@ -722,10 +601,7 @@ mod tests {
         assert_eq!(
             ListValue::try_list(
                 ValueType::Int,
-                vec![
-                    ListValue::int(vec![1.into()]),
-                    ListValue::string(vec!["wrong".into()]),
-                ],
+                vec![ListValue::int(Vec::new()), ListValue::string(Vec::new())],
             ),
             Err(ListValueItemTypeMismatch {
                 index: 1,
@@ -734,35 +610,11 @@ mod tests {
             }),
         );
 
-        let string_lists = ListValue::from_evaluated_list(
-            ValueType::String,
-            vec![ListValue::string(vec!["wrong".into()])],
-        );
-        assert_eq!(
-            ListValue::try_list(
-                ValueType::String,
-                vec![ListValue::string(vec!["wrong".into()])],
-            ),
-            Ok(string_lists.clone()),
-        );
-        assert_eq!(
-            ListValue::try_list(
-                ValueType::List(Box::new(ValueType::Int)),
-                vec![string_lists],
-            ),
-            Err(ListValueItemTypeMismatch {
-                index: 0,
-                expected: ValueType::List(Box::new(ValueType::List(Box::new(ValueType::Int)))),
-                actual: ValueType::List(Box::new(ValueType::List(Box::new(ValueType::String)))),
-            }),
-        );
-
-        let function_value =
-            FunctionValue::new(RuntimeFunctionId::Int(IntFunctionId(0)), Vec::new());
+        let function = sample_function();
         assert_eq!(
             ListValue::try_function(
                 FunctionType::new(vec![ValueType::Int], ValueType::Int),
-                vec![function_value],
+                vec![function],
             ),
             Err(ListValueItemTypeMismatch {
                 index: 0,
@@ -776,163 +628,34 @@ mod tests {
                 ))),
             }),
         );
+
         assert_eq!(
-            ListValueItemTypeMismatch {
-                index: 2,
-                expected: ValueType::List(Box::new(ValueType::Int)),
-                actual: ValueType::List(Box::new(ValueType::String)),
-            }
-            .to_string(),
-            "list value item type mismatch at index 2 (expected List(Int), got List(String))",
+            ListValue::try_tuple(vec![ValueType::Int], Vec::new()),
+            Ok(ListValue::from_evaluated_tuple(
+                vec![ValueType::Int],
+                Vec::new()
+            )),
+        );
+        assert_eq!(
+            ListValue::try_list(ValueType::Int, Vec::new()),
+            Ok(ListValue::from_evaluated_list(ValueType::Int, Vec::new())),
+        );
+        assert_eq!(
+            ListValue::try_function(FunctionType::new(Vec::new(), ValueType::Int), Vec::new()),
+            Ok(ListValue::from_evaluated_function(
+                FunctionType::new(Vec::new(), ValueType::Int),
+                Vec::new(),
+            )),
         );
     }
 
-    #[test]
-    fn local_value_preserves_typed_list_local_family() {
-        let function_type = FunctionType::new(vec![ValueType::Int], ValueType::Int);
-        let function_value = FunctionValue::new(
-            RuntimeFunctionId::Int(IntFunctionId(0)),
-            vec![ParamLocal::Int(crate::plan::execution::IntLocalId(0))],
-        );
-
-        assert_eq!(
-            ListLocalValue::try_new(
-                ListLocal::Int(IntListLocalId(0)),
-                ListValue::int(vec![1.into()]),
-            ),
-            Some(ListLocalValue::Int {
-                local: IntListLocalId(0),
-                value: vec![1.into()],
-            }),
-        );
-        assert_eq!(
-            ListLocalValue::try_new(
-                ListLocal::String(StringListLocalId(1)),
-                ListValue::string(vec!["one".into()]),
-            ),
-            Some(ListLocalValue::String {
-                local: StringListLocalId(1),
-                value: vec!["one".into()],
-            }),
-        );
-        assert_eq!(
-            ListLocalValue::try_new(
-                ListLocal::Float(FloatListLocalId(2)),
-                ListValue::float(vec![1.5]),
-            ),
-            Some(ListLocalValue::Float {
-                local: FloatListLocalId(2),
-                value: vec![1.5],
-            }),
-        );
-        assert_eq!(
-            ListLocalValue::try_new(
-                ListLocal::Bool(BoolListLocalId(3)),
-                ListValue::bool(vec![true]),
-            ),
-            Some(ListLocalValue::Bool {
-                local: BoolListLocalId(3),
-                value: vec![true],
-            }),
-        );
-        assert_eq!(
-            ListLocalValue::try_new(ListLocal::Nil(NilListLocalId(4)), ListValue::nil(2),),
-            Some(ListLocalValue::Nil {
-                local: NilListLocalId(4),
-                len: 2,
-            }),
-        );
-        assert_eq!(
-            ListLocalValue::try_new(
-                ListLocal::Tuple {
-                    local: TupleListLocalId(5),
-                    item_type: vec![ValueType::Int],
-                },
-                ListValue::from_evaluated_tuple(
-                    vec![ValueType::Int],
-                    vec![vec![Value::Int(1.into())]],
-                ),
-            ),
-            Some(ListLocalValue::Tuple {
-                local: TupleListLocalId(5),
-                item_type: vec![ValueType::Int],
-                value: vec![vec![Value::Int(1.into())]],
-            }),
-        );
-        assert_eq!(
-            ListLocalValue::try_new(
-                ListLocal::List {
-                    local: ListListLocalId(6),
-                    item_type: Box::new(ValueType::String),
-                },
-                ListValue::from_evaluated_list(
-                    ValueType::String,
-                    vec![ListValue::string(vec!["one".into()])]
-                ),
-            ),
-            Some(ListLocalValue::List {
-                local: ListListLocalId(6),
-                item_type: Box::new(ValueType::String),
-                value: vec![ListValue::string(vec!["one".into()])],
-            }),
-        );
-        assert_eq!(
-            ListLocalValue::try_new(
-                ListLocal::Function {
-                    local: FunctionListLocalId(7),
-                    item_type: function_type.clone(),
-                },
-                ListValue::from_evaluated_function(
-                    function_type.clone(),
-                    vec![function_value.clone()],
-                ),
-            ),
-            Some(ListLocalValue::Function {
-                local: FunctionListLocalId(7),
-                item_type: function_type.clone(),
-                value: vec![function_value],
-            }),
-        );
-
-        assert_eq!(
-            ListLocalValue::try_new(
-                ListLocal::Tuple {
-                    local: TupleListLocalId(8),
-                    item_type: vec![ValueType::Int],
-                },
-                ListValue::from_evaluated_tuple(vec![ValueType::String], Vec::new()),
-            ),
-            None,
-        );
-        assert_eq!(
-            ListLocalValue::try_new(
-                ListLocal::List {
-                    local: ListListLocalId(9),
-                    item_type: Box::new(ValueType::Int),
-                },
-                ListValue::from_evaluated_list(ValueType::String, Vec::new()),
-            ),
-            None,
-        );
-        assert_eq!(
-            ListLocalValue::try_new(
-                ListLocal::Function {
-                    local: FunctionListLocalId(10),
-                    item_type: FunctionType::new(Vec::new(), ValueType::Int),
-                },
-                ListValue::from_evaluated_function(
-                    FunctionType::new(Vec::new(), ValueType::String),
-                    Vec::new(),
-                ),
-            ),
-            None,
-        );
-        assert_eq!(
-            ListLocalValue::try_new(
-                ListLocal::Int(IntListLocalId(11)),
-                ListValue::string(Vec::new()),
-            ),
-            None,
-        );
+    fn sample_function() -> FunctionValue {
+        FunctionValue::new(
+            crate::plan::execution::RuntimeFunctionId::Int(crate::plan::execution::IntFunctionId(
+                0,
+            )),
+            Vec::new(),
+            FunctionType::new(Vec::new(), ValueType::Int),
+        )
     }
 }

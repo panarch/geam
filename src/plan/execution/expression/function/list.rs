@@ -1,4 +1,4 @@
-use crate::plan::FunctionType;
+use crate::plan::execution::FunctionType;
 use crate::plan::execution::{
     BoolExpr, ClosureTemplate, FloatExpr, FunctionFunctionExpr, FunctionListExpr,
     FunctionReference, IntExpr, ListFunctionFunctionId, ListFunctionId, ListFunctionLocal,

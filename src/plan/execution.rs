@@ -8,6 +8,7 @@ mod reference;
 mod return_;
 mod step;
 mod table;
+mod value_type;
 
 pub(crate) use expression::{
     BoolExpr, BoolExprKind, BoolFunctionExpr, BoolFunctionExprKind, BoolListExpr, BoolListItem,
@@ -54,6 +55,11 @@ pub(crate) use return_::{
 pub(crate) use step::{
     AssertBinding, AssertPattern, ListAssertPattern, ListAssertTail, Step, StepKind,
 };
+pub(crate) use value_type::{
+    BoolListTypeId, FloatListTypeId, FunctionListTypeId, FunctionType, IntListTypeId,
+    ListListTypeId, ListTypeId, ListTypeTable, NilListTypeId, StringListTypeId, TupleListTypeId,
+    ValueType,
+};
 
 use self::function::ExecutableFunction;
 use self::table::FunctionTables;
@@ -65,6 +71,7 @@ pub struct ExecutionPlan {
     source_context: Option<SourceContext>,
     main: RuntimeFunctionId,
     functions: FunctionTables,
+    list_types: ListTypeTable,
 }
 
 impl ExecutionPlan {
@@ -82,6 +89,47 @@ impl ExecutionPlan {
 
     pub(crate) fn main_runtime(&self) -> RuntimeFunctionId {
         self.main.clone()
+    }
+
+    pub(crate) fn list_value_type(&self, id: ListTypeId) -> crate::plan::ValueType {
+        self.list_types.list_value_type(id)
+    }
+
+    pub(crate) fn tuple_list_item_type(&self, id: TupleListTypeId) -> Vec<crate::plan::ValueType> {
+        self.list_types.tuple_item_type(id)
+    }
+
+    pub(crate) fn nested_list_item_type(&self, id: ListListTypeId) -> crate::plan::ValueType {
+        self.list_types.nested_list_item_type(id)
+    }
+
+    pub(crate) fn function_list_item_type(
+        &self,
+        id: FunctionListTypeId,
+    ) -> crate::plan::FunctionType {
+        self.list_types.function_item_type(id)
+    }
+
+    pub(crate) fn value_type(&self, type_: &ValueType) -> crate::plan::ValueType {
+        self.list_types.value_type(type_)
+    }
+
+    pub(crate) fn function_type(&self, type_: &FunctionType) -> crate::plan::FunctionType {
+        self.list_types.function_type(type_)
+    }
+
+    pub(crate) fn function_value_type(
+        &self,
+        params: &[ParamLocal],
+        return_: crate::plan::ValueType,
+    ) -> crate::plan::FunctionType {
+        crate::plan::FunctionType::new(
+            params
+                .iter()
+                .map(|param| self.value_type(&param.value_type()))
+                .collect(),
+            return_,
+        )
     }
 
     pub(crate) fn int_function(&self, id: IntFunctionId) -> &ExecutableFunction<IntReturn> {
@@ -116,6 +164,46 @@ impl ExecutionPlan {
         id: IntListFunctionId,
     ) -> &ExecutableFunction<IntListReturn> {
         self.functions.int_list_function(id)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn int_list_function_id(&self, index: usize) -> IntListFunctionId {
+        self.functions.int_list_function_id(index)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn string_list_function_id(&self, index: usize) -> StringListFunctionId {
+        self.functions.string_list_function_id(index)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn float_list_function_id(&self, index: usize) -> FloatListFunctionId {
+        self.functions.float_list_function_id(index)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn bool_list_function_id(&self, index: usize) -> BoolListFunctionId {
+        self.functions.bool_list_function_id(index)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn nil_list_function_id(&self, index: usize) -> NilListFunctionId {
+        self.functions.nil_list_function_id(index)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn tuple_list_function_id(&self, index: usize) -> TupleListFunctionId {
+        self.functions.tuple_list_function_id(index)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn list_list_function_id(&self, index: usize) -> ListListFunctionId {
+        self.functions.list_list_function_id(index)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn function_list_function_id(&self, index: usize) -> FunctionListFunctionId {
+        self.functions.function_list_function_id(index)
     }
 
     pub(crate) fn string_list_function(
@@ -214,6 +302,14 @@ impl ExecutionPlan {
         id: &ListFunctionFunctionId,
     ) -> &ExecutableFunction<ListFunctionReturn> {
         self.functions.list_function_function(id)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn int_list_function_function(
+        &self,
+        id: IntListFunctionFunctionId,
+    ) -> &ExecutableFunction<ListFunctionReturn> {
+        self.functions.int_list_function_function(id)
     }
 
     pub(crate) fn function_function_function(

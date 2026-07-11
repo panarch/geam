@@ -20,14 +20,15 @@ use crate::plan::{execution, module};
 
 fn function_reference<ModuleFunction, ExecutionFunction>(
     reference: module::TypedFunctionReference<ModuleFunction>,
-    lower_function: impl FnOnce(ModuleFunction) -> ExecutionFunction,
+    context: &mut super::super::LoweringContext,
+    lower_function: impl FnOnce(ModuleFunction, &mut super::super::LoweringContext) -> ExecutionFunction,
 ) -> execution::FunctionReference<ExecutionFunction> {
     let (function, params) = reference.into_parts();
     execution::FunctionReference::new(
-        lower_function(function),
+        lower_function(function, context),
         params
             .into_iter()
-            .map(crate::plan::execution::lowering::param::param_local)
+            .map(|param| crate::plan::execution::lowering::param::param_local(param, context))
             .collect(),
     )
 }
@@ -36,45 +37,47 @@ fn closure_template<ModuleFunction, ExecutionFunction>(
     function: ModuleFunction,
     params: Vec<module::ParamLocal>,
     captures: Vec<module::CaptureArg>,
-    lower_function: impl FnOnce(ModuleFunction) -> ExecutionFunction,
+    context: &mut super::super::LoweringContext,
+    lower_function: impl FnOnce(ModuleFunction, &mut super::super::LoweringContext) -> ExecutionFunction,
 ) -> execution::ClosureTemplate<ExecutionFunction> {
     execution::ClosureTemplate::new(
-        lower_function(function),
+        lower_function(function, context),
         params
             .into_iter()
-            .map(crate::plan::execution::lowering::param::param_local)
+            .map(|param| crate::plan::execution::lowering::param::param_local(param, context))
             .collect(),
-        super::capture_args(captures),
+        super::capture_args(captures, context),
     )
 }
 
 pub(in crate::plan::execution::lowering) fn function_expr(
     expression: module::FunctionExpr,
+    context: &mut super::super::LoweringContext,
 ) -> execution::FunctionExpr {
     execution::FunctionExpr::from_kind(match expression.into_kind() {
         module::FunctionExprKind::Int(expression) => {
-            execution::FunctionExprKind::Int(int_function_expr(expression))
+            execution::FunctionExprKind::Int(int_function_expr(expression, context))
         }
         module::FunctionExprKind::String(expression) => {
-            execution::FunctionExprKind::String(string_function_expr(expression))
+            execution::FunctionExprKind::String(string_function_expr(expression, context))
         }
         module::FunctionExprKind::Float(expression) => {
-            execution::FunctionExprKind::Float(float_function_expr(expression))
+            execution::FunctionExprKind::Float(float_function_expr(expression, context))
         }
         module::FunctionExprKind::Bool(expression) => {
-            execution::FunctionExprKind::Bool(bool_function_expr(expression))
+            execution::FunctionExprKind::Bool(bool_function_expr(expression, context))
         }
         module::FunctionExprKind::Nil(expression) => {
-            execution::FunctionExprKind::Nil(nil_function_expr(expression))
+            execution::FunctionExprKind::Nil(nil_function_expr(expression, context))
         }
         module::FunctionExprKind::Tuple(expression) => {
-            execution::FunctionExprKind::Tuple(tuple_function_expr(expression))
+            execution::FunctionExprKind::Tuple(tuple_function_expr(expression, context))
         }
         module::FunctionExprKind::List(expression) => {
-            execution::FunctionExprKind::List(list_function_expr(expression))
+            execution::FunctionExprKind::List(list_function_expr(expression, context))
         }
         module::FunctionExprKind::Function(expression) => {
-            execution::FunctionExprKind::Function(function_function_expr(expression))
+            execution::FunctionExprKind::Function(function_function_expr(expression, context))
         }
     })
 }

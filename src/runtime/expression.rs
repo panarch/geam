@@ -108,12 +108,10 @@ mod tests {
         eval_tuple_expr, eval_tuple_function_expr, eval_tuple_list_expr,
     };
     use crate::plan::execution::{
-        BoolFunctionFunctionId, BoolFunctionId, BoolListFunctionId, FloatFunctionFunctionId,
-        FloatFunctionId, FloatListFunctionId, FunctionFunctionFunctionId, IntFunctionFunctionId,
-        IntFunctionId, IntListFunctionId, NilFunctionFunctionId, NilFunctionId, NilListFunctionId,
-        ReturnBody, ReturnBodyKind, RuntimeFunctionId, StringFunctionFunctionId, StringFunctionId,
-        StringListFunctionId, TupleFunctionFunctionId, TupleFunctionId, TupleListFunctionId,
-        TupleLocalId,
+        BoolFunctionFunctionId, BoolFunctionId, FloatFunctionFunctionId, FloatFunctionId,
+        FunctionFunctionFunctionId, IntFunctionFunctionId, IntFunctionId, NilFunctionFunctionId,
+        NilFunctionId, ReturnBody, ReturnBodyKind, RuntimeFunctionId, StringFunctionFunctionId,
+        StringFunctionId, TupleFunctionFunctionId, TupleFunctionId, TupleLocalId,
     };
     use crate::plan::{FunctionType, ValueType};
     use crate::runtime::frame::Frame;
@@ -285,7 +283,7 @@ pub fn main() { Nil }
             )),
         );
 
-        let function = plan.int_list_function(IntListFunctionId(0));
+        let function = plan.int_list_function(plan.int_list_function_id(0));
         let expression = expression_return(function.return_())
             .expect("source function should have an expression return body");
         let mut frame = Frame::new(function.frame_layout());
@@ -309,7 +307,7 @@ pub fn main() { Nil }
             )),
         );
 
-        let function = plan.string_list_function(StringListFunctionId(0));
+        let function = plan.string_list_function(plan.string_list_function_id(0));
         let expression = expression_return(function.return_())
             .expect("source function should have an expression return body");
         let mut frame = Frame::new(function.frame_layout());
@@ -322,7 +320,7 @@ pub fn main() { Nil }
             )),
         );
 
-        let function = plan.float_list_function(FloatListFunctionId(0));
+        let function = plan.float_list_function(plan.float_list_function_id(0));
         let expression = expression_return(function.return_())
             .expect("source function should have an expression return body");
         let mut frame = Frame::new(function.frame_layout());
@@ -335,7 +333,7 @@ pub fn main() { Nil }
             )),
         );
 
-        let function = plan.bool_list_function(BoolListFunctionId(0));
+        let function = plan.bool_list_function(plan.bool_list_function_id(0));
         let expression = expression_return(function.return_())
             .expect("source function should have an expression return body");
         let mut frame = Frame::new(function.frame_layout());
@@ -348,7 +346,7 @@ pub fn main() { Nil }
             )),
         );
 
-        let function = plan.nil_list_function(NilListFunctionId(0));
+        let function = plan.nil_list_function(plan.nil_list_function_id(0));
         let expression = expression_return(function.return_())
             .expect("source function should have an expression return body");
         let mut frame = Frame::new(function.frame_layout());
@@ -361,7 +359,7 @@ pub fn main() { Nil }
             )),
         );
 
-        let function = plan.tuple_list_function(TupleListFunctionId(0));
+        let function = plan.tuple_list_function(plan.tuple_list_function_id(0));
         let expression = expression_return(function.return_())
             .expect("source function should have an expression return body");
         let mut frame = Frame::new(function.frame_layout());
@@ -374,7 +372,7 @@ pub fn main() { Nil }
             )),
         );
 
-        let function = plan.list_list_function(crate::plan::execution::ListListFunctionId(0));
+        let function = plan.list_list_function(plan.list_list_function_id(0));
         let expression = expression_return(function.return_())
             .expect("source function should have an expression return body");
         let mut frame = Frame::new(function.frame_layout());
@@ -387,8 +385,7 @@ pub fn main() { Nil }
             )),
         );
 
-        let function =
-            plan.function_list_function(crate::plan::execution::FunctionListFunctionId(0));
+        let function = plan.function_list_function(plan.function_list_function_id(0));
         let expression = expression_return(function.return_())
             .expect("source function should have an expression return body");
         let mut frame = Frame::new(function.frame_layout());
@@ -494,10 +491,7 @@ pub fn main() { Nil }
         );
 
         let function =
-            plan.list_function_function(&crate::plan::execution::ListFunctionFunctionId::Int {
-                id: crate::plan::execution::IntListFunctionFunctionId(0),
-                type_: expected_function_types[6].clone(),
-            });
+            plan.int_list_function_function(crate::plan::execution::IntListFunctionFunctionId(0));
         let expression = expression_return(function.return_())
             .expect("source function should have an expression return body");
         let mut frame = Frame::new(function.frame_layout());
@@ -523,10 +517,16 @@ pub fn main() { Nil }
             )),
         );
 
-        let wrong_string_function =
-            FunctionValue::new(RuntimeFunctionId::String(StringFunctionId(0)), Vec::new());
-        let wrong_int_function =
-            FunctionValue::new(RuntimeFunctionId::Int(IntFunctionId(0)), Vec::new());
+        let wrong_string_function = FunctionValue::new(
+            RuntimeFunctionId::String(StringFunctionId(0)),
+            Vec::new(),
+            FunctionType::new(Vec::new(), ValueType::String),
+        );
+        let wrong_int_function = FunctionValue::new(
+            RuntimeFunctionId::Int(IntFunctionId(0)),
+            Vec::new(),
+            FunctionType::new(Vec::new(), ValueType::Int),
+        );
         let wrong_string_type = ValueType::Function(Box::new(wrong_string_function.type_()));
         let wrong_int_type = ValueType::Function(Box::new(wrong_int_function.type_()));
 
@@ -627,10 +627,7 @@ pub fn main() { Nil }
         );
 
         let function =
-            plan.list_function_function(&crate::plan::execution::ListFunctionFunctionId::Int {
-                id: crate::plan::execution::IntListFunctionFunctionId(0),
-                type_: expected_function_types[6].clone(),
-            });
+            plan.int_list_function_function(crate::plan::execution::IntListFunctionFunctionId(0));
         let expression = expression_return(function.return_())
             .expect("source function should have an expression return body");
         let mut frame = Frame::new(function.frame_layout());
@@ -719,35 +716,56 @@ pub fn main() { Nil }
         );
 
         assert_eq!(
-            expression_return(plan.int_list_function(IntListFunctionId(0)).return_()).map(|_| ()),
-            None,
-        );
-        assert_eq!(
-            expression_return(plan.string_list_function(StringListFunctionId(0)).return_())
-                .map(|_| ()),
-            None,
-        );
-        assert_eq!(
-            expression_return(plan.float_list_function(FloatListFunctionId(0)).return_())
-                .map(|_| ()),
-            None,
-        );
-        assert_eq!(
-            expression_return(plan.bool_list_function(BoolListFunctionId(0)).return_()).map(|_| ()),
-            None,
-        );
-        assert_eq!(
-            expression_return(plan.nil_list_function(NilListFunctionId(0)).return_()).map(|_| ()),
-            None,
-        );
-        assert_eq!(
-            expression_return(plan.tuple_list_function(TupleListFunctionId(0)).return_())
-                .map(|_| ()),
+            expression_return(
+                plan.int_list_function(plan.int_list_function_id(0))
+                    .return_()
+            )
+            .map(|_| ()),
             None,
         );
         assert_eq!(
             expression_return(
-                plan.list_list_function(crate::plan::execution::ListListFunctionId(0))
+                plan.string_list_function(plan.string_list_function_id(0))
+                    .return_()
+            )
+            .map(|_| ()),
+            None,
+        );
+        assert_eq!(
+            expression_return(
+                plan.float_list_function(plan.float_list_function_id(0))
+                    .return_()
+            )
+            .map(|_| ()),
+            None,
+        );
+        assert_eq!(
+            expression_return(
+                plan.bool_list_function(plan.bool_list_function_id(0))
+                    .return_()
+            )
+            .map(|_| ()),
+            None,
+        );
+        assert_eq!(
+            expression_return(
+                plan.nil_list_function(plan.nil_list_function_id(0))
+                    .return_()
+            )
+            .map(|_| ()),
+            None,
+        );
+        assert_eq!(
+            expression_return(
+                plan.tuple_list_function(plan.tuple_list_function_id(0))
+                    .return_()
+            )
+            .map(|_| ()),
+            None,
+        );
+        assert_eq!(
+            expression_return(
+                plan.list_list_function(plan.list_list_function_id(0))
                     .return_(),
             )
             .map(|_| ()),
@@ -755,7 +773,7 @@ pub fn main() { Nil }
         );
         assert_eq!(
             expression_return(
-                plan.function_list_function(crate::plan::execution::FunctionListFunctionId(0))
+                plan.function_list_function(plan.function_list_function_id(0))
                     .return_(),
             )
             .map(|_| ()),
@@ -810,15 +828,12 @@ pub fn main() { Nil }
             .map(|_| ()),
             None,
         );
-        let list_function_type =
-            FunctionType::new(Vec::new(), ValueType::List(Box::new(ValueType::Int)));
         assert_eq!(
             expression_return(
-                plan.list_function_function(&crate::plan::execution::ListFunctionFunctionId::Int {
-                    id: crate::plan::execution::IntListFunctionFunctionId(0),
-                    type_: list_function_type,
-                },)
-                    .return_(),
+                plan.int_list_function_function(crate::plan::execution::IntListFunctionFunctionId(
+                    0
+                ))
+                .return_(),
             )
             .map(|_| ()),
             None,

@@ -1,5 +1,7 @@
-use super::ListFunctionLocal;
-use crate::plan::{FunctionType, ValueType};
+use super::{
+    BoolListTypeId, FloatListTypeId, FunctionListTypeId, IntListTypeId, ListFunctionLocal,
+    ListListTypeId, NilListTypeId, StringListTypeId, TupleListTypeId,
+};
 
 #[derive(Default)]
 pub(crate) struct FrameLayout {
@@ -8,14 +10,14 @@ pub(crate) struct FrameLayout {
     strings: usize,
     bools: usize,
     tuples: usize,
-    int_lists: usize,
-    string_lists: usize,
-    float_lists: usize,
-    bool_lists: usize,
-    nil_lists: usize,
-    tuple_lists: Vec<Vec<ValueType>>,
-    list_lists: Vec<ValueType>,
-    function_lists: Vec<FunctionType>,
+    int_lists: Vec<IntListTypeId>,
+    string_lists: Vec<StringListTypeId>,
+    float_lists: Vec<FloatListTypeId>,
+    bool_lists: Vec<BoolListTypeId>,
+    nil_lists: Vec<NilListTypeId>,
+    tuple_lists: Vec<TupleListTypeId>,
+    list_lists: Vec<ListListTypeId>,
+    function_lists: Vec<FunctionListTypeId>,
     int_functions: usize,
     float_functions: usize,
     string_functions: usize,
@@ -32,14 +34,14 @@ pub(super) struct FrameLayoutParts {
     pub(super) strings: usize,
     pub(super) bools: usize,
     pub(super) tuples: usize,
-    pub(super) int_lists: usize,
-    pub(super) string_lists: usize,
-    pub(super) float_lists: usize,
-    pub(super) bool_lists: usize,
-    pub(super) nil_lists: usize,
-    pub(super) tuple_lists: Vec<Vec<ValueType>>,
-    pub(super) list_lists: Vec<ValueType>,
-    pub(super) function_lists: Vec<FunctionType>,
+    pub(super) int_lists: Vec<IntListTypeId>,
+    pub(super) string_lists: Vec<StringListTypeId>,
+    pub(super) float_lists: Vec<FloatListTypeId>,
+    pub(super) bool_lists: Vec<BoolListTypeId>,
+    pub(super) nil_lists: Vec<NilListTypeId>,
+    pub(super) tuple_lists: Vec<TupleListTypeId>,
+    pub(super) list_lists: Vec<ListListTypeId>,
+    pub(super) function_lists: Vec<FunctionListTypeId>,
     pub(super) int_functions: usize,
     pub(super) float_functions: usize,
     pub(super) string_functions: usize,
@@ -97,35 +99,35 @@ impl FrameLayout {
         self.tuples
     }
 
-    pub(crate) fn int_lists(&self) -> usize {
-        self.int_lists
+    pub(crate) fn int_lists(&self) -> &[IntListTypeId] {
+        &self.int_lists
     }
 
-    pub(crate) fn string_lists(&self) -> usize {
-        self.string_lists
+    pub(crate) fn string_lists(&self) -> &[StringListTypeId] {
+        &self.string_lists
     }
 
-    pub(crate) fn float_lists(&self) -> usize {
-        self.float_lists
+    pub(crate) fn float_lists(&self) -> &[FloatListTypeId] {
+        &self.float_lists
     }
 
-    pub(crate) fn bool_lists(&self) -> usize {
-        self.bool_lists
+    pub(crate) fn bool_lists(&self) -> &[BoolListTypeId] {
+        &self.bool_lists
     }
 
-    pub(crate) fn nil_lists(&self) -> usize {
-        self.nil_lists
+    pub(crate) fn nil_lists(&self) -> &[NilListTypeId] {
+        &self.nil_lists
     }
 
-    pub(crate) fn tuple_lists(&self) -> &[Vec<ValueType>] {
+    pub(crate) fn tuple_lists(&self) -> &[TupleListTypeId] {
         &self.tuple_lists
     }
 
-    pub(crate) fn list_lists(&self) -> &[ValueType] {
+    pub(crate) fn list_lists(&self) -> &[ListListTypeId] {
         &self.list_lists
     }
 
-    pub(crate) fn function_lists(&self) -> &[FunctionType] {
+    pub(crate) fn function_lists(&self) -> &[FunctionListTypeId] {
         &self.function_lists
     }
 

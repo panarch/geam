@@ -270,16 +270,29 @@ pub(super) fn run_list_loop(
         ListFunctionId::Nil(function) => {
             run_nil_list_loop(plan, function, frame).map(ListValue::nil)
         }
-        ListFunctionId::Tuple { id, item_type } => run_tuple_list_loop(plan, id, frame)
-            .map(|values| ListValue::from_evaluated_tuple(item_type, values)),
-        ListFunctionId::List { id, item_type } => run_list_list_loop(plan, id, frame)
-            .map(|values| ListValue::from_evaluated_list(item_type.as_ref().clone(), values)),
-        ListFunctionId::Function { id, item_type } => run_function_list_loop(plan, id, frame)
-            .map(|values| ListValue::from_evaluated_function(item_type, values)),
+        ListFunctionId::Tuple(function) => {
+            run_tuple_list_loop(plan, function, frame).map(|values| {
+                ListValue::from_evaluated_tuple(
+                    plan.tuple_list_item_type(function.type_id()),
+                    values,
+                )
+            })
+        }
+        ListFunctionId::List(function) => run_list_list_loop(plan, function, frame).map(|values| {
+            ListValue::from_evaluated_list(plan.nested_list_item_type(function.type_id()), values)
+        }),
+        ListFunctionId::Function(function) => {
+            run_function_list_loop(plan, function, frame).map(|values| {
+                ListValue::from_evaluated_function(
+                    plan.function_list_item_type(function.type_id()),
+                    values,
+                )
+            })
+        }
     }
 }
 
-pub(super) fn run_int_list_loop(
+pub(in crate::runtime) fn run_int_list_loop(
     plan: &ExecutionPlan,
     mut function: IntListFunctionId,
     mut frame: Frame,
@@ -727,10 +740,11 @@ mod tests {
         assert_eq!(
             crate::runtime::run_src("fn one(value: Int) { value + 1 } pub fn main() { [one] }"),
             Value::List(ListValue::from_evaluated_function(
-                function_type,
+                function_type.clone(),
                 vec![FunctionValue::new(
                     RuntimeFunctionId::Int(RuntimeIntFunctionId(0)),
                     vec![ParamLocal::Int(IntLocalId(0))],
+                    function_type,
                 )],
             )),
         );
@@ -943,6 +957,7 @@ mod tests {
                     crate::runtime::IntFunctionValue::new(
                         crate::plan::execution::IntFunctionId(0),
                         Vec::new(),
+                        crate::plan::FunctionType::new(Vec::new(), crate::plan::ValueType::Int,),
                     ),
                 )],
             )),

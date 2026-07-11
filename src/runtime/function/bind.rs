@@ -285,33 +285,27 @@ fn eval_list_capture(
                 len: eval_nil_list_expr(plan, frame, value)?,
             })
         }
-        crate::plan::execution::ListLocalExpr::Tuple {
-            local,
-            item_type,
-            value,
-        } => CaptureValue::list(ListLocalValue::Tuple {
-            local: *local,
-            item_type: item_type.clone(),
-            value: eval_tuple_list_expr(plan, frame, value)?,
-        }),
-        crate::plan::execution::ListLocalExpr::List {
-            local,
-            item_type,
-            value,
-        } => CaptureValue::list(ListLocalValue::List {
-            local: *local,
-            item_type: item_type.clone(),
-            value: eval_list_list_expr(plan, frame, value)?,
-        }),
-        crate::plan::execution::ListLocalExpr::Function {
-            local,
-            item_type,
-            value,
-        } => CaptureValue::list(ListLocalValue::Function {
-            local: *local,
-            item_type: item_type.clone(),
-            value: eval_function_list_expr(plan, frame, value)?,
-        }),
+        crate::plan::execution::ListLocalExpr::Tuple { local, value } => {
+            CaptureValue::list(ListLocalValue::Tuple {
+                local: *local,
+                item_type: plan.tuple_list_item_type(value.item().type_id()),
+                value: eval_tuple_list_expr(plan, frame, value)?,
+            })
+        }
+        crate::plan::execution::ListLocalExpr::List { local, value } => {
+            CaptureValue::list(ListLocalValue::List {
+                local: *local,
+                item_type: Box::new(plan.nested_list_item_type(value.item().type_id())),
+                value: eval_list_list_expr(plan, frame, value)?,
+            })
+        }
+        crate::plan::execution::ListLocalExpr::Function { local, value } => {
+            CaptureValue::list(ListLocalValue::Function {
+                local: *local,
+                item_type: plan.function_list_item_type(value.item().type_id()),
+                value: eval_function_list_expr(plan, frame, value)?,
+            })
+        }
     })
 }
 

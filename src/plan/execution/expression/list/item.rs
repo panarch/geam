@@ -1,71 +1,74 @@
 use super::ListExpr;
 use crate::plan::execution::{
-    BoolExpr, BoolListFunctionId, BoolListLocalId, FloatExpr, FloatListFunctionId,
-    FloatListLocalId, FunctionExpr, FunctionListFunctionId, FunctionListLocalId, IntExpr,
-    IntListFunctionId, IntListLocalId, ListListFunctionId, ListListLocalId, NilExpr,
-    NilListFunctionId, NilListLocalId, StringExpr, StringListFunctionId, StringListLocalId,
-    TupleExpr, TupleListFunctionId, TupleListLocalId,
+    BoolExpr, BoolListFunctionId, BoolListLocalId, BoolListTypeId, FloatExpr, FloatListFunctionId,
+    FloatListLocalId, FloatListTypeId, FunctionExpr, FunctionListFunctionId, FunctionListLocalId,
+    FunctionListTypeId, IntExpr, IntListFunctionId, IntListLocalId, IntListTypeId,
+    ListListFunctionId, ListListLocalId, ListListTypeId, ListTypeId, NilExpr, NilListFunctionId,
+    NilListLocalId, NilListTypeId, StringExpr, StringListFunctionId, StringListLocalId,
+    StringListTypeId, TupleExpr, TupleListFunctionId, TupleListLocalId, TupleListTypeId,
 };
-use crate::plan::{FunctionType, ValueType};
 pub(crate) trait ListItem {
     type ElementExpr;
     type Local: Clone;
     type Function: Clone;
 
-    fn value_type(&self) -> ValueType;
+    fn list_type(&self) -> ListTypeId;
 }
 
-pub(crate) struct IntListItem;
+pub(crate) struct IntListItem {
+    type_id: IntListTypeId,
+}
 
-pub(crate) struct StringListItem;
+pub(crate) struct StringListItem {
+    type_id: StringListTypeId,
+}
 
-pub(crate) struct FloatListItem;
+pub(crate) struct FloatListItem {
+    type_id: FloatListTypeId,
+}
 
-pub(crate) struct BoolListItem;
+pub(crate) struct BoolListItem {
+    type_id: BoolListTypeId,
+}
 
-pub(crate) struct NilListItem;
+pub(crate) struct NilListItem {
+    type_id: NilListTypeId,
+}
 
 pub(crate) struct TupleListItem {
-    pub(super) item_type: Vec<ValueType>,
+    type_id: TupleListTypeId,
 }
 
 pub(crate) struct ListListItem {
-    pub(super) item_type: Box<ValueType>,
+    type_id: ListListTypeId,
 }
 
 pub(crate) struct FunctionListItem {
-    pub(super) item_type: FunctionType,
+    type_id: FunctionListTypeId,
 }
 
-impl TupleListItem {
-    pub(crate) fn new(item_type: Vec<ValueType>) -> Self {
-        Self { item_type }
-    }
+macro_rules! list_item {
+    ($item:ident, $type_id:ty) => {
+        impl $item {
+            pub(in crate::plan::execution) fn new(type_id: $type_id) -> Self {
+                Self { type_id }
+            }
 
-    pub(crate) fn item_type(&self) -> Vec<ValueType> {
-        self.item_type.clone()
-    }
+            pub(crate) fn type_id(&self) -> $type_id {
+                self.type_id
+            }
+        }
+    };
 }
 
-impl ListListItem {
-    pub(crate) fn new(item_type: Box<ValueType>) -> Self {
-        Self { item_type }
-    }
-
-    pub(crate) fn item_type(&self) -> Box<ValueType> {
-        self.item_type.clone()
-    }
-}
-
-impl FunctionListItem {
-    pub(crate) fn new(item_type: FunctionType) -> Self {
-        Self { item_type }
-    }
-
-    pub(crate) fn item_type(&self) -> FunctionType {
-        self.item_type.clone()
-    }
-}
+list_item!(IntListItem, IntListTypeId);
+list_item!(StringListItem, StringListTypeId);
+list_item!(FloatListItem, FloatListTypeId);
+list_item!(BoolListItem, BoolListTypeId);
+list_item!(NilListItem, NilListTypeId);
+list_item!(TupleListItem, TupleListTypeId);
+list_item!(ListListItem, ListListTypeId);
+list_item!(FunctionListItem, FunctionListTypeId);
 
 macro_rules! primitive_list_item {
     (
@@ -73,15 +76,15 @@ macro_rules! primitive_list_item {
         $expr:ty,
         $local:ty,
         $function:ty,
-        $value_type:expr
+        $type_id:ty
     ) => {
         impl ListItem for $item {
             type ElementExpr = $expr;
             type Local = $local;
             type Function = $function;
 
-            fn value_type(&self) -> ValueType {
-                $value_type
+            fn list_type(&self) -> ListTypeId {
+                self.type_id.list_type()
             }
         }
     };
@@ -92,7 +95,7 @@ primitive_list_item!(
     IntExpr,
     IntListLocalId,
     IntListFunctionId,
-    ValueType::Int
+    IntListTypeId
 );
 
 primitive_list_item!(
@@ -100,7 +103,7 @@ primitive_list_item!(
     StringExpr,
     StringListLocalId,
     StringListFunctionId,
-    ValueType::String
+    StringListTypeId
 );
 
 primitive_list_item!(
@@ -108,7 +111,7 @@ primitive_list_item!(
     FloatExpr,
     FloatListLocalId,
     FloatListFunctionId,
-    ValueType::Float
+    FloatListTypeId
 );
 
 primitive_list_item!(
@@ -116,7 +119,7 @@ primitive_list_item!(
     BoolExpr,
     BoolListLocalId,
     BoolListFunctionId,
-    ValueType::Bool
+    BoolListTypeId
 );
 
 primitive_list_item!(
@@ -124,7 +127,7 @@ primitive_list_item!(
     NilExpr,
     NilListLocalId,
     NilListFunctionId,
-    ValueType::Nil
+    NilListTypeId
 );
 
 impl ListItem for TupleListItem {
@@ -132,8 +135,8 @@ impl ListItem for TupleListItem {
     type Local = TupleListLocalId;
     type Function = TupleListFunctionId;
 
-    fn value_type(&self) -> ValueType {
-        ValueType::Tuple(self.item_type.clone())
+    fn list_type(&self) -> ListTypeId {
+        self.type_id.list_type()
     }
 }
 
@@ -142,8 +145,8 @@ impl ListItem for ListListItem {
     type Local = ListListLocalId;
     type Function = ListListFunctionId;
 
-    fn value_type(&self) -> ValueType {
-        ValueType::List(self.item_type.clone())
+    fn list_type(&self) -> ListTypeId {
+        self.type_id.list_type()
     }
 }
 
@@ -152,7 +155,7 @@ impl ListItem for FunctionListItem {
     type Local = FunctionListLocalId;
     type Function = FunctionListFunctionId;
 
-    fn value_type(&self) -> ValueType {
-        ValueType::Function(Box::new(self.item_type.clone()))
+    fn list_type(&self) -> ListTypeId {
+        self.type_id.list_type()
     }
 }

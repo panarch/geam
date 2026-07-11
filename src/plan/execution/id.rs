@@ -1,3 +1,8 @@
+use super::{
+    BoolListTypeId, FloatListTypeId, FunctionListTypeId, FunctionType, IntListTypeId,
+    ListListTypeId, ListTypeId, NilListTypeId, StringListTypeId, TupleListTypeId, ValueType,
+};
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct IntLocalId(pub(crate) usize);
 
@@ -42,22 +47,37 @@ pub struct FunctionListLocalId(pub(crate) usize);
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ListLocal {
-    Int(IntListLocalId),
-    String(StringListLocalId),
-    Float(FloatListLocalId),
-    Bool(BoolListLocalId),
-    Nil(NilListLocalId),
+    Int {
+        local: IntListLocalId,
+        type_id: IntListTypeId,
+    },
+    String {
+        local: StringListLocalId,
+        type_id: StringListTypeId,
+    },
+    Float {
+        local: FloatListLocalId,
+        type_id: FloatListTypeId,
+    },
+    Bool {
+        local: BoolListLocalId,
+        type_id: BoolListTypeId,
+    },
+    Nil {
+        local: NilListLocalId,
+        type_id: NilListTypeId,
+    },
     Tuple {
         local: TupleListLocalId,
-        item_type: Vec<crate::plan::ValueType>,
+        type_id: TupleListTypeId,
     },
     List {
         local: ListListLocalId,
-        item_type: Box<crate::plan::ValueType>,
+        type_id: ListListTypeId,
     },
     Function {
         local: FunctionListLocalId,
-        item_type: crate::plan::FunctionType,
+        type_id: FunctionListTypeId,
     },
 }
 
@@ -107,38 +127,43 @@ pub struct FunctionListFunctionLocalId(pub(crate) usize);
 pub enum ListFunctionLocal {
     Int {
         local: IntListFunctionLocalId,
-        type_: crate::plan::FunctionType,
+        type_: FunctionType,
+        list_type: IntListTypeId,
     },
     String {
         local: StringListFunctionLocalId,
-        type_: crate::plan::FunctionType,
+        type_: FunctionType,
+        list_type: StringListTypeId,
     },
     Float {
         local: FloatListFunctionLocalId,
-        type_: crate::plan::FunctionType,
+        type_: FunctionType,
+        list_type: FloatListTypeId,
     },
     Bool {
         local: BoolListFunctionLocalId,
-        type_: crate::plan::FunctionType,
+        type_: FunctionType,
+        list_type: BoolListTypeId,
     },
     Nil {
         local: NilListFunctionLocalId,
-        type_: crate::plan::FunctionType,
+        type_: FunctionType,
+        list_type: NilListTypeId,
     },
     Tuple {
         local: TupleListFunctionLocalId,
-        type_: crate::plan::FunctionType,
-        item_type: Vec<crate::plan::ValueType>,
+        type_: FunctionType,
+        list_type: TupleListTypeId,
     },
     List {
         local: ListListFunctionLocalId,
-        type_: crate::plan::FunctionType,
-        item_type: Box<crate::plan::ValueType>,
+        type_: FunctionType,
+        list_type: ListListTypeId,
     },
     Function {
         local: FunctionListFunctionLocalId,
-        type_: crate::plan::FunctionType,
-        item_type: Box<crate::plan::FunctionType>,
+        type_: FunctionType,
+        list_type: FunctionListTypeId,
     },
 }
 
@@ -154,12 +179,12 @@ pub(crate) enum RuntimeFunctionId {
     Nil(NilFunctionId),
     Tuple {
         id: TupleFunctionId,
-        return_type: Vec<crate::plan::ValueType>,
+        return_type: Vec<ValueType>,
     },
     List(ListFunctionId),
     Function {
         id: FunctionFunctionId,
-        return_type: crate::plan::FunctionType,
+        return_type: FunctionType,
     },
 }
 
@@ -181,29 +206,38 @@ pub struct NilFunctionId(pub(crate) usize);
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TupleFunctionId(pub(crate) usize);
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct IntListFunctionId(pub(crate) usize);
+macro_rules! list_function_id {
+    ($name:ident, $type_id:ty) => {
+        #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+        pub struct $name {
+            index: usize,
+            type_id: $type_id,
+        }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct StringListFunctionId(pub(crate) usize);
+        impl $name {
+            pub(in crate::plan::execution) fn new(index: usize, type_id: $type_id) -> Self {
+                Self { index, type_id }
+            }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct FloatListFunctionId(pub(crate) usize);
+            pub(crate) fn index(self) -> usize {
+                self.index
+            }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct BoolListFunctionId(pub(crate) usize);
+            pub(crate) fn type_id(self) -> $type_id {
+                self.type_id
+            }
+        }
+    };
+}
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct NilListFunctionId(pub(crate) usize);
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct TupleListFunctionId(pub(crate) usize);
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct ListListFunctionId(pub(crate) usize);
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct FunctionListFunctionId(pub(crate) usize);
+list_function_id!(IntListFunctionId, IntListTypeId);
+list_function_id!(StringListFunctionId, StringListTypeId);
+list_function_id!(FloatListFunctionId, FloatListTypeId);
+list_function_id!(BoolListFunctionId, BoolListTypeId);
+list_function_id!(NilListFunctionId, NilListTypeId);
+list_function_id!(TupleListFunctionId, TupleListTypeId);
+list_function_id!(ListListFunctionId, ListListTypeId);
+list_function_id!(FunctionListFunctionId, FunctionListTypeId);
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ListFunctionId {
@@ -212,18 +246,9 @@ pub enum ListFunctionId {
     Float(FloatListFunctionId),
     Bool(BoolListFunctionId),
     Nil(NilListFunctionId),
-    Tuple {
-        id: TupleListFunctionId,
-        item_type: Vec<crate::plan::ValueType>,
-    },
-    List {
-        id: ListListFunctionId,
-        item_type: Box<crate::plan::ValueType>,
-    },
-    Function {
-        id: FunctionListFunctionId,
-        item_type: crate::plan::FunctionType,
-    },
+    Tuple(TupleListFunctionId),
+    List(ListListFunctionId),
+    Function(FunctionListFunctionId),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -296,38 +321,43 @@ pub struct FunctionListFunctionFunctionId(pub(crate) usize);
 pub enum ListFunctionFunctionId {
     Int {
         id: IntListFunctionFunctionId,
-        type_: crate::plan::FunctionType,
+        type_: FunctionType,
+        list_type: IntListTypeId,
     },
     String {
         id: StringListFunctionFunctionId,
-        type_: crate::plan::FunctionType,
+        type_: FunctionType,
+        list_type: StringListTypeId,
     },
     Float {
         id: FloatListFunctionFunctionId,
-        type_: crate::plan::FunctionType,
+        type_: FunctionType,
+        list_type: FloatListTypeId,
     },
     Bool {
         id: BoolListFunctionFunctionId,
-        type_: crate::plan::FunctionType,
+        type_: FunctionType,
+        list_type: BoolListTypeId,
     },
     Nil {
         id: NilListFunctionFunctionId,
-        type_: crate::plan::FunctionType,
+        type_: FunctionType,
+        list_type: NilListTypeId,
     },
     Tuple {
         id: TupleListFunctionFunctionId,
-        type_: crate::plan::FunctionType,
-        item_type: Vec<crate::plan::ValueType>,
+        type_: FunctionType,
+        list_type: TupleListTypeId,
     },
     List {
         id: ListListFunctionFunctionId,
-        type_: crate::plan::FunctionType,
-        item_type: Box<crate::plan::ValueType>,
+        type_: FunctionType,
+        list_type: ListListTypeId,
     },
     Function {
         id: FunctionListFunctionFunctionId,
-        type_: crate::plan::FunctionType,
-        item_type: Box<crate::plan::FunctionType>,
+        type_: FunctionType,
+        list_type: FunctionListTypeId,
     },
 }
 
@@ -406,7 +436,7 @@ impl FunctionFunctionId {
 }
 
 impl ListFunctionLocal {
-    pub(crate) fn type_(&self) -> &crate::plan::FunctionType {
+    pub(crate) fn type_(&self) -> &FunctionType {
         match self {
             Self::Int { type_, .. }
             | Self::String { type_, .. }
@@ -418,27 +448,39 @@ impl ListFunctionLocal {
             | Self::Function { type_, .. } => type_,
         }
     }
+
+    #[cfg(test)]
+    pub(crate) fn list_type(&self) -> ListTypeId {
+        match self {
+            Self::Int { list_type, .. } => list_type.list_type(),
+            Self::String { list_type, .. } => list_type.list_type(),
+            Self::Float { list_type, .. } => list_type.list_type(),
+            Self::Bool { list_type, .. } => list_type.list_type(),
+            Self::Nil { list_type, .. } => list_type.list_type(),
+            Self::Tuple { list_type, .. } => list_type.list_type(),
+            Self::List { list_type, .. } => list_type.list_type(),
+            Self::Function { list_type, .. } => list_type.list_type(),
+        }
+    }
 }
 
 impl ListFunctionId {
-    pub(crate) fn item_type(&self) -> crate::plan::ValueType {
+    pub(crate) fn list_type(&self) -> ListTypeId {
         match self {
-            Self::Int(_) => crate::plan::ValueType::Int,
-            Self::String(_) => crate::plan::ValueType::String,
-            Self::Float(_) => crate::plan::ValueType::Float,
-            Self::Bool(_) => crate::plan::ValueType::Bool,
-            Self::Nil(_) => crate::plan::ValueType::Nil,
-            Self::Tuple { item_type, .. } => crate::plan::ValueType::Tuple(item_type.clone()),
-            Self::List { item_type, .. } => crate::plan::ValueType::List(item_type.clone()),
-            Self::Function { item_type, .. } => {
-                crate::plan::ValueType::Function(Box::new(item_type.clone()))
-            }
+            Self::Int(id) => id.type_id().list_type(),
+            Self::String(id) => id.type_id().list_type(),
+            Self::Float(id) => id.type_id().list_type(),
+            Self::Bool(id) => id.type_id().list_type(),
+            Self::Nil(id) => id.type_id().list_type(),
+            Self::Tuple(id) => id.type_id().list_type(),
+            Self::List(id) => id.type_id().list_type(),
+            Self::Function(id) => id.type_id().list_type(),
         }
     }
 }
 
 impl ListFunctionFunctionId {
-    pub(crate) fn type_(&self) -> &crate::plan::FunctionType {
+    pub(crate) fn type_(&self) -> &FunctionType {
         match self {
             Self::Int { type_, .. }
             | Self::String { type_, .. }
@@ -453,18 +495,16 @@ impl ListFunctionFunctionId {
 }
 
 impl ListLocal {
-    pub(crate) fn item_type(&self) -> crate::plan::ValueType {
+    pub(crate) fn list_type(&self) -> ListTypeId {
         match self {
-            Self::Int(_) => crate::plan::ValueType::Int,
-            Self::String(_) => crate::plan::ValueType::String,
-            Self::Float(_) => crate::plan::ValueType::Float,
-            Self::Bool(_) => crate::plan::ValueType::Bool,
-            Self::Nil(_) => crate::plan::ValueType::Nil,
-            Self::Tuple { item_type, .. } => crate::plan::ValueType::Tuple(item_type.clone()),
-            Self::List { item_type, .. } => crate::plan::ValueType::List(item_type.clone()),
-            Self::Function { item_type, .. } => {
-                crate::plan::ValueType::Function(Box::new(item_type.clone()))
-            }
+            Self::Int { type_id, .. } => type_id.list_type(),
+            Self::String { type_id, .. } => type_id.list_type(),
+            Self::Float { type_id, .. } => type_id.list_type(),
+            Self::Bool { type_id, .. } => type_id.list_type(),
+            Self::Nil { type_id, .. } => type_id.list_type(),
+            Self::Tuple { type_id, .. } => type_id.list_type(),
+            Self::List { type_id, .. } => type_id.list_type(),
+            Self::Function { type_id, .. } => type_id.list_type(),
         }
     }
 }
@@ -487,256 +527,139 @@ impl std::fmt::Display for FunctionReturnFamily {
 #[cfg(test)]
 mod tests {
     use super::{
-        BoolFunctionFunctionId, BoolListFunctionFunctionId, BoolListFunctionId,
-        BoolListFunctionLocalId, BoolListLocalId, FloatFunctionFunctionId,
-        FloatListFunctionFunctionId, FloatListFunctionId, FloatListFunctionLocalId,
-        FloatListLocalId, FunctionFunctionFunctionId, FunctionFunctionId,
-        FunctionListFunctionFunctionId, FunctionListFunctionId, FunctionListFunctionLocalId,
-        FunctionListLocalId, FunctionReturnFamily, IntFunctionFunctionId,
-        IntListFunctionFunctionId, IntListFunctionId, IntListFunctionLocalId, IntListLocalId,
-        ListFunctionFunctionId, ListFunctionId, ListFunctionLocal, ListListFunctionFunctionId,
-        ListListFunctionId, ListListFunctionLocalId, ListListLocalId, ListLocal,
-        NilFunctionFunctionId, NilListFunctionFunctionId, NilListFunctionId,
-        NilListFunctionLocalId, NilListLocalId, StringFunctionFunctionId,
-        StringListFunctionFunctionId, StringListFunctionId, StringListFunctionLocalId,
-        StringListLocalId, TupleFunctionFunctionId, TupleListFunctionFunctionId,
-        TupleListFunctionId, TupleListFunctionLocalId, TupleListLocalId,
+        BoolListLocalId, FloatListLocalId, FunctionListLocalId, FunctionReturnFamily,
+        IntListLocalId, ListListLocalId, ListLocal, NilListLocalId, StringListLocalId,
+        TupleListLocalId,
     };
-    use crate::plan::{FunctionType, ValueType};
+    use crate::plan::ValueType;
 
     #[test]
-    fn function_function_ids_expose_exact_return_families() {
-        let ids = [
-            FunctionFunctionId::Int(IntFunctionFunctionId(0)),
-            FunctionFunctionId::Float(FloatFunctionFunctionId(1)),
-            FunctionFunctionId::String(StringFunctionFunctionId(2)),
-            FunctionFunctionId::Bool(BoolFunctionFunctionId(3)),
-            FunctionFunctionId::Nil(NilFunctionFunctionId(4)),
-            FunctionFunctionId::Tuple(TupleFunctionFunctionId(5)),
-            FunctionFunctionId::List(ListFunctionFunctionId::Int {
-                id: IntListFunctionFunctionId(6),
-                type_: FunctionType::new(Vec::new(), ValueType::List(Box::new(ValueType::Int))),
-            }),
-            FunctionFunctionId::Function(FunctionFunctionFunctionId(7)),
-        ];
+    fn list_locals_preserve_every_lowered_list_type() {
+        let plan = execution_plan(
+            r#"
+fn int_values(values: List(Int)) { values }
+fn string_values(values: List(String)) { values }
+fn float_values(values: List(Float)) { values }
+fn bool_values(values: List(Bool)) { values }
+fn nil_values(values: List(Nil)) { values }
+fn tuple_values(values: List(#(Int))) { values }
+fn list_values(values: List(List(Int))) { values }
+fn function_values(values: List(fn() -> Int)) { values }
 
-        assert_eq!(ids[0].family(), FunctionReturnFamily::Int);
-        assert_eq!(ids[0].int(), Some(IntFunctionFunctionId(0)));
-        assert_eq!(ids[0].float(), None);
-        assert_eq!(ids[1].family(), FunctionReturnFamily::Float);
-        assert_eq!(ids[1].float(), Some(FloatFunctionFunctionId(1)));
-        assert_eq!(ids[1].string(), None);
-        assert_eq!(ids[2].family(), FunctionReturnFamily::String);
-        assert_eq!(ids[2].string(), Some(StringFunctionFunctionId(2)));
-        assert_eq!(ids[2].bool(), None);
-        assert_eq!(ids[3].family(), FunctionReturnFamily::Bool);
-        assert_eq!(ids[3].bool(), Some(BoolFunctionFunctionId(3)));
-        assert_eq!(ids[3].nil(), None);
-        assert_eq!(ids[4].family(), FunctionReturnFamily::Nil);
-        assert_eq!(ids[4].nil(), Some(NilFunctionFunctionId(4)));
-        assert_eq!(ids[4].tuple(), None);
-        assert_eq!(ids[5].family(), FunctionReturnFamily::Tuple);
-        assert_eq!(ids[5].tuple(), Some(TupleFunctionFunctionId(5)));
-        assert_eq!(ids[5].list(), None);
-        assert_eq!(ids[6].family(), FunctionReturnFamily::List);
-        assert_eq!(
-            ids[6].list(),
-            Some(ListFunctionFunctionId::Int {
-                id: IntListFunctionFunctionId(6),
-                type_: FunctionType::new(Vec::new(), ValueType::List(Box::new(ValueType::Int))),
-            })
+pub fn main() { Nil }
+"#,
         );
-        assert_eq!(ids[6].function(), None);
-        assert_eq!(ids[7].family(), FunctionReturnFamily::Function);
-        assert_eq!(ids[7].function(), Some(FunctionFunctionFunctionId(7)));
-        assert_eq!(ids[7].int(), None);
-    }
-
-    #[test]
-    fn list_function_ids_preserve_every_item_family() {
-        let function_type = FunctionType::new(vec![ValueType::Int], ValueType::Bool);
-        let cases = [
-            (ListFunctionId::Int(IntListFunctionId(0)), ValueType::Int),
-            (
-                ListFunctionId::String(StringListFunctionId(1)),
-                ValueType::String,
-            ),
-            (
-                ListFunctionId::Float(FloatListFunctionId(2)),
-                ValueType::Float,
-            ),
-            (ListFunctionId::Bool(BoolListFunctionId(3)), ValueType::Bool),
-            (ListFunctionId::Nil(NilListFunctionId(4)), ValueType::Nil),
-            (
-                ListFunctionId::Tuple {
-                    id: TupleListFunctionId(5),
-                    item_type: vec![ValueType::Int],
-                },
-                ValueType::Tuple(vec![ValueType::Int]),
-            ),
-            (
-                ListFunctionId::List {
-                    id: ListListFunctionId(6),
-                    item_type: Box::new(ValueType::String),
-                },
-                ValueType::List(Box::new(ValueType::String)),
-            ),
-            (
-                ListFunctionId::Function {
-                    id: FunctionListFunctionId(7),
-                    item_type: function_type.clone(),
-                },
-                ValueType::Function(Box::new(function_type)),
-            ),
-        ];
-
-        for (id, item_type) in cases {
-            assert_eq!(id.item_type(), item_type);
-        }
-    }
-
-    #[test]
-    fn list_function_local_and_function_ids_preserve_function_types() {
-        let function_type = FunctionType::new(vec![ValueType::Int], ValueType::String);
+        let int = plan
+            .int_list_function(plan.int_list_function_id(0))
+            .frame_layout()
+            .int_lists()[0];
+        let string = plan
+            .string_list_function(plan.string_list_function_id(0))
+            .frame_layout()
+            .string_lists()[0];
+        let float = plan
+            .float_list_function(plan.float_list_function_id(0))
+            .frame_layout()
+            .float_lists()[0];
+        let bool_ = plan
+            .bool_list_function(plan.bool_list_function_id(0))
+            .frame_layout()
+            .bool_lists()[0];
+        let nil = plan
+            .nil_list_function(plan.nil_list_function_id(0))
+            .frame_layout()
+            .nil_lists()[0];
+        let tuple = plan
+            .tuple_list_function(plan.tuple_list_function_id(0))
+            .frame_layout()
+            .tuple_lists()[0];
+        let list = plan
+            .list_list_function(plan.list_list_function_id(0))
+            .frame_layout()
+            .list_lists()[0];
+        let function = plan
+            .function_list_function(plan.function_list_function_id(0))
+            .frame_layout()
+            .function_lists()[0];
         let locals = [
-            ListFunctionLocal::Int {
-                local: IntListFunctionLocalId(0),
-                type_: function_type.clone(),
+            ListLocal::Int {
+                local: IntListLocalId(0),
+                type_id: int,
             },
-            ListFunctionLocal::String {
-                local: StringListFunctionLocalId(1),
-                type_: function_type.clone(),
+            ListLocal::String {
+                local: StringListLocalId(0),
+                type_id: string,
             },
-            ListFunctionLocal::Float {
-                local: FloatListFunctionLocalId(2),
-                type_: function_type.clone(),
+            ListLocal::Float {
+                local: FloatListLocalId(0),
+                type_id: float,
             },
-            ListFunctionLocal::Bool {
-                local: BoolListFunctionLocalId(3),
-                type_: function_type.clone(),
+            ListLocal::Bool {
+                local: BoolListLocalId(0),
+                type_id: bool_,
             },
-            ListFunctionLocal::Nil {
-                local: NilListFunctionLocalId(4),
-                type_: function_type.clone(),
+            ListLocal::Nil {
+                local: NilListLocalId(0),
+                type_id: nil,
             },
-            ListFunctionLocal::Tuple {
-                local: TupleListFunctionLocalId(5),
-                type_: function_type.clone(),
-                item_type: vec![ValueType::Int],
-            },
-            ListFunctionLocal::List {
-                local: ListListFunctionLocalId(6),
-                type_: function_type.clone(),
-                item_type: Box::new(ValueType::String),
-            },
-            ListFunctionLocal::Function {
-                local: FunctionListFunctionLocalId(7),
-                type_: function_type.clone(),
-                item_type: Box::new(function_type.clone()),
-            },
-        ];
-        for local in &locals {
-            assert_eq!(local.type_(), &function_type);
-        }
-
-        let ids = [
-            ListFunctionFunctionId::Int {
-                id: IntListFunctionFunctionId(0),
-                type_: function_type.clone(),
-            },
-            ListFunctionFunctionId::String {
-                id: StringListFunctionFunctionId(1),
-                type_: function_type.clone(),
-            },
-            ListFunctionFunctionId::Float {
-                id: FloatListFunctionFunctionId(2),
-                type_: function_type.clone(),
-            },
-            ListFunctionFunctionId::Bool {
-                id: BoolListFunctionFunctionId(3),
-                type_: function_type.clone(),
-            },
-            ListFunctionFunctionId::Nil {
-                id: NilListFunctionFunctionId(4),
-                type_: function_type.clone(),
-            },
-            ListFunctionFunctionId::Tuple {
-                id: TupleListFunctionFunctionId(5),
-                type_: function_type.clone(),
-                item_type: vec![ValueType::Int],
-            },
-            ListFunctionFunctionId::List {
-                id: ListListFunctionFunctionId(6),
-                type_: function_type.clone(),
-                item_type: Box::new(ValueType::String),
-            },
-            ListFunctionFunctionId::Function {
-                id: FunctionListFunctionFunctionId(7),
-                type_: function_type.clone(),
-                item_type: Box::new(function_type.clone()),
-            },
-        ];
-        for id in &ids {
-            assert_eq!(id.type_(), &function_type);
-        }
-    }
-
-    #[test]
-    fn list_locals_preserve_every_item_family() {
-        let function_type = FunctionType::new(Vec::new(), ValueType::Int);
-        let locals = [
-            ListLocal::Int(IntListLocalId(0)),
-            ListLocal::String(StringListLocalId(1)),
-            ListLocal::Float(FloatListLocalId(2)),
-            ListLocal::Bool(BoolListLocalId(3)),
-            ListLocal::Nil(NilListLocalId(4)),
             ListLocal::Tuple {
-                local: TupleListLocalId(5),
-                item_type: vec![ValueType::Int],
+                local: TupleListLocalId(0),
+                type_id: tuple,
             },
             ListLocal::List {
-                local: ListListLocalId(6),
-                item_type: Box::new(ValueType::String),
+                local: ListListLocalId(0),
+                type_id: list,
             },
             ListLocal::Function {
-                local: FunctionListLocalId(7),
-                item_type: function_type.clone(),
+                local: FunctionListLocalId(0),
+                type_id: function,
             },
         ];
-        let expected = [
-            ValueType::Int,
-            ValueType::String,
-            ValueType::Float,
-            ValueType::Bool,
-            ValueType::Nil,
-            ValueType::Tuple(vec![ValueType::Int]),
-            ValueType::List(Box::new(ValueType::String)),
-            ValueType::Function(Box::new(function_type)),
-        ];
 
-        for (local, item_type) in locals.iter().zip(expected) {
-            assert_eq!(local.item_type(), item_type);
-        }
+        assert_eq!(
+            locals
+                .iter()
+                .map(|local| plan.list_value_type(local.list_type()))
+                .collect::<Vec<_>>(),
+            vec![
+                ValueType::List(Box::new(ValueType::Int)),
+                ValueType::List(Box::new(ValueType::String)),
+                ValueType::List(Box::new(ValueType::Float)),
+                ValueType::List(Box::new(ValueType::Bool)),
+                ValueType::List(Box::new(ValueType::Nil)),
+                ValueType::List(Box::new(ValueType::Tuple(vec![ValueType::Int]))),
+                ValueType::List(Box::new(ValueType::List(Box::new(ValueType::Int)))),
+                ValueType::List(Box::new(ValueType::Function(Box::new(
+                    crate::plan::FunctionType::new(Vec::new(), ValueType::Int),
+                )))),
+            ],
+        );
     }
 
     #[test]
     fn function_return_family_display_names_every_family() {
-        let families = [
-            FunctionReturnFamily::Int,
-            FunctionReturnFamily::Float,
-            FunctionReturnFamily::String,
-            FunctionReturnFamily::Bool,
-            FunctionReturnFamily::Nil,
-            FunctionReturnFamily::Tuple,
-            FunctionReturnFamily::List,
-            FunctionReturnFamily::Function,
-        ];
-        let expected = [
-            "Int", "Float", "String", "Bool", "Nil", "Tuple", "List", "Function",
-        ];
+        assert_eq!(
+            [
+                FunctionReturnFamily::Int,
+                FunctionReturnFamily::Float,
+                FunctionReturnFamily::String,
+                FunctionReturnFamily::Bool,
+                FunctionReturnFamily::Nil,
+                FunctionReturnFamily::Tuple,
+                FunctionReturnFamily::List,
+                FunctionReturnFamily::Function,
+            ]
+            .map(|family| family.to_string()),
+            [
+                "Int", "Float", "String", "Bool", "Nil", "Tuple", "List", "Function",
+            ],
+        );
+    }
 
-        for (family, expected) in families.iter().zip(expected) {
-            assert_eq!(family.to_string(), expected);
-        }
+    fn execution_plan(source: &str) -> crate::ExecutionPlan {
+        let typed = crate::compile_typed_module("main", "main.gleam", source)
+            .expect("source should compile");
+        let module_plan = crate::plan_module(typed).expect("source should plan");
+        crate::ExecutionPlan::from_module_plan(module_plan)
     }
 }

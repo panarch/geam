@@ -37,14 +37,26 @@ pub(in crate::runtime) fn eval_list_expr(
         ListExpr::Nil(expression) => {
             eval_nil_list_expr(plan, frame, expression).map(ListValue::nil)
         }
-        ListExpr::Tuple(expression) => eval_tuple_list_expr(plan, frame, expression)
-            .map(|values| ListValue::from_evaluated_tuple(expression.item().item_type(), values)),
+        ListExpr::Tuple(expression) => {
+            eval_tuple_list_expr(plan, frame, expression).map(|values| {
+                ListValue::from_evaluated_tuple(
+                    plan.tuple_list_item_type(expression.item().type_id()),
+                    values,
+                )
+            })
+        }
         ListExpr::List(expression) => eval_list_list_expr(plan, frame, expression).map(|values| {
-            ListValue::from_evaluated_list(expression.item().item_type().as_ref().clone(), values)
+            ListValue::from_evaluated_list(
+                plan.nested_list_item_type(expression.item().type_id()),
+                values,
+            )
         }),
         ListExpr::Function(expression) => {
             eval_function_list_expr(plan, frame, expression).map(|values| {
-                ListValue::from_evaluated_function(expression.item().item_type(), values)
+                ListValue::from_evaluated_function(
+                    plan.function_list_item_type(expression.item().type_id()),
+                    values,
+                )
             })
         }
     }
@@ -144,11 +156,11 @@ fn eval_typed_list_expr_kind<Item: RuntimeListItem>(
             Item::run_function_call(plan, function, args, frame)
         }
         TypedListExprKind::TupleIndex { tuple, index } => {
-            let expected = ValueType::List(Box::new(item.value_type()));
+            let expected = plan.list_value_type(item.list_type());
             match project_tuple_expr(plan, frame, tuple, *index, expected.clone())? {
                 Value::List(value) => {
                     let actual = value.item_type();
-                    Item::from_facade(item, value).ok_or_else(|| {
+                    Item::from_facade(plan, item, value).ok_or_else(|| {
                         ExecutionError::tuple_index_family_mismatch(
                             expected,
                             ValueType::List(Box::new(actual)),
@@ -242,7 +254,11 @@ trait RuntimeListItem: ListItem {
 
     fn drop_first(values: &Self::RuntimeValue, count: usize) -> Self::RuntimeValue;
 
-    fn from_facade(item: &Self, value: ListValue) -> Option<Self::RuntimeValue>;
+    fn from_facade(
+        plan: &ExecutionPlan,
+        item: &Self,
+        value: ListValue,
+    ) -> Option<Self::RuntimeValue>;
 
     fn get_local(frame: &Frame, local: Self::Local) -> Self::RuntimeValue;
 
@@ -268,7 +284,7 @@ trait RuntimeListItem: ListItem {
         index: usize,
     ) -> Result<Self::RuntimeValue, ExecutionError> {
         let values = eval_list_list_expr(plan, frame, list)?;
-        let expected = ValueType::List(Box::new(item.value_type()));
+        let expected = plan.list_value_type(item.list_type());
         let Some(value) = values.get(index).cloned() else {
             return Err(ExecutionError::list_index_out_of_bounds(
                 expected,
@@ -277,9 +293,11 @@ trait RuntimeListItem: ListItem {
             ));
         };
         let actual = value.item_type();
-        Self::from_facade(item, value).ok_or_else(|| ExecutionError::ListIndexFamilyMismatch {
-            expected: ValueType::List(Box::new(item.value_type())),
-            actual: ValueType::List(Box::new(actual)),
+        Self::from_facade(plan, item, value).ok_or_else(|| {
+            ExecutionError::ListIndexFamilyMismatch {
+                expected: plan.list_value_type(item.list_type()),
+                actual: ValueType::List(Box::new(actual)),
+            }
         })
     }
 }
@@ -317,7 +335,11 @@ macro_rules! primitive_runtime_list_item {
                 values[count.min(values.len())..].to_vec()
             }
 
-            fn from_facade(_item: &Self, value: ListValue) -> Option<Self::RuntimeValue> {
+            fn from_facade(
+                _plan: &ExecutionPlan,
+                _item: &Self,
+                value: ListValue,
+            ) -> Option<Self::RuntimeValue> {
                 value.$from_facade()
             }
 
@@ -409,7 +431,11 @@ impl RuntimeListItem for NilListItem {
         values.saturating_sub(count)
     }
 
-    fn from_facade(_item: &Self, value: ListValue) -> Option<Self::RuntimeValue> {
+    fn from_facade(
+        _plan: &ExecutionPlan,
+        _item: &Self,
+        value: ListValue,
+    ) -> Option<Self::RuntimeValue> {
         value.into_nil_len()
     }
 
@@ -459,8 +485,12 @@ impl RuntimeListItem for TupleListItem {
         values[count.min(values.len())..].to_vec()
     }
 
-    fn from_facade(item: &Self, value: ListValue) -> Option<Self::RuntimeValue> {
-        value.into_tuple_values(&item.item_type())
+    fn from_facade(
+        plan: &ExecutionPlan,
+        item: &Self,
+        value: ListValue,
+    ) -> Option<Self::RuntimeValue> {
+        value.into_tuple_values(&plan.tuple_list_item_type(item.type_id()))
     }
 
     fn get_local(frame: &Frame, local: Self::Local) -> Self::RuntimeValue {
@@ -509,8 +539,12 @@ impl RuntimeListItem for ListListItem {
         values[count.min(values.len())..].to_vec()
     }
 
-    fn from_facade(item: &Self, value: ListValue) -> Option<Self::RuntimeValue> {
-        value.into_list_values(&item.item_type())
+    fn from_facade(
+        plan: &ExecutionPlan,
+        item: &Self,
+        value: ListValue,
+    ) -> Option<Self::RuntimeValue> {
+        value.into_list_values(&plan.nested_list_item_type(item.type_id()))
     }
 
     fn get_local(frame: &Frame, local: Self::Local) -> Self::RuntimeValue {
@@ -559,8 +593,12 @@ impl RuntimeListItem for FunctionListItem {
         values[count.min(values.len())..].to_vec()
     }
 
-    fn from_facade(item: &Self, value: ListValue) -> Option<Self::RuntimeValue> {
-        value.into_function_values(&item.item_type())
+    fn from_facade(
+        plan: &ExecutionPlan,
+        item: &Self,
+        value: ListValue,
+    ) -> Option<Self::RuntimeValue> {
+        value.into_function_values(&plan.function_list_item_type(item.type_id()))
     }
 
     fn get_local(frame: &Frame, local: Self::Local) -> Self::RuntimeValue {
@@ -587,29 +625,43 @@ impl RuntimeListItem for FunctionListItem {
 }
 
 pub(in crate::runtime) fn get_list_value(
+    plan: &ExecutionPlan,
     frame: &Frame,
     local: &crate::plan::execution::ListLocal,
 ) -> ListValue {
     match local {
-        crate::plan::execution::ListLocal::Int(local) => ListValue::int(frame.get_int_list(*local)),
-        crate::plan::execution::ListLocal::String(local) => {
+        crate::plan::execution::ListLocal::Int { local, .. } => {
+            ListValue::int(frame.get_int_list(*local))
+        }
+        crate::plan::execution::ListLocal::String { local, .. } => {
             ListValue::string(frame.get_string_list(*local))
         }
-        crate::plan::execution::ListLocal::Float(local) => {
+        crate::plan::execution::ListLocal::Float { local, .. } => {
             ListValue::float(frame.get_float_list(*local))
         }
-        crate::plan::execution::ListLocal::Bool(local) => {
+        crate::plan::execution::ListLocal::Bool { local, .. } => {
             ListValue::bool(frame.get_bool_list(*local))
         }
-        crate::plan::execution::ListLocal::Nil(local) => ListValue::nil(frame.get_nil_list(*local)),
-        crate::plan::execution::ListLocal::Tuple { local, item_type } => {
-            ListValue::from_evaluated_tuple(item_type.clone(), frame.get_tuple_list(*local))
+        crate::plan::execution::ListLocal::Nil { local, .. } => {
+            ListValue::nil(frame.get_nil_list(*local))
         }
-        crate::plan::execution::ListLocal::List { local, item_type } => {
-            ListValue::from_evaluated_list(item_type.as_ref().clone(), frame.get_list_list(*local))
+        crate::plan::execution::ListLocal::Tuple { local, type_id } => {
+            ListValue::from_evaluated_tuple(
+                plan.tuple_list_item_type(*type_id),
+                frame.get_tuple_list(*local),
+            )
         }
-        crate::plan::execution::ListLocal::Function { local, item_type } => {
-            ListValue::from_evaluated_function(item_type.clone(), frame.get_function_list(*local))
+        crate::plan::execution::ListLocal::List { local, type_id } => {
+            ListValue::from_evaluated_list(
+                plan.nested_list_item_type(*type_id),
+                frame.get_list_list(*local),
+            )
+        }
+        crate::plan::execution::ListLocal::Function { local, type_id } => {
+            ListValue::from_evaluated_function(
+                plan.function_list_item_type(*type_id),
+                frame.get_function_list(*local),
+            )
         }
     }
 }
@@ -713,15 +765,11 @@ pub(in crate::runtime) fn project_function_list_expr(
 #[cfg(test)]
 mod tests {
     use super::{
-        RuntimeListItem, project_bool_list_expr, project_float_list_expr,
-        project_function_list_expr, project_int_list_expr, project_nil_list_expr,
-        project_string_list_expr, project_tuple_list_expr,
+        project_bool_list_expr, project_float_list_expr, project_function_list_expr,
+        project_int_list_expr, project_nil_list_expr, project_string_list_expr,
+        project_tuple_list_expr,
     };
-    use crate::plan::execution::{
-        BoolListFunctionId, FloatListFunctionId, FunctionListFunctionId, IntListFunctionId,
-        IntListItem, ListListFunctionId, ListListLocalId, NilListFunctionId, ReturnBody,
-        ReturnBodyKind, StringListFunctionId, TupleListFunctionId,
-    };
+    use crate::plan::execution::{ListListLocalId, ReturnBody, ReturnBodyKind};
     use crate::plan::{
         BoolExpr as ModuleBoolExpr, BoolListCaseBranches, Expr as ModuleExpr,
         FloatExpr as ModuleFloatExpr, FunctionId as ModuleFunctionId,
@@ -766,7 +814,7 @@ pub fn main() { Nil }
 "#,
         );
 
-        let function = plan.int_list_function(IntListFunctionId(0));
+        let function = plan.int_list_function(plan.int_list_function_id(0));
         let expression = expect_expression_return(function.return_());
         let mut frame = Frame::new(function.frame_layout());
         assert_eq!(
@@ -778,7 +826,7 @@ pub fn main() { Nil }
             )),
         );
 
-        let function = plan.string_list_function(StringListFunctionId(0));
+        let function = plan.string_list_function(plan.string_list_function_id(0));
         let expression = expect_expression_return(function.return_());
         let mut frame = Frame::new(function.frame_layout());
         assert_eq!(
@@ -790,7 +838,7 @@ pub fn main() { Nil }
             )),
         );
 
-        let function = plan.float_list_function(FloatListFunctionId(0));
+        let function = plan.float_list_function(plan.float_list_function_id(0));
         let expression = expect_expression_return(function.return_());
         let mut frame = Frame::new(function.frame_layout());
         assert_eq!(
@@ -802,7 +850,7 @@ pub fn main() { Nil }
             )),
         );
 
-        let function = plan.bool_list_function(BoolListFunctionId(0));
+        let function = plan.bool_list_function(plan.bool_list_function_id(0));
         let expression = expect_expression_return(function.return_());
         let mut frame = Frame::new(function.frame_layout());
         assert_eq!(
@@ -814,7 +862,7 @@ pub fn main() { Nil }
             )),
         );
 
-        let function = plan.nil_list_function(NilListFunctionId(0));
+        let function = plan.nil_list_function(plan.nil_list_function_id(0));
         let expression = expect_expression_return(function.return_());
         let mut frame = Frame::new(function.frame_layout());
         assert_eq!(
@@ -826,7 +874,7 @@ pub fn main() { Nil }
             )),
         );
 
-        let function = plan.tuple_list_function(TupleListFunctionId(0));
+        let function = plan.tuple_list_function(plan.tuple_list_function_id(0));
         let expression = expect_expression_return(function.return_());
         let mut frame = Frame::new(function.frame_layout());
         assert_eq!(
@@ -838,7 +886,7 @@ pub fn main() { Nil }
             )),
         );
 
-        let function = plan.function_list_function(FunctionListFunctionId(0));
+        let function = plan.function_list_function(plan.function_list_function_id(0));
         let expression = expect_expression_return(function.return_());
         let mut frame = Frame::new(function.frame_layout());
         let function_type = FunctionType::new(Vec::new(), ValueType::Int);
@@ -853,19 +901,23 @@ pub fn main() { Nil }
     }
 
     #[test]
-    fn nested_list_projection_has_only_index_and_family_invariants() {
+    fn nested_list_projection_rejects_direct_mutated_item_family() {
         let plan = crate::runtime::plan_src(
             r#"
-fn nested_values(values: List(List(Int))) { values }
+fn nested_values(values: List(List(Int))) {
+  case values {
+    [first, ..] -> first
+    _ -> []
+  }
+}
 pub fn main() { Nil }
 "#,
         );
-        let function = plan.list_list_function(ListListFunctionId(0));
-        let expression = expect_expression_return(function.return_());
-        let mut frame = Frame::new(function.frame_layout());
-
+        let function = plan.int_list_function(plan.int_list_function_id(0));
+        let projection = expect_nested_list_index_binding(function.return_());
+        let mut empty_frame = Frame::new(function.frame_layout());
         assert_eq!(
-            IntListItem::project_nested_list(&plan, &mut frame, &IntListItem, expression, 0),
+            super::eval_int_list_expr(&plan, &mut empty_frame, projection),
             Err(ExecutionError::list_index_out_of_bounds(
                 ValueType::List(Box::new(ValueType::Int)),
                 0,
@@ -873,17 +925,54 @@ pub fn main() { Nil }
             )),
         );
 
+        let mut frame = Frame::new(function.frame_layout());
         frame.set_list_list(
             ListListLocalId(0),
             vec![ListValue::string(vec!["wrong".into()])],
         );
         assert_eq!(
-            IntListItem::project_nested_list(&plan, &mut frame, &IntListItem, expression, 0),
+            crate::runtime::function::return_body::run_int_list_loop(
+                &plan,
+                plan.int_list_function_id(0),
+                frame,
+            ),
             Err(ExecutionError::ListIndexFamilyMismatch {
                 expected: ValueType::List(Box::new(ValueType::Int)),
                 actual: ValueType::List(Box::new(ValueType::String)),
             }),
         );
+    }
+
+    #[test]
+    #[should_panic(expected = "expected a block return body")]
+    fn nested_list_index_block_fixture_guard_rejects_expression_return() {
+        let plan = crate::runtime::plan_src("pub fn main() -> List(Int) { [] }");
+        let function = plan.int_list_function(plan.int_list_function_id(0));
+        let _ = expect_nested_list_index_binding(function.return_());
+    }
+
+    #[test]
+    #[should_panic(expected = "expected a Bool case return body")]
+    fn nested_list_index_case_fixture_guard_rejects_expression_return() {
+        let plan = crate::runtime::plan_src("pub fn main() -> List(Int) { [] }");
+        let function = plan.int_list_function(plan.int_list_function_id(0));
+        let _ = expect_bool_case_true(function.return_());
+    }
+
+    #[test]
+    #[should_panic(expected = "expected a binding block return body")]
+    fn nested_list_index_binding_block_fixture_guard_rejects_expression_return() {
+        let plan = crate::runtime::plan_src("pub fn main() -> List(Int) { [] }");
+        let function = plan.int_list_function(plan.int_list_function_id(0));
+        let _ = expect_binding_block_steps(function.return_());
+    }
+
+    #[test]
+    #[should_panic(expected = "expected a List(Int) binding step")]
+    fn nested_list_index_binding_fixture_guard_rejects_int_binding() {
+        let plan = crate::runtime::plan_src("pub fn main() -> List(Int) { let value = 1 [] }");
+        let function = plan.int_list_function(plan.int_list_function_id(0));
+        let _ = expect_int_list_binding(&function.steps()[0]);
     }
 
     #[test]
@@ -1033,7 +1122,7 @@ pub fn main() { Nil }
             ),
         ];
 
-        let function = plans[0].int_list_function(IntListFunctionId(0));
+        let function = plans[0].int_list_function(plans[0].int_list_function_id(0));
         let mut frame = Frame::new(function.frame_layout());
         assert_eq!(
             project_int_list_expr(
@@ -1047,7 +1136,7 @@ pub fn main() { Nil }
             "panic: int",
         );
 
-        let function = plans[1].string_list_function(StringListFunctionId(0));
+        let function = plans[1].string_list_function(plans[1].string_list_function_id(0));
         let mut frame = Frame::new(function.frame_layout());
         assert_eq!(
             project_string_list_expr(
@@ -1061,7 +1150,7 @@ pub fn main() { Nil }
             "panic: string",
         );
 
-        let function = plans[2].float_list_function(FloatListFunctionId(0));
+        let function = plans[2].float_list_function(plans[2].float_list_function_id(0));
         let mut frame = Frame::new(function.frame_layout());
         assert_eq!(
             project_float_list_expr(
@@ -1075,7 +1164,7 @@ pub fn main() { Nil }
             "panic: float",
         );
 
-        let function = plans[3].bool_list_function(BoolListFunctionId(0));
+        let function = plans[3].bool_list_function(plans[3].bool_list_function_id(0));
         let mut frame = Frame::new(function.frame_layout());
         assert_eq!(
             project_bool_list_expr(
@@ -1089,7 +1178,7 @@ pub fn main() { Nil }
             "panic: bool",
         );
 
-        let function = plans[4].nil_list_function(NilListFunctionId(0));
+        let function = plans[4].nil_list_function(plans[4].nil_list_function_id(0));
         let mut frame = Frame::new(function.frame_layout());
         assert_eq!(
             project_nil_list_expr(
@@ -1103,7 +1192,7 @@ pub fn main() { Nil }
             "panic: nil",
         );
 
-        let function = plans[5].tuple_list_function(TupleListFunctionId(0));
+        let function = plans[5].tuple_list_function(plans[5].tuple_list_function_id(0));
         let mut frame = Frame::new(function.frame_layout());
         assert_eq!(
             project_tuple_list_expr(
@@ -1118,7 +1207,7 @@ pub fn main() { Nil }
             "panic: tuple",
         );
 
-        let function = plans[6].function_list_function(FunctionListFunctionId(0));
+        let function = plans[6].function_list_function(plans[6].function_list_function_id(0));
         let mut frame = Frame::new(function.frame_layout());
         assert_eq!(
             project_function_list_expr(
@@ -1143,7 +1232,7 @@ fn recurse() -> List(Int) { recurse() }
 pub fn main() { Nil }
 "#,
         );
-        let function = plan.int_list_function(IntListFunctionId(0));
+        let function = plan.int_list_function(plan.int_list_function_id(0));
 
         let _ = expect_expression_return(function.return_());
     }
@@ -1242,6 +1331,56 @@ pub fn main() { Nil }
         match body.kind() {
             ReturnBodyKind::Expr(expression) => expression,
             _ => panic!("expected a list expression return body"),
+        }
+    }
+
+    fn expect_nested_list_index_binding(
+        body: &ReturnBody<
+            crate::plan::execution::IntListExpr,
+            crate::plan::execution::IntListFunctionId,
+        >,
+    ) -> &crate::plan::execution::IntListExpr {
+        let return_ = expect_block_return(body);
+        let true_ = expect_bool_case_true(return_);
+        let steps = expect_binding_block_steps(true_);
+        expect_int_list_binding(&steps[0])
+    }
+
+    fn expect_block_return<Expression, Function>(
+        body: &ReturnBody<Expression, Function>,
+    ) -> &ReturnBody<Expression, Function> {
+        match body.kind() {
+            ReturnBodyKind::Block { return_, .. } => return_,
+            _ => panic!("expected a block return body"),
+        }
+    }
+
+    fn expect_bool_case_true<Expression, Function>(
+        body: &ReturnBody<Expression, Function>,
+    ) -> &ReturnBody<Expression, Function> {
+        match body.kind() {
+            ReturnBodyKind::BoolCase { true_, .. } => true_,
+            _ => panic!("expected a Bool case return body"),
+        }
+    }
+
+    fn expect_binding_block_steps<Expression, Function>(
+        body: &ReturnBody<Expression, Function>,
+    ) -> &[crate::plan::execution::Step] {
+        match body.kind() {
+            ReturnBodyKind::Block { steps, .. } => steps,
+            _ => panic!("expected a binding block return body"),
+        }
+    }
+
+    fn expect_int_list_binding(
+        step: &crate::plan::execution::Step,
+    ) -> &crate::plan::execution::IntListExpr {
+        match step.kind() {
+            crate::plan::execution::StepKind::LetList {
+                value: crate::plan::execution::ListLocalExpr::Int { value, .. },
+            } => value,
+            _ => panic!("expected a List(Int) binding step"),
         }
     }
 }

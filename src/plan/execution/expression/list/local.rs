@@ -6,7 +6,6 @@ use crate::plan::execution::{
     BoolListLocalId, FloatListLocalId, FunctionListLocalId, IntListLocalId, ListListLocalId,
     NilListLocalId, StringListLocalId, TupleListLocalId,
 };
-use crate::plan::{FunctionType, ValueType};
 
 pub(crate) enum ListLocalExpr {
     Int {
@@ -31,17 +30,14 @@ pub(crate) enum ListLocalExpr {
     },
     Tuple {
         local: TupleListLocalId,
-        item_type: Vec<ValueType>,
         value: TupleListExpr,
     },
     List {
         local: ListListLocalId,
-        item_type: Box<ValueType>,
         value: ListListExpr,
     },
     Function {
         local: FunctionListLocalId,
-        item_type: FunctionType,
         value: FunctionListExpr,
     },
 }

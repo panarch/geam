@@ -1,7 +1,10 @@
 use super::id::{list_function_local, list_local};
 use crate::plan::module;
 
-pub(super) fn param_local(local: module::ParamLocal) -> super::super::ParamLocal {
+pub(super) fn param_local(
+    local: module::ParamLocal,
+    context: &mut super::LoweringContext,
+) -> super::super::ParamLocal {
     use super::super as execution;
 
     match local {
@@ -22,47 +25,181 @@ pub(super) fn param_local(local: module::ParamLocal) -> super::super::ParamLocal
         }
         module::ParamLocal::Tuple { local, type_ } => execution::ParamLocal::Tuple {
             local: execution::TupleLocalId(local.0),
-            type_,
+            type_: type_
+                .into_iter()
+                .map(|type_| context.value_type(type_))
+                .collect(),
         },
-        module::ParamLocal::List(local) => execution::ParamLocal::List(list_local(local)),
+        module::ParamLocal::List(local) => execution::ParamLocal::List(list_local(local, context)),
         module::ParamLocal::IntFunction { local, type_ } => execution::ParamLocal::IntFunction {
             local: execution::IntFunctionLocalId(local.0),
-            type_,
+            type_: context.function_type(type_),
         },
         module::ParamLocal::FloatFunction { local, type_ } => {
             execution::ParamLocal::FloatFunction {
                 local: execution::FloatFunctionLocalId(local.0),
-                type_,
+                type_: context.function_type(type_),
             }
         }
         module::ParamLocal::StringFunction { local, type_ } => {
             execution::ParamLocal::StringFunction {
                 local: execution::StringFunctionLocalId(local.0),
-                type_,
+                type_: context.function_type(type_),
             }
         }
         module::ParamLocal::BoolFunction { local, type_ } => execution::ParamLocal::BoolFunction {
             local: execution::BoolFunctionLocalId(local.0),
-            type_,
+            type_: context.function_type(type_),
         },
         module::ParamLocal::NilFunction { local, type_ } => execution::ParamLocal::NilFunction {
             local: execution::NilFunctionLocalId(local.0),
-            type_,
+            type_: context.function_type(type_),
         },
         module::ParamLocal::TupleFunction { local, type_ } => {
             execution::ParamLocal::TupleFunction {
                 local: execution::TupleFunctionLocalId(local.0),
-                type_,
+                type_: context.function_type(type_),
             }
         }
         module::ParamLocal::ListFunction(local) => {
-            execution::ParamLocal::ListFunction(list_function_local(local))
+            execution::ParamLocal::ListFunction(list_function_local(local, context))
         }
         module::ParamLocal::FunctionFunction { local, type_ } => {
             execution::ParamLocal::FunctionFunction {
                 local: execution::FunctionFunctionLocalId(local.0),
-                type_,
+                type_: context.function_type(type_),
             }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::plan::execution::{
+        ExecutionPlan, ListFunctionExpr, ListFunctionExprKind, ListFunctionId, ListListFunctionId,
+        ListListTypeId, ListLocal, ParamLocal, RuntimeFunctionId, Step, StepKind,
+    };
+
+    #[test]
+    fn lowering_preserves_nested_list_parameter_identity_in_function_references() {
+        let source = r#"
+fn identity(values: List(List(Int))) { values }
+
+pub fn main() {
+  let function = identity
+  function([])
+}
+"#;
+        let typed = crate::compile_typed_module("main", "main.gleam", source)
+            .expect("source should compile");
+        let module_plan = crate::plan_module(typed).expect("source should plan");
+        let plan = crate::ExecutionPlan::from_module_plan(module_plan);
+        let main = expect_list_list_main(&plan);
+        let value = expect_list_function_binding(&plan.list_list_function(main).steps()[0]);
+        let reference = expect_list_function_reference(value);
+        let target = expect_nested_list_function_id(reference.function());
+        let type_id = expect_single_nested_list_param(reference.params());
+
+        assert_eq!(type_id, target.type_id());
+        assert_eq!(
+            plan.value_type(&reference.params()[0].value_type()),
+            crate::plan::ValueType::List(Box::new(crate::plan::ValueType::List(Box::new(
+                crate::plan::ValueType::Int,
+            )))),
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "expected a List(List) main function")]
+    fn nested_list_main_fixture_guard_rejects_int_main() {
+        let plan = execution_plan("pub fn main() { 1 }");
+        let _ = expect_list_list_main(&plan);
+    }
+
+    #[test]
+    #[should_panic(expected = "expected a list-function binding step")]
+    fn list_function_binding_fixture_guard_rejects_int_binding() {
+        let plan = execution_plan("pub fn main() -> List(List(Int)) { let value = 1 [] }");
+        let main = expect_list_list_main(&plan);
+        let _ = expect_list_function_binding(&plan.list_list_function(main).steps()[0]);
+    }
+
+    #[test]
+    #[should_panic(expected = "expected a list-function reference")]
+    fn list_function_reference_fixture_guard_rejects_closure() {
+        let plan = execution_plan(
+            "pub fn main() { let captured = 1 let function = fn(values: List(List(Int))) { let _ = captured values } function([]) }",
+        );
+        let main = expect_list_list_main(&plan);
+        let value = expect_list_function_binding(&plan.list_list_function(main).steps()[1]);
+        let _ = expect_list_function_reference(value);
+    }
+
+    #[test]
+    #[should_panic(expected = "expected a nested-list function id")]
+    fn nested_list_function_id_fixture_guard_rejects_int_list_id() {
+        let plan = execution_plan(
+            "fn identity(values: List(Int)) { values } pub fn main() { let function = identity function([]) }",
+        );
+        let main = plan.int_list_function_id(0);
+        let value = expect_list_function_binding(&plan.int_list_function(main).steps()[0]);
+        let reference = expect_list_function_reference(value);
+        let _ = expect_nested_list_function_id(reference.function());
+    }
+
+    #[test]
+    #[should_panic(expected = "expected one nested-list parameter")]
+    fn nested_list_param_fixture_guard_rejects_int_list_param() {
+        let plan = execution_plan(
+            "fn identity(values: List(Int)) { values } pub fn main() { let function = identity function([]) }",
+        );
+        let main = plan.int_list_function_id(0);
+        let value = expect_list_function_binding(&plan.int_list_function(main).steps()[0]);
+        let reference = expect_list_function_reference(value);
+        let _ = expect_single_nested_list_param(reference.params());
+    }
+
+    fn execution_plan(source: &str) -> ExecutionPlan {
+        let typed = crate::compile_typed_module("main", "main.gleam", source)
+            .expect("source should compile");
+        let module_plan = crate::plan_module(typed).expect("source should plan");
+        ExecutionPlan::from_module_plan(module_plan)
+    }
+
+    fn expect_list_list_main(plan: &ExecutionPlan) -> ListListFunctionId {
+        match plan.main_runtime() {
+            RuntimeFunctionId::List(ListFunctionId::List(main)) => main,
+            _ => panic!("expected a List(List) main function"),
+        }
+    }
+
+    fn expect_list_function_binding(step: &Step) -> &ListFunctionExpr {
+        match step.kind() {
+            StepKind::LetListFunction { value, .. } => value,
+            _ => panic!("expected a list-function binding step"),
+        }
+    }
+
+    fn expect_list_function_reference(
+        value: &ListFunctionExpr,
+    ) -> &crate::plan::execution::FunctionReference<ListFunctionId> {
+        match value.kind() {
+            ListFunctionExprKind::Reference(reference) => reference,
+            _ => panic!("expected a list-function reference"),
+        }
+    }
+
+    fn expect_nested_list_function_id(function: &ListFunctionId) -> &ListListFunctionId {
+        match function {
+            ListFunctionId::List(function) => function,
+            _ => panic!("expected a nested-list function id"),
+        }
+    }
+
+    fn expect_single_nested_list_param(params: &[ParamLocal]) -> ListListTypeId {
+        match params {
+            [ParamLocal::List(ListLocal::List { type_id, .. })] => *type_id,
+            _ => panic!("expected one nested-list parameter"),
         }
     }
 }

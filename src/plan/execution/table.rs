@@ -12,6 +12,9 @@ use super::{
     TupleListReturn, TupleReturn,
 };
 
+#[cfg(test)]
+use super::IntListFunctionFunctionId;
+
 pub(super) struct FunctionTables {
     pub(super) int_functions: Vec<ExecutableFunction<IntReturn>>,
     pub(super) float_functions: Vec<ExecutableFunction<FloatReturn>>,
@@ -19,14 +22,20 @@ pub(super) struct FunctionTables {
     pub(super) bool_functions: Vec<ExecutableFunction<BoolReturn>>,
     pub(super) nil_functions: Vec<ExecutableFunction<NilReturn>>,
     pub(super) tuple_functions: Vec<ExecutableFunction<TupleReturn>>,
-    pub(super) int_list_functions: Vec<ExecutableFunction<IntListReturn>>,
-    pub(super) string_list_functions: Vec<ExecutableFunction<StringListReturn>>,
-    pub(super) float_list_functions: Vec<ExecutableFunction<FloatListReturn>>,
-    pub(super) bool_list_functions: Vec<ExecutableFunction<BoolListReturn>>,
-    pub(super) nil_list_functions: Vec<ExecutableFunction<NilListReturn>>,
-    pub(super) tuple_list_functions: Vec<ExecutableFunction<TupleListReturn>>,
-    pub(super) list_list_functions: Vec<ExecutableFunction<ListListReturn>>,
-    pub(super) function_list_functions: Vec<ExecutableFunction<FunctionListReturn>>,
+    pub(super) int_list_functions: Vec<(IntListFunctionId, ExecutableFunction<IntListReturn>)>,
+    pub(super) string_list_functions:
+        Vec<(StringListFunctionId, ExecutableFunction<StringListReturn>)>,
+    pub(super) float_list_functions:
+        Vec<(FloatListFunctionId, ExecutableFunction<FloatListReturn>)>,
+    pub(super) bool_list_functions: Vec<(BoolListFunctionId, ExecutableFunction<BoolListReturn>)>,
+    pub(super) nil_list_functions: Vec<(NilListFunctionId, ExecutableFunction<NilListReturn>)>,
+    pub(super) tuple_list_functions:
+        Vec<(TupleListFunctionId, ExecutableFunction<TupleListReturn>)>,
+    pub(super) list_list_functions: Vec<(ListListFunctionId, ExecutableFunction<ListListReturn>)>,
+    pub(super) function_list_functions: Vec<(
+        FunctionListFunctionId,
+        ExecutableFunction<FunctionListReturn>,
+    )>,
     pub(super) int_function_functions: Vec<ExecutableFunction<IntFunctionReturn>>,
     pub(super) float_function_functions: Vec<ExecutableFunction<FloatFunctionReturn>>,
     pub(super) string_function_functions: Vec<ExecutableFunction<StringFunctionReturn>>,
@@ -45,6 +54,54 @@ pub(super) struct FunctionTables {
 }
 
 impl FunctionTables {
+    #[cfg(test)]
+    pub(super) fn int_list_function_id(&self, index: usize) -> IntListFunctionId {
+        self.int_list_functions[index].0
+    }
+
+    #[cfg(test)]
+    pub(super) fn string_list_function_id(&self, index: usize) -> StringListFunctionId {
+        self.string_list_functions[index].0
+    }
+
+    #[cfg(test)]
+    pub(super) fn float_list_function_id(&self, index: usize) -> FloatListFunctionId {
+        self.float_list_functions[index].0
+    }
+
+    #[cfg(test)]
+    pub(super) fn bool_list_function_id(&self, index: usize) -> BoolListFunctionId {
+        self.bool_list_functions[index].0
+    }
+
+    #[cfg(test)]
+    pub(super) fn nil_list_function_id(&self, index: usize) -> NilListFunctionId {
+        self.nil_list_functions[index].0
+    }
+
+    #[cfg(test)]
+    pub(super) fn tuple_list_function_id(&self, index: usize) -> TupleListFunctionId {
+        self.tuple_list_functions[index].0
+    }
+
+    #[cfg(test)]
+    pub(super) fn list_list_function_id(&self, index: usize) -> ListListFunctionId {
+        self.list_list_functions[index].0
+    }
+
+    #[cfg(test)]
+    pub(super) fn function_list_function_id(&self, index: usize) -> FunctionListFunctionId {
+        self.function_list_functions[index].0
+    }
+
+    #[cfg(test)]
+    pub(super) fn int_list_function_function(
+        &self,
+        id: IntListFunctionFunctionId,
+    ) -> &ExecutableFunction<ListFunctionReturn> {
+        &self.int_list_function_functions[id.0]
+    }
+
     pub(super) fn int_function(&self, id: IntFunctionId) -> &ExecutableFunction<IntReturn> {
         &self.int_functions[id.0]
     }
@@ -76,56 +133,56 @@ impl FunctionTables {
         &self,
         id: IntListFunctionId,
     ) -> &ExecutableFunction<IntListReturn> {
-        &self.int_list_functions[id.0]
+        &self.int_list_functions[id.index()].1
     }
 
     pub(super) fn string_list_function(
         &self,
         id: StringListFunctionId,
     ) -> &ExecutableFunction<StringListReturn> {
-        &self.string_list_functions[id.0]
+        &self.string_list_functions[id.index()].1
     }
 
     pub(super) fn float_list_function(
         &self,
         id: FloatListFunctionId,
     ) -> &ExecutableFunction<FloatListReturn> {
-        &self.float_list_functions[id.0]
+        &self.float_list_functions[id.index()].1
     }
 
     pub(super) fn bool_list_function(
         &self,
         id: BoolListFunctionId,
     ) -> &ExecutableFunction<BoolListReturn> {
-        &self.bool_list_functions[id.0]
+        &self.bool_list_functions[id.index()].1
     }
 
     pub(super) fn nil_list_function(
         &self,
         id: NilListFunctionId,
     ) -> &ExecutableFunction<NilListReturn> {
-        &self.nil_list_functions[id.0]
+        &self.nil_list_functions[id.index()].1
     }
 
     pub(super) fn tuple_list_function(
         &self,
         id: TupleListFunctionId,
     ) -> &ExecutableFunction<TupleListReturn> {
-        &self.tuple_list_functions[id.0]
+        &self.tuple_list_functions[id.index()].1
     }
 
     pub(super) fn list_list_function(
         &self,
         id: ListListFunctionId,
     ) -> &ExecutableFunction<ListListReturn> {
-        &self.list_list_functions[id.0]
+        &self.list_list_functions[id.index()].1
     }
 
     pub(super) fn function_list_function(
         &self,
         id: FunctionListFunctionId,
     ) -> &ExecutableFunction<FunctionListReturn> {
-        &self.function_list_functions[id.0]
+        &self.function_list_functions[id.index()].1
     }
 
     pub(super) fn int_function_function(
@@ -193,5 +250,79 @@ impl FunctionTables {
         id: FunctionFunctionFunctionId,
     ) -> &ExecutableFunction<FunctionFunctionReturn> {
         &self.function_function_functions[id.0]
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::plan::{FunctionType, ValueType};
+    use crate::runtime::{FunctionValue, Value, run_main};
+
+    #[test]
+    fn list_function_function_tables_dispatch_every_item_family() {
+        let cases = [
+            (
+                "pub fn main() -> fn() -> List(Int) { fn() { [] } }",
+                ValueType::Int,
+            ),
+            (
+                "pub fn main() -> fn() -> List(String) { fn() { [] } }",
+                ValueType::String,
+            ),
+            (
+                "pub fn main() -> fn() -> List(Float) { fn() { [] } }",
+                ValueType::Float,
+            ),
+            (
+                "pub fn main() -> fn() -> List(Bool) { fn() { [] } }",
+                ValueType::Bool,
+            ),
+            (
+                "pub fn main() -> fn() -> List(Nil) { fn() { [] } }",
+                ValueType::Nil,
+            ),
+            (
+                "pub fn main() -> fn() -> List(#(Int)) { fn() { [] } }",
+                ValueType::Tuple(vec![ValueType::Int]),
+            ),
+            (
+                "pub fn main() -> fn() -> List(List(Int)) { fn() { [] } }",
+                ValueType::List(Box::new(ValueType::Int)),
+            ),
+            (
+                "pub fn main() -> fn() -> List(fn() -> Int) { fn() { [] } }",
+                ValueType::Function(Box::new(FunctionType::new(Vec::new(), ValueType::Int))),
+            ),
+        ];
+
+        for (source, item_type) in cases {
+            let plan = execution_plan(source);
+            let function = expect_function(run_main(&plan).expect("main should return a function"));
+
+            assert_eq!(
+                function.type_(),
+                FunctionType::new(Vec::new(), ValueType::List(Box::new(item_type))),
+            );
+        }
+    }
+
+    #[test]
+    #[should_panic(expected = "expected a function value")]
+    fn function_value_fixture_guard_rejects_int_value() {
+        let _ = expect_function(Value::Int(0.into()));
+    }
+
+    fn expect_function(value: Value) -> FunctionValue {
+        match value {
+            Value::Function(function) => function,
+            _ => panic!("expected a function value"),
+        }
+    }
+
+    fn execution_plan(source: &str) -> crate::ExecutionPlan {
+        let typed = crate::compile_typed_module("main", "main.gleam", source)
+            .expect("source should compile");
+        let module_plan = crate::plan_module(typed).expect("source should plan");
+        crate::ExecutionPlan::from_module_plan(module_plan)
     }
 }

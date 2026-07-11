@@ -1,7 +1,7 @@
 use super::{
     BoolExpr, CallArg, FloatExpr, IntExpr, PanicExpr, StringExpr, TupleFunctionExpr, TupleListExpr,
 };
-use crate::plan::ValueType;
+use crate::plan::execution::ValueType;
 use crate::plan::execution::{Step, TupleFunctionId, TupleLocalId};
 use ecow::EcoString;
 use num_bigint::BigInt;

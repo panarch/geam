@@ -16,16 +16,68 @@ use super::{
 };
 use crate::plan::{ModulePlan, module};
 
+#[derive(Default)]
+struct LoweringContext {
+    list_types: super::value_type::ListTypeInterner,
+}
+
+impl LoweringContext {
+    fn value_type(&mut self, type_: crate::plan::ValueType) -> super::ValueType {
+        self.list_types.value_type(type_)
+    }
+
+    fn function_type(&mut self, type_: crate::plan::FunctionType) -> super::FunctionType {
+        self.list_types.function_type(type_)
+    }
+
+    fn int_list_type(&mut self) -> super::IntListTypeId {
+        self.list_types.int_list_type()
+    }
+
+    fn string_list_type(&mut self) -> super::StringListTypeId {
+        self.list_types.string_list_type()
+    }
+
+    fn float_list_type(&mut self) -> super::FloatListTypeId {
+        self.list_types.float_list_type()
+    }
+
+    fn bool_list_type(&mut self) -> super::BoolListTypeId {
+        self.list_types.bool_list_type()
+    }
+
+    fn nil_list_type(&mut self) -> super::NilListTypeId {
+        self.list_types.nil_list_type()
+    }
+
+    fn tuple_list_type(&mut self, item: Vec<crate::plan::ValueType>) -> super::TupleListTypeId {
+        self.list_types.tuple_list_type(item)
+    }
+
+    fn list_list_type(&mut self, item: crate::plan::ValueType) -> super::ListListTypeId {
+        self.list_types.list_list_type(item)
+    }
+
+    fn function_list_type(&mut self, item: crate::plan::FunctionType) -> super::FunctionListTypeId {
+        self.list_types.function_list_type(item)
+    }
+
+    fn finish(self) -> super::ListTypeTable {
+        self.list_types.finish()
+    }
+}
+
 pub(super) fn lower(module_plan: ModulePlan) -> ExecutionPlan {
     let parts = module_plan.into_parts();
+    let mut context = LoweringContext::default();
     let mut tables = FunctionTableBuilder::default();
-    let main = tables.push(parts.main);
+    let main = tables.push(parts.main, &mut context);
 
     for function in parts.functions {
-        tables.push(function);
+        tables.push(function, &mut context);
     }
     for function in parts.anonymous_functions {
-        tables.push(function);
+        tables.push(function, &mut context);
     }
 
     ExecutionPlan {
@@ -33,6 +85,7 @@ pub(super) fn lower(module_plan: ModulePlan) -> ExecutionPlan {
         source_context: parts.source_context,
         main,
         functions: tables.finish(),
+        list_types: context.finish(),
     }
 }
 
@@ -44,14 +97,32 @@ struct FunctionTableBuilder {
     bool_functions: Vec<(usize, ExecutableFunction<BoolReturn>)>,
     nil_functions: Vec<(usize, ExecutableFunction<NilReturn>)>,
     tuple_functions: Vec<(usize, ExecutableFunction<TupleReturn>)>,
-    int_list_functions: Vec<(usize, ExecutableFunction<IntListReturn>)>,
-    string_list_functions: Vec<(usize, ExecutableFunction<StringListReturn>)>,
-    float_list_functions: Vec<(usize, ExecutableFunction<FloatListReturn>)>,
-    bool_list_functions: Vec<(usize, ExecutableFunction<BoolListReturn>)>,
-    nil_list_functions: Vec<(usize, ExecutableFunction<NilListReturn>)>,
-    tuple_list_functions: Vec<(usize, ExecutableFunction<TupleListReturn>)>,
-    list_list_functions: Vec<(usize, ExecutableFunction<ListListReturn>)>,
-    function_list_functions: Vec<(usize, ExecutableFunction<FunctionListReturn>)>,
+    int_list_functions: Vec<(super::IntListFunctionId, ExecutableFunction<IntListReturn>)>,
+    string_list_functions: Vec<(
+        super::StringListFunctionId,
+        ExecutableFunction<StringListReturn>,
+    )>,
+    float_list_functions: Vec<(
+        super::FloatListFunctionId,
+        ExecutableFunction<FloatListReturn>,
+    )>,
+    bool_list_functions: Vec<(
+        super::BoolListFunctionId,
+        ExecutableFunction<BoolListReturn>,
+    )>,
+    nil_list_functions: Vec<(super::NilListFunctionId, ExecutableFunction<NilListReturn>)>,
+    tuple_list_functions: Vec<(
+        super::TupleListFunctionId,
+        ExecutableFunction<TupleListReturn>,
+    )>,
+    list_list_functions: Vec<(
+        super::ListListFunctionId,
+        ExecutableFunction<ListListReturn>,
+    )>,
+    function_list_functions: Vec<(
+        super::FunctionListFunctionId,
+        ExecutableFunction<FunctionListReturn>,
+    )>,
     int_function_functions: Vec<(usize, ExecutableFunction<IntFunctionReturn>)>,
     float_function_functions: Vec<(usize, ExecutableFunction<FloatFunctionReturn>)>,
     string_function_functions: Vec<(usize, ExecutableFunction<StringFunctionReturn>)>,
@@ -70,21 +141,29 @@ struct FunctionTableBuilder {
 }
 
 impl FunctionTableBuilder {
-    fn push(&mut self, function: module::FunctionPlan) -> RuntimeFunctionId {
+    fn push(
+        &mut self,
+        function: module::FunctionPlan,
+        context: &mut LoweringContext,
+    ) -> RuntimeFunctionId {
         let module::FunctionExecutionParts {
             frame_layout,
             steps,
             return_,
         } = function.into_execution_parts();
-        let frame_layout = frame::frame_layout(frame_layout);
-        let steps = step::steps(steps);
+        let frame_layout = frame::frame_layout(frame_layout, context);
+        let steps = step::steps(steps, context);
 
         match return_.into_kind() {
             module::ReturnExprKind::Int { runtime_id, body } => {
                 let id = super::IntFunctionId(runtime_id.0);
                 self.int_functions.push((
                     runtime_id.0,
-                    ExecutableFunction::new(frame_layout, steps, return_::int_return(body)),
+                    ExecutableFunction::new(
+                        frame_layout,
+                        steps,
+                        return_::int_return(body, context),
+                    ),
                 ));
                 RuntimeFunctionId::Int(id)
             }
@@ -92,7 +171,11 @@ impl FunctionTableBuilder {
                 let id = super::FloatFunctionId(runtime_id.0);
                 self.float_functions.push((
                     runtime_id.0,
-                    ExecutableFunction::new(frame_layout, steps, return_::float_return(body)),
+                    ExecutableFunction::new(
+                        frame_layout,
+                        steps,
+                        return_::float_return(body, context),
+                    ),
                 ));
                 RuntimeFunctionId::Float(id)
             }
@@ -100,7 +183,11 @@ impl FunctionTableBuilder {
                 let id = super::StringFunctionId(runtime_id.0);
                 self.string_functions.push((
                     runtime_id.0,
-                    ExecutableFunction::new(frame_layout, steps, return_::string_return(body)),
+                    ExecutableFunction::new(
+                        frame_layout,
+                        steps,
+                        return_::string_return(body, context),
+                    ),
                 ));
                 RuntimeFunctionId::String(id)
             }
@@ -108,7 +195,11 @@ impl FunctionTableBuilder {
                 let id = super::BoolFunctionId(runtime_id.0);
                 self.bool_functions.push((
                     runtime_id.0,
-                    ExecutableFunction::new(frame_layout, steps, return_::bool_return(body)),
+                    ExecutableFunction::new(
+                        frame_layout,
+                        steps,
+                        return_::bool_return(body, context),
+                    ),
                 ));
                 RuntimeFunctionId::Bool(id)
             }
@@ -116,7 +207,11 @@ impl FunctionTableBuilder {
                 let id = super::NilFunctionId(runtime_id.0);
                 self.nil_functions.push((
                     runtime_id.0,
-                    ExecutableFunction::new(frame_layout, steps, return_::nil_return(body)),
+                    ExecutableFunction::new(
+                        frame_layout,
+                        steps,
+                        return_::nil_return(body, context),
+                    ),
                 ));
                 RuntimeFunctionId::Nil(id)
             }
@@ -128,50 +223,77 @@ impl FunctionTableBuilder {
                 let id = super::TupleFunctionId(runtime_id.0);
                 self.tuple_functions.push((
                     runtime_id.0,
-                    ExecutableFunction::new(frame_layout, steps, return_::tuple_return(body)),
+                    ExecutableFunction::new(
+                        frame_layout,
+                        steps,
+                        return_::tuple_return(body, context),
+                    ),
                 ));
                 RuntimeFunctionId::Tuple {
                     id,
-                    return_type: type_,
+                    return_type: type_
+                        .into_iter()
+                        .map(|type_| context.value_type(type_))
+                        .collect(),
                 }
             }
             module::ReturnExprKind::IntList { runtime_id, body } => {
-                let id = super::IntListFunctionId(runtime_id.0);
+                let id = super::IntListFunctionId::new(runtime_id.0, context.int_list_type());
                 self.int_list_functions.push((
-                    runtime_id.0,
-                    ExecutableFunction::new(frame_layout, steps, return_::int_list_return(body)),
+                    id,
+                    ExecutableFunction::new(
+                        frame_layout,
+                        steps,
+                        return_::int_list_return(body, context),
+                    ),
                 ));
                 RuntimeFunctionId::List(super::ListFunctionId::Int(id))
             }
             module::ReturnExprKind::StringList { runtime_id, body } => {
-                let id = super::StringListFunctionId(runtime_id.0);
+                let id = super::StringListFunctionId::new(runtime_id.0, context.string_list_type());
                 self.string_list_functions.push((
-                    runtime_id.0,
-                    ExecutableFunction::new(frame_layout, steps, return_::string_list_return(body)),
+                    id,
+                    ExecutableFunction::new(
+                        frame_layout,
+                        steps,
+                        return_::string_list_return(body, context),
+                    ),
                 ));
                 RuntimeFunctionId::List(super::ListFunctionId::String(id))
             }
             module::ReturnExprKind::FloatList { runtime_id, body } => {
-                let id = super::FloatListFunctionId(runtime_id.0);
+                let id = super::FloatListFunctionId::new(runtime_id.0, context.float_list_type());
                 self.float_list_functions.push((
-                    runtime_id.0,
-                    ExecutableFunction::new(frame_layout, steps, return_::float_list_return(body)),
+                    id,
+                    ExecutableFunction::new(
+                        frame_layout,
+                        steps,
+                        return_::float_list_return(body, context),
+                    ),
                 ));
                 RuntimeFunctionId::List(super::ListFunctionId::Float(id))
             }
             module::ReturnExprKind::BoolList { runtime_id, body } => {
-                let id = super::BoolListFunctionId(runtime_id.0);
+                let id = super::BoolListFunctionId::new(runtime_id.0, context.bool_list_type());
                 self.bool_list_functions.push((
-                    runtime_id.0,
-                    ExecutableFunction::new(frame_layout, steps, return_::bool_list_return(body)),
+                    id,
+                    ExecutableFunction::new(
+                        frame_layout,
+                        steps,
+                        return_::bool_list_return(body, context),
+                    ),
                 ));
                 RuntimeFunctionId::List(super::ListFunctionId::Bool(id))
             }
             module::ReturnExprKind::NilList { runtime_id, body } => {
-                let id = super::NilListFunctionId(runtime_id.0);
+                let id = super::NilListFunctionId::new(runtime_id.0, context.nil_list_type());
                 self.nil_list_functions.push((
-                    runtime_id.0,
-                    ExecutableFunction::new(frame_layout, steps, return_::nil_list_return(body)),
+                    id,
+                    ExecutableFunction::new(
+                        frame_layout,
+                        steps,
+                        return_::nil_list_return(body, context),
+                    ),
                 ));
                 RuntimeFunctionId::List(super::ListFunctionId::Nil(id))
             }
@@ -180,40 +302,51 @@ impl FunctionTableBuilder {
                 item_type,
                 body,
             } => {
-                let id = super::TupleListFunctionId(runtime_id.0);
+                let type_id = context.tuple_list_type(item_type);
+                let id = super::TupleListFunctionId::new(runtime_id.0, type_id);
                 self.tuple_list_functions.push((
-                    runtime_id.0,
-                    ExecutableFunction::new(frame_layout, steps, return_::tuple_list_return(body)),
+                    id,
+                    ExecutableFunction::new(
+                        frame_layout,
+                        steps,
+                        return_::tuple_list_return(body, type_id, context),
+                    ),
                 ));
-                RuntimeFunctionId::List(super::ListFunctionId::Tuple { id, item_type })
+                RuntimeFunctionId::List(super::ListFunctionId::Tuple(id))
             }
             module::ReturnExprKind::ListList {
                 runtime_id,
                 item_type,
                 body,
             } => {
-                let id = super::ListListFunctionId(runtime_id.0);
+                let type_id = context.list_list_type(*item_type);
+                let id = super::ListListFunctionId::new(runtime_id.0, type_id);
                 self.list_list_functions.push((
-                    runtime_id.0,
-                    ExecutableFunction::new(frame_layout, steps, return_::list_list_return(body)),
+                    id,
+                    ExecutableFunction::new(
+                        frame_layout,
+                        steps,
+                        return_::list_list_return(body, type_id, context),
+                    ),
                 ));
-                RuntimeFunctionId::List(super::ListFunctionId::List { id, item_type })
+                RuntimeFunctionId::List(super::ListFunctionId::List(id))
             }
             module::ReturnExprKind::FunctionList {
                 runtime_id,
                 item_type,
                 body,
             } => {
-                let id = super::FunctionListFunctionId(runtime_id.0);
+                let type_id = context.function_list_type(item_type);
+                let id = super::FunctionListFunctionId::new(runtime_id.0, type_id);
                 self.function_list_functions.push((
-                    runtime_id.0,
+                    id,
                     ExecutableFunction::new(
                         frame_layout,
                         steps,
-                        return_::function_list_return(body),
+                        return_::function_list_return(body, type_id, context),
                     ),
                 ));
-                RuntimeFunctionId::List(super::ListFunctionId::Function { id, item_type })
+                RuntimeFunctionId::List(super::ListFunctionId::Function(id))
             }
             module::ReturnExprKind::IntFunction {
                 runtime_id,
@@ -226,12 +359,12 @@ impl FunctionTableBuilder {
                     ExecutableFunction::new(
                         frame_layout,
                         steps,
-                        return_::int_function_return(body),
+                        return_::int_function_return(body, context),
                     ),
                 ));
                 RuntimeFunctionId::Function {
                     id: super::FunctionFunctionId::Int(id),
-                    return_type: type_,
+                    return_type: context.function_type(type_),
                 }
             }
             module::ReturnExprKind::FloatFunction {
@@ -245,12 +378,12 @@ impl FunctionTableBuilder {
                     ExecutableFunction::new(
                         frame_layout,
                         steps,
-                        return_::float_function_return(body),
+                        return_::float_function_return(body, context),
                     ),
                 ));
                 RuntimeFunctionId::Function {
                     id: super::FunctionFunctionId::Float(id),
-                    return_type: type_,
+                    return_type: context.function_type(type_),
                 }
             }
             module::ReturnExprKind::StringFunction {
@@ -264,12 +397,12 @@ impl FunctionTableBuilder {
                     ExecutableFunction::new(
                         frame_layout,
                         steps,
-                        return_::string_function_return(body),
+                        return_::string_function_return(body, context),
                     ),
                 ));
                 RuntimeFunctionId::Function {
                     id: super::FunctionFunctionId::String(id),
-                    return_type: type_,
+                    return_type: context.function_type(type_),
                 }
             }
             module::ReturnExprKind::BoolFunction {
@@ -283,12 +416,12 @@ impl FunctionTableBuilder {
                     ExecutableFunction::new(
                         frame_layout,
                         steps,
-                        return_::bool_function_return(body),
+                        return_::bool_function_return(body, context),
                     ),
                 ));
                 RuntimeFunctionId::Function {
                     id: super::FunctionFunctionId::Bool(id),
-                    return_type: type_,
+                    return_type: context.function_type(type_),
                 }
             }
             module::ReturnExprKind::NilFunction {
@@ -302,12 +435,12 @@ impl FunctionTableBuilder {
                     ExecutableFunction::new(
                         frame_layout,
                         steps,
-                        return_::nil_function_return(body),
+                        return_::nil_function_return(body, context),
                     ),
                 ));
                 RuntimeFunctionId::Function {
                     id: super::FunctionFunctionId::Nil(id),
-                    return_type: type_,
+                    return_type: context.function_type(type_),
                 }
             }
             module::ReturnExprKind::TupleFunction {
@@ -321,23 +454,23 @@ impl FunctionTableBuilder {
                     ExecutableFunction::new(
                         frame_layout,
                         steps,
-                        return_::tuple_function_return(body),
+                        return_::tuple_function_return(body, context),
                     ),
                 ));
                 RuntimeFunctionId::Function {
                     id: super::FunctionFunctionId::Tuple(id),
-                    return_type: type_,
+                    return_type: context.function_type(type_),
                 }
             }
             module::ReturnExprKind::ListFunction { runtime_id, body } => {
-                let runtime_id = id::list_function_function_id(runtime_id);
+                let runtime_id = id::list_function_function_id(runtime_id, context);
                 let return_type = runtime_id.type_().clone();
                 self.push_list_function_function(
                     runtime_id.clone(),
                     ExecutableFunction::new(
                         frame_layout,
                         steps,
-                        return_::list_function_return(body),
+                        return_::list_function_return(body, context),
                     ),
                 );
                 RuntimeFunctionId::Function {
@@ -356,12 +489,12 @@ impl FunctionTableBuilder {
                     ExecutableFunction::new(
                         frame_layout,
                         steps,
-                        return_::function_function_return(body),
+                        return_::function_function_return(body, context),
                     ),
                 ));
                 RuntimeFunctionId::Function {
                     id: super::FunctionFunctionId::Function(id),
-                    return_type: type_,
+                    return_type: context.function_type(type_),
                 }
             }
         }
@@ -408,14 +541,16 @@ impl FunctionTableBuilder {
             bool_functions: sort_functions(self.bool_functions),
             nil_functions: sort_functions(self.nil_functions),
             tuple_functions: sort_functions(self.tuple_functions),
-            int_list_functions: sort_functions(self.int_list_functions),
-            string_list_functions: sort_functions(self.string_list_functions),
-            float_list_functions: sort_functions(self.float_list_functions),
-            bool_list_functions: sort_functions(self.bool_list_functions),
-            nil_list_functions: sort_functions(self.nil_list_functions),
-            tuple_list_functions: sort_functions(self.tuple_list_functions),
-            list_list_functions: sort_functions(self.list_list_functions),
-            function_list_functions: sort_functions(self.function_list_functions),
+            int_list_functions: sort_list_functions(self.int_list_functions, |id| id.index()),
+            string_list_functions: sort_list_functions(self.string_list_functions, |id| id.index()),
+            float_list_functions: sort_list_functions(self.float_list_functions, |id| id.index()),
+            bool_list_functions: sort_list_functions(self.bool_list_functions, |id| id.index()),
+            nil_list_functions: sort_list_functions(self.nil_list_functions, |id| id.index()),
+            tuple_list_functions: sort_list_functions(self.tuple_list_functions, |id| id.index()),
+            list_list_functions: sort_list_functions(self.list_list_functions, |id| id.index()),
+            function_list_functions: sort_list_functions(self.function_list_functions, |id| {
+                id.index()
+            }),
             int_function_functions: sort_functions(self.int_function_functions),
             float_function_functions: sort_functions(self.float_function_functions),
             string_function_functions: sort_functions(self.string_function_functions),
@@ -445,20 +580,18 @@ fn sort_functions<Return>(
         .collect()
 }
 
+fn sort_list_functions<Id, Return>(
+    mut functions: Vec<(Id, ExecutableFunction<Return>)>,
+    index: impl Fn(&Id) -> usize,
+) -> Vec<(Id, ExecutableFunction<Return>)> {
+    functions.sort_by_key(|(id, _)| index(id));
+    functions
+}
+
 #[cfg(test)]
 mod tests {
-    use super::super::{
-        BoolFunctionFunctionId, BoolFunctionId, BoolListFunctionFunctionId, BoolListFunctionId,
-        ExecutionPlan, FloatFunctionFunctionId, FloatFunctionId, FloatListFunctionFunctionId,
-        FloatListFunctionId, FunctionFunctionFunctionId, FunctionListFunctionFunctionId,
-        FunctionListFunctionId, IntFunctionFunctionId, IntFunctionId, IntListFunctionFunctionId,
-        IntListFunctionId, ListFunctionFunctionId, ListListFunctionFunctionId, ListListFunctionId,
-        NilFunctionFunctionId, NilFunctionId, NilListFunctionFunctionId, NilListFunctionId,
-        ReturnBody, ReturnBodyKind, RuntimeFunctionId, StringFunctionFunctionId, StringFunctionId,
-        StringListFunctionFunctionId, StringListFunctionId, TupleFunctionFunctionId,
-        TupleFunctionId, TupleListFunctionFunctionId, TupleListFunctionId,
-    };
-    use crate::plan::{FunctionType, SourceContext, ValueType};
+    use super::super::{ExecutionPlan, IntFunctionId, RuntimeFunctionId};
+    use crate::plan::{SourceContext, ValueType};
 
     #[test]
     fn lowering_builds_every_typed_function_table() {
@@ -535,109 +668,6 @@ pub fn main() { int_value() }
         assert_eq!(plan.functions.list_list_function_functions.len(), 1);
         assert_eq!(plan.functions.function_list_function_functions.len(), 1);
         assert_eq!(plan.functions.function_function_functions.len(), 1);
-
-        let _ = expect_expression_return(plan.int_function(IntFunctionId(1)).return_());
-        let _ = expect_expression_return(plan.float_function(FloatFunctionId(0)).return_());
-        let _ = expect_expression_return(plan.string_function(StringFunctionId(0)).return_());
-        let _ = expect_expression_return(plan.bool_function(BoolFunctionId(0)).return_());
-        let _ = expect_expression_return(plan.nil_function(NilFunctionId(0)).return_());
-        let _ = expect_expression_return(plan.tuple_function(TupleFunctionId(0)).return_());
-        let _ = expect_expression_return(plan.int_list_function(IntListFunctionId(0)).return_());
-        let _ =
-            expect_expression_return(plan.string_list_function(StringListFunctionId(0)).return_());
-        let _ =
-            expect_expression_return(plan.float_list_function(FloatListFunctionId(0)).return_());
-        let _ = expect_expression_return(plan.bool_list_function(BoolListFunctionId(0)).return_());
-        let _ = expect_expression_return(plan.nil_list_function(NilListFunctionId(0)).return_());
-        let _ =
-            expect_expression_return(plan.tuple_list_function(TupleListFunctionId(0)).return_());
-        let _ = expect_expression_return(plan.list_list_function(ListListFunctionId(0)).return_());
-        let _ = expect_expression_return(
-            plan.function_list_function(FunctionListFunctionId(0))
-                .return_(),
-        );
-
-        let plain_function_type = FunctionType::new(Vec::new(), ValueType::Int);
-        let _ = expect_expression_return(
-            plan.int_function_function(IntFunctionFunctionId(0))
-                .return_(),
-        );
-        let _ = expect_expression_return(
-            plan.float_function_function(FloatFunctionFunctionId(0))
-                .return_(),
-        );
-        let _ = expect_expression_return(
-            plan.string_function_function(StringFunctionFunctionId(0))
-                .return_(),
-        );
-        let _ = expect_expression_return(
-            plan.bool_function_function(BoolFunctionFunctionId(0))
-                .return_(),
-        );
-        let _ = expect_expression_return(
-            plan.nil_function_function(NilFunctionFunctionId(0))
-                .return_(),
-        );
-        let _ = expect_expression_return(
-            plan.tuple_function_function(TupleFunctionFunctionId(0))
-                .return_(),
-        );
-
-        let list_function_types = [
-            ListFunctionFunctionId::Int {
-                id: IntListFunctionFunctionId(0),
-                type_: FunctionType::new(Vec::new(), ValueType::List(Box::new(ValueType::Int))),
-            },
-            ListFunctionFunctionId::String {
-                id: StringListFunctionFunctionId(0),
-                type_: FunctionType::new(Vec::new(), ValueType::List(Box::new(ValueType::String))),
-            },
-            ListFunctionFunctionId::Float {
-                id: FloatListFunctionFunctionId(0),
-                type_: FunctionType::new(Vec::new(), ValueType::List(Box::new(ValueType::Float))),
-            },
-            ListFunctionFunctionId::Bool {
-                id: BoolListFunctionFunctionId(0),
-                type_: FunctionType::new(Vec::new(), ValueType::List(Box::new(ValueType::Bool))),
-            },
-            ListFunctionFunctionId::Nil {
-                id: NilListFunctionFunctionId(0),
-                type_: FunctionType::new(Vec::new(), ValueType::List(Box::new(ValueType::Nil))),
-            },
-            ListFunctionFunctionId::Tuple {
-                id: TupleListFunctionFunctionId(0),
-                type_: FunctionType::new(
-                    Vec::new(),
-                    ValueType::List(Box::new(ValueType::Tuple(vec![ValueType::Int]))),
-                ),
-                item_type: vec![ValueType::Int],
-            },
-            ListFunctionFunctionId::List {
-                id: ListListFunctionFunctionId(0),
-                type_: FunctionType::new(
-                    Vec::new(),
-                    ValueType::List(Box::new(ValueType::List(Box::new(ValueType::Int)))),
-                ),
-                item_type: Box::new(ValueType::Int),
-            },
-            ListFunctionFunctionId::Function {
-                id: FunctionListFunctionFunctionId(0),
-                type_: FunctionType::new(
-                    Vec::new(),
-                    ValueType::List(Box::new(ValueType::Function(Box::new(
-                        plain_function_type.clone(),
-                    )))),
-                ),
-                item_type: Box::new(plain_function_type.clone()),
-            },
-        ];
-        for id in &list_function_types {
-            let _ = expect_expression_return(plan.list_function_function(id).return_());
-        }
-        let _ = expect_expression_return(
-            plan.function_function_function(FunctionFunctionFunctionId(0))
-                .return_(),
-        );
     }
 
     #[test]
@@ -661,30 +691,54 @@ pub fn main() { int_value() }
     }
 
     #[test]
-    #[should_panic(expected = "expected an expression return body")]
-    fn expression_return_fixture_guard_rejects_case_return() {
+    fn lowering_interns_recursive_list_types_child_first_and_deduplicates_them() {
         let source = r#"
-pub fn main() {
-  case True {
-    True -> 1
-    False -> 0
-  }
+fn preserve(
+  int_list: List(Int),
+  nested: List(List(Int)),
+  deep: List(List(List(Int))),
+  duplicate: List(Int),
+  functions: List(fn(List(Int)) -> List(List(Int))),
+) {
+  #(int_list, nested, deep, duplicate, functions)
 }
+
+pub fn main() { Nil }
 "#;
         let typed = crate::compile_typed_module("main", "main.gleam", source)
             .expect("source should compile");
         let module_plan = crate::plan_module(typed).expect("source should plan");
         let plan = ExecutionPlan::from_module_plan(module_plan);
+        let entries = plan
+            .list_types
+            .entries()
+            .map(|(id, _)| (id.index(), plan.list_value_type(id)))
+            .collect::<Vec<_>>();
 
-        let _ = expect_expression_return(plan.int_function(IntFunctionId(0)).return_());
-    }
-
-    fn expect_expression_return<Expression, Function>(
-        body: &ReturnBody<Expression, Function>,
-    ) -> &Expression {
-        match body.kind() {
-            ReturnBodyKind::Expr(expression) => expression,
-            _ => panic!("expected an expression return body"),
-        }
+        assert_eq!(
+            entries,
+            vec![
+                (0, ValueType::List(Box::new(ValueType::Int))),
+                (
+                    1,
+                    ValueType::List(Box::new(ValueType::List(Box::new(ValueType::Int)))),
+                ),
+                (
+                    2,
+                    ValueType::List(Box::new(ValueType::List(Box::new(ValueType::List(
+                        Box::new(ValueType::Int),
+                    ))))),
+                ),
+                (
+                    3,
+                    ValueType::List(Box::new(ValueType::Function(Box::new(
+                        crate::plan::FunctionType::new(
+                            vec![ValueType::List(Box::new(ValueType::Int))],
+                            ValueType::List(Box::new(ValueType::List(Box::new(ValueType::Int)))),
+                        ),
+                    )))),
+                ),
+            ]
+        );
     }
 }

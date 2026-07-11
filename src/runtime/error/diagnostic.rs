@@ -272,6 +272,10 @@ mod tests {
         let function = Value::Function(FunctionValue::new(
             RuntimeFunctionId::Int(IntFunctionId(0)),
             vec![ParamLocal::Int(IntLocalId(0))],
+            crate::plan::FunctionType::new(
+                vec![crate::plan::ValueType::Int],
+                crate::plan::ValueType::Int,
+            ),
         ));
 
         for (value, expected) in [

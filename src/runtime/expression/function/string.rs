@@ -19,11 +19,13 @@ pub(in crate::runtime) fn eval_string_function_expr(
             *reference.function(),
             reference.params().to_vec(),
             Vec::new(),
+            plan.function_value_type(reference.params(), ValueType::String),
         )),
         StringFunctionExprKind::Closure(template) => Ok(StringFunctionValue::new_with_captures(
             *template.function(),
             template.params().to_vec(),
             function::eval_capture_args(plan, frame, template.captures())?,
+            plan.function_value_type(template.params(), ValueType::String),
         )),
         StringFunctionExprKind::LocalGet { local, .. } => Ok(frame.get_string_function(*local)),
         StringFunctionExprKind::Call { function, args, .. } => {
@@ -39,7 +41,7 @@ pub(in crate::runtime) fn eval_string_function_expr(
             index,
             type_,
         } => {
-            let expected = ValueType::Function(Box::new(type_.clone()));
+            let expected = ValueType::Function(Box::new(plan.function_type(type_)));
             let value = project_tuple_expr(plan, frame, tuple, *index, expected.clone())?;
             let actual = value.value_type();
             match value {
@@ -55,7 +57,8 @@ pub(in crate::runtime) fn eval_string_function_expr(
             }
         }
         StringFunctionExprKind::ListIndex { list, index, type_ } => {
-            let function = project_function_list_expr(plan, frame, list, *index, type_)?;
+            let type_ = plan.function_type(type_);
+            let function = project_function_list_expr(plan, frame, list, *index, &type_)?;
             match function.kind() {
                 FunctionValueKind::String(value) => Ok(value.clone()),
                 _ => Err(ExecutionError::function_return_family_mismatch(

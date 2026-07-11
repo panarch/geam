@@ -1,4 +1,4 @@
-use crate::plan::FunctionType;
+use crate::plan::execution::FunctionType;
 use crate::plan::execution::{
     BoolExpr, BoolFunctionFunctionId, BoolFunctionId, BoolFunctionLocalId, ClosureTemplate,
     FloatExpr, FunctionFunctionExpr, FunctionListExpr, FunctionReference, IntExpr, PanicExpr, Step,

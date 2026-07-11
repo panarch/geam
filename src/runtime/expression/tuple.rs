@@ -31,7 +31,13 @@ pub(in crate::runtime) fn eval_tuple_expr(
             function::run_tuple_function_call(plan, function, args, frame)
         }
         TupleExprKind::TupleIndex { tuple, index } => {
-            let expected = ValueType::Tuple(expression.type_().to_vec());
+            let expected = ValueType::Tuple(
+                expression
+                    .type_()
+                    .iter()
+                    .map(|type_| plan.value_type(type_))
+                    .collect(),
+            );
             match project_tuple_expr(plan, frame, tuple, *index, expected.clone())? {
                 Value::Tuple(values) => Ok(values),
                 other => Err(ExecutionError::tuple_index_family_mismatch(
@@ -41,7 +47,12 @@ pub(in crate::runtime) fn eval_tuple_expr(
             }
         }
         TupleExprKind::ListIndex { list, index } => {
-            project_tuple_list_expr(plan, frame, list, *index, expression.type_())
+            let expected = expression
+                .type_()
+                .iter()
+                .map(|type_| plan.value_type(type_))
+                .collect::<Vec<_>>();
+            project_tuple_list_expr(plan, frame, list, *index, &expected)
         }
         TupleExprKind::Panic(panic) => {
             eval_panic_expr(plan, frame, panic).map(|never| match never {})

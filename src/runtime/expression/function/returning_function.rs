@@ -22,14 +22,14 @@ pub(in crate::runtime) fn eval_function_function_expr(
                 reference.function().clone(),
                 reference.params().to_vec(),
                 Vec::new(),
-                expression.type_().clone(),
+                plan.function_type(expression.type_()),
             ))
         }
         FunctionFunctionExprKind::Closure(template) => Ok(FunctionFunctionValue::from_evaluated(
             template.function().clone(),
             template.params().to_vec(),
             function::eval_capture_args(plan, frame, template.captures())?,
-            expression.type_().clone(),
+            plan.function_type(expression.type_()),
         )),
         FunctionFunctionExprKind::LocalGet { local, .. } => Ok(frame.get_function_function(*local)),
         FunctionFunctionExprKind::Call { function, args, .. } => {
@@ -45,7 +45,7 @@ pub(in crate::runtime) fn eval_function_function_expr(
             index,
             type_,
         } => {
-            let expected = ValueType::Function(Box::new(type_.clone()));
+            let expected = ValueType::Function(Box::new(plan.function_type(type_)));
             let value = project_tuple_expr(plan, frame, tuple, *index, expected.clone())?;
             let actual = value.value_type();
             match value {
@@ -61,7 +61,8 @@ pub(in crate::runtime) fn eval_function_function_expr(
             }
         }
         FunctionFunctionExprKind::ListIndex { list, index, type_ } => {
-            let function = project_function_list_expr(plan, frame, list, *index, type_)?;
+            let type_ = plan.function_type(type_);
+            let function = project_function_list_expr(plan, frame, list, *index, &type_)?;
             match function.kind() {
                 FunctionValueKind::Function(value) => Ok(value.clone()),
                 _ => Err(ExecutionError::function_return_family_mismatch(

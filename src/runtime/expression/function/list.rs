@@ -19,11 +19,19 @@ pub(in crate::runtime) fn eval_list_function_expr(
             reference.function().clone(),
             reference.params().to_vec(),
             Vec::new(),
+            plan.function_value_type(
+                reference.params(),
+                plan.list_value_type(reference.function().list_type()),
+            ),
         )),
         ListFunctionExprKind::Closure(template) => Ok(ListFunctionValue::new_with_captures(
             template.function().clone(),
             template.params().to_vec(),
             function::eval_capture_args(plan, frame, template.captures())?,
+            plan.function_value_type(
+                template.params(),
+                plan.list_value_type(template.function().list_type()),
+            ),
         )),
         ListFunctionExprKind::LocalGet { local, .. } => Ok(frame.get_list_function(local)),
         ListFunctionExprKind::Call { function, args, .. } => {
@@ -44,23 +52,24 @@ pub(in crate::runtime) fn eval_list_function_expr(
                 frame,
                 tuple,
                 *index,
-                ValueType::Function(Box::new(type_.clone())),
+                ValueType::Function(Box::new(plan.function_type(type_))),
             )? {
                 Value::Function(function) => match function.kind() {
                     FunctionValueKind::List(value) => Ok(value.clone()),
                     _ => Err(ExecutionError::tuple_index_family_mismatch(
-                        ValueType::Function(Box::new(type_.clone())),
+                        ValueType::Function(Box::new(plan.function_type(type_))),
                         Value::Function(function).value_type(),
                     )),
                 },
                 other => Err(ExecutionError::tuple_index_family_mismatch(
-                    ValueType::Function(Box::new(type_.clone())),
+                    ValueType::Function(Box::new(plan.function_type(type_))),
                     other.value_type(),
                 )),
             }
         }
         ListFunctionExprKind::ListIndex { list, index, type_ } => {
-            let function = project_function_list_expr(plan, frame, list, *index, type_)?;
+            let type_ = plan.function_type(type_);
+            let function = project_function_list_expr(plan, frame, list, *index, &type_)?;
             match function.kind() {
                 FunctionValueKind::List(value) => Ok(value.clone()),
                 _ => Err(ExecutionError::function_return_family_mismatch(

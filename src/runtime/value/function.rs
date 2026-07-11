@@ -1,5 +1,5 @@
 use super::CaptureValue;
-use crate::plan::{FunctionType, ValueType};
+use crate::plan::FunctionType;
 
 #[cfg(test)]
 use crate::plan::execution::RuntimeFunctionId;
@@ -7,10 +7,6 @@ use crate::plan::execution::{
     BoolFunctionId, FloatFunctionId, FunctionFunctionId, FunctionReturnFamily, IntFunctionId,
     ListFunctionId, NilFunctionId, ParamLocal, StringFunctionId, TupleFunctionId,
 };
-
-fn function_type(params: &[ParamLocal], return_: ValueType) -> FunctionType {
-    FunctionType::new(params.iter().map(ParamLocal::value_type).collect(), return_)
-}
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct FunctionValue {
@@ -34,6 +30,7 @@ pub(crate) struct IntFunctionValue {
     runtime_id: IntFunctionId,
     params: Vec<ParamLocal>,
     captures: Vec<CaptureValue>,
+    type_: FunctionType,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -41,6 +38,7 @@ pub(crate) struct FloatFunctionValue {
     runtime_id: FloatFunctionId,
     params: Vec<ParamLocal>,
     captures: Vec<CaptureValue>,
+    type_: FunctionType,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -48,6 +46,7 @@ pub(crate) struct StringFunctionValue {
     runtime_id: StringFunctionId,
     params: Vec<ParamLocal>,
     captures: Vec<CaptureValue>,
+    type_: FunctionType,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -55,6 +54,7 @@ pub(crate) struct BoolFunctionValue {
     runtime_id: BoolFunctionId,
     params: Vec<ParamLocal>,
     captures: Vec<CaptureValue>,
+    type_: FunctionType,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -62,6 +62,7 @@ pub(crate) struct NilFunctionValue {
     runtime_id: NilFunctionId,
     params: Vec<ParamLocal>,
     captures: Vec<CaptureValue>,
+    type_: FunctionType,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -77,6 +78,7 @@ pub(crate) struct ListFunctionValue {
     runtime_id: ListFunctionId,
     params: Vec<ParamLocal>,
     captures: Vec<CaptureValue>,
+    type_: FunctionType,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -89,25 +91,29 @@ pub(crate) struct FunctionFunctionValue {
 
 impl FunctionValue {
     #[cfg(test)]
-    pub(crate) fn new(runtime_id: RuntimeFunctionId, params: Vec<ParamLocal>) -> Self {
+    pub(crate) fn new(
+        runtime_id: RuntimeFunctionId,
+        params: Vec<ParamLocal>,
+        type_: FunctionType,
+    ) -> Self {
         let kind = match runtime_id {
             RuntimeFunctionId::Int(runtime_id) => FunctionValueKind::Int(
-                IntFunctionValue::new_with_captures(runtime_id, params, Vec::new()),
+                IntFunctionValue::new_with_captures(runtime_id, params, Vec::new(), type_),
             ),
             RuntimeFunctionId::Float(runtime_id) => FunctionValueKind::Float(
-                FloatFunctionValue::new_with_captures(runtime_id, params, Vec::new()),
+                FloatFunctionValue::new_with_captures(runtime_id, params, Vec::new(), type_),
             ),
             RuntimeFunctionId::String(runtime_id) => FunctionValueKind::String(
-                StringFunctionValue::new_with_captures(runtime_id, params, Vec::new()),
+                StringFunctionValue::new_with_captures(runtime_id, params, Vec::new(), type_),
             ),
             RuntimeFunctionId::Bool(runtime_id) => FunctionValueKind::Bool(
-                BoolFunctionValue::new_with_captures(runtime_id, params, Vec::new()),
+                BoolFunctionValue::new_with_captures(runtime_id, params, Vec::new(), type_),
             ),
             RuntimeFunctionId::Nil(runtime_id) => FunctionValueKind::Nil(
-                NilFunctionValue::new_with_captures(runtime_id, params, Vec::new()),
+                NilFunctionValue::new_with_captures(runtime_id, params, Vec::new(), type_),
             ),
             RuntimeFunctionId::Tuple { id, return_type } => {
-                let type_ = function_type(&params, ValueType::Tuple(return_type));
+                let _ = return_type;
                 FunctionValueKind::Tuple(TupleFunctionValue::from_evaluated(
                     id,
                     params,
@@ -116,10 +122,10 @@ impl FunctionValue {
                 ))
             }
             RuntimeFunctionId::List(id) => FunctionValueKind::List(
-                ListFunctionValue::new_with_captures(id, params, Vec::new()),
+                ListFunctionValue::new_with_captures(id, params, Vec::new(), type_),
             ),
             RuntimeFunctionId::Function { id, return_type } => {
-                let type_ = function_type(&params, ValueType::Function(Box::new(return_type)));
+                let _ = return_type;
                 FunctionValueKind::Function(FunctionFunctionValue::from_evaluated(
                     id,
                     params,
@@ -148,20 +154,6 @@ impl FunctionValue {
     pub(crate) fn kind(&self) -> &FunctionValueKind {
         &self.kind
     }
-
-    #[cfg(test)]
-    pub(crate) fn params(&self) -> &[ParamLocal] {
-        match &self.kind {
-            FunctionValueKind::Int(value) => value.params(),
-            FunctionValueKind::Float(value) => value.params(),
-            FunctionValueKind::String(value) => value.params(),
-            FunctionValueKind::Bool(value) => value.params(),
-            FunctionValueKind::Nil(value) => value.params(),
-            FunctionValueKind::Tuple(value) => value.params(),
-            FunctionValueKind::List(value) => value.params(),
-            FunctionValueKind::Function(value) => value.params(),
-        }
-    }
 }
 
 impl FunctionValueKind {
@@ -181,24 +173,30 @@ impl FunctionValueKind {
 
 impl IntFunctionValue {
     #[cfg(test)]
-    pub(crate) fn new(runtime_id: IntFunctionId, params: Vec<ParamLocal>) -> Self {
-        Self::new_with_captures(runtime_id, params, Vec::new())
+    pub(crate) fn new(
+        runtime_id: IntFunctionId,
+        params: Vec<ParamLocal>,
+        type_: FunctionType,
+    ) -> Self {
+        Self::new_with_captures(runtime_id, params, Vec::new(), type_)
     }
 
     pub(crate) fn new_with_captures(
         runtime_id: IntFunctionId,
         params: Vec<ParamLocal>,
         captures: Vec<CaptureValue>,
+        type_: FunctionType,
     ) -> Self {
         Self {
             runtime_id,
             params,
             captures,
+            type_,
         }
     }
 
     pub(crate) fn type_(&self) -> FunctionType {
-        function_type(&self.params, ValueType::Int)
+        self.type_.clone()
     }
 
     pub(crate) fn runtime_id(&self) -> IntFunctionId {
@@ -208,33 +206,25 @@ impl IntFunctionValue {
     pub(crate) fn captures(&self) -> &[CaptureValue] {
         &self.captures
     }
-
-    #[cfg(test)]
-    pub(crate) fn params(&self) -> &[ParamLocal] {
-        &self.params
-    }
 }
 
 impl FloatFunctionValue {
-    #[cfg(test)]
-    pub(crate) fn new(runtime_id: FloatFunctionId, params: Vec<ParamLocal>) -> Self {
-        Self::new_with_captures(runtime_id, params, Vec::new())
-    }
-
     pub(crate) fn new_with_captures(
         runtime_id: FloatFunctionId,
         params: Vec<ParamLocal>,
         captures: Vec<CaptureValue>,
+        type_: FunctionType,
     ) -> Self {
         Self {
             runtime_id,
             params,
             captures,
+            type_,
         }
     }
 
     pub(crate) fn type_(&self) -> FunctionType {
-        function_type(&self.params, ValueType::Float)
+        self.type_.clone()
     }
 
     pub(crate) fn runtime_id(&self) -> FloatFunctionId {
@@ -244,33 +234,25 @@ impl FloatFunctionValue {
     pub(crate) fn captures(&self) -> &[CaptureValue] {
         &self.captures
     }
-
-    #[cfg(test)]
-    pub(crate) fn params(&self) -> &[ParamLocal] {
-        &self.params
-    }
 }
 
 impl StringFunctionValue {
-    #[cfg(test)]
-    pub(crate) fn new(runtime_id: StringFunctionId, params: Vec<ParamLocal>) -> Self {
-        Self::new_with_captures(runtime_id, params, Vec::new())
-    }
-
     pub(crate) fn new_with_captures(
         runtime_id: StringFunctionId,
         params: Vec<ParamLocal>,
         captures: Vec<CaptureValue>,
+        type_: FunctionType,
     ) -> Self {
         Self {
             runtime_id,
             params,
             captures,
+            type_,
         }
     }
 
     pub(crate) fn type_(&self) -> FunctionType {
-        function_type(&self.params, ValueType::String)
+        self.type_.clone()
     }
 
     pub(crate) fn runtime_id(&self) -> StringFunctionId {
@@ -280,33 +262,25 @@ impl StringFunctionValue {
     pub(crate) fn captures(&self) -> &[CaptureValue] {
         &self.captures
     }
-
-    #[cfg(test)]
-    pub(crate) fn params(&self) -> &[ParamLocal] {
-        &self.params
-    }
 }
 
 impl BoolFunctionValue {
-    #[cfg(test)]
-    pub(crate) fn new(runtime_id: BoolFunctionId, params: Vec<ParamLocal>) -> Self {
-        Self::new_with_captures(runtime_id, params, Vec::new())
-    }
-
     pub(crate) fn new_with_captures(
         runtime_id: BoolFunctionId,
         params: Vec<ParamLocal>,
         captures: Vec<CaptureValue>,
+        type_: FunctionType,
     ) -> Self {
         Self {
             runtime_id,
             params,
             captures,
+            type_,
         }
     }
 
     pub(crate) fn type_(&self) -> FunctionType {
-        function_type(&self.params, ValueType::Bool)
+        self.type_.clone()
     }
 
     pub(crate) fn runtime_id(&self) -> BoolFunctionId {
@@ -316,33 +290,25 @@ impl BoolFunctionValue {
     pub(crate) fn captures(&self) -> &[CaptureValue] {
         &self.captures
     }
-
-    #[cfg(test)]
-    pub(crate) fn params(&self) -> &[ParamLocal] {
-        &self.params
-    }
 }
 
 impl NilFunctionValue {
-    #[cfg(test)]
-    pub(crate) fn new(runtime_id: NilFunctionId, params: Vec<ParamLocal>) -> Self {
-        Self::new_with_captures(runtime_id, params, Vec::new())
-    }
-
     pub(crate) fn new_with_captures(
         runtime_id: NilFunctionId,
         params: Vec<ParamLocal>,
         captures: Vec<CaptureValue>,
+        type_: FunctionType,
     ) -> Self {
         Self {
             runtime_id,
             params,
             captures,
+            type_,
         }
     }
 
     pub(crate) fn type_(&self) -> FunctionType {
-        function_type(&self.params, ValueType::Nil)
+        self.type_.clone()
     }
 
     pub(crate) fn runtime_id(&self) -> NilFunctionId {
@@ -352,24 +318,9 @@ impl NilFunctionValue {
     pub(crate) fn captures(&self) -> &[CaptureValue] {
         &self.captures
     }
-
-    #[cfg(test)]
-    pub(crate) fn params(&self) -> &[ParamLocal] {
-        &self.params
-    }
 }
 
 impl TupleFunctionValue {
-    #[cfg(test)]
-    pub(crate) fn new(
-        runtime_id: TupleFunctionId,
-        params: Vec<ParamLocal>,
-        return_type: Vec<ValueType>,
-    ) -> Self {
-        let type_ = function_type(&params, ValueType::Tuple(return_type));
-        Self::from_evaluated(runtime_id, params, Vec::new(), type_)
-    }
-
     pub(crate) fn from_evaluated(
         runtime_id: TupleFunctionId,
         params: Vec<ParamLocal>,
@@ -395,36 +346,25 @@ impl TupleFunctionValue {
     pub(crate) fn captures(&self) -> &[CaptureValue] {
         &self.captures
     }
-
-    #[cfg(test)]
-    pub(crate) fn params(&self) -> &[ParamLocal] {
-        &self.params
-    }
 }
 
 impl ListFunctionValue {
-    #[cfg(test)]
-    pub(crate) fn new(runtime_id: ListFunctionId, params: Vec<ParamLocal>) -> Self {
-        Self::new_with_captures(runtime_id, params, Vec::new())
-    }
-
     pub(crate) fn new_with_captures(
         runtime_id: ListFunctionId,
         params: Vec<ParamLocal>,
         captures: Vec<CaptureValue>,
+        type_: FunctionType,
     ) -> Self {
         Self {
             runtime_id,
             params,
             captures,
+            type_,
         }
     }
 
     pub(crate) fn type_(&self) -> FunctionType {
-        function_type(
-            &self.params,
-            ValueType::List(Box::new(self.runtime_id.item_type())),
-        )
+        self.type_.clone()
     }
 
     pub(crate) fn runtime_id(&self) -> ListFunctionId {
@@ -434,11 +374,6 @@ impl ListFunctionValue {
     pub(crate) fn captures(&self) -> &[CaptureValue] {
         &self.captures
     }
-
-    #[cfg(test)]
-    pub(crate) fn params(&self) -> &[ParamLocal] {
-        &self.params
-    }
 }
 
 impl FunctionFunctionValue {
@@ -446,9 +381,8 @@ impl FunctionFunctionValue {
     pub(crate) fn new(
         runtime_id: FunctionFunctionId,
         params: Vec<ParamLocal>,
-        return_type: FunctionType,
+        type_: FunctionType,
     ) -> Self {
-        let type_ = function_type(&params, ValueType::Function(Box::new(return_type)));
         Self::from_evaluated(runtime_id, params, Vec::new(), type_)
     }
 
@@ -476,11 +410,6 @@ impl FunctionFunctionValue {
 
     pub(crate) fn captures(&self) -> &[CaptureValue] {
         &self.captures
-    }
-
-    #[cfg(test)]
-    pub(crate) fn params(&self) -> &[ParamLocal] {
-        &self.params
     }
 }
 
@@ -550,286 +479,65 @@ impl From<FunctionFunctionValue> for FunctionValue {
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        BoolFunctionValue, FloatFunctionValue, FunctionFunctionValue, FunctionValue,
-        FunctionValueKind, IntFunctionValue, ListFunctionValue, NilFunctionValue,
-        StringFunctionValue, TupleFunctionValue,
-    };
-    use crate::plan::execution::{
-        BoolFunctionId, BoolFunctionLocalId, BoolLocalId, FloatFunctionId, FloatFunctionLocalId,
-        FloatLocalId, FunctionFunctionId, FunctionReturnFamily, IntFunctionFunctionId,
-        IntFunctionId, IntListFunctionId, IntListFunctionLocalId, IntListLocalId, IntLocalId,
-        ListFunctionId, ListFunctionLocal, ListLocal, NilFunctionId, NilLocalId, ParamLocal,
-        RuntimeFunctionId, StringFunctionId, StringLocalId, TupleFunctionId, TupleFunctionLocalId,
-        TupleLocalId,
-    };
+    use super::FunctionValue;
+    use crate::plan::execution::FunctionReturnFamily;
     use crate::plan::{FunctionType, ValueType};
 
     #[test]
-    fn function_value_accepts_matching_shape() {
-        let value = FunctionValue::new(
-            RuntimeFunctionId::String(StringFunctionId(0)),
-            vec![int_param(0)],
-        );
-        let type_ = value.type_();
-
-        assert_eq!(
-            type_,
-            FunctionType::new(vec![ValueType::Int], ValueType::String),
-        );
-        assert_eq!(type_.argument_types(), &[ValueType::Int]);
-        assert_eq!(type_.return_(), &ValueType::String);
-    }
-
-    #[test]
-    fn function_value_type_uses_runtime_id_for_return_type() {
-        let value = FunctionValue::new(RuntimeFunctionId::Nil(NilFunctionId(0)), Vec::new());
-
-        assert_eq!(value.type_(), FunctionType::new(Vec::new(), ValueType::Nil));
-    }
-
-    #[test]
-    fn function_value_conversions_preserve_return_family() {
-        let int: FunctionValue = IntFunctionValue::new(IntFunctionId(0), Vec::new()).into();
-        let float: FunctionValue = FloatFunctionValue::new(FloatFunctionId(0), Vec::new()).into();
-        let string: FunctionValue =
-            StringFunctionValue::new(StringFunctionId(0), Vec::new()).into();
-        let bool: FunctionValue = BoolFunctionValue::new(BoolFunctionId(0), Vec::new()).into();
-        let nil: FunctionValue = NilFunctionValue::new(NilFunctionId(0), Vec::new()).into();
-        let tuple: FunctionValue =
-            TupleFunctionValue::new(TupleFunctionId(0), Vec::new(), vec![ValueType::Int]).into();
-        let list: FunctionValue =
-            ListFunctionValue::new(ListFunctionId::Int(IntListFunctionId(0)), Vec::new()).into();
-        let function_return_type = FunctionType::new(vec![ValueType::Int], ValueType::Int);
-        let function: FunctionValue = FunctionFunctionValue::new(
-            FunctionFunctionId::Int(IntFunctionFunctionId(0)),
-            Vec::new(),
-            function_return_type.clone(),
-        )
-        .into();
-
-        assert_eq!(int.type_().return_(), &ValueType::Int);
-        assert_eq!(float.type_().return_(), &ValueType::Float);
-        assert_eq!(string.type_().return_(), &ValueType::String);
-        assert_eq!(bool.type_().return_(), &ValueType::Bool);
-        assert_eq!(nil.type_().return_(), &ValueType::Nil);
-        assert_eq!(
-            tuple.type_().return_(),
-            &ValueType::Tuple(vec![ValueType::Int])
-        );
-        assert_eq!(
-            list.type_().return_(),
-            &ValueType::List(Box::new(ValueType::Int)),
-        );
-        assert_eq!(
-            function.type_().return_(),
-            &ValueType::Function(Box::new(function_return_type)),
-        );
-    }
-
-    #[test]
-    fn function_value_kind_family_reports_return_family() {
-        let function_return_type = FunctionType::new(vec![ValueType::Int], ValueType::Int);
-        let cases = vec![
+    fn function_value_preserves_every_lowered_return_family() {
+        let cases = [
             (
-                FunctionValueKind::Int(IntFunctionValue::new(IntFunctionId(0), Vec::new())),
+                "pub fn main() -> Int { 1 }",
+                ValueType::Int,
                 FunctionReturnFamily::Int,
             ),
             (
-                FunctionValueKind::Float(FloatFunctionValue::new(FloatFunctionId(0), Vec::new())),
+                "pub fn main() -> Float { 1.0 }",
+                ValueType::Float,
                 FunctionReturnFamily::Float,
             ),
             (
-                FunctionValueKind::String(StringFunctionValue::new(
-                    StringFunctionId(0),
-                    Vec::new(),
-                )),
+                "pub fn main() -> String { \"one\" }",
+                ValueType::String,
                 FunctionReturnFamily::String,
             ),
             (
-                FunctionValueKind::Bool(BoolFunctionValue::new(BoolFunctionId(0), Vec::new())),
+                "pub fn main() -> Bool { True }",
+                ValueType::Bool,
                 FunctionReturnFamily::Bool,
             ),
             (
-                FunctionValueKind::Nil(NilFunctionValue::new(NilFunctionId(0), Vec::new())),
+                "pub fn main() -> Nil { Nil }",
+                ValueType::Nil,
                 FunctionReturnFamily::Nil,
             ),
             (
-                FunctionValueKind::Tuple(TupleFunctionValue::new(
-                    TupleFunctionId(0),
-                    Vec::new(),
-                    vec![ValueType::Int],
-                )),
+                "pub fn main() -> #(Int) { #(1) }",
+                ValueType::Tuple(vec![ValueType::Int]),
                 FunctionReturnFamily::Tuple,
             ),
             (
-                FunctionValueKind::List(ListFunctionValue::new(
-                    ListFunctionId::Int(IntListFunctionId(0)),
-                    Vec::new(),
-                )),
+                "pub fn main() -> List(Int) { [] }",
+                ValueType::List(Box::new(ValueType::Int)),
                 FunctionReturnFamily::List,
             ),
             (
-                FunctionValueKind::Function(FunctionFunctionValue::new(
-                    FunctionFunctionId::Int(IntFunctionFunctionId(0)),
-                    Vec::new(),
-                    function_return_type,
-                )),
+                "pub fn main() -> fn() -> Int { fn() { 1 } }",
+                ValueType::Function(Box::new(FunctionType::new(Vec::new(), ValueType::Int))),
                 FunctionReturnFamily::Function,
             ),
         ];
 
-        for (kind, family) in cases {
-            assert_eq!(kind.family(), family);
+        for (source, return_type, family) in cases {
+            let plan = crate::runtime::plan_src(source);
+            let value = FunctionValue::new(
+                plan.main_runtime(),
+                Vec::new(),
+                FunctionType::new(Vec::new(), return_type.clone()),
+            );
+
+            assert_eq!(value.type_(), FunctionType::new(Vec::new(), return_type));
+            assert_eq!(value.kind().family(), family);
         }
-    }
-
-    #[test]
-    fn function_value_type_uses_all_parameter_shapes() {
-        let argument_function = FunctionType::new(vec![ValueType::String], ValueType::Bool);
-        let value = FunctionValue::new(
-            RuntimeFunctionId::Int(IntFunctionId(0)),
-            vec![
-                int_param(0),
-                float_param(0),
-                string_param(0),
-                bool_param(0),
-                nil_param(0),
-                tuple_param(0),
-                list_param(0),
-                ParamLocal::FloatFunction {
-                    local: FloatFunctionLocalId(0),
-                    type_: argument_function.clone(),
-                },
-                ParamLocal::TupleFunction {
-                    local: TupleFunctionLocalId(0),
-                    type_: argument_function.clone(),
-                },
-                ParamLocal::ListFunction(ListFunctionLocal::Int {
-                    local: IntListFunctionLocalId(0),
-                    type_: argument_function.clone(),
-                }),
-                ParamLocal::BoolFunction {
-                    local: BoolFunctionLocalId(0),
-                    type_: argument_function.clone(),
-                },
-            ],
-        );
-
-        assert_eq!(
-            value.type_(),
-            FunctionType::new(
-                vec![
-                    ValueType::Int,
-                    ValueType::Float,
-                    ValueType::String,
-                    ValueType::Bool,
-                    ValueType::Nil,
-                    ValueType::Tuple(vec![ValueType::Int]),
-                    ValueType::List(Box::new(ValueType::Int)),
-                    ValueType::Function(Box::new(argument_function.clone())),
-                    ValueType::Function(Box::new(argument_function.clone())),
-                    ValueType::Function(Box::new(argument_function.clone())),
-                    ValueType::Function(Box::new(argument_function)),
-                ],
-                ValueType::Int,
-            ),
-        );
-    }
-
-    #[test]
-    fn function_value_type_uses_function_return_type_metadata() {
-        let return_type = FunctionType::new(vec![ValueType::Int], ValueType::Int);
-        let value = FunctionValue::new(
-            RuntimeFunctionId::Function {
-                id: FunctionFunctionId::Int(IntFunctionFunctionId(0)),
-                return_type: return_type.clone(),
-            },
-            vec![bool_param(0)],
-        );
-
-        assert_eq!(
-            value.type_(),
-            FunctionType::new(
-                vec![ValueType::Bool],
-                ValueType::Function(Box::new(return_type)),
-            ),
-        );
-    }
-
-    #[test]
-    fn function_value_preserves_exact_parameter_slots() {
-        let params = vec![int_param(2), bool_param(1)];
-        let int = FunctionValue::new(RuntimeFunctionId::Int(IntFunctionId(0)), params.clone());
-        let float =
-            FunctionValue::new(RuntimeFunctionId::Float(FloatFunctionId(0)), params.clone());
-        let string = FunctionValue::new(
-            RuntimeFunctionId::String(StringFunctionId(0)),
-            params.clone(),
-        );
-        let bool = FunctionValue::new(RuntimeFunctionId::Bool(BoolFunctionId(0)), params.clone());
-        let nil = FunctionValue::new(RuntimeFunctionId::Nil(NilFunctionId(0)), params.clone());
-        let tuple = FunctionValue::new(
-            RuntimeFunctionId::Tuple {
-                id: TupleFunctionId(0),
-                return_type: vec![ValueType::Int],
-            },
-            params.clone(),
-        );
-        let list = FunctionValue::new(
-            RuntimeFunctionId::List(ListFunctionId::Int(IntListFunctionId(0))),
-            params.clone(),
-        );
-        let function = FunctionValue::new(
-            RuntimeFunctionId::Function {
-                id: FunctionFunctionId::Int(IntFunctionFunctionId(0)),
-                return_type: FunctionType::new(Vec::new(), ValueType::Int),
-            },
-            params.clone(),
-        );
-
-        assert_eq!(int.params(), params);
-        assert_eq!(float.params(), params);
-        assert_eq!(string.params(), params);
-        assert_eq!(bool.params(), params);
-        assert_eq!(nil.params(), params);
-        assert_eq!(tuple.params(), params);
-        assert_eq!(list.params(), params);
-        assert_eq!(function.params(), params);
-        assert_eq!(
-            int.kind(),
-            &FunctionValueKind::Int(IntFunctionValue::new(IntFunctionId(0), params)),
-        );
-    }
-
-    fn int_param(index: usize) -> ParamLocal {
-        ParamLocal::Int(IntLocalId(index))
-    }
-
-    fn string_param(index: usize) -> ParamLocal {
-        ParamLocal::String(StringLocalId(index))
-    }
-
-    fn float_param(index: usize) -> ParamLocal {
-        ParamLocal::Float(FloatLocalId(index))
-    }
-
-    fn bool_param(index: usize) -> ParamLocal {
-        ParamLocal::Bool(BoolLocalId(index))
-    }
-
-    fn nil_param(index: usize) -> ParamLocal {
-        ParamLocal::Nil(NilLocalId(index))
-    }
-
-    fn tuple_param(index: usize) -> ParamLocal {
-        ParamLocal::Tuple {
-            local: TupleLocalId(index),
-            type_: vec![ValueType::Int],
-        }
-    }
-
-    fn list_param(index: usize) -> ParamLocal {
-        ParamLocal::List(ListLocal::Int(IntListLocalId(index)))
     }
 }

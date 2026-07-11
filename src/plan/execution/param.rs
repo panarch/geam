@@ -1,9 +1,9 @@
 use super::{
     BoolFunctionLocalId, BoolLocalId, FloatFunctionLocalId, FloatLocalId, FunctionFunctionLocalId,
-    IntFunctionLocalId, IntLocalId, ListFunctionLocal, ListLocal, NilFunctionLocalId, NilLocalId,
-    StringFunctionLocalId, StringLocalId, TupleFunctionLocalId, TupleLocalId,
+    FunctionType, IntFunctionLocalId, IntLocalId, ListFunctionLocal, ListLocal, NilFunctionLocalId,
+    NilLocalId, StringFunctionLocalId, StringLocalId, TupleFunctionLocalId, TupleLocalId,
+    ValueType,
 };
-use crate::plan::{FunctionType, ValueType};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum ParamLocal {
@@ -57,7 +57,7 @@ impl ParamLocal {
             Self::Bool(_) => ValueType::Bool,
             Self::Nil(_) => ValueType::Nil,
             Self::Tuple { type_, .. } => ValueType::Tuple(type_.clone()),
-            Self::List(local) => ValueType::List(Box::new(local.item_type())),
+            Self::List(local) => ValueType::List(local.list_type()),
             Self::IntFunction { type_, .. }
             | Self::FloatFunction { type_, .. }
             | Self::StringFunction { type_, .. }
