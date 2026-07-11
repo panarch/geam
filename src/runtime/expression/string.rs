@@ -6,13 +6,15 @@ use crate::plan::ValueType;
 use crate::plan::execution::ExecutionPlan;
 use crate::plan::execution::{StringExpr, StringExprKind};
 use crate::runtime::ExecutionError;
-use crate::runtime::Value;
+use crate::runtime::evaluated::EvaluatedValue;
 use crate::runtime::frame::Frame;
 use crate::runtime::function;
+use crate::runtime::state::RuntimeState;
 use ecow::EcoString;
 
 pub(in crate::runtime) fn eval_string_expr(
     plan: &ExecutionPlan,
+    state: &mut RuntimeState,
     frame: &mut Frame,
     expression: &StringExpr,
 ) -> Result<EcoString, ExecutionError> {
@@ -20,45 +22,47 @@ pub(in crate::runtime) fn eval_string_expr(
         StringExprKind::Value(value) => Ok(value.clone()),
         StringExprKind::LocalGet { local, .. } => Ok(frame.get_string(*local)),
         StringExprKind::Call { function, args } => {
-            function::run_string_call(plan, *function, args, frame)
+            function::run_string_call(plan, state, *function, args, frame)
         }
         StringExprKind::FunctionCall { function, args } => {
-            function::run_string_function_call(plan, function, args, frame)
+            function::run_string_function_call(plan, state, function, args, frame)
         }
         StringExprKind::TupleIndex { tuple, index } => {
-            match project_tuple_expr(plan, frame, tuple, *index, ValueType::String)? {
-                Value::String(value) => Ok(value),
+            match project_tuple_expr(plan, state, frame, tuple, *index, ValueType::String)? {
+                EvaluatedValue::String(value) => Ok(value),
                 other => Err(ExecutionError::tuple_index_family_mismatch(
                     ValueType::String,
-                    other.value_type(),
+                    other.value_type(plan),
                 )),
             }
         }
         StringExprKind::ListIndex { list, index } => {
-            project_string_list_expr(plan, frame, list, *index)
+            project_string_list_expr(plan, state, frame, list, *index)
         }
         StringExprKind::Panic(panic) => {
-            eval_panic_expr(plan, frame, panic).map(|never| match never {})
+            eval_panic_expr(plan, state, frame, panic).map(|never| match never {})
         }
         StringExprKind::Concatenate { left, right } => Ok(format!(
             "{}{}",
-            eval_string_expr(plan, frame, left)?,
-            eval_string_expr(plan, frame, right)?,
+            eval_string_expr(plan, state, frame, left)?,
+            eval_string_expr(plan, state, frame, right)?,
         )
         .into()),
-        StringExprKind::DropPrefix { value, prefix } => Ok(eval_string_expr(plan, frame, value)?
-            .strip_prefix(prefix.as_str())
-            .unwrap_or("")
-            .into()),
+        StringExprKind::DropPrefix { value, prefix } => {
+            Ok(eval_string_expr(plan, state, frame, value)?
+                .strip_prefix(prefix.as_str())
+                .unwrap_or("")
+                .into())
+        }
         StringExprKind::BoolCase {
             subject,
             true_,
             false_,
         } => {
-            if eval_bool_expr(plan, frame, subject)? {
-                eval_string_expr(plan, frame, true_)
+            if eval_bool_expr(plan, state, frame, subject)? {
+                eval_string_expr(plan, state, frame, true_)
             } else {
-                eval_string_expr(plan, frame, false_)
+                eval_string_expr(plan, state, frame, false_)
             }
         }
         StringExprKind::IntCase {
@@ -66,43 +70,43 @@ pub(in crate::runtime) fn eval_string_expr(
             clauses,
             fallback,
         } => {
-            let subject = eval_int_expr(plan, frame, subject)?;
+            let subject = eval_int_expr(plan, state, frame, subject)?;
             for (pattern, branch) in clauses {
                 if pattern == &subject {
-                    return eval_string_expr(plan, frame, branch);
+                    return eval_string_expr(plan, state, frame, branch);
                 }
             }
-            eval_string_expr(plan, frame, fallback)
+            eval_string_expr(plan, state, frame, fallback)
         }
         StringExprKind::StringCase {
             subject,
             clauses,
             fallback,
         } => {
-            let subject = eval_string_expr(plan, frame, subject)?;
+            let subject = eval_string_expr(plan, state, frame, subject)?;
             for (pattern, branch) in clauses {
                 if pattern == &subject {
-                    return eval_string_expr(plan, frame, branch);
+                    return eval_string_expr(plan, state, frame, branch);
                 }
             }
-            eval_string_expr(plan, frame, fallback)
+            eval_string_expr(plan, state, frame, fallback)
         }
         StringExprKind::FloatCase {
             subject,
             clauses,
             fallback,
         } => {
-            let subject = eval_float_expr(plan, frame, subject)?;
+            let subject = eval_float_expr(plan, state, frame, subject)?;
             for (pattern, branch) in clauses {
                 if pattern == &subject {
-                    return eval_string_expr(plan, frame, branch);
+                    return eval_string_expr(plan, state, frame, branch);
                 }
             }
-            eval_string_expr(plan, frame, fallback)
+            eval_string_expr(plan, state, frame, fallback)
         }
         StringExprKind::Block { steps, return_ } => {
-            function::execute_steps(plan, steps, frame)?;
-            eval_string_expr(plan, frame, return_)
+            function::execute_steps(plan, state, steps, frame)?;
+            eval_string_expr(plan, state, frame, return_)
         }
     }
 }

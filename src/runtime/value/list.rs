@@ -5,11 +5,6 @@ use thiserror::Error;
 use super::{FunctionValue, Value};
 use crate::plan::{FunctionType, ValueType};
 
-use crate::plan::execution::{
-    BoolListLocalId, ExecutionPlan, FloatListLocalId, FunctionListLocalId, IntListLocalId,
-    ListListLocalId, ListLocal, NilListLocalId, StringListLocalId, TupleListLocalId,
-};
-
 #[derive(Debug, Clone, PartialEq)]
 pub struct ListValue {
     kind: ListValueKind,
@@ -46,50 +41,7 @@ pub(crate) enum ListValueKind {
     },
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub(crate) enum ListLocalValue {
-    Int {
-        local: IntListLocalId,
-        value: Vec<BigInt>,
-    },
-    String {
-        local: StringListLocalId,
-        value: Vec<EcoString>,
-    },
-    Float {
-        local: FloatListLocalId,
-        value: Vec<f64>,
-    },
-    Bool {
-        local: BoolListLocalId,
-        value: Vec<bool>,
-    },
-    Nil {
-        local: NilListLocalId,
-        len: usize,
-    },
-    Tuple {
-        local: TupleListLocalId,
-        item_type: Vec<ValueType>,
-        value: Vec<Vec<Value>>,
-    },
-    List {
-        local: ListListLocalId,
-        item_type: Box<ValueType>,
-        value: Vec<ListValue>,
-    },
-    Function {
-        local: FunctionListLocalId,
-        item_type: FunctionType,
-        value: Vec<FunctionValue>,
-    },
-}
-
 impl ListValue {
-    pub(crate) fn into_kind(self) -> ListValueKind {
-        self.kind
-    }
-
     pub fn int(values: Vec<BigInt>) -> Self {
         Self {
             kind: ListValueKind::Int(values),
@@ -271,103 +223,6 @@ impl ListValue {
             }
         }
     }
-
-    pub(crate) fn into_int_values(self) -> Option<Vec<BigInt>> {
-        match self.kind {
-            ListValueKind::Int(values) => Some(values),
-            _ => None,
-        }
-    }
-
-    pub(crate) fn into_string_values(self) -> Option<Vec<EcoString>> {
-        match self.kind {
-            ListValueKind::String(values) => Some(values),
-            _ => None,
-        }
-    }
-
-    pub(crate) fn into_float_values(self) -> Option<Vec<f64>> {
-        match self.kind {
-            ListValueKind::Float(values) => Some(values),
-            _ => None,
-        }
-    }
-
-    pub(crate) fn into_bool_values(self) -> Option<Vec<bool>> {
-        match self.kind {
-            ListValueKind::Bool(values) => Some(values),
-            _ => None,
-        }
-    }
-
-    pub(crate) fn into_nil_len(self) -> Option<usize> {
-        match self.kind {
-            ListValueKind::Nil(len) => Some(len),
-            _ => None,
-        }
-    }
-
-    pub(crate) fn into_tuple_values(self, item_type: &[ValueType]) -> Option<Vec<Vec<Value>>> {
-        match self.kind {
-            ListValueKind::Tuple {
-                item_type: actual,
-                values,
-            } if actual == item_type => Some(values),
-            _ => None,
-        }
-    }
-
-    pub(crate) fn into_list_values(self, item_type: &ValueType) -> Option<Vec<ListValue>> {
-        match self.kind {
-            ListValueKind::List {
-                item_type: actual,
-                values,
-            } if actual.as_ref() == item_type => Some(values),
-            _ => None,
-        }
-    }
-
-    pub(crate) fn into_function_values(
-        self,
-        item_type: &FunctionType,
-    ) -> Option<Vec<FunctionValue>> {
-        match self.kind {
-            ListValueKind::Function {
-                item_type: actual,
-                values,
-            } if actual == *item_type => Some(values),
-            _ => None,
-        }
-    }
-
-    pub(crate) fn drop_first(&self, count: usize) -> Self {
-        let start = count.min(self.len());
-        match &self.kind {
-            ListValueKind::Int(values) => Self::int(values[start..].to_vec()),
-            ListValueKind::String(values) => Self::string(values[start..].to_vec()),
-            ListValueKind::Float(values) => Self::float(values[start..].to_vec()),
-            ListValueKind::Bool(values) => Self::bool(values[start..].to_vec()),
-            ListValueKind::Nil(len) => Self::nil(len.saturating_sub(start)),
-            ListValueKind::Tuple { item_type, values } => Self {
-                kind: ListValueKind::Tuple {
-                    item_type: item_type.clone(),
-                    values: values[start..].to_vec(),
-                },
-            },
-            ListValueKind::List { item_type, values } => Self {
-                kind: ListValueKind::List {
-                    item_type: item_type.clone(),
-                    values: values[start..].to_vec(),
-                },
-            },
-            ListValueKind::Function { item_type, values } => Self {
-                kind: ListValueKind::Function {
-                    item_type: item_type.clone(),
-                    values: values[start..].to_vec(),
-                },
-            },
-        }
-    }
 }
 
 fn ensure_item_types(
@@ -385,66 +240,6 @@ fn ensure_item_types(
     }
 
     Ok(())
-}
-
-impl ListLocalValue {
-    pub(crate) fn try_new(
-        plan: &ExecutionPlan,
-        local: ListLocal,
-        value: ListValue,
-    ) -> Option<Self> {
-        match (local, value.into_kind()) {
-            (ListLocal::Int { local, .. }, ListValueKind::Int(value)) => {
-                Some(Self::Int { local, value })
-            }
-            (ListLocal::String { local, .. }, ListValueKind::String(value)) => {
-                Some(Self::String { local, value })
-            }
-            (ListLocal::Float { local, .. }, ListValueKind::Float(value)) => {
-                Some(Self::Float { local, value })
-            }
-            (ListLocal::Bool { local, .. }, ListValueKind::Bool(value)) => {
-                Some(Self::Bool { local, value })
-            }
-            (ListLocal::Nil { local, .. }, ListValueKind::Nil(len)) => {
-                Some(Self::Nil { local, len })
-            }
-            (
-                ListLocal::Tuple { local, type_id },
-                ListValueKind::Tuple {
-                    item_type: actual,
-                    values,
-                },
-            ) if plan.tuple_list_item_type(type_id) == actual => Some(Self::Tuple {
-                local,
-                item_type: actual,
-                value: values,
-            }),
-            (
-                ListLocal::List { local, type_id },
-                ListValueKind::List {
-                    item_type: actual,
-                    values,
-                },
-            ) if Box::new(plan.nested_list_item_type(type_id)) == actual => Some(Self::List {
-                local,
-                item_type: actual,
-                value: values,
-            }),
-            (
-                ListLocal::Function { local, type_id },
-                ListValueKind::Function {
-                    item_type: actual,
-                    values,
-                },
-            ) if plan.function_list_item_type(type_id) == actual => Some(Self::Function {
-                local,
-                item_type: actual,
-                value: values,
-            }),
-            _ => None,
-        }
-    }
 }
 
 #[cfg(test)]
@@ -494,7 +289,6 @@ mod tests {
             assert_eq!(value.item_type(), item_type);
             assert_eq!(value.len(), 2);
             assert!(!value.is_empty());
-            assert_eq!(value.drop_first(1).len(), 1);
             assert_eq!(value.to_values().len(), 2);
         }
 
@@ -514,72 +308,6 @@ mod tests {
             assert!(value.is_empty());
             assert_eq!(value.to_values(), Vec::<Value>::new());
         }
-    }
-
-    #[test]
-    fn list_value_owned_accessors_preserve_and_reject_exact_families() {
-        let function = sample_function();
-        let function_type = function.type_();
-
-        assert_eq!(
-            ListValue::int(vec![1.into()]).into_int_values(),
-            Some(vec![1.into()])
-        );
-        assert_eq!(
-            ListValue::string(vec!["one".into()]).into_string_values(),
-            Some(vec!["one".into()]),
-        );
-        assert_eq!(
-            ListValue::float(vec![1.5]).into_float_values(),
-            Some(vec![1.5])
-        );
-        assert_eq!(
-            ListValue::bool(vec![true]).into_bool_values(),
-            Some(vec![true])
-        );
-        assert_eq!(ListValue::nil(1).into_nil_len(), Some(1));
-        assert_eq!(
-            ListValue::from_evaluated_tuple(
-                vec![ValueType::Int],
-                vec![vec![Value::Int(1.into())]],
-            )
-            .into_tuple_values(&[ValueType::Int]),
-            Some(vec![vec![Value::Int(1.into())]]),
-        );
-        assert_eq!(
-            ListValue::from_evaluated_list(ValueType::Int, vec![ListValue::int(vec![1.into()])])
-                .into_list_values(&ValueType::Int),
-            Some(vec![ListValue::int(vec![1.into()])]),
-        );
-        assert_eq!(
-            ListValue::from_evaluated_function(function_type.clone(), vec![function.clone()])
-                .into_function_values(&function_type),
-            Some(vec![function]),
-        );
-
-        assert_eq!(ListValue::string(Vec::new()).into_int_values(), None);
-        assert_eq!(ListValue::int(Vec::new()).into_string_values(), None);
-        assert_eq!(ListValue::int(Vec::new()).into_float_values(), None);
-        assert_eq!(ListValue::int(Vec::new()).into_bool_values(), None);
-        assert_eq!(ListValue::int(Vec::new()).into_nil_len(), None);
-        assert_eq!(
-            ListValue::from_evaluated_tuple(vec![ValueType::String], Vec::new())
-                .into_tuple_values(&[ValueType::Int]),
-            None,
-        );
-        assert_eq!(
-            ListValue::from_evaluated_list(ValueType::String, Vec::new())
-                .into_list_values(&ValueType::Int),
-            None,
-        );
-        assert_eq!(
-            ListValue::from_evaluated_function(
-                FunctionType::new(Vec::new(), ValueType::String),
-                Vec::new(),
-            )
-            .into_function_values(&FunctionType::new(Vec::new(), ValueType::Int)),
-            None,
-        );
     }
 
     #[test]

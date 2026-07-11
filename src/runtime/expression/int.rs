@@ -6,13 +6,15 @@ use crate::plan::ValueType;
 use crate::plan::execution::ExecutionPlan;
 use crate::plan::execution::{IntExpr, IntExprKind};
 use crate::runtime::ExecutionError;
-use crate::runtime::Value;
+use crate::runtime::evaluated::EvaluatedValue;
 use crate::runtime::frame::Frame;
 use crate::runtime::function;
+use crate::runtime::state::RuntimeState;
 use num_bigint::BigInt;
 
 pub(in crate::runtime) fn eval_int_expr(
     plan: &ExecutionPlan,
+    state: &mut RuntimeState,
     frame: &mut Frame,
     expression: &IntExpr,
 ) -> Result<BigInt, ExecutionError> {
@@ -20,51 +22,53 @@ pub(in crate::runtime) fn eval_int_expr(
         IntExprKind::Value(value) => Ok(value.clone()),
         IntExprKind::LocalGet { local, .. } => Ok(frame.get_int(*local)),
         IntExprKind::Call { function, args } => {
-            function::run_int_call(plan, *function, args, frame)
+            function::run_int_call(plan, state, *function, args, frame)
         }
         IntExprKind::FunctionCall { function, args } => {
-            function::run_int_function_call(plan, function, args, frame)
+            function::run_int_function_call(plan, state, function, args, frame)
         }
         IntExprKind::TupleIndex { tuple, index } => {
-            match project_tuple_expr(plan, frame, tuple, *index, ValueType::Int)? {
-                Value::Int(value) => Ok(value),
+            match project_tuple_expr(plan, state, frame, tuple, *index, ValueType::Int)? {
+                EvaluatedValue::Int(value) => Ok(value),
                 other => Err(ExecutionError::tuple_index_family_mismatch(
                     ValueType::Int,
-                    other.value_type(),
+                    other.value_type(plan),
                 )),
             }
         }
-        IntExprKind::ListIndex { list, index } => project_int_list_expr(plan, frame, list, *index),
+        IntExprKind::ListIndex { list, index } => {
+            project_int_list_expr(plan, state, frame, list, *index)
+        }
         IntExprKind::Panic(panic) => {
-            eval_panic_expr(plan, frame, panic).map(|never| match never {})
+            eval_panic_expr(plan, state, frame, panic).map(|never| match never {})
         }
-        IntExprKind::Add { left, right } => {
-            Ok(eval_int_expr(plan, frame, left)? + eval_int_expr(plan, frame, right)?)
-        }
-        IntExprKind::Sub { left, right } => {
-            Ok(eval_int_expr(plan, frame, left)? - eval_int_expr(plan, frame, right)?)
-        }
-        IntExprKind::Mult { left, right } => {
-            Ok(eval_int_expr(plan, frame, left)? * eval_int_expr(plan, frame, right)?)
-        }
+        IntExprKind::Add { left, right } => Ok(
+            eval_int_expr(plan, state, frame, left)? + eval_int_expr(plan, state, frame, right)?
+        ),
+        IntExprKind::Sub { left, right } => Ok(
+            eval_int_expr(plan, state, frame, left)? - eval_int_expr(plan, state, frame, right)?
+        ),
+        IntExprKind::Mult { left, right } => Ok(
+            eval_int_expr(plan, state, frame, left)? * eval_int_expr(plan, state, frame, right)?
+        ),
         IntExprKind::Div { left, right } => Ok(eval_div_int(
-            eval_int_expr(plan, frame, left)?,
-            eval_int_expr(plan, frame, right)?,
+            eval_int_expr(plan, state, frame, left)?,
+            eval_int_expr(plan, state, frame, right)?,
         )),
         IntExprKind::Remainder { left, right } => Ok(eval_remainder_int(
-            eval_int_expr(plan, frame, left)?,
-            eval_int_expr(plan, frame, right)?,
+            eval_int_expr(plan, state, frame, left)?,
+            eval_int_expr(plan, state, frame, right)?,
         )),
-        IntExprKind::Negate(value) => Ok(-eval_int_expr(plan, frame, value)?),
+        IntExprKind::Negate(value) => Ok(-eval_int_expr(plan, state, frame, value)?),
         IntExprKind::BoolCase {
             subject,
             true_,
             false_,
         } => {
-            if eval_bool_expr(plan, frame, subject)? {
-                eval_int_expr(plan, frame, true_)
+            if eval_bool_expr(plan, state, frame, subject)? {
+                eval_int_expr(plan, state, frame, true_)
             } else {
-                eval_int_expr(plan, frame, false_)
+                eval_int_expr(plan, state, frame, false_)
             }
         }
         IntExprKind::IntCase {
@@ -72,43 +76,43 @@ pub(in crate::runtime) fn eval_int_expr(
             clauses,
             fallback,
         } => {
-            let subject = eval_int_expr(plan, frame, subject)?;
+            let subject = eval_int_expr(plan, state, frame, subject)?;
             for (pattern, branch) in clauses {
                 if pattern == &subject {
-                    return eval_int_expr(plan, frame, branch);
+                    return eval_int_expr(plan, state, frame, branch);
                 }
             }
-            eval_int_expr(plan, frame, fallback)
+            eval_int_expr(plan, state, frame, fallback)
         }
         IntExprKind::StringCase {
             subject,
             clauses,
             fallback,
         } => {
-            let subject = eval_string_expr(plan, frame, subject)?;
+            let subject = eval_string_expr(plan, state, frame, subject)?;
             for (pattern, branch) in clauses {
                 if pattern == &subject {
-                    return eval_int_expr(plan, frame, branch);
+                    return eval_int_expr(plan, state, frame, branch);
                 }
             }
-            eval_int_expr(plan, frame, fallback)
+            eval_int_expr(plan, state, frame, fallback)
         }
         IntExprKind::FloatCase {
             subject,
             clauses,
             fallback,
         } => {
-            let subject = eval_float_expr(plan, frame, subject)?;
+            let subject = eval_float_expr(plan, state, frame, subject)?;
             for (pattern, branch) in clauses {
                 if pattern == &subject {
-                    return eval_int_expr(plan, frame, branch);
+                    return eval_int_expr(plan, state, frame, branch);
                 }
             }
-            eval_int_expr(plan, frame, fallback)
+            eval_int_expr(plan, state, frame, fallback)
         }
         IntExprKind::Block { steps, return_ } => {
-            function::execute_steps(plan, steps, frame)?;
-            eval_int_expr(plan, frame, return_)
+            function::execute_steps(plan, state, steps, frame)?;
+            eval_int_expr(plan, state, frame, return_)
         }
     }
 }

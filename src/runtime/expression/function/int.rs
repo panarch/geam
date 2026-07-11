@@ -7,46 +7,56 @@ use crate::runtime::expression::{
 };
 use crate::runtime::frame::Frame;
 use crate::runtime::function;
-use crate::runtime::{ExecutionError, FunctionValueKind, IntFunctionValue, Value};
+use crate::runtime::state::RuntimeState;
+use crate::runtime::{
+    EvaluatedFunctionValueKind, EvaluatedIntFunction, EvaluatedValue, ExecutionError,
+};
 
 pub(in crate::runtime) fn eval_int_function_expr(
     plan: &ExecutionPlan,
+    state: &mut RuntimeState,
     frame: &mut Frame,
     expression: &IntFunctionExpr,
-) -> Result<IntFunctionValue, ExecutionError> {
+) -> Result<EvaluatedIntFunction, ExecutionError> {
     match expression.kind() {
-        IntFunctionExprKind::Reference(reference) => Ok(IntFunctionValue::new_with_captures(
+        IntFunctionExprKind::Reference(reference) => Ok(EvaluatedIntFunction::new(
             *reference.function(),
             reference.params().to_vec(),
             Vec::new(),
-            plan.function_value_type(reference.params(), ValueType::Int),
+            crate::runtime::evaluated::function_type(
+                reference.params(),
+                crate::plan::execution::ValueType::Int,
+            ),
         )),
-        IntFunctionExprKind::Closure(template) => Ok(IntFunctionValue::new_with_captures(
+        IntFunctionExprKind::Closure(template) => Ok(EvaluatedIntFunction::new(
             *template.function(),
             template.params().to_vec(),
-            function::eval_capture_args(plan, frame, template.captures())?,
-            plan.function_value_type(template.params(), ValueType::Int),
+            function::eval_capture_args(plan, state, frame, template.captures())?,
+            crate::runtime::evaluated::function_type(
+                template.params(),
+                crate::plan::execution::ValueType::Int,
+            ),
         )),
         IntFunctionExprKind::LocalGet { local, .. } => Ok(frame.get_int_function(*local)),
         IntFunctionExprKind::Call { function, args, .. } => {
-            function::run_int_function_returning_function_call(plan, *function, args, frame)
+            function::run_int_function_returning_function_call(plan, state, *function, args, frame)
         }
         IntFunctionExprKind::FunctionCall {
             function: callee,
             args,
             ..
-        } => function::run_int_function_function_call(plan, callee.as_ref(), args, frame),
+        } => function::run_int_function_function_call(plan, state, callee.as_ref(), args, frame),
         IntFunctionExprKind::TupleIndex {
             tuple,
             index,
             type_,
         } => {
             let expected = ValueType::Function(Box::new(plan.function_type(type_)));
-            let value = project_tuple_expr(plan, frame, tuple, *index, expected.clone())?;
-            let actual = value.value_type();
+            let value = project_tuple_expr(plan, state, frame, tuple, *index, expected.clone())?;
+            let actual = value.value_type(plan);
             match value {
-                Value::Function(function) => match function.kind() {
-                    FunctionValueKind::Int(value) => Ok(value.clone()),
+                EvaluatedValue::Function(function) => match function.kind() {
+                    EvaluatedFunctionValueKind::Int(value) => Ok(value.clone()),
                     _ => Err(ExecutionError::tuple_index_family_mismatch(
                         expected, actual,
                     )),
@@ -58,9 +68,9 @@ pub(in crate::runtime) fn eval_int_function_expr(
         }
         IntFunctionExprKind::ListIndex { list, index, type_ } => {
             let type_ = plan.function_type(type_);
-            let function = project_function_list_expr(plan, frame, list, *index, &type_)?;
+            let function = project_function_list_expr(plan, state, frame, list, *index, &type_)?;
             match function.kind() {
-                FunctionValueKind::Int(value) => Ok(value.clone()),
+                EvaluatedFunctionValueKind::Int(value) => Ok(value.clone()),
                 _ => Err(ExecutionError::function_return_family_mismatch(
                     FunctionReturnFamily::Int,
                     function.kind().family(),
@@ -68,17 +78,17 @@ pub(in crate::runtime) fn eval_int_function_expr(
             }
         }
         IntFunctionExprKind::Panic(panic) => {
-            eval_panic_expr(plan, frame, panic).map(|never| match never {})
+            eval_panic_expr(plan, state, frame, panic).map(|never| match never {})
         }
         IntFunctionExprKind::BoolCase {
             subject,
             true_,
             false_,
         } => {
-            if eval_bool_expr(plan, frame, subject)? {
-                eval_int_function_expr(plan, frame, true_)
+            if eval_bool_expr(plan, state, frame, subject)? {
+                eval_int_function_expr(plan, state, frame, true_)
             } else {
-                eval_int_function_expr(plan, frame, false_)
+                eval_int_function_expr(plan, state, frame, false_)
             }
         }
         IntFunctionExprKind::IntCase {
@@ -86,43 +96,43 @@ pub(in crate::runtime) fn eval_int_function_expr(
             clauses,
             fallback,
         } => {
-            let subject = eval_int_expr(plan, frame, subject)?;
+            let subject = eval_int_expr(plan, state, frame, subject)?;
             for (pattern, branch) in clauses {
                 if pattern == &subject {
-                    return eval_int_function_expr(plan, frame, branch);
+                    return eval_int_function_expr(plan, state, frame, branch);
                 }
             }
-            eval_int_function_expr(plan, frame, fallback)
+            eval_int_function_expr(plan, state, frame, fallback)
         }
         IntFunctionExprKind::StringCase {
             subject,
             clauses,
             fallback,
         } => {
-            let subject = eval_string_expr(plan, frame, subject)?;
+            let subject = eval_string_expr(plan, state, frame, subject)?;
             for (pattern, branch) in clauses {
                 if pattern == &subject {
-                    return eval_int_function_expr(plan, frame, branch);
+                    return eval_int_function_expr(plan, state, frame, branch);
                 }
             }
-            eval_int_function_expr(plan, frame, fallback)
+            eval_int_function_expr(plan, state, frame, fallback)
         }
         IntFunctionExprKind::FloatCase {
             subject,
             clauses,
             fallback,
         } => {
-            let subject = eval_float_expr(plan, frame, subject)?;
+            let subject = eval_float_expr(plan, state, frame, subject)?;
             for (pattern, branch) in clauses {
                 if pattern == &subject {
-                    return eval_int_function_expr(plan, frame, branch);
+                    return eval_int_function_expr(plan, state, frame, branch);
                 }
             }
-            eval_int_function_expr(plan, frame, fallback)
+            eval_int_function_expr(plan, state, frame, fallback)
         }
         IntFunctionExprKind::Block { steps, return_ } => {
-            function::execute_steps(plan, steps, frame)?;
-            eval_int_function_expr(plan, frame, return_)
+            function::execute_steps(plan, state, steps, frame)?;
+            eval_int_function_expr(plan, state, frame, return_)
         }
     }
 }

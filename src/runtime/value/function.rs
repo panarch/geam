@@ -1,12 +1,12 @@
 use super::CaptureValue;
 use crate::plan::FunctionType;
 
-#[cfg(test)]
-use crate::plan::execution::RuntimeFunctionId;
 use crate::plan::execution::{
-    BoolFunctionId, FloatFunctionId, FunctionFunctionId, FunctionReturnFamily, IntFunctionId,
-    ListFunctionId, NilFunctionId, ParamLocal, StringFunctionId, TupleFunctionId,
+    BoolFunctionId, FloatFunctionId, FunctionFunctionId, IntFunctionId, ListFunctionId,
+    NilFunctionId, ParamLocal, StringFunctionId, TupleFunctionId,
 };
+#[cfg(test)]
+use crate::plan::execution::{FunctionReturnFamily, RuntimeFunctionId};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct FunctionValue {
@@ -90,6 +90,10 @@ pub(crate) struct FunctionFunctionValue {
 }
 
 impl FunctionValue {
+    pub(crate) fn from_kind(kind: FunctionValueKind) -> Self {
+        Self { kind }
+    }
+
     #[cfg(test)]
     pub(crate) fn new(
         runtime_id: RuntimeFunctionId,
@@ -151,12 +155,14 @@ impl FunctionValue {
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn kind(&self) -> &FunctionValueKind {
         &self.kind
     }
 }
 
 impl FunctionValueKind {
+    #[cfg(test)]
     pub(crate) fn family(&self) -> FunctionReturnFamily {
         match self {
             Self::Int(_) => FunctionReturnFamily::Int,
@@ -198,14 +204,6 @@ impl IntFunctionValue {
     pub(crate) fn type_(&self) -> FunctionType {
         self.type_.clone()
     }
-
-    pub(crate) fn runtime_id(&self) -> IntFunctionId {
-        self.runtime_id
-    }
-
-    pub(crate) fn captures(&self) -> &[CaptureValue] {
-        &self.captures
-    }
 }
 
 impl FloatFunctionValue {
@@ -225,14 +223,6 @@ impl FloatFunctionValue {
 
     pub(crate) fn type_(&self) -> FunctionType {
         self.type_.clone()
-    }
-
-    pub(crate) fn runtime_id(&self) -> FloatFunctionId {
-        self.runtime_id
-    }
-
-    pub(crate) fn captures(&self) -> &[CaptureValue] {
-        &self.captures
     }
 }
 
@@ -254,14 +244,6 @@ impl StringFunctionValue {
     pub(crate) fn type_(&self) -> FunctionType {
         self.type_.clone()
     }
-
-    pub(crate) fn runtime_id(&self) -> StringFunctionId {
-        self.runtime_id
-    }
-
-    pub(crate) fn captures(&self) -> &[CaptureValue] {
-        &self.captures
-    }
 }
 
 impl BoolFunctionValue {
@@ -281,14 +263,6 @@ impl BoolFunctionValue {
 
     pub(crate) fn type_(&self) -> FunctionType {
         self.type_.clone()
-    }
-
-    pub(crate) fn runtime_id(&self) -> BoolFunctionId {
-        self.runtime_id
-    }
-
-    pub(crate) fn captures(&self) -> &[CaptureValue] {
-        &self.captures
     }
 }
 
@@ -310,14 +284,6 @@ impl NilFunctionValue {
     pub(crate) fn type_(&self) -> FunctionType {
         self.type_.clone()
     }
-
-    pub(crate) fn runtime_id(&self) -> NilFunctionId {
-        self.runtime_id
-    }
-
-    pub(crate) fn captures(&self) -> &[CaptureValue] {
-        &self.captures
-    }
 }
 
 impl TupleFunctionValue {
@@ -337,14 +303,6 @@ impl TupleFunctionValue {
 
     pub(crate) fn type_(&self) -> FunctionType {
         self.type_.clone()
-    }
-
-    pub(crate) fn runtime_id(&self) -> TupleFunctionId {
-        self.runtime_id
-    }
-
-    pub(crate) fn captures(&self) -> &[CaptureValue] {
-        &self.captures
     }
 }
 
@@ -366,26 +324,9 @@ impl ListFunctionValue {
     pub(crate) fn type_(&self) -> FunctionType {
         self.type_.clone()
     }
-
-    pub(crate) fn runtime_id(&self) -> ListFunctionId {
-        self.runtime_id.clone()
-    }
-
-    pub(crate) fn captures(&self) -> &[CaptureValue] {
-        &self.captures
-    }
 }
 
 impl FunctionFunctionValue {
-    #[cfg(test)]
-    pub(crate) fn new(
-        runtime_id: FunctionFunctionId,
-        params: Vec<ParamLocal>,
-        type_: FunctionType,
-    ) -> Self {
-        Self::from_evaluated(runtime_id, params, Vec::new(), type_)
-    }
-
     pub(crate) fn from_evaluated(
         runtime_id: FunctionFunctionId,
         params: Vec<ParamLocal>,
@@ -404,12 +345,9 @@ impl FunctionFunctionValue {
         self.type_.clone()
     }
 
+    #[cfg(test)]
     pub(crate) fn runtime_id(&self) -> FunctionFunctionId {
         self.runtime_id.clone()
-    }
-
-    pub(crate) fn captures(&self) -> &[CaptureValue] {
-        &self.captures
     }
 }
 
@@ -479,7 +417,7 @@ impl From<FunctionFunctionValue> for FunctionValue {
 
 #[cfg(test)]
 mod tests {
-    use super::FunctionValue;
+    use super::{FunctionValue, FunctionValueKind};
     use crate::plan::execution::FunctionReturnFamily;
     use crate::plan::{FunctionType, ValueType};
 
@@ -538,6 +476,50 @@ mod tests {
 
             assert_eq!(value.type_(), FunctionType::new(Vec::new(), return_type));
             assert_eq!(value.kind().family(), family);
+        }
+    }
+
+    #[test]
+    fn function_value_from_preserves_every_evaluated_return_family() {
+        let cases = [
+            ("pub fn main() -> Int { 1 }", ValueType::Int),
+            ("pub fn main() -> Float { 1.0 }", ValueType::Float),
+            ("pub fn main() -> String { \"one\" }", ValueType::String),
+            ("pub fn main() -> Bool { True }", ValueType::Bool),
+            ("pub fn main() -> Nil { Nil }", ValueType::Nil),
+            (
+                "pub fn main() -> #(Int) { #(1) }",
+                ValueType::Tuple(vec![ValueType::Int]),
+            ),
+            (
+                "pub fn main() -> List(Int) { [] }",
+                ValueType::List(Box::new(ValueType::Int)),
+            ),
+            (
+                "pub fn main() -> fn() -> Int { fn() { 1 } }",
+                ValueType::Function(Box::new(FunctionType::new(Vec::new(), ValueType::Int))),
+            ),
+        ];
+
+        for (source, return_type) in cases {
+            let plan = crate::runtime::plan_src(source);
+            let value = FunctionValue::new(
+                plan.main_runtime(),
+                Vec::new(),
+                FunctionType::new(Vec::new(), return_type.clone()),
+            );
+            let converted = match value.kind() {
+                FunctionValueKind::Int(value) => FunctionValue::from(value.clone()),
+                FunctionValueKind::Float(value) => FunctionValue::from(value.clone()),
+                FunctionValueKind::String(value) => FunctionValue::from(value.clone()),
+                FunctionValueKind::Bool(value) => FunctionValue::from(value.clone()),
+                FunctionValueKind::Nil(value) => FunctionValue::from(value.clone()),
+                FunctionValueKind::Tuple(value) => FunctionValue::from(value.clone()),
+                FunctionValueKind::List(value) => FunctionValue::from(value.clone()),
+                FunctionValueKind::Function(value) => FunctionValue::from(value.clone()),
+            };
+
+            assert_eq!(converted, value);
         }
     }
 }

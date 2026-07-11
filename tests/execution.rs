@@ -306,6 +306,7 @@ mod functions {
             float_tail_recursion,
             tuple_tail_recursion,
             list_tail_recursion,
+            list_tail_recursion_replaces_allocations,
             list_tail_recursion_item_families,
             block_case_tail_call,
             function_returning_tail_call,
@@ -341,6 +342,7 @@ mod functions {
             capturing_closure_tuple,
             capturing_closure_return_shapes,
             capturing_closure_list_function,
+            capturing_closure_nested_list,
         );
     }
 
@@ -422,6 +424,7 @@ mod execution_errors {
         execution_error_cases!("patterns";
             let_assert_empty_head,
             let_assert_nested_prefix,
+            let_assert_bound_tail_prefix,
             let_assert_compound_failed_value,
             let_assert_fixed_length,
             let_assert_empty_list,

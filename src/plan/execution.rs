@@ -57,8 +57,8 @@ pub(crate) use step::{
 };
 pub(crate) use value_type::{
     BoolListTypeId, FloatListTypeId, FunctionListTypeId, FunctionType, IntListTypeId,
-    ListListTypeId, ListTypeId, ListTypeTable, NilListTypeId, StringListTypeId, TupleListTypeId,
-    ValueType,
+    ListListTypeId, ListStorageTypeId, ListTypeId, ListTypeTable, NilListTypeId, StringListTypeId,
+    TupleListTypeId, ValueType,
 };
 
 use self::function::ExecutableFunction;
@@ -95,6 +95,10 @@ impl ExecutionPlan {
         self.list_types.list_value_type(id)
     }
 
+    pub(crate) fn list_storage_type(&self, id: ListTypeId) -> ListStorageTypeId {
+        self.list_types.storage_type(id)
+    }
+
     pub(crate) fn tuple_list_item_type(&self, id: TupleListTypeId) -> Vec<crate::plan::ValueType> {
         self.list_types.tuple_item_type(id)
     }
@@ -116,20 +120,6 @@ impl ExecutionPlan {
 
     pub(crate) fn function_type(&self, type_: &FunctionType) -> crate::plan::FunctionType {
         self.list_types.function_type(type_)
-    }
-
-    pub(crate) fn function_value_type(
-        &self,
-        params: &[ParamLocal],
-        return_: crate::plan::ValueType,
-    ) -> crate::plan::FunctionType {
-        crate::plan::FunctionType::new(
-            params
-                .iter()
-                .map(|param| self.value_type(&param.value_type()))
-                .collect(),
-            return_,
-        )
     }
 
     pub(crate) fn int_function(&self, id: IntFunctionId) -> &ExecutableFunction<IntReturn> {

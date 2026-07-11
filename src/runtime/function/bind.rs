@@ -10,34 +10,38 @@ use crate::runtime::expression::{
     eval_tuple_expr, eval_tuple_function_expr, eval_tuple_list_expr,
 };
 use crate::runtime::frame::Frame;
-use crate::runtime::{CaptureValue, CaptureValueKind, ListLocalValue};
+use crate::runtime::state::RuntimeState;
+use crate::runtime::{EvaluatedCapture, EvaluatedCaptureKind, EvaluatedListCapture};
 
 pub(super) fn bind_arguments(
     plan: &ExecutionPlan,
+    state: &mut RuntimeState,
     args: &[CallArg],
     caller_frame: &mut Frame,
     frame_layout: &FrameLayout,
 ) -> ExecutionResult<Frame> {
-    let mut frame = Frame::new(frame_layout);
-    bind_arguments_into(plan, args, caller_frame, &mut frame)?;
+    let mut frame = Frame::new(frame_layout, state);
+    bind_arguments_into(plan, state, args, caller_frame, &mut frame)?;
     Ok(frame)
 }
 
 pub(super) fn bind_function_value_arguments(
     plan: &ExecutionPlan,
+    state: &mut RuntimeState,
     args: &[CallArg],
     caller_frame: &mut Frame,
     frame_layout: &FrameLayout,
-    captures: &[CaptureValue],
+    captures: &[EvaluatedCapture],
 ) -> ExecutionResult<Frame> {
-    let mut frame = Frame::new(frame_layout);
+    let mut frame = Frame::new(frame_layout, state);
     bind_captures(&mut frame, captures);
-    bind_arguments_into(plan, args, caller_frame, &mut frame)?;
+    bind_arguments_into(plan, state, args, caller_frame, &mut frame)?;
     Ok(frame)
 }
 
 fn bind_arguments_into(
     plan: &ExecutionPlan,
+    state: &mut RuntimeState,
     args: &[CallArg],
     caller_frame: &mut Frame,
     frame: &mut Frame,
@@ -45,60 +49,62 @@ fn bind_arguments_into(
     for arg in args {
         match arg.kind() {
             CallArgKind::Int { local, value } => {
-                let value = eval_int_expr(plan, caller_frame, value)?;
+                let value = eval_int_expr(plan, state, caller_frame, value)?;
                 frame.set_int(*local, value);
             }
             CallArgKind::String { local, value } => {
-                let value = eval_string_expr(plan, caller_frame, value)?;
+                let value = eval_string_expr(plan, state, caller_frame, value)?;
                 frame.set_string(*local, value);
             }
             CallArgKind::Float { local, value } => {
-                let value = eval_float_expr(plan, caller_frame, value)?;
+                let value = eval_float_expr(plan, state, caller_frame, value)?;
                 frame.set_float(*local, value);
             }
             CallArgKind::Bool { local, value } => {
-                let value = eval_bool_expr(plan, caller_frame, value)?;
+                let value = eval_bool_expr(plan, state, caller_frame, value)?;
                 frame.set_bool(*local, value);
             }
             CallArgKind::Nil { local, value } => {
-                eval_nil_expr(plan, caller_frame, value)?;
+                eval_nil_expr(plan, state, caller_frame, value)?;
                 frame.set_nil(*local);
             }
             CallArgKind::Tuple { local, value } => {
-                let value = eval_tuple_expr(plan, caller_frame, value)?;
+                let value = eval_tuple_expr(plan, state, caller_frame, value)?;
                 frame.set_tuple(*local, value);
             }
-            CallArgKind::List(value) => bind_list_argument(plan, caller_frame, frame, value)?,
+            CallArgKind::List(value) => {
+                bind_list_argument(plan, state, caller_frame, frame, value)?
+            }
             CallArgKind::IntFunction { local, value } => {
-                let value = eval_int_function_expr(plan, caller_frame, value)?;
+                let value = eval_int_function_expr(plan, state, caller_frame, value)?;
                 frame.set_int_function(*local, value);
             }
             CallArgKind::StringFunction { local, value } => {
-                let value = eval_string_function_expr(plan, caller_frame, value)?;
+                let value = eval_string_function_expr(plan, state, caller_frame, value)?;
                 frame.set_string_function(*local, value);
             }
             CallArgKind::FloatFunction { local, value } => {
-                let value = eval_float_function_expr(plan, caller_frame, value)?;
+                let value = eval_float_function_expr(plan, state, caller_frame, value)?;
                 frame.set_float_function(*local, value);
             }
             CallArgKind::BoolFunction { local, value } => {
-                let value = eval_bool_function_expr(plan, caller_frame, value)?;
+                let value = eval_bool_function_expr(plan, state, caller_frame, value)?;
                 frame.set_bool_function(*local, value);
             }
             CallArgKind::NilFunction { local, value } => {
-                let value = eval_nil_function_expr(plan, caller_frame, value)?;
+                let value = eval_nil_function_expr(plan, state, caller_frame, value)?;
                 frame.set_nil_function(*local, value);
             }
             CallArgKind::TupleFunction { local, value } => {
-                let value = eval_tuple_function_expr(plan, caller_frame, value)?;
+                let value = eval_tuple_function_expr(plan, state, caller_frame, value)?;
                 frame.set_tuple_function(*local, value);
             }
             CallArgKind::ListFunction { local, value } => {
-                let value = eval_list_function_expr(plan, caller_frame, value)?;
+                let value = eval_list_function_expr(plan, state, caller_frame, value)?;
                 frame.set_list_function(local.clone(), value);
             }
             CallArgKind::FunctionFunction { local, value } => {
-                let value = eval_function_function_expr(plan, caller_frame, value)?;
+                let value = eval_function_function_expr(plan, state, caller_frame, value)?;
                 frame.set_function_function(*local, value);
             }
         }
@@ -109,97 +115,107 @@ fn bind_arguments_into(
 
 pub(in crate::runtime) fn eval_capture_args(
     plan: &ExecutionPlan,
+    state: &mut RuntimeState,
     frame: &mut Frame,
     args: &[CaptureArg],
-) -> ExecutionResult<Vec<CaptureValue>> {
+) -> ExecutionResult<Vec<EvaluatedCapture>> {
     let mut captures = Vec::with_capacity(args.len());
     for arg in args {
         captures.push(match arg.kind() {
             CaptureArgKind::Int { local, value } => {
-                CaptureValue::int(*local, eval_int_expr(plan, frame, value)?)
+                EvaluatedCapture::int(*local, eval_int_expr(plan, state, frame, value)?)
             }
             CaptureArgKind::String { local, value } => {
-                CaptureValue::string(*local, eval_string_expr(plan, frame, value)?)
+                EvaluatedCapture::string(*local, eval_string_expr(plan, state, frame, value)?)
             }
             CaptureArgKind::Float { local, value } => {
-                CaptureValue::float(*local, eval_float_expr(plan, frame, value)?)
+                EvaluatedCapture::float(*local, eval_float_expr(plan, state, frame, value)?)
             }
             CaptureArgKind::Bool { local, value } => {
-                CaptureValue::bool(*local, eval_bool_expr(plan, frame, value)?)
+                EvaluatedCapture::bool(*local, eval_bool_expr(plan, state, frame, value)?)
             }
             CaptureArgKind::Nil { local, value } => {
-                eval_nil_expr(plan, frame, value)?;
-                CaptureValue::nil(*local)
+                eval_nil_expr(plan, state, frame, value)?;
+                EvaluatedCapture::nil(*local)
             }
             CaptureArgKind::Tuple { local, value } => {
-                CaptureValue::tuple(*local, eval_tuple_expr(plan, frame, value)?)
+                EvaluatedCapture::tuple(*local, eval_tuple_expr(plan, state, frame, value)?)
             }
-            CaptureArgKind::List(value) => eval_list_capture(plan, frame, value)?,
-            CaptureArgKind::IntFunction { local, value } => {
-                CaptureValue::int_function(*local, eval_int_function_expr(plan, frame, value)?)
-            }
-            CaptureArgKind::StringFunction { local, value } => CaptureValue::string_function(
+            CaptureArgKind::List(value) => eval_list_capture(plan, state, frame, value)?,
+            CaptureArgKind::IntFunction { local, value } => EvaluatedCapture::int_function(
                 *local,
-                eval_string_function_expr(plan, frame, value)?,
+                eval_int_function_expr(plan, state, frame, value)?,
             ),
-            CaptureArgKind::FloatFunction { local, value } => {
-                CaptureValue::float_function(*local, eval_float_function_expr(plan, frame, value)?)
-            }
-            CaptureArgKind::BoolFunction { local, value } => {
-                CaptureValue::bool_function(*local, eval_bool_function_expr(plan, frame, value)?)
-            }
-            CaptureArgKind::NilFunction { local, value } => {
-                CaptureValue::nil_function(*local, eval_nil_function_expr(plan, frame, value)?)
-            }
-            CaptureArgKind::TupleFunction { local, value } => {
-                CaptureValue::tuple_function(*local, eval_tuple_function_expr(plan, frame, value)?)
-            }
-            CaptureArgKind::ListFunction { local, value } => CaptureValue::list_function(
+            CaptureArgKind::StringFunction { local, value } => EvaluatedCapture::string_function(
+                *local,
+                eval_string_function_expr(plan, state, frame, value)?,
+            ),
+            CaptureArgKind::FloatFunction { local, value } => EvaluatedCapture::float_function(
+                *local,
+                eval_float_function_expr(plan, state, frame, value)?,
+            ),
+            CaptureArgKind::BoolFunction { local, value } => EvaluatedCapture::bool_function(
+                *local,
+                eval_bool_function_expr(plan, state, frame, value)?,
+            ),
+            CaptureArgKind::NilFunction { local, value } => EvaluatedCapture::nil_function(
+                *local,
+                eval_nil_function_expr(plan, state, frame, value)?,
+            ),
+            CaptureArgKind::TupleFunction { local, value } => EvaluatedCapture::tuple_function(
+                *local,
+                eval_tuple_function_expr(plan, state, frame, value)?,
+            ),
+            CaptureArgKind::ListFunction { local, value } => EvaluatedCapture::list_function(
                 local.clone(),
-                eval_list_function_expr(plan, frame, value)?,
+                eval_list_function_expr(plan, state, frame, value)?,
             ),
-            CaptureArgKind::FunctionFunction { local, value } => CaptureValue::function_function(
-                *local,
-                eval_function_function_expr(plan, frame, value)?,
-            ),
+            CaptureArgKind::FunctionFunction { local, value } => {
+                EvaluatedCapture::function_function(
+                    *local,
+                    eval_function_function_expr(plan, state, frame, value)?,
+                )
+            }
         });
     }
 
     Ok(captures)
 }
 
-fn bind_captures(frame: &mut Frame, captures: &[CaptureValue]) {
+fn bind_captures(frame: &mut Frame, captures: &[EvaluatedCapture]) {
     for capture in captures {
         match capture.kind() {
-            CaptureValueKind::Int { local, value } => frame.set_int(*local, value.clone()),
-            CaptureValueKind::String { local, value } => frame.set_string(*local, value.clone()),
-            CaptureValueKind::Float { local, value } => frame.set_float(*local, *value),
-            CaptureValueKind::Bool { local, value } => frame.set_bool(*local, *value),
-            CaptureValueKind::Nil { local } => frame.set_nil(*local),
-            CaptureValueKind::Tuple { local, value } => frame.set_tuple(*local, value.clone()),
-            CaptureValueKind::List(value) => bind_list_capture(frame, value),
-            CaptureValueKind::IntFunction { local, value } => {
+            EvaluatedCaptureKind::Int { local, value } => frame.set_int(*local, value.clone()),
+            EvaluatedCaptureKind::String { local, value } => {
+                frame.set_string(*local, value.clone())
+            }
+            EvaluatedCaptureKind::Float { local, value } => frame.set_float(*local, *value),
+            EvaluatedCaptureKind::Bool { local, value } => frame.set_bool(*local, *value),
+            EvaluatedCaptureKind::Nil { local } => frame.set_nil(*local),
+            EvaluatedCaptureKind::Tuple { local, value } => frame.set_tuple(*local, value.clone()),
+            EvaluatedCaptureKind::List(value) => bind_list_capture(frame, value),
+            EvaluatedCaptureKind::IntFunction { local, value } => {
                 frame.set_int_function(*local, value.clone());
             }
-            CaptureValueKind::StringFunction { local, value } => {
+            EvaluatedCaptureKind::StringFunction { local, value } => {
                 frame.set_string_function(*local, value.clone());
             }
-            CaptureValueKind::FloatFunction { local, value } => {
+            EvaluatedCaptureKind::FloatFunction { local, value } => {
                 frame.set_float_function(*local, value.clone());
             }
-            CaptureValueKind::BoolFunction { local, value } => {
+            EvaluatedCaptureKind::BoolFunction { local, value } => {
                 frame.set_bool_function(*local, value.clone());
             }
-            CaptureValueKind::NilFunction { local, value } => {
+            EvaluatedCaptureKind::NilFunction { local, value } => {
                 frame.set_nil_function(*local, value.clone());
             }
-            CaptureValueKind::TupleFunction { local, value } => {
+            EvaluatedCaptureKind::TupleFunction { local, value } => {
                 frame.set_tuple_function(*local, value.clone());
             }
-            CaptureValueKind::ListFunction { local, value } => {
+            EvaluatedCaptureKind::ListFunction { local, value } => {
                 frame.set_list_function(local.clone(), value.clone());
             }
-            CaptureValueKind::FunctionFunction { local, value } => {
+            EvaluatedCaptureKind::FunctionFunction { local, value } => {
                 frame.set_function_function(*local, value.clone());
             }
         }
@@ -208,41 +224,42 @@ fn bind_captures(frame: &mut Frame, captures: &[CaptureValue]) {
 
 fn bind_list_argument(
     plan: &ExecutionPlan,
+    state: &mut RuntimeState,
     caller_frame: &mut Frame,
     frame: &mut Frame,
     value: &crate::plan::execution::ListLocalExpr,
 ) -> ExecutionResult<()> {
     match value {
         crate::plan::execution::ListLocalExpr::Int { local, value } => {
-            let value = eval_int_list_expr(plan, caller_frame, value)?;
+            let value = eval_int_list_expr(plan, state, caller_frame, value)?;
             frame.set_int_list(*local, value);
         }
         crate::plan::execution::ListLocalExpr::String { local, value } => {
-            let value = eval_string_list_expr(plan, caller_frame, value)?;
+            let value = eval_string_list_expr(plan, state, caller_frame, value)?;
             frame.set_string_list(*local, value);
         }
         crate::plan::execution::ListLocalExpr::Float { local, value } => {
-            let value = eval_float_list_expr(plan, caller_frame, value)?;
+            let value = eval_float_list_expr(plan, state, caller_frame, value)?;
             frame.set_float_list(*local, value);
         }
         crate::plan::execution::ListLocalExpr::Bool { local, value } => {
-            let value = eval_bool_list_expr(plan, caller_frame, value)?;
+            let value = eval_bool_list_expr(plan, state, caller_frame, value)?;
             frame.set_bool_list(*local, value);
         }
         crate::plan::execution::ListLocalExpr::Nil { local, value } => {
-            let value = eval_nil_list_expr(plan, caller_frame, value)?;
+            let value = eval_nil_list_expr(plan, state, caller_frame, value)?;
             frame.set_nil_list(*local, value);
         }
         crate::plan::execution::ListLocalExpr::Tuple { local, value, .. } => {
-            let value = eval_tuple_list_expr(plan, caller_frame, value)?;
+            let value = eval_tuple_list_expr(plan, state, caller_frame, value)?;
             frame.set_tuple_list(*local, value);
         }
         crate::plan::execution::ListLocalExpr::List { local, value, .. } => {
-            let value = eval_list_list_expr(plan, caller_frame, value)?;
+            let value = eval_list_list_expr(plan, state, caller_frame, value)?;
             frame.set_list_list(*local, value);
         }
         crate::plan::execution::ListLocalExpr::Function { local, value, .. } => {
-            let value = eval_function_list_expr(plan, caller_frame, value)?;
+            let value = eval_function_list_expr(plan, state, caller_frame, value)?;
             frame.set_function_list(*local, value);
         }
     }
@@ -251,88 +268,86 @@ fn bind_list_argument(
 
 fn eval_list_capture(
     plan: &ExecutionPlan,
+    state: &mut RuntimeState,
     frame: &mut Frame,
     value: &crate::plan::execution::ListLocalExpr,
-) -> ExecutionResult<CaptureValue> {
+) -> ExecutionResult<EvaluatedCapture> {
     Ok(match value {
         crate::plan::execution::ListLocalExpr::Int { local, value } => {
-            CaptureValue::list(ListLocalValue::Int {
+            EvaluatedCapture::list(EvaluatedListCapture::Int {
                 local: *local,
-                value: eval_int_list_expr(plan, frame, value)?,
+                value: eval_int_list_expr(plan, state, frame, value)?,
             })
         }
         crate::plan::execution::ListLocalExpr::String { local, value } => {
-            CaptureValue::list(ListLocalValue::String {
+            EvaluatedCapture::list(EvaluatedListCapture::String {
                 local: *local,
-                value: eval_string_list_expr(plan, frame, value)?,
+                value: eval_string_list_expr(plan, state, frame, value)?,
             })
         }
         crate::plan::execution::ListLocalExpr::Float { local, value } => {
-            CaptureValue::list(ListLocalValue::Float {
+            EvaluatedCapture::list(EvaluatedListCapture::Float {
                 local: *local,
-                value: eval_float_list_expr(plan, frame, value)?,
+                value: eval_float_list_expr(plan, state, frame, value)?,
             })
         }
         crate::plan::execution::ListLocalExpr::Bool { local, value } => {
-            CaptureValue::list(ListLocalValue::Bool {
+            EvaluatedCapture::list(EvaluatedListCapture::Bool {
                 local: *local,
-                value: eval_bool_list_expr(plan, frame, value)?,
+                value: eval_bool_list_expr(plan, state, frame, value)?,
             })
         }
         crate::plan::execution::ListLocalExpr::Nil { local, value } => {
-            CaptureValue::list(ListLocalValue::Nil {
+            EvaluatedCapture::list(EvaluatedListCapture::Nil {
                 local: *local,
-                len: eval_nil_list_expr(plan, frame, value)?,
+                value: eval_nil_list_expr(plan, state, frame, value)?,
             })
         }
         crate::plan::execution::ListLocalExpr::Tuple { local, value } => {
-            CaptureValue::list(ListLocalValue::Tuple {
+            EvaluatedCapture::list(EvaluatedListCapture::Tuple {
                 local: *local,
-                item_type: plan.tuple_list_item_type(value.item().type_id()),
-                value: eval_tuple_list_expr(plan, frame, value)?,
+                value: eval_tuple_list_expr(plan, state, frame, value)?,
             })
         }
         crate::plan::execution::ListLocalExpr::List { local, value } => {
-            CaptureValue::list(ListLocalValue::List {
+            EvaluatedCapture::list(EvaluatedListCapture::List {
                 local: *local,
-                item_type: Box::new(plan.nested_list_item_type(value.item().type_id())),
-                value: eval_list_list_expr(plan, frame, value)?,
+                value: eval_list_list_expr(plan, state, frame, value)?,
             })
         }
         crate::plan::execution::ListLocalExpr::Function { local, value } => {
-            CaptureValue::list(ListLocalValue::Function {
+            EvaluatedCapture::list(EvaluatedListCapture::Function {
                 local: *local,
-                item_type: plan.function_list_item_type(value.item().type_id()),
-                value: eval_function_list_expr(plan, frame, value)?,
+                value: eval_function_list_expr(plan, state, frame, value)?,
             })
         }
     })
 }
 
-fn bind_list_capture(frame: &mut Frame, value: &ListLocalValue) {
+fn bind_list_capture(frame: &mut Frame, value: &EvaluatedListCapture) {
     match value {
-        ListLocalValue::Int { local, value } => {
+        EvaluatedListCapture::Int { local, value } => {
             frame.set_int_list(*local, value.clone());
         }
-        ListLocalValue::String { local, value } => {
+        EvaluatedListCapture::String { local, value } => {
             frame.set_string_list(*local, value.clone());
         }
-        ListLocalValue::Float { local, value } => {
+        EvaluatedListCapture::Float { local, value } => {
             frame.set_float_list(*local, value.clone());
         }
-        ListLocalValue::Bool { local, value } => {
+        EvaluatedListCapture::Bool { local, value } => {
             frame.set_bool_list(*local, value.clone());
         }
-        ListLocalValue::Nil { local, len } => {
-            frame.set_nil_list(*local, *len);
+        EvaluatedListCapture::Nil { local, value } => {
+            frame.set_nil_list(*local, value.clone());
         }
-        ListLocalValue::Tuple { local, value, .. } => {
+        EvaluatedListCapture::Tuple { local, value } => {
             frame.set_tuple_list(*local, value.clone());
         }
-        ListLocalValue::List { local, value, .. } => {
+        EvaluatedListCapture::List { local, value } => {
             frame.set_list_list(*local, value.clone());
         }
-        ListLocalValue::Function { local, value, .. } => {
+        EvaluatedListCapture::Function { local, value } => {
             frame.set_function_list(*local, value.clone());
         }
     }

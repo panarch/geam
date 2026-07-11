@@ -9,8 +9,10 @@ mod tuple;
 
 use crate::plan::execution::ExecutionPlan;
 use crate::plan::execution::{Expr, ExprKind, PanicExpr, PanicExprKind};
+use crate::runtime::evaluated::EvaluatedValue;
 use crate::runtime::frame::Frame;
-use crate::runtime::{ExecutionError, PanicKind, Value};
+use crate::runtime::state::RuntimeState;
+use crate::runtime::{ExecutionError, PanicKind};
 use std::convert::Infallible;
 
 pub(super) use self::{
@@ -36,42 +38,54 @@ pub(super) use self::{
 
 pub(super) fn eval_expr(
     plan: &ExecutionPlan,
+    state: &mut RuntimeState,
     frame: &mut Frame,
     expression: &Expr,
-) -> Result<Value, ExecutionError> {
+) -> Result<EvaluatedValue, ExecutionError> {
     match expression.kind() {
-        ExprKind::Int(expression) => Ok(Value::Int(eval_int_expr(plan, frame, expression)?)),
-        ExprKind::String(expression) => {
-            Ok(Value::String(eval_string_expr(plan, frame, expression)?))
-        }
-        ExprKind::Float(expression) => Ok(Value::Float(eval_float_expr(plan, frame, expression)?)),
-        ExprKind::Bool(expression) => Ok(Value::Bool(eval_bool_expr(plan, frame, expression)?)),
+        ExprKind::Int(expression) => Ok(EvaluatedValue::Int(eval_int_expr(
+            plan, state, frame, expression,
+        )?)),
+        ExprKind::String(expression) => Ok(EvaluatedValue::String(eval_string_expr(
+            plan, state, frame, expression,
+        )?)),
+        ExprKind::Float(expression) => Ok(EvaluatedValue::Float(eval_float_expr(
+            plan, state, frame, expression,
+        )?)),
+        ExprKind::Bool(expression) => Ok(EvaluatedValue::Bool(eval_bool_expr(
+            plan, state, frame, expression,
+        )?)),
         ExprKind::Nil(expression) => {
-            eval_nil_expr(plan, frame, expression)?;
-            Ok(Value::Nil)
+            eval_nil_expr(plan, state, frame, expression)?;
+            Ok(EvaluatedValue::Nil)
         }
-        ExprKind::Tuple(expression) => Ok(Value::Tuple(eval_tuple_expr(plan, frame, expression)?)),
-        ExprKind::List(expression) => Ok(Value::List(eval_list_expr(plan, frame, expression)?)),
+        ExprKind::Tuple(expression) => Ok(EvaluatedValue::Tuple(eval_tuple_expr(
+            plan, state, frame, expression,
+        )?)),
+        ExprKind::List(expression) => Ok(EvaluatedValue::List(eval_list_expr(
+            plan, state, frame, expression,
+        )?)),
         ExprKind::Function(expression) => {
-            let value = eval_function_expr(plan, frame, expression)?;
-            Ok(Value::Function(value))
+            let value = eval_function_expr(plan, state, frame, expression)?;
+            Ok(EvaluatedValue::Function(value))
         }
     }
 }
 
 pub(super) fn eval_panic_expr(
     plan: &ExecutionPlan,
+    state: &mut RuntimeState,
     frame: &mut Frame,
     expression: &PanicExpr,
 ) -> Result<Infallible, ExecutionError> {
     let (kind, message) = match expression.kind() {
         PanicExprKind::Panic { message } => (
             PanicKind::Panic,
-            eval_panic_message(plan, frame, message.as_deref())?,
+            eval_panic_message(plan, state, frame, message.as_deref())?,
         ),
         PanicExprKind::Todo { message } => (
             PanicKind::Todo,
-            eval_panic_message(plan, frame, message.as_deref())?,
+            eval_panic_message(plan, state, frame, message.as_deref())?,
         ),
         PanicExprKind::EmptyFunction => (PanicKind::EmptyFunction, None),
         PanicExprKind::EmptyBlock => (PanicKind::EmptyBlock, None),
@@ -88,11 +102,12 @@ pub(super) fn eval_panic_expr(
 
 fn eval_panic_message(
     plan: &ExecutionPlan,
+    state: &mut RuntimeState,
     frame: &mut Frame,
     message: Option<&crate::plan::execution::StringExpr>,
 ) -> Result<Option<ecow::EcoString>, ExecutionError> {
     match message {
-        Some(message) => Ok(Some(eval_string_expr(plan, frame, message)?)),
+        Some(message) => Ok(Some(eval_string_expr(plan, state, frame, message)?)),
         None => Ok(None),
     }
 }
@@ -110,12 +125,15 @@ mod tests {
     use crate::plan::execution::{
         BoolFunctionFunctionId, BoolFunctionId, FloatFunctionFunctionId, FloatFunctionId,
         FunctionFunctionFunctionId, IntFunctionFunctionId, IntFunctionId, NilFunctionFunctionId,
-        NilFunctionId, ReturnBody, ReturnBodyKind, RuntimeFunctionId, StringFunctionFunctionId,
-        StringFunctionId, TupleFunctionFunctionId, TupleFunctionId, TupleLocalId,
+        NilFunctionId, ReturnBody, ReturnBodyKind, StringFunctionFunctionId, StringFunctionId,
+        TupleFunctionFunctionId, TupleFunctionId, TupleLocalId,
     };
     use crate::plan::{FunctionType, ValueType};
     use crate::runtime::frame::Frame;
-    use crate::runtime::{ExecutionError, FunctionValue, ListValue, Value};
+    use crate::runtime::{
+        EvaluatedFunctionValue, EvaluatedIntFunction, EvaluatedStringFunction, EvaluatedValue,
+        ExecutionError,
+    };
 
     #[test]
     fn panic_and_todo_message_errors_propagate() {
@@ -195,15 +213,16 @@ pub fn main() { Nil }
 "#,
         );
         let actual = ValueType::Tuple(Vec::new());
-        let wrong_tuple = vec![Value::Tuple(Vec::new())];
+        let wrong_tuple = vec![EvaluatedValue::Tuple(Vec::new())];
 
         let function = plan.int_function(IntFunctionId(0));
         let expression = expression_return(function.return_())
             .expect("source function should have an expression return body");
-        let mut frame = Frame::new(function.frame_layout());
+        let mut state = crate::runtime::RuntimeState::new();
+        let mut frame = Frame::new(function.frame_layout(), &mut state);
         frame.set_tuple(TupleLocalId(0), wrong_tuple.clone());
         assert_eq!(
-            eval_int_expr(&plan, &mut frame, expression),
+            eval_int_expr(&plan, &mut state, &mut frame, expression),
             Err(ExecutionError::tuple_index_family_mismatch(
                 ValueType::Int,
                 actual.clone(),
@@ -211,7 +230,7 @@ pub fn main() { Nil }
         );
         frame.set_tuple(TupleLocalId(0), Vec::new());
         assert_eq!(
-            eval_int_expr(&plan, &mut frame, expression),
+            eval_int_expr(&plan, &mut state, &mut frame, expression),
             Err(ExecutionError::tuple_index_family_mismatch(
                 ValueType::Int,
                 ValueType::Tuple(Vec::new()),
@@ -221,10 +240,11 @@ pub fn main() { Nil }
         let function = plan.string_function(StringFunctionId(0));
         let expression = expression_return(function.return_())
             .expect("source function should have an expression return body");
-        let mut frame = Frame::new(function.frame_layout());
+        let mut state = crate::runtime::RuntimeState::new();
+        let mut frame = Frame::new(function.frame_layout(), &mut state);
         frame.set_tuple(TupleLocalId(0), wrong_tuple.clone());
         assert_eq!(
-            eval_string_expr(&plan, &mut frame, expression),
+            eval_string_expr(&plan, &mut state, &mut frame, expression),
             Err(ExecutionError::tuple_index_family_mismatch(
                 ValueType::String,
                 actual.clone(),
@@ -234,10 +254,11 @@ pub fn main() { Nil }
         let function = plan.float_function(FloatFunctionId(0));
         let expression = expression_return(function.return_())
             .expect("source function should have an expression return body");
-        let mut frame = Frame::new(function.frame_layout());
+        let mut state = crate::runtime::RuntimeState::new();
+        let mut frame = Frame::new(function.frame_layout(), &mut state);
         frame.set_tuple(TupleLocalId(0), wrong_tuple.clone());
         assert_eq!(
-            eval_float_expr(&plan, &mut frame, expression),
+            eval_float_expr(&plan, &mut state, &mut frame, expression),
             Err(ExecutionError::tuple_index_family_mismatch(
                 ValueType::Float,
                 actual.clone(),
@@ -247,10 +268,11 @@ pub fn main() { Nil }
         let function = plan.bool_function(BoolFunctionId(0));
         let expression = expression_return(function.return_())
             .expect("source function should have an expression return body");
-        let mut frame = Frame::new(function.frame_layout());
+        let mut state = crate::runtime::RuntimeState::new();
+        let mut frame = Frame::new(function.frame_layout(), &mut state);
         frame.set_tuple(TupleLocalId(0), wrong_tuple.clone());
         assert_eq!(
-            eval_bool_expr(&plan, &mut frame, expression),
+            eval_bool_expr(&plan, &mut state, &mut frame, expression),
             Err(ExecutionError::tuple_index_family_mismatch(
                 ValueType::Bool,
                 actual.clone(),
@@ -260,10 +282,11 @@ pub fn main() { Nil }
         let function = plan.nil_function(NilFunctionId(1));
         let expression = expression_return(function.return_())
             .expect("source function should have an expression return body");
-        let mut frame = Frame::new(function.frame_layout());
+        let mut state = crate::runtime::RuntimeState::new();
+        let mut frame = Frame::new(function.frame_layout(), &mut state);
         frame.set_tuple(TupleLocalId(0), wrong_tuple.clone());
         assert_eq!(
-            eval_nil_expr(&plan, &mut frame, expression),
+            eval_nil_expr(&plan, &mut state, &mut frame, expression),
             Err(ExecutionError::tuple_index_family_mismatch(
                 ValueType::Nil,
                 actual.clone(),
@@ -273,10 +296,14 @@ pub fn main() { Nil }
         let function = plan.tuple_function(TupleFunctionId(0));
         let expression = expression_return(function.return_())
             .expect("source function should have an expression return body");
-        let mut frame = Frame::new(function.frame_layout());
-        frame.set_tuple(TupleLocalId(0), vec![Value::String("wrong".into())]);
+        let mut state = crate::runtime::RuntimeState::new();
+        let mut frame = Frame::new(function.frame_layout(), &mut state);
+        frame.set_tuple(
+            TupleLocalId(0),
+            vec![EvaluatedValue::String("wrong".into())],
+        );
         assert_eq!(
-            eval_tuple_expr(&plan, &mut frame, expression),
+            eval_tuple_expr(&plan, &mut state, &mut frame, expression),
             Err(ExecutionError::tuple_index_family_mismatch(
                 ValueType::Tuple(vec![ValueType::Int]),
                 ValueType::String,
@@ -286,34 +313,24 @@ pub fn main() { Nil }
         let function = plan.int_list_function(plan.int_list_function_id(0));
         let expression = expression_return(function.return_())
             .expect("source function should have an expression return body");
-        let mut frame = Frame::new(function.frame_layout());
+        let mut state = crate::runtime::RuntimeState::new();
+        let mut frame = Frame::new(function.frame_layout(), &mut state);
         frame.set_tuple(TupleLocalId(0), wrong_tuple.clone());
         assert_eq!(
-            eval_int_list_expr(&plan, &mut frame, expression),
+            eval_int_list_expr(&plan, &mut state, &mut frame, expression),
             Err(ExecutionError::tuple_index_family_mismatch(
                 ValueType::List(Box::new(ValueType::Int)),
                 actual.clone(),
             )),
         );
-        frame.set_tuple(
-            TupleLocalId(0),
-            vec![Value::List(ListValue::string(vec!["wrong".into()]))],
-        );
-        assert_eq!(
-            eval_int_list_expr(&plan, &mut frame, expression),
-            Err(ExecutionError::tuple_index_family_mismatch(
-                ValueType::List(Box::new(ValueType::Int)),
-                ValueType::List(Box::new(ValueType::String)),
-            )),
-        );
-
         let function = plan.string_list_function(plan.string_list_function_id(0));
         let expression = expression_return(function.return_())
             .expect("source function should have an expression return body");
-        let mut frame = Frame::new(function.frame_layout());
+        let mut state = crate::runtime::RuntimeState::new();
+        let mut frame = Frame::new(function.frame_layout(), &mut state);
         frame.set_tuple(TupleLocalId(0), wrong_tuple.clone());
         assert_eq!(
-            eval_string_list_expr(&plan, &mut frame, expression),
+            eval_string_list_expr(&plan, &mut state, &mut frame, expression),
             Err(ExecutionError::tuple_index_family_mismatch(
                 ValueType::List(Box::new(ValueType::String)),
                 actual.clone(),
@@ -323,10 +340,11 @@ pub fn main() { Nil }
         let function = plan.float_list_function(plan.float_list_function_id(0));
         let expression = expression_return(function.return_())
             .expect("source function should have an expression return body");
-        let mut frame = Frame::new(function.frame_layout());
+        let mut state = crate::runtime::RuntimeState::new();
+        let mut frame = Frame::new(function.frame_layout(), &mut state);
         frame.set_tuple(TupleLocalId(0), wrong_tuple.clone());
         assert_eq!(
-            eval_float_list_expr(&plan, &mut frame, expression),
+            eval_float_list_expr(&plan, &mut state, &mut frame, expression),
             Err(ExecutionError::tuple_index_family_mismatch(
                 ValueType::List(Box::new(ValueType::Float)),
                 actual.clone(),
@@ -336,10 +354,11 @@ pub fn main() { Nil }
         let function = plan.bool_list_function(plan.bool_list_function_id(0));
         let expression = expression_return(function.return_())
             .expect("source function should have an expression return body");
-        let mut frame = Frame::new(function.frame_layout());
+        let mut state = crate::runtime::RuntimeState::new();
+        let mut frame = Frame::new(function.frame_layout(), &mut state);
         frame.set_tuple(TupleLocalId(0), wrong_tuple.clone());
         assert_eq!(
-            eval_bool_list_expr(&plan, &mut frame, expression),
+            eval_bool_list_expr(&plan, &mut state, &mut frame, expression),
             Err(ExecutionError::tuple_index_family_mismatch(
                 ValueType::List(Box::new(ValueType::Bool)),
                 actual.clone(),
@@ -349,10 +368,11 @@ pub fn main() { Nil }
         let function = plan.nil_list_function(plan.nil_list_function_id(0));
         let expression = expression_return(function.return_())
             .expect("source function should have an expression return body");
-        let mut frame = Frame::new(function.frame_layout());
+        let mut state = crate::runtime::RuntimeState::new();
+        let mut frame = Frame::new(function.frame_layout(), &mut state);
         frame.set_tuple(TupleLocalId(0), wrong_tuple.clone());
         assert_eq!(
-            eval_nil_list_expr(&plan, &mut frame, expression),
+            eval_nil_list_expr(&plan, &mut state, &mut frame, expression),
             Err(ExecutionError::tuple_index_family_mismatch(
                 ValueType::List(Box::new(ValueType::Nil)),
                 actual.clone(),
@@ -362,10 +382,11 @@ pub fn main() { Nil }
         let function = plan.tuple_list_function(plan.tuple_list_function_id(0));
         let expression = expression_return(function.return_())
             .expect("source function should have an expression return body");
-        let mut frame = Frame::new(function.frame_layout());
+        let mut state = crate::runtime::RuntimeState::new();
+        let mut frame = Frame::new(function.frame_layout(), &mut state);
         frame.set_tuple(TupleLocalId(0), wrong_tuple.clone());
         assert_eq!(
-            eval_tuple_list_expr(&plan, &mut frame, expression),
+            eval_tuple_list_expr(&plan, &mut state, &mut frame, expression),
             Err(ExecutionError::tuple_index_family_mismatch(
                 ValueType::List(Box::new(ValueType::Tuple(vec![ValueType::Int]))),
                 actual.clone(),
@@ -375,10 +396,11 @@ pub fn main() { Nil }
         let function = plan.list_list_function(plan.list_list_function_id(0));
         let expression = expression_return(function.return_())
             .expect("source function should have an expression return body");
-        let mut frame = Frame::new(function.frame_layout());
+        let mut state = crate::runtime::RuntimeState::new();
+        let mut frame = Frame::new(function.frame_layout(), &mut state);
         frame.set_tuple(TupleLocalId(0), wrong_tuple.clone());
         assert_eq!(
-            eval_list_list_expr(&plan, &mut frame, expression),
+            eval_list_list_expr(&plan, &mut state, &mut frame, expression),
             Err(ExecutionError::tuple_index_family_mismatch(
                 ValueType::List(Box::new(ValueType::List(Box::new(ValueType::Int)))),
                 actual.clone(),
@@ -388,11 +410,12 @@ pub fn main() { Nil }
         let function = plan.function_list_function(plan.function_list_function_id(0));
         let expression = expression_return(function.return_())
             .expect("source function should have an expression return body");
-        let mut frame = Frame::new(function.frame_layout());
+        let mut state = crate::runtime::RuntimeState::new();
+        let mut frame = Frame::new(function.frame_layout(), &mut state);
         frame.set_tuple(TupleLocalId(0), wrong_tuple.clone());
         let int_function_type = FunctionType::new(Vec::new(), ValueType::Int);
         assert_eq!(
-            eval_function_list_expr(&plan, &mut frame, expression),
+            eval_function_list_expr(&plan, &mut state, &mut frame, expression),
             Err(ExecutionError::tuple_index_family_mismatch(
                 ValueType::List(Box::new(ValueType::Function(Box::new(
                     int_function_type.clone(),
@@ -415,10 +438,11 @@ pub fn main() { Nil }
         let function = plan.int_function_function(IntFunctionFunctionId(0));
         let expression = expression_return(function.return_())
             .expect("source function should have an expression return body");
-        let mut frame = Frame::new(function.frame_layout());
+        let mut state = crate::runtime::RuntimeState::new();
+        let mut frame = Frame::new(function.frame_layout(), &mut state);
         frame.set_tuple(TupleLocalId(0), wrong_tuple.clone());
         assert_eq!(
-            eval_int_function_expr(&plan, &mut frame, expression),
+            eval_int_function_expr(&plan, &mut state, &mut frame, expression),
             Err(ExecutionError::tuple_index_family_mismatch(
                 ValueType::Function(Box::new(expected_function_types[0].clone())),
                 actual.clone(),
@@ -428,10 +452,11 @@ pub fn main() { Nil }
         let function = plan.string_function_function(StringFunctionFunctionId(0));
         let expression = expression_return(function.return_())
             .expect("source function should have an expression return body");
-        let mut frame = Frame::new(function.frame_layout());
+        let mut state = crate::runtime::RuntimeState::new();
+        let mut frame = Frame::new(function.frame_layout(), &mut state);
         frame.set_tuple(TupleLocalId(0), wrong_tuple.clone());
         assert_eq!(
-            eval_string_function_expr(&plan, &mut frame, expression),
+            eval_string_function_expr(&plan, &mut state, &mut frame, expression),
             Err(ExecutionError::tuple_index_family_mismatch(
                 ValueType::Function(Box::new(expected_function_types[1].clone())),
                 actual.clone(),
@@ -441,10 +466,11 @@ pub fn main() { Nil }
         let function = plan.float_function_function(FloatFunctionFunctionId(0));
         let expression = expression_return(function.return_())
             .expect("source function should have an expression return body");
-        let mut frame = Frame::new(function.frame_layout());
+        let mut state = crate::runtime::RuntimeState::new();
+        let mut frame = Frame::new(function.frame_layout(), &mut state);
         frame.set_tuple(TupleLocalId(0), wrong_tuple.clone());
         assert_eq!(
-            eval_float_function_expr(&plan, &mut frame, expression),
+            eval_float_function_expr(&plan, &mut state, &mut frame, expression),
             Err(ExecutionError::tuple_index_family_mismatch(
                 ValueType::Function(Box::new(expected_function_types[2].clone())),
                 actual.clone(),
@@ -454,10 +480,11 @@ pub fn main() { Nil }
         let function = plan.bool_function_function(BoolFunctionFunctionId(0));
         let expression = expression_return(function.return_())
             .expect("source function should have an expression return body");
-        let mut frame = Frame::new(function.frame_layout());
+        let mut state = crate::runtime::RuntimeState::new();
+        let mut frame = Frame::new(function.frame_layout(), &mut state);
         frame.set_tuple(TupleLocalId(0), wrong_tuple.clone());
         assert_eq!(
-            eval_bool_function_expr(&plan, &mut frame, expression),
+            eval_bool_function_expr(&plan, &mut state, &mut frame, expression),
             Err(ExecutionError::tuple_index_family_mismatch(
                 ValueType::Function(Box::new(expected_function_types[3].clone())),
                 actual.clone(),
@@ -467,10 +494,11 @@ pub fn main() { Nil }
         let function = plan.nil_function_function(NilFunctionFunctionId(0));
         let expression = expression_return(function.return_())
             .expect("source function should have an expression return body");
-        let mut frame = Frame::new(function.frame_layout());
+        let mut state = crate::runtime::RuntimeState::new();
+        let mut frame = Frame::new(function.frame_layout(), &mut state);
         frame.set_tuple(TupleLocalId(0), wrong_tuple.clone());
         assert_eq!(
-            eval_nil_function_expr(&plan, &mut frame, expression),
+            eval_nil_function_expr(&plan, &mut state, &mut frame, expression),
             Err(ExecutionError::tuple_index_family_mismatch(
                 ValueType::Function(Box::new(expected_function_types[4].clone())),
                 actual.clone(),
@@ -480,10 +508,11 @@ pub fn main() { Nil }
         let function = plan.tuple_function_function(TupleFunctionFunctionId(0));
         let expression = expression_return(function.return_())
             .expect("source function should have an expression return body");
-        let mut frame = Frame::new(function.frame_layout());
+        let mut state = crate::runtime::RuntimeState::new();
+        let mut frame = Frame::new(function.frame_layout(), &mut state);
         frame.set_tuple(TupleLocalId(0), wrong_tuple.clone());
         assert_eq!(
-            eval_tuple_function_expr(&plan, &mut frame, expression),
+            eval_tuple_function_expr(&plan, &mut state, &mut frame, expression),
             Err(ExecutionError::tuple_index_family_mismatch(
                 ValueType::Function(Box::new(expected_function_types[5].clone())),
                 actual.clone(),
@@ -494,10 +523,11 @@ pub fn main() { Nil }
             plan.int_list_function_function(crate::plan::execution::IntListFunctionFunctionId(0));
         let expression = expression_return(function.return_())
             .expect("source function should have an expression return body");
-        let mut frame = Frame::new(function.frame_layout());
+        let mut state = crate::runtime::RuntimeState::new();
+        let mut frame = Frame::new(function.frame_layout(), &mut state);
         frame.set_tuple(TupleLocalId(0), wrong_tuple.clone());
         assert_eq!(
-            eval_list_function_expr(&plan, &mut frame, expression),
+            eval_list_function_expr(&plan, &mut state, &mut frame, expression),
             Err(ExecutionError::tuple_index_family_mismatch(
                 ValueType::Function(Box::new(expected_function_types[6].clone())),
                 actual.clone(),
@@ -507,39 +537,50 @@ pub fn main() { Nil }
         let function = plan.function_function_function(FunctionFunctionFunctionId(0));
         let expression = expression_return(function.return_())
             .expect("source function should have an expression return body");
-        let mut frame = Frame::new(function.frame_layout());
+        let mut state = crate::runtime::RuntimeState::new();
+        let mut frame = Frame::new(function.frame_layout(), &mut state);
         frame.set_tuple(TupleLocalId(0), wrong_tuple.clone());
         assert_eq!(
-            eval_function_function_expr(&plan, &mut frame, expression),
+            eval_function_function_expr(&plan, &mut state, &mut frame, expression),
             Err(ExecutionError::tuple_index_family_mismatch(
                 ValueType::Function(Box::new(expected_function_types[7].clone())),
                 actual.clone(),
             )),
         );
 
-        let wrong_string_function = FunctionValue::new(
-            RuntimeFunctionId::String(StringFunctionId(0)),
+        let wrong_string_function = EvaluatedStringFunction::new(
+            StringFunctionId(0),
             Vec::new(),
-            FunctionType::new(Vec::new(), ValueType::String),
-        );
-        let wrong_int_function = FunctionValue::new(
-            RuntimeFunctionId::Int(IntFunctionId(0)),
             Vec::new(),
-            FunctionType::new(Vec::new(), ValueType::Int),
+            crate::runtime::evaluated::function_type(
+                &[],
+                crate::plan::execution::ValueType::String,
+            ),
         );
-        let wrong_string_type = ValueType::Function(Box::new(wrong_string_function.type_()));
-        let wrong_int_type = ValueType::Function(Box::new(wrong_int_function.type_()));
+        let wrong_int_function = EvaluatedIntFunction::new(
+            IntFunctionId(0),
+            Vec::new(),
+            Vec::new(),
+            crate::runtime::evaluated::function_type(&[], crate::plan::execution::ValueType::Int),
+        );
+        let wrong_string_type =
+            ValueType::Function(Box::new(plan.function_type(wrong_string_function.type_())));
+        let wrong_int_type =
+            ValueType::Function(Box::new(plan.function_type(wrong_int_function.type_())));
 
         let function = plan.int_function_function(IntFunctionFunctionId(0));
         let expression = expression_return(function.return_())
             .expect("source function should have an expression return body");
-        let mut frame = Frame::new(function.frame_layout());
+        let mut state = crate::runtime::RuntimeState::new();
+        let mut frame = Frame::new(function.frame_layout(), &mut state);
         frame.set_tuple(
             TupleLocalId(0),
-            vec![Value::Function(wrong_string_function)],
+            vec![EvaluatedValue::Function(EvaluatedFunctionValue::from_kind(
+                crate::runtime::EvaluatedFunctionValueKind::String(wrong_string_function),
+            ))],
         );
         assert_eq!(
-            eval_int_function_expr(&plan, &mut frame, expression),
+            eval_int_function_expr(&plan, &mut state, &mut frame, expression),
             Err(ExecutionError::tuple_index_family_mismatch(
                 ValueType::Function(Box::new(expected_function_types[0].clone())),
                 wrong_string_type,
@@ -549,13 +590,14 @@ pub fn main() { Nil }
         let function = plan.string_function_function(StringFunctionFunctionId(0));
         let expression = expression_return(function.return_())
             .expect("source function should have an expression return body");
-        let mut frame = Frame::new(function.frame_layout());
+        let mut state = crate::runtime::RuntimeState::new();
+        let mut frame = Frame::new(function.frame_layout(), &mut state);
         frame.set_tuple(
             TupleLocalId(0),
-            vec![Value::Function(wrong_int_function.clone())],
+            vec![EvaluatedValue::Function(wrong_int_function.clone().into())],
         );
         assert_eq!(
-            eval_string_function_expr(&plan, &mut frame, expression),
+            eval_string_function_expr(&plan, &mut state, &mut frame, expression),
             Err(ExecutionError::tuple_index_family_mismatch(
                 ValueType::Function(Box::new(expected_function_types[1].clone())),
                 wrong_int_type.clone(),
@@ -565,13 +607,14 @@ pub fn main() { Nil }
         let function = plan.float_function_function(FloatFunctionFunctionId(0));
         let expression = expression_return(function.return_())
             .expect("source function should have an expression return body");
-        let mut frame = Frame::new(function.frame_layout());
+        let mut state = crate::runtime::RuntimeState::new();
+        let mut frame = Frame::new(function.frame_layout(), &mut state);
         frame.set_tuple(
             TupleLocalId(0),
-            vec![Value::Function(wrong_int_function.clone())],
+            vec![EvaluatedValue::Function(wrong_int_function.clone().into())],
         );
         assert_eq!(
-            eval_float_function_expr(&plan, &mut frame, expression),
+            eval_float_function_expr(&plan, &mut state, &mut frame, expression),
             Err(ExecutionError::tuple_index_family_mismatch(
                 ValueType::Function(Box::new(expected_function_types[2].clone())),
                 wrong_int_type.clone(),
@@ -581,13 +624,14 @@ pub fn main() { Nil }
         let function = plan.bool_function_function(BoolFunctionFunctionId(0));
         let expression = expression_return(function.return_())
             .expect("source function should have an expression return body");
-        let mut frame = Frame::new(function.frame_layout());
+        let mut state = crate::runtime::RuntimeState::new();
+        let mut frame = Frame::new(function.frame_layout(), &mut state);
         frame.set_tuple(
             TupleLocalId(0),
-            vec![Value::Function(wrong_int_function.clone())],
+            vec![EvaluatedValue::Function(wrong_int_function.clone().into())],
         );
         assert_eq!(
-            eval_bool_function_expr(&plan, &mut frame, expression),
+            eval_bool_function_expr(&plan, &mut state, &mut frame, expression),
             Err(ExecutionError::tuple_index_family_mismatch(
                 ValueType::Function(Box::new(expected_function_types[3].clone())),
                 wrong_int_type.clone(),
@@ -597,13 +641,14 @@ pub fn main() { Nil }
         let function = plan.nil_function_function(NilFunctionFunctionId(0));
         let expression = expression_return(function.return_())
             .expect("source function should have an expression return body");
-        let mut frame = Frame::new(function.frame_layout());
+        let mut state = crate::runtime::RuntimeState::new();
+        let mut frame = Frame::new(function.frame_layout(), &mut state);
         frame.set_tuple(
             TupleLocalId(0),
-            vec![Value::Function(wrong_int_function.clone())],
+            vec![EvaluatedValue::Function(wrong_int_function.clone().into())],
         );
         assert_eq!(
-            eval_nil_function_expr(&plan, &mut frame, expression),
+            eval_nil_function_expr(&plan, &mut state, &mut frame, expression),
             Err(ExecutionError::tuple_index_family_mismatch(
                 ValueType::Function(Box::new(expected_function_types[4].clone())),
                 wrong_int_type.clone(),
@@ -613,13 +658,14 @@ pub fn main() { Nil }
         let function = plan.tuple_function_function(TupleFunctionFunctionId(0));
         let expression = expression_return(function.return_())
             .expect("source function should have an expression return body");
-        let mut frame = Frame::new(function.frame_layout());
+        let mut state = crate::runtime::RuntimeState::new();
+        let mut frame = Frame::new(function.frame_layout(), &mut state);
         frame.set_tuple(
             TupleLocalId(0),
-            vec![Value::Function(wrong_int_function.clone())],
+            vec![EvaluatedValue::Function(wrong_int_function.clone().into())],
         );
         assert_eq!(
-            eval_tuple_function_expr(&plan, &mut frame, expression),
+            eval_tuple_function_expr(&plan, &mut state, &mut frame, expression),
             Err(ExecutionError::tuple_index_family_mismatch(
                 ValueType::Function(Box::new(expected_function_types[5].clone())),
                 wrong_int_type.clone(),
@@ -630,13 +676,14 @@ pub fn main() { Nil }
             plan.int_list_function_function(crate::plan::execution::IntListFunctionFunctionId(0));
         let expression = expression_return(function.return_())
             .expect("source function should have an expression return body");
-        let mut frame = Frame::new(function.frame_layout());
+        let mut state = crate::runtime::RuntimeState::new();
+        let mut frame = Frame::new(function.frame_layout(), &mut state);
         frame.set_tuple(
             TupleLocalId(0),
-            vec![Value::Function(wrong_int_function.clone())],
+            vec![EvaluatedValue::Function(wrong_int_function.clone().into())],
         );
         assert_eq!(
-            eval_list_function_expr(&plan, &mut frame, expression),
+            eval_list_function_expr(&plan, &mut state, &mut frame, expression),
             Err(ExecutionError::tuple_index_family_mismatch(
                 ValueType::Function(Box::new(expected_function_types[6].clone())),
                 wrong_int_type.clone(),
@@ -646,10 +693,14 @@ pub fn main() { Nil }
         let function = plan.function_function_function(FunctionFunctionFunctionId(0));
         let expression = expression_return(function.return_())
             .expect("source function should have an expression return body");
-        let mut frame = Frame::new(function.frame_layout());
-        frame.set_tuple(TupleLocalId(0), vec![Value::Function(wrong_int_function)]);
+        let mut state = crate::runtime::RuntimeState::new();
+        let mut frame = Frame::new(function.frame_layout(), &mut state);
+        frame.set_tuple(
+            TupleLocalId(0),
+            vec![EvaluatedValue::Function(wrong_int_function.into())],
+        );
         assert_eq!(
-            eval_function_function_expr(&plan, &mut frame, expression),
+            eval_function_function_expr(&plan, &mut state, &mut frame, expression),
             Err(ExecutionError::tuple_index_family_mismatch(
                 ValueType::Function(Box::new(expected_function_types[7].clone())),
                 wrong_int_type,

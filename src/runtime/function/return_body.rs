@@ -19,7 +19,15 @@ use crate::runtime::expression::{
     eval_tuple_expr, eval_tuple_function_expr, eval_tuple_list_expr,
 };
 use crate::runtime::frame::Frame;
-use crate::runtime::{FunctionFunctionValue, FunctionValue, ListFunctionValue, ListValue, Value};
+use crate::runtime::state::{
+    BoolListValueId, FloatListValueId, FunctionListValueId, IntListValueId, ListListValueId,
+    ListValueId, NilListValueId, RuntimeState, StringListValueId, TupleListValueId,
+};
+use crate::runtime::{
+    EvaluatedBoolFunction, EvaluatedFloatFunction, EvaluatedFunctionFunction, EvaluatedIntFunction,
+    EvaluatedListFunction, EvaluatedNilFunction, EvaluatedStringFunction, EvaluatedTupleFunction,
+    EvaluatedValue,
+};
 use ecow::EcoString;
 use num_bigint::BigInt;
 
@@ -31,18 +39,47 @@ enum ReturnOutcome<'a, Value, Function> {
     },
 }
 
+fn finish_return<Value>(
+    state: &mut RuntimeState,
+    frame: Frame,
+    value: Value,
+) -> ExecutionResult<Value> {
+    drop(frame);
+    state.drain_releases();
+    Ok(value)
+}
+
+fn bind_tail_arguments(
+    plan: &ExecutionPlan,
+    state: &mut RuntimeState,
+    args: &[CallArg],
+    mut frame: Frame,
+    frame_layout: &crate::plan::execution::FrameLayout,
+) -> ExecutionResult<Frame> {
+    let next = bind_arguments(plan, state, args, &mut frame, frame_layout)?;
+    drop(frame);
+    state.drain_releases();
+    Ok(next)
+}
+
 fn eval_return_body<'a, Expression, Function, Value>(
     plan: &ExecutionPlan,
+    state: &mut RuntimeState,
     frame: &mut Frame,
     body: &'a ReturnBody<Expression, Function>,
-    eval_expression: fn(&ExecutionPlan, &mut Frame, &Expression) -> ExecutionResult<Value>,
+    eval_expression: fn(
+        &ExecutionPlan,
+        &mut RuntimeState,
+        &mut Frame,
+        &Expression,
+    ) -> ExecutionResult<Value>,
 ) -> ExecutionResult<ReturnOutcome<'a, Value, Function>>
 where
     Function: Clone,
 {
     match body.kind() {
         ReturnBodyKind::Expr(expression) => {
-            eval_expression(plan, frame, expression).map(ReturnOutcome::Value)
+            eval_expression(plan, state, frame, expression).map(ReturnOutcome::Value)
         }
         ReturnBodyKind::TailCall { function, args } => Ok(ReturnOutcome::TailCall {
             function: function.clone(),
@@ -53,10 +90,10 @@ where
             true_,
             false_,
         } => {
-            if eval_bool_expr(plan, frame, subject)? {
-                eval_return_body(plan, frame, true_, eval_expression)
+            if eval_bool_expr(plan, state, frame, subject)? {
+                eval_return_body(plan, state, frame, true_, eval_expression)
             } else {
-                eval_return_body(plan, frame, false_, eval_expression)
+                eval_return_body(plan, state, frame, false_, eval_expression)
             }
         }
         ReturnBodyKind::IntCase {
@@ -64,65 +101,66 @@ where
             clauses,
             fallback,
         } => {
-            let subject = eval_int_expr(plan, frame, subject)?;
+            let subject = eval_int_expr(plan, state, frame, subject)?;
             for (pattern, branch) in clauses {
                 if pattern == &subject {
-                    return eval_return_body(plan, frame, branch, eval_expression);
+                    return eval_return_body(plan, state, frame, branch, eval_expression);
                 }
             }
-            eval_return_body(plan, frame, fallback, eval_expression)
+            eval_return_body(plan, state, frame, fallback, eval_expression)
         }
         ReturnBodyKind::FloatCase {
             subject,
             clauses,
             fallback,
         } => {
-            let subject = eval_float_expr(plan, frame, subject)?;
+            let subject = eval_float_expr(plan, state, frame, subject)?;
             for (pattern, branch) in clauses {
                 if pattern == &subject {
-                    return eval_return_body(plan, frame, branch, eval_expression);
+                    return eval_return_body(plan, state, frame, branch, eval_expression);
                 }
             }
-            eval_return_body(plan, frame, fallback, eval_expression)
+            eval_return_body(plan, state, frame, fallback, eval_expression)
         }
         ReturnBodyKind::StringCase {
             subject,
             clauses,
             fallback,
         } => {
-            let subject = eval_string_expr(plan, frame, subject)?;
+            let subject = eval_string_expr(plan, state, frame, subject)?;
             for (pattern, branch) in clauses {
                 if pattern == &subject {
-                    return eval_return_body(plan, frame, branch, eval_expression);
+                    return eval_return_body(plan, state, frame, branch, eval_expression);
                 }
             }
-            eval_return_body(plan, frame, fallback, eval_expression)
+            eval_return_body(plan, state, frame, fallback, eval_expression)
         }
         ReturnBodyKind::Block { steps, return_ } => {
-            execute_steps(plan, steps, frame)?;
-            eval_return_body(plan, frame, return_, eval_expression)
+            execute_steps(plan, state, steps, frame)?;
+            eval_return_body(plan, state, frame, return_, eval_expression)
         }
     }
 }
 
 pub(super) fn run_int_loop(
     plan: &ExecutionPlan,
+    state: &mut RuntimeState,
     mut function: IntFunctionId,
     mut frame: Frame,
 ) -> ExecutionResult<BigInt> {
     loop {
         let runtime_function = plan.int_function(function);
-        execute_steps(plan, runtime_function.steps(), &mut frame)?;
+        execute_steps(plan, state, runtime_function.steps(), &mut frame)?;
         let eval = eval_int_expr;
-        let outcome = eval_return_body(plan, &mut frame, runtime_function.return_(), eval)?;
+        let outcome = eval_return_body(plan, state, &mut frame, runtime_function.return_(), eval)?;
         match outcome {
-            ReturnOutcome::Value(value) => return Ok(value),
+            ReturnOutcome::Value(value) => return finish_return(state, frame, value),
             ReturnOutcome::TailCall {
                 function: next,
                 args,
             } => {
                 let frame_layout = plan.int_function(next).frame_layout();
-                frame = bind_arguments(plan, args, &mut frame, frame_layout)?;
+                frame = bind_tail_arguments(plan, state, args, frame, frame_layout)?;
                 function = next;
             }
         }
@@ -131,22 +169,23 @@ pub(super) fn run_int_loop(
 
 pub(super) fn run_float_loop(
     plan: &ExecutionPlan,
+    state: &mut RuntimeState,
     mut function: FloatFunctionId,
     mut frame: Frame,
 ) -> ExecutionResult<f64> {
     loop {
         let runtime_function = plan.float_function(function);
-        execute_steps(plan, runtime_function.steps(), &mut frame)?;
+        execute_steps(plan, state, runtime_function.steps(), &mut frame)?;
         let eval = eval_float_expr;
-        let outcome = eval_return_body(plan, &mut frame, runtime_function.return_(), eval)?;
+        let outcome = eval_return_body(plan, state, &mut frame, runtime_function.return_(), eval)?;
         match outcome {
-            ReturnOutcome::Value(value) => return Ok(value),
+            ReturnOutcome::Value(value) => return finish_return(state, frame, value),
             ReturnOutcome::TailCall {
                 function: next,
                 args,
             } => {
                 let frame_layout = plan.float_function(next).frame_layout();
-                frame = bind_arguments(plan, args, &mut frame, frame_layout)?;
+                frame = bind_tail_arguments(plan, state, args, frame, frame_layout)?;
                 function = next;
             }
         }
@@ -155,22 +194,23 @@ pub(super) fn run_float_loop(
 
 pub(super) fn run_string_loop(
     plan: &ExecutionPlan,
+    state: &mut RuntimeState,
     mut function: StringFunctionId,
     mut frame: Frame,
 ) -> ExecutionResult<EcoString> {
     loop {
         let runtime_function = plan.string_function(function);
-        execute_steps(plan, runtime_function.steps(), &mut frame)?;
+        execute_steps(plan, state, runtime_function.steps(), &mut frame)?;
         let eval = eval_string_expr;
-        let outcome = eval_return_body(plan, &mut frame, runtime_function.return_(), eval)?;
+        let outcome = eval_return_body(plan, state, &mut frame, runtime_function.return_(), eval)?;
         match outcome {
-            ReturnOutcome::Value(value) => return Ok(value),
+            ReturnOutcome::Value(value) => return finish_return(state, frame, value),
             ReturnOutcome::TailCall {
                 function: next,
                 args,
             } => {
                 let frame_layout = plan.string_function(next).frame_layout();
-                frame = bind_arguments(plan, args, &mut frame, frame_layout)?;
+                frame = bind_tail_arguments(plan, state, args, frame, frame_layout)?;
                 function = next;
             }
         }
@@ -179,22 +219,23 @@ pub(super) fn run_string_loop(
 
 pub(super) fn run_bool_loop(
     plan: &ExecutionPlan,
+    state: &mut RuntimeState,
     mut function: BoolFunctionId,
     mut frame: Frame,
 ) -> ExecutionResult<bool> {
     loop {
         let runtime_function = plan.bool_function(function);
-        execute_steps(plan, runtime_function.steps(), &mut frame)?;
+        execute_steps(plan, state, runtime_function.steps(), &mut frame)?;
         let eval = eval_bool_expr;
-        let outcome = eval_return_body(plan, &mut frame, runtime_function.return_(), eval)?;
+        let outcome = eval_return_body(plan, state, &mut frame, runtime_function.return_(), eval)?;
         match outcome {
-            ReturnOutcome::Value(value) => return Ok(value),
+            ReturnOutcome::Value(value) => return finish_return(state, frame, value),
             ReturnOutcome::TailCall {
                 function: next,
                 args,
             } => {
                 let frame_layout = plan.bool_function(next).frame_layout();
-                frame = bind_arguments(plan, args, &mut frame, frame_layout)?;
+                frame = bind_tail_arguments(plan, state, args, frame, frame_layout)?;
                 function = next;
             }
         }
@@ -203,22 +244,23 @@ pub(super) fn run_bool_loop(
 
 pub(super) fn run_nil_loop(
     plan: &ExecutionPlan,
+    state: &mut RuntimeState,
     mut function: NilFunctionId,
     mut frame: Frame,
 ) -> ExecutionResult<()> {
     loop {
         let runtime_function = plan.nil_function(function);
-        execute_steps(plan, runtime_function.steps(), &mut frame)?;
+        execute_steps(plan, state, runtime_function.steps(), &mut frame)?;
         let eval = eval_nil_expr;
-        let outcome = eval_return_body(plan, &mut frame, runtime_function.return_(), eval)?;
+        let outcome = eval_return_body(plan, state, &mut frame, runtime_function.return_(), eval)?;
         match outcome {
-            ReturnOutcome::Value(()) => return Ok(()),
+            ReturnOutcome::Value(()) => return finish_return(state, frame, ()),
             ReturnOutcome::TailCall {
                 function: next,
                 args,
             } => {
                 let frame_layout = plan.nil_function(next).frame_layout();
-                frame = bind_arguments(plan, args, &mut frame, frame_layout)?;
+                frame = bind_tail_arguments(plan, state, args, frame, frame_layout)?;
                 function = next;
             }
         }
@@ -227,22 +269,23 @@ pub(super) fn run_nil_loop(
 
 pub(super) fn run_tuple_loop(
     plan: &ExecutionPlan,
+    state: &mut RuntimeState,
     mut function: TupleFunctionId,
     mut frame: Frame,
-) -> ExecutionResult<Vec<Value>> {
+) -> ExecutionResult<Vec<EvaluatedValue>> {
     loop {
         let runtime_function = plan.tuple_function(function);
-        execute_steps(plan, runtime_function.steps(), &mut frame)?;
+        execute_steps(plan, state, runtime_function.steps(), &mut frame)?;
         let eval = eval_tuple_expr;
-        let outcome = eval_return_body(plan, &mut frame, runtime_function.return_(), eval)?;
+        let outcome = eval_return_body(plan, state, &mut frame, runtime_function.return_(), eval)?;
         match outcome {
-            ReturnOutcome::Value(value) => return Ok(value),
+            ReturnOutcome::Value(value) => return finish_return(state, frame, value),
             ReturnOutcome::TailCall {
                 function: next,
                 args,
             } => {
                 let frame_layout = plan.tuple_function(next).frame_layout();
-                frame = bind_arguments(plan, args, &mut frame, frame_layout)?;
+                frame = bind_tail_arguments(plan, state, args, frame, frame_layout)?;
                 function = next;
             }
         }
@@ -251,69 +294,62 @@ pub(super) fn run_tuple_loop(
 
 pub(super) fn run_list_loop(
     plan: &ExecutionPlan,
+    state: &mut RuntimeState,
     function: ListFunctionId,
     frame: Frame,
-) -> ExecutionResult<ListValue> {
+) -> ExecutionResult<ListValueId> {
     match function {
         ListFunctionId::Int(function) => {
-            run_int_list_loop(plan, function, frame).map(ListValue::int)
+            run_int_list_loop(plan, state, function, frame).map(Into::into)
         }
         ListFunctionId::String(function) => {
-            run_string_list_loop(plan, function, frame).map(ListValue::string)
+            run_string_list_loop(plan, state, function, frame).map(Into::into)
         }
         ListFunctionId::Float(function) => {
-            run_float_list_loop(plan, function, frame).map(ListValue::float)
+            run_float_list_loop(plan, state, function, frame).map(Into::into)
         }
         ListFunctionId::Bool(function) => {
-            run_bool_list_loop(plan, function, frame).map(ListValue::bool)
+            run_bool_list_loop(plan, state, function, frame).map(Into::into)
         }
         ListFunctionId::Nil(function) => {
-            run_nil_list_loop(plan, function, frame).map(ListValue::nil)
+            run_nil_list_loop(plan, state, function, frame).map(Into::into)
         }
         ListFunctionId::Tuple(function) => {
-            run_tuple_list_loop(plan, function, frame).map(|values| {
-                ListValue::from_evaluated_tuple(
-                    plan.tuple_list_item_type(function.type_id()),
-                    values,
-                )
-            })
+            run_tuple_list_loop(plan, state, function, frame).map(Into::into)
         }
-        ListFunctionId::List(function) => run_list_list_loop(plan, function, frame).map(|values| {
-            ListValue::from_evaluated_list(plan.nested_list_item_type(function.type_id()), values)
-        }),
+        ListFunctionId::List(function) => {
+            run_list_list_loop(plan, state, function, frame).map(Into::into)
+        }
         ListFunctionId::Function(function) => {
-            run_function_list_loop(plan, function, frame).map(|values| {
-                ListValue::from_evaluated_function(
-                    plan.function_list_item_type(function.type_id()),
-                    values,
-                )
-            })
+            run_function_list_loop(plan, state, function, frame).map(Into::into)
         }
     }
 }
 
 pub(in crate::runtime) fn run_int_list_loop(
     plan: &ExecutionPlan,
+    state: &mut RuntimeState,
     mut function: IntListFunctionId,
     mut frame: Frame,
-) -> ExecutionResult<Vec<BigInt>> {
+) -> ExecutionResult<IntListValueId> {
     loop {
         let runtime_function = plan.int_list_function(function);
-        execute_steps(plan, runtime_function.steps(), &mut frame)?;
+        execute_steps(plan, state, runtime_function.steps(), &mut frame)?;
         let outcome = eval_return_body(
             plan,
+            state,
             &mut frame,
             runtime_function.return_(),
             eval_int_list_expr,
         )?;
         match outcome {
-            ReturnOutcome::Value(value) => return Ok(value),
+            ReturnOutcome::Value(value) => return finish_return(state, frame, value),
             ReturnOutcome::TailCall {
                 function: next,
                 args,
             } => {
                 let frame_layout = plan.int_list_function(next).frame_layout();
-                frame = bind_arguments(plan, args, &mut frame, frame_layout)?;
+                frame = bind_tail_arguments(plan, state, args, frame, frame_layout)?;
                 function = next;
             }
         }
@@ -322,26 +358,28 @@ pub(in crate::runtime) fn run_int_list_loop(
 
 pub(super) fn run_string_list_loop(
     plan: &ExecutionPlan,
+    state: &mut RuntimeState,
     mut function: StringListFunctionId,
     mut frame: Frame,
-) -> ExecutionResult<Vec<EcoString>> {
+) -> ExecutionResult<StringListValueId> {
     loop {
         let runtime_function = plan.string_list_function(function);
-        execute_steps(plan, runtime_function.steps(), &mut frame)?;
+        execute_steps(plan, state, runtime_function.steps(), &mut frame)?;
         let outcome = eval_return_body(
             plan,
+            state,
             &mut frame,
             runtime_function.return_(),
             eval_string_list_expr,
         )?;
         match outcome {
-            ReturnOutcome::Value(value) => return Ok(value),
+            ReturnOutcome::Value(value) => return finish_return(state, frame, value),
             ReturnOutcome::TailCall {
                 function: next,
                 args,
             } => {
                 let frame_layout = plan.string_list_function(next).frame_layout();
-                frame = bind_arguments(plan, args, &mut frame, frame_layout)?;
+                frame = bind_tail_arguments(plan, state, args, frame, frame_layout)?;
                 function = next;
             }
         }
@@ -350,26 +388,28 @@ pub(super) fn run_string_list_loop(
 
 pub(super) fn run_float_list_loop(
     plan: &ExecutionPlan,
+    state: &mut RuntimeState,
     mut function: FloatListFunctionId,
     mut frame: Frame,
-) -> ExecutionResult<Vec<f64>> {
+) -> ExecutionResult<FloatListValueId> {
     loop {
         let runtime_function = plan.float_list_function(function);
-        execute_steps(plan, runtime_function.steps(), &mut frame)?;
+        execute_steps(plan, state, runtime_function.steps(), &mut frame)?;
         let outcome = eval_return_body(
             plan,
+            state,
             &mut frame,
             runtime_function.return_(),
             eval_float_list_expr,
         )?;
         match outcome {
-            ReturnOutcome::Value(value) => return Ok(value),
+            ReturnOutcome::Value(value) => return finish_return(state, frame, value),
             ReturnOutcome::TailCall {
                 function: next,
                 args,
             } => {
                 let frame_layout = plan.float_list_function(next).frame_layout();
-                frame = bind_arguments(plan, args, &mut frame, frame_layout)?;
+                frame = bind_tail_arguments(plan, state, args, frame, frame_layout)?;
                 function = next;
             }
         }
@@ -378,26 +418,28 @@ pub(super) fn run_float_list_loop(
 
 pub(super) fn run_bool_list_loop(
     plan: &ExecutionPlan,
+    state: &mut RuntimeState,
     mut function: BoolListFunctionId,
     mut frame: Frame,
-) -> ExecutionResult<Vec<bool>> {
+) -> ExecutionResult<BoolListValueId> {
     loop {
         let runtime_function = plan.bool_list_function(function);
-        execute_steps(plan, runtime_function.steps(), &mut frame)?;
+        execute_steps(plan, state, runtime_function.steps(), &mut frame)?;
         let outcome = eval_return_body(
             plan,
+            state,
             &mut frame,
             runtime_function.return_(),
             eval_bool_list_expr,
         )?;
         match outcome {
-            ReturnOutcome::Value(value) => return Ok(value),
+            ReturnOutcome::Value(value) => return finish_return(state, frame, value),
             ReturnOutcome::TailCall {
                 function: next,
                 args,
             } => {
                 let frame_layout = plan.bool_list_function(next).frame_layout();
-                frame = bind_arguments(plan, args, &mut frame, frame_layout)?;
+                frame = bind_tail_arguments(plan, state, args, frame, frame_layout)?;
                 function = next;
             }
         }
@@ -406,26 +448,28 @@ pub(super) fn run_bool_list_loop(
 
 pub(super) fn run_nil_list_loop(
     plan: &ExecutionPlan,
+    state: &mut RuntimeState,
     mut function: NilListFunctionId,
     mut frame: Frame,
-) -> ExecutionResult<usize> {
+) -> ExecutionResult<NilListValueId> {
     loop {
         let runtime_function = plan.nil_list_function(function);
-        execute_steps(plan, runtime_function.steps(), &mut frame)?;
+        execute_steps(plan, state, runtime_function.steps(), &mut frame)?;
         let outcome = eval_return_body(
             plan,
+            state,
             &mut frame,
             runtime_function.return_(),
             eval_nil_list_expr,
         )?;
         match outcome {
-            ReturnOutcome::Value(value) => return Ok(value),
+            ReturnOutcome::Value(value) => return finish_return(state, frame, value),
             ReturnOutcome::TailCall {
                 function: next,
                 args,
             } => {
                 let frame_layout = plan.nil_list_function(next).frame_layout();
-                frame = bind_arguments(plan, args, &mut frame, frame_layout)?;
+                frame = bind_tail_arguments(plan, state, args, frame, frame_layout)?;
                 function = next;
             }
         }
@@ -434,26 +478,28 @@ pub(super) fn run_nil_list_loop(
 
 pub(super) fn run_tuple_list_loop(
     plan: &ExecutionPlan,
+    state: &mut RuntimeState,
     mut function: TupleListFunctionId,
     mut frame: Frame,
-) -> ExecutionResult<Vec<Vec<Value>>> {
+) -> ExecutionResult<TupleListValueId> {
     loop {
         let runtime_function = plan.tuple_list_function(function);
-        execute_steps(plan, runtime_function.steps(), &mut frame)?;
+        execute_steps(plan, state, runtime_function.steps(), &mut frame)?;
         let outcome = eval_return_body(
             plan,
+            state,
             &mut frame,
             runtime_function.return_(),
             eval_tuple_list_expr,
         )?;
         match outcome {
-            ReturnOutcome::Value(value) => return Ok(value),
+            ReturnOutcome::Value(value) => return finish_return(state, frame, value),
             ReturnOutcome::TailCall {
                 function: next,
                 args,
             } => {
                 let frame_layout = plan.tuple_list_function(next).frame_layout();
-                frame = bind_arguments(plan, args, &mut frame, frame_layout)?;
+                frame = bind_tail_arguments(plan, state, args, frame, frame_layout)?;
                 function = next;
             }
         }
@@ -462,26 +508,28 @@ pub(super) fn run_tuple_list_loop(
 
 pub(super) fn run_list_list_loop(
     plan: &ExecutionPlan,
+    state: &mut RuntimeState,
     mut function: ListListFunctionId,
     mut frame: Frame,
-) -> ExecutionResult<Vec<ListValue>> {
+) -> ExecutionResult<ListListValueId> {
     loop {
         let runtime_function = plan.list_list_function(function);
-        execute_steps(plan, runtime_function.steps(), &mut frame)?;
+        execute_steps(plan, state, runtime_function.steps(), &mut frame)?;
         let outcome = eval_return_body(
             plan,
+            state,
             &mut frame,
             runtime_function.return_(),
             eval_list_list_expr,
         )?;
         match outcome {
-            ReturnOutcome::Value(value) => return Ok(value),
+            ReturnOutcome::Value(value) => return finish_return(state, frame, value),
             ReturnOutcome::TailCall {
                 function: next,
                 args,
             } => {
                 let frame_layout = plan.list_list_function(next).frame_layout();
-                frame = bind_arguments(plan, args, &mut frame, frame_layout)?;
+                frame = bind_tail_arguments(plan, state, args, frame, frame_layout)?;
                 function = next;
             }
         }
@@ -490,26 +538,28 @@ pub(super) fn run_list_list_loop(
 
 pub(super) fn run_function_list_loop(
     plan: &ExecutionPlan,
+    state: &mut RuntimeState,
     mut function: FunctionListFunctionId,
     mut frame: Frame,
-) -> ExecutionResult<Vec<FunctionValue>> {
+) -> ExecutionResult<FunctionListValueId> {
     loop {
         let runtime_function = plan.function_list_function(function);
-        execute_steps(plan, runtime_function.steps(), &mut frame)?;
+        execute_steps(plan, state, runtime_function.steps(), &mut frame)?;
         let outcome = eval_return_body(
             plan,
+            state,
             &mut frame,
             runtime_function.return_(),
             eval_function_list_expr,
         )?;
         match outcome {
-            ReturnOutcome::Value(value) => return Ok(value),
+            ReturnOutcome::Value(value) => return finish_return(state, frame, value),
             ReturnOutcome::TailCall {
                 function: next,
                 args,
             } => {
                 let frame_layout = plan.function_list_function(next).frame_layout();
-                frame = bind_arguments(plan, args, &mut frame, frame_layout)?;
+                frame = bind_tail_arguments(plan, state, args, frame, frame_layout)?;
                 function = next;
             }
         }
@@ -518,22 +568,23 @@ pub(super) fn run_function_list_loop(
 
 pub(super) fn run_int_function_loop(
     plan: &ExecutionPlan,
+    state: &mut RuntimeState,
     mut function: IntFunctionFunctionId,
     mut frame: Frame,
-) -> ExecutionResult<crate::runtime::IntFunctionValue> {
+) -> ExecutionResult<EvaluatedIntFunction> {
     loop {
         let runtime_function = plan.int_function_function(function);
-        execute_steps(plan, runtime_function.steps(), &mut frame)?;
+        execute_steps(plan, state, runtime_function.steps(), &mut frame)?;
         let eval = eval_int_function_expr;
-        let outcome = eval_return_body(plan, &mut frame, runtime_function.return_(), eval)?;
+        let outcome = eval_return_body(plan, state, &mut frame, runtime_function.return_(), eval)?;
         match outcome {
-            ReturnOutcome::Value(value) => return Ok(value),
+            ReturnOutcome::Value(value) => return finish_return(state, frame, value),
             ReturnOutcome::TailCall {
                 function: next,
                 args,
             } => {
                 let frame_layout = plan.int_function_function(next).frame_layout();
-                frame = bind_arguments(plan, args, &mut frame, frame_layout)?;
+                frame = bind_tail_arguments(plan, state, args, frame, frame_layout)?;
                 function = next;
             }
         }
@@ -542,22 +593,23 @@ pub(super) fn run_int_function_loop(
 
 pub(super) fn run_float_function_loop(
     plan: &ExecutionPlan,
+    state: &mut RuntimeState,
     mut function: FloatFunctionFunctionId,
     mut frame: Frame,
-) -> ExecutionResult<crate::runtime::FloatFunctionValue> {
+) -> ExecutionResult<EvaluatedFloatFunction> {
     loop {
         let runtime_function = plan.float_function_function(function);
-        execute_steps(plan, runtime_function.steps(), &mut frame)?;
+        execute_steps(plan, state, runtime_function.steps(), &mut frame)?;
         let eval = eval_float_function_expr;
-        let outcome = eval_return_body(plan, &mut frame, runtime_function.return_(), eval)?;
+        let outcome = eval_return_body(plan, state, &mut frame, runtime_function.return_(), eval)?;
         match outcome {
-            ReturnOutcome::Value(value) => return Ok(value),
+            ReturnOutcome::Value(value) => return finish_return(state, frame, value),
             ReturnOutcome::TailCall {
                 function: next,
                 args,
             } => {
                 let frame_layout = plan.float_function_function(next).frame_layout();
-                frame = bind_arguments(plan, args, &mut frame, frame_layout)?;
+                frame = bind_tail_arguments(plan, state, args, frame, frame_layout)?;
                 function = next;
             }
         }
@@ -566,22 +618,23 @@ pub(super) fn run_float_function_loop(
 
 pub(super) fn run_string_function_loop(
     plan: &ExecutionPlan,
+    state: &mut RuntimeState,
     mut function: StringFunctionFunctionId,
     mut frame: Frame,
-) -> ExecutionResult<crate::runtime::StringFunctionValue> {
+) -> ExecutionResult<EvaluatedStringFunction> {
     loop {
         let runtime_function = plan.string_function_function(function);
-        execute_steps(plan, runtime_function.steps(), &mut frame)?;
+        execute_steps(plan, state, runtime_function.steps(), &mut frame)?;
         let eval = eval_string_function_expr;
-        let outcome = eval_return_body(plan, &mut frame, runtime_function.return_(), eval)?;
+        let outcome = eval_return_body(plan, state, &mut frame, runtime_function.return_(), eval)?;
         match outcome {
-            ReturnOutcome::Value(value) => return Ok(value),
+            ReturnOutcome::Value(value) => return finish_return(state, frame, value),
             ReturnOutcome::TailCall {
                 function: next,
                 args,
             } => {
                 let frame_layout = plan.string_function_function(next).frame_layout();
-                frame = bind_arguments(plan, args, &mut frame, frame_layout)?;
+                frame = bind_tail_arguments(plan, state, args, frame, frame_layout)?;
                 function = next;
             }
         }
@@ -590,22 +643,23 @@ pub(super) fn run_string_function_loop(
 
 pub(super) fn run_bool_function_loop(
     plan: &ExecutionPlan,
+    state: &mut RuntimeState,
     mut function: BoolFunctionFunctionId,
     mut frame: Frame,
-) -> ExecutionResult<crate::runtime::BoolFunctionValue> {
+) -> ExecutionResult<EvaluatedBoolFunction> {
     loop {
         let runtime_function = plan.bool_function_function(function);
-        execute_steps(plan, runtime_function.steps(), &mut frame)?;
+        execute_steps(plan, state, runtime_function.steps(), &mut frame)?;
         let eval = eval_bool_function_expr;
-        let outcome = eval_return_body(plan, &mut frame, runtime_function.return_(), eval)?;
+        let outcome = eval_return_body(plan, state, &mut frame, runtime_function.return_(), eval)?;
         match outcome {
-            ReturnOutcome::Value(value) => return Ok(value),
+            ReturnOutcome::Value(value) => return finish_return(state, frame, value),
             ReturnOutcome::TailCall {
                 function: next,
                 args,
             } => {
                 let frame_layout = plan.bool_function_function(next).frame_layout();
-                frame = bind_arguments(plan, args, &mut frame, frame_layout)?;
+                frame = bind_tail_arguments(plan, state, args, frame, frame_layout)?;
                 function = next;
             }
         }
@@ -614,22 +668,23 @@ pub(super) fn run_bool_function_loop(
 
 pub(super) fn run_nil_function_loop(
     plan: &ExecutionPlan,
+    state: &mut RuntimeState,
     mut function: NilFunctionFunctionId,
     mut frame: Frame,
-) -> ExecutionResult<crate::runtime::NilFunctionValue> {
+) -> ExecutionResult<EvaluatedNilFunction> {
     loop {
         let runtime_function = plan.nil_function_function(function);
-        execute_steps(plan, runtime_function.steps(), &mut frame)?;
+        execute_steps(plan, state, runtime_function.steps(), &mut frame)?;
         let eval = eval_nil_function_expr;
-        let outcome = eval_return_body(plan, &mut frame, runtime_function.return_(), eval)?;
+        let outcome = eval_return_body(plan, state, &mut frame, runtime_function.return_(), eval)?;
         match outcome {
-            ReturnOutcome::Value(value) => return Ok(value),
+            ReturnOutcome::Value(value) => return finish_return(state, frame, value),
             ReturnOutcome::TailCall {
                 function: next,
                 args,
             } => {
                 let frame_layout = plan.nil_function_function(next).frame_layout();
-                frame = bind_arguments(plan, args, &mut frame, frame_layout)?;
+                frame = bind_tail_arguments(plan, state, args, frame, frame_layout)?;
                 function = next;
             }
         }
@@ -638,22 +693,23 @@ pub(super) fn run_nil_function_loop(
 
 pub(super) fn run_tuple_function_loop(
     plan: &ExecutionPlan,
+    state: &mut RuntimeState,
     mut function: TupleFunctionFunctionId,
     mut frame: Frame,
-) -> ExecutionResult<crate::runtime::TupleFunctionValue> {
+) -> ExecutionResult<EvaluatedTupleFunction> {
     loop {
         let runtime_function = plan.tuple_function_function(function);
-        execute_steps(plan, runtime_function.steps(), &mut frame)?;
+        execute_steps(plan, state, runtime_function.steps(), &mut frame)?;
         let eval = eval_tuple_function_expr;
-        let outcome = eval_return_body(plan, &mut frame, runtime_function.return_(), eval)?;
+        let outcome = eval_return_body(plan, state, &mut frame, runtime_function.return_(), eval)?;
         match outcome {
-            ReturnOutcome::Value(value) => return Ok(value),
+            ReturnOutcome::Value(value) => return finish_return(state, frame, value),
             ReturnOutcome::TailCall {
                 function: next,
                 args,
             } => {
                 let frame_layout = plan.tuple_function_function(next).frame_layout();
-                frame = bind_arguments(plan, args, &mut frame, frame_layout)?;
+                frame = bind_tail_arguments(plan, state, args, frame, frame_layout)?;
                 function = next;
             }
         }
@@ -662,22 +718,23 @@ pub(super) fn run_tuple_function_loop(
 
 pub(super) fn run_list_function_loop(
     plan: &ExecutionPlan,
+    state: &mut RuntimeState,
     mut function: ListFunctionFunctionId,
     mut frame: Frame,
-) -> ExecutionResult<ListFunctionValue> {
+) -> ExecutionResult<EvaluatedListFunction> {
     loop {
         let runtime_function = plan.list_function_function(&function);
-        execute_steps(plan, runtime_function.steps(), &mut frame)?;
+        execute_steps(plan, state, runtime_function.steps(), &mut frame)?;
         let eval = eval_list_function_expr;
-        let outcome = eval_return_body(plan, &mut frame, runtime_function.return_(), eval)?;
+        let outcome = eval_return_body(plan, state, &mut frame, runtime_function.return_(), eval)?;
         match outcome {
-            ReturnOutcome::Value(value) => return Ok(value),
+            ReturnOutcome::Value(value) => return finish_return(state, frame, value),
             ReturnOutcome::TailCall {
                 function: next,
                 args,
             } => {
                 let frame_layout = plan.list_function_function(&next).frame_layout();
-                frame = bind_arguments(plan, args, &mut frame, frame_layout)?;
+                frame = bind_tail_arguments(plan, state, args, frame, frame_layout)?;
                 function = next;
             }
         }
@@ -686,22 +743,23 @@ pub(super) fn run_list_function_loop(
 
 pub(super) fn run_function_function_loop(
     plan: &ExecutionPlan,
+    state: &mut RuntimeState,
     mut function: FunctionFunctionFunctionId,
     mut frame: Frame,
-) -> ExecutionResult<FunctionFunctionValue> {
+) -> ExecutionResult<EvaluatedFunctionFunction> {
     loop {
         let runtime_function = plan.function_function_function(function);
-        execute_steps(plan, runtime_function.steps(), &mut frame)?;
+        execute_steps(plan, state, runtime_function.steps(), &mut frame)?;
         let eval = eval_function_function_expr;
-        let outcome = eval_return_body(plan, &mut frame, runtime_function.return_(), eval)?;
+        let outcome = eval_return_body(plan, state, &mut frame, runtime_function.return_(), eval)?;
         match outcome {
-            ReturnOutcome::Value(value) => return Ok(value),
+            ReturnOutcome::Value(value) => return finish_return(state, frame, value),
             ReturnOutcome::TailCall {
                 function: next,
                 args,
             } => {
                 let frame_layout = plan.function_function_function(next).frame_layout();
-                frame = bind_arguments(plan, args, &mut frame, frame_layout)?;
+                frame = bind_tail_arguments(plan, state, args, frame, frame_layout)?;
                 function = next;
             }
         }

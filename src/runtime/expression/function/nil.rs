@@ -7,46 +7,56 @@ use crate::runtime::expression::{
 };
 use crate::runtime::frame::Frame;
 use crate::runtime::function;
-use crate::runtime::{ExecutionError, FunctionValueKind, NilFunctionValue, Value};
+use crate::runtime::state::RuntimeState;
+use crate::runtime::{
+    EvaluatedFunctionValueKind, EvaluatedNilFunction, EvaluatedValue, ExecutionError,
+};
 
 pub(in crate::runtime) fn eval_nil_function_expr(
     plan: &ExecutionPlan,
+    state: &mut RuntimeState,
     frame: &mut Frame,
     expression: &NilFunctionExpr,
-) -> Result<NilFunctionValue, ExecutionError> {
+) -> Result<EvaluatedNilFunction, ExecutionError> {
     match expression.kind() {
-        NilFunctionExprKind::Reference(reference) => Ok(NilFunctionValue::new_with_captures(
+        NilFunctionExprKind::Reference(reference) => Ok(EvaluatedNilFunction::new(
             *reference.function(),
             reference.params().to_vec(),
             Vec::new(),
-            plan.function_value_type(reference.params(), ValueType::Nil),
+            crate::runtime::evaluated::function_type(
+                reference.params(),
+                crate::plan::execution::ValueType::Nil,
+            ),
         )),
-        NilFunctionExprKind::Closure(template) => Ok(NilFunctionValue::new_with_captures(
+        NilFunctionExprKind::Closure(template) => Ok(EvaluatedNilFunction::new(
             *template.function(),
             template.params().to_vec(),
-            function::eval_capture_args(plan, frame, template.captures())?,
-            plan.function_value_type(template.params(), ValueType::Nil),
+            function::eval_capture_args(plan, state, frame, template.captures())?,
+            crate::runtime::evaluated::function_type(
+                template.params(),
+                crate::plan::execution::ValueType::Nil,
+            ),
         )),
         NilFunctionExprKind::LocalGet { local, .. } => Ok(frame.get_nil_function(*local)),
         NilFunctionExprKind::Call { function, args, .. } => {
-            function::run_nil_function_returning_function_call(plan, *function, args, frame)
+            function::run_nil_function_returning_function_call(plan, state, *function, args, frame)
         }
         NilFunctionExprKind::FunctionCall {
             function: callee,
             args,
             ..
-        } => function::run_nil_function_function_call(plan, callee.as_ref(), args, frame),
+        } => function::run_nil_function_function_call(plan, state, callee.as_ref(), args, frame),
         NilFunctionExprKind::TupleIndex {
             tuple,
             index,
             type_,
         } => {
             let expected = ValueType::Function(Box::new(plan.function_type(type_)));
-            let value = project_tuple_expr(plan, frame, tuple, *index, expected.clone())?;
-            let actual = value.value_type();
+            let value = project_tuple_expr(plan, state, frame, tuple, *index, expected.clone())?;
+            let actual = value.value_type(plan);
             match value {
-                Value::Function(function) => match function.kind() {
-                    FunctionValueKind::Nil(value) => Ok(value.clone()),
+                EvaluatedValue::Function(function) => match function.kind() {
+                    EvaluatedFunctionValueKind::Nil(value) => Ok(value.clone()),
                     _ => Err(ExecutionError::tuple_index_family_mismatch(
                         expected, actual,
                     )),
@@ -58,9 +68,9 @@ pub(in crate::runtime) fn eval_nil_function_expr(
         }
         NilFunctionExprKind::ListIndex { list, index, type_ } => {
             let type_ = plan.function_type(type_);
-            let function = project_function_list_expr(plan, frame, list, *index, &type_)?;
+            let function = project_function_list_expr(plan, state, frame, list, *index, &type_)?;
             match function.kind() {
-                FunctionValueKind::Nil(value) => Ok(value.clone()),
+                EvaluatedFunctionValueKind::Nil(value) => Ok(value.clone()),
                 _ => Err(ExecutionError::function_return_family_mismatch(
                     FunctionReturnFamily::Nil,
                     function.kind().family(),
@@ -68,17 +78,17 @@ pub(in crate::runtime) fn eval_nil_function_expr(
             }
         }
         NilFunctionExprKind::Panic(panic) => {
-            eval_panic_expr(plan, frame, panic).map(|never| match never {})
+            eval_panic_expr(plan, state, frame, panic).map(|never| match never {})
         }
         NilFunctionExprKind::BoolCase {
             subject,
             true_,
             false_,
         } => {
-            if eval_bool_expr(plan, frame, subject)? {
-                eval_nil_function_expr(plan, frame, true_)
+            if eval_bool_expr(plan, state, frame, subject)? {
+                eval_nil_function_expr(plan, state, frame, true_)
             } else {
-                eval_nil_function_expr(plan, frame, false_)
+                eval_nil_function_expr(plan, state, frame, false_)
             }
         }
         NilFunctionExprKind::IntCase {
@@ -86,43 +96,43 @@ pub(in crate::runtime) fn eval_nil_function_expr(
             clauses,
             fallback,
         } => {
-            let subject = eval_int_expr(plan, frame, subject)?;
+            let subject = eval_int_expr(plan, state, frame, subject)?;
             for (pattern, branch) in clauses {
                 if pattern == &subject {
-                    return eval_nil_function_expr(plan, frame, branch);
+                    return eval_nil_function_expr(plan, state, frame, branch);
                 }
             }
-            eval_nil_function_expr(plan, frame, fallback)
+            eval_nil_function_expr(plan, state, frame, fallback)
         }
         NilFunctionExprKind::StringCase {
             subject,
             clauses,
             fallback,
         } => {
-            let subject = eval_string_expr(plan, frame, subject)?;
+            let subject = eval_string_expr(plan, state, frame, subject)?;
             for (pattern, branch) in clauses {
                 if pattern == &subject {
-                    return eval_nil_function_expr(plan, frame, branch);
+                    return eval_nil_function_expr(plan, state, frame, branch);
                 }
             }
-            eval_nil_function_expr(plan, frame, fallback)
+            eval_nil_function_expr(plan, state, frame, fallback)
         }
         NilFunctionExprKind::FloatCase {
             subject,
             clauses,
             fallback,
         } => {
-            let subject = eval_float_expr(plan, frame, subject)?;
+            let subject = eval_float_expr(plan, state, frame, subject)?;
             for (pattern, branch) in clauses {
                 if pattern == &subject {
-                    return eval_nil_function_expr(plan, frame, branch);
+                    return eval_nil_function_expr(plan, state, frame, branch);
                 }
             }
-            eval_nil_function_expr(plan, frame, fallback)
+            eval_nil_function_expr(plan, state, frame, fallback)
         }
         NilFunctionExprKind::Block { steps, return_ } => {
-            function::execute_steps(plan, steps, frame)?;
-            eval_nil_function_expr(plan, frame, return_)
+            function::execute_steps(plan, state, steps, frame)?;
+            eval_nil_function_expr(plan, state, frame, return_)
         }
     }
 }

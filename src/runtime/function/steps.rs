@@ -16,10 +16,12 @@ use crate::runtime::expression::{
     eval_tuple_expr, eval_tuple_function_expr, eval_tuple_list_expr, get_list_value,
 };
 use crate::runtime::frame::Frame;
+use crate::runtime::state::{ListValueId, RuntimeState};
 use crate::runtime::{
-    BoolFunctionValue, FloatFunctionValue, FunctionFunctionValue, FunctionValue, FunctionValueKind,
-    IntFunctionValue, ListFunctionValue, ListLocalValue, ListValue, NilFunctionValue,
-    StringFunctionValue, TupleFunctionValue, Value,
+    EvaluatedBoolFunction, EvaluatedFloatFunction, EvaluatedFunctionFunction,
+    EvaluatedFunctionValue, EvaluatedFunctionValueKind, EvaluatedIntFunction, EvaluatedListCapture,
+    EvaluatedListFunction, EvaluatedNilFunction, EvaluatedStringFunction, EvaluatedTupleFunction,
+    EvaluatedValue,
 };
 use crate::runtime::{ExecutionError, PanicKind};
 use ecow::EcoString;
@@ -27,66 +29,67 @@ use num_bigint::BigInt;
 
 pub(in crate::runtime) fn execute_steps(
     plan: &ExecutionPlan,
+    state: &mut RuntimeState,
     steps: &[crate::plan::execution::Step],
     frame: &mut Frame,
 ) -> ExecutionResult<()> {
     for step in steps {
         match step.kind() {
             StepKind::LetInt { local, value, .. } => {
-                let value = eval_int_expr(plan, frame, value)?;
+                let value = eval_int_expr(plan, state, frame, value)?;
                 frame.set_int(*local, value);
             }
             StepKind::LetString { local, value, .. } => {
-                let value = eval_string_expr(plan, frame, value)?;
+                let value = eval_string_expr(plan, state, frame, value)?;
                 frame.set_string(*local, value);
             }
             StepKind::LetFloat { local, value, .. } => {
-                let value = eval_float_expr(plan, frame, value)?;
+                let value = eval_float_expr(plan, state, frame, value)?;
                 frame.set_float(*local, value);
             }
             StepKind::LetBool { local, value, .. } => {
-                let value = eval_bool_expr(plan, frame, value)?;
+                let value = eval_bool_expr(plan, state, frame, value)?;
                 frame.set_bool(*local, value);
             }
             StepKind::LetNil { local, value, .. } => {
-                eval_nil_expr(plan, frame, value)?;
+                eval_nil_expr(plan, state, frame, value)?;
                 frame.set_nil(*local);
             }
             StepKind::LetTuple { local, value, .. } => {
-                let value = eval_tuple_expr(plan, frame, value)?;
+                let value = eval_tuple_expr(plan, state, frame, value)?;
                 frame.set_tuple(*local, value);
             }
-            StepKind::LetList { value, .. } => execute_let_list(plan, frame, value)?,
+            StepKind::LetList { value, .. } => execute_let_list(plan, state, frame, value)?,
             StepKind::LetIntFunction { local, value, .. } => {
-                let value = eval_int_function_expr(plan, frame, value)?;
+                let value = eval_int_function_expr(plan, state, frame, value)?;
                 frame.set_int_function(*local, value);
             }
             StepKind::LetStringFunction { local, value, .. } => {
-                let value = eval_string_function_expr(plan, frame, value)?;
+                let value = eval_string_function_expr(plan, state, frame, value)?;
                 frame.set_string_function(*local, value);
             }
             StepKind::LetFloatFunction { local, value, .. } => {
-                let value = eval_float_function_expr(plan, frame, value)?;
+                let value = eval_float_function_expr(plan, state, frame, value)?;
                 frame.set_float_function(*local, value);
             }
             StepKind::LetBoolFunction { local, value, .. } => {
-                let value = eval_bool_function_expr(plan, frame, value)?;
+                let value = eval_bool_function_expr(plan, state, frame, value)?;
                 frame.set_bool_function(*local, value);
             }
             StepKind::LetNilFunction { local, value, .. } => {
-                let value = eval_nil_function_expr(plan, frame, value)?;
+                let value = eval_nil_function_expr(plan, state, frame, value)?;
                 frame.set_nil_function(*local, value);
             }
             StepKind::LetTupleFunction { local, value, .. } => {
-                let value = eval_tuple_function_expr(plan, frame, value)?;
+                let value = eval_tuple_function_expr(plan, state, frame, value)?;
                 frame.set_tuple_function(*local, value);
             }
             StepKind::LetListFunction { local, value, .. } => {
-                let value = eval_list_function_expr(plan, frame, value)?;
+                let value = eval_list_function_expr(plan, state, frame, value)?;
                 frame.set_list_function(local.clone(), value);
             }
             StepKind::LetFunctionFunction { local, value, .. } => {
-                let value = eval_function_function_expr(plan, frame, value)?;
+                let value = eval_function_function_expr(plan, state, frame, value)?;
                 frame.set_function_function(*local, value);
             }
             StepKind::AssertList {
@@ -96,20 +99,30 @@ pub(in crate::runtime) fn execute_steps(
                 site,
                 pattern_span,
             } => {
-                let value = get_list_value(plan, frame, local);
+                let value = get_list_value(frame, local);
                 let mut bindings = Vec::new();
-                if match_assert_pattern(plan, pattern, &Value::List(value.clone()), &mut bindings)
-                    .is_none()
+                if match_assert_pattern(
+                    plan,
+                    state,
+                    pattern,
+                    &EvaluatedValue::List(value.clone()),
+                    &mut bindings,
+                )
+                .is_none()
                 {
                     let message = match message {
-                        Some(message) => Some(eval_string_expr(plan, frame, message)?),
+                        Some(message) => Some(eval_string_expr(plan, state, frame, message)?),
                         None => None,
                     };
                     return Err(ExecutionError::let_assert_panic(
                         plan.source_context(),
                         message,
                         site.clone(),
-                        Value::List(value),
+                        crate::runtime::materialize::value(
+                            plan,
+                            state,
+                            EvaluatedValue::List(value),
+                        ),
                         *pattern_span,
                     ));
                 }
@@ -123,10 +136,10 @@ pub(in crate::runtime) fn execute_steps(
                 site,
             } => {
                 let message = match message {
-                    Some(message) => Some(eval_string_expr(plan, frame, message)?),
+                    Some(message) => Some(eval_string_expr(plan, state, frame, message)?),
                     None => None,
                 };
-                if !eval_bool_expr(plan, frame, condition)? {
+                if !eval_bool_expr(plan, state, frame, condition)? {
                     return Err(ExecutionError::source_panic(
                         plan.source_context(),
                         PanicKind::Assert,
@@ -136,11 +149,12 @@ pub(in crate::runtime) fn execute_steps(
                 }
             }
             StepKind::Evaluate(expression) => {
-                let _ = eval_expr(plan, frame, expression)?;
+                let _ = eval_expr(plan, state, frame, expression)?;
             }
         }
     }
 
+    state.drain_releases();
     Ok(())
 }
 
@@ -151,35 +165,35 @@ enum PendingBinding {
     String(StringLocalId, EcoString),
     Bool(BoolLocalId, bool),
     Nil(NilLocalId),
-    Tuple(TupleLocalId, Vec<Value>),
-    List(ListLocalValue),
-    IntFunction(IntFunctionLocalId, IntFunctionValue),
-    FloatFunction(FloatFunctionLocalId, FloatFunctionValue),
-    StringFunction(StringFunctionLocalId, StringFunctionValue),
-    BoolFunction(BoolFunctionLocalId, BoolFunctionValue),
-    NilFunction(NilFunctionLocalId, NilFunctionValue),
-    TupleFunction(TupleFunctionLocalId, TupleFunctionValue),
-    ListFunction(ListFunctionLocal, ListFunctionValue),
-    FunctionFunction(FunctionFunctionLocalId, FunctionFunctionValue),
+    Tuple(TupleLocalId, Vec<EvaluatedValue>),
+    List(EvaluatedListCapture),
+    IntFunction(IntFunctionLocalId, EvaluatedIntFunction),
+    FloatFunction(FloatFunctionLocalId, EvaluatedFloatFunction),
+    StringFunction(StringFunctionLocalId, EvaluatedStringFunction),
+    BoolFunction(BoolFunctionLocalId, EvaluatedBoolFunction),
+    NilFunction(NilFunctionLocalId, EvaluatedNilFunction),
+    TupleFunction(TupleFunctionLocalId, EvaluatedTupleFunction),
+    ListFunction(ListFunctionLocal, EvaluatedListFunction),
+    FunctionFunction(FunctionFunctionLocalId, EvaluatedFunctionFunction),
 }
 
 fn match_list_assert_pattern(
     plan: &ExecutionPlan,
+    state: &mut RuntimeState,
     pattern: &ListAssertPattern,
-    value: &ListValue,
+    value: &ListValueId,
 ) -> Option<Vec<PendingBinding>> {
-    let values = value.to_values();
+    let values = state.evaluated_values(plan, value);
     if let Some(tail) = pattern.tail() {
         if values.len() < pattern.elements().len() {
             return None;
         }
 
-        let mut bindings = match_prefix_assert_patterns(plan, pattern.elements(), &values)?;
+        let mut bindings = match_prefix_assert_patterns(plan, state, pattern.elements(), &values)?;
         if let ListAssertTail::Bind(binding) = tail {
-            bindings.push(PendingBinding::List(ListLocalValue::try_new(
-                plan,
+            bindings.push(PendingBinding::List(pending_list_binding(
                 binding.local().clone(),
-                value.drop_first(pattern.elements().len()),
+                state.drop_first(value, pattern.elements().len()),
             )?));
         }
         Some(bindings)
@@ -188,26 +202,28 @@ fn match_list_assert_pattern(
             return None;
         }
 
-        match_prefix_assert_patterns(plan, pattern.elements(), &values)
+        match_prefix_assert_patterns(plan, state, pattern.elements(), &values)
     }
 }
 
 fn match_prefix_assert_patterns(
     plan: &ExecutionPlan,
+    state: &mut RuntimeState,
     patterns: &[AssertPattern],
-    values: &[Value],
+    values: &[EvaluatedValue],
 ) -> Option<Vec<PendingBinding>> {
     let mut bindings = Vec::new();
     for (pattern, value) in patterns.iter().zip(values) {
-        match_assert_pattern(plan, pattern, value, &mut bindings)?;
+        match_assert_pattern(plan, state, pattern, value, &mut bindings)?;
     }
     Some(bindings)
 }
 
 fn match_assert_pattern(
     plan: &ExecutionPlan,
+    state: &mut RuntimeState,
     pattern: &AssertPattern,
-    value: &Value,
+    value: &EvaluatedValue,
     bindings: &mut Vec<PendingBinding>,
 ) -> Option<()> {
     match pattern {
@@ -217,26 +233,26 @@ fn match_assert_pattern(
         }
         AssertPattern::Discard => Some(()),
         AssertPattern::Tuple(patterns) => {
-            let Value::Tuple(values) = value else {
+            let EvaluatedValue::Tuple(values) = value else {
                 return None;
             };
             if patterns.len() != values.len() {
                 return None;
             }
             for (pattern, value) in patterns.iter().zip(values) {
-                match_assert_pattern(plan, pattern, value, bindings)?;
+                match_assert_pattern(plan, state, pattern, value, bindings)?;
             }
             Some(())
         }
         AssertPattern::List(pattern) => {
-            let Value::List(value) = value else {
+            let EvaluatedValue::List(value) = value else {
                 return None;
             };
-            bindings.extend(match_list_assert_pattern(plan, pattern, value)?);
+            bindings.extend(match_list_assert_pattern(plan, state, pattern, value)?);
             Some(())
         }
         AssertPattern::Alias { pattern, binding } => {
-            match_assert_pattern(plan, pattern, value, bindings)?;
+            match_assert_pattern(plan, state, pattern, value, bindings)?;
             bindings.push(pending_binding(plan, binding, value)?);
             Some(())
         }
@@ -246,30 +262,34 @@ fn match_assert_pattern(
 fn pending_binding(
     plan: &ExecutionPlan,
     target: &AssertBinding,
-    value: &Value,
+    value: &EvaluatedValue,
 ) -> Option<PendingBinding> {
     match (target.local(), value) {
-        (ParamLocal::Int(local), Value::Int(value)) => {
+        (ParamLocal::Int(local), EvaluatedValue::Int(value)) => {
             Some(PendingBinding::Int(*local, value.clone()))
         }
-        (ParamLocal::Float(local), Value::Float(value)) => {
+        (ParamLocal::Float(local), EvaluatedValue::Float(value)) => {
             Some(PendingBinding::Float(*local, *value))
         }
-        (ParamLocal::String(local), Value::String(value)) => {
+        (ParamLocal::String(local), EvaluatedValue::String(value)) => {
             Some(PendingBinding::String(*local, value.clone()))
         }
-        (ParamLocal::Bool(local), Value::Bool(value)) => Some(PendingBinding::Bool(*local, *value)),
-        (ParamLocal::Nil(local), Value::Nil) => Some(PendingBinding::Nil(*local)),
-        (ParamLocal::Tuple { local, .. }, Value::Tuple(value))
+        (ParamLocal::Bool(local), EvaluatedValue::Bool(value)) => {
+            Some(PendingBinding::Bool(*local, *value))
+        }
+        (ParamLocal::Nil(local), EvaluatedValue::Nil) => Some(PendingBinding::Nil(*local)),
+        (ParamLocal::Tuple { local, .. }, EvaluatedValue::Tuple(value))
             if plan.value_type(&target.local().value_type())
-                == ValueType::Tuple(value.iter().map(Value::value_type).collect()) =>
+                == ValueType::Tuple(value.iter().map(|value| value.value_type(plan)).collect()) =>
         {
             Some(PendingBinding::Tuple(*local, value.clone()))
         }
-        (ParamLocal::List(local), Value::List(value)) => {
-            ListLocalValue::try_new(plan, local.clone(), value.clone()).map(PendingBinding::List)
+        (ParamLocal::List(local), EvaluatedValue::List(value)) => {
+            pending_list_binding(local.clone(), value.clone()).map(PendingBinding::List)
         }
-        (_, Value::Function(value)) => pending_function_binding(plan, target.local(), value),
+        (_, EvaluatedValue::Function(value)) => {
+            pending_function_binding(plan, target.local(), value)
+        }
         _ => None,
     }
 }
@@ -277,37 +297,74 @@ fn pending_binding(
 fn pending_function_binding(
     plan: &ExecutionPlan,
     target: &ParamLocal,
-    value: &FunctionValue,
+    value: &EvaluatedFunctionValue,
 ) -> Option<PendingBinding> {
-    if plan.value_type(&target.value_type()) != ValueType::Function(Box::new(value.type_())) {
+    if plan.value_type(&target.value_type())
+        != ValueType::Function(Box::new(plan.function_type(value.type_())))
+    {
         return None;
     }
 
     match (target, value.kind()) {
-        (ParamLocal::IntFunction { local, .. }, FunctionValueKind::Int(value)) => {
+        (ParamLocal::IntFunction { local, .. }, EvaluatedFunctionValueKind::Int(value)) => {
             Some(PendingBinding::IntFunction(*local, value.clone()))
         }
-        (ParamLocal::FloatFunction { local, .. }, FunctionValueKind::Float(value)) => {
+        (ParamLocal::FloatFunction { local, .. }, EvaluatedFunctionValueKind::Float(value)) => {
             Some(PendingBinding::FloatFunction(*local, value.clone()))
         }
-        (ParamLocal::StringFunction { local, .. }, FunctionValueKind::String(value)) => {
+        (ParamLocal::StringFunction { local, .. }, EvaluatedFunctionValueKind::String(value)) => {
             Some(PendingBinding::StringFunction(*local, value.clone()))
         }
-        (ParamLocal::BoolFunction { local, .. }, FunctionValueKind::Bool(value)) => {
+        (ParamLocal::BoolFunction { local, .. }, EvaluatedFunctionValueKind::Bool(value)) => {
             Some(PendingBinding::BoolFunction(*local, value.clone()))
         }
-        (ParamLocal::NilFunction { local, .. }, FunctionValueKind::Nil(value)) => {
+        (ParamLocal::NilFunction { local, .. }, EvaluatedFunctionValueKind::Nil(value)) => {
             Some(PendingBinding::NilFunction(*local, value.clone()))
         }
-        (ParamLocal::TupleFunction { local, .. }, FunctionValueKind::Tuple(value)) => {
+        (ParamLocal::TupleFunction { local, .. }, EvaluatedFunctionValueKind::Tuple(value)) => {
             Some(PendingBinding::TupleFunction(*local, value.clone()))
         }
-        (ParamLocal::ListFunction(local), FunctionValueKind::List(value)) => {
+        (ParamLocal::ListFunction(local), EvaluatedFunctionValueKind::List(value)) => {
             Some(PendingBinding::ListFunction(local.clone(), value.clone()))
         }
-        (ParamLocal::FunctionFunction { local, .. }, FunctionValueKind::Function(value)) => {
-            Some(PendingBinding::FunctionFunction(*local, value.clone()))
+        (
+            ParamLocal::FunctionFunction { local, .. },
+            EvaluatedFunctionValueKind::Function(value),
+        ) => Some(PendingBinding::FunctionFunction(*local, value.clone())),
+        _ => None,
+    }
+}
+
+fn pending_list_binding(
+    local: crate::plan::execution::ListLocal,
+    value: ListValueId,
+) -> Option<EvaluatedListCapture> {
+    match (local, value) {
+        (crate::plan::execution::ListLocal::Int { local, .. }, ListValueId::Int(value)) => {
+            Some(EvaluatedListCapture::Int { local, value })
         }
+        (crate::plan::execution::ListLocal::String { local, .. }, ListValueId::String(value)) => {
+            Some(EvaluatedListCapture::String { local, value })
+        }
+        (crate::plan::execution::ListLocal::Float { local, .. }, ListValueId::Float(value)) => {
+            Some(EvaluatedListCapture::Float { local, value })
+        }
+        (crate::plan::execution::ListLocal::Bool { local, .. }, ListValueId::Bool(value)) => {
+            Some(EvaluatedListCapture::Bool { local, value })
+        }
+        (crate::plan::execution::ListLocal::Nil { local, .. }, ListValueId::Nil(value)) => {
+            Some(EvaluatedListCapture::Nil { local, value })
+        }
+        (crate::plan::execution::ListLocal::Tuple { local, .. }, ListValueId::Tuple(value)) => {
+            Some(EvaluatedListCapture::Tuple { local, value })
+        }
+        (crate::plan::execution::ListLocal::List { local, .. }, ListValueId::List(value)) => {
+            Some(EvaluatedListCapture::List { local, value })
+        }
+        (
+            crate::plan::execution::ListLocal::Function { local, .. },
+            ListValueId::Function(value),
+        ) => Some(EvaluatedListCapture::Function { local, value }),
         _ => None,
     }
 }
@@ -336,56 +393,57 @@ fn frame_set_binding(frame: &mut Frame, binding: PendingBinding) {
 
 fn execute_let_list(
     plan: &ExecutionPlan,
+    state: &mut RuntimeState,
     frame: &mut Frame,
     value: &crate::plan::execution::ListLocalExpr,
 ) -> ExecutionResult<()> {
     match value {
         crate::plan::execution::ListLocalExpr::Int { local, value } => {
-            let value = eval_int_list_expr(plan, frame, value)?;
+            let value = eval_int_list_expr(plan, state, frame, value)?;
             frame.set_int_list(*local, value);
         }
         crate::plan::execution::ListLocalExpr::String { local, value } => {
-            let value = eval_string_list_expr(plan, frame, value)?;
+            let value = eval_string_list_expr(plan, state, frame, value)?;
             frame.set_string_list(*local, value);
         }
         crate::plan::execution::ListLocalExpr::Float { local, value } => {
-            let value = eval_float_list_expr(plan, frame, value)?;
+            let value = eval_float_list_expr(plan, state, frame, value)?;
             frame.set_float_list(*local, value);
         }
         crate::plan::execution::ListLocalExpr::Bool { local, value } => {
-            let value = eval_bool_list_expr(plan, frame, value)?;
+            let value = eval_bool_list_expr(plan, state, frame, value)?;
             frame.set_bool_list(*local, value);
         }
         crate::plan::execution::ListLocalExpr::Nil { local, value } => {
-            let value = eval_nil_list_expr(plan, frame, value)?;
+            let value = eval_nil_list_expr(plan, state, frame, value)?;
             frame.set_nil_list(*local, value);
         }
         crate::plan::execution::ListLocalExpr::Tuple { local, value, .. } => {
-            let value = eval_tuple_list_expr(plan, frame, value)?;
+            let value = eval_tuple_list_expr(plan, state, frame, value)?;
             frame.set_tuple_list(*local, value);
         }
         crate::plan::execution::ListLocalExpr::List { local, value, .. } => {
-            let value = eval_list_list_expr(plan, frame, value)?;
+            let value = eval_list_list_expr(plan, state, frame, value)?;
             frame.set_list_list(*local, value);
         }
         crate::plan::execution::ListLocalExpr::Function { local, value, .. } => {
-            let value = eval_function_list_expr(plan, frame, value)?;
+            let value = eval_function_list_expr(plan, state, frame, value)?;
             frame.set_function_list(*local, value);
         }
     }
     Ok(())
 }
 
-fn frame_set_list_binding(frame: &mut Frame, value: ListLocalValue) {
+fn frame_set_list_binding(frame: &mut Frame, value: EvaluatedListCapture) {
     match value {
-        ListLocalValue::Int { local, value } => frame.set_int_list(local, value),
-        ListLocalValue::String { local, value } => frame.set_string_list(local, value),
-        ListLocalValue::Float { local, value } => frame.set_float_list(local, value),
-        ListLocalValue::Bool { local, value } => frame.set_bool_list(local, value),
-        ListLocalValue::Nil { local, len } => frame.set_nil_list(local, len),
-        ListLocalValue::Tuple { local, value, .. } => frame.set_tuple_list(local, value),
-        ListLocalValue::List { local, value, .. } => frame.set_list_list(local, value),
-        ListLocalValue::Function { local, value, .. } => frame.set_function_list(local, value),
+        EvaluatedListCapture::Int { local, value } => frame.set_int_list(local, value),
+        EvaluatedListCapture::String { local, value } => frame.set_string_list(local, value),
+        EvaluatedListCapture::Float { local, value } => frame.set_float_list(local, value),
+        EvaluatedListCapture::Bool { local, value } => frame.set_bool_list(local, value),
+        EvaluatedListCapture::Nil { local, value } => frame.set_nil_list(local, value),
+        EvaluatedListCapture::Tuple { local, value } => frame.set_tuple_list(local, value),
+        EvaluatedListCapture::List { local, value } => frame.set_list_list(local, value),
+        EvaluatedListCapture::Function { local, value } => frame.set_function_list(local, value),
     }
 }
 
@@ -394,10 +452,13 @@ mod tests {
     use super::{PendingBinding, match_assert_pattern, match_list_assert_pattern};
     use crate::plan::execution::{
         AssertPattern, FunctionFunctionId, IntFunctionFunctionId, IntFunctionId, IntListLocalId,
-        IntLocalId, ListAssertPattern, RuntimeFunctionId, StepKind,
+        IntLocalId, ListAssertPattern, StepKind,
     };
-    use crate::plan::{FunctionType, ValueType};
-    use crate::runtime::{FunctionFunctionValue, FunctionValue, ListLocalValue, ListValue, Value};
+    use crate::runtime::state::{IntListValueId, ListValueId};
+    use crate::runtime::{
+        EvaluatedFunctionFunction, EvaluatedFunctionValue, EvaluatedListCapture, EvaluatedValue,
+        ListValue,
+    };
 
     #[test]
     fn source_steps_bind_and_assert_exact_values() {
@@ -582,7 +643,19 @@ pub fn main() {
     }
 
     #[test]
+    fn source_bound_tail_prefix_mismatch_returns_the_let_assert_error() {
+        assert_eq!(
+            crate::runtime::run_src_error(include_str!(
+                "../../../tests/fixtures/execution_errors/patterns/let_assert_bound_tail_prefix.gleam"
+            ))
+            .to_string(),
+            "let_assert: Pattern match failed, no pattern matched the value.",
+        );
+    }
+
+    #[test]
     fn let_assert_matcher_rejects_direct_mutated_value_shapes_without_bindings() {
+        let mut state = crate::runtime::RuntimeState::new();
         let tuple_plan = crate::runtime::plan_src(
             r#"
 pub fn main() {
@@ -605,8 +678,9 @@ pub fn main() {
         assert_eq!(
             match_assert_pattern(
                 &tuple_plan,
+                &mut state,
                 tuple_pattern,
-                &Value::Int(1.into()),
+                &EvaluatedValue::Int(1.into()),
                 &mut bindings
             ),
             None,
@@ -615,8 +689,9 @@ pub fn main() {
         assert_eq!(
             match_assert_pattern(
                 &tuple_plan,
+                &mut state,
                 tuple_pattern,
-                &Value::Tuple(vec![Value::Int(1.into())]),
+                &EvaluatedValue::Tuple(vec![EvaluatedValue::Int(1.into())]),
                 &mut bindings,
             ),
             None,
@@ -644,8 +719,9 @@ pub fn main() {
         assert_eq!(
             match_assert_pattern(
                 &list_plan,
+                &mut state,
                 nested_pattern,
-                &Value::Int(1.into()),
+                &EvaluatedValue::Int(1.into()),
                 &mut bindings,
             ),
             None,
@@ -673,115 +749,9 @@ pub fn main() {
         assert_eq!(
             match_assert_pattern(
                 &binding_plan,
+                &mut state,
                 binding,
-                &Value::String("wrong".into()),
-                &mut bindings,
-            ),
-            None,
-        );
-        assert_eq!(bindings, Vec::new());
-    }
-
-    #[test]
-    fn let_assert_tail_and_function_bindings_reject_mismatched_families() {
-        let tail_plan = crate::runtime::plan_src(
-            r#"
-pub fn main() {
-  let assert [..rest] = [1]
-  rest
-}
-"#,
-        );
-        let function = tail_plan.int_list_function(tail_plan.int_list_function_id(0));
-        let pattern = function
-            .steps()
-            .iter()
-            .find_map(|step| match step.kind() {
-                StepKind::AssertList { pattern, .. } => Some(pattern),
-                _ => None,
-            })
-            .expect("source should lower an assert-list step");
-        let list_pattern = expect_list_assert_pattern(pattern);
-        assert_eq!(
-            match_list_assert_pattern(&tail_plan, list_pattern, &ListValue::string(Vec::new())),
-            None,
-        );
-
-        let prefix_plan = crate::runtime::plan_src(
-            r#"
-pub fn main() {
-  let assert [first, ..rest] = [1]
-  let _ = rest
-  first
-}
-"#,
-        );
-        let function = prefix_plan.int_function(IntFunctionId(0));
-        let pattern = function
-            .steps()
-            .iter()
-            .find_map(|step| match step.kind() {
-                StepKind::AssertList { pattern, .. } => Some(pattern),
-                _ => None,
-            })
-            .expect("source should lower an assert-list step");
-        let list_pattern = expect_list_assert_pattern(pattern);
-        assert_eq!(
-            match_list_assert_pattern(
-                &prefix_plan,
-                list_pattern,
-                &ListValue::string(vec!["wrong".into()]),
-            ),
-            None,
-        );
-
-        let function_plan = crate::runtime::plan_src(
-            r#"
-fn target() { 1 }
-pub fn main() {
-  let assert [function] = [target]
-  function()
-}
-"#,
-        );
-        let function = function_plan.int_function(IntFunctionId(0));
-        let pattern = function
-            .steps()
-            .iter()
-            .find_map(|step| match step.kind() {
-                StepKind::AssertList { pattern, .. } => Some(pattern),
-                _ => None,
-            })
-            .expect("source should lower an assert-list step");
-        let binding = &expect_list_assert_pattern(pattern).elements()[0];
-        let wrong_type = FunctionValue::new(
-            RuntimeFunctionId::String(crate::plan::execution::StringFunctionId(0)),
-            Vec::new(),
-            FunctionType::new(Vec::new(), ValueType::String),
-        );
-        let mut bindings = Vec::new();
-        assert_eq!(
-            match_assert_pattern(
-                &function_plan,
-                binding,
-                &Value::Function(wrong_type),
-                &mut bindings,
-            ),
-            None,
-        );
-        assert_eq!(bindings, Vec::new());
-
-        let wrong_kind = FunctionValue::from(FunctionFunctionValue::from_evaluated(
-            FunctionFunctionId::Int(IntFunctionFunctionId(0)),
-            Vec::new(),
-            Vec::new(),
-            FunctionType::new(Vec::new(), ValueType::Int),
-        ));
-        assert_eq!(
-            match_assert_pattern(
-                &function_plan,
-                binding,
-                &Value::Function(wrong_kind),
+                &EvaluatedValue::String("wrong".into()),
                 &mut bindings,
             ),
             None,
@@ -791,6 +761,7 @@ pub fn main() {
 
     #[test]
     fn list_assert_tail_binding_preserves_the_typed_local_and_value() {
+        let mut state = crate::runtime::RuntimeState::new();
         let plan = crate::runtime::plan_src(
             r#"
 pub fn main() {
@@ -828,26 +799,27 @@ pub fn main() {
             })
             .expect("source should lower an assert-list step");
         let ignored_tail = expect_list_assert_pattern(ignored_tail);
-        let value = ListValue::int(vec![1.into(), 2.into(), 3.into()]);
-
-        assert_eq!(
-            match_list_assert_pattern(&plan, pattern, &value),
-            Some(vec![
-                PendingBinding::Int(IntLocalId(0), 1.into()),
-                PendingBinding::List(ListLocalValue::Int {
-                    local: IntListLocalId(1),
-                    value: vec![2.into(), 3.into()],
-                }),
-            ]),
+        let value = state.int(
+            plan.int_list_function_id(0).type_id(),
+            vec![1.into(), 2.into(), 3.into()],
         );
+
+        let bindings = match_list_assert_pattern(&plan, &mut state, pattern, &value.clone().into())
+            .expect("list pattern should match");
+        assert_eq!(bindings[0], PendingBinding::Int(IntLocalId(0), 1.into()));
+        assert_eq!(int_list_binding(&bindings[0]), None);
+        let (local, tail) = int_list_binding(&bindings[1]).expect("tail must bind List(Int)");
+        assert_eq!(local, IntListLocalId(1));
+        assert_eq!(state.int_values(tail), &[2.into(), 3.into()]);
         assert_eq!(
-            match_list_assert_pattern(&ignored_plan, ignored_tail, &value),
+            match_list_assert_pattern(&ignored_plan, &mut state, ignored_tail, &value.into(),),
             Some(vec![PendingBinding::Int(IntLocalId(0), 1.into())]),
         );
     }
 
     #[test]
     fn nested_and_alias_assert_patterns_propagate_binding_mismatches() {
+        let mut state = crate::runtime::RuntimeState::new();
         let nested_plan = crate::runtime::plan_src(
             r#"
 pub fn main() {
@@ -870,8 +842,12 @@ pub fn main() {
         assert_eq!(
             match_assert_pattern(
                 &nested_plan,
+                &mut state,
                 tuple_pattern,
-                &Value::Tuple(vec![Value::Int(1.into()), Value::String("wrong".into())]),
+                &EvaluatedValue::Tuple(vec![
+                    EvaluatedValue::Int(1.into()),
+                    EvaluatedValue::String("wrong".into())
+                ]),
                 &mut bindings,
             ),
             None,
@@ -900,8 +876,9 @@ pub fn main() {
         assert_eq!(
             match_assert_pattern(
                 &alias_plan,
+                &mut state,
                 alias_pattern,
-                &Value::Int(1.into()),
+                &EvaluatedValue::Int(1.into()),
                 &mut bindings,
             ),
             None,
@@ -927,17 +904,97 @@ pub fn main() {
             })
             .expect("source should lower an assert-list step");
         let alias_pattern = &expect_list_assert_pattern(pattern).elements()[0];
-        let wrong_kind = FunctionValue::from(FunctionFunctionValue::from_evaluated(
+        let wrong_kind = EvaluatedFunctionValue::from(EvaluatedFunctionFunction::new(
             FunctionFunctionId::Int(IntFunctionFunctionId(0)),
             Vec::new(),
             Vec::new(),
-            FunctionType::new(Vec::new(), ValueType::Int),
+            crate::plan::execution::FunctionType::new(
+                Vec::new(),
+                crate::plan::execution::ValueType::Int,
+            ),
         ));
         assert_eq!(
             match_assert_pattern(
                 &function_alias_plan,
+                &mut state,
                 alias_pattern,
-                &Value::Function(wrong_kind),
+                &EvaluatedValue::Function(wrong_kind),
+                &mut bindings,
+            ),
+            None,
+        );
+        assert_eq!(bindings, Vec::new());
+    }
+
+    #[test]
+    fn list_assert_binding_rejects_direct_mutated_list_and_function_metadata() {
+        let mut state = crate::runtime::RuntimeState::new();
+        let plan = crate::runtime::plan_src(
+            r#"
+fn strings() -> List(String) { [] }
+fn target() { 1 }
+pub fn main() {
+  let assert [..rest] = [1]
+  let assert [values] = [[1]]
+  let assert [function] = [target]
+  #(rest, values, function())
+}
+"#,
+        );
+        let function = plan.tuple_function(crate::plan::execution::TupleFunctionId(0));
+        let patterns = function
+            .steps()
+            .iter()
+            .filter_map(|step| match step.kind() {
+                StepKind::AssertList { pattern, .. } => Some(expect_list_assert_pattern(pattern)),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(patterns.len(), 3);
+        let wrong_list = state.string(
+            plan.string_list_function_id(0).type_id(),
+            vec!["wrong".into()],
+        );
+
+        assert_eq!(
+            match_list_assert_pattern(
+                &plan,
+                &mut state,
+                patterns[0],
+                &ListValueId::String(wrong_list.clone()),
+            ),
+            None,
+        );
+
+        let mut bindings = Vec::new();
+        assert_eq!(
+            match_assert_pattern(
+                &plan,
+                &mut state,
+                &patterns[1].elements()[0],
+                &EvaluatedValue::List(ListValueId::String(wrong_list)),
+                &mut bindings,
+            ),
+            None,
+        );
+        assert_eq!(bindings, Vec::new());
+
+        let wrong_function =
+            EvaluatedFunctionValue::from(crate::runtime::EvaluatedIntFunction::new(
+                IntFunctionId(0),
+                Vec::new(),
+                Vec::new(),
+                crate::plan::execution::FunctionType::new(
+                    Vec::new(),
+                    crate::plan::execution::ValueType::String,
+                ),
+            ));
+        assert_eq!(
+            match_assert_pattern(
+                &plan,
+                &mut state,
+                &patterns[2].elements()[0],
+                &EvaluatedValue::Function(wrong_function),
                 &mut bindings,
             ),
             None,
@@ -974,6 +1031,15 @@ pub fn main() {
         match pattern {
             AssertPattern::List(pattern) => pattern,
             _ => panic!("expected a list assert pattern"),
+        }
+    }
+
+    fn int_list_binding(binding: &PendingBinding) -> Option<(IntListLocalId, &IntListValueId)> {
+        match binding {
+            PendingBinding::List(EvaluatedListCapture::Int { local, value }) => {
+                Some((*local, value))
+            }
+            _ => None,
         }
     }
 }

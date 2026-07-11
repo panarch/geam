@@ -10,7 +10,8 @@ mod tuple;
 use crate::plan::execution::ExecutionPlan;
 use crate::plan::execution::{FunctionExpr, FunctionExprKind};
 use crate::runtime::frame::Frame;
-use crate::runtime::{ExecutionError, FunctionValue};
+use crate::runtime::state::RuntimeState;
+use crate::runtime::{EvaluatedFunctionValue, ExecutionError};
 
 pub(in crate::runtime) use self::{
     bool::eval_bool_function_expr, float::eval_float_function_expr, int::eval_int_function_expr,
@@ -21,33 +22,34 @@ pub(in crate::runtime) use self::{
 
 pub(in crate::runtime) fn eval_function_expr(
     plan: &ExecutionPlan,
+    state: &mut RuntimeState,
     frame: &mut Frame,
     expression: &FunctionExpr,
-) -> Result<FunctionValue, ExecutionError> {
+) -> Result<EvaluatedFunctionValue, ExecutionError> {
     match expression.kind() {
         FunctionExprKind::Int(expression) => {
-            Ok(eval_int_function_expr(plan, frame, expression)?.into())
+            Ok(eval_int_function_expr(plan, state, frame, expression)?.into())
         }
         FunctionExprKind::String(expression) => {
-            Ok(eval_string_function_expr(plan, frame, expression)?.into())
+            Ok(eval_string_function_expr(plan, state, frame, expression)?.into())
         }
         FunctionExprKind::Float(expression) => {
-            Ok(eval_float_function_expr(plan, frame, expression)?.into())
+            Ok(eval_float_function_expr(plan, state, frame, expression)?.into())
         }
         FunctionExprKind::Bool(expression) => {
-            Ok(eval_bool_function_expr(plan, frame, expression)?.into())
+            Ok(eval_bool_function_expr(plan, state, frame, expression)?.into())
         }
         FunctionExprKind::Nil(expression) => {
-            Ok(eval_nil_function_expr(plan, frame, expression)?.into())
+            Ok(eval_nil_function_expr(plan, state, frame, expression)?.into())
         }
         FunctionExprKind::Tuple(expression) => {
-            Ok(eval_tuple_function_expr(plan, frame, expression)?.into())
+            Ok(eval_tuple_function_expr(plan, state, frame, expression)?.into())
         }
         FunctionExprKind::List(expression) => {
-            Ok(eval_list_function_expr(plan, frame, expression)?.into())
+            Ok(eval_list_function_expr(plan, state, frame, expression)?.into())
         }
         FunctionExprKind::Function(expression) => {
-            Ok(eval_function_function_expr(plan, frame, expression)?.into())
+            Ok(eval_function_function_expr(plan, state, frame, expression)?.into())
         }
     }
 }

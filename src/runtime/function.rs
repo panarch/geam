@@ -20,7 +20,15 @@ use crate::runtime::expression::{
     eval_string_function_expr, eval_tuple_function_expr,
 };
 use crate::runtime::frame::Frame;
-use crate::runtime::{ExecutionError, FunctionFunctionValue, FunctionValue, Value};
+use crate::runtime::state::{
+    BoolListValueId, FloatListValueId, FunctionListValueId, IntListValueId, ListListValueId,
+    ListValueId, NilListValueId, RuntimeState, StringListValueId, TupleListValueId,
+};
+use crate::runtime::{
+    EvaluatedBoolFunction, EvaluatedFloatFunction, EvaluatedFunctionFunction,
+    EvaluatedFunctionValue, EvaluatedIntFunction, EvaluatedListFunction, EvaluatedNilFunction,
+    EvaluatedStringFunction, EvaluatedTupleFunction, EvaluatedValue, ExecutionError, Value,
+};
 use bind::{bind_arguments, bind_function_value_arguments};
 use ecow::EcoString;
 use num_bigint::BigInt;
@@ -34,352 +42,434 @@ use return_body::{
 };
 
 pub(super) fn run_main(plan: &ExecutionPlan) -> ExecutionResult<Value> {
-    let mut caller_frame = Frame::default();
-    match plan.main_runtime() {
+    let mut state = RuntimeState::new();
+    let empty_layout = crate::plan::execution::FrameLayout::default();
+    let mut caller_frame = Frame::new(&empty_layout, &mut state);
+    let value = match plan.main_runtime() {
         RuntimeFunctionId::Int(function) => {
-            run_int_call(plan, function, &[], &mut caller_frame).map(Value::Int)
+            run_int_call(plan, &mut state, function, &[], &mut caller_frame)
+                .map(EvaluatedValue::Int)
         }
         RuntimeFunctionId::Float(function) => {
-            run_float_call(plan, function, &[], &mut caller_frame).map(Value::Float)
+            run_float_call(plan, &mut state, function, &[], &mut caller_frame)
+                .map(EvaluatedValue::Float)
         }
         RuntimeFunctionId::String(function) => {
-            run_string_call(plan, function, &[], &mut caller_frame).map(Value::String)
+            run_string_call(plan, &mut state, function, &[], &mut caller_frame)
+                .map(EvaluatedValue::String)
         }
         RuntimeFunctionId::Bool(function) => {
-            run_bool_call(plan, function, &[], &mut caller_frame).map(Value::Bool)
+            run_bool_call(plan, &mut state, function, &[], &mut caller_frame)
+                .map(EvaluatedValue::Bool)
         }
         RuntimeFunctionId::Nil(function) => {
-            run_nil_call(plan, function, &[], &mut caller_frame).map(|_| Value::Nil)
+            run_nil_call(plan, &mut state, function, &[], &mut caller_frame)
+                .map(|_| EvaluatedValue::Nil)
         }
         RuntimeFunctionId::Tuple { id, .. } => {
-            run_tuple_call(plan, id, &[], &mut caller_frame).map(Value::Tuple)
+            run_tuple_call(plan, &mut state, id, &[], &mut caller_frame).map(EvaluatedValue::Tuple)
         }
         RuntimeFunctionId::List(id) => {
-            run_list_call(plan, id, &[], &mut caller_frame).map(Value::List)
+            run_list_call(plan, &mut state, id, &[], &mut caller_frame).map(EvaluatedValue::List)
         }
         RuntimeFunctionId::Function { id, .. } => {
-            run_function_returning_function_call(plan, id, &[], &mut caller_frame)
-                .map(Value::Function)
+            run_function_returning_function_call(plan, &mut state, id, &[], &mut caller_frame)
+                .map(EvaluatedValue::Function)
         }
-    }
+    }?;
+    state.drain_releases();
+    Ok(crate::runtime::materialize::value(plan, &state, value))
 }
 
 pub(super) fn run_int_call(
     plan: &ExecutionPlan,
+    state: &mut RuntimeState,
     function: IntFunctionId,
     args: &[CallArg],
     caller_frame: &mut Frame,
 ) -> ExecutionResult<BigInt> {
     let frame = bind_arguments(
         plan,
+        state,
         args,
         caller_frame,
         plan.int_function(function).frame_layout(),
     )?;
-    run_int_loop(plan, function, frame)
+    run_int_loop(plan, state, function, frame)
 }
 
 pub(super) fn run_float_call(
     plan: &ExecutionPlan,
+    state: &mut RuntimeState,
     function: FloatFunctionId,
     args: &[CallArg],
     caller_frame: &mut Frame,
 ) -> ExecutionResult<f64> {
     let frame = bind_arguments(
         plan,
+        state,
         args,
         caller_frame,
         plan.float_function(function).frame_layout(),
     )?;
-    run_float_loop(plan, function, frame)
+    run_float_loop(plan, state, function, frame)
 }
 
 pub(super) fn run_string_call(
     plan: &ExecutionPlan,
+    state: &mut RuntimeState,
     function: StringFunctionId,
     args: &[CallArg],
     caller_frame: &mut Frame,
 ) -> ExecutionResult<EcoString> {
     let frame = bind_arguments(
         plan,
+        state,
         args,
         caller_frame,
         plan.string_function(function).frame_layout(),
     )?;
-    run_string_loop(plan, function, frame)
+    run_string_loop(plan, state, function, frame)
 }
 
 pub(super) fn run_bool_call(
     plan: &ExecutionPlan,
+    state: &mut RuntimeState,
     function: BoolFunctionId,
     args: &[CallArg],
     caller_frame: &mut Frame,
 ) -> ExecutionResult<bool> {
     let frame = bind_arguments(
         plan,
+        state,
         args,
         caller_frame,
         plan.bool_function(function).frame_layout(),
     )?;
-    run_bool_loop(plan, function, frame)
+    run_bool_loop(plan, state, function, frame)
 }
 
 pub(super) fn run_nil_call(
     plan: &ExecutionPlan,
+    state: &mut RuntimeState,
     function: NilFunctionId,
     args: &[CallArg],
     caller_frame: &mut Frame,
 ) -> ExecutionResult<()> {
     let frame = bind_arguments(
         plan,
+        state,
         args,
         caller_frame,
         plan.nil_function(function).frame_layout(),
     )?;
-    run_nil_loop(plan, function, frame)
+    run_nil_loop(plan, state, function, frame)
 }
 
 pub(super) fn run_tuple_call(
     plan: &ExecutionPlan,
+    state: &mut RuntimeState,
     function: TupleFunctionId,
     args: &[CallArg],
     caller_frame: &mut Frame,
-) -> ExecutionResult<Vec<Value>> {
+) -> ExecutionResult<Vec<EvaluatedValue>> {
     let frame = bind_arguments(
         plan,
+        state,
         args,
         caller_frame,
         plan.tuple_function(function).frame_layout(),
     )?;
-    run_tuple_loop(plan, function, frame)
+    run_tuple_loop(plan, state, function, frame)
 }
 
 pub(super) fn run_list_call(
     plan: &ExecutionPlan,
+    state: &mut RuntimeState,
     function: ListFunctionId,
     args: &[CallArg],
     caller_frame: &mut Frame,
-) -> ExecutionResult<crate::runtime::ListValue> {
+) -> ExecutionResult<ListValueId> {
     let frame = bind_arguments(
         plan,
+        state,
         args,
         caller_frame,
         list_function_frame_layout(plan, &function),
     )?;
-    run_list_loop(plan, function, frame)
+    run_list_loop(plan, state, function, frame)
 }
 
 pub(in crate::runtime) fn run_int_list_call(
     plan: &ExecutionPlan,
+    state: &mut RuntimeState,
     function: crate::plan::execution::IntListFunctionId,
     args: &[CallArg],
     caller_frame: &mut Frame,
-) -> ExecutionResult<Vec<BigInt>> {
+) -> ExecutionResult<IntListValueId> {
     let frame = bind_arguments(
         plan,
+        state,
         args,
         caller_frame,
         plan.int_list_function(function).frame_layout(),
     )?;
-    run_int_list_loop(plan, function, frame)
+    run_int_list_loop(plan, state, function, frame)
 }
 
 pub(in crate::runtime) fn run_string_list_call(
     plan: &ExecutionPlan,
+    state: &mut RuntimeState,
     function: crate::plan::execution::StringListFunctionId,
     args: &[CallArg],
     caller_frame: &mut Frame,
-) -> ExecutionResult<Vec<EcoString>> {
+) -> ExecutionResult<StringListValueId> {
     let frame = bind_arguments(
         plan,
+        state,
         args,
         caller_frame,
         plan.string_list_function(function).frame_layout(),
     )?;
-    run_string_list_loop(plan, function, frame)
+    run_string_list_loop(plan, state, function, frame)
 }
 
 pub(in crate::runtime) fn run_float_list_call(
     plan: &ExecutionPlan,
+    state: &mut RuntimeState,
     function: crate::plan::execution::FloatListFunctionId,
     args: &[CallArg],
     caller_frame: &mut Frame,
-) -> ExecutionResult<Vec<f64>> {
+) -> ExecutionResult<FloatListValueId> {
     let frame = bind_arguments(
         plan,
+        state,
         args,
         caller_frame,
         plan.float_list_function(function).frame_layout(),
     )?;
-    run_float_list_loop(plan, function, frame)
+    run_float_list_loop(plan, state, function, frame)
 }
 
 pub(in crate::runtime) fn run_bool_list_call(
     plan: &ExecutionPlan,
+    state: &mut RuntimeState,
     function: crate::plan::execution::BoolListFunctionId,
     args: &[CallArg],
     caller_frame: &mut Frame,
-) -> ExecutionResult<Vec<bool>> {
+) -> ExecutionResult<BoolListValueId> {
     let frame = bind_arguments(
         plan,
+        state,
         args,
         caller_frame,
         plan.bool_list_function(function).frame_layout(),
     )?;
-    run_bool_list_loop(plan, function, frame)
+    run_bool_list_loop(plan, state, function, frame)
 }
 
 pub(in crate::runtime) fn run_nil_list_call(
     plan: &ExecutionPlan,
+    state: &mut RuntimeState,
     function: crate::plan::execution::NilListFunctionId,
     args: &[CallArg],
     caller_frame: &mut Frame,
-) -> ExecutionResult<usize> {
+) -> ExecutionResult<NilListValueId> {
     let frame = bind_arguments(
         plan,
+        state,
         args,
         caller_frame,
         plan.nil_list_function(function).frame_layout(),
     )?;
-    run_nil_list_loop(plan, function, frame)
+    run_nil_list_loop(plan, state, function, frame)
 }
 
 pub(in crate::runtime) fn run_tuple_list_call(
     plan: &ExecutionPlan,
+    state: &mut RuntimeState,
     function: crate::plan::execution::TupleListFunctionId,
     args: &[CallArg],
     caller_frame: &mut Frame,
-) -> ExecutionResult<Vec<Vec<Value>>> {
+) -> ExecutionResult<TupleListValueId> {
     let frame = bind_arguments(
         plan,
+        state,
         args,
         caller_frame,
         plan.tuple_list_function(function).frame_layout(),
     )?;
-    run_tuple_list_loop(plan, function, frame)
+    run_tuple_list_loop(plan, state, function, frame)
 }
 
 pub(in crate::runtime) fn run_list_list_call(
     plan: &ExecutionPlan,
+    state: &mut RuntimeState,
     function: crate::plan::execution::ListListFunctionId,
     args: &[CallArg],
     caller_frame: &mut Frame,
-) -> ExecutionResult<Vec<crate::runtime::ListValue>> {
+) -> ExecutionResult<ListListValueId> {
     let frame = bind_arguments(
         plan,
+        state,
         args,
         caller_frame,
         plan.list_list_function(function).frame_layout(),
     )?;
-    run_list_list_loop(plan, function, frame)
+    run_list_list_loop(plan, state, function, frame)
 }
 
 pub(in crate::runtime) fn run_function_list_call(
     plan: &ExecutionPlan,
+    state: &mut RuntimeState,
     function: crate::plan::execution::FunctionListFunctionId,
     args: &[CallArg],
     caller_frame: &mut Frame,
-) -> ExecutionResult<Vec<FunctionValue>> {
+) -> ExecutionResult<FunctionListValueId> {
     let frame = bind_arguments(
         plan,
+        state,
         args,
         caller_frame,
         plan.function_list_function(function).frame_layout(),
     )?;
-    run_function_list_loop(plan, function, frame)
+    run_function_list_loop(plan, state, function, frame)
 }
 
 pub(in crate::runtime) fn run_int_function_call(
     plan: &ExecutionPlan,
+    state: &mut RuntimeState,
     function: &crate::plan::execution::IntFunctionExpr,
     args: &[CallArg],
     caller_frame: &mut Frame,
 ) -> ExecutionResult<BigInt> {
-    let function = eval_int_function_expr(plan, caller_frame, function)?;
+    let function = eval_int_function_expr(plan, state, caller_frame, function)?;
     let runtime_function = plan.int_function(function.runtime_id());
     let frame_layout = runtime_function.frame_layout();
-    let frame =
-        bind_function_value_arguments(plan, args, caller_frame, frame_layout, function.captures())?;
-    run_int_loop(plan, function.runtime_id(), frame)
+    let frame = bind_function_value_arguments(
+        plan,
+        state,
+        args,
+        caller_frame,
+        frame_layout,
+        function.captures(),
+    )?;
+    run_int_loop(plan, state, function.runtime_id(), frame)
 }
 
 pub(in crate::runtime) fn run_string_function_call(
     plan: &ExecutionPlan,
+    state: &mut RuntimeState,
     function: &crate::plan::execution::StringFunctionExpr,
     args: &[CallArg],
     caller_frame: &mut Frame,
 ) -> ExecutionResult<EcoString> {
-    let function = eval_string_function_expr(plan, caller_frame, function)?;
+    let function = eval_string_function_expr(plan, state, caller_frame, function)?;
     let runtime_function = plan.string_function(function.runtime_id());
     let frame_layout = runtime_function.frame_layout();
-    let frame =
-        bind_function_value_arguments(plan, args, caller_frame, frame_layout, function.captures())?;
-    run_string_loop(plan, function.runtime_id(), frame)
+    let frame = bind_function_value_arguments(
+        plan,
+        state,
+        args,
+        caller_frame,
+        frame_layout,
+        function.captures(),
+    )?;
+    run_string_loop(plan, state, function.runtime_id(), frame)
 }
 
 pub(in crate::runtime) fn run_float_function_call(
     plan: &ExecutionPlan,
+    state: &mut RuntimeState,
     function: &crate::plan::execution::FloatFunctionExpr,
     args: &[CallArg],
     caller_frame: &mut Frame,
 ) -> ExecutionResult<f64> {
-    let function = eval_float_function_expr(plan, caller_frame, function)?;
+    let function = eval_float_function_expr(plan, state, caller_frame, function)?;
     let runtime_function = plan.float_function(function.runtime_id());
     let frame_layout = runtime_function.frame_layout();
-    let frame =
-        bind_function_value_arguments(plan, args, caller_frame, frame_layout, function.captures())?;
-    run_float_loop(plan, function.runtime_id(), frame)
+    let frame = bind_function_value_arguments(
+        plan,
+        state,
+        args,
+        caller_frame,
+        frame_layout,
+        function.captures(),
+    )?;
+    run_float_loop(plan, state, function.runtime_id(), frame)
 }
 
 pub(in crate::runtime) fn run_bool_function_call(
     plan: &ExecutionPlan,
+    state: &mut RuntimeState,
     function: &crate::plan::execution::BoolFunctionExpr,
     args: &[CallArg],
     caller_frame: &mut Frame,
 ) -> ExecutionResult<bool> {
-    let function = eval_bool_function_expr(plan, caller_frame, function)?;
+    let function = eval_bool_function_expr(plan, state, caller_frame, function)?;
     let runtime_function = plan.bool_function(function.runtime_id());
     let frame_layout = runtime_function.frame_layout();
-    let frame =
-        bind_function_value_arguments(plan, args, caller_frame, frame_layout, function.captures())?;
-    run_bool_loop(plan, function.runtime_id(), frame)
+    let frame = bind_function_value_arguments(
+        plan,
+        state,
+        args,
+        caller_frame,
+        frame_layout,
+        function.captures(),
+    )?;
+    run_bool_loop(plan, state, function.runtime_id(), frame)
 }
 
 pub(in crate::runtime) fn run_nil_function_call(
     plan: &ExecutionPlan,
+    state: &mut RuntimeState,
     function: &crate::plan::execution::NilFunctionExpr,
     args: &[CallArg],
     caller_frame: &mut Frame,
 ) -> ExecutionResult<()> {
-    let function = eval_nil_function_expr(plan, caller_frame, function)?;
+    let function = eval_nil_function_expr(plan, state, caller_frame, function)?;
     let runtime_function = plan.nil_function(function.runtime_id());
     let frame_layout = runtime_function.frame_layout();
-    let frame =
-        bind_function_value_arguments(plan, args, caller_frame, frame_layout, function.captures())?;
-    run_nil_loop(plan, function.runtime_id(), frame)
+    let frame = bind_function_value_arguments(
+        plan,
+        state,
+        args,
+        caller_frame,
+        frame_layout,
+        function.captures(),
+    )?;
+    run_nil_loop(plan, state, function.runtime_id(), frame)
 }
 
 pub(in crate::runtime) fn run_tuple_function_call(
     plan: &ExecutionPlan,
+    state: &mut RuntimeState,
     function: &crate::plan::execution::TupleFunctionExpr,
     args: &[CallArg],
     caller_frame: &mut Frame,
-) -> ExecutionResult<Vec<Value>> {
-    let function = eval_tuple_function_expr(plan, caller_frame, function)?;
+) -> ExecutionResult<Vec<EvaluatedValue>> {
+    let function = eval_tuple_function_expr(plan, state, caller_frame, function)?;
     let runtime_function = plan.tuple_function(function.runtime_id());
     let frame_layout = runtime_function.frame_layout();
-    let frame =
-        bind_function_value_arguments(plan, args, caller_frame, frame_layout, function.captures())?;
-    run_tuple_loop(plan, function.runtime_id(), frame)
+    let frame = bind_function_value_arguments(
+        plan,
+        state,
+        args,
+        caller_frame,
+        frame_layout,
+        function.captures(),
+    )?;
+    run_tuple_loop(plan, state, function.runtime_id(), frame)
 }
 
 pub(in crate::runtime) fn run_int_list_function_call(
     plan: &ExecutionPlan,
+    state: &mut RuntimeState,
     function: &crate::plan::execution::ListFunctionExpr,
     args: &[CallArg],
     caller_frame: &mut Frame,
-) -> ExecutionResult<Vec<BigInt>> {
-    let function = eval_list_function_expr(plan, caller_frame, function)?;
+) -> ExecutionResult<IntListValueId> {
+    let function = eval_list_function_expr(plan, state, caller_frame, function)?;
     let ListFunctionId::Int(runtime_id) = function.runtime_id() else {
         return Err(ExecutionError::function_return_family_mismatch(
             FunctionReturnFamily::List,
@@ -388,21 +478,23 @@ pub(in crate::runtime) fn run_int_list_function_call(
     };
     let frame = bind_function_value_arguments(
         plan,
+        state,
         args,
         caller_frame,
         plan.int_list_function(runtime_id).frame_layout(),
         function.captures(),
     )?;
-    run_int_list_loop(plan, runtime_id, frame)
+    run_int_list_loop(plan, state, runtime_id, frame)
 }
 
 pub(in crate::runtime) fn run_string_list_function_call(
     plan: &ExecutionPlan,
+    state: &mut RuntimeState,
     function: &crate::plan::execution::ListFunctionExpr,
     args: &[CallArg],
     caller_frame: &mut Frame,
-) -> ExecutionResult<Vec<EcoString>> {
-    let function = eval_list_function_expr(plan, caller_frame, function)?;
+) -> ExecutionResult<StringListValueId> {
+    let function = eval_list_function_expr(plan, state, caller_frame, function)?;
     let ListFunctionId::String(runtime_id) = function.runtime_id() else {
         return Err(ExecutionError::function_return_family_mismatch(
             FunctionReturnFamily::List,
@@ -411,21 +503,23 @@ pub(in crate::runtime) fn run_string_list_function_call(
     };
     let frame = bind_function_value_arguments(
         plan,
+        state,
         args,
         caller_frame,
         plan.string_list_function(runtime_id).frame_layout(),
         function.captures(),
     )?;
-    run_string_list_loop(plan, runtime_id, frame)
+    run_string_list_loop(plan, state, runtime_id, frame)
 }
 
 pub(in crate::runtime) fn run_float_list_function_call(
     plan: &ExecutionPlan,
+    state: &mut RuntimeState,
     function: &crate::plan::execution::ListFunctionExpr,
     args: &[CallArg],
     caller_frame: &mut Frame,
-) -> ExecutionResult<Vec<f64>> {
-    let function = eval_list_function_expr(plan, caller_frame, function)?;
+) -> ExecutionResult<FloatListValueId> {
+    let function = eval_list_function_expr(plan, state, caller_frame, function)?;
     let ListFunctionId::Float(runtime_id) = function.runtime_id() else {
         return Err(ExecutionError::function_return_family_mismatch(
             FunctionReturnFamily::List,
@@ -434,21 +528,23 @@ pub(in crate::runtime) fn run_float_list_function_call(
     };
     let frame = bind_function_value_arguments(
         plan,
+        state,
         args,
         caller_frame,
         plan.float_list_function(runtime_id).frame_layout(),
         function.captures(),
     )?;
-    run_float_list_loop(plan, runtime_id, frame)
+    run_float_list_loop(plan, state, runtime_id, frame)
 }
 
 pub(in crate::runtime) fn run_bool_list_function_call(
     plan: &ExecutionPlan,
+    state: &mut RuntimeState,
     function: &crate::plan::execution::ListFunctionExpr,
     args: &[CallArg],
     caller_frame: &mut Frame,
-) -> ExecutionResult<Vec<bool>> {
-    let function = eval_list_function_expr(plan, caller_frame, function)?;
+) -> ExecutionResult<BoolListValueId> {
+    let function = eval_list_function_expr(plan, state, caller_frame, function)?;
     let ListFunctionId::Bool(runtime_id) = function.runtime_id() else {
         return Err(ExecutionError::function_return_family_mismatch(
             FunctionReturnFamily::List,
@@ -457,21 +553,23 @@ pub(in crate::runtime) fn run_bool_list_function_call(
     };
     let frame = bind_function_value_arguments(
         plan,
+        state,
         args,
         caller_frame,
         plan.bool_list_function(runtime_id).frame_layout(),
         function.captures(),
     )?;
-    run_bool_list_loop(plan, runtime_id, frame)
+    run_bool_list_loop(plan, state, runtime_id, frame)
 }
 
 pub(in crate::runtime) fn run_nil_list_function_call(
     plan: &ExecutionPlan,
+    state: &mut RuntimeState,
     function: &crate::plan::execution::ListFunctionExpr,
     args: &[CallArg],
     caller_frame: &mut Frame,
-) -> ExecutionResult<usize> {
-    let function = eval_list_function_expr(plan, caller_frame, function)?;
+) -> ExecutionResult<NilListValueId> {
+    let function = eval_list_function_expr(plan, state, caller_frame, function)?;
     let ListFunctionId::Nil(runtime_id) = function.runtime_id() else {
         return Err(ExecutionError::function_return_family_mismatch(
             FunctionReturnFamily::List,
@@ -480,21 +578,23 @@ pub(in crate::runtime) fn run_nil_list_function_call(
     };
     let frame = bind_function_value_arguments(
         plan,
+        state,
         args,
         caller_frame,
         plan.nil_list_function(runtime_id).frame_layout(),
         function.captures(),
     )?;
-    run_nil_list_loop(plan, runtime_id, frame)
+    run_nil_list_loop(plan, state, runtime_id, frame)
 }
 
 pub(in crate::runtime) fn run_tuple_list_function_call(
     plan: &ExecutionPlan,
+    state: &mut RuntimeState,
     function: &crate::plan::execution::ListFunctionExpr,
     args: &[CallArg],
     caller_frame: &mut Frame,
-) -> ExecutionResult<Vec<Vec<Value>>> {
-    let function = eval_list_function_expr(plan, caller_frame, function)?;
+) -> ExecutionResult<TupleListValueId> {
+    let function = eval_list_function_expr(plan, state, caller_frame, function)?;
     let ListFunctionId::Tuple(runtime_id) = function.runtime_id() else {
         return Err(ExecutionError::function_return_family_mismatch(
             FunctionReturnFamily::List,
@@ -503,21 +603,23 @@ pub(in crate::runtime) fn run_tuple_list_function_call(
     };
     let frame = bind_function_value_arguments(
         plan,
+        state,
         args,
         caller_frame,
         plan.tuple_list_function(runtime_id).frame_layout(),
         function.captures(),
     )?;
-    run_tuple_list_loop(plan, runtime_id, frame)
+    run_tuple_list_loop(plan, state, runtime_id, frame)
 }
 
 pub(in crate::runtime) fn run_list_list_function_call(
     plan: &ExecutionPlan,
+    state: &mut RuntimeState,
     function: &crate::plan::execution::ListFunctionExpr,
     args: &[CallArg],
     caller_frame: &mut Frame,
-) -> ExecutionResult<Vec<crate::runtime::ListValue>> {
-    let function = eval_list_function_expr(plan, caller_frame, function)?;
+) -> ExecutionResult<ListListValueId> {
+    let function = eval_list_function_expr(plan, state, caller_frame, function)?;
     let ListFunctionId::List(runtime_id) = function.runtime_id() else {
         return Err(ExecutionError::function_return_family_mismatch(
             FunctionReturnFamily::List,
@@ -526,21 +628,23 @@ pub(in crate::runtime) fn run_list_list_function_call(
     };
     let frame = bind_function_value_arguments(
         plan,
+        state,
         args,
         caller_frame,
         plan.list_list_function(runtime_id).frame_layout(),
         function.captures(),
     )?;
-    run_list_list_loop(plan, runtime_id, frame)
+    run_list_list_loop(plan, state, runtime_id, frame)
 }
 
 pub(in crate::runtime) fn run_function_list_function_call(
     plan: &ExecutionPlan,
+    state: &mut RuntimeState,
     function: &crate::plan::execution::ListFunctionExpr,
     args: &[CallArg],
     caller_frame: &mut Frame,
-) -> ExecutionResult<Vec<FunctionValue>> {
-    let function = eval_list_function_expr(plan, caller_frame, function)?;
+) -> ExecutionResult<FunctionListValueId> {
+    let function = eval_list_function_expr(plan, state, caller_frame, function)?;
     let ListFunctionId::Function(runtime_id) = function.runtime_id() else {
         return Err(ExecutionError::function_return_family_mismatch(
             FunctionReturnFamily::List,
@@ -549,12 +653,13 @@ pub(in crate::runtime) fn run_function_list_function_call(
     };
     let frame = bind_function_value_arguments(
         plan,
+        state,
         args,
         caller_frame,
         plan.function_list_function(runtime_id).frame_layout(),
         function.captures(),
     )?;
-    run_function_list_loop(plan, runtime_id, frame)
+    run_function_list_loop(plan, state, runtime_id, frame)
 }
 
 fn list_function_frame_layout<'a>(
@@ -575,131 +680,148 @@ fn list_function_frame_layout<'a>(
 
 pub(in crate::runtime) fn run_int_function_returning_function_call(
     plan: &ExecutionPlan,
+    state: &mut RuntimeState,
     function: IntFunctionFunctionId,
     args: &[CallArg],
     caller_frame: &mut Frame,
-) -> ExecutionResult<crate::runtime::IntFunctionValue> {
+) -> ExecutionResult<EvaluatedIntFunction> {
     let frame = bind_arguments(
         plan,
+        state,
         args,
         caller_frame,
         plan.int_function_function(function).frame_layout(),
     )?;
-    run_int_function_loop(plan, function, frame)
+    run_int_function_loop(plan, state, function, frame)
 }
 
 pub(in crate::runtime) fn run_float_function_returning_function_call(
     plan: &ExecutionPlan,
+    state: &mut RuntimeState,
     function: FloatFunctionFunctionId,
     args: &[CallArg],
     caller_frame: &mut Frame,
-) -> ExecutionResult<crate::runtime::FloatFunctionValue> {
+) -> ExecutionResult<EvaluatedFloatFunction> {
     let frame = bind_arguments(
         plan,
+        state,
         args,
         caller_frame,
         plan.float_function_function(function).frame_layout(),
     )?;
-    run_float_function_loop(plan, function, frame)
+    run_float_function_loop(plan, state, function, frame)
 }
 
 pub(in crate::runtime) fn run_string_function_returning_function_call(
     plan: &ExecutionPlan,
+    state: &mut RuntimeState,
     function: StringFunctionFunctionId,
     args: &[CallArg],
     caller_frame: &mut Frame,
-) -> ExecutionResult<crate::runtime::StringFunctionValue> {
+) -> ExecutionResult<EvaluatedStringFunction> {
     let frame = bind_arguments(
         plan,
+        state,
         args,
         caller_frame,
         plan.string_function_function(function).frame_layout(),
     )?;
-    run_string_function_loop(plan, function, frame)
+    run_string_function_loop(plan, state, function, frame)
 }
 
 pub(in crate::runtime) fn run_bool_function_returning_function_call(
     plan: &ExecutionPlan,
+    state: &mut RuntimeState,
     function: BoolFunctionFunctionId,
     args: &[CallArg],
     caller_frame: &mut Frame,
-) -> ExecutionResult<crate::runtime::BoolFunctionValue> {
+) -> ExecutionResult<EvaluatedBoolFunction> {
     let frame = bind_arguments(
         plan,
+        state,
         args,
         caller_frame,
         plan.bool_function_function(function).frame_layout(),
     )?;
-    run_bool_function_loop(plan, function, frame)
+    run_bool_function_loop(plan, state, function, frame)
 }
 
 pub(in crate::runtime) fn run_nil_function_returning_function_call(
     plan: &ExecutionPlan,
+    state: &mut RuntimeState,
     function: NilFunctionFunctionId,
     args: &[CallArg],
     caller_frame: &mut Frame,
-) -> ExecutionResult<crate::runtime::NilFunctionValue> {
+) -> ExecutionResult<EvaluatedNilFunction> {
     let frame = bind_arguments(
         plan,
+        state,
         args,
         caller_frame,
         plan.nil_function_function(function).frame_layout(),
     )?;
-    run_nil_function_loop(plan, function, frame)
+    run_nil_function_loop(plan, state, function, frame)
 }
 
 pub(in crate::runtime) fn run_tuple_function_returning_function_call(
     plan: &ExecutionPlan,
+    state: &mut RuntimeState,
     function: TupleFunctionFunctionId,
     args: &[CallArg],
     caller_frame: &mut Frame,
-) -> ExecutionResult<crate::runtime::TupleFunctionValue> {
+) -> ExecutionResult<EvaluatedTupleFunction> {
     let frame = bind_arguments(
         plan,
+        state,
         args,
         caller_frame,
         plan.tuple_function_function(function).frame_layout(),
     )?;
-    run_tuple_function_loop(plan, function, frame)
+    run_tuple_function_loop(plan, state, function, frame)
 }
 
 pub(in crate::runtime) fn run_list_function_returning_function_call(
     plan: &ExecutionPlan,
+    state: &mut RuntimeState,
     function: ListFunctionFunctionId,
     args: &[CallArg],
     caller_frame: &mut Frame,
-) -> ExecutionResult<crate::runtime::ListFunctionValue> {
+) -> ExecutionResult<EvaluatedListFunction> {
     let frame = bind_arguments(
         plan,
+        state,
         args,
         caller_frame,
         plan.list_function_function(&function).frame_layout(),
     )?;
-    run_list_function_loop(plan, function, frame)
+    run_list_function_loop(plan, state, function, frame)
 }
 
 pub(in crate::runtime) fn run_function_function_returning_function_call(
     plan: &ExecutionPlan,
+    state: &mut RuntimeState,
     function: FunctionFunctionFunctionId,
     args: &[CallArg],
     caller_frame: &mut Frame,
-) -> ExecutionResult<FunctionFunctionValue> {
+) -> ExecutionResult<EvaluatedFunctionFunction> {
     let frame = bind_arguments(
         plan,
+        state,
         args,
         caller_frame,
         plan.function_function_function(function).frame_layout(),
     )?;
-    run_function_function_loop(plan, function, frame)
+    run_function_function_loop(plan, state, function, frame)
 }
 
 pub(in crate::runtime) fn run_int_function_function_call(
     plan: &ExecutionPlan,
+    state: &mut RuntimeState,
     function: &crate::plan::execution::FunctionFunctionExpr,
     args: &[CallArg],
     caller_frame: &mut Frame,
-) -> ExecutionResult<crate::runtime::IntFunctionValue> {
-    let function = eval_function_function_expr(plan, caller_frame, function)?;
+) -> ExecutionResult<EvaluatedIntFunction> {
+    let function = eval_function_function_expr(plan, state, caller_frame, function)?;
     let runtime_id = function.runtime_id();
     let function_id = runtime_id
         .int()
@@ -709,18 +831,25 @@ pub(in crate::runtime) fn run_int_function_function_call(
         ))?;
     let runtime_function = plan.int_function_function(function_id);
     let frame_layout = runtime_function.frame_layout();
-    let frame =
-        bind_function_value_arguments(plan, args, caller_frame, frame_layout, function.captures())?;
-    run_int_function_loop(plan, function_id, frame)
+    let frame = bind_function_value_arguments(
+        plan,
+        state,
+        args,
+        caller_frame,
+        frame_layout,
+        function.captures(),
+    )?;
+    run_int_function_loop(plan, state, function_id, frame)
 }
 
 pub(in crate::runtime) fn run_float_function_function_call(
     plan: &ExecutionPlan,
+    state: &mut RuntimeState,
     function: &crate::plan::execution::FunctionFunctionExpr,
     args: &[CallArg],
     caller_frame: &mut Frame,
-) -> ExecutionResult<crate::runtime::FloatFunctionValue> {
-    let function = eval_function_function_expr(plan, caller_frame, function)?;
+) -> ExecutionResult<EvaluatedFloatFunction> {
+    let function = eval_function_function_expr(plan, state, caller_frame, function)?;
     let runtime_id = function.runtime_id();
     let function_id = runtime_id
         .float()
@@ -730,18 +859,25 @@ pub(in crate::runtime) fn run_float_function_function_call(
         ))?;
     let runtime_function = plan.float_function_function(function_id);
     let frame_layout = runtime_function.frame_layout();
-    let frame =
-        bind_function_value_arguments(plan, args, caller_frame, frame_layout, function.captures())?;
-    run_float_function_loop(plan, function_id, frame)
+    let frame = bind_function_value_arguments(
+        plan,
+        state,
+        args,
+        caller_frame,
+        frame_layout,
+        function.captures(),
+    )?;
+    run_float_function_loop(plan, state, function_id, frame)
 }
 
 pub(in crate::runtime) fn run_string_function_function_call(
     plan: &ExecutionPlan,
+    state: &mut RuntimeState,
     function: &crate::plan::execution::FunctionFunctionExpr,
     args: &[CallArg],
     caller_frame: &mut Frame,
-) -> ExecutionResult<crate::runtime::StringFunctionValue> {
-    let function = eval_function_function_expr(plan, caller_frame, function)?;
+) -> ExecutionResult<EvaluatedStringFunction> {
+    let function = eval_function_function_expr(plan, state, caller_frame, function)?;
     let runtime_id = function.runtime_id();
     let function_id =
         runtime_id
@@ -752,18 +888,25 @@ pub(in crate::runtime) fn run_string_function_function_call(
             ))?;
     let runtime_function = plan.string_function_function(function_id);
     let frame_layout = runtime_function.frame_layout();
-    let frame =
-        bind_function_value_arguments(plan, args, caller_frame, frame_layout, function.captures())?;
-    run_string_function_loop(plan, function_id, frame)
+    let frame = bind_function_value_arguments(
+        plan,
+        state,
+        args,
+        caller_frame,
+        frame_layout,
+        function.captures(),
+    )?;
+    run_string_function_loop(plan, state, function_id, frame)
 }
 
 pub(in crate::runtime) fn run_bool_function_function_call(
     plan: &ExecutionPlan,
+    state: &mut RuntimeState,
     function: &crate::plan::execution::FunctionFunctionExpr,
     args: &[CallArg],
     caller_frame: &mut Frame,
-) -> ExecutionResult<crate::runtime::BoolFunctionValue> {
-    let function = eval_function_function_expr(plan, caller_frame, function)?;
+) -> ExecutionResult<EvaluatedBoolFunction> {
+    let function = eval_function_function_expr(plan, state, caller_frame, function)?;
     let runtime_id = function.runtime_id();
     let function_id = runtime_id
         .bool()
@@ -773,18 +916,25 @@ pub(in crate::runtime) fn run_bool_function_function_call(
         ))?;
     let runtime_function = plan.bool_function_function(function_id);
     let frame_layout = runtime_function.frame_layout();
-    let frame =
-        bind_function_value_arguments(plan, args, caller_frame, frame_layout, function.captures())?;
-    run_bool_function_loop(plan, function_id, frame)
+    let frame = bind_function_value_arguments(
+        plan,
+        state,
+        args,
+        caller_frame,
+        frame_layout,
+        function.captures(),
+    )?;
+    run_bool_function_loop(plan, state, function_id, frame)
 }
 
 pub(in crate::runtime) fn run_nil_function_function_call(
     plan: &ExecutionPlan,
+    state: &mut RuntimeState,
     function: &crate::plan::execution::FunctionFunctionExpr,
     args: &[CallArg],
     caller_frame: &mut Frame,
-) -> ExecutionResult<crate::runtime::NilFunctionValue> {
-    let function = eval_function_function_expr(plan, caller_frame, function)?;
+) -> ExecutionResult<EvaluatedNilFunction> {
+    let function = eval_function_function_expr(plan, state, caller_frame, function)?;
     let runtime_id = function.runtime_id();
     let function_id = runtime_id
         .nil()
@@ -794,18 +944,25 @@ pub(in crate::runtime) fn run_nil_function_function_call(
         ))?;
     let runtime_function = plan.nil_function_function(function_id);
     let frame_layout = runtime_function.frame_layout();
-    let frame =
-        bind_function_value_arguments(plan, args, caller_frame, frame_layout, function.captures())?;
-    run_nil_function_loop(plan, function_id, frame)
+    let frame = bind_function_value_arguments(
+        plan,
+        state,
+        args,
+        caller_frame,
+        frame_layout,
+        function.captures(),
+    )?;
+    run_nil_function_loop(plan, state, function_id, frame)
 }
 
 pub(in crate::runtime) fn run_tuple_function_function_call(
     plan: &ExecutionPlan,
+    state: &mut RuntimeState,
     function: &crate::plan::execution::FunctionFunctionExpr,
     args: &[CallArg],
     caller_frame: &mut Frame,
-) -> ExecutionResult<crate::runtime::TupleFunctionValue> {
-    let function = eval_function_function_expr(plan, caller_frame, function)?;
+) -> ExecutionResult<EvaluatedTupleFunction> {
+    let function = eval_function_function_expr(plan, state, caller_frame, function)?;
     let runtime_id = function.runtime_id();
     let function_id = runtime_id
         .tuple()
@@ -815,18 +972,25 @@ pub(in crate::runtime) fn run_tuple_function_function_call(
         ))?;
     let runtime_function = plan.tuple_function_function(function_id);
     let frame_layout = runtime_function.frame_layout();
-    let frame =
-        bind_function_value_arguments(plan, args, caller_frame, frame_layout, function.captures())?;
-    run_tuple_function_loop(plan, function_id, frame)
+    let frame = bind_function_value_arguments(
+        plan,
+        state,
+        args,
+        caller_frame,
+        frame_layout,
+        function.captures(),
+    )?;
+    run_tuple_function_loop(plan, state, function_id, frame)
 }
 
 pub(in crate::runtime) fn run_list_function_function_call(
     plan: &ExecutionPlan,
+    state: &mut RuntimeState,
     function: &crate::plan::execution::FunctionFunctionExpr,
     args: &[CallArg],
     caller_frame: &mut Frame,
-) -> ExecutionResult<crate::runtime::ListFunctionValue> {
-    let function = eval_function_function_expr(plan, caller_frame, function)?;
+) -> ExecutionResult<EvaluatedListFunction> {
+    let function = eval_function_function_expr(plan, state, caller_frame, function)?;
     let runtime_id = function.runtime_id();
     let function_id = runtime_id
         .list()
@@ -836,18 +1000,25 @@ pub(in crate::runtime) fn run_list_function_function_call(
         ))?;
     let runtime_function = plan.list_function_function(&function_id);
     let frame_layout = runtime_function.frame_layout();
-    let frame =
-        bind_function_value_arguments(plan, args, caller_frame, frame_layout, function.captures())?;
-    run_list_function_loop(plan, function_id, frame)
+    let frame = bind_function_value_arguments(
+        plan,
+        state,
+        args,
+        caller_frame,
+        frame_layout,
+        function.captures(),
+    )?;
+    run_list_function_loop(plan, state, function_id, frame)
 }
 
 pub(in crate::runtime) fn run_function_function_function_call(
     plan: &ExecutionPlan,
+    state: &mut RuntimeState,
     function: &crate::plan::execution::FunctionFunctionExpr,
     args: &[CallArg],
     caller_frame: &mut Frame,
-) -> ExecutionResult<FunctionFunctionValue> {
-    let function = eval_function_function_expr(plan, caller_frame, function)?;
+) -> ExecutionResult<EvaluatedFunctionFunction> {
+    let function = eval_function_function_expr(plan, state, caller_frame, function)?;
     let runtime_id = function.runtime_id();
     let function_id =
         runtime_id
@@ -858,47 +1029,54 @@ pub(in crate::runtime) fn run_function_function_function_call(
             ))?;
     let runtime_function = plan.function_function_function(function_id);
     let frame_layout = runtime_function.frame_layout();
-    let frame =
-        bind_function_value_arguments(plan, args, caller_frame, frame_layout, function.captures())?;
-    run_function_function_loop(plan, function_id, frame)
+    let frame = bind_function_value_arguments(
+        plan,
+        state,
+        args,
+        caller_frame,
+        frame_layout,
+        function.captures(),
+    )?;
+    run_function_function_loop(plan, state, function_id, frame)
 }
 fn run_function_returning_function_call(
     plan: &ExecutionPlan,
+    state: &mut RuntimeState,
     function: crate::plan::execution::FunctionFunctionId,
     args: &[CallArg],
     caller_frame: &mut Frame,
-) -> ExecutionResult<FunctionValue> {
+) -> ExecutionResult<EvaluatedFunctionValue> {
     match function {
         crate::plan::execution::FunctionFunctionId::Int(function) => {
-            run_int_function_returning_function_call(plan, function, args, caller_frame)
+            run_int_function_returning_function_call(plan, state, function, args, caller_frame)
                 .map(Into::into)
         }
         crate::plan::execution::FunctionFunctionId::Float(function) => {
-            run_float_function_returning_function_call(plan, function, args, caller_frame)
+            run_float_function_returning_function_call(plan, state, function, args, caller_frame)
                 .map(Into::into)
         }
         crate::plan::execution::FunctionFunctionId::String(function) => {
-            run_string_function_returning_function_call(plan, function, args, caller_frame)
+            run_string_function_returning_function_call(plan, state, function, args, caller_frame)
                 .map(Into::into)
         }
         crate::plan::execution::FunctionFunctionId::Bool(function) => {
-            run_bool_function_returning_function_call(plan, function, args, caller_frame)
+            run_bool_function_returning_function_call(plan, state, function, args, caller_frame)
                 .map(Into::into)
         }
         crate::plan::execution::FunctionFunctionId::Nil(function) => {
-            run_nil_function_returning_function_call(plan, function, args, caller_frame)
+            run_nil_function_returning_function_call(plan, state, function, args, caller_frame)
                 .map(Into::into)
         }
         crate::plan::execution::FunctionFunctionId::Tuple(function) => {
-            run_tuple_function_returning_function_call(plan, function, args, caller_frame)
+            run_tuple_function_returning_function_call(plan, state, function, args, caller_frame)
                 .map(Into::into)
         }
         crate::plan::execution::FunctionFunctionId::List(function) => {
-            run_list_function_returning_function_call(plan, function, args, caller_frame)
+            run_list_function_returning_function_call(plan, state, function, args, caller_frame)
                 .map(Into::into)
         }
         crate::plan::execution::FunctionFunctionId::Function(function) => {
-            run_function_function_returning_function_call(plan, function, args, caller_frame)
+            run_function_function_returning_function_call(plan, state, function, args, caller_frame)
                 .map(Into::into)
         }
     }
@@ -917,15 +1095,12 @@ mod tests {
         BoolFunctionFunctionId, CallArg, FloatFunctionFunctionId, FunctionFunctionFunctionId,
         FunctionFunctionId, FunctionFunctionLocalId, FunctionListLocalId, FunctionReturnFamily,
         IntFunctionFunctionId, IntFunctionId, ListFunctionFunctionId, ListFunctionId,
-        NilFunctionFunctionId, ReturnBody, ReturnBodyKind, RuntimeFunctionId,
-        StringFunctionFunctionId, StringFunctionId, TupleFunctionFunctionId,
+        NilFunctionFunctionId, ReturnBody, ReturnBodyKind, StringFunctionFunctionId,
+        StringFunctionId, TupleFunctionFunctionId,
     };
-    use crate::plan::{FunctionType, ValueType};
+    use crate::runtime::FunctionValueKind;
     use crate::runtime::frame::Frame;
     use crate::runtime::{ExecutionError, Value, run_main};
-    use crate::runtime::{
-        FunctionFunctionValue, FunctionValue, FunctionValueKind, ListFunctionValue,
-    };
 
     #[test]
     fn primitive_function_value_calls_propagate_callee_and_argument_panics() {
@@ -979,125 +1154,6 @@ mod tests {
                 "panic: callee",
             );
         }
-    }
-
-    #[test]
-    fn list_function_calls_reject_wrong_item_families_at_the_transitional_runtime_boundary() {
-        let plan = crate::runtime::plan_src(
-            r#"
-fn int_values(provider: fn() -> List(Int)) { provider() }
-fn string_values(provider: fn() -> List(String)) { provider() }
-fn float_values(provider: fn() -> List(Float)) { provider() }
-fn bool_values(provider: fn() -> List(Bool)) { provider() }
-fn nil_values(provider: fn() -> List(Nil)) { provider() }
-fn tuple_values(provider: fn() -> List(#(Int))) { provider() }
-fn list_values(provider: fn() -> List(List(Int))) { provider() }
-fn function_values(provider: fn() -> List(fn() -> Int)) { provider() }
-fn wrong_int() -> List(Int) { [] }
-fn wrong_string() -> List(String) { [] }
-
-pub fn main() { Nil }
-"#,
-        );
-        let wrong_int = ListFunctionValue::new_with_captures(
-            ListFunctionId::Int(plan.int_list_function_id(1)),
-            Vec::new(),
-            Vec::new(),
-            FunctionType::new(Vec::new(), ValueType::List(Box::new(ValueType::Int))),
-        );
-        let wrong_string = ListFunctionValue::new_with_captures(
-            ListFunctionId::String(plan.string_list_function_id(1)),
-            Vec::new(),
-            Vec::new(),
-            FunctionType::new(Vec::new(), ValueType::List(Box::new(ValueType::String))),
-        );
-        let function = plan.int_list_function(plan.int_list_function_id(0));
-        let mut frame = Frame::new(function.frame_layout());
-        frame.set_list_function(
-            function.frame_layout().list_functions()[0].clone(),
-            wrong_string,
-        );
-        assert_eq!(
-            run_int_list_loop(&plan, plan.int_list_function_id(0), frame),
-            Err(list_item_family_mismatch()),
-        );
-
-        let function = plan.string_list_function(plan.string_list_function_id(0));
-        let mut frame = Frame::new(function.frame_layout());
-        frame.set_list_function(
-            function.frame_layout().list_functions()[0].clone(),
-            wrong_int.clone(),
-        );
-        assert_eq!(
-            run_string_list_loop(&plan, plan.string_list_function_id(0), frame),
-            Err(list_item_family_mismatch()),
-        );
-
-        let function = plan.float_list_function(plan.float_list_function_id(0));
-        let mut frame = Frame::new(function.frame_layout());
-        frame.set_list_function(
-            function.frame_layout().list_functions()[0].clone(),
-            wrong_int.clone(),
-        );
-        assert_eq!(
-            run_float_list_loop(&plan, plan.float_list_function_id(0), frame),
-            Err(list_item_family_mismatch()),
-        );
-
-        let function = plan.bool_list_function(plan.bool_list_function_id(0));
-        let mut frame = Frame::new(function.frame_layout());
-        frame.set_list_function(
-            function.frame_layout().list_functions()[0].clone(),
-            wrong_int.clone(),
-        );
-        assert_eq!(
-            run_bool_list_loop(&plan, plan.bool_list_function_id(0), frame),
-            Err(list_item_family_mismatch()),
-        );
-
-        let function = plan.nil_list_function(plan.nil_list_function_id(0));
-        let mut frame = Frame::new(function.frame_layout());
-        frame.set_list_function(
-            function.frame_layout().list_functions()[0].clone(),
-            wrong_int.clone(),
-        );
-        assert_eq!(
-            run_nil_list_loop(&plan, plan.nil_list_function_id(0), frame),
-            Err(list_item_family_mismatch()),
-        );
-
-        let function = plan.tuple_list_function(plan.tuple_list_function_id(0));
-        let mut frame = Frame::new(function.frame_layout());
-        frame.set_list_function(
-            function.frame_layout().list_functions()[0].clone(),
-            wrong_int.clone(),
-        );
-        assert_eq!(
-            run_tuple_list_loop(&plan, plan.tuple_list_function_id(0), frame),
-            Err(list_item_family_mismatch()),
-        );
-
-        let function = plan.list_list_function(plan.list_list_function_id(0));
-        let mut frame = Frame::new(function.frame_layout());
-        frame.set_list_function(
-            function.frame_layout().list_functions()[0].clone(),
-            wrong_int.clone(),
-        );
-        assert_eq!(
-            run_list_list_loop(&plan, plan.list_list_function_id(0), frame),
-            Err(list_item_family_mismatch()),
-        );
-
-        let function = plan.function_list_function(plan.function_list_function_id(0));
-        let mut frame = Frame::new(function.frame_layout());
-        frame.set_list_function(
-            function.frame_layout().list_functions()[0].clone(),
-            wrong_int,
-        );
-        assert_eq!(
-            run_function_list_loop(&plan, plan.function_list_function_id(0), frame),
-            Err(list_item_family_mismatch()),
-        );
     }
 
     #[test]
@@ -1171,10 +1227,13 @@ pub fn main() { Nil }
         );
         let main = plan.int_list_function(plan.int_list_function_id(0));
         let args = expect_tail_call_args(main.return_());
-        let mut caller_frame = Frame::default();
+        let mut state = crate::runtime::RuntimeState::new();
+        let layout = crate::plan::execution::FrameLayout::default();
+        let mut caller_frame = Frame::new(&layout, &mut state);
 
         let error = super::run_list_call(
             &plan,
+            &mut state,
             ListFunctionId::Int(plan.int_list_function_id(1)),
             args,
             &mut caller_frame,
@@ -1212,6 +1271,153 @@ pub fn main() { Nil }
 
             assert_eq!(error.to_string(), "panic: `panic` expression evaluated.");
         }
+    }
+
+    #[test]
+    fn list_function_calls_report_direct_mutated_item_return_families() {
+        let plan = crate::runtime::plan_src(
+            r#"
+fn ints(function: fn() -> List(Int)) { function() }
+fn strings(function: fn() -> List(String)) { function() }
+fn floats(function: fn() -> List(Float)) { function() }
+fn bools(function: fn() -> List(Bool)) { function() }
+fn nils(function: fn() -> List(Nil)) { function() }
+fn tuples(function: fn() -> List(#(Int))) { function() }
+fn lists(function: fn() -> List(List(Int))) { function() }
+fn functions(function: fn() -> List(fn() -> Int)) { function() }
+pub fn main() { Nil }
+"#,
+        );
+        let wrong_int = crate::runtime::EvaluatedListFunction::new(
+            ListFunctionId::Int(plan.int_list_function_id(0)),
+            Vec::new(),
+            Vec::new(),
+            crate::plan::execution::FunctionType::new(
+                Vec::new(),
+                crate::plan::execution::ValueType::List(
+                    plan.int_list_function_id(0).type_id().list_type(),
+                ),
+            ),
+        );
+        let wrong_string = crate::runtime::EvaluatedListFunction::new(
+            ListFunctionId::String(plan.string_list_function_id(0)),
+            Vec::new(),
+            Vec::new(),
+            crate::plan::execution::FunctionType::new(
+                Vec::new(),
+                crate::plan::execution::ValueType::List(
+                    plan.string_list_function_id(0).type_id().list_type(),
+                ),
+            ),
+        );
+        let expected = ExecutionError::function_return_family_mismatch(
+            FunctionReturnFamily::List,
+            FunctionReturnFamily::List,
+        );
+
+        let function = plan.int_list_function(plan.int_list_function_id(0));
+        let mut state = crate::runtime::RuntimeState::new();
+        let mut frame = Frame::new(function.frame_layout(), &mut state);
+        frame.set_list_function(
+            function.frame_layout().list_functions()[0].clone(),
+            wrong_string,
+        );
+        assert_eq!(
+            run_int_list_loop(&plan, &mut state, plan.int_list_function_id(0), frame)
+                .expect_err("direct-mutated list function family must fail"),
+            expected,
+        );
+
+        let function = plan.string_list_function(plan.string_list_function_id(0));
+        let mut state = crate::runtime::RuntimeState::new();
+        let mut frame = Frame::new(function.frame_layout(), &mut state);
+        frame.set_list_function(
+            function.frame_layout().list_functions()[0].clone(),
+            wrong_int.clone(),
+        );
+        assert_eq!(
+            run_string_list_loop(&plan, &mut state, plan.string_list_function_id(0), frame,)
+                .expect_err("direct-mutated list function family must fail"),
+            expected,
+        );
+
+        let function = plan.float_list_function(plan.float_list_function_id(0));
+        let mut state = crate::runtime::RuntimeState::new();
+        let mut frame = Frame::new(function.frame_layout(), &mut state);
+        frame.set_list_function(
+            function.frame_layout().list_functions()[0].clone(),
+            wrong_int.clone(),
+        );
+        assert_eq!(
+            run_float_list_loop(&plan, &mut state, plan.float_list_function_id(0), frame,)
+                .expect_err("direct-mutated list function family must fail"),
+            expected,
+        );
+
+        let function = plan.bool_list_function(plan.bool_list_function_id(0));
+        let mut state = crate::runtime::RuntimeState::new();
+        let mut frame = Frame::new(function.frame_layout(), &mut state);
+        frame.set_list_function(
+            function.frame_layout().list_functions()[0].clone(),
+            wrong_int.clone(),
+        );
+        assert_eq!(
+            run_bool_list_loop(&plan, &mut state, plan.bool_list_function_id(0), frame,)
+                .expect_err("direct-mutated list function family must fail"),
+            expected,
+        );
+
+        let function = plan.nil_list_function(plan.nil_list_function_id(0));
+        let mut state = crate::runtime::RuntimeState::new();
+        let mut frame = Frame::new(function.frame_layout(), &mut state);
+        frame.set_list_function(
+            function.frame_layout().list_functions()[0].clone(),
+            wrong_int.clone(),
+        );
+        assert_eq!(
+            run_nil_list_loop(&plan, &mut state, plan.nil_list_function_id(0), frame)
+                .expect_err("direct-mutated list function family must fail"),
+            expected,
+        );
+
+        let function = plan.tuple_list_function(plan.tuple_list_function_id(0));
+        let mut state = crate::runtime::RuntimeState::new();
+        let mut frame = Frame::new(function.frame_layout(), &mut state);
+        frame.set_list_function(
+            function.frame_layout().list_functions()[0].clone(),
+            wrong_int.clone(),
+        );
+        assert_eq!(
+            run_tuple_list_loop(&plan, &mut state, plan.tuple_list_function_id(0), frame,)
+                .expect_err("direct-mutated list function family must fail"),
+            expected,
+        );
+
+        let function = plan.list_list_function(plan.list_list_function_id(0));
+        let mut state = crate::runtime::RuntimeState::new();
+        let mut frame = Frame::new(function.frame_layout(), &mut state);
+        frame.set_list_function(
+            function.frame_layout().list_functions()[0].clone(),
+            wrong_int.clone(),
+        );
+        assert_eq!(
+            run_list_list_loop(&plan, &mut state, plan.list_list_function_id(0), frame,)
+                .expect_err("direct-mutated list function family must fail"),
+            expected,
+        );
+
+        let function = plan.function_list_function(plan.function_list_function_id(0));
+        let mut state = crate::runtime::RuntimeState::new();
+        let mut frame = Frame::new(function.frame_layout(), &mut state);
+        frame.set_list_function(
+            function.frame_layout().list_functions()[0].clone(),
+            wrong_int,
+        );
+        assert_eq!(
+            run_function_list_loop(&plan, &mut state, plan.function_list_function_id(0), frame,)
+                .expect_err("direct-mutated list function family must fail"),
+            expected,
+        );
     }
 
     #[test]
@@ -1254,23 +1460,31 @@ pub fn main() { list_function }
         let list_function_id = expect_list_function_function_id(
             run_main(&plan).expect("main should return list_function"),
         );
-        let int_return = FunctionType::new(Vec::new(), ValueType::Int);
-        let wrong_string = FunctionFunctionValue::new(
+        let wrong_string = crate::runtime::EvaluatedFunctionFunction::new(
             FunctionFunctionId::String(StringFunctionFunctionId(0)),
             Vec::new(),
-            FunctionType::new(Vec::new(), ValueType::String),
+            Vec::new(),
+            crate::plan::execution::FunctionType::new(
+                Vec::new(),
+                crate::plan::execution::ValueType::String,
+            ),
         );
-        let wrong_int = FunctionFunctionValue::new(
+        let wrong_int = crate::runtime::EvaluatedFunctionFunction::new(
             FunctionFunctionId::Int(IntFunctionFunctionId(0)),
             Vec::new(),
-            int_return.clone(),
+            Vec::new(),
+            crate::plan::execution::FunctionType::new(
+                Vec::new(),
+                crate::plan::execution::ValueType::Int,
+            ),
         );
 
         let function = plan.int_function_function(IntFunctionFunctionId(0));
-        let mut frame = Frame::new(function.frame_layout());
+        let mut state = crate::runtime::RuntimeState::new();
+        let mut frame = Frame::new(function.frame_layout(), &mut state);
         frame.set_function_function(FunctionFunctionLocalId(0), wrong_string);
         assert_eq!(
-            run_int_function_loop(&plan, IntFunctionFunctionId(0), frame),
+            run_int_function_loop(&plan, &mut state, IntFunctionFunctionId(0), frame),
             Err(ExecutionError::function_return_family_mismatch(
                 FunctionReturnFamily::Int,
                 FunctionReturnFamily::String,
@@ -1278,10 +1492,11 @@ pub fn main() { list_function }
         );
 
         let function = plan.string_function_function(StringFunctionFunctionId(0));
-        let mut frame = Frame::new(function.frame_layout());
+        let mut state = crate::runtime::RuntimeState::new();
+        let mut frame = Frame::new(function.frame_layout(), &mut state);
         frame.set_function_function(FunctionFunctionLocalId(0), wrong_int.clone());
         assert_eq!(
-            run_string_function_loop(&plan, StringFunctionFunctionId(0), frame),
+            run_string_function_loop(&plan, &mut state, StringFunctionFunctionId(0), frame),
             Err(ExecutionError::function_return_family_mismatch(
                 FunctionReturnFamily::String,
                 FunctionReturnFamily::Int,
@@ -1289,10 +1504,11 @@ pub fn main() { list_function }
         );
 
         let function = plan.float_function_function(FloatFunctionFunctionId(0));
-        let mut frame = Frame::new(function.frame_layout());
+        let mut state = crate::runtime::RuntimeState::new();
+        let mut frame = Frame::new(function.frame_layout(), &mut state);
         frame.set_function_function(FunctionFunctionLocalId(0), wrong_int.clone());
         assert_eq!(
-            run_float_function_loop(&plan, FloatFunctionFunctionId(0), frame),
+            run_float_function_loop(&plan, &mut state, FloatFunctionFunctionId(0), frame),
             Err(ExecutionError::function_return_family_mismatch(
                 FunctionReturnFamily::Float,
                 FunctionReturnFamily::Int,
@@ -1300,10 +1516,11 @@ pub fn main() { list_function }
         );
 
         let function = plan.bool_function_function(BoolFunctionFunctionId(0));
-        let mut frame = Frame::new(function.frame_layout());
+        let mut state = crate::runtime::RuntimeState::new();
+        let mut frame = Frame::new(function.frame_layout(), &mut state);
         frame.set_function_function(FunctionFunctionLocalId(0), wrong_int.clone());
         assert_eq!(
-            run_bool_function_loop(&plan, BoolFunctionFunctionId(0), frame),
+            run_bool_function_loop(&plan, &mut state, BoolFunctionFunctionId(0), frame),
             Err(ExecutionError::function_return_family_mismatch(
                 FunctionReturnFamily::Bool,
                 FunctionReturnFamily::Int,
@@ -1311,10 +1528,11 @@ pub fn main() { list_function }
         );
 
         let function = plan.nil_function_function(NilFunctionFunctionId(0));
-        let mut frame = Frame::new(function.frame_layout());
+        let mut state = crate::runtime::RuntimeState::new();
+        let mut frame = Frame::new(function.frame_layout(), &mut state);
         frame.set_function_function(FunctionFunctionLocalId(0), wrong_int.clone());
         assert_eq!(
-            run_nil_function_loop(&plan, NilFunctionFunctionId(0), frame),
+            run_nil_function_loop(&plan, &mut state, NilFunctionFunctionId(0), frame),
             Err(ExecutionError::function_return_family_mismatch(
                 FunctionReturnFamily::Nil,
                 FunctionReturnFamily::Int,
@@ -1322,10 +1540,11 @@ pub fn main() { list_function }
         );
 
         let function = plan.tuple_function_function(TupleFunctionFunctionId(0));
-        let mut frame = Frame::new(function.frame_layout());
+        let mut state = crate::runtime::RuntimeState::new();
+        let mut frame = Frame::new(function.frame_layout(), &mut state);
         frame.set_function_function(FunctionFunctionLocalId(0), wrong_int.clone());
         assert_eq!(
-            run_tuple_function_loop(&plan, TupleFunctionFunctionId(0), frame),
+            run_tuple_function_loop(&plan, &mut state, TupleFunctionFunctionId(0), frame),
             Err(ExecutionError::function_return_family_mismatch(
                 FunctionReturnFamily::Tuple,
                 FunctionReturnFamily::Int,
@@ -1333,10 +1552,11 @@ pub fn main() { list_function }
         );
 
         let function = plan.list_function_function(&list_function_id);
-        let mut frame = Frame::new(function.frame_layout());
+        let mut state = crate::runtime::RuntimeState::new();
+        let mut frame = Frame::new(function.frame_layout(), &mut state);
         frame.set_function_function(FunctionFunctionLocalId(0), wrong_int.clone());
         assert_eq!(
-            run_list_function_loop(&plan, list_function_id, frame),
+            run_list_function_loop(&plan, &mut state, list_function_id, frame),
             Err(ExecutionError::function_return_family_mismatch(
                 FunctionReturnFamily::List,
                 FunctionReturnFamily::Int,
@@ -1344,10 +1564,11 @@ pub fn main() { list_function }
         );
 
         let function = plan.function_function_function(FunctionFunctionFunctionId(1));
-        let mut frame = Frame::new(function.frame_layout());
+        let mut state = crate::runtime::RuntimeState::new();
+        let mut frame = Frame::new(function.frame_layout(), &mut state);
         frame.set_function_function(FunctionFunctionLocalId(0), wrong_int);
         assert_eq!(
-            run_function_function_loop(&plan, FunctionFunctionFunctionId(1), frame),
+            run_function_function_loop(&plan, &mut state, FunctionFunctionFunctionId(1), frame),
             Err(ExecutionError::function_return_family_mismatch(
                 FunctionReturnFamily::Function,
                 FunctionReturnFamily::Int,
@@ -1390,22 +1611,35 @@ pub fn main() { list_function }
         let list_function_id = expect_list_function_function_id(
             run_main(&plan).expect("main should return list_function"),
         );
-        let wrong_string = FunctionValue::new(
-            RuntimeFunctionId::String(StringFunctionId(0)),
+        let wrong_string = crate::runtime::EvaluatedStringFunction::new(
+            StringFunctionId(0),
             Vec::new(),
-            FunctionType::new(Vec::new(), ValueType::String),
+            Vec::new(),
+            crate::plan::execution::FunctionType::new(
+                Vec::new(),
+                crate::plan::execution::ValueType::String,
+            ),
         );
-        let wrong_int = FunctionValue::new(
-            RuntimeFunctionId::Int(IntFunctionId(0)),
+        let wrong_int = crate::runtime::EvaluatedIntFunction::new(
+            IntFunctionId(0),
             Vec::new(),
-            FunctionType::new(Vec::new(), ValueType::Int),
+            Vec::new(),
+            crate::plan::execution::FunctionType::new(
+                Vec::new(),
+                crate::plan::execution::ValueType::Int,
+            ),
         );
 
         let function = plan.int_function_function(IntFunctionFunctionId(0));
-        let mut frame = Frame::new(function.frame_layout());
-        frame.set_function_list(FunctionListLocalId(0), vec![wrong_string]);
+        let mut state = crate::runtime::RuntimeState::new();
+        let mut frame = Frame::new(function.frame_layout(), &mut state);
+        let value = state.function(
+            function.frame_layout().function_lists()[0],
+            vec![wrong_string.into()],
+        );
+        frame.set_function_list(FunctionListLocalId(0), value);
         assert_eq!(
-            run_int_function_loop(&plan, IntFunctionFunctionId(0), frame),
+            run_int_function_loop(&plan, &mut state, IntFunctionFunctionId(0), frame),
             Err(ExecutionError::function_return_family_mismatch(
                 FunctionReturnFamily::Int,
                 FunctionReturnFamily::String,
@@ -1413,10 +1647,15 @@ pub fn main() { list_function }
         );
 
         let function = plan.string_function_function(StringFunctionFunctionId(0));
-        let mut frame = Frame::new(function.frame_layout());
-        frame.set_function_list(FunctionListLocalId(0), vec![wrong_int.clone()]);
+        let mut state = crate::runtime::RuntimeState::new();
+        let mut frame = Frame::new(function.frame_layout(), &mut state);
+        let value = state.function(
+            function.frame_layout().function_lists()[0],
+            vec![wrong_int.clone().into()],
+        );
+        frame.set_function_list(FunctionListLocalId(0), value);
         assert_eq!(
-            run_string_function_loop(&plan, StringFunctionFunctionId(0), frame),
+            run_string_function_loop(&plan, &mut state, StringFunctionFunctionId(0), frame),
             Err(ExecutionError::function_return_family_mismatch(
                 FunctionReturnFamily::String,
                 FunctionReturnFamily::Int,
@@ -1424,10 +1663,15 @@ pub fn main() { list_function }
         );
 
         let function = plan.float_function_function(FloatFunctionFunctionId(0));
-        let mut frame = Frame::new(function.frame_layout());
-        frame.set_function_list(FunctionListLocalId(0), vec![wrong_int.clone()]);
+        let mut state = crate::runtime::RuntimeState::new();
+        let mut frame = Frame::new(function.frame_layout(), &mut state);
+        let value = state.function(
+            function.frame_layout().function_lists()[0],
+            vec![wrong_int.clone().into()],
+        );
+        frame.set_function_list(FunctionListLocalId(0), value);
         assert_eq!(
-            run_float_function_loop(&plan, FloatFunctionFunctionId(0), frame),
+            run_float_function_loop(&plan, &mut state, FloatFunctionFunctionId(0), frame),
             Err(ExecutionError::function_return_family_mismatch(
                 FunctionReturnFamily::Float,
                 FunctionReturnFamily::Int,
@@ -1435,10 +1679,15 @@ pub fn main() { list_function }
         );
 
         let function = plan.bool_function_function(BoolFunctionFunctionId(0));
-        let mut frame = Frame::new(function.frame_layout());
-        frame.set_function_list(FunctionListLocalId(0), vec![wrong_int.clone()]);
+        let mut state = crate::runtime::RuntimeState::new();
+        let mut frame = Frame::new(function.frame_layout(), &mut state);
+        let value = state.function(
+            function.frame_layout().function_lists()[0],
+            vec![wrong_int.clone().into()],
+        );
+        frame.set_function_list(FunctionListLocalId(0), value);
         assert_eq!(
-            run_bool_function_loop(&plan, BoolFunctionFunctionId(0), frame),
+            run_bool_function_loop(&plan, &mut state, BoolFunctionFunctionId(0), frame),
             Err(ExecutionError::function_return_family_mismatch(
                 FunctionReturnFamily::Bool,
                 FunctionReturnFamily::Int,
@@ -1446,10 +1695,15 @@ pub fn main() { list_function }
         );
 
         let function = plan.nil_function_function(NilFunctionFunctionId(0));
-        let mut frame = Frame::new(function.frame_layout());
-        frame.set_function_list(FunctionListLocalId(0), vec![wrong_int.clone()]);
+        let mut state = crate::runtime::RuntimeState::new();
+        let mut frame = Frame::new(function.frame_layout(), &mut state);
+        let value = state.function(
+            function.frame_layout().function_lists()[0],
+            vec![wrong_int.clone().into()],
+        );
+        frame.set_function_list(FunctionListLocalId(0), value);
         assert_eq!(
-            run_nil_function_loop(&plan, NilFunctionFunctionId(0), frame),
+            run_nil_function_loop(&plan, &mut state, NilFunctionFunctionId(0), frame),
             Err(ExecutionError::function_return_family_mismatch(
                 FunctionReturnFamily::Nil,
                 FunctionReturnFamily::Int,
@@ -1457,10 +1711,15 @@ pub fn main() { list_function }
         );
 
         let function = plan.tuple_function_function(TupleFunctionFunctionId(0));
-        let mut frame = Frame::new(function.frame_layout());
-        frame.set_function_list(FunctionListLocalId(0), vec![wrong_int.clone()]);
+        let mut state = crate::runtime::RuntimeState::new();
+        let mut frame = Frame::new(function.frame_layout(), &mut state);
+        let value = state.function(
+            function.frame_layout().function_lists()[0],
+            vec![wrong_int.clone().into()],
+        );
+        frame.set_function_list(FunctionListLocalId(0), value);
         assert_eq!(
-            run_tuple_function_loop(&plan, TupleFunctionFunctionId(0), frame),
+            run_tuple_function_loop(&plan, &mut state, TupleFunctionFunctionId(0), frame),
             Err(ExecutionError::function_return_family_mismatch(
                 FunctionReturnFamily::Tuple,
                 FunctionReturnFamily::Int,
@@ -1468,10 +1727,15 @@ pub fn main() { list_function }
         );
 
         let function = plan.list_function_function(&list_function_id);
-        let mut frame = Frame::new(function.frame_layout());
-        frame.set_function_list(FunctionListLocalId(0), vec![wrong_int.clone()]);
+        let mut state = crate::runtime::RuntimeState::new();
+        let mut frame = Frame::new(function.frame_layout(), &mut state);
+        let value = state.function(
+            function.frame_layout().function_lists()[0],
+            vec![wrong_int.clone().into()],
+        );
+        frame.set_function_list(FunctionListLocalId(0), value);
         assert_eq!(
-            run_list_function_loop(&plan, list_function_id, frame),
+            run_list_function_loop(&plan, &mut state, list_function_id, frame),
             Err(ExecutionError::function_return_family_mismatch(
                 FunctionReturnFamily::List,
                 FunctionReturnFamily::Int,
@@ -1479,10 +1743,15 @@ pub fn main() { list_function }
         );
 
         let function = plan.function_function_function(FunctionFunctionFunctionId(1));
-        let mut frame = Frame::new(function.frame_layout());
-        frame.set_function_list(FunctionListLocalId(0), vec![wrong_int]);
+        let mut state = crate::runtime::RuntimeState::new();
+        let mut frame = Frame::new(function.frame_layout(), &mut state);
+        let value = state.function(
+            function.frame_layout().function_lists()[0],
+            vec![wrong_int.into()],
+        );
+        frame.set_function_list(FunctionListLocalId(0), value);
         assert_eq!(
-            run_function_function_loop(&plan, FunctionFunctionFunctionId(1), frame),
+            run_function_function_loop(&plan, &mut state, FunctionFunctionFunctionId(1), frame),
             Err(ExecutionError::function_return_family_mismatch(
                 FunctionReturnFamily::Function,
                 FunctionReturnFamily::Int,
@@ -1530,12 +1799,5 @@ pub fn main() { list_function }
             },
             _ => panic!("expected a function returning a list function"),
         }
-    }
-
-    fn list_item_family_mismatch() -> ExecutionError {
-        ExecutionError::function_return_family_mismatch(
-            FunctionReturnFamily::List,
-            FunctionReturnFamily::List,
-        )
     }
 }

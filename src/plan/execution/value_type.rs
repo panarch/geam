@@ -141,7 +141,6 @@ impl FunctionType {
 }
 
 impl ListListTypeId {
-    #[cfg(test)]
     pub(crate) fn item_type(self) -> ListTypeId {
         self.item_type
     }
@@ -164,6 +163,10 @@ impl ListTypeTable {
 
     pub(crate) fn get(&self, id: ListTypeId) -> &ListType {
         &self.types[id.index()]
+    }
+
+    pub(crate) fn storage_type(&self, id: ListTypeId) -> ListStorageTypeId {
+        self.get(id).storage
     }
 
     pub(crate) fn value_type(&self, value: &ValueType) -> plan::ValueType {

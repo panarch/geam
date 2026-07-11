@@ -7,13 +7,12 @@ use num_bigint::BigInt;
 
 use crate::plan::ValueType;
 
-pub(crate) use self::capture::{CaptureValue, CaptureValueKind};
+pub(crate) use self::capture::{CaptureListValue, CaptureValue};
 pub use self::function::FunctionValue;
 pub(crate) use self::function::{
     BoolFunctionValue, FloatFunctionValue, FunctionFunctionValue, FunctionValueKind,
     IntFunctionValue, ListFunctionValue, NilFunctionValue, StringFunctionValue, TupleFunctionValue,
 };
-pub(crate) use self::list::ListLocalValue;
 pub use self::list::{ListValue, ListValueItemTypeMismatch};
 
 #[derive(Debug, Clone, PartialEq)]
@@ -60,6 +59,20 @@ mod tests {
         assert_eq!(
             Value::List(ListValue::int(vec![1.into()])).value_type(),
             ValueType::List(Box::new(ValueType::Int)),
+        );
+        let function = super::FunctionValue::new(
+            crate::plan::execution::RuntimeFunctionId::Int(crate::plan::execution::IntFunctionId(
+                0,
+            )),
+            Vec::new(),
+            crate::plan::FunctionType::new(Vec::new(), ValueType::Int),
+        );
+        assert_eq!(
+            Value::Function(function).value_type(),
+            ValueType::Function(Box::new(crate::plan::FunctionType::new(
+                Vec::new(),
+                ValueType::Int,
+            ))),
         );
     }
 }

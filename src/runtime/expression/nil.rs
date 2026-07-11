@@ -6,12 +6,14 @@ use crate::plan::ValueType;
 use crate::plan::execution::ExecutionPlan;
 use crate::plan::execution::{NilExpr, NilExprKind};
 use crate::runtime::ExecutionError;
-use crate::runtime::Value;
+use crate::runtime::evaluated::EvaluatedValue;
 use crate::runtime::frame::Frame;
 use crate::runtime::function;
+use crate::runtime::state::RuntimeState;
 
 pub(in crate::runtime) fn eval_nil_expr(
     plan: &ExecutionPlan,
+    state: &mut RuntimeState,
     frame: &mut Frame,
     expression: &NilExpr,
 ) -> Result<(), ExecutionError> {
@@ -22,33 +24,35 @@ pub(in crate::runtime) fn eval_nil_expr(
             Ok(())
         }
         NilExprKind::Call { function, args } => {
-            function::run_nil_call(plan, *function, args, frame)
+            function::run_nil_call(plan, state, *function, args, frame)
         }
         NilExprKind::FunctionCall { function, args } => {
-            function::run_nil_function_call(plan, function, args, frame)
+            function::run_nil_function_call(plan, state, function, args, frame)
         }
         NilExprKind::TupleIndex { tuple, index } => {
-            match project_tuple_expr(plan, frame, tuple, *index, ValueType::Nil)? {
-                Value::Nil => Ok(()),
+            match project_tuple_expr(plan, state, frame, tuple, *index, ValueType::Nil)? {
+                EvaluatedValue::Nil => Ok(()),
                 other => Err(ExecutionError::tuple_index_family_mismatch(
                     ValueType::Nil,
-                    other.value_type(),
+                    other.value_type(plan),
                 )),
             }
         }
-        NilExprKind::ListIndex { list, index } => project_nil_list_expr(plan, frame, list, *index),
+        NilExprKind::ListIndex { list, index } => {
+            project_nil_list_expr(plan, state, frame, list, *index)
+        }
         NilExprKind::Panic(panic) => {
-            eval_panic_expr(plan, frame, panic).map(|never| match never {})
+            eval_panic_expr(plan, state, frame, panic).map(|never| match never {})
         }
         NilExprKind::BoolCase {
             subject,
             true_,
             false_,
         } => {
-            if eval_bool_expr(plan, frame, subject)? {
-                eval_nil_expr(plan, frame, true_)
+            if eval_bool_expr(plan, state, frame, subject)? {
+                eval_nil_expr(plan, state, frame, true_)
             } else {
-                eval_nil_expr(plan, frame, false_)
+                eval_nil_expr(plan, state, frame, false_)
             }
         }
         NilExprKind::IntCase {
@@ -56,43 +60,43 @@ pub(in crate::runtime) fn eval_nil_expr(
             clauses,
             fallback,
         } => {
-            let subject = eval_int_expr(plan, frame, subject)?;
+            let subject = eval_int_expr(plan, state, frame, subject)?;
             for (pattern, branch) in clauses {
                 if pattern == &subject {
-                    return eval_nil_expr(plan, frame, branch);
+                    return eval_nil_expr(plan, state, frame, branch);
                 }
             }
-            eval_nil_expr(plan, frame, fallback)
+            eval_nil_expr(plan, state, frame, fallback)
         }
         NilExprKind::StringCase {
             subject,
             clauses,
             fallback,
         } => {
-            let subject = eval_string_expr(plan, frame, subject)?;
+            let subject = eval_string_expr(plan, state, frame, subject)?;
             for (pattern, branch) in clauses {
                 if pattern == &subject {
-                    return eval_nil_expr(plan, frame, branch);
+                    return eval_nil_expr(plan, state, frame, branch);
                 }
             }
-            eval_nil_expr(plan, frame, fallback)
+            eval_nil_expr(plan, state, frame, fallback)
         }
         NilExprKind::FloatCase {
             subject,
             clauses,
             fallback,
         } => {
-            let subject = eval_float_expr(plan, frame, subject)?;
+            let subject = eval_float_expr(plan, state, frame, subject)?;
             for (pattern, branch) in clauses {
                 if pattern == &subject {
-                    return eval_nil_expr(plan, frame, branch);
+                    return eval_nil_expr(plan, state, frame, branch);
                 }
             }
-            eval_nil_expr(plan, frame, fallback)
+            eval_nil_expr(plan, state, frame, fallback)
         }
         NilExprKind::Block { steps, return_ } => {
-            function::execute_steps(plan, steps, frame)?;
-            eval_nil_expr(plan, frame, return_)
+            function::execute_steps(plan, state, steps, frame)?;
+            eval_nil_expr(plan, state, frame, return_)
         }
     }
 }

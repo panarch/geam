@@ -24,11 +24,6 @@ pub enum ExecutionError {
         expected: ValueType,
         actual: ValueType,
     },
-    #[error("list index family mismatch (expected {expected:?}, got {actual:?})")]
-    ListIndexFamilyMismatch {
-        expected: ValueType,
-        actual: ValueType,
-    },
     #[error("list index out of bounds for {item_type:?} list (index {index}, length {length})")]
     ListIndexOutOfBounds {
         item_type: ValueType,
@@ -135,19 +130,6 @@ mod tests {
         assert_eq!(
             error.to_string(),
             "list index out of bounds for Int list (index 1, length 1)",
-        );
-    }
-
-    #[test]
-    fn list_index_family_mismatch_display() {
-        let error = ExecutionError::ListIndexFamilyMismatch {
-            expected: ValueType::List(Box::new(ValueType::Int)),
-            actual: ValueType::List(Box::new(ValueType::String)),
-        };
-
-        assert_eq!(
-            error.to_string(),
-            "list index family mismatch (expected List(Int), got List(String))",
         );
     }
 }

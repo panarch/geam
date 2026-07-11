@@ -5,9 +5,14 @@ use crate::plan::execution::{
     NilListLocalId, NilLocalId, StringFunctionLocalId, StringListLocalId, StringLocalId,
     TupleFunctionLocalId, TupleListLocalId, TupleLocalId,
 };
-use crate::runtime::{
-    BoolFunctionValue, FloatFunctionValue, FunctionFunctionValue, FunctionValue, IntFunctionValue,
-    ListFunctionValue, ListValue, NilFunctionValue, StringFunctionValue, TupleFunctionValue, Value,
+use crate::runtime::evaluated::{
+    EvaluatedBoolFunction, EvaluatedFloatFunction, EvaluatedFunctionFunction, EvaluatedIntFunction,
+    EvaluatedListFunction, EvaluatedNilFunction, EvaluatedStringFunction, EvaluatedTupleFunction,
+    EvaluatedValue,
+};
+use crate::runtime::state::{
+    BoolListValueId, FloatListValueId, FunctionListValueId, IntListValueId, ListListValueId,
+    NilListValueId, RuntimeState, StringListValueId, TupleListValueId,
 };
 use ecow::EcoString;
 use num_bigint::BigInt;
@@ -18,41 +23,73 @@ pub(super) struct Frame {
     floats: Vec<f64>,
     strings: Vec<EcoString>,
     bools: Vec<bool>,
-    tuples: Vec<Vec<Value>>,
-    int_lists: Vec<Vec<BigInt>>,
-    string_lists: Vec<Vec<EcoString>>,
-    float_lists: Vec<Vec<f64>>,
-    bool_lists: Vec<Vec<bool>>,
-    nil_lists: Vec<usize>,
-    tuple_lists: Vec<Vec<Vec<Value>>>,
-    list_lists: Vec<Vec<ListValue>>,
-    function_lists: Vec<Vec<FunctionValue>>,
-    int_functions: HashMap<IntFunctionLocalId, IntFunctionValue>,
-    float_functions: HashMap<FloatFunctionLocalId, FloatFunctionValue>,
-    string_functions: HashMap<StringFunctionLocalId, StringFunctionValue>,
-    bool_functions: HashMap<BoolFunctionLocalId, BoolFunctionValue>,
-    nil_functions: HashMap<NilFunctionLocalId, NilFunctionValue>,
-    tuple_functions: HashMap<TupleFunctionLocalId, TupleFunctionValue>,
-    list_functions: HashMap<ListFunctionLocal, ListFunctionValue>,
-    function_functions: HashMap<FunctionFunctionLocalId, FunctionFunctionValue>,
+    tuples: Vec<Vec<EvaluatedValue>>,
+    int_lists: Vec<IntListValueId>,
+    string_lists: Vec<StringListValueId>,
+    float_lists: Vec<FloatListValueId>,
+    bool_lists: Vec<BoolListValueId>,
+    nil_lists: Vec<NilListValueId>,
+    tuple_lists: Vec<TupleListValueId>,
+    list_lists: Vec<ListListValueId>,
+    function_lists: Vec<FunctionListValueId>,
+    int_functions: HashMap<IntFunctionLocalId, EvaluatedIntFunction>,
+    float_functions: HashMap<FloatFunctionLocalId, EvaluatedFloatFunction>,
+    string_functions: HashMap<StringFunctionLocalId, EvaluatedStringFunction>,
+    bool_functions: HashMap<BoolFunctionLocalId, EvaluatedBoolFunction>,
+    nil_functions: HashMap<NilFunctionLocalId, EvaluatedNilFunction>,
+    tuple_functions: HashMap<TupleFunctionLocalId, EvaluatedTupleFunction>,
+    list_functions: HashMap<ListFunctionLocal, EvaluatedListFunction>,
+    function_functions: HashMap<FunctionFunctionLocalId, EvaluatedFunctionFunction>,
 }
 
 impl Frame {
-    pub(super) fn new(layout: &FrameLayout) -> Self {
+    pub(super) fn new(layout: &FrameLayout, state: &mut RuntimeState) -> Self {
         Self {
             ints: vec![BigInt::from(0); layout.ints()],
             floats: vec![0.0; layout.floats()],
             strings: vec![EcoString::default(); layout.strings()],
             bools: vec![false; layout.bools()],
             tuples: vec![Vec::new(); layout.tuples()],
-            int_lists: vec![Vec::new(); layout.int_lists().len()],
-            string_lists: vec![Vec::new(); layout.string_lists().len()],
-            float_lists: vec![Vec::new(); layout.float_lists().len()],
-            bool_lists: vec![Vec::new(); layout.bool_lists().len()],
-            nil_lists: vec![0; layout.nil_lists().len()],
-            tuple_lists: vec![Vec::new(); layout.tuple_lists().len()],
-            list_lists: vec![Vec::new(); layout.list_lists().len()],
-            function_lists: vec![Vec::new(); layout.function_lists().len()],
+            int_lists: layout
+                .int_lists()
+                .iter()
+                .map(|type_id| state.int(*type_id, Vec::new()))
+                .collect(),
+            string_lists: layout
+                .string_lists()
+                .iter()
+                .map(|type_id| state.string(*type_id, Vec::new()))
+                .collect(),
+            float_lists: layout
+                .float_lists()
+                .iter()
+                .map(|type_id| state.float(*type_id, Vec::new()))
+                .collect(),
+            bool_lists: layout
+                .bool_lists()
+                .iter()
+                .map(|type_id| state.bool(*type_id, Vec::new()))
+                .collect(),
+            nil_lists: layout
+                .nil_lists()
+                .iter()
+                .map(|type_id| state.nil(*type_id, 0))
+                .collect(),
+            tuple_lists: layout
+                .tuple_lists()
+                .iter()
+                .map(|type_id| state.tuple(*type_id, Vec::new()))
+                .collect(),
+            list_lists: layout
+                .list_lists()
+                .iter()
+                .map(|type_id| state.list(*type_id, Vec::new()))
+                .collect(),
+            function_lists: layout
+                .function_lists()
+                .iter()
+                .map(|type_id| state.function(*type_id, Vec::new()))
+                .collect(),
             int_functions: HashMap::with_capacity(layout.int_functions()),
             float_functions: HashMap::with_capacity(layout.float_functions()),
             string_functions: HashMap::with_capacity(layout.string_functions()),
@@ -100,158 +137,173 @@ impl Frame {
 
     pub(super) fn get_nil(&self, _local: NilLocalId) {}
 
-    pub(super) fn set_tuple(&mut self, local: TupleLocalId, value: Vec<Value>) {
+    pub(super) fn set_tuple(&mut self, local: TupleLocalId, value: Vec<EvaluatedValue>) {
         set_slot(&mut self.tuples, local.0, value);
     }
 
-    pub(super) fn get_tuple(&self, local: TupleLocalId) -> Vec<Value> {
+    pub(super) fn get_tuple(&self, local: TupleLocalId) -> Vec<EvaluatedValue> {
         self.tuples[local.0].clone()
     }
 
-    pub(super) fn set_int_list(&mut self, local: IntListLocalId, value: Vec<BigInt>) {
+    pub(super) fn set_int_list(&mut self, local: IntListLocalId, value: IntListValueId) {
         set_slot(&mut self.int_lists, local.0, value);
     }
 
-    pub(super) fn get_int_list(&self, local: IntListLocalId) -> Vec<BigInt> {
+    pub(super) fn get_int_list(&self, local: IntListLocalId) -> IntListValueId {
         self.int_lists[local.0].clone()
     }
 
-    pub(super) fn set_string_list(&mut self, local: StringListLocalId, value: Vec<EcoString>) {
+    pub(super) fn set_string_list(&mut self, local: StringListLocalId, value: StringListValueId) {
         set_slot(&mut self.string_lists, local.0, value);
     }
 
-    pub(super) fn get_string_list(&self, local: StringListLocalId) -> Vec<EcoString> {
+    pub(super) fn get_string_list(&self, local: StringListLocalId) -> StringListValueId {
         self.string_lists[local.0].clone()
     }
 
-    pub(super) fn set_float_list(&mut self, local: FloatListLocalId, value: Vec<f64>) {
+    pub(super) fn set_float_list(&mut self, local: FloatListLocalId, value: FloatListValueId) {
         set_slot(&mut self.float_lists, local.0, value);
     }
 
-    pub(super) fn get_float_list(&self, local: FloatListLocalId) -> Vec<f64> {
+    pub(super) fn get_float_list(&self, local: FloatListLocalId) -> FloatListValueId {
         self.float_lists[local.0].clone()
     }
 
-    pub(super) fn set_bool_list(&mut self, local: BoolListLocalId, value: Vec<bool>) {
+    pub(super) fn set_bool_list(&mut self, local: BoolListLocalId, value: BoolListValueId) {
         set_slot(&mut self.bool_lists, local.0, value);
     }
 
-    pub(super) fn get_bool_list(&self, local: BoolListLocalId) -> Vec<bool> {
+    pub(super) fn get_bool_list(&self, local: BoolListLocalId) -> BoolListValueId {
         self.bool_lists[local.0].clone()
     }
 
-    pub(super) fn set_nil_list(&mut self, local: NilListLocalId, len: usize) {
-        set_slot(&mut self.nil_lists, local.0, len);
+    pub(super) fn set_nil_list(&mut self, local: NilListLocalId, value: NilListValueId) {
+        set_slot(&mut self.nil_lists, local.0, value);
     }
 
-    pub(super) fn get_nil_list(&self, local: NilListLocalId) -> usize {
-        self.nil_lists[local.0]
+    pub(super) fn get_nil_list(&self, local: NilListLocalId) -> NilListValueId {
+        self.nil_lists[local.0].clone()
     }
 
-    pub(super) fn set_tuple_list(&mut self, local: TupleListLocalId, value: Vec<Vec<Value>>) {
+    pub(super) fn set_tuple_list(&mut self, local: TupleListLocalId, value: TupleListValueId) {
         set_slot(&mut self.tuple_lists, local.0, value);
     }
 
-    pub(super) fn get_tuple_list(&self, local: TupleListLocalId) -> Vec<Vec<Value>> {
+    pub(super) fn get_tuple_list(&self, local: TupleListLocalId) -> TupleListValueId {
         self.tuple_lists[local.0].clone()
     }
 
-    pub(super) fn set_list_list(&mut self, local: ListListLocalId, value: Vec<ListValue>) {
+    pub(super) fn set_list_list(&mut self, local: ListListLocalId, value: ListListValueId) {
         set_slot(&mut self.list_lists, local.0, value);
     }
 
-    pub(super) fn get_list_list(&self, local: ListListLocalId) -> Vec<ListValue> {
+    pub(super) fn get_list_list(&self, local: ListListLocalId) -> ListListValueId {
         self.list_lists[local.0].clone()
     }
 
     pub(super) fn set_function_list(
         &mut self,
         local: FunctionListLocalId,
-        value: Vec<FunctionValue>,
+        value: FunctionListValueId,
     ) {
         set_slot(&mut self.function_lists, local.0, value);
     }
 
-    pub(super) fn get_function_list(&self, local: FunctionListLocalId) -> Vec<FunctionValue> {
+    pub(super) fn get_function_list(&self, local: FunctionListLocalId) -> FunctionListValueId {
         self.function_lists[local.0].clone()
     }
 
-    pub(super) fn set_int_function(&mut self, local: IntFunctionLocalId, value: IntFunctionValue) {
+    pub(super) fn set_int_function(
+        &mut self,
+        local: IntFunctionLocalId,
+        value: EvaluatedIntFunction,
+    ) {
         self.int_functions.insert(local, value);
     }
 
-    pub(super) fn get_int_function(&self, local: IntFunctionLocalId) -> IntFunctionValue {
+    pub(super) fn get_int_function(&self, local: IntFunctionLocalId) -> EvaluatedIntFunction {
         self.int_functions[&local].clone()
     }
 
     pub(super) fn set_float_function(
         &mut self,
         local: FloatFunctionLocalId,
-        value: FloatFunctionValue,
+        value: EvaluatedFloatFunction,
     ) {
         self.float_functions.insert(local, value);
     }
 
-    pub(super) fn get_float_function(&self, local: FloatFunctionLocalId) -> FloatFunctionValue {
+    pub(super) fn get_float_function(&self, local: FloatFunctionLocalId) -> EvaluatedFloatFunction {
         self.float_functions[&local].clone()
     }
 
     pub(super) fn set_string_function(
         &mut self,
         local: StringFunctionLocalId,
-        value: StringFunctionValue,
+        value: EvaluatedStringFunction,
     ) {
         self.string_functions.insert(local, value);
     }
 
-    pub(super) fn get_string_function(&self, local: StringFunctionLocalId) -> StringFunctionValue {
+    pub(super) fn get_string_function(
+        &self,
+        local: StringFunctionLocalId,
+    ) -> EvaluatedStringFunction {
         self.string_functions[&local].clone()
     }
 
     pub(super) fn set_bool_function(
         &mut self,
         local: BoolFunctionLocalId,
-        value: BoolFunctionValue,
+        value: EvaluatedBoolFunction,
     ) {
         self.bool_functions.insert(local, value);
     }
 
-    pub(super) fn get_bool_function(&self, local: BoolFunctionLocalId) -> BoolFunctionValue {
+    pub(super) fn get_bool_function(&self, local: BoolFunctionLocalId) -> EvaluatedBoolFunction {
         self.bool_functions[&local].clone()
     }
 
-    pub(super) fn set_nil_function(&mut self, local: NilFunctionLocalId, value: NilFunctionValue) {
+    pub(super) fn set_nil_function(
+        &mut self,
+        local: NilFunctionLocalId,
+        value: EvaluatedNilFunction,
+    ) {
         self.nil_functions.insert(local, value);
     }
 
-    pub(super) fn get_nil_function(&self, local: NilFunctionLocalId) -> NilFunctionValue {
+    pub(super) fn get_nil_function(&self, local: NilFunctionLocalId) -> EvaluatedNilFunction {
         self.nil_functions[&local].clone()
     }
 
     pub(super) fn set_tuple_function(
         &mut self,
         local: TupleFunctionLocalId,
-        value: TupleFunctionValue,
+        value: EvaluatedTupleFunction,
     ) {
         self.tuple_functions.insert(local, value);
     }
 
-    pub(super) fn get_tuple_function(&self, local: TupleFunctionLocalId) -> TupleFunctionValue {
+    pub(super) fn get_tuple_function(&self, local: TupleFunctionLocalId) -> EvaluatedTupleFunction {
         self.tuple_functions[&local].clone()
     }
 
-    pub(super) fn set_list_function(&mut self, local: ListFunctionLocal, value: ListFunctionValue) {
+    pub(super) fn set_list_function(
+        &mut self,
+        local: ListFunctionLocal,
+        value: EvaluatedListFunction,
+    ) {
         self.list_functions.insert(local, value);
     }
 
-    pub(super) fn get_list_function(&self, local: &ListFunctionLocal) -> ListFunctionValue {
+    pub(super) fn get_list_function(&self, local: &ListFunctionLocal) -> EvaluatedListFunction {
         self.list_functions[local].clone()
     }
 
     pub(super) fn set_function_function(
         &mut self,
         local: FunctionFunctionLocalId,
-        value: FunctionFunctionValue,
+        value: EvaluatedFunctionFunction,
     ) {
         self.function_functions.insert(local, value);
     }
@@ -259,14 +311,8 @@ impl Frame {
     pub(super) fn get_function_function(
         &self,
         local: FunctionFunctionLocalId,
-    ) -> FunctionFunctionValue {
+    ) -> EvaluatedFunctionFunction {
         self.function_functions[&local].clone()
-    }
-}
-
-impl Default for Frame {
-    fn default() -> Self {
-        Self::new(&FrameLayout::default())
     }
 }
 

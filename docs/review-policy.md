@@ -62,18 +62,15 @@ Typed projections have the following approved execution invariants:
   evaluation when the runtime list value lacks the planner-selected element.
   Source-reachable list matching must guard list-index projections with the
   planner-selected length condition.
-- `ExecutionError::ListIndexFamilyMismatch` is only for direct-mutated nested
-  list runtime value, frame, or call handoff when the selected nested list item
-  type is not the sealed projection item type. It must not stand in for missing
-  index, tuple-index, spread-tail, or plan-construction failures.
 
-List item-family mismatches must be prevented by typed plan, value, frame, and
-function boundaries whenever the current plan shape can encode the contract.
-The list-index family variant above exposes one current operation-scoped
-direct-mutated recursive runtime-value margin; it must not be reused,
-generalized, or treated as runtime validation. Remove it if a later runtime
-value shape makes its boundary unrepresentable. Tuple/list index validation,
-profile boundaries, and typed-AST margins remain planner responsibilities.
+List item-family identity must be preserved by the execution list type graph,
+family-specific frame/function boundaries, and RC-backed typed runtime handles.
+It must not be recovered through runtime family checks or represented as an
+execution error. Runtime list storage uses reference counting rather than a
+tracing collector; features that can create cyclic evaluated value graphs stay
+outside the profile until they have a separate ownership design.
+Profile boundaries, list-match length guards, and typed-AST margins remain
+planner responsibilities.
 
 ## Plan Construction Rules
 

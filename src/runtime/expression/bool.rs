@@ -6,12 +6,14 @@ use crate::plan::ValueType;
 use crate::plan::execution::ExecutionPlan;
 use crate::plan::execution::{BoolExpr, BoolExprKind};
 use crate::runtime::ExecutionError;
-use crate::runtime::Value;
+use crate::runtime::evaluated::EvaluatedValue;
 use crate::runtime::frame::Frame;
 use crate::runtime::function;
+use crate::runtime::state::RuntimeState;
 
 pub(in crate::runtime) fn eval_bool_expr(
     plan: &ExecutionPlan,
+    state: &mut RuntimeState,
     frame: &mut Frame,
     expression: &BoolExpr,
 ) -> Result<bool, ExecutionError> {
@@ -19,83 +21,91 @@ pub(in crate::runtime) fn eval_bool_expr(
         BoolExprKind::Value(value) => Ok(*value),
         BoolExprKind::LocalGet { local, .. } => Ok(frame.get_bool(*local)),
         BoolExprKind::Call { function, args } => {
-            function::run_bool_call(plan, *function, args, frame)
+            function::run_bool_call(plan, state, *function, args, frame)
         }
         BoolExprKind::FunctionCall { function, args } => {
-            function::run_bool_function_call(plan, function, args, frame)
+            function::run_bool_function_call(plan, state, function, args, frame)
         }
         BoolExprKind::TupleIndex { tuple, index } => {
-            match project_tuple_expr(plan, frame, tuple, *index, ValueType::Bool)? {
-                Value::Bool(value) => Ok(value),
+            match project_tuple_expr(plan, state, frame, tuple, *index, ValueType::Bool)? {
+                EvaluatedValue::Bool(value) => Ok(value),
                 other => Err(ExecutionError::tuple_index_family_mismatch(
                     ValueType::Bool,
-                    other.value_type(),
+                    other.value_type(plan),
                 )),
             }
         }
         BoolExprKind::ListIndex { list, index } => {
-            project_bool_list_expr(plan, frame, list, *index)
+            project_bool_list_expr(plan, state, frame, list, *index)
         }
         BoolExprKind::Panic(panic) => {
-            eval_panic_expr(plan, frame, panic).map(|never| match never {})
+            eval_panic_expr(plan, state, frame, panic).map(|never| match never {})
         }
-        BoolExprKind::Not(value) => Ok(!eval_bool_expr(plan, frame, value)?),
-        BoolExprKind::LtInt { left, right } => {
-            Ok(eval_int_expr(plan, frame, left)? < eval_int_expr(plan, frame, right)?)
-        }
+        BoolExprKind::Not(value) => Ok(!eval_bool_expr(plan, state, frame, value)?),
+        BoolExprKind::LtInt { left, right } => Ok(
+            eval_int_expr(plan, state, frame, left)? < eval_int_expr(plan, state, frame, right)?
+        ),
         BoolExprKind::LtEqInt { left, right } => {
-            Ok(eval_int_expr(plan, frame, left)? <= eval_int_expr(plan, frame, right)?)
+            Ok(eval_int_expr(plan, state, frame, left)?
+                <= eval_int_expr(plan, state, frame, right)?)
         }
-        BoolExprKind::GtInt { left, right } => {
-            Ok(eval_int_expr(plan, frame, left)? > eval_int_expr(plan, frame, right)?)
-        }
+        BoolExprKind::GtInt { left, right } => Ok(
+            eval_int_expr(plan, state, frame, left)? > eval_int_expr(plan, state, frame, right)?
+        ),
         BoolExprKind::GtEqInt { left, right } => {
-            Ok(eval_int_expr(plan, frame, left)? >= eval_int_expr(plan, frame, right)?)
+            Ok(eval_int_expr(plan, state, frame, left)?
+                >= eval_int_expr(plan, state, frame, right)?)
         }
-        BoolExprKind::LtFloat { left, right } => {
-            Ok(eval_float_expr(plan, frame, left)? < eval_float_expr(plan, frame, right)?)
-        }
-        BoolExprKind::LtEqFloat { left, right } => {
-            Ok(eval_float_expr(plan, frame, left)? <= eval_float_expr(plan, frame, right)?)
-        }
-        BoolExprKind::GtFloat { left, right } => {
-            Ok(eval_float_expr(plan, frame, left)? > eval_float_expr(plan, frame, right)?)
-        }
-        BoolExprKind::GtEqFloat { left, right } => {
-            Ok(eval_float_expr(plan, frame, left)? >= eval_float_expr(plan, frame, right)?)
-        }
+        BoolExprKind::LtFloat { left, right } => Ok(eval_float_expr(plan, state, frame, left)?
+            < eval_float_expr(plan, state, frame, right)?),
+        BoolExprKind::LtEqFloat { left, right } => Ok(eval_float_expr(plan, state, frame, left)?
+            <= eval_float_expr(plan, state, frame, right)?),
+        BoolExprKind::GtFloat { left, right } => Ok(eval_float_expr(plan, state, frame, left)?
+            > eval_float_expr(plan, state, frame, right)?),
+        BoolExprKind::GtEqFloat { left, right } => Ok(eval_float_expr(plan, state, frame, left)?
+            >= eval_float_expr(plan, state, frame, right)?),
         BoolExprKind::Equal { left, right } => {
-            Ok(eval_expr(plan, frame, left)? == eval_expr(plan, frame, right)?)
+            let left = eval_expr(plan, state, frame, left)?;
+            let right = eval_expr(plan, state, frame, right)?;
+            Ok(crate::runtime::evaluated::values_equal(
+                plan, state, &left, &right,
+            ))
         }
         BoolExprKind::NotEqual { left, right } => {
-            Ok(eval_expr(plan, frame, left)? != eval_expr(plan, frame, right)?)
+            let left = eval_expr(plan, state, frame, left)?;
+            let right = eval_expr(plan, state, frame, right)?;
+            Ok(!crate::runtime::evaluated::values_equal(
+                plan, state, &left, &right,
+            ))
         }
         BoolExprKind::StringStartsWith { value, prefix } => {
-            Ok(eval_string_expr(plan, frame, value)?.starts_with(prefix.as_str()))
+            Ok(eval_string_expr(plan, state, frame, value)?.starts_with(prefix.as_str()))
         }
         BoolExprKind::ListLengthEquals { value, length } => {
-            Ok(eval_list_expr(plan, frame, value)?.len() == *length)
+            let value = eval_list_expr(plan, state, frame, value)?;
+            Ok(state.list_len(&value) == *length)
         }
         BoolExprKind::ListLengthAtLeast { value, length } => {
-            Ok(eval_list_expr(plan, frame, value)?.len() >= *length)
+            let value = eval_list_expr(plan, state, frame, value)?;
+            Ok(state.list_len(&value) >= *length)
         }
         BoolExprKind::And { left, right } => {
-            let left = eval_bool_expr(plan, frame, left)?;
-            eval_and(left, || eval_bool_expr(plan, frame, right))
+            let left = eval_bool_expr(plan, state, frame, left)?;
+            eval_and(left, || eval_bool_expr(plan, state, frame, right))
         }
         BoolExprKind::Or { left, right } => {
-            let left = eval_bool_expr(plan, frame, left)?;
-            eval_or(left, || eval_bool_expr(plan, frame, right))
+            let left = eval_bool_expr(plan, state, frame, left)?;
+            eval_or(left, || eval_bool_expr(plan, state, frame, right))
         }
         BoolExprKind::BoolCase {
             subject,
             true_,
             false_,
         } => {
-            if eval_bool_expr(plan, frame, subject)? {
-                eval_bool_expr(plan, frame, true_)
+            if eval_bool_expr(plan, state, frame, subject)? {
+                eval_bool_expr(plan, state, frame, true_)
             } else {
-                eval_bool_expr(plan, frame, false_)
+                eval_bool_expr(plan, state, frame, false_)
             }
         }
         BoolExprKind::IntCase {
@@ -103,43 +113,43 @@ pub(in crate::runtime) fn eval_bool_expr(
             clauses,
             fallback,
         } => {
-            let subject = eval_int_expr(plan, frame, subject)?;
+            let subject = eval_int_expr(plan, state, frame, subject)?;
             for (pattern, branch) in clauses {
                 if pattern == &subject {
-                    return eval_bool_expr(plan, frame, branch);
+                    return eval_bool_expr(plan, state, frame, branch);
                 }
             }
-            eval_bool_expr(plan, frame, fallback)
+            eval_bool_expr(plan, state, frame, fallback)
         }
         BoolExprKind::StringCase {
             subject,
             clauses,
             fallback,
         } => {
-            let subject = eval_string_expr(plan, frame, subject)?;
+            let subject = eval_string_expr(plan, state, frame, subject)?;
             for (pattern, branch) in clauses {
                 if pattern == &subject {
-                    return eval_bool_expr(plan, frame, branch);
+                    return eval_bool_expr(plan, state, frame, branch);
                 }
             }
-            eval_bool_expr(plan, frame, fallback)
+            eval_bool_expr(plan, state, frame, fallback)
         }
         BoolExprKind::FloatCase {
             subject,
             clauses,
             fallback,
         } => {
-            let subject = eval_float_expr(plan, frame, subject)?;
+            let subject = eval_float_expr(plan, state, frame, subject)?;
             for (pattern, branch) in clauses {
                 if pattern == &subject {
-                    return eval_bool_expr(plan, frame, branch);
+                    return eval_bool_expr(plan, state, frame, branch);
                 }
             }
-            eval_bool_expr(plan, frame, fallback)
+            eval_bool_expr(plan, state, frame, fallback)
         }
         BoolExprKind::Block { steps, return_ } => {
-            function::execute_steps(plan, steps, frame)?;
-            eval_bool_expr(plan, frame, return_)
+            function::execute_steps(plan, state, steps, frame)?;
+            eval_bool_expr(plan, state, frame, return_)
         }
     }
 }

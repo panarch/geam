@@ -45,9 +45,6 @@ impl Diagnostic for ExecutionError {
                 Some(Box::new("geam::function_return_family_mismatch"))
             }
             Self::TupleIndexFamilyMismatch { .. } => Some(Box::new("geam::tuple_index_mismatch")),
-            Self::ListIndexFamilyMismatch { .. } => {
-                Some(Box::new("geam::list_index_family_mismatch"))
-            }
             Self::ListIndexOutOfBounds { .. } => Some(Box::new("geam::list_index_out_of_bounds")),
         }
     }
@@ -57,7 +54,6 @@ impl Diagnostic for ExecutionError {
             Self::Panic(panic) => panic.help(),
             Self::FunctionReturnFamilyMismatch { .. }
             | Self::TupleIndexFamilyMismatch { .. }
-            | Self::ListIndexFamilyMismatch { .. }
             | Self::ListIndexOutOfBounds { .. } => None,
         }
     }
@@ -67,7 +63,6 @@ impl Diagnostic for ExecutionError {
             Self::Panic(panic) => panic.source_code(),
             Self::FunctionReturnFamilyMismatch { .. }
             | Self::TupleIndexFamilyMismatch { .. }
-            | Self::ListIndexFamilyMismatch { .. }
             | Self::ListIndexOutOfBounds { .. } => None,
         }
     }
@@ -77,7 +72,6 @@ impl Diagnostic for ExecutionError {
             Self::Panic(panic) => panic.labels(),
             Self::FunctionReturnFamilyMismatch { .. }
             | Self::TupleIndexFamilyMismatch { .. }
-            | Self::ListIndexFamilyMismatch { .. }
             | Self::ListIndexOutOfBounds { .. } => None,
         }
     }
@@ -248,13 +242,6 @@ mod tests {
             (
                 ExecutionError::list_index_out_of_bounds(ValueType::Int, 1, 1),
                 "geam::list_index_out_of_bounds",
-            ),
-            (
-                ExecutionError::ListIndexFamilyMismatch {
-                    expected: ValueType::List(Box::new(ValueType::Int)),
-                    actual: ValueType::List(Box::new(ValueType::String)),
-                },
-                "geam::list_index_family_mismatch",
             ),
         ] {
             assert_eq!(

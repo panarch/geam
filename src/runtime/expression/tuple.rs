@@ -6,29 +6,31 @@ use crate::plan::ValueType;
 use crate::plan::execution::ExecutionPlan;
 use crate::plan::execution::{TupleExpr, TupleExprKind};
 use crate::runtime::ExecutionError;
-use crate::runtime::Value;
+use crate::runtime::evaluated::EvaluatedValue;
 use crate::runtime::frame::Frame;
 use crate::runtime::function;
+use crate::runtime::state::RuntimeState;
 
 pub(in crate::runtime) fn eval_tuple_expr(
     plan: &ExecutionPlan,
+    state: &mut RuntimeState,
     frame: &mut Frame,
     expression: &TupleExpr,
-) -> Result<Vec<Value>, ExecutionError> {
+) -> Result<Vec<EvaluatedValue>, ExecutionError> {
     match expression.kind() {
         TupleExprKind::Value(elements) => {
             let mut values = Vec::with_capacity(elements.len());
             for element in elements {
-                values.push(super::eval_expr(plan, frame, element)?);
+                values.push(super::eval_expr(plan, state, frame, element)?);
             }
             Ok(values)
         }
         TupleExprKind::LocalGet { local, .. } => Ok(frame.get_tuple(*local)),
         TupleExprKind::Call { function, args } => {
-            function::run_tuple_call(plan, *function, args, frame)
+            function::run_tuple_call(plan, state, *function, args, frame)
         }
         TupleExprKind::FunctionCall { function, args } => {
-            function::run_tuple_function_call(plan, function, args, frame)
+            function::run_tuple_function_call(plan, state, function, args, frame)
         }
         TupleExprKind::TupleIndex { tuple, index } => {
             let expected = ValueType::Tuple(
@@ -38,11 +40,11 @@ pub(in crate::runtime) fn eval_tuple_expr(
                     .map(|type_| plan.value_type(type_))
                     .collect(),
             );
-            match project_tuple_expr(plan, frame, tuple, *index, expected.clone())? {
-                Value::Tuple(values) => Ok(values),
+            match project_tuple_expr(plan, state, frame, tuple, *index, expected.clone())? {
+                EvaluatedValue::Tuple(values) => Ok(values),
                 other => Err(ExecutionError::tuple_index_family_mismatch(
                     expected,
-                    other.value_type(),
+                    other.value_type(plan),
                 )),
             }
         }
@@ -52,20 +54,20 @@ pub(in crate::runtime) fn eval_tuple_expr(
                 .iter()
                 .map(|type_| plan.value_type(type_))
                 .collect::<Vec<_>>();
-            project_tuple_list_expr(plan, frame, list, *index, &expected)
+            project_tuple_list_expr(plan, state, frame, list, *index, &expected)
         }
         TupleExprKind::Panic(panic) => {
-            eval_panic_expr(plan, frame, panic).map(|never| match never {})
+            eval_panic_expr(plan, state, frame, panic).map(|never| match never {})
         }
         TupleExprKind::BoolCase {
             subject,
             true_,
             false_,
         } => {
-            if eval_bool_expr(plan, frame, subject)? {
-                eval_tuple_expr(plan, frame, true_)
+            if eval_bool_expr(plan, state, frame, subject)? {
+                eval_tuple_expr(plan, state, frame, true_)
             } else {
-                eval_tuple_expr(plan, frame, false_)
+                eval_tuple_expr(plan, state, frame, false_)
             }
         }
         TupleExprKind::IntCase {
@@ -73,59 +75,60 @@ pub(in crate::runtime) fn eval_tuple_expr(
             clauses,
             fallback,
         } => {
-            let subject = eval_int_expr(plan, frame, subject)?;
+            let subject = eval_int_expr(plan, state, frame, subject)?;
             for (pattern, branch) in clauses {
                 if pattern == &subject {
-                    return eval_tuple_expr(plan, frame, branch);
+                    return eval_tuple_expr(plan, state, frame, branch);
                 }
             }
-            eval_tuple_expr(plan, frame, fallback)
+            eval_tuple_expr(plan, state, frame, fallback)
         }
         TupleExprKind::StringCase {
             subject,
             clauses,
             fallback,
         } => {
-            let subject = eval_string_expr(plan, frame, subject)?;
+            let subject = eval_string_expr(plan, state, frame, subject)?;
             for (pattern, branch) in clauses {
                 if pattern == &subject {
-                    return eval_tuple_expr(plan, frame, branch);
+                    return eval_tuple_expr(plan, state, frame, branch);
                 }
             }
-            eval_tuple_expr(plan, frame, fallback)
+            eval_tuple_expr(plan, state, frame, fallback)
         }
         TupleExprKind::FloatCase {
             subject,
             clauses,
             fallback,
         } => {
-            let subject = eval_float_expr(plan, frame, subject)?;
+            let subject = eval_float_expr(plan, state, frame, subject)?;
             for (pattern, branch) in clauses {
                 if pattern == &subject {
-                    return eval_tuple_expr(plan, frame, branch);
+                    return eval_tuple_expr(plan, state, frame, branch);
                 }
             }
-            eval_tuple_expr(plan, frame, fallback)
+            eval_tuple_expr(plan, state, frame, fallback)
         }
         TupleExprKind::Block { steps, return_ } => {
-            function::execute_steps(plan, steps, frame)?;
-            eval_tuple_expr(plan, frame, return_)
+            function::execute_steps(plan, state, steps, frame)?;
+            eval_tuple_expr(plan, state, frame, return_)
         }
     }
 }
 
 pub(in crate::runtime) fn project_tuple_expr(
     plan: &ExecutionPlan,
+    state: &mut RuntimeState,
     frame: &mut Frame,
     tuple: &TupleExpr,
     index: usize,
     expected: ValueType,
-) -> Result<Value, ExecutionError> {
-    let values = eval_tuple_expr(plan, frame, tuple)?;
+) -> Result<EvaluatedValue, ExecutionError> {
+    let values = eval_tuple_expr(plan, state, frame, tuple)?;
     let Some(value) = values.get(index).cloned() else {
         return Err(ExecutionError::tuple_index_family_mismatch(
             expected,
-            ValueType::Tuple(values.iter().map(Value::value_type).collect()),
+            ValueType::Tuple(values.iter().map(|value| value.value_type(plan)).collect()),
         ));
     };
     Ok(value)
@@ -241,6 +244,27 @@ pub fn main() -> #(Int) {{ {expression} }}
                 "panic: `panic` expression evaluated.",
             );
         }
+    }
+
+    #[test]
+    fn tuple_index_failure_reports_the_actual_nested_list_type() {
+        let list = crate::plan::ListExpr::value(Vec::new(), ValueType::Int);
+        let expression = TupleExpr::tuple_index(
+            TupleExpr::value(
+                vec![Expr::list(list)],
+                vec![ValueType::List(Box::new(ValueType::Int))],
+            ),
+            1,
+            vec![ValueType::Int],
+        );
+
+        assert_eq!(
+            run_module_tuple_expression(expression),
+            ExecutionError::tuple_index_family_mismatch(
+                ValueType::Tuple(vec![ValueType::Int]),
+                ValueType::Tuple(vec![ValueType::List(Box::new(ValueType::Int))]),
+            ),
+        );
     }
 
     fn run_module_tuple_expression(expression: TupleExpr) -> ExecutionError {

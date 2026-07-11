@@ -3,14 +3,16 @@ use num_bigint::BigInt;
 
 use super::{
     BoolFunctionValue, FloatFunctionValue, FunctionFunctionValue, IntFunctionValue,
-    ListFunctionValue, ListLocalValue, NilFunctionValue, StringFunctionValue, TupleFunctionValue,
-    Value,
+    ListFunctionValue, ListValue, NilFunctionValue, StringFunctionValue, TupleFunctionValue, Value,
 };
 use crate::plan::execution::{
-    BoolFunctionLocalId, BoolLocalId, FloatFunctionLocalId, FloatLocalId, FunctionFunctionLocalId,
-    IntFunctionLocalId, IntLocalId, ListFunctionLocal, NilFunctionLocalId, NilLocalId,
-    StringFunctionLocalId, StringLocalId, TupleFunctionLocalId, TupleLocalId,
+    BoolFunctionLocalId, BoolListLocalId, BoolLocalId, FloatFunctionLocalId, FloatListLocalId,
+    FloatLocalId, FunctionFunctionLocalId, FunctionListLocalId, IntFunctionLocalId, IntListLocalId,
+    IntLocalId, ListFunctionLocal, ListListLocalId, NilFunctionLocalId, NilListLocalId, NilLocalId,
+    StringFunctionLocalId, StringListLocalId, StringLocalId, TupleFunctionLocalId,
+    TupleListLocalId, TupleLocalId,
 };
+use crate::plan::{FunctionType, ValueType};
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct CaptureValue {
@@ -42,7 +44,7 @@ pub(crate) enum CaptureValueKind {
         local: TupleLocalId,
         value: Vec<Value>,
     },
-    List(ListLocalValue),
+    List(CaptureListValue),
     IntFunction {
         local: IntFunctionLocalId,
         value: IntFunctionValue,
@@ -74,6 +76,45 @@ pub(crate) enum CaptureValueKind {
     FunctionFunction {
         local: FunctionFunctionLocalId,
         value: FunctionFunctionValue,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) enum CaptureListValue {
+    Int {
+        local: IntListLocalId,
+        value: Vec<BigInt>,
+    },
+    String {
+        local: StringListLocalId,
+        value: Vec<EcoString>,
+    },
+    Float {
+        local: FloatListLocalId,
+        value: Vec<f64>,
+    },
+    Bool {
+        local: BoolListLocalId,
+        value: Vec<bool>,
+    },
+    Nil {
+        local: NilListLocalId,
+        len: usize,
+    },
+    Tuple {
+        local: TupleListLocalId,
+        item_type: Vec<ValueType>,
+        value: Vec<Vec<Value>>,
+    },
+    List {
+        local: ListListLocalId,
+        item_type: Box<ValueType>,
+        value: Vec<ListValue>,
+    },
+    Function {
+        local: FunctionListLocalId,
+        item_type: FunctionType,
+        value: Vec<super::FunctionValue>,
     },
 }
 
@@ -114,7 +155,7 @@ impl CaptureValue {
         }
     }
 
-    pub(crate) fn list(value: ListLocalValue) -> Self {
+    pub(crate) fn list(value: CaptureListValue) -> Self {
         Self {
             kind: CaptureValueKind::List(value),
         }
@@ -173,8 +214,175 @@ impl CaptureValue {
             kind: CaptureValueKind::FunctionFunction { local, value },
         }
     }
+}
 
-    pub(crate) fn kind(&self) -> &CaptureValueKind {
-        &self.kind
+#[cfg(test)]
+mod tests {
+    use super::{CaptureListValue, CaptureValue, CaptureValueKind};
+    use crate::plan::execution::{
+        BoolFunctionId, BoolFunctionLocalId, BoolLocalId, FloatFunctionId, FloatFunctionLocalId,
+        FloatLocalId, FunctionFunctionId, FunctionFunctionLocalId, IntFunctionFunctionId,
+        IntFunctionId, IntFunctionLocalId, IntListFunctionLocalId, IntListLocalId, IntLocalId,
+        ListFunctionId, ListFunctionLocal, NilFunctionId, NilFunctionLocalId, NilLocalId,
+        StringFunctionId, StringFunctionLocalId, StringLocalId, TupleFunctionId,
+        TupleFunctionLocalId, TupleLocalId,
+    };
+    use crate::plan::{FunctionType, ValueType};
+    use crate::runtime::{
+        BoolFunctionValue, FloatFunctionValue, FunctionFunctionValue, IntFunctionValue,
+        ListFunctionValue, NilFunctionValue, StringFunctionValue, TupleFunctionValue, Value,
+    };
+
+    #[test]
+    fn capture_value_constructors_preserve_every_output_family() {
+        let list_plan = crate::runtime::plan_src("pub fn main() -> List(Int) { [] }");
+        let list_function_id = ListFunctionId::Int(list_plan.int_list_function_id(0));
+        let list_type_id = list_plan.int_list_function_id(0).type_id();
+        let module_int_function_type = FunctionType::new(Vec::new(), ValueType::Int);
+        let execution_int_function_type = crate::plan::execution::FunctionType::new(
+            Vec::new(),
+            crate::plan::execution::ValueType::Int,
+        );
+        let int_function = IntFunctionValue::new(
+            IntFunctionId(0),
+            Vec::new(),
+            module_int_function_type.clone(),
+        );
+        let float_function = FloatFunctionValue::new_with_captures(
+            FloatFunctionId(0),
+            Vec::new(),
+            Vec::new(),
+            FunctionType::new(Vec::new(), ValueType::Float),
+        );
+        let string_function = StringFunctionValue::new_with_captures(
+            StringFunctionId(0),
+            Vec::new(),
+            Vec::new(),
+            FunctionType::new(Vec::new(), ValueType::String),
+        );
+        let bool_function = BoolFunctionValue::new_with_captures(
+            BoolFunctionId(0),
+            Vec::new(),
+            Vec::new(),
+            FunctionType::new(Vec::new(), ValueType::Bool),
+        );
+        let nil_function = NilFunctionValue::new_with_captures(
+            NilFunctionId(0),
+            Vec::new(),
+            Vec::new(),
+            FunctionType::new(Vec::new(), ValueType::Nil),
+        );
+        let tuple_function = TupleFunctionValue::from_evaluated(
+            TupleFunctionId(0),
+            Vec::new(),
+            Vec::new(),
+            FunctionType::new(Vec::new(), ValueType::Tuple(vec![ValueType::Int])),
+        );
+        let list_function = ListFunctionValue::new_with_captures(
+            list_function_id.clone(),
+            Vec::new(),
+            Vec::new(),
+            FunctionType::new(Vec::new(), ValueType::List(Box::new(ValueType::Int))),
+        );
+        let function_function = FunctionFunctionValue::from_evaluated(
+            FunctionFunctionId::Int(IntFunctionFunctionId(0)),
+            Vec::new(),
+            Vec::new(),
+            FunctionType::new(
+                Vec::new(),
+                ValueType::Function(Box::new(module_int_function_type.clone())),
+            ),
+        );
+        let list_function_local = ListFunctionLocal::Int {
+            local: IntListFunctionLocalId(0),
+            type_: execution_int_function_type,
+            list_type: list_type_id,
+        };
+
+        let captures = [
+            CaptureValue::int(IntLocalId(0), 1.into()),
+            CaptureValue::float(FloatLocalId(0), 1.5),
+            CaptureValue::string(StringLocalId(0), "one".into()),
+            CaptureValue::bool(BoolLocalId(0), true),
+            CaptureValue::nil(NilLocalId(0)),
+            CaptureValue::tuple(TupleLocalId(0), vec![Value::Int(1.into())]),
+            CaptureValue::list(CaptureListValue::Int {
+                local: IntListLocalId(0),
+                value: vec![1.into()],
+            }),
+            CaptureValue::int_function(IntFunctionLocalId(0), int_function.clone()),
+            CaptureValue::float_function(FloatFunctionLocalId(0), float_function.clone()),
+            CaptureValue::string_function(StringFunctionLocalId(0), string_function.clone()),
+            CaptureValue::bool_function(BoolFunctionLocalId(0), bool_function.clone()),
+            CaptureValue::nil_function(NilFunctionLocalId(0), nil_function.clone()),
+            CaptureValue::tuple_function(TupleFunctionLocalId(0), tuple_function.clone()),
+            CaptureValue::list_function(list_function_local.clone(), list_function.clone()),
+            CaptureValue::function_function(FunctionFunctionLocalId(0), function_function.clone()),
+        ];
+        let expected = [
+            CaptureValueKind::Int {
+                local: IntLocalId(0),
+                value: 1.into(),
+            },
+            CaptureValueKind::Float {
+                local: FloatLocalId(0),
+                value: 1.5,
+            },
+            CaptureValueKind::String {
+                local: StringLocalId(0),
+                value: "one".into(),
+            },
+            CaptureValueKind::Bool {
+                local: BoolLocalId(0),
+                value: true,
+            },
+            CaptureValueKind::Nil {
+                local: NilLocalId(0),
+            },
+            CaptureValueKind::Tuple {
+                local: TupleLocalId(0),
+                value: vec![Value::Int(1.into())],
+            },
+            CaptureValueKind::List(CaptureListValue::Int {
+                local: IntListLocalId(0),
+                value: vec![1.into()],
+            }),
+            CaptureValueKind::IntFunction {
+                local: IntFunctionLocalId(0),
+                value: int_function.clone(),
+            },
+            CaptureValueKind::FloatFunction {
+                local: FloatFunctionLocalId(0),
+                value: float_function,
+            },
+            CaptureValueKind::StringFunction {
+                local: StringFunctionLocalId(0),
+                value: string_function,
+            },
+            CaptureValueKind::BoolFunction {
+                local: BoolFunctionLocalId(0),
+                value: bool_function,
+            },
+            CaptureValueKind::NilFunction {
+                local: NilFunctionLocalId(0),
+                value: nil_function,
+            },
+            CaptureValueKind::TupleFunction {
+                local: TupleFunctionLocalId(0),
+                value: tuple_function,
+            },
+            CaptureValueKind::ListFunction {
+                local: list_function_local,
+                value: list_function,
+            },
+            CaptureValueKind::FunctionFunction {
+                local: FunctionFunctionLocalId(0),
+                value: function_function,
+            },
+        ];
+
+        for (capture, expected) in captures.iter().zip(expected) {
+            assert_eq!(capture.kind, expected);
+        }
     }
 }
