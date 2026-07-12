@@ -66,29 +66,6 @@ impl ExecutionError {
             }),
         ))
     }
-
-    pub(crate) fn function_return_family_mismatch(
-        expected: FunctionReturnFamily,
-        actual: FunctionReturnFamily,
-    ) -> Self {
-        Self::FunctionReturnFamilyMismatch { expected, actual }
-    }
-
-    pub(crate) fn tuple_index_family_mismatch(expected: ValueType, actual: ValueType) -> Self {
-        Self::TupleIndexFamilyMismatch { expected, actual }
-    }
-
-    pub(crate) fn list_index_out_of_bounds(
-        item_type: ValueType,
-        index: usize,
-        length: usize,
-    ) -> Self {
-        Self::ListIndexOutOfBounds {
-            item_type,
-            index,
-            length,
-        }
-    }
 }
 
 #[cfg(test)]
@@ -99,10 +76,10 @@ mod tests {
 
     #[test]
     fn function_return_family_mismatch_display() {
-        let error = ExecutionError::function_return_family_mismatch(
-            FunctionReturnFamily::Int,
-            FunctionReturnFamily::String,
-        );
+        let error = ExecutionError::FunctionReturnFamilyMismatch {
+            expected: FunctionReturnFamily::Int,
+            actual: FunctionReturnFamily::String,
+        };
 
         assert_eq!(
             error.to_string(),
@@ -112,10 +89,10 @@ mod tests {
 
     #[test]
     fn tuple_index_family_mismatch_display() {
-        let error = ExecutionError::tuple_index_family_mismatch(
-            ValueType::Tuple(vec![ValueType::Int]),
-            ValueType::String,
-        );
+        let error = ExecutionError::TupleIndexFamilyMismatch {
+            expected: ValueType::Tuple(vec![ValueType::Int]),
+            actual: ValueType::String,
+        };
 
         assert_eq!(
             error.to_string(),
@@ -125,7 +102,11 @@ mod tests {
 
     #[test]
     fn list_index_out_of_bounds_display() {
-        let error = ExecutionError::list_index_out_of_bounds(ValueType::Int, 1, 1);
+        let error = ExecutionError::ListIndexOutOfBounds {
+            item_type: ValueType::Int,
+            index: 1,
+            length: 1,
+        };
 
         assert_eq!(
             error.to_string(),

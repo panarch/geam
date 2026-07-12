@@ -29,10 +29,10 @@ pub(in crate::runtime) fn eval_bool_expr(
         BoolExprKind::TupleIndex { tuple, index } => {
             match project_tuple_expr(plan, state, frame, tuple, *index, ValueType::Bool)? {
                 EvaluatedValue::Bool(value) => Ok(value),
-                other => Err(ExecutionError::tuple_index_family_mismatch(
-                    ValueType::Bool,
-                    other.value_type(plan),
-                )),
+                other => Err(ExecutionError::TupleIndexFamilyMismatch {
+                    expected: ValueType::Bool,
+                    actual: other.value_type(plan),
+                }),
             }
         }
         BoolExprKind::ListIndex { list, index } => {

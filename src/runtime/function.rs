@@ -471,10 +471,10 @@ pub(in crate::runtime) fn run_int_list_function_call(
 ) -> ExecutionResult<IntListValueId> {
     let function = eval_list_function_expr(plan, state, caller_frame, function)?;
     let ListFunctionId::Int(runtime_id) = function.runtime_id() else {
-        return Err(ExecutionError::function_return_family_mismatch(
-            FunctionReturnFamily::List,
-            FunctionReturnFamily::List,
-        ));
+        return Err(ExecutionError::FunctionReturnFamilyMismatch {
+            expected: FunctionReturnFamily::List,
+            actual: FunctionReturnFamily::List,
+        });
     };
     let frame = bind_function_value_arguments(
         plan,
@@ -496,10 +496,10 @@ pub(in crate::runtime) fn run_string_list_function_call(
 ) -> ExecutionResult<StringListValueId> {
     let function = eval_list_function_expr(plan, state, caller_frame, function)?;
     let ListFunctionId::String(runtime_id) = function.runtime_id() else {
-        return Err(ExecutionError::function_return_family_mismatch(
-            FunctionReturnFamily::List,
-            FunctionReturnFamily::List,
-        ));
+        return Err(ExecutionError::FunctionReturnFamilyMismatch {
+            expected: FunctionReturnFamily::List,
+            actual: FunctionReturnFamily::List,
+        });
     };
     let frame = bind_function_value_arguments(
         plan,
@@ -521,10 +521,10 @@ pub(in crate::runtime) fn run_float_list_function_call(
 ) -> ExecutionResult<FloatListValueId> {
     let function = eval_list_function_expr(plan, state, caller_frame, function)?;
     let ListFunctionId::Float(runtime_id) = function.runtime_id() else {
-        return Err(ExecutionError::function_return_family_mismatch(
-            FunctionReturnFamily::List,
-            FunctionReturnFamily::List,
-        ));
+        return Err(ExecutionError::FunctionReturnFamilyMismatch {
+            expected: FunctionReturnFamily::List,
+            actual: FunctionReturnFamily::List,
+        });
     };
     let frame = bind_function_value_arguments(
         plan,
@@ -546,10 +546,10 @@ pub(in crate::runtime) fn run_bool_list_function_call(
 ) -> ExecutionResult<BoolListValueId> {
     let function = eval_list_function_expr(plan, state, caller_frame, function)?;
     let ListFunctionId::Bool(runtime_id) = function.runtime_id() else {
-        return Err(ExecutionError::function_return_family_mismatch(
-            FunctionReturnFamily::List,
-            FunctionReturnFamily::List,
-        ));
+        return Err(ExecutionError::FunctionReturnFamilyMismatch {
+            expected: FunctionReturnFamily::List,
+            actual: FunctionReturnFamily::List,
+        });
     };
     let frame = bind_function_value_arguments(
         plan,
@@ -571,10 +571,10 @@ pub(in crate::runtime) fn run_nil_list_function_call(
 ) -> ExecutionResult<NilListValueId> {
     let function = eval_list_function_expr(plan, state, caller_frame, function)?;
     let ListFunctionId::Nil(runtime_id) = function.runtime_id() else {
-        return Err(ExecutionError::function_return_family_mismatch(
-            FunctionReturnFamily::List,
-            FunctionReturnFamily::List,
-        ));
+        return Err(ExecutionError::FunctionReturnFamilyMismatch {
+            expected: FunctionReturnFamily::List,
+            actual: FunctionReturnFamily::List,
+        });
     };
     let frame = bind_function_value_arguments(
         plan,
@@ -596,10 +596,10 @@ pub(in crate::runtime) fn run_tuple_list_function_call(
 ) -> ExecutionResult<TupleListValueId> {
     let function = eval_list_function_expr(plan, state, caller_frame, function)?;
     let ListFunctionId::Tuple(runtime_id) = function.runtime_id() else {
-        return Err(ExecutionError::function_return_family_mismatch(
-            FunctionReturnFamily::List,
-            FunctionReturnFamily::List,
-        ));
+        return Err(ExecutionError::FunctionReturnFamilyMismatch {
+            expected: FunctionReturnFamily::List,
+            actual: FunctionReturnFamily::List,
+        });
     };
     let frame = bind_function_value_arguments(
         plan,
@@ -621,10 +621,10 @@ pub(in crate::runtime) fn run_list_list_function_call(
 ) -> ExecutionResult<ListListValueId> {
     let function = eval_list_function_expr(plan, state, caller_frame, function)?;
     let ListFunctionId::List(runtime_id) = function.runtime_id() else {
-        return Err(ExecutionError::function_return_family_mismatch(
-            FunctionReturnFamily::List,
-            FunctionReturnFamily::List,
-        ));
+        return Err(ExecutionError::FunctionReturnFamilyMismatch {
+            expected: FunctionReturnFamily::List,
+            actual: FunctionReturnFamily::List,
+        });
     };
     let frame = bind_function_value_arguments(
         plan,
@@ -646,10 +646,10 @@ pub(in crate::runtime) fn run_function_list_function_call(
 ) -> ExecutionResult<FunctionListValueId> {
     let function = eval_list_function_expr(plan, state, caller_frame, function)?;
     let ListFunctionId::Function(runtime_id) = function.runtime_id() else {
-        return Err(ExecutionError::function_return_family_mismatch(
-            FunctionReturnFamily::List,
-            FunctionReturnFamily::List,
-        ));
+        return Err(ExecutionError::FunctionReturnFamilyMismatch {
+            expected: FunctionReturnFamily::List,
+            actual: FunctionReturnFamily::List,
+        });
     };
     let frame = bind_function_value_arguments(
         plan,
@@ -825,10 +825,10 @@ pub(in crate::runtime) fn run_int_function_function_call(
     let runtime_id = function.runtime_id();
     let function_id = runtime_id
         .int()
-        .ok_or(ExecutionError::function_return_family_mismatch(
-            FunctionReturnFamily::Int,
-            runtime_id.family(),
-        ))?;
+        .ok_or(ExecutionError::FunctionReturnFamilyMismatch {
+            expected: FunctionReturnFamily::Int,
+            actual: runtime_id.family(),
+        })?;
     let runtime_function = plan.int_function_function(function_id);
     let frame_layout = runtime_function.frame_layout();
     let frame = bind_function_value_arguments(
@@ -853,10 +853,10 @@ pub(in crate::runtime) fn run_float_function_function_call(
     let runtime_id = function.runtime_id();
     let function_id = runtime_id
         .float()
-        .ok_or(ExecutionError::function_return_family_mismatch(
-            FunctionReturnFamily::Float,
-            runtime_id.family(),
-        ))?;
+        .ok_or(ExecutionError::FunctionReturnFamilyMismatch {
+            expected: FunctionReturnFamily::Float,
+            actual: runtime_id.family(),
+        })?;
     let runtime_function = plan.float_function_function(function_id);
     let frame_layout = runtime_function.frame_layout();
     let frame = bind_function_value_arguments(
@@ -879,13 +879,12 @@ pub(in crate::runtime) fn run_string_function_function_call(
 ) -> ExecutionResult<EvaluatedStringFunction> {
     let function = eval_function_function_expr(plan, state, caller_frame, function)?;
     let runtime_id = function.runtime_id();
-    let function_id =
-        runtime_id
-            .string()
-            .ok_or(ExecutionError::function_return_family_mismatch(
-                FunctionReturnFamily::String,
-                runtime_id.family(),
-            ))?;
+    let function_id = runtime_id
+        .string()
+        .ok_or(ExecutionError::FunctionReturnFamilyMismatch {
+            expected: FunctionReturnFamily::String,
+            actual: runtime_id.family(),
+        })?;
     let runtime_function = plan.string_function_function(function_id);
     let frame_layout = runtime_function.frame_layout();
     let frame = bind_function_value_arguments(
@@ -910,10 +909,10 @@ pub(in crate::runtime) fn run_bool_function_function_call(
     let runtime_id = function.runtime_id();
     let function_id = runtime_id
         .bool()
-        .ok_or(ExecutionError::function_return_family_mismatch(
-            FunctionReturnFamily::Bool,
-            runtime_id.family(),
-        ))?;
+        .ok_or(ExecutionError::FunctionReturnFamilyMismatch {
+            expected: FunctionReturnFamily::Bool,
+            actual: runtime_id.family(),
+        })?;
     let runtime_function = plan.bool_function_function(function_id);
     let frame_layout = runtime_function.frame_layout();
     let frame = bind_function_value_arguments(
@@ -938,10 +937,10 @@ pub(in crate::runtime) fn run_nil_function_function_call(
     let runtime_id = function.runtime_id();
     let function_id = runtime_id
         .nil()
-        .ok_or(ExecutionError::function_return_family_mismatch(
-            FunctionReturnFamily::Nil,
-            runtime_id.family(),
-        ))?;
+        .ok_or(ExecutionError::FunctionReturnFamilyMismatch {
+            expected: FunctionReturnFamily::Nil,
+            actual: runtime_id.family(),
+        })?;
     let runtime_function = plan.nil_function_function(function_id);
     let frame_layout = runtime_function.frame_layout();
     let frame = bind_function_value_arguments(
@@ -966,10 +965,10 @@ pub(in crate::runtime) fn run_tuple_function_function_call(
     let runtime_id = function.runtime_id();
     let function_id = runtime_id
         .tuple()
-        .ok_or(ExecutionError::function_return_family_mismatch(
-            FunctionReturnFamily::Tuple,
-            runtime_id.family(),
-        ))?;
+        .ok_or(ExecutionError::FunctionReturnFamilyMismatch {
+            expected: FunctionReturnFamily::Tuple,
+            actual: runtime_id.family(),
+        })?;
     let runtime_function = plan.tuple_function_function(function_id);
     let frame_layout = runtime_function.frame_layout();
     let frame = bind_function_value_arguments(
@@ -994,10 +993,10 @@ pub(in crate::runtime) fn run_list_function_function_call(
     let runtime_id = function.runtime_id();
     let function_id = runtime_id
         .list()
-        .ok_or(ExecutionError::function_return_family_mismatch(
-            FunctionReturnFamily::List,
-            runtime_id.family(),
-        ))?;
+        .ok_or(ExecutionError::FunctionReturnFamilyMismatch {
+            expected: FunctionReturnFamily::List,
+            actual: runtime_id.family(),
+        })?;
     let runtime_function = plan.list_function_function(&function_id);
     let frame_layout = runtime_function.frame_layout();
     let frame = bind_function_value_arguments(
@@ -1023,10 +1022,10 @@ pub(in crate::runtime) fn run_function_function_function_call(
     let function_id =
         runtime_id
             .function()
-            .ok_or(ExecutionError::function_return_family_mismatch(
-                FunctionReturnFamily::Function,
-                runtime_id.family(),
-            ))?;
+            .ok_or(ExecutionError::FunctionReturnFamilyMismatch {
+                expected: FunctionReturnFamily::Function,
+                actual: runtime_id.family(),
+            })?;
     let runtime_function = plan.function_function_function(function_id);
     let frame_layout = runtime_function.frame_layout();
     let frame = bind_function_value_arguments(
@@ -1310,10 +1309,10 @@ pub fn main() { Nil }
                 ),
             ),
         );
-        let expected = ExecutionError::function_return_family_mismatch(
-            FunctionReturnFamily::List,
-            FunctionReturnFamily::List,
-        );
+        let expected = ExecutionError::FunctionReturnFamilyMismatch {
+            expected: FunctionReturnFamily::List,
+            actual: FunctionReturnFamily::List,
+        };
 
         let function = plan.int_list_function(plan.int_list_function_id(0));
         let mut state = crate::runtime::RuntimeState::new();
@@ -1485,10 +1484,10 @@ pub fn main() { list_function }
         frame.set_function_function(FunctionFunctionLocalId(0), wrong_string);
         assert_eq!(
             run_int_function_loop(&plan, &mut state, IntFunctionFunctionId(0), frame),
-            Err(ExecutionError::function_return_family_mismatch(
-                FunctionReturnFamily::Int,
-                FunctionReturnFamily::String,
-            )),
+            Err(ExecutionError::FunctionReturnFamilyMismatch {
+                expected: FunctionReturnFamily::Int,
+                actual: FunctionReturnFamily::String,
+            }),
         );
 
         let function = plan.string_function_function(StringFunctionFunctionId(0));
@@ -1497,10 +1496,10 @@ pub fn main() { list_function }
         frame.set_function_function(FunctionFunctionLocalId(0), wrong_int.clone());
         assert_eq!(
             run_string_function_loop(&plan, &mut state, StringFunctionFunctionId(0), frame),
-            Err(ExecutionError::function_return_family_mismatch(
-                FunctionReturnFamily::String,
-                FunctionReturnFamily::Int,
-            )),
+            Err(ExecutionError::FunctionReturnFamilyMismatch {
+                expected: FunctionReturnFamily::String,
+                actual: FunctionReturnFamily::Int,
+            }),
         );
 
         let function = plan.float_function_function(FloatFunctionFunctionId(0));
@@ -1509,10 +1508,10 @@ pub fn main() { list_function }
         frame.set_function_function(FunctionFunctionLocalId(0), wrong_int.clone());
         assert_eq!(
             run_float_function_loop(&plan, &mut state, FloatFunctionFunctionId(0), frame),
-            Err(ExecutionError::function_return_family_mismatch(
-                FunctionReturnFamily::Float,
-                FunctionReturnFamily::Int,
-            )),
+            Err(ExecutionError::FunctionReturnFamilyMismatch {
+                expected: FunctionReturnFamily::Float,
+                actual: FunctionReturnFamily::Int,
+            }),
         );
 
         let function = plan.bool_function_function(BoolFunctionFunctionId(0));
@@ -1521,10 +1520,10 @@ pub fn main() { list_function }
         frame.set_function_function(FunctionFunctionLocalId(0), wrong_int.clone());
         assert_eq!(
             run_bool_function_loop(&plan, &mut state, BoolFunctionFunctionId(0), frame),
-            Err(ExecutionError::function_return_family_mismatch(
-                FunctionReturnFamily::Bool,
-                FunctionReturnFamily::Int,
-            )),
+            Err(ExecutionError::FunctionReturnFamilyMismatch {
+                expected: FunctionReturnFamily::Bool,
+                actual: FunctionReturnFamily::Int,
+            }),
         );
 
         let function = plan.nil_function_function(NilFunctionFunctionId(0));
@@ -1533,10 +1532,10 @@ pub fn main() { list_function }
         frame.set_function_function(FunctionFunctionLocalId(0), wrong_int.clone());
         assert_eq!(
             run_nil_function_loop(&plan, &mut state, NilFunctionFunctionId(0), frame),
-            Err(ExecutionError::function_return_family_mismatch(
-                FunctionReturnFamily::Nil,
-                FunctionReturnFamily::Int,
-            )),
+            Err(ExecutionError::FunctionReturnFamilyMismatch {
+                expected: FunctionReturnFamily::Nil,
+                actual: FunctionReturnFamily::Int,
+            }),
         );
 
         let function = plan.tuple_function_function(TupleFunctionFunctionId(0));
@@ -1545,10 +1544,10 @@ pub fn main() { list_function }
         frame.set_function_function(FunctionFunctionLocalId(0), wrong_int.clone());
         assert_eq!(
             run_tuple_function_loop(&plan, &mut state, TupleFunctionFunctionId(0), frame),
-            Err(ExecutionError::function_return_family_mismatch(
-                FunctionReturnFamily::Tuple,
-                FunctionReturnFamily::Int,
-            )),
+            Err(ExecutionError::FunctionReturnFamilyMismatch {
+                expected: FunctionReturnFamily::Tuple,
+                actual: FunctionReturnFamily::Int,
+            }),
         );
 
         let function = plan.list_function_function(&list_function_id);
@@ -1557,10 +1556,10 @@ pub fn main() { list_function }
         frame.set_function_function(FunctionFunctionLocalId(0), wrong_int.clone());
         assert_eq!(
             run_list_function_loop(&plan, &mut state, list_function_id, frame),
-            Err(ExecutionError::function_return_family_mismatch(
-                FunctionReturnFamily::List,
-                FunctionReturnFamily::Int,
-            )),
+            Err(ExecutionError::FunctionReturnFamilyMismatch {
+                expected: FunctionReturnFamily::List,
+                actual: FunctionReturnFamily::Int,
+            }),
         );
 
         let function = plan.function_function_function(FunctionFunctionFunctionId(1));
@@ -1569,10 +1568,10 @@ pub fn main() { list_function }
         frame.set_function_function(FunctionFunctionLocalId(0), wrong_int);
         assert_eq!(
             run_function_function_loop(&plan, &mut state, FunctionFunctionFunctionId(1), frame),
-            Err(ExecutionError::function_return_family_mismatch(
-                FunctionReturnFamily::Function,
-                FunctionReturnFamily::Int,
-            )),
+            Err(ExecutionError::FunctionReturnFamilyMismatch {
+                expected: FunctionReturnFamily::Function,
+                actual: FunctionReturnFamily::Int,
+            }),
         );
     }
 
@@ -1640,10 +1639,10 @@ pub fn main() { list_function }
         frame.set_function_list(FunctionListLocalId(0), value);
         assert_eq!(
             run_int_function_loop(&plan, &mut state, IntFunctionFunctionId(0), frame),
-            Err(ExecutionError::function_return_family_mismatch(
-                FunctionReturnFamily::Int,
-                FunctionReturnFamily::String,
-            )),
+            Err(ExecutionError::FunctionReturnFamilyMismatch {
+                expected: FunctionReturnFamily::Int,
+                actual: FunctionReturnFamily::String,
+            }),
         );
 
         let function = plan.string_function_function(StringFunctionFunctionId(0));
@@ -1656,10 +1655,10 @@ pub fn main() { list_function }
         frame.set_function_list(FunctionListLocalId(0), value);
         assert_eq!(
             run_string_function_loop(&plan, &mut state, StringFunctionFunctionId(0), frame),
-            Err(ExecutionError::function_return_family_mismatch(
-                FunctionReturnFamily::String,
-                FunctionReturnFamily::Int,
-            )),
+            Err(ExecutionError::FunctionReturnFamilyMismatch {
+                expected: FunctionReturnFamily::String,
+                actual: FunctionReturnFamily::Int,
+            }),
         );
 
         let function = plan.float_function_function(FloatFunctionFunctionId(0));
@@ -1672,10 +1671,10 @@ pub fn main() { list_function }
         frame.set_function_list(FunctionListLocalId(0), value);
         assert_eq!(
             run_float_function_loop(&plan, &mut state, FloatFunctionFunctionId(0), frame),
-            Err(ExecutionError::function_return_family_mismatch(
-                FunctionReturnFamily::Float,
-                FunctionReturnFamily::Int,
-            )),
+            Err(ExecutionError::FunctionReturnFamilyMismatch {
+                expected: FunctionReturnFamily::Float,
+                actual: FunctionReturnFamily::Int,
+            }),
         );
 
         let function = plan.bool_function_function(BoolFunctionFunctionId(0));
@@ -1688,10 +1687,10 @@ pub fn main() { list_function }
         frame.set_function_list(FunctionListLocalId(0), value);
         assert_eq!(
             run_bool_function_loop(&plan, &mut state, BoolFunctionFunctionId(0), frame),
-            Err(ExecutionError::function_return_family_mismatch(
-                FunctionReturnFamily::Bool,
-                FunctionReturnFamily::Int,
-            )),
+            Err(ExecutionError::FunctionReturnFamilyMismatch {
+                expected: FunctionReturnFamily::Bool,
+                actual: FunctionReturnFamily::Int,
+            }),
         );
 
         let function = plan.nil_function_function(NilFunctionFunctionId(0));
@@ -1704,10 +1703,10 @@ pub fn main() { list_function }
         frame.set_function_list(FunctionListLocalId(0), value);
         assert_eq!(
             run_nil_function_loop(&plan, &mut state, NilFunctionFunctionId(0), frame),
-            Err(ExecutionError::function_return_family_mismatch(
-                FunctionReturnFamily::Nil,
-                FunctionReturnFamily::Int,
-            )),
+            Err(ExecutionError::FunctionReturnFamilyMismatch {
+                expected: FunctionReturnFamily::Nil,
+                actual: FunctionReturnFamily::Int,
+            }),
         );
 
         let function = plan.tuple_function_function(TupleFunctionFunctionId(0));
@@ -1720,10 +1719,10 @@ pub fn main() { list_function }
         frame.set_function_list(FunctionListLocalId(0), value);
         assert_eq!(
             run_tuple_function_loop(&plan, &mut state, TupleFunctionFunctionId(0), frame),
-            Err(ExecutionError::function_return_family_mismatch(
-                FunctionReturnFamily::Tuple,
-                FunctionReturnFamily::Int,
-            )),
+            Err(ExecutionError::FunctionReturnFamilyMismatch {
+                expected: FunctionReturnFamily::Tuple,
+                actual: FunctionReturnFamily::Int,
+            }),
         );
 
         let function = plan.list_function_function(&list_function_id);
@@ -1736,10 +1735,10 @@ pub fn main() { list_function }
         frame.set_function_list(FunctionListLocalId(0), value);
         assert_eq!(
             run_list_function_loop(&plan, &mut state, list_function_id, frame),
-            Err(ExecutionError::function_return_family_mismatch(
-                FunctionReturnFamily::List,
-                FunctionReturnFamily::Int,
-            )),
+            Err(ExecutionError::FunctionReturnFamilyMismatch {
+                expected: FunctionReturnFamily::List,
+                actual: FunctionReturnFamily::Int,
+            }),
         );
 
         let function = plan.function_function_function(FunctionFunctionFunctionId(1));
@@ -1752,10 +1751,10 @@ pub fn main() { list_function }
         frame.set_function_list(FunctionListLocalId(0), value);
         assert_eq!(
             run_function_function_loop(&plan, &mut state, FunctionFunctionFunctionId(1), frame),
-            Err(ExecutionError::function_return_family_mismatch(
-                FunctionReturnFamily::Function,
-                FunctionReturnFamily::Int,
-            )),
+            Err(ExecutionError::FunctionReturnFamilyMismatch {
+                expected: FunctionReturnFamily::Function,
+                actual: FunctionReturnFamily::Int,
+            }),
         );
     }
 

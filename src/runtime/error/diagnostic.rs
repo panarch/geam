@@ -229,18 +229,25 @@ mod tests {
     fn invariant_diagnostics_have_codes_without_source_labels_or_help() {
         for (error, expected_code) in [
             (
-                ExecutionError::function_return_family_mismatch(
-                    FunctionReturnFamily::Int,
-                    FunctionReturnFamily::String,
-                ),
+                ExecutionError::FunctionReturnFamilyMismatch {
+                    expected: FunctionReturnFamily::Int,
+                    actual: FunctionReturnFamily::String,
+                },
                 "geam::function_return_family_mismatch",
             ),
             (
-                ExecutionError::tuple_index_family_mismatch(ValueType::Int, ValueType::String),
+                ExecutionError::TupleIndexFamilyMismatch {
+                    expected: ValueType::Int,
+                    actual: ValueType::String,
+                },
                 "geam::tuple_index_mismatch",
             ),
             (
-                ExecutionError::list_index_out_of_bounds(ValueType::Int, 1, 1),
+                ExecutionError::ListIndexOutOfBounds {
+                    item_type: ValueType::Int,
+                    index: 1,
+                    length: 1,
+                },
                 "geam::list_index_out_of_bounds",
             ),
         ] {

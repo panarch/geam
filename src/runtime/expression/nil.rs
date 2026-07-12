@@ -32,10 +32,10 @@ pub(in crate::runtime) fn eval_nil_expr(
         NilExprKind::TupleIndex { tuple, index } => {
             match project_tuple_expr(plan, state, frame, tuple, *index, ValueType::Nil)? {
                 EvaluatedValue::Nil => Ok(()),
-                other => Err(ExecutionError::tuple_index_family_mismatch(
-                    ValueType::Nil,
-                    other.value_type(plan),
-                )),
+                other => Err(ExecutionError::TupleIndexFamilyMismatch {
+                    expected: ValueType::Nil,
+                    actual: other.value_type(plan),
+                }),
             }
         }
         NilExprKind::ListIndex { list, index } => {

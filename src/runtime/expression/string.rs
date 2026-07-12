@@ -30,10 +30,10 @@ pub(in crate::runtime) fn eval_string_expr(
         StringExprKind::TupleIndex { tuple, index } => {
             match project_tuple_expr(plan, state, frame, tuple, *index, ValueType::String)? {
                 EvaluatedValue::String(value) => Ok(value),
-                other => Err(ExecutionError::tuple_index_family_mismatch(
-                    ValueType::String,
-                    other.value_type(plan),
-                )),
+                other => Err(ExecutionError::TupleIndexFamilyMismatch {
+                    expected: ValueType::String,
+                    actual: other.value_type(plan),
+                }),
             }
         }
         StringExprKind::ListIndex { list, index } => {

@@ -223,18 +223,18 @@ pub fn main() { Nil }
         frame.set_tuple(TupleLocalId(0), wrong_tuple.clone());
         assert_eq!(
             eval_int_expr(&plan, &mut state, &mut frame, expression),
-            Err(ExecutionError::tuple_index_family_mismatch(
-                ValueType::Int,
-                actual.clone(),
-            )),
+            Err(ExecutionError::TupleIndexFamilyMismatch {
+                expected: ValueType::Int,
+                actual: actual.clone(),
+            }),
         );
         frame.set_tuple(TupleLocalId(0), Vec::new());
         assert_eq!(
             eval_int_expr(&plan, &mut state, &mut frame, expression),
-            Err(ExecutionError::tuple_index_family_mismatch(
-                ValueType::Int,
-                ValueType::Tuple(Vec::new()),
-            )),
+            Err(ExecutionError::TupleIndexFamilyMismatch {
+                expected: ValueType::Int,
+                actual: ValueType::Tuple(Vec::new()),
+            }),
         );
 
         let function = plan.string_function(StringFunctionId(0));
@@ -245,10 +245,10 @@ pub fn main() { Nil }
         frame.set_tuple(TupleLocalId(0), wrong_tuple.clone());
         assert_eq!(
             eval_string_expr(&plan, &mut state, &mut frame, expression),
-            Err(ExecutionError::tuple_index_family_mismatch(
-                ValueType::String,
-                actual.clone(),
-            )),
+            Err(ExecutionError::TupleIndexFamilyMismatch {
+                expected: ValueType::String,
+                actual: actual.clone(),
+            }),
         );
 
         let function = plan.float_function(FloatFunctionId(0));
@@ -259,10 +259,10 @@ pub fn main() { Nil }
         frame.set_tuple(TupleLocalId(0), wrong_tuple.clone());
         assert_eq!(
             eval_float_expr(&plan, &mut state, &mut frame, expression),
-            Err(ExecutionError::tuple_index_family_mismatch(
-                ValueType::Float,
-                actual.clone(),
-            )),
+            Err(ExecutionError::TupleIndexFamilyMismatch {
+                expected: ValueType::Float,
+                actual: actual.clone(),
+            }),
         );
 
         let function = plan.bool_function(BoolFunctionId(0));
@@ -273,10 +273,10 @@ pub fn main() { Nil }
         frame.set_tuple(TupleLocalId(0), wrong_tuple.clone());
         assert_eq!(
             eval_bool_expr(&plan, &mut state, &mut frame, expression),
-            Err(ExecutionError::tuple_index_family_mismatch(
-                ValueType::Bool,
-                actual.clone(),
-            )),
+            Err(ExecutionError::TupleIndexFamilyMismatch {
+                expected: ValueType::Bool,
+                actual: actual.clone(),
+            }),
         );
 
         let function = plan.nil_function(NilFunctionId(1));
@@ -287,10 +287,10 @@ pub fn main() { Nil }
         frame.set_tuple(TupleLocalId(0), wrong_tuple.clone());
         assert_eq!(
             eval_nil_expr(&plan, &mut state, &mut frame, expression),
-            Err(ExecutionError::tuple_index_family_mismatch(
-                ValueType::Nil,
-                actual.clone(),
-            )),
+            Err(ExecutionError::TupleIndexFamilyMismatch {
+                expected: ValueType::Nil,
+                actual: actual.clone(),
+            }),
         );
 
         let function = plan.tuple_function(TupleFunctionId(0));
@@ -304,10 +304,10 @@ pub fn main() { Nil }
         );
         assert_eq!(
             eval_tuple_expr(&plan, &mut state, &mut frame, expression),
-            Err(ExecutionError::tuple_index_family_mismatch(
-                ValueType::Tuple(vec![ValueType::Int]),
-                ValueType::String,
-            )),
+            Err(ExecutionError::TupleIndexFamilyMismatch {
+                expected: ValueType::Tuple(vec![ValueType::Int]),
+                actual: ValueType::String,
+            }),
         );
 
         let function = plan.int_list_function(plan.int_list_function_id(0));
@@ -318,10 +318,10 @@ pub fn main() { Nil }
         frame.set_tuple(TupleLocalId(0), wrong_tuple.clone());
         assert_eq!(
             eval_int_list_expr(&plan, &mut state, &mut frame, expression),
-            Err(ExecutionError::tuple_index_family_mismatch(
-                ValueType::List(Box::new(ValueType::Int)),
-                actual.clone(),
-            )),
+            Err(ExecutionError::TupleIndexFamilyMismatch {
+                expected: ValueType::List(Box::new(ValueType::Int)),
+                actual: actual.clone(),
+            }),
         );
         let function = plan.string_list_function(plan.string_list_function_id(0));
         let expression = expression_return(function.return_())
@@ -331,10 +331,10 @@ pub fn main() { Nil }
         frame.set_tuple(TupleLocalId(0), wrong_tuple.clone());
         assert_eq!(
             eval_string_list_expr(&plan, &mut state, &mut frame, expression),
-            Err(ExecutionError::tuple_index_family_mismatch(
-                ValueType::List(Box::new(ValueType::String)),
-                actual.clone(),
-            )),
+            Err(ExecutionError::TupleIndexFamilyMismatch {
+                expected: ValueType::List(Box::new(ValueType::String)),
+                actual: actual.clone(),
+            }),
         );
 
         let function = plan.float_list_function(plan.float_list_function_id(0));
@@ -345,10 +345,10 @@ pub fn main() { Nil }
         frame.set_tuple(TupleLocalId(0), wrong_tuple.clone());
         assert_eq!(
             eval_float_list_expr(&plan, &mut state, &mut frame, expression),
-            Err(ExecutionError::tuple_index_family_mismatch(
-                ValueType::List(Box::new(ValueType::Float)),
-                actual.clone(),
-            )),
+            Err(ExecutionError::TupleIndexFamilyMismatch {
+                expected: ValueType::List(Box::new(ValueType::Float)),
+                actual: actual.clone(),
+            }),
         );
 
         let function = plan.bool_list_function(plan.bool_list_function_id(0));
@@ -359,10 +359,10 @@ pub fn main() { Nil }
         frame.set_tuple(TupleLocalId(0), wrong_tuple.clone());
         assert_eq!(
             eval_bool_list_expr(&plan, &mut state, &mut frame, expression),
-            Err(ExecutionError::tuple_index_family_mismatch(
-                ValueType::List(Box::new(ValueType::Bool)),
-                actual.clone(),
-            )),
+            Err(ExecutionError::TupleIndexFamilyMismatch {
+                expected: ValueType::List(Box::new(ValueType::Bool)),
+                actual: actual.clone(),
+            }),
         );
 
         let function = plan.nil_list_function(plan.nil_list_function_id(0));
@@ -373,10 +373,10 @@ pub fn main() { Nil }
         frame.set_tuple(TupleLocalId(0), wrong_tuple.clone());
         assert_eq!(
             eval_nil_list_expr(&plan, &mut state, &mut frame, expression),
-            Err(ExecutionError::tuple_index_family_mismatch(
-                ValueType::List(Box::new(ValueType::Nil)),
-                actual.clone(),
-            )),
+            Err(ExecutionError::TupleIndexFamilyMismatch {
+                expected: ValueType::List(Box::new(ValueType::Nil)),
+                actual: actual.clone(),
+            }),
         );
 
         let function = plan.tuple_list_function(plan.tuple_list_function_id(0));
@@ -387,10 +387,10 @@ pub fn main() { Nil }
         frame.set_tuple(TupleLocalId(0), wrong_tuple.clone());
         assert_eq!(
             eval_tuple_list_expr(&plan, &mut state, &mut frame, expression),
-            Err(ExecutionError::tuple_index_family_mismatch(
-                ValueType::List(Box::new(ValueType::Tuple(vec![ValueType::Int]))),
-                actual.clone(),
-            )),
+            Err(ExecutionError::TupleIndexFamilyMismatch {
+                expected: ValueType::List(Box::new(ValueType::Tuple(vec![ValueType::Int]))),
+                actual: actual.clone(),
+            }),
         );
 
         let function = plan.list_list_function(plan.list_list_function_id(0));
@@ -401,10 +401,10 @@ pub fn main() { Nil }
         frame.set_tuple(TupleLocalId(0), wrong_tuple.clone());
         assert_eq!(
             eval_list_list_expr(&plan, &mut state, &mut frame, expression),
-            Err(ExecutionError::tuple_index_family_mismatch(
-                ValueType::List(Box::new(ValueType::List(Box::new(ValueType::Int)))),
-                actual.clone(),
-            )),
+            Err(ExecutionError::TupleIndexFamilyMismatch {
+                expected: ValueType::List(Box::new(ValueType::List(Box::new(ValueType::Int)))),
+                actual: actual.clone(),
+            }),
         );
 
         let function = plan.function_list_function(plan.function_list_function_id(0));
@@ -416,12 +416,12 @@ pub fn main() { Nil }
         let int_function_type = FunctionType::new(Vec::new(), ValueType::Int);
         assert_eq!(
             eval_function_list_expr(&plan, &mut state, &mut frame, expression),
-            Err(ExecutionError::tuple_index_family_mismatch(
-                ValueType::List(Box::new(ValueType::Function(Box::new(
+            Err(ExecutionError::TupleIndexFamilyMismatch {
+                expected: ValueType::List(Box::new(ValueType::Function(Box::new(
                     int_function_type.clone(),
                 )))),
-                actual.clone(),
-            )),
+                actual: actual.clone(),
+            }),
         );
 
         let expected_function_types = [
@@ -443,10 +443,10 @@ pub fn main() { Nil }
         frame.set_tuple(TupleLocalId(0), wrong_tuple.clone());
         assert_eq!(
             eval_int_function_expr(&plan, &mut state, &mut frame, expression),
-            Err(ExecutionError::tuple_index_family_mismatch(
-                ValueType::Function(Box::new(expected_function_types[0].clone())),
-                actual.clone(),
-            )),
+            Err(ExecutionError::TupleIndexFamilyMismatch {
+                expected: ValueType::Function(Box::new(expected_function_types[0].clone())),
+                actual: actual.clone(),
+            }),
         );
 
         let function = plan.string_function_function(StringFunctionFunctionId(0));
@@ -457,10 +457,10 @@ pub fn main() { Nil }
         frame.set_tuple(TupleLocalId(0), wrong_tuple.clone());
         assert_eq!(
             eval_string_function_expr(&plan, &mut state, &mut frame, expression),
-            Err(ExecutionError::tuple_index_family_mismatch(
-                ValueType::Function(Box::new(expected_function_types[1].clone())),
-                actual.clone(),
-            )),
+            Err(ExecutionError::TupleIndexFamilyMismatch {
+                expected: ValueType::Function(Box::new(expected_function_types[1].clone())),
+                actual: actual.clone(),
+            }),
         );
 
         let function = plan.float_function_function(FloatFunctionFunctionId(0));
@@ -471,10 +471,10 @@ pub fn main() { Nil }
         frame.set_tuple(TupleLocalId(0), wrong_tuple.clone());
         assert_eq!(
             eval_float_function_expr(&plan, &mut state, &mut frame, expression),
-            Err(ExecutionError::tuple_index_family_mismatch(
-                ValueType::Function(Box::new(expected_function_types[2].clone())),
-                actual.clone(),
-            )),
+            Err(ExecutionError::TupleIndexFamilyMismatch {
+                expected: ValueType::Function(Box::new(expected_function_types[2].clone())),
+                actual: actual.clone(),
+            }),
         );
 
         let function = plan.bool_function_function(BoolFunctionFunctionId(0));
@@ -485,10 +485,10 @@ pub fn main() { Nil }
         frame.set_tuple(TupleLocalId(0), wrong_tuple.clone());
         assert_eq!(
             eval_bool_function_expr(&plan, &mut state, &mut frame, expression),
-            Err(ExecutionError::tuple_index_family_mismatch(
-                ValueType::Function(Box::new(expected_function_types[3].clone())),
-                actual.clone(),
-            )),
+            Err(ExecutionError::TupleIndexFamilyMismatch {
+                expected: ValueType::Function(Box::new(expected_function_types[3].clone())),
+                actual: actual.clone(),
+            }),
         );
 
         let function = plan.nil_function_function(NilFunctionFunctionId(0));
@@ -499,10 +499,10 @@ pub fn main() { Nil }
         frame.set_tuple(TupleLocalId(0), wrong_tuple.clone());
         assert_eq!(
             eval_nil_function_expr(&plan, &mut state, &mut frame, expression),
-            Err(ExecutionError::tuple_index_family_mismatch(
-                ValueType::Function(Box::new(expected_function_types[4].clone())),
-                actual.clone(),
-            )),
+            Err(ExecutionError::TupleIndexFamilyMismatch {
+                expected: ValueType::Function(Box::new(expected_function_types[4].clone())),
+                actual: actual.clone(),
+            }),
         );
 
         let function = plan.tuple_function_function(TupleFunctionFunctionId(0));
@@ -513,10 +513,10 @@ pub fn main() { Nil }
         frame.set_tuple(TupleLocalId(0), wrong_tuple.clone());
         assert_eq!(
             eval_tuple_function_expr(&plan, &mut state, &mut frame, expression),
-            Err(ExecutionError::tuple_index_family_mismatch(
-                ValueType::Function(Box::new(expected_function_types[5].clone())),
-                actual.clone(),
-            )),
+            Err(ExecutionError::TupleIndexFamilyMismatch {
+                expected: ValueType::Function(Box::new(expected_function_types[5].clone())),
+                actual: actual.clone(),
+            }),
         );
 
         let function =
@@ -528,10 +528,10 @@ pub fn main() { Nil }
         frame.set_tuple(TupleLocalId(0), wrong_tuple.clone());
         assert_eq!(
             eval_list_function_expr(&plan, &mut state, &mut frame, expression),
-            Err(ExecutionError::tuple_index_family_mismatch(
-                ValueType::Function(Box::new(expected_function_types[6].clone())),
-                actual.clone(),
-            )),
+            Err(ExecutionError::TupleIndexFamilyMismatch {
+                expected: ValueType::Function(Box::new(expected_function_types[6].clone())),
+                actual: actual.clone(),
+            }),
         );
 
         let function = plan.function_function_function(FunctionFunctionFunctionId(0));
@@ -542,10 +542,10 @@ pub fn main() { Nil }
         frame.set_tuple(TupleLocalId(0), wrong_tuple.clone());
         assert_eq!(
             eval_function_function_expr(&plan, &mut state, &mut frame, expression),
-            Err(ExecutionError::tuple_index_family_mismatch(
-                ValueType::Function(Box::new(expected_function_types[7].clone())),
-                actual.clone(),
-            )),
+            Err(ExecutionError::TupleIndexFamilyMismatch {
+                expected: ValueType::Function(Box::new(expected_function_types[7].clone())),
+                actual: actual.clone(),
+            }),
         );
 
         let wrong_string_function = EvaluatedStringFunction::new(
@@ -581,10 +581,10 @@ pub fn main() { Nil }
         );
         assert_eq!(
             eval_int_function_expr(&plan, &mut state, &mut frame, expression),
-            Err(ExecutionError::tuple_index_family_mismatch(
-                ValueType::Function(Box::new(expected_function_types[0].clone())),
-                wrong_string_type,
-            )),
+            Err(ExecutionError::TupleIndexFamilyMismatch {
+                expected: ValueType::Function(Box::new(expected_function_types[0].clone())),
+                actual: wrong_string_type,
+            }),
         );
 
         let function = plan.string_function_function(StringFunctionFunctionId(0));
@@ -598,10 +598,10 @@ pub fn main() { Nil }
         );
         assert_eq!(
             eval_string_function_expr(&plan, &mut state, &mut frame, expression),
-            Err(ExecutionError::tuple_index_family_mismatch(
-                ValueType::Function(Box::new(expected_function_types[1].clone())),
-                wrong_int_type.clone(),
-            )),
+            Err(ExecutionError::TupleIndexFamilyMismatch {
+                expected: ValueType::Function(Box::new(expected_function_types[1].clone())),
+                actual: wrong_int_type.clone(),
+            }),
         );
 
         let function = plan.float_function_function(FloatFunctionFunctionId(0));
@@ -615,10 +615,10 @@ pub fn main() { Nil }
         );
         assert_eq!(
             eval_float_function_expr(&plan, &mut state, &mut frame, expression),
-            Err(ExecutionError::tuple_index_family_mismatch(
-                ValueType::Function(Box::new(expected_function_types[2].clone())),
-                wrong_int_type.clone(),
-            )),
+            Err(ExecutionError::TupleIndexFamilyMismatch {
+                expected: ValueType::Function(Box::new(expected_function_types[2].clone())),
+                actual: wrong_int_type.clone(),
+            }),
         );
 
         let function = plan.bool_function_function(BoolFunctionFunctionId(0));
@@ -632,10 +632,10 @@ pub fn main() { Nil }
         );
         assert_eq!(
             eval_bool_function_expr(&plan, &mut state, &mut frame, expression),
-            Err(ExecutionError::tuple_index_family_mismatch(
-                ValueType::Function(Box::new(expected_function_types[3].clone())),
-                wrong_int_type.clone(),
-            )),
+            Err(ExecutionError::TupleIndexFamilyMismatch {
+                expected: ValueType::Function(Box::new(expected_function_types[3].clone())),
+                actual: wrong_int_type.clone(),
+            }),
         );
 
         let function = plan.nil_function_function(NilFunctionFunctionId(0));
@@ -649,10 +649,10 @@ pub fn main() { Nil }
         );
         assert_eq!(
             eval_nil_function_expr(&plan, &mut state, &mut frame, expression),
-            Err(ExecutionError::tuple_index_family_mismatch(
-                ValueType::Function(Box::new(expected_function_types[4].clone())),
-                wrong_int_type.clone(),
-            )),
+            Err(ExecutionError::TupleIndexFamilyMismatch {
+                expected: ValueType::Function(Box::new(expected_function_types[4].clone())),
+                actual: wrong_int_type.clone(),
+            }),
         );
 
         let function = plan.tuple_function_function(TupleFunctionFunctionId(0));
@@ -666,10 +666,10 @@ pub fn main() { Nil }
         );
         assert_eq!(
             eval_tuple_function_expr(&plan, &mut state, &mut frame, expression),
-            Err(ExecutionError::tuple_index_family_mismatch(
-                ValueType::Function(Box::new(expected_function_types[5].clone())),
-                wrong_int_type.clone(),
-            )),
+            Err(ExecutionError::TupleIndexFamilyMismatch {
+                expected: ValueType::Function(Box::new(expected_function_types[5].clone())),
+                actual: wrong_int_type.clone(),
+            }),
         );
 
         let function =
@@ -684,10 +684,10 @@ pub fn main() { Nil }
         );
         assert_eq!(
             eval_list_function_expr(&plan, &mut state, &mut frame, expression),
-            Err(ExecutionError::tuple_index_family_mismatch(
-                ValueType::Function(Box::new(expected_function_types[6].clone())),
-                wrong_int_type.clone(),
-            )),
+            Err(ExecutionError::TupleIndexFamilyMismatch {
+                expected: ValueType::Function(Box::new(expected_function_types[6].clone())),
+                actual: wrong_int_type.clone(),
+            }),
         );
 
         let function = plan.function_function_function(FunctionFunctionFunctionId(0));
@@ -701,10 +701,10 @@ pub fn main() { Nil }
         );
         assert_eq!(
             eval_function_function_expr(&plan, &mut state, &mut frame, expression),
-            Err(ExecutionError::tuple_index_family_mismatch(
-                ValueType::Function(Box::new(expected_function_types[7].clone())),
-                wrong_int_type,
-            )),
+            Err(ExecutionError::TupleIndexFamilyMismatch {
+                expected: ValueType::Function(Box::new(expected_function_types[7].clone())),
+                actual: wrong_int_type,
+            }),
         );
     }
 

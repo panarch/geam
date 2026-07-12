@@ -29,10 +29,10 @@ pub(in crate::runtime) fn eval_float_expr(
         FloatExprKind::TupleIndex { tuple, index } => {
             match project_tuple_expr(plan, state, frame, tuple, *index, ValueType::Float)? {
                 EvaluatedValue::Float(value) => Ok(value),
-                other => Err(ExecutionError::tuple_index_family_mismatch(
-                    ValueType::Float,
-                    other.value_type(plan),
-                )),
+                other => Err(ExecutionError::TupleIndexFamilyMismatch {
+                    expected: ValueType::Float,
+                    actual: other.value_type(plan),
+                }),
             }
         }
         FloatExprKind::ListIndex { list, index } => {

@@ -57,13 +57,9 @@ pub(in crate::runtime) fn eval_function_function_expr(
             match value {
                 EvaluatedValue::Function(function) => match function.kind() {
                     EvaluatedFunctionValueKind::Function(value) => Ok(value.clone()),
-                    _ => Err(ExecutionError::tuple_index_family_mismatch(
-                        expected, actual,
-                    )),
+                    _ => Err(ExecutionError::TupleIndexFamilyMismatch { expected, actual }),
                 },
-                _ => Err(ExecutionError::tuple_index_family_mismatch(
-                    expected, actual,
-                )),
+                _ => Err(ExecutionError::TupleIndexFamilyMismatch { expected, actual }),
             }
         }
         FunctionFunctionExprKind::ListIndex { list, index, type_ } => {
@@ -71,10 +67,10 @@ pub(in crate::runtime) fn eval_function_function_expr(
             let function = project_function_list_expr(plan, state, frame, list, *index, &type_)?;
             match function.kind() {
                 EvaluatedFunctionValueKind::Function(value) => Ok(value.clone()),
-                _ => Err(ExecutionError::function_return_family_mismatch(
-                    FunctionReturnFamily::Function,
-                    function.kind().family(),
-                )),
+                _ => Err(ExecutionError::FunctionReturnFamilyMismatch {
+                    expected: FunctionReturnFamily::Function,
+                    actual: function.kind().family(),
+                }),
             }
         }
         FunctionFunctionExprKind::Panic(panic) => {

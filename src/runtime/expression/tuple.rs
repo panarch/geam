@@ -42,10 +42,10 @@ pub(in crate::runtime) fn eval_tuple_expr(
             );
             match project_tuple_expr(plan, state, frame, tuple, *index, expected.clone())? {
                 EvaluatedValue::Tuple(values) => Ok(values),
-                other => Err(ExecutionError::tuple_index_family_mismatch(
+                other => Err(ExecutionError::TupleIndexFamilyMismatch {
                     expected,
-                    other.value_type(plan),
-                )),
+                    actual: other.value_type(plan),
+                }),
             }
         }
         TupleExprKind::ListIndex { list, index } => {
@@ -126,10 +126,10 @@ pub(in crate::runtime) fn project_tuple_expr(
 ) -> Result<EvaluatedValue, ExecutionError> {
     let values = eval_tuple_expr(plan, state, frame, tuple)?;
     let Some(value) = values.get(index).cloned() else {
-        return Err(ExecutionError::tuple_index_family_mismatch(
+        return Err(ExecutionError::TupleIndexFamilyMismatch {
             expected,
-            ValueType::Tuple(values.iter().map(|value| value.value_type(plan)).collect()),
-        ));
+            actual: ValueType::Tuple(values.iter().map(|value| value.value_type(plan)).collect()),
+        });
     };
     Ok(value)
 }
@@ -260,10 +260,10 @@ pub fn main() -> #(Int) {{ {expression} }}
 
         assert_eq!(
             run_module_tuple_expression(expression),
-            ExecutionError::tuple_index_family_mismatch(
-                ValueType::Tuple(vec![ValueType::Int]),
-                ValueType::Tuple(vec![ValueType::List(Box::new(ValueType::Int))]),
-            ),
+            ExecutionError::TupleIndexFamilyMismatch {
+                expected: ValueType::Tuple(vec![ValueType::Int]),
+                actual: ValueType::Tuple(vec![ValueType::List(Box::new(ValueType::Int))]),
+            },
         );
     }
 

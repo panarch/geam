@@ -30,10 +30,10 @@ pub(in crate::runtime) fn eval_int_expr(
         IntExprKind::TupleIndex { tuple, index } => {
             match project_tuple_expr(plan, state, frame, tuple, *index, ValueType::Int)? {
                 EvaluatedValue::Int(value) => Ok(value),
-                other => Err(ExecutionError::tuple_index_family_mismatch(
-                    ValueType::Int,
-                    other.value_type(plan),
-                )),
+                other => Err(ExecutionError::TupleIndexFamilyMismatch {
+                    expected: ValueType::Int,
+                    actual: other.value_type(plan),
+                }),
             }
         }
         IntExprKind::ListIndex { list, index } => {

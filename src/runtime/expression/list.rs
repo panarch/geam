@@ -168,24 +168,24 @@ fn eval_typed_list_expr_kind<Item: RuntimeListItem>(
                 EvaluatedValue::List(value) => {
                     let actual = plan.list_value_type(value.list_type());
                     Item::from_tuple_value(value).ok_or_else(|| {
-                        ExecutionError::tuple_index_family_mismatch(expected, actual)
+                        ExecutionError::TupleIndexFamilyMismatch { expected, actual }
                     })
                 }
-                other => Err(ExecutionError::tuple_index_family_mismatch(
+                other => Err(ExecutionError::TupleIndexFamilyMismatch {
                     expected,
-                    other.value_type(plan),
-                )),
+                    actual: other.value_type(plan),
+                }),
             }
         }
         TypedListExprKind::ListIndex(source) => {
             let list = eval_list_list_expr(plan, state, frame, source.list())?;
             let values = state.list_values(&list);
             let Some(value) = values.get(source.index()).cloned() else {
-                return Err(ExecutionError::list_index_out_of_bounds(
-                    plan.list_value_type(item.list_type()),
-                    source.index(),
-                    values.len(),
-                ));
+                return Err(ExecutionError::ListIndexOutOfBounds {
+                    item_type: plan.list_value_type(item.list_type()),
+                    index: source.index(),
+                    length: values.len(),
+                });
             };
             Ok(Item::from_core(item, value))
         }
@@ -725,9 +725,14 @@ macro_rules! project_primitive_list {
         ) -> Result<$value, ExecutionError> {
             let list = $eval(plan, state, frame, list)?;
             let values = state.$values(&list);
-            values.get(index).$get().ok_or_else(|| {
-                ExecutionError::list_index_out_of_bounds($expected, index, values.len())
-            })
+            values
+                .get(index)
+                .$get()
+                .ok_or_else(|| ExecutionError::ListIndexOutOfBounds {
+                    item_type: $expected,
+                    index,
+                    length: values.len(),
+                })
         }
     };
 }
@@ -781,11 +786,11 @@ pub(in crate::runtime) fn project_nil_list_expr(
     if index < len {
         Ok(())
     } else {
-        Err(ExecutionError::list_index_out_of_bounds(
-            ValueType::Nil,
+        Err(ExecutionError::ListIndexOutOfBounds {
+            item_type: ValueType::Nil,
             index,
-            len,
-        ))
+            length: len,
+        })
     }
 }
 
@@ -799,13 +804,14 @@ pub(in crate::runtime) fn project_tuple_list_expr(
 ) -> Result<Vec<EvaluatedValue>, ExecutionError> {
     let list = eval_tuple_list_expr(plan, state, frame, list)?;
     let values = state.tuple_values(&list);
-    values.get(index).cloned().ok_or_else(|| {
-        ExecutionError::list_index_out_of_bounds(
-            ValueType::Tuple(item_type.to_vec()),
+    values
+        .get(index)
+        .cloned()
+        .ok_or_else(|| ExecutionError::ListIndexOutOfBounds {
+            item_type: ValueType::Tuple(item_type.to_vec()),
             index,
-            values.len(),
-        )
-    })
+            length: values.len(),
+        })
 }
 
 pub(in crate::runtime) fn project_function_list_expr(
@@ -818,13 +824,14 @@ pub(in crate::runtime) fn project_function_list_expr(
 ) -> Result<EvaluatedFunctionValue, ExecutionError> {
     let list = eval_function_list_expr(plan, state, frame, list)?;
     let values = state.function_values(&list);
-    values.get(index).cloned().ok_or_else(|| {
-        ExecutionError::list_index_out_of_bounds(
-            ValueType::Function(Box::new(item_type.clone())),
+    values
+        .get(index)
+        .cloned()
+        .ok_or_else(|| ExecutionError::ListIndexOutOfBounds {
+            item_type: ValueType::Function(Box::new(item_type.clone())),
             index,
-            values.len(),
-        )
-    })
+            length: values.len(),
+        })
 }
 
 #[cfg(test)]
@@ -871,11 +878,11 @@ pub fn main() { Nil }
         let mut frame = Frame::new(function.frame_layout(), &mut state);
         assert_eq!(
             project_int_list_expr(&plan, &mut state, &mut frame, expression, 0),
-            Err(ExecutionError::list_index_out_of_bounds(
-                ValueType::Int,
-                0,
-                0,
-            )),
+            Err(ExecutionError::ListIndexOutOfBounds {
+                item_type: ValueType::Int,
+                index: 0,
+                length: 0,
+            }),
         );
 
         let function = plan.string_list_function(plan.string_list_function_id(0));
@@ -883,11 +890,11 @@ pub fn main() { Nil }
         let mut frame = Frame::new(function.frame_layout(), &mut state);
         assert_eq!(
             project_string_list_expr(&plan, &mut state, &mut frame, expression, 0),
-            Err(ExecutionError::list_index_out_of_bounds(
-                ValueType::String,
-                0,
-                0,
-            )),
+            Err(ExecutionError::ListIndexOutOfBounds {
+                item_type: ValueType::String,
+                index: 0,
+                length: 0,
+            }),
         );
 
         let function = plan.float_list_function(plan.float_list_function_id(0));
@@ -895,11 +902,11 @@ pub fn main() { Nil }
         let mut frame = Frame::new(function.frame_layout(), &mut state);
         assert_eq!(
             project_float_list_expr(&plan, &mut state, &mut frame, expression, 0),
-            Err(ExecutionError::list_index_out_of_bounds(
-                ValueType::Float,
-                0,
-                0,
-            )),
+            Err(ExecutionError::ListIndexOutOfBounds {
+                item_type: ValueType::Float,
+                index: 0,
+                length: 0,
+            }),
         );
 
         let function = plan.bool_list_function(plan.bool_list_function_id(0));
@@ -907,11 +914,11 @@ pub fn main() { Nil }
         let mut frame = Frame::new(function.frame_layout(), &mut state);
         assert_eq!(
             project_bool_list_expr(&plan, &mut state, &mut frame, expression, 0),
-            Err(ExecutionError::list_index_out_of_bounds(
-                ValueType::Bool,
-                0,
-                0,
-            )),
+            Err(ExecutionError::ListIndexOutOfBounds {
+                item_type: ValueType::Bool,
+                index: 0,
+                length: 0,
+            }),
         );
 
         let function = plan.nil_list_function(plan.nil_list_function_id(0));
@@ -919,11 +926,11 @@ pub fn main() { Nil }
         let mut frame = Frame::new(function.frame_layout(), &mut state);
         assert_eq!(
             project_nil_list_expr(&plan, &mut state, &mut frame, expression, 0),
-            Err(ExecutionError::list_index_out_of_bounds(
-                ValueType::Nil,
-                0,
-                0,
-            )),
+            Err(ExecutionError::ListIndexOutOfBounds {
+                item_type: ValueType::Nil,
+                index: 0,
+                length: 0,
+            }),
         );
 
         let function = plan.tuple_list_function(plan.tuple_list_function_id(0));
@@ -938,11 +945,11 @@ pub fn main() { Nil }
                 0,
                 &[ValueType::Int],
             ),
-            Err(ExecutionError::list_index_out_of_bounds(
-                ValueType::Tuple(vec![ValueType::Int]),
-                0,
-                0,
-            )),
+            Err(ExecutionError::ListIndexOutOfBounds {
+                item_type: ValueType::Tuple(vec![ValueType::Int]),
+                index: 0,
+                length: 0,
+            }),
         );
 
         let function = plan.function_list_function(plan.function_list_function_id(0));
@@ -958,11 +965,11 @@ pub fn main() { Nil }
                 0,
                 &function_type,
             ),
-            Err(ExecutionError::list_index_out_of_bounds(
-                ValueType::Function(Box::new(function_type)),
-                0,
-                0,
-            )),
+            Err(ExecutionError::ListIndexOutOfBounds {
+                item_type: ValueType::Function(Box::new(function_type)),
+                index: 0,
+                length: 0,
+            }),
         );
     }
 
@@ -1077,10 +1084,10 @@ pub fn main() { Nil }
 
         assert_eq!(
             super::eval_int_list_expr(&plan, &mut state, &mut frame, expression),
-            Err(ExecutionError::tuple_index_family_mismatch(
-                ValueType::List(Box::new(ValueType::Int)),
-                ValueType::List(Box::new(ValueType::String)),
-            )),
+            Err(ExecutionError::TupleIndexFamilyMismatch {
+                expected: ValueType::List(Box::new(ValueType::Int)),
+                actual: ValueType::List(Box::new(ValueType::String)),
+            }),
         );
     }
 
@@ -1379,70 +1386,69 @@ pub fn main() { Nil }
         match expression {
             crate::plan::execution::ListLocalExpr::Int { value, .. } => assert_eq!(
                 super::eval_int_list_expr(plan, state, frame, value),
-                Err(ExecutionError::list_index_out_of_bounds(
-                    ValueType::List(Box::new(ValueType::Int)),
-                    0,
-                    0,
-                )),
+                Err(ExecutionError::ListIndexOutOfBounds {
+                    item_type: ValueType::List(Box::new(ValueType::Int)),
+                    index: 0,
+                    length: 0,
+                }),
             ),
             crate::plan::execution::ListLocalExpr::String { value, .. } => assert_eq!(
                 super::eval_string_list_expr(plan, state, frame, value),
-                Err(ExecutionError::list_index_out_of_bounds(
-                    ValueType::List(Box::new(ValueType::String)),
-                    0,
-                    0,
-                )),
+                Err(ExecutionError::ListIndexOutOfBounds {
+                    item_type: ValueType::List(Box::new(ValueType::String)),
+                    index: 0,
+                    length: 0,
+                }),
             ),
             crate::plan::execution::ListLocalExpr::Float { value, .. } => assert_eq!(
                 super::eval_float_list_expr(plan, state, frame, value),
-                Err(ExecutionError::list_index_out_of_bounds(
-                    ValueType::List(Box::new(ValueType::Float)),
-                    0,
-                    0,
-                )),
+                Err(ExecutionError::ListIndexOutOfBounds {
+                    item_type: ValueType::List(Box::new(ValueType::Float)),
+                    index: 0,
+                    length: 0,
+                }),
             ),
             crate::plan::execution::ListLocalExpr::Bool { value, .. } => assert_eq!(
                 super::eval_bool_list_expr(plan, state, frame, value),
-                Err(ExecutionError::list_index_out_of_bounds(
-                    ValueType::List(Box::new(ValueType::Bool)),
-                    0,
-                    0,
-                )),
+                Err(ExecutionError::ListIndexOutOfBounds {
+                    item_type: ValueType::List(Box::new(ValueType::Bool)),
+                    index: 0,
+                    length: 0,
+                }),
             ),
             crate::plan::execution::ListLocalExpr::Nil { value, .. } => assert_eq!(
                 super::eval_nil_list_expr(plan, state, frame, value),
-                Err(ExecutionError::list_index_out_of_bounds(
-                    ValueType::List(Box::new(ValueType::Nil)),
-                    0,
-                    0,
-                )),
+                Err(ExecutionError::ListIndexOutOfBounds {
+                    item_type: ValueType::List(Box::new(ValueType::Nil)),
+                    index: 0,
+                    length: 0,
+                }),
             ),
             crate::plan::execution::ListLocalExpr::Tuple { value, .. } => assert_eq!(
                 super::eval_tuple_list_expr(plan, state, frame, value),
-                Err(ExecutionError::list_index_out_of_bounds(
-                    ValueType::List(Box::new(ValueType::Tuple(vec![ValueType::Int]))),
-                    0,
-                    0,
-                )),
+                Err(ExecutionError::ListIndexOutOfBounds {
+                    item_type: ValueType::List(Box::new(ValueType::Tuple(vec![ValueType::Int]))),
+                    index: 0,
+                    length: 0,
+                }),
             ),
             crate::plan::execution::ListLocalExpr::List { value, .. } => assert_eq!(
                 super::eval_list_list_expr(plan, state, frame, value),
-                Err(ExecutionError::list_index_out_of_bounds(
-                    ValueType::List(Box::new(ValueType::List(Box::new(ValueType::Int)))),
-                    0,
-                    0,
-                )),
+                Err(ExecutionError::ListIndexOutOfBounds {
+                    item_type: ValueType::List(Box::new(ValueType::List(Box::new(ValueType::Int)))),
+                    index: 0,
+                    length: 0,
+                }),
             ),
             crate::plan::execution::ListLocalExpr::Function { value, .. } => assert_eq!(
                 super::eval_function_list_expr(plan, state, frame, value),
-                Err(ExecutionError::list_index_out_of_bounds(
-                    ValueType::List(Box::new(ValueType::Function(Box::new(FunctionType::new(
-                        Vec::new(),
-                        ValueType::Int
-                    ),)))),
-                    0,
-                    0,
-                )),
+                Err(ExecutionError::ListIndexOutOfBounds {
+                    item_type: ValueType::List(Box::new(ValueType::Function(Box::new(
+                        FunctionType::new(Vec::new(), ValueType::Int),
+                    )))),
+                    index: 0,
+                    length: 0,
+                }),
             ),
         }
     }
