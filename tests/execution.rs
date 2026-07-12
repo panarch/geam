@@ -474,6 +474,10 @@ mod rejection {
             unsupported_body_after_main,
             anonymous_bit_array_argument,
             anonymous_bit_array_return,
+            result_argument,
+            result_return,
+            utf_codepoint_argument,
+            utf_codepoint_return,
         );
     }
 
@@ -483,6 +487,7 @@ mod rejection {
             bit_array,
             result_constructor,
             list_bit_array_element,
+            list_utf_codepoint_element,
         );
     }
 
@@ -509,6 +514,7 @@ mod rejection {
         rejection_cases!("case_patterns";
             multiple_subject_bit_array_subject,
             bit_array_subject,
+            result_subject,
         );
     }
 
