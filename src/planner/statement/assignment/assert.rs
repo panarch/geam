@@ -640,6 +640,40 @@ pub fn main() {
     }
 
     #[test]
+    fn reject_profile_let_assert_bit_array_pattern() {
+        assert_eq!(
+            expect_plan_error(
+                r#"
+pub fn main() {
+  let assert <<first>> = <<1>>
+  first
+}
+"#,
+            ),
+            PlanError::UnsupportedPattern {
+                kind: UnsupportedPatternKind::BitArray,
+            },
+        );
+    }
+
+    #[test]
+    fn reject_profile_let_assert_string_prefix_pattern() {
+        assert_eq!(
+            expect_plan_error(
+                r#"
+pub fn main() {
+  let assert "pre" <> rest = "prefix"
+  rest
+}
+"#,
+            ),
+            PlanError::UnsupportedPattern {
+                kind: UnsupportedPatternKind::StringPrefix,
+            },
+        );
+    }
+
+    #[test]
     fn reject_margin_let_assert_list_pattern_type_mismatch() {
         let module_name = "main".into();
         let functions = HashMap::new();

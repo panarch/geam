@@ -450,6 +450,7 @@ mod rejection {
             constant_list_bit_array,
             constant_result_constructor,
             custom_type,
+            record_type,
             external_function,
         );
     }
@@ -488,8 +489,19 @@ mod rejection {
     mod operators {
         rejection_cases!("operators";
             function_equality,
+            function_inequality,
             tuple_function_equality,
             list_function_equality,
+        );
+    }
+
+    mod patterns {
+        rejection_cases!("patterns";
+            let_assert_literal_pattern,
+            let_assert_constructor_pattern,
+            let_assert_bit_array_pattern,
+            let_assert_string_prefix_pattern,
+            let_assert_nested_list_pattern,
         );
     }
 
