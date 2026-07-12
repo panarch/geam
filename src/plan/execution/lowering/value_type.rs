@@ -3,11 +3,11 @@ use std::collections::HashMap;
 use crate::plan;
 use crate::plan::execution::{
     BoolListTypeId, FloatListTypeId, FunctionListTypeId, FunctionType, IntListTypeId,
-    ListListTypeId, ListStorageTypeId, ListTypeId, ListTypeTable, NilListTypeId, StringListTypeId,
+    ListListTypeId, ListStorageTypeId, ListTypeId, NilListTypeId, StringListTypeId,
     TupleListTypeId, ValueType,
 };
 
-use super::super::value_type::ListType;
+use super::super::value_type::{ListType, ListTypeTable};
 
 #[derive(Default)]
 pub(super) struct ListTypeInterner {

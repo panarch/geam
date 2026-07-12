@@ -7,7 +7,8 @@ mod step;
 mod table;
 mod value_type;
 
-use super::{ExecutionPlan, ListTypeTable};
+use super::ExecutionPlan;
+use super::value_type::ListTypeTable;
 use crate::plan::ModulePlan;
 
 #[derive(Default)]

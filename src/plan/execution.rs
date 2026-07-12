@@ -57,12 +57,13 @@ pub(crate) use step::{
 };
 pub(crate) use value_type::{
     BoolListTypeId, FloatListTypeId, FunctionListTypeId, FunctionType, IntListTypeId,
-    ListListTypeId, ListStorageTypeId, ListTypeId, ListTypeTable, NilListTypeId, StringListTypeId,
+    ListListTypeId, ListStorageTypeId, ListTypeId, NilListTypeId, StringListTypeId,
     TupleListTypeId, ValueType,
 };
 
 use self::function::ExecutableFunction;
 use self::table::FunctionTables;
+use self::value_type::ListTypeTable;
 use crate::plan::{ModulePlan, SourceContext};
 use ecow::EcoString;
 

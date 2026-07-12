@@ -85,7 +85,7 @@ pub(super) struct ListType {
 }
 
 #[derive(Default)]
-pub(crate) struct ListTypeTable {
+pub(super) struct ListTypeTable {
     types: Vec<ListType>,
     tuple_items: Vec<Vec<ValueType>>,
     function_items: Vec<FunctionType>,
