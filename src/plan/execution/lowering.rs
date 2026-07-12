@@ -4,6 +4,7 @@ mod id;
 mod param;
 mod return_;
 mod step;
+mod value_type;
 
 use super::function::ExecutableFunction;
 use super::table::FunctionTables;
@@ -18,7 +19,7 @@ use crate::plan::{ModulePlan, module};
 
 #[derive(Default)]
 struct LoweringContext {
-    list_types: super::value_type::ListTypeInterner,
+    list_types: value_type::ListTypeInterner,
 }
 
 impl LoweringContext {
@@ -63,7 +64,7 @@ impl LoweringContext {
     }
 
     fn finish(self) -> super::ListTypeTable {
-        self.list_types.finish()
+        self.list_types.into_table()
     }
 }
 
@@ -591,7 +592,7 @@ fn sort_list_functions<Id, Return>(
 #[cfg(test)]
 mod tests {
     use super::super::{ExecutionPlan, IntFunctionId, RuntimeFunctionId};
-    use crate::plan::{SourceContext, ValueType};
+    use crate::plan::SourceContext;
 
     #[test]
     fn lowering_builds_every_typed_function_table() {
@@ -687,58 +688,6 @@ pub fn main() { int_value() }
         assert_eq!(
             plan.main_runtime(),
             RuntimeFunctionId::Int(IntFunctionId(0))
-        );
-    }
-
-    #[test]
-    fn lowering_interns_recursive_list_types_child_first_and_deduplicates_them() {
-        let source = r#"
-fn preserve(
-  int_list: List(Int),
-  nested: List(List(Int)),
-  deep: List(List(List(Int))),
-  duplicate: List(Int),
-  functions: List(fn(List(Int)) -> List(List(Int))),
-) {
-  #(int_list, nested, deep, duplicate, functions)
-}
-
-pub fn main() { Nil }
-"#;
-        let typed = crate::compile_typed_module("main", "main.gleam", source)
-            .expect("source should compile");
-        let module_plan = crate::plan_module(typed).expect("source should plan");
-        let plan = ExecutionPlan::from_module_plan(module_plan);
-        let entries = plan
-            .list_types
-            .entries()
-            .map(|(id, _)| (id.index(), plan.list_value_type(id)))
-            .collect::<Vec<_>>();
-
-        assert_eq!(
-            entries,
-            vec![
-                (0, ValueType::List(Box::new(ValueType::Int))),
-                (
-                    1,
-                    ValueType::List(Box::new(ValueType::List(Box::new(ValueType::Int)))),
-                ),
-                (
-                    2,
-                    ValueType::List(Box::new(ValueType::List(Box::new(ValueType::List(
-                        Box::new(ValueType::Int),
-                    ))))),
-                ),
-                (
-                    3,
-                    ValueType::List(Box::new(ValueType::Function(Box::new(
-                        crate::plan::FunctionType::new(
-                            vec![ValueType::List(Box::new(ValueType::Int))],
-                            ValueType::List(Box::new(ValueType::List(Box::new(ValueType::Int)))),
-                        ),
-                    )))),
-                ),
-            ]
         );
     }
 }

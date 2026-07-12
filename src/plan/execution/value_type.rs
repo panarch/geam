@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-
 use crate::plan;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -10,6 +8,12 @@ macro_rules! primitive_list_type_id {
         #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
         pub(crate) struct $name {
             list_type: ListTypeId,
+        }
+
+        impl $name {
+            pub(super) fn new(list_type: ListTypeId) -> Self {
+                Self { list_type }
+            }
         }
     };
 }
@@ -75,7 +79,7 @@ pub(crate) struct FunctionType {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct ListType {
+pub(super) struct ListType {
     item: ValueType,
     storage: ListStorageTypeId,
 }
@@ -87,18 +91,11 @@ pub(crate) struct ListTypeTable {
     function_items: Vec<FunctionType>,
 }
 
-#[derive(Default)]
-pub(super) struct ListTypeInterner {
-    types: Vec<ListType>,
-    ids: HashMap<plan::ValueType, ListTypeId>,
-    tuple_ids: HashMap<plan::ValueType, TupleListTypeId>,
-    list_ids: HashMap<plan::ValueType, ListListTypeId>,
-    function_ids: HashMap<plan::ValueType, FunctionListTypeId>,
-    tuple_items: Vec<Vec<ValueType>>,
-    function_items: Vec<FunctionType>,
-}
-
 impl ListTypeId {
+    pub(super) fn new(index: usize) -> Self {
+        Self(index)
+    }
+
     pub(crate) fn index(self) -> usize {
         self.0
     }
@@ -141,18 +138,59 @@ impl FunctionType {
 }
 
 impl ListListTypeId {
+    pub(super) fn new(list_type: ListTypeId, item_type: ListTypeId) -> Self {
+        Self {
+            list_type,
+            item_type,
+        }
+    }
+
     pub(crate) fn item_type(self) -> ListTypeId {
         self.item_type
     }
 }
 
+impl TupleListTypeId {
+    pub(super) fn new(list_type: ListTypeId, item_index: usize) -> Self {
+        Self {
+            list_type,
+            item_type: TupleItemTypeId(item_index),
+        }
+    }
+}
+
+impl FunctionListTypeId {
+    pub(super) fn new(list_type: ListTypeId, item_index: usize) -> Self {
+        Self {
+            list_type,
+            item_type: FunctionItemTypeId(item_index),
+        }
+    }
+}
+
 impl ListType {
-    pub(crate) fn item(&self) -> &ValueType {
+    pub(super) fn new(item: ValueType, storage: ListStorageTypeId) -> Self {
+        Self { item, storage }
+    }
+
+    fn item(&self) -> &ValueType {
         &self.item
     }
 }
 
 impl ListTypeTable {
+    pub(super) fn from_parts(
+        types: Vec<ListType>,
+        tuple_items: Vec<Vec<ValueType>>,
+        function_items: Vec<FunctionType>,
+    ) -> Self {
+        Self {
+            types,
+            tuple_items,
+            function_items,
+        }
+    }
+
     #[cfg(test)]
     pub(super) fn entries(&self) -> impl Iterator<Item = (ListTypeId, &ListType)> {
         self.types
@@ -161,7 +199,7 @@ impl ListTypeTable {
             .map(|(index, type_)| (ListTypeId(index), type_))
     }
 
-    pub(crate) fn get(&self, id: ListTypeId) -> &ListType {
+    fn get(&self, id: ListTypeId) -> &ListType {
         &self.types[id.index()]
     }
 
@@ -221,189 +259,5 @@ impl ListTypeTable {
 
     pub(crate) fn function_item_type(&self, id: FunctionListTypeId) -> plan::FunctionType {
         self.function_type(&self.function_items[id.item_type.0])
-    }
-}
-
-impl ListTypeInterner {
-    pub(super) fn value_type(&mut self, value: plan::ValueType) -> ValueType {
-        match value {
-            plan::ValueType::Int => ValueType::Int,
-            plan::ValueType::Float => ValueType::Float,
-            plan::ValueType::String => ValueType::String,
-            plan::ValueType::Bool => ValueType::Bool,
-            plan::ValueType::Nil => ValueType::Nil,
-            plan::ValueType::Tuple(elements) => ValueType::Tuple(
-                elements
-                    .into_iter()
-                    .map(|element| self.value_type(element))
-                    .collect(),
-            ),
-            plan::ValueType::List(item) => ValueType::List(self.list_type(*item)),
-            plan::ValueType::Function(type_) => {
-                ValueType::Function(Box::new(self.function_type(*type_)))
-            }
-        }
-    }
-
-    pub(super) fn function_type(&mut self, type_: plan::FunctionType) -> FunctionType {
-        FunctionType::new(
-            type_
-                .argument_types()
-                .iter()
-                .cloned()
-                .map(|argument| self.value_type(argument))
-                .collect(),
-            self.value_type(type_.return_().clone()),
-        )
-    }
-
-    pub(super) fn list_type(&mut self, item: plan::ValueType) -> ListTypeId {
-        match item {
-            plan::ValueType::Int => self.int_list_type().list_type(),
-            plan::ValueType::String => self.string_list_type().list_type(),
-            plan::ValueType::Float => self.float_list_type().list_type(),
-            plan::ValueType::Bool => self.bool_list_type().list_type(),
-            plan::ValueType::Nil => self.nil_list_type().list_type(),
-            plan::ValueType::Tuple(item) => self.tuple_list_type(item).list_type(),
-            plan::ValueType::List(item) => self.list_list_type(*item).list_type(),
-            plan::ValueType::Function(item) => self.function_list_type(*item).list_type(),
-        }
-    }
-
-    fn intern_primitive(
-        &mut self,
-        plan_item: plan::ValueType,
-        item: ValueType,
-        storage: impl FnOnce(ListTypeId) -> ListStorageTypeId,
-    ) -> ListTypeId {
-        let type_ = plan::ValueType::List(Box::new(plan_item));
-        if let Some(id) = self.ids.get(&type_) {
-            return *id;
-        }
-
-        let id = ListTypeId(self.types.len());
-        self.types.push(ListType {
-            item,
-            storage: storage(id),
-        });
-        self.ids.insert(type_, id);
-        id
-    }
-
-    pub(super) fn int_list_type(&mut self) -> IntListTypeId {
-        let list_type = self.intern_primitive(plan::ValueType::Int, ValueType::Int, |list_type| {
-            ListStorageTypeId::Int(IntListTypeId { list_type })
-        });
-        IntListTypeId { list_type }
-    }
-
-    pub(super) fn string_list_type(&mut self) -> StringListTypeId {
-        let list_type =
-            self.intern_primitive(plan::ValueType::String, ValueType::String, |list_type| {
-                ListStorageTypeId::String(StringListTypeId { list_type })
-            });
-        StringListTypeId { list_type }
-    }
-
-    pub(super) fn float_list_type(&mut self) -> FloatListTypeId {
-        let list_type =
-            self.intern_primitive(plan::ValueType::Float, ValueType::Float, |list_type| {
-                ListStorageTypeId::Float(FloatListTypeId { list_type })
-            });
-        FloatListTypeId { list_type }
-    }
-
-    pub(super) fn bool_list_type(&mut self) -> BoolListTypeId {
-        let list_type =
-            self.intern_primitive(plan::ValueType::Bool, ValueType::Bool, |list_type| {
-                ListStorageTypeId::Bool(BoolListTypeId { list_type })
-            });
-        BoolListTypeId { list_type }
-    }
-
-    pub(super) fn nil_list_type(&mut self) -> NilListTypeId {
-        let list_type = self.intern_primitive(plan::ValueType::Nil, ValueType::Nil, |list_type| {
-            ListStorageTypeId::Nil(NilListTypeId { list_type })
-        });
-        NilListTypeId { list_type }
-    }
-
-    pub(super) fn tuple_list_type(&mut self, item: Vec<plan::ValueType>) -> TupleListTypeId {
-        let type_ = plan::ValueType::List(Box::new(plan::ValueType::Tuple(item.clone())));
-        if let Some(id) = self.tuple_ids.get(&type_) {
-            return *id;
-        }
-
-        let item = item
-            .into_iter()
-            .map(|type_| self.value_type(type_))
-            .collect::<Vec<_>>();
-        let list_type = ListTypeId(self.types.len());
-        let item_type = TupleItemTypeId(self.tuple_items.len());
-        let id = TupleListTypeId {
-            list_type,
-            item_type,
-        };
-        self.tuple_items.push(item.clone());
-        self.types.push(ListType {
-            item: ValueType::Tuple(item),
-            storage: ListStorageTypeId::Tuple(id),
-        });
-        self.ids.insert(type_.clone(), list_type);
-        self.tuple_ids.insert(type_, id);
-        id
-    }
-
-    pub(super) fn list_list_type(&mut self, item: plan::ValueType) -> ListListTypeId {
-        let type_ = plan::ValueType::List(Box::new(plan::ValueType::List(Box::new(item.clone()))));
-        if let Some(id) = self.list_ids.get(&type_) {
-            return *id;
-        }
-
-        let item_type = self.list_type(item);
-        let list_type = ListTypeId(self.types.len());
-        let id = ListListTypeId {
-            list_type,
-            item_type,
-        };
-        self.types.push(ListType {
-            item: ValueType::List(item_type),
-            storage: ListStorageTypeId::List(id),
-        });
-        self.ids.insert(type_.clone(), list_type);
-        self.list_ids.insert(type_, id);
-        id
-    }
-
-    pub(super) fn function_list_type(&mut self, item: plan::FunctionType) -> FunctionListTypeId {
-        let type_ =
-            plan::ValueType::List(Box::new(plan::ValueType::Function(Box::new(item.clone()))));
-        if let Some(id) = self.function_ids.get(&type_) {
-            return *id;
-        }
-
-        let item = self.function_type(item);
-        let list_type = ListTypeId(self.types.len());
-        let item_type = FunctionItemTypeId(self.function_items.len());
-        let id = FunctionListTypeId {
-            list_type,
-            item_type,
-        };
-        self.function_items.push(item.clone());
-        self.types.push(ListType {
-            item: ValueType::Function(Box::new(item)),
-            storage: ListStorageTypeId::Function(id),
-        });
-        self.ids.insert(type_.clone(), list_type);
-        self.function_ids.insert(type_, id);
-        id
-    }
-
-    pub(super) fn finish(self) -> ListTypeTable {
-        ListTypeTable {
-            types: self.types,
-            tuple_items: self.tuple_items,
-            function_items: self.function_items,
-        }
     }
 }
