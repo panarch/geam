@@ -495,134 +495,200 @@ impl RuntimeListItem for NilListItem {
     }
 }
 
-macro_rules! compound_runtime_list_item {
-    (
-        $item:ty,
-        $element:ty,
-        $handle:ty,
-        $variant:ident,
-        $element_eval:ident,
-        $state_values:ident,
-        $state_allocate:ident,
-        $get_local:ident,
-        $run_call:ident,
-        $run_function_call:ident,
-        $into_element:expr
-    ) => {
-        impl RuntimeListItem for $item {
-            type Values = Vec<$element>;
-            type Handle = $handle;
+impl RuntimeListItem for TupleListItem {
+    type Values = Vec<Vec<EvaluatedValue>>;
+    type Handle = TupleListValueId;
 
-            fn eval_elements(
-                plan: &ExecutionPlan,
-                state: &mut RuntimeState,
-                frame: &mut Frame,
-                elements: &[Self::ElementExpr],
-            ) -> Result<Self::Values, ExecutionError> {
-                elements
-                    .iter()
-                    .map(|element| $element_eval(plan, state, frame, element).map($into_element))
-                    .collect()
-            }
+    fn eval_elements(
+        plan: &ExecutionPlan,
+        state: &mut RuntimeState,
+        frame: &mut Frame,
+        elements: &[Self::ElementExpr],
+    ) -> Result<Self::Values, ExecutionError> {
+        elements
+            .iter()
+            .map(|element| eval_tuple_expr(plan, state, frame, element))
+            .collect()
+    }
 
-            fn allocate(
-                state: &mut RuntimeState,
-                item: &Self,
-                values: Self::Values,
-            ) -> Self::Handle {
-                state.$state_allocate(item.type_id(), values)
-            }
+    fn allocate(state: &mut RuntimeState, item: &Self, values: Self::Values) -> Self::Handle {
+        state.tuple(item.type_id(), values)
+    }
 
-            fn append(state: &RuntimeState, values: &mut Self::Values, tail: &Self::Handle) {
-                values.extend(state.$state_values(tail).iter().cloned());
-            }
+    fn append(state: &RuntimeState, values: &mut Self::Values, tail: &Self::Handle) {
+        values.extend(state.tuple_values(tail).iter().cloned());
+    }
 
-            fn drop_first(
-                state: &RuntimeState,
-                values: &Self::Handle,
-                count: usize,
-            ) -> Self::Values {
-                let values = state.$state_values(values);
-                values[count.min(values.len())..].to_vec()
-            }
+    fn drop_first(state: &RuntimeState, values: &Self::Handle, count: usize) -> Self::Values {
+        let values = state.tuple_values(values);
+        values[count.min(values.len())..].to_vec()
+    }
 
-            fn from_tuple_value(value: ListValueId) -> Option<Self::Handle> {
-                match value {
-                    ListValueId::$variant(value) => Some(value),
-                    _ => None,
-                }
-            }
-
-            fn from_core(item: &Self, core: ListHandleCore) -> Self::Handle {
-                <$handle>::new(item.type_id(), core)
-            }
-
-            fn get_local(frame: &Frame, local: Self::Local) -> Self::Handle {
-                frame.$get_local(local)
-            }
-
-            fn run_call(
-                plan: &ExecutionPlan,
-                state: &mut RuntimeState,
-                function: Self::Function,
-                args: &[crate::plan::execution::CallArg],
-                frame: &mut Frame,
-            ) -> Result<Self::Handle, ExecutionError> {
-                function::$run_call(plan, state, function, args, frame)
-            }
-
-            fn run_function_call(
-                plan: &ExecutionPlan,
-                state: &mut RuntimeState,
-                function: &crate::plan::execution::ListFunctionExpr,
-                args: &[crate::plan::execution::CallArg],
-                frame: &mut Frame,
-            ) -> Result<Self::Handle, ExecutionError> {
-                function::$run_function_call(plan, state, function, args, frame)
-            }
+    fn from_tuple_value(value: ListValueId) -> Option<Self::Handle> {
+        match value {
+            ListValueId::Tuple(value) => Some(value),
+            _ => None,
         }
-    };
+    }
+
+    fn from_core(item: &Self, core: ListHandleCore) -> Self::Handle {
+        TupleListValueId::new(item.type_id(), core)
+    }
+
+    fn get_local(frame: &Frame, local: Self::Local) -> Self::Handle {
+        frame.get_tuple_list(local)
+    }
+
+    fn run_call(
+        plan: &ExecutionPlan,
+        state: &mut RuntimeState,
+        function: Self::Function,
+        args: &[crate::plan::execution::CallArg],
+        frame: &mut Frame,
+    ) -> Result<Self::Handle, ExecutionError> {
+        function::run_tuple_list_call(plan, state, function, args, frame)
+    }
+
+    fn run_function_call(
+        plan: &ExecutionPlan,
+        state: &mut RuntimeState,
+        function: &crate::plan::execution::ListFunctionExpr,
+        args: &[crate::plan::execution::CallArg],
+        frame: &mut Frame,
+    ) -> Result<Self::Handle, ExecutionError> {
+        function::run_tuple_list_function_call(plan, state, function, args, frame)
+    }
 }
 
-compound_runtime_list_item!(
-    TupleListItem,
-    Vec<EvaluatedValue>,
-    TupleListValueId,
-    Tuple,
-    eval_tuple_expr,
-    tuple_values,
-    tuple,
-    get_tuple_list,
-    run_tuple_list_call,
-    run_tuple_list_function_call,
-    |value| value
-);
-compound_runtime_list_item!(
-    ListListItem,
-    ListHandleCore,
-    ListListValueId,
-    List,
-    eval_list_expr,
-    list_values,
-    list,
-    get_list_list,
-    run_list_list_call,
-    run_list_list_function_call,
-    ListValueId::into_core
-);
-compound_runtime_list_item!(
-    FunctionListItem,
-    EvaluatedFunctionValue,
-    FunctionListValueId,
-    Function,
-    eval_function_expr,
-    function_values,
-    function,
-    get_function_list,
-    run_function_list_call,
-    run_function_list_function_call,
-    |value| value
-);
+impl RuntimeListItem for ListListItem {
+    type Values = Vec<ListHandleCore>;
+    type Handle = ListListValueId;
+
+    fn eval_elements(
+        plan: &ExecutionPlan,
+        state: &mut RuntimeState,
+        frame: &mut Frame,
+        elements: &[Self::ElementExpr],
+    ) -> Result<Self::Values, ExecutionError> {
+        elements
+            .iter()
+            .map(|element| eval_list_expr(plan, state, frame, element).map(ListValueId::into_core))
+            .collect()
+    }
+
+    fn allocate(state: &mut RuntimeState, item: &Self, values: Self::Values) -> Self::Handle {
+        state.list(item.type_id(), values)
+    }
+
+    fn append(state: &RuntimeState, values: &mut Self::Values, tail: &Self::Handle) {
+        values.extend(state.list_values(tail).iter().cloned());
+    }
+
+    fn drop_first(state: &RuntimeState, values: &Self::Handle, count: usize) -> Self::Values {
+        let values = state.list_values(values);
+        values[count.min(values.len())..].to_vec()
+    }
+
+    fn from_tuple_value(value: ListValueId) -> Option<Self::Handle> {
+        match value {
+            ListValueId::List(value) => Some(value),
+            _ => None,
+        }
+    }
+
+    fn from_core(item: &Self, core: ListHandleCore) -> Self::Handle {
+        ListListValueId::new(item.type_id(), core)
+    }
+
+    fn get_local(frame: &Frame, local: Self::Local) -> Self::Handle {
+        frame.get_list_list(local)
+    }
+
+    fn run_call(
+        plan: &ExecutionPlan,
+        state: &mut RuntimeState,
+        function: Self::Function,
+        args: &[crate::plan::execution::CallArg],
+        frame: &mut Frame,
+    ) -> Result<Self::Handle, ExecutionError> {
+        function::run_list_list_call(plan, state, function, args, frame)
+    }
+
+    fn run_function_call(
+        plan: &ExecutionPlan,
+        state: &mut RuntimeState,
+        function: &crate::plan::execution::ListFunctionExpr,
+        args: &[crate::plan::execution::CallArg],
+        frame: &mut Frame,
+    ) -> Result<Self::Handle, ExecutionError> {
+        function::run_list_list_function_call(plan, state, function, args, frame)
+    }
+}
+
+impl RuntimeListItem for FunctionListItem {
+    type Values = Vec<EvaluatedFunctionValue>;
+    type Handle = FunctionListValueId;
+
+    fn eval_elements(
+        plan: &ExecutionPlan,
+        state: &mut RuntimeState,
+        frame: &mut Frame,
+        elements: &[Self::ElementExpr],
+    ) -> Result<Self::Values, ExecutionError> {
+        elements
+            .iter()
+            .map(|element| eval_function_expr(plan, state, frame, element))
+            .collect()
+    }
+
+    fn allocate(state: &mut RuntimeState, item: &Self, values: Self::Values) -> Self::Handle {
+        state.function(item.type_id(), values)
+    }
+
+    fn append(state: &RuntimeState, values: &mut Self::Values, tail: &Self::Handle) {
+        values.extend(state.function_values(tail).iter().cloned());
+    }
+
+    fn drop_first(state: &RuntimeState, values: &Self::Handle, count: usize) -> Self::Values {
+        let values = state.function_values(values);
+        values[count.min(values.len())..].to_vec()
+    }
+
+    fn from_tuple_value(value: ListValueId) -> Option<Self::Handle> {
+        match value {
+            ListValueId::Function(value) => Some(value),
+            _ => None,
+        }
+    }
+
+    fn from_core(item: &Self, core: ListHandleCore) -> Self::Handle {
+        FunctionListValueId::new(item.type_id(), core)
+    }
+
+    fn get_local(frame: &Frame, local: Self::Local) -> Self::Handle {
+        frame.get_function_list(local)
+    }
+
+    fn run_call(
+        plan: &ExecutionPlan,
+        state: &mut RuntimeState,
+        function: Self::Function,
+        args: &[crate::plan::execution::CallArg],
+        frame: &mut Frame,
+    ) -> Result<Self::Handle, ExecutionError> {
+        function::run_function_list_call(plan, state, function, args, frame)
+    }
+
+    fn run_function_call(
+        plan: &ExecutionPlan,
+        state: &mut RuntimeState,
+        function: &crate::plan::execution::ListFunctionExpr,
+        args: &[crate::plan::execution::CallArg],
+        frame: &mut Frame,
+    ) -> Result<Self::Handle, ExecutionError> {
+        function::run_function_list_function_call(plan, state, function, args, frame)
+    }
+}
 
 pub(in crate::runtime) fn get_list_value(
     frame: &Frame,

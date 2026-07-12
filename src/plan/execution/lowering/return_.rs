@@ -9,56 +9,59 @@ use super::expression::{
 use super::id::list_function_function_id;
 use crate::plan::{execution, module};
 
-macro_rules! lower_return {
-    ($name:ident, $module:ty, $execution:ty, $expression:ident, $function:expr) => {
-        pub(super) fn $name(body: $module, context: &mut LoweringContext) -> $execution {
-            return_body(body, context, $expression, $function)
-        }
-    };
+pub(super) fn int_return(
+    body: module::IntReturn,
+    context: &mut LoweringContext,
+) -> execution::IntReturn {
+    return_body(body, context, int_expr, |id, _| {
+        execution::IntFunctionId(id.0)
+    })
 }
 
-lower_return!(
-    int_return,
-    module::IntReturn,
-    execution::IntReturn,
-    int_expr,
-    |id, _| execution::IntFunctionId(id.0)
-);
-lower_return!(
-    float_return,
-    module::FloatReturn,
-    execution::FloatReturn,
-    float_expr,
-    |id, _| execution::FloatFunctionId(id.0)
-);
-lower_return!(
-    string_return,
-    module::StringReturn,
-    execution::StringReturn,
-    string_expr,
-    |id, _| execution::StringFunctionId(id.0)
-);
-lower_return!(
-    bool_return,
-    module::BoolReturn,
-    execution::BoolReturn,
-    bool_expr,
-    |id, _| execution::BoolFunctionId(id.0)
-);
-lower_return!(
-    nil_return,
-    module::NilReturn,
-    execution::NilReturn,
-    nil_expr,
-    |id, _| execution::NilFunctionId(id.0)
-);
-lower_return!(
-    tuple_return,
-    module::TupleReturn,
-    execution::TupleReturn,
-    tuple_expr,
-    |id, _| execution::TupleFunctionId(id.0)
-);
+pub(super) fn float_return(
+    body: module::FloatReturn,
+    context: &mut LoweringContext,
+) -> execution::FloatReturn {
+    return_body(body, context, float_expr, |id, _| {
+        execution::FloatFunctionId(id.0)
+    })
+}
+
+pub(super) fn string_return(
+    body: module::StringReturn,
+    context: &mut LoweringContext,
+) -> execution::StringReturn {
+    return_body(body, context, string_expr, |id, _| {
+        execution::StringFunctionId(id.0)
+    })
+}
+
+pub(super) fn bool_return(
+    body: module::BoolReturn,
+    context: &mut LoweringContext,
+) -> execution::BoolReturn {
+    return_body(body, context, bool_expr, |id, _| {
+        execution::BoolFunctionId(id.0)
+    })
+}
+
+pub(super) fn nil_return(
+    body: module::NilReturn,
+    context: &mut LoweringContext,
+) -> execution::NilReturn {
+    return_body(body, context, nil_expr, |id, _| {
+        execution::NilFunctionId(id.0)
+    })
+}
+
+pub(super) fn tuple_return(
+    body: module::TupleReturn,
+    context: &mut LoweringContext,
+) -> execution::TupleReturn {
+    return_body(body, context, tuple_expr, |id, _| {
+        execution::TupleFunctionId(id.0)
+    })
+}
 pub(super) fn int_list_return(
     body: module::IntListReturn,
     context: &mut LoweringContext,
@@ -138,62 +141,75 @@ pub(super) fn function_list_return(
         execution::FunctionListFunctionId::new(id.0, type_id)
     })
 }
-lower_return!(
-    int_function_return,
-    module::IntFunctionReturn,
-    execution::IntFunctionReturn,
-    int_function_expr,
-    |id, _| execution::IntFunctionFunctionId(id.0)
-);
-lower_return!(
-    float_function_return,
-    module::FloatFunctionReturn,
-    execution::FloatFunctionReturn,
-    float_function_expr,
-    |id, _| execution::FloatFunctionFunctionId(id.0)
-);
-lower_return!(
-    string_function_return,
-    module::StringFunctionReturn,
-    execution::StringFunctionReturn,
-    string_function_expr,
-    |id, _| execution::StringFunctionFunctionId(id.0)
-);
-lower_return!(
-    bool_function_return,
-    module::BoolFunctionReturn,
-    execution::BoolFunctionReturn,
-    bool_function_expr,
-    |id, _| execution::BoolFunctionFunctionId(id.0)
-);
-lower_return!(
-    nil_function_return,
-    module::NilFunctionReturn,
-    execution::NilFunctionReturn,
-    nil_function_expr,
-    |id, _| execution::NilFunctionFunctionId(id.0)
-);
-lower_return!(
-    tuple_function_return,
-    module::TupleFunctionReturn,
-    execution::TupleFunctionReturn,
-    tuple_function_expr,
-    |id, _| execution::TupleFunctionFunctionId(id.0)
-);
-lower_return!(
-    list_function_return,
-    module::ListFunctionReturn,
-    execution::ListFunctionReturn,
-    list_function_expr,
-    list_function_function_id
-);
-lower_return!(
-    function_function_return,
-    module::FunctionFunctionReturn,
-    execution::FunctionFunctionReturn,
-    function_function_expr,
-    |id, _| execution::FunctionFunctionFunctionId(id.0)
-);
+pub(super) fn int_function_return(
+    body: module::IntFunctionReturn,
+    context: &mut LoweringContext,
+) -> execution::IntFunctionReturn {
+    return_body(body, context, int_function_expr, |id, _| {
+        execution::IntFunctionFunctionId(id.0)
+    })
+}
+
+pub(super) fn float_function_return(
+    body: module::FloatFunctionReturn,
+    context: &mut LoweringContext,
+) -> execution::FloatFunctionReturn {
+    return_body(body, context, float_function_expr, |id, _| {
+        execution::FloatFunctionFunctionId(id.0)
+    })
+}
+
+pub(super) fn string_function_return(
+    body: module::StringFunctionReturn,
+    context: &mut LoweringContext,
+) -> execution::StringFunctionReturn {
+    return_body(body, context, string_function_expr, |id, _| {
+        execution::StringFunctionFunctionId(id.0)
+    })
+}
+
+pub(super) fn bool_function_return(
+    body: module::BoolFunctionReturn,
+    context: &mut LoweringContext,
+) -> execution::BoolFunctionReturn {
+    return_body(body, context, bool_function_expr, |id, _| {
+        execution::BoolFunctionFunctionId(id.0)
+    })
+}
+
+pub(super) fn nil_function_return(
+    body: module::NilFunctionReturn,
+    context: &mut LoweringContext,
+) -> execution::NilFunctionReturn {
+    return_body(body, context, nil_function_expr, |id, _| {
+        execution::NilFunctionFunctionId(id.0)
+    })
+}
+
+pub(super) fn tuple_function_return(
+    body: module::TupleFunctionReturn,
+    context: &mut LoweringContext,
+) -> execution::TupleFunctionReturn {
+    return_body(body, context, tuple_function_expr, |id, _| {
+        execution::TupleFunctionFunctionId(id.0)
+    })
+}
+
+pub(super) fn list_function_return(
+    body: module::ListFunctionReturn,
+    context: &mut LoweringContext,
+) -> execution::ListFunctionReturn {
+    return_body(body, context, list_function_expr, list_function_function_id)
+}
+
+pub(super) fn function_function_return(
+    body: module::FunctionFunctionReturn,
+    context: &mut LoweringContext,
+) -> execution::FunctionFunctionReturn {
+    return_body(body, context, function_function_expr, |id, _| {
+        execution::FunctionFunctionFunctionId(id.0)
+    })
+}
 
 fn return_body<ModuleExpression, ModuleFunction, ExecutionExpression, ExecutionFunction>(
     body: module::ReturnBody<ModuleExpression, ModuleFunction>,

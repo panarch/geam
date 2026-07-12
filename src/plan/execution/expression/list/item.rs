@@ -70,65 +70,55 @@ list_item!(TupleListItem, TupleListTypeId);
 list_item!(ListListItem, ListListTypeId);
 list_item!(FunctionListItem, FunctionListTypeId);
 
-macro_rules! primitive_list_item {
-    (
-        $item:ident,
-        $expr:ty,
-        $local:ty,
-        $function:ty,
-        $type_id:ty
-    ) => {
-        impl ListItem for $item {
-            type ElementExpr = $expr;
-            type Local = $local;
-            type Function = $function;
+impl ListItem for IntListItem {
+    type ElementExpr = IntExpr;
+    type Local = IntListLocalId;
+    type Function = IntListFunctionId;
 
-            fn list_type(&self) -> ListTypeId {
-                self.type_id.list_type()
-            }
-        }
-    };
+    fn list_type(&self) -> ListTypeId {
+        self.type_id.list_type()
+    }
 }
 
-primitive_list_item!(
-    IntListItem,
-    IntExpr,
-    IntListLocalId,
-    IntListFunctionId,
-    IntListTypeId
-);
+impl ListItem for StringListItem {
+    type ElementExpr = StringExpr;
+    type Local = StringListLocalId;
+    type Function = StringListFunctionId;
 
-primitive_list_item!(
-    StringListItem,
-    StringExpr,
-    StringListLocalId,
-    StringListFunctionId,
-    StringListTypeId
-);
+    fn list_type(&self) -> ListTypeId {
+        self.type_id.list_type()
+    }
+}
 
-primitive_list_item!(
-    FloatListItem,
-    FloatExpr,
-    FloatListLocalId,
-    FloatListFunctionId,
-    FloatListTypeId
-);
+impl ListItem for FloatListItem {
+    type ElementExpr = FloatExpr;
+    type Local = FloatListLocalId;
+    type Function = FloatListFunctionId;
 
-primitive_list_item!(
-    BoolListItem,
-    BoolExpr,
-    BoolListLocalId,
-    BoolListFunctionId,
-    BoolListTypeId
-);
+    fn list_type(&self) -> ListTypeId {
+        self.type_id.list_type()
+    }
+}
 
-primitive_list_item!(
-    NilListItem,
-    NilExpr,
-    NilListLocalId,
-    NilListFunctionId,
-    NilListTypeId
-);
+impl ListItem for BoolListItem {
+    type ElementExpr = BoolExpr;
+    type Local = BoolListLocalId;
+    type Function = BoolListFunctionId;
+
+    fn list_type(&self) -> ListTypeId {
+        self.type_id.list_type()
+    }
+}
+
+impl ListItem for NilListItem {
+    type ElementExpr = NilExpr;
+    type Local = NilListLocalId;
+    type Function = NilListFunctionId;
+
+    fn list_type(&self) -> ListTypeId {
+        self.type_id.list_type()
+    }
+}
 
 impl ListItem for TupleListItem {
     type ElementExpr = TupleExpr;
