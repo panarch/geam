@@ -78,15 +78,9 @@ pub(crate) struct FunctionType {
     return_: Box<ValueType>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(super) struct ListType {
-    item: ValueType,
-    storage: ListStorageTypeId,
-}
-
 #[derive(Default)]
 pub(super) struct ListTypeTable {
-    types: Vec<ListType>,
+    types: Vec<ListStorageTypeId>,
     tuple_items: Vec<Vec<ValueType>>,
     function_items: Vec<FunctionType>,
 }
@@ -168,19 +162,9 @@ impl FunctionListTypeId {
     }
 }
 
-impl ListType {
-    pub(super) fn new(item: ValueType, storage: ListStorageTypeId) -> Self {
-        Self { item, storage }
-    }
-
-    fn item(&self) -> &ValueType {
-        &self.item
-    }
-}
-
 impl ListTypeTable {
     pub(super) fn from_parts(
-        types: Vec<ListType>,
+        types: Vec<ListStorageTypeId>,
         tuple_items: Vec<Vec<ValueType>>,
         function_items: Vec<FunctionType>,
     ) -> Self {
@@ -192,19 +176,20 @@ impl ListTypeTable {
     }
 
     #[cfg(test)]
-    pub(super) fn entries(&self) -> impl Iterator<Item = (ListTypeId, &ListType)> {
+    pub(super) fn entries(&self) -> impl Iterator<Item = (ListTypeId, ListStorageTypeId)> + '_ {
         self.types
             .iter()
+            .copied()
             .enumerate()
             .map(|(index, type_)| (ListTypeId(index), type_))
     }
 
-    fn get(&self, id: ListTypeId) -> &ListType {
-        &self.types[id.index()]
+    fn get(&self, id: ListTypeId) -> ListStorageTypeId {
+        self.types[id.index()]
     }
 
     pub(crate) fn storage_type(&self, id: ListTypeId) -> ListStorageTypeId {
-        self.get(id).storage
+        self.get(id)
     }
 
     pub(crate) fn value_type(&self, value: &ValueType) -> plan::ValueType {
@@ -243,7 +228,20 @@ impl ListTypeTable {
     }
 
     pub(crate) fn item_value_type(&self, id: ListTypeId) -> plan::ValueType {
-        self.value_type(self.get(id).item())
+        match self.storage_type(id) {
+            ListStorageTypeId::Int(_) => plan::ValueType::Int,
+            ListStorageTypeId::String(_) => plan::ValueType::String,
+            ListStorageTypeId::Float(_) => plan::ValueType::Float,
+            ListStorageTypeId::Bool(_) => plan::ValueType::Bool,
+            ListStorageTypeId::Nil(_) => plan::ValueType::Nil,
+            ListStorageTypeId::Tuple(id) => plan::ValueType::Tuple(self.tuple_item_type(id)),
+            ListStorageTypeId::List(id) => {
+                plan::ValueType::List(Box::new(self.nested_list_item_type(id)))
+            }
+            ListStorageTypeId::Function(id) => {
+                plan::ValueType::Function(Box::new(self.function_item_type(id)))
+            }
+        }
     }
 
     pub(crate) fn tuple_item_type(&self, id: TupleListTypeId) -> Vec<plan::ValueType> {
