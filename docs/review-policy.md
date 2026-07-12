@@ -72,6 +72,22 @@ outside the profile until they have a separate ownership design.
 Profile boundaries, list-match length guards, and typed-AST margins remain
 planner responsibilities.
 
+## Ownership Rules
+
+Determine ownership from construction, mutation, lifetime, dependencies, and
+actual callers before assigning a semantic role.
+
+- Phase-local builders, interners, and accumulators belong to that phase.
+- Data that survives a phase belongs to the downstream domain that stores and
+  reads it. Final models must not depend on transformation-only types.
+- Module paths and visibility must match actual production callers. Do not move
+  phase-local types across boundaries merely to bypass privacy.
+- Treat a one-caller type that mirrors a final type and is immediately consumed
+  as a design smell. Make it a real final substructure or keep it phase-local
+  behind a narrow constructor.
+- A plausible role description cannot justify structure that conflicts with
+  these facts. File size justifies a module split, not an ownership change.
+
 ## Plan Construction Rules
 
 Plan construction is not a validation layer. Reaching a `ModulePlan` or plan
