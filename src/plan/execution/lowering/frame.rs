@@ -8,7 +8,7 @@ pub(super) fn frame_layout(
     let parts = layout.into_parts();
     let _ = parts.nils;
 
-    super::super::FrameLayout::from_parts(super::super::frame::FrameLayoutParts {
+    super::super::FrameLayout::from_slots(super::super::frame::FrameSlots {
         ints: parts.ints,
         floats: parts.floats,
         strings: parts.strings,

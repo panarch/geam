@@ -5,30 +5,11 @@ use super::{
 
 #[derive(Default)]
 pub(crate) struct FrameLayout {
-    ints: usize,
-    floats: usize,
-    strings: usize,
-    bools: usize,
-    tuples: usize,
-    int_lists: Vec<IntListTypeId>,
-    string_lists: Vec<StringListTypeId>,
-    float_lists: Vec<FloatListTypeId>,
-    bool_lists: Vec<BoolListTypeId>,
-    nil_lists: Vec<NilListTypeId>,
-    tuple_lists: Vec<TupleListTypeId>,
-    list_lists: Vec<ListListTypeId>,
-    function_lists: Vec<FunctionListTypeId>,
-    int_functions: usize,
-    float_functions: usize,
-    string_functions: usize,
-    bool_functions: usize,
-    nil_functions: usize,
-    tuple_functions: usize,
-    list_functions: Vec<ListFunctionLocal>,
-    function_functions: usize,
+    slots: FrameSlots,
 }
 
-pub(super) struct FrameLayoutParts {
+#[derive(Default)]
+pub(super) struct FrameSlots {
     pub(super) ints: usize,
     pub(super) floats: usize,
     pub(super) strings: usize,
@@ -53,113 +34,91 @@ pub(super) struct FrameLayoutParts {
 }
 
 impl FrameLayout {
-    pub(super) fn from_parts(parts: FrameLayoutParts) -> Self {
-        Self {
-            ints: parts.ints,
-            floats: parts.floats,
-            strings: parts.strings,
-            bools: parts.bools,
-            tuples: parts.tuples,
-            int_lists: parts.int_lists,
-            string_lists: parts.string_lists,
-            float_lists: parts.float_lists,
-            bool_lists: parts.bool_lists,
-            nil_lists: parts.nil_lists,
-            tuple_lists: parts.tuple_lists,
-            list_lists: parts.list_lists,
-            function_lists: parts.function_lists,
-            int_functions: parts.int_functions,
-            float_functions: parts.float_functions,
-            string_functions: parts.string_functions,
-            bool_functions: parts.bool_functions,
-            nil_functions: parts.nil_functions,
-            tuple_functions: parts.tuple_functions,
-            list_functions: parts.list_functions,
-            function_functions: parts.function_functions,
-        }
+    pub(super) fn from_slots(slots: FrameSlots) -> Self {
+        Self { slots }
     }
 
     pub(crate) fn ints(&self) -> usize {
-        self.ints
+        self.slots.ints
     }
 
     pub(crate) fn floats(&self) -> usize {
-        self.floats
+        self.slots.floats
     }
 
     pub(crate) fn strings(&self) -> usize {
-        self.strings
+        self.slots.strings
     }
 
     pub(crate) fn bools(&self) -> usize {
-        self.bools
+        self.slots.bools
     }
 
     pub(crate) fn tuples(&self) -> usize {
-        self.tuples
+        self.slots.tuples
     }
 
     pub(crate) fn int_lists(&self) -> &[IntListTypeId] {
-        &self.int_lists
+        &self.slots.int_lists
     }
 
     pub(crate) fn string_lists(&self) -> &[StringListTypeId] {
-        &self.string_lists
+        &self.slots.string_lists
     }
 
     pub(crate) fn float_lists(&self) -> &[FloatListTypeId] {
-        &self.float_lists
+        &self.slots.float_lists
     }
 
     pub(crate) fn bool_lists(&self) -> &[BoolListTypeId] {
-        &self.bool_lists
+        &self.slots.bool_lists
     }
 
     pub(crate) fn nil_lists(&self) -> &[NilListTypeId] {
-        &self.nil_lists
+        &self.slots.nil_lists
     }
 
     pub(crate) fn tuple_lists(&self) -> &[TupleListTypeId] {
-        &self.tuple_lists
+        &self.slots.tuple_lists
     }
 
     pub(crate) fn list_lists(&self) -> &[ListListTypeId] {
-        &self.list_lists
+        &self.slots.list_lists
     }
 
     pub(crate) fn function_lists(&self) -> &[FunctionListTypeId] {
-        &self.function_lists
+        &self.slots.function_lists
     }
 
     pub(crate) fn int_functions(&self) -> usize {
-        self.int_functions
+        self.slots.int_functions
     }
 
     pub(crate) fn float_functions(&self) -> usize {
-        self.float_functions
+        self.slots.float_functions
     }
 
     pub(crate) fn string_functions(&self) -> usize {
-        self.string_functions
+        self.slots.string_functions
     }
 
     pub(crate) fn bool_functions(&self) -> usize {
-        self.bool_functions
+        self.slots.bool_functions
     }
 
     pub(crate) fn nil_functions(&self) -> usize {
-        self.nil_functions
+        self.slots.nil_functions
     }
 
     pub(crate) fn tuple_functions(&self) -> usize {
-        self.tuple_functions
+        self.slots.tuple_functions
     }
 
     pub(crate) fn list_functions(&self) -> &[ListFunctionLocal] {
-        &self.list_functions
+        &self.slots.list_functions
     }
 
     pub(crate) fn function_functions(&self) -> usize {
-        self.function_functions
+        self.slots.function_functions
     }
 }
