@@ -14,38 +14,14 @@ use crate::plan::execution::{
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ListStorageKey {
-    Int {
-        type_id: IntListTypeId,
-        slot: usize,
-    },
-    String {
-        type_id: StringListTypeId,
-        slot: usize,
-    },
-    Float {
-        type_id: FloatListTypeId,
-        slot: usize,
-    },
-    Bool {
-        type_id: BoolListTypeId,
-        slot: usize,
-    },
-    Nil {
-        type_id: NilListTypeId,
-        slot: usize,
-    },
-    Tuple {
-        type_id: TupleListTypeId,
-        slot: usize,
-    },
-    List {
-        type_id: ListListTypeId,
-        slot: usize,
-    },
-    Function {
-        type_id: FunctionListTypeId,
-        slot: usize,
-    },
+    Int { slot: usize },
+    String { slot: usize },
+    Float { slot: usize },
+    Bool { slot: usize },
+    Nil { slot: usize },
+    Tuple { slot: usize },
+    List { slot: usize },
+    Function { slot: usize },
 }
 
 struct ListLease {
@@ -73,27 +49,32 @@ impl Drop for ListLease {
 impl ListStorageKey {
     fn slot(self) -> usize {
         match self {
-            Self::Int { slot, .. }
-            | Self::String { slot, .. }
-            | Self::Float { slot, .. }
-            | Self::Bool { slot, .. }
-            | Self::Nil { slot, .. }
-            | Self::Tuple { slot, .. }
-            | Self::List { slot, .. }
-            | Self::Function { slot, .. } => slot,
+            Self::Int { slot }
+            | Self::String { slot }
+            | Self::Float { slot }
+            | Self::Bool { slot }
+            | Self::Nil { slot }
+            | Self::Tuple { slot }
+            | Self::List { slot }
+            | Self::Function { slot } => slot,
         }
     }
 }
 
 #[derive(Debug, Clone)]
 pub(super) struct ListHandleCore {
-    slot: usize,
     lease: Rc<ListLease>,
 }
 
 impl PartialEq for ListHandleCore {
     fn eq(&self, other: &Self) -> bool {
-        self.lease.key == other.lease.key
+        Rc::ptr_eq(&self.lease, &other.lease)
+    }
+}
+
+impl ListHandleCore {
+    fn slot(&self) -> usize {
+        self.lease.key.slot()
     }
 }
 
@@ -261,23 +242,22 @@ impl RuntimeState {
             };
 
             match key {
-                ListStorageKey::Int { slot, .. } => drop(self.ints.release(slot)),
-                ListStorageKey::String { slot, .. } => drop(self.strings.release(slot)),
-                ListStorageKey::Float { slot, .. } => drop(self.floats.release(slot)),
-                ListStorageKey::Bool { slot, .. } => drop(self.bools.release(slot)),
-                ListStorageKey::Nil { slot, .. } => {
+                ListStorageKey::Int { slot } => drop(self.ints.release(slot)),
+                ListStorageKey::String { slot } => drop(self.strings.release(slot)),
+                ListStorageKey::Float { slot } => drop(self.floats.release(slot)),
+                ListStorageKey::Bool { slot } => drop(self.bools.release(slot)),
+                ListStorageKey::Nil { slot } => {
                     let _released_len = self.nils.release(slot);
                 }
-                ListStorageKey::Tuple { slot, .. } => drop(self.tuples.release(slot)),
-                ListStorageKey::List { slot, .. } => drop(self.lists.release(slot)),
-                ListStorageKey::Function { slot, .. } => drop(self.functions.release(slot)),
+                ListStorageKey::Tuple { slot } => drop(self.tuples.release(slot)),
+                ListStorageKey::List { slot } => drop(self.lists.release(slot)),
+                ListStorageKey::Function { slot } => drop(self.functions.release(slot)),
             }
         }
     }
 
     fn core(&self, key: ListStorageKey) -> ListHandleCore {
         ListHandleCore {
-            slot: key.slot(),
             lease: Rc::new(ListLease {
                 key,
                 releases: Rc::downgrade(&self.releases),
@@ -292,7 +272,7 @@ impl RuntimeState {
     pub(super) fn int(&mut self, type_id: IntListTypeId, values: Vec<BigInt>) -> IntListValueId {
         self.prepare_allocation();
         let slot = self.ints.allocate(values);
-        IntListValueId::new(type_id, self.core(ListStorageKey::Int { type_id, slot }))
+        IntListValueId::new(type_id, self.core(ListStorageKey::Int { slot }))
     }
 
     pub(super) fn string(
@@ -302,25 +282,25 @@ impl RuntimeState {
     ) -> StringListValueId {
         self.prepare_allocation();
         let slot = self.strings.allocate(values);
-        StringListValueId::new(type_id, self.core(ListStorageKey::String { type_id, slot }))
+        StringListValueId::new(type_id, self.core(ListStorageKey::String { slot }))
     }
 
     pub(super) fn float(&mut self, type_id: FloatListTypeId, values: Vec<f64>) -> FloatListValueId {
         self.prepare_allocation();
         let slot = self.floats.allocate(values);
-        FloatListValueId::new(type_id, self.core(ListStorageKey::Float { type_id, slot }))
+        FloatListValueId::new(type_id, self.core(ListStorageKey::Float { slot }))
     }
 
     pub(super) fn bool(&mut self, type_id: BoolListTypeId, values: Vec<bool>) -> BoolListValueId {
         self.prepare_allocation();
         let slot = self.bools.allocate(values);
-        BoolListValueId::new(type_id, self.core(ListStorageKey::Bool { type_id, slot }))
+        BoolListValueId::new(type_id, self.core(ListStorageKey::Bool { slot }))
     }
 
     pub(super) fn nil(&mut self, type_id: NilListTypeId, len: usize) -> NilListValueId {
         self.prepare_allocation();
         let slot = self.nils.allocate(len);
-        NilListValueId::new(type_id, self.core(ListStorageKey::Nil { type_id, slot }))
+        NilListValueId::new(type_id, self.core(ListStorageKey::Nil { slot }))
     }
 
     pub(super) fn tuple(
@@ -330,7 +310,7 @@ impl RuntimeState {
     ) -> TupleListValueId {
         self.prepare_allocation();
         let slot = self.tuples.allocate(values);
-        TupleListValueId::new(type_id, self.core(ListStorageKey::Tuple { type_id, slot }))
+        TupleListValueId::new(type_id, self.core(ListStorageKey::Tuple { slot }))
     }
 
     pub(super) fn list(
@@ -340,7 +320,7 @@ impl RuntimeState {
     ) -> ListListValueId {
         self.prepare_allocation();
         let slot = self.lists.allocate(values);
-        ListListValueId::new(type_id, self.core(ListStorageKey::List { type_id, slot }))
+        ListListValueId::new(type_id, self.core(ListStorageKey::List { slot }))
     }
 
     pub(super) fn function(
@@ -350,42 +330,39 @@ impl RuntimeState {
     ) -> FunctionListValueId {
         self.prepare_allocation();
         let slot = self.functions.allocate(values);
-        FunctionListValueId::new(
-            type_id,
-            self.core(ListStorageKey::Function { type_id, slot }),
-        )
+        FunctionListValueId::new(type_id, self.core(ListStorageKey::Function { slot }))
     }
 
     pub(super) fn int_values(&self, value: &IntListValueId) -> &[BigInt] {
-        self.ints.get(value.core.slot)
+        self.ints.get(value.core.slot())
     }
 
     pub(super) fn string_values(&self, value: &StringListValueId) -> &[EcoString] {
-        self.strings.get(value.core.slot)
+        self.strings.get(value.core.slot())
     }
 
     pub(super) fn float_values(&self, value: &FloatListValueId) -> &[f64] {
-        self.floats.get(value.core.slot)
+        self.floats.get(value.core.slot())
     }
 
     pub(super) fn bool_values(&self, value: &BoolListValueId) -> &[bool] {
-        self.bools.get(value.core.slot)
+        self.bools.get(value.core.slot())
     }
 
     pub(super) fn nil_len(&self, value: &NilListValueId) -> usize {
-        *self.nils.get(value.core.slot)
+        *self.nils.get(value.core.slot())
     }
 
     pub(super) fn tuple_values(&self, value: &TupleListValueId) -> &[Vec<EvaluatedValue>] {
-        self.tuples.get(value.core.slot)
+        self.tuples.get(value.core.slot())
     }
 
     pub(super) fn list_values(&self, value: &ListListValueId) -> &[ListHandleCore] {
-        self.lists.get(value.core.slot)
+        self.lists.get(value.core.slot())
     }
 
     pub(super) fn function_values(&self, value: &FunctionListValueId) -> &[EvaluatedFunctionValue] {
-        self.functions.get(value.core.slot)
+        self.functions.get(value.core.slot())
     }
 
     pub(super) fn list_len(&self, value: &ListValueId) -> usize {
@@ -532,7 +509,7 @@ pub fn main() { 0 }
         let type_id = plan.int_list_function_id(0).type_id();
         let mut state = RuntimeState::new();
         let value = state.int(type_id, vec![1.into()]);
-        let slot = value.core.slot;
+        let slot = value.core.slot();
         let retained = value.clone();
 
         drop(value);
@@ -543,7 +520,7 @@ pub fn main() { 0 }
         state.drain_releases();
         assert_eq!(state.ints.free, vec![slot]);
         let reused = state.int(type_id, vec![2.into()]);
-        assert_eq!(reused.core.slot, slot);
+        assert_eq!(reused.core.slot(), slot);
         assert_eq!(state.int_values(&reused), &[2.into()]);
     }
 
@@ -591,22 +568,27 @@ pub fn main() { 0 }
     }
 
     #[test]
-    fn list_handles_preserve_debug_identity_and_outlive_the_state_queue() {
+    fn list_handles_compare_by_allocation_identity_and_outlive_the_state_queue() {
         let plan = crate::runtime::plan_src("pub fn main() -> List(Int) { [1] }");
         let type_id = plan.int_list_function_id(0).type_id();
         let mut state = RuntimeState::new();
         let value = state.int(type_id, vec![1.into()]);
         let clone = value.clone();
+        let mut other_state = RuntimeState::new();
+        let other = other_state.int(type_id, vec![1.into()]);
 
         assert_eq!(value, clone);
+        assert_ne!(value, other);
         assert_eq!(
             format!("{:?}", value.core.lease),
-            format!("ListLease {{ key: Int {{ type_id: {type_id:?}, slot: 0 }} }}")
+            "ListLease { key: Int { slot: 0 } }"
         );
 
         drop(state);
         drop(value);
         drop(clone);
+        drop(other_state);
+        drop(other);
     }
 
     #[test]
@@ -672,7 +654,7 @@ pub fn main() { 0 }
         assert_eq!(parent_type.item_type(), child_type.list_type());
         let mut state = RuntimeState::new();
         let child = state.int(child_type, vec![1.into()]);
-        let child_slot = child.core.slot;
+        let child_slot = child.core.slot();
         let parent = state.list(parent_type, vec![child.clone().into_core()]);
 
         drop(parent);
@@ -730,7 +712,7 @@ pub fn main() { 0 }
         let type_id = plan.int_list_function_id(0).type_id();
         let mut state = RuntimeState::new();
         let value = state.int(type_id, vec![1.into()]);
-        let slot = value.core.slot;
+        let slot = value.core.slot();
         let closure = EvaluatedIntFunction::new(
             crate::plan::execution::IntFunctionId(0),
             Vec::new(),
