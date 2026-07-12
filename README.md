@@ -1,5 +1,9 @@
 # Geam
 
+<p align="center">
+  <img src="assets/geam-mascot.svg" width="240" alt="Geam mascot">
+</p>
+
 Geam runs a supported subset of typed Gleam code inside Rust programs.
 The name is pronounced like Korean "김" (/kim/, romanized "gim").
 

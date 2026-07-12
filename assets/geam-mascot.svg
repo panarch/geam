@@ -1,0 +1,68 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-labelledby="title description">
+  <title id="title">Geam gim mascot</title>
+  <desc id="description">A cute, limbless sheet of dark gim with a folded corner, a vacant expression, and a small golden glint.</desc>
+
+  <path
+    d="M302 172
+       C338 157 374 183 414 171
+       C452 159 489 184 530 171
+       C573 157 611 181 652 169
+       C675 162 693 169 710 185
+       L817 293
+       C833 309 837 331 828 353
+       C817 382 837 413 826 445
+       C816 475 835 507 825 538
+       C814 569 833 601 822 632
+       C812 662 829 694 818 724
+       C807 754 819 788 801 810
+       C779 836 744 821 713 833
+       C681 846 650 824 617 835
+       C582 847 548 826 513 837
+       C478 848 445 826 411 837
+       C376 848 344 826 313 835
+       C280 844 252 827 242 799
+       C232 771 247 742 237 713
+       C227 683 244 652 234 621
+       C224 590 242 560 232 528
+       C222 497 241 466 231 435
+       C221 404 240 374 231 344
+       C222 314 239 284 231 255
+       C222 222 248 183 281 174
+       C288 172 295 171 302 172Z"
+    fill="#111815"
+    stroke="#090c0b"
+    stroke-width="18"
+    stroke-linejoin="round"
+  />
+
+  <path
+    d="M702 179 L817 294 L723 294
+       C710 294 702 286 702 273Z"
+    fill="#59634b"
+    stroke="#090c0b"
+    stroke-width="16"
+    stroke-linejoin="round"
+  />
+
+  <ellipse cx="402" cy="508" rx="67" ry="76" fill="#fff7df" />
+  <ellipse cx="653" cy="508" rx="67" ry="76" fill="#fff7df" />
+  <circle cx="410" cy="518" r="19" fill="#090c0b" />
+  <circle cx="645" cy="518" r="19" fill="#090c0b" />
+
+  <path
+    d="M501 572 Q527 591 553 572"
+    fill="none"
+    stroke="#fff7df"
+    stroke-width="15"
+    stroke-linecap="round"
+  />
+
+  <path
+    d="M847 212
+       C853 232 863 242 883 248
+       C863 254 853 264 847 284
+       C841 264 831 254 811 248
+       C831 242 841 232 847 212Z"
+    fill="#efb83f"
+  />
+</svg>
