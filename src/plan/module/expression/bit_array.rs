@@ -21,6 +21,7 @@ pub enum StringEncoding {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FloatBitSize {
+    Sixteen,
     ThirtyTwo,
     SixtyFour,
 }

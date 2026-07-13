@@ -133,16 +133,11 @@ fn plan_segment<Value>(
             let bit_size = size.unwrap_or(64).checked_mul(unit).ok_or_else(|| {
                 unsupported_error(UnsupportedBitArraySegmentReason::SizeOutOfRange)
             })?;
-            if bit_size == 16 {
-                return unsupported(UnsupportedBitArraySegmentReason::Float16);
-            }
-            if bit_size != 32 && bit_size != 64 {
-                return invalid_segment_option();
-            }
-            let bit_size = if bit_size == 32 {
-                FloatBitSize::ThirtyTwo
-            } else {
-                FloatBitSize::SixtyFour
+            let bit_size = match bit_size {
+                16 => FloatBitSize::Sixteen,
+                32 => FloatBitSize::ThirtyTwo,
+                64 => FloatBitSize::SixtyFour,
+                _ => return invalid_segment_option(),
             };
             Ok(BitArraySegment::Float {
                 value,
@@ -250,6 +245,47 @@ mod tests {
             Ok(BitArraySegment::Int {
                 value: IntExpr::value(0x12.into()),
                 bit_size: 8,
+                endianness: Endianness::Little,
+            }),
+        );
+        assert_eq!(
+            plan_segment(
+                Expr::float(FloatExpr::value(1.5)),
+                vec![
+                    BitArrayOption::Float { location },
+                    BitArrayOption::Size {
+                        location,
+                        value: Box::new(()),
+                        short_form: false,
+                    },
+                    BitArrayOption::Big { location },
+                ],
+                |_: &()| Some(16.into()),
+            ),
+            Ok(BitArraySegment::Float {
+                value: FloatExpr::value(1.5),
+                bit_size: FloatBitSize::Sixteen,
+                endianness: Endianness::Big,
+            }),
+        );
+        assert_eq!(
+            plan_segment(
+                Expr::float(FloatExpr::value(1.5)),
+                vec![
+                    BitArrayOption::Float { location },
+                    BitArrayOption::Size {
+                        location,
+                        value: Box::new(()),
+                        short_form: false,
+                    },
+                    BitArrayOption::Unit { location, value: 2 },
+                    BitArrayOption::Little { location },
+                ],
+                |_: &()| Some(8.into()),
+            ),
+            Ok(BitArraySegment::Float {
+                value: FloatExpr::value(1.5),
+                bit_size: FloatBitSize::Sixteen,
                 endianness: Endianness::Little,
             }),
         );
@@ -433,20 +469,6 @@ mod tests {
         );
         assert_eq!(
             plan_segment(
-                Expr::float(FloatExpr::value(1.0)),
-                vec![BitArrayOption::Size {
-                    location,
-                    value: Box::new(()),
-                    short_form: false,
-                }],
-                |_: &()| Some(16.into()),
-            ),
-            Err(PlanError::UnsupportedBitArraySegment {
-                reason: UnsupportedBitArraySegmentReason::Float16,
-            }),
-        );
-        assert_eq!(
-            plan_segment(
                 Expr::bit_array(BitArrayExpr::value(Vec::new())),
                 vec![
                     BitArrayOption::Bits { location },
@@ -492,10 +514,6 @@ mod tests {
             (
                 "pub fn main() { let bits = <<1>> <<bits:bits-size(8)>> }",
                 UnsupportedBitArraySegmentReason::SizedBits,
-            ),
-            (
-                "pub fn main() { <<1.5:float-size(16)>> }",
-                UnsupportedBitArraySegmentReason::Float16,
             ),
             (
                 "const value = <<1:native>> pub fn main() { value }",

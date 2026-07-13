@@ -194,6 +194,12 @@ fn append_float(
     endianness: Endianness,
 ) {
     let bytes = match (bit_size, endianness) {
+        (FloatBitSize::Sixteen, Endianness::Big) => {
+            half::f16::from_f64(value).to_be_bytes().to_vec()
+        }
+        (FloatBitSize::Sixteen, Endianness::Little) => {
+            half::f16::from_f64(value).to_le_bytes().to_vec()
+        }
         (FloatBitSize::ThirtyTwo, Endianness::Big) => (value as f32).to_be_bytes().to_vec(),
         (FloatBitSize::ThirtyTwo, Endianness::Little) => (value as f32).to_le_bytes().to_vec(),
         (FloatBitSize::SixtyFour, Endianness::Big) => value.to_be_bytes().to_vec(),
@@ -410,6 +416,8 @@ mod tests {
             bit_array(vec![0x34, 0x20], 12),
             bit_array(vec![0xf0], 4),
             bit_array(vec![0x01], 8),
+            bit_array(vec![0x3e, 0x00], 16),
+            bit_array(vec![0x00, 0x3e], 16),
             bit_array(vec![0x3f, 0xc0, 0x00, 0x00], 32),
             bit_array(vec![0x00, 0x00, 0xc0, 0x3f], 32),
             bit_array(vec![0x3f, 0xf8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00], 64),

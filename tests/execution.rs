@@ -63,6 +63,7 @@ mod values {
 mod expressions {
     execution_cases!("expressions";
         bit_array,
+        bit_array_float_16,
         list_bit_array_element,
     );
 }
@@ -515,7 +516,6 @@ mod rejection {
             bit_array_native_endian,
             bit_array_dynamic_size,
             bit_array_sized_bits,
-            bit_array_float_16,
         );
     }
 
