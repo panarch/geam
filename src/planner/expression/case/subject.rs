@@ -14,9 +14,7 @@ use crate::plan::{
     ValueType,
 };
 use crate::planner::context::PlanContext;
-use crate::planner::error::{
-    InvalidCaseShapeReason, PlanError, UnsupportedCaseReason, UnsupportedPatternKind,
-};
+use crate::planner::error::{InvalidCaseShapeReason, PlanError, UnsupportedCaseReason};
 use crate::planner::statement::plan_variable_runtime_step;
 use ecow::EcoString;
 use gleam_core::ast::{Pattern, SrcSpan, TypedClause, TypedClauseGuard, TypedExpr};
@@ -222,12 +220,6 @@ fn validate_case_branch_type(case_type: &Type, branch: &Expr) -> Result<(), Plan
     ))
 }
 
-fn unsupported_bit_array_pattern<T>() -> Result<T, PlanError> {
-    Err(PlanError::UnsupportedPattern {
-        kind: UnsupportedPatternKind::BitArray,
-    })
-}
-
 fn bool_case_expr(subject: BoolExpr, true_: Expr, false_: Expr) -> Result<Expr, PlanError> {
     let branches = match (true_.into_kind(), false_.into_kind()) {
         (ExprKind::Int(true_), ExprKind::Int(false_)) => BoolCaseBranches::Int { true_, false_ },
@@ -400,6 +392,19 @@ struct OrderedCaseClauseInput<'a> {
     is_total: bool,
 }
 
+struct OrderedCasePattern {
+    match_condition: BoolExpr,
+    branch_bindings: Vec<(EcoString, Expr)>,
+    is_total: bool,
+}
+
+struct OrderedCaseCandidateInput<'a> {
+    case_type: &'a Type,
+    return_type: &'a ValueType,
+    then: TypedExpr,
+    guard: Option<TypedClauseGuard>,
+}
+
 fn plan_ordered_case_clause(
     input: OrderedCaseClauseInput<'_>,
     context: &mut PlanContext<'_>,
@@ -414,7 +419,43 @@ fn plan_ordered_case_clause(
         is_total,
     } = input;
 
+    plan_ordered_case_candidate(
+        OrderedCaseCandidateInput {
+            case_type,
+            return_type,
+            then,
+            guard,
+        },
+        context,
+        |_| {
+            Ok(OrderedCasePattern {
+                match_condition,
+                branch_bindings,
+                is_total,
+            })
+        },
+    )
+}
+
+fn plan_ordered_case_candidate(
+    input: OrderedCaseCandidateInput<'_>,
+    context: &mut PlanContext<'_>,
+    plan_pattern: impl FnOnce(&mut PlanContext<'_>) -> Result<OrderedCasePattern, PlanError>,
+) -> Result<OrderedCaseClause, PlanError> {
+    let OrderedCaseCandidateInput {
+        case_type,
+        return_type,
+        then,
+        guard,
+    } = input;
+
     context.with_local_scope(|context| {
+        let OrderedCasePattern {
+            match_condition,
+            branch_bindings,
+            is_total,
+        } = plan_pattern(context)?;
+        let is_guarded = guard.is_some();
         let binding_steps = plan_branch_binding_steps(branch_bindings, context);
         let guard_condition = guard
             .map(|guard| super::guard::plan_bool(guard, context))
@@ -446,7 +487,7 @@ fn plan_ordered_case_clause(
         Ok(OrderedCaseClause {
             condition,
             branch,
-            is_total,
+            is_total: is_total && !is_guarded,
         })
     })
 }

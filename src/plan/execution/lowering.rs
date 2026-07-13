@@ -2,6 +2,7 @@ mod expression;
 mod frame;
 mod id;
 mod param;
+mod pattern;
 mod return_;
 mod step;
 mod table;

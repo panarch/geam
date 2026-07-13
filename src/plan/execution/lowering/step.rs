@@ -166,6 +166,19 @@ fn lower_step(step: module::Step, context: &mut super::LoweringContext) -> execu
             site,
             pattern_span,
         },
+        M::AssertBitArray {
+            local,
+            pattern,
+            message,
+            site,
+            pattern_span,
+        } => E::AssertBitArray {
+            local: execution::BitArrayLocalId(local.0),
+            pattern: assert_pattern(pattern, context),
+            message: message.map(|message| string_expr(message, context)),
+            site,
+            pattern_span,
+        },
         M::AssertBool {
             condition,
             message,
@@ -204,6 +217,9 @@ fn assert_pattern(
                 tail.map(|tail| assert_tail(tail, context)),
             ))
         }
+        module::AssertPattern::BitArray(pattern) => {
+            execution::AssertPattern::BitArray(super::pattern::bit_array_pattern(pattern))
+        }
         module::AssertPattern::Alias { pattern, binding } => execution::AssertPattern::Alias {
             pattern: Box::new(assert_pattern(*pattern, context)),
             binding: assert_binding(binding, context),
@@ -235,10 +251,47 @@ fn assert_tail(
 #[cfg(test)]
 mod tests {
     use crate::plan::execution::{
-        AssertBinding, AssertPattern, ExecutionPlan, IntListLocalId, ListAssertPattern,
-        ListAssertTail, ListFunctionId, ListListFunctionId, ListListTypeId, ListLocal,
-        ListLocalExpr, ParamLocal, RuntimeFunctionId, Step, StepKind,
+        AssertBinding, AssertPattern, BitArrayBindingPattern, BitArrayLocalId,
+        BitArrayPatternSegment, BitArrayPatternSizeExpr, BitArrayPatternValue, ExecutionPlan,
+        IntFunctionId, IntListLocalId, IntLocalId, ListAssertPattern, ListAssertTail,
+        ListFunctionId, ListListFunctionId, ListListTypeId, ListLocal, ListLocalExpr, ParamLocal,
+        RuntimeFunctionId, Step, StepKind,
     };
+
+    #[test]
+    fn lowering_removes_bit_array_pattern_names_and_preserves_typed_bindings() {
+        let source = r#"
+pub fn main() {
+  let assert <<1 as alias, rest:bits>> = <<1, 2>>
+  alias
+}
+"#;
+        let typed = crate::compile_typed_module("main", "main.gleam", source)
+            .expect("source should compile");
+        let module_plan = crate::plan_module(typed).expect("source should plan");
+        let plan = ExecutionPlan::from_module_plan(module_plan);
+        let function = plan.int_function(IntFunctionId(0));
+        assert_eq!(function.steps().len(), 2);
+        assert_eq!(
+            expect_bit_array_assert_shape(&function.steps()[1]),
+            (
+                BitArrayLocalId(0),
+                1.into(),
+                IntLocalId(0),
+                1,
+                8.into(),
+                BitArrayLocalId(1),
+                1,
+            ),
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "expected a lowered BitArray assert shape")]
+    fn bit_array_assert_fixture_guard_rejects_int_binding() {
+        let plan = execution_plan("pub fn main() { let value = 1 value }");
+        let _ = expect_bit_array_assert_shape(&plan.int_function(IntFunctionId(0)).steps()[0]);
+    }
 
     #[test]
     fn lowering_preserves_parent_and_child_list_types_through_assert_bindings() {
@@ -369,6 +422,50 @@ pub fn main() {
             RuntimeFunctionId::List(ListFunctionId::List(main)) => main,
             _ => panic!("expected a List(List) main function"),
         }
+    }
+
+    fn expect_bit_array_assert_shape(
+        step: &Step,
+    ) -> (
+        BitArrayLocalId,
+        num_bigint::BigInt,
+        IntLocalId,
+        u8,
+        num_bigint::BigInt,
+        BitArrayLocalId,
+        u8,
+    ) {
+        if let StepKind::AssertBitArray {
+            local,
+            pattern: AssertPattern::BitArray(pattern),
+            ..
+        } = step.kind()
+            && let [
+                BitArrayPatternSegment::Int {
+                    pattern: BitArrayPatternValue::Alias { pattern, binding },
+                    size,
+                    ..
+                },
+                BitArrayPatternSegment::Bits {
+                    pattern: BitArrayBindingPattern::Bind(rest),
+                    size: None,
+                    unit,
+                },
+            ] = pattern.segments()
+            && let BitArrayPatternValue::Literal(value) = pattern.as_ref()
+            && let BitArrayPatternSizeExpr::Value(size_value) = size.value()
+        {
+            return (
+                *local,
+                value.clone(),
+                *binding.local(),
+                size.unit(),
+                size_value.clone(),
+                *rest.local(),
+                *unit,
+            );
+        }
+        panic!("expected a lowered BitArray assert shape");
     }
 
     fn expect_nested_list_binding(step: &Step) -> &crate::plan::execution::ListListExpr {

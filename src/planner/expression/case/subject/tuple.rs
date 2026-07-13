@@ -1,7 +1,7 @@
 use super::super::super::plan_expr_with_expected_source_stop_type;
 use super::super::super::tuple_index_expr;
 use super::super::invalid_case_shape;
-use super::{CaseClause, OrderedCaseClauseInput, case_return_type};
+use super::{CaseClause, OrderedCaseCandidateInput, OrderedCasePattern, case_return_type};
 use crate::plan::{
     BoolExpr, Expr, ExprKind, FloatExpr, IntExpr, Step, StringExpr, TupleExpr, TupleLocalId,
     ValueType,
@@ -34,21 +34,28 @@ pub(super) fn plan(
     let mut ordered_clauses = Vec::new();
     for clause in clauses {
         for pattern in clause.patterns() {
-            let pattern =
-                plan_tuple_case_pattern(pattern, subject.clone(), subject_value_type.clone())?;
-            let is_total = pattern.is_total() && clause.guard.is_none();
-            let match_condition = pattern.match_condition();
-            ordered_clauses.push(super::plan_ordered_case_clause(
-                OrderedCaseClauseInput {
+            ordered_clauses.push(super::plan_ordered_case_candidate(
+                OrderedCaseCandidateInput {
                     case_type: type_.as_ref(),
                     return_type: &return_type,
                     then: clause.then.clone(),
-                    branch_bindings: pattern.branch_bindings,
                     guard: clause.guard.clone(),
-                    match_condition,
-                    is_total,
                 },
                 context,
+                |context| {
+                    let pattern = plan_tuple_case_pattern_with_context(
+                        pattern,
+                        subject.clone(),
+                        subject_value_type.clone(),
+                        context,
+                    )?;
+                    let is_total = pattern.is_total();
+                    Ok(OrderedCasePattern {
+                        match_condition: pattern.match_condition(),
+                        branch_bindings: pattern.branch_bindings,
+                        is_total,
+                    })
+                },
             )?);
         }
     }
@@ -127,10 +134,11 @@ impl TupleCasePattern {
     }
 }
 
-fn plan_tuple_case_pattern(
+fn plan_tuple_case_pattern_with_context(
     pattern: Pattern<Arc<Type>>,
     value: Expr,
     subject_type: ValueType,
+    context: &mut PlanContext<'_>,
 ) -> Result<TupleCasePattern, PlanError> {
     match pattern {
         Pattern::Variable { name, type_, .. } if matches_type(type_.as_ref(), &subject_type) => {
@@ -146,11 +154,16 @@ fn plan_tuple_case_pattern(
             InvalidCaseShapeReason::PatternTypeMismatch,
         )),
         Pattern::Assign { name, pattern, .. } => {
-            let pattern = plan_tuple_case_pattern(*pattern, value.clone(), subject_type)?;
+            let pattern = plan_tuple_case_pattern_with_context(
+                *pattern,
+                value.clone(),
+                subject_type,
+                context,
+            )?;
             Ok(pattern.with_binding(name, value))
         }
         Pattern::Tuple { elements, .. } => {
-            plan_tuple_structural_case_pattern(elements, value, subject_type)
+            plan_tuple_structural_case_pattern(elements, value, subject_type, context)
         }
         Pattern::Int { int_value, .. } if subject_type == ValueType::Int => Ok(
             TupleCasePattern::literal(value, Expr::int(IntExpr::value(int_value))),
@@ -199,7 +212,12 @@ fn plan_tuple_case_pattern(
         }
         Pattern::Invalid { .. } => Err(invalid_case_shape(InvalidCaseShapeReason::InvalidPattern)),
         Pattern::List { .. } if matches!(subject_type, ValueType::List(_)) => {
-            let pattern = super::list::plan_list_case_pattern(pattern, value, subject_type)?;
+            let pattern = super::list::plan_list_case_pattern_with_context(
+                pattern,
+                value,
+                subject_type,
+                context,
+            )?;
             Ok(TupleCasePattern::from_list_pattern(pattern))
         }
         Pattern::StringPrefix {
@@ -213,9 +231,18 @@ fn plan_tuple_case_pattern(
             left_side_assignment,
             right_side_assignment,
         ),
-        Pattern::BitArraySize(_) | Pattern::BitArray { .. } => {
-            super::unsupported_bit_array_pattern()
+        Pattern::BitArray { segments, .. } if subject_type == ValueType::BitArray => {
+            let Some(value) = value.into_bit_array() else {
+                return Err(invalid_case_shape(
+                    InvalidCaseShapeReason::PatternTypeMismatch,
+                ));
+            };
+            super::bit_array::plan_structural_pattern(segments, value, context)
+                .map(TupleCasePattern::from_bit_array_pattern)
         }
+        Pattern::BitArraySize(_) | Pattern::BitArray { .. } => Err(invalid_case_shape(
+            InvalidCaseShapeReason::PatternTypeMismatch,
+        )),
         Pattern::Int { .. }
         | Pattern::Float { .. }
         | Pattern::String { .. }
@@ -231,6 +258,7 @@ fn plan_tuple_structural_case_pattern(
     elements: Vec<Pattern<Arc<Type>>>,
     value: Expr,
     subject_type: ValueType,
+    context: &mut PlanContext<'_>,
 ) -> Result<TupleCasePattern, PlanError> {
     let ValueType::Tuple(element_types) = subject_type else {
         return Err(invalid_case_shape(
@@ -251,10 +279,25 @@ fn plan_tuple_structural_case_pattern(
     let mut patterns = Vec::with_capacity(elements.len());
     for (index, (pattern, type_)) in elements.into_iter().zip(element_types).enumerate() {
         let value = tuple_index_expr(tuple.clone(), index, type_.clone());
-        patterns.push(plan_tuple_case_pattern(pattern, value, type_)?);
+        patterns.push(plan_tuple_case_pattern_with_context(
+            pattern, value, type_, context,
+        )?);
     }
 
     Ok(combine_tuple_case_patterns(patterns))
+}
+
+#[cfg(test)]
+fn plan_tuple_case_pattern(
+    pattern: Pattern<Arc<Type>>,
+    value: Expr,
+    subject_type: ValueType,
+) -> Result<TupleCasePattern, PlanError> {
+    let module_name = EcoString::from("main");
+    let functions = std::collections::HashMap::new();
+    let mut anonymous = crate::planner::context::AnonymousFunctions::default();
+    let mut context = PlanContext::new(&module_name, &functions, &mut anonymous);
+    plan_tuple_case_pattern_with_context(pattern, value, subject_type, &mut context)
 }
 
 fn combine_tuple_case_patterns(patterns: Vec<TupleCasePattern>) -> TupleCasePattern {
@@ -277,6 +320,15 @@ impl TupleCasePattern {
         let (match_condition, branch_bindings, is_total) = pattern.into_parts();
         Self {
             match_condition,
+            branch_bindings,
+            is_total,
+        }
+    }
+
+    fn from_bit_array_pattern(pattern: super::bit_array::BitArrayCasePattern) -> Self {
+        let (match_condition, branch_bindings, is_total) = pattern.into_parts();
+        Self {
+            match_condition: Some(match_condition),
             branch_bindings,
             is_total,
         }
@@ -304,7 +356,10 @@ fn internal_tuple_case_subject_name(local: TupleLocalId) -> EcoString {
 #[cfg(test)]
 mod tests {
     use crate::plan::{
-        BoolExpr, Expr, IntLocalId, ListExpr, Step, StringExpr, StringLocalId, ValueType,
+        BitArrayExpr, BitArrayPattern, BitArrayPatternSegment, BitArrayPatternSize,
+        BitArrayPatternSizeExpr, BitArrayPatternValue, BitArraySegment, BoolExpr, Endianness, Expr,
+        IntExpr, IntLocalId, ListExpr, Signedness, Step, StringExpr, StringLocalId, TupleExpr,
+        TupleLocalId, ValueType,
     };
     use crate::planner::dsl::{
         bool_, float, function, int, int_return_block, int_return_expr, let_int_step,
@@ -313,9 +368,7 @@ mod tests {
     };
     use crate::planner::plan_module;
     use crate::planner::support::{dummy_span, expect_plan_error};
-    use crate::planner::{
-        InvalidCaseShapeReason, InvalidTypedAstReason, PlanError, UnsupportedPatternKind,
-    };
+    use crate::planner::{InvalidCaseShapeReason, InvalidTypedAstReason, PlanError};
     use gleam_core::ast::{AssignName, Pattern};
     use gleam_core::parse::LiteralFloatValue;
     use gleam_core::type_::error::VariableOrigin;
@@ -1007,28 +1060,57 @@ pub fn main() {
 
     #[test]
     fn reject_margin_tuple_inner_list_pattern_errors_are_propagated() {
+        let mut module = crate::planner::support::compile(
+            r#"
+pub fn main() {
+  case #([1]) {
+    #([value]) -> value
+    _ -> 0
+  }
+}
+"#,
+        );
+        let (_, _, clauses) = super::super::super::expect_case_statement_mut(
+            &mut module.definitions.functions[0].body[0],
+        );
+        let elements = expect_single_tuple_list_elements(&mut clauses[0].pattern[0]);
+        elements[0] = Pattern::List {
+            location: dummy_span(),
+            elements: Vec::new(),
+            tail: None,
+            type_: gleam_core::type_::int(),
+        };
+
         assert_eq!(
-            super::plan_tuple_case_pattern(
-                Pattern::List {
-                    location: dummy_span(),
-                    elements: vec![Pattern::List {
-                        location: dummy_span(),
-                        elements: Vec::new(),
-                        tail: None,
-                        type_: gleam_core::type_::int(),
-                    }],
-                    tail: None,
-                    type_: gleam_core::type_::list(gleam_core::type_::int()),
-                },
-                list([int(1)], ValueType::Int).into(),
-                ValueType::List(Box::new(ValueType::Int)),
-            ),
+            plan_module(module),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::CaseShape {
                     reason: InvalidCaseShapeReason::PatternTypeMismatch,
                 },
             }),
         );
+    }
+
+    #[test]
+    #[should_panic(expected = "expected a single tuple-inner list pattern")]
+    fn tuple_inner_list_fixture_guard_rejects_int_pattern() {
+        let mut pattern = Pattern::Int {
+            location: dummy_span(),
+            value: "1".into(),
+            int_value: 1.into(),
+        };
+        let _ = expect_single_tuple_list_elements(&mut pattern);
+    }
+
+    fn expect_single_tuple_list_elements(
+        pattern: &mut Pattern<std::sync::Arc<gleam_core::type_::Type>>,
+    ) -> &mut Vec<Pattern<std::sync::Arc<gleam_core::type_::Type>>> {
+        if let Pattern::Tuple { elements, .. } = pattern
+            && let [Pattern::List { elements, .. }] = elements.as_mut_slice()
+        {
+            return elements;
+        }
+        panic!("expected a single tuple-inner list pattern");
     }
 
     #[test]
@@ -1210,6 +1292,36 @@ pub fn main() {
                 },
                 Expr::from(tuple([int(1)])),
                 tuple_type.clone(),
+            ),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::CaseShape {
+                    reason: InvalidCaseShapeReason::PatternTypeMismatch,
+                },
+            }),
+        );
+        assert_eq!(
+            super::plan_tuple_case_pattern(
+                Pattern::BitArray {
+                    location: dummy_span(),
+                    segments: Vec::new(),
+                },
+                Expr::int(IntExpr::value(1.into())),
+                ValueType::BitArray,
+            ),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::CaseShape {
+                    reason: InvalidCaseShapeReason::PatternTypeMismatch,
+                },
+            }),
+        );
+        assert_eq!(
+            super::plan_tuple_case_pattern(
+                Pattern::BitArray {
+                    location: dummy_span(),
+                    segments: Vec::new(),
+                },
+                Expr::bit_array(BitArrayExpr::value(Vec::new())),
+                ValueType::Int,
             ),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::CaseShape {
@@ -1442,10 +1554,9 @@ pub fn main() {
     }
 
     #[test]
-    fn reject_profile_tuple_nested_bit_array_pattern() {
-        assert_eq!(
-            expect_plan_error(
-                r#"
+    fn plan_tuple_nested_bit_array_pattern_projects_before_matching() {
+        let actual = plan_module(crate::planner::support::compile(
+            r#"
 pub fn main() {
   case #(<<1>>) {
     #(<<1>>) -> 1
@@ -1453,10 +1564,51 @@ pub fn main() {
   }
 }
 "#,
+        ))
+        .expect("source should plan");
+        let tuple_type = vec![ValueType::BitArray];
+        let subject_name = "<case:tuple:0>";
+        let subject = BitArrayExpr::value(vec![BitArraySegment::Int {
+            value: IntExpr::value(1.into()),
+            bit_size: 8,
+            endianness: Endianness::Big,
+        }]);
+        let pattern = BitArrayPattern::new(vec![BitArrayPatternSegment::Int {
+            pattern: BitArrayPatternValue::Literal(1.into()),
+            size: BitArrayPatternSize::new(BitArrayPatternSizeExpr::value(8.into()), 1),
+            endianness: Endianness::Big,
+            signedness: Signedness::Unsigned,
+        }]);
+        let expected = module(
+            "main",
+            function(
+                "main",
+                int_return_block(
+                    [Step::let_tuple(
+                        TupleLocalId(0),
+                        subject_name.into(),
+                        TupleExpr::value(vec![Expr::bit_array(subject)], tuple_type.clone()),
+                    )],
+                    crate::plan::IntReturn::bool_case(
+                        BoolExpr::bit_array_matches(
+                            BitArrayExpr::tuple_index(
+                                TupleExpr::local_get(
+                                    TupleLocalId(0),
+                                    subject_name.into(),
+                                    tuple_type,
+                                ),
+                                0,
+                            ),
+                            pattern,
+                        ),
+                        int_return_expr(int(1)),
+                        int_return_expr(int(0)),
+                    ),
+                ),
             ),
-            PlanError::UnsupportedPattern {
-                kind: UnsupportedPatternKind::BitArray,
-            },
+            [],
         );
+
+        assert_eq!(actual, expected);
     }
 }

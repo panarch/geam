@@ -1,6 +1,6 @@
 use super::{
-    eval_expr, eval_float_expr, eval_int_expr, eval_list_expr, eval_panic_expr, eval_string_expr,
-    project_bool_list_expr, project_tuple_expr,
+    eval_bit_array_expr, eval_expr, eval_float_expr, eval_int_expr, eval_list_expr,
+    eval_panic_expr, eval_string_expr, project_bool_list_expr, project_tuple_expr,
 };
 use crate::plan::ValueType;
 use crate::plan::execution::ExecutionPlan;
@@ -89,6 +89,12 @@ pub(in crate::runtime) fn eval_bool_expr(
             let value = eval_list_expr(plan, state, frame, value)?;
             Ok(state.list_len(&value) >= *length)
         }
+        BoolExprKind::BitArrayMatches { value, pattern } => {
+            let value = eval_bit_array_expr(plan, state, frame, value)?;
+            Ok(crate::runtime::pattern::match_bit_array_pattern(
+                frame, &value, pattern,
+            ))
+        }
         BoolExprKind::And { left, right } => {
             let left = eval_bool_expr(plan, state, frame, left)?;
             eval_and(left, || eval_bool_expr(plan, state, frame, right))
@@ -171,8 +177,9 @@ fn eval_or(
 #[cfg(test)]
 mod tests {
     use crate::plan::{
-        BoolExpr, BoolFunctionId, Expr, FloatExpr, FunctionId, FunctionPlan, IntExpr, ListExpr,
-        ModulePlan, PanicExpr, PanicSite, ReturnExpr, Step, StringExpr, TupleExpr, ValueType,
+        BitArrayExpr, BitArrayPattern, BoolExpr, BoolFunctionId, Expr, FloatExpr, FunctionId,
+        FunctionPlan, IntExpr, ListExpr, ModulePlan, PanicExpr, PanicSite, ReturnExpr, Step,
+        StringExpr, TupleExpr, ValueType,
     };
     use crate::runtime::{ExecutionError, run_main};
 
@@ -271,6 +278,7 @@ pub fn main() {
             "case fail_int() { 0 -> False _ -> True }",
             "case fail_string() { \"zero\" -> False _ -> True }",
             "case fail_float() { 0.0 -> False _ -> True }",
+            "case fail_bit_array() { <<1>> -> True _ -> False }",
             "{ let _ = fail_int() True }",
             "{ let function = fail_bool function() }",
         ];
@@ -282,6 +290,7 @@ fn fail_bool() -> Bool {{ panic }}
 fn fail_int() -> Int {{ panic }}
 fn fail_string() -> String {{ panic }}
 fn fail_float() -> Float {{ panic }}
+fn fail_bit_array() -> BitArray {{ panic }}
 fn fail_int_list() -> List(Int) {{ panic }}
 pub fn main() -> Bool {{ {expression} }}
 "#,
@@ -302,6 +311,10 @@ pub fn main() -> Bool {{ {expression} }}
             BoolExpr::string_starts_with(StringExpr::panic(panic()), "prefix".into()),
             BoolExpr::list_length_equals(ListExpr::panic(panic(), ValueType::Int), 1),
             BoolExpr::list_length_at_least(ListExpr::panic(panic(), ValueType::Int), 1),
+            BoolExpr::bit_array_matches(
+                BitArrayExpr::panic(panic()),
+                BitArrayPattern::new(Vec::new()),
+            ),
             BoolExpr::bool_case(
                 BoolExpr::panic(panic()),
                 BoolExpr::value(true),

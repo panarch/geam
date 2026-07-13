@@ -2,6 +2,7 @@ mod expression;
 mod frame;
 mod function;
 mod id;
+mod pattern;
 mod reference;
 mod step;
 
@@ -64,6 +65,11 @@ pub use id::{
     TupleListFunctionLocalId, TupleListLocalId, TupleLocalId,
 };
 pub(crate) use id::{FunctionFunctionId, RuntimeFunctionId};
+pub(crate) use pattern::{
+    BitArrayBindingPattern, BitArrayPattern, BitArrayPatternSegment, BitArrayPatternSize,
+    BitArrayPatternSizeExpr, BitArrayPatternValue, BitArrayStringPattern, PatternBinding,
+    Signedness,
+};
 pub(crate) use reference::{
     BitArrayFunctionReference, BoolFunctionReference, FloatFunctionReference,
     FunctionFunctionReference, FunctionReference, IntFunctionReference, ListFunctionReference,

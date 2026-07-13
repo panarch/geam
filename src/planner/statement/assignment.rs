@@ -493,11 +493,58 @@ pub(super) fn plan_binding_pattern(pattern: TypedPattern) -> Result<BindingPatte
             type_,
             ..
         } => plan_tail_only_list_binding_pattern(elements, tail.map(|tail| *tail), type_),
+        Pattern::BitArray { segments, .. } => plan_total_bit_array_binding_pattern(segments),
         Pattern::Assign { name, pattern, .. } => Ok(BindingPattern::Alias {
             pattern: Box::new(plan_binding_pattern(*pattern)?),
             name,
         }),
         pattern => Err(non_variable_pattern_error(&pattern)),
+    }
+}
+
+fn plan_total_bit_array_binding_pattern(
+    segments: Vec<
+        gleam_core::ast::BitArraySegment<TypedPattern, std::sync::Arc<gleam_core::type_::Type>>,
+    >,
+) -> Result<BindingPattern, PlanError> {
+    let mut segments = segments.into_iter();
+    let segment = segments.next().ok_or_else(invalid_binding_pattern)?;
+    if segments.next().is_some()
+        || !segment.type_.is_bit_array()
+        || segment.size().is_some()
+        || !matches!(
+            segment.options.as_slice(),
+            [gleam_core::ast::BitArrayOption::Bits { .. }]
+        )
+    {
+        return Err(invalid_binding_pattern());
+    }
+    plan_total_bit_array_binding_value_pattern(*segment.value)
+}
+
+fn plan_total_bit_array_binding_value_pattern(
+    pattern: TypedPattern,
+) -> Result<BindingPattern, PlanError> {
+    match pattern {
+        Pattern::Variable { name, type_, .. } if type_.is_bit_array() => {
+            Ok(BindingPattern::Named(name))
+        }
+        Pattern::Discard { type_, .. } if type_.is_bit_array() => Ok(BindingPattern::Discard),
+        Pattern::Assign { name, pattern, .. } => {
+            plan_total_bit_array_binding_value_pattern(*pattern).map(|pattern| {
+                BindingPattern::Alias {
+                    pattern: Box::new(pattern),
+                    name,
+                }
+            })
+        }
+        _ => Err(invalid_binding_pattern()),
+    }
+}
+
+fn invalid_binding_pattern() -> PlanError {
+    PlanError::InvalidTypedAst {
+        reason: InvalidTypedAstReason::InvalidPattern,
     }
 }
 
@@ -608,8 +655,8 @@ mod tests {
     };
     use gleam_core::analyse::Inferred;
     use gleam_core::ast::{
-        AssignName, AssignmentKind, BitArraySize, Pattern, Statement, TailPattern, TypedAssignment,
-        TypedExpr,
+        AssignName, AssignmentKind, BitArrayOption, BitArraySegment, BitArraySize, Pattern,
+        Statement, TailPattern, TypedAssignment, TypedExpr,
     };
     use gleam_core::exhaustiveness::CompiledCase;
     use gleam_core::parse::LiteralFloatValue;
@@ -1749,6 +1796,50 @@ pub fn main() {
                 element_type: ValueType::Int,
             }),
         );
+        assert_eq!(
+            plan_binding_pattern(Pattern::BitArray {
+                location: dummy_span(),
+                segments: vec![BitArraySegment {
+                    location: dummy_span(),
+                    value: Box::new(Pattern::Variable {
+                        location: dummy_span(),
+                        name: "bits".into(),
+                        type_: type_::bit_array(),
+                        origin: VariableOrigin::generated(),
+                    }),
+                    options: vec![BitArrayOption::Bits {
+                        location: dummy_span(),
+                    }],
+                    type_: type_::bit_array(),
+                }],
+            }),
+            Ok(BindingPattern::Named("bits".into())),
+        );
+        assert_eq!(
+            plan_binding_pattern(Pattern::BitArray {
+                location: dummy_span(),
+                segments: vec![BitArraySegment {
+                    location: dummy_span(),
+                    value: Box::new(Pattern::Assign {
+                        location: dummy_span(),
+                        name: "alias".into(),
+                        pattern: Box::new(Pattern::Discard {
+                            location: dummy_span(),
+                            name: "_".into(),
+                            type_: type_::bit_array(),
+                        }),
+                    }),
+                    options: vec![BitArrayOption::Bits {
+                        location: dummy_span(),
+                    }],
+                    type_: type_::bit_array(),
+                }],
+            }),
+            Ok(BindingPattern::Alias {
+                pattern: Box::new(BindingPattern::Discard),
+                name: "alias".into(),
+            }),
+        );
     }
 
     #[test]
@@ -1916,6 +2007,82 @@ pub fn main() {
                 }),
             );
         }
+        assert_eq!(
+            plan_binding_pattern(Pattern::BitArray {
+                location: dummy_span(),
+                segments: vec![BitArraySegment {
+                    location: dummy_span(),
+                    value: Box::new(Pattern::Discard {
+                        location: dummy_span(),
+                        name: "_".into(),
+                        type_: type_::bit_array(),
+                    }),
+                    options: vec![
+                        BitArrayOption::Bits {
+                            location: dummy_span(),
+                        },
+                        BitArrayOption::Bytes {
+                            location: dummy_span(),
+                        },
+                    ],
+                    type_: type_::bit_array(),
+                }],
+            }),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::InvalidPattern,
+            }),
+        );
+        for (segment_type, binding_type) in [
+            (type_::int(), type_::bit_array()),
+            (type_::bit_array(), type_::int()),
+        ] {
+            assert_eq!(
+                plan_binding_pattern(Pattern::BitArray {
+                    location: dummy_span(),
+                    segments: vec![BitArraySegment {
+                        location: dummy_span(),
+                        value: Box::new(Pattern::Variable {
+                            location: dummy_span(),
+                            name: "bits".into(),
+                            type_: binding_type,
+                            origin: VariableOrigin::generated(),
+                        }),
+                        options: vec![BitArrayOption::Bits {
+                            location: dummy_span(),
+                        }],
+                        type_: segment_type,
+                    }],
+                }),
+                Err(PlanError::InvalidTypedAst {
+                    reason: InvalidTypedAstReason::InvalidPattern,
+                }),
+            );
+        }
+        assert_eq!(
+            plan_binding_pattern(Pattern::BitArray {
+                location: dummy_span(),
+                segments: vec![BitArraySegment {
+                    location: dummy_span(),
+                    value: Box::new(Pattern::Assign {
+                        location: dummy_span(),
+                        name: "alias".into(),
+                        pattern: Box::new(Pattern::Variable {
+                            location: dummy_span(),
+                            name: "bits".into(),
+                            type_: type_::int(),
+                            origin: VariableOrigin::generated(),
+                        }),
+                    }),
+                    options: vec![BitArrayOption::Bits {
+                        location: dummy_span(),
+                    }],
+                    type_: type_::bit_array(),
+                }],
+            }),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::InvalidPattern,
+            }),
+        );
     }
 
     #[test]

@@ -2,7 +2,7 @@ use super::{
     BoolFunctionExpr, BoolListExpr, CallArg, Expr, FloatExpr, IntExpr, ListExpr, PanicExpr,
     StringExpr, TupleExpr,
 };
-use crate::plan::execution::{BoolFunctionId, BoolLocalId, Step};
+use crate::plan::execution::{BitArrayExpr, BitArrayPattern, BoolFunctionId, BoolLocalId, Step};
 use ecow::EcoString;
 use num_bigint::BigInt;
 
@@ -84,6 +84,10 @@ pub(crate) enum BoolExprKind {
     ListLengthAtLeast {
         value: Box<ListExpr>,
         length: usize,
+    },
+    BitArrayMatches {
+        value: Box<BitArrayExpr>,
+        pattern: BitArrayPattern,
     },
     And {
         left: Box<BoolExpr>,

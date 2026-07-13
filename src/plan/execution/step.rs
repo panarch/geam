@@ -11,6 +11,7 @@ use super::id::{
     ListFunctionLocal, ListLocal, NilFunctionLocalId, NilLocalId, StringFunctionLocalId,
     StringLocalId, TupleFunctionLocalId, TupleLocalId,
 };
+use crate::plan::execution::BitArrayPattern;
 use crate::plan::{PanicSite, SourceSpan};
 
 pub struct Step {
@@ -26,6 +27,7 @@ pub(crate) enum AssertPattern {
     Discard,
     Tuple(Vec<AssertPattern>),
     List(ListAssertPattern),
+    BitArray(BitArrayPattern),
     Alias {
         pattern: Box<AssertPattern>,
         binding: AssertBinding,
@@ -116,6 +118,13 @@ pub(crate) enum StepKind {
     },
     AssertList {
         local: ListLocal,
+        pattern: AssertPattern,
+        message: Option<StringExpr>,
+        site: PanicSite,
+        pattern_span: SourceSpan,
+    },
+    AssertBitArray {
+        local: BitArrayLocalId,
         pattern: AssertPattern,
         message: Option<StringExpr>,
         site: PanicSite,

@@ -32,8 +32,6 @@ pub enum UnsupportedPatternKind {
     List,
     #[error("literal")]
     Literal,
-    #[error("bit array")]
-    BitArray,
     #[error("constructor")]
     Constructor,
     #[error("string prefix")]

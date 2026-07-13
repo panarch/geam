@@ -4,6 +4,7 @@ mod expression;
 mod frame;
 mod function;
 mod materialize;
+mod pattern;
 mod state;
 mod value;
 

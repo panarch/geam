@@ -87,6 +87,18 @@ impl FrameLayout {
                     self.include_string_expr(message);
                 }
             }
+            StepKind::AssertBitArray {
+                local,
+                pattern,
+                message,
+                ..
+            } => {
+                self.include_bit_array(*local);
+                self.include_assert_pattern(pattern);
+                if let Some(message) = message {
+                    self.include_string_expr(message);
+                }
+            }
             StepKind::AssertBool {
                 condition, message, ..
             } => {
@@ -118,6 +130,7 @@ impl FrameLayout {
                 }
             }
             AssertPattern::List(pattern) => self.include_list_assert_pattern(pattern),
+            AssertPattern::BitArray(pattern) => self.include_bit_array_pattern(pattern),
             AssertPattern::Alias { pattern, binding } => {
                 self.include_assert_pattern(pattern);
                 self.include_local(binding.local());

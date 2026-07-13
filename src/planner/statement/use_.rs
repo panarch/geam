@@ -25,9 +25,10 @@ fn validate_use_assignment_pattern(pattern: &TypedPattern) -> Result<(), PlanErr
         Pattern::Variable { .. } => Err(invalid_use_shape(
             InvalidUseShapeReason::UnexpectedVariableAssignment,
         )),
-        Pattern::Tuple { .. } | Pattern::List { .. } | Pattern::Assign { .. } => {
-            plan_binding_pattern(pattern.clone()).map(|_| ())
-        }
+        Pattern::Tuple { .. }
+        | Pattern::List { .. }
+        | Pattern::BitArray { .. }
+        | Pattern::Assign { .. } => plan_binding_pattern(pattern.clone()).map(|_| ()),
         pattern => Err(non_variable_pattern_error(pattern)),
     }
 }

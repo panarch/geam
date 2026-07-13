@@ -5,6 +5,7 @@ mod error;
 mod expression;
 mod function;
 mod module;
+mod pattern;
 mod statement;
 
 pub use error::{

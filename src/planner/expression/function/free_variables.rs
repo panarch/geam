@@ -1,7 +1,7 @@
 use ecow::EcoString;
 use gleam_core::ast::{
-    AssignmentKind, ClauseGuard, Pattern, Statement, TypedArg, TypedClauseGuard, TypedExpr,
-    TypedPipelineAssignment, TypedStatement,
+    AssignmentKind, BitArraySize, ClauseGuard, Pattern, Statement, TypedArg, TypedClauseGuard,
+    TypedExpr, TypedPipelineAssignment, TypedStatement,
 };
 use gleam_core::type_::{Type, ValueConstructorVariant};
 use std::collections::HashSet;
@@ -72,7 +72,7 @@ fn collect_statement(
             {
                 collect_expr(message, bound, free);
             }
-            collect_variable_pattern_bound_name(&assignment.pattern, bound);
+            collect_pattern(&assignment.pattern, bound, free);
         }
         Statement::Use(use_) => {
             collect_expr(&use_.call, bound, free);
@@ -145,7 +145,13 @@ fn collect_expr(expression: &TypedExpr, bound: &mut HashSet<EcoString>, free: &m
             for clause in clauses {
                 let mut branch_bound = bound.clone();
                 for pattern in &clause.pattern {
-                    collect_variable_pattern_bound_name(pattern, &mut branch_bound);
+                    collect_pattern(pattern, &mut branch_bound, free);
+                }
+                for alternative in &clause.alternative_patterns {
+                    let mut alternative_bound = bound.clone();
+                    for pattern in alternative {
+                        collect_pattern(pattern, &mut alternative_bound, free);
+                    }
                 }
                 if let Some(guard) = &clause.guard {
                     collect_clause_guard(guard, &mut branch_bound, free);
@@ -225,31 +231,41 @@ fn collect_clause_guard(
     }
 }
 
-fn collect_variable_pattern_bound_name(
+fn collect_pattern(
     pattern: &Pattern<Arc<Type>>,
     bound: &mut HashSet<EcoString>,
+    free: &mut FreeVariables,
 ) {
     match pattern {
         Pattern::Variable { name, .. } => {
             bound.insert(name.clone());
         }
         Pattern::Assign { name, pattern, .. } => {
-            collect_variable_pattern_bound_name(pattern, bound);
+            collect_pattern(pattern, bound, free);
             bound.insert(name.clone());
         }
         Pattern::Tuple { elements, .. } => {
             for element in elements {
-                collect_variable_pattern_bound_name(element, bound);
+                collect_pattern(element, bound, free);
             }
         }
         Pattern::List { elements, tail, .. } => {
             for element in elements {
-                collect_variable_pattern_bound_name(element, bound);
+                collect_pattern(element, bound, free);
             }
             if let Some(tail) = tail {
-                collect_variable_pattern_bound_name(&tail.pattern, bound);
+                collect_pattern(&tail.pattern, bound, free);
             }
         }
+        Pattern::BitArray { segments, .. } => {
+            for segment in segments {
+                if let Some(Pattern::BitArraySize(size)) = segment.size() {
+                    collect_bit_array_size(size, bound, free);
+                }
+                collect_pattern(segment.value.as_ref(), bound, free);
+            }
+        }
+        Pattern::BitArraySize(size) => collect_bit_array_size(size, bound, free),
         Pattern::StringPrefix {
             left_side_assignment,
             right_side_assignment,
@@ -266,17 +282,33 @@ fn collect_variable_pattern_bound_name(
         | Pattern::Float { .. }
         | Pattern::String { .. }
         | Pattern::Constructor { .. }
-        | Pattern::BitArray { .. }
-        | Pattern::BitArraySize(_)
         | Pattern::Discard { .. }
         | Pattern::Invalid { .. } => {}
+    }
+}
+
+fn collect_bit_array_size(
+    size: &BitArraySize<Arc<Type>>,
+    bound: &HashSet<EcoString>,
+    free: &mut FreeVariables,
+) {
+    match size {
+        BitArraySize::Variable { name, .. } => free.record(name, bound),
+        BitArraySize::BinaryOperator { left, right, .. } => {
+            collect_bit_array_size(left, bound, free);
+            collect_bit_array_size(right, bound, free);
+        }
+        BitArraySize::Block { inner, .. } => collect_bit_array_size(inner, bound, free),
+        BitArraySize::Int { .. } => {}
     }
 }
 
 #[cfg(test)]
 mod tests {
     use crate::planner::support::{compile, dummy_span};
-    use gleam_core::ast::{AssignName, ClauseGuard, Constant, Publicity, Statement, TypedExpr};
+    use gleam_core::ast::{
+        AssignName, BitArraySize, ClauseGuard, Constant, Pattern, Publicity, Statement, TypedExpr,
+    };
     use gleam_core::type_::error::VariableOrigin;
     use gleam_core::type_::{self, Deprecation, ValueConstructor, ValueConstructorVariant};
     use vec1::Vec1;
@@ -396,10 +428,11 @@ pub fn main() {
     }
 
     #[test]
-    fn collect_variable_pattern_bound_name_records_string_prefix_alias_and_suffix_names() {
+    fn collect_pattern_records_string_prefix_alias_and_suffix_names() {
         let mut bound = std::collections::HashSet::new();
+        let mut free = super::FreeVariables::new();
 
-        super::collect_variable_pattern_bound_name(
+        super::collect_pattern(
             &gleam_core::ast::Pattern::StringPrefix {
                 location: dummy_span(),
                 left_location: dummy_span(),
@@ -409,19 +442,22 @@ pub fn main() {
                 right_side_assignment: AssignName::Variable("name".into()),
             },
             &mut bound,
+            &mut free,
         );
 
         assert_eq!(
             bound,
             std::collections::HashSet::from(["prefix".into(), "name".into()]),
         );
+        assert_eq!(free.names, Vec::<String>::new());
     }
 
     #[test]
-    fn collect_variable_pattern_bound_name_ignores_discard_string_prefix_names() {
+    fn collect_pattern_ignores_discard_string_prefix_names() {
         let mut bound = std::collections::HashSet::new();
+        let mut free = super::FreeVariables::new();
 
-        super::collect_variable_pattern_bound_name(
+        super::collect_pattern(
             &gleam_core::ast::Pattern::StringPrefix {
                 location: dummy_span(),
                 left_location: dummy_span(),
@@ -431,9 +467,11 @@ pub fn main() {
                 right_side_assignment: AssignName::Discard("_rest".into()),
             },
             &mut bound,
+            &mut free,
         );
 
         assert_eq!(bound, std::collections::HashSet::new());
+        assert_eq!(free.names, Vec::<String>::new());
     }
 
     #[test]
@@ -472,6 +510,63 @@ pub fn main() {
             ),
             vec!["value".to_string(), "size".to_string()],
         );
+    }
+
+    #[test]
+    fn anonymous_free_variables_distinguish_outer_and_prior_bit_array_pattern_sizes() {
+        assert_eq!(
+            anonymous_function_free_variables(
+                r#"
+pub fn main() {
+  let outer_size = 8
+  fn(bits) {
+    case bits {
+      <<size, outer:size(outer_size), inner:size(size)>> -> outer + inner
+      _ -> 0
+    }
+  }
+  1
+}
+"#,
+            ),
+            vec!["outer_size".to_string()],
+        );
+    }
+
+    #[test]
+    fn anonymous_free_variables_visit_bit_array_alternatives_and_size_arithmetic() {
+        assert_eq!(
+            anonymous_function_free_variables(
+                r#"
+pub fn main() {
+  let outer_size = 8
+  fn(bits) {
+    case bits {
+      <<size, value:size(size)>> | <<size, value:size({ outer_size + 0 })>> -> value
+      _ -> 0
+    }
+  }
+  1
+}
+"#,
+            ),
+            vec!["outer_size".to_string()],
+        );
+    }
+
+    #[test]
+    fn direct_bit_array_size_pattern_collects_its_variable() {
+        let pattern = Pattern::BitArraySize(BitArraySize::Variable {
+            location: dummy_span(),
+            name: "size".into(),
+            constructor: None,
+            type_: type_::int(),
+        });
+        let mut free = super::FreeVariables::new();
+
+        super::collect_pattern(&pattern, &mut std::collections::HashSet::new(), &mut free);
+
+        assert_eq!(free.names, vec!["size".to_string()]);
     }
 
     #[test]
