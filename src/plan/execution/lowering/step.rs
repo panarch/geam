@@ -1,7 +1,7 @@
 use super::expression::{
-    bool_expr, expr, float_expr, function_function_expr, int_expr, int_function_expr,
-    list_function_expr, nil_expr, nil_function_expr, string_expr, string_function_expr, tuple_expr,
-    tuple_function_expr,
+    bit_array_expr, bit_array_function_expr, bool_expr, expr, float_expr, function_function_expr,
+    int_expr, int_function_expr, list_function_expr, nil_expr, nil_function_expr, string_expr,
+    string_function_expr, tuple_expr, tuple_function_expr,
 };
 use super::id::{list_function_local, list_local};
 use super::param::param_local;
@@ -45,6 +45,14 @@ fn lower_step(step: module::Step, context: &mut super::LoweringContext) -> execu
         } => E::LetString {
             local: execution::StringLocalId(local.0),
             value: string_expr(value, context),
+        },
+        M::LetBitArray {
+            local,
+            name: _,
+            value,
+        } => E::LetBitArray {
+            local: execution::BitArrayLocalId(local.0),
+            value: bit_array_expr(value, context),
         },
         M::LetBool {
             local,
@@ -96,6 +104,14 @@ fn lower_step(step: module::Step, context: &mut super::LoweringContext) -> execu
         } => E::LetStringFunction {
             local: execution::StringFunctionLocalId(local.0),
             value: string_function_expr(value, context),
+        },
+        M::LetBitArrayFunction {
+            local,
+            name: _,
+            value,
+        } => E::LetBitArrayFunction {
+            local: execution::BitArrayFunctionLocalId(local.0),
+            value: bit_array_function_expr(value, context),
         },
         M::LetBoolFunction {
             local,

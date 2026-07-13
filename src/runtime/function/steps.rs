@@ -1,14 +1,16 @@
 use crate::plan::ValueType;
 use crate::plan::execution::ExecutionPlan;
 use crate::plan::execution::{
-    AssertBinding, AssertPattern, BoolFunctionLocalId, BoolLocalId, FloatFunctionLocalId,
-    FloatLocalId, FunctionFunctionLocalId, IntFunctionLocalId, IntLocalId, ListAssertPattern,
-    ListAssertTail, ListFunctionLocal, NilFunctionLocalId, NilLocalId, ParamLocal, StepKind,
-    StringFunctionLocalId, StringLocalId, TupleFunctionLocalId, TupleLocalId,
+    AssertBinding, AssertPattern, BitArrayFunctionLocalId, BitArrayLocalId, BoolFunctionLocalId,
+    BoolLocalId, FloatFunctionLocalId, FloatLocalId, FunctionFunctionLocalId, IntFunctionLocalId,
+    IntLocalId, ListAssertPattern, ListAssertTail, ListFunctionLocal, NilFunctionLocalId,
+    NilLocalId, ParamLocal, StepKind, StringFunctionLocalId, StringLocalId, TupleFunctionLocalId,
+    TupleLocalId,
 };
 use crate::runtime::error::ExecutionResult;
 use crate::runtime::expression::{
-    eval_bool_expr, eval_bool_function_expr, eval_bool_list_expr, eval_expr, eval_float_expr,
+    eval_bit_array_expr, eval_bit_array_function_expr, eval_bit_array_list_expr, eval_bool_expr,
+    eval_bool_function_expr, eval_bool_list_expr, eval_expr, eval_float_expr,
     eval_float_function_expr, eval_float_list_expr, eval_function_function_expr,
     eval_function_list_expr, eval_int_expr, eval_int_function_expr, eval_int_list_expr,
     eval_list_function_expr, eval_list_list_expr, eval_nil_expr, eval_nil_function_expr,
@@ -18,10 +20,10 @@ use crate::runtime::expression::{
 use crate::runtime::frame::Frame;
 use crate::runtime::state::{ListValueId, RuntimeState};
 use crate::runtime::{
-    EvaluatedBoolFunction, EvaluatedFloatFunction, EvaluatedFunctionFunction,
-    EvaluatedFunctionValue, EvaluatedFunctionValueKind, EvaluatedIntFunction, EvaluatedListCapture,
-    EvaluatedListFunction, EvaluatedNilFunction, EvaluatedStringFunction, EvaluatedTupleFunction,
-    EvaluatedValue,
+    EvaluatedBitArray, EvaluatedBitArrayFunction, EvaluatedBoolFunction, EvaluatedFloatFunction,
+    EvaluatedFunctionFunction, EvaluatedFunctionValue, EvaluatedFunctionValueKind,
+    EvaluatedIntFunction, EvaluatedListCapture, EvaluatedListFunction, EvaluatedNilFunction,
+    EvaluatedStringFunction, EvaluatedTupleFunction, EvaluatedValue,
 };
 use crate::runtime::{ExecutionError, PanicKind};
 use ecow::EcoString;
@@ -42,6 +44,10 @@ pub(in crate::runtime) fn execute_steps(
             StepKind::LetString { local, value, .. } => {
                 let value = eval_string_expr(plan, state, frame, value)?;
                 frame.set_string(*local, value);
+            }
+            StepKind::LetBitArray { local, value, .. } => {
+                let value = eval_bit_array_expr(plan, state, frame, value)?;
+                frame.set_bit_array(*local, value);
             }
             StepKind::LetFloat { local, value, .. } => {
                 let value = eval_float_expr(plan, state, frame, value)?;
@@ -67,6 +73,10 @@ pub(in crate::runtime) fn execute_steps(
             StepKind::LetStringFunction { local, value, .. } => {
                 let value = eval_string_function_expr(plan, state, frame, value)?;
                 frame.set_string_function(*local, value);
+            }
+            StepKind::LetBitArrayFunction { local, value, .. } => {
+                let value = eval_bit_array_function_expr(plan, state, frame, value)?;
+                frame.set_bit_array_function(*local, value);
             }
             StepKind::LetFloatFunction { local, value, .. } => {
                 let value = eval_float_function_expr(plan, state, frame, value)?;
@@ -163,6 +173,7 @@ enum PendingBinding {
     Int(IntLocalId, BigInt),
     Float(FloatLocalId, f64),
     String(StringLocalId, EcoString),
+    BitArray(BitArrayLocalId, EvaluatedBitArray),
     Bool(BoolLocalId, bool),
     Nil(NilLocalId),
     Tuple(TupleLocalId, Vec<EvaluatedValue>),
@@ -170,6 +181,7 @@ enum PendingBinding {
     IntFunction(IntFunctionLocalId, EvaluatedIntFunction),
     FloatFunction(FloatFunctionLocalId, EvaluatedFloatFunction),
     StringFunction(StringFunctionLocalId, EvaluatedStringFunction),
+    BitArrayFunction(BitArrayFunctionLocalId, EvaluatedBitArrayFunction),
     BoolFunction(BoolFunctionLocalId, EvaluatedBoolFunction),
     NilFunction(NilFunctionLocalId, EvaluatedNilFunction),
     TupleFunction(TupleFunctionLocalId, EvaluatedTupleFunction),
@@ -274,6 +286,9 @@ fn pending_binding(
         (ParamLocal::String(local), EvaluatedValue::String(value)) => {
             Some(PendingBinding::String(*local, value.clone()))
         }
+        (ParamLocal::BitArray(local), EvaluatedValue::BitArray(value)) => {
+            Some(PendingBinding::BitArray(*local, value.clone()))
+        }
         (ParamLocal::Bool(local), EvaluatedValue::Bool(value)) => {
             Some(PendingBinding::Bool(*local, *value))
         }
@@ -315,6 +330,10 @@ fn pending_function_binding(
         (ParamLocal::StringFunction { local, .. }, EvaluatedFunctionValueKind::String(value)) => {
             Some(PendingBinding::StringFunction(*local, value.clone()))
         }
+        (
+            ParamLocal::BitArrayFunction { local, .. },
+            EvaluatedFunctionValueKind::BitArray(value),
+        ) => Some(PendingBinding::BitArrayFunction(*local, value.clone())),
         (ParamLocal::BoolFunction { local, .. }, EvaluatedFunctionValueKind::Bool(value)) => {
             Some(PendingBinding::BoolFunction(*local, value.clone()))
         }
@@ -346,6 +365,10 @@ fn pending_list_binding(
         (crate::plan::execution::ListLocal::String { local, .. }, ListValueId::String(value)) => {
             Some(EvaluatedListCapture::String { local, value })
         }
+        (
+            crate::plan::execution::ListLocal::BitArray { local, .. },
+            ListValueId::BitArray(value),
+        ) => Some(EvaluatedListCapture::BitArray { local, value }),
         (crate::plan::execution::ListLocal::Float { local, .. }, ListValueId::Float(value)) => {
             Some(EvaluatedListCapture::Float { local, value })
         }
@@ -374,6 +397,7 @@ fn frame_set_binding(frame: &mut Frame, binding: PendingBinding) {
         PendingBinding::Int(local, value) => frame.set_int(local, value),
         PendingBinding::Float(local, value) => frame.set_float(local, value),
         PendingBinding::String(local, value) => frame.set_string(local, value),
+        PendingBinding::BitArray(local, value) => frame.set_bit_array(local, value),
         PendingBinding::Bool(local, value) => frame.set_bool(local, value),
         PendingBinding::Nil(local) => frame.set_nil(local),
         PendingBinding::Tuple(local, value) => frame.set_tuple(local, value),
@@ -381,6 +405,9 @@ fn frame_set_binding(frame: &mut Frame, binding: PendingBinding) {
         PendingBinding::IntFunction(local, value) => frame.set_int_function(local, value),
         PendingBinding::FloatFunction(local, value) => frame.set_float_function(local, value),
         PendingBinding::StringFunction(local, value) => frame.set_string_function(local, value),
+        PendingBinding::BitArrayFunction(local, value) => {
+            frame.set_bit_array_function(local, value)
+        }
         PendingBinding::BoolFunction(local, value) => frame.set_bool_function(local, value),
         PendingBinding::NilFunction(local, value) => frame.set_nil_function(local, value),
         PendingBinding::TupleFunction(local, value) => frame.set_tuple_function(local, value),
@@ -405,6 +432,10 @@ fn execute_let_list(
         crate::plan::execution::ListLocalExpr::String { local, value } => {
             let value = eval_string_list_expr(plan, state, frame, value)?;
             frame.set_string_list(*local, value);
+        }
+        crate::plan::execution::ListLocalExpr::BitArray { local, value } => {
+            let value = eval_bit_array_list_expr(plan, state, frame, value)?;
+            frame.set_bit_array_list(*local, value);
         }
         crate::plan::execution::ListLocalExpr::Float { local, value } => {
             let value = eval_float_list_expr(plan, state, frame, value)?;
@@ -438,6 +469,7 @@ fn frame_set_list_binding(frame: &mut Frame, value: EvaluatedListCapture) {
     match value {
         EvaluatedListCapture::Int { local, value } => frame.set_int_list(local, value),
         EvaluatedListCapture::String { local, value } => frame.set_string_list(local, value),
+        EvaluatedListCapture::BitArray { local, value } => frame.set_bit_array_list(local, value),
         EvaluatedListCapture::Float { local, value } => frame.set_float_list(local, value),
         EvaluatedListCapture::Bool { local, value } => frame.set_bool_list(local, value),
         EvaluatedListCapture::Nil { local, value } => frame.set_nil_list(local, value),
@@ -525,6 +557,7 @@ mod tests {
         let function_shapes = [
             ("Int", "1"),
             ("String", "\"one\""),
+            ("BitArray", "<<1>>"),
             ("Float", "1.0"),
             ("Bool", "True"),
             ("Nil", "Nil"),
@@ -591,12 +624,14 @@ pub fn main() {{
         let value_types = [
             "Int",
             "String",
+            "BitArray",
             "Float",
             "Bool",
             "Nil",
             "#(Int)",
             "List(Int)",
             "List(String)",
+            "List(BitArray)",
             "List(Float)",
             "List(Bool)",
             "List(Nil)",
@@ -605,11 +640,13 @@ pub fn main() {{
             "List(fn() -> Int)",
             "fn() -> Int",
             "fn() -> String",
+            "fn() -> BitArray",
             "fn() -> Float",
             "fn() -> Bool",
             "fn() -> Nil",
             "fn() -> #(Int)",
             "fn() -> List(Int)",
+            "fn() -> List(BitArray)",
             "fn() -> fn() -> Int",
         ];
 

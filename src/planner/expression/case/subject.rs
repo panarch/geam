@@ -1,3 +1,4 @@
+mod bit_array;
 mod bool_;
 mod float;
 mod function;
@@ -13,7 +14,9 @@ use crate::plan::{
     ValueType,
 };
 use crate::planner::context::PlanContext;
-use crate::planner::error::{InvalidCaseShapeReason, PlanError, UnsupportedCaseReason};
+use crate::planner::error::{
+    InvalidCaseShapeReason, PlanError, UnsupportedCaseReason, UnsupportedPatternKind,
+};
 use crate::planner::statement::plan_variable_runtime_step;
 use ecow::EcoString;
 use gleam_core::ast::{Pattern, SrcSpan, TypedClause, TypedClauseGuard, TypedExpr};
@@ -31,6 +34,7 @@ pub(super) fn plan(
         Some(ValueType::Bool) => bool_::plan(type_, subject, clauses, context),
         Some(ValueType::Int) => int::plan(type_, subject, clauses, context),
         Some(ValueType::String) => string::plan(type_, subject, clauses, context),
+        Some(ValueType::BitArray) => bit_array::plan(type_, subject, clauses, context),
         Some(ValueType::Float) => float::plan(type_, subject, clauses, context),
         Some(ValueType::Nil) => nil::plan(type_, subject, clauses, context),
         Some(ValueType::Tuple(subject_type)) => {
@@ -218,11 +222,20 @@ fn validate_case_branch_type(case_type: &Type, branch: &Expr) -> Result<(), Plan
     ))
 }
 
+fn unsupported_bit_array_pattern<T>() -> Result<T, PlanError> {
+    Err(PlanError::UnsupportedPattern {
+        kind: UnsupportedPatternKind::BitArray,
+    })
+}
+
 fn bool_case_expr(subject: BoolExpr, true_: Expr, false_: Expr) -> Result<Expr, PlanError> {
     let branches = match (true_.into_kind(), false_.into_kind()) {
         (ExprKind::Int(true_), ExprKind::Int(false_)) => BoolCaseBranches::Int { true_, false_ },
         (ExprKind::String(true_), ExprKind::String(false_)) => {
             BoolCaseBranches::String { true_, false_ }
+        }
+        (ExprKind::BitArray(true_), ExprKind::BitArray(false_)) => {
+            BoolCaseBranches::BitArray { true_, false_ }
         }
         (ExprKind::Float(true_), ExprKind::Float(false_)) => {
             BoolCaseBranches::Float { true_, false_ }
@@ -258,6 +271,9 @@ fn bool_list_case_branches(
         }
         (ListExpr::String(true_), ListExpr::String(false_)) => {
             BoolListCaseBranches::String { true_, false_ }
+        }
+        (ListExpr::BitArray(true_), ListExpr::BitArray(false_)) => {
+            BoolListCaseBranches::BitArray { true_, false_ }
         }
         (ListExpr::Float(true_), ListExpr::Float(false_)) => {
             BoolListCaseBranches::Float { true_, false_ }
@@ -297,6 +313,9 @@ fn bool_function_case_branches(
         }
         (FunctionExprKind::String(true_), FunctionExprKind::String(false_)) => {
             BoolCaseBranches::StringFunction { true_, false_ }
+        }
+        (FunctionExprKind::BitArray(true_), FunctionExprKind::BitArray(false_)) => {
+            BoolCaseBranches::BitArrayFunction { true_, false_ }
         }
         (FunctionExprKind::Float(true_), FunctionExprKind::Float(false_)) => {
             BoolCaseBranches::FloatFunction { true_, false_ }
@@ -893,20 +912,18 @@ pub fn main() {
     }
 
     #[test]
-    fn reject_profile_multi_subject_bit_array_subject() {
+    fn reject_profile_multi_subject_with_unsupported_value_family() {
         assert_eq!(
             expect_plan_error(
                 r#"
 pub fn main() {
-  case 1, <<2>> {
+  case Ok(1), 2 {
     _, _ -> 0
   }
 }
 "#,
             ),
-            PlanError::UnsupportedCase {
-                reason: UnsupportedCaseReason::UnsupportedSubjectType,
-            },
+            super::super::unsupported_case(UnsupportedCaseReason::UnsupportedSubjectType),
         );
     }
 

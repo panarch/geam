@@ -48,9 +48,9 @@ pub(in crate::planner::expression) fn plan(
             arguments,
             record_constructor.map(|constructor| *constructor),
         ),
-        Constant::BitArray { .. } => Err(PlanError::UnsupportedExpression {
-            kind: UnsupportedExpressionKind::BitArray,
-        }),
+        Constant::BitArray { segments, .. } => {
+            super::bit_array::plan_constant(segments, context).map(Expr::bit_array)
+        }
         Constant::Todo { .. } | Constant::RecordUpdate { .. } | Constant::Invalid { .. } => {
             invalid_expression_shape(InvalidExpressionShapeKind::Invalid)
         }
@@ -407,21 +407,6 @@ pub fn main() {
         assert_eq!(
             expect_plan_error(
                 r#"
-const bits = <<1>>
-
-pub fn main() {
-  bits
-  1
-}
-"#,
-            ),
-            PlanError::UnsupportedExpression {
-                kind: UnsupportedExpressionKind::BitArray,
-            },
-        );
-        assert_eq!(
-            expect_plan_error(
-                r#"
 const result = Ok(1)
 
 pub fn main() {
@@ -433,92 +418,6 @@ pub fn main() {
             PlanError::UnsupportedExpression {
                 kind: UnsupportedExpressionKind::RecordConstructor,
             },
-        );
-    }
-
-    #[test]
-    fn constant_literal_child_errors_propagate() {
-        assert_eq!(
-            plan_constant_literal(Constant::Tuple {
-                location: dummy_span(),
-                elements: vec![
-                    Constant::Int {
-                        location: dummy_span(),
-                        value: "1".into(),
-                        int_value: 1.into(),
-                    },
-                    Constant::BitArray {
-                        location: dummy_span(),
-                        segments: Vec::new(),
-                    },
-                ],
-                type_: type_::tuple(vec![type_::int(), type_::bit_array()]),
-            }),
-            Err(PlanError::UnsupportedExpression {
-                kind: UnsupportedExpressionKind::BitArray,
-            }),
-        );
-        assert_eq!(
-            plan_constant_literal(Constant::List {
-                location: dummy_span(),
-                elements: vec![
-                    Constant::Int {
-                        location: dummy_span(),
-                        value: "1".into(),
-                        int_value: 1.into(),
-                    },
-                    Constant::BitArray {
-                        location: dummy_span(),
-                        segments: Vec::new(),
-                    },
-                ],
-                type_: type_::list(type_::int()),
-                tail: None,
-            }),
-            Err(PlanError::UnsupportedExpression {
-                kind: UnsupportedExpressionKind::BitArray,
-            }),
-        );
-        assert_eq!(
-            plan_constant_literal(Constant::StringConcatenation {
-                location: dummy_span(),
-                left: Box::new(Constant::String {
-                    location: dummy_span(),
-                    value: "left".into(),
-                }),
-                right: Box::new(Constant::BitArray {
-                    location: dummy_span(),
-                    segments: Vec::new(),
-                }),
-            }),
-            Err(PlanError::UnsupportedExpression {
-                kind: UnsupportedExpressionKind::BitArray,
-            }),
-        );
-        assert_eq!(
-            plan_constant_literal(Constant::List {
-                location: dummy_span(),
-                elements: Vec::new(),
-                type_: type_::list(type_::bit_array()),
-                tail: None,
-            }),
-            Err(PlanError::UnsupportedExpression {
-                kind: UnsupportedExpressionKind::UnsupportedListElementType,
-            }),
-        );
-        assert_eq!(
-            plan_constant_literal(Constant::List {
-                location: dummy_span(),
-                elements: Vec::new(),
-                type_: type_::list(type_::int()),
-                tail: Some(Box::new(Constant::BitArray {
-                    location: dummy_span(),
-                    segments: Vec::new(),
-                })),
-            }),
-            Err(PlanError::UnsupportedExpression {
-                kind: UnsupportedExpressionKind::BitArray,
-            }),
         );
     }
 
@@ -541,7 +440,7 @@ pub fn main() {
             plan_constant_literal(Constant::Tuple {
                 location: dummy_span(),
                 elements: Vec::new(),
-                type_: type_::tuple(vec![type_::bit_array()]),
+                type_: type_::tuple(vec![type_::result(type_::int(), type_::nil())]),
             }),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::ExpressionType {
@@ -593,6 +492,17 @@ pub fn main() {
                     expected: InvalidExpressionType::List,
                     actual: InvalidExpressionType::Unsupported,
                 },
+            }),
+        );
+        assert_eq!(
+            plan_constant_literal(Constant::List {
+                location: dummy_span(),
+                elements: Vec::new(),
+                type_: type_::list(type_::result(type_::int(), type_::nil())),
+                tail: None,
+            }),
+            Err(PlanError::UnsupportedExpression {
+                kind: UnsupportedExpressionKind::UnsupportedListElementType,
             }),
         );
         assert_eq!(
@@ -1035,46 +945,6 @@ pub fn main() {
                 reason: InvalidTypedAstReason::ExpressionShape {
                     kind: InvalidExpressionShapeKind::ModuleSelect,
                 },
-            }),
-        );
-    }
-
-    #[test]
-    fn module_constant_literal_child_errors_propagate() {
-        assert_eq!(
-            plan_module(module_with_main_constant_literal(
-                Constant::StringConcatenation {
-                    location: dummy_span(),
-                    left: Box::new(Constant::BitArray {
-                        location: dummy_span(),
-                        segments: Vec::new(),
-                    }),
-                    right: Box::new(Constant::String {
-                        location: dummy_span(),
-                        value: "right".into(),
-                    }),
-                }
-            )),
-            Err(PlanError::UnsupportedExpression {
-                kind: UnsupportedExpressionKind::BitArray,
-            }),
-        );
-        assert_eq!(
-            plan_module(module_with_main_constant_literal(
-                Constant::StringConcatenation {
-                    location: dummy_span(),
-                    left: Box::new(Constant::String {
-                        location: dummy_span(),
-                        value: "left".into(),
-                    }),
-                    right: Box::new(Constant::BitArray {
-                        location: dummy_span(),
-                        segments: Vec::new(),
-                    }),
-                }
-            )),
-            Err(PlanError::UnsupportedExpression {
-                kind: UnsupportedExpressionKind::BitArray,
             }),
         );
     }

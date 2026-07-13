@@ -1,3 +1,4 @@
+mod bit_array;
 mod bool;
 mod float;
 mod int;
@@ -7,6 +8,7 @@ mod returning_function;
 mod string;
 mod tuple;
 
+pub(in crate::plan::execution::lowering) use bit_array::bit_array_function_expr;
 pub(in crate::plan::execution::lowering) use bool::bool_function_expr;
 pub(in crate::plan::execution::lowering) use float::float_function_expr;
 pub(in crate::plan::execution::lowering) use int::int_function_expr;
@@ -60,6 +62,9 @@ pub(in crate::plan::execution::lowering) fn function_expr(
         }
         module::FunctionExprKind::String(expression) => {
             execution::FunctionExprKind::String(string_function_expr(expression, context))
+        }
+        module::FunctionExprKind::BitArray(expression) => {
+            execution::FunctionExprKind::BitArray(bit_array_function_expr(expression, context))
         }
         module::FunctionExprKind::Float(expression) => {
             execution::FunctionExprKind::Float(float_function_expr(expression, context))

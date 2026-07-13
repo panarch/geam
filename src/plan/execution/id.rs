@@ -1,6 +1,7 @@
 use super::{
-    BoolListTypeId, FloatListTypeId, FunctionListTypeId, FunctionType, IntListTypeId,
-    ListListTypeId, ListTypeId, NilListTypeId, StringListTypeId, TupleListTypeId, ValueType,
+    BitArrayListTypeId, BoolListTypeId, FloatListTypeId, FunctionListTypeId, FunctionType,
+    IntListTypeId, ListListTypeId, ListTypeId, NilListTypeId, StringListTypeId, TupleListTypeId,
+    ValueType,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -11,6 +12,9 @@ pub struct FloatLocalId(pub(crate) usize);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct StringLocalId(pub(crate) usize);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct BitArrayLocalId(pub(crate) usize);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct BoolLocalId(pub(crate) usize);
@@ -26,6 +30,9 @@ pub struct IntListLocalId(pub(crate) usize);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct StringListLocalId(pub(crate) usize);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct BitArrayListLocalId(pub(crate) usize);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct FloatListLocalId(pub(crate) usize);
@@ -54,6 +61,10 @@ pub enum ListLocal {
     String {
         local: StringListLocalId,
         type_id: StringListTypeId,
+    },
+    BitArray {
+        local: BitArrayListLocalId,
+        type_id: BitArrayListTypeId,
     },
     Float {
         local: FloatListLocalId,
@@ -91,6 +102,9 @@ pub struct FloatFunctionLocalId(pub(crate) usize);
 pub struct StringFunctionLocalId(pub(crate) usize);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct BitArrayFunctionLocalId(pub(crate) usize);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct BoolFunctionLocalId(pub(crate) usize);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -104,6 +118,9 @@ pub struct IntListFunctionLocalId(pub(crate) usize);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct StringListFunctionLocalId(pub(crate) usize);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct BitArrayListFunctionLocalId(pub(crate) usize);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct FloatListFunctionLocalId(pub(crate) usize);
@@ -134,6 +151,11 @@ pub enum ListFunctionLocal {
         local: StringListFunctionLocalId,
         type_: FunctionType,
         list_type: StringListTypeId,
+    },
+    BitArray {
+        local: BitArrayListFunctionLocalId,
+        type_: FunctionType,
+        list_type: BitArrayListTypeId,
     },
     Float {
         local: FloatListFunctionLocalId,
@@ -175,6 +197,7 @@ pub(crate) enum RuntimeFunctionId {
     Int(IntFunctionId),
     Float(FloatFunctionId),
     String(StringFunctionId),
+    BitArray(BitArrayFunctionId),
     Bool(BoolFunctionId),
     Nil(NilFunctionId),
     Tuple {
@@ -196,6 +219,9 @@ pub struct FloatFunctionId(pub(crate) usize);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct StringFunctionId(pub(crate) usize);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct BitArrayFunctionId(pub(crate) usize);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct BoolFunctionId(pub(crate) usize);
@@ -232,6 +258,7 @@ macro_rules! list_function_id {
 
 list_function_id!(IntListFunctionId, IntListTypeId);
 list_function_id!(StringListFunctionId, StringListTypeId);
+list_function_id!(BitArrayListFunctionId, BitArrayListTypeId);
 list_function_id!(FloatListFunctionId, FloatListTypeId);
 list_function_id!(BoolListFunctionId, BoolListTypeId);
 list_function_id!(NilListFunctionId, NilListTypeId);
@@ -243,6 +270,7 @@ list_function_id!(FunctionListFunctionId, FunctionListTypeId);
 pub enum ListFunctionId {
     Int(IntListFunctionId),
     String(StringListFunctionId),
+    BitArray(BitArrayListFunctionId),
     Float(FloatListFunctionId),
     Bool(BoolListFunctionId),
     Nil(NilListFunctionId),
@@ -256,6 +284,7 @@ pub(crate) enum FunctionFunctionId {
     Int(IntFunctionFunctionId),
     Float(FloatFunctionFunctionId),
     String(StringFunctionFunctionId),
+    BitArray(BitArrayFunctionFunctionId),
     Bool(BoolFunctionFunctionId),
     Nil(NilFunctionFunctionId),
     Tuple(TupleFunctionFunctionId),
@@ -268,6 +297,7 @@ pub enum FunctionReturnFamily {
     Int,
     Float,
     String,
+    BitArray,
     Bool,
     Nil,
     Tuple,
@@ -285,6 +315,9 @@ pub struct FloatFunctionFunctionId(pub(crate) usize);
 pub struct StringFunctionFunctionId(pub(crate) usize);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct BitArrayFunctionFunctionId(pub(crate) usize);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct BoolFunctionFunctionId(pub(crate) usize);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -298,6 +331,9 @@ pub struct IntListFunctionFunctionId(pub(crate) usize);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct StringListFunctionFunctionId(pub(crate) usize);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct BitArrayListFunctionFunctionId(pub(crate) usize);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct FloatListFunctionFunctionId(pub(crate) usize);
@@ -328,6 +364,11 @@ pub enum ListFunctionFunctionId {
         id: StringListFunctionFunctionId,
         type_: FunctionType,
         list_type: StringListTypeId,
+    },
+    BitArray {
+        id: BitArrayListFunctionFunctionId,
+        type_: FunctionType,
+        list_type: BitArrayListTypeId,
     },
     Float {
         id: FloatListFunctionFunctionId,
@@ -370,6 +411,7 @@ impl FunctionFunctionId {
             Self::Int(_) => FunctionReturnFamily::Int,
             Self::Float(_) => FunctionReturnFamily::Float,
             Self::String(_) => FunctionReturnFamily::String,
+            Self::BitArray(_) => FunctionReturnFamily::BitArray,
             Self::Bool(_) => FunctionReturnFamily::Bool,
             Self::Nil(_) => FunctionReturnFamily::Nil,
             Self::Tuple(_) => FunctionReturnFamily::Tuple,
@@ -388,6 +430,13 @@ impl FunctionFunctionId {
     pub(crate) fn string(&self) -> Option<StringFunctionFunctionId> {
         match self {
             Self::String(id) => Some(*id),
+            _ => None,
+        }
+    }
+
+    pub(crate) fn bit_array(&self) -> Option<BitArrayFunctionFunctionId> {
+        match self {
+            Self::BitArray(id) => Some(*id),
             _ => None,
         }
     }
@@ -440,6 +489,7 @@ impl ListFunctionLocal {
         match self {
             Self::Int { type_, .. }
             | Self::String { type_, .. }
+            | Self::BitArray { type_, .. }
             | Self::Float { type_, .. }
             | Self::Bool { type_, .. }
             | Self::Nil { type_, .. }
@@ -454,6 +504,7 @@ impl ListFunctionLocal {
         match self {
             Self::Int { list_type, .. } => list_type.list_type(),
             Self::String { list_type, .. } => list_type.list_type(),
+            Self::BitArray { list_type, .. } => list_type.list_type(),
             Self::Float { list_type, .. } => list_type.list_type(),
             Self::Bool { list_type, .. } => list_type.list_type(),
             Self::Nil { list_type, .. } => list_type.list_type(),
@@ -469,6 +520,7 @@ impl ListFunctionId {
         match self {
             Self::Int(id) => id.type_id().list_type(),
             Self::String(id) => id.type_id().list_type(),
+            Self::BitArray(id) => id.type_id().list_type(),
             Self::Float(id) => id.type_id().list_type(),
             Self::Bool(id) => id.type_id().list_type(),
             Self::Nil(id) => id.type_id().list_type(),
@@ -484,6 +536,7 @@ impl ListFunctionFunctionId {
         match self {
             Self::Int { type_, .. }
             | Self::String { type_, .. }
+            | Self::BitArray { type_, .. }
             | Self::Float { type_, .. }
             | Self::Bool { type_, .. }
             | Self::Nil { type_, .. }
@@ -499,6 +552,7 @@ impl ListLocal {
         match self {
             Self::Int { type_id, .. } => type_id.list_type(),
             Self::String { type_id, .. } => type_id.list_type(),
+            Self::BitArray { type_id, .. } => type_id.list_type(),
             Self::Float { type_id, .. } => type_id.list_type(),
             Self::Bool { type_id, .. } => type_id.list_type(),
             Self::Nil { type_id, .. } => type_id.list_type(),
@@ -515,6 +569,7 @@ impl std::fmt::Display for FunctionReturnFamily {
             Self::Int => f.write_str("Int"),
             Self::Float => f.write_str("Float"),
             Self::String => f.write_str("String"),
+            Self::BitArray => f.write_str("BitArray"),
             Self::Bool => f.write_str("Bool"),
             Self::Nil => f.write_str("Nil"),
             Self::Tuple => f.write_str("Tuple"),
@@ -527,7 +582,8 @@ impl std::fmt::Display for FunctionReturnFamily {
 #[cfg(test)]
 mod tests {
     use super::{
-        BoolListLocalId, FloatListLocalId, FunctionListLocalId, FunctionReturnFamily,
+        BitArrayFunctionFunctionId, BitArrayListLocalId, BoolListLocalId, FloatListLocalId,
+        FunctionFunctionId, FunctionListLocalId, FunctionReturnFamily, IntFunctionFunctionId,
         IntListLocalId, ListListLocalId, ListLocal, NilListLocalId, StringListLocalId,
         TupleListLocalId,
     };
@@ -539,12 +595,14 @@ mod tests {
             r#"
 fn int_values(values: List(Int)) { values }
 fn string_values(values: List(String)) { values }
+fn bit_array_values(values: List(BitArray)) { values }
 fn float_values(values: List(Float)) { values }
 fn bool_values(values: List(Bool)) { values }
 fn nil_values(values: List(Nil)) { values }
 fn tuple_values(values: List(#(Int))) { values }
 fn list_values(values: List(List(Int))) { values }
 fn function_values(values: List(fn() -> Int)) { values }
+fn bit_array_function_value(function: fn() -> List(BitArray)) { function() }
 
 pub fn main() { Nil }
 "#,
@@ -557,6 +615,10 @@ pub fn main() { Nil }
             .string_list_function(plan.string_list_function_id(0))
             .frame_layout()
             .string_lists()[0];
+        let bit_array = plan
+            .bit_array_list_function(plan.bit_array_list_function_id(0))
+            .frame_layout()
+            .bit_array_lists()[0];
         let float = plan
             .float_list_function(plan.float_list_function_id(0))
             .frame_layout()
@@ -589,6 +651,10 @@ pub fn main() { Nil }
             ListLocal::String {
                 local: StringListLocalId(0),
                 type_id: string,
+            },
+            ListLocal::BitArray {
+                local: BitArrayListLocalId(0),
+                type_id: bit_array,
             },
             ListLocal::Float {
                 local: FloatListLocalId(0),
@@ -624,6 +690,7 @@ pub fn main() { Nil }
             vec![
                 ValueType::List(Box::new(ValueType::Int)),
                 ValueType::List(Box::new(ValueType::String)),
+                ValueType::List(Box::new(ValueType::BitArray)),
                 ValueType::List(Box::new(ValueType::Float)),
                 ValueType::List(Box::new(ValueType::Bool)),
                 ValueType::List(Box::new(ValueType::Nil)),
@@ -634,6 +701,16 @@ pub fn main() { Nil }
                 )))),
             ],
         );
+
+        let bit_array_function_local = plan
+            .bit_array_list_function(plan.bit_array_list_function_id(1))
+            .frame_layout()
+            .list_functions()[0]
+            .clone();
+        assert_eq!(
+            plan.list_value_type(bit_array_function_local.list_type()),
+            ValueType::List(Box::new(ValueType::BitArray)),
+        );
     }
 
     #[test]
@@ -643,6 +720,7 @@ pub fn main() { Nil }
                 FunctionReturnFamily::Int,
                 FunctionReturnFamily::Float,
                 FunctionReturnFamily::String,
+                FunctionReturnFamily::BitArray,
                 FunctionReturnFamily::Bool,
                 FunctionReturnFamily::Nil,
                 FunctionReturnFamily::Tuple,
@@ -651,8 +729,19 @@ pub fn main() { Nil }
             ]
             .map(|family| family.to_string()),
             [
-                "Int", "Float", "String", "Bool", "Nil", "Tuple", "List", "Function",
+                "Int", "Float", "String", "BitArray", "Bool", "Nil", "Tuple", "List", "Function",
             ],
+        );
+    }
+
+    #[test]
+    fn bit_array_function_function_id_projection_is_typed() {
+        let id = FunctionFunctionId::BitArray(BitArrayFunctionFunctionId(2));
+
+        assert_eq!(id.bit_array(), Some(BitArrayFunctionFunctionId(2)));
+        assert_eq!(
+            FunctionFunctionId::Int(IntFunctionFunctionId(0)).bit_array(),
+            None,
         );
     }
 

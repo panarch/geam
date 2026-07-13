@@ -7,6 +7,7 @@ impl FrameLayout {
             match arg.kind() {
                 CallArgKind::Int { value, .. } => self.include_int_expr(value),
                 CallArgKind::String { value, .. } => self.include_string_expr(value),
+                CallArgKind::BitArray { value, .. } => self.include_bit_array_expr(value),
                 CallArgKind::Float { value, .. } => self.include_float_expr(value),
                 CallArgKind::Bool { value, .. } => self.include_bool_expr(value),
                 CallArgKind::Nil { value, .. } => self.include_nil_expr(value),
@@ -15,6 +16,9 @@ impl FrameLayout {
                 CallArgKind::IntFunction { value, .. } => self.include_int_function_expr(value),
                 CallArgKind::StringFunction { value, .. } => {
                     self.include_string_function_expr(value);
+                }
+                CallArgKind::BitArrayFunction { value, .. } => {
+                    self.include_bit_array_function_expr(value);
                 }
                 CallArgKind::FloatFunction { value, .. } => {
                     self.include_float_function_expr(value);
@@ -39,6 +43,7 @@ impl FrameLayout {
             match arg.kind() {
                 CaptureArgKind::Int { value, .. } => self.include_int_expr(value),
                 CaptureArgKind::String { value, .. } => self.include_string_expr(value),
+                CaptureArgKind::BitArray { value, .. } => self.include_bit_array_expr(value),
                 CaptureArgKind::Float { value, .. } => self.include_float_expr(value),
                 CaptureArgKind::Bool { value, .. } => self.include_bool_expr(value),
                 CaptureArgKind::Nil { value, .. } => self.include_nil_expr(value),
@@ -47,6 +52,9 @@ impl FrameLayout {
                 CaptureArgKind::IntFunction { value, .. } => self.include_int_function_expr(value),
                 CaptureArgKind::StringFunction { value, .. } => {
                     self.include_string_function_expr(value);
+                }
+                CaptureArgKind::BitArrayFunction { value, .. } => {
+                    self.include_bit_array_function_expr(value);
                 }
                 CaptureArgKind::FloatFunction { value, .. } => {
                     self.include_float_function_expr(value);

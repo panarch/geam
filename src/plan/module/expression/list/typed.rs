@@ -391,6 +391,8 @@ impl_typed_list_expr_from_facade!(super::IntListExpr, into_int, "int");
 #[cfg(test)]
 impl_typed_list_expr_from_facade!(super::StringListExpr, into_string, "string");
 #[cfg(test)]
+impl_typed_list_expr_from_facade!(super::BitArrayListExpr, into_bit_array, "bit array");
+#[cfg(test)]
 impl_typed_list_expr_from_facade!(super::FloatListExpr, into_float, "float");
 #[cfg(test)]
 impl_typed_list_expr_from_facade!(super::BoolListExpr, into_bool, "bool");

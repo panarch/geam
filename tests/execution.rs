@@ -37,6 +37,13 @@ mod values {
     execution_cases!("values";
         integer_return,
         float_value,
+        bit_array_value,
+        bit_array_segments,
+        bit_array_composition,
+        bit_array_expression_paths,
+        bit_array_function_value_paths,
+        bit_array_list_function_paths,
+        bit_array_returned_closure_capture,
         tuple_value,
         tuple_expression_shapes,
         list_value,
@@ -52,9 +59,18 @@ mod values {
     );
 }
 
+mod expressions {
+    execution_cases!("expressions";
+        bit_array,
+        list_bit_array_element,
+    );
+}
+
 mod module_items {
     execution_cases!("module_items";
         constant,
+        constant_bit_array,
+        constant_list_bit_array,
         constant_value_families,
         constant_function_value,
         type_alias,
@@ -206,6 +222,8 @@ mod control_flow {
             multiple_subject_mixed_patterns,
             multiple_subject_list_pattern,
             multiple_subject_closure_capture,
+            bit_array_subject,
+            multiple_subject_bit_array_subject,
         );
     }
 }
@@ -226,6 +244,16 @@ mod pipeline {
 }
 
 mod functions {
+    execution_cases!("functions";
+        bit_array_argument,
+        function_bit_array_argument,
+        bit_array_return,
+        tuple_bit_array_return,
+        list_bit_array_return,
+        anonymous_bit_array_argument,
+        anonymous_bit_array_return,
+    );
+
     mod basic {
         execution_cases!("functions/basic";
             local_function_call,
@@ -377,11 +405,13 @@ mod execution_errors {
             panic_assignment,
             panic_int,
             panic_string,
+            panic_bit_array,
             panic_float,
             panic_bool,
             panic_tuple,
             panic_list,
             panic_list_string,
+            panic_list_bit_array,
             panic_list_float,
             panic_list_bool,
             panic_list_nil,
@@ -390,6 +420,7 @@ mod execution_errors {
             panic_function_list,
             panic_int_function,
             panic_string_function,
+            panic_bit_array_function,
             panic_float_function,
             panic_bool_function,
             panic_nil_function,
@@ -446,8 +477,6 @@ mod rejection {
     mod module_items {
         rejection_cases!("module_items";
             import,
-            constant_bit_array,
-            constant_list_bit_array,
             constant_result_constructor,
             custom_type,
             record_type,
@@ -465,15 +494,8 @@ mod rejection {
     mod functions {
         rejection_cases!("functions";
             generic_function,
-            bit_array_argument,
-            function_bit_array_argument,
-            bit_array_return,
-            tuple_bit_array_return,
-            list_bit_array_return,
             unsupported_body_before_main,
             unsupported_body_after_main,
-            anonymous_bit_array_argument,
-            anonymous_bit_array_return,
             result_argument,
             result_return,
             utf_codepoint_argument,
@@ -484,10 +506,12 @@ mod rejection {
     mod expressions {
         rejection_cases!("expressions";
             echo,
-            bit_array,
             result_constructor,
-            list_bit_array_element,
             list_utf_codepoint_element,
+            bit_array_native_endian,
+            bit_array_dynamic_size,
+            bit_array_sized_bits,
+            bit_array_float_16,
         );
     }
 
@@ -512,9 +536,11 @@ mod rejection {
 
     mod case_patterns {
         rejection_cases!("case_patterns";
-            multiple_subject_bit_array_subject,
-            bit_array_subject,
             result_subject,
+            bit_array_pattern,
+            tuple_inner_bit_array_pattern,
+            list_inner_bit_array_pattern,
+            bit_array_pattern_options,
         );
     }
 
@@ -636,6 +662,11 @@ fn render_value(value: &Value) -> String {
         Value::Int(value) => format!("Int({value})"),
         Value::Float(value) => format!("Float({value:?})"),
         Value::String(value) => format!("String({value:?})"),
+        Value::BitArray(value) => format!(
+            "BitArray(bytes={:?}, bit_len={})",
+            value.bytes(),
+            value.bit_len(),
+        ),
         Value::Bool(value) => format!("Bool({value})"),
         Value::Nil => "Nil".into(),
         Value::Tuple(values) => format!(
@@ -679,6 +710,7 @@ fn render_value_type(type_: &ValueType) -> String {
         ValueType::Int => "Int".into(),
         ValueType::Float => "Float".into(),
         ValueType::String => "String".into(),
+        ValueType::BitArray => "BitArray".into(),
         ValueType::Bool => "Bool".into(),
         ValueType::Nil => "Nil".into(),
         ValueType::Tuple(elements) => format!(

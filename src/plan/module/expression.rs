@@ -1,4 +1,5 @@
 mod arg;
+mod bit_array;
 mod bool;
 mod case;
 mod float;
@@ -17,11 +18,13 @@ pub(crate) use self::case::{
 };
 pub use self::{
     arg::CallArg,
+    bit_array::BitArrayExpr,
     bool::BoolExpr,
     float::FloatExpr,
     function::{
-        BoolFunctionExpr, FloatFunctionExpr, FunctionExpr, FunctionFunctionExpr, IntFunctionExpr,
-        ListFunctionExpr, NilFunctionExpr, StringFunctionExpr, TupleFunctionExpr,
+        BitArrayFunctionExpr, BoolFunctionExpr, FloatFunctionExpr, FunctionExpr,
+        FunctionFunctionExpr, IntFunctionExpr, ListFunctionExpr, NilFunctionExpr,
+        StringFunctionExpr, TupleFunctionExpr,
     },
     int::IntExpr,
     nil::NilExpr,
@@ -30,20 +33,22 @@ pub use self::{
 };
 pub(crate) use self::{
     arg::{CallArgKind, CaptureArg, CaptureArgKind},
+    bit_array::{BitArrayExprKind, BitArraySegment, Endianness, FloatBitSize, StringEncoding},
     bool::BoolExprKind,
     float::FloatExprKind,
     function::{
-        BoolFunctionExprKind, FloatFunctionExprKind, FunctionExprKind, FunctionFunctionExprKind,
-        IntFunctionExprKind, ListFunctionExprKind, NilFunctionExprKind, StringFunctionExprKind,
-        TupleFunctionExprKind,
+        BitArrayFunctionExprKind, BoolFunctionExprKind, FloatFunctionExprKind, FunctionExprKind,
+        FunctionFunctionExprKind, IntFunctionExprKind, ListFunctionExprKind, NilFunctionExprKind,
+        StringFunctionExprKind, TupleFunctionExprKind,
     },
     int::IntExprKind,
     list::{
-        BoolListCaseBranches, BoolListExpr, BoolListItem, FloatListExpr, FloatListItem,
-        FunctionListExpr, FunctionListItem, IntListExpr, IntListItem, ListCaseBranches,
-        ListElements, ListExpr, ListItem, ListListExpr, ListListItem, ListLocalExpr,
-        ListSpreadElements, NilListExpr, NilListItem, StringListExpr, StringListItem,
-        TupleListExpr, TupleListItem, TypedListExpr, TypedListExprKind, TypedListReturnKind,
+        BitArrayListExpr, BitArrayListItem, BoolListCaseBranches, BoolListExpr, BoolListItem,
+        FloatListExpr, FloatListItem, FunctionListExpr, FunctionListItem, IntListExpr, IntListItem,
+        ListCaseBranches, ListElements, ListExpr, ListItem, ListListExpr, ListListItem,
+        ListLocalExpr, ListSpreadElements, NilListExpr, NilListItem, StringListExpr,
+        StringListItem, TupleListExpr, TupleListItem, TypedListExpr, TypedListExprKind,
+        TypedListReturnKind,
     },
     nil::NilExprKind,
     panic::{PanicExpr, PanicExprKind},
@@ -60,6 +65,7 @@ pub struct Expr {
 pub(crate) enum ExprKind {
     Int(IntExpr),
     String(StringExpr),
+    BitArray(BitArrayExpr),
     Float(FloatExpr),
     Bool(BoolExpr),
     Nil(NilExpr),
@@ -78,6 +84,12 @@ impl Expr {
     pub(crate) fn string(expression: StringExpr) -> Self {
         Self {
             kind: ExprKind::String(expression),
+        }
+    }
+
+    pub(crate) fn bit_array(expression: BitArrayExpr) -> Self {
+        Self {
+            kind: ExprKind::BitArray(expression),
         }
     }
 
@@ -125,6 +137,9 @@ impl Expr {
             BoolCaseBranches::String { true_, false_ } => {
                 Self::string(StringExpr::bool_case(subject, true_, false_))
             }
+            BoolCaseBranches::BitArray { true_, false_ } => {
+                Self::bit_array(BitArrayExpr::bool_case(subject, true_, false_))
+            }
             BoolCaseBranches::Float { true_, false_ } => {
                 Self::float(FloatExpr::bool_case(subject, true_, false_))
             }
@@ -143,6 +158,9 @@ impl Expr {
             )),
             BoolCaseBranches::StringFunction { true_, false_ } => Self::function(
                 FunctionExpr::string(StringFunctionExpr::bool_case(subject, true_, false_)),
+            ),
+            BoolCaseBranches::BitArrayFunction { true_, false_ } => Self::function(
+                FunctionExpr::bit_array(BitArrayFunctionExpr::bool_case(subject, true_, false_)),
             ),
             BoolCaseBranches::FloatFunction { true_, false_ } => Self::function(
                 FunctionExpr::float(FloatFunctionExpr::bool_case(subject, true_, false_)),
@@ -173,6 +191,9 @@ impl Expr {
             IntCaseBranches::String { clauses, fallback } => {
                 Self::string(StringExpr::int_case(subject, clauses, fallback))
             }
+            IntCaseBranches::BitArray { clauses, fallback } => {
+                Self::bit_array(BitArrayExpr::int_case(subject, clauses, fallback))
+            }
             IntCaseBranches::Float { clauses, fallback } => {
                 Self::float(FloatExpr::int_case(subject, clauses, fallback))
             }
@@ -191,6 +212,9 @@ impl Expr {
             ),
             IntCaseBranches::StringFunction { clauses, fallback } => Self::function(
                 FunctionExpr::string(StringFunctionExpr::int_case(subject, clauses, fallback)),
+            ),
+            IntCaseBranches::BitArrayFunction { clauses, fallback } => Self::function(
+                FunctionExpr::bit_array(BitArrayFunctionExpr::int_case(subject, clauses, fallback)),
             ),
             IntCaseBranches::FloatFunction { clauses, fallback } => Self::function(
                 FunctionExpr::float(FloatFunctionExpr::int_case(subject, clauses, fallback)),
@@ -221,6 +245,9 @@ impl Expr {
             StringCaseBranches::String { clauses, fallback } => {
                 Self::string(StringExpr::string_case(subject, clauses, fallback))
             }
+            StringCaseBranches::BitArray { clauses, fallback } => {
+                Self::bit_array(BitArrayExpr::string_case(subject, clauses, fallback))
+            }
             StringCaseBranches::Float { clauses, fallback } => {
                 Self::float(FloatExpr::string_case(subject, clauses, fallback))
             }
@@ -242,6 +269,11 @@ impl Expr {
             StringCaseBranches::StringFunction { clauses, fallback } => Self::function(
                 FunctionExpr::string(StringFunctionExpr::string_case(subject, clauses, fallback)),
             ),
+            StringCaseBranches::BitArrayFunction { clauses, fallback } => {
+                Self::function(FunctionExpr::bit_array(BitArrayFunctionExpr::string_case(
+                    subject, clauses, fallback,
+                )))
+            }
             StringCaseBranches::FloatFunction { clauses, fallback } => Self::function(
                 FunctionExpr::float(FloatFunctionExpr::string_case(subject, clauses, fallback)),
             ),
@@ -273,6 +305,9 @@ impl Expr {
             FloatCaseBranches::String { clauses, fallback } => {
                 Self::string(StringExpr::float_case(subject, clauses, fallback))
             }
+            FloatCaseBranches::BitArray { clauses, fallback } => {
+                Self::bit_array(BitArrayExpr::float_case(subject, clauses, fallback))
+            }
             FloatCaseBranches::Float { clauses, fallback } => {
                 Self::float(FloatExpr::float_case(subject, clauses, fallback))
             }
@@ -294,6 +329,11 @@ impl Expr {
             FloatCaseBranches::StringFunction { clauses, fallback } => Self::function(
                 FunctionExpr::string(StringFunctionExpr::float_case(subject, clauses, fallback)),
             ),
+            FloatCaseBranches::BitArrayFunction { clauses, fallback } => {
+                Self::function(FunctionExpr::bit_array(BitArrayFunctionExpr::float_case(
+                    subject, clauses, fallback,
+                )))
+            }
             FloatCaseBranches::FloatFunction { clauses, fallback } => Self::function(
                 FunctionExpr::float(FloatFunctionExpr::float_case(subject, clauses, fallback)),
             ),
@@ -335,6 +375,13 @@ impl Expr {
     pub(crate) fn into_string(self) -> Option<StringExpr> {
         match self.kind {
             ExprKind::String(expression) => Some(expression),
+            _ => None,
+        }
+    }
+
+    pub(crate) fn into_bit_array(self) -> Option<BitArrayExpr> {
+        match self.kind {
+            ExprKind::BitArray(expression) => Some(expression),
             _ => None,
         }
     }
@@ -386,6 +433,7 @@ impl Expr {
         match self.kind() {
             ExprKind::Int(_) => ValueType::Int,
             ExprKind::String(_) => ValueType::String,
+            ExprKind::BitArray(_) => ValueType::BitArray,
             ExprKind::Float(_) => ValueType::Float,
             ExprKind::Bool(_) => ValueType::Bool,
             ExprKind::Nil(_) => ValueType::Nil,

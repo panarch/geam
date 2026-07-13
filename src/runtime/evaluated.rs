@@ -1,21 +1,43 @@
+use bitvec::order::Msb0;
+use bitvec::vec::BitVec;
 use ecow::EcoString;
 use num_bigint::BigInt;
+use std::rc::Rc;
 
 use super::state::{ListValueId, RuntimeState};
 use crate::plan::ValueType;
 use crate::plan::execution::{
-    BoolFunctionId, BoolFunctionLocalId, BoolLocalId, FloatFunctionId, FloatFunctionLocalId,
-    FloatLocalId, FunctionFunctionId, FunctionFunctionLocalId, FunctionReturnFamily, FunctionType,
-    IntFunctionId, IntFunctionLocalId, IntLocalId, ListFunctionId, ListFunctionLocal,
-    NilFunctionId, NilFunctionLocalId, NilLocalId, ParamLocal, StringFunctionId,
-    StringFunctionLocalId, StringLocalId, TupleFunctionId, TupleFunctionLocalId, TupleLocalId,
+    BitArrayFunctionId, BitArrayFunctionLocalId, BitArrayLocalId, BoolFunctionId,
+    BoolFunctionLocalId, BoolLocalId, FloatFunctionId, FloatFunctionLocalId, FloatLocalId,
+    FunctionFunctionId, FunctionFunctionLocalId, FunctionReturnFamily, FunctionType, IntFunctionId,
+    IntFunctionLocalId, IntLocalId, ListFunctionId, ListFunctionLocal, NilFunctionId,
+    NilFunctionLocalId, NilLocalId, ParamLocal, StringFunctionId, StringFunctionLocalId,
+    StringLocalId, TupleFunctionId, TupleFunctionLocalId, TupleLocalId,
 };
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(in crate::runtime) struct EvaluatedBitArray {
+    bits: Rc<BitVec<u8, Msb0>>,
+}
+
+impl EvaluatedBitArray {
+    pub(in crate::runtime) fn new(bits: BitVec<u8, Msb0>) -> Self {
+        Self {
+            bits: Rc::new(bits),
+        }
+    }
+
+    pub(in crate::runtime) fn bits(&self) -> &bitvec::slice::BitSlice<u8, Msb0> {
+        &self.bits
+    }
+}
 
 #[derive(Debug, Clone, PartialEq)]
 pub(in crate::runtime) enum EvaluatedValue {
     Int(BigInt),
     Float(f64),
     String(EcoString),
+    BitArray(EvaluatedBitArray),
     Bool(bool),
     Nil,
     Tuple(Vec<EvaluatedValue>),
@@ -34,6 +56,7 @@ pub(in crate::runtime) struct EvaluatedFunction<Id> {
 pub(in crate::runtime) type EvaluatedIntFunction = EvaluatedFunction<IntFunctionId>;
 pub(in crate::runtime) type EvaluatedFloatFunction = EvaluatedFunction<FloatFunctionId>;
 pub(in crate::runtime) type EvaluatedStringFunction = EvaluatedFunction<StringFunctionId>;
+pub(in crate::runtime) type EvaluatedBitArrayFunction = EvaluatedFunction<BitArrayFunctionId>;
 pub(in crate::runtime) type EvaluatedBoolFunction = EvaluatedFunction<BoolFunctionId>;
 pub(in crate::runtime) type EvaluatedNilFunction = EvaluatedFunction<NilFunctionId>;
 pub(in crate::runtime) type EvaluatedTupleFunction = EvaluatedFunction<TupleFunctionId>;
@@ -57,6 +80,7 @@ pub(in crate::runtime) enum EvaluatedFunctionValueKind {
     Int(EvaluatedIntFunction),
     Float(EvaluatedFloatFunction),
     String(EvaluatedStringFunction),
+    BitArray(EvaluatedBitArrayFunction),
     Bool(EvaluatedBoolFunction),
     Nil(EvaluatedNilFunction),
     Tuple(EvaluatedTupleFunction),
@@ -83,6 +107,10 @@ pub(in crate::runtime) enum EvaluatedCaptureKind {
         local: StringLocalId,
         value: EcoString,
     },
+    BitArray {
+        local: BitArrayLocalId,
+        value: EvaluatedBitArray,
+    },
     Bool {
         local: BoolLocalId,
         value: bool,
@@ -106,6 +134,10 @@ pub(in crate::runtime) enum EvaluatedCaptureKind {
     StringFunction {
         local: StringFunctionLocalId,
         value: EvaluatedStringFunction,
+    },
+    BitArrayFunction {
+        local: BitArrayFunctionLocalId,
+        value: EvaluatedBitArrayFunction,
     },
     BoolFunction {
         local: BoolFunctionLocalId,
@@ -139,6 +171,10 @@ pub(in crate::runtime) enum EvaluatedListCapture {
         local: crate::plan::execution::StringListLocalId,
         value: super::state::StringListValueId,
     },
+    BitArray {
+        local: crate::plan::execution::BitArrayListLocalId,
+        value: super::state::BitArrayListValueId,
+    },
     Float {
         local: crate::plan::execution::FloatListLocalId,
         value: super::state::FloatListValueId,
@@ -171,6 +207,7 @@ impl EvaluatedValue {
             Self::Int(_) => ValueType::Int,
             Self::Float(_) => ValueType::Float,
             Self::String(_) => ValueType::String,
+            Self::BitArray(_) => ValueType::BitArray,
             Self::Bool(_) => ValueType::Bool,
             Self::Nil => ValueType::Nil,
             Self::Tuple(values) => {
@@ -229,6 +266,7 @@ macro_rules! evaluated_function_value_from {
 evaluated_function_value_from!(EvaluatedIntFunction, Int);
 evaluated_function_value_from!(EvaluatedFloatFunction, Float);
 evaluated_function_value_from!(EvaluatedStringFunction, String);
+evaluated_function_value_from!(EvaluatedBitArrayFunction, BitArray);
 evaluated_function_value_from!(EvaluatedBoolFunction, Bool);
 evaluated_function_value_from!(EvaluatedNilFunction, Nil);
 evaluated_function_value_from!(EvaluatedTupleFunction, Tuple);
@@ -249,6 +287,7 @@ impl EvaluatedFunctionValue {
             EvaluatedFunctionValueKind::Int(value) => value.type_(),
             EvaluatedFunctionValueKind::Float(value) => value.type_(),
             EvaluatedFunctionValueKind::String(value) => value.type_(),
+            EvaluatedFunctionValueKind::BitArray(value) => value.type_(),
             EvaluatedFunctionValueKind::Bool(value) => value.type_(),
             EvaluatedFunctionValueKind::Nil(value) => value.type_(),
             EvaluatedFunctionValueKind::Tuple(value) => value.type_(),
@@ -264,6 +303,7 @@ impl EvaluatedFunctionValueKind {
             Self::Int(_) => FunctionReturnFamily::Int,
             Self::Float(_) => FunctionReturnFamily::Float,
             Self::String(_) => FunctionReturnFamily::String,
+            Self::BitArray(_) => FunctionReturnFamily::BitArray,
             Self::Bool(_) => FunctionReturnFamily::Bool,
             Self::Nil(_) => FunctionReturnFamily::Nil,
             Self::Tuple(_) => FunctionReturnFamily::Tuple,
@@ -292,6 +332,10 @@ impl EvaluatedCapture {
 
     pub(in crate::runtime) fn string(local: StringLocalId, value: EcoString) -> Self {
         Self::from_kind(EvaluatedCaptureKind::String { local, value })
+    }
+
+    pub(in crate::runtime) fn bit_array(local: BitArrayLocalId, value: EvaluatedBitArray) -> Self {
+        Self::from_kind(EvaluatedCaptureKind::BitArray { local, value })
     }
 
     pub(in crate::runtime) fn bool(local: BoolLocalId, value: bool) -> Self {
@@ -329,6 +373,13 @@ impl EvaluatedCapture {
         value: EvaluatedStringFunction,
     ) -> Self {
         Self::from_kind(EvaluatedCaptureKind::StringFunction { local, value })
+    }
+
+    pub(in crate::runtime) fn bit_array_function(
+        local: BitArrayFunctionLocalId,
+        value: EvaluatedBitArrayFunction,
+    ) -> Self {
+        Self::from_kind(EvaluatedCaptureKind::BitArrayFunction { local, value })
     }
 
     pub(in crate::runtime) fn bool_function(
@@ -377,6 +428,7 @@ pub(in crate::runtime) fn values_equal(
         (EvaluatedValue::Int(left), EvaluatedValue::Int(right)) => left == right,
         (EvaluatedValue::Float(left), EvaluatedValue::Float(right)) => left == right,
         (EvaluatedValue::String(left), EvaluatedValue::String(right)) => left == right,
+        (EvaluatedValue::BitArray(left), EvaluatedValue::BitArray(right)) => left == right,
         (EvaluatedValue::Bool(left), EvaluatedValue::Bool(right)) => left == right,
         (EvaluatedValue::Nil, EvaluatedValue::Nil) => true,
         (EvaluatedValue::Tuple(left), EvaluatedValue::Tuple(right)) => {
@@ -431,6 +483,10 @@ fn functions_equal(
         (EvaluatedFunctionValueKind::String(left), EvaluatedFunctionValueKind::String(right)) => {
             function_values_equal(plan, state, left, right)
         }
+        (
+            EvaluatedFunctionValueKind::BitArray(left),
+            EvaluatedFunctionValueKind::BitArray(right),
+        ) => function_values_equal(plan, state, left, right),
         (EvaluatedFunctionValueKind::Bool(left), EvaluatedFunctionValueKind::Bool(right)) => {
             function_values_equal(plan, state, left, right)
         }
@@ -741,15 +797,15 @@ fn list_captures_equal(
 #[cfg(test)]
 mod tests {
     use super::{
-        EvaluatedBoolFunction, EvaluatedCapture, EvaluatedFloatFunction, EvaluatedFunctionFunction,
-        EvaluatedFunctionValue, EvaluatedIntFunction, EvaluatedListCapture, EvaluatedListFunction,
-        EvaluatedNilFunction, EvaluatedStringFunction, EvaluatedTupleFunction, EvaluatedValue,
-        values_equal,
+        EvaluatedBitArray, EvaluatedBitArrayFunction, EvaluatedBoolFunction, EvaluatedCapture,
+        EvaluatedFloatFunction, EvaluatedFunctionFunction, EvaluatedFunctionValue,
+        EvaluatedIntFunction, EvaluatedListCapture, EvaluatedListFunction, EvaluatedNilFunction,
+        EvaluatedStringFunction, EvaluatedTupleFunction, EvaluatedValue, values_equal,
     };
     use crate::plan::ValueType;
     use crate::plan::execution::{
-        BoolFunctionId, BoolFunctionLocalId, BoolListLocalId, BoolLocalId, FloatFunctionId,
-        FloatFunctionLocalId, FloatListLocalId, FloatLocalId, FunctionFunctionId,
+        BitArrayFunctionId, BoolFunctionId, BoolFunctionLocalId, BoolListLocalId, BoolLocalId,
+        FloatFunctionId, FloatFunctionLocalId, FloatListLocalId, FloatLocalId, FunctionFunctionId,
         FunctionFunctionLocalId, FunctionListLocalId, IntFunctionFunctionId, IntFunctionId,
         IntFunctionLocalId, IntListFunctionLocalId, IntListLocalId, IntLocalId, ListFunctionId,
         ListFunctionLocal, ListListLocalId, NilFunctionId, NilFunctionLocalId, NilListLocalId,
@@ -761,6 +817,7 @@ mod tests {
     const EVERY_LIST_FAMILY_SOURCE: &str = r#"
 fn ints() -> List(Int) { [] }
 fn strings() -> List(String) { [] }
+fn bit_arrays() -> List(BitArray) { [] }
 fn floats() -> List(Float) { [] }
 fn bools() -> List(Bool) { [] }
 fn nils() -> List(Nil) { [] }
@@ -788,6 +845,7 @@ pub fn main() { 0 }
             EvaluatedValue::Int(1.into()),
             EvaluatedValue::Float(1.5),
             EvaluatedValue::String("one".into()),
+            EvaluatedValue::BitArray(EvaluatedBitArray::new(bitvec::vec::BitVec::new())),
             EvaluatedValue::Bool(true),
             EvaluatedValue::Nil,
             EvaluatedValue::Tuple(vec![EvaluatedValue::Int(1.into())]),
@@ -798,6 +856,7 @@ pub fn main() { 0 }
             ValueType::Int,
             ValueType::Float,
             ValueType::String,
+            ValueType::BitArray,
             ValueType::Bool,
             ValueType::Nil,
             ValueType::Tuple(vec![ValueType::Int]),
@@ -869,6 +928,26 @@ pub fn main() { 0 }
                     crate::plan::execution::FunctionType::new(
                         Vec::new(),
                         crate::plan::execution::ValueType::String,
+                    ),
+                )),
+            ),
+            (
+                EvaluatedFunctionValue::from(EvaluatedBitArrayFunction::new(
+                    BitArrayFunctionId(0),
+                    Vec::new(),
+                    Vec::new(),
+                    crate::plan::execution::FunctionType::new(
+                        Vec::new(),
+                        crate::plan::execution::ValueType::BitArray,
+                    ),
+                )),
+                EvaluatedFunctionValue::from(EvaluatedBitArrayFunction::new(
+                    BitArrayFunctionId(0),
+                    Vec::new(),
+                    Vec::new(),
+                    crate::plan::execution::FunctionType::new(
+                        Vec::new(),
+                        crate::plan::execution::ValueType::BitArray,
                     ),
                 )),
             ),

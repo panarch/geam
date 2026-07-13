@@ -1,19 +1,20 @@
 use super::FrameLayout;
 use super::expression::{
-    BoolExpr, BoolListExpr, CallArg, FloatExpr, FloatListExpr, FunctionListExpr, IntExpr,
-    IntListExpr, ListListExpr, NilExpr, NilListExpr, StringExpr, StringListExpr, TupleExpr,
-    TupleListExpr,
+    BitArrayExpr, BitArrayListExpr, BoolExpr, BoolListExpr, CallArg, FloatExpr, FloatListExpr,
+    FunctionListExpr, IntExpr, IntListExpr, ListListExpr, NilExpr, NilListExpr, StringExpr,
+    StringListExpr, TupleExpr, TupleListExpr,
 };
 use super::id::{
-    BoolFunctionFunctionId, BoolFunctionId, BoolFunctionLocalId, BoolListFunctionId, BoolLocalId,
-    FloatFunctionFunctionId, FloatFunctionId, FloatFunctionLocalId, FloatListFunctionId,
-    FloatLocalId, FunctionFunctionFunctionId, FunctionFunctionLocalId, FunctionId,
-    FunctionListFunctionId, IntFunctionFunctionId, IntFunctionId, IntFunctionLocalId,
-    IntListFunctionId, IntLocalId, ListFunctionFunctionId, ListFunctionLocal, ListListFunctionId,
-    ListLocal, NilFunctionFunctionId, NilFunctionId, NilFunctionLocalId, NilListFunctionId,
-    NilLocalId, StringFunctionFunctionId, StringFunctionId, StringFunctionLocalId,
-    StringListFunctionId, StringLocalId, TupleFunctionFunctionId, TupleFunctionId,
-    TupleFunctionLocalId, TupleListFunctionId, TupleLocalId,
+    BitArrayFunctionFunctionId, BitArrayFunctionId, BitArrayFunctionLocalId,
+    BitArrayListFunctionId, BitArrayLocalId, BoolFunctionFunctionId, BoolFunctionId,
+    BoolFunctionLocalId, BoolListFunctionId, BoolLocalId, FloatFunctionFunctionId, FloatFunctionId,
+    FloatFunctionLocalId, FloatListFunctionId, FloatLocalId, FunctionFunctionFunctionId,
+    FunctionFunctionLocalId, FunctionId, FunctionListFunctionId, IntFunctionFunctionId,
+    IntFunctionId, IntFunctionLocalId, IntListFunctionId, IntLocalId, ListFunctionFunctionId,
+    ListFunctionLocal, ListListFunctionId, ListLocal, NilFunctionFunctionId, NilFunctionId,
+    NilFunctionLocalId, NilListFunctionId, NilLocalId, StringFunctionFunctionId, StringFunctionId,
+    StringFunctionLocalId, StringListFunctionId, StringLocalId, TupleFunctionFunctionId,
+    TupleFunctionId, TupleFunctionLocalId, TupleListFunctionId, TupleLocalId,
 };
 use super::step::Step;
 use crate::plan::{FunctionType, ValueType};
@@ -52,6 +53,7 @@ pub(crate) enum ParamLocal {
     Int(IntLocalId),
     Float(FloatLocalId),
     String(StringLocalId),
+    BitArray(BitArrayLocalId),
     Bool(BoolLocalId),
     Nil(NilLocalId),
     Tuple {
@@ -69,6 +71,10 @@ pub(crate) enum ParamLocal {
     },
     StringFunction {
         local: StringFunctionLocalId,
+        type_: FunctionType,
+    },
+    BitArrayFunction {
+        local: BitArrayFunctionLocalId,
         type_: FunctionType,
     },
     BoolFunction {
@@ -99,12 +105,14 @@ pub(crate) struct FunctionExecutionParts {
 pub(crate) type IntReturn = ReturnBody<IntExpr, IntFunctionId>;
 pub(crate) type FloatReturn = ReturnBody<FloatExpr, FloatFunctionId>;
 pub(crate) type StringReturn = ReturnBody<StringExpr, StringFunctionId>;
+pub(crate) type BitArrayReturn = ReturnBody<BitArrayExpr, BitArrayFunctionId>;
 pub(crate) type BoolReturn = ReturnBody<BoolExpr, BoolFunctionId>;
 pub(crate) type NilReturn = ReturnBody<NilExpr, NilFunctionId>;
 pub(crate) type TupleReturn = ReturnBody<TupleExpr, TupleFunctionId>;
 pub(crate) type IntListReturn = ReturnBody<IntListExpr, IntListFunctionId>;
 pub(crate) type FloatListReturn = ReturnBody<FloatListExpr, FloatListFunctionId>;
 pub(crate) type StringListReturn = ReturnBody<StringListExpr, StringListFunctionId>;
+pub(crate) type BitArrayListReturn = ReturnBody<BitArrayListExpr, BitArrayListFunctionId>;
 pub(crate) type BoolListReturn = ReturnBody<BoolListExpr, BoolListFunctionId>;
 pub(crate) type NilListReturn = ReturnBody<NilListExpr, NilListFunctionId>;
 pub(crate) type TupleListReturn = ReturnBody<TupleListExpr, TupleListFunctionId>;
@@ -114,6 +122,8 @@ pub(crate) type IntFunctionReturn = ReturnBody<super::IntFunctionExpr, IntFuncti
 pub(crate) type FloatFunctionReturn = ReturnBody<super::FloatFunctionExpr, FloatFunctionFunctionId>;
 pub(crate) type StringFunctionReturn =
     ReturnBody<super::StringFunctionExpr, StringFunctionFunctionId>;
+pub(crate) type BitArrayFunctionReturn =
+    ReturnBody<super::BitArrayFunctionExpr, BitArrayFunctionFunctionId>;
 pub(crate) type BoolFunctionReturn = ReturnBody<super::BoolFunctionExpr, BoolFunctionFunctionId>;
 pub(crate) type NilFunctionReturn = ReturnBody<super::NilFunctionExpr, NilFunctionFunctionId>;
 pub(crate) type TupleFunctionReturn = ReturnBody<super::TupleFunctionExpr, TupleFunctionFunctionId>;
@@ -127,6 +137,7 @@ pub(crate) enum ListReturn {
     Int(IntListReturn),
     Float(FloatListReturn),
     String(StringListReturn),
+    BitArray(BitArrayListReturn),
     Bool(BoolListReturn),
     Nil(NilListReturn),
     Tuple {
@@ -151,6 +162,7 @@ impl ListReturn {
             ListExpr::Int(expression) => Self::Int(IntListReturn::expr(expression)),
             ListExpr::Float(expression) => Self::Float(FloatListReturn::expr(expression)),
             ListExpr::String(expression) => Self::String(StringListReturn::expr(expression)),
+            ListExpr::BitArray(expression) => Self::BitArray(BitArrayListReturn::expr(expression)),
             ListExpr::Bool(expression) => Self::Bool(BoolListReturn::expr(expression)),
             ListExpr::Nil(expression) => Self::Nil(NilListReturn::expr(expression)),
             ListExpr::Tuple(expression) => Self::Tuple {
@@ -177,6 +189,9 @@ impl ListReturn {
             }
             ListFunctionId::String(function) => {
                 Self::String(StringListReturn::tail_call(function, args))
+            }
+            ListFunctionId::BitArray(function) => {
+                Self::BitArray(BitArrayListReturn::tail_call(function, args))
             }
             ListFunctionId::Bool(function) => Self::Bool(BoolListReturn::tail_call(function, args)),
             ListFunctionId::Nil(function) => Self::Nil(NilListReturn::tail_call(function, args)),
@@ -206,6 +221,9 @@ impl ListReturn {
             }
             (Self::String(true_), Self::String(false_)) => {
                 Self::String(StringListReturn::bool_case(subject, true_, false_))
+            }
+            (Self::BitArray(true_), Self::BitArray(false_)) => {
+                Self::BitArray(BitArrayListReturn::bool_case(subject, true_, false_))
             }
             (Self::Bool(true_), Self::Bool(false_)) => {
                 Self::Bool(BoolListReturn::bool_case(subject, true_, false_))
@@ -283,6 +301,14 @@ impl ListReturn {
                 subject,
                 into_list_return_clauses(clauses, |branch| match branch {
                     Self::String(branch) => Some(branch),
+                    _ => None,
+                })?,
+                fallback,
+            ))),
+            Self::BitArray(fallback) => Some(Self::BitArray(BitArrayListReturn::int_case(
+                subject,
+                into_list_return_clauses(clauses, |branch| match branch {
+                    Self::BitArray(branch) => Some(branch),
                     _ => None,
                 })?,
                 fallback,
@@ -385,6 +411,14 @@ impl ListReturn {
                 })?,
                 fallback,
             ))),
+            Self::BitArray(fallback) => Some(Self::BitArray(BitArrayListReturn::float_case(
+                subject,
+                into_list_return_clauses(clauses, |branch| match branch {
+                    Self::BitArray(branch) => Some(branch),
+                    _ => None,
+                })?,
+                fallback,
+            ))),
             Self::Bool(fallback) => Some(Self::Bool(BoolListReturn::float_case(
                 subject,
                 into_list_return_clauses(clauses, |branch| match branch {
@@ -483,6 +517,14 @@ impl ListReturn {
                 })?,
                 fallback,
             ))),
+            Self::BitArray(fallback) => Some(Self::BitArray(BitArrayListReturn::string_case(
+                subject,
+                into_list_return_clauses(clauses, |branch| match branch {
+                    Self::BitArray(branch) => Some(branch),
+                    _ => None,
+                })?,
+                fallback,
+            ))),
             Self::Bool(fallback) => Some(Self::Bool(BoolListReturn::string_case(
                 subject,
                 into_list_return_clauses(clauses, |branch| match branch {
@@ -556,6 +598,7 @@ impl ListReturn {
             Self::Int(return_) => Self::Int(IntListReturn::block(steps, return_)),
             Self::Float(return_) => Self::Float(FloatListReturn::block(steps, return_)),
             Self::String(return_) => Self::String(StringListReturn::block(steps, return_)),
+            Self::BitArray(return_) => Self::BitArray(BitArrayListReturn::block(steps, return_)),
             Self::Bool(return_) => Self::Bool(BoolListReturn::block(steps, return_)),
             Self::Nil(return_) => Self::Nil(NilListReturn::block(steps, return_)),
             Self::Tuple { item_type, body } => Self::Tuple {
@@ -642,6 +685,10 @@ pub(crate) enum ReturnExprKind {
         runtime_id: StringFunctionId,
         body: StringReturn,
     },
+    BitArray {
+        runtime_id: BitArrayFunctionId,
+        body: BitArrayReturn,
+    },
     Bool {
         runtime_id: BoolFunctionId,
         body: BoolReturn,
@@ -662,6 +709,10 @@ pub(crate) enum ReturnExprKind {
     StringList {
         runtime_id: StringListFunctionId,
         body: StringListReturn,
+    },
+    BitArrayList {
+        runtime_id: BitArrayListFunctionId,
+        body: BitArrayListReturn,
     },
     FloatList {
         runtime_id: FloatListFunctionId,
@@ -704,6 +755,11 @@ pub(crate) enum ReturnExprKind {
         runtime_id: StringFunctionFunctionId,
         type_: FunctionType,
         body: StringFunctionReturn,
+    },
+    BitArrayFunction {
+        runtime_id: BitArrayFunctionFunctionId,
+        type_: FunctionType,
+        body: BitArrayFunctionReturn,
     },
     BoolFunction {
         runtime_id: BoolFunctionFunctionId,
@@ -820,6 +876,17 @@ impl ReturnExpr {
     }
 
     #[cfg(test)]
+    pub(crate) fn bit_array(runtime_id: BitArrayFunctionId, expression: BitArrayExpr) -> Self {
+        Self::bit_array_body(runtime_id, ReturnBody::expr(expression))
+    }
+
+    pub(crate) fn bit_array_body(runtime_id: BitArrayFunctionId, body: BitArrayReturn) -> Self {
+        Self {
+            kind: ReturnExprKind::BitArray { runtime_id, body },
+        }
+    }
+
+    #[cfg(test)]
     pub(crate) fn bool(runtime_id: BoolFunctionId, expression: BoolExpr) -> Self {
         Self::bool_body(runtime_id, ReturnBody::expr(expression))
     }
@@ -873,6 +940,15 @@ impl ReturnExpr {
     ) -> Self {
         Self {
             kind: ReturnExprKind::StringList { runtime_id, body },
+        }
+    }
+
+    pub(crate) fn bit_array_list_body(
+        runtime_id: BitArrayListFunctionId,
+        body: BitArrayListReturn,
+    ) -> Self {
+        Self {
+            kind: ReturnExprKind::BitArrayList { runtime_id, body },
         }
     }
 
@@ -1006,6 +1082,29 @@ impl ReturnExpr {
     }
 
     #[cfg(test)]
+    pub(crate) fn bit_array_function(
+        runtime_id: BitArrayFunctionFunctionId,
+        expression: super::BitArrayFunctionExpr,
+    ) -> Self {
+        let type_ = expression.type_().clone();
+        Self::bit_array_function_body(runtime_id, type_, ReturnBody::expr(expression))
+    }
+
+    pub(crate) fn bit_array_function_body(
+        runtime_id: BitArrayFunctionFunctionId,
+        type_: FunctionType,
+        body: BitArrayFunctionReturn,
+    ) -> Self {
+        Self {
+            kind: ReturnExprKind::BitArrayFunction {
+                runtime_id,
+                type_,
+                body,
+            },
+        }
+    }
+
+    #[cfg(test)]
     pub(crate) fn bool_function(
         runtime_id: BoolFunctionFunctionId,
         expression: super::BoolFunctionExpr,
@@ -1127,11 +1226,13 @@ impl ReturnExpr {
             ReturnExprKind::Int { .. } => ValueType::Int,
             ReturnExprKind::Float { .. } => ValueType::Float,
             ReturnExprKind::String { .. } => ValueType::String,
+            ReturnExprKind::BitArray { .. } => ValueType::BitArray,
             ReturnExprKind::Bool { .. } => ValueType::Bool,
             ReturnExprKind::Nil { .. } => ValueType::Nil,
             ReturnExprKind::Tuple { type_, .. } => ValueType::Tuple(type_.clone()),
             ReturnExprKind::IntList { .. } => ValueType::List(Box::new(ValueType::Int)),
             ReturnExprKind::StringList { .. } => ValueType::List(Box::new(ValueType::String)),
+            ReturnExprKind::BitArrayList { .. } => ValueType::List(Box::new(ValueType::BitArray)),
             ReturnExprKind::FloatList { .. } => ValueType::List(Box::new(ValueType::Float)),
             ReturnExprKind::BoolList { .. } => ValueType::List(Box::new(ValueType::Bool)),
             ReturnExprKind::NilList { .. } => ValueType::List(Box::new(ValueType::Nil)),
@@ -1147,6 +1248,7 @@ impl ReturnExpr {
             ReturnExprKind::IntFunction { type_, .. }
             | ReturnExprKind::FloatFunction { type_, .. }
             | ReturnExprKind::StringFunction { type_, .. }
+            | ReturnExprKind::BitArrayFunction { type_, .. }
             | ReturnExprKind::BoolFunction { type_, .. }
             | ReturnExprKind::NilFunction { type_, .. }
             | ReturnExprKind::TupleFunction { type_, .. }
@@ -1165,6 +1267,7 @@ impl ReturnExpr {
             ReturnExprKind::Int { runtime_id, .. } => RuntimeFunctionId::Int(*runtime_id),
             ReturnExprKind::Float { runtime_id, .. } => RuntimeFunctionId::Float(*runtime_id),
             ReturnExprKind::String { runtime_id, .. } => RuntimeFunctionId::String(*runtime_id),
+            ReturnExprKind::BitArray { runtime_id, .. } => RuntimeFunctionId::BitArray(*runtime_id),
             ReturnExprKind::Bool { runtime_id, .. } => RuntimeFunctionId::Bool(*runtime_id),
             ReturnExprKind::Nil { runtime_id, .. } => RuntimeFunctionId::Nil(*runtime_id),
             ReturnExprKind::Tuple {
@@ -1178,6 +1281,9 @@ impl ReturnExpr {
             }
             ReturnExprKind::StringList { runtime_id, .. } => {
                 RuntimeFunctionId::List(ListFunctionId::String(*runtime_id))
+            }
+            ReturnExprKind::BitArrayList { runtime_id, .. } => {
+                RuntimeFunctionId::List(ListFunctionId::BitArray(*runtime_id))
             }
             ReturnExprKind::FloatList { runtime_id, .. } => {
                 RuntimeFunctionId::List(ListFunctionId::Float(*runtime_id))
@@ -1228,6 +1334,12 @@ impl ReturnExpr {
                 runtime_id, type_, ..
             } => RuntimeFunctionId::Function {
                 id: FunctionFunctionId::String(*runtime_id),
+                return_type: type_.clone(),
+            },
+            ReturnExprKind::BitArrayFunction {
+                runtime_id, type_, ..
+            } => RuntimeFunctionId::Function {
+                id: FunctionFunctionId::BitArray(*runtime_id),
                 return_type: type_.clone(),
             },
             ReturnExprKind::BoolFunction {
@@ -1385,6 +1497,10 @@ impl ParamLocal {
         Self::String(local)
     }
 
+    pub(crate) fn bit_array(local: BitArrayLocalId) -> Self {
+        Self::BitArray(local)
+    }
+
     pub(crate) fn bool(local: BoolLocalId) -> Self {
         Self::Bool(local)
     }
@@ -1413,6 +1529,10 @@ impl ParamLocal {
         Self::StringFunction { local, type_ }
     }
 
+    pub(crate) fn bit_array_function(local: BitArrayFunctionLocalId, type_: FunctionType) -> Self {
+        Self::BitArrayFunction { local, type_ }
+    }
+
     pub(crate) fn bool_function(local: BoolFunctionLocalId, type_: FunctionType) -> Self {
         Self::BoolFunction { local, type_ }
     }
@@ -1438,6 +1558,7 @@ impl ParamLocal {
             Self::Int(_) => ValueType::Int,
             Self::Float(_) => ValueType::Float,
             Self::String(_) => ValueType::String,
+            Self::BitArray(_) => ValueType::BitArray,
             Self::Bool(_) => ValueType::Bool,
             Self::Nil(_) => ValueType::Nil,
             Self::Tuple { type_, .. } => ValueType::Tuple(type_.clone()),
@@ -1445,6 +1566,7 @@ impl ParamLocal {
             Self::IntFunction { type_, .. }
             | Self::FloatFunction { type_, .. }
             | Self::StringFunction { type_, .. }
+            | Self::BitArrayFunction { type_, .. }
             | Self::BoolFunction { type_, .. }
             | Self::NilFunction { type_, .. }
             | Self::TupleFunction { type_, .. }
@@ -1457,26 +1579,27 @@ impl ParamLocal {
 #[cfg(test)]
 mod tests {
     use super::{
-        BoolListReturn, FloatListReturn, FunctionListReturn, FunctionPlan, IntListReturn,
-        ListListReturn, ListReturn, NilListReturn, Param, ParamBinding, ParamLocal, ReturnBodyKind,
-        ReturnExpr, StringListReturn, TupleListReturn,
+        BitArrayListReturn, BoolListReturn, FloatListReturn, FunctionListReturn, FunctionPlan,
+        IntListReturn, ListListReturn, ListReturn, NilListReturn, Param, ParamBinding, ParamLocal,
+        ReturnBodyKind, ReturnExpr, StringListReturn, TupleListReturn,
     };
     use crate::plan::{
-        BoolExpr, BoolFunctionExpr, BoolFunctionFunctionId, BoolFunctionId, BoolFunctionLocalId,
-        BoolFunctionReference, BoolLocalId, Expr, FloatExpr, FloatFunctionExpr,
-        FloatFunctionFunctionId, FloatFunctionId, FloatFunctionLocalId, FloatFunctionReference,
-        FloatListFunctionId, FloatLocalId, FunctionFunctionExpr, FunctionFunctionFunctionId,
-        FunctionFunctionId, FunctionFunctionLocalId, FunctionFunctionReference, FunctionId,
-        FunctionListFunctionId, FunctionType, IntExpr, IntFunctionExpr, IntFunctionFunctionId,
-        IntFunctionId, IntFunctionLocalId, IntFunctionReference, IntListFunctionId, IntListLocalId,
-        IntLocalId, ListExpr, ListFunctionExpr, ListFunctionFunctionId, ListFunctionId,
-        ListFunctionReference, ListListFunctionId, ListLocal, NilExpr, NilFunctionExpr,
-        NilFunctionFunctionId, NilFunctionId, NilFunctionLocalId, NilFunctionReference,
-        NilListFunctionId, RuntimeFunctionId, StringExpr, StringFunctionExpr,
-        StringFunctionFunctionId, StringFunctionId, StringFunctionLocalId, StringFunctionReference,
-        StringListFunctionId, TupleExpr, TupleFunctionExpr, TupleFunctionFunctionId,
-        TupleFunctionId, TupleFunctionLocalId, TupleFunctionReference, TupleListFunctionId,
-        ValueType,
+        BitArrayExpr, BitArrayFunctionExpr, BitArrayFunctionFunctionId, BitArrayFunctionId,
+        BitArrayFunctionReference, BitArrayListFunctionId, BoolExpr, BoolFunctionExpr,
+        BoolFunctionFunctionId, BoolFunctionId, BoolFunctionLocalId, BoolFunctionReference,
+        BoolLocalId, Expr, FloatExpr, FloatFunctionExpr, FloatFunctionFunctionId, FloatFunctionId,
+        FloatFunctionLocalId, FloatFunctionReference, FloatListFunctionId, FloatLocalId,
+        FunctionFunctionExpr, FunctionFunctionFunctionId, FunctionFunctionId,
+        FunctionFunctionLocalId, FunctionFunctionReference, FunctionId, FunctionListFunctionId,
+        FunctionType, IntExpr, IntFunctionExpr, IntFunctionFunctionId, IntFunctionId,
+        IntFunctionLocalId, IntFunctionReference, IntListFunctionId, IntListLocalId, IntLocalId,
+        ListExpr, ListFunctionExpr, ListFunctionFunctionId, ListFunctionId, ListFunctionReference,
+        ListListFunctionId, ListLocal, NilExpr, NilFunctionExpr, NilFunctionFunctionId,
+        NilFunctionId, NilFunctionLocalId, NilFunctionReference, NilListFunctionId,
+        RuntimeFunctionId, StringExpr, StringFunctionExpr, StringFunctionFunctionId,
+        StringFunctionId, StringFunctionLocalId, StringFunctionReference, StringListFunctionId,
+        TupleExpr, TupleFunctionExpr, TupleFunctionFunctionId, TupleFunctionId,
+        TupleFunctionLocalId, TupleFunctionReference, TupleListFunctionId, ValueType,
     };
     use num_bigint::BigInt;
 
@@ -1517,6 +1640,11 @@ mod tests {
             )
             .value_type(),
             ValueType::String,
+        );
+        assert_eq!(
+            ReturnExpr::bit_array(BitArrayFunctionId(0), BitArrayExpr::value(Vec::new()))
+                .value_type(),
+            ValueType::BitArray,
         );
         assert_eq!(
             ReturnExpr::float(FloatFunctionId(0), FloatExpr::value(1.0)).value_type(),
@@ -1574,6 +1702,19 @@ mod tests {
             )
             .value_type(),
             ValueType::Function(Box::new(FunctionType::new(Vec::new(), ValueType::String))),
+        );
+        assert_eq!(
+            ReturnExpr::bit_array_function(
+                BitArrayFunctionFunctionId(0),
+                BitArrayFunctionExpr::reference(BitArrayFunctionReference::new(
+                    BitArrayFunctionId(0),
+                    Vec::new(),
+                )),
+            )
+            .value_type(),
+            ValueType::Function(Box::new(
+                FunctionType::new(Vec::new(), ValueType::BitArray,)
+            )),
         );
         assert_eq!(
             ReturnExpr::float_function(
@@ -1691,6 +1832,18 @@ mod tests {
                 ListFunctionId::String(StringListFunctionId(2)),
             ),
             (
+                ReturnExpr::bit_array_list_body(
+                    BitArrayListFunctionId(9),
+                    BitArrayListReturn::expr(
+                        ListExpr::value(Vec::new(), ValueType::BitArray)
+                            .into_bit_array()
+                            .expect("expression should be List(BitArray)"),
+                    ),
+                ),
+                ValueType::BitArray,
+                ListFunctionId::BitArray(BitArrayListFunctionId(9)),
+            ),
+            (
                 ReturnExpr::float_list_body(
                     FloatListFunctionId(3),
                     FloatListReturn::expr(
@@ -1806,6 +1959,10 @@ mod tests {
                 RuntimeFunctionId::String(StringFunctionId(2)),
             ),
             (
+                ReturnExpr::bit_array(BitArrayFunctionId(11), BitArrayExpr::value(Vec::new())),
+                RuntimeFunctionId::BitArray(BitArrayFunctionId(11)),
+            ),
+            (
                 ReturnExpr::bool(BoolFunctionId(3), BoolExpr::value(true)),
                 RuntimeFunctionId::Bool(BoolFunctionId(3)),
             ),
@@ -1863,6 +2020,19 @@ mod tests {
                 RuntimeFunctionId::Function {
                     id: FunctionFunctionId::String(StringFunctionFunctionId(8)),
                     return_type: FunctionType::new(Vec::new(), ValueType::String),
+                },
+            ),
+            (
+                ReturnExpr::bit_array_function(
+                    BitArrayFunctionFunctionId(12),
+                    BitArrayFunctionExpr::reference(BitArrayFunctionReference::new(
+                        BitArrayFunctionId(0),
+                        Vec::new(),
+                    )),
+                ),
+                RuntimeFunctionId::Function {
+                    id: FunctionFunctionId::BitArray(BitArrayFunctionFunctionId(12)),
+                    return_type: FunctionType::new(Vec::new(), ValueType::BitArray),
                 },
             ),
             (
@@ -2124,6 +2294,19 @@ mod tests {
             )),
         );
 
+        let bit_array = ListExpr::value(
+            vec![crate::plan::Expr::bit_array(
+                BitArrayExpr::value(Vec::new()),
+            )],
+            ValueType::BitArray,
+        );
+        assert_eq!(
+            ListReturn::expr(bit_array.clone()),
+            ListReturn::BitArray(BitArrayListReturn::expr(
+                bit_array.into_bit_array().expect("bit array list"),
+            )),
+        );
+
         let bool_ = ListExpr::value(
             vec![crate::plan::Expr::bool(BoolExpr::value(true))],
             ValueType::Bool,
@@ -2208,6 +2391,16 @@ mod tests {
             ListReturn::tail_call(ListFunctionId::String(StringListFunctionId(0)), Vec::new()),
             ListReturn::String(StringListReturn::tail_call(
                 StringListFunctionId(0),
+                Vec::new(),
+            )),
+        );
+        assert_eq!(
+            ListReturn::tail_call(
+                ListFunctionId::BitArray(BitArrayListFunctionId(0)),
+                Vec::new(),
+            ),
+            ListReturn::BitArray(BitArrayListReturn::tail_call(
+                BitArrayListFunctionId(0),
                 Vec::new(),
             )),
         );
@@ -2516,6 +2709,7 @@ mod tests {
             ValueType::Int,
             ValueType::Float,
             ValueType::String,
+            ValueType::BitArray,
             ValueType::Bool,
             ValueType::Nil,
             ValueType::Tuple(vec![ValueType::Int]),
@@ -2583,6 +2777,7 @@ mod tests {
             ValueType::Int,
             ValueType::Float,
             ValueType::String,
+            ValueType::BitArray,
             ValueType::Bool,
             ValueType::Nil,
             ValueType::Tuple(vec![ValueType::Int]),
@@ -2684,6 +2879,7 @@ mod tests {
             ListReturn::Int(_) => ValueType::Int,
             ListReturn::Float(_) => ValueType::Float,
             ListReturn::String(_) => ValueType::String,
+            ListReturn::BitArray(_) => ValueType::BitArray,
             ListReturn::Bool(_) => ValueType::Bool,
             ListReturn::Nil(_) => ValueType::Nil,
             ListReturn::Tuple { item_type, .. } => ValueType::Tuple(item_type.clone()),

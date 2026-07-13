@@ -2,31 +2,34 @@ use super::bind::bind_arguments;
 use super::steps::execute_steps;
 use crate::plan::execution::ExecutionPlan;
 use crate::plan::execution::{
-    BoolFunctionFunctionId, BoolFunctionId, BoolListFunctionId, CallArg, FloatFunctionFunctionId,
-    FloatFunctionId, FloatListFunctionId, FunctionFunctionFunctionId, FunctionListFunctionId,
-    IntFunctionFunctionId, IntFunctionId, IntListFunctionId, ListFunctionFunctionId,
-    ListFunctionId, ListListFunctionId, NilFunctionFunctionId, NilFunctionId, NilListFunctionId,
-    ReturnBody, ReturnBodyKind, StringFunctionFunctionId, StringFunctionId, StringListFunctionId,
-    TupleFunctionFunctionId, TupleFunctionId, TupleListFunctionId,
+    BitArrayFunctionFunctionId, BitArrayFunctionId, BitArrayListFunctionId, BoolFunctionFunctionId,
+    BoolFunctionId, BoolListFunctionId, CallArg, FloatFunctionFunctionId, FloatFunctionId,
+    FloatListFunctionId, FunctionFunctionFunctionId, FunctionListFunctionId, IntFunctionFunctionId,
+    IntFunctionId, IntListFunctionId, ListFunctionFunctionId, ListFunctionId, ListListFunctionId,
+    NilFunctionFunctionId, NilFunctionId, NilListFunctionId, ReturnBody, ReturnBodyKind,
+    StringFunctionFunctionId, StringFunctionId, StringListFunctionId, TupleFunctionFunctionId,
+    TupleFunctionId, TupleListFunctionId,
 };
 use crate::runtime::error::ExecutionResult;
 use crate::runtime::expression::{
-    eval_bool_expr, eval_bool_function_expr, eval_bool_list_expr, eval_float_expr,
-    eval_float_function_expr, eval_float_list_expr, eval_function_function_expr,
-    eval_function_list_expr, eval_int_expr, eval_int_function_expr, eval_int_list_expr,
-    eval_list_function_expr, eval_list_list_expr, eval_nil_expr, eval_nil_function_expr,
-    eval_nil_list_expr, eval_string_expr, eval_string_function_expr, eval_string_list_expr,
-    eval_tuple_expr, eval_tuple_function_expr, eval_tuple_list_expr,
+    eval_bit_array_expr, eval_bit_array_function_expr, eval_bit_array_list_expr, eval_bool_expr,
+    eval_bool_function_expr, eval_bool_list_expr, eval_float_expr, eval_float_function_expr,
+    eval_float_list_expr, eval_function_function_expr, eval_function_list_expr, eval_int_expr,
+    eval_int_function_expr, eval_int_list_expr, eval_list_function_expr, eval_list_list_expr,
+    eval_nil_expr, eval_nil_function_expr, eval_nil_list_expr, eval_string_expr,
+    eval_string_function_expr, eval_string_list_expr, eval_tuple_expr, eval_tuple_function_expr,
+    eval_tuple_list_expr,
 };
 use crate::runtime::frame::Frame;
 use crate::runtime::state::{
-    BoolListValueId, FloatListValueId, FunctionListValueId, IntListValueId, ListListValueId,
-    ListValueId, NilListValueId, RuntimeState, StringListValueId, TupleListValueId,
+    BitArrayListValueId, BoolListValueId, FloatListValueId, FunctionListValueId, IntListValueId,
+    ListListValueId, ListValueId, NilListValueId, RuntimeState, StringListValueId,
+    TupleListValueId,
 };
 use crate::runtime::{
-    EvaluatedBoolFunction, EvaluatedFloatFunction, EvaluatedFunctionFunction, EvaluatedIntFunction,
-    EvaluatedListFunction, EvaluatedNilFunction, EvaluatedStringFunction, EvaluatedTupleFunction,
-    EvaluatedValue,
+    EvaluatedBitArray, EvaluatedBitArrayFunction, EvaluatedBoolFunction, EvaluatedFloatFunction,
+    EvaluatedFunctionFunction, EvaluatedIntFunction, EvaluatedListFunction, EvaluatedNilFunction,
+    EvaluatedStringFunction, EvaluatedTupleFunction, EvaluatedValue,
 };
 use ecow::EcoString;
 use num_bigint::BigInt;
@@ -217,6 +220,36 @@ pub(super) fn run_string_loop(
     }
 }
 
+pub(super) fn run_bit_array_loop(
+    plan: &ExecutionPlan,
+    state: &mut RuntimeState,
+    mut function: BitArrayFunctionId,
+    mut frame: Frame,
+) -> ExecutionResult<EvaluatedBitArray> {
+    loop {
+        let runtime_function = plan.bit_array_function(function);
+        execute_steps(plan, state, runtime_function.steps(), &mut frame)?;
+        let outcome = eval_return_body(
+            plan,
+            state,
+            &mut frame,
+            runtime_function.return_(),
+            eval_bit_array_expr,
+        )?;
+        match outcome {
+            ReturnOutcome::Value(value) => return finish_return(state, frame, value),
+            ReturnOutcome::TailCall {
+                function: next,
+                args,
+            } => {
+                let frame_layout = plan.bit_array_function(next).frame_layout();
+                frame = bind_tail_arguments(plan, state, args, frame, frame_layout)?;
+                function = next;
+            }
+        }
+    }
+}
+
 pub(super) fn run_bool_loop(
     plan: &ExecutionPlan,
     state: &mut RuntimeState,
@@ -305,6 +338,9 @@ pub(super) fn run_list_loop(
         ListFunctionId::String(function) => {
             run_string_list_loop(plan, state, function, frame).map(Into::into)
         }
+        ListFunctionId::BitArray(function) => {
+            run_bit_array_list_loop(plan, state, function, frame).map(Into::into)
+        }
         ListFunctionId::Float(function) => {
             run_float_list_loop(plan, state, function, frame).map(Into::into)
         }
@@ -379,6 +415,36 @@ pub(super) fn run_string_list_loop(
                 args,
             } => {
                 let frame_layout = plan.string_list_function(next).frame_layout();
+                frame = bind_tail_arguments(plan, state, args, frame, frame_layout)?;
+                function = next;
+            }
+        }
+    }
+}
+
+pub(super) fn run_bit_array_list_loop(
+    plan: &ExecutionPlan,
+    state: &mut RuntimeState,
+    mut function: BitArrayListFunctionId,
+    mut frame: Frame,
+) -> ExecutionResult<BitArrayListValueId> {
+    loop {
+        let runtime_function = plan.bit_array_list_function(function);
+        execute_steps(plan, state, runtime_function.steps(), &mut frame)?;
+        let outcome = eval_return_body(
+            plan,
+            state,
+            &mut frame,
+            runtime_function.return_(),
+            eval_bit_array_list_expr,
+        )?;
+        match outcome {
+            ReturnOutcome::Value(value) => return finish_return(state, frame, value),
+            ReturnOutcome::TailCall {
+                function: next,
+                args,
+            } => {
+                let frame_layout = plan.bit_array_list_function(next).frame_layout();
                 frame = bind_tail_arguments(plan, state, args, frame, frame_layout)?;
                 function = next;
             }
@@ -634,6 +700,36 @@ pub(super) fn run_string_function_loop(
                 args,
             } => {
                 let frame_layout = plan.string_function_function(next).frame_layout();
+                frame = bind_tail_arguments(plan, state, args, frame, frame_layout)?;
+                function = next;
+            }
+        }
+    }
+}
+
+pub(super) fn run_bit_array_function_loop(
+    plan: &ExecutionPlan,
+    state: &mut RuntimeState,
+    mut function: BitArrayFunctionFunctionId,
+    mut frame: Frame,
+) -> ExecutionResult<EvaluatedBitArrayFunction> {
+    loop {
+        let runtime_function = plan.bit_array_function_function(function);
+        execute_steps(plan, state, runtime_function.steps(), &mut frame)?;
+        let outcome = eval_return_body(
+            plan,
+            state,
+            &mut frame,
+            runtime_function.return_(),
+            eval_bit_array_function_expr,
+        )?;
+        match outcome {
+            ReturnOutcome::Value(value) => return finish_return(state, frame, value),
+            ReturnOutcome::TailCall {
+                function: next,
+                args,
+            } => {
+                let frame_layout = plan.bit_array_function_function(next).frame_layout();
                 frame = bind_tail_arguments(plan, state, args, frame, frame_layout)?;
                 function = next;
             }
@@ -918,12 +1014,14 @@ mod tests {
         let return_shapes = [
             ("Int", "0"),
             ("String", "\"\""),
+            ("BitArray", "<<>>"),
             ("Float", "0.0"),
             ("Bool", "False"),
             ("Nil", "Nil"),
             ("#(Int)", "#(0)"),
             ("List(Int)", "[]"),
             ("List(String)", "[]"),
+            ("List(BitArray)", "[]"),
             ("List(Float)", "[]"),
             ("List(Bool)", "[]"),
             ("List(Nil)", "[]"),
@@ -932,6 +1030,7 @@ mod tests {
             ("List(fn() -> Int)", "[]"),
             ("fn() -> Int", "fn() { 0 }"),
             ("fn() -> String", "fn() { \"\" }"),
+            ("fn() -> BitArray", "fn() { <<>> }"),
             ("fn() -> Float", "fn() { 0.0 }"),
             ("fn() -> Bool", "fn() { False }"),
             ("fn() -> Nil", "fn() { Nil }"),
@@ -957,12 +1056,14 @@ mod tests {
         let return_types = [
             "Int",
             "String",
+            "BitArray",
             "Float",
             "Bool",
             "Nil",
             "#(Int)",
             "List(Int)",
             "List(String)",
+            "List(BitArray)",
             "List(Float)",
             "List(Bool)",
             "List(Nil)",
@@ -971,6 +1072,7 @@ mod tests {
             "List(fn() -> Int)",
             "fn() -> Int",
             "fn() -> String",
+            "fn() -> BitArray",
             "fn() -> Float",
             "fn() -> Bool",
             "fn() -> Nil",

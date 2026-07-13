@@ -49,6 +49,8 @@ pub enum InvalidFunctionShapeReason {
 
 #[derive(Debug, Error, Clone, Copy, PartialEq, Eq)]
 pub enum InvalidExpressionShapeKind {
+    #[error("bit array segment option")]
+    BitArraySegmentOption,
     #[error("invalid")]
     Invalid,
     #[error("function capture literal")]
@@ -75,6 +77,8 @@ pub enum InvalidExpressionType {
     Int,
     #[error("String")]
     String,
+    #[error("BitArray")]
+    BitArray,
     #[error("Float")]
     Float,
     #[error("Bool")]

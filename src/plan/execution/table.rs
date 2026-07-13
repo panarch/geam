@@ -1,15 +1,16 @@
 use super::function::ExecutableFunction;
 use super::{
-    BoolFunctionFunctionId, BoolFunctionId, BoolFunctionReturn, BoolListFunctionId, BoolListReturn,
-    BoolReturn, FloatFunctionFunctionId, FloatFunctionId, FloatFunctionReturn, FloatListFunctionId,
-    FloatListReturn, FloatReturn, FunctionFunctionFunctionId, FunctionFunctionReturn,
-    FunctionListFunctionId, FunctionListReturn, IntFunctionFunctionId, IntFunctionId,
-    IntFunctionReturn, IntListFunctionId, IntListReturn, IntReturn, ListFunctionFunctionId,
-    ListFunctionReturn, ListListFunctionId, ListListReturn, NilFunctionFunctionId, NilFunctionId,
-    NilFunctionReturn, NilListFunctionId, NilListReturn, NilReturn, StringFunctionFunctionId,
-    StringFunctionId, StringFunctionReturn, StringListFunctionId, StringListReturn, StringReturn,
-    TupleFunctionFunctionId, TupleFunctionId, TupleFunctionReturn, TupleListFunctionId,
-    TupleListReturn, TupleReturn,
+    BitArrayFunctionFunctionId, BitArrayFunctionId, BitArrayFunctionReturn, BitArrayListFunctionId,
+    BitArrayListReturn, BitArrayReturn, BoolFunctionFunctionId, BoolFunctionId, BoolFunctionReturn,
+    BoolListFunctionId, BoolListReturn, BoolReturn, FloatFunctionFunctionId, FloatFunctionId,
+    FloatFunctionReturn, FloatListFunctionId, FloatListReturn, FloatReturn,
+    FunctionFunctionFunctionId, FunctionFunctionReturn, FunctionListFunctionId, FunctionListReturn,
+    IntFunctionFunctionId, IntFunctionId, IntFunctionReturn, IntListFunctionId, IntListReturn,
+    IntReturn, ListFunctionFunctionId, ListFunctionReturn, ListListFunctionId, ListListReturn,
+    NilFunctionFunctionId, NilFunctionId, NilFunctionReturn, NilListFunctionId, NilListReturn,
+    NilReturn, StringFunctionFunctionId, StringFunctionId, StringFunctionReturn,
+    StringListFunctionId, StringListReturn, StringReturn, TupleFunctionFunctionId, TupleFunctionId,
+    TupleFunctionReturn, TupleListFunctionId, TupleListReturn, TupleReturn,
 };
 
 #[cfg(test)]
@@ -19,12 +20,17 @@ pub(super) struct FunctionTables {
     pub(super) int_functions: Vec<ExecutableFunction<IntReturn>>,
     pub(super) float_functions: Vec<ExecutableFunction<FloatReturn>>,
     pub(super) string_functions: Vec<ExecutableFunction<StringReturn>>,
+    pub(super) bit_array_functions: Vec<ExecutableFunction<BitArrayReturn>>,
     pub(super) bool_functions: Vec<ExecutableFunction<BoolReturn>>,
     pub(super) nil_functions: Vec<ExecutableFunction<NilReturn>>,
     pub(super) tuple_functions: Vec<ExecutableFunction<TupleReturn>>,
     pub(super) int_list_functions: Vec<(IntListFunctionId, ExecutableFunction<IntListReturn>)>,
     pub(super) string_list_functions:
         Vec<(StringListFunctionId, ExecutableFunction<StringListReturn>)>,
+    pub(super) bit_array_list_functions: Vec<(
+        BitArrayListFunctionId,
+        ExecutableFunction<BitArrayListReturn>,
+    )>,
     pub(super) float_list_functions:
         Vec<(FloatListFunctionId, ExecutableFunction<FloatListReturn>)>,
     pub(super) bool_list_functions: Vec<(BoolListFunctionId, ExecutableFunction<BoolListReturn>)>,
@@ -39,11 +45,13 @@ pub(super) struct FunctionTables {
     pub(super) int_function_functions: Vec<ExecutableFunction<IntFunctionReturn>>,
     pub(super) float_function_functions: Vec<ExecutableFunction<FloatFunctionReturn>>,
     pub(super) string_function_functions: Vec<ExecutableFunction<StringFunctionReturn>>,
+    pub(super) bit_array_function_functions: Vec<ExecutableFunction<BitArrayFunctionReturn>>,
     pub(super) bool_function_functions: Vec<ExecutableFunction<BoolFunctionReturn>>,
     pub(super) nil_function_functions: Vec<ExecutableFunction<NilFunctionReturn>>,
     pub(super) tuple_function_functions: Vec<ExecutableFunction<TupleFunctionReturn>>,
     pub(super) int_list_function_functions: Vec<ExecutableFunction<ListFunctionReturn>>,
     pub(super) string_list_function_functions: Vec<ExecutableFunction<ListFunctionReturn>>,
+    pub(super) bit_array_list_function_functions: Vec<ExecutableFunction<ListFunctionReturn>>,
     pub(super) float_list_function_functions: Vec<ExecutableFunction<ListFunctionReturn>>,
     pub(super) bool_list_function_functions: Vec<ExecutableFunction<ListFunctionReturn>>,
     pub(super) nil_list_function_functions: Vec<ExecutableFunction<ListFunctionReturn>>,
@@ -62,6 +70,11 @@ impl FunctionTables {
     #[cfg(test)]
     pub(super) fn string_list_function_id(&self, index: usize) -> StringListFunctionId {
         self.string_list_functions[index].0
+    }
+
+    #[cfg(test)]
+    pub(super) fn bit_array_list_function_id(&self, index: usize) -> BitArrayListFunctionId {
+        self.bit_array_list_functions[index].0
     }
 
     #[cfg(test)]
@@ -117,6 +130,13 @@ impl FunctionTables {
         &self.string_functions[id.0]
     }
 
+    pub(super) fn bit_array_function(
+        &self,
+        id: BitArrayFunctionId,
+    ) -> &ExecutableFunction<BitArrayReturn> {
+        &self.bit_array_functions[id.0]
+    }
+
     pub(super) fn bool_function(&self, id: BoolFunctionId) -> &ExecutableFunction<BoolReturn> {
         &self.bool_functions[id.0]
     }
@@ -141,6 +161,13 @@ impl FunctionTables {
         id: StringListFunctionId,
     ) -> &ExecutableFunction<StringListReturn> {
         &self.string_list_functions[id.index()].1
+    }
+
+    pub(super) fn bit_array_list_function(
+        &self,
+        id: BitArrayListFunctionId,
+    ) -> &ExecutableFunction<BitArrayListReturn> {
+        &self.bit_array_list_functions[id.index()].1
     }
 
     pub(super) fn float_list_function(
@@ -206,6 +233,13 @@ impl FunctionTables {
         &self.string_function_functions[id.0]
     }
 
+    pub(super) fn bit_array_function_function(
+        &self,
+        id: BitArrayFunctionFunctionId,
+    ) -> &ExecutableFunction<BitArrayFunctionReturn> {
+        &self.bit_array_function_functions[id.0]
+    }
+
     pub(super) fn bool_function_function(
         &self,
         id: BoolFunctionFunctionId,
@@ -234,6 +268,9 @@ impl FunctionTables {
         match id {
             ListFunctionFunctionId::Int { id, .. } => &self.int_list_function_functions[id.0],
             ListFunctionFunctionId::String { id, .. } => &self.string_list_function_functions[id.0],
+            ListFunctionFunctionId::BitArray { id, .. } => {
+                &self.bit_array_list_function_functions[id.0]
+            }
             ListFunctionFunctionId::Float { id, .. } => &self.float_list_function_functions[id.0],
             ListFunctionFunctionId::Bool { id, .. } => &self.bool_list_function_functions[id.0],
             ListFunctionFunctionId::Nil { id, .. } => &self.nil_list_function_functions[id.0],

@@ -177,10 +177,19 @@ fn collect_expr(expression: &TypedExpr, bound: &mut HashSet<EcoString>, free: &m
                 collect_expr(message, bound, free);
             }
         }
+        TypedExpr::BitArray { segments, .. } => {
+            for segment in segments {
+                collect_expr(segment.value.as_ref(), bound, free);
+                for option in &segment.options {
+                    if let gleam_core::ast::BitArrayOption::Size { value, .. } = option {
+                        collect_expr(value.as_ref(), bound, free);
+                    }
+                }
+            }
+        }
         TypedExpr::RecordAccess { .. }
         | TypedExpr::PositionalAccess { .. }
         | TypedExpr::Echo { .. }
-        | TypedExpr::BitArray { .. }
         | TypedExpr::RecordUpdate { .. }
         | TypedExpr::ModuleSelect { .. } => {}
     }
@@ -445,6 +454,23 @@ pub fn main() {
 "#,
             ),
             vec!["threshold".to_string()],
+        );
+    }
+
+    #[test]
+    fn anonymous_free_variables_include_bit_array_segment_value_and_size() {
+        assert_eq!(
+            anonymous_function_free_variables(
+                r#"
+pub fn main() {
+  let value = 1
+  let size = 8
+  fn() { <<value:size(size)>> }
+  1
+}
+"#,
+            ),
+            vec!["value".to_string(), "size".to_string()],
         );
     }
 

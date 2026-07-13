@@ -2,23 +2,23 @@ use ecow::EcoString;
 use num_bigint::BigInt;
 
 use super::{
-    eval_bool_expr, eval_float_expr, eval_function_expr, eval_int_expr, eval_nil_expr,
-    eval_panic_expr, eval_string_expr, eval_tuple_expr, project_tuple_expr,
+    eval_bit_array_expr, eval_bool_expr, eval_float_expr, eval_function_expr, eval_int_expr,
+    eval_nil_expr, eval_panic_expr, eval_string_expr, eval_tuple_expr, project_tuple_expr,
 };
 use crate::plan::execution::{
-    BoolListExpr, BoolListItem, ExecutionPlan, FloatListExpr, FloatListItem, FunctionListExpr,
-    FunctionListItem, IntListExpr, IntListItem, ListExpr, ListItem, ListListExpr, ListListItem,
-    NilListExpr, NilListItem, StringListExpr, StringListItem, TupleListExpr, TupleListItem,
-    TypedListExpr, TypedListExprKind,
+    BitArrayListExpr, BitArrayListItem, BoolListExpr, BoolListItem, ExecutionPlan, FloatListExpr,
+    FloatListItem, FunctionListExpr, FunctionListItem, IntListExpr, IntListItem, ListExpr,
+    ListItem, ListListExpr, ListListItem, NilListExpr, NilListItem, StringListExpr, StringListItem,
+    TupleListExpr, TupleListItem, TypedListExpr, TypedListExprKind,
 };
 use crate::plan::{FunctionType, ValueType};
 use crate::runtime::ExecutionError;
-use crate::runtime::evaluated::{EvaluatedFunctionValue, EvaluatedValue};
+use crate::runtime::evaluated::{EvaluatedBitArray, EvaluatedFunctionValue, EvaluatedValue};
 use crate::runtime::frame::Frame;
 use crate::runtime::function;
 use crate::runtime::state::{
-    BoolListValueId, FloatListValueId, FunctionListValueId, IntListValueId, ListHandleCore,
-    ListListValueId, ListValueId, NilListValueId, RuntimeState, StringListValueId,
+    BitArrayListValueId, BoolListValueId, FloatListValueId, FunctionListValueId, IntListValueId,
+    ListHandleCore, ListListValueId, ListValueId, NilListValueId, RuntimeState, StringListValueId,
     TupleListValueId,
 };
 
@@ -34,6 +34,9 @@ pub(in crate::runtime) fn eval_list_expr(
         }
         ListExpr::String(expression) => {
             eval_string_list_expr(plan, state, frame, expression).map(Into::into)
+        }
+        ListExpr::BitArray(expression) => {
+            eval_bit_array_list_expr(plan, state, frame, expression).map(Into::into)
         }
         ListExpr::Float(expression) => {
             eval_float_list_expr(plan, state, frame, expression).map(Into::into)
@@ -71,6 +74,15 @@ pub(in crate::runtime) fn eval_string_list_expr(
     frame: &mut Frame,
     expression: &StringListExpr,
 ) -> Result<StringListValueId, ExecutionError> {
+    eval_typed_list_expr(plan, state, frame, expression)
+}
+
+pub(in crate::runtime) fn eval_bit_array_list_expr(
+    plan: &ExecutionPlan,
+    state: &mut RuntimeState,
+    frame: &mut Frame,
+    expression: &BitArrayListExpr,
+) -> Result<BitArrayListValueId, ExecutionError> {
     eval_typed_list_expr(plan, state, frame, expression)
 }
 
@@ -407,6 +419,18 @@ primitive_runtime_list_item!(
     run_string_list_function_call
 );
 primitive_runtime_list_item!(
+    BitArrayListItem,
+    EvaluatedBitArray,
+    BitArrayListValueId,
+    BitArray,
+    eval_bit_array_expr,
+    bit_array_values,
+    bit_array,
+    get_bit_array_list,
+    run_bit_array_list_call,
+    run_bit_array_list_function_call
+);
+primitive_runtime_list_item!(
     FloatListItem,
     f64,
     FloatListValueId,
@@ -699,6 +723,9 @@ pub(in crate::runtime) fn get_list_value(
         crate::plan::execution::ListLocal::String { local, .. } => {
             frame.get_string_list(*local).into()
         }
+        crate::plan::execution::ListLocal::BitArray { local, .. } => {
+            frame.get_bit_array_list(*local).into()
+        }
         crate::plan::execution::ListLocal::Float { local, .. } => {
             frame.get_float_list(*local).into()
         }
@@ -753,6 +780,15 @@ project_primitive_list!(
     eval_string_list_expr,
     string_values,
     ValueType::String,
+    cloned
+);
+project_primitive_list!(
+    project_bit_array_list_expr,
+    BitArrayListExpr,
+    EvaluatedBitArray,
+    eval_bit_array_list_expr,
+    bit_array_values,
+    ValueType::BitArray,
     cloned
 );
 project_primitive_list!(
@@ -979,6 +1015,7 @@ pub fn main() { Nil }
             r#"
 fn first_int(values: List(List(Int))) -> List(Int) { case values { [first, ..] -> first _ -> [] } }
 fn first_string(values: List(List(String))) -> List(String) { case values { [first, ..] -> first _ -> [] } }
+fn first_bit_array(values: List(List(BitArray))) -> List(BitArray) { case values { [first, ..] -> first _ -> [] } }
 fn first_float(values: List(List(Float))) -> List(Float) { case values { [first, ..] -> first _ -> [] } }
 fn first_bool(values: List(List(Bool))) -> List(Bool) { case values { [first, ..] -> first _ -> [] } }
 fn first_nil(values: List(List(Nil))) -> List(Nil) { case values { [first, ..] -> first _ -> [] } }
@@ -991,6 +1028,15 @@ pub fn main() { Nil }
         let mut state = RuntimeState::new();
 
         let function = plan.int_list_function(plan.int_list_function_id(0));
+        let mut frame = Frame::new(function.frame_layout(), &mut state);
+        assert_nested_list_out_of_bounds(
+            &plan,
+            &mut state,
+            &mut frame,
+            expect_nested_list_binding(function.return_()),
+        );
+
+        let function = plan.bit_array_list_function(plan.bit_array_list_function_id(0));
         let mut frame = Frame::new(function.frame_layout(), &mut state);
         assert_nested_list_out_of_bounds(
             &plan,
@@ -1396,6 +1442,14 @@ pub fn main() { Nil }
                 super::eval_string_list_expr(plan, state, frame, value),
                 Err(ExecutionError::ListIndexOutOfBounds {
                     item_type: ValueType::List(Box::new(ValueType::String)),
+                    index: 0,
+                    length: 0,
+                }),
+            ),
+            crate::plan::execution::ListLocalExpr::BitArray { value, .. } => assert_eq!(
+                super::eval_bit_array_list_expr(plan, state, frame, value),
+                Err(ExecutionError::ListIndexOutOfBounds {
+                    item_type: ValueType::List(Box::new(ValueType::BitArray)),
                     index: 0,
                     length: 0,
                 }),

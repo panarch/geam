@@ -222,12 +222,13 @@ pub(super) fn plan_list_case_pattern(
             right_side_assignment,
         ),
         Pattern::Invalid { .. } => Err(invalid_case_shape(InvalidCaseShapeReason::InvalidPattern)),
+        Pattern::BitArraySize(_) | Pattern::BitArray { .. } => {
+            super::unsupported_bit_array_pattern()
+        }
         Pattern::Int { .. }
         | Pattern::Float { .. }
         | Pattern::String { .. }
         | Pattern::Constructor { .. }
-        | Pattern::BitArraySize(_)
-        | Pattern::BitArray { .. }
         | Pattern::StringPrefix { .. } => Err(invalid_case_shape(
             InvalidCaseShapeReason::PatternTypeMismatch,
         )),
@@ -1115,7 +1116,10 @@ pub fn main() {
                     location: dummy_span(),
                     elements: Vec::new(),
                     tail: None,
-                    type_: gleam_core::type_::bit_array(),
+                    type_: gleam_core::type_::list(gleam_core::type_::result(
+                        gleam_core::type_::int(),
+                        gleam_core::type_::nil(),
+                    )),
                 },
                 list_subject.clone(),
                 list_type.clone(),

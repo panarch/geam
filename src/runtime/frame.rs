@@ -1,18 +1,19 @@
 use crate::plan::execution::{
-    BoolFunctionLocalId, BoolListLocalId, BoolLocalId, FloatFunctionLocalId, FloatListLocalId,
-    FloatLocalId, FrameLayout, FunctionFunctionLocalId, FunctionListLocalId, IntFunctionLocalId,
-    IntListLocalId, IntLocalId, ListFunctionLocal, ListListLocalId, NilFunctionLocalId,
-    NilListLocalId, NilLocalId, StringFunctionLocalId, StringListLocalId, StringLocalId,
-    TupleFunctionLocalId, TupleListLocalId, TupleLocalId,
+    BitArrayFunctionLocalId, BitArrayListLocalId, BitArrayLocalId, BoolFunctionLocalId,
+    BoolListLocalId, BoolLocalId, FloatFunctionLocalId, FloatListLocalId, FloatLocalId,
+    FrameLayout, FunctionFunctionLocalId, FunctionListLocalId, IntFunctionLocalId, IntListLocalId,
+    IntLocalId, ListFunctionLocal, ListListLocalId, NilFunctionLocalId, NilListLocalId, NilLocalId,
+    StringFunctionLocalId, StringListLocalId, StringLocalId, TupleFunctionLocalId,
+    TupleListLocalId, TupleLocalId,
 };
 use crate::runtime::evaluated::{
-    EvaluatedBoolFunction, EvaluatedFloatFunction, EvaluatedFunctionFunction, EvaluatedIntFunction,
-    EvaluatedListFunction, EvaluatedNilFunction, EvaluatedStringFunction, EvaluatedTupleFunction,
-    EvaluatedValue,
+    EvaluatedBitArray, EvaluatedBitArrayFunction, EvaluatedBoolFunction, EvaluatedFloatFunction,
+    EvaluatedFunctionFunction, EvaluatedIntFunction, EvaluatedListFunction, EvaluatedNilFunction,
+    EvaluatedStringFunction, EvaluatedTupleFunction, EvaluatedValue,
 };
 use crate::runtime::state::{
-    BoolListValueId, FloatListValueId, FunctionListValueId, IntListValueId, ListListValueId,
-    NilListValueId, RuntimeState, StringListValueId, TupleListValueId,
+    BitArrayListValueId, BoolListValueId, FloatListValueId, FunctionListValueId, IntListValueId,
+    ListListValueId, NilListValueId, RuntimeState, StringListValueId, TupleListValueId,
 };
 use ecow::EcoString;
 use num_bigint::BigInt;
@@ -22,10 +23,12 @@ pub(super) struct Frame {
     ints: Vec<BigInt>,
     floats: Vec<f64>,
     strings: Vec<EcoString>,
+    bit_arrays: Vec<EvaluatedBitArray>,
     bools: Vec<bool>,
     tuples: Vec<Vec<EvaluatedValue>>,
     int_lists: Vec<IntListValueId>,
     string_lists: Vec<StringListValueId>,
+    bit_array_lists: Vec<BitArrayListValueId>,
     float_lists: Vec<FloatListValueId>,
     bool_lists: Vec<BoolListValueId>,
     nil_lists: Vec<NilListValueId>,
@@ -35,6 +38,7 @@ pub(super) struct Frame {
     int_functions: HashMap<IntFunctionLocalId, EvaluatedIntFunction>,
     float_functions: HashMap<FloatFunctionLocalId, EvaluatedFloatFunction>,
     string_functions: HashMap<StringFunctionLocalId, EvaluatedStringFunction>,
+    bit_array_functions: HashMap<BitArrayFunctionLocalId, EvaluatedBitArrayFunction>,
     bool_functions: HashMap<BoolFunctionLocalId, EvaluatedBoolFunction>,
     nil_functions: HashMap<NilFunctionLocalId, EvaluatedNilFunction>,
     tuple_functions: HashMap<TupleFunctionLocalId, EvaluatedTupleFunction>,
@@ -48,6 +52,7 @@ impl Frame {
             ints: vec![BigInt::from(0); layout.ints()],
             floats: vec![0.0; layout.floats()],
             strings: vec![EcoString::default(); layout.strings()],
+            bit_arrays: vec![EvaluatedBitArray::new(Default::default()); layout.bit_arrays()],
             bools: vec![false; layout.bools()],
             tuples: vec![Vec::new(); layout.tuples()],
             int_lists: layout
@@ -59,6 +64,11 @@ impl Frame {
                 .string_lists()
                 .iter()
                 .map(|type_id| state.string(*type_id, Vec::new()))
+                .collect(),
+            bit_array_lists: layout
+                .bit_array_lists()
+                .iter()
+                .map(|type_id| state.bit_array(*type_id, Vec::new()))
                 .collect(),
             float_lists: layout
                 .float_lists()
@@ -93,6 +103,7 @@ impl Frame {
             int_functions: HashMap::with_capacity(layout.int_functions()),
             float_functions: HashMap::with_capacity(layout.float_functions()),
             string_functions: HashMap::with_capacity(layout.string_functions()),
+            bit_array_functions: HashMap::with_capacity(layout.bit_array_functions()),
             bool_functions: HashMap::with_capacity(layout.bool_functions()),
             nil_functions: HashMap::with_capacity(layout.nil_functions()),
             tuple_functions: HashMap::with_capacity(layout.tuple_functions()),
@@ -123,6 +134,14 @@ impl Frame {
 
     pub(super) fn get_string(&self, local: StringLocalId) -> EcoString {
         self.strings[local.0].clone()
+    }
+
+    pub(super) fn set_bit_array(&mut self, local: BitArrayLocalId, value: EvaluatedBitArray) {
+        set_slot(&mut self.bit_arrays, local.0, value);
+    }
+
+    pub(super) fn get_bit_array(&self, local: BitArrayLocalId) -> EvaluatedBitArray {
+        self.bit_arrays[local.0].clone()
     }
 
     pub(super) fn set_bool(&mut self, local: BoolLocalId, value: bool) {
@@ -159,6 +178,18 @@ impl Frame {
 
     pub(super) fn get_string_list(&self, local: StringListLocalId) -> StringListValueId {
         self.string_lists[local.0].clone()
+    }
+
+    pub(super) fn set_bit_array_list(
+        &mut self,
+        local: BitArrayListLocalId,
+        value: BitArrayListValueId,
+    ) {
+        set_slot(&mut self.bit_array_lists, local.0, value);
+    }
+
+    pub(super) fn get_bit_array_list(&self, local: BitArrayListLocalId) -> BitArrayListValueId {
+        self.bit_array_lists[local.0].clone()
     }
 
     pub(super) fn set_float_list(&mut self, local: FloatListLocalId, value: FloatListValueId) {
@@ -250,6 +281,21 @@ impl Frame {
         local: StringFunctionLocalId,
     ) -> EvaluatedStringFunction {
         self.string_functions[&local].clone()
+    }
+
+    pub(super) fn set_bit_array_function(
+        &mut self,
+        local: BitArrayFunctionLocalId,
+        value: EvaluatedBitArrayFunction,
+    ) {
+        self.bit_array_functions.insert(local, value);
+    }
+
+    pub(super) fn get_bit_array_function(
+        &self,
+        local: BitArrayFunctionLocalId,
+    ) -> EvaluatedBitArrayFunction {
+        self.bit_array_functions[&local].clone()
     }
 
     pub(super) fn set_bool_function(

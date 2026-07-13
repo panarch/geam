@@ -4,8 +4,8 @@ mod typed;
 
 pub(crate) use self::{
     item::{
-        BoolListItem, FloatListItem, FunctionListItem, IntListItem, ListItem, ListListItem,
-        NilListItem, StringListItem, TupleListItem,
+        BitArrayListItem, BoolListItem, FloatListItem, FunctionListItem, IntListItem, ListItem,
+        ListListItem, NilListItem, StringListItem, TupleListItem,
     },
     local::ListLocalExpr,
     typed::{ListIndexSource, TypedListExpr, TypedListExprKind},
@@ -14,6 +14,7 @@ pub(crate) use self::{
 pub(crate) enum ListExpr {
     Int(IntListExpr),
     String(StringListExpr),
+    BitArray(BitArrayListExpr),
     Float(FloatListExpr),
     Bool(BoolListExpr),
     Nil(NilListExpr),
@@ -24,6 +25,7 @@ pub(crate) enum ListExpr {
 
 pub(crate) type IntListExpr = TypedListExpr<IntListItem>;
 pub(crate) type StringListExpr = TypedListExpr<StringListItem>;
+pub(crate) type BitArrayListExpr = TypedListExpr<BitArrayListItem>;
 pub(crate) type FloatListExpr = TypedListExpr<FloatListItem>;
 pub(crate) type BoolListExpr = TypedListExpr<BoolListItem>;
 pub(crate) type NilListExpr = TypedListExpr<NilListItem>;

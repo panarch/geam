@@ -1,11 +1,12 @@
 use super::{
-    Bool, Float, Function, FunctionFunction, Int, IntFunction, List, ListFunction, Nil, String,
-    TupleFunction,
+    BitArray, Bool, Float, Function, FunctionFunction, Int, IntFunction, List, ListFunction, Nil,
+    String, TupleFunction,
 };
 use crate::plan::{
-    BoolExpr, BoolFunctionExpr, FloatExpr, FloatFunctionExpr, FunctionExpr, FunctionExprKind,
-    FunctionFunctionExpr, IntExpr, IntFunctionExpr, ListExpr, ListFunctionExpr, NilExpr,
-    NilFunctionExpr, Step, StringExpr, StringFunctionExpr, TupleFunctionExpr,
+    BitArrayExpr, BitArrayFunctionExpr, BoolExpr, BoolFunctionExpr, FloatExpr, FloatFunctionExpr,
+    FunctionExpr, FunctionExprKind, FunctionFunctionExpr, IntExpr, IntFunctionExpr, ListExpr,
+    ListFunctionExpr, NilExpr, NilFunctionExpr, Step, StringExpr, StringFunctionExpr,
+    TupleFunctionExpr,
 };
 
 pub(crate) fn block_int(steps: impl IntoIterator<Item = Step>, return_: Int) -> Int {
@@ -14,6 +15,16 @@ pub(crate) fn block_int(steps: impl IntoIterator<Item = Step>, return_: Int) -> 
 
 pub(crate) fn block_string(steps: impl IntoIterator<Item = Step>, return_: String) -> String {
     String(StringExpr::block(
+        steps.into_iter().collect(),
+        return_.into(),
+    ))
+}
+
+pub(crate) fn block_bit_array(
+    steps: impl IntoIterator<Item = Step>,
+    return_: BitArray,
+) -> BitArray {
+    BitArray(BitArrayExpr::block(
         steps.into_iter().collect(),
         return_.into(),
     ))
@@ -43,6 +54,9 @@ pub(crate) fn block_function(steps: Vec<Step>, return_: Function) -> Function {
         FunctionExprKind::Int(return_) => FunctionExpr::int(IntFunctionExpr::block(steps, return_)),
         FunctionExprKind::String(return_) => {
             FunctionExpr::string(StringFunctionExpr::block(steps, return_))
+        }
+        FunctionExprKind::BitArray(return_) => {
+            FunctionExpr::bit_array(BitArrayFunctionExpr::block(steps, return_))
         }
         FunctionExprKind::Float(return_) => {
             FunctionExpr::float(FloatFunctionExpr::block(steps, return_))
@@ -106,11 +120,12 @@ pub(crate) fn block_int_function(
 #[cfg(test)]
 mod tests {
     use super::{
-        block_bool, block_float, block_function, block_function_function, block_int,
-        block_int_function, block_list, block_list_function, block_nil, block_string,
+        block_bit_array, block_bool, block_float, block_function, block_function_function,
+        block_int, block_int_function, block_list, block_list_function, block_nil, block_string,
         block_tuple_function,
     };
     use crate::plan::{
+        BitArrayExpr, BitArrayFunctionExpr, BitArrayFunctionId, BitArrayFunctionReference,
         BoolExpr, BoolFunctionId, BoolFunctionReference, FloatExpr, FloatFunctionId,
         FloatFunctionReference, FunctionExpr, FunctionFunctionExpr, FunctionFunctionId,
         FunctionFunctionReference, FunctionType, IntExpr, IntFunctionExpr, IntFunctionFunctionId,
@@ -120,9 +135,10 @@ mod tests {
         ValueType,
     };
     use crate::planner::dsl::expression::{
-        Function, bool_, float, function_function_ref, function_ref, int, int_function_ref,
-        let_bool_step, let_int_step, let_nil_step, let_string_step, list, list_function_ref,
-        local_bool, local_int, local_nil, local_string, nil, string, tuple_function_ref,
+        Function, bit_array, bool_, float, function_function_ref, function_ref, int,
+        int_function_ref, let_bit_array_step, let_bool_step, let_int_step, let_nil_step,
+        let_string_step, list, list_function_ref, local_bit_array, local_bool, local_int,
+        local_nil, local_string, nil, string, tuple_function_ref,
     };
 
     #[test]
@@ -136,6 +152,17 @@ mod tests {
             StringExpr::block(
                 vec![let_string_step(0, "x", string("a"))],
                 local_string(0, "x").into(),
+            ),
+        );
+        assert_eq!(
+            block_bit_array(
+                [let_bit_array_step(0, "x", bit_array([]))],
+                local_bit_array(0, "x"),
+            )
+            .0,
+            BitArrayExpr::block(
+                vec![let_bit_array_step(0, "x", bit_array([]))],
+                local_bit_array(0, "x").into(),
             ),
         );
         assert_eq!(
@@ -174,6 +201,24 @@ mod tests {
                 IntFunctionExpr::reference(IntFunctionReference::new(
                     IntFunctionId(0),
                     vec![ParamLocal::int(crate::plan::IntLocalId(0))],
+                )),
+            )),
+        );
+        assert_eq!(
+            FunctionExpr::from(block_function(
+                vec![],
+                function_ref(
+                    RuntimeFunctionId::BitArray(BitArrayFunctionId(0)),
+                    [crate::plan::LocalId::BitArray(
+                        crate::plan::BitArrayLocalId(0)
+                    )],
+                ),
+            )),
+            FunctionExpr::bit_array(BitArrayFunctionExpr::block(
+                Vec::new(),
+                BitArrayFunctionExpr::reference(BitArrayFunctionReference::new(
+                    BitArrayFunctionId(0),
+                    vec![ParamLocal::bit_array(crate::plan::BitArrayLocalId(0))],
                 )),
             )),
         );

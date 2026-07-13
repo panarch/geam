@@ -372,6 +372,10 @@ fn string_case_expr(
             clauses: string_case_clauses(clauses)?,
             fallback,
         },
+        ExprKind::BitArray(fallback) => StringCaseBranches::BitArray {
+            clauses: bit_array_case_clauses(clauses)?,
+            fallback,
+        },
         ExprKind::Float(fallback) => StringCaseBranches::Float {
             clauses: float_case_clauses(clauses)?,
             fallback,
@@ -418,6 +422,21 @@ fn string_case_clauses(
     let mut typed_clauses = Vec::with_capacity(clauses.len());
     for (value, clause) in clauses {
         let ExprKind::String(clause) = clause.into_kind() else {
+            return Err(invalid_case_shape(
+                InvalidCaseShapeReason::BranchReturnTypeMismatch,
+            ));
+        };
+        typed_clauses.push((value, clause));
+    }
+    Ok(typed_clauses)
+}
+
+fn bit_array_case_clauses(
+    clauses: Vec<(EcoString, Expr)>,
+) -> Result<Vec<(EcoString, crate::plan::BitArrayExpr)>, PlanError> {
+    let mut typed_clauses = Vec::with_capacity(clauses.len());
+    for (value, clause) in clauses {
+        let ExprKind::BitArray(clause) = clause.into_kind() else {
             return Err(invalid_case_shape(
                 InvalidCaseShapeReason::BranchReturnTypeMismatch,
             ));
@@ -523,6 +542,12 @@ fn function_case_branches(
             clauses: string_function_case_clauses(clauses)?,
             fallback,
         }),
+        crate::plan::FunctionExprKind::BitArray(fallback) => {
+            Ok(StringCaseBranches::BitArrayFunction {
+                clauses: bit_array_function_case_clauses(clauses)?,
+                fallback,
+            })
+        }
         crate::plan::FunctionExprKind::Float(fallback) => Ok(StringCaseBranches::FloatFunction {
             clauses: float_function_case_clauses(clauses)?,
             fallback,
@@ -583,6 +608,26 @@ fn string_function_case_clauses(
             ));
         };
         let Some(clause) = clause.into_string() else {
+            return Err(invalid_case_shape(
+                InvalidCaseShapeReason::BranchReturnTypeMismatch,
+            ));
+        };
+        typed_clauses.push((value, clause));
+    }
+    Ok(typed_clauses)
+}
+
+fn bit_array_function_case_clauses(
+    clauses: Vec<(EcoString, Expr)>,
+) -> Result<Vec<(EcoString, crate::plan::BitArrayFunctionExpr)>, PlanError> {
+    let mut typed_clauses = Vec::with_capacity(clauses.len());
+    for (value, clause) in clauses {
+        let ExprKind::Function(function) = clause.into_kind() else {
+            return Err(invalid_case_shape(
+                InvalidCaseShapeReason::BranchReturnTypeMismatch,
+            ));
+        };
+        let crate::plan::FunctionExprKind::BitArray(clause) = function.into_kind() else {
             return Err(invalid_case_shape(
                 InvalidCaseShapeReason::BranchReturnTypeMismatch,
             ));
@@ -1983,6 +2028,18 @@ fn return_value(value: String) {
 
     #[test]
     fn reject_margin_string_case_function_clause_family_mismatch_direct() {
+        assert_eq!(
+            super::bit_array_case_clauses(vec![("one".into(), Expr::from(int(1)))]),
+            Err(case_branch_return_type_mismatch()),
+        );
+        assert_eq!(
+            super::bit_array_function_case_clauses(vec![("one".into(), Expr::from(int(1)))]),
+            Err(case_branch_return_type_mismatch()),
+        );
+        assert_eq!(
+            super::bit_array_function_case_clauses(vec![("one".into(), int_function_ref_expr(0),)]),
+            Err(case_branch_return_type_mismatch()),
+        );
         assert_eq!(
             super::string_function_case_clauses(vec![("one".into(), Expr::from(int(1)))]),
             Err(case_branch_return_type_mismatch()),

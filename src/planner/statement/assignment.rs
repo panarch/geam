@@ -1,10 +1,10 @@
 mod assert;
 
 use crate::plan::{
-    BoolExpr, BoolFunctionExpr, Expr, ExprKind, FloatExpr, FloatFunctionExpr, FunctionExpr,
-    FunctionExprKind, FunctionFunctionExpr, IntExpr, IntFunctionExpr, ListExpr, ListFunctionExpr,
-    NilExpr, NilFunctionExpr, Step, StringExpr, StringFunctionExpr, TupleExpr, TupleFunctionExpr,
-    TupleLocalId, ValueType,
+    BitArrayExpr, BitArrayFunctionExpr, BoolExpr, BoolFunctionExpr, Expr, ExprKind, FloatExpr,
+    FloatFunctionExpr, FunctionExpr, FunctionExprKind, FunctionFunctionExpr, IntExpr,
+    IntFunctionExpr, ListExpr, ListFunctionExpr, NilExpr, NilFunctionExpr, Step, StringExpr,
+    StringFunctionExpr, TupleExpr, TupleFunctionExpr, TupleLocalId, ValueType,
 };
 use crate::planner::context::PlanContext;
 use crate::planner::error::{
@@ -296,6 +296,7 @@ fn value_type_expression_type(type_: ValueType) -> InvalidExpressionType {
     match type_ {
         ValueType::Int => InvalidExpressionType::Int,
         ValueType::String => InvalidExpressionType::String,
+        ValueType::BitArray => InvalidExpressionType::BitArray,
         ValueType::Float => InvalidExpressionType::Float,
         ValueType::Bool => InvalidExpressionType::Bool,
         ValueType::Nil => InvalidExpressionType::Nil,
@@ -331,6 +332,13 @@ fn plan_variable_runtime_step_and_return(
             (
                 Step::let_string(local, name.clone(), value),
                 Expr::string(StringExpr::local_get(local, name)),
+            )
+        }
+        ExprKind::BitArray(value) => {
+            let local = context.define_bit_array_local(name.clone());
+            (
+                Step::let_bit_array(local, name.clone(), value),
+                Expr::bit_array(BitArrayExpr::local_get(local, name)),
             )
         }
         ExprKind::Float(value) => {
@@ -387,6 +395,17 @@ fn plan_variable_runtime_step_and_return(
                 (
                     Step::let_string_function(local, name.clone(), value),
                     Expr::function(FunctionExpr::string(StringFunctionExpr::local_get(
+                        local, name, type_,
+                    ))),
+                )
+            }
+            FunctionExprKind::BitArray(value) => {
+                let local =
+                    context.define_bit_array_function_local(name.clone(), value.type_().clone());
+                let type_ = value.type_().clone();
+                (
+                    Step::let_bit_array_function(local, name.clone(), value),
+                    Expr::function(FunctionExpr::bit_array(BitArrayFunctionExpr::local_get(
                         local, name, type_,
                     ))),
                 )
@@ -737,7 +756,7 @@ pub fn main() {
             expect_plan_error(
                 r#"
 pub fn main() {
-  let [..rest]: List(BitArray) = []
+  let [..rest]: List(Result(Int, Nil)) = []
   1
 }
 "#,
@@ -1170,6 +1189,7 @@ pub fn main() {
         let cases = [
             (ValueType::Int, InvalidExpressionType::Int),
             (ValueType::String, InvalidExpressionType::String),
+            (ValueType::BitArray, InvalidExpressionType::BitArray),
             (ValueType::Float, InvalidExpressionType::Float),
             (ValueType::Bool, InvalidExpressionType::Bool),
             (ValueType::Nil, InvalidExpressionType::Nil),

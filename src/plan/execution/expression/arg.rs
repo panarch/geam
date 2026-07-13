@@ -1,12 +1,13 @@
 use super::{
-    BoolExpr, BoolFunctionExpr, FloatExpr, FloatFunctionExpr, FunctionFunctionExpr, IntExpr,
-    IntFunctionExpr, ListFunctionExpr, ListLocalExpr, NilExpr, NilFunctionExpr, StringExpr,
-    StringFunctionExpr, TupleExpr, TupleFunctionExpr,
+    BitArrayExpr, BitArrayFunctionExpr, BoolExpr, BoolFunctionExpr, FloatExpr, FloatFunctionExpr,
+    FunctionFunctionExpr, IntExpr, IntFunctionExpr, ListFunctionExpr, ListLocalExpr, NilExpr,
+    NilFunctionExpr, StringExpr, StringFunctionExpr, TupleExpr, TupleFunctionExpr,
 };
 use crate::plan::execution::{
-    BoolFunctionLocalId, BoolLocalId, FloatFunctionLocalId, FloatLocalId, FunctionFunctionLocalId,
-    IntFunctionLocalId, IntLocalId, ListFunctionLocal, NilFunctionLocalId, NilLocalId,
-    StringFunctionLocalId, StringLocalId, TupleFunctionLocalId, TupleLocalId,
+    BitArrayFunctionLocalId, BitArrayLocalId, BoolFunctionLocalId, BoolLocalId,
+    FloatFunctionLocalId, FloatLocalId, FunctionFunctionLocalId, IntFunctionLocalId, IntLocalId,
+    ListFunctionLocal, NilFunctionLocalId, NilLocalId, StringFunctionLocalId, StringLocalId,
+    TupleFunctionLocalId, TupleLocalId,
 };
 
 pub struct CallArg {
@@ -21,6 +22,10 @@ pub(crate) enum CallArgKind {
     String {
         local: StringLocalId,
         value: StringExpr,
+    },
+    BitArray {
+        local: BitArrayLocalId,
+        value: BitArrayExpr,
     },
     Float {
         local: FloatLocalId,
@@ -46,6 +51,10 @@ pub(crate) enum CallArgKind {
     StringFunction {
         local: StringFunctionLocalId,
         value: StringFunctionExpr,
+    },
+    BitArrayFunction {
+        local: BitArrayFunctionLocalId,
+        value: BitArrayFunctionExpr,
     },
     FloatFunction {
         local: FloatFunctionLocalId,
@@ -86,6 +95,10 @@ pub(crate) enum CaptureArgKind {
         local: StringLocalId,
         value: StringExpr,
     },
+    BitArray {
+        local: BitArrayLocalId,
+        value: BitArrayExpr,
+    },
     Float {
         local: FloatLocalId,
         value: FloatExpr,
@@ -110,6 +123,10 @@ pub(crate) enum CaptureArgKind {
     StringFunction {
         local: StringFunctionLocalId,
         value: StringFunctionExpr,
+    },
+    BitArrayFunction {
+        local: BitArrayFunctionLocalId,
+        value: BitArrayFunctionExpr,
     },
     FloatFunction {
         local: FloatFunctionLocalId,

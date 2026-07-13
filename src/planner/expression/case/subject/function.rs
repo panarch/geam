@@ -2,8 +2,9 @@ use super::super::super::plan_expr_with_expected_source_stop_type;
 use super::super::invalid_case_shape;
 use super::{CaseClause, OrderedCaseClauseInput, case_return_type};
 use crate::plan::{
-    BoolExpr, Expr, ExprKind, FunctionExpr, FunctionExprKind, FunctionFunctionExpr,
-    FunctionFunctionLocalId, FunctionType, IntFunctionExpr, IntFunctionLocalId, Step, ValueType,
+    BitArrayFunctionExpr, BoolExpr, Expr, ExprKind, FunctionExpr, FunctionExprKind,
+    FunctionFunctionExpr, FunctionFunctionLocalId, FunctionType, IntFunctionExpr,
+    IntFunctionLocalId, Step, ValueType,
 };
 use crate::planner::context::PlanContext;
 use crate::planner::error::{InvalidCaseShapeReason, PlanError};
@@ -142,6 +143,17 @@ fn bind_function_case_subject(
                 )),
             )
         }
+        FunctionExprKind::BitArray(subject) => {
+            let local = context.define_internal_bit_array_function_local();
+            let name = internal_bit_array_function_case_subject_name(local);
+            let type_ = subject.type_().clone();
+            (
+                Step::let_bit_array_function(local, name.clone(), subject),
+                Expr::function(FunctionExpr::bit_array(BitArrayFunctionExpr::local_get(
+                    local, name, type_,
+                ))),
+            )
+        }
         FunctionExprKind::Float(subject) => {
             let local = context.define_internal_float_function_local();
             let name = internal_float_function_case_subject_name(local);
@@ -220,6 +232,12 @@ fn internal_string_function_case_subject_name(
     local: crate::plan::StringFunctionLocalId,
 ) -> EcoString {
     format!("<case:string_function:{}>", local.0).into()
+}
+
+fn internal_bit_array_function_case_subject_name(
+    local: crate::plan::BitArrayFunctionLocalId,
+) -> EcoString {
+    format!("<case:bit_array_function:{}>", local.0).into()
 }
 
 fn internal_float_function_case_subject_name(

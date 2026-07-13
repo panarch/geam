@@ -1,3 +1,4 @@
+mod bit_array;
 mod block;
 mod call;
 mod case;
@@ -8,8 +9,8 @@ mod pipeline;
 mod var;
 
 use crate::plan::{
-    BoolExpr, Expr, FloatExpr, FunctionExpr, FunctionFunctionExpr, FunctionType, IntExpr, ListExpr,
-    PanicExpr, StringExpr, TupleExpr, ValueType,
+    BitArrayExpr, BoolExpr, Expr, FloatExpr, FunctionExpr, FunctionFunctionExpr, FunctionType,
+    IntExpr, ListExpr, PanicExpr, StringExpr, TupleExpr, ValueType,
 };
 use crate::planner::context::PlanContext;
 use crate::planner::error::{
@@ -119,9 +120,9 @@ pub(super) fn plan_expr(
         TypedExpr::Echo { .. } => Err(PlanError::UnsupportedExpression {
             kind: UnsupportedExpressionKind::Echo,
         }),
-        TypedExpr::BitArray { .. } => Err(PlanError::UnsupportedExpression {
-            kind: UnsupportedExpressionKind::BitArray,
-        }),
+        TypedExpr::BitArray { segments, .. } => {
+            bit_array::plan_expression(segments, context).map(Expr::bit_array)
+        }
         TypedExpr::RecordUpdate { .. } => Err(PlanError::InvalidTypedAst {
             reason: InvalidTypedAstReason::ExpressionShape {
                 kind: InvalidExpressionShapeKind::RecordUpdate,
@@ -266,6 +267,7 @@ fn panic_expr(panic: PanicExpr, return_type: ValueType) -> Expr {
     match return_type {
         ValueType::Int => Expr::int(IntExpr::panic(panic)),
         ValueType::String => Expr::string(StringExpr::panic(panic)),
+        ValueType::BitArray => Expr::bit_array(BitArrayExpr::panic(panic)),
         ValueType::Float => Expr::float(FloatExpr::panic(panic)),
         ValueType::Bool => Expr::bool(BoolExpr::panic(panic)),
         ValueType::Nil => Expr::nil(crate::plan::NilExpr::panic(panic)),
@@ -282,6 +284,9 @@ fn panic_function_expr(panic: PanicExpr, type_: FunctionType) -> Expr {
         ))),
         ValueType::String => Expr::function(FunctionExpr::string(
             crate::plan::StringFunctionExpr::panic(panic, type_),
+        )),
+        ValueType::BitArray => Expr::function(FunctionExpr::bit_array(
+            crate::plan::BitArrayFunctionExpr::panic(panic, type_),
         )),
         ValueType::Float => Expr::function(FunctionExpr::float(
             crate::plan::FloatFunctionExpr::panic(panic, type_),
@@ -469,6 +474,7 @@ pub(super) fn tuple_index_expr(tuple: TupleExpr, index: usize, return_type: Valu
     match return_type {
         ValueType::Int => Expr::int(IntExpr::tuple_index(tuple, index)),
         ValueType::String => Expr::string(StringExpr::tuple_index(tuple, index)),
+        ValueType::BitArray => Expr::bit_array(BitArrayExpr::tuple_index(tuple, index)),
         ValueType::Float => Expr::float(FloatExpr::tuple_index(tuple, index)),
         ValueType::Bool => Expr::bool(BoolExpr::tuple_index(tuple, index)),
         ValueType::Nil => Expr::nil(crate::plan::NilExpr::tuple_index(tuple, index)),
@@ -489,6 +495,9 @@ pub(super) fn list_index_expr(
         (ValueType::Int, ListExpr::Int(list)) => Expr::int(IntExpr::list_index(list, index)),
         (ValueType::String, ListExpr::String(list)) => {
             Expr::string(StringExpr::list_index(list, index))
+        }
+        (ValueType::BitArray, ListExpr::BitArray(list)) => {
+            Expr::bit_array(BitArrayExpr::list_index(list, index))
         }
         (ValueType::Float, ListExpr::Float(list)) => {
             Expr::float(FloatExpr::list_index(list, index))
@@ -519,6 +528,9 @@ fn tuple_index_function_expr(tuple: TupleExpr, index: usize, type_: FunctionType
         )),
         ValueType::String => Expr::function(FunctionExpr::string(
             crate::plan::StringFunctionExpr::tuple_index(tuple, index, type_),
+        )),
+        ValueType::BitArray => Expr::function(FunctionExpr::bit_array(
+            crate::plan::BitArrayFunctionExpr::tuple_index(tuple, index, type_),
         )),
         ValueType::Float => Expr::function(FunctionExpr::float(
             crate::plan::FloatFunctionExpr::tuple_index(tuple, index, type_),
@@ -552,6 +564,9 @@ fn list_index_function_expr(
         )),
         ValueType::String => Expr::function(FunctionExpr::string(
             crate::plan::StringFunctionExpr::list_index(list.clone(), index, type_),
+        )),
+        ValueType::BitArray => Expr::function(FunctionExpr::bit_array(
+            crate::plan::BitArrayFunctionExpr::list_index(list.clone(), index, type_),
         )),
         ValueType::Float => Expr::function(FunctionExpr::float(
             crate::plan::FloatFunctionExpr::list_index(list.clone(), index, type_),
@@ -649,6 +664,7 @@ fn expression_type(expression: &Expr) -> InvalidExpressionType {
     match expression.value_type() {
         ValueType::Int => InvalidExpressionType::Int,
         ValueType::String => InvalidExpressionType::String,
+        ValueType::BitArray => InvalidExpressionType::BitArray,
         ValueType::Float => InvalidExpressionType::Float,
         ValueType::Bool => InvalidExpressionType::Bool,
         ValueType::Nil => InvalidExpressionType::Nil,
@@ -662,6 +678,7 @@ fn value_type_expression_type(type_: ValueType) -> InvalidExpressionType {
     match type_ {
         ValueType::Int => InvalidExpressionType::Int,
         ValueType::String => InvalidExpressionType::String,
+        ValueType::BitArray => InvalidExpressionType::BitArray,
         ValueType::Float => InvalidExpressionType::Float,
         ValueType::Bool => InvalidExpressionType::Bool,
         ValueType::Nil => InvalidExpressionType::Nil,
@@ -748,14 +765,15 @@ pub(in crate::planner::expression) fn typed_prelude_constructor(
 mod tests {
     use super::{
         expression_type, invalid_expression_type, invalid_expression_type_for_value,
-        module_returning_typed_expr, typed_int_expr, typed_string_expr, typed_tuple_expr,
+        list_index_function_expr, module_returning_typed_expr, typed_int_expr, typed_string_expr,
+        typed_tuple_expr,
     };
     use crate::plan::{
-        BoolExpr, BoolFunctionId, BoolLocalId, Expr, FloatExpr, FunctionExpr, FunctionFunctionExpr,
-        FunctionFunctionId, FunctionReference, FunctionType, IntExpr, IntFunctionExpr,
-        IntFunctionFunctionId, IntFunctionId, IntLocalId, ListExpr, NilExpr, NilFunctionId,
-        NilLocalId, PanicExpr, PanicSite, ParamLocal, ReturnBody, RuntimeFunctionId, SourceSpan,
-        StringExpr, StringLocalId, TupleExpr, ValueType,
+        BitArrayExpr, BitArrayFunctionExpr, BoolExpr, BoolFunctionId, BoolLocalId, Expr, FloatExpr,
+        FunctionExpr, FunctionFunctionExpr, FunctionFunctionId, FunctionReference, FunctionType,
+        IntExpr, IntFunctionExpr, IntFunctionFunctionId, IntFunctionId, IntLocalId, ListExpr,
+        NilExpr, NilFunctionId, NilLocalId, PanicExpr, PanicSite, ParamLocal, ReturnBody,
+        RuntimeFunctionId, SourceSpan, StringExpr, StringLocalId, TupleExpr, ValueType,
     };
     use crate::planner::context::{AnonymousFunctions, PlanContext};
     use crate::planner::dsl::{
@@ -1053,7 +1071,7 @@ pub fn main() -> Int {
             super::plan_expr(
                 TypedExpr::Panic {
                     location: dummy_span(),
-                    type_: type_::bit_array(),
+                    type_: type_::result(type_::int(), type_::nil()),
                     message: None,
                 },
                 &mut context
@@ -1070,7 +1088,7 @@ pub fn main() -> Int {
             super::plan_expr(
                 TypedExpr::Todo {
                     location: dummy_span(),
-                    type_: type_::bit_array(),
+                    type_: type_::result(type_::int(), type_::nil()),
                     kind: gleam_core::ast::TodoKind::Keyword,
                     message: None,
                 },
@@ -1116,18 +1134,7 @@ pub fn main() -> Int {
             (
                 r#"
 pub fn main() {
-  let values = [<<>>]
-  1
-}
-"#,
-                PlanError::UnsupportedExpression {
-                    kind: UnsupportedExpressionKind::UnsupportedListElementType,
-                },
-            ),
-            (
-                r#"
-pub fn main() {
-  let values: List(BitArray) = []
+  let values = [Ok(1)]
   1
 }
 "#,
@@ -1139,17 +1146,6 @@ pub fn main() {
                 r#"pub fn main() { echo 1 }"#,
                 PlanError::UnsupportedExpression {
                     kind: UnsupportedExpressionKind::Echo,
-                },
-            ),
-            (
-                r#"
-pub fn main() {
-  <<1>>
-  1
-}
-"#,
-                PlanError::UnsupportedExpression {
-                    kind: UnsupportedExpressionKind::BitArray,
                 },
             ),
         ];
@@ -1298,6 +1294,7 @@ pub fn main() {
         )));
         let list_expression = Expr::from(list([int(1)], ValueType::Int));
         let nil_expression = Expr::from(nil());
+        let bit_array_expression = Expr::bit_array(BitArrayExpr::value(Vec::new()));
 
         assert_eq!(
             invalid_expression_type(InvalidExpressionType::Int, expression_type(&expression)),
@@ -1330,10 +1327,31 @@ pub fn main() {
             },
         );
         assert_eq!(
+            invalid_expression_type(
+                InvalidExpressionType::Int,
+                expression_type(&bit_array_expression),
+            ),
+            PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionType {
+                    expected: InvalidExpressionType::Int,
+                    actual: InvalidExpressionType::BitArray,
+                },
+            },
+        );
+        assert_eq!(
             invalid_expression_type_for_value(ValueType::Float, ValueType::Int),
             PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::ExpressionType {
                     expected: InvalidExpressionType::Float,
+                    actual: InvalidExpressionType::Int,
+                },
+            },
+        );
+        assert_eq!(
+            invalid_expression_type_for_value(ValueType::BitArray, ValueType::Int),
+            PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionType {
+                    expected: InvalidExpressionType::BitArray,
                     actual: InvalidExpressionType::Int,
                 },
             },
@@ -1349,6 +1367,21 @@ pub fn main() {
                     actual: InvalidExpressionType::Nil,
                 },
             },
+        );
+    }
+
+    #[test]
+    fn list_index_function_expr_preserves_bit_array_return_family() {
+        let type_ = FunctionType::new(Vec::new(), ValueType::BitArray);
+        let list = ListExpr::value(Vec::new(), ValueType::Function(Box::new(type_.clone())))
+            .into_function()
+            .expect("function list");
+
+        assert_eq!(
+            list_index_function_expr(list.clone(), 2, type_.clone()),
+            Expr::function(FunctionExpr::bit_array(BitArrayFunctionExpr::list_index(
+                list, 2, type_,
+            ))),
         );
     }
 
@@ -1909,7 +1942,7 @@ pub fn main() {
             (
                 TypedExpr::Tuple {
                     location: dummy_span(),
-                    type_: type_::bit_array(),
+                    type_: type_::result(type_::int(), type_::nil()),
                     elements: vec![typed_int_expr(1)],
                 },
                 PlanError::InvalidTypedAst {
@@ -2015,7 +2048,7 @@ pub fn main() {
             (
                 TypedExpr::TupleIndex {
                     location: dummy_span(),
-                    type_: type_::bit_array(),
+                    type_: type_::result(type_::int(), type_::nil()),
                     index: 0,
                     tuple: Box::new(typed_tuple_expr(tuple_int.clone(), vec![typed_int_expr(1)])),
                 },
@@ -2083,7 +2116,7 @@ pub fn main() {
             (
                 TypedExpr::List {
                     location: dummy_span(),
-                    type_: type_::bit_array(),
+                    type_: type_::result(type_::int(), type_::nil()),
                     elements: vec![typed_int_expr(1)],
                     tail: None,
                 },

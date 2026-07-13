@@ -1,10 +1,11 @@
 use super::{ListElementTypeMismatch, ListElements, ListExpr, TypedListExpr};
 use crate::plan::{
-    BoolExpr, BoolListFunctionId, BoolListLocalId, Expr, ExprKind, FloatExpr, FloatListFunctionId,
-    FloatListLocalId, FunctionExpr, FunctionListFunctionId, FunctionListLocalId, FunctionType,
-    IntExpr, IntListFunctionId, IntListLocalId, ListListFunctionId, ListListLocalId, ListLocal,
-    NilExpr, NilListFunctionId, NilListLocalId, StringExpr, StringListFunctionId,
-    StringListLocalId, TupleExpr, TupleListFunctionId, TupleListLocalId, ValueType,
+    BitArrayExpr, BitArrayListFunctionId, BitArrayListLocalId, BoolExpr, BoolListFunctionId,
+    BoolListLocalId, Expr, ExprKind, FloatExpr, FloatListFunctionId, FloatListLocalId,
+    FunctionExpr, FunctionListFunctionId, FunctionListLocalId, FunctionType, IntExpr,
+    IntListFunctionId, IntListLocalId, ListListFunctionId, ListListLocalId, ListLocal, NilExpr,
+    NilListFunctionId, NilListLocalId, StringExpr, StringListFunctionId, StringListLocalId,
+    TupleExpr, TupleListFunctionId, TupleListLocalId, ValueType,
 };
 use std::fmt::Debug;
 
@@ -34,6 +35,9 @@ pub(crate) struct IntListItem;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct StringListItem;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct BitArrayListItem;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct FloatListItem;
@@ -177,6 +181,18 @@ primitive_list_item!(
     String,
     ListExpr::String,
     ListLocal::String
+);
+
+primitive_list_item!(
+    BitArrayListItem,
+    BitArrayExpr,
+    BitArrayListLocalId,
+    BitArrayListFunctionId,
+    ValueType::BitArray,
+    ExprKind::BitArray(value) => value,
+    BitArray,
+    ListExpr::BitArray,
+    ListLocal::BitArray
 );
 
 primitive_list_item!(

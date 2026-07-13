@@ -1,16 +1,18 @@
 use super::super::function::ExecutableFunction;
 use super::super::table::FunctionTables;
 use super::super::{
-    BoolFunctionFunctionId, BoolFunctionId, BoolFunctionReturn, BoolListFunctionId, BoolListReturn,
-    BoolReturn, FloatFunctionFunctionId, FloatFunctionId, FloatFunctionReturn, FloatListFunctionId,
-    FloatListReturn, FloatReturn, FunctionFunctionFunctionId, FunctionFunctionId,
-    FunctionFunctionReturn, FunctionListFunctionId, FunctionListReturn, IntFunctionFunctionId,
-    IntFunctionId, IntFunctionReturn, IntListFunctionId, IntListReturn, IntReturn,
-    ListFunctionFunctionId, ListFunctionId, ListFunctionReturn, ListListFunctionId, ListListReturn,
-    NilFunctionFunctionId, NilFunctionId, NilFunctionReturn, NilListFunctionId, NilListReturn,
-    NilReturn, RuntimeFunctionId, StringFunctionFunctionId, StringFunctionId, StringFunctionReturn,
-    StringListFunctionId, StringListReturn, StringReturn, TupleFunctionFunctionId, TupleFunctionId,
-    TupleFunctionReturn, TupleListFunctionId, TupleListReturn, TupleReturn,
+    BitArrayFunctionFunctionId, BitArrayFunctionId, BitArrayFunctionReturn, BitArrayListFunctionId,
+    BitArrayListReturn, BitArrayReturn, BoolFunctionFunctionId, BoolFunctionId, BoolFunctionReturn,
+    BoolListFunctionId, BoolListReturn, BoolReturn, FloatFunctionFunctionId, FloatFunctionId,
+    FloatFunctionReturn, FloatListFunctionId, FloatListReturn, FloatReturn,
+    FunctionFunctionFunctionId, FunctionFunctionId, FunctionFunctionReturn, FunctionListFunctionId,
+    FunctionListReturn, IntFunctionFunctionId, IntFunctionId, IntFunctionReturn, IntListFunctionId,
+    IntListReturn, IntReturn, ListFunctionFunctionId, ListFunctionId, ListFunctionReturn,
+    ListListFunctionId, ListListReturn, NilFunctionFunctionId, NilFunctionId, NilFunctionReturn,
+    NilListFunctionId, NilListReturn, NilReturn, RuntimeFunctionId, StringFunctionFunctionId,
+    StringFunctionId, StringFunctionReturn, StringListFunctionId, StringListReturn, StringReturn,
+    TupleFunctionFunctionId, TupleFunctionId, TupleFunctionReturn, TupleListFunctionId,
+    TupleListReturn, TupleReturn,
 };
 use super::LoweringContext;
 use crate::plan::module;
@@ -20,11 +22,16 @@ pub(super) struct FunctionTableBuilder {
     int_functions: Vec<(usize, ExecutableFunction<IntReturn>)>,
     float_functions: Vec<(usize, ExecutableFunction<FloatReturn>)>,
     string_functions: Vec<(usize, ExecutableFunction<StringReturn>)>,
+    bit_array_functions: Vec<(usize, ExecutableFunction<BitArrayReturn>)>,
     bool_functions: Vec<(usize, ExecutableFunction<BoolReturn>)>,
     nil_functions: Vec<(usize, ExecutableFunction<NilReturn>)>,
     tuple_functions: Vec<(usize, ExecutableFunction<TupleReturn>)>,
     int_list_functions: Vec<(IntListFunctionId, ExecutableFunction<IntListReturn>)>,
     string_list_functions: Vec<(StringListFunctionId, ExecutableFunction<StringListReturn>)>,
+    bit_array_list_functions: Vec<(
+        BitArrayListFunctionId,
+        ExecutableFunction<BitArrayListReturn>,
+    )>,
     float_list_functions: Vec<(FloatListFunctionId, ExecutableFunction<FloatListReturn>)>,
     bool_list_functions: Vec<(BoolListFunctionId, ExecutableFunction<BoolListReturn>)>,
     nil_list_functions: Vec<(NilListFunctionId, ExecutableFunction<NilListReturn>)>,
@@ -37,11 +44,13 @@ pub(super) struct FunctionTableBuilder {
     int_function_functions: Vec<(usize, ExecutableFunction<IntFunctionReturn>)>,
     float_function_functions: Vec<(usize, ExecutableFunction<FloatFunctionReturn>)>,
     string_function_functions: Vec<(usize, ExecutableFunction<StringFunctionReturn>)>,
+    bit_array_function_functions: Vec<(usize, ExecutableFunction<BitArrayFunctionReturn>)>,
     bool_function_functions: Vec<(usize, ExecutableFunction<BoolFunctionReturn>)>,
     nil_function_functions: Vec<(usize, ExecutableFunction<NilFunctionReturn>)>,
     tuple_function_functions: Vec<(usize, ExecutableFunction<TupleFunctionReturn>)>,
     int_list_function_functions: Vec<(usize, ExecutableFunction<ListFunctionReturn>)>,
     string_list_function_functions: Vec<(usize, ExecutableFunction<ListFunctionReturn>)>,
+    bit_array_list_function_functions: Vec<(usize, ExecutableFunction<ListFunctionReturn>)>,
     float_list_function_functions: Vec<(usize, ExecutableFunction<ListFunctionReturn>)>,
     bool_list_function_functions: Vec<(usize, ExecutableFunction<ListFunctionReturn>)>,
     nil_list_function_functions: Vec<(usize, ExecutableFunction<ListFunctionReturn>)>,
@@ -101,6 +110,18 @@ impl FunctionTableBuilder {
                     ),
                 ));
                 RuntimeFunctionId::String(id)
+            }
+            module::ReturnExprKind::BitArray { runtime_id, body } => {
+                let id = BitArrayFunctionId(runtime_id.0);
+                self.bit_array_functions.push((
+                    runtime_id.0,
+                    ExecutableFunction::new(
+                        frame_layout,
+                        steps,
+                        super::return_::bit_array_return(body, context),
+                    ),
+                ));
+                RuntimeFunctionId::BitArray(id)
             }
             module::ReturnExprKind::Bool { runtime_id, body } => {
                 let id = BoolFunctionId(runtime_id.0);
@@ -171,6 +192,18 @@ impl FunctionTableBuilder {
                     ),
                 ));
                 RuntimeFunctionId::List(ListFunctionId::String(id))
+            }
+            module::ReturnExprKind::BitArrayList { runtime_id, body } => {
+                let id = BitArrayListFunctionId::new(runtime_id.0, context.bit_array_list_type());
+                self.bit_array_list_functions.push((
+                    id,
+                    ExecutableFunction::new(
+                        frame_layout,
+                        steps,
+                        super::return_::bit_array_list_return(body, context),
+                    ),
+                ));
+                RuntimeFunctionId::List(ListFunctionId::BitArray(id))
             }
             module::ReturnExprKind::FloatList { runtime_id, body } => {
                 let id = FloatListFunctionId::new(runtime_id.0, context.float_list_type());
@@ -316,6 +349,25 @@ impl FunctionTableBuilder {
                     return_type: context.function_type(type_),
                 }
             }
+            module::ReturnExprKind::BitArrayFunction {
+                runtime_id,
+                type_,
+                body,
+            } => {
+                let id = BitArrayFunctionFunctionId(runtime_id.0);
+                self.bit_array_function_functions.push((
+                    runtime_id.0,
+                    ExecutableFunction::new(
+                        frame_layout,
+                        steps,
+                        super::return_::bit_array_function_return(body, context),
+                    ),
+                ));
+                RuntimeFunctionId::Function {
+                    id: FunctionFunctionId::BitArray(id),
+                    return_type: context.function_type(type_),
+                }
+            }
             module::ReturnExprKind::BoolFunction {
                 runtime_id,
                 type_,
@@ -423,6 +475,10 @@ impl FunctionTableBuilder {
             ListFunctionFunctionId::String { id, .. } => {
                 self.string_list_function_functions.push((id.0, function));
             }
+            ListFunctionFunctionId::BitArray { id, .. } => {
+                self.bit_array_list_function_functions
+                    .push((id.0, function));
+            }
             ListFunctionFunctionId::Float { id, .. } => {
                 self.float_list_function_functions.push((id.0, function));
             }
@@ -449,11 +505,15 @@ impl FunctionTableBuilder {
             int_functions: sort_functions(self.int_functions),
             float_functions: sort_functions(self.float_functions),
             string_functions: sort_functions(self.string_functions),
+            bit_array_functions: sort_functions(self.bit_array_functions),
             bool_functions: sort_functions(self.bool_functions),
             nil_functions: sort_functions(self.nil_functions),
             tuple_functions: sort_functions(self.tuple_functions),
             int_list_functions: sort_list_functions(self.int_list_functions, |id| id.index()),
             string_list_functions: sort_list_functions(self.string_list_functions, |id| id.index()),
+            bit_array_list_functions: sort_list_functions(self.bit_array_list_functions, |id| {
+                id.index()
+            }),
             float_list_functions: sort_list_functions(self.float_list_functions, |id| id.index()),
             bool_list_functions: sort_list_functions(self.bool_list_functions, |id| id.index()),
             nil_list_functions: sort_list_functions(self.nil_list_functions, |id| id.index()),
@@ -465,11 +525,15 @@ impl FunctionTableBuilder {
             int_function_functions: sort_functions(self.int_function_functions),
             float_function_functions: sort_functions(self.float_function_functions),
             string_function_functions: sort_functions(self.string_function_functions),
+            bit_array_function_functions: sort_functions(self.bit_array_function_functions),
             bool_function_functions: sort_functions(self.bool_function_functions),
             nil_function_functions: sort_functions(self.nil_function_functions),
             tuple_function_functions: sort_functions(self.tuple_function_functions),
             int_list_function_functions: sort_functions(self.int_list_function_functions),
             string_list_function_functions: sort_functions(self.string_list_function_functions),
+            bit_array_list_function_functions: sort_functions(
+                self.bit_array_list_function_functions,
+            ),
             float_list_function_functions: sort_functions(self.float_list_function_functions),
             bool_list_function_functions: sort_functions(self.bool_list_function_functions),
             nil_list_function_functions: sort_functions(self.nil_list_function_functions),

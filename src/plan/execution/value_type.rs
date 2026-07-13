@@ -20,6 +20,7 @@ macro_rules! primitive_list_type_id {
 
 primitive_list_type_id!(IntListTypeId);
 primitive_list_type_id!(StringListTypeId);
+primitive_list_type_id!(BitArrayListTypeId);
 primitive_list_type_id!(FloatListTypeId);
 primitive_list_type_id!(BoolListTypeId);
 primitive_list_type_id!(NilListTypeId);
@@ -52,6 +53,7 @@ pub(crate) struct FunctionListTypeId {
 pub(crate) enum ListStorageTypeId {
     Int(IntListTypeId),
     String(StringListTypeId),
+    BitArray(BitArrayListTypeId),
     Float(FloatListTypeId),
     Bool(BoolListTypeId),
     Nil(NilListTypeId),
@@ -65,6 +67,7 @@ pub(crate) enum ValueType {
     Int,
     Float,
     String,
+    BitArray,
     Bool,
     Nil,
     Tuple(Vec<ValueType>),
@@ -107,6 +110,7 @@ macro_rules! list_type_id {
 
 list_type_id!(IntListTypeId);
 list_type_id!(StringListTypeId);
+list_type_id!(BitArrayListTypeId);
 list_type_id!(FloatListTypeId);
 list_type_id!(BoolListTypeId);
 list_type_id!(NilListTypeId);
@@ -197,6 +201,7 @@ impl ListTypeTable {
             ValueType::Int => plan::ValueType::Int,
             ValueType::Float => plan::ValueType::Float,
             ValueType::String => plan::ValueType::String,
+            ValueType::BitArray => plan::ValueType::BitArray,
             ValueType::Bool => plan::ValueType::Bool,
             ValueType::Nil => plan::ValueType::Nil,
             ValueType::Tuple(elements) => plan::ValueType::Tuple(
@@ -231,6 +236,7 @@ impl ListTypeTable {
         match self.storage_type(id) {
             ListStorageTypeId::Int(_) => plan::ValueType::Int,
             ListStorageTypeId::String(_) => plan::ValueType::String,
+            ListStorageTypeId::BitArray(_) => plan::ValueType::BitArray,
             ListStorageTypeId::Float(_) => plan::ValueType::Float,
             ListStorageTypeId::Bool(_) => plan::ValueType::Bool,
             ListStorageTypeId::Nil(_) => plan::ValueType::Nil,

@@ -2,7 +2,7 @@ use ecow::EcoString;
 use num_bigint::BigInt;
 use thiserror::Error;
 
-use super::{FunctionValue, Value};
+use super::{BitArrayValue, FunctionValue, Value};
 use crate::plan::{FunctionType, ValueType};
 
 #[derive(Debug, Clone, PartialEq)]
@@ -24,6 +24,7 @@ pub struct ListValueItemTypeMismatch {
 pub(crate) enum ListValueKind {
     Int(Vec<BigInt>),
     String(Vec<EcoString>),
+    BitArray(Vec<BitArrayValue>),
     Float(Vec<f64>),
     Bool(Vec<bool>),
     Nil(usize),
@@ -51,6 +52,12 @@ impl ListValue {
     pub fn string(values: Vec<EcoString>) -> Self {
         Self {
             kind: ListValueKind::String(values),
+        }
+    }
+
+    pub fn bit_array(values: Vec<BitArrayValue>) -> Self {
+        Self {
+            kind: ListValueKind::BitArray(values),
         }
     }
 
@@ -151,6 +158,7 @@ impl ListValue {
         match item_type {
             ValueType::Int => Self::int(Vec::new()),
             ValueType::String => Self::string(Vec::new()),
+            ValueType::BitArray => Self::bit_array(Vec::new()),
             ValueType::Float => Self::float(Vec::new()),
             ValueType::Bool => Self::bool(Vec::new()),
             ValueType::Nil => Self::nil(0),
@@ -179,6 +187,7 @@ impl ListValue {
         match &self.kind {
             ListValueKind::Int(_) => ValueType::Int,
             ListValueKind::String(_) => ValueType::String,
+            ListValueKind::BitArray(_) => ValueType::BitArray,
             ListValueKind::Float(_) => ValueType::Float,
             ListValueKind::Bool(_) => ValueType::Bool,
             ListValueKind::Nil(_) => ValueType::Nil,
@@ -194,6 +203,7 @@ impl ListValue {
         match &self.kind {
             ListValueKind::Int(values) => values.len(),
             ListValueKind::String(values) => values.len(),
+            ListValueKind::BitArray(values) => values.len(),
             ListValueKind::Float(values) => values.len(),
             ListValueKind::Bool(values) => values.len(),
             ListValueKind::Nil(len) => *len,
@@ -211,6 +221,9 @@ impl ListValue {
         match &self.kind {
             ListValueKind::Int(values) => values.iter().cloned().map(Value::Int).collect(),
             ListValueKind::String(values) => values.iter().cloned().map(Value::String).collect(),
+            ListValueKind::BitArray(values) => {
+                values.iter().cloned().map(Value::BitArray).collect()
+            }
             ListValueKind::Float(values) => values.iter().copied().map(Value::Float).collect(),
             ListValueKind::Bool(values) => values.iter().copied().map(Value::Bool).collect(),
             ListValueKind::Nil(len) => vec![Value::Nil; *len],
@@ -246,7 +259,7 @@ fn ensure_item_types(
 mod tests {
     use super::{ListValue, ListValueItemTypeMismatch};
     use crate::plan::{FunctionType, ValueType};
-    use crate::runtime::{FunctionValue, Value};
+    use crate::runtime::{BitArrayValue, FunctionValue, Value};
 
     #[test]
     fn list_value_operations_preserve_every_storage_family() {
@@ -255,6 +268,10 @@ mod tests {
         let values = [
             ListValue::int(vec![1.into(), 2.into()]),
             ListValue::string(vec!["one".into(), "two".into()]),
+            ListValue::bit_array(vec![
+                BitArrayValue::from_bytes(vec![1]),
+                BitArrayValue::from_bytes(vec![2]),
+            ]),
             ListValue::float(vec![1.5, 2.5]),
             ListValue::bool(vec![true, false]),
             ListValue::nil(2),
@@ -277,6 +294,7 @@ mod tests {
         let item_types = [
             ValueType::Int,
             ValueType::String,
+            ValueType::BitArray,
             ValueType::Float,
             ValueType::Bool,
             ValueType::Nil,
@@ -295,6 +313,7 @@ mod tests {
         for item_type in [
             ValueType::Int,
             ValueType::String,
+            ValueType::BitArray,
             ValueType::Float,
             ValueType::Bool,
             ValueType::Nil,

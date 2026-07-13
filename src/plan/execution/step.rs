@@ -1,13 +1,15 @@
 use super::ParamLocal;
 use super::expression::{
-    BoolExpr, BoolFunctionExpr, Expr, FloatExpr, FloatFunctionExpr, FunctionFunctionExpr, IntExpr,
-    IntFunctionExpr, ListFunctionExpr, ListLocalExpr, NilExpr, NilFunctionExpr, StringExpr,
-    StringFunctionExpr, TupleExpr, TupleFunctionExpr,
+    BitArrayExpr, BitArrayFunctionExpr, BoolExpr, BoolFunctionExpr, Expr, FloatExpr,
+    FloatFunctionExpr, FunctionFunctionExpr, IntExpr, IntFunctionExpr, ListFunctionExpr,
+    ListLocalExpr, NilExpr, NilFunctionExpr, StringExpr, StringFunctionExpr, TupleExpr,
+    TupleFunctionExpr,
 };
 use super::id::{
-    BoolFunctionLocalId, BoolLocalId, FloatFunctionLocalId, FloatLocalId, FunctionFunctionLocalId,
-    IntFunctionLocalId, IntLocalId, ListFunctionLocal, ListLocal, NilFunctionLocalId, NilLocalId,
-    StringFunctionLocalId, StringLocalId, TupleFunctionLocalId, TupleLocalId,
+    BitArrayFunctionLocalId, BitArrayLocalId, BoolFunctionLocalId, BoolLocalId,
+    FloatFunctionLocalId, FloatLocalId, FunctionFunctionLocalId, IntFunctionLocalId, IntLocalId,
+    ListFunctionLocal, ListLocal, NilFunctionLocalId, NilLocalId, StringFunctionLocalId,
+    StringLocalId, TupleFunctionLocalId, TupleLocalId,
 };
 use crate::plan::{PanicSite, SourceSpan};
 
@@ -57,6 +59,10 @@ pub(crate) enum StepKind {
         local: StringLocalId,
         value: StringExpr,
     },
+    LetBitArray {
+        local: BitArrayLocalId,
+        value: BitArrayExpr,
+    },
     LetBool {
         local: BoolLocalId,
         value: BoolExpr,
@@ -83,6 +89,10 @@ pub(crate) enum StepKind {
     LetStringFunction {
         local: StringFunctionLocalId,
         value: StringFunctionExpr,
+    },
+    LetBitArrayFunction {
+        local: BitArrayFunctionLocalId,
+        value: BitArrayFunctionExpr,
     },
     LetBoolFunction {
         local: BoolFunctionLocalId,

@@ -1,3 +1,4 @@
+mod bit_array;
 mod bool;
 mod float;
 mod int;
@@ -8,13 +9,13 @@ mod string;
 mod tuple;
 
 pub use self::{
-    bool::BoolFunctionExpr, float::FloatFunctionExpr, int::IntFunctionExpr, list::ListFunctionExpr,
-    nil::NilFunctionExpr, returning_function::FunctionFunctionExpr, string::StringFunctionExpr,
-    tuple::TupleFunctionExpr,
+    bit_array::BitArrayFunctionExpr, bool::BoolFunctionExpr, float::FloatFunctionExpr,
+    int::IntFunctionExpr, list::ListFunctionExpr, nil::NilFunctionExpr,
+    returning_function::FunctionFunctionExpr, string::StringFunctionExpr, tuple::TupleFunctionExpr,
 };
 pub(crate) use self::{
-    bool::BoolFunctionExprKind, float::FloatFunctionExprKind, int::IntFunctionExprKind,
-    list::ListFunctionExprKind, nil::NilFunctionExprKind,
+    bit_array::BitArrayFunctionExprKind, bool::BoolFunctionExprKind, float::FloatFunctionExprKind,
+    int::IntFunctionExprKind, list::ListFunctionExprKind, nil::NilFunctionExprKind,
     returning_function::FunctionFunctionExprKind, string::StringFunctionExprKind,
     tuple::TupleFunctionExprKind,
 };
@@ -26,6 +27,7 @@ pub struct FunctionExpr {
 pub(crate) enum FunctionExprKind {
     Int(IntFunctionExpr),
     String(StringFunctionExpr),
+    BitArray(BitArrayFunctionExpr),
     Float(FloatFunctionExpr),
     Bool(BoolFunctionExpr),
     Nil(NilFunctionExpr),

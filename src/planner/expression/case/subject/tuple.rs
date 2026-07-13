@@ -213,13 +213,14 @@ fn plan_tuple_case_pattern(
             left_side_assignment,
             right_side_assignment,
         ),
+        Pattern::BitArraySize(_) | Pattern::BitArray { .. } => {
+            super::unsupported_bit_array_pattern()
+        }
         Pattern::Int { .. }
         | Pattern::Float { .. }
         | Pattern::String { .. }
         | Pattern::Constructor { .. }
-        | Pattern::BitArraySize(_)
         | Pattern::List { .. }
-        | Pattern::BitArray { .. }
         | Pattern::StringPrefix { .. } => Err(invalid_case_shape(
             InvalidCaseShapeReason::PatternTypeMismatch,
         )),

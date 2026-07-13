@@ -1,8 +1,8 @@
 use crate::plan::{
-    BoolExpr, BoolFunctionExpr, Expr, ExprKind, FloatExpr, FloatFunctionExpr, FunctionExpr,
-    FunctionExprKind, FunctionFunctionExpr, IntExpr, IntFunctionExpr, ListExpr, ListFunctionExpr,
-    NilExpr, NilFunctionExpr, Step, StringExpr, StringFunctionExpr, TupleExpr, TupleFunctionExpr,
-    ValueType,
+    BitArrayExpr, BitArrayFunctionExpr, BoolExpr, BoolFunctionExpr, Expr, ExprKind, FloatExpr,
+    FloatFunctionExpr, FunctionExpr, FunctionExprKind, FunctionFunctionExpr, IntExpr,
+    IntFunctionExpr, ListExpr, ListFunctionExpr, NilExpr, NilFunctionExpr, Step, StringExpr,
+    StringFunctionExpr, TupleExpr, TupleFunctionExpr, ValueType,
 };
 use crate::planner::context::PlanContext;
 use crate::planner::error::PlanError;
@@ -35,6 +35,7 @@ pub(super) fn block_expr(steps: Vec<Step>, return_: Expr) -> Expr {
     match return_.into_kind() {
         ExprKind::Int(return_) => Expr::int(IntExpr::block(steps, return_)),
         ExprKind::String(return_) => Expr::string(StringExpr::block(steps, return_)),
+        ExprKind::BitArray(return_) => Expr::bit_array(BitArrayExpr::block(steps, return_)),
         ExprKind::Float(return_) => Expr::float(FloatExpr::block(steps, return_)),
         ExprKind::Bool(return_) => Expr::bool(BoolExpr::block(steps, return_)),
         ExprKind::Nil(return_) => Expr::nil(NilExpr::block(steps, return_)),
@@ -46,6 +47,9 @@ pub(super) fn block_expr(steps: Vec<Step>, return_: Expr) -> Expr {
             }
             FunctionExprKind::String(return_) => Expr::function(FunctionExpr::string(
                 StringFunctionExpr::block(steps, return_),
+            )),
+            FunctionExprKind::BitArray(return_) => Expr::function(FunctionExpr::bit_array(
+                BitArrayFunctionExpr::block(steps, return_),
             )),
             FunctionExprKind::Float(return_) => Expr::function(FunctionExpr::float(
                 FloatFunctionExpr::block(steps, return_),

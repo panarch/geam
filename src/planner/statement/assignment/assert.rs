@@ -219,6 +219,7 @@ fn define_assert_local(
         ValueType::Int => ParamLocal::int(context.define_int_local(name)),
         ValueType::Float => ParamLocal::float(context.define_float_local(name)),
         ValueType::String => ParamLocal::string(context.define_string_local(name)),
+        ValueType::BitArray => ParamLocal::bit_array(context.define_bit_array_local(name)),
         ValueType::Bool => ParamLocal::bool(context.define_bool_local(name)),
         ValueType::Nil => ParamLocal::nil(context.define_nil_local(name)),
         ValueType::Tuple(type_) => {
@@ -241,6 +242,10 @@ fn define_assert_local(
                 ),
                 ValueType::String => ParamLocal::string_function(
                     context.define_string_function_local(name, type_.clone()),
+                    type_,
+                ),
+                ValueType::BitArray => ParamLocal::bit_array_function(
+                    context.define_bit_array_function_local(name, type_.clone()),
                     type_,
                 ),
                 ValueType::Bool => ParamLocal::bool_function(
@@ -370,10 +375,11 @@ fn list_assert_value_must_be_list(actual: ValueType) -> PlanError {
 #[cfg(test)]
 mod tests {
     use crate::plan::{
-        AssertBinding, AssertPattern, BoolFunctionLocalId, BoolLocalId, FloatFunctionLocalId,
-        FloatLocalId, FunctionFunctionLocalId, FunctionType, IntFunctionLocalId, IntListLocalId,
-        IntLocalId, ListAssertPattern, ListAssertTail, ListLocal, NilFunctionLocalId, NilLocalId,
-        PanicSite, ParamLocal, SourceSpan, Step, StringExpr, StringFunctionLocalId, StringLocalId,
+        AssertBinding, AssertPattern, BitArrayFunctionLocalId, BitArrayLocalId,
+        BoolFunctionLocalId, BoolLocalId, FloatFunctionLocalId, FloatLocalId,
+        FunctionFunctionLocalId, FunctionType, IntFunctionLocalId, IntListLocalId, IntLocalId,
+        ListAssertPattern, ListAssertTail, ListLocal, NilFunctionLocalId, NilLocalId, PanicSite,
+        ParamLocal, SourceSpan, Step, StringExpr, StringFunctionLocalId, StringLocalId,
         TupleFunctionLocalId, TupleLocalId, ValueType,
     };
     use crate::planner::context::{AnonymousFunctions, PlanContext};
@@ -794,11 +800,11 @@ pub fn main() {
                         pattern: Pattern::Variable {
                             location: dummy_span(),
                             name: "rest".into(),
-                            type_: type_::list(type_::bit_array()),
+                            type_: type_::list(type_::result(type_::int(), type_::nil())),
                             origin: VariableOrigin::generated(),
                         },
                     })),
-                    type_: type_::list(type_::bit_array()),
+                    type_: type_::list(type_::result(type_::int(), type_::nil())),
                 }],
             }),
             Err(PlanError::UnsupportedExpression {
@@ -971,7 +977,7 @@ pub fn main() {
                     location: dummy_span(),
                     elements: Vec::new(),
                     tail: None,
-                    type_: type_::list(type_::bit_array()),
+                    type_: type_::list(type_::result(type_::int(), type_::nil())),
                 },
                 &mut context,
             ),
@@ -1177,7 +1183,7 @@ pub fn main() {
                 Pattern::Variable {
                     location: dummy_span(),
                     name: "bits".into(),
-                    type_: type_::bit_array(),
+                    type_: type_::result(type_::int(), type_::nil()),
                     origin: VariableOrigin::generated(),
                 },
                 &mut context,
@@ -1236,7 +1242,7 @@ pub fn main() {
                     pattern: Box::new(Pattern::Discard {
                         location: dummy_span(),
                         name: "_".into(),
-                        type_: type_::bit_array(),
+                        type_: type_::result(type_::int(), type_::nil()),
                     }),
                 },
                 &mut context,
@@ -1258,6 +1264,7 @@ pub fn main() {
         let int_function_type = FunctionType::new(Vec::new(), ValueType::Int);
         let float_function_type = FunctionType::new(Vec::new(), ValueType::Float);
         let string_function_type = FunctionType::new(Vec::new(), ValueType::String);
+        let bit_array_function_type = FunctionType::new(Vec::new(), ValueType::BitArray);
         let bool_function_type = FunctionType::new(Vec::new(), ValueType::Bool);
         let nil_function_type = FunctionType::new(Vec::new(), ValueType::Nil);
         let tuple_function_type =
@@ -1280,6 +1287,10 @@ pub fn main() {
         assert_eq!(
             super::define_assert_local("string".into(), ValueType::String, &mut context),
             ParamLocal::string(StringLocalId(0)),
+        );
+        assert_eq!(
+            super::define_assert_local("bit_array".into(), ValueType::BitArray, &mut context),
+            ParamLocal::bit_array(BitArrayLocalId(0)),
         );
         assert_eq!(
             super::define_assert_local("bool".into(), ValueType::Bool, &mut context),
@@ -1328,6 +1339,14 @@ pub fn main() {
                 &mut context,
             ),
             ParamLocal::string_function(StringFunctionLocalId(0), string_function_type),
+        );
+        assert_eq!(
+            super::define_assert_local(
+                "bit_array_function".into(),
+                ValueType::Function(Box::new(bit_array_function_type.clone())),
+                &mut context,
+            ),
+            ParamLocal::bit_array_function(BitArrayFunctionLocalId(0), bit_array_function_type,),
         );
         assert_eq!(
             super::define_assert_local(

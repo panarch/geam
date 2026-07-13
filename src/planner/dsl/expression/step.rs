@@ -1,13 +1,13 @@
 use super::{
-    Bool, BoolFunction, Float, FloatFunction, Int, IntFunction, List, Nil, NilFunction, String,
-    StringFunction, Tuple,
+    BitArray, BitArrayFunction, Bool, BoolFunction, Float, FloatFunction, Int, IntFunction, List,
+    Nil, NilFunction, String, StringFunction, Tuple,
 };
 use crate::plan::{
-    BoolFunctionLocalId, BoolListLocalId, BoolLocalId, Expr, FloatFunctionLocalId,
-    FloatListLocalId, FloatLocalId, FunctionListLocalId, IntFunctionLocalId, IntListLocalId,
-    IntLocalId, ListExpr, ListListLocalId, ListLocalExpr, NilFunctionLocalId, NilListLocalId,
-    NilLocalId, Step, StringFunctionLocalId, StringListLocalId, StringLocalId, TupleListLocalId,
-    TupleLocalId,
+    BitArrayFunctionLocalId, BitArrayLocalId, BoolFunctionLocalId, BoolListLocalId, BoolLocalId,
+    Expr, FloatFunctionLocalId, FloatListLocalId, FloatLocalId, FunctionListLocalId,
+    IntFunctionLocalId, IntListLocalId, IntLocalId, ListExpr, ListListLocalId, ListLocalExpr,
+    NilFunctionLocalId, NilListLocalId, NilLocalId, Step, StringFunctionLocalId, StringListLocalId,
+    StringLocalId, TupleListLocalId, TupleLocalId,
 };
 use ecow::EcoString;
 
@@ -17,6 +17,14 @@ pub(crate) fn let_int_step(local: usize, name: impl Into<EcoString>, value: Int)
 
 pub(crate) fn let_string_step(local: usize, name: impl Into<EcoString>, value: String) -> Step {
     Step::let_string(StringLocalId(local), name.into(), value.into())
+}
+
+pub(crate) fn let_bit_array_step(
+    local: usize,
+    name: impl Into<EcoString>,
+    value: BitArray,
+) -> Step {
+    Step::let_bit_array(BitArrayLocalId(local), name.into(), value.into())
 }
 
 pub(crate) fn let_float_step(local: usize, name: impl Into<EcoString>, value: Float) -> Step {
@@ -43,6 +51,10 @@ pub(crate) fn let_list_step(local: usize, name: impl Into<EcoString>, value: Lis
         },
         ListExpr::String(value) => ListLocalExpr::String {
             local: StringListLocalId(local),
+            value,
+        },
+        ListExpr::BitArray(value) => ListLocalExpr::BitArray {
+            local: crate::plan::BitArrayListLocalId(local),
             value,
         },
         ListExpr::Float(value) => ListLocalExpr::Float {
@@ -93,6 +105,14 @@ pub(crate) fn let_string_function_step(
     Step::let_string_function(StringFunctionLocalId(local), name.into(), value.into())
 }
 
+pub(crate) fn let_bit_array_function_step(
+    local: usize,
+    name: impl Into<EcoString>,
+    value: BitArrayFunction,
+) -> Step {
+    Step::let_bit_array_function(BitArrayFunctionLocalId(local), name.into(), value.into())
+}
+
 pub(crate) fn let_float_function_step(
     local: usize,
     name: impl Into<EcoString>,
@@ -124,11 +144,13 @@ pub(crate) fn evaluate_step(value: impl Into<Expr>) -> Step {
 #[cfg(test)]
 mod tests {
     use super::{
-        evaluate_step, let_bool_function_step, let_bool_step, let_float_function_step,
-        let_float_step, let_int_function_step, let_int_step, let_list_step, let_nil_function_step,
-        let_nil_step, let_string_function_step, let_string_step, let_tuple_step,
+        evaluate_step, let_bit_array_function_step, let_bit_array_step, let_bool_function_step,
+        let_bool_step, let_float_function_step, let_float_step, let_int_function_step,
+        let_int_step, let_list_step, let_nil_function_step, let_nil_step, let_string_function_step,
+        let_string_step, let_tuple_step,
     };
     use crate::plan::{
+        BitArrayExpr, BitArrayFunctionLocalId, BitArrayListLocalId, BitArrayLocalId,
         BoolFunctionLocalId, BoolListLocalId, BoolLocalId, Expr, FloatFunctionLocalId,
         FloatListLocalId, FloatLocalId, FunctionListLocalId, FunctionType, IntFunctionLocalId,
         IntListLocalId, IntLocalId, ListExpr, ListListLocalId, ListLocalExpr, NilFunctionLocalId,
@@ -136,8 +158,8 @@ mod tests {
         TupleListLocalId, TupleLocalId, ValueType,
     };
     use crate::planner::dsl::expression::{
-        bool_, bool_function_ref, float, float_function_ref, int, int_function_ref, list, nil,
-        nil_function_ref, string, string_function_ref, tuple,
+        bit_array, bit_array_function_ref, bool_, bool_function_ref, float, float_function_ref,
+        int, int_function_ref, list, nil, nil_function_ref, string, string_function_ref, tuple,
     };
 
     #[test]
@@ -149,6 +171,14 @@ mod tests {
         assert_eq!(
             let_string_step(1, "name", string("a")),
             Step::let_string(StringLocalId(1), "name".into(), string("a").into()),
+        );
+        assert_eq!(
+            let_bit_array_step(14, "bits", bit_array([])),
+            Step::let_bit_array(
+                BitArrayLocalId(14),
+                "bits".into(),
+                BitArrayExpr::value(Vec::new()),
+            ),
         );
         assert_eq!(
             let_float_step(2, "ratio", float(1.0)),
@@ -195,6 +225,18 @@ mod tests {
                     value: ListExpr::from(list([string("a")], ValueType::String))
                         .into_string()
                         .expect("expected string list"),
+                },
+            ),
+        );
+        assert_eq!(
+            let_list_step(14, "bits", list([bit_array([])], ValueType::BitArray)),
+            Step::let_list_expr(
+                "bits".into(),
+                ListLocalExpr::BitArray {
+                    local: BitArrayListLocalId(14),
+                    value: ListExpr::from(list([bit_array([])], ValueType::BitArray))
+                        .into_bit_array()
+                        .expect("expected bit array list"),
                 },
             ),
         );
@@ -337,6 +379,29 @@ mod tests {
                 string_function_ref(
                     0,
                     [crate::plan::LocalId::String(crate::plan::StringLocalId(0))],
+                )
+                .into(),
+            ),
+        );
+        assert_eq!(
+            let_bit_array_function_step(
+                5,
+                "f",
+                bit_array_function_ref(
+                    0,
+                    [crate::plan::LocalId::BitArray(
+                        crate::plan::BitArrayLocalId(0)
+                    )],
+                ),
+            ),
+            Step::let_bit_array_function(
+                BitArrayFunctionLocalId(5),
+                "f".into(),
+                bit_array_function_ref(
+                    0,
+                    [crate::plan::LocalId::BitArray(
+                        crate::plan::BitArrayLocalId(0)
+                    )],
                 )
                 .into(),
             ),

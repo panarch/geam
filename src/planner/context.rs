@@ -1,13 +1,15 @@
 use crate::plan::{
-    BoolExpr, BoolFunctionExpr, BoolFunctionFunctionId, BoolFunctionId, BoolFunctionLocalId,
-    BoolListFunctionId, BoolListItem, BoolListLocalId, BoolLocalId, CaptureArg, FloatExpr,
-    FloatFunctionExpr, FloatFunctionFunctionId, FloatFunctionId, FloatFunctionLocalId,
-    FloatListFunctionId, FloatListItem, FloatListLocalId, FloatLocalId, FunctionFunctionExpr,
-    FunctionFunctionFunctionId, FunctionFunctionId, FunctionFunctionLocalId, FunctionId,
-    FunctionListFunctionId, FunctionListItem, FunctionListLocalId, FunctionPlan, FunctionReference,
-    FunctionType, IntExpr, IntFunctionExpr, IntFunctionFunctionId, IntFunctionId,
-    IntFunctionLocalId, IntListFunctionId, IntListItem, IntListLocalId, IntLocalId, ListExpr,
-    ListFunctionExpr, ListFunctionFunctionId, ListFunctionId, ListFunctionLocal,
+    BitArrayExpr, BitArrayFunctionExpr, BitArrayFunctionFunctionId, BitArrayFunctionId,
+    BitArrayFunctionLocalId, BitArrayListFunctionId, BitArrayListItem, BitArrayListLocalId,
+    BitArrayLocalId, BoolExpr, BoolFunctionExpr, BoolFunctionFunctionId, BoolFunctionId,
+    BoolFunctionLocalId, BoolListFunctionId, BoolListItem, BoolListLocalId, BoolLocalId,
+    CaptureArg, FloatExpr, FloatFunctionExpr, FloatFunctionFunctionId, FloatFunctionId,
+    FloatFunctionLocalId, FloatListFunctionId, FloatListItem, FloatListLocalId, FloatLocalId,
+    FunctionFunctionExpr, FunctionFunctionFunctionId, FunctionFunctionId, FunctionFunctionLocalId,
+    FunctionId, FunctionListFunctionId, FunctionListItem, FunctionListLocalId, FunctionPlan,
+    FunctionReference, FunctionType, IntExpr, IntFunctionExpr, IntFunctionFunctionId,
+    IntFunctionId, IntFunctionLocalId, IntListFunctionId, IntListItem, IntListLocalId, IntLocalId,
+    ListExpr, ListFunctionExpr, ListFunctionFunctionId, ListFunctionId, ListFunctionLocal,
     ListListFunctionId, ListListItem, ListListLocalId, ListLocal, ListLocalExpr, LocalId, NilExpr,
     NilFunctionExpr, NilFunctionFunctionId, NilFunctionId, NilFunctionLocalId, NilListFunctionId,
     NilListItem, NilListLocalId, NilLocalId, PanicSite, ParamBinding, ParamLocal,
@@ -46,11 +48,13 @@ pub(super) struct PlanContext<'a> {
     next_int_local: usize,
     next_float_local: usize,
     next_string_local: usize,
+    next_bit_array_local: usize,
     next_bool_local: usize,
     next_nil_local: usize,
     next_tuple_local: usize,
     next_int_list_local: usize,
     next_string_list_local: usize,
+    next_bit_array_list_local: usize,
     next_float_list_local: usize,
     next_bool_list_local: usize,
     next_nil_list_local: usize,
@@ -60,6 +64,7 @@ pub(super) struct PlanContext<'a> {
     next_int_function_local: usize,
     next_float_function_local: usize,
     next_string_function_local: usize,
+    next_bit_array_function_local: usize,
     next_bool_function_local: usize,
     next_nil_function_local: usize,
     next_tuple_function_local: usize,
@@ -91,6 +96,10 @@ pub(super) enum FunctionLocalBinding {
     },
     String {
         local: StringFunctionLocalId,
+        type_: FunctionType,
+    },
+    BitArray {
+        local: BitArrayFunctionLocalId,
         type_: FunctionType,
     },
     Float {
@@ -131,11 +140,13 @@ impl<'a> PlanContext<'a> {
             next_int_local: 0,
             next_float_local: 0,
             next_string_local: 0,
+            next_bit_array_local: 0,
             next_bool_local: 0,
             next_nil_local: 0,
             next_tuple_local: 0,
             next_int_list_local: 0,
             next_string_list_local: 0,
+            next_bit_array_list_local: 0,
             next_float_list_local: 0,
             next_bool_list_local: 0,
             next_nil_list_local: 0,
@@ -145,6 +156,7 @@ impl<'a> PlanContext<'a> {
             next_int_function_local: 0,
             next_float_function_local: 0,
             next_string_function_local: 0,
+            next_bit_array_function_local: 0,
             next_bool_function_local: 0,
             next_nil_function_local: 0,
             next_tuple_function_local: 0,
@@ -176,6 +188,9 @@ impl<'a> PlanContext<'a> {
             LocalId::String(local) => {
                 self.next_string_local = self.next_string_local.max(local.0 + 1);
             }
+            LocalId::BitArray(local) => {
+                self.next_bit_array_local = self.next_bit_array_local.max(local.0 + 1);
+            }
             LocalId::Bool(local) => {
                 self.next_bool_local = self.next_bool_local.max(local.0 + 1);
             }
@@ -196,6 +211,9 @@ impl<'a> PlanContext<'a> {
             }
             ParamLocal::String(local) => {
                 self.define_existing_local(name, LocalId::String(*local));
+            }
+            ParamLocal::BitArray(local) => {
+                self.define_existing_local(name, LocalId::BitArray(*local));
             }
             ParamLocal::Bool(local) => {
                 self.define_existing_local(name, LocalId::Bool(*local));
@@ -243,6 +261,17 @@ impl<'a> PlanContext<'a> {
                 self.bindings.insert(
                     name,
                     LocalBinding::Function(FunctionLocalBinding::String {
+                        local: *local,
+                        type_: type_.clone(),
+                    }),
+                );
+            }
+            ParamLocal::BitArrayFunction { local, type_ } => {
+                self.next_bit_array_function_local =
+                    self.next_bit_array_function_local.max(local.0 + 1);
+                self.bindings.insert(
+                    name,
+                    LocalBinding::Function(FunctionLocalBinding::BitArray {
                         local: *local,
                         type_: type_.clone(),
                     }),
@@ -337,6 +366,26 @@ impl<'a> PlanContext<'a> {
     pub(super) fn define_internal_string_function_local(&mut self) -> StringFunctionLocalId {
         let local = StringFunctionLocalId(self.next_string_function_local);
         self.next_string_function_local += 1;
+        local
+    }
+
+    pub(super) fn define_bit_array_function_local(
+        &mut self,
+        name: EcoString,
+        type_: FunctionType,
+    ) -> BitArrayFunctionLocalId {
+        let local = BitArrayFunctionLocalId(self.next_bit_array_function_local);
+        self.next_bit_array_function_local += 1;
+        self.bindings.insert(
+            name,
+            LocalBinding::Function(FunctionLocalBinding::BitArray { local, type_ }),
+        );
+        local
+    }
+
+    pub(super) fn define_internal_bit_array_function_local(&mut self) -> BitArrayFunctionLocalId {
+        let local = BitArrayFunctionLocalId(self.next_bit_array_function_local);
+        self.next_bit_array_function_local += 1;
         local
     }
 
@@ -495,6 +544,20 @@ impl<'a> PlanContext<'a> {
         local
     }
 
+    pub(super) fn define_bit_array_local(&mut self, name: EcoString) -> BitArrayLocalId {
+        let local = BitArrayLocalId(self.next_bit_array_local);
+        self.next_bit_array_local += 1;
+        self.bindings
+            .insert(name, LocalBinding::Primitive(LocalId::BitArray(local)));
+        local
+    }
+
+    pub(super) fn define_internal_bit_array_local(&mut self) -> BitArrayLocalId {
+        let local = BitArrayLocalId(self.next_bit_array_local);
+        self.next_bit_array_local += 1;
+        local
+    }
+
     pub(super) fn define_float_local(&mut self, name: EcoString) -> FloatLocalId {
         let local = FloatLocalId(self.next_float_local);
         self.next_float_local += 1;
@@ -606,6 +669,18 @@ impl<'a> PlanContext<'a> {
                     value: crate::plan::StringListExpr::local_get(StringListItem, source, name),
                 }
             }
+            ListLocal::BitArray(source) => {
+                let local = BitArrayListLocalId(self.next_bit_array_list_local);
+                self.next_bit_array_list_local += 1;
+                self.bindings.insert(
+                    name.clone(),
+                    LocalBinding::List(ListLocal::bit_array(local)),
+                );
+                ListLocalExpr::BitArray {
+                    local,
+                    value: crate::plan::BitArrayListExpr::local_get(BitArrayListItem, source, name),
+                }
+            }
             ListLocal::Float(source) => {
                 let local = FloatListLocalId(self.next_float_list_local);
                 self.next_float_list_local += 1;
@@ -702,6 +777,11 @@ impl<'a> PlanContext<'a> {
                 self.next_string_list_local += 1;
                 ListLocal::string(local)
             }
+            ValueType::BitArray => {
+                let local = BitArrayListLocalId(self.next_bit_array_list_local);
+                self.next_bit_array_list_local += 1;
+                ListLocal::bit_array(local)
+            }
             ValueType::Float => {
                 let local = FloatListLocalId(self.next_float_list_local);
                 self.next_float_list_local += 1;
@@ -748,6 +828,14 @@ impl<'a> PlanContext<'a> {
                 (
                     ListLocal::string(local),
                     ListLocalExpr::String { local, value },
+                )
+            }
+            ListExpr::BitArray(value) => {
+                let local = BitArrayListLocalId(self.next_bit_array_list_local);
+                self.next_bit_array_list_local += 1;
+                (
+                    ListLocal::bit_array(local),
+                    ListLocalExpr::BitArray { local, value },
                 )
             }
             ListExpr::Float(value) => {
@@ -817,6 +905,9 @@ impl<'a> PlanContext<'a> {
             }
             ListLocal::String(local) => {
                 self.next_string_list_local = self.next_string_list_local.max(local.0 + 1);
+            }
+            ListLocal::BitArray(local) => {
+                self.next_bit_array_list_local = self.next_bit_array_list_local.max(local.0 + 1);
             }
             ListLocal::Float(local) => {
                 self.next_float_list_local = self.next_float_list_local.max(local.0 + 1);
@@ -920,11 +1011,13 @@ impl<'a> PlanContext<'a> {
             next_int_local: 0,
             next_float_local: 0,
             next_string_local: 0,
+            next_bit_array_local: 0,
             next_bool_local: 0,
             next_nil_local: 0,
             next_tuple_local: 0,
             next_int_list_local: 0,
             next_string_list_local: 0,
+            next_bit_array_list_local: 0,
             next_float_list_local: 0,
             next_bool_list_local: 0,
             next_nil_list_local: 0,
@@ -934,6 +1027,7 @@ impl<'a> PlanContext<'a> {
             next_int_function_local: 0,
             next_float_function_local: 0,
             next_string_function_local: 0,
+            next_bit_array_function_local: 0,
             next_bool_function_local: 0,
             next_nil_function_local: 0,
             next_tuple_function_local: 0,
@@ -996,6 +1090,10 @@ impl<'a> PlanContext<'a> {
                 let target = self.define_string_local(capture.name.clone());
                 CaptureArg::string(target, StringExpr::local_get(local, capture.name))
             }
+            LocalBinding::Primitive(LocalId::BitArray(local)) => {
+                let target = self.define_bit_array_local(capture.name.clone());
+                CaptureArg::bit_array(target, BitArrayExpr::local_get(local, capture.name))
+            }
             LocalBinding::Primitive(LocalId::Bool(local)) => {
                 let target = self.define_bool_local(capture.name.clone());
                 CaptureArg::bool(target, BoolExpr::local_get(local, capture.name))
@@ -1030,6 +1128,14 @@ impl<'a> PlanContext<'a> {
                 CaptureArg::string_function(
                     target,
                     StringFunctionExpr::local_get(local, capture.name, type_),
+                )
+            }
+            LocalBinding::Function(FunctionLocalBinding::BitArray { local, type_ }) => {
+                let target =
+                    self.define_bit_array_function_local(capture.name.clone(), type_.clone());
+                CaptureArg::bit_array_function(
+                    target,
+                    BitArrayFunctionExpr::local_get(local, capture.name, type_),
                 )
             }
             LocalBinding::Function(FunctionLocalBinding::Bool { local, type_ }) => {
@@ -1165,11 +1271,13 @@ pub(in crate::planner) struct FunctionRuntimeIds {
     next_int: usize,
     next_float: usize,
     next_string: usize,
+    next_bit_array: usize,
     next_bool: usize,
     next_nil: usize,
     next_tuple: usize,
     next_int_list: usize,
     next_string_list: usize,
+    next_bit_array_list: usize,
     next_float_list: usize,
     next_bool_list: usize,
     next_nil_list: usize,
@@ -1179,11 +1287,13 @@ pub(in crate::planner) struct FunctionRuntimeIds {
     next_int_function: usize,
     next_float_function: usize,
     next_string_function: usize,
+    next_bit_array_function: usize,
     next_bool_function: usize,
     next_nil_function: usize,
     next_tuple_function: usize,
     next_int_list_function: usize,
     next_string_list_function: usize,
+    next_bit_array_list_function: usize,
     next_float_list_function: usize,
     next_bool_list_function: usize,
     next_nil_list_function: usize,
@@ -1199,6 +1309,7 @@ impl FunctionRuntimeIds {
             ValueType::Int => RuntimeFunctionId::Int(self.next_int_id()),
             ValueType::Float => RuntimeFunctionId::Float(self.next_float_id()),
             ValueType::String => RuntimeFunctionId::String(self.next_string_id()),
+            ValueType::BitArray => RuntimeFunctionId::BitArray(self.next_bit_array_id()),
             ValueType::Bool => RuntimeFunctionId::Bool(self.next_bool_id()),
             ValueType::Nil => RuntimeFunctionId::Nil(self.next_nil_id()),
             ValueType::Tuple(return_type) => RuntimeFunctionId::Tuple {
@@ -1217,6 +1328,7 @@ impl FunctionRuntimeIds {
             ValueType::Int => FunctionFunctionId::Int(self.next_int_function_id()),
             ValueType::Float => FunctionFunctionId::Float(self.next_float_function_id()),
             ValueType::String => FunctionFunctionId::String(self.next_string_function_id()),
+            ValueType::BitArray => FunctionFunctionId::BitArray(self.next_bit_array_function_id()),
             ValueType::Bool => FunctionFunctionId::Bool(self.next_bool_function_id()),
             ValueType::Nil => FunctionFunctionId::Nil(self.next_nil_function_id()),
             ValueType::Tuple(_) => FunctionFunctionId::Tuple(self.next_tuple_function_id()),
@@ -1240,6 +1352,12 @@ impl FunctionRuntimeIds {
     pub(in crate::planner) fn next_string_id(&mut self) -> StringFunctionId {
         let id = StringFunctionId(self.next_string);
         self.next_string += 1;
+        id
+    }
+
+    pub(in crate::planner) fn next_bit_array_id(&mut self) -> BitArrayFunctionId {
+        let id = BitArrayFunctionId(self.next_bit_array);
+        self.next_bit_array += 1;
         id
     }
 
@@ -1271,6 +1389,7 @@ impl FunctionRuntimeIds {
         match item_type {
             ValueType::Int => ListFunctionId::Int(self.next_int_list_id()),
             ValueType::String => ListFunctionId::String(self.next_string_list_id()),
+            ValueType::BitArray => ListFunctionId::BitArray(self.next_bit_array_list_id()),
             ValueType::Float => ListFunctionId::Float(self.next_float_list_id()),
             ValueType::Bool => ListFunctionId::Bool(self.next_bool_list_id()),
             ValueType::Nil => ListFunctionId::Nil(self.next_nil_list_id()),
@@ -1298,6 +1417,12 @@ impl FunctionRuntimeIds {
     pub(in crate::planner) fn next_string_list_id(&mut self) -> StringListFunctionId {
         let id = StringListFunctionId(self.next_string_list);
         self.next_string_list += 1;
+        id
+    }
+
+    pub(in crate::planner) fn next_bit_array_list_id(&mut self) -> BitArrayListFunctionId {
+        let id = BitArrayListFunctionId(self.next_bit_array_list);
+        self.next_bit_array_list += 1;
         id
     }
 
@@ -1349,6 +1474,12 @@ impl FunctionRuntimeIds {
         id
     }
 
+    pub(in crate::planner) fn next_bit_array_function_id(&mut self) -> BitArrayFunctionFunctionId {
+        let id = BitArrayFunctionFunctionId(self.next_bit_array_function);
+        self.next_bit_array_function += 1;
+        id
+    }
+
     pub(in crate::planner) fn next_float_function_id(&mut self) -> FloatFunctionFunctionId {
         let id = FloatFunctionFunctionId(self.next_float_function);
         self.next_float_function += 1;
@@ -1395,6 +1526,15 @@ impl FunctionRuntimeIds {
                     ValueType::String,
                 );
                 self.next_string_list_function += 1;
+                id
+            }
+            ValueType::BitArray => {
+                let id = ListFunctionFunctionId::from_item_type(
+                    self.next_bit_array_list_function,
+                    type_,
+                    ValueType::BitArray,
+                );
+                self.next_bit_array_list_function += 1;
                 id
             }
             ValueType::Float => {
@@ -1476,6 +1616,8 @@ impl ValueType {
             Some(Self::Float)
         } else if type_.is_string() {
             Some(Self::String)
+        } else if type_.is_bit_array() {
+            Some(Self::BitArray)
         } else if type_.is_bool() {
             Some(Self::Bool)
         } else if type_.is_nil() {
@@ -1509,19 +1651,22 @@ mod tests {
     use super::FunctionLocalBinding;
     use super::{AnonymousFunctions, FunctionInfo, FunctionRuntimeIds, PlanContext};
     use crate::plan::{
-        BoolFunctionExpr, BoolFunctionLocalId, BoolListExpr, BoolListItem, BoolListLocalId,
-        BoolLocalId, CaptureArg, FloatFunctionExpr, FloatFunctionId, FloatFunctionLocalId,
-        FloatListExpr, FloatListItem, FloatListLocalId, FloatLocalId, FunctionFunctionExpr,
-        FunctionFunctionLocalId, FunctionListExpr, FunctionListItem, FunctionListLocalId,
-        FunctionType, IntFunctionId, IntFunctionLocalId, IntListExpr, IntListItem, IntListLocalId,
-        IntLocalId, ListExpr, ListFunctionExpr, ListListExpr, ListListItem, ListListLocalId,
-        ListLocal, ListLocalExpr, LocalId, NilFunctionExpr, NilFunctionLocalId, NilListExpr,
-        NilListItem, NilListLocalId, NilLocalId, ParamLocal, RuntimeFunctionId, StringFunctionExpr,
-        StringFunctionLocalId, StringListExpr, StringListItem, StringListLocalId, StringLocalId,
-        TupleFunctionExpr, TupleFunctionLocalId, TupleListExpr, TupleListItem, TupleListLocalId,
-        TupleLocalId, ValueType,
+        BitArrayFunctionExpr, BitArrayFunctionId, BitArrayFunctionLocalId, BitArrayListExpr,
+        BitArrayListItem, BitArrayListLocalId, BitArrayLocalId, BoolFunctionExpr,
+        BoolFunctionLocalId, BoolListExpr, BoolListItem, BoolListLocalId, BoolLocalId, CaptureArg,
+        FloatFunctionExpr, FloatFunctionId, FloatFunctionLocalId, FloatListExpr, FloatListItem,
+        FloatListLocalId, FloatLocalId, FunctionFunctionExpr, FunctionFunctionLocalId,
+        FunctionListExpr, FunctionListItem, FunctionListLocalId, FunctionType, IntFunctionId,
+        IntFunctionLocalId, IntListExpr, IntListItem, IntListLocalId, IntLocalId, ListExpr,
+        ListFunctionExpr, ListListExpr, ListListItem, ListListLocalId, ListLocal, ListLocalExpr,
+        LocalId, NilFunctionExpr, NilFunctionLocalId, NilListExpr, NilListItem, NilListLocalId,
+        NilLocalId, ParamLocal, RuntimeFunctionId, StringFunctionExpr, StringFunctionLocalId,
+        StringListExpr, StringListItem, StringListLocalId, StringLocalId, TupleFunctionExpr,
+        TupleFunctionLocalId, TupleListExpr, TupleListItem, TupleListLocalId, TupleLocalId,
+        ValueType,
     };
     use ecow::EcoString;
+    use gleam_core::ast::Publicity;
     use gleam_core::type_;
     use std::collections::HashMap;
 
@@ -1594,6 +1739,7 @@ mod tests {
         let mut context = PlanContext::new(&module, &functions, &mut anonymous);
         let tuple_type = vec![ValueType::Int];
         let string_type = FunctionType::new(Vec::new(), ValueType::String);
+        let bit_array_type = FunctionType::new(Vec::new(), ValueType::BitArray);
         let float_type = FunctionType::new(Vec::new(), ValueType::Float);
         let bool_type = FunctionType::new(Vec::new(), ValueType::Bool);
         let nil_type = FunctionType::new(Vec::new(), ValueType::Nil);
@@ -1609,6 +1755,10 @@ mod tests {
         context.define_existing_param(
             "string_fn".into(),
             &ParamLocal::string_function(StringFunctionLocalId(3), string_type.clone()),
+        );
+        context.define_existing_param(
+            "bit_array_fn".into(),
+            &ParamLocal::bit_array_function(BitArrayFunctionLocalId(4), bit_array_type.clone()),
         );
         context.define_existing_param(
             "float_fn".into(),
@@ -1636,6 +1786,13 @@ mod tests {
             Some(FunctionLocalBinding::String {
                 local: StringFunctionLocalId(3),
                 type_: string_type.clone(),
+            }),
+        );
+        assert_eq!(
+            context.lookup_function_local(&"bit_array_fn".into()),
+            Some(FunctionLocalBinding::BitArray {
+                local: BitArrayFunctionLocalId(4),
+                type_: bit_array_type.clone(),
             }),
         );
         assert_eq!(
@@ -1678,6 +1835,12 @@ mod tests {
                 .define_string_function_local("next_string_fn".into(), string_type)
                 .0,
             4,
+        );
+        assert_eq!(
+            context
+                .define_bit_array_function_local("next_bit_array_fn".into(), bit_array_type)
+                .0,
+            5,
         );
         assert_eq!(
             context
@@ -1783,6 +1946,20 @@ mod tests {
             },
         );
         assert_eq!(
+            context.define_list_capture_value(
+                "bit_arrays".into(),
+                ListLocal::bit_array(BitArrayListLocalId(9)),
+            ),
+            ListLocalExpr::BitArray {
+                local: BitArrayListLocalId(0),
+                value: BitArrayListExpr::local_get(
+                    BitArrayListItem,
+                    BitArrayListLocalId(9),
+                    "bit_arrays".into(),
+                ),
+            },
+        );
+        assert_eq!(
             context
                 .define_list_capture_value("floats".into(), ListLocal::float(FloatListLocalId(9))),
             ListLocalExpr::Float {
@@ -1874,6 +2051,10 @@ mod tests {
             ListLocal::string(StringListLocalId(0)),
         );
         assert_eq!(
+            context.define_list_local("bit_arrays".into(), ValueType::BitArray),
+            ListLocal::bit_array(BitArrayListLocalId(0)),
+        );
+        assert_eq!(
             context.define_list_local("floats".into(), ValueType::Float),
             ListLocal::float(FloatListLocalId(0)),
         );
@@ -1928,6 +2109,10 @@ mod tests {
             &ParamLocal::list(ListLocal::string(StringListLocalId(2))),
         );
         context.define_existing_param(
+            "bit_arrays".into(),
+            &ParamLocal::list(ListLocal::bit_array(BitArrayListLocalId(2))),
+        );
+        context.define_existing_param(
             "floats".into(),
             &ParamLocal::list(ListLocal::float(FloatListLocalId(3))),
         );
@@ -1958,6 +2143,10 @@ mod tests {
         assert_eq!(
             context.define_list_local("next_string".into(), ValueType::String),
             ListLocal::string(StringListLocalId(3)),
+        );
+        assert_eq!(
+            context.define_list_local("next_bit_array".into(), ValueType::BitArray),
+            ListLocal::bit_array(BitArrayListLocalId(3)),
         );
         assert_eq!(
             context.define_list_local("next_float".into(), ValueType::Float),
@@ -2000,11 +2189,16 @@ mod tests {
 
         assert_eq!(context.define_internal_int_local(), IntLocalId(0));
         assert_eq!(context.define_internal_string_local(), StringLocalId(0));
+        assert_eq!(
+            context.define_internal_bit_array_local(),
+            BitArrayLocalId(0),
+        );
         assert_eq!(context.define_internal_float_local(), FloatLocalId(0));
         assert_eq!(context.define_internal_bool_local(), BoolLocalId(0));
         assert_eq!(context.define_internal_nil_local(), NilLocalId(0));
         assert_eq!(context.lookup_local(&"<case:int:0>".into()), None);
         assert_eq!(context.lookup_local(&"<case:string:0>".into()), None);
+        assert_eq!(context.lookup_local(&"<case:bit_array:0>".into()), None);
         assert_eq!(context.lookup_local(&"<case:float:0>".into()), None);
         assert_eq!(context.lookup_local(&"<case:bool:0>".into()), None);
         assert_eq!(context.lookup_local(&"<case:nil:0>".into()), None);
@@ -2013,6 +2207,10 @@ mod tests {
         assert_eq!(
             context.define_string_local("string".into()),
             StringLocalId(1),
+        );
+        assert_eq!(
+            context.define_bit_array_local("bit_array".into()),
+            BitArrayLocalId(1),
         );
         assert_eq!(context.define_float_local("float".into()), FloatLocalId(1));
         assert_eq!(context.define_bool_local("bool".into()), BoolLocalId(1));
@@ -2034,6 +2232,10 @@ mod tests {
         assert_eq!(
             context.define_internal_string_function_local(),
             StringFunctionLocalId(0),
+        );
+        assert_eq!(
+            context.define_internal_bit_array_function_local(),
+            BitArrayFunctionLocalId(0),
         );
         assert_eq!(
             context.define_internal_float_function_local(),
@@ -2078,6 +2280,10 @@ mod tests {
         );
         assert_eq!(
             context.lookup_function_local(&"<case:string_function:0>".into()),
+            None,
+        );
+        assert_eq!(
+            context.lookup_function_local(&"<case:bit_array_function:0>".into()),
             None,
         );
         assert_eq!(
@@ -2243,6 +2449,7 @@ mod tests {
         let mut anonymous = AnonymousFunctions::default();
         let mut context = PlanContext::new(&module, &functions, &mut anonymous);
         let string_type = FunctionType::new(Vec::new(), ValueType::String);
+        let bit_array_type = FunctionType::new(Vec::new(), ValueType::BitArray);
         let bool_type = FunctionType::new(Vec::new(), ValueType::Bool);
         let nil_type = FunctionType::new(Vec::new(), ValueType::Nil);
         let function_type = FunctionType::new(
@@ -2251,12 +2458,14 @@ mod tests {
         );
 
         context.define_string_function_local("string_fn".into(), string_type.clone());
+        context.define_bit_array_function_local("bit_array_fn".into(), bit_array_type.clone());
         context.define_bool_function_local("bool_fn".into(), bool_type.clone());
         context.define_nil_function_local("nil_fn".into(), nil_type.clone());
         context.define_function_function_local("function_fn".into(), function_type.clone());
         let captures = context
             .capture_bindings(&[
                 "string_fn".into(),
+                "bit_array_fn".into(),
                 "bool_fn".into(),
                 "nil_fn".into(),
                 "function_fn".into(),
@@ -2273,6 +2482,14 @@ mod tests {
                         StringFunctionLocalId(0),
                         "string_fn".into(),
                         string_type,
+                    ),
+                ),
+                CaptureArg::bit_array_function(
+                    BitArrayFunctionLocalId(1),
+                    BitArrayFunctionExpr::local_get(
+                        BitArrayFunctionLocalId(0),
+                        "bit_array_fn".into(),
+                        bit_array_type,
                     ),
                 ),
                 CaptureArg::bool_function(
@@ -2302,6 +2519,17 @@ mod tests {
     #[test]
     fn value_type_converts_recursive_list_types() {
         assert_eq!(
+            ValueType::from_gleam(type_::bit_array().as_ref()),
+            Some(ValueType::BitArray),
+        );
+        assert_eq!(
+            ValueType::from_gleam(
+                type_::named("package", "main", "BitArray", Publicity::Public, Vec::new(),)
+                    .as_ref(),
+            ),
+            None,
+        );
+        assert_eq!(
             ValueType::from_gleam(type_::fn_(Vec::new(), type_::list(type_::int())).as_ref()),
             Some(ValueType::Function(Box::new(FunctionType::new(
                 Vec::new(),
@@ -2327,22 +2555,24 @@ mod tests {
 
     #[test]
     fn value_type_rejects_unsupported_recursive_member_types() {
+        let unsupported = || type_::result(type_::int(), type_::nil());
+
         assert_eq!(ValueType::from_gleam(type_::generic_var(0).as_ref()), None);
         assert_eq!(ValueType::from_gleam(type_::unbound_var(0).as_ref()), None);
         assert_eq!(
-            ValueType::from_gleam(type_::tuple(vec![type_::bit_array()]).as_ref()),
+            ValueType::from_gleam(type_::tuple(vec![unsupported()]).as_ref()),
             None,
         );
         assert_eq!(
-            ValueType::from_gleam(type_::list(type_::bit_array()).as_ref()),
+            ValueType::from_gleam(type_::list(unsupported()).as_ref()),
             None,
         );
         assert_eq!(
-            ValueType::from_gleam(type_::fn_(vec![type_::bit_array()], type_::int()).as_ref()),
+            ValueType::from_gleam(type_::fn_(vec![unsupported()], type_::int()).as_ref()),
             None,
         );
         assert_eq!(
-            ValueType::from_gleam(type_::fn_(Vec::new(), type_::bit_array()).as_ref()),
+            ValueType::from_gleam(type_::fn_(Vec::new(), unsupported()).as_ref()),
             None,
         );
     }
@@ -2368,6 +2598,10 @@ mod tests {
             RuntimeFunctionId::String(crate::plan::StringFunctionId(0))
         );
         assert_eq!(
+            ids.next(&ValueType::BitArray),
+            RuntimeFunctionId::BitArray(BitArrayFunctionId(0))
+        );
+        assert_eq!(
             ids.next(&ValueType::Bool),
             RuntimeFunctionId::Bool(crate::plan::BoolFunctionId(0))
         );
@@ -2388,6 +2622,10 @@ mod tests {
         assert_eq!(
             ids.next_list_id(ValueType::String),
             crate::plan::ListFunctionId::from_item_type(0, ValueType::String),
+        );
+        assert_eq!(
+            ids.next_list_id(ValueType::BitArray),
+            crate::plan::ListFunctionId::from_item_type(0, ValueType::BitArray),
         );
         assert_eq!(
             ids.next_list_id(ValueType::Float),
@@ -2452,6 +2690,7 @@ mod tests {
         vec![
             ValueType::Int,
             ValueType::String,
+            ValueType::BitArray,
             ValueType::Float,
             ValueType::Bool,
             ValueType::Nil,

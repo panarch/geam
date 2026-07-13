@@ -2,12 +2,13 @@ use crate::plan::execution::ExecutionPlan;
 use crate::plan::execution::{CallArg, CallArgKind, CaptureArg, CaptureArgKind, FrameLayout};
 use crate::runtime::error::ExecutionResult;
 use crate::runtime::expression::{
-    eval_bool_expr, eval_bool_function_expr, eval_bool_list_expr, eval_float_expr,
-    eval_float_function_expr, eval_float_list_expr, eval_function_function_expr,
-    eval_function_list_expr, eval_int_expr, eval_int_function_expr, eval_int_list_expr,
-    eval_list_function_expr, eval_list_list_expr, eval_nil_expr, eval_nil_function_expr,
-    eval_nil_list_expr, eval_string_expr, eval_string_function_expr, eval_string_list_expr,
-    eval_tuple_expr, eval_tuple_function_expr, eval_tuple_list_expr,
+    eval_bit_array_expr, eval_bit_array_function_expr, eval_bit_array_list_expr, eval_bool_expr,
+    eval_bool_function_expr, eval_bool_list_expr, eval_float_expr, eval_float_function_expr,
+    eval_float_list_expr, eval_function_function_expr, eval_function_list_expr, eval_int_expr,
+    eval_int_function_expr, eval_int_list_expr, eval_list_function_expr, eval_list_list_expr,
+    eval_nil_expr, eval_nil_function_expr, eval_nil_list_expr, eval_string_expr,
+    eval_string_function_expr, eval_string_list_expr, eval_tuple_expr, eval_tuple_function_expr,
+    eval_tuple_list_expr,
 };
 use crate::runtime::frame::Frame;
 use crate::runtime::state::RuntimeState;
@@ -56,6 +57,10 @@ fn bind_arguments_into(
                 let value = eval_string_expr(plan, state, caller_frame, value)?;
                 frame.set_string(*local, value);
             }
+            CallArgKind::BitArray { local, value } => {
+                let value = eval_bit_array_expr(plan, state, caller_frame, value)?;
+                frame.set_bit_array(*local, value);
+            }
             CallArgKind::Float { local, value } => {
                 let value = eval_float_expr(plan, state, caller_frame, value)?;
                 frame.set_float(*local, value);
@@ -82,6 +87,10 @@ fn bind_arguments_into(
             CallArgKind::StringFunction { local, value } => {
                 let value = eval_string_function_expr(plan, state, caller_frame, value)?;
                 frame.set_string_function(*local, value);
+            }
+            CallArgKind::BitArrayFunction { local, value } => {
+                let value = eval_bit_array_function_expr(plan, state, caller_frame, value)?;
+                frame.set_bit_array_function(*local, value);
             }
             CallArgKind::FloatFunction { local, value } => {
                 let value = eval_float_function_expr(plan, state, caller_frame, value)?;
@@ -128,6 +137,9 @@ pub(in crate::runtime) fn eval_capture_args(
             CaptureArgKind::String { local, value } => {
                 EvaluatedCapture::string(*local, eval_string_expr(plan, state, frame, value)?)
             }
+            CaptureArgKind::BitArray { local, value } => {
+                EvaluatedCapture::bit_array(*local, eval_bit_array_expr(plan, state, frame, value)?)
+            }
             CaptureArgKind::Float { local, value } => {
                 EvaluatedCapture::float(*local, eval_float_expr(plan, state, frame, value)?)
             }
@@ -150,6 +162,12 @@ pub(in crate::runtime) fn eval_capture_args(
                 *local,
                 eval_string_function_expr(plan, state, frame, value)?,
             ),
+            CaptureArgKind::BitArrayFunction { local, value } => {
+                EvaluatedCapture::bit_array_function(
+                    *local,
+                    eval_bit_array_function_expr(plan, state, frame, value)?,
+                )
+            }
             CaptureArgKind::FloatFunction { local, value } => EvaluatedCapture::float_function(
                 *local,
                 eval_float_function_expr(plan, state, frame, value)?,
@@ -189,6 +207,9 @@ fn bind_captures(frame: &mut Frame, captures: &[EvaluatedCapture]) {
             EvaluatedCaptureKind::String { local, value } => {
                 frame.set_string(*local, value.clone())
             }
+            EvaluatedCaptureKind::BitArray { local, value } => {
+                frame.set_bit_array(*local, value.clone())
+            }
             EvaluatedCaptureKind::Float { local, value } => frame.set_float(*local, *value),
             EvaluatedCaptureKind::Bool { local, value } => frame.set_bool(*local, *value),
             EvaluatedCaptureKind::Nil { local } => frame.set_nil(*local),
@@ -199,6 +220,9 @@ fn bind_captures(frame: &mut Frame, captures: &[EvaluatedCapture]) {
             }
             EvaluatedCaptureKind::StringFunction { local, value } => {
                 frame.set_string_function(*local, value.clone());
+            }
+            EvaluatedCaptureKind::BitArrayFunction { local, value } => {
+                frame.set_bit_array_function(*local, value.clone());
             }
             EvaluatedCaptureKind::FloatFunction { local, value } => {
                 frame.set_float_function(*local, value.clone());
@@ -237,6 +261,10 @@ fn bind_list_argument(
         crate::plan::execution::ListLocalExpr::String { local, value } => {
             let value = eval_string_list_expr(plan, state, caller_frame, value)?;
             frame.set_string_list(*local, value);
+        }
+        crate::plan::execution::ListLocalExpr::BitArray { local, value } => {
+            let value = eval_bit_array_list_expr(plan, state, caller_frame, value)?;
+            frame.set_bit_array_list(*local, value);
         }
         crate::plan::execution::ListLocalExpr::Float { local, value } => {
             let value = eval_float_list_expr(plan, state, caller_frame, value)?;
@@ -283,6 +311,12 @@ fn eval_list_capture(
             EvaluatedCapture::list(EvaluatedListCapture::String {
                 local: *local,
                 value: eval_string_list_expr(plan, state, frame, value)?,
+            })
+        }
+        crate::plan::execution::ListLocalExpr::BitArray { local, value } => {
+            EvaluatedCapture::list(EvaluatedListCapture::BitArray {
+                local: *local,
+                value: eval_bit_array_list_expr(plan, state, frame, value)?,
             })
         }
         crate::plan::execution::ListLocalExpr::Float { local, value } => {
@@ -332,6 +366,9 @@ fn bind_list_capture(frame: &mut Frame, value: &EvaluatedListCapture) {
         EvaluatedListCapture::String { local, value } => {
             frame.set_string_list(*local, value.clone());
         }
+        EvaluatedListCapture::BitArray { local, value } => {
+            frame.set_bit_array_list(*local, value.clone());
+        }
         EvaluatedListCapture::Float { local, value } => {
             frame.set_float_list(*local, value.clone());
         }
@@ -356,16 +393,18 @@ fn bind_list_capture(frame: &mut Frame, value: &EvaluatedListCapture) {
 #[cfg(test)]
 mod tests {
     use crate::plan::{
-        BoolExpr, BoolFunctionExpr, BoolFunctionLocalId, BoolListExpr, BoolListLocalId, CaptureArg,
-        FloatExpr, FloatFunctionExpr, FloatFunctionLocalId, FloatListExpr, FloatListLocalId,
-        FunctionFunctionExpr, FunctionFunctionLocalId, FunctionId, FunctionListLocalId,
-        FunctionPlan, FunctionType, IntExpr, IntFunctionExpr, IntFunctionFunctionId, IntFunctionId,
-        IntFunctionLocalId, IntListExpr, IntListLocalId, IntLocalId, ListExpr, ListFunctionExpr,
-        ListFunctionLocal, ListListExpr, ListListLocalId, ListLocalExpr, ModulePlan, NilExpr,
-        NilFunctionExpr, NilFunctionLocalId, NilListExpr, NilListLocalId, NilLocalId, PanicExpr,
-        PanicSite, ReturnExpr, StringExpr, StringFunctionExpr, StringFunctionLocalId,
-        StringListExpr, StringListLocalId, StringLocalId, TupleExpr, TupleFunctionExpr,
-        TupleFunctionLocalId, TupleListExpr, TupleListLocalId, TupleLocalId, ValueType,
+        BitArrayExpr, BitArrayFunctionExpr, BitArrayFunctionLocalId, BitArrayListExpr,
+        BitArrayListLocalId, BitArrayLocalId, BoolExpr, BoolFunctionExpr, BoolFunctionLocalId,
+        BoolListExpr, BoolListLocalId, CaptureArg, FloatExpr, FloatFunctionExpr,
+        FloatFunctionLocalId, FloatListExpr, FloatListLocalId, FunctionFunctionExpr,
+        FunctionFunctionLocalId, FunctionId, FunctionListLocalId, FunctionPlan, FunctionType,
+        IntExpr, IntFunctionExpr, IntFunctionFunctionId, IntFunctionId, IntFunctionLocalId,
+        IntListExpr, IntListLocalId, IntLocalId, ListExpr, ListFunctionExpr, ListFunctionLocal,
+        ListListExpr, ListListLocalId, ListLocalExpr, ModulePlan, NilExpr, NilFunctionExpr,
+        NilFunctionLocalId, NilListExpr, NilListLocalId, NilLocalId, PanicExpr, PanicSite,
+        ReturnExpr, StringExpr, StringFunctionExpr, StringFunctionLocalId, StringListExpr,
+        StringListLocalId, StringLocalId, TupleExpr, TupleFunctionExpr, TupleFunctionLocalId,
+        TupleListExpr, TupleListLocalId, TupleLocalId, ValueType,
     };
     use crate::runtime::{ExecutionError, run_main};
 
@@ -408,6 +447,7 @@ mod tests {
                 r#"
 fn int_value() { 1 }
 fn string_value() { "one" }
+fn bit_array_value() { <<1>> }
 fn float_value() { 1.0 }
 fn bool_value() { True }
 fn nil_value() { Nil }
@@ -418,12 +458,14 @@ fn function_value() { int_value }
 pub fn main() {
   let int = 1
   let string = "one"
+  let bit_array = <<1>>
   let float = 1.0
   let bool = True
   let nil = Nil
   let tuple = #(1)
   let int_list = [1]
   let string_list = ["one"]
+  let bit_array_list = [<<1>>]
   let float_list = [1.0]
   let bool_list = [True]
   let nil_list = [Nil]
@@ -432,6 +474,7 @@ pub fn main() {
   let function_list = [int_value]
   let int_function = int_value
   let string_function = string_value
+  let bit_array_function = bit_array_value
   let float_function = float_value
   let bool_function = bool_value
   let nil_function = nil_value
@@ -442,12 +485,14 @@ pub fn main() {
   let closure = fn() {
     assert int == 1
     assert string == "one"
+    assert bit_array == <<1>>
     assert float == 1.0
     assert bool
     nil
     assert tuple == #(1)
     assert int_list == [1]
     assert string_list == ["one"]
+    assert bit_array_list == [<<1>>]
     assert float_list == [1.0]
     assert bool_list == [True]
     assert nil_list == [Nil]
@@ -456,6 +501,7 @@ pub fn main() {
     assert case function_list { [function] -> function() == 1 _ -> False }
     assert int_function() == 1
     assert string_function() == "one"
+    assert bit_array_function() == <<1>>
     assert float_function() == 1.0
     assert bool_function()
     nil_function()
@@ -477,6 +523,7 @@ pub fn main() {
                 r#"
 fn int_value() { 1 }
 fn string_value() { "one" }
+fn bit_array_value() { <<1>> }
 fn float_value() { 1.0 }
 fn bool_value() { True }
 fn nil_value() { Nil }
@@ -486,6 +533,7 @@ fn function_value() { int_value }
 
 fn accept_int(function: fn() -> Int) { function() }
 fn accept_string(function: fn() -> String) { function() }
+fn accept_bit_array(function: fn() -> BitArray) { function() }
 fn accept_float(function: fn() -> Float) { function() }
 fn accept_bool(function: fn() -> Bool) { function() }
 fn accept_nil(function: fn() -> Nil) { function() }
@@ -496,6 +544,7 @@ fn accept_function(function: fn() -> fn() -> Int) { function()() }
 pub fn main() {
   assert accept_int(int_value) == 1
   assert accept_string(string_value) == "one"
+  assert accept_bit_array(bit_array_value) == <<1>>
   assert accept_float(float_value) == 1.0
   assert accept_bool(bool_value)
   accept_nil(nil_value)
@@ -515,12 +564,14 @@ pub fn main() {
         let parameter_types = [
             "Int",
             "String",
+            "BitArray",
             "Float",
             "Bool",
             "Nil",
             "#(Int)",
             "List(Int)",
             "List(String)",
+            "List(BitArray)",
             "List(Float)",
             "List(Bool)",
             "List(Nil)",
@@ -529,11 +580,13 @@ pub fn main() {
             "List(fn() -> Int)",
             "fn() -> Int",
             "fn() -> String",
+            "fn() -> BitArray",
             "fn() -> Float",
             "fn() -> Bool",
             "fn() -> Nil",
             "fn() -> #(Int)",
             "fn() -> List(Int)",
+            "fn() -> List(BitArray)",
             "fn() -> fn() -> Int",
         ];
 
@@ -565,6 +618,7 @@ pub fn main() {
         let captures = [
             CaptureArg::int(IntLocalId(0), IntExpr::panic(panic())),
             CaptureArg::string(StringLocalId(0), StringExpr::panic(panic())),
+            CaptureArg::bit_array(BitArrayLocalId(0), BitArrayExpr::panic(panic())),
             CaptureArg::float(crate::plan::FloatLocalId(0), FloatExpr::panic(panic())),
             CaptureArg::bool(crate::plan::BoolLocalId(0), BoolExpr::panic(panic())),
             CaptureArg::nil(NilLocalId(0), NilExpr::panic(panic())),
@@ -579,6 +633,10 @@ pub fn main() {
             CaptureArg::list(ListLocalExpr::String {
                 local: StringListLocalId(0),
                 value: StringListExpr::from(ListExpr::panic(panic(), ValueType::String)),
+            }),
+            CaptureArg::list(ListLocalExpr::BitArray {
+                local: BitArrayListLocalId(0),
+                value: BitArrayListExpr::from(ListExpr::panic(panic(), ValueType::BitArray)),
             }),
             CaptureArg::list(ListLocalExpr::Float {
                 local: FloatListLocalId(0),
@@ -623,6 +681,10 @@ pub fn main() {
             CaptureArg::string_function(
                 StringFunctionLocalId(0),
                 StringFunctionExpr::panic(panic(), function_type(ValueType::String)),
+            ),
+            CaptureArg::bit_array_function(
+                BitArrayFunctionLocalId(0),
+                BitArrayFunctionExpr::panic(panic(), function_type(ValueType::BitArray)),
             ),
             CaptureArg::float_function(
                 FloatFunctionLocalId(0),

@@ -1,3 +1,4 @@
+mod bit_array;
 mod bool;
 mod float;
 mod function;
@@ -13,14 +14,14 @@ use crate::plan::module;
 pub(super) use bool::bool_expr;
 pub(super) use float::float_expr;
 pub(super) use function::{
-    bool_function_expr, float_function_expr, function_expr, function_function_expr,
-    int_function_expr, list_function_expr, nil_function_expr, string_function_expr,
-    tuple_function_expr,
+    bit_array_function_expr, bool_function_expr, float_function_expr, function_expr,
+    function_function_expr, int_function_expr, list_function_expr, nil_function_expr,
+    string_function_expr, tuple_function_expr,
 };
 pub(super) use int::int_expr;
 pub(super) use list::{
-    bool_list_expr, float_list_expr, function_list_expr, int_list_expr, list_expr, list_list_expr,
-    list_local_expr, nil_list_expr, string_list_expr, tuple_list_expr,
+    bit_array_list_expr, bool_list_expr, float_list_expr, function_list_expr, int_list_expr,
+    list_expr, list_list_expr, list_local_expr, nil_list_expr, string_list_expr, tuple_list_expr,
 };
 pub(super) use nil::nil_expr;
 pub(super) use string::string_expr;
@@ -38,6 +39,9 @@ pub(super) fn expr(
         }
         module::ExprKind::String(expression) => {
             execution::ExprKind::String(string_expr(expression, context))
+        }
+        module::ExprKind::BitArray(expression) => {
+            execution::ExprKind::BitArray(bit_array_expr(expression, context))
         }
         module::ExprKind::Float(expression) => {
             execution::ExprKind::Float(float_expr(expression, context))
@@ -102,6 +106,10 @@ pub(super) fn call_arg(
             local: execution::StringLocalId(local.0),
             value: string_expr(value, context),
         },
+        M::BitArray { local, value } => E::BitArray {
+            local: execution::BitArrayLocalId(local.0),
+            value: bit_array_expr(value, context),
+        },
         M::Float { local, value } => E::Float {
             local: execution::FloatLocalId(local.0),
             value: float_expr(value, context),
@@ -126,6 +134,10 @@ pub(super) fn call_arg(
         M::StringFunction { local, value } => E::StringFunction {
             local: execution::StringFunctionLocalId(local.0),
             value: string_function_expr(value, context),
+        },
+        M::BitArrayFunction { local, value } => E::BitArrayFunction {
+            local: execution::BitArrayFunctionLocalId(local.0),
+            value: bit_array_function_expr(value, context),
         },
         M::FloatFunction { local, value } => E::FloatFunction {
             local: execution::FloatFunctionLocalId(local.0),
@@ -179,6 +191,10 @@ fn capture_arg(
             local: execution::StringLocalId(local.0),
             value: string_expr(value, context),
         },
+        M::BitArray { local, value } => E::BitArray {
+            local: execution::BitArrayLocalId(local.0),
+            value: bit_array_expr(value, context),
+        },
         M::Float { local, value } => E::Float {
             local: execution::FloatLocalId(local.0),
             value: float_expr(value, context),
@@ -203,6 +219,10 @@ fn capture_arg(
         M::StringFunction { local, value } => E::StringFunction {
             local: execution::StringFunctionLocalId(local.0),
             value: string_function_expr(value, context),
+        },
+        M::BitArrayFunction { local, value } => E::BitArrayFunction {
+            local: execution::BitArrayFunctionLocalId(local.0),
+            value: bit_array_function_expr(value, context),
         },
         M::FloatFunction { local, value } => E::FloatFunction {
             local: execution::FloatFunctionLocalId(local.0),
@@ -230,3 +250,4 @@ fn capture_arg(
         },
     })
 }
+pub(super) use bit_array::bit_array_expr;

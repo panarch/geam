@@ -2,8 +2,8 @@ use super::CaptureValue;
 use crate::plan::FunctionType;
 
 use crate::plan::execution::{
-    BoolFunctionId, FloatFunctionId, FunctionFunctionId, IntFunctionId, ListFunctionId,
-    NilFunctionId, ParamLocal, StringFunctionId, TupleFunctionId,
+    BitArrayFunctionId, BoolFunctionId, FloatFunctionId, FunctionFunctionId, IntFunctionId,
+    ListFunctionId, NilFunctionId, ParamLocal, StringFunctionId, TupleFunctionId,
 };
 #[cfg(test)]
 use crate::plan::execution::{FunctionReturnFamily, RuntimeFunctionId};
@@ -18,6 +18,7 @@ pub(crate) enum FunctionValueKind {
     Int(IntFunctionValue),
     Float(FloatFunctionValue),
     String(StringFunctionValue),
+    BitArray(BitArrayFunctionValue),
     Bool(BoolFunctionValue),
     Nil(NilFunctionValue),
     Tuple(TupleFunctionValue),
@@ -44,6 +45,14 @@ pub(crate) struct FloatFunctionValue {
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct StringFunctionValue {
     runtime_id: StringFunctionId,
+    params: Vec<ParamLocal>,
+    captures: Vec<CaptureValue>,
+    type_: FunctionType,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct BitArrayFunctionValue {
+    runtime_id: BitArrayFunctionId,
     params: Vec<ParamLocal>,
     captures: Vec<CaptureValue>,
     type_: FunctionType,
@@ -110,6 +119,9 @@ impl FunctionValue {
             RuntimeFunctionId::String(runtime_id) => FunctionValueKind::String(
                 StringFunctionValue::new_with_captures(runtime_id, params, Vec::new(), type_),
             ),
+            RuntimeFunctionId::BitArray(runtime_id) => FunctionValueKind::BitArray(
+                BitArrayFunctionValue::new_with_captures(runtime_id, params, Vec::new(), type_),
+            ),
             RuntimeFunctionId::Bool(runtime_id) => FunctionValueKind::Bool(
                 BoolFunctionValue::new_with_captures(runtime_id, params, Vec::new(), type_),
             ),
@@ -147,6 +159,7 @@ impl FunctionValue {
             FunctionValueKind::Int(value) => value.type_(),
             FunctionValueKind::Float(value) => value.type_(),
             FunctionValueKind::String(value) => value.type_(),
+            FunctionValueKind::BitArray(value) => value.type_(),
             FunctionValueKind::Bool(value) => value.type_(),
             FunctionValueKind::Nil(value) => value.type_(),
             FunctionValueKind::Tuple(value) => value.type_(),
@@ -168,6 +181,7 @@ impl FunctionValueKind {
             Self::Int(_) => FunctionReturnFamily::Int,
             Self::Float(_) => FunctionReturnFamily::Float,
             Self::String(_) => FunctionReturnFamily::String,
+            Self::BitArray(_) => FunctionReturnFamily::BitArray,
             Self::Bool(_) => FunctionReturnFamily::Bool,
             Self::Nil(_) => FunctionReturnFamily::Nil,
             Self::Tuple(_) => FunctionReturnFamily::Tuple,
@@ -229,6 +243,26 @@ impl FloatFunctionValue {
 impl StringFunctionValue {
     pub(crate) fn new_with_captures(
         runtime_id: StringFunctionId,
+        params: Vec<ParamLocal>,
+        captures: Vec<CaptureValue>,
+        type_: FunctionType,
+    ) -> Self {
+        Self {
+            runtime_id,
+            params,
+            captures,
+            type_,
+        }
+    }
+
+    pub(crate) fn type_(&self) -> FunctionType {
+        self.type_.clone()
+    }
+}
+
+impl BitArrayFunctionValue {
+    pub(crate) fn new_with_captures(
+        runtime_id: BitArrayFunctionId,
         params: Vec<ParamLocal>,
         captures: Vec<CaptureValue>,
         type_: FunctionType,
@@ -375,6 +409,14 @@ impl From<StringFunctionValue> for FunctionValue {
     }
 }
 
+impl From<BitArrayFunctionValue> for FunctionValue {
+    fn from(value: BitArrayFunctionValue) -> Self {
+        Self {
+            kind: FunctionValueKind::BitArray(value),
+        }
+    }
+}
+
 impl From<BoolFunctionValue> for FunctionValue {
     fn from(value: BoolFunctionValue) -> Self {
         Self {
@@ -440,6 +482,11 @@ mod tests {
                 FunctionReturnFamily::String,
             ),
             (
+                "pub fn main() -> BitArray { <<1>> }",
+                ValueType::BitArray,
+                FunctionReturnFamily::BitArray,
+            ),
+            (
                 "pub fn main() -> Bool { True }",
                 ValueType::Bool,
                 FunctionReturnFamily::Bool,
@@ -485,6 +532,7 @@ mod tests {
             ("pub fn main() -> Int { 1 }", ValueType::Int),
             ("pub fn main() -> Float { 1.0 }", ValueType::Float),
             ("pub fn main() -> String { \"one\" }", ValueType::String),
+            ("pub fn main() -> BitArray { <<1>> }", ValueType::BitArray),
             ("pub fn main() -> Bool { True }", ValueType::Bool),
             ("pub fn main() -> Nil { Nil }", ValueType::Nil),
             (
@@ -512,6 +560,7 @@ mod tests {
                 FunctionValueKind::Int(value) => FunctionValue::from(value.clone()),
                 FunctionValueKind::Float(value) => FunctionValue::from(value.clone()),
                 FunctionValueKind::String(value) => FunctionValue::from(value.clone()),
+                FunctionValueKind::BitArray(value) => FunctionValue::from(value.clone()),
                 FunctionValueKind::Bool(value) => FunctionValue::from(value.clone()),
                 FunctionValueKind::Nil(value) => FunctionValue::from(value.clone()),
                 FunctionValueKind::Tuple(value) => FunctionValue::from(value.clone()),

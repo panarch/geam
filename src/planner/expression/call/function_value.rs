@@ -85,6 +85,12 @@ fn function_call_expr(
             ))),
             None => Err(function_call_return_type_mismatch()),
         },
+        ValueType::BitArray => match function.into_bit_array() {
+            Some(function) => Ok(Expr::bit_array(crate::plan::BitArrayExpr::function_call(
+                function, args,
+            ))),
+            None => Err(function_call_return_type_mismatch()),
+        },
         ValueType::Float => match function.into_float() {
             Some(function) => Ok(Expr::float(crate::plan::FloatExpr::function_call(
                 function, args,
@@ -148,6 +154,9 @@ fn function_returning_function_value_call_expr(
         ValueType::String => Expr::function(FunctionExpr::string(
             crate::plan::StringFunctionExpr::function_call(function, args, return_type),
         )),
+        ValueType::BitArray => Expr::function(FunctionExpr::bit_array(
+            crate::plan::BitArrayFunctionExpr::function_call(function, args, return_type),
+        )),
         ValueType::Float => Expr::function(FunctionExpr::float(
             crate::plan::FloatFunctionExpr::function_call(function, args, return_type),
         )),
@@ -176,11 +185,12 @@ mod tests {
         function_returning_function_value_call_expr,
     };
     use crate::plan::{
-        BoolFunctionFunctionId, BoolFunctionId, Expr, FloatFunctionFunctionId, FloatFunctionId,
-        FunctionExpr, FunctionFunctionExpr, FunctionFunctionFunctionId, FunctionFunctionId,
-        FunctionType, IntFunctionFunctionId, IntLocalId, LocalId, NilFunctionFunctionId,
-        NilFunctionId, ParamLocal, RuntimeFunctionId, StringFunctionFunctionId, StringFunctionId,
-        TupleFunctionFunctionId, TupleFunctionId, TupleLocalId, ValueType,
+        BitArrayFunctionFunctionId, BitArrayFunctionId, BoolFunctionFunctionId, BoolFunctionId,
+        Expr, FloatFunctionFunctionId, FloatFunctionId, FunctionExpr, FunctionFunctionExpr,
+        FunctionFunctionFunctionId, FunctionFunctionId, FunctionType, IntFunctionFunctionId,
+        IntLocalId, LocalId, NilFunctionFunctionId, NilFunctionId, ParamLocal, RuntimeFunctionId,
+        StringFunctionFunctionId, StringFunctionId, TupleFunctionFunctionId, TupleFunctionId,
+        TupleLocalId, ValueType,
     };
     use crate::planner::dsl::{
         block_int_function, bool_, bool_case_int_function, call_int_function, function,
@@ -539,7 +549,7 @@ pub fn main() {
         let (type_, _, _) = expect_call_statement_mut(
             &mut unsupported_return_type_call.definitions.functions[1].body[1],
         );
-        *type_ = type_::bit_array();
+        *type_ = type_::result(type_::int(), type_::nil());
         assert_eq!(
             plan_module(unsupported_return_type_call),
             Err(PlanError::InvalidTypedAst {
@@ -788,6 +798,19 @@ pub fn main() {
         assert_eq!(
             function_call_expr(
                 FunctionExpr::from(function_ref(
+                    RuntimeFunctionId::BitArray(BitArrayFunctionId(0)),
+                    Vec::<ParamLocal>::new(),
+                )),
+                Vec::new(),
+                ValueType::BitArray,
+            )
+            .expect("bit array function call")
+            .value_type(),
+            ValueType::BitArray,
+        );
+        assert_eq!(
+            function_call_expr(
+                FunctionExpr::from(function_ref(
                     RuntimeFunctionId::Float(FloatFunctionId(0)),
                     Vec::<ParamLocal>::new(),
                 )),
@@ -886,6 +909,10 @@ pub fn main() {
                 FunctionType::new(vec![ValueType::String], ValueType::String),
             ),
             (
+                FunctionFunctionId::BitArray(BitArrayFunctionFunctionId(0)),
+                FunctionType::new(vec![ValueType::BitArray], ValueType::BitArray),
+            ),
+            (
                 FunctionFunctionId::Float(FloatFunctionFunctionId(0)),
                 FunctionType::new(vec![ValueType::Float], ValueType::Float),
             ),
@@ -967,6 +994,14 @@ pub fn main() {
                 FunctionExpr::from(int_function_ref(0, Vec::<ParamLocal>::new())),
                 Vec::new(),
                 ValueType::String,
+            ),
+            Err(function_call_return_type_mismatch()),
+        );
+        assert_eq!(
+            function_call_expr(
+                FunctionExpr::from(int_function_ref(0, Vec::<ParamLocal>::new())),
+                Vec::new(),
+                ValueType::BitArray,
             ),
             Err(function_call_return_type_mismatch()),
         );

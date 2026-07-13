@@ -1,8 +1,9 @@
 use super::FrameLayout;
 use crate::plan::{
-    BoolExpr, BoolExprKind, Expr, ExprKind, FloatExpr, FloatExprKind, IntExpr, IntExprKind,
-    ListElements, ListExpr, ListItem, ListLocalExpr, NilExpr, NilExprKind, PanicExpr, StringExpr,
-    StringExprKind, TupleExpr, TupleExprKind, TypedListExpr, TypedListExprKind,
+    BitArrayExpr, BitArrayExprKind, BitArraySegment, BoolExpr, BoolExprKind, Expr, ExprKind,
+    FloatExpr, FloatExprKind, IntExpr, IntExprKind, ListElements, ListExpr, ListItem,
+    ListLocalExpr, NilExpr, NilExprKind, PanicExpr, StringExpr, StringExprKind, TupleExpr,
+    TupleExprKind, TypedListExpr, TypedListExprKind,
 };
 
 impl FrameLayout {
@@ -10,6 +11,7 @@ impl FrameLayout {
         match expression.kind() {
             ExprKind::Int(expression) => self.include_int_expr(expression),
             ExprKind::String(expression) => self.include_string_expr(expression),
+            ExprKind::BitArray(expression) => self.include_bit_array_expr(expression),
             ExprKind::Float(expression) => self.include_float_expr(expression),
             ExprKind::Bool(expression) => self.include_bool_expr(expression),
             ExprKind::Nil(expression) => self.include_nil_expr(expression),
@@ -157,6 +159,79 @@ impl FrameLayout {
             StringExprKind::Block { steps, return_ } => {
                 self.include_steps(steps);
                 self.include_string_expr(return_);
+            }
+        }
+    }
+
+    pub(in crate::plan::module::frame) fn include_bit_array_expr(
+        &mut self,
+        expression: &BitArrayExpr,
+    ) {
+        match expression.kind() {
+            BitArrayExprKind::Value(segments) => {
+                for segment in segments {
+                    match segment {
+                        BitArraySegment::Int { value, .. } => self.include_int_expr(value),
+                        BitArraySegment::Float { value, .. } => self.include_float_expr(value),
+                        BitArraySegment::String { value, .. } => self.include_string_expr(value),
+                        BitArraySegment::Bits(value) => self.include_bit_array_expr(value),
+                    }
+                }
+            }
+            BitArrayExprKind::Panic(panic) => self.include_panic_expr(panic),
+            BitArrayExprKind::LocalGet { local, .. } => self.include_bit_array(*local),
+            BitArrayExprKind::Call { args, .. } => self.include_call_args(args),
+            BitArrayExprKind::FunctionCall { function, args } => {
+                self.include_bit_array_function_expr(function);
+                self.include_call_args(args);
+            }
+            BitArrayExprKind::TupleIndex { tuple, .. } => self.include_tuple_expr(tuple),
+            BitArrayExprKind::ListIndex { list, .. } => self.include_typed_list_expr(list),
+            BitArrayExprKind::BoolCase {
+                subject,
+                true_,
+                false_,
+            } => {
+                self.include_bool_expr(subject);
+                self.include_bit_array_expr(true_);
+                self.include_bit_array_expr(false_);
+            }
+            BitArrayExprKind::IntCase {
+                subject,
+                clauses,
+                fallback,
+            } => {
+                self.include_int_expr(subject);
+                for (_, branch) in clauses {
+                    self.include_bit_array_expr(branch);
+                }
+                self.include_bit_array_expr(fallback);
+            }
+            BitArrayExprKind::StringCase {
+                subject,
+                clauses,
+                fallback,
+            } => {
+                self.include_string_expr(subject);
+                for (_, branch) in clauses {
+                    self.include_bit_array_expr(branch);
+                }
+                self.include_bit_array_expr(fallback);
+            }
+            BitArrayExprKind::FloatCase {
+                subject,
+                clauses,
+                fallback,
+            } => {
+                self.include_float_expr(subject);
+                for (_, branch) in clauses {
+                    self.include_bit_array_expr(branch);
+                }
+                self.include_bit_array_expr(fallback);
+            }
+            BitArrayExprKind::Block { steps, return_ } => {
+                self.include_steps(steps);
+                self.include_bit_array_expr(return_);
             }
         }
     }
@@ -456,6 +531,7 @@ impl FrameLayout {
         match expression {
             ListExpr::Int(expression) => self.include_typed_list_expr(expression),
             ListExpr::String(expression) => self.include_typed_list_expr(expression),
+            ListExpr::BitArray(expression) => self.include_typed_list_expr(expression),
             ListExpr::Float(expression) => self.include_typed_list_expr(expression),
             ListExpr::Bool(expression) => self.include_typed_list_expr(expression),
             ListExpr::Nil(expression) => self.include_typed_list_expr(expression),
@@ -477,6 +553,10 @@ impl FrameLayout {
             ListLocalExpr::String { local, value } => {
                 self.include_typed_list_expr(value);
                 self.include_string_list(*local);
+            }
+            ListLocalExpr::BitArray { local, value } => {
+                self.include_typed_list_expr(value);
+                self.include_bit_array_list(*local);
             }
             ListLocalExpr::Float { local, value } => {
                 self.include_typed_list_expr(value);
@@ -617,6 +697,11 @@ impl FrameLayout {
             ListElements::String(values) => {
                 for value in values {
                     self.include_string_expr(value);
+                }
+            }
+            ListElements::BitArray(values) => {
+                for value in values {
+                    self.include_bit_array_expr(value);
                 }
             }
             ListElements::Float(values) => {

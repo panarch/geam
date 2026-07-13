@@ -1,10 +1,10 @@
 use super::FrameLayout;
 use crate::plan::{
-    BoolFunctionExpr, BoolFunctionExprKind, FloatFunctionExpr, FloatFunctionExprKind, FunctionExpr,
-    FunctionExprKind, FunctionFunctionExpr, FunctionFunctionExprKind, IntFunctionExpr,
-    IntFunctionExprKind, ListFunctionExpr, ListFunctionExprKind, NilFunctionExpr,
-    NilFunctionExprKind, StringFunctionExpr, StringFunctionExprKind, TupleFunctionExpr,
-    TupleFunctionExprKind,
+    BitArrayFunctionExpr, BitArrayFunctionExprKind, BoolFunctionExpr, BoolFunctionExprKind,
+    FloatFunctionExpr, FloatFunctionExprKind, FunctionExpr, FunctionExprKind, FunctionFunctionExpr,
+    FunctionFunctionExprKind, IntFunctionExpr, IntFunctionExprKind, ListFunctionExpr,
+    ListFunctionExprKind, NilFunctionExpr, NilFunctionExprKind, StringFunctionExpr,
+    StringFunctionExprKind, TupleFunctionExpr, TupleFunctionExprKind,
 };
 
 impl FrameLayout {
@@ -15,6 +15,9 @@ impl FrameLayout {
         match expression.kind() {
             FunctionExprKind::Int(expression) => self.include_int_function_expr(expression),
             FunctionExprKind::String(expression) => self.include_string_function_expr(expression),
+            FunctionExprKind::BitArray(expression) => {
+                self.include_bit_array_function_expr(expression)
+            }
             FunctionExprKind::Float(expression) => self.include_float_function_expr(expression),
             FunctionExprKind::Bool(expression) => self.include_bool_function_expr(expression),
             FunctionExprKind::Nil(expression) => self.include_nil_function_expr(expression),
@@ -219,6 +222,75 @@ impl FrameLayout {
             StringFunctionExprKind::Block { steps, return_ } => {
                 self.include_steps(steps);
                 self.include_string_function_expr(return_);
+            }
+        }
+    }
+
+    pub(in crate::plan::module::frame) fn include_bit_array_function_expr(
+        &mut self,
+        expression: &BitArrayFunctionExpr,
+    ) {
+        match expression.kind() {
+            BitArrayFunctionExprKind::Reference(_) => {}
+            BitArrayFunctionExprKind::Panic(panic) => self.include_panic_expr(panic),
+            BitArrayFunctionExprKind::Closure { captures, .. } => {
+                self.include_capture_args(captures)
+            }
+            BitArrayFunctionExprKind::LocalGet { local, .. } => {
+                self.include_bit_array_function(*local)
+            }
+            BitArrayFunctionExprKind::Call { args, .. } => self.include_call_args(args),
+            BitArrayFunctionExprKind::FunctionCall { function, args, .. } => {
+                self.include_function_function_expr(function);
+                self.include_call_args(args);
+            }
+            BitArrayFunctionExprKind::TupleIndex { tuple, .. } => self.include_tuple_expr(tuple),
+            BitArrayFunctionExprKind::ListIndex { list, .. } => self.include_typed_list_expr(list),
+            BitArrayFunctionExprKind::BoolCase {
+                subject,
+                true_,
+                false_,
+            } => {
+                self.include_bool_expr(subject);
+                self.include_bit_array_function_expr(true_);
+                self.include_bit_array_function_expr(false_);
+            }
+            BitArrayFunctionExprKind::IntCase {
+                subject,
+                clauses,
+                fallback,
+            } => {
+                self.include_int_expr(subject);
+                for (_, branch) in clauses {
+                    self.include_bit_array_function_expr(branch);
+                }
+                self.include_bit_array_function_expr(fallback);
+            }
+            BitArrayFunctionExprKind::StringCase {
+                subject,
+                clauses,
+                fallback,
+            } => {
+                self.include_string_expr(subject);
+                for (_, branch) in clauses {
+                    self.include_bit_array_function_expr(branch);
+                }
+                self.include_bit_array_function_expr(fallback);
+            }
+            BitArrayFunctionExprKind::FloatCase {
+                subject,
+                clauses,
+                fallback,
+            } => {
+                self.include_float_expr(subject);
+                for (_, branch) in clauses {
+                    self.include_bit_array_function_expr(branch);
+                }
+                self.include_bit_array_function_expr(fallback);
+            }
+            BitArrayFunctionExprKind::Block { steps, return_ } => {
+                self.include_steps(steps);
+                self.include_bit_array_function_expr(return_);
             }
         }
     }

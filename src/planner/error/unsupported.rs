@@ -42,8 +42,6 @@ pub enum UnsupportedPatternKind {
 
 #[derive(Debug, Error, Clone, Copy, PartialEq, Eq)]
 pub enum UnsupportedExpressionKind {
-    #[error("bit array")]
-    BitArray,
     #[error("echo")]
     Echo,
     #[error("list element type is not supported")]
@@ -52,6 +50,22 @@ pub enum UnsupportedExpressionKind {
     RecordConstructor,
     #[error("function literal type is not supported")]
     UnsupportedFunctionLiteralType,
+}
+
+#[derive(Debug, Error, Clone, Copy, PartialEq, Eq)]
+pub enum UnsupportedBitArraySegmentReason {
+    #[error("UtfCodepoint segments are not supported")]
+    UtfCodepoint,
+    #[error("native-endian segments are not supported")]
+    NativeEndianness,
+    #[error("dynamic segment sizes are not supported")]
+    DynamicSize,
+    #[error("sized bits segments are not supported")]
+    SizedBits,
+    #[error("16-bit float segments are not supported")]
+    Float16,
+    #[error("bit array segment size exceeds the supported host range")]
+    SizeOutOfRange,
 }
 
 #[derive(Debug, Error, Clone, Copy, PartialEq, Eq)]
