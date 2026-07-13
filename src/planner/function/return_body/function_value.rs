@@ -1055,7 +1055,55 @@ mod tests {
                 vec![step.clone()],
                 value.clone(),
             )),
-            ReturnBody::block(vec![step], ReturnBody::expr(value)),
+            ReturnBody::block(vec![step], ReturnBody::expr(value.clone())),
+        );
+        assert_eq!(
+            bit_array_function_return(BitArrayFunctionExpr::bool_case(
+                BoolExpr::value(true),
+                value.clone(),
+                value.clone(),
+            )),
+            ReturnBody::bool_case(
+                BoolExpr::value(true),
+                ReturnBody::expr(value.clone()),
+                ReturnBody::expr(value.clone()),
+            ),
+        );
+        assert_eq!(
+            bit_array_function_return(BitArrayFunctionExpr::int_case(
+                IntExpr::value(1.into()),
+                vec![(BigInt::from(1), value.clone())],
+                value.clone(),
+            )),
+            ReturnBody::int_case(
+                IntExpr::value(1.into()),
+                vec![(BigInt::from(1), ReturnBody::expr(value.clone()))],
+                ReturnBody::expr(value.clone()),
+            ),
+        );
+        assert_eq!(
+            bit_array_function_return(BitArrayFunctionExpr::string_case(
+                StringExpr::value("one".into()),
+                vec![("one".into(), value.clone())],
+                value.clone(),
+            )),
+            ReturnBody::string_case(
+                StringExpr::value("one".into()),
+                vec![("one".into(), ReturnBody::expr(value.clone()))],
+                ReturnBody::expr(value.clone()),
+            ),
+        );
+        assert_eq!(
+            bit_array_function_return(BitArrayFunctionExpr::float_case(
+                FloatExpr::value(1.0),
+                vec![(1.0, value.clone())],
+                value.clone(),
+            )),
+            ReturnBody::float_case(
+                FloatExpr::value(1.0),
+                vec![(1.0, ReturnBody::expr(value.clone()))],
+                ReturnBody::expr(value),
+            ),
         );
     }
 

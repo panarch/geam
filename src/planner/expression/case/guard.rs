@@ -385,13 +385,13 @@ fn invalid_expression_shape(kind: InvalidExpressionShapeKind) -> Result<Expr, Pl
 mod tests {
     use super::{contains_function_value, function_local_get, invalid_expression_type, plan_expr};
     use crate::plan::{
-        BitArrayFunctionExpr, BitArrayFunctionLocalId, BoolExpr, BoolFunctionExpr,
-        BoolFunctionLocalId, BoolLocalId, Expr, FloatExpr, FloatFunctionExpr, FloatFunctionLocalId,
-        FunctionExpr, FunctionFunctionExpr, FunctionFunctionLocalId, FunctionType, IntExpr,
-        IntFunctionExpr, IntFunctionLocalId, IntLocalId, ListExpr, ListFunctionExpr, ListLocal,
-        LocalId, NilExpr, NilFunctionExpr, NilFunctionLocalId, NilLocalId, StringExpr,
-        StringFunctionExpr, StringFunctionLocalId, StringListLocalId, TupleExpr, TupleFunctionExpr,
-        TupleFunctionLocalId, TupleLocalId, ValueType,
+        BitArrayExpr, BitArrayFunctionExpr, BitArrayFunctionLocalId, BitArrayLocalId, BoolExpr,
+        BoolFunctionExpr, BoolFunctionLocalId, BoolLocalId, Expr, FloatExpr, FloatFunctionExpr,
+        FloatFunctionLocalId, FunctionExpr, FunctionFunctionExpr, FunctionFunctionLocalId,
+        FunctionType, IntExpr, IntFunctionExpr, IntFunctionLocalId, IntLocalId, ListExpr,
+        ListFunctionExpr, ListLocal, LocalId, NilExpr, NilFunctionExpr, NilFunctionLocalId,
+        NilLocalId, StringExpr, StringFunctionExpr, StringFunctionLocalId, StringListLocalId,
+        TupleExpr, TupleFunctionExpr, TupleFunctionLocalId, TupleLocalId, ValueType,
     };
     use crate::planner::context::{AnonymousFunctions, FunctionLocalBinding, PlanContext};
     use crate::planner::support::dummy_span;
@@ -1040,6 +1040,7 @@ mod tests {
         let functions = HashMap::new();
         let mut anonymous = AnonymousFunctions::default();
         let mut context = PlanContext::new(&module, &functions, &mut anonymous);
+        context.define_bit_array_local("bits".into());
         context.define_nil_local("none".into());
         context.define_tuple_local("pair".into(), vec![ValueType::Int]);
         context.define_list_local("values".into(), ValueType::String);
@@ -1048,6 +1049,13 @@ mod tests {
             FunctionType::new(vec![ValueType::Int], ValueType::Int),
         );
 
+        assert_eq!(
+            super::plan_local("bits".into(), &context),
+            Ok(Expr::bit_array(BitArrayExpr::local_get(
+                BitArrayLocalId(0),
+                "bits".into(),
+            ))),
+        );
         assert_eq!(
             super::plan_local("none".into(), &context),
             Ok(Expr::nil(NilExpr::local_get(NilLocalId(0), "none".into()))),

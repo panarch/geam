@@ -104,6 +104,7 @@ mod tests {
     use crate::planner::support::{dummy_span, expect_plan_error};
     use crate::planner::{
         InvalidCaseShapeReason, InvalidTypedAstReason, PlanError, UnsupportedExpressionKind,
+        UnsupportedPatternKind,
     };
     use gleam_core::ast::Pattern;
 
@@ -160,6 +161,28 @@ pub fn main() {
 
     #[test]
     fn reject_margin_bit_array_subject_invalid_and_mismatched_patterns() {
+        let mut unsupported_case_type = crate::planner::support::compile(
+            r#"
+pub fn main() {
+  case <<1>> {
+    _ -> 1
+  }
+}
+"#,
+        );
+        let (case_type, _, _) = super::super::super::expect_case_statement_mut(
+            &mut unsupported_case_type.definitions.functions[0].body[0],
+        );
+        *case_type = super::super::unsupported_case_return_type();
+        assert_eq!(
+            plan_module(unsupported_case_type),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::CaseShape {
+                    reason: InvalidCaseShapeReason::BranchReturnTypeMismatch,
+                },
+            }),
+        );
+
         let mut invalid = crate::planner::support::compile(
             r#"
 pub fn main() {
@@ -211,6 +234,35 @@ pub fn main() {
             }),
         );
 
+        let mut invalid_alias = crate::planner::support::compile(
+            r#"
+pub fn main() {
+  case <<1>> {
+    value as alias -> 1
+  }
+}
+"#,
+        );
+        let (_, _, clauses) = super::super::super::expect_case_statement_mut(
+            &mut invalid_alias.definitions.functions[0].body[0],
+        );
+        clauses[0].pattern[0] = Pattern::Assign {
+            name: "alias".into(),
+            location: dummy_span(),
+            pattern: Box::new(Pattern::Invalid {
+                location: dummy_span(),
+                type_: gleam_core::type_::bit_array(),
+            }),
+        };
+        assert_eq!(
+            plan_module(invalid_alias),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::CaseShape {
+                    reason: InvalidCaseShapeReason::InvalidPattern,
+                },
+            }),
+        );
+
         let mut subject_mismatch = crate::planner::support::compile(
             r#"
 pub fn main() {
@@ -236,6 +288,43 @@ pub fn main() {
                     reason: InvalidCaseShapeReason::PatternTypeMismatch,
                 },
             }),
+        );
+    }
+
+    #[test]
+    fn reject_profile_structural_bit_array_pattern() {
+        assert_eq!(
+            expect_plan_error(
+                r#"
+pub fn main() {
+  case <<1>> {
+    <<1>> -> 1
+    _ -> 0
+  }
+}
+"#,
+            ),
+            PlanError::UnsupportedPattern {
+                kind: UnsupportedPatternKind::BitArray,
+            },
+        );
+    }
+
+    #[test]
+    fn reject_profile_bit_array_subject_expression_error() {
+        assert_eq!(
+            expect_plan_error(
+                r#"
+pub fn main() {
+  case echo <<1>> {
+    _ -> 1
+  }
+}
+"#,
+            ),
+            PlanError::UnsupportedExpression {
+                kind: crate::planner::UnsupportedExpressionKind::Echo,
+            },
         );
     }
 

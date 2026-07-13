@@ -231,18 +231,36 @@ use bitvec::view::BitView;
 
 #[cfg(test)]
 mod tests {
+    use bitvec::order::Msb0;
+    use bitvec::vec::BitVec;
+
     use crate::plan::{
-        BitArrayExpr, BitArrayFunctionId, BoolExpr, Expr, FloatExpr, FunctionId, FunctionPlan,
-        IntExpr, ListExpr, ModulePlan, PanicExpr, PanicSite, ReturnExpr, Step, StringExpr,
-        TupleExpr, ValueType,
+        BitArrayExpr, BitArrayFunctionId, BitArraySegment, BoolExpr, Endianness, Expr,
+        FloatBitSize, FloatExpr, FunctionId, FunctionPlan, IntExpr, ListExpr, ModulePlan,
+        PanicExpr, PanicSite, ReturnExpr, Step, StringEncoding, StringExpr, TupleExpr, ValueType,
     };
-    use crate::runtime::{ExecutionError, run_main};
+    use crate::runtime::{BitArrayValue, ExecutionError, ListValue, Value, run_main};
 
     #[test]
     fn module_expression_errors_propagate_through_bit_array_wrappers() {
         let panic = || PanicExpr::panic_at(None, PanicSite::unknown());
         let fallback = || BitArrayExpr::value(Vec::new());
         let expressions = [
+            BitArrayExpr::value(vec![BitArraySegment::Int {
+                value: IntExpr::panic(panic()),
+                bit_size: 8,
+                endianness: Endianness::Big,
+            }]),
+            BitArrayExpr::value(vec![BitArraySegment::Float {
+                value: FloatExpr::panic(panic()),
+                bit_size: FloatBitSize::SixtyFour,
+                endianness: Endianness::Big,
+            }]),
+            BitArrayExpr::value(vec![BitArraySegment::String {
+                value: StringExpr::panic(panic()),
+                encoding: StringEncoding::Utf8,
+            }]),
+            BitArrayExpr::value(vec![BitArraySegment::Bits(BitArrayExpr::panic(panic()))]),
             BitArrayExpr::tuple_index(TupleExpr::panic(panic(), vec![ValueType::BitArray]), 0),
             BitArrayExpr::list_index(
                 ListExpr::panic(panic(), ValueType::BitArray)
@@ -285,6 +303,125 @@ mod tests {
                 actual: ValueType::Int,
             },
         );
+    }
+
+    #[test]
+    fn source_aligned_little_endian_integer_preserves_byte_order() {
+        assert_eq!(
+            crate::runtime::run_src("pub fn main() { <<0x1234:little-size(16)>> }"),
+            Value::BitArray(BitArrayValue::from_bytes(vec![0x34, 0x12])),
+        );
+    }
+
+    #[test]
+    fn source_expression_paths_preserve_bit_array_values() {
+        assert_eq!(
+            crate::runtime::run_src(include_str!(
+                "../../../tests/fixtures/execution/values/bit_array_expression_paths.gleam"
+            )),
+            Value::Tuple(
+                [
+                    1, 2, 3, 11, 12, 3, 4, 5, 6, 7, 8, 9, 10, 14, 15, 16, 17, 18, 19, 20, 21, 13
+                ]
+                .into_iter()
+                .map(|byte| Value::BitArray(BitArrayValue::from_bytes(vec![byte])))
+                .collect(),
+            ),
+        );
+    }
+
+    #[test]
+    fn source_expression_segments_preserve_bit_array_encodings() {
+        assert_eq!(
+            crate::runtime::run_src(include_str!(
+                "../../../tests/fixtures/execution/values/bit_array_segments.gleam"
+            )),
+            expected_segment_values(),
+        );
+    }
+
+    #[test]
+    fn source_constant_segments_preserve_bit_array_encodings() {
+        assert_eq!(
+            crate::runtime::run_src(include_str!(
+                "../../../tests/fixtures/execution/module_items/constant_bit_array_segments.gleam"
+            )),
+            expected_segment_values(),
+        );
+    }
+
+    #[test]
+    fn source_list_function_paths_preserve_bit_array_values() {
+        let bit_array = |byte| Value::BitArray(BitArrayValue::from_bytes(vec![byte]));
+
+        assert_eq!(
+            crate::runtime::run_src(include_str!(
+                "../../../tests/fixtures/execution/values/bit_array_list_function_paths.gleam"
+            )),
+            Value::Tuple(vec![
+                bit_array(1),
+                bit_array(1),
+                bit_array(1),
+                bit_array(1),
+                bit_array(1),
+            ]),
+        );
+    }
+
+    #[test]
+    fn source_let_assert_tail_preserves_bit_array_values() {
+        assert_eq!(
+            crate::runtime::run_src(include_str!(
+                "../../../tests/fixtures/execution/bindings/let_assert_bit_array_list.gleam"
+            )),
+            Value::Tuple(vec![
+                Value::BitArray(BitArrayValue::from_bytes(vec![1])),
+                Value::List(ListValue::bit_array(vec![BitArrayValue::from_bytes(vec![
+                    2
+                ])])),
+            ]),
+        );
+    }
+
+    #[test]
+    fn source_tail_calls_preserve_bit_array_return_families() {
+        assert_eq!(
+            crate::runtime::run_src(include_str!(
+                "../../../tests/fixtures/execution/functions/tail_call/bit_array_return_families.gleam"
+            )),
+            Value::Tuple(vec![
+                Value::BitArray(BitArrayValue::from_bytes(vec![1])),
+                Value::BitArray(BitArrayValue::from_bytes(vec![2])),
+            ]),
+        );
+    }
+
+    fn expected_segment_values() -> Value {
+        let bit_array = |bytes, bit_len| {
+            let mut bits = BitVec::<u8, Msb0>::from_vec(bytes);
+            bits.truncate(bit_len);
+            Value::BitArray(BitArrayValue::from_evaluated(&bits))
+        };
+
+        Value::Tuple(vec![
+            bit_array(vec![], 0),
+            bit_array(vec![], 0),
+            bit_array(vec![0x23, 0x40], 12),
+            bit_array(vec![0x34, 0x20], 12),
+            bit_array(vec![0xf0], 4),
+            bit_array(vec![0x01], 8),
+            bit_array(vec![0x3f, 0xc0, 0x00, 0x00], 32),
+            bit_array(vec![0x00, 0x00, 0xc0, 0x3f], 32),
+            bit_array(vec![0x3f, 0xf8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00], 64),
+            bit_array(vec![0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xf8, 0x3f], 64),
+            bit_array(vec![0xec, 0x95, 0x88], 24),
+            bit_array(vec![0xec, 0x95, 0x88], 24),
+            bit_array(vec![0xc5, 0x48], 16),
+            bit_array(vec![0x48, 0xc5], 16),
+            bit_array(vec![0x00, 0x00, 0x00, 0x41], 32),
+            bit_array(vec![0x41, 0x00, 0x00, 0x00], 32),
+            bit_array(vec![0x12], 8),
+        ])
     }
 
     fn run_module_bit_array_expression(expression: BitArrayExpr) -> ExecutionError {

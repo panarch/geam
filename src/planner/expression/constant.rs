@@ -299,7 +299,9 @@ mod tests {
     use crate::planner::plan_module;
     use crate::planner::support::{compile, dummy_span, expect_plan_error};
     use gleam_core::analyse::Inferred;
-    use gleam_core::ast::{Constant, Publicity, RecordBeingUpdated, Statement, TypedExpr};
+    use gleam_core::ast::{
+        BitArraySegment, Constant, Publicity, RecordBeingUpdated, Statement, TypedExpr,
+    };
     use gleam_core::type_::error::VariableOrigin;
     use gleam_core::type_::{self, Deprecation, ValueConstructor, ValueConstructorVariant};
     use std::collections::HashMap;
@@ -423,6 +425,67 @@ pub fn main() {
 
     #[test]
     fn reject_margin_invalid_constant_shapes() {
+        let invalid = || Constant::Invalid {
+            location: dummy_span(),
+            type_: type_::int(),
+            extra_information: None,
+        };
+        let invalid_error = Err(PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::ExpressionShape {
+                kind: InvalidExpressionShapeKind::Invalid,
+            },
+        });
+
+        assert_eq!(
+            plan_constant_literal(Constant::StringConcatenation {
+                location: dummy_span(),
+                left: Box::new(invalid()),
+                right: Box::new(Constant::String {
+                    location: dummy_span(),
+                    value: "right".into(),
+                }),
+            }),
+            invalid_error,
+        );
+        assert_eq!(
+            plan_constant_literal(Constant::Tuple {
+                location: dummy_span(),
+                elements: vec![invalid()],
+                type_: type_::tuple(vec![type_::int()]),
+            }),
+            invalid_error,
+        );
+        assert_eq!(
+            plan_constant_literal(Constant::List {
+                location: dummy_span(),
+                elements: vec![invalid()],
+                type_: type_::list(type_::int()),
+                tail: None,
+            }),
+            invalid_error,
+        );
+        assert_eq!(
+            plan_constant_literal(Constant::List {
+                location: dummy_span(),
+                elements: Vec::new(),
+                type_: type_::list(type_::int()),
+                tail: Some(Box::new(invalid())),
+            }),
+            invalid_error,
+        );
+        assert_eq!(
+            plan_constant_literal(Constant::BitArray {
+                location: dummy_span(),
+                segments: vec![BitArraySegment {
+                    location: dummy_span(),
+                    value: Box::new(invalid()),
+                    options: Vec::new(),
+                    type_: type_::int(),
+                }],
+            }),
+            invalid_error,
+        );
+
         assert_eq!(
             plan_constant_literal(Constant::Tuple {
                 location: dummy_span(),

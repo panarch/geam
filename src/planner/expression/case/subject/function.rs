@@ -272,14 +272,15 @@ fn internal_function_function_case_subject_name(local: FunctionFunctionLocalId) 
 mod tests {
     use super::bind_function_case_subject;
     use crate::plan::{
-        Expr, FunctionExpr, FunctionFunctionExpr, FunctionFunctionFunctionId, FunctionFunctionId,
-        FunctionFunctionLocalId, FunctionType, IntLocalId, LocalId, Step, ValueType,
+        BitArrayFunctionExpr, BitArrayFunctionLocalId, Expr, FunctionExpr, FunctionFunctionExpr,
+        FunctionFunctionFunctionId, FunctionFunctionId, FunctionFunctionLocalId, FunctionType,
+        IntLocalId, LocalId, Step, ValueType,
     };
     use crate::planner::context::{AnonymousFunctions, FunctionInfo, PlanContext};
     use crate::planner::dsl::{
-        bool_function_ref, call_int_function, float_function_ref, function, function_function_ref,
-        int, int_function_call_arg, int_function_ref, int_return_block, int_return_expr,
-        let_bool_function_step, let_int_function_step, let_nil_function_step,
+        bit_array_function_ref, bool_function_ref, call_int_function, float_function_ref, function,
+        function_function_ref, int, int_function_call_arg, int_function_ref, int_return_block,
+        int_return_expr, let_bool_function_step, let_int_function_step, let_nil_function_step,
         let_string_function_step, list_function_ref, local_int, local_int_function, module,
         nil_function_ref, string_function_ref, tuple_function_ref,
     };
@@ -427,6 +428,24 @@ pub fn main() {
                         FunctionType::new(Vec::new(), ValueType::String),
                     ),
                 )),
+            ),
+        );
+        assert_eq!(
+            bind_function_case_subject(
+                bit_array_function_ref(0, Vec::<LocalId>::new()).into(),
+                &mut context,
+            ),
+            (
+                Step::let_bit_array_function(
+                    BitArrayFunctionLocalId(0),
+                    "<case:bit_array_function:0>".into(),
+                    bit_array_function_ref(0, Vec::<LocalId>::new()).into(),
+                ),
+                Expr::function(FunctionExpr::bit_array(BitArrayFunctionExpr::local_get(
+                    BitArrayFunctionLocalId(0),
+                    "<case:bit_array_function:0>".into(),
+                    FunctionType::new(Vec::new(), ValueType::BitArray),
+                ))),
             ),
         );
         assert_eq!(
@@ -640,7 +659,7 @@ pub fn main() {
         let (case_type, _, _) = super::super::super::expect_case_statement_mut(
             &mut unsupported_case_type.definitions.functions[1].body[0],
         );
-        *case_type = gleam_core::type_::bit_array();
+        *case_type = super::super::unsupported_case_return_type();
         assert_eq!(
             plan_module(unsupported_case_type),
             Err(PlanError::InvalidTypedAst {

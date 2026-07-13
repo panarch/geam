@@ -413,6 +413,7 @@ mod tests {
     use crate::planner::support::{dummy_span, expect_plan_error};
     use crate::planner::{
         InvalidCaseShapeReason, InvalidExpressionType, InvalidTypedAstReason, PlanError,
+        UnsupportedPatternKind,
     };
     use gleam_core::type_::error::VariableOrigin;
 
@@ -700,7 +701,7 @@ pub fn main() {
         let (case_type, _, _) = super::super::super::expect_case_statement_mut(
             &mut unsupported_case_type.definitions.functions[0].body[0],
         );
-        *case_type = gleam_core::type_::bit_array();
+        *case_type = super::super::unsupported_case_return_type();
         assert_eq!(
             plan_module(unsupported_case_type),
             Err(PlanError::InvalidTypedAst {
@@ -1570,6 +1571,25 @@ pub fn main() {
                     reason: InvalidCaseShapeReason::PatternTypeMismatch,
                 },
             }),
+        );
+    }
+
+    #[test]
+    fn reject_profile_list_nested_bit_array_pattern() {
+        assert_eq!(
+            expect_plan_error(
+                r#"
+pub fn main() {
+  case [<<1>>] {
+    [<<1>>] -> 1
+    _ -> 0
+  }
+}
+"#,
+            ),
+            PlanError::UnsupportedPattern {
+                kind: UnsupportedPatternKind::BitArray,
+            },
         );
     }
 }

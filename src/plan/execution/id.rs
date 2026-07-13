@@ -584,8 +584,8 @@ mod tests {
     use super::{
         BitArrayFunctionFunctionId, BitArrayListLocalId, BoolListLocalId, FloatListLocalId,
         FunctionFunctionId, FunctionListLocalId, FunctionReturnFamily, IntFunctionFunctionId,
-        IntListLocalId, ListListLocalId, ListLocal, NilListLocalId, StringListLocalId,
-        TupleListLocalId,
+        IntListLocalId, ListFunctionFunctionId, ListListLocalId, ListLocal, NilListLocalId,
+        RuntimeFunctionId, StringListLocalId, TupleListLocalId,
     };
     use crate::plan::ValueType;
 
@@ -742,6 +742,37 @@ pub fn main() { Nil }
         assert_eq!(
             FunctionFunctionId::Int(IntFunctionFunctionId(0)).bit_array(),
             None,
+        );
+    }
+
+    #[test]
+    fn bit_array_list_function_function_id_preserves_exact_return_type() {
+        let plan = execution_plan("pub fn main() -> fn() -> List(BitArray) { fn() { [] } }");
+        let list_type = plan.bit_array_list_function_id(0).type_id();
+        let return_type = crate::plan::execution::FunctionType::new(
+            Vec::new(),
+            crate::plan::execution::ValueType::List(list_type.list_type()),
+        );
+        let id = ListFunctionFunctionId::BitArray {
+            id: super::BitArrayListFunctionFunctionId(0),
+            type_: return_type.clone(),
+            list_type,
+        };
+
+        assert_eq!(
+            plan.main_runtime(),
+            RuntimeFunctionId::Function {
+                id: FunctionFunctionId::List(id.clone()),
+                return_type: return_type.clone(),
+            },
+        );
+
+        assert_eq!(
+            plan.function_type(id.type_()),
+            crate::plan::FunctionType::new(
+                Vec::new(),
+                crate::plan::ValueType::List(Box::new(crate::plan::ValueType::BitArray)),
+            ),
         );
     }
 

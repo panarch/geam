@@ -767,11 +767,11 @@ mod tests {
         TupleFunctionId, ValueType,
     };
     use crate::planner::dsl::{
-        bool_, bool_return_expr, bool_return_string_case, float, function, function_ref, int,
-        int_return_expr, int_return_string_case, let_string_step, list, list_return_expr,
-        list_return_string_case, local_string, module, nil, nil_return_expr,
-        nil_return_string_case, return_list, string, string_return_block, string_return_expr,
-        string_return_string_case, tuple,
+        bit_array, bit_array_function_ref, bool_, bool_return_expr, bool_return_string_case, float,
+        function, function_ref, int, int_return_expr, int_return_string_case, let_string_step,
+        list, list_return_expr, list_return_string_case, local_string, module, nil,
+        nil_return_expr, nil_return_string_case, return_list, string, string_return_block,
+        string_return_expr, string_return_string_case, tuple,
     };
     use crate::planner::plan_module;
     use crate::planner::support::{dummy_span, expect_plan_error};
@@ -1752,8 +1752,25 @@ fn return_value(value: String) {
         let (type_, _, _) = super::super::super::expect_case_statement_mut(
             &mut module.definitions.functions[0].body[0],
         );
-        *type_ = type_::bit_array();
+        *type_ = super::super::unsupported_case_return_type();
         assert_eq!(plan_module(module), Err(case_branch_return_type_mismatch()));
+
+        assert_eq!(
+            super::string_case_expr(
+                string("one").into(),
+                vec![("one".into(), int(1).into())],
+                bit_array([]).into(),
+            ),
+            Err(case_branch_return_type_mismatch()),
+        );
+        assert_eq!(
+            super::string_case_expr(
+                string("one").into(),
+                vec![("one".into(), int_function_ref_expr(0))],
+                bit_array_function_ref(0, Vec::<LocalId>::new()).into(),
+            ),
+            Err(case_branch_return_type_mismatch()),
+        );
 
         assert_eq!(
             super::string_case_expr(

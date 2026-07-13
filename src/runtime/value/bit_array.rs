@@ -84,6 +84,18 @@ mod tests {
     }
 
     #[test]
+    fn checked_parts_preserve_empty_and_aligned_values() {
+        assert_eq!(
+            BitArrayValue::try_from_parts(Vec::new(), 0),
+            Ok(BitArrayValue::from_bytes(Vec::new())),
+        );
+        assert_eq!(
+            BitArrayValue::try_from_parts(vec![0xa5], 8),
+            Ok(BitArrayValue::from_bytes(vec![0xa5])),
+        );
+    }
+
+    #[test]
     fn checked_parts_reject_bit_length_beyond_supplied_bytes() {
         assert_eq!(
             BitArrayValue::try_from_parts(vec![0], 9),

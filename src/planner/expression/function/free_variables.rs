@@ -465,7 +465,7 @@ pub fn main() {
 pub fn main() {
   let value = 1
   let size = 8
-  fn() { <<value:size(size)>> }
+  fn() { <<value:int, value:size(size)>> }
   1
 }
 "#,
