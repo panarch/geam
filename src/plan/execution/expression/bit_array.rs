@@ -21,6 +21,7 @@ pub(crate) enum StringEncoding {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum FloatBitSize {
+    Sixteen,
     ThirtyTwo,
     SixtyFour,
 }

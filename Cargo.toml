@@ -10,6 +10,7 @@ camino = "1"
 # compile against ecow 0.3.0.
 ecow = "=0.2.6"
 gleam-core = { git = "https://github.com/gleam-lang/gleam", rev = "afc1b7d956b433e638d52dbd06470f53a0b26f6a", package = "gleam-core" }
+half = { version = "2.7.1", default-features = false }
 im = "15"
 miette = "7"
 num-bigint = "0.4.6"

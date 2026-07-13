@@ -110,10 +110,7 @@ fn bit_array_segment(
             endianness,
         } => execution::BitArraySegment::Float {
             value: float_expr(value, context),
-            bit_size: match bit_size {
-                module::FloatBitSize::ThirtyTwo => execution::FloatBitSize::ThirtyTwo,
-                module::FloatBitSize::SixtyFour => execution::FloatBitSize::SixtyFour,
-            },
+            bit_size: lower_float_bit_size(bit_size),
             endianness: lower_endianness(endianness),
         },
         module::BitArraySegment::String { value, encoding } => execution::BitArraySegment::String {
@@ -134,9 +131,38 @@ fn bit_array_segment(
     }
 }
 
+fn lower_float_bit_size(value: module::FloatBitSize) -> execution::FloatBitSize {
+    match value {
+        module::FloatBitSize::Sixteen => execution::FloatBitSize::Sixteen,
+        module::FloatBitSize::ThirtyTwo => execution::FloatBitSize::ThirtyTwo,
+        module::FloatBitSize::SixtyFour => execution::FloatBitSize::SixtyFour,
+    }
+}
+
 fn lower_endianness(value: module::Endianness) -> execution::Endianness {
     match value {
         module::Endianness::Big => execution::Endianness::Big,
         module::Endianness::Little => execution::Endianness::Little,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{execution, lower_float_bit_size, module};
+
+    #[test]
+    fn lowering_preserves_float_bit_sizes() {
+        assert_eq!(
+            [
+                lower_float_bit_size(module::FloatBitSize::Sixteen),
+                lower_float_bit_size(module::FloatBitSize::ThirtyTwo),
+                lower_float_bit_size(module::FloatBitSize::SixtyFour),
+            ],
+            [
+                execution::FloatBitSize::Sixteen,
+                execution::FloatBitSize::ThirtyTwo,
+                execution::FloatBitSize::SixtyFour,
+            ],
+        );
     }
 }

@@ -62,8 +62,6 @@ pub enum UnsupportedBitArraySegmentReason {
     DynamicSize,
     #[error("sized bits segments are not supported")]
     SizedBits,
-    #[error("16-bit float segments are not supported")]
-    Float16,
     #[error("bit array segment size exceeds the supported host range")]
     SizeOutOfRange,
 }
