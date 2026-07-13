@@ -258,11 +258,13 @@ pub(super) fn function_params(
     let mut next_int = 0;
     let mut next_float = 0;
     let mut next_string = 0;
+    let mut next_bit_array = 0;
     let mut next_bool = 0;
     let mut next_nil = 0;
     let mut next_tuple = 0;
     let mut next_int_list = 0;
     let mut next_string_list = 0;
+    let mut next_bit_array_list = 0;
     let mut next_float_list = 0;
     let mut next_bool_list = 0;
     let mut next_nil_list = 0;
@@ -319,6 +321,11 @@ pub(super) fn function_params(
                     next_string += 1;
                     local
                 }
+                ValueType::BitArray => {
+                    let local = ParamLocal::bit_array(crate::plan::BitArrayLocalId(next_bit_array));
+                    next_bit_array += 1;
+                    local
+                }
                 ValueType::Bool => {
                     let local = ParamLocal::bool(crate::plan::BoolLocalId(next_bool));
                     next_bool += 1;
@@ -349,6 +356,13 @@ pub(super) fn function_params(
                                 crate::plan::StringListLocalId(next_string_list),
                             );
                             next_string_list += 1;
+                            local
+                        }
+                        ValueType::BitArray => {
+                            let local = crate::plan::ListLocal::bit_array(
+                                crate::plan::BitArrayListLocalId(next_bit_array_list),
+                            );
+                            next_bit_array_list += 1;
                             local
                         }
                         ValueType::Float => {
@@ -421,6 +435,7 @@ struct FunctionParamLocalCounters {
     next_int: usize,
     next_float: usize,
     next_string: usize,
+    next_bit_array: usize,
     next_bool: usize,
     next_nil: usize,
     next_tuple: usize,
@@ -451,6 +466,14 @@ impl FunctionParamLocalCounters {
                     type_.clone(),
                 );
                 self.next_string += 1;
+                local
+            }
+            ValueType::BitArray => {
+                let local = ParamLocal::bit_array_function(
+                    crate::plan::BitArrayFunctionLocalId(self.next_bit_array),
+                    type_.clone(),
+                );
+                self.next_bit_array += 1;
                 local
             }
             ValueType::Bool => {
@@ -514,10 +537,11 @@ fn validate_main_function(main: FunctionToPlan) -> Result<FunctionToPlan, PlanEr
 mod tests {
     use super::plan_module;
     use crate::plan::{
-        BoolListLocalId, FloatListLocalId, FunctionFunctionId, FunctionListLocalId, FunctionType,
-        IntFunctionFunctionId, IntFunctionId, IntListLocalId, IntLocalId, ListListLocalId,
-        ListLocal, LocalId, NilExpr, NilFunctionId, NilListLocalId, PanicExpr, PanicSite, Param,
-        ParamLocal, RuntimeFunctionId, SourceSpan, StringListLocalId, TupleListLocalId, ValueType,
+        BitArrayListLocalId, BoolListLocalId, FloatListLocalId, FunctionFunctionId,
+        FunctionListLocalId, FunctionType, IntFunctionFunctionId, IntFunctionId, IntListLocalId,
+        IntLocalId, ListListLocalId, ListLocal, LocalId, NilExpr, NilFunctionId, NilListLocalId,
+        PanicExpr, PanicSite, Param, ParamLocal, RuntimeFunctionId, SourceSpan, StringListLocalId,
+        TupleListLocalId, ValueType,
     };
     use crate::planner::dsl::{
         call_int, call_int_returning_function, function, function_ref, int, int_arg,
@@ -700,7 +724,11 @@ pub fn main() {
     fn reject_profile_unsupported_return_type_for_non_source_stop_final_shapes() {
         assert_eq!(super::source_stop_return_type(&[]), None);
         assert_eq!(
-            super::function_return_type("values".into(), type_::bit_array().as_ref(), &[]),
+            super::function_return_type(
+                "values".into(),
+                type_::result(type_::int(), type_::nil()).as_ref(),
+                &[],
+            ),
             Err(PlanError::UnsupportedFunction {
                 name: "values".into(),
                 reason: UnsupportedFunctionReason::UnsupportedReturnType,
@@ -750,7 +778,7 @@ pub fn main() {
         assert_eq!(
             super::function_return_type(
                 "main".into(),
-                type_::bit_array().as_ref(),
+                type_::result(type_::int(), type_::nil()).as_ref(),
                 &block_with_final_assignment.definitions.functions[0].body,
             ),
             Err(PlanError::UnsupportedFunction {
@@ -829,7 +857,7 @@ pub fn main() {
         assert_eq!(
             expect_plan_error(
                 r#"
-pub fn main() -> BitArray {
+pub fn main() -> Result(Int, Nil) {
   panic
 }
 "#,
@@ -842,7 +870,7 @@ pub fn main() -> BitArray {
         assert_eq!(
             expect_plan_error(
                 r#"
-fn helper() -> BitArray {
+fn helper() -> Result(Int, Nil) {
   panic
 }
 
@@ -863,8 +891,8 @@ pub fn main() {
         assert_eq!(
             expect_plan_error(
                 r#"
-fn values() -> BitArray {
-  <<>>
+fn values() -> Result(Int, Nil) {
+  Ok(1)
 }
 
 pub fn main() {
@@ -888,8 +916,8 @@ pub fn main() {
   1
 }
 
-fn values() -> BitArray {
-  <<>>
+fn values() -> Result(Int, Nil) {
+  Ok(1)
 }
 "#,
             ),
@@ -1117,7 +1145,7 @@ pub fn main() {
   1
 }
 
-fn count(values: BitArray) {
+fn count(values: Result(Int, Nil)) {
   1
 }
 "#,
@@ -1134,14 +1162,14 @@ fn count(values: BitArray) {
         assert_eq!(
             expect_plan_error(
                 r#"
-pub type Bits =
-  BitArray
+pub type Outcome =
+  Result(Int, Nil)
 
 pub fn main() {
   1
 }
 
-fn count(values: Bits) {
+fn count(values: Outcome) {
   1
 }
 "#,
@@ -1183,6 +1211,7 @@ pub fn main() {
 fn collect(
   ints: List(Int),
   strings: List(String),
+  bit_arrays: List(BitArray),
   floats: List(Float),
   bools: List(Bool),
   nils: List(Nil),
@@ -1216,6 +1245,10 @@ pub fn main() {
                 Param::named(
                     ParamLocal::list(ListLocal::string(StringListLocalId(0))),
                     "strings".into(),
+                ),
+                Param::named(
+                    ParamLocal::list(ListLocal::bit_array(BitArrayListLocalId(0))),
+                    "bit_arrays".into(),
                 ),
                 Param::named(
                     ParamLocal::list(ListLocal::float(FloatListLocalId(0))),

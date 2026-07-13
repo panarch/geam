@@ -17,6 +17,10 @@ pub(super) fn list_local(
             local: execution::StringListLocalId(local.0),
             type_id: context.string_list_type(),
         },
+        module::ListLocal::BitArray(local) => execution::ListLocal::BitArray {
+            local: execution::BitArrayListLocalId(local.0),
+            type_id: context.bit_array_list_type(),
+        },
         module::ListLocal::Float(local) => execution::ListLocal::Float {
             local: execution::FloatListLocalId(local.0),
             type_id: context.float_list_type(),
@@ -61,6 +65,13 @@ pub(super) fn list_function_local(
                 local: execution::StringListFunctionLocalId(local.0),
                 type_: context.function_type(type_),
                 list_type: context.string_list_type(),
+            }
+        }
+        module::ListFunctionLocal::BitArray { local, type_ } => {
+            execution::ListFunctionLocal::BitArray {
+                local: execution::BitArrayListFunctionLocalId(local.0),
+                type_: context.function_type(type_),
+                list_type: context.bit_array_list_type(),
             }
         }
         module::ListFunctionLocal::Float { local, type_ } => execution::ListFunctionLocal::Float {
@@ -121,6 +132,9 @@ pub(super) fn list_function_id(
         module::ListFunctionId::String(id) => execution::ListFunctionId::String(
             execution::StringListFunctionId::new(id.0, context.string_list_type()),
         ),
+        module::ListFunctionId::BitArray(id) => execution::ListFunctionId::BitArray(
+            execution::BitArrayListFunctionId::new(id.0, context.bit_array_list_type()),
+        ),
         module::ListFunctionId::Float(id) => execution::ListFunctionId::Float(
             execution::FloatListFunctionId::new(id.0, context.float_list_type()),
         ),
@@ -157,6 +171,9 @@ pub(super) fn function_function_id(
         }
         module::FunctionFunctionId::String(id) => {
             execution::FunctionFunctionId::String(execution::StringFunctionFunctionId(id.0))
+        }
+        module::FunctionFunctionId::BitArray(id) => {
+            execution::FunctionFunctionId::BitArray(execution::BitArrayFunctionFunctionId(id.0))
         }
         module::FunctionFunctionId::Bool(id) => {
             execution::FunctionFunctionId::Bool(execution::BoolFunctionFunctionId(id.0))
@@ -195,6 +212,13 @@ pub(super) fn list_function_function_id(
                 id: execution::StringListFunctionFunctionId(id.0),
                 type_: context.function_type(type_),
                 list_type: context.string_list_type(),
+            }
+        }
+        module::ListFunctionFunctionId::BitArray { id, type_ } => {
+            execution::ListFunctionFunctionId::BitArray {
+                id: execution::BitArrayListFunctionFunctionId(id.0),
+                type_: context.function_type(type_),
+                list_type: context.bit_array_list_type(),
             }
         }
         module::ListFunctionFunctionId::Float { id, type_ } => {

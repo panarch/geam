@@ -1,10 +1,10 @@
 use super::LoweringContext;
 use super::expression::{
-    bool_expr, bool_function_expr, bool_list_expr, call_args, float_expr, float_function_expr,
-    float_list_expr, function_function_expr, function_list_expr, int_expr, int_function_expr,
-    int_list_expr, list_function_expr, list_list_expr, nil_expr, nil_function_expr, nil_list_expr,
-    string_expr, string_function_expr, string_list_expr, tuple_expr, tuple_function_expr,
-    tuple_list_expr,
+    bit_array_expr, bit_array_function_expr, bit_array_list_expr, bool_expr, bool_function_expr,
+    bool_list_expr, call_args, float_expr, float_function_expr, float_list_expr,
+    function_function_expr, function_list_expr, int_expr, int_function_expr, int_list_expr,
+    list_function_expr, list_list_expr, nil_expr, nil_function_expr, nil_list_expr, string_expr,
+    string_function_expr, string_list_expr, tuple_expr, tuple_function_expr, tuple_list_expr,
 };
 use super::id::list_function_function_id;
 use crate::plan::{execution, module};
@@ -33,6 +33,15 @@ pub(super) fn string_return(
 ) -> execution::StringReturn {
     return_body(body, context, string_expr, |id, _| {
         execution::StringFunctionId(id.0)
+    })
+}
+
+pub(super) fn bit_array_return(
+    body: module::BitArrayReturn,
+    context: &mut LoweringContext,
+) -> execution::BitArrayReturn {
+    return_body(body, context, bit_array_expr, |id, _| {
+        execution::BitArrayFunctionId(id.0)
     })
 }
 
@@ -79,6 +88,16 @@ pub(super) fn string_list_return(
     let type_id = context.string_list_type();
     return_body(body, context, string_list_expr, move |id, _| {
         execution::StringListFunctionId::new(id.0, type_id)
+    })
+}
+
+pub(super) fn bit_array_list_return(
+    body: module::BitArrayListReturn,
+    context: &mut LoweringContext,
+) -> execution::BitArrayListReturn {
+    let type_id = context.bit_array_list_type();
+    return_body(body, context, bit_array_list_expr, move |id, _| {
+        execution::BitArrayListFunctionId::new(id.0, type_id)
     })
 }
 
@@ -165,6 +184,15 @@ pub(super) fn string_function_return(
 ) -> execution::StringFunctionReturn {
     return_body(body, context, string_function_expr, |id, _| {
         execution::StringFunctionFunctionId(id.0)
+    })
+}
+
+pub(super) fn bit_array_function_return(
+    body: module::BitArrayFunctionReturn,
+    context: &mut LoweringContext,
+) -> execution::BitArrayFunctionReturn {
+    return_body(body, context, bit_array_function_expr, |id, _| {
+        execution::BitArrayFunctionFunctionId(id.0)
     })
 }
 

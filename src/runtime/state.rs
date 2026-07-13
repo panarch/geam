@@ -5,10 +5,10 @@ use std::rc::{Rc, Weak};
 use ecow::EcoString;
 use num_bigint::BigInt;
 
-use super::evaluated::{EvaluatedFunctionValue, EvaluatedValue};
+use super::evaluated::{EvaluatedBitArray, EvaluatedFunctionValue, EvaluatedValue};
 use crate::plan::execution::{
-    BoolListTypeId, ExecutionPlan, FloatListTypeId, FunctionListTypeId, IntListTypeId,
-    ListListTypeId, ListStorageTypeId, ListTypeId, NilListTypeId, StringListTypeId,
+    BitArrayListTypeId, BoolListTypeId, ExecutionPlan, FloatListTypeId, FunctionListTypeId,
+    IntListTypeId, ListListTypeId, ListStorageTypeId, ListTypeId, NilListTypeId, StringListTypeId,
     TupleListTypeId,
 };
 
@@ -16,6 +16,7 @@ use crate::plan::execution::{
 enum ListStorageKey {
     Int { slot: usize },
     String { slot: usize },
+    BitArray { slot: usize },
     Float { slot: usize },
     Bool { slot: usize },
     Nil { slot: usize },
@@ -51,6 +52,7 @@ impl ListStorageKey {
         match self {
             Self::Int { slot }
             | Self::String { slot }
+            | Self::BitArray { slot }
             | Self::Float { slot }
             | Self::Bool { slot }
             | Self::Nil { slot }
@@ -110,6 +112,7 @@ macro_rules! typed_list_value_id {
 
 typed_list_value_id!(IntListValueId, IntListTypeId, Int);
 typed_list_value_id!(StringListValueId, StringListTypeId, String);
+typed_list_value_id!(BitArrayListValueId, BitArrayListTypeId, BitArray);
 typed_list_value_id!(FloatListValueId, FloatListTypeId, Float);
 typed_list_value_id!(BoolListValueId, BoolListTypeId, Bool);
 typed_list_value_id!(NilListValueId, NilListTypeId, Nil);
@@ -121,6 +124,7 @@ typed_list_value_id!(FunctionListValueId, FunctionListTypeId, Function);
 pub(super) enum ListValueId {
     Int(IntListValueId),
     String(StringListValueId),
+    BitArray(BitArrayListValueId),
     Float(FloatListValueId),
     Bool(BoolListValueId),
     Nil(NilListValueId),
@@ -134,6 +138,7 @@ impl ListValueId {
         match self {
             Self::Int(value) => value.type_id().list_type(),
             Self::String(value) => value.type_id().list_type(),
+            Self::BitArray(value) => value.type_id().list_type(),
             Self::Float(value) => value.type_id().list_type(),
             Self::Bool(value) => value.type_id().list_type(),
             Self::Nil(value) => value.type_id().list_type(),
@@ -147,6 +152,7 @@ impl ListValueId {
         match self {
             Self::Int(value) => value.into_core(),
             Self::String(value) => value.into_core(),
+            Self::BitArray(value) => value.into_core(),
             Self::Float(value) => value.into_core(),
             Self::Bool(value) => value.into_core(),
             Self::Nil(value) => value.into_core(),
@@ -165,6 +171,9 @@ impl ListValueId {
             ListStorageTypeId::Int(type_id) => Self::Int(IntListValueId::new(type_id, core)),
             ListStorageTypeId::String(type_id) => {
                 Self::String(StringListValueId::new(type_id, core))
+            }
+            ListStorageTypeId::BitArray(type_id) => {
+                Self::BitArray(BitArrayListValueId::new(type_id, core))
             }
             ListStorageTypeId::Float(type_id) => Self::Float(FloatListValueId::new(type_id, core)),
             ListStorageTypeId::Bool(type_id) => Self::Bool(BoolListValueId::new(type_id, core)),
@@ -211,6 +220,7 @@ pub(in crate::runtime) struct RuntimeState {
     releases: Rc<RefCell<Vec<ListStorageKey>>>,
     ints: ListPool<Vec<BigInt>>,
     strings: ListPool<Vec<EcoString>>,
+    bit_arrays: ListPool<Vec<EvaluatedBitArray>>,
     floats: ListPool<Vec<f64>>,
     bools: ListPool<Vec<bool>>,
     nils: ListPool<usize>,
@@ -225,6 +235,7 @@ impl RuntimeState {
             releases: Rc::new(RefCell::new(Vec::new())),
             ints: ListPool::default(),
             strings: ListPool::default(),
+            bit_arrays: ListPool::default(),
             floats: ListPool::default(),
             bools: ListPool::default(),
             nils: ListPool::default(),
@@ -244,6 +255,7 @@ impl RuntimeState {
             match key {
                 ListStorageKey::Int { slot } => drop(self.ints.release(slot)),
                 ListStorageKey::String { slot } => drop(self.strings.release(slot)),
+                ListStorageKey::BitArray { slot } => drop(self.bit_arrays.release(slot)),
                 ListStorageKey::Float { slot } => drop(self.floats.release(slot)),
                 ListStorageKey::Bool { slot } => drop(self.bools.release(slot)),
                 ListStorageKey::Nil { slot } => {
@@ -283,6 +295,16 @@ impl RuntimeState {
         self.prepare_allocation();
         let slot = self.strings.allocate(values);
         StringListValueId::new(type_id, self.core(ListStorageKey::String { slot }))
+    }
+
+    pub(super) fn bit_array(
+        &mut self,
+        type_id: BitArrayListTypeId,
+        values: Vec<EvaluatedBitArray>,
+    ) -> BitArrayListValueId {
+        self.prepare_allocation();
+        let slot = self.bit_arrays.allocate(values);
+        BitArrayListValueId::new(type_id, self.core(ListStorageKey::BitArray { slot }))
     }
 
     pub(super) fn float(&mut self, type_id: FloatListTypeId, values: Vec<f64>) -> FloatListValueId {
@@ -341,6 +363,10 @@ impl RuntimeState {
         self.strings.get(value.core.slot())
     }
 
+    pub(super) fn bit_array_values(&self, value: &BitArrayListValueId) -> &[EvaluatedBitArray] {
+        self.bit_arrays.get(value.core.slot())
+    }
+
     pub(super) fn float_values(&self, value: &FloatListValueId) -> &[f64] {
         self.floats.get(value.core.slot())
     }
@@ -369,6 +395,7 @@ impl RuntimeState {
         match value {
             ListValueId::Int(value) => self.int_values(value).len(),
             ListValueId::String(value) => self.string_values(value).len(),
+            ListValueId::BitArray(value) => self.bit_array_values(value).len(),
             ListValueId::Float(value) => self.float_values(value).len(),
             ListValueId::Bool(value) => self.bool_values(value).len(),
             ListValueId::Nil(value) => self.nil_len(value),
@@ -395,6 +422,12 @@ impl RuntimeState {
                 .iter()
                 .cloned()
                 .map(EvaluatedValue::String)
+                .collect(),
+            ListValueId::BitArray(value) => self
+                .bit_array_values(value)
+                .iter()
+                .cloned()
+                .map(EvaluatedValue::BitArray)
                 .collect(),
             ListValueId::Float(value) => self
                 .float_values(value)
@@ -448,6 +481,11 @@ impl RuntimeState {
                 let values = values[count.min(values.len())..].to_vec();
                 self.string(value.type_id(), values).into()
             }
+            ListValueId::BitArray(value) => {
+                let values = self.bit_array_values(value);
+                let values = values[count.min(values.len())..].to_vec();
+                self.bit_array(value.type_id(), values).into()
+            }
             ListValueId::Float(value) => {
                 let values = self.float_values(value);
                 let values = values[count.min(values.len())..].to_vec();
@@ -494,6 +532,7 @@ mod tests {
     const EVERY_LIST_FAMILY_SOURCE: &str = r#"
 fn ints() -> List(Int) { [] }
 fn strings() -> List(String) { [] }
+fn bit_arrays() -> List(BitArray) { [] }
 fn floats() -> List(Float) { [] }
 fn bools() -> List(Bool) { [] }
 fn nils() -> List(Nil) { [] }
@@ -522,6 +561,29 @@ pub fn main() { 0 }
         let reused = state.int(type_id, vec![2.into()]);
         assert_eq!(reused.core.slot(), slot);
         assert_eq!(state.int_values(&reused), &[2.into()]);
+    }
+
+    #[test]
+    fn bit_array_list_pool_preserves_type_and_reuses_released_slots() {
+        let plan = crate::runtime::plan_src("pub fn main() -> List(BitArray) { [<<1>>] }");
+        let type_id = plan.bit_array_list_function_id(0).type_id();
+        let mut state = RuntimeState::new();
+        let first = state.bit_array(
+            type_id,
+            vec![crate::runtime::EvaluatedBitArray::new(
+                bitvec::vec::BitVec::from_vec(vec![1]),
+            )],
+        );
+        let slot = first.core.slot();
+
+        assert_eq!(first.type_id(), type_id);
+        assert_eq!(state.bit_array_values(&first)[0].bits().len(), 8);
+        drop(first);
+        state.drain_releases();
+
+        let second = state.bit_array(type_id, Vec::new());
+        assert_eq!(second.core.slot(), slot);
+        assert_eq!(state.bit_array_values(&second), &[]);
     }
 
     #[test]

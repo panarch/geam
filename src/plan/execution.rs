@@ -11,25 +11,29 @@ mod table;
 mod value_type;
 
 pub(crate) use expression::{
-    BoolExpr, BoolExprKind, BoolFunctionExpr, BoolFunctionExprKind, BoolListExpr, BoolListItem,
-    CallArg, CallArgKind, CaptureArg, CaptureArgKind, Expr, ExprKind, FloatExpr, FloatExprKind,
+    BitArrayExpr, BitArrayExprKind, BitArrayFunctionExpr, BitArrayFunctionExprKind,
+    BitArrayListExpr, BitArrayListItem, BitArraySegment, BoolExpr, BoolExprKind, BoolFunctionExpr,
+    BoolFunctionExprKind, BoolListExpr, BoolListItem, CallArg, CallArgKind, CaptureArg,
+    CaptureArgKind, Endianness, Expr, ExprKind, FloatBitSize, FloatExpr, FloatExprKind,
     FloatFunctionExpr, FloatFunctionExprKind, FloatListExpr, FloatListItem, FunctionExpr,
     FunctionExprKind, FunctionFunctionExpr, FunctionFunctionExprKind, FunctionListExpr,
     FunctionListItem, IntExpr, IntExprKind, IntFunctionExpr, IntFunctionExprKind, IntListExpr,
     IntListItem, ListExpr, ListFunctionExpr, ListFunctionExprKind, ListIndexSource, ListItem,
     ListListExpr, ListListItem, ListLocalExpr, NilExpr, NilExprKind, NilFunctionExpr,
-    NilFunctionExprKind, NilListExpr, NilListItem, PanicExpr, PanicExprKind, StringExpr,
-    StringExprKind, StringFunctionExpr, StringFunctionExprKind, StringListExpr, StringListItem,
-    TupleExpr, TupleExprKind, TupleFunctionExpr, TupleFunctionExprKind, TupleListExpr,
-    TupleListItem, TypedListExpr, TypedListExprKind,
+    NilFunctionExprKind, NilListExpr, NilListItem, PanicExpr, PanicExprKind, StringEncoding,
+    StringExpr, StringExprKind, StringFunctionExpr, StringFunctionExprKind, StringListExpr,
+    StringListItem, TupleExpr, TupleExprKind, TupleFunctionExpr, TupleFunctionExprKind,
+    TupleListExpr, TupleListItem, TypedListExpr, TypedListExprKind,
 };
 pub(crate) use frame::FrameLayout;
 pub(crate) use id::{
-    BoolFunctionFunctionId, BoolFunctionId, BoolFunctionLocalId, BoolListFunctionFunctionId,
-    BoolListFunctionId, BoolListFunctionLocalId, BoolListLocalId, BoolLocalId,
-    FloatFunctionFunctionId, FloatFunctionId, FloatFunctionLocalId, FloatListFunctionFunctionId,
-    FloatListFunctionId, FloatListFunctionLocalId, FloatListLocalId, FloatLocalId,
-    FunctionFunctionFunctionId, FunctionFunctionId, FunctionFunctionLocalId,
+    BitArrayFunctionFunctionId, BitArrayFunctionId, BitArrayFunctionLocalId,
+    BitArrayListFunctionFunctionId, BitArrayListFunctionId, BitArrayListFunctionLocalId,
+    BitArrayListLocalId, BitArrayLocalId, BoolFunctionFunctionId, BoolFunctionId,
+    BoolFunctionLocalId, BoolListFunctionFunctionId, BoolListFunctionId, BoolListFunctionLocalId,
+    BoolListLocalId, BoolLocalId, FloatFunctionFunctionId, FloatFunctionId, FloatFunctionLocalId,
+    FloatListFunctionFunctionId, FloatListFunctionId, FloatListFunctionLocalId, FloatListLocalId,
+    FloatLocalId, FunctionFunctionFunctionId, FunctionFunctionId, FunctionFunctionLocalId,
     FunctionListFunctionFunctionId, FunctionListFunctionId, FunctionListFunctionLocalId,
     FunctionListLocalId, FunctionReturnFamily, IntFunctionFunctionId, IntFunctionId,
     IntFunctionLocalId, IntListFunctionFunctionId, IntListFunctionId, IntListFunctionLocalId,
@@ -46,18 +50,19 @@ pub(crate) use id::{
 pub(crate) use param::ParamLocal;
 pub(crate) use reference::{ClosureTemplate, FunctionReference};
 pub(crate) use return_::{
-    BoolFunctionReturn, BoolListReturn, BoolReturn, FloatFunctionReturn, FloatListReturn,
-    FloatReturn, FunctionFunctionReturn, FunctionListReturn, IntFunctionReturn, IntListReturn,
-    IntReturn, ListFunctionReturn, ListListReturn, NilFunctionReturn, NilListReturn, NilReturn,
-    ReturnBody, ReturnBodyKind, StringFunctionReturn, StringListReturn, StringReturn,
-    TupleFunctionReturn, TupleListReturn, TupleReturn,
+    BitArrayFunctionReturn, BitArrayListReturn, BitArrayReturn, BoolFunctionReturn, BoolListReturn,
+    BoolReturn, FloatFunctionReturn, FloatListReturn, FloatReturn, FunctionFunctionReturn,
+    FunctionListReturn, IntFunctionReturn, IntListReturn, IntReturn, ListFunctionReturn,
+    ListListReturn, NilFunctionReturn, NilListReturn, NilReturn, ReturnBody, ReturnBodyKind,
+    StringFunctionReturn, StringListReturn, StringReturn, TupleFunctionReturn, TupleListReturn,
+    TupleReturn,
 };
 pub(crate) use step::{
     AssertBinding, AssertPattern, ListAssertPattern, ListAssertTail, Step, StepKind,
 };
 pub(crate) use value_type::{
-    BoolListTypeId, FloatListTypeId, FunctionListTypeId, FunctionType, IntListTypeId,
-    ListListTypeId, ListStorageTypeId, ListTypeId, NilListTypeId, StringListTypeId,
+    BitArrayListTypeId, BoolListTypeId, FloatListTypeId, FunctionListTypeId, FunctionType,
+    IntListTypeId, ListListTypeId, ListStorageTypeId, ListTypeId, NilListTypeId, StringListTypeId,
     TupleListTypeId, ValueType,
 };
 
@@ -138,6 +143,13 @@ impl ExecutionPlan {
         self.functions.string_function(id)
     }
 
+    pub(crate) fn bit_array_function(
+        &self,
+        id: BitArrayFunctionId,
+    ) -> &ExecutableFunction<BitArrayReturn> {
+        self.functions.bit_array_function(id)
+    }
+
     pub(crate) fn bool_function(&self, id: BoolFunctionId) -> &ExecutableFunction<BoolReturn> {
         self.functions.bool_function(id)
     }
@@ -165,6 +177,11 @@ impl ExecutionPlan {
     #[cfg(test)]
     pub(crate) fn string_list_function_id(&self, index: usize) -> StringListFunctionId {
         self.functions.string_list_function_id(index)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn bit_array_list_function_id(&self, index: usize) -> BitArrayListFunctionId {
+        self.functions.bit_array_list_function_id(index)
     }
 
     #[cfg(test)]
@@ -202,6 +219,13 @@ impl ExecutionPlan {
         id: StringListFunctionId,
     ) -> &ExecutableFunction<StringListReturn> {
         self.functions.string_list_function(id)
+    }
+
+    pub(crate) fn bit_array_list_function(
+        &self,
+        id: BitArrayListFunctionId,
+    ) -> &ExecutableFunction<BitArrayListReturn> {
+        self.functions.bit_array_list_function(id)
     }
 
     pub(crate) fn float_list_function(
@@ -265,6 +289,13 @@ impl ExecutionPlan {
         id: StringFunctionFunctionId,
     ) -> &ExecutableFunction<StringFunctionReturn> {
         self.functions.string_function_function(id)
+    }
+
+    pub(crate) fn bit_array_function_function(
+        &self,
+        id: BitArrayFunctionFunctionId,
+    ) -> &ExecutableFunction<BitArrayFunctionReturn> {
+        self.functions.bit_array_function_function(id)
     }
 
     pub(crate) fn bool_function_function(

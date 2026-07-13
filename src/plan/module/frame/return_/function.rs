@@ -225,6 +225,62 @@ impl FrameLayout {
         }
     }
 
+    pub(in crate::plan::module::frame) fn include_bit_array_function_return(
+        &mut self,
+        body: &crate::plan::BitArrayFunctionReturn,
+    ) {
+        match body.kind() {
+            ReturnBodyKind::Expr(expression) => self.include_bit_array_function_expr(expression),
+            ReturnBodyKind::TailCall { args, .. } => self.include_call_args(args),
+            ReturnBodyKind::BoolCase {
+                subject,
+                true_,
+                false_,
+            } => {
+                self.include_bool_expr(subject);
+                self.include_bit_array_function_return(true_);
+                self.include_bit_array_function_return(false_);
+            }
+            ReturnBodyKind::IntCase {
+                subject,
+                clauses,
+                fallback,
+            } => {
+                self.include_int_expr(subject);
+                for (_, branch) in clauses {
+                    self.include_bit_array_function_return(branch);
+                }
+                self.include_bit_array_function_return(fallback);
+            }
+            ReturnBodyKind::FloatCase {
+                subject,
+                clauses,
+                fallback,
+            } => {
+                self.include_float_expr(subject);
+                for (_, branch) in clauses {
+                    self.include_bit_array_function_return(branch);
+                }
+                self.include_bit_array_function_return(fallback);
+            }
+            ReturnBodyKind::StringCase {
+                subject,
+                clauses,
+                fallback,
+            } => {
+                self.include_string_expr(subject);
+                for (_, branch) in clauses {
+                    self.include_bit_array_function_return(branch);
+                }
+                self.include_bit_array_function_return(fallback);
+            }
+            ReturnBodyKind::Block { steps, return_ } => {
+                self.include_steps(steps);
+                self.include_bit_array_function_return(return_);
+            }
+        }
+    }
+
     pub(in crate::plan::module::frame) fn include_nil_function_return(
         &mut self,
         body: &crate::plan::NilFunctionReturn,
@@ -453,14 +509,14 @@ impl FrameLayout {
 #[cfg(test)]
 mod tests {
     use crate::plan::{
-        BoolExpr, BoolFunctionExpr, BoolFunctionFunctionId, BoolFunctionLocalId, BoolLocalId,
-        CallArg, Expr, FloatExpr, FloatFunctionExpr, FloatFunctionFunctionId, FloatFunctionLocalId,
-        FloatLocalId, FrameLayout, FunctionFunctionExpr, FunctionFunctionFunctionId,
-        FunctionFunctionLocalId, FunctionType, IntExpr, IntFunctionFunctionId, IntFunctionLocalId,
-        IntLocalId, ListFunctionExpr, ListFunctionFunctionId, ListFunctionLocal, NilFunctionExpr,
-        NilFunctionFunctionId, NilFunctionLocalId, ReturnBody, ReturnExpr, Step, StringExpr,
-        StringFunctionExpr, StringFunctionFunctionId, StringFunctionLocalId, StringLocalId,
-        ValueType,
+        BitArrayFunctionFunctionId, BoolExpr, BoolFunctionExpr, BoolFunctionFunctionId,
+        BoolFunctionLocalId, BoolLocalId, CallArg, Expr, FloatExpr, FloatFunctionExpr,
+        FloatFunctionFunctionId, FloatFunctionLocalId, FloatLocalId, FrameLayout,
+        FunctionFunctionExpr, FunctionFunctionFunctionId, FunctionFunctionLocalId, FunctionType,
+        IntExpr, IntFunctionFunctionId, IntFunctionLocalId, IntLocalId, ListFunctionExpr,
+        ListFunctionFunctionId, ListFunctionLocal, NilFunctionExpr, NilFunctionFunctionId,
+        NilFunctionLocalId, ReturnBody, ReturnExpr, Step, StringExpr, StringFunctionExpr,
+        StringFunctionFunctionId, StringFunctionLocalId, StringLocalId, ValueType,
     };
 
     #[test]
@@ -709,6 +765,25 @@ mod tests {
         assert_eq!(layout.ints(), 27);
         assert_eq!(layout.bools(), 9);
         assert_eq!(layout.function_functions(), 6);
+    }
+
+    #[test]
+    fn frame_layout_includes_bit_array_function_tail_call_inside_block() {
+        let return_ = ReturnExpr::bit_array_function_body(
+            BitArrayFunctionFunctionId(0),
+            FunctionType::new(Vec::new(), ValueType::BitArray),
+            ReturnBody::block(
+                vec![Step::evaluate(Expr::int(IntExpr::local_get(
+                    IntLocalId(3),
+                    "step".into(),
+                )))],
+                ReturnBody::tail_call(BitArrayFunctionFunctionId(1), Vec::new()),
+            ),
+        );
+
+        let layout = FrameLayout::from_function_parts(&[], &[], &return_);
+
+        assert_eq!(layout.ints(), 4);
     }
 
     #[test]

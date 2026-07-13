@@ -1,8 +1,8 @@
 use super::CaptureSubstitution;
 use crate::plan::{
-    BoolExpr, CallArg, Expr, FloatExpr, FunctionExpr, FunctionFunctionExpr, IntExpr, ListExpr,
-    ListFunctionExpr, NilExpr, RuntimeFunctionId, StringExpr, TupleExpr, TupleFunctionExpr,
-    ValueType,
+    BitArrayExpr, BoolExpr, CallArg, Expr, FloatExpr, FunctionExpr, FunctionFunctionExpr, IntExpr,
+    ListExpr, ListFunctionExpr, NilExpr, RuntimeFunctionId, StringExpr, TupleExpr,
+    TupleFunctionExpr, ValueType,
 };
 use crate::planner::context::{FunctionInfo, FunctionParam, PlanContext};
 use crate::planner::error::{InvalidCallShapeReason, InvalidTypedAstReason, PlanError};
@@ -67,6 +67,9 @@ fn call_expr(function: RuntimeFunctionId, args: Vec<CallArg>) -> Expr {
     match function {
         RuntimeFunctionId::Int(function) => Expr::int(IntExpr::call(function, args)),
         RuntimeFunctionId::String(function) => Expr::string(StringExpr::call(function, args)),
+        RuntimeFunctionId::BitArray(function) => {
+            Expr::bit_array(BitArrayExpr::call(function, args))
+        }
         RuntimeFunctionId::Float(function) => Expr::float(FloatExpr::call(function, args)),
         RuntimeFunctionId::Bool(function) => Expr::bool(BoolExpr::call(function, args)),
         RuntimeFunctionId::Nil(function) => Expr::nil(NilExpr::call(function, args)),
@@ -92,6 +95,11 @@ fn function_returning_function_call_expr(
         crate::plan::FunctionFunctionId::String(function) => Expr::function(FunctionExpr::string(
             crate::plan::StringFunctionExpr::call(function, args, return_type),
         )),
+        crate::plan::FunctionFunctionId::BitArray(function) => {
+            Expr::function(FunctionExpr::bit_array(
+                crate::plan::BitArrayFunctionExpr::call(function, args, return_type),
+            ))
+        }
         crate::plan::FunctionFunctionId::Float(function) => Expr::function(FunctionExpr::float(
             crate::plan::FloatFunctionExpr::call(function, args, return_type),
         )),
@@ -356,7 +364,7 @@ pub fn main() {
         let (type_, _, _) = expect_call_statement_mut(
             &mut unsupported_return_type_call.definitions.functions[1].body[0],
         );
-        *type_ = type_::bit_array();
+        *type_ = type_::result(type_::int(), type_::nil());
         assert_eq!(
             plan_module(unsupported_return_type_call),
             Err(PlanError::InvalidTypedAst {

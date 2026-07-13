@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+bitvec = "1.1.1"
 camino = "1"
 # Keep this aligned with the Gleam v1.17.0 dependency graph. gleam-core does not
 # compile against ecow 0.3.0.

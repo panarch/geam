@@ -1,13 +1,15 @@
 use super::expression::{
-    BoolExpr, BoolFunctionExpr, Expr, FloatExpr, FloatFunctionExpr, FunctionFunctionExpr, IntExpr,
-    IntFunctionExpr, ListFunctionExpr, ListLocalExpr, NilExpr, NilFunctionExpr, StringExpr,
-    StringFunctionExpr, TupleExpr, TupleFunctionExpr,
+    BitArrayExpr, BitArrayFunctionExpr, BoolExpr, BoolFunctionExpr, Expr, FloatExpr,
+    FloatFunctionExpr, FunctionFunctionExpr, IntExpr, IntFunctionExpr, ListFunctionExpr,
+    ListLocalExpr, NilExpr, NilFunctionExpr, StringExpr, StringFunctionExpr, TupleExpr,
+    TupleFunctionExpr,
 };
 use super::function::ParamLocal;
 use super::id::{
-    BoolFunctionLocalId, BoolLocalId, FloatFunctionLocalId, FloatLocalId, FunctionFunctionLocalId,
-    IntFunctionLocalId, IntLocalId, ListFunctionLocal, ListLocal, NilFunctionLocalId, NilLocalId,
-    StringFunctionLocalId, StringLocalId, TupleFunctionLocalId, TupleLocalId,
+    BitArrayFunctionLocalId, BitArrayLocalId, BoolFunctionLocalId, BoolLocalId,
+    FloatFunctionLocalId, FloatLocalId, FunctionFunctionLocalId, IntFunctionLocalId, IntLocalId,
+    ListFunctionLocal, ListLocal, NilFunctionLocalId, NilLocalId, StringFunctionLocalId,
+    StringLocalId, TupleFunctionLocalId, TupleLocalId,
 };
 use crate::plan::{PanicSite, SourceSpan, ValueType};
 use ecow::EcoString;
@@ -71,6 +73,11 @@ pub(crate) enum StepKind {
         name: EcoString,
         value: StringExpr,
     },
+    LetBitArray {
+        local: BitArrayLocalId,
+        name: EcoString,
+        value: BitArrayExpr,
+    },
     LetBool {
         local: BoolLocalId,
         name: EcoString,
@@ -104,6 +111,11 @@ pub(crate) enum StepKind {
         local: StringFunctionLocalId,
         name: EcoString,
         value: StringFunctionExpr,
+    },
+    LetBitArrayFunction {
+        local: BitArrayFunctionLocalId,
+        name: EcoString,
+        value: BitArrayFunctionExpr,
     },
     LetBoolFunction {
         local: BoolFunctionLocalId,
@@ -235,6 +247,16 @@ impl Step {
         }
     }
 
+    pub(crate) fn let_bit_array(
+        local: BitArrayLocalId,
+        name: EcoString,
+        value: BitArrayExpr,
+    ) -> Self {
+        Self {
+            kind: StepKind::LetBitArray { local, name, value },
+        }
+    }
+
     pub(crate) fn let_bool(local: BoolLocalId, name: EcoString, value: BoolExpr) -> Self {
         Self {
             kind: StepKind::LetBool { local, name, value },
@@ -286,6 +308,16 @@ impl Step {
     ) -> Self {
         Self {
             kind: StepKind::LetStringFunction { local, name, value },
+        }
+    }
+
+    pub(crate) fn let_bit_array_function(
+        local: BitArrayFunctionLocalId,
+        name: EcoString,
+        value: BitArrayFunctionExpr,
+    ) -> Self {
+        Self {
+            kind: StepKind::LetBitArrayFunction { local, name, value },
         }
     }
 

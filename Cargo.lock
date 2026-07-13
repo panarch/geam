@@ -911,6 +911,7 @@ dependencies = [
 name = "geam"
 version = "0.1.0"
 dependencies = [
+ "bitvec",
  "camino",
  "ecow",
  "gleam-core",

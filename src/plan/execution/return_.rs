@@ -1,12 +1,13 @@
 use super::{
-    BoolExpr, BoolFunctionExpr, BoolFunctionFunctionId, BoolFunctionId, BoolListExpr,
-    BoolListFunctionId, CallArg, FloatExpr, FloatFunctionExpr, FloatFunctionFunctionId,
-    FloatFunctionId, FloatListExpr, FloatListFunctionId, FunctionFunctionExpr,
-    FunctionFunctionFunctionId, FunctionListExpr, FunctionListFunctionId, IntExpr, IntFunctionExpr,
-    IntFunctionFunctionId, IntFunctionId, IntListExpr, IntListFunctionId, ListFunctionExpr,
-    ListFunctionFunctionId, ListListExpr, ListListFunctionId, NilExpr, NilFunctionExpr,
-    NilFunctionFunctionId, NilFunctionId, NilListExpr, NilListFunctionId, Step, StringExpr,
-    StringFunctionExpr, StringFunctionFunctionId, StringFunctionId, StringListExpr,
+    BitArrayExpr, BitArrayFunctionExpr, BitArrayFunctionFunctionId, BitArrayFunctionId,
+    BitArrayListExpr, BitArrayListFunctionId, BoolExpr, BoolFunctionExpr, BoolFunctionFunctionId,
+    BoolFunctionId, BoolListExpr, BoolListFunctionId, CallArg, FloatExpr, FloatFunctionExpr,
+    FloatFunctionFunctionId, FloatFunctionId, FloatListExpr, FloatListFunctionId,
+    FunctionFunctionExpr, FunctionFunctionFunctionId, FunctionListExpr, FunctionListFunctionId,
+    IntExpr, IntFunctionExpr, IntFunctionFunctionId, IntFunctionId, IntListExpr, IntListFunctionId,
+    ListFunctionExpr, ListFunctionFunctionId, ListListExpr, ListListFunctionId, NilExpr,
+    NilFunctionExpr, NilFunctionFunctionId, NilFunctionId, NilListExpr, NilListFunctionId, Step,
+    StringExpr, StringFunctionExpr, StringFunctionFunctionId, StringFunctionId, StringListExpr,
     StringListFunctionId, TupleExpr, TupleFunctionExpr, TupleFunctionFunctionId, TupleFunctionId,
     TupleListExpr, TupleListFunctionId,
 };
@@ -16,12 +17,14 @@ use num_bigint::BigInt;
 pub(crate) type IntReturn = ReturnBody<IntExpr, IntFunctionId>;
 pub(crate) type FloatReturn = ReturnBody<FloatExpr, FloatFunctionId>;
 pub(crate) type StringReturn = ReturnBody<StringExpr, StringFunctionId>;
+pub(crate) type BitArrayReturn = ReturnBody<BitArrayExpr, BitArrayFunctionId>;
 pub(crate) type BoolReturn = ReturnBody<BoolExpr, BoolFunctionId>;
 pub(crate) type NilReturn = ReturnBody<NilExpr, NilFunctionId>;
 pub(crate) type TupleReturn = ReturnBody<TupleExpr, TupleFunctionId>;
 pub(crate) type IntListReturn = ReturnBody<IntListExpr, IntListFunctionId>;
 pub(crate) type FloatListReturn = ReturnBody<FloatListExpr, FloatListFunctionId>;
 pub(crate) type StringListReturn = ReturnBody<StringListExpr, StringListFunctionId>;
+pub(crate) type BitArrayListReturn = ReturnBody<BitArrayListExpr, BitArrayListFunctionId>;
 pub(crate) type BoolListReturn = ReturnBody<BoolListExpr, BoolListFunctionId>;
 pub(crate) type NilListReturn = ReturnBody<NilListExpr, NilListFunctionId>;
 pub(crate) type TupleListReturn = ReturnBody<TupleListExpr, TupleListFunctionId>;
@@ -30,6 +33,8 @@ pub(crate) type FunctionListReturn = ReturnBody<FunctionListExpr, FunctionListFu
 pub(crate) type IntFunctionReturn = ReturnBody<IntFunctionExpr, IntFunctionFunctionId>;
 pub(crate) type FloatFunctionReturn = ReturnBody<FloatFunctionExpr, FloatFunctionFunctionId>;
 pub(crate) type StringFunctionReturn = ReturnBody<StringFunctionExpr, StringFunctionFunctionId>;
+pub(crate) type BitArrayFunctionReturn =
+    ReturnBody<BitArrayFunctionExpr, BitArrayFunctionFunctionId>;
 pub(crate) type BoolFunctionReturn = ReturnBody<BoolFunctionExpr, BoolFunctionFunctionId>;
 pub(crate) type NilFunctionReturn = ReturnBody<NilFunctionExpr, NilFunctionFunctionId>;
 pub(crate) type TupleFunctionReturn = ReturnBody<TupleFunctionExpr, TupleFunctionFunctionId>;

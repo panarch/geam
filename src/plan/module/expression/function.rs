@@ -1,3 +1,4 @@
+mod bit_array;
 mod bool;
 mod float;
 mod int;
@@ -8,19 +9,20 @@ mod string;
 mod tuple;
 
 use crate::plan::{
-    BoolFunctionReference, FloatFunctionReference, FunctionFunctionReference, FunctionReference,
-    FunctionType, IntFunctionReference, ListFunctionReference, NilFunctionReference,
-    RuntimeFunctionId, StringFunctionReference, TupleFunctionReference,
+    BitArrayFunctionReference, BoolFunctionReference, FloatFunctionReference,
+    FunctionFunctionReference, FunctionReference, FunctionType, IntFunctionReference,
+    ListFunctionReference, NilFunctionReference, RuntimeFunctionId, StringFunctionReference,
+    TupleFunctionReference,
 };
 
 pub use self::{
-    bool::BoolFunctionExpr, float::FloatFunctionExpr, int::IntFunctionExpr, list::ListFunctionExpr,
-    nil::NilFunctionExpr, returning_function::FunctionFunctionExpr, string::StringFunctionExpr,
-    tuple::TupleFunctionExpr,
+    bit_array::BitArrayFunctionExpr, bool::BoolFunctionExpr, float::FloatFunctionExpr,
+    int::IntFunctionExpr, list::ListFunctionExpr, nil::NilFunctionExpr,
+    returning_function::FunctionFunctionExpr, string::StringFunctionExpr, tuple::TupleFunctionExpr,
 };
 pub(crate) use self::{
-    bool::BoolFunctionExprKind, float::FloatFunctionExprKind, int::IntFunctionExprKind,
-    list::ListFunctionExprKind, nil::NilFunctionExprKind,
+    bit_array::BitArrayFunctionExprKind, bool::BoolFunctionExprKind, float::FloatFunctionExprKind,
+    int::IntFunctionExprKind, list::ListFunctionExprKind, nil::NilFunctionExprKind,
     returning_function::FunctionFunctionExprKind, string::StringFunctionExprKind,
     tuple::TupleFunctionExprKind,
 };
@@ -34,6 +36,7 @@ pub struct FunctionExpr {
 pub(crate) enum FunctionExprKind {
     Int(IntFunctionExpr),
     String(StringFunctionExpr),
+    BitArray(BitArrayFunctionExpr),
     Float(FloatFunctionExpr),
     Bool(BoolFunctionExpr),
     Nil(NilFunctionExpr),
@@ -54,6 +57,9 @@ impl FunctionExpr {
             )),
             RuntimeFunctionId::String(id) => Self::string(StringFunctionExpr::reference(
                 StringFunctionReference::new(id, params),
+            )),
+            RuntimeFunctionId::BitArray(id) => Self::bit_array(BitArrayFunctionExpr::reference(
+                BitArrayFunctionReference::new(id, params),
             )),
             RuntimeFunctionId::Bool(id) => Self::bool(BoolFunctionExpr::reference(
                 BoolFunctionReference::new(id, params),
@@ -85,6 +91,12 @@ impl FunctionExpr {
     pub(crate) fn string(expression: StringFunctionExpr) -> Self {
         Self {
             kind: FunctionExprKind::String(expression),
+        }
+    }
+
+    pub(crate) fn bit_array(expression: BitArrayFunctionExpr) -> Self {
+        Self {
+            kind: FunctionExprKind::BitArray(expression),
         }
     }
 
@@ -128,6 +140,7 @@ impl FunctionExpr {
         match &self.kind {
             FunctionExprKind::Int(expression) => expression.type_(),
             FunctionExprKind::String(expression) => expression.type_(),
+            FunctionExprKind::BitArray(expression) => expression.type_(),
             FunctionExprKind::Float(expression) => expression.type_(),
             FunctionExprKind::Bool(expression) => expression.type_(),
             FunctionExprKind::Nil(expression) => expression.type_(),
@@ -155,6 +168,13 @@ impl FunctionExpr {
     pub(crate) fn into_string(self) -> Option<StringFunctionExpr> {
         match self.kind {
             FunctionExprKind::String(expression) => Some(expression),
+            _ => None,
+        }
+    }
+
+    pub(crate) fn into_bit_array(self) -> Option<BitArrayFunctionExpr> {
+        match self.kind {
+            FunctionExprKind::BitArray(expression) => Some(expression),
             _ => None,
         }
     }
@@ -214,6 +234,12 @@ impl From<StringFunctionExpr> for FunctionExpr {
     }
 }
 
+impl From<BitArrayFunctionExpr> for FunctionExpr {
+    fn from(expression: BitArrayFunctionExpr) -> Self {
+        Self::bit_array(expression)
+    }
+}
+
 impl From<FloatFunctionExpr> for FunctionExpr {
     fn from(expression: FloatFunctionExpr) -> Self {
         Self::float(expression)
@@ -253,16 +279,17 @@ impl From<FunctionFunctionExpr> for FunctionExpr {
 #[cfg(test)]
 mod tests {
     use super::{
-        BoolFunctionExpr, FloatFunctionExpr, FunctionExpr, FunctionExprKind, FunctionFunctionExpr,
-        IntFunctionExpr, ListFunctionExpr, NilFunctionExpr, StringFunctionExpr, TupleFunctionExpr,
+        BitArrayFunctionExpr, BoolFunctionExpr, FloatFunctionExpr, FunctionExpr, FunctionExprKind,
+        FunctionFunctionExpr, IntFunctionExpr, ListFunctionExpr, NilFunctionExpr,
+        StringFunctionExpr, TupleFunctionExpr,
     };
     use crate::plan::{
-        BoolFunctionId, BoolFunctionReference, FloatFunctionId, FloatFunctionReference,
-        FunctionFunctionId, FunctionFunctionReference, FunctionReference, FunctionType,
-        IntFunctionFunctionId, IntFunctionId, IntFunctionReference, ListFunctionId,
-        ListFunctionReference, NilFunctionId, NilFunctionReference, ParamLocal, RuntimeFunctionId,
-        StringFunctionId, StringFunctionReference, TupleFunctionId, TupleFunctionReference,
-        ValueType,
+        BitArrayFunctionId, BitArrayFunctionReference, BoolFunctionId, BoolFunctionReference,
+        FloatFunctionId, FloatFunctionReference, FunctionFunctionId, FunctionFunctionReference,
+        FunctionReference, FunctionType, IntFunctionFunctionId, IntFunctionId,
+        IntFunctionReference, ListFunctionId, ListFunctionReference, NilFunctionId,
+        NilFunctionReference, ParamLocal, RuntimeFunctionId, StringFunctionId,
+        StringFunctionReference, TupleFunctionId, TupleFunctionReference, ValueType,
     };
 
     #[test]
@@ -274,6 +301,10 @@ mod tests {
         assert_eq!(
             FunctionExpr::string(string_function_value()).kind(),
             &FunctionExprKind::String(string_function_value()),
+        );
+        assert_eq!(
+            FunctionExpr::bit_array(bit_array_function_value()).kind(),
+            &FunctionExprKind::BitArray(bit_array_function_value()),
         );
         assert_eq!(
             FunctionExpr::float(float_function_value()).kind(),
@@ -312,6 +343,10 @@ mod tests {
             &FunctionExprKind::String(string_function_value()),
         );
         assert_eq!(
+            FunctionExpr::reference(bit_array_function_reference()).kind(),
+            &FunctionExprKind::BitArray(bit_array_function_value()),
+        );
+        assert_eq!(
             FunctionExpr::reference(float_function_reference()).kind(),
             &FunctionExprKind::Float(float_function_value()),
         );
@@ -348,6 +383,10 @@ mod tests {
             &string_function_type(),
         );
         assert_eq!(
+            FunctionExpr::bit_array(bit_array_function_value()).type_(),
+            &bit_array_function_type(),
+        );
+        assert_eq!(
             FunctionExpr::float(float_function_value()).type_(),
             &float_function_type(),
         );
@@ -381,6 +420,10 @@ mod tests {
             Some(string_function_value()),
         );
         assert_eq!(
+            FunctionExpr::bit_array(bit_array_function_value()).into_bit_array(),
+            Some(bit_array_function_value()),
+        );
+        assert_eq!(
             FunctionExpr::float(float_function_value()).into_float(),
             Some(float_function_value()),
         );
@@ -410,6 +453,10 @@ mod tests {
             None
         );
         assert_eq!(FunctionExpr::int(int_function_value()).into_string(), None,);
+        assert_eq!(
+            FunctionExpr::int(int_function_value()).into_bit_array(),
+            None
+        );
         assert_eq!(FunctionExpr::int(int_function_value()).into_float(), None);
         assert_eq!(FunctionExpr::int(int_function_value()).into_bool(), None);
         assert_eq!(FunctionExpr::int(int_function_value()).into_nil(), None);
@@ -427,6 +474,10 @@ mod tests {
         assert_eq!(
             FunctionExpr::from(string_function_value()),
             FunctionExpr::string(string_function_value()),
+        );
+        assert_eq!(
+            FunctionExpr::from(bit_array_function_value()),
+            FunctionExpr::bit_array(bit_array_function_value()),
         );
         assert_eq!(
             FunctionExpr::from(float_function_value()),
@@ -465,6 +516,13 @@ mod tests {
         FunctionReference::new(
             RuntimeFunctionId::String(StringFunctionId(0)),
             vec![ParamLocal::string(crate::plan::StringLocalId(0))],
+        )
+    }
+
+    fn bit_array_function_reference() -> FunctionReference {
+        FunctionReference::new(
+            RuntimeFunctionId::BitArray(BitArrayFunctionId(0)),
+            vec![ParamLocal::bit_array(crate::plan::BitArrayLocalId(0))],
         )
     }
 
@@ -538,6 +596,13 @@ mod tests {
         ))
     }
 
+    fn bit_array_function_value() -> BitArrayFunctionExpr {
+        BitArrayFunctionExpr::reference(BitArrayFunctionReference::new(
+            BitArrayFunctionId(0),
+            vec![ParamLocal::bit_array(crate::plan::BitArrayLocalId(0))],
+        ))
+    }
+
     fn float_function_value() -> FloatFunctionExpr {
         FloatFunctionExpr::reference(FloatFunctionReference::new(
             FloatFunctionId(0),
@@ -597,6 +662,10 @@ mod tests {
 
     fn string_function_type() -> FunctionType {
         FunctionType::new(vec![ValueType::String], ValueType::String)
+    }
+
+    fn bit_array_function_type() -> FunctionType {
+        FunctionType::new(vec![ValueType::BitArray], ValueType::BitArray)
     }
 
     fn float_function_type() -> FunctionType {

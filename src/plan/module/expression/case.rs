@@ -1,7 +1,8 @@
 use super::{
-    BoolExpr, BoolFunctionExpr, BoolListCaseBranches, FloatExpr, FloatFunctionExpr,
-    FunctionFunctionExpr, IntExpr, IntFunctionExpr, ListCaseBranches, ListFunctionExpr, NilExpr,
-    NilFunctionExpr, StringExpr, StringFunctionExpr, TupleExpr, TupleFunctionExpr,
+    BitArrayExpr, BitArrayFunctionExpr, BoolExpr, BoolFunctionExpr, BoolListCaseBranches,
+    FloatExpr, FloatFunctionExpr, FunctionFunctionExpr, IntExpr, IntFunctionExpr, ListCaseBranches,
+    ListFunctionExpr, NilExpr, NilFunctionExpr, StringExpr, StringFunctionExpr, TupleExpr,
+    TupleFunctionExpr,
 };
 use ecow::EcoString;
 use num_bigint::BigInt;
@@ -15,6 +16,10 @@ pub(crate) enum BoolCaseBranches {
     String {
         true_: StringExpr,
         false_: StringExpr,
+    },
+    BitArray {
+        true_: BitArrayExpr,
+        false_: BitArrayExpr,
     },
     Float {
         true_: FloatExpr,
@@ -40,6 +45,10 @@ pub(crate) enum BoolCaseBranches {
     StringFunction {
         true_: StringFunctionExpr,
         false_: StringFunctionExpr,
+    },
+    BitArrayFunction {
+        true_: BitArrayFunctionExpr,
+        false_: BitArrayFunctionExpr,
     },
     FloatFunction {
         true_: FloatFunctionExpr,
@@ -77,6 +86,10 @@ pub(crate) enum IntCaseBranches {
         clauses: Vec<(BigInt, StringExpr)>,
         fallback: StringExpr,
     },
+    BitArray {
+        clauses: Vec<(BigInt, BitArrayExpr)>,
+        fallback: BitArrayExpr,
+    },
     Float {
         clauses: Vec<(BigInt, FloatExpr)>,
         fallback: FloatExpr,
@@ -101,6 +114,10 @@ pub(crate) enum IntCaseBranches {
     StringFunction {
         clauses: Vec<(BigInt, StringFunctionExpr)>,
         fallback: StringFunctionExpr,
+    },
+    BitArrayFunction {
+        clauses: Vec<(BigInt, BitArrayFunctionExpr)>,
+        fallback: BitArrayFunctionExpr,
     },
     FloatFunction {
         clauses: Vec<(BigInt, FloatFunctionExpr)>,
@@ -138,6 +155,10 @@ pub(crate) enum StringCaseBranches {
         clauses: Vec<(EcoString, StringExpr)>,
         fallback: StringExpr,
     },
+    BitArray {
+        clauses: Vec<(EcoString, BitArrayExpr)>,
+        fallback: BitArrayExpr,
+    },
     Float {
         clauses: Vec<(EcoString, FloatExpr)>,
         fallback: FloatExpr,
@@ -162,6 +183,10 @@ pub(crate) enum StringCaseBranches {
     StringFunction {
         clauses: Vec<(EcoString, StringFunctionExpr)>,
         fallback: StringFunctionExpr,
+    },
+    BitArrayFunction {
+        clauses: Vec<(EcoString, BitArrayFunctionExpr)>,
+        fallback: BitArrayFunctionExpr,
     },
     FloatFunction {
         clauses: Vec<(EcoString, FloatFunctionExpr)>,
@@ -199,6 +224,10 @@ pub(crate) enum FloatCaseBranches {
         clauses: Vec<(f64, StringExpr)>,
         fallback: StringExpr,
     },
+    BitArray {
+        clauses: Vec<(f64, BitArrayExpr)>,
+        fallback: BitArrayExpr,
+    },
     Float {
         clauses: Vec<(f64, FloatExpr)>,
         fallback: FloatExpr,
@@ -223,6 +252,10 @@ pub(crate) enum FloatCaseBranches {
     StringFunction {
         clauses: Vec<(f64, StringFunctionExpr)>,
         fallback: StringFunctionExpr,
+    },
+    BitArrayFunction {
+        clauses: Vec<(f64, BitArrayFunctionExpr)>,
+        fallback: BitArrayFunctionExpr,
     },
     FloatFunction {
         clauses: Vec<(f64, FloatFunctionExpr)>,

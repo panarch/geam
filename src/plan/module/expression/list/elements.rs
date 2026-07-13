@@ -1,17 +1,19 @@
 use super::{
-    BoolListExpr, BoolListItem, FloatListExpr, FloatListItem, FunctionListExpr, FunctionListItem,
-    IntListExpr, IntListItem, ListExpr, ListItem, ListListExpr, ListListItem, NilListExpr,
-    NilListItem, StringListExpr, StringListItem, TupleListExpr, TupleListItem,
+    BitArrayListExpr, BitArrayListItem, BoolListExpr, BoolListItem, FloatListExpr, FloatListItem,
+    FunctionListExpr, FunctionListItem, IntListExpr, IntListItem, ListExpr, ListItem, ListListExpr,
+    ListListItem, NilListExpr, NilListItem, StringListExpr, StringListItem, TupleListExpr,
+    TupleListItem,
 };
 use crate::plan::{
-    BoolExpr, Expr, FloatExpr, FunctionExpr, FunctionType, IntExpr, NilExpr, StringExpr, TupleExpr,
-    ValueType,
+    BitArrayExpr, BoolExpr, Expr, FloatExpr, FunctionExpr, FunctionType, IntExpr, NilExpr,
+    StringExpr, TupleExpr, ValueType,
 };
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum ListElements {
     Int(Vec<IntExpr>),
     String(Vec<StringExpr>),
+    BitArray(Vec<BitArrayExpr>),
     Float(Vec<FloatExpr>),
     Bool(Vec<BoolExpr>),
     Nil(Vec<NilExpr>),
@@ -38,6 +40,10 @@ pub(crate) enum ListSpreadElements {
     String {
         values: Vec<StringExpr>,
         tail: StringListExpr,
+    },
+    BitArray {
+        values: Vec<BitArrayExpr>,
+        tail: BitArrayListExpr,
     },
     Float {
         values: Vec<FloatExpr>,
@@ -79,6 +85,7 @@ impl ListElements {
         match item_type {
             ValueType::Int => list_elements_from_exprs(IntListItem, values),
             ValueType::String => list_elements_from_exprs(StringListItem, values),
+            ValueType::BitArray => list_elements_from_exprs(BitArrayListItem, values),
             ValueType::Float => list_elements_from_exprs(FloatListItem, values),
             ValueType::Bool => list_elements_from_exprs(BoolListItem, values),
             ValueType::Nil => list_elements_from_exprs(NilListItem, values),
@@ -101,6 +108,7 @@ impl ListElements {
         match self {
             Self::Int(_) => ValueType::Int,
             Self::String(_) => ValueType::String,
+            Self::BitArray(_) => ValueType::BitArray,
             Self::Float(_) => ValueType::Float,
             Self::Bool(_) => ValueType::Bool,
             Self::Nil(_) => ValueType::Nil,
@@ -131,6 +139,12 @@ impl ListSpreadElements {
                     return Err(ListElementTypeMismatch { expected, actual });
                 };
                 Ok(Self::String { values, tail })
+            }
+            ListElements::BitArray(values) => {
+                let Some(tail) = tail.into_bit_array() else {
+                    return Err(ListElementTypeMismatch { expected, actual });
+                };
+                Ok(Self::BitArray { values, tail })
             }
             ListElements::Float(values) => {
                 let Some(tail) = tail.into_float() else {
@@ -211,8 +225,8 @@ fn list_elements_from_exprs<Item: ListItem>(
 mod tests {
     use super::{ListElementTypeMismatch, ListElements, ListSpreadElements};
     use crate::plan::{
-        BoolExpr, Expr, FloatExpr, FunctionExpr, FunctionReference, FunctionType, IntExpr,
-        ListExpr, NilExpr, RuntimeFunctionId, StringExpr, TupleExpr, ValueType,
+        BitArrayExpr, BoolExpr, Expr, FloatExpr, FunctionExpr, FunctionReference, FunctionType,
+        IntExpr, ListExpr, NilExpr, RuntimeFunctionId, StringExpr, TupleExpr, ValueType,
     };
 
     #[test]
@@ -287,6 +301,10 @@ mod tests {
             ValueType::Int,
         );
         assert_eq!(
+            ListElements::BitArray(vec![BitArrayExpr::value(Vec::new())]).item_type(),
+            ValueType::BitArray,
+        );
+        assert_eq!(
             ListElements::Tuple {
                 item_type: vec![ValueType::String],
                 values: Vec::new(),
@@ -321,6 +339,16 @@ mod tests {
             ),
             Err(ListElementTypeMismatch {
                 expected: ValueType::String,
+                actual: ValueType::Int,
+            }),
+        );
+        assert_eq!(
+            ListSpreadElements::from_parts(
+                ListElements::BitArray(vec![BitArrayExpr::value(Vec::new())]),
+                ListExpr::value(Vec::new(), ValueType::Int),
+            ),
+            Err(ListElementTypeMismatch {
+                expected: ValueType::BitArray,
                 actual: ValueType::Int,
             }),
         );

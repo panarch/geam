@@ -1,14 +1,14 @@
 use super::evaluated::{
-    EvaluatedBoolFunction, EvaluatedCapture, EvaluatedCaptureKind, EvaluatedFloatFunction,
-    EvaluatedFunctionFunction, EvaluatedFunctionValue, EvaluatedFunctionValueKind,
-    EvaluatedIntFunction, EvaluatedListCapture, EvaluatedListFunction, EvaluatedNilFunction,
-    EvaluatedStringFunction, EvaluatedTupleFunction, EvaluatedValue,
+    EvaluatedBitArrayFunction, EvaluatedBoolFunction, EvaluatedCapture, EvaluatedCaptureKind,
+    EvaluatedFloatFunction, EvaluatedFunctionFunction, EvaluatedFunctionValue,
+    EvaluatedFunctionValueKind, EvaluatedIntFunction, EvaluatedListCapture, EvaluatedListFunction,
+    EvaluatedNilFunction, EvaluatedStringFunction, EvaluatedTupleFunction, EvaluatedValue,
 };
 use super::state::{ListValueId, RuntimeState};
 use super::{
-    BoolFunctionValue, CaptureListValue, CaptureValue, FloatFunctionValue, FunctionFunctionValue,
-    FunctionValue, FunctionValueKind, IntFunctionValue, ListFunctionValue, ListValue,
-    NilFunctionValue, StringFunctionValue, TupleFunctionValue, Value,
+    BitArrayFunctionValue, BitArrayValue, BoolFunctionValue, CaptureListValue, CaptureValue,
+    FloatFunctionValue, FunctionFunctionValue, FunctionValue, FunctionValueKind, IntFunctionValue,
+    ListFunctionValue, ListValue, NilFunctionValue, StringFunctionValue, TupleFunctionValue, Value,
 };
 use crate::plan::execution::ExecutionPlan;
 
@@ -17,6 +17,9 @@ pub(super) fn value(plan: &ExecutionPlan, state: &RuntimeState, value: Evaluated
         EvaluatedValue::Int(value) => Value::Int(value),
         EvaluatedValue::Float(value) => Value::Float(value),
         EvaluatedValue::String(value) => Value::String(value),
+        EvaluatedValue::BitArray(value) => {
+            Value::BitArray(BitArrayValue::from_evaluated(value.bits()))
+        }
         EvaluatedValue::Bool(value) => Value::Bool(value),
         EvaluatedValue::Nil => Value::Nil,
         EvaluatedValue::Tuple(values) => Value::Tuple(
@@ -34,6 +37,13 @@ fn list(plan: &ExecutionPlan, state: &RuntimeState, value: &ListValueId) -> List
     match value {
         ListValueId::Int(value) => ListValue::int(state.int_values(value).to_vec()),
         ListValueId::String(value) => ListValue::string(state.string_values(value).to_vec()),
+        ListValueId::BitArray(value) => ListValue::bit_array(
+            state
+                .bit_array_values(value)
+                .iter()
+                .map(|value| BitArrayValue::from_evaluated(value.bits()))
+                .collect(),
+        ),
         ListValueId::Float(value) => ListValue::float(state.float_values(value).to_vec()),
         ListValueId::Bool(value) => ListValue::bool(state.bool_values(value).to_vec()),
         ListValueId::Nil(value) => ListValue::nil(state.nil_len(value)),
@@ -93,6 +103,9 @@ fn function(
         EvaluatedFunctionValueKind::String(value) => {
             FunctionValueKind::String(string_function(plan, state, value))
         }
+        EvaluatedFunctionValueKind::BitArray(value) => {
+            FunctionValueKind::BitArray(bit_array_function(plan, state, value))
+        }
         EvaluatedFunctionValueKind::Bool(value) => {
             FunctionValueKind::Bool(bool_function(plan, state, value))
         }
@@ -144,6 +157,19 @@ fn string_function(
     value: &EvaluatedStringFunction,
 ) -> StringFunctionValue {
     StringFunctionValue::new_with_captures(
+        value.runtime_id(),
+        value.params().to_vec(),
+        captures(plan, state, value.captures()),
+        plan.function_type(value.type_()),
+    )
+}
+
+fn bit_array_function(
+    plan: &ExecutionPlan,
+    state: &RuntimeState,
+    value: &EvaluatedBitArrayFunction,
+) -> BitArrayFunctionValue {
+    BitArrayFunctionValue::new_with_captures(
         value.runtime_id(),
         value.params().to_vec(),
         captures(plan, state, value.captures()),
@@ -253,6 +279,9 @@ fn capture(plan: &ExecutionPlan, state: &RuntimeState, value: &EvaluatedCapture)
         EvaluatedCaptureKind::String { local, value } => {
             CaptureValue::string(*local, value.clone())
         }
+        EvaluatedCaptureKind::BitArray { local, value } => {
+            CaptureValue::bit_array(*local, BitArrayValue::from_evaluated(value.bits()))
+        }
         EvaluatedCaptureKind::Bool { local, value } => CaptureValue::bool(*local, *value),
         EvaluatedCaptureKind::Nil { local } => CaptureValue::nil(*local),
         EvaluatedCaptureKind::Tuple { local, value } => CaptureValue::tuple(
@@ -272,6 +301,9 @@ fn capture(plan: &ExecutionPlan, state: &RuntimeState, value: &EvaluatedCapture)
         }
         EvaluatedCaptureKind::StringFunction { local, value } => {
             CaptureValue::string_function(*local, string_function(plan, state, value))
+        }
+        EvaluatedCaptureKind::BitArrayFunction { local, value } => {
+            CaptureValue::bit_array_function(*local, bit_array_function(plan, state, value))
         }
         EvaluatedCaptureKind::BoolFunction { local, value } => {
             CaptureValue::bool_function(*local, bool_function(plan, state, value))
@@ -304,6 +336,14 @@ fn list_capture(
         EvaluatedListCapture::String { local, value } => CaptureListValue::String {
             local: *local,
             value: state.string_values(value).to_vec(),
+        },
+        EvaluatedListCapture::BitArray { local, value } => CaptureListValue::BitArray {
+            local: *local,
+            value: state
+                .bit_array_values(value)
+                .iter()
+                .map(|value| BitArrayValue::from_evaluated(value.bits()))
+                .collect(),
         },
         EvaluatedListCapture::Float { local, value } => CaptureListValue::Float {
             local: *local,
@@ -354,6 +394,7 @@ fn list_capture(
 mod tests {
     use super::value;
     use crate::plan::execution::{
+        BitArrayFunctionId, BitArrayFunctionLocalId, BitArrayListLocalId, BitArrayLocalId,
         BoolFunctionId, BoolFunctionLocalId, BoolListLocalId, BoolLocalId, FloatFunctionId,
         FloatFunctionLocalId, FloatListLocalId, FloatLocalId, FunctionFunctionId,
         FunctionFunctionLocalId, FunctionListLocalId, IntFunctionFunctionId, IntFunctionId,
@@ -364,16 +405,19 @@ mod tests {
     };
     use crate::plan::{FunctionType, ValueType};
     use crate::runtime::evaluated::{
-        EvaluatedBoolFunction, EvaluatedCapture, EvaluatedFloatFunction, EvaluatedFunctionFunction,
-        EvaluatedFunctionValue, EvaluatedIntFunction, EvaluatedListCapture, EvaluatedListFunction,
-        EvaluatedNilFunction, EvaluatedStringFunction, EvaluatedTupleFunction, EvaluatedValue,
+        EvaluatedBitArray, EvaluatedBitArrayFunction, EvaluatedBoolFunction, EvaluatedCapture,
+        EvaluatedFloatFunction, EvaluatedFunctionFunction, EvaluatedFunctionValue,
+        EvaluatedIntFunction, EvaluatedListCapture, EvaluatedListFunction, EvaluatedNilFunction,
+        EvaluatedStringFunction, EvaluatedTupleFunction, EvaluatedValue,
     };
     use crate::runtime::state::{ListValueId, RuntimeState};
-    use crate::runtime::{CaptureListValue, CaptureValue, ListValue, Value};
+    use crate::runtime::{BitArrayValue, CaptureListValue, CaptureValue, ListValue, Value};
+    use bitvec::vec::BitVec;
 
     const EVERY_LIST_FAMILY_SOURCE: &str = r#"
 fn ints() -> List(Int) { [] }
 fn strings() -> List(String) { [] }
+fn bit_arrays() -> List(BitArray) { [] }
 fn floats() -> List(Float) { [] }
 fn bools() -> List(Bool) { [] }
 fn nils() -> List(Nil) { [] }
@@ -401,6 +445,11 @@ pub fn main() { 0 }
             plan.string_list_function_id(0).type_id(),
             vec!["one".into()],
         );
+        let bit_array = EvaluatedBitArray::new(BitVec::from_vec(vec![1]));
+        let bit_array_list = state.bit_array(
+            plan.bit_array_list_function_id(0).type_id(),
+            vec![bit_array.clone()],
+        );
         let float_list = state.float(plan.float_list_function_id(0).type_id(), vec![1.5]);
         let bool_list = state.bool(plan.bool_list_function_id(0).type_id(), vec![true]);
         let nil_list = state.nil(plan.nil_list_function_id(0).type_id(), 1);
@@ -425,11 +474,13 @@ pub fn main() { 0 }
                 EvaluatedValue::Int(1.into()),
                 EvaluatedValue::Float(1.5),
                 EvaluatedValue::String("one".into()),
+                EvaluatedValue::BitArray(bit_array),
                 EvaluatedValue::Bool(true),
                 EvaluatedValue::Nil,
                 EvaluatedValue::Tuple(vec![EvaluatedValue::Int(1.into())]),
                 EvaluatedValue::List(ListValueId::Int(int_list)),
                 EvaluatedValue::List(ListValueId::String(string_list)),
+                EvaluatedValue::List(ListValueId::BitArray(bit_array_list)),
                 EvaluatedValue::List(ListValueId::Float(float_list)),
                 EvaluatedValue::List(ListValueId::Bool(bool_list)),
                 EvaluatedValue::List(ListValueId::Nil(nil_list)),
@@ -445,11 +496,15 @@ pub fn main() { 0 }
                 Value::Int(1.into()),
                 Value::Float(1.5),
                 Value::String("one".into()),
+                Value::BitArray(BitArrayValue::from_bytes(vec![1])),
                 Value::Bool(true),
                 Value::Nil,
                 Value::Tuple(vec![Value::Int(1.into())]),
                 Value::List(ListValue::int(vec![1.into()])),
                 Value::List(ListValue::string(vec!["one".into()])),
+                Value::List(ListValue::bit_array(vec![BitArrayValue::from_bytes(vec![
+                    1
+                ])])),
                 Value::List(ListValue::float(vec![1.5])),
                 Value::List(ListValue::bool(vec![true])),
                 Value::List(ListValue::nil(1)),
@@ -504,6 +559,15 @@ pub fn main() { 0 }
             crate::plan::execution::FunctionType::new(
                 Vec::new(),
                 crate::plan::execution::ValueType::String,
+            ),
+        );
+        let bit_array_function = EvaluatedBitArrayFunction::new(
+            BitArrayFunctionId(0),
+            Vec::new(),
+            Vec::new(),
+            crate::plan::execution::FunctionType::new(
+                Vec::new(),
+                crate::plan::execution::ValueType::BitArray,
             ),
         );
         let bool_function = EvaluatedBoolFunction::new(
@@ -561,6 +625,11 @@ pub fn main() { 0 }
             plan.string_list_function_id(0).type_id(),
             vec!["one".into()],
         );
+        let bit_array = EvaluatedBitArray::new(BitVec::from_vec(vec![1]));
+        let bit_array_list = state.bit_array(
+            plan.bit_array_list_function_id(0).type_id(),
+            vec![bit_array.clone()],
+        );
         let float_list = state.float(plan.float_list_function_id(0).type_id(), vec![1.5]);
         let bool_list = state.bool(plan.bool_list_function_id(0).type_id(), vec![true]);
         let nil_list = state.nil(plan.nil_list_function_id(0).type_id(), 1);
@@ -587,6 +656,7 @@ pub fn main() { 0 }
             EvaluatedCapture::int(IntLocalId(0), 1.into()),
             EvaluatedCapture::float(FloatLocalId(0), 1.5),
             EvaluatedCapture::string(StringLocalId(0), "one".into()),
+            EvaluatedCapture::bit_array(BitArrayLocalId(0), bit_array),
             EvaluatedCapture::bool(BoolLocalId(0), true),
             EvaluatedCapture::nil(NilLocalId(0)),
             EvaluatedCapture::tuple(TupleLocalId(0), vec![EvaluatedValue::Int(1.into())]),
@@ -597,6 +667,10 @@ pub fn main() { 0 }
             EvaluatedCapture::list(EvaluatedListCapture::String {
                 local: StringListLocalId(0),
                 value: string_list,
+            }),
+            EvaluatedCapture::list(EvaluatedListCapture::BitArray {
+                local: BitArrayListLocalId(0),
+                value: bit_array_list,
             }),
             EvaluatedCapture::list(EvaluatedListCapture::Float {
                 local: FloatListLocalId(0),
@@ -625,6 +699,10 @@ pub fn main() { 0 }
             EvaluatedCapture::int_function(IntFunctionLocalId(0), int_function.clone()),
             EvaluatedCapture::float_function(FloatFunctionLocalId(0), float_function.clone()),
             EvaluatedCapture::string_function(StringFunctionLocalId(0), string_function.clone()),
+            EvaluatedCapture::bit_array_function(
+                BitArrayFunctionLocalId(0),
+                bit_array_function.clone(),
+            ),
             EvaluatedCapture::bool_function(BoolFunctionLocalId(0), bool_function.clone()),
             EvaluatedCapture::nil_function(NilFunctionLocalId(0), nil_function.clone()),
             EvaluatedCapture::tuple_function(TupleFunctionLocalId(0), tuple_function.clone()),
@@ -638,6 +716,7 @@ pub fn main() { 0 }
             CaptureValue::int(IntLocalId(0), 1.into()),
             CaptureValue::float(FloatLocalId(0), 1.5),
             CaptureValue::string(StringLocalId(0), "one".into()),
+            CaptureValue::bit_array(BitArrayLocalId(0), BitArrayValue::from_bytes(vec![1])),
             CaptureValue::bool(BoolLocalId(0), true),
             CaptureValue::nil(NilLocalId(0)),
             CaptureValue::tuple(TupleLocalId(0), vec![Value::Int(1.into())]),
@@ -648,6 +727,10 @@ pub fn main() { 0 }
             CaptureValue::list(CaptureListValue::String {
                 local: StringListLocalId(0),
                 value: vec!["one".into()],
+            }),
+            CaptureValue::list(CaptureListValue::BitArray {
+                local: BitArrayListLocalId(0),
+                value: vec![BitArrayValue::from_bytes(vec![1])],
             }),
             CaptureValue::list(CaptureListValue::Float {
                 local: FloatListLocalId(0),
@@ -706,6 +789,15 @@ pub fn main() { 0 }
                     FunctionType::new(Vec::new(), ValueType::String),
                 ),
             ),
+            CaptureValue::bit_array_function(
+                BitArrayFunctionLocalId(0),
+                crate::runtime::BitArrayFunctionValue::new_with_captures(
+                    BitArrayFunctionId(0),
+                    Vec::new(),
+                    Vec::new(),
+                    FunctionType::new(Vec::new(), ValueType::BitArray),
+                ),
+            ),
             CaptureValue::bool_function(
                 BoolFunctionLocalId(0),
                 crate::runtime::BoolFunctionValue::new_with_captures(
@@ -761,6 +853,7 @@ pub fn main() { 0 }
             EvaluatedFunctionValue::from(int_function),
             EvaluatedFunctionValue::from(float_function),
             EvaluatedFunctionValue::from(string_function),
+            EvaluatedFunctionValue::from(bit_array_function),
             EvaluatedFunctionValue::from(bool_function),
             EvaluatedFunctionValue::from(nil_function),
             EvaluatedFunctionValue::from(tuple_function),

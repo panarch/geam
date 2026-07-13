@@ -2,13 +2,15 @@ use ecow::EcoString;
 use num_bigint::BigInt;
 
 use super::{
-    BoolFunctionValue, FloatFunctionValue, FunctionFunctionValue, IntFunctionValue,
-    ListFunctionValue, ListValue, NilFunctionValue, StringFunctionValue, TupleFunctionValue, Value,
+    BitArrayFunctionValue, BitArrayValue, BoolFunctionValue, FloatFunctionValue,
+    FunctionFunctionValue, IntFunctionValue, ListFunctionValue, ListValue, NilFunctionValue,
+    StringFunctionValue, TupleFunctionValue, Value,
 };
 use crate::plan::execution::{
-    BoolFunctionLocalId, BoolListLocalId, BoolLocalId, FloatFunctionLocalId, FloatListLocalId,
-    FloatLocalId, FunctionFunctionLocalId, FunctionListLocalId, IntFunctionLocalId, IntListLocalId,
-    IntLocalId, ListFunctionLocal, ListListLocalId, NilFunctionLocalId, NilListLocalId, NilLocalId,
+    BitArrayFunctionLocalId, BitArrayListLocalId, BitArrayLocalId, BoolFunctionLocalId,
+    BoolListLocalId, BoolLocalId, FloatFunctionLocalId, FloatListLocalId, FloatLocalId,
+    FunctionFunctionLocalId, FunctionListLocalId, IntFunctionLocalId, IntListLocalId, IntLocalId,
+    ListFunctionLocal, ListListLocalId, NilFunctionLocalId, NilListLocalId, NilLocalId,
     StringFunctionLocalId, StringListLocalId, StringLocalId, TupleFunctionLocalId,
     TupleListLocalId, TupleLocalId,
 };
@@ -33,6 +35,10 @@ pub(crate) enum CaptureValueKind {
         local: StringLocalId,
         value: EcoString,
     },
+    BitArray {
+        local: BitArrayLocalId,
+        value: BitArrayValue,
+    },
     Bool {
         local: BoolLocalId,
         value: bool,
@@ -56,6 +62,10 @@ pub(crate) enum CaptureValueKind {
     StringFunction {
         local: StringFunctionLocalId,
         value: StringFunctionValue,
+    },
+    BitArrayFunction {
+        local: BitArrayFunctionLocalId,
+        value: BitArrayFunctionValue,
     },
     BoolFunction {
         local: BoolFunctionLocalId,
@@ -88,6 +98,10 @@ pub(crate) enum CaptureListValue {
     String {
         local: StringListLocalId,
         value: Vec<EcoString>,
+    },
+    BitArray {
+        local: BitArrayListLocalId,
+        value: Vec<BitArrayValue>,
     },
     Float {
         local: FloatListLocalId,
@@ -137,6 +151,12 @@ impl CaptureValue {
         }
     }
 
+    pub(crate) fn bit_array(local: BitArrayLocalId, value: BitArrayValue) -> Self {
+        Self {
+            kind: CaptureValueKind::BitArray { local, value },
+        }
+    }
+
     pub(crate) fn bool(local: BoolLocalId, value: bool) -> Self {
         Self {
             kind: CaptureValueKind::Bool { local, value },
@@ -182,6 +202,15 @@ impl CaptureValue {
         }
     }
 
+    pub(crate) fn bit_array_function(
+        local: BitArrayFunctionLocalId,
+        value: BitArrayFunctionValue,
+    ) -> Self {
+        Self {
+            kind: CaptureValueKind::BitArrayFunction { local, value },
+        }
+    }
+
     pub(crate) fn bool_function(local: BoolFunctionLocalId, value: BoolFunctionValue) -> Self {
         Self {
             kind: CaptureValueKind::BoolFunction { local, value },
@@ -220,6 +249,7 @@ impl CaptureValue {
 mod tests {
     use super::{CaptureListValue, CaptureValue, CaptureValueKind};
     use crate::plan::execution::{
+        BitArrayFunctionId, BitArrayFunctionLocalId, BitArrayListLocalId, BitArrayLocalId,
         BoolFunctionId, BoolFunctionLocalId, BoolLocalId, FloatFunctionId, FloatFunctionLocalId,
         FloatLocalId, FunctionFunctionId, FunctionFunctionLocalId, IntFunctionFunctionId,
         IntFunctionId, IntFunctionLocalId, IntListFunctionLocalId, IntListLocalId, IntLocalId,
@@ -229,8 +259,9 @@ mod tests {
     };
     use crate::plan::{FunctionType, ValueType};
     use crate::runtime::{
-        BoolFunctionValue, FloatFunctionValue, FunctionFunctionValue, IntFunctionValue,
-        ListFunctionValue, NilFunctionValue, StringFunctionValue, TupleFunctionValue, Value,
+        BitArrayFunctionValue, BitArrayValue, BoolFunctionValue, FloatFunctionValue,
+        FunctionFunctionValue, IntFunctionValue, ListFunctionValue, NilFunctionValue,
+        StringFunctionValue, TupleFunctionValue, Value,
     };
 
     #[test]
@@ -259,6 +290,12 @@ mod tests {
             Vec::new(),
             Vec::new(),
             FunctionType::new(Vec::new(), ValueType::String),
+        );
+        let bit_array_function = BitArrayFunctionValue::new_with_captures(
+            BitArrayFunctionId(0),
+            Vec::new(),
+            Vec::new(),
+            FunctionType::new(Vec::new(), ValueType::BitArray),
         );
         let bool_function = BoolFunctionValue::new_with_captures(
             BoolFunctionId(0),
@@ -303,6 +340,7 @@ mod tests {
             CaptureValue::int(IntLocalId(0), 1.into()),
             CaptureValue::float(FloatLocalId(0), 1.5),
             CaptureValue::string(StringLocalId(0), "one".into()),
+            CaptureValue::bit_array(BitArrayLocalId(0), BitArrayValue::from_bytes(vec![1])),
             CaptureValue::bool(BoolLocalId(0), true),
             CaptureValue::nil(NilLocalId(0)),
             CaptureValue::tuple(TupleLocalId(0), vec![Value::Int(1.into())]),
@@ -310,9 +348,17 @@ mod tests {
                 local: IntListLocalId(0),
                 value: vec![1.into()],
             }),
+            CaptureValue::list(CaptureListValue::BitArray {
+                local: BitArrayListLocalId(0),
+                value: vec![BitArrayValue::from_bytes(vec![2])],
+            }),
             CaptureValue::int_function(IntFunctionLocalId(0), int_function.clone()),
             CaptureValue::float_function(FloatFunctionLocalId(0), float_function.clone()),
             CaptureValue::string_function(StringFunctionLocalId(0), string_function.clone()),
+            CaptureValue::bit_array_function(
+                BitArrayFunctionLocalId(0),
+                bit_array_function.clone(),
+            ),
             CaptureValue::bool_function(BoolFunctionLocalId(0), bool_function.clone()),
             CaptureValue::nil_function(NilFunctionLocalId(0), nil_function.clone()),
             CaptureValue::tuple_function(TupleFunctionLocalId(0), tuple_function.clone()),
@@ -332,6 +378,10 @@ mod tests {
                 local: StringLocalId(0),
                 value: "one".into(),
             },
+            CaptureValueKind::BitArray {
+                local: BitArrayLocalId(0),
+                value: BitArrayValue::from_bytes(vec![1]),
+            },
             CaptureValueKind::Bool {
                 local: BoolLocalId(0),
                 value: true,
@@ -347,6 +397,10 @@ mod tests {
                 local: IntListLocalId(0),
                 value: vec![1.into()],
             }),
+            CaptureValueKind::List(CaptureListValue::BitArray {
+                local: BitArrayListLocalId(0),
+                value: vec![BitArrayValue::from_bytes(vec![2])],
+            }),
             CaptureValueKind::IntFunction {
                 local: IntFunctionLocalId(0),
                 value: int_function.clone(),
@@ -358,6 +412,10 @@ mod tests {
             CaptureValueKind::StringFunction {
                 local: StringFunctionLocalId(0),
                 value: string_function,
+            },
+            CaptureValueKind::BitArrayFunction {
+                local: BitArrayFunctionLocalId(0),
+                value: bit_array_function,
             },
             CaptureValueKind::BoolFunction {
                 local: BoolFunctionLocalId(0),

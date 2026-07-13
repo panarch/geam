@@ -10,9 +10,9 @@ pub use invalid::{
     InvalidTypedAstReason, InvalidUseShapeReason,
 };
 pub use unsupported::{
-    UnsupportedArgumentReason, UnsupportedBinOpKind, UnsupportedCaseReason,
-    UnsupportedExpressionKind, UnsupportedFunctionReason, UnsupportedPatternKind,
-    UnsupportedPipelineReason, UnsupportedTopLevelKind,
+    UnsupportedArgumentReason, UnsupportedBinOpKind, UnsupportedBitArraySegmentReason,
+    UnsupportedCaseReason, UnsupportedExpressionKind, UnsupportedFunctionReason,
+    UnsupportedPatternKind, UnsupportedPipelineReason, UnsupportedTopLevelKind,
 };
 
 #[derive(Debug, Error, Clone, PartialEq, Eq)]
@@ -37,6 +37,11 @@ pub enum PlanError {
 
     #[error("unsupported expression: {kind}")]
     UnsupportedExpression { kind: UnsupportedExpressionKind },
+
+    #[error("unsupported bit array segment: {reason}")]
+    UnsupportedBitArraySegment {
+        reason: UnsupportedBitArraySegmentReason,
+    },
 
     #[error("unsupported binary operator: {operator}")]
     UnsupportedBinOp { operator: UnsupportedBinOpKind },

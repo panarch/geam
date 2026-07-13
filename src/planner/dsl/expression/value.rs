@@ -1,6 +1,9 @@
-use super::{Bool, Float, Int, List, Nil, String, Tuple};
+use super::{BitArray, Bool, Float, Int, List, Nil, String, Tuple};
 use crate::plan::ValueType;
-use crate::plan::{BoolExpr, Expr, FloatExpr, IntExpr, ListExpr, NilExpr, StringExpr, TupleExpr};
+use crate::plan::{
+    BitArrayExpr, BitArraySegment, BoolExpr, Expr, FloatExpr, IntExpr, ListExpr, NilExpr,
+    StringExpr, TupleExpr,
+};
 use ecow::EcoString;
 use num_bigint::BigInt;
 
@@ -10,6 +13,10 @@ pub(crate) fn int(value: i64) -> Int {
 
 pub(crate) fn string(value: impl Into<EcoString>) -> String {
     String(StringExpr::value(value.into()))
+}
+
+pub(crate) fn bit_array(segments: impl IntoIterator<Item = BitArraySegment>) -> BitArray {
+    BitArray(BitArrayExpr::value(segments.into_iter().collect()))
 }
 
 pub(crate) fn float(value: f64) -> Float {
@@ -55,9 +62,10 @@ pub(crate) fn list_spread(
 
 #[cfg(test)]
 mod tests {
-    use super::{bool_, float, int, list, list_spread, nil, string, tuple};
+    use super::{bit_array, bool_, float, int, list, list_spread, nil, string, tuple};
     use crate::plan::{
-        BoolExpr, Expr, FloatExpr, IntExpr, ListExpr, NilExpr, StringExpr, TupleExpr, ValueType,
+        BitArrayExpr, BoolExpr, Expr, FloatExpr, IntExpr, ListExpr, NilExpr, StringExpr, TupleExpr,
+        ValueType,
     };
     use num_bigint::BigInt;
 
@@ -65,6 +73,7 @@ mod tests {
     fn value_helpers_build_typed_exprs() {
         assert_eq!(int(1).0, IntExpr::value(BigInt::from(1)));
         assert_eq!(string("a").0, StringExpr::value("a".into()));
+        assert_eq!(bit_array([]).0, BitArrayExpr::value(Vec::new()));
         assert_eq!(float(1.0).0, FloatExpr::value(1.0));
         assert_eq!(bool_(true).0, BoolExpr::value(true));
         assert_eq!(nil().0, NilExpr::value());

@@ -33,6 +33,10 @@ impl LoweringContext {
         self.list_types.string_list_type()
     }
 
+    fn bit_array_list_type(&mut self) -> super::BitArrayListTypeId {
+        self.list_types.bit_array_list_type()
+    }
+
     fn float_list_type(&mut self) -> super::FloatListTypeId {
         self.list_types.float_list_type()
     }

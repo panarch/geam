@@ -1,6 +1,7 @@
 use super::ListExpr;
 use crate::plan::execution::{
-    BoolExpr, BoolListFunctionId, BoolListLocalId, BoolListTypeId, FloatExpr, FloatListFunctionId,
+    BitArrayExpr, BitArrayListFunctionId, BitArrayListLocalId, BitArrayListTypeId, BoolExpr,
+    BoolListFunctionId, BoolListLocalId, BoolListTypeId, FloatExpr, FloatListFunctionId,
     FloatListLocalId, FloatListTypeId, FunctionExpr, FunctionListFunctionId, FunctionListLocalId,
     FunctionListTypeId, IntExpr, IntListFunctionId, IntListLocalId, IntListTypeId,
     ListListFunctionId, ListListLocalId, ListListTypeId, ListTypeId, NilExpr, NilListFunctionId,
@@ -21,6 +22,10 @@ pub(crate) struct IntListItem {
 
 pub(crate) struct StringListItem {
     type_id: StringListTypeId,
+}
+
+pub(crate) struct BitArrayListItem {
+    type_id: BitArrayListTypeId,
 }
 
 pub(crate) struct FloatListItem {
@@ -63,6 +68,7 @@ macro_rules! list_item {
 
 list_item!(IntListItem, IntListTypeId);
 list_item!(StringListItem, StringListTypeId);
+list_item!(BitArrayListItem, BitArrayListTypeId);
 list_item!(FloatListItem, FloatListTypeId);
 list_item!(BoolListItem, BoolListTypeId);
 list_item!(NilListItem, NilListTypeId);
@@ -84,6 +90,16 @@ impl ListItem for StringListItem {
     type ElementExpr = StringExpr;
     type Local = StringListLocalId;
     type Function = StringListFunctionId;
+
+    fn list_type(&self) -> ListTypeId {
+        self.type_id.list_type()
+    }
+}
+
+impl ListItem for BitArrayListItem {
+    type ElementExpr = BitArrayExpr;
+    type Local = BitArrayListLocalId;
+    type Function = BitArrayListFunctionId;
 
     fn list_type(&self) -> ListTypeId {
         self.type_id.list_type()

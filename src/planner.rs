@@ -11,9 +11,9 @@ pub use error::{
     InvalidCallShapeReason, InvalidCaseShapeReason, InvalidExpressionShapeKind,
     InvalidExpressionType, InvalidFunctionShapeReason, InvalidPipelineShapeReason,
     InvalidTypedAstReason, InvalidUseShapeReason, PlanError, UnsupportedArgumentReason,
-    UnsupportedBinOpKind, UnsupportedCaseReason, UnsupportedExpressionKind,
-    UnsupportedFunctionReason, UnsupportedPatternKind, UnsupportedPipelineReason,
-    UnsupportedTopLevelKind,
+    UnsupportedBinOpKind, UnsupportedBitArraySegmentReason, UnsupportedCaseReason,
+    UnsupportedExpressionKind, UnsupportedFunctionReason, UnsupportedPatternKind,
+    UnsupportedPipelineReason, UnsupportedTopLevelKind,
 };
 pub use module::{plan_module, plan_module_with_source};
 

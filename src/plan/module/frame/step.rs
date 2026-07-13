@@ -22,6 +22,10 @@ impl FrameLayout {
                 self.include_string_expr(value);
                 self.include_string(*local);
             }
+            StepKind::LetBitArray { local, value, .. } => {
+                self.include_bit_array_expr(value);
+                self.include_bit_array(*local);
+            }
             StepKind::LetBool { local, value, .. } => {
                 self.include_bool_expr(value);
                 self.include_bool(*local);
@@ -46,6 +50,10 @@ impl FrameLayout {
             StepKind::LetStringFunction { local, value, .. } => {
                 self.include_string_function_expr(value);
                 self.include_string_function(*local);
+            }
+            StepKind::LetBitArrayFunction { local, value, .. } => {
+                self.include_bit_array_function_expr(value);
+                self.include_bit_array_function(*local);
             }
             StepKind::LetBoolFunction { local, value, .. } => {
                 self.include_bool_function_expr(value);

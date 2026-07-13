@@ -115,20 +115,8 @@ pub(super) fn expect_expression_statement(statement: &TypedStatement) -> &TypedE
 #[cfg(test)]
 mod tests {
     use crate::planner::plan_module;
-    use crate::planner::support::{compile_minimal_module, expect_plan_error};
-    use crate::planner::{
-        InvalidCaseShapeReason, InvalidTypedAstReason, PlanError, UnsupportedCaseReason,
-    };
-
-    #[test]
-    fn reject_profile_bit_array_case_subject() {
-        assert_eq!(
-            expect_plan_error(r#"pub fn main() { case <<1>> { _ -> 1 } }"#),
-            PlanError::UnsupportedCase {
-                reason: UnsupportedCaseReason::UnsupportedSubjectType,
-            },
-        );
-    }
+    use crate::planner::support::compile_minimal_module;
+    use crate::planner::{InvalidCaseShapeReason, InvalidTypedAstReason, PlanError};
 
     #[test]
     fn reject_margin_case_shapes() {

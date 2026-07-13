@@ -1,8 +1,8 @@
 use crate::plan::{
-    BoolExpr, BoolExprKind, BoolReturn, FloatExpr, FloatExprKind, FloatReturn, IntExpr,
-    IntExprKind, IntReturn, ListItem, NilExpr, NilExprKind, NilReturn, ReturnBody, StringExpr,
-    StringExprKind, StringReturn, TupleExpr, TupleExprKind, TupleReturn, TypedListExpr,
-    TypedListReturnKind,
+    BitArrayExpr, BitArrayExprKind, BitArrayReturn, BoolExpr, BoolExprKind, BoolReturn, FloatExpr,
+    FloatExprKind, FloatReturn, IntExpr, IntExprKind, IntReturn, ListItem, NilExpr, NilExprKind,
+    NilReturn, ReturnBody, StringExpr, StringExprKind, StringReturn, TupleExpr, TupleExprKind,
+    TupleReturn, TypedListExpr, TypedListReturnKind,
 };
 
 #[cfg(test)]
@@ -113,6 +113,61 @@ pub(super) fn string_return(expression: StringExpr) -> StringReturn {
         ),
         StringExprKind::Block { steps, return_ } => {
             ReturnBody::block(steps.clone(), string_return((**return_).clone()))
+        }
+        _ => ReturnBody::expr(expression),
+    }
+}
+
+pub(super) fn bit_array_return(expression: BitArrayExpr) -> BitArrayReturn {
+    match expression.kind() {
+        BitArrayExprKind::Call { function, args } => ReturnBody::tail_call(*function, args.clone()),
+        BitArrayExprKind::BoolCase {
+            subject,
+            true_,
+            false_,
+        } => ReturnBody::bool_case(
+            (**subject).clone(),
+            bit_array_return((**true_).clone()),
+            bit_array_return((**false_).clone()),
+        ),
+        BitArrayExprKind::IntCase {
+            subject,
+            clauses,
+            fallback,
+        } => ReturnBody::int_case(
+            (**subject).clone(),
+            clauses
+                .iter()
+                .map(|(value, branch)| (value.clone(), bit_array_return(branch.clone())))
+                .collect(),
+            bit_array_return((**fallback).clone()),
+        ),
+        BitArrayExprKind::StringCase {
+            subject,
+            clauses,
+            fallback,
+        } => ReturnBody::string_case(
+            (**subject).clone(),
+            clauses
+                .iter()
+                .map(|(value, branch)| (value.clone(), bit_array_return(branch.clone())))
+                .collect(),
+            bit_array_return((**fallback).clone()),
+        ),
+        BitArrayExprKind::FloatCase {
+            subject,
+            clauses,
+            fallback,
+        } => ReturnBody::float_case(
+            (**subject).clone(),
+            clauses
+                .iter()
+                .map(|(value, branch)| (*value, bit_array_return(branch.clone())))
+                .collect(),
+            bit_array_return((**fallback).clone()),
+        ),
+        BitArrayExprKind::Block { steps, return_ } => {
+            ReturnBody::block(steps.clone(), bit_array_return((**return_).clone()))
         }
         _ => ReturnBody::expr(expression),
     }
@@ -343,6 +398,7 @@ pub(super) fn list_return(expression: ListExpr) -> ListReturn {
     match expression {
         ListExpr::Int(expression) => ListReturn::Int(typed_list_return_body(expression)),
         ListExpr::String(expression) => ListReturn::String(typed_list_return_body(expression)),
+        ListExpr::BitArray(expression) => ListReturn::BitArray(typed_list_return_body(expression)),
         ListExpr::Float(expression) => ListReturn::Float(typed_list_return_body(expression)),
         ListExpr::Bool(expression) => ListReturn::Bool(typed_list_return_body(expression)),
         ListExpr::Nil(expression) => ListReturn::Nil(typed_list_return_body(expression)),
@@ -510,6 +566,10 @@ mod tests {
         assert_eq!(
             list_return(ListExpr::value(Vec::new(), ValueType::String)),
             ListReturn::expr(ListExpr::value(Vec::new(), ValueType::String)),
+        );
+        assert_eq!(
+            list_return(ListExpr::value(Vec::new(), ValueType::BitArray)),
+            ListReturn::expr(ListExpr::value(Vec::new(), ValueType::BitArray)),
         );
         assert_eq!(
             list_return(ListExpr::value(Vec::new(), ValueType::Bool)),

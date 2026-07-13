@@ -1,3 +1,4 @@
+mod bit_array;
 mod capture;
 mod function;
 mod list;
@@ -7,11 +8,13 @@ use num_bigint::BigInt;
 
 use crate::plan::ValueType;
 
+pub use self::bit_array::{BitArrayValue, BitArrayValueLengthError};
 pub(crate) use self::capture::{CaptureListValue, CaptureValue};
 pub use self::function::FunctionValue;
 pub(crate) use self::function::{
-    BoolFunctionValue, FloatFunctionValue, FunctionFunctionValue, FunctionValueKind,
-    IntFunctionValue, ListFunctionValue, NilFunctionValue, StringFunctionValue, TupleFunctionValue,
+    BitArrayFunctionValue, BoolFunctionValue, FloatFunctionValue, FunctionFunctionValue,
+    FunctionValueKind, IntFunctionValue, ListFunctionValue, NilFunctionValue, StringFunctionValue,
+    TupleFunctionValue,
 };
 pub use self::list::{ListValue, ListValueItemTypeMismatch};
 
@@ -20,6 +23,7 @@ pub enum Value {
     Int(BigInt),
     Float(f64),
     String(EcoString),
+    BitArray(BitArrayValue),
     Bool(bool),
     Nil,
     Tuple(Vec<Value>),
@@ -33,6 +37,7 @@ impl Value {
             Self::Int(_) => ValueType::Int,
             Self::Float(_) => ValueType::Float,
             Self::String(_) => ValueType::String,
+            Self::BitArray(_) => ValueType::BitArray,
             Self::Bool(_) => ValueType::Bool,
             Self::Nil => ValueType::Nil,
             Self::Tuple(values) => ValueType::Tuple(values.iter().map(Self::value_type).collect()),
@@ -44,12 +49,16 @@ impl Value {
 
 #[cfg(test)]
 mod tests {
-    use super::{ListValue, Value, ValueType};
+    use super::{BitArrayValue, ListValue, Value, ValueType};
 
     #[test]
     fn value_type_preserves_tuple_element_families() {
         assert_eq!(Value::Float(1.0).value_type(), ValueType::Float);
         assert_eq!(Value::String("one".into()).value_type(), ValueType::String);
+        assert_eq!(
+            Value::BitArray(BitArrayValue::from_bytes(vec![1])).value_type(),
+            ValueType::BitArray,
+        );
         assert_eq!(Value::Bool(true).value_type(), ValueType::Bool);
         assert_eq!(Value::Nil.value_type(), ValueType::Nil);
         assert_eq!(

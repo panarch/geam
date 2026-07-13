@@ -1,6 +1,6 @@
 use super::{
-    BoolListTypeId, FloatListTypeId, FunctionListTypeId, IntListTypeId, ListFunctionLocal,
-    ListListTypeId, NilListTypeId, StringListTypeId, TupleListTypeId,
+    BitArrayListTypeId, BoolListTypeId, FloatListTypeId, FunctionListTypeId, IntListTypeId,
+    ListFunctionLocal, ListListTypeId, NilListTypeId, StringListTypeId, TupleListTypeId,
 };
 
 #[derive(Default)]
@@ -13,10 +13,12 @@ pub(super) struct FrameSlots {
     pub(super) ints: usize,
     pub(super) floats: usize,
     pub(super) strings: usize,
+    pub(super) bit_arrays: usize,
     pub(super) bools: usize,
     pub(super) tuples: usize,
     pub(super) int_lists: Vec<IntListTypeId>,
     pub(super) string_lists: Vec<StringListTypeId>,
+    pub(super) bit_array_lists: Vec<BitArrayListTypeId>,
     pub(super) float_lists: Vec<FloatListTypeId>,
     pub(super) bool_lists: Vec<BoolListTypeId>,
     pub(super) nil_lists: Vec<NilListTypeId>,
@@ -26,6 +28,7 @@ pub(super) struct FrameSlots {
     pub(super) int_functions: usize,
     pub(super) float_functions: usize,
     pub(super) string_functions: usize,
+    pub(super) bit_array_functions: usize,
     pub(super) bool_functions: usize,
     pub(super) nil_functions: usize,
     pub(super) tuple_functions: usize,
@@ -50,6 +53,10 @@ impl FrameLayout {
         self.slots.strings
     }
 
+    pub(crate) fn bit_arrays(&self) -> usize {
+        self.slots.bit_arrays
+    }
+
     pub(crate) fn bools(&self) -> usize {
         self.slots.bools
     }
@@ -64,6 +71,10 @@ impl FrameLayout {
 
     pub(crate) fn string_lists(&self) -> &[StringListTypeId] {
         &self.slots.string_lists
+    }
+
+    pub(crate) fn bit_array_lists(&self) -> &[BitArrayListTypeId] {
+        &self.slots.bit_array_lists
     }
 
     pub(crate) fn float_lists(&self) -> &[FloatListTypeId] {
@@ -100,6 +111,10 @@ impl FrameLayout {
 
     pub(crate) fn string_functions(&self) -> usize {
         self.slots.string_functions
+    }
+
+    pub(crate) fn bit_array_functions(&self) -> usize {
+        self.slots.bit_array_functions
     }
 
     pub(crate) fn bool_functions(&self) -> usize {

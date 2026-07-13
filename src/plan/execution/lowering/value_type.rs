@@ -2,8 +2,8 @@ use std::collections::HashMap;
 
 use crate::plan;
 use crate::plan::execution::{
-    BoolListTypeId, FloatListTypeId, FunctionListTypeId, FunctionType, IntListTypeId,
-    ListListTypeId, ListStorageTypeId, ListTypeId, NilListTypeId, StringListTypeId,
+    BitArrayListTypeId, BoolListTypeId, FloatListTypeId, FunctionListTypeId, FunctionType,
+    IntListTypeId, ListListTypeId, ListStorageTypeId, ListTypeId, NilListTypeId, StringListTypeId,
     TupleListTypeId, ValueType,
 };
 
@@ -26,6 +26,7 @@ impl ListTypeInterner {
             plan::ValueType::Int => ValueType::Int,
             plan::ValueType::Float => ValueType::Float,
             plan::ValueType::String => ValueType::String,
+            plan::ValueType::BitArray => ValueType::BitArray,
             plan::ValueType::Bool => ValueType::Bool,
             plan::ValueType::Nil => ValueType::Nil,
             plan::ValueType::Tuple(elements) => ValueType::Tuple(
@@ -57,6 +58,7 @@ impl ListTypeInterner {
         match item {
             plan::ValueType::Int => self.int_list_type().list_type(),
             plan::ValueType::String => self.string_list_type().list_type(),
+            plan::ValueType::BitArray => self.bit_array_list_type().list_type(),
             plan::ValueType::Float => self.float_list_type().list_type(),
             plan::ValueType::Bool => self.bool_list_type().list_type(),
             plan::ValueType::Nil => self.nil_list_type().list_type(),
@@ -94,6 +96,13 @@ impl ListTypeInterner {
             ListStorageTypeId::String(StringListTypeId::new(list_type))
         });
         StringListTypeId::new(list_type)
+    }
+
+    pub(super) fn bit_array_list_type(&mut self) -> BitArrayListTypeId {
+        let list_type = self.intern_primitive(plan::ValueType::BitArray, |list_type| {
+            ListStorageTypeId::BitArray(BitArrayListTypeId::new(list_type))
+        });
+        BitArrayListTypeId::new(list_type)
     }
 
     pub(super) fn float_list_type(&mut self) -> FloatListTypeId {

@@ -1,8 +1,9 @@
 use super::{
-    BoolFunction, FloatFunction, Function, FunctionFunction, IntFunction, IntoParamLocal,
-    IntoValueType, ListFunction, NilFunction, StringFunction, TupleFunction,
+    BitArrayFunction, BoolFunction, FloatFunction, Function, FunctionFunction, IntFunction,
+    IntoParamLocal, IntoValueType, ListFunction, NilFunction, StringFunction, TupleFunction,
 };
 use crate::plan::{
+    BitArrayFunctionExpr, BitArrayFunctionId, BitArrayFunctionLocalId, BitArrayFunctionReference,
     BoolFunctionExpr, BoolFunctionId, BoolFunctionLocalId, BoolFunctionReference, CaptureArg,
     FloatFunctionExpr, FloatFunctionId, FloatFunctionLocalId, FloatFunctionReference, FunctionExpr,
     FunctionFunctionExpr, FunctionFunctionId, FunctionFunctionLocalId, FunctionFunctionReference,
@@ -76,6 +77,40 @@ pub(crate) fn string_function_ref(
             .map(IntoParamLocal::into_param_local)
             .collect(),
     )))
+}
+
+pub(crate) fn bit_array_function_ref(
+    runtime_id: usize,
+    params: impl IntoIterator<Item = impl IntoParamLocal>,
+) -> BitArrayFunction {
+    BitArrayFunction(BitArrayFunctionExpr::reference(
+        BitArrayFunctionReference::new(
+            BitArrayFunctionId(runtime_id),
+            params
+                .into_iter()
+                .map(IntoParamLocal::into_param_local)
+                .collect(),
+        ),
+    ))
+}
+
+pub(crate) fn bit_array_function_closure(
+    runtime_id: usize,
+    params: impl IntoIterator<Item = impl IntoParamLocal>,
+    captures: impl IntoIterator<Item = CaptureArg>,
+) -> BitArrayFunction {
+    let params = params
+        .into_iter()
+        .map(IntoParamLocal::into_param_local)
+        .collect::<Vec<_>>();
+    let type_ = function_type(&params, ValueType::BitArray);
+
+    BitArrayFunction(BitArrayFunctionExpr::closure(
+        BitArrayFunctionId(runtime_id),
+        params,
+        captures.into_iter().collect(),
+        type_,
+    ))
 }
 
 pub(crate) fn float_function_ref(
@@ -277,6 +312,18 @@ pub(crate) fn local_string_function(
     ))
 }
 
+pub(crate) fn local_bit_array_function(
+    local: usize,
+    name: impl Into<EcoString>,
+    params: impl IntoIterator<Item = impl IntoValueType>,
+) -> BitArrayFunction {
+    BitArrayFunction(BitArrayFunctionExpr::local_get(
+        BitArrayFunctionLocalId(local),
+        name.into(),
+        bit_array_function_type(params),
+    ))
+}
+
 pub(crate) fn local_float_function(
     local: usize,
     name: impl Into<EcoString>,
@@ -372,6 +419,10 @@ fn string_function_type(params: impl IntoIterator<Item = impl IntoValueType>) ->
     dsl_function_type(params, ValueType::String)
 }
 
+fn bit_array_function_type(params: impl IntoIterator<Item = impl IntoValueType>) -> FunctionType {
+    dsl_function_type(params, ValueType::BitArray)
+}
+
 fn float_function_type(params: impl IntoIterator<Item = impl IntoValueType>) -> FunctionType {
     dsl_function_type(params, ValueType::Float)
 }
@@ -400,23 +451,26 @@ fn dsl_function_type(
 #[cfg(test)]
 mod tests {
     use super::{
-        bool_function_ref, float_function_closure, float_function_ref, function_function_closure,
+        bit_array_function_closure, bit_array_function_ref, bool_function_ref,
+        float_function_closure, float_function_ref, function_function_closure,
         function_function_ref, function_ref, int_function_closure, int_function_ref,
-        list_function_closure, list_function_ref, local_bool_function, local_float_function,
-        local_function_function, local_int_function, local_list_function, local_nil_function,
-        local_string_function, local_tuple_function, nil_function_ref, string_function_ref,
-        tuple_function_closure, tuple_function_ref,
+        list_function_closure, list_function_ref, local_bit_array_function, local_bool_function,
+        local_float_function, local_function_function, local_int_function, local_list_function,
+        local_nil_function, local_string_function, local_tuple_function, nil_function_ref,
+        string_function_ref, tuple_function_closure, tuple_function_ref,
     };
     use crate::plan::{
-        BoolFunctionExpr, BoolFunctionId, BoolFunctionLocalId, BoolFunctionReference,
-        FloatFunctionExpr, FloatFunctionId, FloatFunctionLocalId, FloatFunctionReference,
-        FunctionExpr, FunctionFunctionExpr, FunctionFunctionId, FunctionFunctionLocalId,
-        FunctionReference, FunctionType, IntFunctionExpr, IntFunctionFunctionId, IntFunctionId,
-        IntFunctionLocalId, IntFunctionReference, ListFunctionExpr, ListFunctionId,
-        ListFunctionReference, NilFunctionExpr, NilFunctionId, NilFunctionLocalId,
-        NilFunctionReference, ParamLocal, RuntimeFunctionId, StringFunctionExpr, StringFunctionId,
-        StringFunctionLocalId, StringFunctionReference, TupleFunctionExpr, TupleFunctionId,
-        TupleFunctionLocalId, TupleFunctionReference, ValueType,
+        BitArrayFunctionExpr, BitArrayFunctionId, BitArrayFunctionLocalId,
+        BitArrayFunctionReference, BoolFunctionExpr, BoolFunctionId, BoolFunctionLocalId,
+        BoolFunctionReference, FloatFunctionExpr, FloatFunctionId, FloatFunctionLocalId,
+        FloatFunctionReference, FunctionExpr, FunctionFunctionExpr, FunctionFunctionId,
+        FunctionFunctionLocalId, FunctionReference, FunctionType, IntFunctionExpr,
+        IntFunctionFunctionId, IntFunctionId, IntFunctionLocalId, IntFunctionReference,
+        ListFunctionExpr, ListFunctionId, ListFunctionReference, NilFunctionExpr, NilFunctionId,
+        NilFunctionLocalId, NilFunctionReference, ParamLocal, RuntimeFunctionId,
+        StringFunctionExpr, StringFunctionId, StringFunctionLocalId, StringFunctionReference,
+        TupleFunctionExpr, TupleFunctionId, TupleFunctionLocalId, TupleFunctionReference,
+        ValueType,
     };
     use crate::planner::dsl::expression::{Function, float, int};
 
@@ -441,6 +495,19 @@ mod tests {
             StringFunctionExpr::reference(StringFunctionReference::new(
                 StringFunctionId(1),
                 vec![ParamLocal::string(crate::plan::StringLocalId(0))],
+            )),
+        );
+        assert_eq!(
+            bit_array_function_ref(
+                8,
+                [crate::plan::LocalId::BitArray(
+                    crate::plan::BitArrayLocalId(0)
+                )],
+            )
+            .0,
+            BitArrayFunctionExpr::reference(BitArrayFunctionReference::new(
+                BitArrayFunctionId(8),
+                vec![ParamLocal::bit_array(crate::plan::BitArrayLocalId(0))],
             )),
         );
         assert_eq!(
@@ -533,6 +600,21 @@ mod tests {
                 StringFunctionLocalId(0),
                 "f".into(),
                 FunctionType::new(vec![ValueType::String], ValueType::String),
+            ),
+        );
+        assert_eq!(
+            local_bit_array_function(
+                1,
+                "bits",
+                [crate::plan::LocalId::BitArray(
+                    crate::plan::BitArrayLocalId(0)
+                )],
+            )
+            .0,
+            BitArrayFunctionExpr::local_get(
+                BitArrayFunctionLocalId(1),
+                "bits".into(),
+                FunctionType::new(vec![ValueType::BitArray], ValueType::BitArray),
             ),
         );
         assert_eq!(
@@ -641,6 +723,20 @@ mod tests {
                 vec![ParamLocal::int(crate::plan::IntLocalId(0))],
                 Vec::new(),
                 FunctionType::new(vec![ValueType::Int], ValueType::Int),
+            ),
+        );
+        assert_eq!(
+            bit_array_function_closure(
+                1,
+                [ParamLocal::bit_array(crate::plan::BitArrayLocalId(0))],
+                [],
+            )
+            .0,
+            BitArrayFunctionExpr::closure(
+                BitArrayFunctionId(1),
+                vec![ParamLocal::bit_array(crate::plan::BitArrayLocalId(0))],
+                Vec::new(),
+                FunctionType::new(vec![ValueType::BitArray], ValueType::BitArray),
             ),
         );
         assert_eq!(

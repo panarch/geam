@@ -1,7 +1,8 @@
 use crate::plan::{
-    BoolExpr, BoolFunctionExpr, Expr, FloatExpr, FloatFunctionExpr, FunctionExpr,
-    FunctionFunctionExpr, IntExpr, IntFunctionExpr, ListExpr, ListFunctionExpr, LocalId, NilExpr,
-    NilFunctionExpr, StringExpr, StringFunctionExpr, TupleExpr, TupleFunctionExpr, ValueType,
+    BitArrayExpr, BitArrayFunctionExpr, BoolExpr, BoolFunctionExpr, Expr, FloatExpr,
+    FloatFunctionExpr, FunctionExpr, FunctionFunctionExpr, IntExpr, IntFunctionExpr, ListExpr,
+    ListFunctionExpr, LocalId, NilExpr, NilFunctionExpr, StringExpr, StringFunctionExpr, TupleExpr,
+    TupleFunctionExpr, ValueType,
 };
 use crate::planner::context::{FunctionLocalBinding, PlanContext};
 use crate::planner::error::{
@@ -296,6 +297,9 @@ fn local_get(local: LocalId, name: EcoString, type_: ValueType) -> Result<Expr, 
         (LocalId::String(local), ValueType::String) => {
             Ok(Expr::string(StringExpr::local_get(local, name)))
         }
+        (LocalId::BitArray(local), ValueType::BitArray) => {
+            Ok(Expr::bit_array(BitArrayExpr::local_get(local, name)))
+        }
         (LocalId::Bool(local), ValueType::Bool) => Ok(Expr::bool(BoolExpr::local_get(local, name))),
         (LocalId::Nil(local), ValueType::Nil) => Ok(Expr::nil(NilExpr::local_get(local, name))),
         _ => invalid_expression_shape(InvalidExpressionShapeKind::Invalid),
@@ -309,6 +313,9 @@ fn function_local_get(binding: FunctionLocalBinding, name: EcoString) -> Expr {
         )),
         FunctionLocalBinding::String { local, type_ } => Expr::function(FunctionExpr::string(
             StringFunctionExpr::local_get(local, name, type_),
+        )),
+        FunctionLocalBinding::BitArray { local, type_ } => Expr::function(FunctionExpr::bit_array(
+            BitArrayFunctionExpr::local_get(local, name, type_),
         )),
         FunctionLocalBinding::Float { local, type_ } => Expr::function(FunctionExpr::float(
             FloatFunctionExpr::local_get(local, name, type_),
@@ -339,6 +346,7 @@ fn contains_function_value(type_: &ValueType) -> bool {
         ValueType::Int
         | ValueType::Float
         | ValueType::String
+        | ValueType::BitArray
         | ValueType::Bool
         | ValueType::Nil => false,
     }
@@ -358,6 +366,7 @@ fn invalid_expression_type(type_: ValueType) -> InvalidExpressionType {
         ValueType::Int => InvalidExpressionType::Int,
         ValueType::Float => InvalidExpressionType::Float,
         ValueType::String => InvalidExpressionType::String,
+        ValueType::BitArray => InvalidExpressionType::BitArray,
         ValueType::Bool => InvalidExpressionType::Bool,
         ValueType::Nil => InvalidExpressionType::Nil,
         ValueType::Tuple(_) => InvalidExpressionType::Tuple,
@@ -376,13 +385,13 @@ fn invalid_expression_shape(kind: InvalidExpressionShapeKind) -> Result<Expr, Pl
 mod tests {
     use super::{contains_function_value, function_local_get, invalid_expression_type, plan_expr};
     use crate::plan::{
-        BoolExpr, BoolFunctionExpr, BoolFunctionLocalId, BoolLocalId, Expr, FloatExpr,
-        FloatFunctionExpr, FloatFunctionLocalId, FunctionExpr, FunctionFunctionExpr,
-        FunctionFunctionLocalId, FunctionType, IntExpr, IntFunctionExpr, IntFunctionLocalId,
-        IntLocalId, ListExpr, ListFunctionExpr, ListLocal, LocalId, NilExpr, NilFunctionExpr,
-        NilFunctionLocalId, NilLocalId, StringExpr, StringFunctionExpr, StringFunctionLocalId,
-        StringListLocalId, TupleExpr, TupleFunctionExpr, TupleFunctionLocalId, TupleLocalId,
-        ValueType,
+        BitArrayFunctionExpr, BitArrayFunctionLocalId, BoolExpr, BoolFunctionExpr,
+        BoolFunctionLocalId, BoolLocalId, Expr, FloatExpr, FloatFunctionExpr, FloatFunctionLocalId,
+        FunctionExpr, FunctionFunctionExpr, FunctionFunctionLocalId, FunctionType, IntExpr,
+        IntFunctionExpr, IntFunctionLocalId, IntLocalId, ListExpr, ListFunctionExpr, ListLocal,
+        LocalId, NilExpr, NilFunctionExpr, NilFunctionLocalId, NilLocalId, StringExpr,
+        StringFunctionExpr, StringFunctionLocalId, StringListLocalId, TupleExpr, TupleFunctionExpr,
+        TupleFunctionLocalId, TupleLocalId, ValueType,
     };
     use crate::planner::context::{AnonymousFunctions, FunctionLocalBinding, PlanContext};
     use crate::planner::support::dummy_span;
@@ -966,7 +975,7 @@ mod tests {
                 ClauseGuard::TupleIndex {
                     location: dummy_span(),
                     index: 0,
-                    type_: type_::bit_array(),
+                    type_: type_::result(type_::int(), type_::nil()),
                     tuple: Box::new(var("pair", type_::tuple(vec![type_::string()]))),
                 },
                 &mut context,
@@ -1088,6 +1097,7 @@ mod tests {
     fn function_local_get_handles_all_return_families() {
         let unary_int = FunctionType::new(vec![ValueType::Int], ValueType::Int);
         let unary_string = FunctionType::new(vec![ValueType::String], ValueType::String);
+        let unary_bit_array = FunctionType::new(vec![ValueType::BitArray], ValueType::BitArray);
         let unary_float = FunctionType::new(vec![ValueType::Float], ValueType::Float);
         let unary_bool = FunctionType::new(vec![ValueType::Bool], ValueType::Bool);
         let unary_nil = FunctionType::new(vec![ValueType::Nil], ValueType::Nil);
@@ -1124,6 +1134,20 @@ mod tests {
                 StringFunctionLocalId(0),
                 "f".into(),
                 unary_string,
+            ))),
+        );
+        assert_eq!(
+            function_local_get(
+                FunctionLocalBinding::BitArray {
+                    local: BitArrayFunctionLocalId(0),
+                    type_: unary_bit_array.clone(),
+                },
+                "f".into(),
+            ),
+            Expr::function(FunctionExpr::bit_array(BitArrayFunctionExpr::local_get(
+                BitArrayFunctionLocalId(0),
+                "f".into(),
+                unary_bit_array,
             ))),
         );
         assert_eq!(
@@ -1235,6 +1259,7 @@ mod tests {
             ValueType::Int,
             ValueType::Float,
             ValueType::String,
+            ValueType::BitArray,
             ValueType::Bool,
             ValueType::Nil,
             ValueType::List(Box::new(ValueType::Int)),
@@ -1245,6 +1270,7 @@ mod tests {
                 ValueType::Int,
                 ValueType::Float,
                 ValueType::String,
+                ValueType::BitArray,
                 ValueType::Bool,
                 ValueType::Nil,
                 ValueType::Tuple(Vec::new()),
@@ -1256,6 +1282,7 @@ mod tests {
                 InvalidExpressionType::Int,
                 InvalidExpressionType::Float,
                 InvalidExpressionType::String,
+                InvalidExpressionType::BitArray,
                 InvalidExpressionType::Bool,
                 InvalidExpressionType::Nil,
                 InvalidExpressionType::Tuple,

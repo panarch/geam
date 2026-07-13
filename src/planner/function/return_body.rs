@@ -20,6 +20,14 @@ pub(super) fn function_return_expr(
         (ValueType::String, RuntimeFunctionId::String(runtime_id), ExprKind::String(actual)) => Ok(
             ReturnExpr::string_body(*runtime_id, primitive::string_return(actual)),
         ),
+        (
+            ValueType::BitArray,
+            RuntimeFunctionId::BitArray(runtime_id),
+            ExprKind::BitArray(actual),
+        ) => Ok(ReturnExpr::bit_array_body(
+            *runtime_id,
+            primitive::bit_array_return(actual),
+        )),
         (ValueType::Float, RuntimeFunctionId::Float(runtime_id), ExprKind::Float(actual)) => Ok(
             ReturnExpr::float_body(*runtime_id, primitive::float_return(actual)),
         ),
@@ -51,6 +59,14 @@ pub(super) fn function_return_expr(
             RuntimeFunctionId::List(ListFunctionId::String(runtime_id)),
             ExprKind::List(ListExpr::String(actual)),
         ) if expected.as_ref() == &ValueType::String => Ok(ReturnExpr::string_list_body(
+            *runtime_id,
+            primitive::typed_list_return_body(actual),
+        )),
+        (
+            ValueType::List(expected),
+            RuntimeFunctionId::List(ListFunctionId::BitArray(runtime_id)),
+            ExprKind::List(ListExpr::BitArray(actual)),
+        ) if expected.as_ref() == &ValueType::BitArray => Ok(ReturnExpr::bit_array_list_body(
             *runtime_id,
             primitive::typed_list_return_body(actual),
         )),

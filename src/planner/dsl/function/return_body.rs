@@ -3,10 +3,10 @@ mod function;
 mod primitive;
 
 use crate::plan::{
-    BoolFunctionReturn, BoolReturn, FloatFunctionReturn, FloatReturn, FunctionFunctionReturn,
-    FunctionType, IntFunctionReturn, IntReturn, ListFunctionReturn, ListReturn, NilFunctionReturn,
-    NilReturn, ReturnExpr, StringFunctionReturn, StringReturn, TupleFunctionReturn, TupleReturn,
-    ValueType,
+    BitArrayFunctionReturn, BitArrayReturn, BoolFunctionReturn, BoolReturn, FloatFunctionReturn,
+    FloatReturn, FunctionFunctionReturn, FunctionType, IntFunctionReturn, IntReturn,
+    ListFunctionReturn, ListReturn, NilFunctionReturn, NilReturn, ReturnExpr, StringFunctionReturn,
+    StringReturn, TupleFunctionReturn, TupleReturn, ValueType,
 };
 use crate::planner::context::FunctionRuntimeIds;
 
@@ -17,6 +17,7 @@ pub(crate) use primitive::*;
 pub(crate) enum FunctionReturn {
     Int(IntReturn),
     String(StringReturn),
+    BitArray(BitArrayReturn),
     Float(FloatReturn),
     Bool(BoolReturn),
     Nil(NilReturn),
@@ -32,6 +33,10 @@ pub(crate) enum FunctionReturn {
     StringFunction {
         type_: FunctionType,
         body: StringFunctionReturn,
+    },
+    BitArrayFunction {
+        type_: FunctionType,
+        body: BitArrayFunctionReturn,
     },
     FloatFunction {
         type_: FunctionType,
@@ -65,6 +70,9 @@ impl FunctionReturn {
         match self {
             Self::Int(body) => ReturnExpr::int_body(runtime_ids.next_int_id(), body),
             Self::String(body) => ReturnExpr::string_body(runtime_ids.next_string_id(), body),
+            Self::BitArray(body) => {
+                ReturnExpr::bit_array_body(runtime_ids.next_bit_array_id(), body)
+            }
             Self::Float(body) => ReturnExpr::float_body(runtime_ids.next_float_id(), body),
             Self::Bool(body) => ReturnExpr::bool_body(runtime_ids.next_bool_id(), body),
             Self::Nil(body) => ReturnExpr::nil_body(runtime_ids.next_nil_id(), body),
@@ -76,6 +84,9 @@ impl FunctionReturn {
             }
             Self::List(ListReturn::String(body)) => {
                 ReturnExpr::string_list_body(runtime_ids.next_string_list_id(), body)
+            }
+            Self::List(ListReturn::BitArray(body)) => {
+                ReturnExpr::bit_array_list_body(runtime_ids.next_bit_array_list_id(), body)
             }
             Self::List(ListReturn::Float(body)) => {
                 ReturnExpr::float_list_body(runtime_ids.next_float_list_id(), body)
@@ -101,6 +112,11 @@ impl FunctionReturn {
             Self::StringFunction { type_, body } => {
                 ReturnExpr::string_function_body(runtime_ids.next_string_function_id(), type_, body)
             }
+            Self::BitArrayFunction { type_, body } => ReturnExpr::bit_array_function_body(
+                runtime_ids.next_bit_array_function_id(),
+                type_,
+                body,
+            ),
             Self::FloatFunction { type_, body } => {
                 ReturnExpr::float_function_body(runtime_ids.next_float_function_id(), type_, body)
             }
@@ -134,17 +150,18 @@ impl FunctionReturn {
 mod tests {
     use super::FunctionReturn;
     use crate::plan::{
-        BoolFunctionFunctionId, BoolFunctionId, Expr, FloatFunctionFunctionId, FloatFunctionId,
-        FunctionFunctionFunctionId, FunctionFunctionId, FunctionType, IntFunctionFunctionId,
-        IntFunctionId, ListFunctionFunctionId, NilFunctionFunctionId, NilFunctionId, ParamLocal,
-        ReturnBody, ReturnExpr, StringFunctionFunctionId, StringFunctionId,
-        TupleFunctionFunctionId, TupleFunctionId, ValueType,
+        BitArrayFunctionFunctionId, BitArrayFunctionId, BoolFunctionFunctionId, BoolFunctionId,
+        Expr, FloatFunctionFunctionId, FloatFunctionId, FunctionFunctionFunctionId,
+        FunctionFunctionId, FunctionType, IntFunctionFunctionId, IntFunctionId,
+        ListFunctionFunctionId, NilFunctionFunctionId, NilFunctionId, ParamLocal, ReturnBody,
+        ReturnExpr, StringFunctionFunctionId, StringFunctionId, TupleFunctionFunctionId,
+        TupleFunctionId, ValueType,
     };
     use crate::planner::context::FunctionRuntimeIds;
     use crate::planner::dsl::expression::{
-        bool_, bool_function_ref, float, float_function_ref, function_function_ref, int,
-        int_function_ref, list, list_function_ref, nil, nil_function_ref, string,
-        string_function_ref, tuple, tuple_function_ref,
+        bit_array, bit_array_function_ref, bool_, bool_function_ref, float, float_function_ref,
+        function_function_ref, int, int_function_ref, list, list_function_ref, nil,
+        nil_function_ref, string, string_function_ref, tuple, tuple_function_ref,
     };
 
     #[test]
@@ -160,6 +177,13 @@ mod tests {
             ReturnExpr::string_body(
                 StringFunctionId(0),
                 ReturnBody::expr(string("value").into()),
+            ),
+        );
+        assert_eq!(
+            FunctionReturn::from(bit_array([])).build(&mut runtime_ids),
+            ReturnExpr::bit_array_body(
+                BitArrayFunctionId(0),
+                ReturnBody::expr(bit_array([]).into()),
             ),
         );
         assert_eq!(
@@ -202,6 +226,18 @@ mod tests {
                     crate::plan::ListExpr::from(list(Vec::<Expr>::new(), ValueType::String))
                         .into_string()
                         .expect("expression should be List(String)"),
+                ),
+            ),
+        );
+        assert_eq!(
+            FunctionReturn::from(list(Vec::<Expr>::new(), ValueType::BitArray))
+                .build(&mut runtime_ids),
+            ReturnExpr::bit_array_list_body(
+                crate::plan::BitArrayListFunctionId(0),
+                crate::plan::BitArrayListReturn::expr(
+                    crate::plan::ListExpr::from(list(Vec::<Expr>::new(), ValueType::BitArray))
+                        .into_bit_array()
+                        .expect("expression should be List(BitArray)"),
                 ),
             ),
         );
@@ -316,6 +352,15 @@ mod tests {
                 StringFunctionFunctionId(0),
                 FunctionType::new(Vec::new(), ValueType::String),
                 ReturnBody::expr(string_function_ref(0, Vec::<ParamLocal>::new()).into()),
+            ),
+        );
+        assert_eq!(
+            FunctionReturn::from(bit_array_function_ref(0, Vec::<ParamLocal>::new()))
+                .build(&mut runtime_ids),
+            ReturnExpr::bit_array_function_body(
+                BitArrayFunctionFunctionId(0),
+                FunctionType::new(Vec::new(), ValueType::BitArray),
+                ReturnBody::expr(bit_array_function_ref(0, Vec::<ParamLocal>::new()).into()),
             ),
         );
         assert_eq!(

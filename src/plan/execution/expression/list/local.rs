@@ -1,10 +1,10 @@
 use super::{
-    BoolListExpr, FloatListExpr, FunctionListExpr, IntListExpr, ListListExpr, NilListExpr,
-    StringListExpr, TupleListExpr,
+    BitArrayListExpr, BoolListExpr, FloatListExpr, FunctionListExpr, IntListExpr, ListListExpr,
+    NilListExpr, StringListExpr, TupleListExpr,
 };
 use crate::plan::execution::{
-    BoolListLocalId, FloatListLocalId, FunctionListLocalId, IntListLocalId, ListListLocalId,
-    NilListLocalId, StringListLocalId, TupleListLocalId,
+    BitArrayListLocalId, BoolListLocalId, FloatListLocalId, FunctionListLocalId, IntListLocalId,
+    ListListLocalId, NilListLocalId, StringListLocalId, TupleListLocalId,
 };
 
 pub(crate) enum ListLocalExpr {
@@ -15,6 +15,10 @@ pub(crate) enum ListLocalExpr {
     String {
         local: StringListLocalId,
         value: StringListExpr,
+    },
+    BitArray {
+        local: BitArrayListLocalId,
+        value: BitArrayListExpr,
     },
     Float {
         local: FloatListLocalId,

@@ -8,44 +8,48 @@ mod step;
 use crate::plan::SourceContext;
 use ecow::EcoString;
 
+pub use expression::{
+    BitArrayExpr, BitArrayFunctionExpr, BoolExpr, BoolFunctionExpr, CallArg, Expr, FloatExpr,
+    FloatFunctionExpr, FunctionExpr, FunctionFunctionExpr, IntExpr, IntFunctionExpr,
+    ListFunctionExpr, NilExpr, NilFunctionExpr, StringExpr, StringFunctionExpr, TupleExpr,
+    TupleFunctionExpr,
+};
 pub(crate) use expression::{
-    BoolCaseBranches, BoolExprKind, BoolFunctionExprKind, CallArgKind, CaptureArg, CaptureArgKind,
-    ExprKind, FloatCaseBranches, FloatExprKind, FloatFunctionExprKind, FunctionExprKind,
+    BitArrayExprKind, BitArrayFunctionExprKind, BitArraySegment, BoolCaseBranches, BoolExprKind,
+    BoolFunctionExprKind, CallArgKind, CaptureArg, CaptureArgKind, Endianness, ExprKind,
+    FloatBitSize, FloatCaseBranches, FloatExprKind, FloatFunctionExprKind, FunctionExprKind,
     FunctionFunctionExprKind, IntCaseBranches, IntExprKind, IntFunctionExprKind, ListElements,
     ListFunctionExprKind, NilExprKind, NilFunctionExprKind, PanicExpr, PanicExprKind,
-    StringCaseBranches, StringExprKind, StringFunctionExprKind, TupleExprKind,
+    StringCaseBranches, StringEncoding, StringExprKind, StringFunctionExprKind, TupleExprKind,
     TupleFunctionExprKind,
 };
-pub use expression::{
-    BoolExpr, BoolFunctionExpr, CallArg, Expr, FloatExpr, FloatFunctionExpr, FunctionExpr,
-    FunctionFunctionExpr, IntExpr, IntFunctionExpr, ListFunctionExpr, NilExpr, NilFunctionExpr,
-    StringExpr, StringFunctionExpr, TupleExpr, TupleFunctionExpr,
-};
 pub(crate) use expression::{
-    BoolListCaseBranches, BoolListExpr, BoolListItem, FloatListExpr, FloatListItem,
-    FunctionListExpr, FunctionListItem, IntListExpr, IntListItem, ListCaseBranches, ListExpr,
-    ListItem, ListListExpr, ListListItem, ListLocalExpr, ListSpreadElements, NilListExpr,
-    NilListItem, StringListExpr, StringListItem, TupleListExpr, TupleListItem, TypedListExpr,
-    TypedListExprKind, TypedListReturnKind,
+    BitArrayListExpr, BitArrayListItem, BoolListCaseBranches, BoolListExpr, BoolListItem,
+    FloatListExpr, FloatListItem, FunctionListExpr, FunctionListItem, IntListExpr, IntListItem,
+    ListCaseBranches, ListExpr, ListItem, ListListExpr, ListListItem, ListLocalExpr,
+    ListSpreadElements, NilListExpr, NilListItem, StringListExpr, StringListItem, TupleListExpr,
+    TupleListItem, TypedListExpr, TypedListExprKind, TypedListReturnKind,
 };
 pub(crate) use frame::FrameLayout;
 #[cfg(test)]
 pub(crate) use function::ListReturn;
 pub(crate) use function::{
-    BoolFunctionReturn, BoolListReturn, BoolReturn, FloatFunctionReturn, FloatListReturn,
-    FloatReturn, FunctionExecutionParts, FunctionFunctionReturn, FunctionListReturn,
-    IntFunctionReturn, IntListReturn, IntReturn, ListFunctionReturn, ListListReturn,
-    NilFunctionReturn, NilListReturn, NilReturn, ParamLocal, ReturnBody, ReturnBodyKind,
-    ReturnExprKind, StringFunctionReturn, StringListReturn, StringReturn, TupleFunctionReturn,
-    TupleListReturn, TupleReturn,
+    BitArrayFunctionReturn, BitArrayListReturn, BitArrayReturn, BoolFunctionReturn, BoolListReturn,
+    BoolReturn, FloatFunctionReturn, FloatListReturn, FloatReturn, FunctionExecutionParts,
+    FunctionFunctionReturn, FunctionListReturn, IntFunctionReturn, IntListReturn, IntReturn,
+    ListFunctionReturn, ListListReturn, NilFunctionReturn, NilListReturn, NilReturn, ParamLocal,
+    ReturnBody, ReturnBodyKind, ReturnExprKind, StringFunctionReturn, StringListReturn,
+    StringReturn, TupleFunctionReturn, TupleListReturn, TupleReturn,
 };
 pub use function::{FunctionPlan, Param, ParamBinding, ReturnExpr};
 pub use id::{
-    BoolFunctionFunctionId, BoolFunctionId, BoolFunctionLocalId, BoolListFunctionFunctionId,
-    BoolListFunctionId, BoolListFunctionLocalId, BoolListLocalId, BoolLocalId,
-    FloatFunctionFunctionId, FloatFunctionId, FloatFunctionLocalId, FloatListFunctionFunctionId,
-    FloatListFunctionId, FloatListFunctionLocalId, FloatListLocalId, FloatLocalId,
-    FunctionFunctionFunctionId, FunctionFunctionLocalId, FunctionId,
+    BitArrayFunctionFunctionId, BitArrayFunctionId, BitArrayFunctionLocalId,
+    BitArrayListFunctionFunctionId, BitArrayListFunctionId, BitArrayListFunctionLocalId,
+    BitArrayListLocalId, BitArrayLocalId, BoolFunctionFunctionId, BoolFunctionId,
+    BoolFunctionLocalId, BoolListFunctionFunctionId, BoolListFunctionId, BoolListFunctionLocalId,
+    BoolListLocalId, BoolLocalId, FloatFunctionFunctionId, FloatFunctionId, FloatFunctionLocalId,
+    FloatListFunctionFunctionId, FloatListFunctionId, FloatListFunctionLocalId, FloatListLocalId,
+    FloatLocalId, FunctionFunctionFunctionId, FunctionFunctionLocalId, FunctionId,
     FunctionListFunctionFunctionId, FunctionListFunctionId, FunctionListFunctionLocalId,
     FunctionListLocalId, FunctionReturnFamily, IntFunctionFunctionId, IntFunctionId,
     IntFunctionLocalId, IntListFunctionFunctionId, IntListFunctionId, IntListFunctionLocalId,
@@ -61,9 +65,9 @@ pub use id::{
 };
 pub(crate) use id::{FunctionFunctionId, RuntimeFunctionId};
 pub(crate) use reference::{
-    BoolFunctionReference, FloatFunctionReference, FunctionFunctionReference, FunctionReference,
-    IntFunctionReference, ListFunctionReference, NilFunctionReference, StringFunctionReference,
-    TupleFunctionReference, TypedFunctionReference,
+    BitArrayFunctionReference, BoolFunctionReference, FloatFunctionReference,
+    FunctionFunctionReference, FunctionReference, IntFunctionReference, ListFunctionReference,
+    NilFunctionReference, StringFunctionReference, TupleFunctionReference, TypedFunctionReference,
 };
 pub use step::Step;
 pub(crate) use step::{AssertBinding, AssertPattern, ListAssertPattern, ListAssertTail, StepKind};

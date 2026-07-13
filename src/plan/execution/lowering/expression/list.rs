@@ -1,7 +1,7 @@
 use super::super::super as execution;
 use super::{
-    bool_expr, call_args, float_expr, function_expr, int_expr, list_function_expr, panic_expr,
-    string_expr, tuple_expr,
+    bit_array_expr, bool_expr, call_args, float_expr, function_expr, int_expr, list_function_expr,
+    panic_expr, string_expr, tuple_expr,
 };
 use crate::plan::execution::lowering::LoweringContext;
 use crate::plan::module;
@@ -36,6 +36,9 @@ pub(in crate::plan::execution::lowering) fn list_expr(
         module::ListExpr::String(expression) => {
             execution::ListExpr::String(string_list_expr(expression, context))
         }
+        module::ListExpr::BitArray(expression) => {
+            execution::ListExpr::BitArray(bit_array_list_expr(expression, context))
+        }
         module::ListExpr::Float(expression) => {
             execution::ListExpr::Float(float_list_expr(expression, context))
         }
@@ -68,6 +71,13 @@ pub(in crate::plan::execution::lowering) fn string_list_expr(
     expression: module::StringListExpr,
     context: &mut LoweringContext,
 ) -> execution::StringListExpr {
+    typed_list_expr(expression, context)
+}
+
+pub(in crate::plan::execution::lowering) fn bit_array_list_expr(
+    expression: module::BitArrayListExpr,
+    context: &mut LoweringContext,
+) -> execution::BitArrayListExpr {
     typed_list_expr(expression, context)
 }
 
@@ -243,6 +253,10 @@ pub(in crate::plan::execution::lowering) fn list_local_expr(
             local: execution::StringListLocalId(local.0),
             value: string_list_expr(value, context),
         },
+        module::ListLocalExpr::BitArray { local, value } => execution::ListLocalExpr::BitArray {
+            local: execution::BitArrayListLocalId(local.0),
+            value: bit_array_list_expr(value, context),
+        },
         module::ListLocalExpr::Float { local, value } => execution::ListLocalExpr::Float {
             local: execution::FloatListLocalId(local.0),
             value: float_list_expr(value, context),
@@ -339,6 +353,36 @@ impl LowerListItem for module::StringListItem {
         _context: &mut LoweringContext,
     ) -> execution::StringListFunctionId {
         execution::StringListFunctionId::new(function.0, item.type_id())
+    }
+}
+
+impl LowerListItem for module::BitArrayListItem {
+    type Execution = execution::BitArrayListItem;
+
+    fn lower_item(self, context: &mut LoweringContext) -> Self::Execution {
+        execution::BitArrayListItem::new(context.bit_array_list_type())
+    }
+
+    fn lower_element(
+        element: Self::ElementExpr,
+        context: &mut LoweringContext,
+    ) -> execution::BitArrayExpr {
+        bit_array_expr(element, context)
+    }
+
+    fn lower_local(
+        local: Self::Local,
+        _context: &mut LoweringContext,
+    ) -> execution::BitArrayListLocalId {
+        execution::BitArrayListLocalId(local.0)
+    }
+
+    fn lower_function(
+        function: Self::Function,
+        item: &Self::Execution,
+        _context: &mut LoweringContext,
+    ) -> execution::BitArrayListFunctionId {
+        execution::BitArrayListFunctionId::new(function.0, item.type_id())
     }
 }
 

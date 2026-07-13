@@ -169,6 +169,9 @@ fn closure_expr(
         RuntimeFunctionId::String(runtime_id) => FunctionExpr::string(
             crate::plan::StringFunctionExpr::closure(*runtime_id, params, captures, type_),
         ),
+        RuntimeFunctionId::BitArray(runtime_id) => FunctionExpr::bit_array(
+            crate::plan::BitArrayFunctionExpr::closure(*runtime_id, params, captures, type_),
+        ),
         RuntimeFunctionId::Float(runtime_id) => FunctionExpr::float(
             crate::plan::FloatFunctionExpr::closure(*runtime_id, params, captures, type_),
         ),
@@ -217,6 +220,12 @@ fn anonymous_function_type(type_: &Type) -> Result<FunctionType, PlanError> {
             reason: InvalidTypedAstReason::ExpressionType {
                 expected: InvalidExpressionType::Function,
                 actual: InvalidExpressionType::String,
+            },
+        }),
+        Some(ValueType::BitArray) => Err(PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::ExpressionType {
+                expected: InvalidExpressionType::Function,
+                actual: InvalidExpressionType::BitArray,
             },
         }),
         Some(ValueType::Float) => Err(PlanError::InvalidTypedAst {
@@ -785,7 +794,7 @@ pub fn main() {
             plan_module(compile(
                 r#"
 pub fn main() {
-  fn() { <<>> }
+  fn() { Ok(1) }
   1
 }
 "#,
@@ -801,6 +810,10 @@ pub fn main() {
         for (type_, actual) in [
             (gleam_core::type_::int(), InvalidExpressionType::Int),
             (gleam_core::type_::string(), InvalidExpressionType::String),
+            (
+                gleam_core::type_::bit_array(),
+                InvalidExpressionType::BitArray,
+            ),
             (gleam_core::type_::float(), InvalidExpressionType::Float),
             (gleam_core::type_::bool(), InvalidExpressionType::Bool),
             (gleam_core::type_::nil(), InvalidExpressionType::Nil),
@@ -895,7 +908,7 @@ pub fn main() {
 
         let mut invalid_shape = anonymous_function_module();
         let (type_, _, _) = anonymous_function_expression_mut(&mut invalid_shape);
-        *type_ = gleam_core::type_::bit_array();
+        *type_ = gleam_core::type_::result(gleam_core::type_::int(), gleam_core::type_::nil());
 
         assert_eq!(
             plan_module(invalid_shape),

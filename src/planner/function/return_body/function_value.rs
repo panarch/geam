@@ -1,11 +1,12 @@
 use crate::plan::{
-    BoolFunctionExpr, BoolFunctionExprKind, BoolFunctionReturn, FloatFunctionExpr,
-    FloatFunctionExprKind, FloatFunctionReturn, FunctionExpr, FunctionExprKind,
-    FunctionFunctionExpr, FunctionFunctionExprKind, FunctionFunctionId, FunctionFunctionReturn,
-    IntFunctionExpr, IntFunctionExprKind, IntFunctionReturn, ListFunctionExpr,
-    ListFunctionExprKind, ListFunctionReturn, NilFunctionExpr, NilFunctionExprKind,
-    NilFunctionReturn, ReturnBody, ReturnExpr, StringFunctionExpr, StringFunctionExprKind,
-    StringFunctionReturn, TupleFunctionExpr, TupleFunctionExprKind, TupleFunctionReturn,
+    BitArrayFunctionExpr, BitArrayFunctionExprKind, BitArrayFunctionReturn, BoolFunctionExpr,
+    BoolFunctionExprKind, BoolFunctionReturn, FloatFunctionExpr, FloatFunctionExprKind,
+    FloatFunctionReturn, FunctionExpr, FunctionExprKind, FunctionFunctionExpr,
+    FunctionFunctionExprKind, FunctionFunctionId, FunctionFunctionReturn, IntFunctionExpr,
+    IntFunctionExprKind, IntFunctionReturn, ListFunctionExpr, ListFunctionExprKind,
+    ListFunctionReturn, NilFunctionExpr, NilFunctionExprKind, NilFunctionReturn, ReturnBody,
+    ReturnExpr, StringFunctionExpr, StringFunctionExprKind, StringFunctionReturn,
+    TupleFunctionExpr, TupleFunctionExprKind, TupleFunctionReturn,
 };
 use crate::planner::error::{InvalidFunctionShapeReason, InvalidTypedAstReason, PlanError};
 use ecow::EcoString;
@@ -30,6 +31,14 @@ pub(super) fn function_returning_function_expr(
                 runtime_id,
                 type_,
                 string_function_return(actual),
+            ))
+        }
+        (FunctionFunctionId::BitArray(runtime_id), FunctionExprKind::BitArray(actual)) => {
+            let type_ = actual.type_().clone();
+            Ok(ReturnExpr::bit_array_function_body(
+                runtime_id,
+                type_,
+                bit_array_function_return(actual),
             ))
         }
         (FunctionFunctionId::Float(runtime_id), FunctionExprKind::Float(actual)) => {
@@ -194,6 +203,64 @@ fn string_function_return(expression: StringFunctionExpr) -> StringFunctionRetur
         StringFunctionExprKind::Block { steps, return_ } => {
             ReturnBody::block(steps.clone(), string_function_return((**return_).clone()))
         }
+        _ => ReturnBody::expr(expression),
+    }
+}
+
+fn bit_array_function_return(expression: BitArrayFunctionExpr) -> BitArrayFunctionReturn {
+    match expression.kind() {
+        BitArrayFunctionExprKind::Call { function, args, .. } => {
+            ReturnBody::tail_call(*function, args.clone())
+        }
+        BitArrayFunctionExprKind::BoolCase {
+            subject,
+            true_,
+            false_,
+        } => ReturnBody::bool_case(
+            (**subject).clone(),
+            bit_array_function_return((**true_).clone()),
+            bit_array_function_return((**false_).clone()),
+        ),
+        BitArrayFunctionExprKind::IntCase {
+            subject,
+            clauses,
+            fallback,
+        } => ReturnBody::int_case(
+            (**subject).clone(),
+            clauses
+                .iter()
+                .map(|(value, branch)| (value.clone(), bit_array_function_return(branch.clone())))
+                .collect(),
+            bit_array_function_return((**fallback).clone()),
+        ),
+        BitArrayFunctionExprKind::StringCase {
+            subject,
+            clauses,
+            fallback,
+        } => ReturnBody::string_case(
+            (**subject).clone(),
+            clauses
+                .iter()
+                .map(|(value, branch)| (value.clone(), bit_array_function_return(branch.clone())))
+                .collect(),
+            bit_array_function_return((**fallback).clone()),
+        ),
+        BitArrayFunctionExprKind::FloatCase {
+            subject,
+            clauses,
+            fallback,
+        } => ReturnBody::float_case(
+            (**subject).clone(),
+            clauses
+                .iter()
+                .map(|(value, branch)| (*value, bit_array_function_return(branch.clone())))
+                .collect(),
+            bit_array_function_return((**fallback).clone()),
+        ),
+        BitArrayFunctionExprKind::Block { steps, return_ } => ReturnBody::block(
+            steps.clone(),
+            bit_array_function_return((**return_).clone()),
+        ),
         _ => ReturnBody::expr(expression),
     }
 }
@@ -542,18 +609,23 @@ fn function_function_return(expression: FunctionFunctionExpr) -> FunctionFunctio
 
 #[cfg(test)]
 mod tests {
-    use super::{float_function_return, function_returning_function_expr, list_function_return};
+    use super::{
+        bit_array_function_return, float_function_return, function_returning_function_expr,
+        list_function_return,
+    };
     use crate::plan::{
-        BoolExpr, BoolFunctionExpr, BoolFunctionFunctionId, BoolFunctionId, BoolFunctionReference,
-        FloatExpr, FloatFunctionExpr, FloatFunctionFunctionId, FloatFunctionId,
-        FloatFunctionReference, FunctionExpr, FunctionFunctionExpr, FunctionFunctionFunctionId,
-        FunctionFunctionId, FunctionFunctionReference, FunctionType, IntExpr, IntFunctionExpr,
-        IntFunctionFunctionId, IntFunctionId, IntFunctionReference, IntLocalId, ListFunctionExpr,
-        ListFunctionFunctionId, ListFunctionId, ListFunctionReference, NilFunctionExpr,
-        NilFunctionFunctionId, NilFunctionId, NilFunctionReference, ParamLocal, ReturnBody,
-        ReturnExpr, StringExpr, StringFunctionExpr, StringFunctionFunctionId, StringFunctionId,
-        StringFunctionReference, TupleFunctionExpr, TupleFunctionFunctionId, TupleFunctionId,
-        TupleFunctionReference, ValueType,
+        BitArrayFunctionExpr, BitArrayFunctionFunctionId, BitArrayFunctionId,
+        BitArrayFunctionReference, BoolExpr, BoolFunctionExpr, BoolFunctionFunctionId,
+        BoolFunctionId, BoolFunctionReference, FloatExpr, FloatFunctionExpr,
+        FloatFunctionFunctionId, FloatFunctionId, FloatFunctionReference, FunctionExpr,
+        FunctionFunctionExpr, FunctionFunctionFunctionId, FunctionFunctionId,
+        FunctionFunctionReference, FunctionType, IntExpr, IntFunctionExpr, IntFunctionFunctionId,
+        IntFunctionId, IntFunctionReference, IntLocalId, ListFunctionExpr, ListFunctionFunctionId,
+        ListFunctionId, ListFunctionReference, NilFunctionExpr, NilFunctionFunctionId,
+        NilFunctionId, NilFunctionReference, ParamLocal, ReturnBody, ReturnExpr, StringExpr,
+        StringFunctionExpr, StringFunctionFunctionId, StringFunctionId, StringFunctionReference,
+        TupleFunctionExpr, TupleFunctionFunctionId, TupleFunctionId, TupleFunctionReference,
+        ValueType,
     };
     use crate::planner::{InvalidFunctionShapeReason, InvalidTypedAstReason, PlanError};
     use num_bigint::BigInt;
@@ -610,6 +682,23 @@ mod tests {
                 StringFunctionFunctionId(0),
                 StringFunctionExpr::reference(StringFunctionReference::new(
                     StringFunctionId(0),
+                    Vec::new(),
+                )),
+            )),
+        );
+
+        assert_eq!(
+            function_returning_function_expr(
+                &"main".into(),
+                FunctionFunctionId::BitArray(BitArrayFunctionFunctionId(0)),
+                FunctionExpr::bit_array(BitArrayFunctionExpr::reference(
+                    BitArrayFunctionReference::new(BitArrayFunctionId(0), Vec::new()),
+                )),
+            ),
+            Ok(ReturnExpr::bit_array_function(
+                BitArrayFunctionFunctionId(0),
+                BitArrayFunctionExpr::reference(BitArrayFunctionReference::new(
+                    BitArrayFunctionId(0),
                     Vec::new(),
                 )),
             )),
@@ -942,6 +1031,31 @@ mod tests {
                 ))],
                 ReturnBody::expr(float_function_value()),
             ),
+        );
+    }
+
+    #[test]
+    fn bit_array_function_return_preserves_tail_and_block_return_body_shapes() {
+        let type_ = FunctionType::new(Vec::new(), ValueType::BitArray);
+        let value = BitArrayFunctionExpr::reference(BitArrayFunctionReference::new(
+            BitArrayFunctionId(0),
+            Vec::new(),
+        ));
+        assert_eq!(
+            bit_array_function_return(BitArrayFunctionExpr::call(
+                BitArrayFunctionFunctionId(0),
+                Vec::new(),
+                type_.clone(),
+            )),
+            ReturnBody::tail_call(BitArrayFunctionFunctionId(0), Vec::new()),
+        );
+        let step = crate::plan::Step::evaluate(crate::plan::Expr::int(IntExpr::value(1.into())));
+        assert_eq!(
+            bit_array_function_return(BitArrayFunctionExpr::block(
+                vec![step.clone()],
+                value.clone(),
+            )),
+            ReturnBody::block(vec![step], ReturnBody::expr(value)),
         );
     }
 

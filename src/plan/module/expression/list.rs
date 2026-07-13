@@ -8,8 +8,8 @@ pub(crate) use self::{
     case::{BoolListCaseBranches, ListCaseBranches},
     elements::{ListElementTypeMismatch, ListElements, ListSpreadElements},
     item::{
-        BoolListItem, FloatListItem, FunctionListItem, IntListItem, ListItem, ListListItem,
-        NilListItem, StringListItem, TupleListItem,
+        BitArrayListItem, BoolListItem, FloatListItem, FunctionListItem, IntListItem, ListItem,
+        ListListItem, NilListItem, StringListItem, TupleListItem,
     },
     local::ListLocalExpr,
     typed::{ListIndexSource, TypedListExpr, TypedListExprKind, TypedListReturnKind},
@@ -25,6 +25,7 @@ use num_bigint::BigInt;
 pub(crate) enum ListExpr {
     Int(IntListExpr),
     String(StringListExpr),
+    BitArray(BitArrayListExpr),
     Float(FloatListExpr),
     Bool(BoolListExpr),
     Nil(NilListExpr),
@@ -35,6 +36,7 @@ pub(crate) enum ListExpr {
 
 pub(crate) type IntListExpr = TypedListExpr<IntListItem>;
 pub(crate) type StringListExpr = TypedListExpr<StringListItem>;
+pub(crate) type BitArrayListExpr = TypedListExpr<BitArrayListItem>;
 pub(crate) type FloatListExpr = TypedListExpr<FloatListItem>;
 pub(crate) type BoolListExpr = TypedListExpr<BoolListItem>;
 pub(crate) type NilListExpr = TypedListExpr<NilListItem>;
@@ -55,6 +57,9 @@ impl ListExpr {
             ListElements::Int(values) => Self::Int(IntListExpr::value(IntListItem, values)),
             ListElements::String(values) => {
                 Self::String(StringListExpr::value(StringListItem, values))
+            }
+            ListElements::BitArray(values) => {
+                Self::BitArray(BitArrayListExpr::value(BitArrayListItem, values))
             }
             ListElements::Float(values) => Self::Float(FloatListExpr::value(FloatListItem, values)),
             ListElements::Bool(values) => Self::Bool(BoolListExpr::value(BoolListItem, values)),
@@ -82,6 +87,9 @@ impl ListExpr {
             ListSpreadElements::String { values, tail } => {
                 Self::String(StringListExpr::spread(values, tail))
             }
+            ListSpreadElements::BitArray { values, tail } => {
+                Self::BitArray(BitArrayListExpr::spread(values, tail))
+            }
             ListSpreadElements::Float { values, tail } => {
                 Self::Float(FloatListExpr::spread(values, tail))
             }
@@ -108,6 +116,9 @@ impl ListExpr {
             ListLocal::Int(local) => Self::Int(IntListExpr::local_get(IntListItem, local, name)),
             ListLocal::String(local) => {
                 Self::String(StringListExpr::local_get(StringListItem, local, name))
+            }
+            ListLocal::BitArray(local) => {
+                Self::BitArray(BitArrayListExpr::local_get(BitArrayListItem, local, name))
             }
             ListLocal::Float(local) => {
                 Self::Float(FloatListExpr::local_get(FloatListItem, local, name))
@@ -138,6 +149,9 @@ impl ListExpr {
             }
             ListFunctionId::String(function) => {
                 Self::String(StringListExpr::call(StringListItem, function, args))
+            }
+            ListFunctionId::BitArray(function) => {
+                Self::BitArray(BitArrayListExpr::call(BitArrayListItem, function, args))
             }
             ListFunctionId::Float(function) => {
                 Self::Float(FloatListExpr::call(FloatListItem, function, args))
@@ -171,6 +185,11 @@ impl ListExpr {
                 function,
                 args,
             )),
+            ValueType::BitArray => Self::BitArray(BitArrayListExpr::function_call(
+                BitArrayListItem,
+                function,
+                args,
+            )),
             ValueType::Float => {
                 Self::Float(FloatListExpr::function_call(FloatListItem, function, args))
             }
@@ -201,6 +220,11 @@ impl ListExpr {
             ValueType::String => {
                 Self::String(StringListExpr::tuple_index(StringListItem, tuple, index))
             }
+            ValueType::BitArray => Self::BitArray(BitArrayListExpr::tuple_index(
+                BitArrayListItem,
+                tuple,
+                index,
+            )),
             ValueType::Float => {
                 Self::Float(FloatListExpr::tuple_index(FloatListItem, tuple, index))
             }
@@ -232,6 +256,10 @@ impl ListExpr {
             )),
             ValueType::String => Self::String(StringListExpr::from_list_index(
                 StringListItem,
+                ListIndexSource::new(list, index),
+            )),
+            ValueType::BitArray => Self::BitArray(BitArrayListExpr::from_list_index(
+                BitArrayListItem,
                 ListIndexSource::new(list, index),
             )),
             ValueType::Float => Self::Float(FloatListExpr::from_list_index(
@@ -276,6 +304,7 @@ impl ListExpr {
         match list {
             Self::Int(list) => Self::Int(IntListExpr::drop_first(list, count)),
             Self::String(list) => Self::String(StringListExpr::drop_first(list, count)),
+            Self::BitArray(list) => Self::BitArray(BitArrayListExpr::drop_first(list, count)),
             Self::Float(list) => Self::Float(FloatListExpr::drop_first(list, count)),
             Self::Bool(list) => Self::Bool(BoolListExpr::drop_first(list, count)),
             Self::Nil(list) => Self::Nil(NilListExpr::drop_first(list, count)),
@@ -289,6 +318,7 @@ impl ListExpr {
         match element_type {
             ValueType::Int => Self::Int(IntListExpr::panic(IntListItem, panic)),
             ValueType::String => Self::String(StringListExpr::panic(StringListItem, panic)),
+            ValueType::BitArray => Self::BitArray(BitArrayListExpr::panic(BitArrayListItem, panic)),
             ValueType::Float => Self::Float(FloatListExpr::panic(FloatListItem, panic)),
             ValueType::Bool => Self::Bool(BoolListExpr::panic(BoolListItem, panic)),
             ValueType::Nil => Self::Nil(NilListExpr::panic(NilListItem, panic)),
@@ -314,6 +344,9 @@ impl ListExpr {
             }
             BoolListCaseBranches::String { true_, false_ } => {
                 Self::String(StringListExpr::bool_case(subject, true_, false_))
+            }
+            BoolListCaseBranches::BitArray { true_, false_ } => {
+                Self::BitArray(BitArrayListExpr::bool_case(subject, true_, false_))
             }
             BoolListCaseBranches::Float { true_, false_ } => {
                 Self::Float(FloatListExpr::bool_case(subject, true_, false_))
@@ -344,6 +377,9 @@ impl ListExpr {
             ListCaseBranches::String { clauses, fallback } => {
                 Self::String(StringListExpr::int_case(subject, clauses, fallback))
             }
+            ListCaseBranches::BitArray { clauses, fallback } => {
+                Self::BitArray(BitArrayListExpr::int_case(subject, clauses, fallback))
+            }
             ListCaseBranches::Float { clauses, fallback } => {
                 Self::Float(FloatListExpr::int_case(subject, clauses, fallback))
             }
@@ -372,6 +408,9 @@ impl ListExpr {
             }
             ListCaseBranches::String { clauses, fallback } => {
                 Self::String(StringListExpr::string_case(subject, clauses, fallback))
+            }
+            ListCaseBranches::BitArray { clauses, fallback } => {
+                Self::BitArray(BitArrayListExpr::string_case(subject, clauses, fallback))
             }
             ListCaseBranches::Float { clauses, fallback } => {
                 Self::Float(FloatListExpr::string_case(subject, clauses, fallback))
@@ -402,6 +441,9 @@ impl ListExpr {
             ListCaseBranches::String { clauses, fallback } => {
                 Self::String(StringListExpr::float_case(subject, clauses, fallback))
             }
+            ListCaseBranches::BitArray { clauses, fallback } => {
+                Self::BitArray(BitArrayListExpr::float_case(subject, clauses, fallback))
+            }
             ListCaseBranches::Float { clauses, fallback } => {
                 Self::Float(FloatListExpr::float_case(subject, clauses, fallback))
             }
@@ -427,6 +469,7 @@ impl ListExpr {
         match return_ {
             Self::Int(return_) => Self::Int(IntListExpr::block(steps, return_)),
             Self::String(return_) => Self::String(StringListExpr::block(steps, return_)),
+            Self::BitArray(return_) => Self::BitArray(BitArrayListExpr::block(steps, return_)),
             Self::Float(return_) => Self::Float(FloatListExpr::block(steps, return_)),
             Self::Bool(return_) => Self::Bool(BoolListExpr::block(steps, return_)),
             Self::Nil(return_) => Self::Nil(NilListExpr::block(steps, return_)),
@@ -440,6 +483,7 @@ impl ListExpr {
         match self {
             Self::Int(expression) => expression.element_type(),
             Self::String(expression) => expression.element_type(),
+            Self::BitArray(expression) => expression.element_type(),
             Self::Float(expression) => expression.element_type(),
             Self::Bool(expression) => expression.element_type(),
             Self::Nil(expression) => expression.element_type(),
@@ -459,6 +503,13 @@ impl ListExpr {
     pub(crate) fn into_string(self) -> Option<StringListExpr> {
         match self {
             Self::String(expression) => Some(expression),
+            _ => None,
+        }
+    }
+
+    pub(crate) fn into_bit_array(self) -> Option<BitArrayListExpr> {
+        match self {
+            Self::BitArray(expression) => Some(expression),
             _ => None,
         }
     }
@@ -530,17 +581,17 @@ impl ListExpr {
 #[cfg(test)]
 mod tests {
     use super::{
-        BoolListCaseBranches, BoolListExpr, BoolListItem, FloatListExpr, FloatListItem,
-        FunctionListExpr, FunctionListItem, IntListExpr, IntListItem, ListCaseBranches,
-        ListElementTypeMismatch, ListElements, ListExpr, ListIndexSource, ListListExpr,
-        ListListItem, NilListExpr, NilListItem, StringListExpr, StringListItem, TupleListExpr,
-        TupleListItem,
+        BitArrayListExpr, BitArrayListItem, BoolListCaseBranches, BoolListExpr, BoolListItem,
+        FloatListExpr, FloatListItem, FunctionListExpr, FunctionListItem, IntListExpr, IntListItem,
+        ListCaseBranches, ListElementTypeMismatch, ListElements, ListExpr, ListIndexSource,
+        ListListExpr, ListListItem, NilListExpr, NilListItem, StringListExpr, StringListItem,
+        TupleListExpr, TupleListItem,
     };
     use crate::plan::{
-        BoolExpr, Expr, FloatExpr, FunctionExpr, FunctionReference, FunctionType, IntExpr,
-        IntFunctionId, IntListFunctionId, IntListLocalId, ListFunctionExpr, ListFunctionId,
-        ListFunctionReference, ListLocal, NilExpr, PanicExpr, PanicSite, RuntimeFunctionId, Step,
-        StringExpr, TupleExpr, ValueType,
+        BitArrayExpr, BoolExpr, Expr, FloatExpr, FunctionExpr, FunctionReference, FunctionType,
+        IntExpr, IntFunctionId, IntListFunctionId, IntListLocalId, ListFunctionExpr,
+        ListFunctionId, ListFunctionReference, ListLocal, NilExpr, PanicExpr, PanicSite,
+        RuntimeFunctionId, Step, StringExpr, TupleExpr, ValueType,
     };
     use num_bigint::BigInt;
 
@@ -701,6 +752,7 @@ mod tests {
 
         let int_list = ListExpr::value(vec![Expr::int(IntExpr::value(1.into()))], ValueType::Int);
         assert_eq!(int_list.clone().into_string(), None);
+        assert_eq!(int_list.clone().into_bit_array(), None);
         assert_eq!(int_list.clone().into_float(), None);
         assert_eq!(int_list.clone().into_bool(), None);
         assert_eq!(int_list.clone().into_nil(), None);
@@ -847,6 +899,7 @@ mod tests {
         let item_types = vec![
             ValueType::Int,
             ValueType::String,
+            ValueType::BitArray,
             ValueType::Float,
             ValueType::Bool,
             ValueType::Nil,
@@ -956,6 +1009,7 @@ mod tests {
         let item_types = vec![
             ValueType::Int,
             ValueType::String,
+            ValueType::BitArray,
             ValueType::Float,
             ValueType::Bool,
             ValueType::Nil,
@@ -978,6 +1032,10 @@ mod tests {
                 )),
                 ValueType::String => ListExpr::String(StringListExpr::from_list_index(
                     StringListItem,
+                    ListIndexSource::new(list.clone(), 3),
+                )),
+                ValueType::BitArray => ListExpr::BitArray(BitArrayListExpr::from_list_index(
+                    BitArrayListItem,
                     ListIndexSource::new(list.clone(), 3),
                 )),
                 ValueType::Float => ListExpr::Float(FloatListExpr::from_list_index(
@@ -1025,6 +1083,15 @@ mod tests {
             )
             .element_type(),
             ValueType::String,
+        );
+        assert_eq!(
+            ListExpr::spread(
+                vec![Expr::bit_array(BitArrayExpr::value(Vec::new()))],
+                ListExpr::value(Vec::new(), ValueType::BitArray),
+                ValueType::BitArray,
+            )
+            .element_type(),
+            ValueType::BitArray,
         );
         assert_eq!(
             ListExpr::spread(

@@ -1,12 +1,14 @@
 use super::{
-    BoolExpr, BoolFunctionExpr, Expr, ExprKind, FloatExpr, FloatFunctionExpr, FunctionFunctionExpr,
-    IntExpr, IntFunctionExpr, ListExpr, ListFunctionExpr, ListLocalExpr, NilExpr, NilFunctionExpr,
-    StringExpr, StringFunctionExpr, TupleExpr, TupleFunctionExpr,
+    BitArrayExpr, BitArrayFunctionExpr, BoolExpr, BoolFunctionExpr, Expr, ExprKind, FloatExpr,
+    FloatFunctionExpr, FunctionFunctionExpr, IntExpr, IntFunctionExpr, ListExpr, ListFunctionExpr,
+    ListLocalExpr, NilExpr, NilFunctionExpr, StringExpr, StringFunctionExpr, TupleExpr,
+    TupleFunctionExpr,
 };
 use crate::plan::{
-    BoolFunctionLocalId, BoolLocalId, FloatFunctionLocalId, FloatLocalId, FunctionFunctionLocalId,
-    IntFunctionLocalId, IntLocalId, ListFunctionLocal, ListLocal, NilFunctionLocalId, NilLocalId,
-    ParamLocal, StringFunctionLocalId, StringLocalId, TupleFunctionLocalId, TupleLocalId,
+    BitArrayFunctionLocalId, BitArrayLocalId, BoolFunctionLocalId, BoolLocalId,
+    FloatFunctionLocalId, FloatLocalId, FunctionFunctionLocalId, IntFunctionLocalId, IntLocalId,
+    ListFunctionLocal, ListLocal, NilFunctionLocalId, NilLocalId, ParamLocal,
+    StringFunctionLocalId, StringLocalId, TupleFunctionLocalId, TupleLocalId,
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -23,6 +25,10 @@ pub(crate) enum CallArgKind {
     String {
         local: StringLocalId,
         value: StringExpr,
+    },
+    BitArray {
+        local: BitArrayLocalId,
+        value: BitArrayExpr,
     },
     Float {
         local: FloatLocalId,
@@ -48,6 +54,10 @@ pub(crate) enum CallArgKind {
     StringFunction {
         local: StringFunctionLocalId,
         value: StringFunctionExpr,
+    },
+    BitArrayFunction {
+        local: BitArrayFunctionLocalId,
+        value: BitArrayFunctionExpr,
     },
     FloatFunction {
         local: FloatFunctionLocalId,
@@ -90,6 +100,10 @@ pub(crate) enum CaptureArgKind {
         local: StringLocalId,
         value: StringExpr,
     },
+    BitArray {
+        local: BitArrayLocalId,
+        value: BitArrayExpr,
+    },
     Float {
         local: FloatLocalId,
         value: FloatExpr,
@@ -114,6 +128,10 @@ pub(crate) enum CaptureArgKind {
     StringFunction {
         local: StringFunctionLocalId,
         value: StringFunctionExpr,
+    },
+    BitArrayFunction {
+        local: BitArrayFunctionLocalId,
+        value: BitArrayFunctionExpr,
     },
     FloatFunction {
         local: FloatFunctionLocalId,
@@ -148,6 +166,9 @@ impl Expr {
             (ParamLocal::String(local), ExprKind::String(value)) => {
                 Some(CallArg::string(*local, value))
             }
+            (ParamLocal::BitArray(local), ExprKind::BitArray(value)) => {
+                Some(CallArg::bit_array(*local, value))
+            }
             (ParamLocal::Float(local), ExprKind::Float(value)) => {
                 Some(CallArg::float(*local, value))
             }
@@ -170,6 +191,13 @@ impl Expr {
                 ParamLocal::List(ListLocal::String(local)),
                 ExprKind::List(ListExpr::String(value)),
             ) => Some(CallArg::list(ListLocalExpr::String {
+                local: *local,
+                value,
+            })),
+            (
+                ParamLocal::List(ListLocal::BitArray(local)),
+                ExprKind::List(ListExpr::BitArray(value)),
+            ) => Some(CallArg::list(ListLocalExpr::BitArray {
                 local: *local,
                 value,
             })),
@@ -240,6 +268,15 @@ impl Expr {
                 .into_string()
                 .map(|value| CallArg::string_function(*local, value)),
             (
+                ParamLocal::BitArrayFunction {
+                    local,
+                    type_: expected,
+                },
+                ExprKind::Function(value),
+            ) if value.type_() == expected => value
+                .into_bit_array()
+                .map(|value| CallArg::bit_array_function(*local, value)),
+            (
                 ParamLocal::FloatFunction {
                     local,
                     type_: expected,
@@ -309,6 +346,12 @@ impl CallArg {
         }
     }
 
+    pub(crate) fn bit_array(local: BitArrayLocalId, value: BitArrayExpr) -> Self {
+        Self {
+            kind: CallArgKind::BitArray { local, value },
+        }
+    }
+
     pub(crate) fn float(local: FloatLocalId, value: FloatExpr) -> Self {
         Self {
             kind: CallArgKind::Float { local, value },
@@ -348,6 +391,15 @@ impl CallArg {
     pub(crate) fn string_function(local: StringFunctionLocalId, value: StringFunctionExpr) -> Self {
         Self {
             kind: CallArgKind::StringFunction { local, value },
+        }
+    }
+
+    pub(crate) fn bit_array_function(
+        local: BitArrayFunctionLocalId,
+        value: BitArrayFunctionExpr,
+    ) -> Self {
+        Self {
+            kind: CallArgKind::BitArrayFunction { local, value },
         }
     }
 
@@ -412,6 +464,12 @@ impl CaptureArg {
         }
     }
 
+    pub(crate) fn bit_array(local: BitArrayLocalId, value: BitArrayExpr) -> Self {
+        Self {
+            kind: CaptureArgKind::BitArray { local, value },
+        }
+    }
+
     pub(crate) fn float(local: FloatLocalId, value: FloatExpr) -> Self {
         Self {
             kind: CaptureArgKind::Float { local, value },
@@ -451,6 +509,15 @@ impl CaptureArg {
     pub(crate) fn string_function(local: StringFunctionLocalId, value: StringFunctionExpr) -> Self {
         Self {
             kind: CaptureArgKind::StringFunction { local, value },
+        }
+    }
+
+    pub(crate) fn bit_array_function(
+        local: BitArrayFunctionLocalId,
+        value: BitArrayFunctionExpr,
+    ) -> Self {
+        Self {
+            kind: CaptureArgKind::BitArrayFunction { local, value },
         }
     }
 
@@ -506,7 +573,9 @@ impl CaptureArg {
 mod tests {
     use super::CallArg;
     use crate::plan::{
-        BoolExpr, BoolFunctionExpr, BoolFunctionId, BoolFunctionLocalId, BoolFunctionReference,
+        BitArrayExpr, BitArrayFunctionExpr, BitArrayFunctionId, BitArrayFunctionLocalId,
+        BitArrayFunctionReference, BitArrayListLocalId, BitArrayLocalId, BoolExpr,
+        BoolFunctionExpr, BoolFunctionId, BoolFunctionLocalId, BoolFunctionReference,
         BoolListLocalId, BoolLocalId, Expr, FloatExpr, FloatFunctionExpr, FloatFunctionId,
         FloatFunctionLocalId, FloatFunctionReference, FloatListLocalId, FloatLocalId, FunctionExpr,
         FunctionFunctionExpr, FunctionFunctionId, FunctionFunctionLocalId,
@@ -535,6 +604,14 @@ mod tests {
             Some(CallArg::string(
                 StringLocalId(0),
                 StringExpr::value("geam".into()),
+            )),
+        );
+        assert_eq!(
+            Expr::bit_array(BitArrayExpr::value(Vec::new()))
+                .into_call_arg(&ParamLocal::bit_array(BitArrayLocalId(0))),
+            Some(CallArg::bit_array(
+                BitArrayLocalId(0),
+                BitArrayExpr::value(Vec::new()),
             )),
         );
         assert_eq!(
@@ -589,6 +666,24 @@ mod tests {
             Some(CallArg::string_function(
                 StringFunctionLocalId(0),
                 string_function_expr(),
+            )),
+        );
+        let bit_array_function_type =
+            FunctionType::new(vec![ValueType::BitArray], ValueType::BitArray);
+        let bit_array_function = BitArrayFunctionExpr::reference(BitArrayFunctionReference::new(
+            BitArrayFunctionId(0),
+            vec![ParamLocal::bit_array(BitArrayLocalId(0))],
+        ));
+        assert_eq!(
+            Expr::function(FunctionExpr::bit_array(bit_array_function.clone())).into_call_arg(
+                &ParamLocal::bit_array_function(
+                    BitArrayFunctionLocalId(0),
+                    bit_array_function_type,
+                ),
+            ),
+            Some(CallArg::bit_array_function(
+                BitArrayFunctionLocalId(0),
+                bit_array_function,
             )),
         );
         assert_eq!(
@@ -759,6 +854,20 @@ mod tests {
             Some(CallArg::list(ListLocalExpr::String {
                 local: StringListLocalId(1),
                 value: string.into_string().expect("expected string list"),
+            })),
+        );
+
+        let bit_array = ListExpr::value(
+            vec![Expr::bit_array(BitArrayExpr::value(Vec::new()))],
+            ValueType::BitArray,
+        );
+        assert_eq!(
+            Expr::list(bit_array.clone()).into_call_arg(&ParamLocal::list(ListLocal::bit_array(
+                BitArrayListLocalId(2)
+            ),)),
+            Some(CallArg::list(ListLocalExpr::BitArray {
+                local: BitArrayListLocalId(2),
+                value: bit_array.into_bit_array().expect("expected bit array list"),
             })),
         );
 

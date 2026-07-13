@@ -1,13 +1,13 @@
 use super::{
-    Bool, BoolFunction, Float, FloatFunction, Function, FunctionFunction, Int, IntFunction,
-    IntoParamLocal, IntoValueType, List, ListFunction, Nil, NilFunction, String, StringFunction,
-    Tuple, TupleFunction,
+    BitArray, BitArrayFunction, Bool, BoolFunction, Float, FloatFunction, Function,
+    FunctionFunction, Int, IntFunction, IntoParamLocal, IntoValueType, List, ListFunction, Nil,
+    NilFunction, String, StringFunction, Tuple, TupleFunction,
 };
 use crate::plan::{
-    BoolExpr, BoolFunctionExpr, Expr, FloatExpr, FloatFunctionExpr, FunctionExpr,
-    FunctionFunctionExpr, IntExpr, IntFunctionExpr, ListExpr, ListFunctionExpr, LocalId, NilExpr,
-    NilFunctionExpr, ParamLocal, StringExpr, StringFunctionExpr, TupleExpr, TupleFunctionExpr,
-    ValueType,
+    BitArrayExpr, BitArrayFunctionExpr, BoolExpr, BoolFunctionExpr, Expr, FloatExpr,
+    FloatFunctionExpr, FunctionExpr, FunctionFunctionExpr, IntExpr, IntFunctionExpr, ListExpr,
+    ListFunctionExpr, LocalId, NilExpr, NilFunctionExpr, ParamLocal, StringExpr,
+    StringFunctionExpr, TupleExpr, TupleFunctionExpr, ValueType,
 };
 
 impl From<Int> for Expr {
@@ -19,6 +19,12 @@ impl From<Int> for Expr {
 impl From<String> for Expr {
     fn from(value: String) -> Self {
         Self::string(value.into())
+    }
+}
+
+impl From<BitArray> for Expr {
+    fn from(value: BitArray) -> Self {
+        Self::bit_array(value.into())
     }
 }
 
@@ -66,6 +72,12 @@ impl From<Int> for IntExpr {
 
 impl From<String> for StringExpr {
     fn from(value: String) -> Self {
+        value.0
+    }
+}
+
+impl From<BitArray> for BitArrayExpr {
+    fn from(value: BitArray) -> Self {
         value.0
     }
 }
@@ -136,6 +148,12 @@ impl From<StringFunction> for StringFunctionExpr {
     }
 }
 
+impl From<BitArrayFunction> for BitArrayFunctionExpr {
+    fn from(value: BitArrayFunction) -> Self {
+        value.0
+    }
+}
+
 impl From<FloatFunction> for FloatFunctionExpr {
     fn from(value: FloatFunction) -> Self {
         value.0
@@ -145,6 +163,24 @@ impl From<FloatFunction> for FloatFunctionExpr {
 impl From<StringFunction> for Expr {
     fn from(value: StringFunction) -> Self {
         Self::function(FunctionExpr::string(value.into()))
+    }
+}
+
+impl From<BitArrayFunction> for Function {
+    fn from(value: BitArrayFunction) -> Self {
+        Function(FunctionExpr::bit_array(value.into()))
+    }
+}
+
+impl From<BitArrayFunction> for Expr {
+    fn from(value: BitArrayFunction) -> Self {
+        Self::function(FunctionExpr::bit_array(value.into()))
+    }
+}
+
+impl From<BitArrayFunction> for FunctionExpr {
+    fn from(value: BitArrayFunction) -> Self {
+        FunctionExpr::bit_array(value.into())
     }
 }
 
@@ -273,6 +309,7 @@ impl IntoValueType for LocalId {
         match self {
             LocalId::Int(_) => ValueType::Int,
             LocalId::String(_) => ValueType::String,
+            LocalId::BitArray(_) => ValueType::BitArray,
             LocalId::Float(_) => ValueType::Float,
             LocalId::Bool(_) => ValueType::Bool,
             LocalId::Nil(_) => ValueType::Nil,
@@ -291,6 +328,7 @@ impl IntoParamLocal for LocalId {
         match self {
             LocalId::Int(local) => ParamLocal::int(local),
             LocalId::String(local) => ParamLocal::string(local),
+            LocalId::BitArray(local) => ParamLocal::bit_array(local),
             LocalId::Float(local) => ParamLocal::float(local),
             LocalId::Bool(local) => ParamLocal::bool(local),
             LocalId::Nil(local) => ParamLocal::nil(local),
@@ -308,6 +346,7 @@ impl IntoParamLocal for ParamLocal {
 mod tests {
     use super::{IntoParamLocal, IntoValueType};
     use crate::plan::{
+        BitArrayExpr, BitArrayFunctionExpr, BitArrayFunctionId, BitArrayFunctionReference,
         BoolExpr, Expr, FloatExpr, FunctionExpr, FunctionFunctionExpr, FunctionFunctionId,
         FunctionFunctionReference, FunctionType, IntExpr, IntFunctionExpr, IntFunctionFunctionId,
         IntFunctionId, IntFunctionReference, ListExpr, ListFunctionExpr, ListFunctionId,
@@ -315,8 +354,9 @@ mod tests {
         TupleFunctionId, TupleFunctionReference, ValueType,
     };
     use crate::planner::dsl::expression::{
-        Function, bool_, float, float_function_ref, function_function_ref, int, int_function_ref,
-        list, list_function_ref, nil, string, tuple, tuple_function_ref,
+        Function, bit_array, bit_array_function_ref, bool_, float, float_function_ref,
+        function_function_ref, int, int_function_ref, list, list_function_ref, nil, string, tuple,
+        tuple_function_ref,
     };
     use num_bigint::BigInt;
 
@@ -335,6 +375,10 @@ mod tests {
         assert_eq!(
             crate::plan::LocalId::String(crate::plan::StringLocalId(1)).into_value_type(),
             ValueType::String,
+        );
+        assert_eq!(
+            crate::plan::LocalId::BitArray(crate::plan::BitArrayLocalId(5)).into_value_type(),
+            ValueType::BitArray,
         );
         assert_eq!(
             crate::plan::LocalId::Float(crate::plan::FloatLocalId(2)).into_value_type(),
@@ -356,6 +400,10 @@ mod tests {
         assert_eq!(
             crate::plan::LocalId::String(crate::plan::StringLocalId(1)).into_param_local(),
             ParamLocal::string(crate::plan::StringLocalId(1)),
+        );
+        assert_eq!(
+            crate::plan::LocalId::BitArray(crate::plan::BitArrayLocalId(5)).into_param_local(),
+            ParamLocal::bit_array(crate::plan::BitArrayLocalId(5)),
         );
         assert_eq!(
             crate::plan::LocalId::Float(crate::plan::FloatLocalId(2)).into_param_local(),
@@ -381,6 +429,10 @@ mod tests {
             Expr::from(string("a")),
             Expr::string(StringExpr::value("a".into())),
         );
+        assert_eq!(
+            Expr::from(bit_array([])),
+            Expr::bit_array(BitArrayExpr::value(Vec::new())),
+        );
         assert_eq!(Expr::from(float(1.5)), Expr::float(FloatExpr::value(1.5)));
         assert_eq!(Expr::from(bool_(true)), Expr::bool(BoolExpr::value(true)));
         assert_eq!(Expr::from(nil()), Expr::nil(NilExpr::value()));
@@ -401,6 +453,27 @@ mod tests {
             Expr::function(FunctionExpr::int(IntFunctionExpr::reference(
                 IntFunctionReference::new(IntFunctionId(0), Vec::new()),
             ))),
+        );
+        assert_eq!(
+            Expr::from(bit_array_function_ref(0, Vec::<ParamLocal>::new())),
+            Expr::function(FunctionExpr::bit_array(BitArrayFunctionExpr::reference(
+                BitArrayFunctionReference::new(BitArrayFunctionId(0), Vec::new()),
+            ))),
+        );
+        assert_eq!(
+            FunctionExpr::from(bit_array_function_ref(0, Vec::<ParamLocal>::new())),
+            FunctionExpr::bit_array(BitArrayFunctionExpr::reference(
+                BitArrayFunctionReference::new(BitArrayFunctionId(0), Vec::new()),
+            )),
+        );
+        assert_eq!(
+            FunctionExpr::from(Function::from(bit_array_function_ref(
+                0,
+                Vec::<ParamLocal>::new(),
+            ))),
+            FunctionExpr::bit_array(BitArrayFunctionExpr::reference(
+                BitArrayFunctionReference::new(BitArrayFunctionId(0), Vec::new()),
+            )),
         );
         assert_eq!(
             Expr::from(list_function_ref(

@@ -1,3 +1,4 @@
+mod bit_array;
 mod bool;
 mod float;
 mod function;
@@ -16,18 +17,21 @@ use crate::runtime::{ExecutionError, PanicKind};
 use std::convert::Infallible;
 
 pub(super) use self::{
+    bit_array::eval_bit_array_expr,
     bool::eval_bool_expr,
     float::eval_float_expr,
     function::{
-        eval_bool_function_expr, eval_float_function_expr, eval_function_expr,
-        eval_function_function_expr, eval_int_function_expr, eval_list_function_expr,
-        eval_nil_function_expr, eval_string_function_expr, eval_tuple_function_expr,
+        eval_bit_array_function_expr, eval_bool_function_expr, eval_float_function_expr,
+        eval_function_expr, eval_function_function_expr, eval_int_function_expr,
+        eval_list_function_expr, eval_nil_function_expr, eval_string_function_expr,
+        eval_tuple_function_expr,
     },
     int::eval_int_expr,
     list::{
-        eval_bool_list_expr, eval_float_list_expr, eval_function_list_expr, eval_int_list_expr,
-        eval_list_expr, eval_list_list_expr, eval_nil_list_expr, eval_string_list_expr,
-        eval_tuple_list_expr, get_list_value, project_bool_list_expr, project_float_list_expr,
+        eval_bit_array_list_expr, eval_bool_list_expr, eval_float_list_expr,
+        eval_function_list_expr, eval_int_list_expr, eval_list_expr, eval_list_list_expr,
+        eval_nil_list_expr, eval_string_list_expr, eval_tuple_list_expr, get_list_value,
+        project_bit_array_list_expr, project_bool_list_expr, project_float_list_expr,
         project_function_list_expr, project_int_list_expr, project_nil_list_expr,
         project_string_list_expr, project_tuple_list_expr,
     },
@@ -47,6 +51,9 @@ pub(super) fn eval_expr(
             plan, state, frame, expression,
         )?)),
         ExprKind::String(expression) => Ok(EvaluatedValue::String(eval_string_expr(
+            plan, state, frame, expression,
+        )?)),
+        ExprKind::BitArray(expression) => Ok(EvaluatedValue::BitArray(eval_bit_array_expr(
             plan, state, frame, expression,
         )?)),
         ExprKind::Float(expression) => Ok(EvaluatedValue::Float(eval_float_expr(

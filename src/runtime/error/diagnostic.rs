@@ -82,6 +82,11 @@ fn render_value(value: &Value) -> String {
         Value::Int(value) => format!("Int({value})"),
         Value::Float(value) => format!("Float({value:?})"),
         Value::String(value) => format!("String({value:?})"),
+        Value::BitArray(value) => format!(
+            "BitArray(bytes={:?}, bit_len={})",
+            value.bytes(),
+            value.bit_len(),
+        ),
         Value::Bool(value) => format!("Bool({value})"),
         Value::Nil => "Nil".into(),
         Value::Tuple(values) => format!(
@@ -125,6 +130,7 @@ fn render_value_type(type_: &ValueType) -> String {
         ValueType::Int => "Int".into(),
         ValueType::Float => "Float".into(),
         ValueType::String => "String".into(),
+        ValueType::BitArray => "BitArray".into(),
         ValueType::Bool => "Bool".into(),
         ValueType::Nil => "Nil".into(),
         ValueType::Tuple(types) => format!(
@@ -147,8 +153,8 @@ mod tests {
         FunctionReturnFamily, IntFunctionId, IntLocalId, ParamLocal, RuntimeFunctionId,
     };
     use crate::plan::{FunctionType, PanicSite, SourceContext, SourceSpan, ValueType};
+    use crate::runtime::{BitArrayValue, FunctionValue, ListValue, Value};
     use crate::runtime::{ExecutionError, Panic, PanicDetails, PanicKind, PanicMessage};
-    use crate::runtime::{FunctionValue, ListValue, Value};
     use miette::Diagnostic;
 
     #[test]
@@ -276,6 +282,10 @@ mod tests {
             (Value::Int(1.into()), "Int(1)"),
             (Value::Float(1.5), "Float(1.5)"),
             (Value::String("one".into()), "String(\"one\")"),
+            (
+                Value::BitArray(BitArrayValue::from_bytes(vec![0xa5])),
+                "BitArray(bytes=[165], bit_len=8)",
+            ),
             (Value::Bool(true), "Bool(true)"),
             (Value::Nil, "Nil"),
             (
@@ -294,6 +304,7 @@ mod tests {
 
     #[test]
     fn render_value_type_preserves_compound_shapes() {
+        assert_eq!(render_value_type(&ValueType::BitArray), "BitArray");
         assert_eq!(
             render_value_type(&ValueType::Tuple(vec![ValueType::Int, ValueType::String])),
             "#(Int, String)",

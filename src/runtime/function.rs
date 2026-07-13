@@ -7,32 +7,35 @@ pub(in crate::runtime) use steps::execute_steps;
 
 use crate::plan::execution::ExecutionPlan;
 use crate::plan::execution::{
-    BoolFunctionFunctionId, BoolFunctionId, CallArg, FloatFunctionFunctionId, FloatFunctionId,
-    FunctionFunctionFunctionId, FunctionReturnFamily, IntFunctionFunctionId, IntFunctionId,
-    ListFunctionFunctionId, ListFunctionId, NilFunctionFunctionId, NilFunctionId,
-    RuntimeFunctionId, StringFunctionFunctionId, StringFunctionId, TupleFunctionFunctionId,
-    TupleFunctionId,
+    BitArrayFunctionFunctionId, BitArrayFunctionId, BoolFunctionFunctionId, BoolFunctionId,
+    CallArg, FloatFunctionFunctionId, FloatFunctionId, FunctionFunctionFunctionId,
+    FunctionReturnFamily, IntFunctionFunctionId, IntFunctionId, ListFunctionFunctionId,
+    ListFunctionId, NilFunctionFunctionId, NilFunctionId, RuntimeFunctionId,
+    StringFunctionFunctionId, StringFunctionId, TupleFunctionFunctionId, TupleFunctionId,
 };
 use crate::runtime::error::ExecutionResult;
 use crate::runtime::expression::{
-    eval_bool_function_expr, eval_float_function_expr, eval_function_function_expr,
-    eval_int_function_expr, eval_list_function_expr, eval_nil_function_expr,
-    eval_string_function_expr, eval_tuple_function_expr,
+    eval_bit_array_function_expr, eval_bool_function_expr, eval_float_function_expr,
+    eval_function_function_expr, eval_int_function_expr, eval_list_function_expr,
+    eval_nil_function_expr, eval_string_function_expr, eval_tuple_function_expr,
 };
 use crate::runtime::frame::Frame;
 use crate::runtime::state::{
-    BoolListValueId, FloatListValueId, FunctionListValueId, IntListValueId, ListListValueId,
-    ListValueId, NilListValueId, RuntimeState, StringListValueId, TupleListValueId,
+    BitArrayListValueId, BoolListValueId, FloatListValueId, FunctionListValueId, IntListValueId,
+    ListListValueId, ListValueId, NilListValueId, RuntimeState, StringListValueId,
+    TupleListValueId,
 };
 use crate::runtime::{
-    EvaluatedBoolFunction, EvaluatedFloatFunction, EvaluatedFunctionFunction,
-    EvaluatedFunctionValue, EvaluatedIntFunction, EvaluatedListFunction, EvaluatedNilFunction,
-    EvaluatedStringFunction, EvaluatedTupleFunction, EvaluatedValue, ExecutionError, Value,
+    EvaluatedBitArray, EvaluatedBitArrayFunction, EvaluatedBoolFunction, EvaluatedFloatFunction,
+    EvaluatedFunctionFunction, EvaluatedFunctionValue, EvaluatedIntFunction, EvaluatedListFunction,
+    EvaluatedNilFunction, EvaluatedStringFunction, EvaluatedTupleFunction, EvaluatedValue,
+    ExecutionError, Value,
 };
 use bind::{bind_arguments, bind_function_value_arguments};
 use ecow::EcoString;
 use num_bigint::BigInt;
 use return_body::{
+    run_bit_array_function_loop, run_bit_array_list_loop, run_bit_array_loop,
     run_bool_function_loop, run_bool_list_loop, run_bool_loop, run_float_function_loop,
     run_float_list_loop, run_float_loop, run_function_function_loop, run_function_list_loop,
     run_int_function_loop, run_int_list_loop, run_int_loop, run_list_function_loop,
@@ -57,6 +60,10 @@ pub(super) fn run_main(plan: &ExecutionPlan) -> ExecutionResult<Value> {
         RuntimeFunctionId::String(function) => {
             run_string_call(plan, &mut state, function, &[], &mut caller_frame)
                 .map(EvaluatedValue::String)
+        }
+        RuntimeFunctionId::BitArray(function) => {
+            run_bit_array_call(plan, &mut state, function, &[], &mut caller_frame)
+                .map(EvaluatedValue::BitArray)
         }
         RuntimeFunctionId::Bool(function) => {
             run_bool_call(plan, &mut state, function, &[], &mut caller_frame)
@@ -130,6 +137,23 @@ pub(super) fn run_string_call(
         plan.string_function(function).frame_layout(),
     )?;
     run_string_loop(plan, state, function, frame)
+}
+
+pub(super) fn run_bit_array_call(
+    plan: &ExecutionPlan,
+    state: &mut RuntimeState,
+    function: BitArrayFunctionId,
+    args: &[CallArg],
+    caller_frame: &mut Frame,
+) -> ExecutionResult<EvaluatedBitArray> {
+    let frame = bind_arguments(
+        plan,
+        state,
+        args,
+        caller_frame,
+        plan.bit_array_function(function).frame_layout(),
+    )?;
+    run_bit_array_loop(plan, state, function, frame)
 }
 
 pub(super) fn run_bool_call(
@@ -232,6 +256,23 @@ pub(in crate::runtime) fn run_string_list_call(
         plan.string_list_function(function).frame_layout(),
     )?;
     run_string_list_loop(plan, state, function, frame)
+}
+
+pub(in crate::runtime) fn run_bit_array_list_call(
+    plan: &ExecutionPlan,
+    state: &mut RuntimeState,
+    function: crate::plan::execution::BitArrayListFunctionId,
+    args: &[CallArg],
+    caller_frame: &mut Frame,
+) -> ExecutionResult<BitArrayListValueId> {
+    let frame = bind_arguments(
+        plan,
+        state,
+        args,
+        caller_frame,
+        plan.bit_array_list_function(function).frame_layout(),
+    )?;
+    run_bit_array_list_loop(plan, state, function, frame)
 }
 
 pub(in crate::runtime) fn run_float_list_call(
@@ -378,6 +419,26 @@ pub(in crate::runtime) fn run_string_function_call(
     run_string_loop(plan, state, function.runtime_id(), frame)
 }
 
+pub(in crate::runtime) fn run_bit_array_function_call(
+    plan: &ExecutionPlan,
+    state: &mut RuntimeState,
+    function: &crate::plan::execution::BitArrayFunctionExpr,
+    args: &[CallArg],
+    caller_frame: &mut Frame,
+) -> ExecutionResult<EvaluatedBitArray> {
+    let function = eval_bit_array_function_expr(plan, state, caller_frame, function)?;
+    let runtime_function = plan.bit_array_function(function.runtime_id());
+    let frame = bind_function_value_arguments(
+        plan,
+        state,
+        args,
+        caller_frame,
+        runtime_function.frame_layout(),
+        function.captures(),
+    )?;
+    run_bit_array_loop(plan, state, function.runtime_id(), frame)
+}
+
 pub(in crate::runtime) fn run_float_function_call(
     plan: &ExecutionPlan,
     state: &mut RuntimeState,
@@ -510,6 +571,31 @@ pub(in crate::runtime) fn run_string_list_function_call(
         function.captures(),
     )?;
     run_string_list_loop(plan, state, runtime_id, frame)
+}
+
+pub(in crate::runtime) fn run_bit_array_list_function_call(
+    plan: &ExecutionPlan,
+    state: &mut RuntimeState,
+    function: &crate::plan::execution::ListFunctionExpr,
+    args: &[CallArg],
+    caller_frame: &mut Frame,
+) -> ExecutionResult<BitArrayListValueId> {
+    let function = eval_list_function_expr(plan, state, caller_frame, function)?;
+    let ListFunctionId::BitArray(runtime_id) = function.runtime_id() else {
+        return Err(ExecutionError::FunctionReturnFamilyMismatch {
+            expected: FunctionReturnFamily::List,
+            actual: FunctionReturnFamily::List,
+        });
+    };
+    let frame = bind_function_value_arguments(
+        plan,
+        state,
+        args,
+        caller_frame,
+        plan.bit_array_list_function(runtime_id).frame_layout(),
+        function.captures(),
+    )?;
+    run_bit_array_list_loop(plan, state, runtime_id, frame)
 }
 
 pub(in crate::runtime) fn run_float_list_function_call(
@@ -669,6 +755,7 @@ fn list_function_frame_layout<'a>(
     match function {
         ListFunctionId::Int(id) => plan.int_list_function(*id).frame_layout(),
         ListFunctionId::String(id) => plan.string_list_function(*id).frame_layout(),
+        ListFunctionId::BitArray(id) => plan.bit_array_list_function(*id).frame_layout(),
         ListFunctionId::Float(id) => plan.float_list_function(*id).frame_layout(),
         ListFunctionId::Bool(id) => plan.bool_list_function(*id).frame_layout(),
         ListFunctionId::Nil(id) => plan.nil_list_function(*id).frame_layout(),
@@ -727,6 +814,23 @@ pub(in crate::runtime) fn run_string_function_returning_function_call(
         plan.string_function_function(function).frame_layout(),
     )?;
     run_string_function_loop(plan, state, function, frame)
+}
+
+pub(in crate::runtime) fn run_bit_array_function_returning_function_call(
+    plan: &ExecutionPlan,
+    state: &mut RuntimeState,
+    function: BitArrayFunctionFunctionId,
+    args: &[CallArg],
+    caller_frame: &mut Frame,
+) -> ExecutionResult<EvaluatedBitArrayFunction> {
+    let frame = bind_arguments(
+        plan,
+        state,
+        args,
+        caller_frame,
+        plan.bit_array_function_function(function).frame_layout(),
+    )?;
+    run_bit_array_function_loop(plan, state, function, frame)
 }
 
 pub(in crate::runtime) fn run_bool_function_returning_function_call(
@@ -898,6 +1002,34 @@ pub(in crate::runtime) fn run_string_function_function_call(
     run_string_function_loop(plan, state, function_id, frame)
 }
 
+pub(in crate::runtime) fn run_bit_array_function_function_call(
+    plan: &ExecutionPlan,
+    state: &mut RuntimeState,
+    function: &crate::plan::execution::FunctionFunctionExpr,
+    args: &[CallArg],
+    caller_frame: &mut Frame,
+) -> ExecutionResult<EvaluatedBitArrayFunction> {
+    let function = eval_function_function_expr(plan, state, caller_frame, function)?;
+    let runtime_id = function.runtime_id();
+    let function_id =
+        runtime_id
+            .bit_array()
+            .ok_or(ExecutionError::FunctionReturnFamilyMismatch {
+                expected: FunctionReturnFamily::BitArray,
+                actual: runtime_id.family(),
+            })?;
+    let runtime_function = plan.bit_array_function_function(function_id);
+    let frame = bind_function_value_arguments(
+        plan,
+        state,
+        args,
+        caller_frame,
+        runtime_function.frame_layout(),
+        function.captures(),
+    )?;
+    run_bit_array_function_loop(plan, state, function_id, frame)
+}
+
 pub(in crate::runtime) fn run_bool_function_function_call(
     plan: &ExecutionPlan,
     state: &mut RuntimeState,
@@ -1058,6 +1190,16 @@ fn run_function_returning_function_call(
             run_string_function_returning_function_call(plan, state, function, args, caller_frame)
                 .map(Into::into)
         }
+        crate::plan::execution::FunctionFunctionId::BitArray(function) => {
+            run_bit_array_function_returning_function_call(
+                plan,
+                state,
+                function,
+                args,
+                caller_frame,
+            )
+            .map(Into::into)
+        }
         crate::plan::execution::FunctionFunctionId::Bool(function) => {
             run_bool_function_returning_function_call(plan, state, function, args, caller_frame)
                 .map(Into::into)
@@ -1084,7 +1226,8 @@ fn run_function_returning_function_call(
 #[cfg(test)]
 mod tests {
     use super::{
-        run_bool_function_loop, run_bool_list_loop, run_float_function_loop, run_float_list_loop,
+        run_bit_array_function_loop, run_bit_array_list_loop, run_bool_function_loop,
+        run_bool_list_loop, run_float_function_loop, run_float_list_loop,
         run_function_function_loop, run_function_list_loop, run_int_function_loop,
         run_int_list_loop, run_list_function_loop, run_list_list_loop, run_nil_function_loop,
         run_nil_list_loop, run_string_function_loop, run_string_list_loop, run_tuple_function_loop,
@@ -1106,6 +1249,7 @@ mod tests {
         let callee_sources = [
             "pub fn main() -> Int { case True { True -> panic as \"callee\" False -> fn() { 0 } }() }",
             "pub fn main() -> String { case True { True -> panic as \"callee\" False -> fn() { \"\" } }() }",
+            "pub fn main() -> BitArray { case True { True -> panic as \"callee\" False -> fn() { <<>> } }() }",
             "pub fn main() -> Float { case True { True -> panic as \"callee\" False -> fn() { 0.0 } }() }",
             "pub fn main() -> Bool { case True { True -> panic as \"callee\" False -> fn() { False } }() }",
             "pub fn main() -> Nil { case True { True -> panic as \"callee\" False -> fn() { Nil } }() }",
@@ -1114,6 +1258,7 @@ mod tests {
         let argument_sources = [
             "fn callee(value: Int) -> Int { value } pub fn main() { let function = callee function(panic as \"argument\") }",
             "fn callee(value: Int) -> String { \"value\" } pub fn main() { let function = callee function(panic as \"argument\") }",
+            "fn callee(value: Int) -> BitArray { <<value>> } pub fn main() { let function = callee function(panic as \"argument\") }",
             "fn callee(value: Int) -> Float { 1.0 } pub fn main() { let function = callee function(panic as \"argument\") }",
             "fn callee(value: Int) -> Bool { True } pub fn main() { let function = callee function(panic as \"argument\") }",
             "fn callee(value: Int) -> Nil { Nil } pub fn main() { let function = callee function(panic as \"argument\") }",
@@ -1139,6 +1284,7 @@ mod tests {
         let sources = [
             "pub fn main() -> List(Int) { case True { True -> panic as \"callee\" False -> fn() { [] } }() }",
             "pub fn main() -> List(String) { case True { True -> panic as \"callee\" False -> fn() { [] } }() }",
+            "pub fn main() -> List(BitArray) { case True { True -> panic as \"callee\" False -> fn() { [] } }() }",
             "pub fn main() -> List(Float) { case True { True -> panic as \"callee\" False -> fn() { [] } }() }",
             "pub fn main() -> List(Bool) { case True { True -> panic as \"callee\" False -> fn() { [] } }() }",
             "pub fn main() -> List(Nil) { case True { True -> panic as \"callee\" False -> fn() { [] } }() }",
@@ -1160,6 +1306,7 @@ mod tests {
         let callee_sources = [
             "pub fn main() -> fn() -> Int { case True { True -> panic as \"callee\" False -> fn() { fn() { 0 } } }() }",
             "pub fn main() -> fn() -> String { case True { True -> panic as \"callee\" False -> fn() { fn() { \"\" } } }() }",
+            "pub fn main() -> fn() -> BitArray { case True { True -> panic as \"callee\" False -> fn() { fn() { <<>> } } }() }",
             "pub fn main() -> fn() -> Float { case True { True -> panic as \"callee\" False -> fn() { fn() { 0.0 } } }() }",
             "pub fn main() -> fn() -> Bool { case True { True -> panic as \"callee\" False -> fn() { fn() { False } } }() }",
             "pub fn main() -> fn() -> Nil { case True { True -> panic as \"callee\" False -> fn() { fn() { Nil } } }() }",
@@ -1170,6 +1317,7 @@ mod tests {
         let argument_sources = [
             "fn callee(value: Int) -> fn() -> Int { fn() { value } } pub fn main() { let function = callee function(panic as \"argument\") }",
             "fn callee(value: Int) -> fn() -> String { fn() { \"value\" } } pub fn main() { let function = callee function(panic as \"argument\") }",
+            "fn callee(value: Int) -> fn() -> BitArray { fn() { <<value>> } } pub fn main() { let function = callee function(panic as \"argument\") }",
             "fn callee(value: Int) -> fn() -> Float { fn() { 1.0 } } pub fn main() { let function = callee function(panic as \"argument\") }",
             "fn callee(value: Int) -> fn() -> Bool { fn() { True } } pub fn main() { let function = callee function(panic as \"argument\") }",
             "fn callee(value: Int) -> fn() -> Nil { fn() { Nil } } pub fn main() { let function = callee function(panic as \"argument\") }",
@@ -1197,12 +1345,14 @@ mod tests {
         let sources = [
             "fn callee(value: Int) -> Int { value } pub fn main() { let _ = callee(panic) 0 }",
             "fn callee(value: Int) -> String { \"value\" } pub fn main() { let _ = callee(panic) 0 }",
+            "fn callee(value: Int) -> BitArray { <<value>> } pub fn main() { let _ = callee(panic) 0 }",
             "fn callee(value: Int) -> Float { 1.0 } pub fn main() { let _ = callee(panic) 0 }",
             "fn callee(value: Int) -> Bool { True } pub fn main() { let _ = callee(panic) 0 }",
             "fn callee(value: Int) -> Nil { Nil } pub fn main() { let _ = callee(panic) 0 }",
             "fn callee(value: Int) -> #(Int) { #(value) } pub fn main() { let _ = callee(panic) 0 }",
             "fn callee(value: Int) -> List(Int) { [] } pub fn main() { let _ = callee(panic) 0 }",
             "fn callee(value: Int) -> List(String) { [] } pub fn main() { let _ = callee(panic) 0 }",
+            "fn callee(value: Int) -> List(BitArray) { [] } pub fn main() { let _ = callee(panic) 0 }",
             "fn callee(value: Int) -> List(Float) { [] } pub fn main() { let _ = callee(panic) 0 }",
             "fn callee(value: Int) -> List(Bool) { [] } pub fn main() { let _ = callee(panic) 0 }",
             "fn callee(value: Int) -> List(Nil) { [] } pub fn main() { let _ = callee(panic) 0 }",
@@ -1256,6 +1406,7 @@ mod tests {
         let sources = [
             "fn callee(value: Int) -> List(Int) { [] } pub fn main() { let function = callee function(panic) }",
             "fn callee(value: Int) -> List(String) { [] } pub fn main() { let function = callee function(panic) }",
+            "fn callee(value: Int) -> List(BitArray) { [] } pub fn main() { let function = callee function(panic) }",
             "fn callee(value: Int) -> List(Float) { [] } pub fn main() { let function = callee function(panic) }",
             "fn callee(value: Int) -> List(Bool) { [] } pub fn main() { let function = callee function(panic) }",
             "fn callee(value: Int) -> List(Nil) { [] } pub fn main() { let function = callee function(panic) }",
@@ -1278,6 +1429,7 @@ mod tests {
             r#"
 fn ints(function: fn() -> List(Int)) { function() }
 fn strings(function: fn() -> List(String)) { function() }
+fn bit_arrays(function: fn() -> List(BitArray)) { function() }
 fn floats(function: fn() -> List(Float)) { function() }
 fn bools(function: fn() -> List(Bool)) { function() }
 fn nils(function: fn() -> List(Nil)) { function() }
@@ -1336,6 +1488,19 @@ pub fn main() { Nil }
         );
         assert_eq!(
             run_string_list_loop(&plan, &mut state, plan.string_list_function_id(0), frame,)
+                .expect_err("direct-mutated list function family must fail"),
+            expected,
+        );
+
+        let function = plan.bit_array_list_function(plan.bit_array_list_function_id(0));
+        let mut state = crate::runtime::RuntimeState::new();
+        let mut frame = Frame::new(function.frame_layout(), &mut state);
+        frame.set_list_function(
+            function.frame_layout().list_functions()[0].clone(),
+            wrong_int.clone(),
+        );
+        assert_eq!(
+            run_bit_array_list_loop(&plan, &mut state, plan.bit_array_list_function_id(0), frame,)
                 .expect_err("direct-mutated list function family must fail"),
             expected,
         );
@@ -1424,6 +1589,7 @@ pub fn main() { Nil }
         let sources = [
             "fn callee(value: Int) -> fn() -> Int { panic } pub fn main() { let _ = callee(panic) 0 }",
             "fn callee(value: Int) -> fn() -> String { panic } pub fn main() { let _ = callee(panic) 0 }",
+            "fn callee(value: Int) -> fn() -> BitArray { panic } pub fn main() { let _ = callee(panic) 0 }",
             "fn callee(value: Int) -> fn() -> Float { panic } pub fn main() { let _ = callee(panic) 0 }",
             "fn callee(value: Int) -> fn() -> Bool { panic } pub fn main() { let _ = callee(panic) 0 }",
             "fn callee(value: Int) -> fn() -> Nil { panic } pub fn main() { let _ = callee(panic) 0 }",
@@ -1446,6 +1612,7 @@ pub fn main() { Nil }
             r#"
 fn int_function(provider: fn() -> fn() -> Int) { provider() }
 fn string_function(provider: fn() -> fn() -> String) { provider() }
+fn bit_array_function(provider: fn() -> fn() -> BitArray) { provider() }
 fn float_function(provider: fn() -> fn() -> Float) { provider() }
 fn bool_function(provider: fn() -> fn() -> Bool) { provider() }
 fn nil_function(provider: fn() -> fn() -> Nil) { provider() }
@@ -1498,6 +1665,24 @@ pub fn main() { list_function }
             run_string_function_loop(&plan, &mut state, StringFunctionFunctionId(0), frame),
             Err(ExecutionError::FunctionReturnFamilyMismatch {
                 expected: FunctionReturnFamily::String,
+                actual: FunctionReturnFamily::Int,
+            }),
+        );
+
+        let function =
+            plan.bit_array_function_function(crate::plan::execution::BitArrayFunctionFunctionId(0));
+        let mut state = crate::runtime::RuntimeState::new();
+        let mut frame = Frame::new(function.frame_layout(), &mut state);
+        frame.set_function_function(FunctionFunctionLocalId(0), wrong_int.clone());
+        assert_eq!(
+            run_bit_array_function_loop(
+                &plan,
+                &mut state,
+                crate::plan::execution::BitArrayFunctionFunctionId(0),
+                frame,
+            ),
+            Err(ExecutionError::FunctionReturnFamilyMismatch {
+                expected: FunctionReturnFamily::BitArray,
                 actual: FunctionReturnFamily::Int,
             }),
         );
@@ -1585,6 +1770,9 @@ fn int_function(values: List(fn() -> Int)) {
 fn string_function(values: List(fn() -> String)) {
   case values { [value, ..] -> value _ -> panic }
 }
+fn bit_array_function(values: List(fn() -> BitArray)) {
+  case values { [value, ..] -> value _ -> panic }
+}
 fn float_function(values: List(fn() -> Float)) {
   case values { [value, ..] -> value _ -> panic }
 }
@@ -1657,6 +1845,28 @@ pub fn main() { list_function }
             run_string_function_loop(&plan, &mut state, StringFunctionFunctionId(0), frame),
             Err(ExecutionError::FunctionReturnFamilyMismatch {
                 expected: FunctionReturnFamily::String,
+                actual: FunctionReturnFamily::Int,
+            }),
+        );
+
+        let function =
+            plan.bit_array_function_function(crate::plan::execution::BitArrayFunctionFunctionId(0));
+        let mut state = crate::runtime::RuntimeState::new();
+        let mut frame = Frame::new(function.frame_layout(), &mut state);
+        let value = state.function(
+            function.frame_layout().function_lists()[0],
+            vec![wrong_int.clone().into()],
+        );
+        frame.set_function_list(FunctionListLocalId(0), value);
+        assert_eq!(
+            run_bit_array_function_loop(
+                &plan,
+                &mut state,
+                crate::plan::execution::BitArrayFunctionFunctionId(0),
+                frame,
+            ),
+            Err(ExecutionError::FunctionReturnFamilyMismatch {
+                expected: FunctionReturnFamily::BitArray,
                 actual: FunctionReturnFamily::Int,
             }),
         );

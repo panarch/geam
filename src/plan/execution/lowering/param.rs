@@ -17,6 +17,9 @@ pub(super) fn param_local(
         module::ParamLocal::String(local) => {
             execution::ParamLocal::String(execution::StringLocalId(local.0))
         }
+        module::ParamLocal::BitArray(local) => {
+            execution::ParamLocal::BitArray(execution::BitArrayLocalId(local.0))
+        }
         module::ParamLocal::Bool(local) => {
             execution::ParamLocal::Bool(execution::BoolLocalId(local.0))
         }
@@ -44,6 +47,12 @@ pub(super) fn param_local(
         module::ParamLocal::StringFunction { local, type_ } => {
             execution::ParamLocal::StringFunction {
                 local: execution::StringFunctionLocalId(local.0),
+                type_: context.function_type(type_),
+            }
+        }
+        module::ParamLocal::BitArrayFunction { local, type_ } => {
+            execution::ParamLocal::BitArrayFunction {
+                local: execution::BitArrayFunctionLocalId(local.0),
                 type_: context.function_type(type_),
             }
         }

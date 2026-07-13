@@ -1,8 +1,8 @@
 use super::{
-    BoolFunctionLocalId, BoolLocalId, FloatFunctionLocalId, FloatLocalId, FunctionFunctionLocalId,
-    FunctionType, IntFunctionLocalId, IntLocalId, ListFunctionLocal, ListLocal, NilFunctionLocalId,
-    NilLocalId, StringFunctionLocalId, StringLocalId, TupleFunctionLocalId, TupleLocalId,
-    ValueType,
+    BitArrayFunctionLocalId, BitArrayLocalId, BoolFunctionLocalId, BoolLocalId,
+    FloatFunctionLocalId, FloatLocalId, FunctionFunctionLocalId, FunctionType, IntFunctionLocalId,
+    IntLocalId, ListFunctionLocal, ListLocal, NilFunctionLocalId, NilLocalId,
+    StringFunctionLocalId, StringLocalId, TupleFunctionLocalId, TupleLocalId, ValueType,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -10,6 +10,7 @@ pub(crate) enum ParamLocal {
     Int(IntLocalId),
     Float(FloatLocalId),
     String(StringLocalId),
+    BitArray(BitArrayLocalId),
     Bool(BoolLocalId),
     Nil(NilLocalId),
     Tuple {
@@ -27,6 +28,10 @@ pub(crate) enum ParamLocal {
     },
     StringFunction {
         local: StringFunctionLocalId,
+        type_: FunctionType,
+    },
+    BitArrayFunction {
+        local: BitArrayFunctionLocalId,
         type_: FunctionType,
     },
     BoolFunction {
@@ -54,6 +59,7 @@ impl ParamLocal {
             Self::Int(_) => ValueType::Int,
             Self::Float(_) => ValueType::Float,
             Self::String(_) => ValueType::String,
+            Self::BitArray(_) => ValueType::BitArray,
             Self::Bool(_) => ValueType::Bool,
             Self::Nil(_) => ValueType::Nil,
             Self::Tuple { type_, .. } => ValueType::Tuple(type_.clone()),
@@ -61,6 +67,7 @@ impl ParamLocal {
             Self::IntFunction { type_, .. }
             | Self::FloatFunction { type_, .. }
             | Self::StringFunction { type_, .. }
+            | Self::BitArrayFunction { type_, .. }
             | Self::BoolFunction { type_, .. }
             | Self::NilFunction { type_, .. }
             | Self::TupleFunction { type_, .. }
