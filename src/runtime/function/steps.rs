@@ -114,6 +114,7 @@ pub(in crate::runtime) fn execute_steps(
                 if match_assert_pattern(
                     plan,
                     state,
+                    frame,
                     pattern,
                     &EvaluatedValue::List(value.clone()),
                     &mut bindings,
@@ -132,6 +133,45 @@ pub(in crate::runtime) fn execute_steps(
                             plan,
                             state,
                             EvaluatedValue::List(value),
+                        ),
+                        *pattern_span,
+                    ));
+                }
+                for binding in bindings {
+                    frame_set_binding(frame, binding);
+                }
+            }
+            StepKind::AssertBitArray {
+                local,
+                pattern,
+                message,
+                site,
+                pattern_span,
+            } => {
+                let value = frame.get_bit_array(*local);
+                let mut bindings = Vec::new();
+                if match_assert_pattern(
+                    plan,
+                    state,
+                    frame,
+                    pattern,
+                    &EvaluatedValue::BitArray(value.clone()),
+                    &mut bindings,
+                )
+                .is_none()
+                {
+                    let message = match message {
+                        Some(message) => Some(eval_string_expr(plan, state, frame, message)?),
+                        None => None,
+                    };
+                    return Err(ExecutionError::let_assert_panic(
+                        plan.source_context(),
+                        message,
+                        site.clone(),
+                        crate::runtime::materialize::value(
+                            plan,
+                            state,
+                            EvaluatedValue::BitArray(value),
                         ),
                         *pattern_span,
                     ));
@@ -192,6 +232,7 @@ enum PendingBinding {
 fn match_list_assert_pattern(
     plan: &ExecutionPlan,
     state: &mut RuntimeState,
+    frame: &mut Frame,
     pattern: &ListAssertPattern,
     value: &ListValueId,
 ) -> Option<Vec<PendingBinding>> {
@@ -201,7 +242,8 @@ fn match_list_assert_pattern(
             return None;
         }
 
-        let mut bindings = match_prefix_assert_patterns(plan, state, pattern.elements(), &values)?;
+        let mut bindings =
+            match_prefix_assert_patterns(plan, state, frame, pattern.elements(), &values)?;
         if let ListAssertTail::Bind(binding) = tail {
             bindings.push(PendingBinding::List(pending_list_binding(
                 binding.local().clone(),
@@ -214,19 +256,20 @@ fn match_list_assert_pattern(
             return None;
         }
 
-        match_prefix_assert_patterns(plan, state, pattern.elements(), &values)
+        match_prefix_assert_patterns(plan, state, frame, pattern.elements(), &values)
     }
 }
 
 fn match_prefix_assert_patterns(
     plan: &ExecutionPlan,
     state: &mut RuntimeState,
+    frame: &mut Frame,
     patterns: &[AssertPattern],
     values: &[EvaluatedValue],
 ) -> Option<Vec<PendingBinding>> {
     let mut bindings = Vec::new();
     for (pattern, value) in patterns.iter().zip(values) {
-        match_assert_pattern(plan, state, pattern, value, &mut bindings)?;
+        match_assert_pattern(plan, state, frame, pattern, value, &mut bindings)?;
     }
     Some(bindings)
 }
@@ -234,6 +277,7 @@ fn match_prefix_assert_patterns(
 fn match_assert_pattern(
     plan: &ExecutionPlan,
     state: &mut RuntimeState,
+    frame: &mut Frame,
     pattern: &AssertPattern,
     value: &EvaluatedValue,
     bindings: &mut Vec<PendingBinding>,
@@ -252,7 +296,7 @@ fn match_assert_pattern(
                 return None;
             }
             for (pattern, value) in patterns.iter().zip(values) {
-                match_assert_pattern(plan, state, pattern, value, bindings)?;
+                match_assert_pattern(plan, state, frame, pattern, value, bindings)?;
             }
             Some(())
         }
@@ -260,11 +304,23 @@ fn match_assert_pattern(
             let EvaluatedValue::List(value) = value else {
                 return None;
             };
-            bindings.extend(match_list_assert_pattern(plan, state, pattern, value)?);
+            bindings.extend(match_list_assert_pattern(
+                plan, state, frame, pattern, value,
+            )?);
             Some(())
         }
+        AssertPattern::BitArray(pattern) => {
+            let EvaluatedValue::BitArray(value) = value else {
+                return None;
+            };
+            if crate::runtime::pattern::match_bit_array_pattern(frame, value, pattern) {
+                Some(())
+            } else {
+                None
+            }
+        }
         AssertPattern::Alias { pattern, binding } => {
-            match_assert_pattern(plan, state, pattern, value, bindings)?;
+            match_assert_pattern(plan, state, frame, pattern, value, bindings)?;
             bindings.push(pending_binding(plan, binding, value)?);
             Some(())
         }
@@ -486,6 +542,7 @@ mod tests {
         AssertPattern, FunctionFunctionId, IntFunctionFunctionId, IntFunctionId, IntListLocalId,
         IntLocalId, ListAssertPattern, StepKind,
     };
+    use crate::runtime::frame::Frame;
     use crate::runtime::state::{IntListValueId, ListValueId};
     use crate::runtime::{
         EvaluatedFunctionFunction, EvaluatedFunctionValue, EvaluatedListCapture, EvaluatedValue,
@@ -545,6 +602,22 @@ mod tests {
                 ),
                 crate::runtime::Value::Bool(true),
             ),
+            (
+                include_str!(
+                    "../../../tests/fixtures/execution/bindings/let_assert_bit_array_patterns.gleam"
+                ),
+                crate::runtime::Value::Tuple(vec![
+                    crate::runtime::Value::Int(16.into()),
+                    crate::runtime::Value::BitArray(crate::BitArrayValue::from_bytes(vec![1, 2])),
+                    crate::runtime::Value::BitArray(crate::BitArrayValue::from_bytes(vec![3])),
+                    crate::runtime::Value::BitArray(crate::BitArrayValue::from_bytes(vec![4])),
+                    crate::runtime::Value::BitArray(crate::BitArrayValue::from_bytes(vec![
+                        16, 1, 2, 3, 4,
+                    ])),
+                    crate::runtime::Value::Int(1.into()),
+                    crate::runtime::Value::BitArray(crate::BitArrayValue::from_bytes(vec![2])),
+                ]),
+            ),
         ];
 
         for (source, expected) in cases {
@@ -595,6 +668,10 @@ pub fn main() {{
             (
                 "pub fn main() { let values: List(Int) = [] let assert [first] = values as \"missing\" first }",
                 "let_assert: missing",
+            ),
+            (
+                "pub fn main() { let assert <<1>> = <<2>> 0 }",
+                "let_assert: Pattern match failed, no pattern matched the value.",
             ),
             (
                 "pub fn main() { assert False Nil }",
@@ -664,7 +741,7 @@ pub fn main() {{
 
     #[test]
     fn let_assert_message_errors_propagate_after_mismatch() {
-        let source = r#"
+        let list_source = r#"
 fn fail_message() -> String { panic as "message" }
 pub fn main() {
   let values: List(Int) = []
@@ -674,7 +751,20 @@ pub fn main() {
 "#;
 
         assert_eq!(
-            crate::runtime::run_src_error(source).to_string(),
+            crate::runtime::run_src_error(list_source).to_string(),
+            "panic: message",
+        );
+        assert_eq!(
+            crate::runtime::run_src_error(
+                r#"
+fn fail_message() -> String { panic as "message" }
+pub fn main() {
+  let assert <<1>> = <<2>> as fail_message()
+  1
+}
+"#,
+            )
+            .to_string(),
             "panic: message",
         );
     }
@@ -711,11 +801,13 @@ pub fn main() {
             })
             .expect("source should lower an assert-list step");
         let tuple_pattern = &expect_list_assert_pattern(pattern).elements()[0];
+        let mut frame = Frame::new(function.frame_layout(), &mut state);
         let mut bindings = Vec::new();
         assert_eq!(
             match_assert_pattern(
                 &tuple_plan,
                 &mut state,
+                &mut frame,
                 tuple_pattern,
                 &EvaluatedValue::Int(1.into()),
                 &mut bindings
@@ -727,8 +819,41 @@ pub fn main() {
             match_assert_pattern(
                 &tuple_plan,
                 &mut state,
+                &mut frame,
                 tuple_pattern,
                 &EvaluatedValue::Tuple(vec![EvaluatedValue::Int(1.into())]),
+                &mut bindings,
+            ),
+            None,
+        );
+        assert_eq!(bindings, Vec::new());
+
+        let bit_array_plan = crate::runtime::plan_src(
+            r#"
+pub fn main() {
+  let assert [<<1>>] = [<<1>>]
+  1
+}
+"#,
+        );
+        let function = bit_array_plan.int_function(IntFunctionId(0));
+        let pattern = function
+            .steps()
+            .iter()
+            .find_map(|step| match step.kind() {
+                StepKind::AssertList { pattern, .. } => Some(pattern),
+                _ => None,
+            })
+            .expect("source should lower an assert-list step");
+        let bit_array_pattern = &expect_list_assert_pattern(pattern).elements()[0];
+        let mut frame = Frame::new(function.frame_layout(), &mut state);
+        assert_eq!(
+            match_assert_pattern(
+                &bit_array_plan,
+                &mut state,
+                &mut frame,
+                bit_array_pattern,
+                &EvaluatedValue::Int(1.into()),
                 &mut bindings,
             ),
             None,
@@ -753,10 +878,12 @@ pub fn main() {
             })
             .expect("source should lower an assert-list step");
         let nested_pattern = &expect_list_assert_pattern(pattern).elements()[0];
+        let mut frame = Frame::new(function.frame_layout(), &mut state);
         assert_eq!(
             match_assert_pattern(
                 &list_plan,
                 &mut state,
+                &mut frame,
                 nested_pattern,
                 &EvaluatedValue::Int(1.into()),
                 &mut bindings,
@@ -783,10 +910,12 @@ pub fn main() {
             })
             .expect("source should lower an assert-list step");
         let binding = &expect_list_assert_pattern(pattern).elements()[0];
+        let mut frame = Frame::new(function.frame_layout(), &mut state);
         assert_eq!(
             match_assert_pattern(
                 &binding_plan,
                 &mut state,
+                &mut frame,
                 binding,
                 &EvaluatedValue::String("wrong".into()),
                 &mut bindings,
@@ -807,8 +936,8 @@ pub fn main() {
 }
 "#,
         );
-        let function = plan.int_list_function(plan.int_list_function_id(0));
-        let pattern = function
+        let list_function = plan.int_list_function(plan.int_list_function_id(0));
+        let pattern = list_function
             .steps()
             .iter()
             .find_map(|step| match step.kind() {
@@ -826,8 +955,8 @@ pub fn main() {
 }
 "#,
         );
-        let function = ignored_plan.int_function(IntFunctionId(0));
-        let ignored_tail = function
+        let ignored_function = ignored_plan.int_function(IntFunctionId(0));
+        let ignored_tail = ignored_function
             .steps()
             .iter()
             .find_map(|step| match step.kind() {
@@ -840,16 +969,30 @@ pub fn main() {
             plan.int_list_function_id(0).type_id(),
             vec![1.into(), 2.into(), 3.into()],
         );
+        let mut frame = Frame::new(list_function.frame_layout(), &mut state);
 
-        let bindings = match_list_assert_pattern(&plan, &mut state, pattern, &value.clone().into())
-            .expect("list pattern should match");
+        let bindings = match_list_assert_pattern(
+            &plan,
+            &mut state,
+            &mut frame,
+            pattern,
+            &value.clone().into(),
+        )
+        .expect("list pattern should match");
         assert_eq!(bindings[0], PendingBinding::Int(IntLocalId(0), 1.into()));
         assert_eq!(int_list_binding(&bindings[0]), None);
         let (local, tail) = int_list_binding(&bindings[1]).expect("tail must bind List(Int)");
         assert_eq!(local, IntListLocalId(1));
         assert_eq!(state.int_values(tail), &[2.into(), 3.into()]);
+        let mut ignored_frame = Frame::new(ignored_function.frame_layout(), &mut state);
         assert_eq!(
-            match_list_assert_pattern(&ignored_plan, &mut state, ignored_tail, &value.into(),),
+            match_list_assert_pattern(
+                &ignored_plan,
+                &mut state,
+                &mut ignored_frame,
+                ignored_tail,
+                &value.into(),
+            ),
             Some(vec![PendingBinding::Int(IntLocalId(0), 1.into())]),
         );
     }
@@ -875,11 +1018,13 @@ pub fn main() {
             })
             .expect("source should lower an assert-list step");
         let tuple_pattern = &expect_list_assert_pattern(pattern).elements()[0];
+        let mut frame = Frame::new(function.frame_layout(), &mut state);
         let mut bindings = Vec::new();
         assert_eq!(
             match_assert_pattern(
                 &nested_plan,
                 &mut state,
+                &mut frame,
                 tuple_pattern,
                 &EvaluatedValue::Tuple(vec![
                     EvaluatedValue::Int(1.into()),
@@ -909,11 +1054,13 @@ pub fn main() {
             })
             .expect("source should lower an assert-list step");
         let alias_pattern = &expect_list_assert_pattern(pattern).elements()[0];
+        let mut frame = Frame::new(function.frame_layout(), &mut state);
         bindings.clear();
         assert_eq!(
             match_assert_pattern(
                 &alias_plan,
                 &mut state,
+                &mut frame,
                 alias_pattern,
                 &EvaluatedValue::Int(1.into()),
                 &mut bindings,
@@ -941,6 +1088,7 @@ pub fn main() {
             })
             .expect("source should lower an assert-list step");
         let alias_pattern = &expect_list_assert_pattern(pattern).elements()[0];
+        let mut frame = Frame::new(function.frame_layout(), &mut state);
         let wrong_kind = EvaluatedFunctionValue::from(EvaluatedFunctionFunction::new(
             FunctionFunctionId::Int(IntFunctionFunctionId(0)),
             Vec::new(),
@@ -954,6 +1102,7 @@ pub fn main() {
             match_assert_pattern(
                 &function_alias_plan,
                 &mut state,
+                &mut frame,
                 alias_pattern,
                 &EvaluatedValue::Function(wrong_kind),
                 &mut bindings,
@@ -992,11 +1141,13 @@ pub fn main() {
             plan.string_list_function_id(0).type_id(),
             vec!["wrong".into()],
         );
+        let mut frame = Frame::new(function.frame_layout(), &mut state);
 
         assert_eq!(
             match_list_assert_pattern(
                 &plan,
                 &mut state,
+                &mut frame,
                 patterns[0],
                 &ListValueId::String(wrong_list.clone()),
             ),
@@ -1008,6 +1159,7 @@ pub fn main() {
             match_assert_pattern(
                 &plan,
                 &mut state,
+                &mut frame,
                 &patterns[1].elements()[0],
                 &EvaluatedValue::List(ListValueId::String(wrong_list)),
                 &mut bindings,
@@ -1030,6 +1182,7 @@ pub fn main() {
             match_assert_pattern(
                 &plan,
                 &mut state,
+                &mut frame,
                 &patterns[2].elements()[0],
                 &EvaluatedValue::Function(wrong_function),
                 &mut bindings,

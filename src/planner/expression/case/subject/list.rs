@@ -1,7 +1,7 @@
 use super::super::super::plan_expr_with_expected_source_stop_type;
 use super::super::super::{list_index_expr, tuple_index_expr};
 use super::super::invalid_case_shape;
-use super::{CaseClause, OrderedCaseClauseInput, case_return_type};
+use super::{CaseClause, OrderedCaseCandidateInput, OrderedCasePattern, case_return_type};
 use crate::plan::{
     BoolExpr, Expr, ExprKind, FloatExpr, IntExpr, ListExpr, ListLocal, Step, StringExpr, ValueType,
 };
@@ -33,21 +33,28 @@ pub(super) fn plan(
     let mut ordered_clauses = Vec::new();
     for clause in clauses {
         for pattern in clause.patterns() {
-            let pattern =
-                plan_list_case_pattern(pattern, subject.clone(), subject_value_type.clone())?;
-            let is_total = pattern.is_total() && clause.guard.is_none();
-            let match_condition = pattern.match_condition();
-            ordered_clauses.push(super::plan_ordered_case_clause(
-                OrderedCaseClauseInput {
+            ordered_clauses.push(super::plan_ordered_case_candidate(
+                OrderedCaseCandidateInput {
                     case_type: type_.as_ref(),
                     return_type: &return_type,
                     then: clause.then.clone(),
-                    branch_bindings: pattern.branch_bindings,
                     guard: clause.guard.clone(),
-                    match_condition,
-                    is_total,
                 },
                 context,
+                |context| {
+                    let pattern = plan_list_case_pattern_with_context(
+                        pattern,
+                        subject.clone(),
+                        subject_value_type.clone(),
+                        context,
+                    )?;
+                    let is_total = pattern.is_total();
+                    Ok(OrderedCasePattern {
+                        match_condition: pattern.match_condition(),
+                        branch_bindings: pattern.branch_bindings,
+                        is_total,
+                    })
+                },
             )?);
         }
     }
@@ -128,12 +135,35 @@ impl ListCasePattern {
     pub(super) fn into_parts(self) -> (Option<BoolExpr>, Vec<(EcoString, Expr)>, bool) {
         (self.match_condition, self.branch_bindings, self.is_total)
     }
+
+    fn from_bit_array_pattern(pattern: super::bit_array::BitArrayCasePattern) -> Self {
+        let (match_condition, branch_bindings, is_total) = pattern.into_parts();
+        Self {
+            match_condition: Some(match_condition),
+            branch_bindings,
+            is_total,
+        }
+    }
 }
 
+#[cfg(test)]
 pub(super) fn plan_list_case_pattern(
     pattern: Pattern<Arc<Type>>,
     value: Expr,
     subject_type: ValueType,
+) -> Result<ListCasePattern, PlanError> {
+    let module_name = EcoString::from("main");
+    let functions = std::collections::HashMap::new();
+    let mut anonymous = crate::planner::context::AnonymousFunctions::default();
+    let mut context = PlanContext::new(&module_name, &functions, &mut anonymous);
+    plan_list_case_pattern_with_context(pattern, value, subject_type, &mut context)
+}
+
+pub(super) fn plan_list_case_pattern_with_context(
+    pattern: Pattern<Arc<Type>>,
+    value: Expr,
+    subject_type: ValueType,
+    context: &mut PlanContext<'_>,
 ) -> Result<ListCasePattern, PlanError> {
     match pattern {
         Pattern::Variable { name, type_, .. } if matches_type(type_.as_ref(), &subject_type) => {
@@ -149,7 +179,12 @@ pub(super) fn plan_list_case_pattern(
             InvalidCaseShapeReason::PatternTypeMismatch,
         )),
         Pattern::Assign { name, pattern, .. } => {
-            let pattern = plan_list_case_pattern(*pattern, value.clone(), subject_type)?;
+            let pattern = plan_list_case_pattern_with_context(
+                *pattern,
+                value.clone(),
+                subject_type,
+                context,
+            )?;
             Ok(pattern.with_binding(name, value))
         }
         Pattern::List {
@@ -163,8 +198,11 @@ pub(super) fn plan_list_case_pattern(
             type_,
             value,
             subject_type,
+            context,
         ),
-        Pattern::Tuple { elements, .. } => plan_tuple_case_pattern(elements, value, subject_type),
+        Pattern::Tuple { elements, .. } => {
+            plan_tuple_case_pattern(elements, value, subject_type, context)
+        }
         Pattern::Int { int_value, .. } if subject_type == ValueType::Int => Ok(
             ListCasePattern::literal(value, Expr::int(IntExpr::value(int_value))),
         ),
@@ -222,9 +260,18 @@ pub(super) fn plan_list_case_pattern(
             right_side_assignment,
         ),
         Pattern::Invalid { .. } => Err(invalid_case_shape(InvalidCaseShapeReason::InvalidPattern)),
-        Pattern::BitArraySize(_) | Pattern::BitArray { .. } => {
-            super::unsupported_bit_array_pattern()
+        Pattern::BitArray { segments, .. } if subject_type == ValueType::BitArray => {
+            let Some(value) = value.into_bit_array() else {
+                return Err(invalid_case_shape(
+                    InvalidCaseShapeReason::PatternTypeMismatch,
+                ));
+            };
+            super::bit_array::plan_structural_pattern(segments, value, context)
+                .map(ListCasePattern::from_bit_array_pattern)
         }
+        Pattern::BitArraySize(_) | Pattern::BitArray { .. } => Err(invalid_case_shape(
+            InvalidCaseShapeReason::PatternTypeMismatch,
+        )),
         Pattern::Int { .. }
         | Pattern::Float { .. }
         | Pattern::String { .. }
@@ -241,6 +288,7 @@ fn plan_list_structural_case_pattern(
     type_: Arc<Type>,
     value: Expr,
     subject_type: ValueType,
+    context: &mut PlanContext<'_>,
 ) -> Result<ListCasePattern, PlanError> {
     let pattern_type =
         ValueType::from_gleam(type_.as_ref()).ok_or(PlanError::UnsupportedExpression {
@@ -267,10 +315,11 @@ fn plan_list_structural_case_pattern(
     let mut patterns = Vec::with_capacity(elements.len());
     for (index, pattern) in elements.into_iter().enumerate() {
         let value = list_index_expr(list.clone(), index, element_type.clone())?;
-        patterns.push(plan_list_case_pattern(
+        patterns.push(plan_list_case_pattern_with_context(
             pattern,
             value,
             element_type.clone(),
+            context,
         )?);
     }
 
@@ -293,6 +342,7 @@ fn plan_tuple_case_pattern(
     elements: Vec<Pattern<Arc<Type>>>,
     value: Expr,
     subject_type: ValueType,
+    context: &mut PlanContext<'_>,
 ) -> Result<ListCasePattern, PlanError> {
     let ValueType::Tuple(element_types) = subject_type else {
         return Err(invalid_case_shape(
@@ -313,7 +363,9 @@ fn plan_tuple_case_pattern(
     let mut patterns = Vec::with_capacity(elements.len());
     for (index, (pattern, type_)) in elements.into_iter().zip(element_types).enumerate() {
         let value = tuple_index_expr(tuple.clone(), index, type_.clone());
-        patterns.push(plan_list_case_pattern(pattern, value, type_)?);
+        patterns.push(plan_list_case_pattern_with_context(
+            pattern, value, type_, context,
+        )?);
     }
 
     Ok(combine_list_case_patterns(patterns))
@@ -402,7 +454,9 @@ fn internal_list_case_subject_name(local: &ListLocal) -> EcoString {
 #[cfg(test)]
 mod tests {
     use crate::plan::{
-        BoolExpr, Expr, IntListLocalId, IntLocalId, ListExpr, ListLocal, Step, StringExpr,
+        BitArrayExpr, BitArrayPattern, BitArrayPatternSegment, BitArrayPatternSize,
+        BitArrayPatternSizeExpr, BitArrayPatternValue, BitArraySegment, BoolExpr, Endianness, Expr,
+        IntExpr, IntListLocalId, IntLocalId, ListExpr, ListLocal, Signedness, Step, StringExpr,
         ValueType,
     };
     use crate::planner::dsl::{
@@ -413,7 +467,6 @@ mod tests {
     use crate::planner::support::{dummy_span, expect_plan_error};
     use crate::planner::{
         InvalidCaseShapeReason, InvalidExpressionType, InvalidTypedAstReason, PlanError,
-        UnsupportedPatternKind,
     };
     use gleam_core::type_::error::VariableOrigin;
 
@@ -1572,13 +1625,42 @@ pub fn main() {
                 },
             }),
         );
+        assert_eq!(
+            super::plan_list_case_pattern(
+                gleam_core::ast::Pattern::BitArray {
+                    location: dummy_span(),
+                    segments: Vec::new(),
+                },
+                Expr::int(IntExpr::value(1.into())),
+                ValueType::BitArray,
+            ),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::CaseShape {
+                    reason: InvalidCaseShapeReason::PatternTypeMismatch,
+                },
+            }),
+        );
+        assert_eq!(
+            super::plan_list_case_pattern(
+                gleam_core::ast::Pattern::BitArray {
+                    location: dummy_span(),
+                    segments: Vec::new(),
+                },
+                Expr::bit_array(BitArrayExpr::value(Vec::new())),
+                ValueType::Int,
+            ),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::CaseShape {
+                    reason: InvalidCaseShapeReason::PatternTypeMismatch,
+                },
+            }),
+        );
     }
 
     #[test]
-    fn reject_profile_list_nested_bit_array_pattern() {
-        assert_eq!(
-            expect_plan_error(
-                r#"
+    fn plan_list_nested_bit_array_pattern_checks_length_before_projection() {
+        let actual = plan_module(crate::planner::support::compile(
+            r#"
 pub fn main() {
   case [<<1>>] {
     [<<1>>] -> 1
@@ -1586,10 +1668,52 @@ pub fn main() {
   }
 }
 "#,
+        ))
+        .expect("source should plan");
+        let subject_name = "<case:list:bit array:0>";
+        let subject = BitArrayExpr::value(vec![BitArraySegment::Int {
+            value: IntExpr::value(1.into()),
+            bit_size: 8,
+            endianness: Endianness::Big,
+        }]);
+        let pattern = BitArrayPattern::new(vec![BitArrayPatternSegment::Int {
+            pattern: BitArrayPatternValue::Literal(1.into()),
+            size: BitArrayPatternSize::new(BitArrayPatternSizeExpr::value(8.into()), 1),
+            endianness: Endianness::Big,
+            signedness: Signedness::Unsigned,
+        }]);
+        let local: ListExpr = local_list(0, subject_name, ValueType::BitArray).into();
+        let expected = module(
+            "main",
+            function(
+                "main",
+                int_return_block(
+                    [let_list_step(
+                        0,
+                        subject_name,
+                        list([Expr::bit_array(subject)], ValueType::BitArray),
+                    )],
+                    crate::plan::IntReturn::bool_case(
+                        BoolExpr::and(
+                            BoolExpr::list_length_equals(local.clone(), 1),
+                            BoolExpr::bit_array_matches(
+                                BitArrayExpr::list_index(
+                                    local
+                                        .into_bit_array()
+                                        .expect("local must be List(BitArray)"),
+                                    0,
+                                ),
+                                pattern,
+                            ),
+                        ),
+                        int_return_expr(int(1)),
+                        int_return_expr(int(0)),
+                    ),
+                ),
             ),
-            PlanError::UnsupportedPattern {
-                kind: UnsupportedPatternKind::BitArray,
-            },
+            [],
         );
+
+        assert_eq!(actual, expected);
     }
 }

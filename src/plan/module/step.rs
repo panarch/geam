@@ -11,6 +11,7 @@ use super::id::{
     ListFunctionLocal, ListLocal, NilFunctionLocalId, NilLocalId, StringFunctionLocalId,
     StringLocalId, TupleFunctionLocalId, TupleLocalId,
 };
+use crate::plan::BitArrayPattern;
 use crate::plan::{PanicSite, SourceSpan, ValueType};
 use ecow::EcoString;
 
@@ -25,19 +26,20 @@ pub(crate) struct AssertBinding {
     name: EcoString,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub(crate) enum AssertPattern {
     Bind(AssertBinding),
     Discard,
     Tuple(Vec<AssertPattern>),
     List(ListAssertPattern),
+    BitArray(BitArrayPattern),
     Alias {
         pattern: Box<AssertPattern>,
         binding: AssertBinding,
     },
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub(crate) struct ListAssertPattern {
     element_type: ValueType,
     elements: Vec<AssertPattern>,
@@ -149,6 +151,13 @@ pub(crate) enum StepKind {
         site: PanicSite,
         pattern_span: SourceSpan,
     },
+    AssertBitArray {
+        local: BitArrayLocalId,
+        pattern: AssertPattern,
+        message: Option<StringExpr>,
+        site: PanicSite,
+        pattern_span: SourceSpan,
+    },
     AssertBool {
         condition: BoolExpr,
         message: Option<StringExpr>,
@@ -181,6 +190,10 @@ impl AssertPattern {
             pattern: Box::new(pattern),
             binding,
         }
+    }
+
+    pub(crate) fn bit_array(pattern: BitArrayPattern) -> Self {
+        Self::BitArray(pattern)
     }
 }
 
@@ -400,6 +413,24 @@ impl Step {
     ) -> Self {
         Self {
             kind: StepKind::AssertList {
+                local,
+                pattern,
+                message,
+                site,
+                pattern_span,
+            },
+        }
+    }
+
+    pub(crate) fn assert_bit_array_at(
+        local: BitArrayLocalId,
+        pattern: AssertPattern,
+        message: Option<StringExpr>,
+        site: PanicSite,
+        pattern_span: SourceSpan,
+    ) -> Self {
+        Self {
+            kind: StepKind::AssertBitArray {
                 local,
                 pattern,
                 message,

@@ -21,7 +21,9 @@ pub(in crate::runtime) struct EvaluatedBitArray {
 }
 
 impl EvaluatedBitArray {
-    pub(in crate::runtime) fn new(bits: BitVec<u8, Msb0>) -> Self {
+    pub(in crate::runtime) fn new(mut bits: BitVec<u8, Msb0>) -> Self {
+        bits.force_align();
+        bits.set_uninitialized(false);
         Self {
             bits: Rc::new(bits),
         }
@@ -813,6 +815,8 @@ mod tests {
         StringLocalId, TupleFunctionId, TupleFunctionLocalId, TupleListLocalId, TupleLocalId,
     };
     use crate::runtime::state::{ListValueId, RuntimeState};
+    use bitvec::order::Msb0;
+    use bitvec::view::BitView;
 
     const EVERY_LIST_FAMILY_SOURCE: &str = r#"
 fn ints() -> List(Int) { [] }
@@ -826,6 +830,15 @@ fn lists() -> List(List(Int)) { [] }
 fn functions() -> List(fn() -> Int) { [] }
 pub fn main() { 0 }
 "#;
+
+    #[test]
+    fn evaluated_bit_array_aligns_owned_slices() {
+        let source = [0x77u8];
+        let value = EvaluatedBitArray::new(source.view_bits::<Msb0>()[4..6].to_bitvec());
+
+        assert_eq!(value.bits.as_raw_slice(), &[0b0100_0000]);
+        assert_eq!(value.bits.len(), 2);
+    }
 
     #[test]
     fn evaluated_value_type_preserves_every_runtime_family() {

@@ -102,6 +102,9 @@ mod bindings {
         nested_pattern_alias_assignment,
         list_tail_assignment,
         let_assert_bit_array_list,
+        let_assert_bit_array_pattern,
+        let_assert_bit_array_patterns,
+        bit_array_total_pattern,
         let_assert_list_destructuring,
         let_assert_fixed_list,
         let_assert_empty_list,
@@ -228,6 +231,17 @@ mod control_flow {
             multiple_subject_closure_capture,
             bit_array_subject,
             multiple_subject_bit_array_subject,
+            bit_array_pattern,
+            bit_array_pattern_options,
+            bit_array_pattern_integers,
+            bit_array_pattern_bits,
+            bit_array_pattern_dynamic_bytes,
+            bit_array_pattern_floats,
+            bit_array_pattern_strings,
+            bit_array_pattern_composition,
+            tuple_inner_bit_array_pattern,
+            list_inner_bit_array_pattern,
+            list_inner_bit_array_pattern_fallthrough,
         );
     }
 }
@@ -393,6 +407,7 @@ mod functions {
             use_list_value,
             use_tuple_assignment,
             use_list_tail_assignment,
+            use_bit_array_total_pattern,
             use_pattern_alias_assignment,
             use_nested_tuple_alias_assignment,
             use_block_scope,
@@ -465,6 +480,7 @@ mod execution_errors {
             let_assert_fixed_length,
             let_assert_empty_list,
             let_assert_message,
+            let_assert_bit_array_pattern,
         );
     }
 
@@ -532,7 +548,6 @@ mod rejection {
         rejection_cases!("patterns";
             let_assert_literal_pattern,
             let_assert_constructor_pattern,
-            let_assert_bit_array_pattern,
             let_assert_string_prefix_pattern,
             let_assert_nested_list_pattern,
         );
@@ -541,10 +556,8 @@ mod rejection {
     mod case_patterns {
         rejection_cases!("case_patterns";
             result_subject,
-            bit_array_pattern,
-            tuple_inner_bit_array_pattern,
-            list_inner_bit_array_pattern,
-            bit_array_pattern_options,
+            bit_array_pattern_utf_codepoint,
+            bit_array_pattern_native_endian,
         );
     }
 

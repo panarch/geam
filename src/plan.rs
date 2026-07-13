@@ -6,9 +6,11 @@ mod value_type;
 #[cfg(test)]
 pub(crate) use module::ListReturn;
 pub(crate) use module::{
-    AssertBinding, AssertPattern, BitArrayExprKind, BitArrayFunctionExprKind,
-    BitArrayFunctionReference, BitArrayFunctionReturn, BitArrayListExpr, BitArrayListItem,
-    BitArrayReturn, BitArraySegment, BoolCaseBranches, BoolExprKind, BoolFunctionExprKind,
+    AssertBinding, AssertPattern, BitArrayBindingPattern, BitArrayExprKind,
+    BitArrayFunctionExprKind, BitArrayFunctionReference, BitArrayFunctionReturn, BitArrayListExpr,
+    BitArrayListItem, BitArrayPattern, BitArrayPatternSegment, BitArrayPatternSize,
+    BitArrayPatternSizeExpr, BitArrayPatternValue, BitArrayReturn, BitArraySegment,
+    BitArrayStringPattern, BoolCaseBranches, BoolExprKind, BoolFunctionExprKind,
     BoolFunctionReference, BoolFunctionReturn, BoolListCaseBranches, BoolListExpr, BoolListItem,
     BoolReturn, CallArgKind, CaptureArg, CaptureArgKind, Endianness, ExprKind, FloatBitSize,
     FloatCaseBranches, FloatExprKind, FloatFunctionExprKind, FloatFunctionReference,
@@ -20,8 +22,8 @@ pub(crate) use module::{
     ListExpr, ListFunctionExprKind, ListFunctionReference, ListFunctionReturn, ListItem,
     ListListExpr, ListListItem, ListLocalExpr, ListSpreadElements, NilExprKind,
     NilFunctionExprKind, NilFunctionReference, NilFunctionReturn, NilListExpr, NilListItem,
-    NilReturn, PanicExpr, ParamLocal, ReturnBody, ReturnBodyKind, ReturnExprKind,
-    RuntimeFunctionId, StepKind, StringCaseBranches, StringEncoding, StringExprKind,
+    NilReturn, PanicExpr, ParamLocal, PatternBinding, ReturnBody, ReturnBodyKind, ReturnExprKind,
+    RuntimeFunctionId, Signedness, StepKind, StringCaseBranches, StringEncoding, StringExprKind,
     StringFunctionExprKind, StringFunctionReference, StringFunctionReturn, StringListExpr,
     StringListItem, StringReturn, TupleExprKind, TupleFunctionExprKind, TupleFunctionReference,
     TupleFunctionReturn, TupleListExpr, TupleListItem, TupleReturn, TypedListExpr,

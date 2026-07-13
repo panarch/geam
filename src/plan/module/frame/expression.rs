@@ -262,6 +262,10 @@ impl FrameLayout {
             BoolExprKind::StringStartsWith { value, .. } => self.include_string_expr(value),
             BoolExprKind::ListLengthEquals { value, .. }
             | BoolExprKind::ListLengthAtLeast { value, .. } => self.include_list_expr(value),
+            BoolExprKind::BitArrayMatches { value, pattern } => {
+                self.include_bit_array_expr(value);
+                self.include_bit_array_pattern(pattern);
+            }
             BoolExprKind::And { left, right } => self.include_bool_binary_expr(left, right),
             BoolExprKind::Or { left, right } => self.include_bool_binary_expr(left, right),
             BoolExprKind::BoolCase {
@@ -309,6 +313,88 @@ impl FrameLayout {
             BoolExprKind::Block { steps, return_ } => {
                 self.include_steps(steps);
                 self.include_bool_expr(return_);
+            }
+        }
+    }
+
+    pub(in crate::plan::module::frame) fn include_bit_array_pattern(
+        &mut self,
+        pattern: &crate::plan::BitArrayPattern,
+    ) {
+        for segment in pattern.segments() {
+            match segment {
+                crate::plan::BitArrayPatternSegment::Int { pattern, size, .. } => {
+                    self.include_bit_array_pattern_size_expr(size.value());
+                    self.include_bit_array_pattern_value(pattern, |layout, local| {
+                        layout.include_int(*local)
+                    });
+                }
+                crate::plan::BitArrayPatternSegment::Float { pattern, size, .. } => {
+                    self.include_bit_array_pattern_size_expr(size.value());
+                    self.include_bit_array_pattern_value(pattern, |layout, local| {
+                        layout.include_float(*local)
+                    });
+                }
+                crate::plan::BitArrayPatternSegment::Bits { pattern, size, .. } => {
+                    if let Some(size) = size {
+                        self.include_bit_array_pattern_size_expr(size.value());
+                    }
+                    self.include_bit_array_binding_pattern(pattern, |layout, local| {
+                        layout.include_bit_array(*local)
+                    });
+                }
+                crate::plan::BitArrayPatternSegment::String { .. } => {}
+            }
+        }
+    }
+
+    fn include_bit_array_pattern_size_expr(
+        &mut self,
+        expression: &crate::plan::BitArrayPatternSizeExpr,
+    ) {
+        use crate::plan::BitArrayPatternSizeExpr;
+
+        match expression {
+            BitArrayPatternSizeExpr::Value(_) => {}
+            BitArrayPatternSizeExpr::LocalGet { local, .. } => self.include_int(*local),
+            BitArrayPatternSizeExpr::Add { left, right }
+            | BitArrayPatternSizeExpr::Subtract { left, right }
+            | BitArrayPatternSizeExpr::Multiply { left, right }
+            | BitArrayPatternSizeExpr::Divide { left, right }
+            | BitArrayPatternSizeExpr::Remainder { left, right } => {
+                self.include_bit_array_pattern_size_expr(left);
+                self.include_bit_array_pattern_size_expr(right);
+            }
+        }
+    }
+
+    fn include_bit_array_pattern_value<Value, Local>(
+        &mut self,
+        pattern: &crate::plan::BitArrayPatternValue<Value, Local>,
+        include: impl Copy + Fn(&mut Self, &Local),
+    ) {
+        match pattern {
+            crate::plan::BitArrayPatternValue::Literal(_)
+            | crate::plan::BitArrayPatternValue::Discard => {}
+            crate::plan::BitArrayPatternValue::Bind(binding) => include(self, binding.local()),
+            crate::plan::BitArrayPatternValue::Alias { pattern, binding } => {
+                self.include_bit_array_pattern_value(pattern, include);
+                include(self, binding.local());
+            }
+        }
+    }
+
+    fn include_bit_array_binding_pattern<Local>(
+        &mut self,
+        pattern: &crate::plan::BitArrayBindingPattern<Local>,
+        include: impl Copy + Fn(&mut Self, &Local),
+    ) {
+        match pattern {
+            crate::plan::BitArrayBindingPattern::Discard => {}
+            crate::plan::BitArrayBindingPattern::Bind(binding) => include(self, binding.local()),
+            crate::plan::BitArrayBindingPattern::Alias { pattern, binding } => {
+                self.include_bit_array_binding_pattern(pattern, include);
+                include(self, binding.local());
             }
         }
     }

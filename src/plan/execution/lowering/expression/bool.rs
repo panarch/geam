@@ -86,6 +86,10 @@ pub(in crate::plan::execution::lowering) fn bool_expr(
             value: Box::new(list_expr(*value, context)),
             length,
         },
+        M::BitArrayMatches { value, pattern } => E::BitArrayMatches {
+            value: Box::new(super::bit_array_expr(*value, context)),
+            pattern: super::super::pattern::bit_array_pattern(pattern),
+        },
         M::And { left, right } => E::And {
             left: Box::new(bool_expr(*left, context)),
             right: Box::new(bool_expr(*right, context)),

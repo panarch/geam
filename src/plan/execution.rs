@@ -4,6 +4,7 @@ mod function;
 mod id;
 mod lowering;
 mod param;
+mod pattern;
 mod reference;
 mod return_;
 mod step;
@@ -48,6 +49,11 @@ pub(crate) use id::{
     TupleListFunctionLocalId, TupleListLocalId, TupleLocalId,
 };
 pub(crate) use param::ParamLocal;
+pub(crate) use pattern::{
+    BitArrayBindingPattern, BitArrayPattern, BitArrayPatternSegment, BitArrayPatternSize,
+    BitArrayPatternSizeExpr, BitArrayPatternValue, BitArrayStringPattern, PatternBinding,
+    Signedness,
+};
 pub(crate) use reference::{ClosureTemplate, FunctionReference};
 pub(crate) use return_::{
     BitArrayFunctionReturn, BitArrayListReturn, BitArrayReturn, BoolFunctionReturn, BoolListReturn,
