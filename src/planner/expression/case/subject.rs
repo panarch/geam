@@ -348,6 +348,17 @@ fn case_return_type(case_type: &Type) -> Result<ValueType, PlanError> {
         .ok_or_else(|| super::invalid_case_shape(InvalidCaseShapeReason::BranchReturnTypeMismatch))
 }
 
+#[cfg(test)]
+fn unsupported_case_return_type() -> Arc<Type> {
+    gleam_core::type_::named(
+        "package",
+        "main",
+        "Unsupported",
+        gleam_core::ast::Publicity::Public,
+        Vec::new(),
+    )
+}
+
 fn plan_case_branch(
     case_type: &Type,
     return_type: &ValueType,
@@ -598,6 +609,20 @@ mod tests {
                 BoolExpr::value(true),
                 BoolListCaseBranches::String { true_, false_ },
             ))),
+        );
+
+        let true_ = ListExpr::value(Vec::new(), ValueType::BitArray)
+            .into_bit_array()
+            .expect("bit array list should build BitArrayListExpr");
+        let false_ = ListExpr::value(Vec::new(), ValueType::BitArray)
+            .into_bit_array()
+            .expect("bit array list should build BitArrayListExpr");
+        assert_eq!(
+            super::bool_list_case_branches(
+                ListExpr::BitArray(true_.clone()),
+                ListExpr::BitArray(false_.clone()),
+            ),
+            Ok(BoolListCaseBranches::BitArray { true_, false_ }),
         );
 
         let true_ = ListExpr::value(Vec::new(), ValueType::Float)
@@ -919,6 +944,22 @@ pub fn main() {
 pub fn main() {
   case Ok(1), 2 {
     _, _ -> 0
+  }
+}
+"#,
+            ),
+            super::super::unsupported_case(UnsupportedCaseReason::UnsupportedSubjectType),
+        );
+    }
+
+    #[test]
+    fn reject_profile_single_subject_with_unsupported_value_family() {
+        assert_eq!(
+            expect_plan_error(
+                r#"
+pub fn main() {
+  case Ok(1) {
+    _ -> 0
   }
 }
 "#,

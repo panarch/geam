@@ -3,17 +3,18 @@ mod function;
 mod module;
 
 pub(crate) use expression::{
-    block_function, block_int, block_int_function, bool_, bool_arg, bool_case_int_function,
-    bool_function_ref, call_bool, call_float, call_int, call_int_function,
-    call_int_returning_function, call_list, capture_int, capture_tuple, equal, evaluate_step,
-    float, float_arg, float_function_ref, function_function_closure, function_function_ref,
-    function_ref, int, int_arg, int_case_int_function, int_function_arg, int_function_call_arg,
-    int_function_closure, int_function_ref, let_bool_function_step, let_bool_step, let_float_step,
-    let_int_function_step, let_int_step, let_list_step, let_nil_function_step, let_nil_step,
-    let_string_function_step, let_string_step, let_tuple_step, list, list_function_ref,
-    list_spread, local_bool, local_float, local_int, local_int_function, local_list, local_nil,
-    local_string, local_tuple, nil, nil_arg, nil_function_ref, not_equal, string, string_arg,
-    string_function_ref, tuple, tuple_arg, tuple_function_closure, tuple_function_ref,
+    bit_array, bit_array_function_ref, block_function, block_int, block_int_function, bool_,
+    bool_arg, bool_case_int_function, bool_function_ref, call_bool, call_float, call_int,
+    call_int_function, call_int_returning_function, call_list, capture_int, capture_tuple, equal,
+    evaluate_step, float, float_arg, float_function_ref, function_function_closure,
+    function_function_ref, function_ref, int, int_arg, int_case_int_function, int_function_arg,
+    int_function_call_arg, int_function_closure, int_function_ref, let_bool_function_step,
+    let_bool_step, let_float_step, let_int_function_step, let_int_step, let_list_step,
+    let_nil_function_step, let_nil_step, let_string_function_step, let_string_step, let_tuple_step,
+    list, list_function_ref, list_spread, local_bool, local_float, local_int, local_int_function,
+    local_list, local_nil, local_string, local_tuple, nil, nil_arg, nil_function_ref, not_equal,
+    string, string_arg, string_function_ref, tuple, tuple_arg, tuple_function_closure,
+    tuple_function_ref,
 };
 pub(crate) use function::{
     bool_function_return_block, bool_function_return_bool_case, bool_function_return_expr,

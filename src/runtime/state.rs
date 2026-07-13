@@ -584,6 +584,13 @@ pub fn main() { 0 }
         let second = state.bit_array(type_id, Vec::new());
         assert_eq!(second.core.slot(), slot);
         assert_eq!(state.bit_array_values(&second), &[]);
+
+        let value = ListValueId::BitArray(second.clone());
+        assert_eq!(state.list_len(&value), 0);
+        let rebuilt = ListValueId::from_core(&plan, type_id.list_type(), value.into_core());
+        assert_eq!(rebuilt, ListValueId::BitArray(second.clone()));
+        let dropped = state.drop_first(&ListValueId::BitArray(second), 0);
+        assert_eq!(state.list_len(&dropped), 0);
     }
 
     #[test]

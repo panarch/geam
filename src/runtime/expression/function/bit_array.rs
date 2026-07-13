@@ -151,7 +151,7 @@ mod tests {
         Expr, FloatExpr, FunctionId, FunctionPlan, FunctionType, IntExpr, IntLocalId, ListExpr,
         ModulePlan, PanicExpr, PanicSite, ReturnExpr, Step, StringExpr, TupleExpr, ValueType,
     };
-    use crate::runtime::{ExecutionError, run_main};
+    use crate::runtime::{BitArrayValue, ExecutionError, Value, run_main};
 
     #[test]
     fn module_expression_errors_propagate_through_bit_array_function_wrappers() {
@@ -296,6 +296,24 @@ mod tests {
                 ))),
                 actual: ValueType::Int,
             },
+        );
+    }
+
+    #[test]
+    fn source_function_value_paths_preserve_bit_array_calls() {
+        assert_eq!(
+            crate::runtime::run_src(include_str!(
+                "../../../../tests/fixtures/execution/values/bit_array_function_value_paths.gleam"
+            )),
+            Value::Tuple(
+                [
+                    1, 2, 3, 4, 24, 5, 6, 23, 7, 99, 9, 99, 11, 99, 13, 99, 16, 99, 17, 99, 18, 99,
+                    19, 99, 15, 20, 21, 22
+                ]
+                .into_iter()
+                .map(|byte| Value::BitArray(BitArrayValue::from_bytes(vec![byte])))
+                .collect(),
+            ),
         );
     }
 

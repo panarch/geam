@@ -1386,6 +1386,19 @@ pub fn main() {
     }
 
     #[test]
+    fn plan_list_index_expr_preserves_bit_array_item_family() {
+        let list = ListExpr::value(Vec::new(), ValueType::BitArray);
+
+        assert_eq!(
+            super::list_index_expr(list.clone(), 2, ValueType::BitArray),
+            Ok(Expr::bit_array(BitArrayExpr::list_index(
+                list.into_bit_array().expect("bit array list"),
+                2,
+            ))),
+        );
+    }
+
+    #[test]
     fn plan_tuple_index_result_families() {
         assert_tuple_index_plan(
             r#"

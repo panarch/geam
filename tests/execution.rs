@@ -42,6 +42,7 @@ mod values {
         bit_array_composition,
         bit_array_expression_paths,
         bit_array_function_value_paths,
+        bit_array_list_case_result,
         bit_array_list_function_paths,
         bit_array_returned_closure_capture,
         tuple_value,
@@ -70,6 +71,7 @@ mod module_items {
     execution_cases!("module_items";
         constant,
         constant_bit_array,
+        constant_bit_array_segments,
         constant_list_bit_array,
         constant_value_families,
         constant_function_value,
@@ -98,6 +100,7 @@ mod bindings {
         nested_tuple_destructuring,
         nested_pattern_alias_assignment,
         list_tail_assignment,
+        let_assert_bit_array_list,
         let_assert_list_destructuring,
         let_assert_fixed_list,
         let_assert_empty_list,
@@ -337,6 +340,7 @@ mod functions {
             list_tail_recursion_replaces_allocations,
             list_tail_recursion_item_families,
             block_case_tail_call,
+            bit_array_return_families,
             function_returning_tail_call,
             function_returning_tail_call_families,
         );

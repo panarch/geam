@@ -509,14 +509,15 @@ impl FrameLayout {
 #[cfg(test)]
 mod tests {
     use crate::plan::{
-        BitArrayFunctionFunctionId, BoolExpr, BoolFunctionExpr, BoolFunctionFunctionId,
-        BoolFunctionLocalId, BoolLocalId, CallArg, Expr, FloatExpr, FloatFunctionExpr,
-        FloatFunctionFunctionId, FloatFunctionLocalId, FloatLocalId, FrameLayout,
-        FunctionFunctionExpr, FunctionFunctionFunctionId, FunctionFunctionLocalId, FunctionType,
-        IntExpr, IntFunctionFunctionId, IntFunctionLocalId, IntLocalId, ListFunctionExpr,
-        ListFunctionFunctionId, ListFunctionLocal, NilFunctionExpr, NilFunctionFunctionId,
-        NilFunctionLocalId, ReturnBody, ReturnExpr, Step, StringExpr, StringFunctionExpr,
-        StringFunctionFunctionId, StringFunctionLocalId, StringLocalId, ValueType,
+        BitArrayFunctionExpr, BitArrayFunctionFunctionId, BitArrayFunctionLocalId, BoolExpr,
+        BoolFunctionExpr, BoolFunctionFunctionId, BoolFunctionLocalId, BoolLocalId, CallArg, Expr,
+        FloatExpr, FloatFunctionExpr, FloatFunctionFunctionId, FloatFunctionLocalId, FloatLocalId,
+        FrameLayout, FunctionFunctionExpr, FunctionFunctionFunctionId, FunctionFunctionLocalId,
+        FunctionType, IntExpr, IntFunctionFunctionId, IntFunctionLocalId, IntLocalId,
+        ListFunctionExpr, ListFunctionFunctionId, ListFunctionLocal, NilFunctionExpr,
+        NilFunctionFunctionId, NilFunctionLocalId, ReturnBody, ReturnExpr, Step, StringExpr,
+        StringFunctionExpr, StringFunctionFunctionId, StringFunctionLocalId, StringLocalId,
+        ValueType,
     };
 
     #[test]
@@ -784,6 +785,50 @@ mod tests {
         let layout = FrameLayout::from_function_parts(&[], &[], &return_);
 
         assert_eq!(layout.ints(), 4);
+    }
+
+    #[test]
+    fn frame_layout_includes_every_bit_array_function_return_case_dependency() {
+        let type_ = FunctionType::new(Vec::new(), ValueType::BitArray);
+        let local = |index: usize, name: &str| {
+            BitArrayFunctionExpr::local_get(
+                BitArrayFunctionLocalId(index),
+                name.into(),
+                type_.clone(),
+            )
+        };
+        let return_ = ReturnExpr::bit_array_function_body(
+            BitArrayFunctionFunctionId(0),
+            type_.clone(),
+            ReturnBody::bool_case(
+                BoolExpr::local_get(BoolLocalId(0), "bool_subject".into()),
+                ReturnBody::int_case(
+                    IntExpr::local_get(IntLocalId(1), "int_subject".into()),
+                    vec![(
+                        1.into(),
+                        ReturnBody::string_case(
+                            StringExpr::local_get(StringLocalId(2), "string_subject".into()),
+                            vec![("one".into(), ReturnBody::expr(local(4, "string_branch")))],
+                            ReturnBody::expr(local(5, "string_fallback")),
+                        ),
+                    )],
+                    ReturnBody::float_case(
+                        FloatExpr::local_get(FloatLocalId(3), "float_subject".into()),
+                        vec![(1.0, ReturnBody::expr(local(6, "float_branch")))],
+                        ReturnBody::expr(local(7, "float_fallback")),
+                    ),
+                ),
+                ReturnBody::expr(local(8, "bool_fallback")),
+            ),
+        );
+
+        let layout = FrameLayout::from_function_parts(&[], &[], &return_);
+
+        assert_eq!(layout.bools(), 1);
+        assert_eq!(layout.ints(), 2);
+        assert_eq!(layout.strings(), 3);
+        assert_eq!(layout.floats(), 4);
+        assert_eq!(layout.bit_array_functions, 9);
     }
 
     #[test]

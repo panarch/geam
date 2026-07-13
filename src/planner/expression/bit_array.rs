@@ -51,7 +51,7 @@ enum SegmentKind {
 fn plan_segment<Value>(
     value: Expr,
     options: Vec<BitArrayOption<Value>>,
-    int_literal: impl Fn(&Value) -> Option<BigInt>,
+    int_literal: fn(&Value) -> Option<BigInt>,
 ) -> Result<BitArraySegment, PlanError> {
     let value_type = value.value_type();
     let mut kind = None;
@@ -275,6 +275,18 @@ mod tests {
         );
         assert_eq!(
             plan_segment(
+                Expr::float(FloatExpr::value(1.5)),
+                vec![BitArrayOption::Float { location }],
+                |_: &()| None,
+            ),
+            Ok(BitArraySegment::Float {
+                value: FloatExpr::value(1.5),
+                bit_size: FloatBitSize::SixtyFour,
+                endianness: Endianness::Big,
+            }),
+        );
+        assert_eq!(
+            plan_segment(
                 Expr::bit_array(BitArrayExpr::value(Vec::new())),
                 vec![BitArrayOption::Bits { location }],
                 |_: &()| None,
@@ -319,7 +331,19 @@ mod tests {
         for options in [
             vec![
                 BitArrayOption::Int { location },
+                BitArrayOption::Int { location },
+            ],
+            vec![
+                BitArrayOption::Int { location },
                 BitArrayOption::Float { location },
+            ],
+            vec![
+                BitArrayOption::Bits { location },
+                BitArrayOption::Bits { location },
+            ],
+            vec![
+                BitArrayOption::Utf8 { location },
+                BitArrayOption::Utf8 { location },
             ],
             vec![
                 BitArrayOption::Int { location },
@@ -409,6 +433,37 @@ mod tests {
         );
         assert_eq!(
             plan_segment(
+                Expr::float(FloatExpr::value(1.0)),
+                vec![BitArrayOption::Size {
+                    location,
+                    value: Box::new(()),
+                    short_form: false,
+                }],
+                |_: &()| Some(16.into()),
+            ),
+            Err(PlanError::UnsupportedBitArraySegment {
+                reason: UnsupportedBitArraySegmentReason::Float16,
+            }),
+        );
+        assert_eq!(
+            plan_segment(
+                Expr::bit_array(BitArrayExpr::value(Vec::new())),
+                vec![
+                    BitArrayOption::Bits { location },
+                    BitArrayOption::Size {
+                        location,
+                        value: Box::new(()),
+                        short_form: false,
+                    },
+                ],
+                |_: &()| Some(8.into()),
+            ),
+            Err(PlanError::UnsupportedBitArraySegment {
+                reason: UnsupportedBitArraySegmentReason::SizedBits,
+            }),
+        );
+        assert_eq!(
+            plan_segment(
                 Expr::int(IntExpr::value(1.into())),
                 vec![BitArrayOption::Size {
                     location,
@@ -442,6 +497,10 @@ mod tests {
                 "pub fn main() { <<1.5:float-size(16)>> }",
                 UnsupportedBitArraySegmentReason::Float16,
             ),
+            (
+                "const value = <<1:native>> pub fn main() { value }",
+                UnsupportedBitArraySegmentReason::NativeEndianness,
+            ),
         ];
 
         for (source, reason) in cases {
@@ -450,6 +509,16 @@ mod tests {
                 PlanError::UnsupportedBitArraySegment { reason },
             );
         }
+    }
+
+    #[test]
+    fn reject_profile_bit_array_segment_expression_error() {
+        assert_eq!(
+            crate::planner::support::expect_plan_error("pub fn main() { <<echo 1>> }"),
+            PlanError::UnsupportedExpression {
+                kind: crate::planner::error::UnsupportedExpressionKind::Echo,
+            },
+        );
     }
 
     #[test]
