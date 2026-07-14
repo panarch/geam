@@ -36,6 +36,18 @@ pub(super) fn function_return_expr(
             *runtime_id,
             primitive::utf_codepoint_return(actual),
         )),
+        (
+            ValueType::Custom(expected),
+            RuntimeFunctionId::Custom {
+                id: runtime_id,
+                return_type,
+            },
+            ExprKind::Custom(actual),
+        ) if expected == actual.type_() && expected == return_type => Ok(ReturnExpr::custom_body(
+            *runtime_id,
+            expected.clone(),
+            primitive::custom_return(actual),
+        )),
         (ValueType::Float, RuntimeFunctionId::Float(runtime_id), ExprKind::Float(actual)) => Ok(
             ReturnExpr::float_body(*runtime_id, primitive::float_return(actual)),
         ),
@@ -85,6 +97,22 @@ pub(super) fn function_return_expr(
         ) if expected.as_ref() == &ValueType::UtfCodepoint => {
             Ok(ReturnExpr::utf_codepoint_list_body(
                 *runtime_id,
+                primitive::typed_list_return_body(actual),
+            ))
+        }
+        (
+            ValueType::List(expected),
+            RuntimeFunctionId::List(ListFunctionId::Custom {
+                id: runtime_id,
+                item_type,
+            }),
+            ExprKind::List(ListExpr::Custom(actual)),
+        ) if expected.as_ref() == &ValueType::Custom(item_type.clone())
+            && item_type == &actual.item().item_type() =>
+        {
+            Ok(ReturnExpr::custom_list_body(
+                *runtime_id,
+                item_type.clone(),
                 primitive::typed_list_return_body(actual),
             ))
         }

@@ -2,8 +2,8 @@ use super::super::super::plan_expr_with_expected_source_stop_type;
 use super::super::invalid_case_shape;
 use super::{CaseClause, OrderedCaseClauseInput, case_return_type};
 use crate::plan::{
-    BitArrayFunctionExpr, BoolExpr, Expr, ExprKind, FunctionExpr, FunctionExprKind,
-    FunctionFunctionExpr, FunctionFunctionLocalId, FunctionType, IntFunctionExpr,
+    BitArrayFunctionExpr, BoolExpr, CustomFunctionExpr, Expr, ExprKind, FunctionExpr,
+    FunctionExprKind, FunctionFunctionExpr, FunctionFunctionLocalId, FunctionType, IntFunctionExpr,
     IntFunctionLocalId, Step, ValueType,
 };
 use crate::planner::context::PlanContext;
@@ -165,6 +165,17 @@ fn bind_function_case_subject(
                 )),
             )
         }
+        FunctionExprKind::Custom(subject) => {
+            let local = context.define_internal_custom_function_local();
+            let name = internal_custom_function_case_subject_name(local);
+            let type_ = subject.type_().clone();
+            (
+                Step::let_custom_function(local, name.clone(), subject),
+                Expr::function(FunctionExpr::custom(CustomFunctionExpr::local_get(
+                    local, name, type_,
+                ))),
+            )
+        }
         FunctionExprKind::Float(subject) => {
             let local = context.define_internal_float_function_local();
             let name = internal_float_function_case_subject_name(local);
@@ -257,6 +268,12 @@ fn internal_utf_codepoint_function_case_subject_name(
     format!("<case:utf_codepoint_function:{}>", local.0).into()
 }
 
+fn internal_custom_function_case_subject_name(
+    local: crate::plan::CustomFunctionLocalId,
+) -> EcoString {
+    format!("<case:custom_function:{}>", local.0).into()
+}
+
 fn internal_float_function_case_subject_name(
     local: crate::plan::FloatFunctionLocalId,
 ) -> EcoString {
@@ -289,7 +306,8 @@ fn internal_function_function_case_subject_name(local: FunctionFunctionLocalId) 
 mod tests {
     use super::bind_function_case_subject;
     use crate::plan::{
-        BitArrayFunctionExpr, BitArrayFunctionLocalId, Expr, FunctionExpr, FunctionFunctionExpr,
+        BitArrayFunctionExpr, BitArrayFunctionLocalId, CustomFunctionExpr, CustomFunctionLocalId,
+        CustomType, CustomTypeName, Expr, FunctionExpr, FunctionFunctionExpr,
         FunctionFunctionFunctionId, FunctionFunctionId, FunctionFunctionLocalId, FunctionType,
         IntLocalId, LocalId, Step, ValueType,
     };
@@ -483,6 +501,32 @@ pub fn main() {
                         FunctionType::new(Vec::new(), ValueType::UtfCodepoint),
                     ),
                 )),
+            ),
+        );
+        let custom_type = CustomType::new(
+            CustomTypeName::new("geam".into(), "main".into(), "Boxed".into()),
+            Vec::new(),
+        );
+        let custom_function_type =
+            FunctionType::new(Vec::new(), ValueType::Custom(custom_type.clone()));
+        let custom_subject = CustomFunctionExpr::local_get(
+            CustomFunctionLocalId(7),
+            "source".into(),
+            custom_function_type.clone(),
+        );
+        assert_eq!(
+            bind_function_case_subject(FunctionExpr::custom(custom_subject.clone()), &mut context,),
+            (
+                Step::let_custom_function(
+                    CustomFunctionLocalId(0),
+                    "<case:custom_function:0>".into(),
+                    custom_subject,
+                ),
+                Expr::function(FunctionExpr::custom(CustomFunctionExpr::local_get(
+                    CustomFunctionLocalId(0),
+                    "<case:custom_function:0>".into(),
+                    custom_function_type,
+                ))),
             ),
         );
         assert_eq!(
@@ -696,7 +740,7 @@ pub fn main() {
         let (case_type, _, _) = super::super::super::expect_case_statement_mut(
             &mut unsupported_case_type.definitions.functions[1].body[0],
         );
-        *case_type = super::super::unsupported_case_return_type();
+        *case_type = super::super::invalid_case_return_type();
         assert_eq!(
             plan_module(unsupported_case_type),
             Err(PlanError::InvalidTypedAst {

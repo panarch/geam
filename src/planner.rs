@@ -9,12 +9,12 @@ mod pattern;
 mod statement;
 
 pub use error::{
-    InvalidCallShapeReason, InvalidCaseShapeReason, InvalidExpressionShapeKind,
-    InvalidExpressionType, InvalidFunctionShapeReason, InvalidPipelineShapeReason,
-    InvalidTypedAstReason, InvalidUseShapeReason, PlanError, UnsupportedArgumentReason,
-    UnsupportedBinOpKind, UnsupportedBitArraySegmentReason, UnsupportedCaseReason,
-    UnsupportedExpressionKind, UnsupportedFunctionReason, UnsupportedPatternKind,
-    UnsupportedPipelineReason, UnsupportedTopLevelKind,
+    InvalidCallShapeReason, InvalidCaseShapeReason, InvalidCustomTypeReason,
+    InvalidExpressionShapeKind, InvalidExpressionType, InvalidFunctionShapeReason,
+    InvalidPipelineShapeReason, InvalidTypedAstReason, InvalidUseShapeReason, PlanError,
+    UnsupportedArgumentReason, UnsupportedBinOpKind, UnsupportedBitArraySegmentReason,
+    UnsupportedCaseReason, UnsupportedExpressionKind, UnsupportedFunctionReason,
+    UnsupportedPatternKind, UnsupportedPipelineReason, UnsupportedTopLevelKind,
 };
 pub use module::{plan_module, plan_module_with_source};
 

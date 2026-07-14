@@ -393,6 +393,62 @@ impl FrameLayout {
         }
     }
 
+    pub(in crate::plan::module::frame) fn include_custom_return(
+        &mut self,
+        body: &crate::plan::CustomReturn,
+    ) {
+        match body.kind() {
+            ReturnBodyKind::Expr(expression) => self.include_custom_expr(expression),
+            ReturnBodyKind::TailCall { args, .. } => self.include_call_args(args),
+            ReturnBodyKind::BoolCase {
+                subject,
+                true_,
+                false_,
+            } => {
+                self.include_bool_expr(subject);
+                self.include_custom_return(true_);
+                self.include_custom_return(false_);
+            }
+            ReturnBodyKind::IntCase {
+                subject,
+                clauses,
+                fallback,
+            } => {
+                self.include_int_expr(subject);
+                for (_, branch) in clauses {
+                    self.include_custom_return(branch);
+                }
+                self.include_custom_return(fallback);
+            }
+            ReturnBodyKind::FloatCase {
+                subject,
+                clauses,
+                fallback,
+            } => {
+                self.include_float_expr(subject);
+                for (_, branch) in clauses {
+                    self.include_custom_return(branch);
+                }
+                self.include_custom_return(fallback);
+            }
+            ReturnBodyKind::StringCase {
+                subject,
+                clauses,
+                fallback,
+            } => {
+                self.include_string_expr(subject);
+                for (_, branch) in clauses {
+                    self.include_custom_return(branch);
+                }
+                self.include_custom_return(fallback);
+            }
+            ReturnBodyKind::Block { steps, return_ } => {
+                self.include_steps(steps);
+                self.include_custom_return(return_);
+            }
+        }
+    }
+
     pub(in crate::plan::module::frame) fn include_tuple_return(
         &mut self,
         body: &crate::plan::TupleReturn,
@@ -511,9 +567,10 @@ impl FrameLayout {
 #[cfg(test)]
 mod tests {
     use crate::plan::{
-        BoolExpr, BoolLocalId, CallArg, Expr, FloatExpr, FloatLocalId, FrameLayout, IntExpr,
-        IntFunctionId, IntLocalId, NilExpr, NilLocalId, ReturnBody, ReturnExpr, Step, StringExpr,
-        StringLocalId, TupleExpr, TupleFunctionId, TupleLocalId,
+        BoolExpr, BoolLocalId, CallArg, CustomExpr, CustomFunctionId, CustomLocalId, CustomType,
+        CustomTypeName, Expr, FloatExpr, FloatLocalId, FrameLayout, IntExpr, IntFunctionId,
+        IntLocalId, NilExpr, NilLocalId, ReturnBody, ReturnExpr, Step, StringExpr, StringLocalId,
+        TupleExpr, TupleFunctionId, TupleLocalId,
     };
 
     #[test]
@@ -766,5 +823,33 @@ mod tests {
 
         assert_eq!(layout.ints(), 3);
         assert_eq!(layout.tuples(), 4);
+    }
+
+    #[test]
+    fn frame_layout_includes_custom_return_blocks() {
+        let type_ = CustomType::new(
+            CustomTypeName::new("geam".into(), "main".into(), "Boxed".into()),
+            Vec::new(),
+        );
+        let return_ = ReturnExpr::custom_body(
+            CustomFunctionId(0),
+            type_.clone(),
+            ReturnBody::block(
+                vec![Step::evaluate(Expr::int(IntExpr::local_get(
+                    IntLocalId(2),
+                    "step".into(),
+                )))],
+                ReturnBody::expr(CustomExpr::local_get(
+                    CustomLocalId(3),
+                    "return".into(),
+                    type_,
+                )),
+            ),
+        );
+
+        let layout = FrameLayout::from_function_parts(&[], &[], &return_);
+
+        assert_eq!(layout.ints(), 3);
+        assert_eq!(layout.customs, 4);
     }
 }

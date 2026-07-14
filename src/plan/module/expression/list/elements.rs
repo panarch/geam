@@ -1,12 +1,12 @@
 use super::{
-    BitArrayListExpr, BitArrayListItem, BoolListExpr, BoolListItem, FloatListExpr, FloatListItem,
-    FunctionListExpr, FunctionListItem, IntListExpr, IntListItem, ListExpr, ListItem, ListListExpr,
-    ListListItem, NilListExpr, NilListItem, StringListExpr, StringListItem, TupleListExpr,
-    TupleListItem, UtfCodepointListExpr, UtfCodepointListItem,
+    BitArrayListExpr, BitArrayListItem, BoolListExpr, BoolListItem, CustomListExpr, CustomListItem,
+    FloatListExpr, FloatListItem, FunctionListExpr, FunctionListItem, IntListExpr, IntListItem,
+    ListExpr, ListItem, ListListExpr, ListListItem, NilListExpr, NilListItem, StringListExpr,
+    StringListItem, TupleListExpr, TupleListItem, UtfCodepointListExpr, UtfCodepointListItem,
 };
 use crate::plan::{
-    BitArrayExpr, BoolExpr, Expr, FloatExpr, FunctionExpr, FunctionType, IntExpr, NilExpr,
-    StringExpr, TupleExpr, UtfCodepointExpr, ValueType,
+    BitArrayExpr, BoolExpr, CustomExpr, CustomType, Expr, FloatExpr, FunctionExpr, FunctionType,
+    IntExpr, NilExpr, StringExpr, TupleExpr, UtfCodepointExpr, ValueType,
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -15,6 +15,10 @@ pub(crate) enum ListElements {
     String(Vec<StringExpr>),
     BitArray(Vec<BitArrayExpr>),
     UtfCodepoint(Vec<UtfCodepointExpr>),
+    Custom {
+        item_type: CustomType,
+        values: Vec<CustomExpr>,
+    },
     Float(Vec<FloatExpr>),
     Bool(Vec<BoolExpr>),
     Nil(Vec<NilExpr>),
@@ -49,6 +53,10 @@ pub(crate) enum ListSpreadElements {
     UtfCodepoint {
         values: Vec<UtfCodepointExpr>,
         tail: UtfCodepointListExpr,
+    },
+    Custom {
+        values: Vec<CustomExpr>,
+        tail: CustomListExpr,
     },
     Float {
         values: Vec<FloatExpr>,
@@ -92,6 +100,9 @@ impl ListElements {
             ValueType::String => list_elements_from_exprs(StringListItem, values),
             ValueType::BitArray => list_elements_from_exprs(BitArrayListItem, values),
             ValueType::UtfCodepoint => list_elements_from_exprs(UtfCodepointListItem, values),
+            ValueType::Custom(item_type) => {
+                list_elements_from_exprs(CustomListItem { item_type }, values)
+            }
             ValueType::Float => list_elements_from_exprs(FloatListItem, values),
             ValueType::Bool => list_elements_from_exprs(BoolListItem, values),
             ValueType::Nil => list_elements_from_exprs(NilListItem, values),
@@ -116,6 +127,7 @@ impl ListElements {
             Self::String(_) => ValueType::String,
             Self::BitArray(_) => ValueType::BitArray,
             Self::UtfCodepoint(_) => ValueType::UtfCodepoint,
+            Self::Custom { item_type, .. } => ValueType::Custom(item_type.clone()),
             Self::Float(_) => ValueType::Float,
             Self::Bool(_) => ValueType::Bool,
             Self::Nil(_) => ValueType::Nil,
@@ -158,6 +170,21 @@ impl ListSpreadElements {
                     return Err(ListElementTypeMismatch { expected, actual });
                 };
                 Ok(Self::UtfCodepoint { values, tail })
+            }
+            ListElements::Custom {
+                item_type: _,
+                values,
+            } => {
+                let Some(tail) = tail.into_custom() else {
+                    return Err(ListElementTypeMismatch { expected, actual });
+                };
+                if tail.element_type() != expected {
+                    return Err(ListElementTypeMismatch {
+                        expected,
+                        actual: tail.element_type(),
+                    });
+                }
+                Ok(Self::Custom { values, tail })
             }
             ListElements::Float(values) => {
                 let Some(tail) = tail.into_float() else {
@@ -238,13 +265,23 @@ fn list_elements_from_exprs<Item: ListItem>(
 mod tests {
     use super::{ListElementTypeMismatch, ListElements, ListSpreadElements};
     use crate::plan::{
-        BitArrayExpr, BoolExpr, Expr, FloatExpr, FunctionExpr, FunctionReference, FunctionType,
-        IntExpr, ListExpr, NilExpr, RuntimeFunctionId, StringExpr, TupleExpr, UtfCodepointExpr,
-        UtfCodepointLocalId, ValueType,
+        BitArrayExpr, BoolExpr, CustomExpr, CustomLocalId, CustomType, CustomTypeName, Expr,
+        FloatExpr, FunctionExpr, FunctionReference, FunctionType, IntExpr, ListExpr, NilExpr,
+        RuntimeFunctionId, StringExpr, TupleExpr, UtfCodepointExpr, UtfCodepointLocalId, ValueType,
     };
+
+    fn custom_type(name: &str) -> CustomType {
+        CustomType::new(
+            CustomTypeName::new("geam".into(), "main".into(), name.into()),
+            Vec::new(),
+        )
+    }
 
     #[test]
     fn from_exprs_rejects_wrong_item_family_and_nested_metadata() {
+        let first_custom = custom_type("First");
+        let second_custom = custom_type("Second");
+
         assert_eq!(
             ListElements::from_exprs(
                 ValueType::Int,
@@ -253,6 +290,20 @@ mod tests {
             Err(ListElementTypeMismatch {
                 expected: ValueType::Int,
                 actual: ValueType::String,
+            }),
+        );
+        assert_eq!(
+            ListElements::from_exprs(
+                ValueType::Custom(first_custom.clone()),
+                vec![Expr::custom(CustomExpr::local_get(
+                    CustomLocalId(0),
+                    "value".into(),
+                    second_custom.clone(),
+                ))],
+            ),
+            Err(ListElementTypeMismatch {
+                expected: ValueType::Custom(first_custom),
+                actual: ValueType::Custom(second_custom),
             }),
         );
 
@@ -327,6 +378,14 @@ mod tests {
             ValueType::UtfCodepoint,
         );
         assert_eq!(
+            ListElements::Custom {
+                item_type: custom_type("Boxed"),
+                values: Vec::new(),
+            }
+            .item_type(),
+            ValueType::Custom(custom_type("Boxed")),
+        );
+        assert_eq!(
             ListElements::Tuple {
                 item_type: vec![ValueType::String],
                 values: Vec::new(),
@@ -354,6 +413,9 @@ mod tests {
 
     #[test]
     fn spread_parts_reject_wrong_tail_family_and_nested_metadata() {
+        let first_custom = custom_type("First");
+        let second_custom = custom_type("Second");
+
         assert_eq!(
             ListSpreadElements::from_parts(
                 ListElements::String(vec![StringExpr::value("head".into())]),
@@ -362,6 +424,32 @@ mod tests {
             Err(ListElementTypeMismatch {
                 expected: ValueType::String,
                 actual: ValueType::Int,
+            }),
+        );
+        assert_eq!(
+            ListSpreadElements::from_parts(
+                ListElements::Custom {
+                    item_type: first_custom.clone(),
+                    values: Vec::new(),
+                },
+                ListExpr::value(Vec::new(), ValueType::Int),
+            ),
+            Err(ListElementTypeMismatch {
+                expected: ValueType::Custom(first_custom.clone()),
+                actual: ValueType::Int,
+            }),
+        );
+        assert_eq!(
+            ListSpreadElements::from_parts(
+                ListElements::Custom {
+                    item_type: first_custom.clone(),
+                    values: Vec::new(),
+                },
+                ListExpr::value(Vec::new(), ValueType::Custom(second_custom.clone())),
+            ),
+            Err(ListElementTypeMismatch {
+                expected: ValueType::Custom(first_custom),
+                actual: ValueType::Custom(second_custom),
             }),
         );
         assert_eq!(

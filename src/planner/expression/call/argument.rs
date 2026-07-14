@@ -1,9 +1,9 @@
 use super::CaptureSubstitution;
 use crate::plan::{
-    BitArrayListLocalId, BoolListLocalId, CallArg, Expr, FloatListLocalId, FunctionListLocalId,
-    IntListLocalId, ListFunctionLocal, ListListLocalId, ListLocal, NilListLocalId, ParamLocal,
-    StringListLocalId, TupleFunctionLocalId, TupleListLocalId, TupleLocalId,
-    UtfCodepointListLocalId, ValueType,
+    BitArrayListLocalId, BoolListLocalId, CallArg, CustomConstructor, CustomListLocalId, Expr,
+    FloatListLocalId, FunctionListLocalId, IntListLocalId, ListFunctionLocal, ListListLocalId,
+    ListLocal, NilListLocalId, ParamLocal, StringListLocalId, TupleFunctionLocalId,
+    TupleListLocalId, TupleLocalId, UtfCodepointListLocalId, ValueType,
 };
 use crate::planner::context::{FunctionParam, PlanContext};
 use crate::planner::error::{InvalidCallShapeReason, InvalidTypedAstReason, PlanError};
@@ -53,6 +53,7 @@ fn function_call_param_locals(params: &[ValueType]) -> Vec<ParamLocal> {
     let mut next_string = 0;
     let mut next_bit_array = 0;
     let mut next_utf_codepoint = 0;
+    let mut next_custom = 0;
     let mut next_float = 0;
     let mut next_bool = 0;
     let mut next_nil = 0;
@@ -61,6 +62,7 @@ fn function_call_param_locals(params: &[ValueType]) -> Vec<ParamLocal> {
     let mut next_string_list = 0;
     let mut next_bit_array_list = 0;
     let mut next_utf_codepoint_list = 0;
+    let mut next_custom_list = 0;
     let mut next_float_list = 0;
     let mut next_bool_list = 0;
     let mut next_nil_list = 0;
@@ -71,6 +73,7 @@ fn function_call_param_locals(params: &[ValueType]) -> Vec<ParamLocal> {
     let mut next_string_function = 0;
     let mut next_bit_array_function = 0;
     let mut next_utf_codepoint_function = 0;
+    let mut next_custom_function = 0;
     let mut next_float_function = 0;
     let mut next_bool_function = 0;
     let mut next_nil_function = 0;
@@ -100,6 +103,12 @@ fn function_call_param_locals(params: &[ValueType]) -> Vec<ParamLocal> {
                 let local =
                     ParamLocal::utf_codepoint(crate::plan::UtfCodepointLocalId(next_utf_codepoint));
                 next_utf_codepoint += 1;
+                local
+            }
+            ValueType::Custom(type_) => {
+                let local =
+                    ParamLocal::custom(crate::plan::CustomLocalId(next_custom), type_.clone());
+                next_custom += 1;
                 local
             }
             ValueType::Float => {
@@ -144,6 +153,14 @@ fn function_call_param_locals(params: &[ValueType]) -> Vec<ParamLocal> {
                             next_utf_codepoint_list,
                         ));
                         next_utf_codepoint_list += 1;
+                        local
+                    }
+                    ValueType::Custom(item_type) => {
+                        let local = ListLocal::custom(
+                            CustomListLocalId(next_custom_list),
+                            item_type.clone(),
+                        );
+                        next_custom_list += 1;
                         local
                     }
                     ValueType::Float => {
@@ -217,6 +234,14 @@ fn function_call_param_locals(params: &[ValueType]) -> Vec<ParamLocal> {
                     next_utf_codepoint_function += 1;
                     local
                 }
+                ValueType::Custom(_) => {
+                    let local = ParamLocal::custom_function(
+                        crate::plan::CustomFunctionLocalId(next_custom_function),
+                        type_.as_ref().clone(),
+                    );
+                    next_custom_function += 1;
+                    local
+                }
                 ValueType::Float => {
                     let local = ParamLocal::float_function(
                         crate::plan::FloatFunctionLocalId(next_float_function),
@@ -271,6 +296,38 @@ fn function_call_param_locals(params: &[ValueType]) -> Vec<ParamLocal> {
         .collect()
 }
 
+pub(super) fn plan_custom_constructor_args(
+    arguments: Vec<GleamCallArg<TypedExpr>>,
+    constructor: &CustomConstructor,
+    context: &mut PlanContext<'_>,
+    capture: Option<&CaptureSubstitution>,
+) -> Result<Vec<Expr>, PlanError> {
+    arguments
+        .into_iter()
+        .zip(constructor.fields())
+        .map(|(argument, field)| {
+            if let Some(label) = &argument.label
+                && field.label() != Some(label)
+            {
+                return Err(PlanError::InvalidTypedAst {
+                    reason: InvalidTypedAstReason::CallShape {
+                        reason: InvalidCallShapeReason::LabelledArguments,
+                    },
+                });
+            }
+            let expression =
+                plan_argument_value(argument, field.type_().clone(), capture, context)?;
+            if expression.value_type() != *field.type_() {
+                return Err(call_arg_type_mismatch(
+                    field.type_().clone(),
+                    expression.value_type(),
+                ));
+            }
+            Ok(expression)
+        })
+        .collect()
+}
+
 fn call_arg_type_mismatch(expected: ValueType, actual: ValueType) -> PlanError {
     if matches!(expected, ValueType::Function(_)) && matches!(actual, ValueType::Function(_)) {
         PlanError::InvalidTypedAst {
@@ -302,10 +359,13 @@ fn plan_argument_value(
 mod tests {
     use super::function_call_param_locals;
     use crate::plan::{
-        BitArrayListLocalId, BoolListLocalId, FloatListLocalId, FunctionListLocalId, FunctionType,
-        IntListLocalId, ListListLocalId, ListLocal, NilListLocalId, ParamLocal, StringListLocalId,
+        BitArrayListLocalId, BoolListLocalId, CustomListLocalId, CustomLocalId, CustomType,
+        CustomTypeName, FloatListLocalId, FunctionListLocalId, FunctionType, IntListLocalId,
+        ListListLocalId, ListLocal, NilListLocalId, ParamLocal, StringListLocalId,
         TupleListLocalId, UtfCodepointListLocalId, ValueType,
     };
+    use crate::planner::support::expect_plan_error;
+    use crate::planner::{PlanError, UnsupportedExpressionKind};
 
     #[test]
     fn function_call_param_locals_preserve_family_local_order() {
@@ -316,6 +376,7 @@ mod tests {
                 ValueType::String,
                 ValueType::BitArray,
                 ValueType::UtfCodepoint,
+                ValueType::Custom(custom_type()),
                 ValueType::Bool,
                 ValueType::Nil,
                 ValueType::Int,
@@ -323,6 +384,7 @@ mod tests {
                 ValueType::List(Box::new(ValueType::String)),
                 ValueType::List(Box::new(ValueType::BitArray)),
                 ValueType::List(Box::new(ValueType::UtfCodepoint)),
+                ValueType::List(Box::new(ValueType::Custom(custom_type()))),
                 ValueType::List(Box::new(ValueType::Float)),
                 ValueType::List(Box::new(ValueType::Bool)),
                 ValueType::List(Box::new(ValueType::Nil)),
@@ -379,6 +441,7 @@ mod tests {
                 ParamLocal::string(crate::plan::StringLocalId(0)),
                 ParamLocal::bit_array(crate::plan::BitArrayLocalId(0)),
                 ParamLocal::utf_codepoint(crate::plan::UtfCodepointLocalId(0)),
+                ParamLocal::custom(CustomLocalId(0), custom_type()),
                 ParamLocal::bool(crate::plan::BoolLocalId(0)),
                 ParamLocal::nil(crate::plan::NilLocalId(0)),
                 ParamLocal::int(crate::plan::IntLocalId(1)),
@@ -386,6 +449,7 @@ mod tests {
                 ParamLocal::list(ListLocal::string(StringListLocalId(0))),
                 ParamLocal::list(ListLocal::bit_array(BitArrayListLocalId(0))),
                 ParamLocal::list(ListLocal::utf_codepoint(UtfCodepointListLocalId(0))),
+                ParamLocal::list(ListLocal::custom(CustomListLocalId(0), custom_type())),
                 ParamLocal::list(ListLocal::float(FloatListLocalId(0))),
                 ParamLocal::list(ListLocal::bool(BoolListLocalId(0))),
                 ParamLocal::list(ListLocal::nil(NilListLocalId(0))),
@@ -454,5 +518,22 @@ mod tests {
             function_call_param_locals(&[ValueType::Int])[0],
             ParamLocal::int(crate::plan::IntLocalId(0)),
         );
+    }
+
+    #[test]
+    fn custom_constructor_argument_planning_errors_are_preserved() {
+        assert_eq!(
+            expect_plan_error("pub type Boxed { Boxed(Int) } pub fn main() { Boxed(echo 1) }",),
+            PlanError::UnsupportedExpression {
+                kind: UnsupportedExpressionKind::Echo,
+            },
+        );
+    }
+
+    fn custom_type() -> CustomType {
+        CustomType::new(
+            CustomTypeName::new("geam".into(), "main".into(), "Boxed".into()),
+            Vec::new(),
+        )
     }
 }

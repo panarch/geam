@@ -1,18 +1,18 @@
 use super::expression::{
-    BitArrayExpr, BitArrayFunctionExpr, BoolExpr, BoolFunctionExpr, Expr, FloatExpr,
-    FloatFunctionExpr, FunctionFunctionExpr, IntExpr, IntFunctionExpr, ListFunctionExpr,
-    ListLocalExpr, NilExpr, NilFunctionExpr, StringExpr, StringFunctionExpr, TupleExpr,
-    TupleFunctionExpr, UtfCodepointExpr, UtfCodepointFunctionExpr,
+    BitArrayExpr, BitArrayFunctionExpr, BoolExpr, BoolFunctionExpr, CustomExpr, CustomFunctionExpr,
+    Expr, FloatExpr, FloatFunctionExpr, FunctionFunctionExpr, IntExpr, IntFunctionExpr,
+    ListFunctionExpr, ListLocalExpr, NilExpr, NilFunctionExpr, StringExpr, StringFunctionExpr,
+    TupleExpr, TupleFunctionExpr, UtfCodepointExpr, UtfCodepointFunctionExpr,
 };
 use super::function::ParamLocal;
 use super::id::{
     BitArrayFunctionLocalId, BitArrayLocalId, BoolFunctionLocalId, BoolLocalId,
-    FloatFunctionLocalId, FloatLocalId, FunctionFunctionLocalId, IntFunctionLocalId, IntLocalId,
-    ListFunctionLocal, ListLocal, NilFunctionLocalId, NilLocalId, StringFunctionLocalId,
-    StringLocalId, TupleFunctionLocalId, TupleLocalId, UtfCodepointFunctionLocalId,
-    UtfCodepointLocalId,
+    CustomFunctionLocalId, CustomLocalId, FloatFunctionLocalId, FloatLocalId,
+    FunctionFunctionLocalId, IntFunctionLocalId, IntLocalId, ListFunctionLocal, ListLocal,
+    NilFunctionLocalId, NilLocalId, StringFunctionLocalId, StringLocalId, TupleFunctionLocalId,
+    TupleLocalId, UtfCodepointFunctionLocalId, UtfCodepointLocalId,
 };
-use crate::plan::BitArrayPattern;
+use crate::plan::{BitArrayPattern, CustomBindingPattern};
 use crate::plan::{PanicSite, SourceSpan, ValueType};
 use ecow::EcoString;
 
@@ -31,12 +31,33 @@ pub(crate) struct AssertBinding {
 pub(crate) enum AssertPattern {
     Bind(AssertBinding),
     Discard,
+    Int(num_bigint::BigInt),
+    Float(f64),
+    String(EcoString),
+    Bool(bool),
+    Nil,
     Tuple(Vec<AssertPattern>),
     List(ListAssertPattern),
     BitArray(BitArrayPattern),
+    Custom(crate::plan::CustomPattern),
+    StringPrefix {
+        prefix: EcoString,
+        left: Option<AssertBinding>,
+        right: Option<AssertBinding>,
+    },
     Alias {
         pattern: Box<AssertPattern>,
         binding: AssertBinding,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) enum BitArrayAssertPattern {
+    Pattern(BitArrayPattern),
+    Alias {
+        pattern: Box<BitArrayAssertPattern>,
+        local: BitArrayLocalId,
+        name: EcoString,
     },
 }
 
@@ -86,6 +107,11 @@ pub(crate) enum StepKind {
         name: EcoString,
         value: UtfCodepointExpr,
     },
+    LetCustom {
+        local: CustomLocalId,
+        name: EcoString,
+        value: CustomExpr,
+    },
     LetBool {
         local: BoolLocalId,
         name: EcoString,
@@ -130,6 +156,11 @@ pub(crate) enum StepKind {
         name: EcoString,
         value: UtfCodepointFunctionExpr,
     },
+    LetCustomFunction {
+        local: CustomFunctionLocalId,
+        name: EcoString,
+        value: CustomFunctionExpr,
+    },
     LetBoolFunction {
         local: BoolFunctionLocalId,
         name: EcoString,
@@ -164,10 +195,21 @@ pub(crate) enum StepKind {
     },
     AssertBitArray {
         local: BitArrayLocalId,
+        pattern: BitArrayAssertPattern,
+        message: Option<StringExpr>,
+        site: PanicSite,
+        pattern_span: SourceSpan,
+    },
+    AssertCustom {
+        local: CustomLocalId,
         pattern: AssertPattern,
         message: Option<StringExpr>,
         site: PanicSite,
         pattern_span: SourceSpan,
+    },
+    BindCustomFields {
+        local: CustomLocalId,
+        pattern: CustomBindingPattern,
     },
     AssertBool {
         condition: BoolExpr,
@@ -205,6 +247,24 @@ impl AssertPattern {
 
     pub(crate) fn bit_array(pattern: BitArrayPattern) -> Self {
         Self::BitArray(pattern)
+    }
+
+    pub(crate) fn custom(pattern: crate::plan::CustomPattern) -> Self {
+        Self::Custom(pattern)
+    }
+}
+
+impl BitArrayAssertPattern {
+    pub(crate) fn pattern(pattern: BitArrayPattern) -> Self {
+        Self::Pattern(pattern)
+    }
+
+    pub(crate) fn alias(pattern: Self, local: BitArrayLocalId, name: EcoString) -> Self {
+        Self::Alias {
+            pattern: Box::new(pattern),
+            local,
+            name,
+        }
     }
 }
 
@@ -291,6 +351,12 @@ impl Step {
         }
     }
 
+    pub(crate) fn let_custom(local: CustomLocalId, name: EcoString, value: CustomExpr) -> Self {
+        Self {
+            kind: StepKind::LetCustom { local, name, value },
+        }
+    }
+
     pub(crate) fn let_bool(local: BoolLocalId, name: EcoString, value: BoolExpr) -> Self {
         Self {
             kind: StepKind::LetBool { local, name, value },
@@ -362,6 +428,16 @@ impl Step {
     ) -> Self {
         Self {
             kind: StepKind::LetUtfCodepointFunction { local, name, value },
+        }
+    }
+
+    pub(crate) fn let_custom_function(
+        local: CustomFunctionLocalId,
+        name: EcoString,
+        value: CustomFunctionExpr,
+    ) -> Self {
+        Self {
+            kind: StepKind::LetCustomFunction { local, name, value },
         }
     }
 
@@ -455,7 +531,7 @@ impl Step {
 
     pub(crate) fn assert_bit_array_at(
         local: BitArrayLocalId,
-        pattern: AssertPattern,
+        pattern: BitArrayAssertPattern,
         message: Option<StringExpr>,
         site: PanicSite,
         pattern_span: SourceSpan,
@@ -468,6 +544,30 @@ impl Step {
                 site,
                 pattern_span,
             },
+        }
+    }
+
+    pub(crate) fn assert_custom_at(
+        local: CustomLocalId,
+        pattern: AssertPattern,
+        message: Option<StringExpr>,
+        site: PanicSite,
+        pattern_span: SourceSpan,
+    ) -> Self {
+        Self {
+            kind: StepKind::AssertCustom {
+                local,
+                pattern,
+                message,
+                site,
+                pattern_span,
+            },
+        }
+    }
+
+    pub(crate) fn bind_custom_fields(local: CustomLocalId, pattern: CustomBindingPattern) -> Self {
+        Self {
+            kind: StepKind::BindCustomFields { local, pattern },
         }
     }
 

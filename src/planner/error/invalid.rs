@@ -3,6 +3,11 @@ use thiserror::Error;
 
 #[derive(Debug, Error, Clone, PartialEq, Eq)]
 pub enum InvalidTypedAstReason {
+    #[error("custom type {name}: {reason}")]
+    CustomType {
+        name: EcoString,
+        reason: InvalidCustomTypeReason,
+    },
     #[error("function shape {name}: {reason}")]
     FunctionShape {
         name: EcoString,
@@ -34,6 +39,28 @@ pub enum InvalidTypedAstReason {
 }
 
 #[derive(Debug, Error, Clone, Copy, PartialEq, Eq)]
+pub enum InvalidCustomTypeReason {
+    #[error("type argument count does not match definition")]
+    TypeArgumentCount,
+    #[error("constructor index is out of range")]
+    ConstructorIndex,
+    #[error("constructor name does not match definition")]
+    ConstructorName,
+    #[error("constructor module does not match custom type")]
+    ConstructorModule,
+    #[error("constructor field count does not match definition")]
+    ConstructorArity,
+    #[error("constructor type is not a custom type")]
+    ConstructorType,
+    #[error("constructor field type is invalid")]
+    FieldType,
+    #[error("type parameter is not generic")]
+    ParameterType,
+    #[error("custom type definition is missing")]
+    UnknownDefinition,
+}
+
+#[derive(Debug, Error, Clone, Copy, PartialEq, Eq)]
 pub enum InvalidFunctionShapeReason {
     #[error("function argument types do not match signature")]
     ArgumentTypeMismatch,
@@ -61,12 +88,8 @@ pub enum InvalidExpressionShapeKind {
     PositionalAccess,
     #[error("prelude constructor")]
     PreludeConstructor,
-    #[error("record access")]
-    RecordAccess,
     #[error("record constructor")]
     RecordConstructor,
-    #[error("record update")]
-    RecordUpdate,
 }
 
 #[derive(Debug, Error, Clone, Copy, PartialEq, Eq)]
@@ -81,6 +104,8 @@ pub enum InvalidExpressionType {
     BitArray,
     #[error("UtfCodepoint")]
     UtfCodepoint,
+    #[error("custom type")]
+    Custom,
     #[error("Float")]
     Float,
     #[error("Bool")]

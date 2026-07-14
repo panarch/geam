@@ -1,5 +1,6 @@
 mod bit_array;
 mod bool;
+mod custom;
 mod float;
 mod int;
 mod list;
@@ -10,21 +11,22 @@ mod tuple;
 mod utf_codepoint;
 
 use crate::plan::{
-    BitArrayFunctionReference, BoolFunctionReference, FloatFunctionReference,
-    FunctionFunctionReference, FunctionReference, FunctionType, IntFunctionReference,
-    ListFunctionReference, NilFunctionReference, RuntimeFunctionId, StringFunctionReference,
-    TupleFunctionReference, UtfCodepointFunctionReference,
+    BitArrayFunctionReference, BoolFunctionReference, CustomFunctionReference,
+    FloatFunctionReference, FunctionFunctionReference, FunctionReference, FunctionType,
+    IntFunctionReference, ListFunctionReference, NilFunctionReference, RuntimeFunctionId,
+    StringFunctionReference, TupleFunctionReference, UtfCodepointFunctionReference,
 };
 
 pub use self::{
-    bit_array::BitArrayFunctionExpr, bool::BoolFunctionExpr, float::FloatFunctionExpr,
-    int::IntFunctionExpr, list::ListFunctionExpr, nil::NilFunctionExpr,
+    bit_array::BitArrayFunctionExpr, bool::BoolFunctionExpr, custom::CustomFunctionExpr,
+    float::FloatFunctionExpr, int::IntFunctionExpr, list::ListFunctionExpr, nil::NilFunctionExpr,
     returning_function::FunctionFunctionExpr, string::StringFunctionExpr, tuple::TupleFunctionExpr,
     utf_codepoint::UtfCodepointFunctionExpr,
 };
 pub(crate) use self::{
-    bit_array::BitArrayFunctionExprKind, bool::BoolFunctionExprKind, float::FloatFunctionExprKind,
-    int::IntFunctionExprKind, list::ListFunctionExprKind, nil::NilFunctionExprKind,
+    bit_array::BitArrayFunctionExprKind, bool::BoolFunctionExprKind,
+    custom::CustomFunctionExprKind, float::FloatFunctionExprKind, int::IntFunctionExprKind,
+    list::ListFunctionExprKind, nil::NilFunctionExprKind,
     returning_function::FunctionFunctionExprKind, string::StringFunctionExprKind,
     tuple::TupleFunctionExprKind, utf_codepoint::UtfCodepointFunctionExprKind,
 };
@@ -40,6 +42,7 @@ pub(crate) enum FunctionExprKind {
     String(StringFunctionExpr),
     BitArray(BitArrayFunctionExpr),
     UtfCodepoint(UtfCodepointFunctionExpr),
+    Custom(CustomFunctionExpr),
     Float(FloatFunctionExpr),
     Bool(BoolFunctionExpr),
     Nil(NilFunctionExpr),
@@ -67,6 +70,12 @@ impl FunctionExpr {
             RuntimeFunctionId::UtfCodepoint(id) => Self::utf_codepoint(
                 UtfCodepointFunctionExpr::reference(UtfCodepointFunctionReference::new(id, params)),
             ),
+            RuntimeFunctionId::Custom { id, return_type } => {
+                Self::custom(CustomFunctionExpr::reference(
+                    CustomFunctionReference::new(id, params),
+                    return_type,
+                ))
+            }
             RuntimeFunctionId::Bool(id) => Self::bool(BoolFunctionExpr::reference(
                 BoolFunctionReference::new(id, params),
             )),
@@ -112,6 +121,12 @@ impl FunctionExpr {
         }
     }
 
+    pub(crate) fn custom(expression: CustomFunctionExpr) -> Self {
+        Self {
+            kind: FunctionExprKind::Custom(expression),
+        }
+    }
+
     pub(crate) fn float(expression: FloatFunctionExpr) -> Self {
         Self {
             kind: FunctionExprKind::Float(expression),
@@ -154,6 +169,7 @@ impl FunctionExpr {
             FunctionExprKind::String(expression) => expression.type_(),
             FunctionExprKind::BitArray(expression) => expression.type_(),
             FunctionExprKind::UtfCodepoint(expression) => expression.type_(),
+            FunctionExprKind::Custom(expression) => expression.type_(),
             FunctionExprKind::Float(expression) => expression.type_(),
             FunctionExprKind::Bool(expression) => expression.type_(),
             FunctionExprKind::Nil(expression) => expression.type_(),
@@ -195,6 +211,13 @@ impl FunctionExpr {
     pub(crate) fn into_utf_codepoint(self) -> Option<UtfCodepointFunctionExpr> {
         match self.kind {
             FunctionExprKind::UtfCodepoint(expression) => Some(expression),
+            _ => None,
+        }
+    }
+
+    pub(crate) fn into_custom(self) -> Option<CustomFunctionExpr> {
+        match self.kind {
+            FunctionExprKind::Custom(expression) => Some(expression),
             _ => None,
         }
     }
@@ -504,6 +527,7 @@ mod tests {
             FunctionExpr::int(int_function_value()).into_utf_codepoint(),
             None,
         );
+        assert_eq!(FunctionExpr::int(int_function_value()).into_custom(), None,);
         assert_eq!(FunctionExpr::int(int_function_value()).into_float(), None);
         assert_eq!(FunctionExpr::int(int_function_value()).into_bool(), None);
         assert_eq!(FunctionExpr::int(int_function_value()).into_nil(), None);

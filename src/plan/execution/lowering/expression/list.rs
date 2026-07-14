@@ -1,7 +1,7 @@
 use super::super::super as execution;
 use super::{
-    bit_array_expr, bool_expr, call_args, float_expr, function_expr, int_expr, list_function_expr,
-    panic_expr, string_expr, tuple_expr, utf_codepoint_expr,
+    bit_array_expr, bool_expr, call_args, custom_expr, float_expr, function_expr, int_expr,
+    list_function_expr, panic_expr, string_expr, tuple_expr, utf_codepoint_expr,
 };
 use crate::plan::execution::lowering::LoweringContext;
 use crate::plan::module;
@@ -41,6 +41,9 @@ pub(in crate::plan::execution::lowering) fn list_expr(
         }
         module::ListExpr::UtfCodepoint(expression) => {
             execution::ListExpr::UtfCodepoint(utf_codepoint_list_expr(expression, context))
+        }
+        module::ListExpr::Custom(expression) => {
+            execution::ListExpr::Custom(custom_list_expr(expression, context))
         }
         module::ListExpr::Float(expression) => {
             execution::ListExpr::Float(float_list_expr(expression, context))
@@ -88,6 +91,13 @@ pub(in crate::plan::execution::lowering) fn utf_codepoint_list_expr(
     expression: module::UtfCodepointListExpr,
     context: &mut LoweringContext,
 ) -> execution::UtfCodepointListExpr {
+    typed_list_expr(expression, context)
+}
+
+pub(in crate::plan::execution::lowering) fn custom_list_expr(
+    expression: module::CustomListExpr,
+    context: &mut LoweringContext,
+) -> execution::CustomListExpr {
     typed_list_expr(expression, context)
 }
 
@@ -273,6 +283,14 @@ pub(in crate::plan::execution::lowering) fn list_local_expr(
                 value: utf_codepoint_list_expr(value, context),
             }
         }
+        module::ListLocalExpr::Custom {
+            local,
+            item_type: _,
+            value,
+        } => execution::ListLocalExpr::Custom {
+            local: execution::CustomListLocalId(local.0),
+            value: custom_list_expr(value, context),
+        },
         module::ListLocalExpr::Float { local, value } => execution::ListLocalExpr::Float {
             local: execution::FloatListLocalId(local.0),
             value: float_list_expr(value, context),
@@ -429,6 +447,36 @@ impl LowerListItem for module::UtfCodepointListItem {
         _context: &mut LoweringContext,
     ) -> execution::UtfCodepointListFunctionId {
         execution::UtfCodepointListFunctionId::new(function.0, item.type_id())
+    }
+}
+
+impl LowerListItem for module::CustomListItem {
+    type Execution = execution::CustomListItem;
+
+    fn lower_item(self, context: &mut LoweringContext) -> Self::Execution {
+        execution::CustomListItem::new(context.custom_list_type(self.into_item_type()))
+    }
+
+    fn lower_element(
+        element: Self::ElementExpr,
+        context: &mut LoweringContext,
+    ) -> execution::CustomExpr {
+        custom_expr(element, context)
+    }
+
+    fn lower_local(
+        local: Self::Local,
+        _context: &mut LoweringContext,
+    ) -> execution::CustomListLocalId {
+        execution::CustomListLocalId(local.0)
+    }
+
+    fn lower_function(
+        function: Self::Function,
+        item: &Self::Execution,
+        _context: &mut LoweringContext,
+    ) -> execution::CustomListFunctionId {
+        execution::CustomListFunctionId::new(function.0, item.type_id())
     }
 }
 

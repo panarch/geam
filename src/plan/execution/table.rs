@@ -2,17 +2,19 @@ use super::function::ExecutableFunction;
 use super::{
     BitArrayFunctionFunctionId, BitArrayFunctionId, BitArrayFunctionReturn, BitArrayListFunctionId,
     BitArrayListReturn, BitArrayReturn, BoolFunctionFunctionId, BoolFunctionId, BoolFunctionReturn,
-    BoolListFunctionId, BoolListReturn, BoolReturn, FloatFunctionFunctionId, FloatFunctionId,
-    FloatFunctionReturn, FloatListFunctionId, FloatListReturn, FloatReturn,
-    FunctionFunctionFunctionId, FunctionFunctionReturn, FunctionListFunctionId, FunctionListReturn,
-    IntFunctionFunctionId, IntFunctionId, IntFunctionReturn, IntListFunctionId, IntListReturn,
-    IntReturn, ListFunctionFunctionId, ListFunctionReturn, ListListFunctionId, ListListReturn,
-    NilFunctionFunctionId, NilFunctionId, NilFunctionReturn, NilListFunctionId, NilListReturn,
-    NilReturn, StringFunctionFunctionId, StringFunctionId, StringFunctionReturn,
-    StringListFunctionId, StringListReturn, StringReturn, TupleFunctionFunctionId, TupleFunctionId,
-    TupleFunctionReturn, TupleListFunctionId, TupleListReturn, TupleReturn,
-    UtfCodepointFunctionFunctionId, UtfCodepointFunctionId, UtfCodepointFunctionReturn,
-    UtfCodepointListFunctionId, UtfCodepointListReturn, UtfCodepointReturn,
+    BoolListFunctionId, BoolListReturn, BoolReturn, CustomFunctionFunctionId, CustomFunctionId,
+    CustomFunctionReturn, CustomListFunctionId, CustomListReturn, CustomReturn,
+    FloatFunctionFunctionId, FloatFunctionId, FloatFunctionReturn, FloatListFunctionId,
+    FloatListReturn, FloatReturn, FunctionFunctionFunctionId, FunctionFunctionReturn,
+    FunctionListFunctionId, FunctionListReturn, IntFunctionFunctionId, IntFunctionId,
+    IntFunctionReturn, IntListFunctionId, IntListReturn, IntReturn, ListFunctionFunctionId,
+    ListFunctionReturn, ListListFunctionId, ListListReturn, NilFunctionFunctionId, NilFunctionId,
+    NilFunctionReturn, NilListFunctionId, NilListReturn, NilReturn, StringFunctionFunctionId,
+    StringFunctionId, StringFunctionReturn, StringListFunctionId, StringListReturn, StringReturn,
+    TupleFunctionFunctionId, TupleFunctionId, TupleFunctionReturn, TupleListFunctionId,
+    TupleListReturn, TupleReturn, UtfCodepointFunctionFunctionId, UtfCodepointFunctionId,
+    UtfCodepointFunctionReturn, UtfCodepointListFunctionId, UtfCodepointListReturn,
+    UtfCodepointReturn,
 };
 
 #[cfg(test)]
@@ -24,6 +26,7 @@ pub(super) struct FunctionTables {
     pub(super) string_functions: Vec<ExecutableFunction<StringReturn>>,
     pub(super) bit_array_functions: Vec<ExecutableFunction<BitArrayReturn>>,
     pub(super) utf_codepoint_functions: Vec<ExecutableFunction<UtfCodepointReturn>>,
+    pub(super) custom_functions: Vec<ExecutableFunction<CustomReturn>>,
     pub(super) bool_functions: Vec<ExecutableFunction<BoolReturn>>,
     pub(super) nil_functions: Vec<ExecutableFunction<NilReturn>>,
     pub(super) tuple_functions: Vec<ExecutableFunction<TupleReturn>>,
@@ -38,6 +41,8 @@ pub(super) struct FunctionTables {
         UtfCodepointListFunctionId,
         ExecutableFunction<UtfCodepointListReturn>,
     )>,
+    pub(super) custom_list_functions:
+        Vec<(CustomListFunctionId, ExecutableFunction<CustomListReturn>)>,
     pub(super) float_list_functions:
         Vec<(FloatListFunctionId, ExecutableFunction<FloatListReturn>)>,
     pub(super) bool_list_functions: Vec<(BoolListFunctionId, ExecutableFunction<BoolListReturn>)>,
@@ -55,6 +60,7 @@ pub(super) struct FunctionTables {
     pub(super) bit_array_function_functions: Vec<ExecutableFunction<BitArrayFunctionReturn>>,
     pub(super) utf_codepoint_function_functions:
         Vec<ExecutableFunction<UtfCodepointFunctionReturn>>,
+    pub(super) custom_function_functions: Vec<ExecutableFunction<CustomFunctionReturn>>,
     pub(super) bool_function_functions: Vec<ExecutableFunction<BoolFunctionReturn>>,
     pub(super) nil_function_functions: Vec<ExecutableFunction<NilFunctionReturn>>,
     pub(super) tuple_function_functions: Vec<ExecutableFunction<TupleFunctionReturn>>,
@@ -62,6 +68,7 @@ pub(super) struct FunctionTables {
     pub(super) string_list_function_functions: Vec<ExecutableFunction<ListFunctionReturn>>,
     pub(super) bit_array_list_function_functions: Vec<ExecutableFunction<ListFunctionReturn>>,
     pub(super) utf_codepoint_list_function_functions: Vec<ExecutableFunction<ListFunctionReturn>>,
+    pub(super) custom_list_function_functions: Vec<ExecutableFunction<ListFunctionReturn>>,
     pub(super) float_list_function_functions: Vec<ExecutableFunction<ListFunctionReturn>>,
     pub(super) bool_list_function_functions: Vec<ExecutableFunction<ListFunctionReturn>>,
     pub(super) nil_list_function_functions: Vec<ExecutableFunction<ListFunctionReturn>>,
@@ -93,6 +100,11 @@ impl FunctionTables {
         index: usize,
     ) -> UtfCodepointListFunctionId {
         self.utf_codepoint_list_functions[index].0
+    }
+
+    #[cfg(test)]
+    pub(super) fn custom_list_function_id(&self, index: usize) -> CustomListFunctionId {
+        self.custom_list_functions[index].0
     }
 
     #[cfg(test)]
@@ -162,6 +174,13 @@ impl FunctionTables {
         &self.utf_codepoint_functions[id.0]
     }
 
+    pub(super) fn custom_function(
+        &self,
+        id: CustomFunctionId,
+    ) -> &ExecutableFunction<CustomReturn> {
+        &self.custom_functions[id.0]
+    }
+
     pub(super) fn bool_function(&self, id: BoolFunctionId) -> &ExecutableFunction<BoolReturn> {
         &self.bool_functions[id.0]
     }
@@ -200,6 +219,13 @@ impl FunctionTables {
         id: UtfCodepointListFunctionId,
     ) -> &ExecutableFunction<UtfCodepointListReturn> {
         &self.utf_codepoint_list_functions[id.index()].1
+    }
+
+    pub(super) fn custom_list_function(
+        &self,
+        id: CustomListFunctionId,
+    ) -> &ExecutableFunction<CustomListReturn> {
+        &self.custom_list_functions[id.index()].1
     }
 
     pub(super) fn float_list_function(
@@ -279,6 +305,13 @@ impl FunctionTables {
         &self.utf_codepoint_function_functions[id.0]
     }
 
+    pub(super) fn custom_function_function(
+        &self,
+        id: CustomFunctionFunctionId,
+    ) -> &ExecutableFunction<CustomFunctionReturn> {
+        &self.custom_function_functions[id.0]
+    }
+
     pub(super) fn bool_function_function(
         &self,
         id: BoolFunctionFunctionId,
@@ -313,6 +346,7 @@ impl FunctionTables {
             ListFunctionFunctionId::UtfCodepoint { id, .. } => {
                 &self.utf_codepoint_list_function_functions[id.0]
             }
+            ListFunctionFunctionId::Custom { id, .. } => &self.custom_list_function_functions[id.0],
             ListFunctionFunctionId::Float { id, .. } => &self.float_list_function_functions[id.0],
             ListFunctionFunctionId::Bool { id, .. } => &self.bool_list_function_functions[id.0],
             ListFunctionFunctionId::Nil { id, .. } => &self.nil_list_function_functions[id.0],

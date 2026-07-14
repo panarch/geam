@@ -1,10 +1,65 @@
 use crate::plan::{
-    BitArrayExpr, BitArrayExprKind, BitArrayReturn, BoolExpr, BoolExprKind, BoolReturn, FloatExpr,
-    FloatExprKind, FloatReturn, IntExpr, IntExprKind, IntReturn, ListItem, NilExpr, NilExprKind,
-    NilReturn, ReturnBody, StringExpr, StringExprKind, StringReturn, TupleExpr, TupleExprKind,
-    TupleReturn, TypedListExpr, TypedListReturnKind, UtfCodepointExpr, UtfCodepointExprKind,
-    UtfCodepointReturn,
+    BitArrayExpr, BitArrayExprKind, BitArrayReturn, BoolExpr, BoolExprKind, BoolReturn, CustomExpr,
+    CustomExprKind, CustomReturn, FloatExpr, FloatExprKind, FloatReturn, IntExpr, IntExprKind,
+    IntReturn, ListItem, NilExpr, NilExprKind, NilReturn, ReturnBody, StringExpr, StringExprKind,
+    StringReturn, TupleExpr, TupleExprKind, TupleReturn, TypedListExpr, TypedListReturnKind,
+    UtfCodepointExpr, UtfCodepointExprKind, UtfCodepointReturn,
 };
+
+pub(super) fn custom_return(expression: CustomExpr) -> CustomReturn {
+    match expression.kind() {
+        CustomExprKind::Call { function, args } => ReturnBody::tail_call(*function, args.clone()),
+        CustomExprKind::BoolCase {
+            subject,
+            true_,
+            false_,
+        } => ReturnBody::bool_case(
+            (**subject).clone(),
+            custom_return((**true_).clone()),
+            custom_return((**false_).clone()),
+        ),
+        CustomExprKind::IntCase {
+            subject,
+            clauses,
+            fallback,
+        } => ReturnBody::int_case(
+            (**subject).clone(),
+            clauses
+                .iter()
+                .map(|(value, branch)| (value.clone(), custom_return(branch.clone())))
+                .collect(),
+            custom_return((**fallback).clone()),
+        ),
+        CustomExprKind::StringCase {
+            subject,
+            clauses,
+            fallback,
+        } => ReturnBody::string_case(
+            (**subject).clone(),
+            clauses
+                .iter()
+                .map(|(value, branch)| (value.clone(), custom_return(branch.clone())))
+                .collect(),
+            custom_return((**fallback).clone()),
+        ),
+        CustomExprKind::FloatCase {
+            subject,
+            clauses,
+            fallback,
+        } => ReturnBody::float_case(
+            (**subject).clone(),
+            clauses
+                .iter()
+                .map(|(value, branch)| (*value, custom_return(branch.clone())))
+                .collect(),
+            custom_return((**fallback).clone()),
+        ),
+        CustomExprKind::Block { steps, return_ } => {
+            ReturnBody::block(steps.clone(), custom_return((**return_).clone()))
+        }
+        _ => ReturnBody::expr(expression),
+    }
+}
 
 #[cfg(test)]
 use crate::plan::{ListExpr, ListReturn};
@@ -460,6 +515,10 @@ pub(super) fn list_return(expression: ListExpr) -> ListReturn {
         ListExpr::UtfCodepoint(expression) => {
             ListReturn::UtfCodepoint(typed_list_return_body(expression))
         }
+        ListExpr::Custom(expression) => ListReturn::Custom {
+            item_type: expression.item().item_type(),
+            body: typed_list_return_body(expression),
+        },
         ListExpr::Float(expression) => ListReturn::Float(typed_list_return_body(expression)),
         ListExpr::Bool(expression) => ListReturn::Bool(typed_list_return_body(expression)),
         ListExpr::Nil(expression) => ListReturn::Nil(typed_list_return_body(expression)),
@@ -541,8 +600,9 @@ mod tests {
         bool_return, float_return, int_return, list_return, nil_return, string_return, tuple_return,
     };
     use crate::plan::{
-        BoolExpr, Expr, FloatExpr, FloatFunctionId, FunctionType, IntExpr, ListCaseBranches,
-        ListExpr, ListReturn, NilExpr, ReturnBody, Step, StringExpr, TupleExpr, ValueType,
+        BoolExpr, CustomType, CustomTypeName, Expr, FloatExpr, FloatFunctionId, FunctionType,
+        IntExpr, ListCaseBranches, ListExpr, ListReturn, NilExpr, ReturnBody, Step, StringExpr,
+        TupleExpr, ValueType,
     };
     use num_bigint::BigInt;
 
@@ -635,6 +695,17 @@ mod tests {
         assert_eq!(
             list_return(ListExpr::value(Vec::new(), ValueType::UtfCodepoint)),
             ListReturn::expr(ListExpr::value(Vec::new(), ValueType::UtfCodepoint)),
+        );
+        let custom_type = CustomType::new(
+            CustomTypeName::new("geam".into(), "main".into(), "Boxed".into()),
+            Vec::new(),
+        );
+        assert_eq!(
+            list_return(ListExpr::value(
+                Vec::new(),
+                ValueType::Custom(custom_type.clone()),
+            )),
+            ListReturn::expr(ListExpr::value(Vec::new(), ValueType::Custom(custom_type),)),
         );
         assert_eq!(
             list_return(ListExpr::value(Vec::new(), ValueType::Bool)),

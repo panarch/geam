@@ -2,18 +2,18 @@ use ecow::EcoString;
 use num_bigint::BigInt;
 
 use super::{
-    BitArrayFunctionValue, BitArrayValue, BoolFunctionValue, FloatFunctionValue,
-    FunctionFunctionValue, IntFunctionValue, ListFunctionValue, ListValue, NilFunctionValue,
-    StringFunctionValue, TupleFunctionValue, UtfCodepointFunctionValue, Value,
+    BitArrayFunctionValue, BitArrayValue, BoolFunctionValue, CustomFunctionValue, CustomValue,
+    FloatFunctionValue, FunctionFunctionValue, IntFunctionValue, ListFunctionValue, ListValue,
+    NilFunctionValue, StringFunctionValue, TupleFunctionValue, UtfCodepointFunctionValue, Value,
 };
 use crate::plan::execution::{
     BitArrayFunctionLocalId, BitArrayListLocalId, BitArrayLocalId, BoolFunctionLocalId,
-    BoolListLocalId, BoolLocalId, FloatFunctionLocalId, FloatListLocalId, FloatLocalId,
-    FunctionFunctionLocalId, FunctionListLocalId, IntFunctionLocalId, IntListLocalId, IntLocalId,
-    ListFunctionLocal, ListListLocalId, NilFunctionLocalId, NilListLocalId, NilLocalId,
-    StringFunctionLocalId, StringListLocalId, StringLocalId, TupleFunctionLocalId,
-    TupleListLocalId, TupleLocalId, UtfCodepointFunctionLocalId, UtfCodepointListLocalId,
-    UtfCodepointLocalId,
+    BoolListLocalId, BoolLocalId, CustomFunctionLocalId, CustomListLocalId, CustomLocalId,
+    FloatFunctionLocalId, FloatListLocalId, FloatLocalId, FunctionFunctionLocalId,
+    FunctionListLocalId, IntFunctionLocalId, IntListLocalId, IntLocalId, ListFunctionLocal,
+    ListListLocalId, NilFunctionLocalId, NilListLocalId, NilLocalId, StringFunctionLocalId,
+    StringListLocalId, StringLocalId, TupleFunctionLocalId, TupleListLocalId, TupleLocalId,
+    UtfCodepointFunctionLocalId, UtfCodepointListLocalId, UtfCodepointLocalId,
 };
 use crate::plan::{FunctionType, ValueType};
 
@@ -43,6 +43,10 @@ pub(crate) enum CaptureValueKind {
     UtfCodepoint {
         local: UtfCodepointLocalId,
         value: char,
+    },
+    Custom {
+        local: CustomLocalId,
+        value: CustomValue,
     },
     Bool {
         local: BoolLocalId,
@@ -75,6 +79,10 @@ pub(crate) enum CaptureValueKind {
     UtfCodepointFunction {
         local: UtfCodepointFunctionLocalId,
         value: UtfCodepointFunctionValue,
+    },
+    CustomFunction {
+        local: CustomFunctionLocalId,
+        value: CustomFunctionValue,
     },
     BoolFunction {
         local: BoolFunctionLocalId,
@@ -115,6 +123,11 @@ pub(crate) enum CaptureListValue {
     UtfCodepoint {
         local: UtfCodepointListLocalId,
         value: Vec<char>,
+    },
+    Custom {
+        local: CustomListLocalId,
+        item_type: crate::plan::CustomType,
+        value: Vec<CustomValue>,
     },
     Float {
         local: FloatListLocalId,
@@ -173,6 +186,12 @@ impl CaptureValue {
     pub(crate) fn utf_codepoint(local: UtfCodepointLocalId, value: char) -> Self {
         Self {
             kind: CaptureValueKind::UtfCodepoint { local, value },
+        }
+    }
+
+    pub(crate) fn custom(local: CustomLocalId, value: CustomValue) -> Self {
+        Self {
+            kind: CaptureValueKind::Custom { local, value },
         }
     }
 
@@ -236,6 +255,15 @@ impl CaptureValue {
     ) -> Self {
         Self {
             kind: CaptureValueKind::UtfCodepointFunction { local, value },
+        }
+    }
+
+    pub(crate) fn custom_function(
+        local: CustomFunctionLocalId,
+        value: CustomFunctionValue,
+    ) -> Self {
+        Self {
+            kind: CaptureValueKind::CustomFunction { local, value },
         }
     }
 

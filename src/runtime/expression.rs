@@ -1,5 +1,6 @@
 mod bit_array;
 mod bool;
+mod custom;
 mod float;
 mod function;
 mod int;
@@ -20,22 +21,23 @@ use std::convert::Infallible;
 pub(super) use self::{
     bit_array::eval_bit_array_expr,
     bool::eval_bool_expr,
+    custom::eval_custom_expr,
     float::eval_float_expr,
     function::{
-        eval_bit_array_function_expr, eval_bool_function_expr, eval_float_function_expr,
-        eval_function_expr, eval_function_function_expr, eval_int_function_expr,
-        eval_list_function_expr, eval_nil_function_expr, eval_string_function_expr,
-        eval_tuple_function_expr, eval_utf_codepoint_function_expr,
+        eval_bit_array_function_expr, eval_bool_function_expr, eval_custom_function_expr,
+        eval_float_function_expr, eval_function_expr, eval_function_function_expr,
+        eval_int_function_expr, eval_list_function_expr, eval_nil_function_expr,
+        eval_string_function_expr, eval_tuple_function_expr, eval_utf_codepoint_function_expr,
     },
     int::eval_int_expr,
     list::{
-        eval_bit_array_list_expr, eval_bool_list_expr, eval_float_list_expr,
+        eval_bit_array_list_expr, eval_bool_list_expr, eval_custom_list_expr, eval_float_list_expr,
         eval_function_list_expr, eval_int_list_expr, eval_list_expr, eval_list_list_expr,
         eval_nil_list_expr, eval_string_list_expr, eval_tuple_list_expr,
         eval_utf_codepoint_list_expr, get_list_value, project_bit_array_list_expr,
-        project_bool_list_expr, project_float_list_expr, project_function_list_expr,
-        project_int_list_expr, project_nil_list_expr, project_string_list_expr,
-        project_tuple_list_expr, project_utf_codepoint_list_expr,
+        project_bool_list_expr, project_custom_list_expr, project_float_list_expr,
+        project_function_list_expr, project_int_list_expr, project_nil_list_expr,
+        project_string_list_expr, project_tuple_list_expr, project_utf_codepoint_list_expr,
     },
     nil::eval_nil_expr,
     string::eval_string_expr,
@@ -62,6 +64,9 @@ pub(super) fn eval_expr(
         ExprKind::UtfCodepoint(expression) => Ok(EvaluatedValue::UtfCodepoint(
             eval_utf_codepoint_expr(plan, state, frame, expression)?,
         )),
+        ExprKind::Custom(expression) => Ok(EvaluatedValue::Custom(eval_custom_expr(
+            plan, state, frame, expression,
+        )?)),
         ExprKind::Float(expression) => Ok(EvaluatedValue::Float(eval_float_expr(
             plan, state, frame, expression,
         )?)),

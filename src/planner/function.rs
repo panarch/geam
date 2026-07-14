@@ -2,7 +2,8 @@ mod return_body;
 
 use self::return_body::function_return_expr;
 use crate::plan::{
-    CaptureArg, FunctionPlan, Param, ParamBinding, ReturnExpr, RuntimeFunctionId, Step, ValueType,
+    CaptureArg, CustomTypeDefinition, FunctionPlan, Param, ParamBinding, ReturnExpr,
+    RuntimeFunctionId, Step, ValueType,
 };
 use crate::planner::context::{AnonymousFunctions, FunctionInfo, FunctionParam, PlanContext};
 use crate::planner::error::{
@@ -25,6 +26,7 @@ pub(super) fn plan_function(
     info: FunctionInfo,
     module_name: &EcoString,
     functions: &HashMap<EcoString, FunctionInfo>,
+    custom_types: &[CustomTypeDefinition],
     function: TypedFunction,
     anonymous_functions: &mut AnonymousFunctions,
 ) -> Result<FunctionPlan, PlanError> {
@@ -37,7 +39,12 @@ pub(super) fn plan_function(
         });
     }
 
-    let mut context = PlanContext::new(module_name, functions, anonymous_functions);
+    let mut context = PlanContext::new_with_custom_types(
+        module_name,
+        functions,
+        custom_types,
+        anonymous_functions,
+    );
     context.set_current_function(name.clone());
     let params = define_params(&info.params, &mut context);
     let return_type = info.return_type();
@@ -1386,7 +1393,7 @@ pub fn main() {
     }
 
     #[test]
-    fn reject_profile_function_shapes() {
+    fn reject_profile_external_function() {
         assert_eq!(
             expect_plan_error(
                 r#"
@@ -1397,20 +1404,6 @@ pub fn main() -> Int
             PlanError::UnsupportedFunction {
                 name: "main".into(),
                 reason: UnsupportedFunctionReason::External,
-            },
-        );
-
-        assert_eq!(
-            expect_plan_error(
-                r#"
-pub fn main() -> Result(Int, Nil) {
-  Ok(1)
-}
-"#,
-            ),
-            PlanError::UnsupportedFunction {
-                name: "main".into(),
-                reason: UnsupportedFunctionReason::UnsupportedReturnType,
             },
         );
     }
@@ -1472,6 +1465,7 @@ pub fn main() -> Result(Int, Nil) {
                 info,
                 &"main".into(),
                 &Default::default(),
+                &[],
                 function,
                 &mut anonymous,
             ),

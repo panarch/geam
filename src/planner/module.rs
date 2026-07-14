@@ -28,23 +28,19 @@ pub fn plan_module_with_source(
 }
 
 fn plan_module_inner(module: TypedModule) -> Result<ModulePlan, PlanError> {
+    let package = module.type_info.package.clone();
     let definitions = module.definitions;
 
     let imports = definitions.imports.len();
-    let custom_types = definitions.custom_types.len();
 
     if imports != 0 {
         return Err(PlanError::UnsupportedTopLevel {
             kind: UnsupportedTopLevelKind::Import,
         });
     }
-    if custom_types != 0 {
-        return Err(PlanError::UnsupportedTopLevel {
-            kind: UnsupportedTopLevelKind::CustomType,
-        });
-    }
-
     let module_name = module.name;
+    let custom_types =
+        custom_type::plan_custom_types(&package, &module_name, definitions.custom_types)?;
     let FunctionTable {
         by_name,
         main,
@@ -60,6 +56,7 @@ fn plan_module_inner(module: TypedModule) -> Result<ModulePlan, PlanError> {
             function.info,
             &module_name,
             &by_name,
+            &custom_types,
             function.function,
             &mut anonymous_functions,
         )?;
@@ -70,6 +67,7 @@ fn plan_module_inner(module: TypedModule) -> Result<ModulePlan, PlanError> {
         main.info,
         &module_name,
         &by_name,
+        &custom_types,
         main.function,
         &mut anonymous_functions,
     )?;
@@ -79,6 +77,7 @@ fn plan_module_inner(module: TypedModule) -> Result<ModulePlan, PlanError> {
             function.info,
             &module_name,
             &by_name,
+            &custom_types,
             function.function,
             &mut anonymous_functions,
         )?;
@@ -86,7 +85,9 @@ fn plan_module_inner(module: TypedModule) -> Result<ModulePlan, PlanError> {
     }
     let anonymous_functions = anonymous_functions.into_functions();
 
-    Ok(ModulePlan::new(module_name, main, functions).with_anonymous_functions(anonymous_functions))
+    Ok(ModulePlan::new(module_name, main, functions)
+        .with_custom_types(custom_types)
+        .with_anonymous_functions(anonymous_functions))
 }
 
 struct FunctionTable {
@@ -260,6 +261,7 @@ pub(super) fn function_params(
     let mut next_string = 0;
     let mut next_bit_array = 0;
     let mut next_utf_codepoint = 0;
+    let mut next_custom = 0;
     let mut next_bool = 0;
     let mut next_nil = 0;
     let mut next_tuple = 0;
@@ -267,6 +269,7 @@ pub(super) fn function_params(
     let mut next_string_list = 0;
     let mut next_bit_array_list = 0;
     let mut next_utf_codepoint_list = 0;
+    let mut next_custom_list = 0;
     let mut next_float_list = 0;
     let mut next_bool_list = 0;
     let mut next_nil_list = 0;
@@ -335,6 +338,12 @@ pub(super) fn function_params(
                     next_utf_codepoint += 1;
                     local
                 }
+                ValueType::Custom(type_) => {
+                    let local =
+                        ParamLocal::custom(crate::plan::CustomLocalId(next_custom), type_.clone());
+                    next_custom += 1;
+                    local
+                }
                 ValueType::Bool => {
                     let local = ParamLocal::bool(crate::plan::BoolLocalId(next_bool));
                     next_bool += 1;
@@ -379,6 +388,14 @@ pub(super) fn function_params(
                                 crate::plan::UtfCodepointListLocalId(next_utf_codepoint_list),
                             );
                             next_utf_codepoint_list += 1;
+                            local
+                        }
+                        ValueType::Custom(item_type) => {
+                            let local = crate::plan::ListLocal::custom(
+                                crate::plan::CustomListLocalId(next_custom_list),
+                                item_type.clone(),
+                            );
+                            next_custom_list += 1;
                             local
                         }
                         ValueType::Float => {
@@ -453,6 +470,7 @@ struct FunctionParamLocalCounters {
     next_string: usize,
     next_bit_array: usize,
     next_utf_codepoint: usize,
+    next_custom: usize,
     next_bool: usize,
     next_nil: usize,
     next_tuple: usize,
@@ -499,6 +517,14 @@ impl FunctionParamLocalCounters {
                     type_.clone(),
                 );
                 self.next_utf_codepoint += 1;
+                local
+            }
+            ValueType::Custom(_) => {
+                let local = ParamLocal::custom_function(
+                    crate::plan::CustomFunctionLocalId(self.next_custom),
+                    type_.clone(),
+                );
+                self.next_custom += 1;
                 local
             }
             ValueType::Bool => {
@@ -562,7 +588,9 @@ fn validate_main_function(main: FunctionToPlan) -> Result<FunctionToPlan, PlanEr
 mod tests {
     use super::plan_module;
     use crate::plan::{
-        BitArrayListLocalId, BoolListLocalId, FloatListLocalId, FunctionFunctionId,
+        BitArrayListLocalId, BoolListLocalId, CustomConstructorDefinition, CustomFieldDefinition,
+        CustomFunctionId, CustomLocalId, CustomType, CustomTypeDefinition, CustomTypeName,
+        CustomTypePublicity, CustomTypeTemplate, FloatListLocalId, FunctionFunctionId,
         FunctionListLocalId, FunctionType, IntFunctionFunctionId, IntFunctionId, IntListLocalId,
         IntLocalId, ListListLocalId, ListLocal, LocalId, NilExpr, NilFunctionId, NilListLocalId,
         PanicExpr, PanicSite, Param, ParamLocal, RuntimeFunctionId, SourceSpan, StringListLocalId,
@@ -574,8 +602,8 @@ mod tests {
     };
     use crate::planner::support::{compile, expect_plan_error};
     use crate::planner::{
-        InvalidFunctionShapeReason, InvalidTypedAstReason, PlanError, UnsupportedArgumentReason,
-        UnsupportedExpressionKind, UnsupportedFunctionReason, UnsupportedTopLevelKind,
+        InvalidFunctionShapeReason, InvalidTypedAstReason, PlanError, UnsupportedExpressionKind,
+        UnsupportedFunctionReason, UnsupportedTopLevelKind,
     };
     use gleam_core::type_;
 
@@ -746,7 +774,9 @@ pub fn main() {
     }
 
     #[test]
-    fn reject_profile_unsupported_return_type_for_non_source_stop_final_shapes() {
+    fn function_return_type_preserves_custom_non_source_stop_shapes() {
+        let result_type = result_type();
+        assert!(!super::is_inferred_return_type(type_::int().as_ref()));
         assert_eq!(super::source_stop_return_type(&[]), None);
         assert_eq!(
             super::function_return_type(
@@ -754,10 +784,7 @@ pub fn main() {
                 type_::result(type_::int(), type_::nil()).as_ref(),
                 &[],
             ),
-            Err(PlanError::UnsupportedFunction {
-                name: "values".into(),
-                reason: UnsupportedFunctionReason::UnsupportedReturnType,
-            }),
+            Ok(result_type.clone()),
         );
 
         let final_expression = compile(
@@ -806,10 +833,7 @@ pub fn main() {
                 type_::result(type_::int(), type_::nil()).as_ref(),
                 &block_with_final_assignment.definitions.functions[0].body,
             ),
-            Err(PlanError::UnsupportedFunction {
-                name: "main".into(),
-                reason: UnsupportedFunctionReason::UnsupportedReturnType,
-            }),
+            Ok(result_type),
         );
     }
 
@@ -878,78 +902,92 @@ pub fn main() {
     }
 
     #[test]
-    fn reject_profile_source_stop_with_explicit_unsupported_return_type() {
-        assert_eq!(
-            expect_plan_error(
-                r#"
+    fn function_return_type_preserves_explicit_custom_source_stop_shapes() {
+        let result_type = result_type();
+        let main = compile(
+            r#"
 pub fn main() -> Result(Int, Nil) {
   panic
 }
 "#,
-            ),
-            PlanError::UnsupportedFunction {
-                name: "main".into(),
-                reason: UnsupportedFunctionReason::UnsupportedReturnType,
-            },
         );
         assert_eq!(
-            expect_plan_error(
-                r#"
+            super::function_return_type(
+                "main".into(),
+                main.definitions.functions[0].return_type.as_ref(),
+                &main.definitions.functions[0].body,
+            ),
+            Ok(result_type.clone()),
+        );
+
+        let helper = compile(
+            r#"
+pub fn main() {
+  1
+}
+
 fn helper() -> Result(Int, Nil) {
   panic
 }
-
-pub fn main() {
-  1
-}
 "#,
-            ),
-            PlanError::UnsupportedFunction {
-                name: "helper".into(),
-                reason: UnsupportedFunctionReason::UnsupportedReturnType,
-            },
+        );
+        let helper = &helper.definitions.functions[1];
+        assert_eq!(
+            super::function_return_type("helper".into(), helper.return_type.as_ref(), &helper.body,),
+            Ok(result_type),
         );
     }
 
     #[test]
-    fn reject_profile_function_before_main() {
-        assert_eq!(
-            expect_plan_error(
-                r#"
-fn values() -> Result(Int, Nil) {
+    fn plan_custom_returning_functions_before_and_after_main() {
+        let actual = plan_module(compile(
+            r#"
+fn before() -> Result(Int, Nil) {
   Ok(1)
 }
 
 pub fn main() {
   1
 }
-"#,
-            ),
-            PlanError::UnsupportedFunction {
-                name: "values".into(),
-                reason: UnsupportedFunctionReason::UnsupportedReturnType,
-            },
-        );
-    }
 
-    #[test]
-    fn reject_profile_function_after_main() {
+fn after() -> Result(Int, Nil) {
+  Ok(2)
+}
+"#,
+        ))
+        .expect("concrete custom return types should plan");
+        let functions = actual
+            .functions()
+            .iter()
+            .map(|function| {
+                (
+                    function.name().clone(),
+                    function.return_().runtime_id(),
+                    function.return_().value_type(),
+                )
+            })
+            .collect::<Vec<_>>();
+
         assert_eq!(
-            expect_plan_error(
-                r#"
-pub fn main() {
-  1
-}
-
-fn values() -> Result(Int, Nil) {
-  Ok(1)
-}
-"#,
-            ),
-            PlanError::UnsupportedFunction {
-                name: "values".into(),
-                reason: UnsupportedFunctionReason::UnsupportedReturnType,
-            },
+            functions,
+            vec![
+                (
+                    "before".into(),
+                    RuntimeFunctionId::Custom {
+                        id: CustomFunctionId(0),
+                        return_type: result_custom_type(),
+                    },
+                    result_type(),
+                ),
+                (
+                    "after".into(),
+                    RuntimeFunctionId::Custom {
+                        id: CustomFunctionId(1),
+                        return_type: result_custom_type(),
+                    },
+                    result_type(),
+                ),
+            ],
         );
     }
 
@@ -1162,10 +1200,9 @@ pub fn main() {
     }
 
     #[test]
-    fn reject_profile_unsupported_function_argument_type() {
-        assert_eq!(
-            expect_plan_error(
-                r#"
+    fn plan_custom_function_argument_type() {
+        let actual = plan_module(compile(
+            r#"
 pub fn main() {
   1
 }
@@ -1174,19 +1211,40 @@ fn count(values: Result(Int, Nil)) {
   1
 }
 "#,
-            ),
-            PlanError::UnsupportedArgument {
-                function: "count".into(),
-                reason: UnsupportedArgumentReason::UnsupportedType,
-            },
+        ))
+        .expect("concrete custom arguments should plan");
+        assert_eq!(
+            actual.functions()[0].params(),
+            &[Param::named(
+                ParamLocal::custom(CustomLocalId(0), result_custom_type()),
+                "values".into(),
+            )],
         );
     }
 
     #[test]
-    fn reject_profile_type_alias_resolved_to_unsupported_argument_type() {
+    fn reject_margin_custom_function_argument_with_unsupported_typed_ast_type() {
+        let mut module = compile(
+            r#"
+fn count(value: Int) { value }
+pub fn main() { count(1) }
+"#,
+        );
+        module.definitions.functions[0].arguments[0].type_ = type_::generic_var(0);
+
         assert_eq!(
-            expect_plan_error(
-                r#"
+            plan_module(module),
+            Err(PlanError::UnsupportedArgument {
+                function: "count".into(),
+                reason: crate::planner::UnsupportedArgumentReason::UnsupportedType,
+            }),
+        );
+    }
+
+    #[test]
+    fn plan_type_alias_resolved_to_custom_argument_type() {
+        let actual = plan_module(compile(
+            r#"
 pub type Outcome =
   Result(Int, Nil)
 
@@ -1198,11 +1256,14 @@ fn count(values: Outcome) {
   1
 }
 "#,
-            ),
-            PlanError::UnsupportedArgument {
-                function: "count".into(),
-                reason: UnsupportedArgumentReason::UnsupportedType,
-            },
+        ))
+        .expect("aliases to concrete custom arguments should plan");
+        assert_eq!(
+            actual.functions()[0].params(),
+            &[Param::named(
+                ParamLocal::custom(CustomLocalId(0), result_custom_type()),
+                "values".into(),
+            )],
         );
     }
 
@@ -1310,8 +1371,8 @@ pub fn main() {
     }
 
     #[test]
-    fn reject_profile_top_level_non_function_definitions() {
-        assert_plan_error(
+    fn plan_local_custom_type_definition() {
+        let plan = plan_module(compile(
             r#"
 pub type Boxed {
   Boxed(Int)
@@ -1321,9 +1382,22 @@ pub fn main() {
   1
 }
 "#,
-            PlanError::UnsupportedTopLevel {
-                kind: UnsupportedTopLevelKind::CustomType,
-            },
+        ))
+        .expect("custom type should plan");
+
+        assert_eq!(
+            plan.custom_types(),
+            &[CustomTypeDefinition::new(
+                CustomTypeName::new("geam".into(), "main".into(), "Boxed".into()),
+                CustomTypePublicity::Public,
+                false,
+                Vec::new(),
+                vec![CustomConstructorDefinition::new(
+                    "Boxed".into(),
+                    0,
+                    vec![CustomFieldDefinition::new(None, CustomTypeTemplate::Int)],
+                )],
+            )],
         );
     }
 
@@ -1345,7 +1419,15 @@ pub fn main() {
         );
     }
 
-    fn assert_plan_error(src: &str, expected: PlanError) {
-        assert_eq!(expect_plan_error(src), expected);
+    fn result_type() -> ValueType {
+        ValueType::Custom(result_custom_type())
+    }
+
+    fn result_custom_type() -> CustomType {
+        CustomType::new(
+            CustomTypeName::new("".into(), "gleam".into(), "Result".into()),
+            vec![ValueType::Int, ValueType::Nil],
+        )
     }
 }
+mod custom_type;

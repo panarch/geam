@@ -395,6 +395,62 @@ impl FrameLayout {
         }
     }
 
+    pub(in crate::plan::module::frame) fn include_custom_function_return(
+        &mut self,
+        body: &crate::plan::CustomFunctionReturn,
+    ) {
+        match body.kind() {
+            ReturnBodyKind::Expr(expression) => self.include_custom_function_expr(expression),
+            ReturnBodyKind::TailCall { args, .. } => self.include_call_args(args),
+            ReturnBodyKind::BoolCase {
+                subject,
+                true_,
+                false_,
+            } => {
+                self.include_bool_expr(subject);
+                self.include_custom_function_return(true_);
+                self.include_custom_function_return(false_);
+            }
+            ReturnBodyKind::IntCase {
+                subject,
+                clauses,
+                fallback,
+            } => {
+                self.include_int_expr(subject);
+                for (_, branch) in clauses {
+                    self.include_custom_function_return(branch);
+                }
+                self.include_custom_function_return(fallback);
+            }
+            ReturnBodyKind::FloatCase {
+                subject,
+                clauses,
+                fallback,
+            } => {
+                self.include_float_expr(subject);
+                for (_, branch) in clauses {
+                    self.include_custom_function_return(branch);
+                }
+                self.include_custom_function_return(fallback);
+            }
+            ReturnBodyKind::StringCase {
+                subject,
+                clauses,
+                fallback,
+            } => {
+                self.include_string_expr(subject);
+                for (_, branch) in clauses {
+                    self.include_custom_function_return(branch);
+                }
+                self.include_custom_function_return(fallback);
+            }
+            ReturnBodyKind::Block { steps, return_ } => {
+                self.include_steps(steps);
+                self.include_custom_function_return(return_);
+            }
+        }
+    }
+
     pub(in crate::plan::module::frame) fn include_tuple_function_return(
         &mut self,
         body: &crate::plan::TupleFunctionReturn,
@@ -568,14 +624,15 @@ impl FrameLayout {
 mod tests {
     use crate::plan::{
         BitArrayFunctionExpr, BitArrayFunctionFunctionId, BitArrayFunctionLocalId, BoolExpr,
-        BoolFunctionExpr, BoolFunctionFunctionId, BoolFunctionLocalId, BoolLocalId, CallArg, Expr,
-        FloatExpr, FloatFunctionExpr, FloatFunctionFunctionId, FloatFunctionLocalId, FloatLocalId,
-        FrameLayout, FunctionFunctionExpr, FunctionFunctionFunctionId, FunctionFunctionLocalId,
-        FunctionType, IntExpr, IntFunctionFunctionId, IntFunctionLocalId, IntLocalId,
-        ListFunctionExpr, ListFunctionFunctionId, ListFunctionLocal, NilFunctionExpr,
-        NilFunctionFunctionId, NilFunctionLocalId, ReturnBody, ReturnExpr, Step, StringExpr,
-        StringFunctionExpr, StringFunctionFunctionId, StringFunctionLocalId, StringLocalId,
-        ValueType,
+        BoolFunctionExpr, BoolFunctionFunctionId, BoolFunctionLocalId, BoolLocalId, CallArg,
+        CustomFunctionExpr, CustomFunctionFunctionId, CustomFunctionLocalId, CustomType,
+        CustomTypeName, Expr, FloatExpr, FloatFunctionExpr, FloatFunctionFunctionId,
+        FloatFunctionLocalId, FloatLocalId, FrameLayout, FunctionFunctionExpr,
+        FunctionFunctionFunctionId, FunctionFunctionLocalId, FunctionType, IntExpr,
+        IntFunctionFunctionId, IntFunctionLocalId, IntLocalId, ListFunctionExpr,
+        ListFunctionFunctionId, ListFunctionLocal, NilFunctionExpr, NilFunctionFunctionId,
+        NilFunctionLocalId, ReturnBody, ReturnExpr, Step, StringExpr, StringFunctionExpr,
+        StringFunctionFunctionId, StringFunctionLocalId, StringLocalId, ValueType,
     };
 
     #[test]
@@ -1067,6 +1124,75 @@ mod tests {
         let layout = FrameLayout::from_function_parts(&[], &[], &function_function_return);
         assert_eq!(layout.strings(), 5);
         assert_eq!(layout.function_functions(), 11);
+    }
+
+    #[test]
+    fn frame_layout_includes_every_custom_function_return_case_dependency() {
+        let custom_type = CustomType::new(
+            CustomTypeName::new("geam".into(), "main".into(), "Boxed".into()),
+            Vec::new(),
+        );
+        let type_ = FunctionType::new(Vec::new(), ValueType::Custom(custom_type));
+        let return_ = ReturnExpr::custom_function_body(
+            CustomFunctionFunctionId(0),
+            type_.clone(),
+            ReturnBody::block(
+                vec![Step::evaluate(Expr::int(IntExpr::local_get(
+                    IntLocalId(2),
+                    "step".into(),
+                )))],
+                ReturnBody::bool_case(
+                    BoolExpr::local_get(BoolLocalId(1), "flag".into()),
+                    ReturnBody::int_case(
+                        IntExpr::local_get(IntLocalId(3), "int_subject".into()),
+                        vec![(
+                            1.into(),
+                            ReturnBody::expr(CustomFunctionExpr::local_get(
+                                CustomFunctionLocalId(2),
+                                "int_branch".into(),
+                                type_.clone(),
+                            )),
+                        )],
+                        ReturnBody::float_case(
+                            FloatExpr::local_get(FloatLocalId(4), "float_subject".into()),
+                            vec![(
+                                1.0,
+                                ReturnBody::expr(CustomFunctionExpr::local_get(
+                                    CustomFunctionLocalId(3),
+                                    "float_branch".into(),
+                                    type_.clone(),
+                                )),
+                            )],
+                            ReturnBody::expr(CustomFunctionExpr::local_get(
+                                CustomFunctionLocalId(4),
+                                "float_fallback".into(),
+                                type_.clone(),
+                            )),
+                        ),
+                    ),
+                    ReturnBody::string_case(
+                        StringExpr::local_get(StringLocalId(5), "string_subject".into()),
+                        vec![(
+                            "tail".into(),
+                            ReturnBody::tail_call(CustomFunctionFunctionId(1), Vec::new()),
+                        )],
+                        ReturnBody::expr(CustomFunctionExpr::local_get(
+                            CustomFunctionLocalId(5),
+                            "string_fallback".into(),
+                            type_,
+                        )),
+                    ),
+                ),
+            ),
+        );
+
+        let layout = FrameLayout::from_function_parts(&[], &[], &return_);
+
+        assert_eq!(layout.ints(), 4);
+        assert_eq!(layout.floats(), 5);
+        assert_eq!(layout.strings(), 6);
+        assert_eq!(layout.bools(), 2);
+        assert_eq!(layout.custom_functions, 6);
     }
 
     #[test]

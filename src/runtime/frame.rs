@@ -1,21 +1,22 @@
 use crate::plan::execution::{
     BitArrayFunctionLocalId, BitArrayListLocalId, BitArrayLocalId, BoolFunctionLocalId,
-    BoolListLocalId, BoolLocalId, FloatFunctionLocalId, FloatListLocalId, FloatLocalId,
-    FrameLayout, FunctionFunctionLocalId, FunctionListLocalId, IntFunctionLocalId, IntListLocalId,
-    IntLocalId, ListFunctionLocal, ListListLocalId, NilFunctionLocalId, NilListLocalId, NilLocalId,
-    StringFunctionLocalId, StringListLocalId, StringLocalId, TupleFunctionLocalId,
-    TupleListLocalId, TupleLocalId, UtfCodepointFunctionLocalId, UtfCodepointListLocalId,
-    UtfCodepointLocalId,
+    BoolListLocalId, BoolLocalId, CustomFunctionLocalId, CustomListLocalId, CustomLocalId,
+    FloatFunctionLocalId, FloatListLocalId, FloatLocalId, FrameLayout, FunctionFunctionLocalId,
+    FunctionListLocalId, IntFunctionLocalId, IntListLocalId, IntLocalId, ListFunctionLocal,
+    ListListLocalId, NilFunctionLocalId, NilListLocalId, NilLocalId, StringFunctionLocalId,
+    StringListLocalId, StringLocalId, TupleFunctionLocalId, TupleListLocalId, TupleLocalId,
+    UtfCodepointFunctionLocalId, UtfCodepointListLocalId, UtfCodepointLocalId,
 };
 use crate::runtime::evaluated::{
-    EvaluatedBitArray, EvaluatedBitArrayFunction, EvaluatedBoolFunction, EvaluatedFloatFunction,
-    EvaluatedFunctionFunction, EvaluatedIntFunction, EvaluatedListFunction, EvaluatedNilFunction,
-    EvaluatedStringFunction, EvaluatedTupleFunction, EvaluatedUtfCodepointFunction, EvaluatedValue,
+    EvaluatedBitArray, EvaluatedBitArrayFunction, EvaluatedBoolFunction, EvaluatedCustomFunction,
+    EvaluatedCustomValue, EvaluatedFloatFunction, EvaluatedFunctionFunction, EvaluatedIntFunction,
+    EvaluatedListFunction, EvaluatedNilFunction, EvaluatedStringFunction, EvaluatedTupleFunction,
+    EvaluatedUtfCodepointFunction, EvaluatedValue,
 };
 use crate::runtime::state::{
-    BitArrayListValueId, BoolListValueId, FloatListValueId, FunctionListValueId, IntListValueId,
-    ListListValueId, NilListValueId, RuntimeState, StringListValueId, TupleListValueId,
-    UtfCodepointListValueId,
+    BitArrayListValueId, BoolListValueId, CustomListValueId, FloatListValueId, FunctionListValueId,
+    IntListValueId, ListListValueId, NilListValueId, RuntimeState, StringListValueId,
+    TupleListValueId, UtfCodepointListValueId,
 };
 use ecow::EcoString;
 use num_bigint::BigInt;
@@ -27,12 +28,14 @@ pub(super) struct Frame {
     strings: Vec<EcoString>,
     bit_arrays: Vec<EvaluatedBitArray>,
     utf_codepoints: Vec<char>,
+    customs: HashMap<CustomLocalId, EvaluatedCustomValue>,
     bools: Vec<bool>,
     tuples: Vec<Vec<EvaluatedValue>>,
     int_lists: Vec<IntListValueId>,
     string_lists: Vec<StringListValueId>,
     bit_array_lists: Vec<BitArrayListValueId>,
     utf_codepoint_lists: Vec<UtfCodepointListValueId>,
+    custom_lists: Vec<CustomListValueId>,
     float_lists: Vec<FloatListValueId>,
     bool_lists: Vec<BoolListValueId>,
     nil_lists: Vec<NilListValueId>,
@@ -44,6 +47,7 @@ pub(super) struct Frame {
     string_functions: HashMap<StringFunctionLocalId, EvaluatedStringFunction>,
     bit_array_functions: HashMap<BitArrayFunctionLocalId, EvaluatedBitArrayFunction>,
     utf_codepoint_functions: HashMap<UtfCodepointFunctionLocalId, EvaluatedUtfCodepointFunction>,
+    custom_functions: HashMap<CustomFunctionLocalId, EvaluatedCustomFunction>,
     bool_functions: HashMap<BoolFunctionLocalId, EvaluatedBoolFunction>,
     nil_functions: HashMap<NilFunctionLocalId, EvaluatedNilFunction>,
     tuple_functions: HashMap<TupleFunctionLocalId, EvaluatedTupleFunction>,
@@ -59,6 +63,7 @@ impl Frame {
             strings: vec![EcoString::default(); layout.strings()],
             bit_arrays: vec![EvaluatedBitArray::new(Default::default()); layout.bit_arrays()],
             utf_codepoints: vec!['\0'; layout.utf_codepoints()],
+            customs: HashMap::with_capacity(layout.customs()),
             bools: vec![false; layout.bools()],
             tuples: vec![Vec::new(); layout.tuples()],
             int_lists: layout
@@ -80,6 +85,11 @@ impl Frame {
                 .utf_codepoint_lists()
                 .iter()
                 .map(|type_id| state.utf_codepoint(*type_id, Vec::new()))
+                .collect(),
+            custom_lists: layout
+                .custom_lists()
+                .iter()
+                .map(|type_id| state.custom(*type_id, Vec::new()))
                 .collect(),
             float_lists: layout
                 .float_lists()
@@ -116,6 +126,7 @@ impl Frame {
             string_functions: HashMap::with_capacity(layout.string_functions()),
             bit_array_functions: HashMap::with_capacity(layout.bit_array_functions()),
             utf_codepoint_functions: HashMap::with_capacity(layout.utf_codepoint_functions()),
+            custom_functions: HashMap::with_capacity(layout.custom_functions()),
             bool_functions: HashMap::with_capacity(layout.bool_functions()),
             nil_functions: HashMap::with_capacity(layout.nil_functions()),
             tuple_functions: HashMap::with_capacity(layout.tuple_functions()),
@@ -162,6 +173,14 @@ impl Frame {
 
     pub(super) fn get_utf_codepoint(&self, local: UtfCodepointLocalId) -> char {
         self.utf_codepoints[local.0]
+    }
+
+    pub(super) fn set_custom(&mut self, local: CustomLocalId, value: EvaluatedCustomValue) {
+        self.customs.insert(local, value);
+    }
+
+    pub(super) fn get_custom(&self, local: CustomLocalId) -> EvaluatedCustomValue {
+        self.customs[&local].clone()
     }
 
     pub(super) fn set_bool(&mut self, local: BoolLocalId, value: bool) {
@@ -225,6 +244,14 @@ impl Frame {
         local: UtfCodepointListLocalId,
     ) -> UtfCodepointListValueId {
         self.utf_codepoint_lists[local.0].clone()
+    }
+
+    pub(super) fn set_custom_list(&mut self, local: CustomListLocalId, value: CustomListValueId) {
+        set_slot(&mut self.custom_lists, local.0, value);
+    }
+
+    pub(super) fn get_custom_list(&self, local: CustomListLocalId) -> CustomListValueId {
+        self.custom_lists[local.0].clone()
     }
 
     pub(super) fn set_float_list(&mut self, local: FloatListLocalId, value: FloatListValueId) {
@@ -346,6 +373,21 @@ impl Frame {
         local: UtfCodepointFunctionLocalId,
     ) -> EvaluatedUtfCodepointFunction {
         self.utf_codepoint_functions[&local].clone()
+    }
+
+    pub(super) fn set_custom_function(
+        &mut self,
+        local: CustomFunctionLocalId,
+        value: EvaluatedCustomFunction,
+    ) {
+        self.custom_functions.insert(local, value);
+    }
+
+    pub(super) fn get_custom_function(
+        &self,
+        local: CustomFunctionLocalId,
+    ) -> EvaluatedCustomFunction {
+        self.custom_functions[&local].clone()
     }
 
     pub(super) fn set_bool_function(

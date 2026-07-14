@@ -9,71 +9,93 @@ mod table;
 mod value_type;
 
 use super::ExecutionPlan;
+use super::custom_type::CustomTypeTable;
 use super::value_type::ListTypeTable;
 use crate::plan::ModulePlan;
 
-#[derive(Default)]
 struct LoweringContext {
-    list_types: value_type::ListTypeInterner,
+    types: value_type::TypeInterner,
 }
 
 impl LoweringContext {
+    fn new() -> Self {
+        Self {
+            types: value_type::TypeInterner::new(),
+        }
+    }
+
     fn value_type(&mut self, type_: crate::plan::ValueType) -> super::ValueType {
-        self.list_types.value_type(type_)
+        self.types.value_type(type_)
     }
 
     fn function_type(&mut self, type_: crate::plan::FunctionType) -> super::FunctionType {
-        self.list_types.function_type(type_)
+        self.types.function_type(type_)
     }
 
     fn int_list_type(&mut self) -> super::IntListTypeId {
-        self.list_types.int_list_type()
+        self.types.int_list_type()
     }
 
     fn string_list_type(&mut self) -> super::StringListTypeId {
-        self.list_types.string_list_type()
+        self.types.string_list_type()
     }
 
     fn bit_array_list_type(&mut self) -> super::BitArrayListTypeId {
-        self.list_types.bit_array_list_type()
+        self.types.bit_array_list_type()
     }
 
     fn utf_codepoint_list_type(&mut self) -> super::UtfCodepointListTypeId {
-        self.list_types.utf_codepoint_list_type()
+        self.types.utf_codepoint_list_type()
+    }
+
+    fn custom_type(&mut self, type_: crate::plan::CustomType) -> super::CustomTypeId {
+        self.types.custom_type(type_)
+    }
+
+    fn custom_constructor(
+        &mut self,
+        constructor: crate::plan::CustomConstructor,
+    ) -> super::CustomConstructorId {
+        self.types.custom_constructor(constructor)
+    }
+
+    fn custom_list_type(&mut self, item: crate::plan::CustomType) -> super::CustomListTypeId {
+        self.types.custom_list_type(item)
     }
 
     fn float_list_type(&mut self) -> super::FloatListTypeId {
-        self.list_types.float_list_type()
+        self.types.float_list_type()
     }
 
     fn bool_list_type(&mut self) -> super::BoolListTypeId {
-        self.list_types.bool_list_type()
+        self.types.bool_list_type()
     }
 
     fn nil_list_type(&mut self) -> super::NilListTypeId {
-        self.list_types.nil_list_type()
+        self.types.nil_list_type()
     }
 
     fn tuple_list_type(&mut self, item: Vec<crate::plan::ValueType>) -> super::TupleListTypeId {
-        self.list_types.tuple_list_type(item)
+        self.types.tuple_list_type(item)
     }
 
     fn list_list_type(&mut self, item: crate::plan::ValueType) -> super::ListListTypeId {
-        self.list_types.list_list_type(item)
+        self.types.list_list_type(item)
     }
 
     fn function_list_type(&mut self, item: crate::plan::FunctionType) -> super::FunctionListTypeId {
-        self.list_types.function_list_type(item)
+        self.types.function_list_type(item)
     }
 
-    fn into_list_type_table(self) -> ListTypeTable {
-        self.list_types.into_table()
+    fn into_tables(self) -> (ListTypeTable, CustomTypeTable) {
+        self.types.into_tables()
     }
 }
 
 pub(super) fn lower(module_plan: ModulePlan) -> ExecutionPlan {
     let parts = module_plan.into_parts();
-    let mut context = LoweringContext::default();
+    drop(parts.custom_types);
+    let mut context = LoweringContext::new();
     let mut tables = table::FunctionTableBuilder::default();
     let main = tables.push(parts.main, &mut context);
 
@@ -84,12 +106,14 @@ pub(super) fn lower(module_plan: ModulePlan) -> ExecutionPlan {
         tables.push(function, &mut context);
     }
 
+    let (list_types, custom_types) = context.into_tables();
     ExecutionPlan {
         module: parts.module,
         source_context: parts.source_context,
         main,
         functions: tables.finish(),
-        list_types: context.into_list_type_table(),
+        list_types,
+        custom_types,
     }
 }
 

@@ -5,11 +5,13 @@ use std::rc::{Rc, Weak};
 use ecow::EcoString;
 use num_bigint::BigInt;
 
-use super::evaluated::{EvaluatedBitArray, EvaluatedFunctionValue, EvaluatedValue};
+use super::evaluated::{
+    EvaluatedBitArray, EvaluatedCustomValue, EvaluatedFunctionValue, EvaluatedValue,
+};
 use crate::plan::execution::{
-    BitArrayListTypeId, BoolListTypeId, ExecutionPlan, FloatListTypeId, FunctionListTypeId,
-    IntListTypeId, ListListTypeId, ListStorageTypeId, ListTypeId, NilListTypeId, StringListTypeId,
-    TupleListTypeId, UtfCodepointListTypeId,
+    BitArrayListTypeId, BoolListTypeId, CustomListTypeId, ExecutionPlan, FloatListTypeId,
+    FunctionListTypeId, IntListTypeId, ListListTypeId, ListStorageTypeId, ListTypeId,
+    NilListTypeId, StringListTypeId, TupleListTypeId, UtfCodepointListTypeId,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -18,6 +20,7 @@ enum ListStorageKey {
     String { slot: usize },
     BitArray { slot: usize },
     UtfCodepoint { slot: usize },
+    Custom { slot: usize },
     Float { slot: usize },
     Bool { slot: usize },
     Nil { slot: usize },
@@ -55,6 +58,7 @@ impl ListStorageKey {
             | Self::String { slot }
             | Self::BitArray { slot }
             | Self::UtfCodepoint { slot }
+            | Self::Custom { slot }
             | Self::Float { slot }
             | Self::Bool { slot }
             | Self::Nil { slot }
@@ -120,6 +124,7 @@ typed_list_value_id!(
     UtfCodepointListTypeId,
     UtfCodepoint
 );
+typed_list_value_id!(CustomListValueId, CustomListTypeId, Custom);
 typed_list_value_id!(FloatListValueId, FloatListTypeId, Float);
 typed_list_value_id!(BoolListValueId, BoolListTypeId, Bool);
 typed_list_value_id!(NilListValueId, NilListTypeId, Nil);
@@ -133,6 +138,7 @@ pub(super) enum ListValueId {
     String(StringListValueId),
     BitArray(BitArrayListValueId),
     UtfCodepoint(UtfCodepointListValueId),
+    Custom(CustomListValueId),
     Float(FloatListValueId),
     Bool(BoolListValueId),
     Nil(NilListValueId),
@@ -148,6 +154,7 @@ impl ListValueId {
             Self::String(value) => value.type_id().list_type(),
             Self::BitArray(value) => value.type_id().list_type(),
             Self::UtfCodepoint(value) => value.type_id().list_type(),
+            Self::Custom(value) => value.type_id().list_type(),
             Self::Float(value) => value.type_id().list_type(),
             Self::Bool(value) => value.type_id().list_type(),
             Self::Nil(value) => value.type_id().list_type(),
@@ -163,6 +170,7 @@ impl ListValueId {
             Self::String(value) => value.into_core(),
             Self::BitArray(value) => value.into_core(),
             Self::UtfCodepoint(value) => value.into_core(),
+            Self::Custom(value) => value.into_core(),
             Self::Float(value) => value.into_core(),
             Self::Bool(value) => value.into_core(),
             Self::Nil(value) => value.into_core(),
@@ -187,6 +195,9 @@ impl ListValueId {
             }
             ListStorageTypeId::UtfCodepoint(type_id) => {
                 Self::UtfCodepoint(UtfCodepointListValueId::new(type_id, core))
+            }
+            ListStorageTypeId::Custom(type_id) => {
+                Self::Custom(CustomListValueId::new(type_id, core))
             }
             ListStorageTypeId::Float(type_id) => Self::Float(FloatListValueId::new(type_id, core)),
             ListStorageTypeId::Bool(type_id) => Self::Bool(BoolListValueId::new(type_id, core)),
@@ -235,6 +246,7 @@ pub(in crate::runtime) struct RuntimeState {
     strings: ListPool<Vec<EcoString>>,
     bit_arrays: ListPool<Vec<EvaluatedBitArray>>,
     utf_codepoints: ListPool<Vec<char>>,
+    customs: ListPool<Vec<EvaluatedCustomValue>>,
     floats: ListPool<Vec<f64>>,
     bools: ListPool<Vec<bool>>,
     nils: ListPool<usize>,
@@ -251,6 +263,7 @@ impl RuntimeState {
             strings: ListPool::default(),
             bit_arrays: ListPool::default(),
             utf_codepoints: ListPool::default(),
+            customs: ListPool::default(),
             floats: ListPool::default(),
             bools: ListPool::default(),
             nils: ListPool::default(),
@@ -272,6 +285,7 @@ impl RuntimeState {
                 ListStorageKey::String { slot } => drop(self.strings.release(slot)),
                 ListStorageKey::BitArray { slot } => drop(self.bit_arrays.release(slot)),
                 ListStorageKey::UtfCodepoint { slot } => drop(self.utf_codepoints.release(slot)),
+                ListStorageKey::Custom { slot } => drop(self.customs.release(slot)),
                 ListStorageKey::Float { slot } => drop(self.floats.release(slot)),
                 ListStorageKey::Bool { slot } => drop(self.bools.release(slot)),
                 ListStorageKey::Nil { slot } => {
@@ -331,6 +345,16 @@ impl RuntimeState {
         self.prepare_allocation();
         let slot = self.utf_codepoints.allocate(values);
         UtfCodepointListValueId::new(type_id, self.core(ListStorageKey::UtfCodepoint { slot }))
+    }
+
+    pub(super) fn custom(
+        &mut self,
+        type_id: CustomListTypeId,
+        values: Vec<EvaluatedCustomValue>,
+    ) -> CustomListValueId {
+        self.prepare_allocation();
+        let slot = self.customs.allocate(values);
+        CustomListValueId::new(type_id, self.core(ListStorageKey::Custom { slot }))
     }
 
     pub(super) fn float(&mut self, type_id: FloatListTypeId, values: Vec<f64>) -> FloatListValueId {
@@ -397,6 +421,10 @@ impl RuntimeState {
         self.utf_codepoints.get(value.core.slot())
     }
 
+    pub(super) fn custom_values(&self, value: &CustomListValueId) -> &[EvaluatedCustomValue] {
+        self.customs.get(value.core.slot())
+    }
+
     pub(super) fn float_values(&self, value: &FloatListValueId) -> &[f64] {
         self.floats.get(value.core.slot())
     }
@@ -427,6 +455,7 @@ impl RuntimeState {
             ListValueId::String(value) => self.string_values(value).len(),
             ListValueId::BitArray(value) => self.bit_array_values(value).len(),
             ListValueId::UtfCodepoint(value) => self.utf_codepoint_values(value).len(),
+            ListValueId::Custom(value) => self.custom_values(value).len(),
             ListValueId::Float(value) => self.float_values(value).len(),
             ListValueId::Bool(value) => self.bool_values(value).len(),
             ListValueId::Nil(value) => self.nil_len(value),
@@ -465,6 +494,12 @@ impl RuntimeState {
                 .iter()
                 .copied()
                 .map(EvaluatedValue::UtfCodepoint)
+                .collect(),
+            ListValueId::Custom(value) => self
+                .custom_values(value)
+                .iter()
+                .cloned()
+                .map(EvaluatedValue::Custom)
                 .collect(),
             ListValueId::Float(value) => self
                 .float_values(value)
@@ -528,6 +563,11 @@ impl RuntimeState {
                 let values = values[count.min(values.len())..].to_vec();
                 self.utf_codepoint(value.type_id(), values).into()
             }
+            ListValueId::Custom(value) => {
+                let values = self.custom_values(value);
+                let values = values[count.min(values.len())..].to_vec();
+                self.custom(value.type_id(), values).into()
+            }
             ListValueId::Float(value) => {
                 let values = self.float_values(value);
                 let values = values[count.min(values.len())..].to_vec();
@@ -577,6 +617,8 @@ fn ints() -> List(Int) { [] }
 fn strings() -> List(String) { [] }
 fn bit_arrays() -> List(BitArray) { [] }
 fn utf_codepoints() -> List(UtfCodepoint) { [] }
+pub type Boxed { Boxed(Int) }
+fn customs() -> List(Boxed) { [] }
 fn floats() -> List(Float) { [] }
 fn bools() -> List(Bool) { [] }
 fn nils() -> List(Nil) { [] }
@@ -732,6 +774,8 @@ pub fn main() { 0 }
             plan.utf_codepoint_list_function_id(0).type_id(),
             vec!['\u{10ffff}'],
         );
+        let custom_type = plan.custom_list_function_id(0).type_id();
+        let custom = state.custom(custom_type, Vec::new());
         let float = state.float(plan.float_list_function_id(0).type_id(), vec![1.5]);
         let bool_ = state.bool(plan.bool_list_function_id(0).type_id(), vec![true]);
         let nil = state.nil(plan.nil_list_function_id(0).type_id(), 1);
@@ -753,6 +797,7 @@ pub fn main() { 0 }
             ListValueId::String(string),
             ListValueId::BitArray(bit_array),
             ListValueId::UtfCodepoint(utf_codepoint),
+            ListValueId::Custom(custom),
             ListValueId::Float(float),
             ListValueId::Bool(bool_),
             ListValueId::Nil(nil),

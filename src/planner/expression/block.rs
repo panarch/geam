@@ -1,9 +1,9 @@
 use crate::plan::{
-    BitArrayExpr, BitArrayFunctionExpr, BoolExpr, BoolFunctionExpr, Expr, ExprKind, FloatExpr,
-    FloatFunctionExpr, FunctionExpr, FunctionExprKind, FunctionFunctionExpr, IntExpr,
-    IntFunctionExpr, ListExpr, ListFunctionExpr, NilExpr, NilFunctionExpr, Step, StringExpr,
-    StringFunctionExpr, TupleExpr, TupleFunctionExpr, UtfCodepointExpr, UtfCodepointFunctionExpr,
-    ValueType,
+    BitArrayExpr, BitArrayFunctionExpr, BoolExpr, BoolFunctionExpr, CustomExpr, CustomFunctionExpr,
+    Expr, ExprKind, FloatExpr, FloatFunctionExpr, FunctionExpr, FunctionExprKind,
+    FunctionFunctionExpr, IntExpr, IntFunctionExpr, ListExpr, ListFunctionExpr, NilExpr,
+    NilFunctionExpr, Step, StringExpr, StringFunctionExpr, TupleExpr, TupleFunctionExpr,
+    UtfCodepointExpr, UtfCodepointFunctionExpr, ValueType,
 };
 use crate::planner::context::PlanContext;
 use crate::planner::error::PlanError;
@@ -40,6 +40,7 @@ pub(super) fn block_expr(steps: Vec<Step>, return_: Expr) -> Expr {
         ExprKind::UtfCodepoint(return_) => {
             Expr::utf_codepoint(UtfCodepointExpr::block(steps, return_))
         }
+        ExprKind::Custom(return_) => Expr::custom(CustomExpr::block(steps, return_)),
         ExprKind::Float(return_) => Expr::float(FloatExpr::block(steps, return_)),
         ExprKind::Bool(return_) => Expr::bool(BoolExpr::block(steps, return_)),
         ExprKind::Nil(return_) => Expr::nil(NilExpr::block(steps, return_)),
@@ -57,6 +58,9 @@ pub(super) fn block_expr(steps: Vec<Step>, return_: Expr) -> Expr {
             )),
             FunctionExprKind::UtfCodepoint(return_) => Expr::function(FunctionExpr::utf_codepoint(
                 UtfCodepointFunctionExpr::block(steps, return_),
+            )),
+            FunctionExprKind::Custom(return_) => Expr::function(FunctionExpr::custom(
+                CustomFunctionExpr::block(steps, return_),
             )),
             FunctionExprKind::Float(return_) => Expr::function(FunctionExpr::float(
                 FloatFunctionExpr::block(steps, return_),

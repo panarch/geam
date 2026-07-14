@@ -3,24 +3,30 @@ use crate::planner::error::{InvalidTypedAstReason, InvalidUseShapeReason, PlanEr
 use crate::planner::expression::plan_use_call;
 use gleam_core::ast::{Pattern, TypedPattern, TypedUseAssignment};
 
-use super::assignment::{non_variable_pattern_error, plan_binding_pattern};
+use super::assignment::{non_variable_pattern_error, plan_binding_pattern_in_context};
 
 pub(super) fn plan_use_statement(
     use_: gleam_core::ast::TypedUse,
     context: &mut PlanContext<'_>,
 ) -> Result<crate::plan::Expr, PlanError> {
-    let use_assignment_count = validate_use_assignments(&use_.assignments)?;
+    let use_assignment_count = validate_use_assignments(&use_.assignments, context)?;
     plan_use_call(*use_.call, use_assignment_count, context)
 }
 
-fn validate_use_assignments(assignments: &[TypedUseAssignment]) -> Result<usize, PlanError> {
+fn validate_use_assignments(
+    assignments: &[TypedUseAssignment],
+    context: &PlanContext<'_>,
+) -> Result<usize, PlanError> {
     for assignment in assignments {
-        validate_use_assignment_pattern(&assignment.pattern)?;
+        validate_use_assignment_pattern(&assignment.pattern, context)?;
     }
     Ok(assignments.len())
 }
 
-fn validate_use_assignment_pattern(pattern: &TypedPattern) -> Result<(), PlanError> {
+fn validate_use_assignment_pattern(
+    pattern: &TypedPattern,
+    context: &PlanContext<'_>,
+) -> Result<(), PlanError> {
     match pattern {
         Pattern::Variable { .. } => Err(invalid_use_shape(
             InvalidUseShapeReason::UnexpectedVariableAssignment,
@@ -28,7 +34,10 @@ fn validate_use_assignment_pattern(pattern: &TypedPattern) -> Result<(), PlanErr
         Pattern::Tuple { .. }
         | Pattern::List { .. }
         | Pattern::BitArray { .. }
-        | Pattern::Assign { .. } => plan_binding_pattern(pattern.clone()).map(|_| ()),
+        | Pattern::Constructor { .. }
+        | Pattern::Assign { .. } => {
+            plan_binding_pattern_in_context(pattern.clone(), context).map(|_| ())
+        }
         pattern => Err(non_variable_pattern_error(pattern)),
     }
 }
@@ -46,6 +55,7 @@ mod tests {
         Expr, IntListLocalId, IntLocalId, ListLocal, LocalId, Param, ParamLocal, ReturnExpr,
         TupleLocalId, ValueType,
     };
+    use crate::planner::context::{AnonymousFunctions, PlanContext};
     use crate::planner::dsl::{
         call_int_function, capture_int, function, int, int_arg, int_function_arg,
         int_function_call_arg, int_function_closure, int_function_ref, int_return_tail_call,
@@ -65,6 +75,7 @@ mod tests {
     };
     use gleam_core::type_::{self, error::VariableOrigin};
     use num_bigint::BigInt;
+    use std::collections::HashMap;
 
     #[test]
     fn plan_use_syntax() {
@@ -500,36 +511,47 @@ pub fn main() {
 
     #[test]
     fn reject_margin_use_assignment_unsupported_pattern_shapes() {
+        let module_name = "main".into();
+        let functions = HashMap::new();
+        let mut anonymous = AnonymousFunctions::default();
+        let context = PlanContext::new(&module_name, &functions, &mut anonymous);
+
         assert_eq!(
-            super::validate_use_assignment_pattern(&Pattern::Int {
-                location: dummy_span(),
-                value: "1".into(),
-                int_value: BigInt::from(1),
-            }),
+            super::validate_use_assignment_pattern(
+                &Pattern::Int {
+                    location: dummy_span(),
+                    value: "1".into(),
+                    int_value: BigInt::from(1),
+                },
+                &context
+            ),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::InvalidPattern,
             }),
         );
         assert_eq!(
-            super::validate_use_assignment_pattern(&Pattern::List {
-                location: dummy_span(),
-                elements: vec![Pattern::Variable {
+            super::validate_use_assignment_pattern(
+                &Pattern::List {
                     location: dummy_span(),
-                    name: "first".into(),
-                    type_: type_::int(),
-                    origin: VariableOrigin::generated(),
-                }],
-                tail: Some(Box::new(TailPattern {
-                    location: dummy_span(),
-                    pattern: Pattern::Variable {
+                    elements: vec![Pattern::Variable {
                         location: dummy_span(),
-                        name: "rest".into(),
-                        type_: type_::list(type_::int()),
+                        name: "first".into(),
+                        type_: type_::int(),
                         origin: VariableOrigin::generated(),
-                    },
-                })),
-                type_: type_::list(type_::int()),
-            }),
+                    }],
+                    tail: Some(Box::new(TailPattern {
+                        location: dummy_span(),
+                        pattern: Pattern::Variable {
+                            location: dummy_span(),
+                            name: "rest".into(),
+                            type_: type_::list(type_::int()),
+                            origin: VariableOrigin::generated(),
+                        },
+                    })),
+                    type_: type_::list(type_::int()),
+                },
+                &context
+            ),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::InvalidPattern,
             }),

@@ -1,5 +1,6 @@
 mod bit_array;
 mod capture;
+mod custom;
 mod function;
 mod list;
 
@@ -10,11 +11,13 @@ use crate::plan::ValueType;
 
 pub use self::bit_array::{BitArrayValue, BitArrayValueLengthError};
 pub(crate) use self::capture::{CaptureListValue, CaptureValue};
+pub use self::custom::{CustomFieldValue, CustomValue};
 pub use self::function::FunctionValue;
 pub(crate) use self::function::{
-    BitArrayFunctionValue, BoolFunctionValue, FloatFunctionValue, FunctionFunctionValue,
-    FunctionValueKind, IntFunctionValue, ListFunctionValue, NilFunctionValue, StringFunctionValue,
-    TupleFunctionValue, UtfCodepointFunctionValue,
+    BitArrayFunctionValue, BoolFunctionValue, CustomFunctionValue, CustomFunctionValueTarget,
+    FloatFunctionValue, FunctionFunctionValue, FunctionValueKind, IntFunctionValue,
+    ListFunctionValue, NilFunctionValue, StringFunctionValue, TupleFunctionValue,
+    UtfCodepointFunctionValue,
 };
 pub use self::list::{ListValue, ListValueItemTypeMismatch};
 
@@ -25,6 +28,7 @@ pub enum Value {
     String(EcoString),
     BitArray(BitArrayValue),
     UtfCodepoint(char),
+    Custom(CustomValue),
     Bool(bool),
     Nil,
     Tuple(Vec<Value>),
@@ -40,6 +44,7 @@ impl Value {
             Self::String(_) => ValueType::String,
             Self::BitArray(_) => ValueType::BitArray,
             Self::UtfCodepoint(_) => ValueType::UtfCodepoint,
+            Self::Custom(value) => ValueType::Custom(value.type_().clone()),
             Self::Bool(_) => ValueType::Bool,
             Self::Nil => ValueType::Nil,
             Self::Tuple(values) => ValueType::Tuple(values.iter().map(Self::value_type).collect()),
@@ -51,7 +56,8 @@ impl Value {
 
 #[cfg(test)]
 mod tests {
-    use super::{BitArrayValue, ListValue, Value, ValueType};
+    use super::{BitArrayValue, CustomValue, ListValue, Value, ValueType};
+    use crate::plan::{CustomType, CustomTypeName};
 
     #[test]
     fn value_type_preserves_tuple_element_families() {
@@ -64,6 +70,20 @@ mod tests {
         assert_eq!(
             Value::UtfCodepoint('\u{10ffff}').value_type(),
             ValueType::UtfCodepoint,
+        );
+        let custom_type = CustomType::new(
+            CustomTypeName::new("geam".into(), "main".into(), "Boxed".into()),
+            Vec::new(),
+        );
+        assert_eq!(
+            Value::Custom(CustomValue::from_evaluated(
+                custom_type.clone(),
+                "Boxed".into(),
+                0,
+                Vec::new(),
+            ))
+            .value_type(),
+            ValueType::Custom(custom_type),
         );
         assert_eq!(Value::Bool(true).value_type(), ValueType::Bool);
         assert_eq!(Value::Nil.value_type(), ValueType::Nil);

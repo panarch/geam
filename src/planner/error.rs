@@ -5,9 +5,9 @@ mod invalid;
 mod unsupported;
 
 pub use invalid::{
-    InvalidCallShapeReason, InvalidCaseShapeReason, InvalidExpressionShapeKind,
-    InvalidExpressionType, InvalidFunctionShapeReason, InvalidPipelineShapeReason,
-    InvalidTypedAstReason, InvalidUseShapeReason,
+    InvalidCallShapeReason, InvalidCaseShapeReason, InvalidCustomTypeReason,
+    InvalidExpressionShapeKind, InvalidExpressionType, InvalidFunctionShapeReason,
+    InvalidPipelineShapeReason, InvalidTypedAstReason, InvalidUseShapeReason,
 };
 pub use unsupported::{
     UnsupportedArgumentReason, UnsupportedBinOpKind, UnsupportedBitArraySegmentReason,

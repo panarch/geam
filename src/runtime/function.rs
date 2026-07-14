@@ -3,48 +3,50 @@ pub(in crate::runtime) mod return_body;
 mod steps;
 
 pub(in crate::runtime) use bind::eval_capture_args;
-pub(in crate::runtime) use steps::execute_steps;
+pub(in crate::runtime) use steps::{execute_steps, match_and_apply_assert_pattern};
 
 use crate::plan::execution::ExecutionPlan;
 use crate::plan::execution::{
     BitArrayFunctionFunctionId, BitArrayFunctionId, BoolFunctionFunctionId, BoolFunctionId,
-    CallArg, FloatFunctionFunctionId, FloatFunctionId, FunctionFunctionFunctionId,
-    FunctionReturnFamily, IntFunctionFunctionId, IntFunctionId, ListFunctionFunctionId,
-    ListFunctionId, NilFunctionFunctionId, NilFunctionId, RuntimeFunctionId,
-    StringFunctionFunctionId, StringFunctionId, TupleFunctionFunctionId, TupleFunctionId,
-    UtfCodepointFunctionFunctionId, UtfCodepointFunctionId,
+    CallArg, CustomFunctionFunctionId, CustomFunctionId, FloatFunctionFunctionId, FloatFunctionId,
+    FunctionFunctionFunctionId, FunctionReturnFamily, IntFunctionFunctionId, IntFunctionId,
+    ListFunctionFunctionId, ListFunctionId, NilFunctionFunctionId, NilFunctionId,
+    RuntimeFunctionId, StringFunctionFunctionId, StringFunctionId, TupleFunctionFunctionId,
+    TupleFunctionId, UtfCodepointFunctionFunctionId, UtfCodepointFunctionId,
 };
 use crate::runtime::error::ExecutionResult;
 use crate::runtime::expression::{
-    eval_bit_array_function_expr, eval_bool_function_expr, eval_float_function_expr,
-    eval_function_function_expr, eval_int_function_expr, eval_list_function_expr,
-    eval_nil_function_expr, eval_string_function_expr, eval_tuple_function_expr,
-    eval_utf_codepoint_function_expr,
+    eval_bit_array_function_expr, eval_bool_function_expr, eval_custom_function_expr,
+    eval_float_function_expr, eval_function_function_expr, eval_int_function_expr,
+    eval_list_function_expr, eval_nil_function_expr, eval_string_function_expr,
+    eval_tuple_function_expr, eval_utf_codepoint_function_expr,
 };
 use crate::runtime::frame::Frame;
 use crate::runtime::state::{
-    BitArrayListValueId, BoolListValueId, FloatListValueId, FunctionListValueId, IntListValueId,
-    ListListValueId, ListValueId, NilListValueId, RuntimeState, StringListValueId,
+    BitArrayListValueId, BoolListValueId, CustomListValueId, FloatListValueId, FunctionListValueId,
+    IntListValueId, ListListValueId, ListValueId, NilListValueId, RuntimeState, StringListValueId,
     TupleListValueId, UtfCodepointListValueId,
 };
 use crate::runtime::{
-    EvaluatedBitArray, EvaluatedBitArrayFunction, EvaluatedBoolFunction, EvaluatedFloatFunction,
+    EvaluatedBitArray, EvaluatedBitArrayFunction, EvaluatedBoolFunction, EvaluatedCustomFunction,
+    EvaluatedCustomFunctionTarget, EvaluatedCustomValue, EvaluatedFloatFunction,
     EvaluatedFunctionFunction, EvaluatedFunctionValue, EvaluatedIntFunction, EvaluatedListFunction,
     EvaluatedNilFunction, EvaluatedStringFunction, EvaluatedTupleFunction,
     EvaluatedUtfCodepointFunction, EvaluatedValue, ExecutionError, Value,
 };
-use bind::{bind_arguments, bind_function_value_arguments};
+use bind::{bind_arguments, bind_function_value_arguments, eval_constructor_arguments};
 use ecow::EcoString;
 use num_bigint::BigInt;
 use return_body::{
     run_bit_array_function_loop, run_bit_array_list_loop, run_bit_array_loop,
-    run_bool_function_loop, run_bool_list_loop, run_bool_loop, run_float_function_loop,
-    run_float_list_loop, run_float_loop, run_function_function_loop, run_function_list_loop,
-    run_int_function_loop, run_int_list_loop, run_int_loop, run_list_function_loop,
-    run_list_list_loop, run_list_loop, run_nil_function_loop, run_nil_list_loop, run_nil_loop,
-    run_string_function_loop, run_string_list_loop, run_string_loop, run_tuple_function_loop,
-    run_tuple_list_loop, run_tuple_loop, run_utf_codepoint_function_loop,
-    run_utf_codepoint_list_loop, run_utf_codepoint_loop,
+    run_bool_function_loop, run_bool_list_loop, run_bool_loop, run_custom_function_loop,
+    run_custom_list_loop, run_custom_loop, run_float_function_loop, run_float_list_loop,
+    run_float_loop, run_function_function_loop, run_function_list_loop, run_int_function_loop,
+    run_int_list_loop, run_int_loop, run_list_function_loop, run_list_list_loop, run_list_loop,
+    run_nil_function_loop, run_nil_list_loop, run_nil_loop, run_string_function_loop,
+    run_string_list_loop, run_string_loop, run_tuple_function_loop, run_tuple_list_loop,
+    run_tuple_loop, run_utf_codepoint_function_loop, run_utf_codepoint_list_loop,
+    run_utf_codepoint_loop,
 };
 
 pub(super) fn run_main(plan: &ExecutionPlan) -> ExecutionResult<Value> {
@@ -71,6 +73,10 @@ pub(super) fn run_main(plan: &ExecutionPlan) -> ExecutionResult<Value> {
         RuntimeFunctionId::UtfCodepoint(function) => {
             run_utf_codepoint_call(plan, &mut state, function, &[], &mut caller_frame)
                 .map(EvaluatedValue::UtfCodepoint)
+        }
+        RuntimeFunctionId::Custom { id, .. } => {
+            run_custom_call(plan, &mut state, id, &[], &mut caller_frame)
+                .map(EvaluatedValue::Custom)
         }
         RuntimeFunctionId::Bool(function) => {
             run_bool_call(plan, &mut state, function, &[], &mut caller_frame)
@@ -178,6 +184,23 @@ pub(super) fn run_utf_codepoint_call(
         plan.utf_codepoint_function(function).frame_layout(),
     )?;
     run_utf_codepoint_loop(plan, state, function, frame)
+}
+
+pub(super) fn run_custom_call(
+    plan: &ExecutionPlan,
+    state: &mut RuntimeState,
+    function: CustomFunctionId,
+    args: &[CallArg],
+    caller_frame: &mut Frame,
+) -> ExecutionResult<EvaluatedCustomValue> {
+    let frame = bind_arguments(
+        plan,
+        state,
+        args,
+        caller_frame,
+        plan.custom_function(function).frame_layout(),
+    )?;
+    run_custom_loop(plan, state, function, frame)
 }
 
 pub(super) fn run_bool_call(
@@ -314,6 +337,23 @@ pub(in crate::runtime) fn run_utf_codepoint_list_call(
         plan.utf_codepoint_list_function(function).frame_layout(),
     )?;
     run_utf_codepoint_list_loop(plan, state, function, frame)
+}
+
+pub(in crate::runtime) fn run_custom_list_call(
+    plan: &ExecutionPlan,
+    state: &mut RuntimeState,
+    function: crate::plan::execution::CustomListFunctionId,
+    args: &[CallArg],
+    caller_frame: &mut Frame,
+) -> ExecutionResult<CustomListValueId> {
+    let frame = bind_arguments(
+        plan,
+        state,
+        args,
+        caller_frame,
+        plan.custom_list_function(function).frame_layout(),
+    )?;
+    run_custom_list_loop(plan, state, function, frame)
 }
 
 pub(in crate::runtime) fn run_float_list_call(
@@ -500,6 +540,34 @@ pub(in crate::runtime) fn run_utf_codepoint_function_call(
     run_utf_codepoint_loop(plan, state, function.runtime_id(), frame)
 }
 
+pub(in crate::runtime) fn run_custom_function_call(
+    plan: &ExecutionPlan,
+    state: &mut RuntimeState,
+    function: &crate::plan::execution::CustomFunctionExpr,
+    args: &[CallArg],
+    caller_frame: &mut Frame,
+) -> ExecutionResult<EvaluatedCustomValue> {
+    let function = eval_custom_function_expr(plan, state, caller_frame, function)?;
+    match function.runtime_id() {
+        EvaluatedCustomFunctionTarget::Function(runtime_id) => {
+            let runtime_function = plan.custom_function(runtime_id);
+            let frame = bind_function_value_arguments(
+                plan,
+                state,
+                args,
+                caller_frame,
+                runtime_function.frame_layout(),
+                function.captures(),
+            )?;
+            run_custom_loop(plan, state, runtime_id, frame)
+        }
+        EvaluatedCustomFunctionTarget::Constructor(constructor) => {
+            let fields = eval_constructor_arguments(plan, state, args, caller_frame)?;
+            Ok(EvaluatedCustomValue::new(constructor, fields))
+        }
+    }
+}
+
 pub(in crate::runtime) fn run_float_function_call(
     plan: &ExecutionPlan,
     state: &mut RuntimeState,
@@ -684,6 +752,31 @@ pub(in crate::runtime) fn run_utf_codepoint_list_function_call(
     run_utf_codepoint_list_loop(plan, state, runtime_id, frame)
 }
 
+pub(in crate::runtime) fn run_custom_list_function_call(
+    plan: &ExecutionPlan,
+    state: &mut RuntimeState,
+    function: &crate::plan::execution::ListFunctionExpr,
+    args: &[CallArg],
+    caller_frame: &mut Frame,
+) -> ExecutionResult<CustomListValueId> {
+    let function = eval_list_function_expr(plan, state, caller_frame, function)?;
+    let ListFunctionId::Custom(runtime_id) = function.runtime_id() else {
+        return Err(ExecutionError::FunctionReturnFamilyMismatch {
+            expected: FunctionReturnFamily::List,
+            actual: FunctionReturnFamily::List,
+        });
+    };
+    let frame = bind_function_value_arguments(
+        plan,
+        state,
+        args,
+        caller_frame,
+        plan.custom_list_function(runtime_id).frame_layout(),
+        function.captures(),
+    )?;
+    run_custom_list_loop(plan, state, runtime_id, frame)
+}
+
 pub(in crate::runtime) fn run_float_list_function_call(
     plan: &ExecutionPlan,
     state: &mut RuntimeState,
@@ -843,6 +936,7 @@ fn list_function_frame_layout<'a>(
         ListFunctionId::String(id) => plan.string_list_function(*id).frame_layout(),
         ListFunctionId::BitArray(id) => plan.bit_array_list_function(*id).frame_layout(),
         ListFunctionId::UtfCodepoint(id) => plan.utf_codepoint_list_function(*id).frame_layout(),
+        ListFunctionId::Custom(id) => plan.custom_list_function(*id).frame_layout(),
         ListFunctionId::Float(id) => plan.float_list_function(*id).frame_layout(),
         ListFunctionId::Bool(id) => plan.bool_list_function(*id).frame_layout(),
         ListFunctionId::Nil(id) => plan.nil_list_function(*id).frame_layout(),
@@ -936,6 +1030,23 @@ pub(in crate::runtime) fn run_utf_codepoint_function_returning_function_call(
             .frame_layout(),
     )?;
     run_utf_codepoint_function_loop(plan, state, function, frame)
+}
+
+pub(in crate::runtime) fn run_custom_function_returning_function_call(
+    plan: &ExecutionPlan,
+    state: &mut RuntimeState,
+    function: CustomFunctionFunctionId,
+    args: &[CallArg],
+    caller_frame: &mut Frame,
+) -> ExecutionResult<EvaluatedCustomFunction> {
+    let frame = bind_arguments(
+        plan,
+        state,
+        args,
+        caller_frame,
+        plan.custom_function_function(function).frame_layout(),
+    )?;
+    run_custom_function_loop(plan, state, function, frame)
 }
 
 pub(in crate::runtime) fn run_bool_function_returning_function_call(
@@ -1163,6 +1274,33 @@ pub(in crate::runtime) fn run_utf_codepoint_function_function_call(
     run_utf_codepoint_function_loop(plan, state, function_id, frame)
 }
 
+pub(in crate::runtime) fn run_custom_function_function_call(
+    plan: &ExecutionPlan,
+    state: &mut RuntimeState,
+    function: &crate::plan::execution::FunctionFunctionExpr,
+    args: &[CallArg],
+    caller_frame: &mut Frame,
+) -> ExecutionResult<EvaluatedCustomFunction> {
+    let function = eval_function_function_expr(plan, state, caller_frame, function)?;
+    let runtime_id = function.runtime_id();
+    let function_id = runtime_id
+        .custom()
+        .ok_or(ExecutionError::FunctionReturnFamilyMismatch {
+            expected: FunctionReturnFamily::Custom,
+            actual: runtime_id.family(),
+        })?;
+    let runtime_function = plan.custom_function_function(function_id);
+    let frame = bind_function_value_arguments(
+        plan,
+        state,
+        args,
+        caller_frame,
+        runtime_function.frame_layout(),
+        function.captures(),
+    )?;
+    run_custom_function_loop(plan, state, function_id, frame)
+}
+
 pub(in crate::runtime) fn run_bool_function_function_call(
     plan: &ExecutionPlan,
     state: &mut RuntimeState,
@@ -1343,6 +1481,10 @@ fn run_function_returning_function_call(
             )
             .map(Into::into)
         }
+        crate::plan::execution::FunctionFunctionId::Custom(function) => {
+            run_custom_function_returning_function_call(plan, state, function, args, caller_frame)
+                .map(Into::into)
+        }
         crate::plan::execution::FunctionFunctionId::Bool(function) => {
             run_bool_function_returning_function_call(plan, state, function, args, caller_frame)
                 .map(Into::into)
@@ -1370,18 +1512,20 @@ fn run_function_returning_function_call(
 mod tests {
     use super::{
         run_bit_array_function_loop, run_bit_array_list_loop, run_bool_function_loop,
-        run_bool_list_loop, run_float_function_loop, run_float_list_loop,
-        run_function_function_loop, run_function_list_loop, run_int_function_loop,
-        run_int_list_loop, run_list_function_loop, run_list_list_loop, run_nil_function_loop,
-        run_nil_list_loop, run_string_function_loop, run_string_list_loop, run_tuple_function_loop,
-        run_tuple_list_loop, run_utf_codepoint_function_loop, run_utf_codepoint_list_loop,
+        run_bool_list_loop, run_custom_function_loop, run_custom_list_loop,
+        run_float_function_loop, run_float_list_loop, run_function_function_loop,
+        run_function_list_loop, run_int_function_loop, run_int_list_loop, run_list_function_loop,
+        run_list_list_loop, run_nil_function_loop, run_nil_list_loop, run_string_function_loop,
+        run_string_list_loop, run_tuple_function_loop, run_tuple_list_loop,
+        run_utf_codepoint_function_loop, run_utf_codepoint_list_loop,
     };
     use crate::plan::execution::{
-        BoolFunctionFunctionId, CallArg, FloatFunctionFunctionId, FunctionFunctionFunctionId,
-        FunctionFunctionId, FunctionFunctionLocalId, FunctionListLocalId, FunctionReturnFamily,
-        IntFunctionFunctionId, IntFunctionId, ListFunctionFunctionId, ListFunctionId,
-        NilFunctionFunctionId, ReturnBody, ReturnBodyKind, StringFunctionFunctionId,
-        StringFunctionId, TupleFunctionFunctionId, UtfCodepointFunctionFunctionId,
+        BoolFunctionFunctionId, CallArg, CustomFunctionFunctionId, FloatFunctionFunctionId,
+        FunctionFunctionFunctionId, FunctionFunctionId, FunctionFunctionLocalId,
+        FunctionListLocalId, FunctionReturnFamily, IntFunctionFunctionId, IntFunctionId,
+        ListFunctionFunctionId, ListFunctionId, NilFunctionFunctionId, ReturnBody, ReturnBodyKind,
+        StringFunctionFunctionId, StringFunctionId, TupleFunctionFunctionId,
+        UtfCodepointFunctionFunctionId,
     };
     use crate::runtime::FunctionValueKind;
     use crate::runtime::frame::Frame;
@@ -1439,6 +1583,20 @@ mod tests {
                 "panic: argument",
             );
         }
+        assert_eq!(
+            crate::runtime::run_src_error(
+                "pub type Boxed { Boxed(Int) } pub fn main() -> Boxed { case True { True -> panic as \"callee\" False -> fn() { Boxed(0) } }() }",
+            )
+            .to_string(),
+            "panic: callee",
+        );
+        assert_eq!(
+            crate::runtime::run_src_error(
+                "pub type Boxed { Boxed(Int) } fn callee(value: Int) -> Boxed { Boxed(value) } pub fn main() { let function = callee function(panic as \"argument\") }",
+            )
+            .to_string(),
+            "panic: argument",
+        );
     }
 
     #[test]
@@ -1462,6 +1620,13 @@ mod tests {
                 "panic: callee",
             );
         }
+        assert_eq!(
+            crate::runtime::run_src_error(
+                "pub type Boxed { Boxed(Int) } pub fn main() -> List(Boxed) { case True { True -> panic as \"callee\" False -> fn() { [] } }() }",
+            )
+            .to_string(),
+            "panic: callee",
+        );
     }
 
     #[test]
@@ -1503,6 +1668,20 @@ mod tests {
                 "panic: argument",
             );
         }
+        assert_eq!(
+            crate::runtime::run_src_error(
+                "pub type Boxed { Boxed(Int) } pub fn main() -> fn() -> Boxed { case True { True -> panic as \"callee\" False -> fn() { fn() { Boxed(0) } } }() }",
+            )
+            .to_string(),
+            "panic: callee",
+        );
+        assert_eq!(
+            crate::runtime::run_src_error(
+                "pub type Boxed { Boxed(Int) } fn callee(value: Int) -> fn() -> Boxed { fn() { Boxed(value) } } pub fn main() { let function = callee function(panic as \"argument\") }",
+            )
+            .to_string(),
+            "panic: argument",
+        );
     }
 
     #[test]
@@ -1533,6 +1712,15 @@ mod tests {
             let error = run_main(&plan).expect_err("panic argument should fail execution");
 
             assert_eq!(error.to_string(), "panic: `panic` expression evaluated.");
+        }
+        for source in [
+            "pub type Boxed { Boxed(Int) } fn callee(value: Int) -> Boxed { Boxed(value) } pub fn main() { let _ = callee(panic) 0 }",
+            "pub type Boxed { Boxed(Int) } fn callee(value: Int) -> List(Boxed) { [] } pub fn main() { let _ = callee(panic) 0 }",
+        ] {
+            assert_eq!(
+                crate::runtime::run_src_error(source).to_string(),
+                "panic: `panic` expression evaluated.",
+            );
         }
     }
 
@@ -1589,6 +1777,13 @@ mod tests {
 
             assert_eq!(error.to_string(), "panic: `panic` expression evaluated.");
         }
+        assert_eq!(
+            crate::runtime::run_src_error(
+                "pub type Boxed { Boxed(Int) } fn callee(value: Int) -> List(Boxed) { [] } pub fn main() { let function = callee function(panic) }",
+            )
+            .to_string(),
+            "panic: `panic` expression evaluated.",
+        );
     }
 
     #[test]
@@ -1599,6 +1794,8 @@ fn ints(function: fn() -> List(Int)) { function() }
 fn strings(function: fn() -> List(String)) { function() }
 fn bit_arrays(function: fn() -> List(BitArray)) { function() }
 fn utf_codepoints(function: fn() -> List(UtfCodepoint)) { function() }
+pub type Boxed { Boxed(Int) }
+fn customs(function: fn() -> List(Boxed)) { function() }
 fn floats(function: fn() -> List(Float)) { function() }
 fn bools(function: fn() -> List(Bool)) { function() }
 fn nils(function: fn() -> List(Nil)) { function() }
@@ -1689,6 +1886,19 @@ pub fn main() { Nil }
                 frame,
             )
             .expect_err("direct-mutated list function family must fail"),
+            expected,
+        );
+
+        let function = plan.custom_list_function(plan.custom_list_function_id(0));
+        let mut state = crate::runtime::RuntimeState::new();
+        let mut frame = Frame::new(function.frame_layout(), &mut state);
+        frame.set_list_function(
+            function.frame_layout().list_functions()[0].clone(),
+            wrong_int.clone(),
+        );
+        assert_eq!(
+            run_custom_list_loop(&plan, &mut state, plan.custom_list_function_id(0), frame,)
+                .expect_err("direct-mutated list function family must fail"),
             expected,
         );
 
@@ -1784,6 +1994,7 @@ pub fn main() { Nil }
             "fn callee(value: Int) -> fn() -> #(Int) { panic } pub fn main() { let _ = callee(panic) 0 }",
             "fn callee(value: Int) -> fn() -> List(Int) { panic } pub fn main() { let _ = callee(panic) 0 }",
             "fn callee(value: Int) -> fn() -> fn() -> Int { panic } pub fn main() { let _ = callee(panic) 0 }",
+            "pub type Boxed { Boxed(Int) } fn callee(value: Int) -> fn() -> Boxed { fn() { Boxed(value) } } pub fn main() { let _ = callee(panic) 0 }",
         ];
 
         for source in sources {
@@ -1802,6 +2013,8 @@ fn int_function(provider: fn() -> fn() -> Int) { provider() }
 fn string_function(provider: fn() -> fn() -> String) { provider() }
 fn bit_array_function(provider: fn() -> fn() -> BitArray) { provider() }
 fn utf_codepoint_function(provider: fn() -> fn() -> UtfCodepoint) { provider() }
+pub type Boxed { Boxed(Int) }
+fn custom_function(provider: fn() -> fn() -> Boxed) { provider() }
 fn float_function(provider: fn() -> fn() -> Float) { provider() }
 fn bool_function(provider: fn() -> fn() -> Bool) { provider() }
 fn nil_function(provider: fn() -> fn() -> Nil) { provider() }
@@ -1893,6 +2106,18 @@ pub fn main() { list_function }
             }),
         );
 
+        let function = plan.custom_function_function(CustomFunctionFunctionId(0));
+        let mut state = crate::runtime::RuntimeState::new();
+        let mut frame = Frame::new(function.frame_layout(), &mut state);
+        frame.set_function_function(FunctionFunctionLocalId(0), wrong_int.clone());
+        assert_eq!(
+            run_custom_function_loop(&plan, &mut state, CustomFunctionFunctionId(0), frame),
+            Err(ExecutionError::FunctionReturnFamilyMismatch {
+                expected: FunctionReturnFamily::Custom,
+                actual: FunctionReturnFamily::Int,
+            }),
+        );
+
         let function = plan.float_function_function(FloatFunctionFunctionId(0));
         let mut state = crate::runtime::RuntimeState::new();
         let mut frame = Frame::new(function.frame_layout(), &mut state);
@@ -1980,6 +2205,10 @@ fn bit_array_function(values: List(fn() -> BitArray)) {
   case values { [value, ..] -> value _ -> panic }
 }
 fn utf_codepoint_function(values: List(fn() -> UtfCodepoint)) {
+  case values { [value, ..] -> value _ -> panic }
+}
+pub type Boxed { Boxed(Int) }
+fn custom_function(values: List(fn() -> Boxed)) {
   case values { [value, ..] -> value _ -> panic }
 }
 fn float_function(values: List(fn() -> Float)) {
@@ -2097,6 +2326,22 @@ pub fn main() { list_function }
             ),
             Err(ExecutionError::FunctionReturnFamilyMismatch {
                 expected: FunctionReturnFamily::UtfCodepoint,
+                actual: FunctionReturnFamily::Int,
+            }),
+        );
+
+        let function = plan.custom_function_function(CustomFunctionFunctionId(0));
+        let mut state = crate::runtime::RuntimeState::new();
+        let mut frame = Frame::new(function.frame_layout(), &mut state);
+        let value = state.function(
+            function.frame_layout().function_lists()[0],
+            vec![wrong_int.clone().into()],
+        );
+        frame.set_function_list(FunctionListLocalId(0), value);
+        assert_eq!(
+            run_custom_function_loop(&plan, &mut state, CustomFunctionFunctionId(0), frame),
+            Err(ExecutionError::FunctionReturnFamilyMismatch {
+                expected: FunctionReturnFamily::Custom,
                 actual: FunctionReturnFamily::Int,
             }),
         );

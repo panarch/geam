@@ -1,6 +1,6 @@
 use super::{
-    eval_bit_array_expr, eval_expr, eval_float_expr, eval_int_expr, eval_list_expr,
-    eval_panic_expr, eval_string_expr, project_bool_list_expr, project_tuple_expr,
+    eval_bit_array_expr, eval_custom_expr, eval_expr, eval_float_expr, eval_int_expr,
+    eval_list_expr, eval_panic_expr, eval_string_expr, project_bool_list_expr, project_tuple_expr,
 };
 use crate::plan::ValueType;
 use crate::plan::execution::ExecutionPlan;
@@ -95,6 +95,16 @@ pub(in crate::runtime) fn eval_bool_expr(
                 frame, &value, pattern,
             ))
         }
+        BoolExprKind::CustomMatches { value, pattern } => {
+            let value = eval_custom_expr(plan, state, frame, value)?;
+            crate::runtime::function::match_and_apply_assert_pattern(
+                plan,
+                state,
+                frame,
+                pattern,
+                &EvaluatedValue::Custom(value),
+            )
+        }
         BoolExprKind::And { left, right } => {
             let left = eval_bool_expr(plan, state, frame, left)?;
             eval_and(left, || eval_bool_expr(plan, state, frame, right))
@@ -177,9 +187,10 @@ fn eval_or(
 #[cfg(test)]
 mod tests {
     use crate::plan::{
-        BitArrayExpr, BitArrayPattern, BoolExpr, BoolFunctionId, Expr, FloatExpr, FunctionId,
-        FunctionPlan, IntExpr, ListExpr, ModulePlan, PanicExpr, PanicSite, ReturnExpr, Step,
-        StringExpr, TupleExpr, ValueType,
+        AssertPattern, BitArrayExpr, BitArrayPattern, BoolExpr, BoolFunctionId, CustomExpr,
+        CustomType, CustomTypeDefinition, CustomTypeName, CustomTypePublicity, Expr, FloatExpr,
+        FunctionId, FunctionPlan, IntExpr, ListExpr, ModulePlan, PanicExpr, PanicSite, ReturnExpr,
+        Step, StringExpr, TupleExpr, ValueType,
     };
     use crate::runtime::{ExecutionError, run_main};
 
@@ -279,6 +290,7 @@ pub fn main() {
             "case fail_string() { \"zero\" -> False _ -> True }",
             "case fail_float() { 0.0 -> False _ -> True }",
             "case fail_bit_array() { <<1>> -> True _ -> False }",
+            "case fail_custom() { Full(_) -> True Empty -> False }",
             "{ let _ = fail_int() True }",
             "{ let function = fail_bool function() }",
         ];
@@ -292,6 +304,8 @@ fn fail_string() -> String {{ panic }}
 fn fail_float() -> Float {{ panic }}
 fn fail_bit_array() -> BitArray {{ panic }}
 fn fail_int_list() -> List(Int) {{ panic }}
+pub type Choice {{ Empty Full(Int) }}
+fn fail_custom() -> Choice {{ panic }}
 pub fn main() -> Bool {{ {expression} }}
 "#,
             );
@@ -339,13 +353,37 @@ pub fn main() -> Bool {{ {expression} }}
 
         for expression in expressions {
             assert_eq!(
-                run_module_bool_expression(expression).to_string(),
+                run_module_bool_expression(expression, Vec::new()).to_string(),
                 "panic: `panic` expression evaluated.",
             );
         }
+
+        let custom_name = CustomTypeName::new("geam".into(), "main".into(), "Empty".into());
+        let custom_type = CustomType::new(custom_name.clone(), Vec::new());
+        let custom_definition = CustomTypeDefinition::new(
+            custom_name,
+            CustomTypePublicity::Public,
+            false,
+            Vec::new(),
+            Vec::new(),
+        );
+        assert_eq!(
+            run_module_bool_expression(
+                BoolExpr::custom_matches(
+                    CustomExpr::panic(panic(), custom_type),
+                    AssertPattern::Discard,
+                ),
+                vec![custom_definition],
+            )
+            .to_string(),
+            "panic: `panic` expression evaluated.",
+        );
     }
 
-    fn run_module_bool_expression(expression: BoolExpr) -> ExecutionError {
+    fn run_module_bool_expression(
+        expression: BoolExpr,
+        custom_types: Vec<CustomTypeDefinition>,
+    ) -> ExecutionError {
         let main = FunctionPlan::new(
             FunctionId::new(0),
             "main".into(),
@@ -353,7 +391,8 @@ pub fn main() -> Bool {{ {expression} }}
             Vec::new(),
             ReturnExpr::bool(BoolFunctionId(0), expression),
         );
-        let module = ModulePlan::new("main".into(), main, Vec::new());
+        let module =
+            ModulePlan::new("main".into(), main, Vec::new()).with_custom_types(custom_types);
         let plan = crate::ExecutionPlan::from_module_plan(module);
 
         run_main(&plan).expect_err("module expression should fail at runtime")

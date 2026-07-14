@@ -3,11 +3,10 @@ mod direct;
 mod function_value;
 mod implicit;
 
-use crate::plan::Expr;
+use crate::plan::{CustomExpr, Expr};
 use crate::planner::context::PlanContext;
 use crate::planner::error::{
     InvalidCallShapeReason, InvalidTypedAstReason, InvalidUseShapeReason, PlanError,
-    UnsupportedExpressionKind,
 };
 use ecow::EcoString;
 use gleam_core::ast::{CallArg as GleamCallArg, TypedExpr};
@@ -124,11 +123,26 @@ fn plan_call_expression(
             }
             ValueConstructorVariant::ModuleConstant { .. } => {}
             ValueConstructorVariant::Record { module, arity, .. }
-                if module == PRELUDE_MODULE_NAME && *arity > 0 =>
+                if module == context.module_name || module == PRELUDE_MODULE_NAME =>
             {
-                return Err(PlanError::UnsupportedExpression {
-                    kind: UnsupportedExpressionKind::RecordConstructor,
-                });
+                let constructor = context.custom_constructor(constructor)?;
+                if usize::from(*arity) != arguments.len() {
+                    return Err(PlanError::InvalidTypedAst {
+                        reason: InvalidTypedAstReason::CallShape {
+                            reason: InvalidCallShapeReason::FunctionCallArityMismatch,
+                        },
+                    });
+                }
+                let arguments = argument::plan_custom_constructor_args(
+                    arguments,
+                    &constructor,
+                    context,
+                    capture,
+                )?;
+                return Ok(Expr::custom(CustomExpr::constructor(
+                    constructor,
+                    arguments,
+                )));
             }
             ValueConstructorVariant::Record { .. } => {
                 return Err(PlanError::InvalidTypedAst {
@@ -229,18 +243,19 @@ pub fn main() {
 
 #[cfg(test)]
 mod tests {
-    use super::super::{module_returning_typed_expr, typed_prelude_constructor};
+    use super::super::{module_returning_typed_expr, typed_prelude_constructor, typed_string_expr};
     use super::support::{expect_call_statement_mut, expect_var_constructor_mut};
     use crate::planner::plan_module;
     use crate::planner::support::{compile, dummy_span};
     use crate::planner::{
-        InvalidCallShapeReason, InvalidTypedAstReason, PlanError, UnsupportedExpressionKind,
+        InvalidCallShapeReason, InvalidCustomTypeReason, InvalidTypedAstReason, PlanError,
+        UnsupportedExpressionKind,
     };
     use gleam_core::ast::{ImplicitCallArgOrigin, Statement, TypedExpr, TypedModule};
     use gleam_core::type_::{self, ValueConstructorVariant, error::VariableOrigin};
 
     #[test]
-    fn reject_profile_prelude_record_constructor_call() {
+    fn reject_profile_polymorphic_result_constructor_call() {
         assert_eq!(
             plan_module(compile(
                 r#"
@@ -251,7 +266,7 @@ pub fn main() {
 "#,
             )),
             Err(PlanError::UnsupportedExpression {
-                kind: UnsupportedExpressionKind::RecordConstructor,
+                kind: UnsupportedExpressionKind::GenericFunction,
             }),
         );
     }
@@ -406,6 +421,94 @@ pub fn main() {
         assert_eq!(
             plan_module(record_constructor_call),
             Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::CustomType {
+                    name: "Boxed".into(),
+                    reason: InvalidCustomTypeReason::UnknownDefinition,
+                },
+            }),
+        );
+
+        let mut constructor_arity_mismatch = compile(
+            r#"
+pub type Boxed { Boxed(Int) }
+pub fn main() { Boxed(1) }
+"#,
+        );
+        let (_, _, arguments) = expect_call_statement_mut(
+            &mut constructor_arity_mismatch.definitions.functions[0].body[0],
+        );
+        arguments.clear();
+        assert_eq!(
+            plan_module(constructor_arity_mismatch),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::CallShape {
+                    reason: InvalidCallShapeReason::FunctionCallArityMismatch,
+                },
+            }),
+        );
+
+        let mut labelled_constructor_argument = compile(
+            r#"
+pub type Boxed { Boxed(value: Int) }
+pub fn main() { Boxed(value: 1) }
+"#,
+        );
+        let (_, _, arguments) = expect_call_statement_mut(
+            &mut labelled_constructor_argument.definitions.functions[0].body[0],
+        );
+        arguments[0].label = Some("other".into());
+        assert_eq!(
+            plan_module(labelled_constructor_argument),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::CallShape {
+                    reason: InvalidCallShapeReason::LabelledArguments,
+                },
+            }),
+        );
+
+        let mut constructor_field_type_mismatch = compile(
+            r#"
+pub type Boxed { Boxed(Int) }
+pub fn main() { Boxed(1) }
+"#,
+        );
+        let (_, _, arguments) = expect_call_statement_mut(
+            &mut constructor_field_type_mismatch.definitions.functions[0].body[0],
+        );
+        arguments[0].value = typed_string_expr("wrong");
+        assert_eq!(
+            plan_module(constructor_field_type_mismatch),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionType {
+                    expected: crate::planner::InvalidExpressionType::Int,
+                    actual: crate::planner::InvalidExpressionType::String,
+                },
+            }),
+        );
+
+        let mut external_record_constructor = compile(
+            r#"
+pub type Boxed { Boxed(Int) }
+pub fn main() { Boxed(1) }
+"#,
+        );
+        let (_, fun, _) = expect_call_statement_mut(
+            &mut external_record_constructor.definitions.functions[0].body[0],
+        );
+        let constructor = expect_var_constructor_mut(fun);
+        constructor.variant = ValueConstructorVariant::Record {
+            name: "Boxed".into(),
+            arity: 1,
+            field_map: None,
+            location: dummy_span(),
+            module: "other".into(),
+            variants_count: 1,
+            variant_index: 0,
+            documentation: None,
+        };
+        assert_eq!(
+            plan_module(external_record_constructor),
+            Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::CallShape {
                     reason: InvalidCallShapeReason::RecordConstructor,
                 },
@@ -421,8 +524,9 @@ pub fn main() {
                 open_parenthesis: Some(0),
             })),
             Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::CallShape {
-                    reason: InvalidCallShapeReason::RecordConstructor,
+                reason: InvalidTypedAstReason::CustomType {
+                    name: "True".into(),
+                    reason: InvalidCustomTypeReason::ConstructorType,
                 },
             }),
         );

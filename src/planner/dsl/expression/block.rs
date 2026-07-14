@@ -3,10 +3,10 @@ use super::{
     String, TupleFunction, UtfCodepoint,
 };
 use crate::plan::{
-    BitArrayExpr, BitArrayFunctionExpr, BoolExpr, BoolFunctionExpr, FloatExpr, FloatFunctionExpr,
-    FunctionExpr, FunctionExprKind, FunctionFunctionExpr, IntExpr, IntFunctionExpr, ListExpr,
-    ListFunctionExpr, NilExpr, NilFunctionExpr, Step, StringExpr, StringFunctionExpr,
-    TupleFunctionExpr, UtfCodepointExpr, UtfCodepointFunctionExpr,
+    BitArrayExpr, BitArrayFunctionExpr, BoolExpr, BoolFunctionExpr, CustomFunctionExpr, FloatExpr,
+    FloatFunctionExpr, FunctionExpr, FunctionExprKind, FunctionFunctionExpr, IntExpr,
+    IntFunctionExpr, ListExpr, ListFunctionExpr, NilExpr, NilFunctionExpr, Step, StringExpr,
+    StringFunctionExpr, TupleFunctionExpr, UtfCodepointExpr, UtfCodepointFunctionExpr,
 };
 
 pub(crate) fn block_int(steps: impl IntoIterator<Item = Step>, return_: Int) -> Int {
@@ -70,6 +70,9 @@ pub(crate) fn block_function(steps: Vec<Step>, return_: Function) -> Function {
         }
         FunctionExprKind::UtfCodepoint(return_) => {
             FunctionExpr::utf_codepoint(UtfCodepointFunctionExpr::block(steps, return_))
+        }
+        FunctionExprKind::Custom(return_) => {
+            FunctionExpr::custom(CustomFunctionExpr::block(steps, return_))
         }
         FunctionExprKind::Float(return_) => {
             FunctionExpr::float(FloatFunctionExpr::block(steps, return_))
@@ -139,7 +142,8 @@ mod tests {
     };
     use crate::plan::{
         BitArrayExpr, BitArrayFunctionExpr, BitArrayFunctionId, BitArrayFunctionReference,
-        BoolExpr, BoolFunctionId, BoolFunctionReference, FloatExpr, FloatFunctionId,
+        BoolExpr, BoolFunctionId, BoolFunctionReference, CustomFunctionExpr, CustomFunctionId,
+        CustomFunctionReference, CustomType, CustomTypeName, FloatExpr, FloatFunctionId,
         FloatFunctionReference, FunctionExpr, FunctionFunctionExpr, FunctionFunctionId,
         FunctionFunctionReference, FunctionType, IntExpr, IntFunctionExpr, IntFunctionFunctionId,
         IntFunctionId, IntFunctionReference, ListExpr, ListFunctionExpr, ListFunctionReference,
@@ -154,6 +158,13 @@ mod tests {
         let_string_step, list, list_function_ref, local_bit_array, local_bool, local_int,
         local_nil, local_string, local_utf_codepoint, nil, string, tuple_function_ref,
     };
+
+    fn custom_type() -> CustomType {
+        CustomType::new(
+            CustomTypeName::new("geam".into(), "main".into(), "Boxed".into()),
+            Vec::new(),
+        )
+    }
 
     #[test]
     fn primitive_block_helpers_build_block_shapes() {
@@ -443,6 +454,26 @@ mod tests {
                 )
                 .into(),
             ),
+        );
+    }
+
+    #[test]
+    fn function_block_helper_preserves_custom_return_family() {
+        let runtime_id = RuntimeFunctionId::Custom {
+            id: CustomFunctionId(0),
+            return_type: custom_type(),
+        };
+        let value = CustomFunctionExpr::reference(
+            CustomFunctionReference::new(CustomFunctionId(0), Vec::new()),
+            custom_type(),
+        );
+
+        assert_eq!(
+            FunctionExpr::from(block_function(
+                Vec::new(),
+                function_ref(runtime_id, Vec::<ParamLocal>::new()),
+            )),
+            FunctionExpr::custom(CustomFunctionExpr::block(Vec::new(), value)),
         );
     }
 }

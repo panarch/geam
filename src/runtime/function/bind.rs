@@ -3,17 +3,19 @@ use crate::plan::execution::{CallArg, CallArgKind, CaptureArg, CaptureArgKind, F
 use crate::runtime::error::ExecutionResult;
 use crate::runtime::expression::{
     eval_bit_array_expr, eval_bit_array_function_expr, eval_bit_array_list_expr, eval_bool_expr,
-    eval_bool_function_expr, eval_bool_list_expr, eval_float_expr, eval_float_function_expr,
-    eval_float_list_expr, eval_function_function_expr, eval_function_list_expr, eval_int_expr,
-    eval_int_function_expr, eval_int_list_expr, eval_list_function_expr, eval_list_list_expr,
-    eval_nil_expr, eval_nil_function_expr, eval_nil_list_expr, eval_string_expr,
-    eval_string_function_expr, eval_string_list_expr, eval_tuple_expr, eval_tuple_function_expr,
-    eval_tuple_list_expr, eval_utf_codepoint_expr, eval_utf_codepoint_function_expr,
-    eval_utf_codepoint_list_expr,
+    eval_bool_function_expr, eval_bool_list_expr, eval_custom_expr, eval_custom_function_expr,
+    eval_custom_list_expr, eval_float_expr, eval_float_function_expr, eval_float_list_expr,
+    eval_function_function_expr, eval_function_list_expr, eval_int_expr, eval_int_function_expr,
+    eval_int_list_expr, eval_list_function_expr, eval_list_list_expr, eval_nil_expr,
+    eval_nil_function_expr, eval_nil_list_expr, eval_string_expr, eval_string_function_expr,
+    eval_string_list_expr, eval_tuple_expr, eval_tuple_function_expr, eval_tuple_list_expr,
+    eval_utf_codepoint_expr, eval_utf_codepoint_function_expr, eval_utf_codepoint_list_expr,
 };
 use crate::runtime::frame::Frame;
 use crate::runtime::state::RuntimeState;
-use crate::runtime::{EvaluatedCapture, EvaluatedCaptureKind, EvaluatedListCapture};
+use crate::runtime::{
+    EvaluatedCapture, EvaluatedCaptureKind, EvaluatedListCapture, EvaluatedValue,
+};
 
 pub(super) fn bind_arguments(
     plan: &ExecutionPlan,
@@ -66,6 +68,10 @@ fn bind_arguments_into(
                 let value = eval_utf_codepoint_expr(plan, state, caller_frame, value)?;
                 frame.set_utf_codepoint(*local, value);
             }
+            CallArgKind::Custom { local, value } => {
+                let value = eval_custom_expr(plan, state, caller_frame, value)?;
+                frame.set_custom(*local, value);
+            }
             CallArgKind::Float { local, value } => {
                 let value = eval_float_expr(plan, state, caller_frame, value)?;
                 frame.set_float(*local, value);
@@ -101,6 +107,10 @@ fn bind_arguments_into(
                 let value = eval_utf_codepoint_function_expr(plan, state, caller_frame, value)?;
                 frame.set_utf_codepoint_function(*local, value);
             }
+            CallArgKind::CustomFunction { local, value } => {
+                let value = eval_custom_function_expr(plan, state, caller_frame, value)?;
+                frame.set_custom_function(*local, value);
+            }
             CallArgKind::FloatFunction { local, value } => {
                 let value = eval_float_function_expr(plan, state, caller_frame, value)?;
                 frame.set_float_function(*local, value);
@@ -131,6 +141,127 @@ fn bind_arguments_into(
     Ok(())
 }
 
+pub(super) fn eval_constructor_arguments(
+    plan: &ExecutionPlan,
+    state: &mut RuntimeState,
+    args: &[CallArg],
+    frame: &mut Frame,
+) -> ExecutionResult<Vec<EvaluatedValue>> {
+    let mut values = Vec::with_capacity(args.len());
+    for arg in args {
+        values.push(match arg.kind() {
+            CallArgKind::Int { value, .. } => {
+                EvaluatedValue::Int(eval_int_expr(plan, state, frame, value)?)
+            }
+            CallArgKind::Float { value, .. } => {
+                EvaluatedValue::Float(eval_float_expr(plan, state, frame, value)?)
+            }
+            CallArgKind::String { value, .. } => {
+                EvaluatedValue::String(eval_string_expr(plan, state, frame, value)?)
+            }
+            CallArgKind::BitArray { value, .. } => {
+                EvaluatedValue::BitArray(eval_bit_array_expr(plan, state, frame, value)?)
+            }
+            CallArgKind::UtfCodepoint { value, .. } => {
+                EvaluatedValue::UtfCodepoint(eval_utf_codepoint_expr(plan, state, frame, value)?)
+            }
+            CallArgKind::Custom { value, .. } => {
+                EvaluatedValue::Custom(eval_custom_expr(plan, state, frame, value)?)
+            }
+            CallArgKind::Bool { value, .. } => {
+                EvaluatedValue::Bool(eval_bool_expr(plan, state, frame, value)?)
+            }
+            CallArgKind::Nil { value, .. } => {
+                eval_nil_expr(plan, state, frame, value)?;
+                EvaluatedValue::Nil
+            }
+            CallArgKind::Tuple { value, .. } => {
+                EvaluatedValue::Tuple(eval_tuple_expr(plan, state, frame, value)?)
+            }
+            CallArgKind::List(value) => {
+                EvaluatedValue::List(eval_list_local_expr(plan, state, frame, value)?)
+            }
+            CallArgKind::IntFunction { value, .. } => {
+                EvaluatedValue::Function(eval_int_function_expr(plan, state, frame, value)?.into())
+            }
+            CallArgKind::FloatFunction { value, .. } => EvaluatedValue::Function(
+                eval_float_function_expr(plan, state, frame, value)?.into(),
+            ),
+            CallArgKind::StringFunction { value, .. } => EvaluatedValue::Function(
+                eval_string_function_expr(plan, state, frame, value)?.into(),
+            ),
+            CallArgKind::BitArrayFunction { value, .. } => EvaluatedValue::Function(
+                eval_bit_array_function_expr(plan, state, frame, value)?.into(),
+            ),
+            CallArgKind::UtfCodepointFunction { value, .. } => EvaluatedValue::Function(
+                eval_utf_codepoint_function_expr(plan, state, frame, value)?.into(),
+            ),
+            CallArgKind::CustomFunction { value, .. } => EvaluatedValue::Function(
+                eval_custom_function_expr(plan, state, frame, value)?.into(),
+            ),
+            CallArgKind::BoolFunction { value, .. } => {
+                EvaluatedValue::Function(eval_bool_function_expr(plan, state, frame, value)?.into())
+            }
+            CallArgKind::NilFunction { value, .. } => {
+                EvaluatedValue::Function(eval_nil_function_expr(plan, state, frame, value)?.into())
+            }
+            CallArgKind::TupleFunction { value, .. } => EvaluatedValue::Function(
+                eval_tuple_function_expr(plan, state, frame, value)?.into(),
+            ),
+            CallArgKind::ListFunction { value, .. } => {
+                EvaluatedValue::Function(eval_list_function_expr(plan, state, frame, value)?.into())
+            }
+            CallArgKind::FunctionFunction { value, .. } => EvaluatedValue::Function(
+                eval_function_function_expr(plan, state, frame, value)?.into(),
+            ),
+        });
+    }
+    Ok(values)
+}
+
+fn eval_list_local_expr(
+    plan: &ExecutionPlan,
+    state: &mut RuntimeState,
+    frame: &mut Frame,
+    value: &crate::plan::execution::ListLocalExpr,
+) -> ExecutionResult<crate::runtime::state::ListValueId> {
+    match value {
+        crate::plan::execution::ListLocalExpr::Int { value, .. } => {
+            eval_int_list_expr(plan, state, frame, value).map(Into::into)
+        }
+        crate::plan::execution::ListLocalExpr::String { value, .. } => {
+            eval_string_list_expr(plan, state, frame, value).map(Into::into)
+        }
+        crate::plan::execution::ListLocalExpr::BitArray { value, .. } => {
+            eval_bit_array_list_expr(plan, state, frame, value).map(Into::into)
+        }
+        crate::plan::execution::ListLocalExpr::UtfCodepoint { value, .. } => {
+            eval_utf_codepoint_list_expr(plan, state, frame, value).map(Into::into)
+        }
+        crate::plan::execution::ListLocalExpr::Custom { value, .. } => {
+            eval_custom_list_expr(plan, state, frame, value).map(Into::into)
+        }
+        crate::plan::execution::ListLocalExpr::Float { value, .. } => {
+            eval_float_list_expr(plan, state, frame, value).map(Into::into)
+        }
+        crate::plan::execution::ListLocalExpr::Bool { value, .. } => {
+            eval_bool_list_expr(plan, state, frame, value).map(Into::into)
+        }
+        crate::plan::execution::ListLocalExpr::Nil { value, .. } => {
+            eval_nil_list_expr(plan, state, frame, value).map(Into::into)
+        }
+        crate::plan::execution::ListLocalExpr::Tuple { value, .. } => {
+            eval_tuple_list_expr(plan, state, frame, value).map(Into::into)
+        }
+        crate::plan::execution::ListLocalExpr::List { value, .. } => {
+            eval_list_list_expr(plan, state, frame, value).map(Into::into)
+        }
+        crate::plan::execution::ListLocalExpr::Function { value, .. } => {
+            eval_function_list_expr(plan, state, frame, value).map(Into::into)
+        }
+    }
+}
+
 pub(in crate::runtime) fn eval_capture_args(
     plan: &ExecutionPlan,
     state: &mut RuntimeState,
@@ -153,6 +284,9 @@ pub(in crate::runtime) fn eval_capture_args(
                 *local,
                 eval_utf_codepoint_expr(plan, state, frame, value)?,
             ),
+            CaptureArgKind::Custom { local, value } => {
+                EvaluatedCapture::custom(*local, eval_custom_expr(plan, state, frame, value)?)
+            }
             CaptureArgKind::Float { local, value } => {
                 EvaluatedCapture::float(*local, eval_float_expr(plan, state, frame, value)?)
             }
@@ -187,6 +321,10 @@ pub(in crate::runtime) fn eval_capture_args(
                     eval_utf_codepoint_function_expr(plan, state, frame, value)?,
                 )
             }
+            CaptureArgKind::CustomFunction { local, value } => EvaluatedCapture::custom_function(
+                *local,
+                eval_custom_function_expr(plan, state, frame, value)?,
+            ),
             CaptureArgKind::FloatFunction { local, value } => EvaluatedCapture::float_function(
                 *local,
                 eval_float_function_expr(plan, state, frame, value)?,
@@ -232,6 +370,9 @@ fn bind_captures(frame: &mut Frame, captures: &[EvaluatedCapture]) {
             EvaluatedCaptureKind::UtfCodepoint { local, value } => {
                 frame.set_utf_codepoint(*local, *value)
             }
+            EvaluatedCaptureKind::Custom { local, value } => {
+                frame.set_custom(*local, value.clone())
+            }
             EvaluatedCaptureKind::Float { local, value } => frame.set_float(*local, *value),
             EvaluatedCaptureKind::Bool { local, value } => frame.set_bool(*local, *value),
             EvaluatedCaptureKind::Nil { local } => frame.set_nil(*local),
@@ -248,6 +389,9 @@ fn bind_captures(frame: &mut Frame, captures: &[EvaluatedCapture]) {
             }
             EvaluatedCaptureKind::UtfCodepointFunction { local, value } => {
                 frame.set_utf_codepoint_function(*local, value.clone());
+            }
+            EvaluatedCaptureKind::CustomFunction { local, value } => {
+                frame.set_custom_function(*local, value.clone());
             }
             EvaluatedCaptureKind::FloatFunction { local, value } => {
                 frame.set_float_function(*local, value.clone());
@@ -294,6 +438,10 @@ fn bind_list_argument(
         crate::plan::execution::ListLocalExpr::UtfCodepoint { local, value } => {
             let value = eval_utf_codepoint_list_expr(plan, state, caller_frame, value)?;
             frame.set_utf_codepoint_list(*local, value);
+        }
+        crate::plan::execution::ListLocalExpr::Custom { local, value } => {
+            let value = eval_custom_list_expr(plan, state, caller_frame, value)?;
+            frame.set_custom_list(*local, value);
         }
         crate::plan::execution::ListLocalExpr::Float { local, value } => {
             let value = eval_float_list_expr(plan, state, caller_frame, value)?;
@@ -354,6 +502,12 @@ fn eval_list_capture(
                 value: eval_utf_codepoint_list_expr(plan, state, frame, value)?,
             })
         }
+        crate::plan::execution::ListLocalExpr::Custom { local, value } => {
+            EvaluatedCapture::list(EvaluatedListCapture::Custom {
+                local: *local,
+                value: eval_custom_list_expr(plan, state, frame, value)?,
+            })
+        }
         crate::plan::execution::ListLocalExpr::Float { local, value } => {
             EvaluatedCapture::list(EvaluatedListCapture::Float {
                 local: *local,
@@ -407,6 +561,9 @@ fn bind_list_capture(frame: &mut Frame, value: &EvaluatedListCapture) {
         EvaluatedListCapture::UtfCodepoint { local, value } => {
             frame.set_utf_codepoint_list(*local, value.clone());
         }
+        EvaluatedListCapture::Custom { local, value } => {
+            frame.set_custom_list(*local, value.clone());
+        }
         EvaluatedListCapture::Float { local, value } => {
             frame.set_float_list(*local, value.clone());
         }
@@ -430,22 +587,27 @@ fn bind_list_capture(frame: &mut Frame, value: &EvaluatedListCapture) {
 
 #[cfg(test)]
 mod tests {
+    use super::{bind_captures, bind_list_capture};
     use crate::plan::{
         BitArrayExpr, BitArrayFunctionExpr, BitArrayFunctionLocalId, BitArrayListExpr,
         BitArrayListLocalId, BitArrayLocalId, BoolExpr, BoolFunctionExpr, BoolFunctionLocalId,
-        BoolListExpr, BoolListLocalId, CaptureArg, FloatExpr, FloatFunctionExpr,
-        FloatFunctionLocalId, FloatListExpr, FloatListLocalId, FunctionFunctionExpr,
-        FunctionFunctionLocalId, FunctionId, FunctionListLocalId, FunctionPlan, FunctionType,
-        IntExpr, IntFunctionExpr, IntFunctionFunctionId, IntFunctionId, IntFunctionLocalId,
-        IntListExpr, IntListLocalId, IntLocalId, ListExpr, ListFunctionExpr, ListFunctionLocal,
-        ListListExpr, ListListLocalId, ListLocalExpr, ModulePlan, NilExpr, NilFunctionExpr,
-        NilFunctionLocalId, NilListExpr, NilListLocalId, NilLocalId, PanicExpr, PanicSite,
-        ReturnExpr, StringExpr, StringFunctionExpr, StringFunctionLocalId, StringListExpr,
-        StringListLocalId, StringLocalId, TupleExpr, TupleFunctionExpr, TupleFunctionLocalId,
-        TupleListExpr, TupleListLocalId, TupleLocalId, UtfCodepointExpr, UtfCodepointFunctionExpr,
+        BoolListExpr, BoolListLocalId, CaptureArg, CustomConstructorDefinition, CustomExpr,
+        CustomFieldDefinition, CustomFunctionExpr, CustomFunctionLocalId, CustomListLocalId,
+        CustomLocalId, CustomType, CustomTypeDefinition, CustomTypeName, CustomTypePublicity,
+        CustomTypeTemplate, FloatExpr, FloatFunctionExpr, FloatFunctionLocalId, FloatListExpr,
+        FloatListLocalId, FunctionFunctionExpr, FunctionFunctionLocalId, FunctionId,
+        FunctionListLocalId, FunctionPlan, FunctionType, IntExpr, IntFunctionExpr,
+        IntFunctionFunctionId, IntFunctionId, IntFunctionLocalId, IntListExpr, IntListLocalId,
+        IntLocalId, ListExpr, ListFunctionExpr, ListFunctionLocal, ListListExpr, ListListLocalId,
+        ListLocalExpr, ModulePlan, NilExpr, NilFunctionExpr, NilFunctionLocalId, NilListExpr,
+        NilListLocalId, NilLocalId, PanicExpr, PanicSite, ReturnExpr, StringExpr,
+        StringFunctionExpr, StringFunctionLocalId, StringListExpr, StringListLocalId,
+        StringLocalId, TupleExpr, TupleFunctionExpr, TupleFunctionLocalId, TupleListExpr,
+        TupleListLocalId, TupleLocalId, UtfCodepointExpr, UtfCodepointFunctionExpr,
         UtfCodepointFunctionLocalId, UtfCodepointListExpr, UtfCodepointListLocalId,
         UtfCodepointLocalId, ValueType,
     };
+    use crate::runtime::frame::Frame;
     use crate::runtime::{ExecutionError, run_main};
 
     #[test]
@@ -644,6 +806,16 @@ pub fn main() {
                 "panic: argument",
             );
         }
+
+        for parameter_type in ["Boxed", "List(Boxed)", "fn() -> Boxed"] {
+            let source = format!(
+                "pub type Boxed {{ Boxed(Int) }} fn callee(value: {parameter_type}) -> Nil {{ Nil }} pub fn main() {{ callee(panic as \"argument\") }}",
+            );
+            assert_eq!(
+                crate::runtime::run_src_error(&source).to_string(),
+                "panic: argument",
+            );
+        }
     }
 
     #[test]
@@ -678,6 +850,104 @@ pub fn main() {
     }
 
     #[test]
+    fn source_custom_scalar_list_and_function_arguments_and_captures_bind_exact_values() {
+        assert_eq!(
+            crate::runtime::run_src(
+                r#"
+pub type Boxed {
+  Boxed(Int)
+}
+
+fn boxed(value: Int) -> Boxed {
+  Boxed(value)
+}
+
+fn apply(
+  value: Boxed,
+  values: List(Boxed),
+  function: fn(Int) -> Boxed,
+) -> Int {
+  case value, values, function(3) {
+    Boxed(one), [Boxed(two)], Boxed(three) -> one + two + three
+    _, _, _ -> 0
+  }
+}
+
+pub fn main() {
+  let value = Boxed(1)
+  let values = [Boxed(2)]
+  let function = boxed
+  let closure = fn() { apply(value, values, function) }
+  closure()
+}
+"#,
+            ),
+            crate::runtime::Value::Int(6.into()),
+        );
+    }
+
+    #[test]
+    fn evaluated_custom_function_and_utf_codepoint_list_captures_bind_exact_slots() {
+        let plan = crate::runtime::plan_src(
+            r#"
+pub type Boxed { Boxed(Int) }
+fn boxed() { Boxed(1) }
+fn boxes() { [Boxed(1)] }
+fn codepoints() -> List(UtfCodepoint) {
+  let assert <<value:utf8_codepoint>> = <<65>>
+  [value]
+}
+pub fn main() {
+  let function = boxed
+  let values = codepoints()
+  #(function, values)
+}
+"#,
+        );
+        let function = plan.tuple_function(crate::plan::execution::TupleFunctionId(0));
+        let mut state = crate::runtime::RuntimeState::new();
+        let mut frame = Frame::new(function.frame_layout(), &mut state);
+        let custom_function = crate::runtime::EvaluatedCustomFunction::new(
+            crate::runtime::EvaluatedCustomFunctionTarget::Function(
+                crate::plan::execution::CustomFunctionId(0),
+            ),
+            Vec::new(),
+            Vec::new(),
+            crate::plan::execution::FunctionType::new(
+                Vec::new(),
+                crate::plan::execution::ValueType::Custom(
+                    plan.custom_list_function_id(0).type_id().item_type(),
+                ),
+            ),
+        );
+        bind_captures(
+            &mut frame,
+            &[crate::runtime::EvaluatedCapture::custom_function(
+                crate::plan::execution::CustomFunctionLocalId(0),
+                custom_function.clone(),
+            )],
+        );
+        assert_eq!(
+            frame.get_custom_function(crate::plan::execution::CustomFunctionLocalId(0)),
+            custom_function,
+        );
+
+        let codepoints =
+            state.utf_codepoint(plan.utf_codepoint_list_function_id(0).type_id(), vec!['A']);
+        bind_list_capture(
+            &mut frame,
+            &crate::runtime::EvaluatedListCapture::UtfCodepoint {
+                local: crate::plan::execution::UtfCodepointListLocalId(0),
+                value: codepoints.clone(),
+            },
+        );
+        assert_eq!(
+            frame.get_utf_codepoint_list(crate::plan::execution::UtfCodepointListLocalId(0)),
+            codepoints,
+        );
+    }
+
+    #[test]
     fn module_capture_errors_propagate_for_every_value_family() {
         let panic = || {
             PanicExpr::panic_at(
@@ -690,11 +960,20 @@ pub fn main() {
         let list_function_type = function_type(ValueType::List(Box::new(ValueType::Int)));
         let function_function_type =
             function_type(ValueType::Function(Box::new(int_function_type.clone())));
+        let custom_type = CustomType::new(
+            CustomTypeName::new("geam".into(), "main".into(), "Boxed".into()),
+            Vec::new(),
+        );
+        let custom_function_type = function_type(ValueType::Custom(custom_type.clone()));
         let captures = [
             CaptureArg::int(IntLocalId(0), IntExpr::panic(panic())),
             CaptureArg::string(StringLocalId(0), StringExpr::panic(panic())),
             CaptureArg::bit_array(BitArrayLocalId(0), BitArrayExpr::panic(panic())),
             CaptureArg::utf_codepoint(UtfCodepointLocalId(0), UtfCodepointExpr::panic(panic())),
+            CaptureArg::custom(
+                CustomLocalId(0),
+                CustomExpr::panic(panic(), custom_type.clone()),
+            ),
             CaptureArg::float(crate::plan::FloatLocalId(0), FloatExpr::panic(panic())),
             CaptureArg::bool(crate::plan::BoolLocalId(0), BoolExpr::panic(panic())),
             CaptureArg::nil(NilLocalId(0), NilExpr::panic(panic())),
@@ -720,6 +999,13 @@ pub fn main() {
                     panic(),
                     ValueType::UtfCodepoint,
                 )),
+            }),
+            CaptureArg::list(ListLocalExpr::Custom {
+                local: CustomListLocalId(0),
+                item_type: custom_type.clone(),
+                value: ListExpr::panic(panic(), ValueType::Custom(custom_type.clone()))
+                    .into_custom()
+                    .expect("custom list panic must preserve its item family"),
             }),
             CaptureArg::list(ListLocalExpr::Float {
                 local: FloatListLocalId(0),
@@ -773,6 +1059,10 @@ pub fn main() {
                 UtfCodepointFunctionLocalId(0),
                 UtfCodepointFunctionExpr::panic(panic(), function_type(ValueType::UtfCodepoint)),
             ),
+            CaptureArg::custom_function(
+                CustomFunctionLocalId(0),
+                CustomFunctionExpr::panic(panic(), custom_function_type),
+            ),
             CaptureArg::float_function(
                 FloatFunctionLocalId(0),
                 FloatFunctionExpr::panic(panic(), function_type(ValueType::Float)),
@@ -807,6 +1097,42 @@ pub fn main() {
         }
     }
 
+    #[test]
+    fn custom_constructor_argument_errors_propagate_for_every_value_family() {
+        for field_type in [
+            "Int",
+            "Float",
+            "String",
+            "BitArray",
+            "UtfCodepoint",
+            "Nested",
+            "Bool",
+            "Nil",
+            "#(Int)",
+            "List(Int)",
+            "fn() -> Int",
+            "fn() -> Float",
+            "fn() -> String",
+            "fn() -> BitArray",
+            "fn() -> UtfCodepoint",
+            "fn() -> Nested",
+            "fn() -> Bool",
+            "fn() -> Nil",
+            "fn() -> #(Int)",
+            "fn() -> List(Int)",
+            "fn() -> fn() -> Int",
+        ] {
+            let source = format!(
+                "pub type Nested {{ Nested }} pub type Boxed {{ Boxed({field_type}) }} pub fn main() {{ let constructor = Boxed constructor(panic as \"argument\") }}",
+            );
+
+            assert_eq!(
+                crate::runtime::run_src_error(&source).to_string(),
+                "panic: argument",
+            );
+        }
+    }
+
     fn run_module_capture(capture: CaptureArg) -> ExecutionError {
         let function_type = FunctionType::new(Vec::new(), ValueType::Int);
         let expression =
@@ -818,7 +1144,19 @@ pub fn main() {
             Vec::new(),
             ReturnExpr::int_function(IntFunctionFunctionId(0), expression),
         );
-        let module = ModulePlan::new("main".into(), main, Vec::new());
+        let module = ModulePlan::new("main".into(), main, Vec::new()).with_custom_types(vec![
+            CustomTypeDefinition::new(
+                CustomTypeName::new("geam".into(), "main".into(), "Boxed".into()),
+                CustomTypePublicity::Public,
+                false,
+                Vec::new(),
+                vec![CustomConstructorDefinition::new(
+                    "Boxed".into(),
+                    0,
+                    vec![CustomFieldDefinition::new(None, CustomTypeTemplate::Int)],
+                )],
+            ),
+        ]);
         let plan = crate::ExecutionPlan::from_module_plan(module);
 
         run_main(&plan).expect_err("capture expression should fail at runtime")

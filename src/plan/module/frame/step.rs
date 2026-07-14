@@ -1,5 +1,8 @@
 use super::FrameLayout;
-use crate::plan::{AssertPattern, ListAssertPattern, ListAssertTail, Step, StepKind};
+use crate::plan::{
+    AssertPattern, BitArrayAssertPattern, CustomBindingPattern, ListAssertPattern, ListAssertTail,
+    Step, StepKind, TotalBindingPattern,
+};
 
 impl FrameLayout {
     pub(in crate::plan::module::frame) fn include_steps(&mut self, steps: &[Step]) {
@@ -29,6 +32,10 @@ impl FrameLayout {
             StepKind::LetUtfCodepoint { local, value, .. } => {
                 self.include_utf_codepoint_expr(value);
                 self.include_utf_codepoint(*local);
+            }
+            StepKind::LetCustom { local, value, .. } => {
+                self.include_custom_expr(value);
+                self.include_custom(*local);
             }
             StepKind::LetBool { local, value, .. } => {
                 self.include_bool_expr(value);
@@ -62,6 +69,10 @@ impl FrameLayout {
             StepKind::LetUtfCodepointFunction { local, value, .. } => {
                 self.include_utf_codepoint_function_expr(value);
                 self.include_utf_codepoint_function(*local);
+            }
+            StepKind::LetCustomFunction { local, value, .. } => {
+                self.include_custom_function_expr(value);
+                self.include_custom_function(*local);
             }
             StepKind::LetBoolFunction { local, value, .. } => {
                 self.include_bool_function_expr(value);
@@ -102,10 +113,26 @@ impl FrameLayout {
                 ..
             } => {
                 self.include_bit_array(*local);
+                self.include_bit_array_assert_pattern(pattern);
+                if let Some(message) = message {
+                    self.include_string_expr(message);
+                }
+            }
+            StepKind::AssertCustom {
+                local,
+                pattern,
+                message,
+                ..
+            } => {
+                self.include_custom(*local);
                 self.include_assert_pattern(pattern);
                 if let Some(message) = message {
                     self.include_string_expr(message);
                 }
+            }
+            StepKind::BindCustomFields { local, pattern } => {
+                self.include_custom(*local);
+                self.include_custom_binding_pattern(pattern);
             }
             StepKind::AssertBool {
                 condition, message, ..
@@ -119,6 +146,38 @@ impl FrameLayout {
         }
     }
 
+    fn include_custom_binding_pattern(&mut self, pattern: &CustomBindingPattern) {
+        for field in pattern.fields() {
+            self.include_total_binding_pattern(field);
+        }
+    }
+
+    fn include_total_binding_pattern(&mut self, pattern: &TotalBindingPattern) {
+        match pattern.kind() {
+            crate::plan::module::TotalBindingPatternKind::Bind(binding) => {
+                self.include_local(binding.local())
+            }
+            crate::plan::module::TotalBindingPatternKind::Discard => {}
+            crate::plan::module::TotalBindingPatternKind::Tuple(elements) => {
+                for element in elements {
+                    self.include_total_binding_pattern(element);
+                }
+            }
+            crate::plan::module::TotalBindingPatternKind::List(tail) => {
+                if let ListAssertTail::Bind(binding) = tail {
+                    self.include_list(binding.local());
+                }
+            }
+            crate::plan::module::TotalBindingPatternKind::Custom(pattern) => {
+                self.include_custom_binding_pattern(pattern)
+            }
+            crate::plan::module::TotalBindingPatternKind::Alias { pattern, binding } => {
+                self.include_total_binding_pattern(pattern);
+                self.include_local(binding.local());
+            }
+        }
+    }
+
     fn include_list_assert_pattern(&mut self, pattern: &ListAssertPattern) {
         for element in pattern.elements() {
             self.include_assert_pattern(element);
@@ -128,10 +187,28 @@ impl FrameLayout {
         }
     }
 
-    fn include_assert_pattern(&mut self, pattern: &AssertPattern) {
+    fn include_bit_array_assert_pattern(&mut self, pattern: &BitArrayAssertPattern) {
+        match pattern {
+            BitArrayAssertPattern::Pattern(pattern) => self.include_bit_array_pattern(pattern),
+            BitArrayAssertPattern::Alias { pattern, local, .. } => {
+                self.include_bit_array_assert_pattern(pattern);
+                self.include_bit_array(*local);
+            }
+        }
+    }
+
+    pub(in crate::plan::module::frame) fn include_assert_pattern(
+        &mut self,
+        pattern: &AssertPattern,
+    ) {
         match pattern {
             AssertPattern::Bind(binding) => self.include_local(binding.local()),
-            AssertPattern::Discard => {}
+            AssertPattern::Discard
+            | AssertPattern::Int(_)
+            | AssertPattern::Float(_)
+            | AssertPattern::String(_)
+            | AssertPattern::Bool(_)
+            | AssertPattern::Nil => {}
             AssertPattern::Tuple(elements) => {
                 for element in elements {
                     self.include_assert_pattern(element);
@@ -139,6 +216,19 @@ impl FrameLayout {
             }
             AssertPattern::List(pattern) => self.include_list_assert_pattern(pattern),
             AssertPattern::BitArray(pattern) => self.include_bit_array_pattern(pattern),
+            AssertPattern::Custom(pattern) => {
+                for field in pattern.fields() {
+                    self.include_assert_pattern(field);
+                }
+            }
+            AssertPattern::StringPrefix { left, right, .. } => {
+                if let Some(binding) = left {
+                    self.include_local(binding.local());
+                }
+                if let Some(binding) = right {
+                    self.include_local(binding.local());
+                }
+            }
             AssertPattern::Alias { pattern, binding } => {
                 self.include_assert_pattern(pattern);
                 self.include_local(binding.local());
@@ -296,11 +386,15 @@ mod tests {
 
     #[test]
     fn frame_layout_includes_assert_list_pattern_dependencies() {
-        let list_element_type = ValueType::Tuple(vec![ValueType::Int, ValueType::String]);
-        let subject_local =
-            ListLocal::tuple(TupleListLocalId(0), vec![ValueType::Int, ValueType::String]);
-        let tail_local =
-            ListLocal::tuple(TupleListLocalId(1), vec![ValueType::Int, ValueType::String]);
+        let tuple_type = vec![
+            ValueType::Int,
+            ValueType::String,
+            ValueType::String,
+            ValueType::String,
+        ];
+        let list_element_type = ValueType::Tuple(tuple_type.clone());
+        let subject_local = ListLocal::tuple(TupleListLocalId(0), tuple_type.clone());
+        let tail_local = ListLocal::tuple(TupleListLocalId(1), tuple_type.clone());
         let steps = [crate::plan::Step::assert_list_at(
             subject_local,
             AssertPattern::list(ListAssertPattern::new(
@@ -314,6 +408,25 @@ mod tests {
                         AssertPattern::Discard,
                         AssertBinding::new(ParamLocal::string(StringLocalId(0)), "text".into()),
                     ),
+                    AssertPattern::StringPrefix {
+                        prefix: "pre".into(),
+                        left: Some(AssertBinding::new(
+                            ParamLocal::string(StringLocalId(1)),
+                            "prefix".into(),
+                        )),
+                        right: Some(AssertBinding::new(
+                            ParamLocal::string(StringLocalId(2)),
+                            "suffix".into(),
+                        )),
+                    },
+                    AssertPattern::StringPrefix {
+                        prefix: "left".into(),
+                        left: Some(AssertBinding::new(
+                            ParamLocal::string(StringLocalId(3)),
+                            "left_only".into(),
+                        )),
+                        right: None,
+                    },
                 ])],
                 Some(ListAssertTail::bind(tail_local, "rest".into())),
             )),
@@ -326,14 +439,8 @@ mod tests {
         let layout = FrameLayout::from_function_parts(&[], &steps, &return_);
 
         assert_eq!(layout.ints(), 1);
-        assert_eq!(layout.strings(), 2);
-        assert_eq!(
-            layout.tuple_lists(),
-            &[
-                vec![ValueType::Int, ValueType::String],
-                vec![ValueType::Int, ValueType::String],
-            ],
-        );
+        assert_eq!(layout.strings(), 4);
+        assert_eq!(layout.tuple_lists(), &[tuple_type.clone(), tuple_type,],);
     }
 
     #[test]

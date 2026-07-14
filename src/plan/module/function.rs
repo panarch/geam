@@ -1,25 +1,28 @@
 use super::FrameLayout;
 use super::expression::{
-    BitArrayExpr, BitArrayListExpr, BoolExpr, BoolListExpr, CallArg, FloatExpr, FloatListExpr,
-    FunctionListExpr, IntExpr, IntListExpr, ListListExpr, NilExpr, NilListExpr, StringExpr,
-    StringListExpr, TupleExpr, TupleListExpr, UtfCodepointExpr, UtfCodepointListExpr,
+    BitArrayExpr, BitArrayListExpr, BoolExpr, BoolListExpr, CallArg, CustomExpr, CustomListExpr,
+    FloatExpr, FloatListExpr, FunctionListExpr, IntExpr, IntListExpr, ListListExpr, NilExpr,
+    NilListExpr, StringExpr, StringListExpr, TupleExpr, TupleListExpr, UtfCodepointExpr,
+    UtfCodepointListExpr,
 };
 use super::id::{
     BitArrayFunctionFunctionId, BitArrayFunctionId, BitArrayFunctionLocalId,
     BitArrayListFunctionId, BitArrayLocalId, BoolFunctionFunctionId, BoolFunctionId,
-    BoolFunctionLocalId, BoolListFunctionId, BoolLocalId, FloatFunctionFunctionId, FloatFunctionId,
-    FloatFunctionLocalId, FloatListFunctionId, FloatLocalId, FunctionFunctionFunctionId,
-    FunctionFunctionLocalId, FunctionId, FunctionListFunctionId, IntFunctionFunctionId,
-    IntFunctionId, IntFunctionLocalId, IntListFunctionId, IntLocalId, ListFunctionFunctionId,
-    ListFunctionLocal, ListListFunctionId, ListLocal, NilFunctionFunctionId, NilFunctionId,
-    NilFunctionLocalId, NilListFunctionId, NilLocalId, StringFunctionFunctionId, StringFunctionId,
-    StringFunctionLocalId, StringListFunctionId, StringLocalId, TupleFunctionFunctionId,
-    TupleFunctionId, TupleFunctionLocalId, TupleListFunctionId, TupleLocalId,
-    UtfCodepointFunctionFunctionId, UtfCodepointFunctionId, UtfCodepointFunctionLocalId,
-    UtfCodepointListFunctionId, UtfCodepointLocalId,
+    BoolFunctionLocalId, BoolListFunctionId, BoolLocalId, CustomFunctionFunctionId,
+    CustomFunctionId, CustomFunctionLocalId, CustomListFunctionId, CustomLocalId,
+    FloatFunctionFunctionId, FloatFunctionId, FloatFunctionLocalId, FloatListFunctionId,
+    FloatLocalId, FunctionFunctionFunctionId, FunctionFunctionLocalId, FunctionId,
+    FunctionListFunctionId, IntFunctionFunctionId, IntFunctionId, IntFunctionLocalId,
+    IntListFunctionId, IntLocalId, ListFunctionFunctionId, ListFunctionLocal, ListListFunctionId,
+    ListLocal, NilFunctionFunctionId, NilFunctionId, NilFunctionLocalId, NilListFunctionId,
+    NilLocalId, StringFunctionFunctionId, StringFunctionId, StringFunctionLocalId,
+    StringListFunctionId, StringLocalId, TupleFunctionFunctionId, TupleFunctionId,
+    TupleFunctionLocalId, TupleListFunctionId, TupleLocalId, UtfCodepointFunctionFunctionId,
+    UtfCodepointFunctionId, UtfCodepointFunctionLocalId, UtfCodepointListFunctionId,
+    UtfCodepointLocalId,
 };
 use super::step::Step;
-use crate::plan::{FunctionType, ValueType};
+use crate::plan::{CustomType, FunctionType, ValueType};
 use ecow::EcoString;
 use num_bigint::BigInt;
 
@@ -57,6 +60,10 @@ pub(crate) enum ParamLocal {
     String(StringLocalId),
     BitArray(BitArrayLocalId),
     UtfCodepoint(UtfCodepointLocalId),
+    Custom {
+        local: CustomLocalId,
+        type_: CustomType,
+    },
     Bool(BoolLocalId),
     Nil(NilLocalId),
     Tuple {
@@ -82,6 +89,10 @@ pub(crate) enum ParamLocal {
     },
     UtfCodepointFunction {
         local: UtfCodepointFunctionLocalId,
+        type_: FunctionType,
+    },
+    CustomFunction {
+        local: CustomFunctionLocalId,
         type_: FunctionType,
     },
     BoolFunction {
@@ -114,6 +125,7 @@ pub(crate) type FloatReturn = ReturnBody<FloatExpr, FloatFunctionId>;
 pub(crate) type StringReturn = ReturnBody<StringExpr, StringFunctionId>;
 pub(crate) type BitArrayReturn = ReturnBody<BitArrayExpr, BitArrayFunctionId>;
 pub(crate) type UtfCodepointReturn = ReturnBody<UtfCodepointExpr, UtfCodepointFunctionId>;
+pub(crate) type CustomReturn = ReturnBody<CustomExpr, CustomFunctionId>;
 pub(crate) type BoolReturn = ReturnBody<BoolExpr, BoolFunctionId>;
 pub(crate) type NilReturn = ReturnBody<NilExpr, NilFunctionId>;
 pub(crate) type TupleReturn = ReturnBody<TupleExpr, TupleFunctionId>;
@@ -123,6 +135,7 @@ pub(crate) type StringListReturn = ReturnBody<StringListExpr, StringListFunction
 pub(crate) type BitArrayListReturn = ReturnBody<BitArrayListExpr, BitArrayListFunctionId>;
 pub(crate) type UtfCodepointListReturn =
     ReturnBody<UtfCodepointListExpr, UtfCodepointListFunctionId>;
+pub(crate) type CustomListReturn = ReturnBody<CustomListExpr, CustomListFunctionId>;
 pub(crate) type BoolListReturn = ReturnBody<BoolListExpr, BoolListFunctionId>;
 pub(crate) type NilListReturn = ReturnBody<NilListExpr, NilListFunctionId>;
 pub(crate) type TupleListReturn = ReturnBody<TupleListExpr, TupleListFunctionId>;
@@ -136,6 +149,8 @@ pub(crate) type BitArrayFunctionReturn =
     ReturnBody<super::BitArrayFunctionExpr, BitArrayFunctionFunctionId>;
 pub(crate) type UtfCodepointFunctionReturn =
     ReturnBody<super::UtfCodepointFunctionExpr, UtfCodepointFunctionFunctionId>;
+pub(crate) type CustomFunctionReturn =
+    ReturnBody<super::CustomFunctionExpr, CustomFunctionFunctionId>;
 pub(crate) type BoolFunctionReturn = ReturnBody<super::BoolFunctionExpr, BoolFunctionFunctionId>;
 pub(crate) type NilFunctionReturn = ReturnBody<super::NilFunctionExpr, NilFunctionFunctionId>;
 pub(crate) type TupleFunctionReturn = ReturnBody<super::TupleFunctionExpr, TupleFunctionFunctionId>;
@@ -151,6 +166,10 @@ pub(crate) enum ListReturn {
     String(StringListReturn),
     BitArray(BitArrayListReturn),
     UtfCodepoint(UtfCodepointListReturn),
+    Custom {
+        item_type: CustomType,
+        body: CustomListReturn,
+    },
     Bool(BoolListReturn),
     Nil(NilListReturn),
     Tuple {
@@ -179,6 +198,10 @@ impl ListReturn {
             ListExpr::UtfCodepoint(expression) => {
                 Self::UtfCodepoint(UtfCodepointListReturn::expr(expression))
             }
+            ListExpr::Custom(expression) => Self::Custom {
+                item_type: expression.item().item_type(),
+                body: CustomListReturn::expr(expression),
+            },
             ListExpr::Bool(expression) => Self::Bool(BoolListReturn::expr(expression)),
             ListExpr::Nil(expression) => Self::Nil(NilListReturn::expr(expression)),
             ListExpr::Tuple(expression) => Self::Tuple {
@@ -212,6 +235,10 @@ impl ListReturn {
             ListFunctionId::UtfCodepoint(function) => {
                 Self::UtfCodepoint(UtfCodepointListReturn::tail_call(function, args))
             }
+            ListFunctionId::Custom { id, item_type } => Self::Custom {
+                item_type,
+                body: CustomListReturn::tail_call(id, args),
+            },
             ListFunctionId::Bool(function) => Self::Bool(BoolListReturn::tail_call(function, args)),
             ListFunctionId::Nil(function) => Self::Nil(NilListReturn::tail_call(function, args)),
             ListFunctionId::Tuple { id, item_type } => Self::Tuple {
@@ -247,6 +274,19 @@ impl ListReturn {
             (Self::UtfCodepoint(true_), Self::UtfCodepoint(false_)) => {
                 Self::UtfCodepoint(UtfCodepointListReturn::bool_case(subject, true_, false_))
             }
+            (
+                Self::Custom {
+                    item_type: true_type,
+                    body: true_,
+                },
+                Self::Custom {
+                    item_type: false_type,
+                    body: false_,
+                },
+            ) if true_type == false_type => Self::Custom {
+                item_type: true_type,
+                body: CustomListReturn::bool_case(subject, true_, false_),
+            },
             (Self::Bool(true_), Self::Bool(false_)) => {
                 Self::Bool(BoolListReturn::bool_case(subject, true_, false_))
             }
@@ -344,6 +384,22 @@ impl ListReturn {
                     })?,
                     fallback,
                 )))
+            }
+            Self::Custom {
+                item_type,
+                body: fallback,
+            } => {
+                let clauses = into_list_return_clauses(clauses, |branch| match branch {
+                    Self::Custom {
+                        item_type: branch_type,
+                        body,
+                    } if branch_type == item_type => Some(body),
+                    _ => None,
+                })?;
+                Some(Self::Custom {
+                    item_type,
+                    body: CustomListReturn::int_case(subject, clauses, fallback),
+                })
             }
             Self::Bool(fallback) => Some(Self::Bool(BoolListReturn::int_case(
                 subject,
@@ -461,6 +517,22 @@ impl ListReturn {
                     fallback,
                 )))
             }
+            Self::Custom {
+                item_type,
+                body: fallback,
+            } => {
+                let clauses = into_list_return_clauses(clauses, |branch| match branch {
+                    Self::Custom {
+                        item_type: branch_type,
+                        body,
+                    } if branch_type == item_type => Some(body),
+                    _ => None,
+                })?;
+                Some(Self::Custom {
+                    item_type,
+                    body: CustomListReturn::float_case(subject, clauses, fallback),
+                })
+            }
             Self::Bool(fallback) => Some(Self::Bool(BoolListReturn::float_case(
                 subject,
                 into_list_return_clauses(clauses, |branch| match branch {
@@ -577,6 +649,22 @@ impl ListReturn {
                     fallback,
                 )))
             }
+            Self::Custom {
+                item_type,
+                body: fallback,
+            } => {
+                let clauses = into_list_return_clauses(clauses, |branch| match branch {
+                    Self::Custom {
+                        item_type: branch_type,
+                        body,
+                    } if branch_type == item_type => Some(body),
+                    _ => None,
+                })?;
+                Some(Self::Custom {
+                    item_type,
+                    body: CustomListReturn::string_case(subject, clauses, fallback),
+                })
+            }
             Self::Bool(fallback) => Some(Self::Bool(BoolListReturn::string_case(
                 subject,
                 into_list_return_clauses(clauses, |branch| match branch {
@@ -654,6 +742,10 @@ impl ListReturn {
             Self::UtfCodepoint(return_) => {
                 Self::UtfCodepoint(UtfCodepointListReturn::block(steps, return_))
             }
+            Self::Custom { item_type, body } => Self::Custom {
+                item_type,
+                body: CustomListReturn::block(steps, body),
+            },
             Self::Bool(return_) => Self::Bool(BoolListReturn::block(steps, return_)),
             Self::Nil(return_) => Self::Nil(NilListReturn::block(steps, return_)),
             Self::Tuple { item_type, body } => Self::Tuple {
@@ -748,6 +840,11 @@ pub(crate) enum ReturnExprKind {
         runtime_id: UtfCodepointFunctionId,
         body: UtfCodepointReturn,
     },
+    Custom {
+        runtime_id: CustomFunctionId,
+        type_: CustomType,
+        body: CustomReturn,
+    },
     Bool {
         runtime_id: BoolFunctionId,
         body: BoolReturn,
@@ -776,6 +873,11 @@ pub(crate) enum ReturnExprKind {
     UtfCodepointList {
         runtime_id: UtfCodepointListFunctionId,
         body: UtfCodepointListReturn,
+    },
+    CustomList {
+        runtime_id: CustomListFunctionId,
+        item_type: CustomType,
+        body: CustomListReturn,
     },
     FloatList {
         runtime_id: FloatListFunctionId,
@@ -828,6 +930,11 @@ pub(crate) enum ReturnExprKind {
         runtime_id: UtfCodepointFunctionFunctionId,
         type_: FunctionType,
         body: UtfCodepointFunctionReturn,
+    },
+    CustomFunction {
+        runtime_id: CustomFunctionFunctionId,
+        type_: FunctionType,
+        body: CustomFunctionReturn,
     },
     BoolFunction {
         runtime_id: BoolFunctionFunctionId,
@@ -963,6 +1070,20 @@ impl ReturnExpr {
         }
     }
 
+    pub(crate) fn custom_body(
+        runtime_id: CustomFunctionId,
+        type_: CustomType,
+        body: CustomReturn,
+    ) -> Self {
+        Self {
+            kind: ReturnExprKind::Custom {
+                runtime_id,
+                type_,
+                body,
+            },
+        }
+    }
+
     #[cfg(test)]
     pub(crate) fn bool(runtime_id: BoolFunctionId, expression: BoolExpr) -> Self {
         Self::bool_body(runtime_id, ReturnBody::expr(expression))
@@ -1035,6 +1156,20 @@ impl ReturnExpr {
     ) -> Self {
         Self {
             kind: ReturnExprKind::UtfCodepointList { runtime_id, body },
+        }
+    }
+
+    pub(crate) fn custom_list_body(
+        runtime_id: CustomListFunctionId,
+        item_type: CustomType,
+        body: CustomListReturn,
+    ) -> Self {
+        Self {
+            kind: ReturnExprKind::CustomList {
+                runtime_id,
+                item_type,
+                body,
+            },
         }
     }
 
@@ -1204,6 +1339,20 @@ impl ReturnExpr {
         }
     }
 
+    pub(crate) fn custom_function_body(
+        runtime_id: CustomFunctionFunctionId,
+        type_: FunctionType,
+        body: CustomFunctionReturn,
+    ) -> Self {
+        Self {
+            kind: ReturnExprKind::CustomFunction {
+                runtime_id,
+                type_,
+                body,
+            },
+        }
+    }
+
     #[cfg(test)]
     pub(crate) fn bool_function(
         runtime_id: BoolFunctionFunctionId,
@@ -1328,6 +1477,7 @@ impl ReturnExpr {
             ReturnExprKind::String { .. } => ValueType::String,
             ReturnExprKind::BitArray { .. } => ValueType::BitArray,
             ReturnExprKind::UtfCodepoint { .. } => ValueType::UtfCodepoint,
+            ReturnExprKind::Custom { type_, .. } => ValueType::Custom(type_.clone()),
             ReturnExprKind::Bool { .. } => ValueType::Bool,
             ReturnExprKind::Nil { .. } => ValueType::Nil,
             ReturnExprKind::Tuple { type_, .. } => ValueType::Tuple(type_.clone()),
@@ -1336,6 +1486,9 @@ impl ReturnExpr {
             ReturnExprKind::BitArrayList { .. } => ValueType::List(Box::new(ValueType::BitArray)),
             ReturnExprKind::UtfCodepointList { .. } => {
                 ValueType::List(Box::new(ValueType::UtfCodepoint))
+            }
+            ReturnExprKind::CustomList { item_type, .. } => {
+                ValueType::List(Box::new(ValueType::Custom(item_type.clone())))
             }
             ReturnExprKind::FloatList { .. } => ValueType::List(Box::new(ValueType::Float)),
             ReturnExprKind::BoolList { .. } => ValueType::List(Box::new(ValueType::Bool)),
@@ -1354,6 +1507,7 @@ impl ReturnExpr {
             | ReturnExprKind::StringFunction { type_, .. }
             | ReturnExprKind::BitArrayFunction { type_, .. }
             | ReturnExprKind::UtfCodepointFunction { type_, .. }
+            | ReturnExprKind::CustomFunction { type_, .. }
             | ReturnExprKind::BoolFunction { type_, .. }
             | ReturnExprKind::NilFunction { type_, .. }
             | ReturnExprKind::TupleFunction { type_, .. }
@@ -1376,6 +1530,12 @@ impl ReturnExpr {
             ReturnExprKind::UtfCodepoint { runtime_id, .. } => {
                 RuntimeFunctionId::UtfCodepoint(*runtime_id)
             }
+            ReturnExprKind::Custom {
+                runtime_id, type_, ..
+            } => RuntimeFunctionId::Custom {
+                id: *runtime_id,
+                return_type: type_.clone(),
+            },
             ReturnExprKind::Bool { runtime_id, .. } => RuntimeFunctionId::Bool(*runtime_id),
             ReturnExprKind::Nil { runtime_id, .. } => RuntimeFunctionId::Nil(*runtime_id),
             ReturnExprKind::Tuple {
@@ -1396,6 +1556,14 @@ impl ReturnExpr {
             ReturnExprKind::UtfCodepointList { runtime_id, .. } => {
                 RuntimeFunctionId::List(ListFunctionId::UtfCodepoint(*runtime_id))
             }
+            ReturnExprKind::CustomList {
+                runtime_id,
+                item_type,
+                ..
+            } => RuntimeFunctionId::List(ListFunctionId::Custom {
+                id: *runtime_id,
+                item_type: item_type.clone(),
+            }),
             ReturnExprKind::FloatList { runtime_id, .. } => {
                 RuntimeFunctionId::List(ListFunctionId::Float(*runtime_id))
             }
@@ -1457,6 +1625,12 @@ impl ReturnExpr {
                 runtime_id, type_, ..
             } => RuntimeFunctionId::Function {
                 id: FunctionFunctionId::UtfCodepoint(*runtime_id),
+                return_type: type_.clone(),
+            },
+            ReturnExprKind::CustomFunction {
+                runtime_id, type_, ..
+            } => RuntimeFunctionId::Function {
+                id: FunctionFunctionId::Custom(*runtime_id),
                 return_type: type_.clone(),
             },
             ReturnExprKind::BoolFunction {
@@ -1622,6 +1796,10 @@ impl ParamLocal {
         Self::UtfCodepoint(local)
     }
 
+    pub(crate) fn custom(local: CustomLocalId, type_: CustomType) -> Self {
+        Self::Custom { local, type_ }
+    }
+
     pub(crate) fn bool(local: BoolLocalId) -> Self {
         Self::Bool(local)
     }
@@ -1661,6 +1839,10 @@ impl ParamLocal {
         Self::UtfCodepointFunction { local, type_ }
     }
 
+    pub(crate) fn custom_function(local: CustomFunctionLocalId, type_: FunctionType) -> Self {
+        Self::CustomFunction { local, type_ }
+    }
+
     pub(crate) fn bool_function(local: BoolFunctionLocalId, type_: FunctionType) -> Self {
         Self::BoolFunction { local, type_ }
     }
@@ -1688,6 +1870,7 @@ impl ParamLocal {
             Self::String(_) => ValueType::String,
             Self::BitArray(_) => ValueType::BitArray,
             Self::UtfCodepoint(_) => ValueType::UtfCodepoint,
+            Self::Custom { type_, .. } => ValueType::Custom(type_.clone()),
             Self::Bool(_) => ValueType::Bool,
             Self::Nil(_) => ValueType::Nil,
             Self::Tuple { type_, .. } => ValueType::Tuple(type_.clone()),
@@ -1697,6 +1880,7 @@ impl ParamLocal {
             | Self::StringFunction { type_, .. }
             | Self::BitArrayFunction { type_, .. }
             | Self::UtfCodepointFunction { type_, .. }
+            | Self::CustomFunction { type_, .. }
             | Self::BoolFunction { type_, .. }
             | Self::NilFunction { type_, .. }
             | Self::TupleFunction { type_, .. }
@@ -1709,15 +1893,18 @@ impl ParamLocal {
 #[cfg(test)]
 mod tests {
     use super::{
-        BitArrayListReturn, BoolListReturn, FloatListReturn, FunctionListReturn, FunctionPlan,
-        IntListReturn, ListListReturn, ListReturn, NilListReturn, Param, ParamBinding, ParamLocal,
-        ReturnBodyKind, ReturnExpr, StringListReturn, TupleListReturn,
+        BitArrayListReturn, BoolListReturn, CustomFunctionReturn, CustomListReturn, CustomReturn,
+        FloatListReturn, FunctionListReturn, FunctionPlan, IntListReturn, ListListReturn,
+        ListReturn, NilListReturn, Param, ParamBinding, ParamLocal, ReturnBodyKind, ReturnExpr,
+        StringListReturn, TupleListReturn,
     };
     use crate::plan::{
         BitArrayExpr, BitArrayFunctionExpr, BitArrayFunctionFunctionId, BitArrayFunctionId,
         BitArrayFunctionReference, BitArrayListFunctionId, BoolExpr, BoolFunctionExpr,
         BoolFunctionFunctionId, BoolFunctionId, BoolFunctionLocalId, BoolFunctionReference,
-        BoolLocalId, Expr, FloatExpr, FloatFunctionExpr, FloatFunctionFunctionId, FloatFunctionId,
+        BoolLocalId, CustomExpr, CustomFunctionExpr, CustomFunctionFunctionId, CustomFunctionId,
+        CustomFunctionReference, CustomListFunctionId, CustomLocalId, CustomType, CustomTypeName,
+        Expr, FloatExpr, FloatFunctionExpr, FloatFunctionFunctionId, FloatFunctionId,
         FloatFunctionLocalId, FloatFunctionReference, FloatListFunctionId, FloatLocalId,
         FunctionFunctionExpr, FunctionFunctionFunctionId, FunctionFunctionId,
         FunctionFunctionLocalId, FunctionFunctionReference, FunctionId, FunctionListFunctionId,
@@ -1735,6 +1922,13 @@ mod tests {
         UtfCodepointListReturn, UtfCodepointLocalId, UtfCodepointReturn, ValueType,
     };
     use num_bigint::BigInt;
+
+    fn custom_type() -> CustomType {
+        CustomType::new(
+            CustomTypeName::new("geam".into(), "main".into(), "Boxed".into()),
+            Vec::new(),
+        )
+    }
 
     #[test]
     fn function_plan_accessors() {
@@ -1964,6 +2158,7 @@ mod tests {
         let tuple_item = vec![ValueType::Int];
         let list_item = Box::new(ValueType::Int);
         let function_item = FunctionType::new(Vec::new(), ValueType::Int);
+        let custom_item = custom_type();
         let expressions = vec![
             (
                 ReturnExpr::int_list_body(
@@ -2012,6 +2207,22 @@ mod tests {
                 ),
                 ValueType::UtfCodepoint,
                 ListFunctionId::UtfCodepoint(UtfCodepointListFunctionId(10)),
+            ),
+            (
+                ReturnExpr::custom_list_body(
+                    CustomListFunctionId(11),
+                    custom_item.clone(),
+                    CustomListReturn::expr(
+                        ListExpr::value(Vec::new(), ValueType::Custom(custom_item.clone()))
+                            .into_custom()
+                            .expect("expression should be List(Custom)"),
+                    ),
+                ),
+                ValueType::Custom(custom_item.clone()),
+                ListFunctionId::Custom {
+                    id: CustomListFunctionId(11),
+                    item_type: custom_item,
+                },
             ),
             (
                 ReturnExpr::float_list_body(
@@ -2115,6 +2326,9 @@ mod tests {
     fn return_expr_preserves_runtime_id_for_non_list_families() {
         let tuple_type = vec![ValueType::Int];
         let int_function_type = FunctionType::new(Vec::new(), ValueType::Int);
+        let custom_type = custom_type();
+        let custom_function_type =
+            FunctionType::new(Vec::new(), ValueType::Custom(custom_type.clone()));
         let expressions = vec![
             (
                 ReturnExpr::int(IntFunctionId(0), IntExpr::value(1.into())),
@@ -2141,6 +2355,21 @@ mod tests {
                     )),
                 ),
                 RuntimeFunctionId::UtfCodepoint(UtfCodepointFunctionId(12)),
+            ),
+            (
+                ReturnExpr::custom_body(
+                    CustomFunctionId(14),
+                    custom_type.clone(),
+                    CustomReturn::expr(CustomExpr::local_get(
+                        CustomLocalId(0),
+                        "custom".into(),
+                        custom_type.clone(),
+                    )),
+                ),
+                RuntimeFunctionId::Custom {
+                    id: CustomFunctionId(14),
+                    return_type: custom_type.clone(),
+                },
             ),
             (
                 ReturnExpr::bool(BoolFunctionId(3), BoolExpr::value(true)),
@@ -2226,6 +2455,20 @@ mod tests {
                 RuntimeFunctionId::Function {
                     id: FunctionFunctionId::UtfCodepoint(UtfCodepointFunctionFunctionId(13)),
                     return_type: FunctionType::new(Vec::new(), ValueType::UtfCodepoint),
+                },
+            ),
+            (
+                ReturnExpr::custom_function_body(
+                    CustomFunctionFunctionId(14),
+                    custom_function_type.clone(),
+                    CustomFunctionReturn::expr(CustomFunctionExpr::reference(
+                        CustomFunctionReference::new(CustomFunctionId(0), Vec::new()),
+                        custom_type,
+                    )),
+                ),
+                RuntimeFunctionId::Function {
+                    id: FunctionFunctionId::Custom(CustomFunctionFunctionId(14)),
+                    return_type: custom_function_type,
                 },
             ),
             (
@@ -2530,6 +2773,16 @@ mod tests {
             )),
         );
 
+        let custom_type = custom_type();
+        let custom = ListExpr::value(Vec::new(), ValueType::Custom(custom_type.clone()));
+        assert_eq!(
+            ListReturn::expr(custom.clone()),
+            ListReturn::Custom {
+                item_type: custom_type,
+                body: CustomListReturn::expr(custom.into_custom().expect("custom list")),
+            },
+        );
+
         let bool_ = ListExpr::value(
             vec![crate::plan::Expr::bool(BoolExpr::value(true))],
             ValueType::Bool,
@@ -2636,6 +2889,20 @@ mod tests {
                 UtfCodepointListFunctionId(0),
                 Vec::new(),
             )),
+        );
+        let custom_type = custom_type();
+        assert_eq!(
+            ListReturn::tail_call(
+                ListFunctionId::Custom {
+                    id: CustomListFunctionId(0),
+                    item_type: custom_type.clone(),
+                },
+                Vec::new(),
+            ),
+            ListReturn::Custom {
+                item_type: custom_type,
+                body: CustomListReturn::tail_call(CustomListFunctionId(0), Vec::new()),
+            },
         );
         assert_eq!(
             ListReturn::tail_call(
@@ -2944,6 +3211,7 @@ mod tests {
             ValueType::String,
             ValueType::BitArray,
             ValueType::UtfCodepoint,
+            ValueType::Custom(custom_type()),
             ValueType::Bool,
             ValueType::Nil,
             ValueType::Tuple(vec![ValueType::Int]),
@@ -3013,6 +3281,7 @@ mod tests {
             ValueType::String,
             ValueType::BitArray,
             ValueType::UtfCodepoint,
+            ValueType::Custom(custom_type()),
             ValueType::Bool,
             ValueType::Nil,
             ValueType::Tuple(vec![ValueType::Int]),
@@ -3116,6 +3385,7 @@ mod tests {
             ListReturn::String(_) => ValueType::String,
             ListReturn::BitArray(_) => ValueType::BitArray,
             ListReturn::UtfCodepoint(_) => ValueType::UtfCodepoint,
+            ListReturn::Custom { item_type, .. } => ValueType::Custom(item_type.clone()),
             ListReturn::Bool(_) => ValueType::Bool,
             ListReturn::Nil(_) => ValueType::Nil,
             ListReturn::Tuple { item_type, .. } => ValueType::Tuple(item_type.clone()),

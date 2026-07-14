@@ -9,8 +9,9 @@ mod pipeline;
 mod var;
 
 use crate::plan::{
-    BitArrayExpr, BoolExpr, Expr, FloatExpr, FunctionExpr, FunctionFunctionExpr, FunctionType,
-    IntExpr, ListExpr, PanicExpr, StringExpr, TupleExpr, ValueType,
+    BitArrayExpr, BoolExpr, CustomExpr, CustomFunctionExpr, Expr, FloatExpr, FunctionExpr,
+    FunctionFunctionExpr, FunctionType, IntExpr, ListExpr, PanicExpr, StringExpr, TupleExpr,
+    ValueType,
 };
 use crate::planner::context::PlanContext;
 use crate::planner::error::{
@@ -83,10 +84,8 @@ pub(super) fn plan_expr(
             clauses,
             ..
         } => case::plan_case(type_, subjects, clauses, context),
-        TypedExpr::RecordAccess { .. } => Err(PlanError::InvalidTypedAst {
-            reason: InvalidTypedAstReason::ExpressionShape {
-                kind: InvalidExpressionShapeKind::RecordAccess,
-            },
+        TypedExpr::RecordAccess { .. } => Err(PlanError::UnsupportedExpression {
+            kind: UnsupportedExpressionKind::RecordAccess,
         }),
         TypedExpr::PositionalAccess { .. } => Err(PlanError::InvalidTypedAst {
             reason: InvalidTypedAstReason::ExpressionShape {
@@ -123,10 +122,8 @@ pub(super) fn plan_expr(
         TypedExpr::BitArray { segments, .. } => {
             bit_array::plan_expression(segments, context).map(Expr::bit_array)
         }
-        TypedExpr::RecordUpdate { .. } => Err(PlanError::InvalidTypedAst {
-            reason: InvalidTypedAstReason::ExpressionShape {
-                kind: InvalidExpressionShapeKind::RecordUpdate,
-            },
+        TypedExpr::RecordUpdate { .. } => Err(PlanError::UnsupportedExpression {
+            kind: UnsupportedExpressionKind::RecordUpdate,
         }),
         TypedExpr::Invalid { .. } => Err(PlanError::InvalidTypedAst {
             reason: InvalidTypedAstReason::ExpressionShape {
@@ -269,6 +266,7 @@ fn panic_expr(panic: PanicExpr, return_type: ValueType) -> Expr {
         ValueType::String => Expr::string(StringExpr::panic(panic)),
         ValueType::BitArray => Expr::bit_array(BitArrayExpr::panic(panic)),
         ValueType::UtfCodepoint => Expr::utf_codepoint(crate::plan::UtfCodepointExpr::panic(panic)),
+        ValueType::Custom(type_) => Expr::custom(CustomExpr::panic(panic, type_)),
         ValueType::Float => Expr::float(FloatExpr::panic(panic)),
         ValueType::Bool => Expr::bool(BoolExpr::panic(panic)),
         ValueType::Nil => Expr::nil(crate::plan::NilExpr::panic(panic)),
@@ -292,6 +290,9 @@ fn panic_function_expr(panic: PanicExpr, type_: FunctionType) -> Expr {
         ValueType::UtfCodepoint => Expr::function(FunctionExpr::utf_codepoint(
             crate::plan::UtfCodepointFunctionExpr::panic(panic, type_),
         )),
+        ValueType::Custom(_) => Expr::function(FunctionExpr::custom(CustomFunctionExpr::panic(
+            panic, type_,
+        ))),
         ValueType::Float => Expr::function(FunctionExpr::float(
             crate::plan::FloatFunctionExpr::panic(panic, type_),
         )),
@@ -482,6 +483,7 @@ pub(super) fn tuple_index_expr(tuple: TupleExpr, index: usize, return_type: Valu
         ValueType::UtfCodepoint => {
             Expr::utf_codepoint(crate::plan::UtfCodepointExpr::tuple_index(tuple, index))
         }
+        ValueType::Custom(type_) => Expr::custom(CustomExpr::tuple_index(tuple, index, type_)),
         ValueType::Float => Expr::float(FloatExpr::tuple_index(tuple, index)),
         ValueType::Bool => Expr::bool(BoolExpr::tuple_index(tuple, index)),
         ValueType::Nil => Expr::nil(crate::plan::NilExpr::tuple_index(tuple, index)),
@@ -508,6 +510,9 @@ pub(super) fn list_index_expr(
         }
         (ValueType::UtfCodepoint, ListExpr::UtfCodepoint(list)) => {
             Expr::utf_codepoint(crate::plan::UtfCodepointExpr::list_index(list, index))
+        }
+        (ValueType::Custom(type_), ListExpr::Custom(list)) if list.item().item_type() == type_ => {
+            Expr::custom(CustomExpr::list_index(list, index, type_))
         }
         (ValueType::Float, ListExpr::Float(list)) => {
             Expr::float(FloatExpr::list_index(list, index))
@@ -544,6 +549,9 @@ fn tuple_index_function_expr(tuple: TupleExpr, index: usize, type_: FunctionType
         )),
         ValueType::UtfCodepoint => Expr::function(FunctionExpr::utf_codepoint(
             crate::plan::UtfCodepointFunctionExpr::tuple_index(tuple, index, type_),
+        )),
+        ValueType::Custom(_) => Expr::function(FunctionExpr::custom(
+            CustomFunctionExpr::tuple_index(tuple, index, type_),
         )),
         ValueType::Float => Expr::function(FunctionExpr::float(
             crate::plan::FloatFunctionExpr::tuple_index(tuple, index, type_),
@@ -583,6 +591,9 @@ fn list_index_function_expr(
         )),
         ValueType::UtfCodepoint => Expr::function(FunctionExpr::utf_codepoint(
             crate::plan::UtfCodepointFunctionExpr::list_index(list.clone(), index, type_),
+        )),
+        ValueType::Custom(_) => Expr::function(FunctionExpr::custom(
+            CustomFunctionExpr::list_index(list.clone(), index, type_),
         )),
         ValueType::Float => Expr::function(FunctionExpr::float(
             crate::plan::FloatFunctionExpr::list_index(list.clone(), index, type_),
@@ -682,6 +693,7 @@ fn expression_type(expression: &Expr) -> InvalidExpressionType {
         ValueType::String => InvalidExpressionType::String,
         ValueType::BitArray => InvalidExpressionType::BitArray,
         ValueType::UtfCodepoint => InvalidExpressionType::UtfCodepoint,
+        ValueType::Custom(_) => InvalidExpressionType::Custom,
         ValueType::Float => InvalidExpressionType::Float,
         ValueType::Bool => InvalidExpressionType::Bool,
         ValueType::Nil => InvalidExpressionType::Nil,
@@ -697,6 +709,7 @@ fn value_type_expression_type(type_: ValueType) -> InvalidExpressionType {
         ValueType::String => InvalidExpressionType::String,
         ValueType::BitArray => InvalidExpressionType::BitArray,
         ValueType::UtfCodepoint => InvalidExpressionType::UtfCodepoint,
+        ValueType::Custom(_) => InvalidExpressionType::Custom,
         ValueType::Float => InvalidExpressionType::Float,
         ValueType::Bool => InvalidExpressionType::Bool,
         ValueType::Nil => InvalidExpressionType::Nil,
@@ -787,12 +800,13 @@ mod tests {
         typed_tuple_expr,
     };
     use crate::plan::{
-        BitArrayExpr, BitArrayFunctionExpr, BoolExpr, BoolFunctionId, BoolLocalId, Expr, FloatExpr,
-        FunctionExpr, FunctionFunctionExpr, FunctionFunctionId, FunctionReference, FunctionType,
-        IntExpr, IntFunctionExpr, IntFunctionFunctionId, IntFunctionId, IntLocalId, ListExpr,
-        NilExpr, NilFunctionId, NilLocalId, PanicExpr, PanicSite, ParamLocal, ReturnBody,
-        RuntimeFunctionId, SourceSpan, StringExpr, StringLocalId, TupleExpr, UtfCodepointExpr,
-        UtfCodepointLocalId, ValueType,
+        BitArrayExpr, BitArrayFunctionExpr, BoolExpr, BoolFunctionId, BoolLocalId, CustomExpr,
+        CustomLocalId, CustomType, CustomTypeName, Expr, FloatExpr, FunctionExpr,
+        FunctionFunctionExpr, FunctionFunctionId, FunctionReference, FunctionType, IntExpr,
+        IntFunctionExpr, IntFunctionFunctionId, IntFunctionId, IntLocalId, ListExpr, NilExpr,
+        NilFunctionId, NilLocalId, PanicExpr, PanicSite, ParamLocal, ReturnBody, RuntimeFunctionId,
+        SourceSpan, StringExpr, StringLocalId, TupleExpr, UtfCodepointExpr, UtfCodepointLocalId,
+        ValueType,
     };
     use crate::planner::context::{AnonymousFunctions, PlanContext};
     use crate::planner::dsl::{
@@ -1090,7 +1104,7 @@ pub fn main() -> Int {
             super::plan_expr(
                 TypedExpr::Panic {
                     location: dummy_span(),
-                    type_: type_::result(type_::int(), type_::nil()),
+                    type_: type_::generic_var(0),
                     message: None,
                 },
                 &mut context
@@ -1107,7 +1121,7 @@ pub fn main() -> Int {
             super::plan_expr(
                 TypedExpr::Todo {
                     location: dummy_span(),
-                    type_: type_::result(type_::int(), type_::nil()),
+                    type_: type_::generic_var(0),
                     kind: gleam_core::ast::TodoKind::Keyword,
                     message: None,
                 },
@@ -1167,61 +1181,8 @@ pub fn main() {
                     kind: UnsupportedExpressionKind::Echo,
                 },
             ),
-        ];
-
-        for (src, expected) in cases {
-            assert_eq!(expect_plan_error(src), expected);
-        }
-    }
-
-    #[test]
-    fn reject_margin_expression_shapes() {
-        let synthetic_cases = [
             (
-                module_returning_typed_expr(TypedExpr::PositionalAccess {
-                    location: dummy_span(),
-                    type_: type_::int(),
-                    index: 0,
-                    record: Box::new(typed_int_expr(1)),
-                }),
-                PlanError::InvalidTypedAst {
-                    reason: InvalidTypedAstReason::ExpressionShape {
-                        kind: InvalidExpressionShapeKind::PositionalAccess,
-                    },
-                },
-            ),
-            (
-                module_returning_typed_expr(TypedExpr::ModuleSelect {
-                    location: dummy_span(),
-                    field_start: 0,
-                    type_: type_::int(),
-                    label: "answer".into(),
-                    module_name: "other".into(),
-                    module_alias: "other".into(),
-                    constructor: ModuleValueConstructor::Constant {
-                        literal: Constant::Int {
-                            location: dummy_span(),
-                            value: "1".into(),
-                            int_value: BigInt::from(1),
-                        },
-                        location: dummy_span(),
-                        documentation: None,
-                    },
-                }),
-                PlanError::InvalidTypedAst {
-                    reason: InvalidTypedAstReason::ExpressionShape {
-                        kind: InvalidExpressionShapeKind::ModuleSelect,
-                    },
-                },
-            ),
-        ];
-
-        for (module, expected) in synthetic_cases {
-            assert_eq!(plan_module(module), Err(expected));
-        }
-
-        let mut record_access = compile(
-            r#"
+                r#"
 pub type Boxed {
   Boxed(value: Int)
 }
@@ -1230,30 +1191,90 @@ pub fn main() {
   Boxed(1).value
 }
 "#,
-        );
-        record_access.definitions.custom_types.clear();
-        assert_eq!(
-            plan_module(record_access),
-            Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::ExpressionShape {
-                    kind: InvalidExpressionShapeKind::RecordAccess,
+                PlanError::UnsupportedExpression {
+                    kind: UnsupportedExpressionKind::RecordAccess,
                 },
-            }),
-        );
+            ),
+            (
+                r#"
+pub type Person {
+  Person(name: String, age: Int)
+}
 
+pub fn main() {
+  let person = Person(name: "Lucy", age: 30)
+  Person(..person, age: 31)
+}
+"#,
+                PlanError::UnsupportedExpression {
+                    kind: UnsupportedExpressionKind::RecordUpdate,
+                },
+            ),
+            (
+                r#"
+pub type Person {
+  Person(name: String, age: Int)
+}
+
+pub fn main() {
+  let person = Person(name: "Lucy", age: 30)
+  case person {
+    Person(..) if person.age > 0 -> 1
+    _ -> 0
+  }
+}
+"#,
+                PlanError::UnsupportedExpression {
+                    kind: UnsupportedExpressionKind::RecordAccess,
+                },
+            ),
+        ];
+
+        for (src, expected) in cases {
+            assert_eq!(expect_plan_error(src), expected);
+        }
+    }
+
+    #[test]
+    fn reject_margin_positional_record_access() {
         assert_eq!(
-            plan_module(module_returning_typed_expr(TypedExpr::RecordUpdate {
+            plan_module(module_returning_typed_expr(TypedExpr::PositionalAccess {
                 location: dummy_span(),
-                spread_start: 0,
                 type_: type_::int(),
-                updated_record: Box::new(typed_int_expr(1)),
-                updated_record_assigned_name: None,
-                constructor: Box::new(typed_int_expr(1)),
-                arguments: Vec::new(),
+                index: 0,
+                record: Box::new(typed_int_expr(1)),
             })),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::ExpressionShape {
-                    kind: InvalidExpressionShapeKind::RecordUpdate,
+                    kind: InvalidExpressionShapeKind::PositionalAccess,
+                },
+            }),
+        );
+    }
+
+    #[test]
+    fn reject_margin_expression_shapes() {
+        assert_eq!(
+            plan_module(module_returning_typed_expr(TypedExpr::ModuleSelect {
+                location: dummy_span(),
+                field_start: 0,
+                type_: type_::int(),
+                label: "answer".into(),
+                module_name: "other".into(),
+                module_alias: "other".into(),
+                constructor: ModuleValueConstructor::Constant {
+                    literal: Constant::Int {
+                        location: dummy_span(),
+                        value: "1".into(),
+                        int_value: BigInt::from(1),
+                    },
+                    location: dummy_span(),
+                    documentation: None,
+                },
+            })),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionShape {
+                    kind: InvalidExpressionShapeKind::ModuleSelect,
                 },
             }),
         );
@@ -1317,6 +1338,14 @@ pub fn main() {
         let utf_codepoint_expression = Expr::utf_codepoint(UtfCodepointExpr::local_get(
             UtfCodepointLocalId(0),
             "codepoint".into(),
+        ));
+        let custom_expression = Expr::custom(CustomExpr::local_get(
+            CustomLocalId(0),
+            "boxed".into(),
+            CustomType::new(
+                CustomTypeName::new("geam".into(), "main".into(), "Boxed".into()),
+                Vec::new(),
+            ),
         ));
 
         assert_eq!(
@@ -1397,6 +1426,18 @@ pub fn main() {
                 reason: InvalidTypedAstReason::ExpressionType {
                     expected: InvalidExpressionType::UtfCodepoint,
                     actual: InvalidExpressionType::Int,
+                },
+            },
+        );
+        assert_eq!(
+            invalid_expression_type(
+                InvalidExpressionType::Int,
+                expression_type(&custom_expression),
+            ),
+            PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionType {
+                    expected: InvalidExpressionType::Int,
+                    actual: InvalidExpressionType::Custom,
                 },
             },
         );
@@ -2005,6 +2046,19 @@ pub fn main() {
                 PlanError::InvalidTypedAst {
                     reason: InvalidTypedAstReason::ExpressionType {
                         expected: InvalidExpressionType::Tuple,
+                        actual: InvalidExpressionType::Custom,
+                    },
+                },
+            ),
+            (
+                TypedExpr::Tuple {
+                    location: dummy_span(),
+                    type_: type_::generic_var(0),
+                    elements: vec![typed_int_expr(1)],
+                },
+                PlanError::InvalidTypedAst {
+                    reason: InvalidTypedAstReason::ExpressionType {
+                        expected: InvalidExpressionType::Tuple,
                         actual: InvalidExpressionType::Unsupported,
                     },
                 },
@@ -2111,6 +2165,20 @@ pub fn main() {
                 },
                 PlanError::InvalidTypedAst {
                     reason: InvalidTypedAstReason::ExpressionType {
+                        expected: InvalidExpressionType::Custom,
+                        actual: InvalidExpressionType::Int,
+                    },
+                },
+            ),
+            (
+                TypedExpr::TupleIndex {
+                    location: dummy_span(),
+                    type_: type_::generic_var(0),
+                    index: 0,
+                    tuple: Box::new(typed_tuple_expr(tuple_int.clone(), vec![typed_int_expr(1)])),
+                },
+                PlanError::InvalidTypedAst {
+                    reason: InvalidTypedAstReason::ExpressionType {
                         expected: InvalidExpressionType::Unsupported,
                         actual: InvalidExpressionType::Tuple,
                     },
@@ -2174,6 +2242,20 @@ pub fn main() {
                 TypedExpr::List {
                     location: dummy_span(),
                     type_: type_::result(type_::int(), type_::nil()),
+                    elements: vec![typed_int_expr(1)],
+                    tail: None,
+                },
+                PlanError::InvalidTypedAst {
+                    reason: InvalidTypedAstReason::ExpressionType {
+                        expected: InvalidExpressionType::List,
+                        actual: InvalidExpressionType::Custom,
+                    },
+                },
+            ),
+            (
+                TypedExpr::List {
+                    location: dummy_span(),
+                    type_: type_::generic_var(0),
                     elements: vec![typed_int_expr(1)],
                     tail: None,
                 },

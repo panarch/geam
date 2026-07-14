@@ -190,6 +190,10 @@ impl From<Function> for FunctionReturn {
                 type_: expression.type_().clone(),
                 body: ReturnBody::expr(expression),
             },
+            FunctionExprKind::Custom(expression) => Self::CustomFunction {
+                type_: expression.type_().clone(),
+                body: ReturnBody::expr(expression),
+            },
             FunctionExprKind::Float(expression) => Self::FloatFunction {
                 type_: expression.type_().clone(),
                 body: ReturnBody::expr(expression),
@@ -265,11 +269,12 @@ impl From<NilReturn> for FunctionReturn {
 mod tests {
     use super::FunctionReturn;
     use crate::plan::{
-        BitArrayFunctionId, BitArrayReturn, BoolFunctionId, BoolReturn, Expr, FloatFunctionId,
-        FloatReturn, FunctionFunctionId, FunctionType, IntFunctionFunctionId, IntFunctionId,
-        IntReturn, ListFunctionId, ListReturn, NilFunctionId, NilReturn, ParamLocal, ReturnBody,
-        RuntimeFunctionId, StringFunctionId, StringReturn, TupleFunctionId, UtfCodepointFunctionId,
-        UtfCodepointReturn, ValueType,
+        BitArrayFunctionId, BitArrayReturn, BoolFunctionId, BoolReturn, CustomFunctionExpr,
+        CustomFunctionId, CustomFunctionReference, CustomType, CustomTypeName, Expr,
+        FloatFunctionId, FloatReturn, FunctionFunctionId, FunctionType, IntFunctionFunctionId,
+        IntFunctionId, IntReturn, ListFunctionId, ListReturn, NilFunctionId, NilReturn, ParamLocal,
+        ReturnBody, RuntimeFunctionId, StringFunctionId, StringReturn, TupleFunctionId,
+        UtfCodepointFunctionId, UtfCodepointReturn, ValueType,
     };
     use crate::planner::dsl::expression::{
         bit_array, bit_array_function_ref, bool_, bool_function_ref, float, float_function_ref,
@@ -277,6 +282,13 @@ mod tests {
         local_utf_codepoint, nil, nil_function_ref, string, string_function_ref, tuple,
         tuple_function_ref, utf_codepoint_function_ref,
     };
+
+    fn custom_type() -> CustomType {
+        CustomType::new(
+            CustomTypeName::new("geam".into(), "main".into(), "Boxed".into()),
+            Vec::new(),
+        )
+    }
 
     #[test]
     fn value_conversions_build_function_return_families() {
@@ -332,6 +344,27 @@ mod tests {
         assert_eq!(
             FunctionReturn::from(list([int(1)], ValueType::Int)),
             FunctionReturn::List(ListReturn::expr(list([int(1)], ValueType::Int).into())),
+        );
+    }
+
+    #[test]
+    fn custom_conversions_build_exact_function_return_family() {
+        let function_type = FunctionType::new(Vec::new(), ValueType::Custom(custom_type()));
+        assert_eq!(
+            FunctionReturn::from(function_ref(
+                RuntimeFunctionId::Custom {
+                    id: CustomFunctionId(0),
+                    return_type: custom_type(),
+                },
+                Vec::<ParamLocal>::new(),
+            )),
+            FunctionReturn::CustomFunction {
+                type_: function_type,
+                body: ReturnBody::expr(CustomFunctionExpr::reference(
+                    CustomFunctionReference::new(CustomFunctionId(0), Vec::new()),
+                    custom_type(),
+                )),
+            },
         );
     }
 

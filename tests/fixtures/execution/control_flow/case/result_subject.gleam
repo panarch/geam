@@ -4,3 +4,5 @@ pub fn main() {
     Error(Nil) -> 0
   }
 }
+
+// geam:expect Int(1)

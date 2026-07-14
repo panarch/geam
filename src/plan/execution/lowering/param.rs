@@ -23,6 +23,10 @@ pub(super) fn param_local(
         module::ParamLocal::UtfCodepoint(local) => {
             execution::ParamLocal::UtfCodepoint(execution::UtfCodepointLocalId(local.0))
         }
+        module::ParamLocal::Custom { local, type_ } => execution::ParamLocal::Custom {
+            local: execution::CustomLocalId(local.0),
+            type_id: context.custom_type(type_),
+        },
         module::ParamLocal::Bool(local) => {
             execution::ParamLocal::Bool(execution::BoolLocalId(local.0))
         }
@@ -65,6 +69,12 @@ pub(super) fn param_local(
                 type_: context.function_type(type_),
             }
         }
+        module::ParamLocal::CustomFunction { local, type_ } => {
+            execution::ParamLocal::CustomFunction {
+                local: execution::CustomFunctionLocalId(local.0),
+                type_: context.function_type(type_),
+            }
+        }
         module::ParamLocal::BoolFunction { local, type_ } => execution::ParamLocal::BoolFunction {
             local: execution::BoolFunctionLocalId(local.0),
             type_: context.function_type(type_),
@@ -94,8 +104,9 @@ pub(super) fn param_local(
 #[cfg(test)]
 mod tests {
     use crate::plan::execution::{
-        ExecutionPlan, ListFunctionExpr, ListFunctionExprKind, ListFunctionId, ListListFunctionId,
-        ListListTypeId, ListLocal, ParamLocal, RuntimeFunctionId, Step, StepKind,
+        CustomFunctionExprKind, CustomFunctionId, ExecutionPlan, ListFunctionExpr,
+        ListFunctionExprKind, ListFunctionId, ListListFunctionId, ListListTypeId, ListLocal,
+        ParamLocal, RuntimeFunctionId, Step, StepKind, ValueType,
     };
 
     #[test]
@@ -128,10 +139,67 @@ pub fn main() {
     }
 
     #[test]
+    fn lowering_preserves_custom_function_parameter_identity_in_function_references() {
+        let plan = execution_plan(
+            r#"
+pub type Boxed { Boxed(Int) }
+
+fn apply(make: fn(Int) -> Boxed, value: Int) { make(value) }
+
+pub fn main() {
+  let captured = 1
+  let closure = fn(make: fn(Int) -> Boxed, value: Int) {
+    let _ = captured
+    make(value)
+  }
+  closure(Boxed, 0)
+  let function = apply
+  function(Boxed, 1)
+}
+"#,
+        );
+        let (main_id, return_type) = expect_custom_main(&plan);
+        let main = plan.custom_function(main_id);
+        let reference = main
+            .steps()
+            .iter()
+            .find_map(|step| match step.kind() {
+                StepKind::LetCustomFunction { value, .. } => match value.kind() {
+                    CustomFunctionExprKind::Reference(reference) => Some(reference),
+                    _ => None,
+                },
+                _ => None,
+            })
+            .expect("main should bind the custom-returning function reference");
+
+        assert_eq!(reference.function(), &CustomFunctionId(1));
+        assert_eq!(
+            reference.params(),
+            &[
+                ParamLocal::CustomFunction {
+                    local: crate::plan::execution::CustomFunctionLocalId(0),
+                    type_: crate::plan::execution::FunctionType::new(
+                        vec![ValueType::Int],
+                        ValueType::Custom(return_type),
+                    ),
+                },
+                ParamLocal::Int(crate::plan::execution::IntLocalId(0)),
+            ],
+        );
+    }
+
+    #[test]
     #[should_panic(expected = "expected a List(List) main function")]
     fn nested_list_main_fixture_guard_rejects_int_main() {
         let plan = execution_plan("pub fn main() { 1 }");
         let _ = expect_list_list_main(&plan);
+    }
+
+    #[test]
+    #[should_panic(expected = "expected a custom-returning main function")]
+    fn custom_main_fixture_guard_rejects_int_main() {
+        let plan = execution_plan("pub fn main() { 1 }");
+        let _ = expect_custom_main(&plan);
     }
 
     #[test]
@@ -188,6 +256,18 @@ pub fn main() {
         match plan.main_runtime() {
             RuntimeFunctionId::List(ListFunctionId::List(main)) => main,
             _ => panic!("expected a List(List) main function"),
+        }
+    }
+
+    fn expect_custom_main(
+        plan: &ExecutionPlan,
+    ) -> (
+        crate::plan::execution::CustomFunctionId,
+        crate::plan::execution::CustomTypeId,
+    ) {
+        match plan.main_runtime() {
+            RuntimeFunctionId::Custom { id, return_type } => (id, return_type),
+            _ => panic!("expected a custom-returning main function"),
         }
     }
 

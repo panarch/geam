@@ -52,6 +52,11 @@ mod values {
         utf_codepoint_list_function_paths,
         utf_codepoint_returned_closure_capture,
         utf_codepoint_segments,
+        custom_type_core,
+        custom_type_composition,
+        custom_type_equality_families,
+        custom_runtime_handoff,
+        result_value,
         tuple_value,
         tuple_expression_shapes,
         list_value,
@@ -73,6 +78,7 @@ mod expressions {
         bit_array_float_16,
         list_bit_array_element,
         list_utf_codepoint_element,
+        result_constructor,
     );
 }
 
@@ -84,6 +90,10 @@ mod module_items {
         constant_list_bit_array,
         constant_value_families,
         constant_function_value,
+        constant_custom_constructor,
+        constant_result_constructor,
+        custom_type,
+        record_type,
         type_alias,
         type_alias_function_signature,
         type_alias_compound_signature,
@@ -108,10 +118,13 @@ mod bindings {
         tuple_destructuring_discard,
         nested_tuple_destructuring,
         nested_pattern_alias_assignment,
+        custom_field_families,
+        custom_total_binding,
         list_tail_assignment,
         let_assert_bit_array_list,
         let_assert_bit_array_pattern,
         let_assert_bit_array_patterns,
+        custom_let_assert,
         bit_array_total_pattern,
         let_assert_list_destructuring,
         let_assert_fixed_list,
@@ -178,6 +191,9 @@ mod control_flow {
             tuple_pattern_list_and_function_values,
             tuple_pattern_guard,
             tuple_pattern_fallthrough,
+            custom_pattern,
+            custom_pattern_combinations,
+            result_subject,
             tuple_pattern_closure_capture,
             list_case_return_families,
             tuple_subject,
@@ -281,6 +297,9 @@ mod functions {
         anonymous_bit_array_return,
         utf_codepoint_argument,
         utf_codepoint_return,
+        result_argument,
+        result_return,
+        custom_function_paths,
     );
 
     mod basic {
@@ -505,6 +524,7 @@ mod execution_errors {
             let_assert_fixed_length,
             let_assert_empty_list,
             let_assert_message,
+            let_assert_custom_pattern,
             let_assert_bit_array_pattern,
             let_assert_bit_array_utf_codepoint_default_message,
             let_assert_bit_array_utf_codepoint_message_error,
@@ -525,10 +545,8 @@ mod rejection {
     mod module_items {
         rejection_cases!("module_items";
             import,
-            constant_result_constructor,
-            custom_type,
-            record_type,
             external_function,
+            external_custom_type,
         );
     }
 
@@ -544,18 +562,18 @@ mod rejection {
             generic_function,
             unsupported_body_before_main,
             unsupported_body_after_main,
-            result_argument,
-            result_return,
         );
     }
 
     mod expressions {
         rejection_cases!("expressions";
             echo,
-            result_constructor,
             bit_array_native_endian,
             bit_array_dynamic_size,
             bit_array_sized_bits,
+            polymorphic_custom_constructor,
+            record_access,
+            record_update,
         );
     }
 
@@ -565,6 +583,10 @@ mod rejection {
             function_inequality,
             tuple_function_equality,
             list_function_equality,
+            custom_function_equality,
+            nested_generic_custom_function_equality,
+            recursive_custom_function_equality,
+            result_function_equality,
         );
     }
 
@@ -579,7 +601,6 @@ mod rejection {
 
     mod case_patterns {
         rejection_cases!("case_patterns";
-            result_subject,
             bit_array_pattern_native_endian,
         );
     }
@@ -708,6 +729,21 @@ fn render_value(value: &Value) -> String {
             value.bit_len(),
         ),
         Value::UtfCodepoint(value) => format!("UtfCodepoint({value:?})"),
+        Value::Custom(value) => format!(
+            "Custom(type={}, constructor={}#{}, fields=[{}])",
+            render_custom_type(value.type_()),
+            value.constructor_name(),
+            value.constructor_index(),
+            value
+                .fields()
+                .iter()
+                .map(|field| match field.label() {
+                    Some(label) => format!("{label}: {}", render_value(field.value())),
+                    None => render_value(field.value()),
+                })
+                .collect::<Vec<_>>()
+                .join(", "),
+        ),
         Value::Bool(value) => format!("Bool({value})"),
         Value::Nil => "Nil".into(),
         Value::Tuple(values) => format!(
@@ -753,6 +789,7 @@ fn render_value_type(type_: &ValueType) -> String {
         ValueType::String => "String".into(),
         ValueType::BitArray => "BitArray".into(),
         ValueType::UtfCodepoint => "UtfCodepoint".into(),
+        ValueType::Custom(type_) => render_custom_type(type_),
         ValueType::Bool => "Bool".into(),
         ValueType::Nil => "Nil".into(),
         ValueType::Tuple(elements) => format!(
@@ -765,5 +802,20 @@ fn render_value_type(type_: &ValueType) -> String {
         ),
         ValueType::List(element) => format!("List({})", render_value_type(element)),
         ValueType::Function(type_) => render_function_type(type_),
+    }
+}
+
+fn render_custom_type(type_: &geam::CustomType) -> String {
+    let name = type_.type_name();
+    let arguments = type_
+        .arguments()
+        .iter()
+        .map(render_value_type)
+        .collect::<Vec<_>>();
+    let identity = format!("{}/{}/{}", name.package(), name.module(), name.name());
+    if arguments.is_empty() {
+        identity
+    } else {
+        format!("{identity}({})", arguments.join(", "))
     }
 }

@@ -1,13 +1,14 @@
 use crate::plan::{
-    BitArrayExpr, BitArrayFunctionExpr, BoolExpr, BoolFunctionExpr, Expr, FloatExpr,
-    FloatFunctionExpr, FunctionExpr, FunctionFunctionExpr, IntExpr, IntFunctionExpr, ListExpr,
-    ListFunctionExpr, LocalId, NilExpr, NilFunctionExpr, StringExpr, StringFunctionExpr, TupleExpr,
-    TupleFunctionExpr, UtfCodepointExpr, UtfCodepointFunctionExpr, ValueType,
+    BitArrayExpr, BitArrayFunctionExpr, BoolExpr, BoolFunctionExpr, CustomExpr, CustomFunctionExpr,
+    Expr, FloatExpr, FloatFunctionExpr, FunctionExpr, FunctionFunctionExpr, IntExpr,
+    IntFunctionExpr, ListExpr, ListFunctionExpr, LocalId, NilExpr, NilFunctionExpr, StringExpr,
+    StringFunctionExpr, TupleExpr, TupleFunctionExpr, UtfCodepointExpr, UtfCodepointFunctionExpr,
+    ValueType,
 };
 use crate::planner::context::{FunctionLocalBinding, PlanContext};
 use crate::planner::error::{
     InvalidExpressionShapeKind, InvalidExpressionType, InvalidTypedAstReason, PlanError,
-    UnsupportedBinOpKind,
+    UnsupportedBinOpKind, UnsupportedExpressionKind,
 };
 use ecow::EcoString;
 use gleam_core::ast::{BinOp, ClauseGuard};
@@ -56,9 +57,9 @@ fn plan_expr(
         ClauseGuard::ModuleSelect { .. } => {
             invalid_expression_shape(InvalidExpressionShapeKind::ModuleSelect)
         }
-        ClauseGuard::FieldAccess { .. } => {
-            invalid_expression_shape(InvalidExpressionShapeKind::RecordAccess)
-        }
+        ClauseGuard::FieldAccess { .. } => Err(PlanError::UnsupportedExpression {
+            kind: UnsupportedExpressionKind::RecordAccess,
+        }),
         ClauseGuard::Invalid { .. } => {
             invalid_expression_shape(InvalidExpressionShapeKind::Invalid)
         }
@@ -184,7 +185,9 @@ fn equality(
 ) -> Result<Expr, PlanError> {
     let left = plan_expr(left, context)?;
     let right = plan_expr(right, context)?;
-    if contains_function_value(&left.value_type()) || contains_function_value(&right.value_type()) {
+    if context.contains_function_value(&left.value_type())?
+        || context.contains_function_value(&right.value_type())?
+    {
         return Err(PlanError::UnsupportedBinOp { operator });
     }
 
@@ -273,6 +276,9 @@ fn plan_local(name: EcoString, context: &PlanContext<'_>) -> Result<Expr, PlanEr
     if let Some((local, type_)) = context.lookup_local(&name) {
         return local_get(local, name, type_);
     }
+    if let Some((local, type_)) = context.lookup_custom_local(&name) {
+        return Ok(Expr::custom(CustomExpr::local_get(local, name, type_)));
+    }
     if let Some((local, type_)) = context.lookup_tuple_local(&name) {
         return Ok(Expr::tuple(TupleExpr::local_get(local, name, type_)));
     }
@@ -323,6 +329,9 @@ fn function_local_get(binding: FunctionLocalBinding, name: EcoString) -> Expr {
         FunctionLocalBinding::UtfCodepoint { local, type_ } => Expr::function(
             FunctionExpr::utf_codepoint(UtfCodepointFunctionExpr::local_get(local, name, type_)),
         ),
+        FunctionLocalBinding::Custom { local, type_ } => Expr::function(FunctionExpr::custom(
+            CustomFunctionExpr::local_get(local, name, type_),
+        )),
         FunctionLocalBinding::Float { local, type_ } => Expr::function(FunctionExpr::float(
             FloatFunctionExpr::local_get(local, name, type_),
         )),
@@ -344,21 +353,6 @@ fn function_local_get(binding: FunctionLocalBinding, name: EcoString) -> Expr {
     }
 }
 
-fn contains_function_value(type_: &ValueType) -> bool {
-    match type_ {
-        ValueType::Function(_) => true,
-        ValueType::Tuple(elements) => elements.iter().any(contains_function_value),
-        ValueType::List(element) => contains_function_value(element),
-        ValueType::Int
-        | ValueType::Float
-        | ValueType::String
-        | ValueType::BitArray
-        | ValueType::UtfCodepoint
-        | ValueType::Bool
-        | ValueType::Nil => false,
-    }
-}
-
 fn invalid_expression_type_for_value(expected: ValueType, actual: ValueType) -> PlanError {
     PlanError::InvalidTypedAst {
         reason: InvalidTypedAstReason::ExpressionType {
@@ -375,6 +369,7 @@ fn invalid_expression_type(type_: ValueType) -> InvalidExpressionType {
         ValueType::String => InvalidExpressionType::String,
         ValueType::BitArray => InvalidExpressionType::BitArray,
         ValueType::UtfCodepoint => InvalidExpressionType::UtfCodepoint,
+        ValueType::Custom(_) => InvalidExpressionType::Custom,
         ValueType::Bool => InvalidExpressionType::Bool,
         ValueType::Nil => InvalidExpressionType::Nil,
         ValueType::Tuple(_) => InvalidExpressionType::Tuple,
@@ -390,11 +385,13 @@ fn invalid_expression_shape(kind: InvalidExpressionShapeKind) -> Result<Expr, Pl
 }
 
 #[cfg(test)]
+#[allow(clippy::arc_with_non_send_sync)]
 mod tests {
-    use super::{contains_function_value, function_local_get, invalid_expression_type, plan_expr};
+    use super::{function_local_get, invalid_expression_type, plan_expr};
     use crate::plan::{
         BitArrayExpr, BitArrayFunctionExpr, BitArrayFunctionLocalId, BitArrayLocalId, BoolExpr,
-        BoolFunctionExpr, BoolFunctionLocalId, BoolLocalId, Expr, FloatExpr, FloatFunctionExpr,
+        BoolFunctionExpr, BoolFunctionLocalId, BoolLocalId, CustomFunctionExpr,
+        CustomFunctionLocalId, CustomType, CustomTypeName, Expr, FloatExpr, FloatFunctionExpr,
         FloatFunctionLocalId, FunctionExpr, FunctionFunctionExpr, FunctionFunctionLocalId,
         FunctionType, IntExpr, IntFunctionExpr, IntFunctionLocalId, IntLocalId, ListExpr,
         ListFunctionExpr, ListLocal, LocalId, NilExpr, NilFunctionExpr, NilFunctionLocalId,
@@ -406,10 +403,10 @@ mod tests {
     use crate::planner::support::dummy_span;
     use crate::planner::{
         InvalidExpressionShapeKind, InvalidExpressionType, InvalidTypedAstReason, PlanError,
-        UnsupportedBinOpKind,
+        UnsupportedBinOpKind, UnsupportedExpressionKind,
     };
     use ecow::EcoString;
-    use gleam_core::ast::{BinOp, ClauseGuard, Constant};
+    use gleam_core::ast::{BinOp, ClauseGuard, Constant, Publicity};
     use gleam_core::parse::LiteralFloatValue;
     use gleam_core::type_::{self, Type, error::VariableOrigin};
     use num_bigint::BigInt;
@@ -486,6 +483,7 @@ mod tests {
         let functions = HashMap::new();
         let mut anonymous = AnonymousFunctions::default();
         let mut context = PlanContext::new(&module, &functions, &mut anonymous);
+        context.define_tuple_local("pair".into(), vec![ValueType::String]);
 
         assert_eq!(
             plan_expr(
@@ -494,6 +492,21 @@ mod tests {
             ),
             Err(invalid_expression_shape(
                 InvalidExpressionShapeKind::ModuleSelect
+            )),
+        );
+        assert_eq!(
+            plan_expr(
+                ClauseGuard::TupleIndex {
+                    location: dummy_span(),
+                    index: 0,
+                    type_: type_::generic_var(0),
+                    tuple: Box::new(var("pair", type_::tuple(vec![type_::string()]))),
+                },
+                &mut context,
+            ),
+            Err(expression_type_error(
+                InvalidExpressionType::Unsupported,
+                InvalidExpressionType::Tuple,
             )),
         );
         assert_eq!(
@@ -507,9 +520,9 @@ mod tests {
                 },
                 &mut context,
             ),
-            Err(invalid_expression_shape(
-                InvalidExpressionShapeKind::RecordAccess
-            )),
+            Err(PlanError::UnsupportedExpression {
+                kind: UnsupportedExpressionKind::RecordAccess,
+            }),
         );
         assert_eq!(
             plan_expr(
@@ -990,8 +1003,8 @@ mod tests {
                 &mut context,
             ),
             Err(expression_type_error(
-                InvalidExpressionType::Unsupported,
-                InvalidExpressionType::Tuple,
+                InvalidExpressionType::Custom,
+                InvalidExpressionType::String,
             )),
         );
         assert_eq!(
@@ -1125,6 +1138,14 @@ mod tests {
         let unary_bit_array = FunctionType::new(vec![ValueType::BitArray], ValueType::BitArray);
         let unary_utf_codepoint =
             FunctionType::new(vec![ValueType::UtfCodepoint], ValueType::UtfCodepoint);
+        let custom_type = CustomType::new(
+            CustomTypeName::new("geam".into(), "main".into(), "Boxed".into()),
+            Vec::new(),
+        );
+        let unary_custom = FunctionType::new(
+            vec![ValueType::Custom(custom_type.clone())],
+            ValueType::Custom(custom_type),
+        );
         let unary_float = FunctionType::new(vec![ValueType::Float], ValueType::Float);
         let unary_bool = FunctionType::new(vec![ValueType::Bool], ValueType::Bool);
         let unary_nil = FunctionType::new(vec![ValueType::Nil], ValueType::Nil);
@@ -1192,6 +1213,20 @@ mod tests {
                     unary_utf_codepoint,
                 ),
             )),
+        );
+        assert_eq!(
+            function_local_get(
+                FunctionLocalBinding::Custom {
+                    local: CustomFunctionLocalId(0),
+                    type_: unary_custom.clone(),
+                },
+                "f".into(),
+            ),
+            Expr::function(FunctionExpr::custom(CustomFunctionExpr::local_get(
+                CustomFunctionLocalId(0),
+                "f".into(),
+                unary_custom,
+            ))),
         );
         assert_eq!(
             function_local_get(
@@ -1288,26 +1323,44 @@ mod tests {
 
     #[test]
     fn guard_helper_type_classification_is_exact() {
-        assert!(contains_function_value(&ValueType::Function(Box::new(
-            FunctionType::new(Vec::new(), ValueType::Int),
-        ))));
-        assert!(contains_function_value(&ValueType::Tuple(vec![
-            ValueType::Int,
-            ValueType::Function(Box::new(FunctionType::new(Vec::new(), ValueType::Int))),
-        ])));
-        assert!(contains_function_value(&ValueType::List(Box::new(
-            ValueType::Function(Box::new(FunctionType::new(Vec::new(), ValueType::Int))),
-        ))));
-        assert!(!contains_function_value(&ValueType::Tuple(vec![
-            ValueType::Int,
-            ValueType::Float,
-            ValueType::String,
-            ValueType::BitArray,
-            ValueType::UtfCodepoint,
-            ValueType::Bool,
-            ValueType::Nil,
-            ValueType::List(Box::new(ValueType::Int)),
-        ])));
+        let module = EcoString::from("main");
+        let functions = HashMap::new();
+        let mut anonymous = AnonymousFunctions::default();
+        let context = PlanContext::new(&module, &functions, &mut anonymous);
+
+        assert_eq!(
+            context.contains_function_value(&ValueType::Function(Box::new(FunctionType::new(
+                Vec::new(),
+                ValueType::Int
+            ),))),
+            Ok(true),
+        );
+        assert_eq!(
+            context.contains_function_value(&ValueType::Tuple(vec![
+                ValueType::Int,
+                ValueType::Function(Box::new(FunctionType::new(Vec::new(), ValueType::Int))),
+            ])),
+            Ok(true)
+        );
+        assert_eq!(
+            context.contains_function_value(&ValueType::List(Box::new(ValueType::Function(
+                Box::new(FunctionType::new(Vec::new(), ValueType::Int))
+            ),))),
+            Ok(true)
+        );
+        assert_eq!(
+            context.contains_function_value(&ValueType::Tuple(vec![
+                ValueType::Int,
+                ValueType::Float,
+                ValueType::String,
+                ValueType::BitArray,
+                ValueType::UtfCodepoint,
+                ValueType::Bool,
+                ValueType::Nil,
+                ValueType::List(Box::new(ValueType::Int)),
+            ])),
+            Ok(false)
+        );
 
         assert_eq!(
             [
@@ -1335,6 +1388,51 @@ mod tests {
                 InvalidExpressionType::List,
                 InvalidExpressionType::Function,
             ],
+        );
+    }
+
+    #[test]
+    fn guard_equality_preserves_custom_type_definition_errors_from_either_operand() {
+        let module = EcoString::from("main");
+        let functions = HashMap::new();
+        let mut anonymous = AnonymousFunctions::default();
+        let mut context = PlanContext::new(&module, &functions, &mut anonymous);
+        let custom_name = CustomTypeName::new("geam".into(), module.clone(), "Missing".into());
+        context.define_custom_local("missing".into(), CustomType::new(custom_name, Vec::new()));
+        let gleam_type = Arc::new(Type::Named {
+            publicity: Publicity::Private,
+            name: "Missing".into(),
+            module: module.clone(),
+            package: "geam".into(),
+            arguments: Vec::new(),
+            inferred_variant: None,
+        });
+        let expected = Err(PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::CustomType {
+                name: "Missing".into(),
+                reason: crate::planner::InvalidCustomTypeReason::UnknownDefinition,
+            },
+        });
+
+        assert_eq!(
+            super::equality(
+                var("missing", gleam_type.clone()),
+                int_constant(1),
+                &mut context,
+                UnsupportedBinOpKind::EqFunction,
+                false,
+            ),
+            expected.clone(),
+        );
+        assert_eq!(
+            super::equality(
+                int_constant(1),
+                var("missing", gleam_type),
+                &mut context,
+                UnsupportedBinOpKind::EqFunction,
+                false,
+            ),
+            expected,
         );
     }
 

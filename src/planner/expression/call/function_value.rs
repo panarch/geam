@@ -97,6 +97,14 @@ fn function_call_expr(
             )),
             None => Err(function_call_return_type_mismatch()),
         },
+        ValueType::Custom(return_type) => match function.into_custom() {
+            Some(function) => Ok(Expr::custom(crate::plan::CustomExpr::function_call(
+                function,
+                args,
+                return_type,
+            ))),
+            None => Err(function_call_return_type_mismatch()),
+        },
         ValueType::Float => match function.into_float() {
             Some(function) => Ok(Expr::float(crate::plan::FloatExpr::function_call(
                 function, args,
@@ -166,6 +174,9 @@ fn function_returning_function_value_call_expr(
         ValueType::UtfCodepoint => Expr::function(FunctionExpr::utf_codepoint(
             crate::plan::UtfCodepointFunctionExpr::function_call(function, args, return_type),
         )),
+        ValueType::Custom(_) => Expr::function(FunctionExpr::custom(
+            crate::plan::CustomFunctionExpr::function_call(function, args, return_type),
+        )),
         ValueType::Float => Expr::function(FunctionExpr::float(
             crate::plan::FloatFunctionExpr::function_call(function, args, return_type),
         )),
@@ -195,11 +206,12 @@ mod tests {
     };
     use crate::plan::{
         BitArrayFunctionFunctionId, BitArrayFunctionId, BoolFunctionFunctionId, BoolFunctionId,
-        Expr, FloatFunctionFunctionId, FloatFunctionId, FunctionExpr, FunctionFunctionExpr,
-        FunctionFunctionFunctionId, FunctionFunctionId, FunctionType, IntFunctionFunctionId,
-        IntLocalId, LocalId, NilFunctionFunctionId, NilFunctionId, ParamLocal, RuntimeFunctionId,
-        StringFunctionFunctionId, StringFunctionId, TupleFunctionFunctionId, TupleFunctionId,
-        TupleLocalId, UtfCodepointFunctionFunctionId, UtfCodepointFunctionId, ValueType,
+        CustomType, CustomTypeName, Expr, FloatFunctionFunctionId, FloatFunctionId, FunctionExpr,
+        FunctionFunctionExpr, FunctionFunctionFunctionId, FunctionFunctionId, FunctionType,
+        IntFunctionFunctionId, IntLocalId, LocalId, NilFunctionFunctionId, NilFunctionId,
+        ParamLocal, RuntimeFunctionId, StringFunctionFunctionId, StringFunctionId,
+        TupleFunctionFunctionId, TupleFunctionId, TupleLocalId, UtfCodepointFunctionFunctionId,
+        UtfCodepointFunctionId, ValueType,
     };
     use crate::planner::dsl::{
         block_int_function, bool_, bool_case_int_function, call_int_function, function,
@@ -543,7 +555,7 @@ pub fn main() {
             }),
         );
 
-        let mut unsupported_return_type_call = compile(
+        let mut custom_return_type_mismatch_call = compile(
             r#"
 fn add_one(value: Int) {
   value + 1
@@ -556,9 +568,31 @@ pub fn main() {
 "#,
         );
         let (type_, _, _) = expect_call_statement_mut(
-            &mut unsupported_return_type_call.definitions.functions[1].body[1],
+            &mut custom_return_type_mismatch_call.definitions.functions[1].body[1],
         );
         *type_ = type_::result(type_::int(), type_::nil());
+        assert_eq!(
+            plan_module(custom_return_type_mismatch_call),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::CallShape {
+                    reason: InvalidCallShapeReason::FunctionCallReturnTypeMismatch,
+                },
+            }),
+        );
+
+        let mut unsupported_return_type_call = compile(
+            r#"
+fn add_one(value: Int) { value + 1 }
+pub fn main() {
+  let function = add_one
+  function(1)
+}
+"#,
+        );
+        let (type_, _, _) = expect_call_statement_mut(
+            &mut unsupported_return_type_call.definitions.functions[1].body[1],
+        );
+        *type_ = type_::generic_var(0);
         assert_eq!(
             plan_module(unsupported_return_type_call),
             Err(PlanError::InvalidTypedAst {
@@ -1036,6 +1070,17 @@ pub fn main() {
                 FunctionExpr::from(int_function_ref(0, Vec::<ParamLocal>::new())),
                 Vec::new(),
                 ValueType::UtfCodepoint,
+            ),
+            Err(function_call_return_type_mismatch()),
+        );
+        assert_eq!(
+            function_call_expr(
+                FunctionExpr::from(int_function_ref(0, Vec::<ParamLocal>::new())),
+                Vec::new(),
+                ValueType::Custom(CustomType::new(
+                    CustomTypeName::new("geam".into(), "main".into(), "Boxed".into()),
+                    Vec::new(),
+                )),
             ),
             Err(function_call_return_type_mismatch()),
         );

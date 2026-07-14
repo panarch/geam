@@ -11,7 +11,8 @@ mod value;
 pub use error::{ExecutionError, Panic, PanicDetails, PanicKind, PanicMessage};
 pub(in crate::runtime) use evaluated::{
     EvaluatedBitArray, EvaluatedBitArrayFunction, EvaluatedBoolFunction, EvaluatedCapture,
-    EvaluatedCaptureKind, EvaluatedFloatFunction, EvaluatedFunctionFunction,
+    EvaluatedCaptureKind, EvaluatedCustomFunction, EvaluatedCustomFunctionTarget,
+    EvaluatedCustomValue, EvaluatedFloatFunction, EvaluatedFunctionFunction,
     EvaluatedFunctionValue, EvaluatedFunctionValueKind, EvaluatedIntFunction, EvaluatedListCapture,
     EvaluatedListFunction, EvaluatedNilFunction, EvaluatedStringFunction, EvaluatedTupleFunction,
     EvaluatedUtfCodepointFunction, EvaluatedValue,
@@ -19,13 +20,14 @@ pub(in crate::runtime) use evaluated::{
 #[cfg(test)]
 pub(in crate::runtime) use state::RuntimeState;
 pub(crate) use value::{
-    BitArrayFunctionValue, BoolFunctionValue, CaptureListValue, CaptureValue, FloatFunctionValue,
-    FunctionFunctionValue, FunctionValueKind, IntFunctionValue, ListFunctionValue,
-    NilFunctionValue, StringFunctionValue, TupleFunctionValue, UtfCodepointFunctionValue,
+    BitArrayFunctionValue, BoolFunctionValue, CaptureListValue, CaptureValue, CustomFunctionValue,
+    CustomFunctionValueTarget, FloatFunctionValue, FunctionFunctionValue, FunctionValueKind,
+    IntFunctionValue, ListFunctionValue, NilFunctionValue, StringFunctionValue, TupleFunctionValue,
+    UtfCodepointFunctionValue,
 };
 pub use value::{
-    BitArrayValue, BitArrayValueLengthError, FunctionValue, ListValue, ListValueItemTypeMismatch,
-    Value,
+    BitArrayValue, BitArrayValueLengthError, CustomFieldValue, CustomValue, FunctionValue,
+    ListValue, ListValueItemTypeMismatch, Value,
 };
 
 use crate::plan::execution::ExecutionPlan;
