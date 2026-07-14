@@ -7,6 +7,7 @@ mod list;
 mod nil;
 mod string;
 mod tuple;
+mod utf_codepoint;
 
 use super::id::list_function_local;
 use crate::plan::module;
@@ -16,16 +17,18 @@ pub(super) use float::float_expr;
 pub(super) use function::{
     bit_array_function_expr, bool_function_expr, float_function_expr, function_expr,
     function_function_expr, int_function_expr, list_function_expr, nil_function_expr,
-    string_function_expr, tuple_function_expr,
+    string_function_expr, tuple_function_expr, utf_codepoint_function_expr,
 };
 pub(super) use int::int_expr;
 pub(super) use list::{
     bit_array_list_expr, bool_list_expr, float_list_expr, function_list_expr, int_list_expr,
     list_expr, list_list_expr, list_local_expr, nil_list_expr, string_list_expr, tuple_list_expr,
+    utf_codepoint_list_expr,
 };
 pub(super) use nil::nil_expr;
 pub(super) use string::string_expr;
 pub(super) use tuple::tuple_expr;
+pub(super) use utf_codepoint::utf_codepoint_expr;
 
 use super::super as execution;
 
@@ -42,6 +45,9 @@ pub(super) fn expr(
         }
         module::ExprKind::BitArray(expression) => {
             execution::ExprKind::BitArray(bit_array_expr(expression, context))
+        }
+        module::ExprKind::UtfCodepoint(expression) => {
+            execution::ExprKind::UtfCodepoint(utf_codepoint_expr(expression, context))
         }
         module::ExprKind::Float(expression) => {
             execution::ExprKind::Float(float_expr(expression, context))
@@ -110,6 +116,10 @@ pub(super) fn call_arg(
             local: execution::BitArrayLocalId(local.0),
             value: bit_array_expr(value, context),
         },
+        M::UtfCodepoint { local, value } => E::UtfCodepoint {
+            local: execution::UtfCodepointLocalId(local.0),
+            value: utf_codepoint_expr(value, context),
+        },
         M::Float { local, value } => E::Float {
             local: execution::FloatLocalId(local.0),
             value: float_expr(value, context),
@@ -138,6 +148,10 @@ pub(super) fn call_arg(
         M::BitArrayFunction { local, value } => E::BitArrayFunction {
             local: execution::BitArrayFunctionLocalId(local.0),
             value: bit_array_function_expr(value, context),
+        },
+        M::UtfCodepointFunction { local, value } => E::UtfCodepointFunction {
+            local: execution::UtfCodepointFunctionLocalId(local.0),
+            value: utf_codepoint_function_expr(value, context),
         },
         M::FloatFunction { local, value } => E::FloatFunction {
             local: execution::FloatFunctionLocalId(local.0),
@@ -195,6 +209,10 @@ fn capture_arg(
             local: execution::BitArrayLocalId(local.0),
             value: bit_array_expr(value, context),
         },
+        M::UtfCodepoint { local, value } => E::UtfCodepoint {
+            local: execution::UtfCodepointLocalId(local.0),
+            value: utf_codepoint_expr(value, context),
+        },
         M::Float { local, value } => E::Float {
             local: execution::FloatLocalId(local.0),
             value: float_expr(value, context),
@@ -223,6 +241,10 @@ fn capture_arg(
         M::BitArrayFunction { local, value } => E::BitArrayFunction {
             local: execution::BitArrayFunctionLocalId(local.0),
             value: bit_array_function_expr(value, context),
+        },
+        M::UtfCodepointFunction { local, value } => E::UtfCodepointFunction {
+            local: execution::UtfCodepointFunctionLocalId(local.0),
+            value: utf_codepoint_function_expr(value, context),
         },
         M::FloatFunction { local, value } => E::FloatFunction {
             local: execution::FloatFunctionLocalId(local.0),

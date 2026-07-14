@@ -13,7 +13,8 @@ use super::id::{
     FunctionFunctionLocalId, FunctionListLocalId, IntFunctionLocalId, IntListLocalId, IntLocalId,
     ListFunctionLocal, ListListLocalId, ListLocal, NilFunctionLocalId, NilListLocalId, NilLocalId,
     StringFunctionLocalId, StringListLocalId, StringLocalId, TupleFunctionLocalId,
-    TupleListLocalId, TupleLocalId,
+    TupleListLocalId, TupleLocalId, UtfCodepointFunctionLocalId, UtfCodepointListLocalId,
+    UtfCodepointLocalId,
 };
 use super::step::Step;
 use crate::plan::{FunctionType, ValueType};
@@ -24,12 +25,14 @@ pub(crate) struct FrameLayout {
     floats: usize,
     strings: usize,
     bit_arrays: usize,
+    utf_codepoints: usize,
     bools: usize,
     nils: usize,
     tuples: usize,
     int_lists: usize,
     string_lists: usize,
     bit_array_lists: usize,
+    utf_codepoint_lists: usize,
     float_lists: usize,
     bool_lists: usize,
     nil_lists: usize,
@@ -40,6 +43,7 @@ pub(crate) struct FrameLayout {
     float_functions: usize,
     string_functions: usize,
     bit_array_functions: usize,
+    utf_codepoint_functions: usize,
     bool_functions: usize,
     nil_functions: usize,
     tuple_functions: usize,
@@ -52,12 +56,14 @@ pub(crate) struct FrameLayoutParts {
     pub(crate) floats: usize,
     pub(crate) strings: usize,
     pub(crate) bit_arrays: usize,
+    pub(crate) utf_codepoints: usize,
     pub(crate) bools: usize,
     pub(crate) nils: usize,
     pub(crate) tuples: usize,
     pub(crate) int_lists: usize,
     pub(crate) string_lists: usize,
     pub(crate) bit_array_lists: usize,
+    pub(crate) utf_codepoint_lists: usize,
     pub(crate) float_lists: usize,
     pub(crate) bool_lists: usize,
     pub(crate) nil_lists: usize,
@@ -68,6 +74,7 @@ pub(crate) struct FrameLayoutParts {
     pub(crate) float_functions: usize,
     pub(crate) string_functions: usize,
     pub(crate) bit_array_functions: usize,
+    pub(crate) utf_codepoint_functions: usize,
     pub(crate) bool_functions: usize,
     pub(crate) nil_functions: usize,
     pub(crate) tuple_functions: usize,
@@ -82,12 +89,14 @@ impl FrameLayout {
             floats: self.floats,
             strings: self.strings,
             bit_arrays: self.bit_arrays,
+            utf_codepoints: self.utf_codepoints,
             bools: self.bools,
             nils: self.nils,
             tuples: self.tuples,
             int_lists: self.int_lists,
             string_lists: self.string_lists,
             bit_array_lists: self.bit_array_lists,
+            utf_codepoint_lists: self.utf_codepoint_lists,
             float_lists: self.float_lists,
             bool_lists: self.bool_lists,
             nil_lists: self.nil_lists,
@@ -98,6 +107,7 @@ impl FrameLayout {
             float_functions: self.float_functions,
             string_functions: self.string_functions,
             bit_array_functions: self.bit_array_functions,
+            utf_codepoint_functions: self.utf_codepoint_functions,
             bool_functions: self.bool_functions,
             nil_functions: self.nil_functions,
             tuple_functions: self.tuple_functions,
@@ -128,6 +138,7 @@ impl FrameLayout {
             ParamLocal::Float(local) => self.include_float(*local),
             ParamLocal::String(local) => self.include_string(*local),
             ParamLocal::BitArray(local) => self.include_bit_array(*local),
+            ParamLocal::UtfCodepoint(local) => self.include_utf_codepoint(*local),
             ParamLocal::Bool(local) => self.include_bool(*local),
             ParamLocal::Nil(local) => self.include_nil(*local),
             ParamLocal::Tuple { local, .. } => self.include_tuple(*local),
@@ -136,6 +147,9 @@ impl FrameLayout {
             ParamLocal::FloatFunction { local, .. } => self.include_float_function(*local),
             ParamLocal::StringFunction { local, .. } => self.include_string_function(*local),
             ParamLocal::BitArrayFunction { local, .. } => self.include_bit_array_function(*local),
+            ParamLocal::UtfCodepointFunction { local, .. } => {
+                self.include_utf_codepoint_function(*local)
+            }
             ParamLocal::BoolFunction { local, .. } => self.include_bool_function(*local),
             ParamLocal::NilFunction { local, .. } => self.include_nil_function(*local),
             ParamLocal::TupleFunction { local, .. } => self.include_tuple_function(*local),
@@ -160,6 +174,10 @@ impl FrameLayout {
         self.bit_arrays = self.bit_arrays.max(local.0 + 1);
     }
 
+    pub(crate) fn include_utf_codepoint(&mut self, local: UtfCodepointLocalId) {
+        self.utf_codepoints = self.utf_codepoints.max(local.0 + 1);
+    }
+
     pub(crate) fn include_bool(&mut self, local: BoolLocalId) {
         self.bools = self.bools.max(local.0 + 1);
     }
@@ -178,6 +196,7 @@ impl FrameLayout {
             ListLocal::Int(local) => self.include_int_list(*local),
             ListLocal::String(local) => self.include_string_list(*local),
             ListLocal::BitArray(local) => self.include_bit_array_list(*local),
+            ListLocal::UtfCodepoint(local) => self.include_utf_codepoint_list(*local),
             ListLocal::Float(local) => self.include_float_list(*local),
             ListLocal::Bool(local) => self.include_bool_list(*local),
             ListLocal::Nil(local) => self.include_nil_list(*local),
@@ -203,6 +222,10 @@ impl FrameLayout {
 
     pub(crate) fn include_bit_array_list(&mut self, local: BitArrayListLocalId) {
         self.bit_array_lists = self.bit_array_lists.max(local.0 + 1);
+    }
+
+    pub(crate) fn include_utf_codepoint_list(&mut self, local: UtfCodepointListLocalId) {
+        self.utf_codepoint_lists = self.utf_codepoint_lists.max(local.0 + 1);
     }
 
     pub(crate) fn include_float_list(&mut self, local: FloatListLocalId) {
@@ -261,6 +284,10 @@ impl FrameLayout {
 
     pub(crate) fn include_bit_array_function(&mut self, local: BitArrayFunctionLocalId) {
         self.bit_array_functions = self.bit_array_functions.max(local.0 + 1);
+    }
+
+    pub(crate) fn include_utf_codepoint_function(&mut self, local: UtfCodepointFunctionLocalId) {
+        self.utf_codepoint_functions = self.utf_codepoint_functions.max(local.0 + 1);
     }
 
     pub(crate) fn include_bool_function(&mut self, local: BoolFunctionLocalId) {
@@ -466,7 +493,7 @@ mod tests {
         assert_eq!(layout, cloned);
         assert_eq!(
             format!("{layout:?}"),
-            "FrameLayout { ints: 0, floats: 0, strings: 0, bit_arrays: 0, bools: 0, nils: 0, tuples: 0, int_lists: 0, string_lists: 0, bit_array_lists: 0, float_lists: 0, bool_lists: 0, nil_lists: 0, tuple_lists: [], list_lists: [], function_lists: [], int_functions: 0, float_functions: 0, string_functions: 0, bit_array_functions: 0, bool_functions: 0, nil_functions: 0, tuple_functions: 0, list_functions: [], function_functions: 0 }",
+            "FrameLayout { ints: 0, floats: 0, strings: 0, bit_arrays: 0, utf_codepoints: 0, bools: 0, nils: 0, tuples: 0, int_lists: 0, string_lists: 0, bit_array_lists: 0, utf_codepoint_lists: 0, float_lists: 0, bool_lists: 0, nil_lists: 0, tuple_lists: [], list_lists: [], function_lists: [], int_functions: 0, float_functions: 0, string_functions: 0, bit_array_functions: 0, utf_codepoint_functions: 0, bool_functions: 0, nil_functions: 0, tuple_functions: 0, list_functions: [], function_functions: 0 }",
         );
     }
 

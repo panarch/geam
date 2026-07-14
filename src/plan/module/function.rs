@@ -2,7 +2,7 @@ use super::FrameLayout;
 use super::expression::{
     BitArrayExpr, BitArrayListExpr, BoolExpr, BoolListExpr, CallArg, FloatExpr, FloatListExpr,
     FunctionListExpr, IntExpr, IntListExpr, ListListExpr, NilExpr, NilListExpr, StringExpr,
-    StringListExpr, TupleExpr, TupleListExpr,
+    StringListExpr, TupleExpr, TupleListExpr, UtfCodepointExpr, UtfCodepointListExpr,
 };
 use super::id::{
     BitArrayFunctionFunctionId, BitArrayFunctionId, BitArrayFunctionLocalId,
@@ -15,6 +15,8 @@ use super::id::{
     NilFunctionLocalId, NilListFunctionId, NilLocalId, StringFunctionFunctionId, StringFunctionId,
     StringFunctionLocalId, StringListFunctionId, StringLocalId, TupleFunctionFunctionId,
     TupleFunctionId, TupleFunctionLocalId, TupleListFunctionId, TupleLocalId,
+    UtfCodepointFunctionFunctionId, UtfCodepointFunctionId, UtfCodepointFunctionLocalId,
+    UtfCodepointListFunctionId, UtfCodepointLocalId,
 };
 use super::step::Step;
 use crate::plan::{FunctionType, ValueType};
@@ -54,6 +56,7 @@ pub(crate) enum ParamLocal {
     Float(FloatLocalId),
     String(StringLocalId),
     BitArray(BitArrayLocalId),
+    UtfCodepoint(UtfCodepointLocalId),
     Bool(BoolLocalId),
     Nil(NilLocalId),
     Tuple {
@@ -75,6 +78,10 @@ pub(crate) enum ParamLocal {
     },
     BitArrayFunction {
         local: BitArrayFunctionLocalId,
+        type_: FunctionType,
+    },
+    UtfCodepointFunction {
+        local: UtfCodepointFunctionLocalId,
         type_: FunctionType,
     },
     BoolFunction {
@@ -106,6 +113,7 @@ pub(crate) type IntReturn = ReturnBody<IntExpr, IntFunctionId>;
 pub(crate) type FloatReturn = ReturnBody<FloatExpr, FloatFunctionId>;
 pub(crate) type StringReturn = ReturnBody<StringExpr, StringFunctionId>;
 pub(crate) type BitArrayReturn = ReturnBody<BitArrayExpr, BitArrayFunctionId>;
+pub(crate) type UtfCodepointReturn = ReturnBody<UtfCodepointExpr, UtfCodepointFunctionId>;
 pub(crate) type BoolReturn = ReturnBody<BoolExpr, BoolFunctionId>;
 pub(crate) type NilReturn = ReturnBody<NilExpr, NilFunctionId>;
 pub(crate) type TupleReturn = ReturnBody<TupleExpr, TupleFunctionId>;
@@ -113,6 +121,8 @@ pub(crate) type IntListReturn = ReturnBody<IntListExpr, IntListFunctionId>;
 pub(crate) type FloatListReturn = ReturnBody<FloatListExpr, FloatListFunctionId>;
 pub(crate) type StringListReturn = ReturnBody<StringListExpr, StringListFunctionId>;
 pub(crate) type BitArrayListReturn = ReturnBody<BitArrayListExpr, BitArrayListFunctionId>;
+pub(crate) type UtfCodepointListReturn =
+    ReturnBody<UtfCodepointListExpr, UtfCodepointListFunctionId>;
 pub(crate) type BoolListReturn = ReturnBody<BoolListExpr, BoolListFunctionId>;
 pub(crate) type NilListReturn = ReturnBody<NilListExpr, NilListFunctionId>;
 pub(crate) type TupleListReturn = ReturnBody<TupleListExpr, TupleListFunctionId>;
@@ -124,6 +134,8 @@ pub(crate) type StringFunctionReturn =
     ReturnBody<super::StringFunctionExpr, StringFunctionFunctionId>;
 pub(crate) type BitArrayFunctionReturn =
     ReturnBody<super::BitArrayFunctionExpr, BitArrayFunctionFunctionId>;
+pub(crate) type UtfCodepointFunctionReturn =
+    ReturnBody<super::UtfCodepointFunctionExpr, UtfCodepointFunctionFunctionId>;
 pub(crate) type BoolFunctionReturn = ReturnBody<super::BoolFunctionExpr, BoolFunctionFunctionId>;
 pub(crate) type NilFunctionReturn = ReturnBody<super::NilFunctionExpr, NilFunctionFunctionId>;
 pub(crate) type TupleFunctionReturn = ReturnBody<super::TupleFunctionExpr, TupleFunctionFunctionId>;
@@ -138,6 +150,7 @@ pub(crate) enum ListReturn {
     Float(FloatListReturn),
     String(StringListReturn),
     BitArray(BitArrayListReturn),
+    UtfCodepoint(UtfCodepointListReturn),
     Bool(BoolListReturn),
     Nil(NilListReturn),
     Tuple {
@@ -163,6 +176,9 @@ impl ListReturn {
             ListExpr::Float(expression) => Self::Float(FloatListReturn::expr(expression)),
             ListExpr::String(expression) => Self::String(StringListReturn::expr(expression)),
             ListExpr::BitArray(expression) => Self::BitArray(BitArrayListReturn::expr(expression)),
+            ListExpr::UtfCodepoint(expression) => {
+                Self::UtfCodepoint(UtfCodepointListReturn::expr(expression))
+            }
             ListExpr::Bool(expression) => Self::Bool(BoolListReturn::expr(expression)),
             ListExpr::Nil(expression) => Self::Nil(NilListReturn::expr(expression)),
             ListExpr::Tuple(expression) => Self::Tuple {
@@ -192,6 +208,9 @@ impl ListReturn {
             }
             ListFunctionId::BitArray(function) => {
                 Self::BitArray(BitArrayListReturn::tail_call(function, args))
+            }
+            ListFunctionId::UtfCodepoint(function) => {
+                Self::UtfCodepoint(UtfCodepointListReturn::tail_call(function, args))
             }
             ListFunctionId::Bool(function) => Self::Bool(BoolListReturn::tail_call(function, args)),
             ListFunctionId::Nil(function) => Self::Nil(NilListReturn::tail_call(function, args)),
@@ -224,6 +243,9 @@ impl ListReturn {
             }
             (Self::BitArray(true_), Self::BitArray(false_)) => {
                 Self::BitArray(BitArrayListReturn::bool_case(subject, true_, false_))
+            }
+            (Self::UtfCodepoint(true_), Self::UtfCodepoint(false_)) => {
+                Self::UtfCodepoint(UtfCodepointListReturn::bool_case(subject, true_, false_))
             }
             (Self::Bool(true_), Self::Bool(false_)) => {
                 Self::Bool(BoolListReturn::bool_case(subject, true_, false_))
@@ -313,6 +335,16 @@ impl ListReturn {
                 })?,
                 fallback,
             ))),
+            Self::UtfCodepoint(fallback) => {
+                Some(Self::UtfCodepoint(UtfCodepointListReturn::int_case(
+                    subject,
+                    into_list_return_clauses(clauses, |branch| match branch {
+                        Self::UtfCodepoint(branch) => Some(branch),
+                        _ => None,
+                    })?,
+                    fallback,
+                )))
+            }
             Self::Bool(fallback) => Some(Self::Bool(BoolListReturn::int_case(
                 subject,
                 into_list_return_clauses(clauses, |branch| match branch {
@@ -419,6 +451,16 @@ impl ListReturn {
                 })?,
                 fallback,
             ))),
+            Self::UtfCodepoint(fallback) => {
+                Some(Self::UtfCodepoint(UtfCodepointListReturn::float_case(
+                    subject,
+                    into_list_return_clauses(clauses, |branch| match branch {
+                        Self::UtfCodepoint(branch) => Some(branch),
+                        _ => None,
+                    })?,
+                    fallback,
+                )))
+            }
             Self::Bool(fallback) => Some(Self::Bool(BoolListReturn::float_case(
                 subject,
                 into_list_return_clauses(clauses, |branch| match branch {
@@ -525,6 +567,16 @@ impl ListReturn {
                 })?,
                 fallback,
             ))),
+            Self::UtfCodepoint(fallback) => {
+                Some(Self::UtfCodepoint(UtfCodepointListReturn::string_case(
+                    subject,
+                    into_list_return_clauses(clauses, |branch| match branch {
+                        Self::UtfCodepoint(branch) => Some(branch),
+                        _ => None,
+                    })?,
+                    fallback,
+                )))
+            }
             Self::Bool(fallback) => Some(Self::Bool(BoolListReturn::string_case(
                 subject,
                 into_list_return_clauses(clauses, |branch| match branch {
@@ -599,6 +651,9 @@ impl ListReturn {
             Self::Float(return_) => Self::Float(FloatListReturn::block(steps, return_)),
             Self::String(return_) => Self::String(StringListReturn::block(steps, return_)),
             Self::BitArray(return_) => Self::BitArray(BitArrayListReturn::block(steps, return_)),
+            Self::UtfCodepoint(return_) => {
+                Self::UtfCodepoint(UtfCodepointListReturn::block(steps, return_))
+            }
             Self::Bool(return_) => Self::Bool(BoolListReturn::block(steps, return_)),
             Self::Nil(return_) => Self::Nil(NilListReturn::block(steps, return_)),
             Self::Tuple { item_type, body } => Self::Tuple {
@@ -689,6 +744,10 @@ pub(crate) enum ReturnExprKind {
         runtime_id: BitArrayFunctionId,
         body: BitArrayReturn,
     },
+    UtfCodepoint {
+        runtime_id: UtfCodepointFunctionId,
+        body: UtfCodepointReturn,
+    },
     Bool {
         runtime_id: BoolFunctionId,
         body: BoolReturn,
@@ -713,6 +772,10 @@ pub(crate) enum ReturnExprKind {
     BitArrayList {
         runtime_id: BitArrayListFunctionId,
         body: BitArrayListReturn,
+    },
+    UtfCodepointList {
+        runtime_id: UtfCodepointListFunctionId,
+        body: UtfCodepointListReturn,
     },
     FloatList {
         runtime_id: FloatListFunctionId,
@@ -760,6 +823,11 @@ pub(crate) enum ReturnExprKind {
         runtime_id: BitArrayFunctionFunctionId,
         type_: FunctionType,
         body: BitArrayFunctionReturn,
+    },
+    UtfCodepointFunction {
+        runtime_id: UtfCodepointFunctionFunctionId,
+        type_: FunctionType,
+        body: UtfCodepointFunctionReturn,
     },
     BoolFunction {
         runtime_id: BoolFunctionFunctionId,
@@ -886,6 +954,15 @@ impl ReturnExpr {
         }
     }
 
+    pub(crate) fn utf_codepoint_body(
+        runtime_id: UtfCodepointFunctionId,
+        body: UtfCodepointReturn,
+    ) -> Self {
+        Self {
+            kind: ReturnExprKind::UtfCodepoint { runtime_id, body },
+        }
+    }
+
     #[cfg(test)]
     pub(crate) fn bool(runtime_id: BoolFunctionId, expression: BoolExpr) -> Self {
         Self::bool_body(runtime_id, ReturnBody::expr(expression))
@@ -949,6 +1026,15 @@ impl ReturnExpr {
     ) -> Self {
         Self {
             kind: ReturnExprKind::BitArrayList { runtime_id, body },
+        }
+    }
+
+    pub(crate) fn utf_codepoint_list_body(
+        runtime_id: UtfCodepointListFunctionId,
+        body: UtfCodepointListReturn,
+    ) -> Self {
+        Self {
+            kind: ReturnExprKind::UtfCodepointList { runtime_id, body },
         }
     }
 
@@ -1104,6 +1190,20 @@ impl ReturnExpr {
         }
     }
 
+    pub(crate) fn utf_codepoint_function_body(
+        runtime_id: UtfCodepointFunctionFunctionId,
+        type_: FunctionType,
+        body: UtfCodepointFunctionReturn,
+    ) -> Self {
+        Self {
+            kind: ReturnExprKind::UtfCodepointFunction {
+                runtime_id,
+                type_,
+                body,
+            },
+        }
+    }
+
     #[cfg(test)]
     pub(crate) fn bool_function(
         runtime_id: BoolFunctionFunctionId,
@@ -1227,12 +1327,16 @@ impl ReturnExpr {
             ReturnExprKind::Float { .. } => ValueType::Float,
             ReturnExprKind::String { .. } => ValueType::String,
             ReturnExprKind::BitArray { .. } => ValueType::BitArray,
+            ReturnExprKind::UtfCodepoint { .. } => ValueType::UtfCodepoint,
             ReturnExprKind::Bool { .. } => ValueType::Bool,
             ReturnExprKind::Nil { .. } => ValueType::Nil,
             ReturnExprKind::Tuple { type_, .. } => ValueType::Tuple(type_.clone()),
             ReturnExprKind::IntList { .. } => ValueType::List(Box::new(ValueType::Int)),
             ReturnExprKind::StringList { .. } => ValueType::List(Box::new(ValueType::String)),
             ReturnExprKind::BitArrayList { .. } => ValueType::List(Box::new(ValueType::BitArray)),
+            ReturnExprKind::UtfCodepointList { .. } => {
+                ValueType::List(Box::new(ValueType::UtfCodepoint))
+            }
             ReturnExprKind::FloatList { .. } => ValueType::List(Box::new(ValueType::Float)),
             ReturnExprKind::BoolList { .. } => ValueType::List(Box::new(ValueType::Bool)),
             ReturnExprKind::NilList { .. } => ValueType::List(Box::new(ValueType::Nil)),
@@ -1249,6 +1353,7 @@ impl ReturnExpr {
             | ReturnExprKind::FloatFunction { type_, .. }
             | ReturnExprKind::StringFunction { type_, .. }
             | ReturnExprKind::BitArrayFunction { type_, .. }
+            | ReturnExprKind::UtfCodepointFunction { type_, .. }
             | ReturnExprKind::BoolFunction { type_, .. }
             | ReturnExprKind::NilFunction { type_, .. }
             | ReturnExprKind::TupleFunction { type_, .. }
@@ -1268,6 +1373,9 @@ impl ReturnExpr {
             ReturnExprKind::Float { runtime_id, .. } => RuntimeFunctionId::Float(*runtime_id),
             ReturnExprKind::String { runtime_id, .. } => RuntimeFunctionId::String(*runtime_id),
             ReturnExprKind::BitArray { runtime_id, .. } => RuntimeFunctionId::BitArray(*runtime_id),
+            ReturnExprKind::UtfCodepoint { runtime_id, .. } => {
+                RuntimeFunctionId::UtfCodepoint(*runtime_id)
+            }
             ReturnExprKind::Bool { runtime_id, .. } => RuntimeFunctionId::Bool(*runtime_id),
             ReturnExprKind::Nil { runtime_id, .. } => RuntimeFunctionId::Nil(*runtime_id),
             ReturnExprKind::Tuple {
@@ -1284,6 +1392,9 @@ impl ReturnExpr {
             }
             ReturnExprKind::BitArrayList { runtime_id, .. } => {
                 RuntimeFunctionId::List(ListFunctionId::BitArray(*runtime_id))
+            }
+            ReturnExprKind::UtfCodepointList { runtime_id, .. } => {
+                RuntimeFunctionId::List(ListFunctionId::UtfCodepoint(*runtime_id))
             }
             ReturnExprKind::FloatList { runtime_id, .. } => {
                 RuntimeFunctionId::List(ListFunctionId::Float(*runtime_id))
@@ -1340,6 +1451,12 @@ impl ReturnExpr {
                 runtime_id, type_, ..
             } => RuntimeFunctionId::Function {
                 id: FunctionFunctionId::BitArray(*runtime_id),
+                return_type: type_.clone(),
+            },
+            ReturnExprKind::UtfCodepointFunction {
+                runtime_id, type_, ..
+            } => RuntimeFunctionId::Function {
+                id: FunctionFunctionId::UtfCodepoint(*runtime_id),
                 return_type: type_.clone(),
             },
             ReturnExprKind::BoolFunction {
@@ -1501,6 +1618,10 @@ impl ParamLocal {
         Self::BitArray(local)
     }
 
+    pub(crate) fn utf_codepoint(local: UtfCodepointLocalId) -> Self {
+        Self::UtfCodepoint(local)
+    }
+
     pub(crate) fn bool(local: BoolLocalId) -> Self {
         Self::Bool(local)
     }
@@ -1533,6 +1654,13 @@ impl ParamLocal {
         Self::BitArrayFunction { local, type_ }
     }
 
+    pub(crate) fn utf_codepoint_function(
+        local: UtfCodepointFunctionLocalId,
+        type_: FunctionType,
+    ) -> Self {
+        Self::UtfCodepointFunction { local, type_ }
+    }
+
     pub(crate) fn bool_function(local: BoolFunctionLocalId, type_: FunctionType) -> Self {
         Self::BoolFunction { local, type_ }
     }
@@ -1559,6 +1687,7 @@ impl ParamLocal {
             Self::Float(_) => ValueType::Float,
             Self::String(_) => ValueType::String,
             Self::BitArray(_) => ValueType::BitArray,
+            Self::UtfCodepoint(_) => ValueType::UtfCodepoint,
             Self::Bool(_) => ValueType::Bool,
             Self::Nil(_) => ValueType::Nil,
             Self::Tuple { type_, .. } => ValueType::Tuple(type_.clone()),
@@ -1567,6 +1696,7 @@ impl ParamLocal {
             | Self::FloatFunction { type_, .. }
             | Self::StringFunction { type_, .. }
             | Self::BitArrayFunction { type_, .. }
+            | Self::UtfCodepointFunction { type_, .. }
             | Self::BoolFunction { type_, .. }
             | Self::NilFunction { type_, .. }
             | Self::TupleFunction { type_, .. }
@@ -1599,7 +1729,10 @@ mod tests {
         RuntimeFunctionId, StringExpr, StringFunctionExpr, StringFunctionFunctionId,
         StringFunctionId, StringFunctionLocalId, StringFunctionReference, StringListFunctionId,
         TupleExpr, TupleFunctionExpr, TupleFunctionFunctionId, TupleFunctionId,
-        TupleFunctionLocalId, TupleFunctionReference, TupleListFunctionId, ValueType,
+        TupleFunctionLocalId, TupleFunctionReference, TupleListFunctionId, UtfCodepointExpr,
+        UtfCodepointFunctionExpr, UtfCodepointFunctionFunctionId, UtfCodepointFunctionId,
+        UtfCodepointFunctionReference, UtfCodepointFunctionReturn, UtfCodepointListFunctionId,
+        UtfCodepointListReturn, UtfCodepointLocalId, UtfCodepointReturn, ValueType,
     };
     use num_bigint::BigInt;
 
@@ -1645,6 +1778,17 @@ mod tests {
             ReturnExpr::bit_array(BitArrayFunctionId(0), BitArrayExpr::value(Vec::new()))
                 .value_type(),
             ValueType::BitArray,
+        );
+        assert_eq!(
+            ReturnExpr::utf_codepoint_body(
+                UtfCodepointFunctionId(0),
+                UtfCodepointReturn::expr(UtfCodepointExpr::local_get(
+                    UtfCodepointLocalId(0),
+                    "codepoint".into(),
+                )),
+            )
+            .value_type(),
+            ValueType::UtfCodepoint,
         );
         assert_eq!(
             ReturnExpr::float(FloatFunctionId(0), FloatExpr::value(1.0)).value_type(),
@@ -1715,6 +1859,20 @@ mod tests {
             ValueType::Function(Box::new(
                 FunctionType::new(Vec::new(), ValueType::BitArray,)
             )),
+        );
+        assert_eq!(
+            ReturnExpr::utf_codepoint_function_body(
+                UtfCodepointFunctionFunctionId(0),
+                FunctionType::new(Vec::new(), ValueType::UtfCodepoint),
+                UtfCodepointFunctionReturn::expr(UtfCodepointFunctionExpr::reference(
+                    UtfCodepointFunctionReference::new(UtfCodepointFunctionId(0), Vec::new()),
+                )),
+            )
+            .value_type(),
+            ValueType::Function(Box::new(FunctionType::new(
+                Vec::new(),
+                ValueType::UtfCodepoint,
+            ))),
         );
         assert_eq!(
             ReturnExpr::float_function(
@@ -1844,6 +2002,18 @@ mod tests {
                 ListFunctionId::BitArray(BitArrayListFunctionId(9)),
             ),
             (
+                ReturnExpr::utf_codepoint_list_body(
+                    UtfCodepointListFunctionId(10),
+                    UtfCodepointListReturn::expr(
+                        ListExpr::value(Vec::new(), ValueType::UtfCodepoint)
+                            .into_utf_codepoint()
+                            .expect("expression should be List(UtfCodepoint)"),
+                    ),
+                ),
+                ValueType::UtfCodepoint,
+                ListFunctionId::UtfCodepoint(UtfCodepointListFunctionId(10)),
+            ),
+            (
                 ReturnExpr::float_list_body(
                     FloatListFunctionId(3),
                     FloatListReturn::expr(
@@ -1963,6 +2133,16 @@ mod tests {
                 RuntimeFunctionId::BitArray(BitArrayFunctionId(11)),
             ),
             (
+                ReturnExpr::utf_codepoint_body(
+                    UtfCodepointFunctionId(12),
+                    UtfCodepointReturn::expr(UtfCodepointExpr::local_get(
+                        UtfCodepointLocalId(0),
+                        "codepoint".into(),
+                    )),
+                ),
+                RuntimeFunctionId::UtfCodepoint(UtfCodepointFunctionId(12)),
+            ),
+            (
                 ReturnExpr::bool(BoolFunctionId(3), BoolExpr::value(true)),
                 RuntimeFunctionId::Bool(BoolFunctionId(3)),
             ),
@@ -2033,6 +2213,19 @@ mod tests {
                 RuntimeFunctionId::Function {
                     id: FunctionFunctionId::BitArray(BitArrayFunctionFunctionId(12)),
                     return_type: FunctionType::new(Vec::new(), ValueType::BitArray),
+                },
+            ),
+            (
+                ReturnExpr::utf_codepoint_function_body(
+                    UtfCodepointFunctionFunctionId(13),
+                    FunctionType::new(Vec::new(), ValueType::UtfCodepoint),
+                    UtfCodepointFunctionReturn::expr(UtfCodepointFunctionExpr::reference(
+                        UtfCodepointFunctionReference::new(UtfCodepointFunctionId(0), Vec::new()),
+                    )),
+                ),
+                RuntimeFunctionId::Function {
+                    id: FunctionFunctionId::UtfCodepoint(UtfCodepointFunctionFunctionId(13)),
+                    return_type: FunctionType::new(Vec::new(), ValueType::UtfCodepoint),
                 },
             ),
             (
@@ -2146,6 +2339,10 @@ mod tests {
             ValueType::String,
         );
         assert_eq!(
+            ParamLocal::utf_codepoint(UtfCodepointLocalId(0)).value_type(),
+            ValueType::UtfCodepoint,
+        );
+        assert_eq!(
             ParamLocal::float(FloatLocalId(0)).value_type(),
             ValueType::Float,
         );
@@ -2181,6 +2378,17 @@ mod tests {
             ValueType::Function(Box::new(FunctionType::new(
                 vec![ValueType::String],
                 ValueType::String,
+            ))),
+        );
+        assert_eq!(
+            ParamLocal::utf_codepoint_function(
+                crate::plan::UtfCodepointFunctionLocalId(0),
+                FunctionType::new(vec![ValueType::UtfCodepoint], ValueType::UtfCodepoint,),
+            )
+            .value_type(),
+            ValueType::Function(Box::new(FunctionType::new(
+                vec![ValueType::UtfCodepoint],
+                ValueType::UtfCodepoint,
             ))),
         );
         assert_eq!(
@@ -2307,6 +2515,21 @@ mod tests {
             )),
         );
 
+        let utf_codepoint = ListExpr::value(
+            vec![crate::plan::Expr::utf_codepoint(
+                UtfCodepointExpr::local_get(UtfCodepointLocalId(0), "codepoint".into()),
+            )],
+            ValueType::UtfCodepoint,
+        );
+        assert_eq!(
+            ListReturn::expr(utf_codepoint.clone()),
+            ListReturn::UtfCodepoint(UtfCodepointListReturn::expr(
+                utf_codepoint
+                    .into_utf_codepoint()
+                    .expect("UTF codepoint list"),
+            )),
+        );
+
         let bool_ = ListExpr::value(
             vec![crate::plan::Expr::bool(BoolExpr::value(true))],
             ValueType::Bool,
@@ -2401,6 +2624,16 @@ mod tests {
             ),
             ListReturn::BitArray(BitArrayListReturn::tail_call(
                 BitArrayListFunctionId(0),
+                Vec::new(),
+            )),
+        );
+        assert_eq!(
+            ListReturn::tail_call(
+                ListFunctionId::UtfCodepoint(UtfCodepointListFunctionId(0)),
+                Vec::new(),
+            ),
+            ListReturn::UtfCodepoint(UtfCodepointListReturn::tail_call(
+                UtfCodepointListFunctionId(0),
                 Vec::new(),
             )),
         );
@@ -2710,6 +2943,7 @@ mod tests {
             ValueType::Float,
             ValueType::String,
             ValueType::BitArray,
+            ValueType::UtfCodepoint,
             ValueType::Bool,
             ValueType::Nil,
             ValueType::Tuple(vec![ValueType::Int]),
@@ -2778,6 +3012,7 @@ mod tests {
             ValueType::Float,
             ValueType::String,
             ValueType::BitArray,
+            ValueType::UtfCodepoint,
             ValueType::Bool,
             ValueType::Nil,
             ValueType::Tuple(vec![ValueType::Int]),
@@ -2880,6 +3115,7 @@ mod tests {
             ListReturn::Float(_) => ValueType::Float,
             ListReturn::String(_) => ValueType::String,
             ListReturn::BitArray(_) => ValueType::BitArray,
+            ListReturn::UtfCodepoint(_) => ValueType::UtfCodepoint,
             ListReturn::Bool(_) => ValueType::Bool,
             ListReturn::Nil(_) => ValueType::Nil,
             ListReturn::Tuple { item_type, .. } => ValueType::Tuple(item_type.clone()),

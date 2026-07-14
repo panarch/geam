@@ -9,7 +9,7 @@ pub(crate) use self::{
     elements::{ListElementTypeMismatch, ListElements, ListSpreadElements},
     item::{
         BitArrayListItem, BoolListItem, FloatListItem, FunctionListItem, IntListItem, ListItem,
-        ListListItem, NilListItem, StringListItem, TupleListItem,
+        ListListItem, NilListItem, StringListItem, TupleListItem, UtfCodepointListItem,
     },
     local::ListLocalExpr,
     typed::{ListIndexSource, TypedListExpr, TypedListExprKind, TypedListReturnKind},
@@ -26,6 +26,7 @@ pub(crate) enum ListExpr {
     Int(IntListExpr),
     String(StringListExpr),
     BitArray(BitArrayListExpr),
+    UtfCodepoint(UtfCodepointListExpr),
     Float(FloatListExpr),
     Bool(BoolListExpr),
     Nil(NilListExpr),
@@ -37,6 +38,7 @@ pub(crate) enum ListExpr {
 pub(crate) type IntListExpr = TypedListExpr<IntListItem>;
 pub(crate) type StringListExpr = TypedListExpr<StringListItem>;
 pub(crate) type BitArrayListExpr = TypedListExpr<BitArrayListItem>;
+pub(crate) type UtfCodepointListExpr = TypedListExpr<UtfCodepointListItem>;
 pub(crate) type FloatListExpr = TypedListExpr<FloatListItem>;
 pub(crate) type BoolListExpr = TypedListExpr<BoolListItem>;
 pub(crate) type NilListExpr = TypedListExpr<NilListItem>;
@@ -60,6 +62,9 @@ impl ListExpr {
             }
             ListElements::BitArray(values) => {
                 Self::BitArray(BitArrayListExpr::value(BitArrayListItem, values))
+            }
+            ListElements::UtfCodepoint(values) => {
+                Self::UtfCodepoint(UtfCodepointListExpr::value(UtfCodepointListItem, values))
             }
             ListElements::Float(values) => Self::Float(FloatListExpr::value(FloatListItem, values)),
             ListElements::Bool(values) => Self::Bool(BoolListExpr::value(BoolListItem, values)),
@@ -89,6 +94,9 @@ impl ListExpr {
             }
             ListSpreadElements::BitArray { values, tail } => {
                 Self::BitArray(BitArrayListExpr::spread(values, tail))
+            }
+            ListSpreadElements::UtfCodepoint { values, tail } => {
+                Self::UtfCodepoint(UtfCodepointListExpr::spread(values, tail))
             }
             ListSpreadElements::Float { values, tail } => {
                 Self::Float(FloatListExpr::spread(values, tail))
@@ -120,6 +128,11 @@ impl ListExpr {
             ListLocal::BitArray(local) => {
                 Self::BitArray(BitArrayListExpr::local_get(BitArrayListItem, local, name))
             }
+            ListLocal::UtfCodepoint(local) => Self::UtfCodepoint(UtfCodepointListExpr::local_get(
+                UtfCodepointListItem,
+                local,
+                name,
+            )),
             ListLocal::Float(local) => {
                 Self::Float(FloatListExpr::local_get(FloatListItem, local, name))
             }
@@ -153,6 +166,9 @@ impl ListExpr {
             ListFunctionId::BitArray(function) => {
                 Self::BitArray(BitArrayListExpr::call(BitArrayListItem, function, args))
             }
+            ListFunctionId::UtfCodepoint(function) => Self::UtfCodepoint(
+                UtfCodepointListExpr::call(UtfCodepointListItem, function, args),
+            ),
             ListFunctionId::Float(function) => {
                 Self::Float(FloatListExpr::call(FloatListItem, function, args))
             }
@@ -187,6 +203,11 @@ impl ListExpr {
             )),
             ValueType::BitArray => Self::BitArray(BitArrayListExpr::function_call(
                 BitArrayListItem,
+                function,
+                args,
+            )),
+            ValueType::UtfCodepoint => Self::UtfCodepoint(UtfCodepointListExpr::function_call(
+                UtfCodepointListItem,
                 function,
                 args,
             )),
@@ -225,6 +246,11 @@ impl ListExpr {
                 tuple,
                 index,
             )),
+            ValueType::UtfCodepoint => Self::UtfCodepoint(UtfCodepointListExpr::tuple_index(
+                UtfCodepointListItem,
+                tuple,
+                index,
+            )),
             ValueType::Float => {
                 Self::Float(FloatListExpr::tuple_index(FloatListItem, tuple, index))
             }
@@ -260,6 +286,10 @@ impl ListExpr {
             )),
             ValueType::BitArray => Self::BitArray(BitArrayListExpr::from_list_index(
                 BitArrayListItem,
+                ListIndexSource::new(list, index),
+            )),
+            ValueType::UtfCodepoint => Self::UtfCodepoint(UtfCodepointListExpr::from_list_index(
+                UtfCodepointListItem,
                 ListIndexSource::new(list, index),
             )),
             ValueType::Float => Self::Float(FloatListExpr::from_list_index(
@@ -305,6 +335,9 @@ impl ListExpr {
             Self::Int(list) => Self::Int(IntListExpr::drop_first(list, count)),
             Self::String(list) => Self::String(StringListExpr::drop_first(list, count)),
             Self::BitArray(list) => Self::BitArray(BitArrayListExpr::drop_first(list, count)),
+            Self::UtfCodepoint(list) => {
+                Self::UtfCodepoint(UtfCodepointListExpr::drop_first(list, count))
+            }
             Self::Float(list) => Self::Float(FloatListExpr::drop_first(list, count)),
             Self::Bool(list) => Self::Bool(BoolListExpr::drop_first(list, count)),
             Self::Nil(list) => Self::Nil(NilListExpr::drop_first(list, count)),
@@ -319,6 +352,9 @@ impl ListExpr {
             ValueType::Int => Self::Int(IntListExpr::panic(IntListItem, panic)),
             ValueType::String => Self::String(StringListExpr::panic(StringListItem, panic)),
             ValueType::BitArray => Self::BitArray(BitArrayListExpr::panic(BitArrayListItem, panic)),
+            ValueType::UtfCodepoint => {
+                Self::UtfCodepoint(UtfCodepointListExpr::panic(UtfCodepointListItem, panic))
+            }
             ValueType::Float => Self::Float(FloatListExpr::panic(FloatListItem, panic)),
             ValueType::Bool => Self::Bool(BoolListExpr::panic(BoolListItem, panic)),
             ValueType::Nil => Self::Nil(NilListExpr::panic(NilListItem, panic)),
@@ -347,6 +383,9 @@ impl ListExpr {
             }
             BoolListCaseBranches::BitArray { true_, false_ } => {
                 Self::BitArray(BitArrayListExpr::bool_case(subject, true_, false_))
+            }
+            BoolListCaseBranches::UtfCodepoint { true_, false_ } => {
+                Self::UtfCodepoint(UtfCodepointListExpr::bool_case(subject, true_, false_))
             }
             BoolListCaseBranches::Float { true_, false_ } => {
                 Self::Float(FloatListExpr::bool_case(subject, true_, false_))
@@ -380,6 +419,9 @@ impl ListExpr {
             ListCaseBranches::BitArray { clauses, fallback } => {
                 Self::BitArray(BitArrayListExpr::int_case(subject, clauses, fallback))
             }
+            ListCaseBranches::UtfCodepoint { clauses, fallback } => {
+                Self::UtfCodepoint(UtfCodepointListExpr::int_case(subject, clauses, fallback))
+            }
             ListCaseBranches::Float { clauses, fallback } => {
                 Self::Float(FloatListExpr::int_case(subject, clauses, fallback))
             }
@@ -412,6 +454,9 @@ impl ListExpr {
             ListCaseBranches::BitArray { clauses, fallback } => {
                 Self::BitArray(BitArrayListExpr::string_case(subject, clauses, fallback))
             }
+            ListCaseBranches::UtfCodepoint { clauses, fallback } => Self::UtfCodepoint(
+                UtfCodepointListExpr::string_case(subject, clauses, fallback),
+            ),
             ListCaseBranches::Float { clauses, fallback } => {
                 Self::Float(FloatListExpr::string_case(subject, clauses, fallback))
             }
@@ -444,6 +489,9 @@ impl ListExpr {
             ListCaseBranches::BitArray { clauses, fallback } => {
                 Self::BitArray(BitArrayListExpr::float_case(subject, clauses, fallback))
             }
+            ListCaseBranches::UtfCodepoint { clauses, fallback } => {
+                Self::UtfCodepoint(UtfCodepointListExpr::float_case(subject, clauses, fallback))
+            }
             ListCaseBranches::Float { clauses, fallback } => {
                 Self::Float(FloatListExpr::float_case(subject, clauses, fallback))
             }
@@ -470,6 +518,9 @@ impl ListExpr {
             Self::Int(return_) => Self::Int(IntListExpr::block(steps, return_)),
             Self::String(return_) => Self::String(StringListExpr::block(steps, return_)),
             Self::BitArray(return_) => Self::BitArray(BitArrayListExpr::block(steps, return_)),
+            Self::UtfCodepoint(return_) => {
+                Self::UtfCodepoint(UtfCodepointListExpr::block(steps, return_))
+            }
             Self::Float(return_) => Self::Float(FloatListExpr::block(steps, return_)),
             Self::Bool(return_) => Self::Bool(BoolListExpr::block(steps, return_)),
             Self::Nil(return_) => Self::Nil(NilListExpr::block(steps, return_)),
@@ -484,6 +535,7 @@ impl ListExpr {
             Self::Int(expression) => expression.element_type(),
             Self::String(expression) => expression.element_type(),
             Self::BitArray(expression) => expression.element_type(),
+            Self::UtfCodepoint(expression) => expression.element_type(),
             Self::Float(expression) => expression.element_type(),
             Self::Bool(expression) => expression.element_type(),
             Self::Nil(expression) => expression.element_type(),
@@ -510,6 +562,13 @@ impl ListExpr {
     pub(crate) fn into_bit_array(self) -> Option<BitArrayListExpr> {
         match self {
             Self::BitArray(expression) => Some(expression),
+            _ => None,
+        }
+    }
+
+    pub(crate) fn into_utf_codepoint(self) -> Option<UtfCodepointListExpr> {
+        match self {
+            Self::UtfCodepoint(expression) => Some(expression),
             _ => None,
         }
     }
@@ -585,13 +644,14 @@ mod tests {
         FloatListExpr, FloatListItem, FunctionListExpr, FunctionListItem, IntListExpr, IntListItem,
         ListCaseBranches, ListElementTypeMismatch, ListElements, ListExpr, ListIndexSource,
         ListListExpr, ListListItem, NilListExpr, NilListItem, StringListExpr, StringListItem,
-        TupleListExpr, TupleListItem,
+        TupleListExpr, TupleListItem, UtfCodepointListExpr, UtfCodepointListItem,
     };
     use crate::plan::{
         BitArrayExpr, BoolExpr, Expr, FloatExpr, FunctionExpr, FunctionReference, FunctionType,
         IntExpr, IntFunctionId, IntListFunctionId, IntListLocalId, ListFunctionExpr,
         ListFunctionId, ListFunctionReference, ListLocal, NilExpr, PanicExpr, PanicSite,
-        RuntimeFunctionId, Step, StringExpr, TupleExpr, ValueType,
+        RuntimeFunctionId, Step, StringExpr, TupleExpr, UtfCodepointExpr, UtfCodepointLocalId,
+        ValueType,
     };
     use num_bigint::BigInt;
 
@@ -626,6 +686,17 @@ mod tests {
             ListExpr::Bool(BoolListExpr::value(
                 BoolListItem,
                 vec![BoolExpr::value(true)],
+            )),
+        );
+        let codepoint = UtfCodepointExpr::local_get(UtfCodepointLocalId(0), "codepoint".into());
+        assert_eq!(
+            ListExpr::value(
+                vec![Expr::utf_codepoint(codepoint.clone())],
+                ValueType::UtfCodepoint,
+            ),
+            ListExpr::UtfCodepoint(UtfCodepointListExpr::value(
+                UtfCodepointListItem,
+                vec![codepoint],
             )),
         );
         assert_eq!(
@@ -753,6 +824,7 @@ mod tests {
         let int_list = ListExpr::value(vec![Expr::int(IntExpr::value(1.into()))], ValueType::Int);
         assert_eq!(int_list.clone().into_string(), None);
         assert_eq!(int_list.clone().into_bit_array(), None);
+        assert_eq!(int_list.clone().into_utf_codepoint(), None);
         assert_eq!(int_list.clone().into_float(), None);
         assert_eq!(int_list.clone().into_bool(), None);
         assert_eq!(int_list.clone().into_nil(), None);
@@ -900,6 +972,7 @@ mod tests {
             ValueType::Int,
             ValueType::String,
             ValueType::BitArray,
+            ValueType::UtfCodepoint,
             ValueType::Float,
             ValueType::Bool,
             ValueType::Nil,
@@ -1010,6 +1083,7 @@ mod tests {
             ValueType::Int,
             ValueType::String,
             ValueType::BitArray,
+            ValueType::UtfCodepoint,
             ValueType::Float,
             ValueType::Bool,
             ValueType::Nil,
@@ -1038,6 +1112,12 @@ mod tests {
                     BitArrayListItem,
                     ListIndexSource::new(list.clone(), 3),
                 )),
+                ValueType::UtfCodepoint => {
+                    ListExpr::UtfCodepoint(UtfCodepointListExpr::from_list_index(
+                        UtfCodepointListItem,
+                        ListIndexSource::new(list.clone(), 3),
+                    ))
+                }
                 ValueType::Float => ListExpr::Float(FloatListExpr::from_list_index(
                     FloatListItem,
                     ListIndexSource::new(list.clone(), 3),
@@ -1092,6 +1172,18 @@ mod tests {
             )
             .element_type(),
             ValueType::BitArray,
+        );
+        assert_eq!(
+            ListExpr::spread(
+                vec![Expr::utf_codepoint(UtfCodepointExpr::local_get(
+                    UtfCodepointLocalId(0),
+                    "codepoint".into(),
+                ))],
+                ListExpr::value(Vec::new(), ValueType::UtfCodepoint),
+                ValueType::UtfCodepoint,
+            )
+            .element_type(),
+            ValueType::UtfCodepoint,
         );
         assert_eq!(
             ListExpr::spread(

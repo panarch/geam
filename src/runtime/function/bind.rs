@@ -8,7 +8,8 @@ use crate::runtime::expression::{
     eval_int_function_expr, eval_int_list_expr, eval_list_function_expr, eval_list_list_expr,
     eval_nil_expr, eval_nil_function_expr, eval_nil_list_expr, eval_string_expr,
     eval_string_function_expr, eval_string_list_expr, eval_tuple_expr, eval_tuple_function_expr,
-    eval_tuple_list_expr,
+    eval_tuple_list_expr, eval_utf_codepoint_expr, eval_utf_codepoint_function_expr,
+    eval_utf_codepoint_list_expr,
 };
 use crate::runtime::frame::Frame;
 use crate::runtime::state::RuntimeState;
@@ -61,6 +62,10 @@ fn bind_arguments_into(
                 let value = eval_bit_array_expr(plan, state, caller_frame, value)?;
                 frame.set_bit_array(*local, value);
             }
+            CallArgKind::UtfCodepoint { local, value } => {
+                let value = eval_utf_codepoint_expr(plan, state, caller_frame, value)?;
+                frame.set_utf_codepoint(*local, value);
+            }
             CallArgKind::Float { local, value } => {
                 let value = eval_float_expr(plan, state, caller_frame, value)?;
                 frame.set_float(*local, value);
@@ -91,6 +96,10 @@ fn bind_arguments_into(
             CallArgKind::BitArrayFunction { local, value } => {
                 let value = eval_bit_array_function_expr(plan, state, caller_frame, value)?;
                 frame.set_bit_array_function(*local, value);
+            }
+            CallArgKind::UtfCodepointFunction { local, value } => {
+                let value = eval_utf_codepoint_function_expr(plan, state, caller_frame, value)?;
+                frame.set_utf_codepoint_function(*local, value);
             }
             CallArgKind::FloatFunction { local, value } => {
                 let value = eval_float_function_expr(plan, state, caller_frame, value)?;
@@ -140,6 +149,10 @@ pub(in crate::runtime) fn eval_capture_args(
             CaptureArgKind::BitArray { local, value } => {
                 EvaluatedCapture::bit_array(*local, eval_bit_array_expr(plan, state, frame, value)?)
             }
+            CaptureArgKind::UtfCodepoint { local, value } => EvaluatedCapture::utf_codepoint(
+                *local,
+                eval_utf_codepoint_expr(plan, state, frame, value)?,
+            ),
             CaptureArgKind::Float { local, value } => {
                 EvaluatedCapture::float(*local, eval_float_expr(plan, state, frame, value)?)
             }
@@ -166,6 +179,12 @@ pub(in crate::runtime) fn eval_capture_args(
                 EvaluatedCapture::bit_array_function(
                     *local,
                     eval_bit_array_function_expr(plan, state, frame, value)?,
+                )
+            }
+            CaptureArgKind::UtfCodepointFunction { local, value } => {
+                EvaluatedCapture::utf_codepoint_function(
+                    *local,
+                    eval_utf_codepoint_function_expr(plan, state, frame, value)?,
                 )
             }
             CaptureArgKind::FloatFunction { local, value } => EvaluatedCapture::float_function(
@@ -210,6 +229,9 @@ fn bind_captures(frame: &mut Frame, captures: &[EvaluatedCapture]) {
             EvaluatedCaptureKind::BitArray { local, value } => {
                 frame.set_bit_array(*local, value.clone())
             }
+            EvaluatedCaptureKind::UtfCodepoint { local, value } => {
+                frame.set_utf_codepoint(*local, *value)
+            }
             EvaluatedCaptureKind::Float { local, value } => frame.set_float(*local, *value),
             EvaluatedCaptureKind::Bool { local, value } => frame.set_bool(*local, *value),
             EvaluatedCaptureKind::Nil { local } => frame.set_nil(*local),
@@ -223,6 +245,9 @@ fn bind_captures(frame: &mut Frame, captures: &[EvaluatedCapture]) {
             }
             EvaluatedCaptureKind::BitArrayFunction { local, value } => {
                 frame.set_bit_array_function(*local, value.clone());
+            }
+            EvaluatedCaptureKind::UtfCodepointFunction { local, value } => {
+                frame.set_utf_codepoint_function(*local, value.clone());
             }
             EvaluatedCaptureKind::FloatFunction { local, value } => {
                 frame.set_float_function(*local, value.clone());
@@ -265,6 +290,10 @@ fn bind_list_argument(
         crate::plan::execution::ListLocalExpr::BitArray { local, value } => {
             let value = eval_bit_array_list_expr(plan, state, caller_frame, value)?;
             frame.set_bit_array_list(*local, value);
+        }
+        crate::plan::execution::ListLocalExpr::UtfCodepoint { local, value } => {
+            let value = eval_utf_codepoint_list_expr(plan, state, caller_frame, value)?;
+            frame.set_utf_codepoint_list(*local, value);
         }
         crate::plan::execution::ListLocalExpr::Float { local, value } => {
             let value = eval_float_list_expr(plan, state, caller_frame, value)?;
@@ -319,6 +348,12 @@ fn eval_list_capture(
                 value: eval_bit_array_list_expr(plan, state, frame, value)?,
             })
         }
+        crate::plan::execution::ListLocalExpr::UtfCodepoint { local, value } => {
+            EvaluatedCapture::list(EvaluatedListCapture::UtfCodepoint {
+                local: *local,
+                value: eval_utf_codepoint_list_expr(plan, state, frame, value)?,
+            })
+        }
         crate::plan::execution::ListLocalExpr::Float { local, value } => {
             EvaluatedCapture::list(EvaluatedListCapture::Float {
                 local: *local,
@@ -369,6 +404,9 @@ fn bind_list_capture(frame: &mut Frame, value: &EvaluatedListCapture) {
         EvaluatedListCapture::BitArray { local, value } => {
             frame.set_bit_array_list(*local, value.clone());
         }
+        EvaluatedListCapture::UtfCodepoint { local, value } => {
+            frame.set_utf_codepoint_list(*local, value.clone());
+        }
         EvaluatedListCapture::Float { local, value } => {
             frame.set_float_list(*local, value.clone());
         }
@@ -404,7 +442,9 @@ mod tests {
         NilFunctionLocalId, NilListExpr, NilListLocalId, NilLocalId, PanicExpr, PanicSite,
         ReturnExpr, StringExpr, StringFunctionExpr, StringFunctionLocalId, StringListExpr,
         StringListLocalId, StringLocalId, TupleExpr, TupleFunctionExpr, TupleFunctionLocalId,
-        TupleListExpr, TupleListLocalId, TupleLocalId, ValueType,
+        TupleListExpr, TupleListLocalId, TupleLocalId, UtfCodepointExpr, UtfCodepointFunctionExpr,
+        UtfCodepointFunctionLocalId, UtfCodepointListExpr, UtfCodepointListLocalId,
+        UtfCodepointLocalId, ValueType,
     };
     use crate::runtime::{ExecutionError, run_main};
 
@@ -565,6 +605,7 @@ pub fn main() {
             "Int",
             "String",
             "BitArray",
+            "UtfCodepoint",
             "Float",
             "Bool",
             "Nil",
@@ -572,6 +613,7 @@ pub fn main() {
             "List(Int)",
             "List(String)",
             "List(BitArray)",
+            "List(UtfCodepoint)",
             "List(Float)",
             "List(Bool)",
             "List(Nil)",
@@ -581,12 +623,14 @@ pub fn main() {
             "fn() -> Int",
             "fn() -> String",
             "fn() -> BitArray",
+            "fn() -> UtfCodepoint",
             "fn() -> Float",
             "fn() -> Bool",
             "fn() -> Nil",
             "fn() -> #(Int)",
             "fn() -> List(Int)",
             "fn() -> List(BitArray)",
+            "fn() -> List(UtfCodepoint)",
             "fn() -> fn() -> Int",
         ];
 
@@ -600,6 +644,37 @@ pub fn main() {
                 "panic: argument",
             );
         }
+    }
+
+    #[test]
+    fn source_utf_codepoint_scalar_list_and_function_captures_bind_exact_values() {
+        assert_eq!(
+            crate::runtime::run_src(
+                r#"
+fn codepoint() -> UtfCodepoint {
+  let assert <<value:utf8_codepoint>> = <<65>>
+  value
+}
+
+fn identity(value: UtfCodepoint) { value }
+
+pub fn main() {
+  let scalar = codepoint()
+  let values = [scalar]
+  let function = identity
+  let closure = fn() {
+    let assert [value] = values
+    case scalar == value {
+      True -> function(value)
+      False -> panic
+    }
+  }
+  closure()
+}
+"#,
+            ),
+            crate::runtime::Value::UtfCodepoint('A'),
+        );
     }
 
     #[test]
@@ -619,6 +694,7 @@ pub fn main() {
             CaptureArg::int(IntLocalId(0), IntExpr::panic(panic())),
             CaptureArg::string(StringLocalId(0), StringExpr::panic(panic())),
             CaptureArg::bit_array(BitArrayLocalId(0), BitArrayExpr::panic(panic())),
+            CaptureArg::utf_codepoint(UtfCodepointLocalId(0), UtfCodepointExpr::panic(panic())),
             CaptureArg::float(crate::plan::FloatLocalId(0), FloatExpr::panic(panic())),
             CaptureArg::bool(crate::plan::BoolLocalId(0), BoolExpr::panic(panic())),
             CaptureArg::nil(NilLocalId(0), NilExpr::panic(panic())),
@@ -637,6 +713,13 @@ pub fn main() {
             CaptureArg::list(ListLocalExpr::BitArray {
                 local: BitArrayListLocalId(0),
                 value: BitArrayListExpr::from(ListExpr::panic(panic(), ValueType::BitArray)),
+            }),
+            CaptureArg::list(ListLocalExpr::UtfCodepoint {
+                local: UtfCodepointListLocalId(0),
+                value: UtfCodepointListExpr::from(ListExpr::panic(
+                    panic(),
+                    ValueType::UtfCodepoint,
+                )),
             }),
             CaptureArg::list(ListLocalExpr::Float {
                 local: FloatListLocalId(0),
@@ -685,6 +768,10 @@ pub fn main() {
             CaptureArg::bit_array_function(
                 BitArrayFunctionLocalId(0),
                 BitArrayFunctionExpr::panic(panic(), function_type(ValueType::BitArray)),
+            ),
+            CaptureArg::utf_codepoint_function(
+                UtfCodepointFunctionLocalId(0),
+                UtfCodepointFunctionExpr::panic(panic(), function_type(ValueType::UtfCodepoint)),
             ),
             CaptureArg::float_function(
                 FloatFunctionLocalId(0),

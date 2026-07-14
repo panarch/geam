@@ -2,7 +2,7 @@ use crate::plan::{
     BitArrayExpr, BitArrayFunctionExpr, BoolExpr, BoolFunctionExpr, Expr, FloatExpr,
     FloatFunctionExpr, FunctionExpr, FunctionFunctionExpr, IntExpr, IntFunctionExpr, ListExpr,
     ListFunctionExpr, LocalId, NilExpr, NilFunctionExpr, StringExpr, StringFunctionExpr, TupleExpr,
-    TupleFunctionExpr, ValueType,
+    TupleFunctionExpr, UtfCodepointExpr, UtfCodepointFunctionExpr, ValueType,
 };
 use crate::planner::context::{FunctionLocalBinding, PlanContext};
 use crate::planner::error::{
@@ -113,6 +113,9 @@ fn function_local_get(binding: FunctionLocalBinding, name: EcoString) -> Expr {
         FunctionLocalBinding::BitArray { local, type_ } => Expr::function(FunctionExpr::bit_array(
             BitArrayFunctionExpr::local_get(local, name, type_),
         )),
+        FunctionLocalBinding::UtfCodepoint { local, type_ } => Expr::function(
+            FunctionExpr::utf_codepoint(UtfCodepointFunctionExpr::local_get(local, name, type_)),
+        ),
         FunctionLocalBinding::Float { local, type_ } => Expr::function(FunctionExpr::float(
             FloatFunctionExpr::local_get(local, name, type_),
         )),
@@ -146,6 +149,9 @@ fn local_get(local: LocalId, name: EcoString, type_: ValueType) -> Result<Expr, 
         (LocalId::BitArray(local), ValueType::BitArray) => {
             Ok(Expr::bit_array(BitArrayExpr::local_get(local, name)))
         }
+        (LocalId::UtfCodepoint(local), ValueType::UtfCodepoint) => Ok(Expr::utf_codepoint(
+            UtfCodepointExpr::local_get(local, name),
+        )),
         (LocalId::Bool(local), ValueType::Bool) => Ok(Expr::bool(BoolExpr::local_get(local, name))),
         (LocalId::Nil(local), ValueType::Nil) => Ok(Expr::nil(NilExpr::local_get(local, name))),
         _ => Err(PlanError::InvalidTypedAst {

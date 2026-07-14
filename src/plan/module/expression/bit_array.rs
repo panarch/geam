@@ -1,6 +1,6 @@
 use super::{
     BitArrayFunctionExpr, BitArrayListExpr, BoolExpr, CallArg, FloatExpr, IntExpr, PanicExpr,
-    StringExpr, TupleExpr,
+    StringExpr, TupleExpr, UtfCodepointExpr,
 };
 use crate::plan::{BitArrayFunctionId, BitArrayLocalId, Step};
 use ecow::EcoString;
@@ -40,6 +40,10 @@ pub enum BitArraySegment {
     },
     String {
         value: StringExpr,
+        encoding: StringEncoding,
+    },
+    UtfCodepoint {
+        value: UtfCodepointExpr,
         encoding: StringEncoding,
     },
     Bits(BitArrayExpr),

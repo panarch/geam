@@ -3,7 +3,7 @@ use crate::plan::{
     BitArrayExpr, BitArrayExprKind, BitArraySegment, BoolExpr, BoolExprKind, Expr, ExprKind,
     FloatExpr, FloatExprKind, IntExpr, IntExprKind, ListElements, ListExpr, ListItem,
     ListLocalExpr, NilExpr, NilExprKind, PanicExpr, StringExpr, StringExprKind, TupleExpr,
-    TupleExprKind, TypedListExpr, TypedListExprKind,
+    TupleExprKind, TypedListExpr, TypedListExprKind, UtfCodepointExpr, UtfCodepointExprKind,
 };
 
 impl FrameLayout {
@@ -12,6 +12,7 @@ impl FrameLayout {
             ExprKind::Int(expression) => self.include_int_expr(expression),
             ExprKind::String(expression) => self.include_string_expr(expression),
             ExprKind::BitArray(expression) => self.include_bit_array_expr(expression),
+            ExprKind::UtfCodepoint(expression) => self.include_utf_codepoint_expr(expression),
             ExprKind::Float(expression) => self.include_float_expr(expression),
             ExprKind::Bool(expression) => self.include_bool_expr(expression),
             ExprKind::Nil(expression) => self.include_nil_expr(expression),
@@ -174,6 +175,9 @@ impl FrameLayout {
                         BitArraySegment::Int { value, .. } => self.include_int_expr(value),
                         BitArraySegment::Float { value, .. } => self.include_float_expr(value),
                         BitArraySegment::String { value, .. } => self.include_string_expr(value),
+                        BitArraySegment::UtfCodepoint { value, .. } => {
+                            self.include_utf_codepoint_expr(value)
+                        }
                         BitArraySegment::Bits(value) => self.include_bit_array_expr(value),
                     }
                 }
@@ -232,6 +236,69 @@ impl FrameLayout {
             BitArrayExprKind::Block { steps, return_ } => {
                 self.include_steps(steps);
                 self.include_bit_array_expr(return_);
+            }
+        }
+    }
+
+    pub(in crate::plan::module::frame) fn include_utf_codepoint_expr(
+        &mut self,
+        expression: &UtfCodepointExpr,
+    ) {
+        match expression.kind() {
+            UtfCodepointExprKind::Panic(panic) => self.include_panic_expr(panic),
+            UtfCodepointExprKind::LocalGet { local, .. } => self.include_utf_codepoint(*local),
+            UtfCodepointExprKind::Call { args, .. } => self.include_call_args(args),
+            UtfCodepointExprKind::FunctionCall { function, args } => {
+                self.include_utf_codepoint_function_expr(function);
+                self.include_call_args(args);
+            }
+            UtfCodepointExprKind::TupleIndex { tuple, .. } => self.include_tuple_expr(tuple),
+            UtfCodepointExprKind::ListIndex { list, .. } => self.include_typed_list_expr(list),
+            UtfCodepointExprKind::BoolCase {
+                subject,
+                true_,
+                false_,
+            } => {
+                self.include_bool_expr(subject);
+                self.include_utf_codepoint_expr(true_);
+                self.include_utf_codepoint_expr(false_);
+            }
+            UtfCodepointExprKind::IntCase {
+                subject,
+                clauses,
+                fallback,
+            } => {
+                self.include_int_expr(subject);
+                for (_, branch) in clauses {
+                    self.include_utf_codepoint_expr(branch);
+                }
+                self.include_utf_codepoint_expr(fallback);
+            }
+            UtfCodepointExprKind::StringCase {
+                subject,
+                clauses,
+                fallback,
+            } => {
+                self.include_string_expr(subject);
+                for (_, branch) in clauses {
+                    self.include_utf_codepoint_expr(branch);
+                }
+                self.include_utf_codepoint_expr(fallback);
+            }
+            UtfCodepointExprKind::FloatCase {
+                subject,
+                clauses,
+                fallback,
+            } => {
+                self.include_float_expr(subject);
+                for (_, branch) in clauses {
+                    self.include_utf_codepoint_expr(branch);
+                }
+                self.include_utf_codepoint_expr(fallback);
+            }
+            UtfCodepointExprKind::Block { steps, return_ } => {
+                self.include_steps(steps);
+                self.include_utf_codepoint_expr(return_);
             }
         }
     }
@@ -344,6 +411,11 @@ impl FrameLayout {
                     });
                 }
                 crate::plan::BitArrayPatternSegment::String { .. } => {}
+                crate::plan::BitArrayPatternSegment::UtfCodepoint { pattern, .. } => {
+                    self.include_bit_array_binding_pattern(pattern, |layout, local| {
+                        layout.include_utf_codepoint(*local)
+                    });
+                }
             }
         }
     }
@@ -618,6 +690,7 @@ impl FrameLayout {
             ListExpr::Int(expression) => self.include_typed_list_expr(expression),
             ListExpr::String(expression) => self.include_typed_list_expr(expression),
             ListExpr::BitArray(expression) => self.include_typed_list_expr(expression),
+            ListExpr::UtfCodepoint(expression) => self.include_typed_list_expr(expression),
             ListExpr::Float(expression) => self.include_typed_list_expr(expression),
             ListExpr::Bool(expression) => self.include_typed_list_expr(expression),
             ListExpr::Nil(expression) => self.include_typed_list_expr(expression),
@@ -643,6 +716,10 @@ impl FrameLayout {
             ListLocalExpr::BitArray { local, value } => {
                 self.include_typed_list_expr(value);
                 self.include_bit_array_list(*local);
+            }
+            ListLocalExpr::UtfCodepoint { local, value } => {
+                self.include_typed_list_expr(value);
+                self.include_utf_codepoint_list(*local);
             }
             ListLocalExpr::Float { local, value } => {
                 self.include_typed_list_expr(value);
@@ -788,6 +865,11 @@ impl FrameLayout {
             ListElements::BitArray(values) => {
                 for value in values {
                     self.include_bit_array_expr(value);
+                }
+            }
+            ListElements::UtfCodepoint(values) => {
+                for value in values {
+                    self.include_utf_codepoint_expr(value);
                 }
             }
             ListElements::Float(values) => {

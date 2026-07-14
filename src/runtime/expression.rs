@@ -7,6 +7,7 @@ mod list;
 mod nil;
 mod string;
 mod tuple;
+mod utf_codepoint;
 
 use crate::plan::execution::ExecutionPlan;
 use crate::plan::execution::{Expr, ExprKind, PanicExpr, PanicExprKind};
@@ -24,20 +25,22 @@ pub(super) use self::{
         eval_bit_array_function_expr, eval_bool_function_expr, eval_float_function_expr,
         eval_function_expr, eval_function_function_expr, eval_int_function_expr,
         eval_list_function_expr, eval_nil_function_expr, eval_string_function_expr,
-        eval_tuple_function_expr,
+        eval_tuple_function_expr, eval_utf_codepoint_function_expr,
     },
     int::eval_int_expr,
     list::{
         eval_bit_array_list_expr, eval_bool_list_expr, eval_float_list_expr,
         eval_function_list_expr, eval_int_list_expr, eval_list_expr, eval_list_list_expr,
-        eval_nil_list_expr, eval_string_list_expr, eval_tuple_list_expr, get_list_value,
-        project_bit_array_list_expr, project_bool_list_expr, project_float_list_expr,
-        project_function_list_expr, project_int_list_expr, project_nil_list_expr,
-        project_string_list_expr, project_tuple_list_expr,
+        eval_nil_list_expr, eval_string_list_expr, eval_tuple_list_expr,
+        eval_utf_codepoint_list_expr, get_list_value, project_bit_array_list_expr,
+        project_bool_list_expr, project_float_list_expr, project_function_list_expr,
+        project_int_list_expr, project_nil_list_expr, project_string_list_expr,
+        project_tuple_list_expr, project_utf_codepoint_list_expr,
     },
     nil::eval_nil_expr,
     string::eval_string_expr,
     tuple::{eval_tuple_expr, project_tuple_expr},
+    utf_codepoint::eval_utf_codepoint_expr,
 };
 
 pub(super) fn eval_expr(
@@ -56,6 +59,9 @@ pub(super) fn eval_expr(
         ExprKind::BitArray(expression) => Ok(EvaluatedValue::BitArray(eval_bit_array_expr(
             plan, state, frame, expression,
         )?)),
+        ExprKind::UtfCodepoint(expression) => Ok(EvaluatedValue::UtfCodepoint(
+            eval_utf_codepoint_expr(plan, state, frame, expression)?,
+        )),
         ExprKind::Float(expression) => Ok(EvaluatedValue::Float(eval_float_expr(
             plan, state, frame, expression,
         )?)),
@@ -127,19 +133,21 @@ mod tests {
         eval_function_list_expr, eval_int_expr, eval_int_function_expr, eval_int_list_expr,
         eval_list_function_expr, eval_list_list_expr, eval_nil_expr, eval_nil_function_expr,
         eval_nil_list_expr, eval_string_expr, eval_string_function_expr, eval_string_list_expr,
-        eval_tuple_expr, eval_tuple_function_expr, eval_tuple_list_expr,
+        eval_tuple_expr, eval_tuple_function_expr, eval_tuple_list_expr, eval_utf_codepoint_expr,
+        eval_utf_codepoint_function_expr, eval_utf_codepoint_list_expr,
     };
     use crate::plan::execution::{
         BoolFunctionFunctionId, BoolFunctionId, FloatFunctionFunctionId, FloatFunctionId,
         FunctionFunctionFunctionId, IntFunctionFunctionId, IntFunctionId, NilFunctionFunctionId,
         NilFunctionId, ReturnBody, ReturnBodyKind, StringFunctionFunctionId, StringFunctionId,
-        TupleFunctionFunctionId, TupleFunctionId, TupleLocalId,
+        TupleFunctionFunctionId, TupleFunctionId, TupleLocalId, UtfCodepointFunctionFunctionId,
+        UtfCodepointFunctionId,
     };
     use crate::plan::{FunctionType, ValueType};
     use crate::runtime::frame::Frame;
     use crate::runtime::{
-        EvaluatedFunctionValue, EvaluatedIntFunction, EvaluatedStringFunction, EvaluatedValue,
-        ExecutionError,
+        EvaluatedFunctionValue, EvaluatedIntFunction, EvaluatedStringFunction,
+        EvaluatedUtfCodepointFunction, EvaluatedValue, ExecutionError,
     };
 
     #[test]
@@ -716,6 +724,115 @@ pub fn main() { Nil }
     }
 
     #[test]
+    fn utf_codepoint_tuple_projections_preserve_scalar_list_and_function_families() {
+        let plan = crate::runtime::plan_src(
+            r#"
+fn codepoint(value: #(UtfCodepoint)) { value.0 }
+fn codepoints(value: #(List(UtfCodepoint))) { value.0 }
+fn codepoint_function(value: #(fn() -> UtfCodepoint)) { value.0 }
+pub fn main() { Nil }
+"#,
+        );
+
+        let function = plan.utf_codepoint_function(UtfCodepointFunctionId(0));
+        let expression = expression_return(function.return_())
+            .expect("source function should have an expression return body");
+        let mut state = crate::runtime::RuntimeState::new();
+        let mut frame = Frame::new(function.frame_layout(), &mut state);
+        frame.set_tuple(
+            TupleLocalId(0),
+            vec![EvaluatedValue::UtfCodepoint('\u{10ffff}')],
+        );
+        assert_eq!(
+            eval_utf_codepoint_expr(&plan, &mut state, &mut frame, expression),
+            Ok('\u{10ffff}'),
+        );
+        frame.set_tuple(TupleLocalId(0), vec![EvaluatedValue::Int(1.into())]);
+        assert_eq!(
+            eval_utf_codepoint_expr(&plan, &mut state, &mut frame, expression),
+            Err(ExecutionError::TupleIndexFamilyMismatch {
+                expected: ValueType::UtfCodepoint,
+                actual: ValueType::Int,
+            }),
+        );
+
+        let function_id = plan.utf_codepoint_list_function_id(0);
+        let function = plan.utf_codepoint_list_function(function_id);
+        let expression = expression_return(function.return_())
+            .expect("source function should have an expression return body");
+        let mut state = crate::runtime::RuntimeState::new();
+        let list = state.utf_codepoint(function_id.type_id(), vec!['a']);
+        let mut frame = Frame::new(function.frame_layout(), &mut state);
+        frame.set_tuple(
+            TupleLocalId(0),
+            vec![EvaluatedValue::List(list.clone().into())],
+        );
+        assert_eq!(
+            eval_utf_codepoint_list_expr(&plan, &mut state, &mut frame, expression),
+            Ok(list),
+        );
+
+        let function = plan.utf_codepoint_function_function(UtfCodepointFunctionFunctionId(0));
+        let expression = expression_return(function.return_())
+            .expect("source function should have an expression return body");
+        let expected = EvaluatedUtfCodepointFunction::new(
+            UtfCodepointFunctionId(0),
+            Vec::new(),
+            Vec::new(),
+            crate::runtime::evaluated::function_type(
+                &[],
+                crate::plan::execution::ValueType::UtfCodepoint,
+            ),
+        );
+        let mut state = crate::runtime::RuntimeState::new();
+        let mut frame = Frame::new(function.frame_layout(), &mut state);
+        frame.set_tuple(
+            TupleLocalId(0),
+            vec![EvaluatedValue::Function(expected.clone().into())],
+        );
+        assert_eq!(
+            eval_utf_codepoint_function_expr(&plan, &mut state, &mut frame, expression),
+            Ok(expected),
+        );
+
+        let wrong_function = EvaluatedIntFunction::new(
+            IntFunctionId(0),
+            Vec::new(),
+            Vec::new(),
+            crate::runtime::evaluated::function_type(&[], crate::plan::execution::ValueType::Int),
+        );
+        frame.set_tuple(
+            TupleLocalId(0),
+            vec![EvaluatedValue::Function(wrong_function.into())],
+        );
+        assert_eq!(
+            eval_utf_codepoint_function_expr(&plan, &mut state, &mut frame, expression),
+            Err(ExecutionError::TupleIndexFamilyMismatch {
+                expected: ValueType::Function(Box::new(FunctionType::new(
+                    Vec::new(),
+                    ValueType::UtfCodepoint,
+                ))),
+                actual: ValueType::Function(Box::new(FunctionType::new(
+                    Vec::new(),
+                    ValueType::Int,
+                ))),
+            }),
+        );
+
+        frame.set_tuple(TupleLocalId(0), vec![EvaluatedValue::Int(1.into())]);
+        assert_eq!(
+            eval_utf_codepoint_function_expr(&plan, &mut state, &mut frame, expression),
+            Err(ExecutionError::TupleIndexFamilyMismatch {
+                expected: ValueType::Function(Box::new(FunctionType::new(
+                    Vec::new(),
+                    ValueType::UtfCodepoint,
+                ))),
+                actual: ValueType::Int,
+            }),
+        );
+    }
+
+    #[test]
     fn expression_return_shape_guard_rejects_tail_calls_for_every_return_family() {
         let plan = crate::runtime::plan_src(
             r#"
@@ -899,6 +1016,43 @@ pub fn main() { Nil }
         assert_eq!(
             expression_return(
                 plan.function_function_function(FunctionFunctionFunctionId(0))
+                    .return_(),
+            )
+            .map(|_| ()),
+            None,
+        );
+    }
+
+    #[test]
+    fn expression_return_shape_guard_rejects_utf_codepoint_tail_calls() {
+        let plan = crate::runtime::plan_src(
+            r#"
+fn codepoint() -> UtfCodepoint { codepoint() }
+fn codepoints() -> List(UtfCodepoint) { codepoints() }
+fn codepoint_function() -> fn() -> UtfCodepoint { codepoint_function() }
+pub fn main() { Nil }
+"#,
+        );
+
+        assert_eq!(
+            expression_return(
+                plan.utf_codepoint_function(UtfCodepointFunctionId(0))
+                    .return_()
+            )
+            .map(|_| ()),
+            None,
+        );
+        assert_eq!(
+            expression_return(
+                plan.utf_codepoint_list_function(plan.utf_codepoint_list_function_id(0))
+                    .return_(),
+            )
+            .map(|_| ()),
+            None,
+        );
+        assert_eq!(
+            expression_return(
+                plan.utf_codepoint_function_function(UtfCodepointFunctionFunctionId(0))
                     .return_(),
             )
             .map(|_| ()),

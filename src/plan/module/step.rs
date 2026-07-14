@@ -2,14 +2,15 @@ use super::expression::{
     BitArrayExpr, BitArrayFunctionExpr, BoolExpr, BoolFunctionExpr, Expr, FloatExpr,
     FloatFunctionExpr, FunctionFunctionExpr, IntExpr, IntFunctionExpr, ListFunctionExpr,
     ListLocalExpr, NilExpr, NilFunctionExpr, StringExpr, StringFunctionExpr, TupleExpr,
-    TupleFunctionExpr,
+    TupleFunctionExpr, UtfCodepointExpr, UtfCodepointFunctionExpr,
 };
 use super::function::ParamLocal;
 use super::id::{
     BitArrayFunctionLocalId, BitArrayLocalId, BoolFunctionLocalId, BoolLocalId,
     FloatFunctionLocalId, FloatLocalId, FunctionFunctionLocalId, IntFunctionLocalId, IntLocalId,
     ListFunctionLocal, ListLocal, NilFunctionLocalId, NilLocalId, StringFunctionLocalId,
-    StringLocalId, TupleFunctionLocalId, TupleLocalId,
+    StringLocalId, TupleFunctionLocalId, TupleLocalId, UtfCodepointFunctionLocalId,
+    UtfCodepointLocalId,
 };
 use crate::plan::BitArrayPattern;
 use crate::plan::{PanicSite, SourceSpan, ValueType};
@@ -80,6 +81,11 @@ pub(crate) enum StepKind {
         name: EcoString,
         value: BitArrayExpr,
     },
+    LetUtfCodepoint {
+        local: UtfCodepointLocalId,
+        name: EcoString,
+        value: UtfCodepointExpr,
+    },
     LetBool {
         local: BoolLocalId,
         name: EcoString,
@@ -118,6 +124,11 @@ pub(crate) enum StepKind {
         local: BitArrayFunctionLocalId,
         name: EcoString,
         value: BitArrayFunctionExpr,
+    },
+    LetUtfCodepointFunction {
+        local: UtfCodepointFunctionLocalId,
+        name: EcoString,
+        value: UtfCodepointFunctionExpr,
     },
     LetBoolFunction {
         local: BoolFunctionLocalId,
@@ -270,6 +281,16 @@ impl Step {
         }
     }
 
+    pub(crate) fn let_utf_codepoint(
+        local: UtfCodepointLocalId,
+        name: EcoString,
+        value: UtfCodepointExpr,
+    ) -> Self {
+        Self {
+            kind: StepKind::LetUtfCodepoint { local, name, value },
+        }
+    }
+
     pub(crate) fn let_bool(local: BoolLocalId, name: EcoString, value: BoolExpr) -> Self {
         Self {
             kind: StepKind::LetBool { local, name, value },
@@ -331,6 +352,16 @@ impl Step {
     ) -> Self {
         Self {
             kind: StepKind::LetBitArrayFunction { local, name, value },
+        }
+    }
+
+    pub(crate) fn let_utf_codepoint_function(
+        local: UtfCodepointFunctionLocalId,
+        name: EcoString,
+        value: UtfCodepointFunctionExpr,
+    ) -> Self {
+        Self {
+            kind: StepKind::LetUtfCodepointFunction { local, name, value },
         }
     }
 

@@ -3,13 +3,14 @@ use super::expression::{
     BitArrayExpr, BitArrayFunctionExpr, BoolExpr, BoolFunctionExpr, Expr, FloatExpr,
     FloatFunctionExpr, FunctionFunctionExpr, IntExpr, IntFunctionExpr, ListFunctionExpr,
     ListLocalExpr, NilExpr, NilFunctionExpr, StringExpr, StringFunctionExpr, TupleExpr,
-    TupleFunctionExpr,
+    TupleFunctionExpr, UtfCodepointExpr, UtfCodepointFunctionExpr,
 };
 use super::id::{
     BitArrayFunctionLocalId, BitArrayLocalId, BoolFunctionLocalId, BoolLocalId,
     FloatFunctionLocalId, FloatLocalId, FunctionFunctionLocalId, IntFunctionLocalId, IntLocalId,
     ListFunctionLocal, ListLocal, NilFunctionLocalId, NilLocalId, StringFunctionLocalId,
-    StringLocalId, TupleFunctionLocalId, TupleLocalId,
+    StringLocalId, TupleFunctionLocalId, TupleLocalId, UtfCodepointFunctionLocalId,
+    UtfCodepointLocalId,
 };
 use crate::plan::execution::BitArrayPattern;
 use crate::plan::{PanicSite, SourceSpan};
@@ -65,6 +66,10 @@ pub(crate) enum StepKind {
         local: BitArrayLocalId,
         value: BitArrayExpr,
     },
+    LetUtfCodepoint {
+        local: UtfCodepointLocalId,
+        value: UtfCodepointExpr,
+    },
     LetBool {
         local: BoolLocalId,
         value: BoolExpr,
@@ -95,6 +100,10 @@ pub(crate) enum StepKind {
     LetBitArrayFunction {
         local: BitArrayFunctionLocalId,
         value: BitArrayFunctionExpr,
+    },
+    LetUtfCodepointFunction {
+        local: UtfCodepointFunctionLocalId,
+        value: UtfCodepointFunctionExpr,
     },
     LetBoolFunction {
         local: BoolFunctionLocalId,

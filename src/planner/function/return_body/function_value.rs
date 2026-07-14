@@ -6,7 +6,8 @@ use crate::plan::{
     IntFunctionExprKind, IntFunctionReturn, ListFunctionExpr, ListFunctionExprKind,
     ListFunctionReturn, NilFunctionExpr, NilFunctionExprKind, NilFunctionReturn, ReturnBody,
     ReturnExpr, StringFunctionExpr, StringFunctionExprKind, StringFunctionReturn,
-    TupleFunctionExpr, TupleFunctionExprKind, TupleFunctionReturn,
+    TupleFunctionExpr, TupleFunctionExprKind, TupleFunctionReturn, UtfCodepointFunctionExpr,
+    UtfCodepointFunctionExprKind, UtfCodepointFunctionReturn,
 };
 use crate::planner::error::{InvalidFunctionShapeReason, InvalidTypedAstReason, PlanError};
 use ecow::EcoString;
@@ -39,6 +40,14 @@ pub(super) fn function_returning_function_expr(
                 runtime_id,
                 type_,
                 bit_array_function_return(actual),
+            ))
+        }
+        (FunctionFunctionId::UtfCodepoint(runtime_id), FunctionExprKind::UtfCodepoint(actual)) => {
+            let type_ = actual.type_().clone();
+            Ok(ReturnExpr::utf_codepoint_function_body(
+                runtime_id,
+                type_,
+                utf_codepoint_function_return(actual),
             ))
         }
         (FunctionFunctionId::Float(runtime_id), FunctionExprKind::Float(actual)) => {
@@ -260,6 +269,70 @@ fn bit_array_function_return(expression: BitArrayFunctionExpr) -> BitArrayFuncti
         BitArrayFunctionExprKind::Block { steps, return_ } => ReturnBody::block(
             steps.clone(),
             bit_array_function_return((**return_).clone()),
+        ),
+        _ => ReturnBody::expr(expression),
+    }
+}
+
+fn utf_codepoint_function_return(
+    expression: UtfCodepointFunctionExpr,
+) -> UtfCodepointFunctionReturn {
+    match expression.kind() {
+        UtfCodepointFunctionExprKind::Call { function, args, .. } => {
+            ReturnBody::tail_call(*function, args.clone())
+        }
+        UtfCodepointFunctionExprKind::BoolCase {
+            subject,
+            true_,
+            false_,
+        } => ReturnBody::bool_case(
+            (**subject).clone(),
+            utf_codepoint_function_return((**true_).clone()),
+            utf_codepoint_function_return((**false_).clone()),
+        ),
+        UtfCodepointFunctionExprKind::IntCase {
+            subject,
+            clauses,
+            fallback,
+        } => ReturnBody::int_case(
+            (**subject).clone(),
+            clauses
+                .iter()
+                .map(|(value, branch)| {
+                    (value.clone(), utf_codepoint_function_return(branch.clone()))
+                })
+                .collect(),
+            utf_codepoint_function_return((**fallback).clone()),
+        ),
+        UtfCodepointFunctionExprKind::StringCase {
+            subject,
+            clauses,
+            fallback,
+        } => ReturnBody::string_case(
+            (**subject).clone(),
+            clauses
+                .iter()
+                .map(|(value, branch)| {
+                    (value.clone(), utf_codepoint_function_return(branch.clone()))
+                })
+                .collect(),
+            utf_codepoint_function_return((**fallback).clone()),
+        ),
+        UtfCodepointFunctionExprKind::FloatCase {
+            subject,
+            clauses,
+            fallback,
+        } => ReturnBody::float_case(
+            (**subject).clone(),
+            clauses
+                .iter()
+                .map(|(value, branch)| (*value, utf_codepoint_function_return(branch.clone())))
+                .collect(),
+            utf_codepoint_function_return((**fallback).clone()),
+        ),
+        UtfCodepointFunctionExprKind::Block { steps, return_ } => ReturnBody::block(
+            steps.clone(),
+            utf_codepoint_function_return((**return_).clone()),
         ),
         _ => ReturnBody::expr(expression),
     }

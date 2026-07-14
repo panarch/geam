@@ -23,7 +23,7 @@ use crate::plan::{
     BitArrayExpr, BitArrayFunctionExpr, BoolExpr, BoolFunctionExpr, FloatExpr, FloatFunctionExpr,
     FunctionExpr, FunctionFunctionExpr, IntExpr, IntFunctionExpr, ListExpr, ListFunctionExpr,
     NilExpr, NilFunctionExpr, ParamLocal, StringExpr, StringFunctionExpr, TupleExpr,
-    TupleFunctionExpr, ValueType,
+    TupleFunctionExpr, UtfCodepointExpr, UtfCodepointFunctionExpr, ValueType,
 };
 
 pub(crate) struct Int(IntExpr);
@@ -31,6 +31,8 @@ pub(crate) struct Int(IntExpr);
 pub(crate) struct String(StringExpr);
 
 pub(crate) struct BitArray(BitArrayExpr);
+
+pub(crate) struct UtfCodepoint(UtfCodepointExpr);
 
 pub(crate) struct Float(FloatExpr);
 
@@ -49,6 +51,8 @@ pub(crate) struct IntFunction(IntFunctionExpr);
 pub(crate) struct StringFunction(StringFunctionExpr);
 
 pub(crate) struct BitArrayFunction(BitArrayFunctionExpr);
+
+pub(crate) struct UtfCodepointFunction(UtfCodepointFunctionExpr);
 
 pub(crate) struct FloatFunction(FloatFunctionExpr);
 

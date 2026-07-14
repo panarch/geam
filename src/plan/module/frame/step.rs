@@ -26,6 +26,10 @@ impl FrameLayout {
                 self.include_bit_array_expr(value);
                 self.include_bit_array(*local);
             }
+            StepKind::LetUtfCodepoint { local, value, .. } => {
+                self.include_utf_codepoint_expr(value);
+                self.include_utf_codepoint(*local);
+            }
             StepKind::LetBool { local, value, .. } => {
                 self.include_bool_expr(value);
                 self.include_bool(*local);
@@ -54,6 +58,10 @@ impl FrameLayout {
             StepKind::LetBitArrayFunction { local, value, .. } => {
                 self.include_bit_array_function_expr(value);
                 self.include_bit_array_function(*local);
+            }
+            StepKind::LetUtfCodepointFunction { local, value, .. } => {
+                self.include_utf_codepoint_function_expr(value);
+                self.include_utf_codepoint_function(*local);
             }
             StepKind::LetBoolFunction { local, value, .. } => {
                 self.include_bool_function_expr(value);

@@ -4,6 +4,7 @@ use crate::plan::FunctionType;
 use crate::plan::execution::{
     BitArrayFunctionId, BoolFunctionId, FloatFunctionId, FunctionFunctionId, IntFunctionId,
     ListFunctionId, NilFunctionId, ParamLocal, StringFunctionId, TupleFunctionId,
+    UtfCodepointFunctionId,
 };
 #[cfg(test)]
 use crate::plan::execution::{FunctionReturnFamily, RuntimeFunctionId};
@@ -19,6 +20,7 @@ pub(crate) enum FunctionValueKind {
     Float(FloatFunctionValue),
     String(StringFunctionValue),
     BitArray(BitArrayFunctionValue),
+    UtfCodepoint(UtfCodepointFunctionValue),
     Bool(BoolFunctionValue),
     Nil(NilFunctionValue),
     Tuple(TupleFunctionValue),
@@ -53,6 +55,14 @@ pub(crate) struct StringFunctionValue {
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct BitArrayFunctionValue {
     runtime_id: BitArrayFunctionId,
+    params: Vec<ParamLocal>,
+    captures: Vec<CaptureValue>,
+    type_: FunctionType,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct UtfCodepointFunctionValue {
+    runtime_id: UtfCodepointFunctionId,
     params: Vec<ParamLocal>,
     captures: Vec<CaptureValue>,
     type_: FunctionType,
@@ -122,6 +132,9 @@ impl FunctionValue {
             RuntimeFunctionId::BitArray(runtime_id) => FunctionValueKind::BitArray(
                 BitArrayFunctionValue::new_with_captures(runtime_id, params, Vec::new(), type_),
             ),
+            RuntimeFunctionId::UtfCodepoint(runtime_id) => FunctionValueKind::UtfCodepoint(
+                UtfCodepointFunctionValue::new_with_captures(runtime_id, params, Vec::new(), type_),
+            ),
             RuntimeFunctionId::Bool(runtime_id) => FunctionValueKind::Bool(
                 BoolFunctionValue::new_with_captures(runtime_id, params, Vec::new(), type_),
             ),
@@ -160,6 +173,7 @@ impl FunctionValue {
             FunctionValueKind::Float(value) => value.type_(),
             FunctionValueKind::String(value) => value.type_(),
             FunctionValueKind::BitArray(value) => value.type_(),
+            FunctionValueKind::UtfCodepoint(value) => value.type_(),
             FunctionValueKind::Bool(value) => value.type_(),
             FunctionValueKind::Nil(value) => value.type_(),
             FunctionValueKind::Tuple(value) => value.type_(),
@@ -182,6 +196,7 @@ impl FunctionValueKind {
             Self::Float(_) => FunctionReturnFamily::Float,
             Self::String(_) => FunctionReturnFamily::String,
             Self::BitArray(_) => FunctionReturnFamily::BitArray,
+            Self::UtfCodepoint(_) => FunctionReturnFamily::UtfCodepoint,
             Self::Bool(_) => FunctionReturnFamily::Bool,
             Self::Nil(_) => FunctionReturnFamily::Nil,
             Self::Tuple(_) => FunctionReturnFamily::Tuple,
@@ -263,6 +278,26 @@ impl StringFunctionValue {
 impl BitArrayFunctionValue {
     pub(crate) fn new_with_captures(
         runtime_id: BitArrayFunctionId,
+        params: Vec<ParamLocal>,
+        captures: Vec<CaptureValue>,
+        type_: FunctionType,
+    ) -> Self {
+        Self {
+            runtime_id,
+            params,
+            captures,
+            type_,
+        }
+    }
+
+    pub(crate) fn type_(&self) -> FunctionType {
+        self.type_.clone()
+    }
+}
+
+impl UtfCodepointFunctionValue {
+    pub(crate) fn new_with_captures(
+        runtime_id: UtfCodepointFunctionId,
         params: Vec<ParamLocal>,
         captures: Vec<CaptureValue>,
         type_: FunctionType,
@@ -417,6 +452,14 @@ impl From<BitArrayFunctionValue> for FunctionValue {
     }
 }
 
+impl From<UtfCodepointFunctionValue> for FunctionValue {
+    fn from(value: UtfCodepointFunctionValue) -> Self {
+        Self {
+            kind: FunctionValueKind::UtfCodepoint(value),
+        }
+    }
+}
+
 impl From<BoolFunctionValue> for FunctionValue {
     fn from(value: BoolFunctionValue) -> Self {
         Self {
@@ -487,6 +530,11 @@ mod tests {
                 FunctionReturnFamily::BitArray,
             ),
             (
+                "fn value() -> UtfCodepoint { let assert <<value:utf8_codepoint>> = <<65>> value } pub fn main() { value() }",
+                ValueType::UtfCodepoint,
+                FunctionReturnFamily::UtfCodepoint,
+            ),
+            (
                 "pub fn main() -> Bool { True }",
                 ValueType::Bool,
                 FunctionReturnFamily::Bool,
@@ -533,6 +581,10 @@ mod tests {
             ("pub fn main() -> Float { 1.0 }", ValueType::Float),
             ("pub fn main() -> String { \"one\" }", ValueType::String),
             ("pub fn main() -> BitArray { <<1>> }", ValueType::BitArray),
+            (
+                "fn value() -> UtfCodepoint { let assert <<value:utf8_codepoint>> = <<65>> value } pub fn main() { value() }",
+                ValueType::UtfCodepoint,
+            ),
             ("pub fn main() -> Bool { True }", ValueType::Bool),
             ("pub fn main() -> Nil { Nil }", ValueType::Nil),
             (
@@ -561,6 +613,7 @@ mod tests {
                 FunctionValueKind::Float(value) => FunctionValue::from(value.clone()),
                 FunctionValueKind::String(value) => FunctionValue::from(value.clone()),
                 FunctionValueKind::BitArray(value) => FunctionValue::from(value.clone()),
+                FunctionValueKind::UtfCodepoint(value) => FunctionValue::from(value.clone()),
                 FunctionValueKind::Bool(value) => FunctionValue::from(value.clone()),
                 FunctionValueKind::Nil(value) => FunctionValue::from(value.clone()),
                 FunctionValueKind::Tuple(value) => FunctionValue::from(value.clone()),

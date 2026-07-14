@@ -2,7 +2,8 @@ use crate::plan::{
     BitArrayExpr, BitArrayExprKind, BitArrayReturn, BoolExpr, BoolExprKind, BoolReturn, FloatExpr,
     FloatExprKind, FloatReturn, IntExpr, IntExprKind, IntReturn, ListItem, NilExpr, NilExprKind,
     NilReturn, ReturnBody, StringExpr, StringExprKind, StringReturn, TupleExpr, TupleExprKind,
-    TupleReturn, TypedListExpr, TypedListReturnKind,
+    TupleReturn, TypedListExpr, TypedListReturnKind, UtfCodepointExpr, UtfCodepointExprKind,
+    UtfCodepointReturn,
 };
 
 #[cfg(test)]
@@ -168,6 +169,63 @@ pub(super) fn bit_array_return(expression: BitArrayExpr) -> BitArrayReturn {
         ),
         BitArrayExprKind::Block { steps, return_ } => {
             ReturnBody::block(steps.clone(), bit_array_return((**return_).clone()))
+        }
+        _ => ReturnBody::expr(expression),
+    }
+}
+
+pub(super) fn utf_codepoint_return(expression: UtfCodepointExpr) -> UtfCodepointReturn {
+    match expression.kind() {
+        UtfCodepointExprKind::Call { function, args } => {
+            ReturnBody::tail_call(*function, args.clone())
+        }
+        UtfCodepointExprKind::BoolCase {
+            subject,
+            true_,
+            false_,
+        } => ReturnBody::bool_case(
+            (**subject).clone(),
+            utf_codepoint_return((**true_).clone()),
+            utf_codepoint_return((**false_).clone()),
+        ),
+        UtfCodepointExprKind::IntCase {
+            subject,
+            clauses,
+            fallback,
+        } => ReturnBody::int_case(
+            (**subject).clone(),
+            clauses
+                .iter()
+                .map(|(value, branch)| (value.clone(), utf_codepoint_return(branch.clone())))
+                .collect(),
+            utf_codepoint_return((**fallback).clone()),
+        ),
+        UtfCodepointExprKind::StringCase {
+            subject,
+            clauses,
+            fallback,
+        } => ReturnBody::string_case(
+            (**subject).clone(),
+            clauses
+                .iter()
+                .map(|(value, branch)| (value.clone(), utf_codepoint_return(branch.clone())))
+                .collect(),
+            utf_codepoint_return((**fallback).clone()),
+        ),
+        UtfCodepointExprKind::FloatCase {
+            subject,
+            clauses,
+            fallback,
+        } => ReturnBody::float_case(
+            (**subject).clone(),
+            clauses
+                .iter()
+                .map(|(value, branch)| (*value, utf_codepoint_return(branch.clone())))
+                .collect(),
+            utf_codepoint_return((**fallback).clone()),
+        ),
+        UtfCodepointExprKind::Block { steps, return_ } => {
+            ReturnBody::block(steps.clone(), utf_codepoint_return((**return_).clone()))
         }
         _ => ReturnBody::expr(expression),
     }
@@ -399,6 +457,9 @@ pub(super) fn list_return(expression: ListExpr) -> ListReturn {
         ListExpr::Int(expression) => ListReturn::Int(typed_list_return_body(expression)),
         ListExpr::String(expression) => ListReturn::String(typed_list_return_body(expression)),
         ListExpr::BitArray(expression) => ListReturn::BitArray(typed_list_return_body(expression)),
+        ListExpr::UtfCodepoint(expression) => {
+            ListReturn::UtfCodepoint(typed_list_return_body(expression))
+        }
         ListExpr::Float(expression) => ListReturn::Float(typed_list_return_body(expression)),
         ListExpr::Bool(expression) => ListReturn::Bool(typed_list_return_body(expression)),
         ListExpr::Nil(expression) => ListReturn::Nil(typed_list_return_body(expression)),
@@ -570,6 +631,10 @@ mod tests {
         assert_eq!(
             list_return(ListExpr::value(Vec::new(), ValueType::BitArray)),
             ListReturn::expr(ListExpr::value(Vec::new(), ValueType::BitArray)),
+        );
+        assert_eq!(
+            list_return(ListExpr::value(Vec::new(), ValueType::UtfCodepoint)),
+            ListReturn::expr(ListExpr::value(Vec::new(), ValueType::UtfCodepoint)),
         );
         assert_eq!(
             list_return(ListExpr::value(Vec::new(), ValueType::Bool)),

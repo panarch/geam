@@ -258,6 +258,9 @@ fn define_assert_local(
         ValueType::Float => ParamLocal::float(context.define_float_local(name)),
         ValueType::String => ParamLocal::string(context.define_string_local(name)),
         ValueType::BitArray => ParamLocal::bit_array(context.define_bit_array_local(name)),
+        ValueType::UtfCodepoint => {
+            ParamLocal::utf_codepoint(context.define_utf_codepoint_local(name))
+        }
         ValueType::Bool => ParamLocal::bool(context.define_bool_local(name)),
         ValueType::Nil => ParamLocal::nil(context.define_nil_local(name)),
         ValueType::Tuple(type_) => {
@@ -284,6 +287,10 @@ fn define_assert_local(
                 ),
                 ValueType::BitArray => ParamLocal::bit_array_function(
                     context.define_bit_array_function_local(name, type_.clone()),
+                    type_,
+                ),
+                ValueType::UtfCodepoint => ParamLocal::utf_codepoint_function(
+                    context.define_utf_codepoint_function_local(name, type_.clone()),
                     type_,
                 ),
                 ValueType::Bool => ParamLocal::bool_function(
@@ -441,7 +448,8 @@ mod tests {
         FunctionType, IntExpr, IntFunctionLocalId, IntListLocalId, IntLocalId, ListAssertPattern,
         ListAssertTail, ListLocal, NilFunctionLocalId, NilLocalId, PanicSite, ParamLocal,
         Signedness, SourceSpan, Step, StringExpr, StringFunctionLocalId, StringLocalId,
-        TupleFunctionLocalId, TupleLocalId, ValueType,
+        TupleFunctionLocalId, TupleLocalId, UtfCodepointFunctionLocalId, UtfCodepointLocalId,
+        ValueType,
     };
     use crate::planner::context::{AnonymousFunctions, PlanContext};
     use crate::planner::dsl::{
@@ -1515,6 +1523,7 @@ pub fn main() {
         let float_function_type = FunctionType::new(Vec::new(), ValueType::Float);
         let string_function_type = FunctionType::new(Vec::new(), ValueType::String);
         let bit_array_function_type = FunctionType::new(Vec::new(), ValueType::BitArray);
+        let utf_codepoint_function_type = FunctionType::new(Vec::new(), ValueType::UtfCodepoint);
         let bool_function_type = FunctionType::new(Vec::new(), ValueType::Bool);
         let nil_function_type = FunctionType::new(Vec::new(), ValueType::Nil);
         let tuple_function_type =
@@ -1541,6 +1550,14 @@ pub fn main() {
         assert_eq!(
             super::define_assert_local("bit_array".into(), ValueType::BitArray, &mut context),
             ParamLocal::bit_array(BitArrayLocalId(0)),
+        );
+        assert_eq!(
+            super::define_assert_local(
+                "utf_codepoint".into(),
+                ValueType::UtfCodepoint,
+                &mut context,
+            ),
+            ParamLocal::utf_codepoint(UtfCodepointLocalId(0)),
         );
         assert_eq!(
             super::define_assert_local("bool".into(), ValueType::Bool, &mut context),
@@ -1597,6 +1614,17 @@ pub fn main() {
                 &mut context,
             ),
             ParamLocal::bit_array_function(BitArrayFunctionLocalId(0), bit_array_function_type,),
+        );
+        assert_eq!(
+            super::define_assert_local(
+                "utf_codepoint_function".into(),
+                ValueType::Function(Box::new(utf_codepoint_function_type.clone())),
+                &mut context,
+            ),
+            ParamLocal::utf_codepoint_function(
+                UtfCodepointFunctionLocalId(0),
+                utf_codepoint_function_type,
+            ),
         );
         assert_eq!(
             super::define_assert_local(

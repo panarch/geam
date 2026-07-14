@@ -48,6 +48,7 @@ fn contains_function_value(type_: &ValueType) -> bool {
         | ValueType::Float
         | ValueType::String
         | ValueType::BitArray
+        | ValueType::UtfCodepoint
         | ValueType::Bool
         | ValueType::Nil => false,
     }

@@ -5,6 +5,7 @@ use super::expression::{
     function_function_expr, function_list_expr, int_expr, int_function_expr, int_list_expr,
     list_function_expr, list_list_expr, nil_expr, nil_function_expr, nil_list_expr, string_expr,
     string_function_expr, string_list_expr, tuple_expr, tuple_function_expr, tuple_list_expr,
+    utf_codepoint_expr, utf_codepoint_function_expr, utf_codepoint_list_expr,
 };
 use super::id::list_function_function_id;
 use crate::plan::{execution, module};
@@ -42,6 +43,15 @@ pub(super) fn bit_array_return(
 ) -> execution::BitArrayReturn {
     return_body(body, context, bit_array_expr, |id, _| {
         execution::BitArrayFunctionId(id.0)
+    })
+}
+
+pub(super) fn utf_codepoint_return(
+    body: module::UtfCodepointReturn,
+    context: &mut LoweringContext,
+) -> execution::UtfCodepointReturn {
+    return_body(body, context, utf_codepoint_expr, |id, _| {
+        execution::UtfCodepointFunctionId(id.0)
     })
 }
 
@@ -98,6 +108,16 @@ pub(super) fn bit_array_list_return(
     let type_id = context.bit_array_list_type();
     return_body(body, context, bit_array_list_expr, move |id, _| {
         execution::BitArrayListFunctionId::new(id.0, type_id)
+    })
+}
+
+pub(super) fn utf_codepoint_list_return(
+    body: module::UtfCodepointListReturn,
+    context: &mut LoweringContext,
+) -> execution::UtfCodepointListReturn {
+    let type_id = context.utf_codepoint_list_type();
+    return_body(body, context, utf_codepoint_list_expr, move |id, _| {
+        execution::UtfCodepointListFunctionId::new(id.0, type_id)
     })
 }
 
@@ -193,6 +213,15 @@ pub(super) fn bit_array_function_return(
 ) -> execution::BitArrayFunctionReturn {
     return_body(body, context, bit_array_function_expr, |id, _| {
         execution::BitArrayFunctionFunctionId(id.0)
+    })
+}
+
+pub(super) fn utf_codepoint_function_return(
+    body: module::UtfCodepointFunctionReturn,
+    context: &mut LoweringContext,
+) -> execution::UtfCodepointFunctionReturn {
+    return_body(body, context, utf_codepoint_function_expr, |id, _| {
+        execution::UtfCodepointFunctionFunctionId(id.0)
     })
 }
 

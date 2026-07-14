@@ -12,7 +12,9 @@ use super::super::{
     NilListFunctionId, NilListReturn, NilReturn, RuntimeFunctionId, StringFunctionFunctionId,
     StringFunctionId, StringFunctionReturn, StringListFunctionId, StringListReturn, StringReturn,
     TupleFunctionFunctionId, TupleFunctionId, TupleFunctionReturn, TupleListFunctionId,
-    TupleListReturn, TupleReturn,
+    TupleListReturn, TupleReturn, UtfCodepointFunctionFunctionId, UtfCodepointFunctionId,
+    UtfCodepointFunctionReturn, UtfCodepointListFunctionId, UtfCodepointListReturn,
+    UtfCodepointReturn,
 };
 use super::LoweringContext;
 use crate::plan::module;
@@ -23,6 +25,7 @@ pub(super) struct FunctionTableBuilder {
     float_functions: Vec<(usize, ExecutableFunction<FloatReturn>)>,
     string_functions: Vec<(usize, ExecutableFunction<StringReturn>)>,
     bit_array_functions: Vec<(usize, ExecutableFunction<BitArrayReturn>)>,
+    utf_codepoint_functions: Vec<(usize, ExecutableFunction<UtfCodepointReturn>)>,
     bool_functions: Vec<(usize, ExecutableFunction<BoolReturn>)>,
     nil_functions: Vec<(usize, ExecutableFunction<NilReturn>)>,
     tuple_functions: Vec<(usize, ExecutableFunction<TupleReturn>)>,
@@ -31,6 +34,10 @@ pub(super) struct FunctionTableBuilder {
     bit_array_list_functions: Vec<(
         BitArrayListFunctionId,
         ExecutableFunction<BitArrayListReturn>,
+    )>,
+    utf_codepoint_list_functions: Vec<(
+        UtfCodepointListFunctionId,
+        ExecutableFunction<UtfCodepointListReturn>,
     )>,
     float_list_functions: Vec<(FloatListFunctionId, ExecutableFunction<FloatListReturn>)>,
     bool_list_functions: Vec<(BoolListFunctionId, ExecutableFunction<BoolListReturn>)>,
@@ -45,12 +52,14 @@ pub(super) struct FunctionTableBuilder {
     float_function_functions: Vec<(usize, ExecutableFunction<FloatFunctionReturn>)>,
     string_function_functions: Vec<(usize, ExecutableFunction<StringFunctionReturn>)>,
     bit_array_function_functions: Vec<(usize, ExecutableFunction<BitArrayFunctionReturn>)>,
+    utf_codepoint_function_functions: Vec<(usize, ExecutableFunction<UtfCodepointFunctionReturn>)>,
     bool_function_functions: Vec<(usize, ExecutableFunction<BoolFunctionReturn>)>,
     nil_function_functions: Vec<(usize, ExecutableFunction<NilFunctionReturn>)>,
     tuple_function_functions: Vec<(usize, ExecutableFunction<TupleFunctionReturn>)>,
     int_list_function_functions: Vec<(usize, ExecutableFunction<ListFunctionReturn>)>,
     string_list_function_functions: Vec<(usize, ExecutableFunction<ListFunctionReturn>)>,
     bit_array_list_function_functions: Vec<(usize, ExecutableFunction<ListFunctionReturn>)>,
+    utf_codepoint_list_function_functions: Vec<(usize, ExecutableFunction<ListFunctionReturn>)>,
     float_list_function_functions: Vec<(usize, ExecutableFunction<ListFunctionReturn>)>,
     bool_list_function_functions: Vec<(usize, ExecutableFunction<ListFunctionReturn>)>,
     nil_list_function_functions: Vec<(usize, ExecutableFunction<ListFunctionReturn>)>,
@@ -122,6 +131,18 @@ impl FunctionTableBuilder {
                     ),
                 ));
                 RuntimeFunctionId::BitArray(id)
+            }
+            module::ReturnExprKind::UtfCodepoint { runtime_id, body } => {
+                let id = UtfCodepointFunctionId(runtime_id.0);
+                self.utf_codepoint_functions.push((
+                    runtime_id.0,
+                    ExecutableFunction::new(
+                        frame_layout,
+                        steps,
+                        super::return_::utf_codepoint_return(body, context),
+                    ),
+                ));
+                RuntimeFunctionId::UtfCodepoint(id)
             }
             module::ReturnExprKind::Bool { runtime_id, body } => {
                 let id = BoolFunctionId(runtime_id.0);
@@ -204,6 +225,21 @@ impl FunctionTableBuilder {
                     ),
                 ));
                 RuntimeFunctionId::List(ListFunctionId::BitArray(id))
+            }
+            module::ReturnExprKind::UtfCodepointList { runtime_id, body } => {
+                let id = UtfCodepointListFunctionId::new(
+                    runtime_id.0,
+                    context.utf_codepoint_list_type(),
+                );
+                self.utf_codepoint_list_functions.push((
+                    id,
+                    ExecutableFunction::new(
+                        frame_layout,
+                        steps,
+                        super::return_::utf_codepoint_list_return(body, context),
+                    ),
+                ));
+                RuntimeFunctionId::List(ListFunctionId::UtfCodepoint(id))
             }
             module::ReturnExprKind::FloatList { runtime_id, body } => {
                 let id = FloatListFunctionId::new(runtime_id.0, context.float_list_type());
@@ -368,6 +404,25 @@ impl FunctionTableBuilder {
                     return_type: context.function_type(type_),
                 }
             }
+            module::ReturnExprKind::UtfCodepointFunction {
+                runtime_id,
+                type_,
+                body,
+            } => {
+                let id = UtfCodepointFunctionFunctionId(runtime_id.0);
+                self.utf_codepoint_function_functions.push((
+                    runtime_id.0,
+                    ExecutableFunction::new(
+                        frame_layout,
+                        steps,
+                        super::return_::utf_codepoint_function_return(body, context),
+                    ),
+                ));
+                RuntimeFunctionId::Function {
+                    id: FunctionFunctionId::UtfCodepoint(id),
+                    return_type: context.function_type(type_),
+                }
+            }
             module::ReturnExprKind::BoolFunction {
                 runtime_id,
                 type_,
@@ -479,6 +534,10 @@ impl FunctionTableBuilder {
                 self.bit_array_list_function_functions
                     .push((id.0, function));
             }
+            ListFunctionFunctionId::UtfCodepoint { id, .. } => {
+                self.utf_codepoint_list_function_functions
+                    .push((id.0, function));
+            }
             ListFunctionFunctionId::Float { id, .. } => {
                 self.float_list_function_functions.push((id.0, function));
             }
@@ -506,6 +565,7 @@ impl FunctionTableBuilder {
             float_functions: sort_functions(self.float_functions),
             string_functions: sort_functions(self.string_functions),
             bit_array_functions: sort_functions(self.bit_array_functions),
+            utf_codepoint_functions: sort_functions(self.utf_codepoint_functions),
             bool_functions: sort_functions(self.bool_functions),
             nil_functions: sort_functions(self.nil_functions),
             tuple_functions: sort_functions(self.tuple_functions),
@@ -514,6 +574,10 @@ impl FunctionTableBuilder {
             bit_array_list_functions: sort_list_functions(self.bit_array_list_functions, |id| {
                 id.index()
             }),
+            utf_codepoint_list_functions: sort_list_functions(
+                self.utf_codepoint_list_functions,
+                |id| id.index(),
+            ),
             float_list_functions: sort_list_functions(self.float_list_functions, |id| id.index()),
             bool_list_functions: sort_list_functions(self.bool_list_functions, |id| id.index()),
             nil_list_functions: sort_list_functions(self.nil_list_functions, |id| id.index()),
@@ -526,6 +590,7 @@ impl FunctionTableBuilder {
             float_function_functions: sort_functions(self.float_function_functions),
             string_function_functions: sort_functions(self.string_function_functions),
             bit_array_function_functions: sort_functions(self.bit_array_function_functions),
+            utf_codepoint_function_functions: sort_functions(self.utf_codepoint_function_functions),
             bool_function_functions: sort_functions(self.bool_function_functions),
             nil_function_functions: sort_functions(self.nil_function_functions),
             tuple_function_functions: sort_functions(self.tuple_function_functions),
@@ -533,6 +598,9 @@ impl FunctionTableBuilder {
             string_list_function_functions: sort_functions(self.string_list_function_functions),
             bit_array_list_function_functions: sort_functions(
                 self.bit_array_list_function_functions,
+            ),
+            utf_codepoint_list_function_functions: sort_functions(
+                self.utf_codepoint_list_function_functions,
             ),
             float_list_function_functions: sort_functions(self.float_list_function_functions),
             bool_list_function_functions: sort_functions(self.bool_list_function_functions),
@@ -573,12 +641,19 @@ mod tests {
 fn int_value() { 1 }
 fn float_value() { 1.0 }
 fn string_value() { "one" }
+fn bit_array_value() { <<1>> }
+fn utf_codepoint_value() -> UtfCodepoint {
+  let assert <<value:utf8_codepoint>> = <<65>>
+  value
+}
 fn bool_value() { True }
 fn nil_value() { Nil }
 fn tuple_value() { #(1) }
 
 fn int_list() { [1] }
 fn string_list() { ["one"] }
+fn bit_array_list() { [<<1>>] }
+fn utf_codepoint_list() { [utf_codepoint_value()] }
 fn float_list() { [1.0] }
 fn bool_list() { [True] }
 fn nil_list() { [Nil] }
@@ -589,11 +664,15 @@ fn function_list() { [int_value] }
 fn int_function() { int_value }
 fn float_function() { float_value }
 fn string_function() { string_value }
+fn bit_array_function() { bit_array_value }
+fn utf_codepoint_function() { utf_codepoint_value }
 fn bool_function() { bool_value }
 fn nil_function() { nil_value }
 fn tuple_function() { tuple_value }
 fn int_list_function() { int_list }
 fn string_list_function() { string_list }
+fn bit_array_list_function() { bit_array_list }
+fn utf_codepoint_list_function() { utf_codepoint_list }
 fn float_list_function() { float_list }
 fn bool_list_function() { bool_list }
 fn nil_list_function() { nil_list }
@@ -616,11 +695,15 @@ pub fn main() { int_value() }
         assert_eq!(plan.functions.int_functions.len(), 2);
         assert_eq!(plan.functions.float_functions.len(), 1);
         assert_eq!(plan.functions.string_functions.len(), 1);
+        assert_eq!(plan.functions.bit_array_functions.len(), 1);
+        assert_eq!(plan.functions.utf_codepoint_functions.len(), 1);
         assert_eq!(plan.functions.bool_functions.len(), 1);
         assert_eq!(plan.functions.nil_functions.len(), 1);
         assert_eq!(plan.functions.tuple_functions.len(), 1);
         assert_eq!(plan.functions.int_list_functions.len(), 1);
         assert_eq!(plan.functions.string_list_functions.len(), 1);
+        assert_eq!(plan.functions.bit_array_list_functions.len(), 1);
+        assert_eq!(plan.functions.utf_codepoint_list_functions.len(), 1);
         assert_eq!(plan.functions.float_list_functions.len(), 1);
         assert_eq!(plan.functions.bool_list_functions.len(), 1);
         assert_eq!(plan.functions.nil_list_functions.len(), 1);
@@ -630,11 +713,18 @@ pub fn main() { int_value() }
         assert_eq!(plan.functions.int_function_functions.len(), 1);
         assert_eq!(plan.functions.float_function_functions.len(), 1);
         assert_eq!(plan.functions.string_function_functions.len(), 1);
+        assert_eq!(plan.functions.bit_array_function_functions.len(), 1);
+        assert_eq!(plan.functions.utf_codepoint_function_functions.len(), 1);
         assert_eq!(plan.functions.bool_function_functions.len(), 1);
         assert_eq!(plan.functions.nil_function_functions.len(), 1);
         assert_eq!(plan.functions.tuple_function_functions.len(), 1);
         assert_eq!(plan.functions.int_list_function_functions.len(), 1);
         assert_eq!(plan.functions.string_list_function_functions.len(), 1);
+        assert_eq!(plan.functions.bit_array_list_function_functions.len(), 1);
+        assert_eq!(
+            plan.functions.utf_codepoint_list_function_functions.len(),
+            1
+        );
         assert_eq!(plan.functions.float_list_function_functions.len(), 1);
         assert_eq!(plan.functions.bool_list_function_functions.len(), 1);
         assert_eq!(plan.functions.nil_list_function_functions.len(), 1);

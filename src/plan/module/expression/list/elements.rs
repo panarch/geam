@@ -2,11 +2,11 @@ use super::{
     BitArrayListExpr, BitArrayListItem, BoolListExpr, BoolListItem, FloatListExpr, FloatListItem,
     FunctionListExpr, FunctionListItem, IntListExpr, IntListItem, ListExpr, ListItem, ListListExpr,
     ListListItem, NilListExpr, NilListItem, StringListExpr, StringListItem, TupleListExpr,
-    TupleListItem,
+    TupleListItem, UtfCodepointListExpr, UtfCodepointListItem,
 };
 use crate::plan::{
     BitArrayExpr, BoolExpr, Expr, FloatExpr, FunctionExpr, FunctionType, IntExpr, NilExpr,
-    StringExpr, TupleExpr, ValueType,
+    StringExpr, TupleExpr, UtfCodepointExpr, ValueType,
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -14,6 +14,7 @@ pub(crate) enum ListElements {
     Int(Vec<IntExpr>),
     String(Vec<StringExpr>),
     BitArray(Vec<BitArrayExpr>),
+    UtfCodepoint(Vec<UtfCodepointExpr>),
     Float(Vec<FloatExpr>),
     Bool(Vec<BoolExpr>),
     Nil(Vec<NilExpr>),
@@ -44,6 +45,10 @@ pub(crate) enum ListSpreadElements {
     BitArray {
         values: Vec<BitArrayExpr>,
         tail: BitArrayListExpr,
+    },
+    UtfCodepoint {
+        values: Vec<UtfCodepointExpr>,
+        tail: UtfCodepointListExpr,
     },
     Float {
         values: Vec<FloatExpr>,
@@ -86,6 +91,7 @@ impl ListElements {
             ValueType::Int => list_elements_from_exprs(IntListItem, values),
             ValueType::String => list_elements_from_exprs(StringListItem, values),
             ValueType::BitArray => list_elements_from_exprs(BitArrayListItem, values),
+            ValueType::UtfCodepoint => list_elements_from_exprs(UtfCodepointListItem, values),
             ValueType::Float => list_elements_from_exprs(FloatListItem, values),
             ValueType::Bool => list_elements_from_exprs(BoolListItem, values),
             ValueType::Nil => list_elements_from_exprs(NilListItem, values),
@@ -109,6 +115,7 @@ impl ListElements {
             Self::Int(_) => ValueType::Int,
             Self::String(_) => ValueType::String,
             Self::BitArray(_) => ValueType::BitArray,
+            Self::UtfCodepoint(_) => ValueType::UtfCodepoint,
             Self::Float(_) => ValueType::Float,
             Self::Bool(_) => ValueType::Bool,
             Self::Nil(_) => ValueType::Nil,
@@ -145,6 +152,12 @@ impl ListSpreadElements {
                     return Err(ListElementTypeMismatch { expected, actual });
                 };
                 Ok(Self::BitArray { values, tail })
+            }
+            ListElements::UtfCodepoint(values) => {
+                let Some(tail) = tail.into_utf_codepoint() else {
+                    return Err(ListElementTypeMismatch { expected, actual });
+                };
+                Ok(Self::UtfCodepoint { values, tail })
             }
             ListElements::Float(values) => {
                 let Some(tail) = tail.into_float() else {
@@ -226,7 +239,8 @@ mod tests {
     use super::{ListElementTypeMismatch, ListElements, ListSpreadElements};
     use crate::plan::{
         BitArrayExpr, BoolExpr, Expr, FloatExpr, FunctionExpr, FunctionReference, FunctionType,
-        IntExpr, ListExpr, NilExpr, RuntimeFunctionId, StringExpr, TupleExpr, ValueType,
+        IntExpr, ListExpr, NilExpr, RuntimeFunctionId, StringExpr, TupleExpr, UtfCodepointExpr,
+        UtfCodepointLocalId, ValueType,
     };
 
     #[test]
@@ -305,6 +319,14 @@ mod tests {
             ValueType::BitArray,
         );
         assert_eq!(
+            ListElements::UtfCodepoint(vec![UtfCodepointExpr::local_get(
+                UtfCodepointLocalId(0),
+                "codepoint".into(),
+            )])
+            .item_type(),
+            ValueType::UtfCodepoint,
+        );
+        assert_eq!(
             ListElements::Tuple {
                 item_type: vec![ValueType::String],
                 values: Vec::new(),
@@ -349,6 +371,19 @@ mod tests {
             ),
             Err(ListElementTypeMismatch {
                 expected: ValueType::BitArray,
+                actual: ValueType::Int,
+            }),
+        );
+        assert_eq!(
+            ListSpreadElements::from_parts(
+                ListElements::UtfCodepoint(vec![UtfCodepointExpr::local_get(
+                    UtfCodepointLocalId(0),
+                    "codepoint".into(),
+                )]),
+                ListExpr::value(Vec::new(), ValueType::Int),
+            ),
+            Err(ListElementTypeMismatch {
+                expected: ValueType::UtfCodepoint,
                 actual: ValueType::Int,
             }),
         );

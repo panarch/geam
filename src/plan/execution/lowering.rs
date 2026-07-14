@@ -38,6 +38,10 @@ impl LoweringContext {
         self.list_types.bit_array_list_type()
     }
 
+    fn utf_codepoint_list_type(&mut self) -> super::UtfCodepointListTypeId {
+        self.list_types.utf_codepoint_list_type()
+    }
+
     fn float_list_type(&mut self) -> super::FloatListTypeId {
         self.list_types.float_list_type()
     }

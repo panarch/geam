@@ -172,6 +172,9 @@ fn closure_expr(
         RuntimeFunctionId::BitArray(runtime_id) => FunctionExpr::bit_array(
             crate::plan::BitArrayFunctionExpr::closure(*runtime_id, params, captures, type_),
         ),
+        RuntimeFunctionId::UtfCodepoint(runtime_id) => FunctionExpr::utf_codepoint(
+            crate::plan::UtfCodepointFunctionExpr::closure(*runtime_id, params, captures, type_),
+        ),
         RuntimeFunctionId::Float(runtime_id) => FunctionExpr::float(
             crate::plan::FloatFunctionExpr::closure(*runtime_id, params, captures, type_),
         ),
@@ -226,6 +229,12 @@ fn anonymous_function_type(type_: &Type) -> Result<FunctionType, PlanError> {
             reason: InvalidTypedAstReason::ExpressionType {
                 expected: InvalidExpressionType::Function,
                 actual: InvalidExpressionType::BitArray,
+            },
+        }),
+        Some(ValueType::UtfCodepoint) => Err(PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::ExpressionType {
+                expected: InvalidExpressionType::Function,
+                actual: InvalidExpressionType::UtfCodepoint,
             },
         }),
         Some(ValueType::Float) => Err(PlanError::InvalidTypedAst {
@@ -814,6 +823,7 @@ pub fn main() {
                 gleam_core::type_::bit_array(),
                 InvalidExpressionType::BitArray,
             ),
+            (utf_codepoint_type(), InvalidExpressionType::UtfCodepoint),
             (gleam_core::type_::float(), InvalidExpressionType::Float),
             (gleam_core::type_::bool(), InvalidExpressionType::Bool),
             (gleam_core::type_::nil(), InvalidExpressionType::Nil),
@@ -836,6 +846,16 @@ pub fn main() {
                 }),
             );
         }
+    }
+
+    fn utf_codepoint_type() -> std::sync::Arc<gleam_core::type_::Type> {
+        let module = compile(
+            r#"
+fn identity(value: UtfCodepoint) -> UtfCodepoint { value }
+pub fn main() { 0 }
+"#,
+        );
+        module.definitions.functions[0].arguments[0].type_.clone()
     }
 
     #[test]

@@ -5,7 +5,8 @@ use crate::plan::{
     FunctionExpr, FunctionListFunctionId, FunctionListLocalId, FunctionType, IntExpr,
     IntListFunctionId, IntListLocalId, ListListFunctionId, ListListLocalId, ListLocal, NilExpr,
     NilListFunctionId, NilListLocalId, StringExpr, StringListFunctionId, StringListLocalId,
-    TupleExpr, TupleListFunctionId, TupleListLocalId, ValueType,
+    TupleExpr, TupleListFunctionId, TupleListLocalId, UtfCodepointExpr, UtfCodepointListFunctionId,
+    UtfCodepointListLocalId, ValueType,
 };
 use std::fmt::Debug;
 
@@ -38,6 +39,9 @@ pub(crate) struct StringListItem;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct BitArrayListItem;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct UtfCodepointListItem;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct FloatListItem;
@@ -193,6 +197,18 @@ primitive_list_item!(
     BitArray,
     ListExpr::BitArray,
     ListLocal::BitArray
+);
+
+primitive_list_item!(
+    UtfCodepointListItem,
+    UtfCodepointExpr,
+    UtfCodepointListLocalId,
+    UtfCodepointListFunctionId,
+    ValueType::UtfCodepoint,
+    ExprKind::UtfCodepoint(value) => value,
+    UtfCodepoint,
+    ListExpr::UtfCodepoint,
+    ListLocal::UtfCodepoint
 );
 
 primitive_list_item!(

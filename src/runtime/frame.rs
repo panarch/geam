@@ -4,16 +4,18 @@ use crate::plan::execution::{
     FrameLayout, FunctionFunctionLocalId, FunctionListLocalId, IntFunctionLocalId, IntListLocalId,
     IntLocalId, ListFunctionLocal, ListListLocalId, NilFunctionLocalId, NilListLocalId, NilLocalId,
     StringFunctionLocalId, StringListLocalId, StringLocalId, TupleFunctionLocalId,
-    TupleListLocalId, TupleLocalId,
+    TupleListLocalId, TupleLocalId, UtfCodepointFunctionLocalId, UtfCodepointListLocalId,
+    UtfCodepointLocalId,
 };
 use crate::runtime::evaluated::{
     EvaluatedBitArray, EvaluatedBitArrayFunction, EvaluatedBoolFunction, EvaluatedFloatFunction,
     EvaluatedFunctionFunction, EvaluatedIntFunction, EvaluatedListFunction, EvaluatedNilFunction,
-    EvaluatedStringFunction, EvaluatedTupleFunction, EvaluatedValue,
+    EvaluatedStringFunction, EvaluatedTupleFunction, EvaluatedUtfCodepointFunction, EvaluatedValue,
 };
 use crate::runtime::state::{
     BitArrayListValueId, BoolListValueId, FloatListValueId, FunctionListValueId, IntListValueId,
     ListListValueId, NilListValueId, RuntimeState, StringListValueId, TupleListValueId,
+    UtfCodepointListValueId,
 };
 use ecow::EcoString;
 use num_bigint::BigInt;
@@ -24,11 +26,13 @@ pub(super) struct Frame {
     floats: Vec<f64>,
     strings: Vec<EcoString>,
     bit_arrays: Vec<EvaluatedBitArray>,
+    utf_codepoints: Vec<char>,
     bools: Vec<bool>,
     tuples: Vec<Vec<EvaluatedValue>>,
     int_lists: Vec<IntListValueId>,
     string_lists: Vec<StringListValueId>,
     bit_array_lists: Vec<BitArrayListValueId>,
+    utf_codepoint_lists: Vec<UtfCodepointListValueId>,
     float_lists: Vec<FloatListValueId>,
     bool_lists: Vec<BoolListValueId>,
     nil_lists: Vec<NilListValueId>,
@@ -39,6 +43,7 @@ pub(super) struct Frame {
     float_functions: HashMap<FloatFunctionLocalId, EvaluatedFloatFunction>,
     string_functions: HashMap<StringFunctionLocalId, EvaluatedStringFunction>,
     bit_array_functions: HashMap<BitArrayFunctionLocalId, EvaluatedBitArrayFunction>,
+    utf_codepoint_functions: HashMap<UtfCodepointFunctionLocalId, EvaluatedUtfCodepointFunction>,
     bool_functions: HashMap<BoolFunctionLocalId, EvaluatedBoolFunction>,
     nil_functions: HashMap<NilFunctionLocalId, EvaluatedNilFunction>,
     tuple_functions: HashMap<TupleFunctionLocalId, EvaluatedTupleFunction>,
@@ -53,6 +58,7 @@ impl Frame {
             floats: vec![0.0; layout.floats()],
             strings: vec![EcoString::default(); layout.strings()],
             bit_arrays: vec![EvaluatedBitArray::new(Default::default()); layout.bit_arrays()],
+            utf_codepoints: vec!['\0'; layout.utf_codepoints()],
             bools: vec![false; layout.bools()],
             tuples: vec![Vec::new(); layout.tuples()],
             int_lists: layout
@@ -69,6 +75,11 @@ impl Frame {
                 .bit_array_lists()
                 .iter()
                 .map(|type_id| state.bit_array(*type_id, Vec::new()))
+                .collect(),
+            utf_codepoint_lists: layout
+                .utf_codepoint_lists()
+                .iter()
+                .map(|type_id| state.utf_codepoint(*type_id, Vec::new()))
                 .collect(),
             float_lists: layout
                 .float_lists()
@@ -104,6 +115,7 @@ impl Frame {
             float_functions: HashMap::with_capacity(layout.float_functions()),
             string_functions: HashMap::with_capacity(layout.string_functions()),
             bit_array_functions: HashMap::with_capacity(layout.bit_array_functions()),
+            utf_codepoint_functions: HashMap::with_capacity(layout.utf_codepoint_functions()),
             bool_functions: HashMap::with_capacity(layout.bool_functions()),
             nil_functions: HashMap::with_capacity(layout.nil_functions()),
             tuple_functions: HashMap::with_capacity(layout.tuple_functions()),
@@ -142,6 +154,14 @@ impl Frame {
 
     pub(super) fn get_bit_array(&self, local: BitArrayLocalId) -> EvaluatedBitArray {
         self.bit_arrays[local.0].clone()
+    }
+
+    pub(super) fn set_utf_codepoint(&mut self, local: UtfCodepointLocalId, value: char) {
+        set_slot(&mut self.utf_codepoints, local.0, value);
+    }
+
+    pub(super) fn get_utf_codepoint(&self, local: UtfCodepointLocalId) -> char {
+        self.utf_codepoints[local.0]
     }
 
     pub(super) fn set_bool(&mut self, local: BoolLocalId, value: bool) {
@@ -190,6 +210,21 @@ impl Frame {
 
     pub(super) fn get_bit_array_list(&self, local: BitArrayListLocalId) -> BitArrayListValueId {
         self.bit_array_lists[local.0].clone()
+    }
+
+    pub(super) fn set_utf_codepoint_list(
+        &mut self,
+        local: UtfCodepointListLocalId,
+        value: UtfCodepointListValueId,
+    ) {
+        set_slot(&mut self.utf_codepoint_lists, local.0, value);
+    }
+
+    pub(super) fn get_utf_codepoint_list(
+        &self,
+        local: UtfCodepointListLocalId,
+    ) -> UtfCodepointListValueId {
+        self.utf_codepoint_lists[local.0].clone()
     }
 
     pub(super) fn set_float_list(&mut self, local: FloatListLocalId, value: FloatListValueId) {
@@ -296,6 +331,21 @@ impl Frame {
         local: BitArrayFunctionLocalId,
     ) -> EvaluatedBitArrayFunction {
         self.bit_array_functions[&local].clone()
+    }
+
+    pub(super) fn set_utf_codepoint_function(
+        &mut self,
+        local: UtfCodepointFunctionLocalId,
+        value: EvaluatedUtfCodepointFunction,
+    ) {
+        self.utf_codepoint_functions.insert(local, value);
+    }
+
+    pub(super) fn get_utf_codepoint_function(
+        &self,
+        local: UtfCodepointFunctionLocalId,
+    ) -> EvaluatedUtfCodepointFunction {
+        self.utf_codepoint_functions[&local].clone()
     }
 
     pub(super) fn set_bool_function(

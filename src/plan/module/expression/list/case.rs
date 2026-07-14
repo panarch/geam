@@ -1,6 +1,6 @@
 use super::{
     BitArrayListExpr, BoolListExpr, FloatListExpr, FunctionListExpr, IntListExpr, ListExpr,
-    ListListExpr, NilListExpr, StringListExpr, TupleListExpr,
+    ListListExpr, NilListExpr, StringListExpr, TupleListExpr, UtfCodepointListExpr,
 };
 use crate::plan::ValueType;
 
@@ -17,6 +17,10 @@ pub(crate) enum BoolListCaseBranches {
     BitArray {
         true_: BitArrayListExpr,
         false_: BitArrayListExpr,
+    },
+    UtfCodepoint {
+        true_: UtfCodepointListExpr,
+        false_: UtfCodepointListExpr,
     },
     Float {
         true_: FloatListExpr,
@@ -57,6 +61,10 @@ pub(crate) enum ListCaseBranches<Pattern> {
     BitArray {
         clauses: Vec<(Pattern, BitArrayListExpr)>,
         fallback: BitArrayListExpr,
+    },
+    UtfCodepoint {
+        clauses: Vec<(Pattern, UtfCodepointListExpr)>,
+        fallback: UtfCodepointListExpr,
     },
     Float {
         clauses: Vec<(Pattern, FloatListExpr)>,
@@ -106,6 +114,10 @@ impl<Pattern> ListCaseBranches<Pattern> {
             }),
             ListExpr::BitArray(fallback) => Ok(Self::BitArray {
                 clauses: typed_bit_array_clauses(clauses)?,
+                fallback,
+            }),
+            ListExpr::UtfCodepoint(fallback) => Ok(Self::UtfCodepoint {
+                clauses: typed_utf_codepoint_clauses(clauses)?,
                 fallback,
             }),
             ListExpr::Float(fallback) => Ok(Self::Float {
@@ -179,6 +191,23 @@ fn typed_bit_array_clauses<Pattern>(
         let actual = branch.element_type();
         let Some(branch) = branch.into_bit_array() else {
             return Err(list_case_branch_type_mismatch(ValueType::BitArray, actual));
+        };
+        typed_clauses.push((pattern, branch));
+    }
+    Ok(typed_clauses)
+}
+
+fn typed_utf_codepoint_clauses<Pattern>(
+    clauses: Vec<(Pattern, ListExpr)>,
+) -> Result<Vec<(Pattern, UtfCodepointListExpr)>, ListCaseBranchTypeMismatch> {
+    let mut typed_clauses = Vec::with_capacity(clauses.len());
+    for (pattern, branch) in clauses {
+        let actual = branch.element_type();
+        let Some(branch) = branch.into_utf_codepoint() else {
+            return Err(list_case_branch_type_mismatch(
+                ValueType::UtfCodepoint,
+                actual,
+            ));
         };
         typed_clauses.push((pattern, branch));
     }
@@ -336,6 +365,21 @@ mod tests {
         assert_eq!(
             ListExpr::bool_case(
                 BoolExpr::value(true),
+                BoolListCaseBranches::UtfCodepoint {
+                    true_: ListExpr::value(Vec::new(), ValueType::UtfCodepoint)
+                        .into_utf_codepoint()
+                        .expect("utf codepoint list"),
+                    false_: ListExpr::value(Vec::new(), ValueType::UtfCodepoint)
+                        .into_utf_codepoint()
+                        .expect("utf codepoint list"),
+                },
+            )
+            .element_type(),
+            ValueType::UtfCodepoint,
+        );
+        assert_eq!(
+            ListExpr::bool_case(
+                BoolExpr::value(true),
                 BoolListCaseBranches::Float {
                     true_: ListExpr::value(Vec::new(), ValueType::Float)
                         .into_float()
@@ -463,6 +507,18 @@ mod tests {
                 fallback: ListExpr::value(Vec::new(), ValueType::BitArray)
                     .into_bit_array()
                     .expect("bit array list"),
+            }),
+        );
+        assert_eq!(
+            ListCaseBranches::<BigInt>::from_exprs(
+                Vec::new(),
+                ListExpr::value(Vec::new(), ValueType::UtfCodepoint),
+            ),
+            Ok(ListCaseBranches::UtfCodepoint {
+                clauses: Vec::new(),
+                fallback: ListExpr::value(Vec::new(), ValueType::UtfCodepoint)
+                    .into_utf_codepoint()
+                    .expect("utf codepoint list"),
             }),
         );
         assert_eq!(
@@ -646,6 +702,16 @@ mod tests {
             ),
             Err(ListCaseBranchTypeMismatch {
                 expected: ValueType::BitArray,
+                actual: ValueType::Int,
+            }),
+        );
+        assert_eq!(
+            ListCaseBranches::from_exprs(
+                vec![(BigInt::from(1), ListExpr::value(Vec::new(), ValueType::Int))],
+                ListExpr::value(Vec::new(), ValueType::UtfCodepoint),
+            ),
+            Err(ListCaseBranchTypeMismatch {
+                expected: ValueType::UtfCodepoint,
                 actual: ValueType::Int,
             }),
         );

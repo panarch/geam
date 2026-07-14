@@ -3,13 +3,15 @@ use num_bigint::BigInt;
 
 use super::{
     eval_bit_array_expr, eval_bool_expr, eval_float_expr, eval_function_expr, eval_int_expr,
-    eval_nil_expr, eval_panic_expr, eval_string_expr, eval_tuple_expr, project_tuple_expr,
+    eval_nil_expr, eval_panic_expr, eval_string_expr, eval_tuple_expr, eval_utf_codepoint_expr,
+    project_tuple_expr,
 };
 use crate::plan::execution::{
     BitArrayListExpr, BitArrayListItem, BoolListExpr, BoolListItem, ExecutionPlan, FloatListExpr,
     FloatListItem, FunctionListExpr, FunctionListItem, IntListExpr, IntListItem, ListExpr,
     ListItem, ListListExpr, ListListItem, NilListExpr, NilListItem, StringListExpr, StringListItem,
-    TupleListExpr, TupleListItem, TypedListExpr, TypedListExprKind,
+    TupleListExpr, TupleListItem, TypedListExpr, TypedListExprKind, UtfCodepointListExpr,
+    UtfCodepointListItem,
 };
 use crate::plan::{FunctionType, ValueType};
 use crate::runtime::ExecutionError;
@@ -19,7 +21,7 @@ use crate::runtime::function;
 use crate::runtime::state::{
     BitArrayListValueId, BoolListValueId, FloatListValueId, FunctionListValueId, IntListValueId,
     ListHandleCore, ListListValueId, ListValueId, NilListValueId, RuntimeState, StringListValueId,
-    TupleListValueId,
+    TupleListValueId, UtfCodepointListValueId,
 };
 
 pub(in crate::runtime) fn eval_list_expr(
@@ -37,6 +39,9 @@ pub(in crate::runtime) fn eval_list_expr(
         }
         ListExpr::BitArray(expression) => {
             eval_bit_array_list_expr(plan, state, frame, expression).map(Into::into)
+        }
+        ListExpr::UtfCodepoint(expression) => {
+            eval_utf_codepoint_list_expr(plan, state, frame, expression).map(Into::into)
         }
         ListExpr::Float(expression) => {
             eval_float_list_expr(plan, state, frame, expression).map(Into::into)
@@ -83,6 +88,15 @@ pub(in crate::runtime) fn eval_bit_array_list_expr(
     frame: &mut Frame,
     expression: &BitArrayListExpr,
 ) -> Result<BitArrayListValueId, ExecutionError> {
+    eval_typed_list_expr(plan, state, frame, expression)
+}
+
+pub(in crate::runtime) fn eval_utf_codepoint_list_expr(
+    plan: &ExecutionPlan,
+    state: &mut RuntimeState,
+    frame: &mut Frame,
+    expression: &UtfCodepointListExpr,
+) -> Result<UtfCodepointListValueId, ExecutionError> {
     eval_typed_list_expr(plan, state, frame, expression)
 }
 
@@ -431,6 +445,18 @@ primitive_runtime_list_item!(
     run_bit_array_list_function_call
 );
 primitive_runtime_list_item!(
+    UtfCodepointListItem,
+    char,
+    UtfCodepointListValueId,
+    UtfCodepoint,
+    eval_utf_codepoint_expr,
+    utf_codepoint_values,
+    utf_codepoint,
+    get_utf_codepoint_list,
+    run_utf_codepoint_list_call,
+    run_utf_codepoint_list_function_call
+);
+primitive_runtime_list_item!(
     FloatListItem,
     f64,
     FloatListValueId,
@@ -726,6 +752,9 @@ pub(in crate::runtime) fn get_list_value(
         crate::plan::execution::ListLocal::BitArray { local, .. } => {
             frame.get_bit_array_list(*local).into()
         }
+        crate::plan::execution::ListLocal::UtfCodepoint { local, .. } => {
+            frame.get_utf_codepoint_list(*local).into()
+        }
         crate::plan::execution::ListLocal::Float { local, .. } => {
             frame.get_float_list(*local).into()
         }
@@ -790,6 +819,15 @@ project_primitive_list!(
     bit_array_values,
     ValueType::BitArray,
     cloned
+);
+project_primitive_list!(
+    project_utf_codepoint_list_expr,
+    UtfCodepointListExpr,
+    char,
+    eval_utf_codepoint_list_expr,
+    utf_codepoint_values,
+    ValueType::UtfCodepoint,
+    copied
 );
 project_primitive_list!(
     project_float_list_expr,
@@ -873,13 +911,13 @@ pub(in crate::runtime) fn project_function_list_expr(
 #[cfg(test)]
 mod tests {
     use super::{
-        project_bool_list_expr, project_float_list_expr, project_function_list_expr,
-        project_int_list_expr, project_nil_list_expr, project_string_list_expr,
-        project_tuple_list_expr,
+        project_bit_array_list_expr, project_bool_list_expr, project_float_list_expr,
+        project_function_list_expr, project_int_list_expr, project_nil_list_expr,
+        project_string_list_expr, project_tuple_list_expr, project_utf_codepoint_list_expr,
     };
     use crate::plan::execution::{
-        BoolListItem, FloatListItem, FunctionListItem, IntListItem, ListListItem, NilListItem,
-        StringListItem, TupleListItem,
+        BitArrayListItem, BoolListItem, FloatListItem, FunctionListItem, IntListItem, ListListItem,
+        NilListItem, StringListItem, TupleListItem, UtfCodepointListItem,
     };
     use crate::plan::execution::{ReturnBody, ReturnBodyKind};
     use crate::plan::{
@@ -898,6 +936,8 @@ mod tests {
             r#"
 fn int_values(values: List(Int)) { values }
 fn string_values(values: List(String)) { values }
+fn bit_array_values(values: List(BitArray)) { values }
+fn utf_codepoint_values(values: List(UtfCodepoint)) { values }
 fn float_values(values: List(Float)) { values }
 fn bool_values(values: List(Bool)) { values }
 fn nil_values(values: List(Nil)) { values }
@@ -928,6 +968,30 @@ pub fn main() { Nil }
             project_string_list_expr(&plan, &mut state, &mut frame, expression, 0),
             Err(ExecutionError::ListIndexOutOfBounds {
                 item_type: ValueType::String,
+                index: 0,
+                length: 0,
+            }),
+        );
+
+        let function = plan.bit_array_list_function(plan.bit_array_list_function_id(0));
+        let expression = expect_expression_return(function.return_());
+        let mut frame = Frame::new(function.frame_layout(), &mut state);
+        assert_eq!(
+            project_bit_array_list_expr(&plan, &mut state, &mut frame, expression, 0),
+            Err(ExecutionError::ListIndexOutOfBounds {
+                item_type: ValueType::BitArray,
+                index: 0,
+                length: 0,
+            }),
+        );
+
+        let function = plan.utf_codepoint_list_function(plan.utf_codepoint_list_function_id(0));
+        let expression = expect_expression_return(function.return_());
+        let mut frame = Frame::new(function.frame_layout(), &mut state);
+        assert_eq!(
+            project_utf_codepoint_list_expr(&plan, &mut state, &mut frame, expression, 0),
+            Err(ExecutionError::ListIndexOutOfBounds {
+                item_type: ValueType::UtfCodepoint,
                 index: 0,
                 length: 0,
             }),
@@ -1016,6 +1080,7 @@ pub fn main() { Nil }
 fn first_int(values: List(List(Int))) -> List(Int) { case values { [first, ..] -> first _ -> [] } }
 fn first_string(values: List(List(String))) -> List(String) { case values { [first, ..] -> first _ -> [] } }
 fn first_bit_array(values: List(List(BitArray))) -> List(BitArray) { case values { [first, ..] -> first _ -> [] } }
+fn first_utf_codepoint(values: List(List(UtfCodepoint))) -> List(UtfCodepoint) { case values { [first, ..] -> first _ -> [] } }
 fn first_float(values: List(List(Float))) -> List(Float) { case values { [first, ..] -> first _ -> [] } }
 fn first_bool(values: List(List(Bool))) -> List(Bool) { case values { [first, ..] -> first _ -> [] } }
 fn first_nil(values: List(List(Nil))) -> List(Nil) { case values { [first, ..] -> first _ -> [] } }
@@ -1037,6 +1102,15 @@ pub fn main() { Nil }
         );
 
         let function = plan.bit_array_list_function(plan.bit_array_list_function_id(0));
+        let mut frame = Frame::new(function.frame_layout(), &mut state);
+        assert_nested_list_out_of_bounds(
+            &plan,
+            &mut state,
+            &mut frame,
+            expect_nested_list_binding(function.return_()),
+        );
+
+        let function = plan.utf_codepoint_list_function(plan.utf_codepoint_list_function_id(0));
         let mut frame = Frame::new(function.frame_layout(), &mut state);
         assert_nested_list_out_of_bounds(
             &plan,
@@ -1143,6 +1217,8 @@ pub fn main() { Nil }
             r#"
 fn ints() -> List(Int) { [] }
 fn strings() -> List(String) { [] }
+fn bit_arrays() -> List(BitArray) { [] }
+fn utf_codepoints() -> List(UtfCodepoint) { [] }
 fn floats() -> List(Float) { [] }
 fn bools() -> List(Bool) { [] }
 fn nils() -> List(Nil) { [] }
@@ -1162,6 +1238,14 @@ pub fn main() { Nil }
         );
         assert_eq!(
             <StringListItem as super::RuntimeListItem>::from_tuple_value(int.clone().into()),
+            None,
+        );
+        assert_eq!(
+            <BitArrayListItem as super::RuntimeListItem>::from_tuple_value(int.clone().into()),
+            None,
+        );
+        assert_eq!(
+            <UtfCodepointListItem as super::RuntimeListItem>::from_tuple_value(int.clone().into()),
             None,
         );
         assert_eq!(
@@ -1450,6 +1534,14 @@ pub fn main() { Nil }
                 super::eval_bit_array_list_expr(plan, state, frame, value),
                 Err(ExecutionError::ListIndexOutOfBounds {
                     item_type: ValueType::List(Box::new(ValueType::BitArray)),
+                    index: 0,
+                    length: 0,
+                }),
+            ),
+            crate::plan::execution::ListLocalExpr::UtfCodepoint { value, .. } => assert_eq!(
+                super::eval_utf_codepoint_list_expr(plan, state, frame, value),
+                Err(ExecutionError::ListIndexOutOfBounds {
+                    item_type: ValueType::List(Box::new(ValueType::UtfCodepoint)),
                     index: 0,
                     length: 0,
                 }),

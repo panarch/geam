@@ -2,7 +2,6 @@ use bitvec::order::Msb0;
 use bitvec::slice::BitSlice;
 use bitvec::vec::BitVec;
 use bitvec::view::BitView;
-use ecow::EcoString;
 use num_bigint::BigInt;
 
 use crate::plan::execution::{
@@ -61,6 +60,9 @@ pub(in crate::runtime) fn match_bit_array_pattern(
             ),
             BitArrayPatternSegment::String { pattern, encoding } => {
                 match_string_segment(subject.bits(), &mut cursor, pattern, *encoding)
+            }
+            BitArrayPatternSegment::UtfCodepoint { pattern, encoding } => {
+                match_utf_codepoint_segment(frame, subject.bits(), &mut cursor, pattern, *encoding)
             }
         };
         if !matched {
@@ -165,13 +167,28 @@ fn match_string_segment(
             true
         }
         BitArrayStringPattern::Discard => {
-            let Some((_, bit_size)) = decode_one_string(&subject[*cursor..], encoding) else {
+            let Some((_, bit_size)) = decode_codepoint(&subject[*cursor..], encoding) else {
                 return false;
             };
             *cursor += bit_size;
             true
         }
     }
+}
+
+fn match_utf_codepoint_segment(
+    frame: &mut Frame,
+    subject: &BitSlice<u8, Msb0>,
+    cursor: &mut usize,
+    pattern: &BitArrayBindingPattern<crate::plan::execution::UtfCodepointLocalId>,
+    encoding: StringEncoding,
+) -> bool {
+    let Some((value, bit_size)) = decode_codepoint(&subject[*cursor..], encoding) else {
+        return false;
+    };
+    *cursor += bit_size;
+    bind_utf_codepoint_pattern(frame, pattern, value);
+    true
 }
 
 fn eval_size(frame: &Frame, size: &BitArrayPatternSize) -> Option<usize> {
@@ -328,10 +345,7 @@ fn encode_string(value: &str, encoding: StringEncoding) -> BitVec<u8, Msb0> {
     bits
 }
 
-fn decode_one_string(
-    bits: &BitSlice<u8, Msb0>,
-    encoding: StringEncoding,
-) -> Option<(EcoString, usize)> {
+fn decode_codepoint(bits: &BitSlice<u8, Msb0>, encoding: StringEncoding) -> Option<(char, usize)> {
     match encoding {
         StringEncoding::Utf8 => decode_utf8(bits),
         StringEncoding::Utf16(endianness) => decode_utf16(bits, endianness),
@@ -339,7 +353,7 @@ fn decode_one_string(
     }
 }
 
-fn decode_utf8(bits: &BitSlice<u8, Msb0>) -> Option<(EcoString, usize)> {
+fn decode_utf8(bits: &BitSlice<u8, Msb0>) -> Option<(char, usize)> {
     let first = read_byte(bits, 0)?;
     let bytes = match first {
         0x00..=0x7f => 1,
@@ -355,10 +369,10 @@ fn decode_utf8(bits: &BitSlice<u8, Msb0>) -> Option<(EcoString, usize)> {
     let Ok(value) = std::str::from_utf8(&encoded) else {
         return None;
     };
-    Some((value.into(), bytes * 8))
+    value.chars().next().map(|character| (character, bytes * 8))
 }
 
-fn decode_utf16(bits: &BitSlice<u8, Msb0>, endianness: Endianness) -> Option<(EcoString, usize)> {
+fn decode_utf16(bits: &BitSlice<u8, Msb0>, endianness: Endianness) -> Option<(char, usize)> {
     let first = read_u16(bits, 0, endianness)?;
     let (codepoint, bit_size) = if (0xd800..=0xdbff).contains(&first) {
         let second = read_u16(bits, 16, endianness)?;
@@ -372,10 +386,10 @@ fn decode_utf16(bits: &BitSlice<u8, Msb0>, endianness: Endianness) -> Option<(Ec
         (u32::from(first), 16)
     };
     let character = char::from_u32(codepoint)?;
-    Some((character.to_string().into(), bit_size))
+    Some((character, bit_size))
 }
 
-fn decode_utf32(bits: &BitSlice<u8, Msb0>, endianness: Endianness) -> Option<(EcoString, usize)> {
+fn decode_utf32(bits: &BitSlice<u8, Msb0>, endianness: Endianness) -> Option<(char, usize)> {
     let bytes = [
         read_byte(bits, 0)?,
         read_byte(bits, 8)?,
@@ -386,7 +400,7 @@ fn decode_utf32(bits: &BitSlice<u8, Msb0>, endianness: Endianness) -> Option<(Ec
         Endianness::Big => u32::from_be_bytes(bytes),
         Endianness::Little => u32::from_le_bytes(bytes),
     };
-    Some((char::from_u32(value)?.to_string().into(), 32))
+    Some((char::from_u32(value)?, 32))
 }
 
 fn read_u16(bits: &BitSlice<u8, Msb0>, offset: usize, endianness: Endianness) -> Option<u16> {
@@ -468,6 +482,23 @@ fn bind_bits_pattern(
     }
 }
 
+fn bind_utf_codepoint_pattern(
+    frame: &mut Frame,
+    pattern: &BitArrayBindingPattern<crate::plan::execution::UtfCodepointLocalId>,
+    value: char,
+) {
+    match pattern {
+        BitArrayBindingPattern::Bind(binding) => {
+            frame.set_utf_codepoint(*binding.local(), value);
+        }
+        BitArrayBindingPattern::Discard => {}
+        BitArrayBindingPattern::Alias { pattern, binding } => {
+            bind_utf_codepoint_pattern(frame, pattern, value);
+            frame.set_utf_codepoint(*binding.local(), value);
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
@@ -524,6 +555,22 @@ pub fn main() {
       <<_:utf8>> -> True
       _ -> False
     },
+    case <<65>> {
+      <<value:utf8_codepoint>> -> value
+      _ -> panic
+    },
+    case <<65>> {
+      <<_ as alias:utf8_codepoint>> -> alias
+      _ -> panic
+    },
+    case <<65>> {
+      <<_:utf8_codepoint>> -> True
+      _ -> False
+    },
+    case <<255>> {
+      <<_:utf8_codepoint>> -> True
+      _ -> False
+    },
   )
 }
 "#;
@@ -542,6 +589,10 @@ pub fn main() {
                     Value::BitArray(crate::BitArrayValue::from_bytes(vec![2])),
                 ]),
                 Value::Bool(true),
+                Value::Bool(true),
+                Value::Bool(false),
+                Value::UtfCodepoint('A'),
+                Value::UtfCodepoint('A'),
                 Value::Bool(true),
                 Value::Bool(false),
             ]),
@@ -681,23 +732,20 @@ pub fn main() {
     }
 
     #[test]
-    fn string_decoders_accept_one_scalar_and_reject_invalid_encoding() {
+    fn codepoint_decoders_accept_one_scalar_and_reject_invalid_encoding() {
         assert_eq!(decode_utf8([].view_bits::<Msb0>()), None);
-        assert_eq!(
-            decode_utf8([b'A'].view_bits::<Msb0>()),
-            Some(("A".into(), 8)),
-        );
+        assert_eq!(decode_utf8([b'A'].view_bits::<Msb0>()), Some(('A', 8)),);
         assert_eq!(
             decode_utf8([0xc2, 0xa2].view_bits::<Msb0>()),
-            Some(("¢".into(), 16)),
+            Some(('¢', 16)),
         );
         assert_eq!(
             decode_utf8("안".as_bytes().view_bits::<Msb0>()),
-            Some(("안".into(), 24)),
+            Some(('안', 24)),
         );
         assert_eq!(
             decode_utf8([0xf0, 0x9f, 0x98, 0x80].view_bits::<Msb0>()),
-            Some(("😀".into(), 32)),
+            Some(('😀', 32)),
         );
         assert_eq!(decode_utf8([0xc2].view_bits::<Msb0>()), None);
         assert_eq!(decode_utf8([0xc2, 0x20].view_bits::<Msb0>()), None);
@@ -705,18 +753,18 @@ pub fn main() {
         assert_eq!(decode_utf16([].view_bits::<Msb0>(), Endianness::Big), None);
         assert_eq!(
             decode_utf16([0, 0x41].view_bits::<Msb0>(), Endianness::Big),
-            Some(("A".into(), 16)),
+            Some(('A', 16)),
         );
         assert_eq!(
             decode_utf16([0x41, 0].view_bits::<Msb0>(), Endianness::Little),
-            Some(("A".into(), 16)),
+            Some(('A', 16)),
         );
         assert_eq!(
             decode_utf16(
                 [0xd8, 0x3d, 0xde, 0x00].view_bits::<Msb0>(),
                 Endianness::Big
             ),
-            Some(("😀".into(), 32)),
+            Some(('😀', 32)),
         );
         assert_eq!(
             decode_utf16([0xd8, 0x00].view_bits::<Msb0>(), Endianness::Big),
@@ -745,11 +793,11 @@ pub fn main() {
         );
         assert_eq!(
             decode_utf32([0, 0, 0, 0x41].view_bits::<Msb0>(), Endianness::Big),
-            Some(("A".into(), 32)),
+            Some(('A', 32)),
         );
         assert_eq!(
             decode_utf32([0x41, 0, 0, 0].view_bits::<Msb0>(), Endianness::Little),
-            Some(("A".into(), 32)),
+            Some(('A', 32)),
         );
         assert_eq!(
             decode_utf32([0, 0x11, 0, 0].view_bits::<Msb0>(), Endianness::Big),

@@ -2,7 +2,8 @@ use crate::plan::{
     BitArrayExpr, BitArrayFunctionExpr, BoolExpr, BoolFunctionExpr, Expr, ExprKind, FloatExpr,
     FloatFunctionExpr, FunctionExpr, FunctionExprKind, FunctionFunctionExpr, IntExpr,
     IntFunctionExpr, ListExpr, ListFunctionExpr, NilExpr, NilFunctionExpr, Step, StringExpr,
-    StringFunctionExpr, TupleExpr, TupleFunctionExpr, ValueType,
+    StringFunctionExpr, TupleExpr, TupleFunctionExpr, UtfCodepointExpr, UtfCodepointFunctionExpr,
+    ValueType,
 };
 use crate::planner::context::PlanContext;
 use crate::planner::error::PlanError;
@@ -36,6 +37,9 @@ pub(super) fn block_expr(steps: Vec<Step>, return_: Expr) -> Expr {
         ExprKind::Int(return_) => Expr::int(IntExpr::block(steps, return_)),
         ExprKind::String(return_) => Expr::string(StringExpr::block(steps, return_)),
         ExprKind::BitArray(return_) => Expr::bit_array(BitArrayExpr::block(steps, return_)),
+        ExprKind::UtfCodepoint(return_) => {
+            Expr::utf_codepoint(UtfCodepointExpr::block(steps, return_))
+        }
         ExprKind::Float(return_) => Expr::float(FloatExpr::block(steps, return_)),
         ExprKind::Bool(return_) => Expr::bool(BoolExpr::block(steps, return_)),
         ExprKind::Nil(return_) => Expr::nil(NilExpr::block(steps, return_)),
@@ -50,6 +54,9 @@ pub(super) fn block_expr(steps: Vec<Step>, return_: Expr) -> Expr {
             )),
             FunctionExprKind::BitArray(return_) => Expr::function(FunctionExpr::bit_array(
                 BitArrayFunctionExpr::block(steps, return_),
+            )),
+            FunctionExprKind::UtfCodepoint(return_) => Expr::function(FunctionExpr::utf_codepoint(
+                UtfCodepointFunctionExpr::block(steps, return_),
             )),
             FunctionExprKind::Float(return_) => Expr::function(FunctionExpr::float(
                 FloatFunctionExpr::block(steps, return_),

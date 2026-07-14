@@ -2,7 +2,7 @@ use crate::plan::{
     BitArrayBindingPattern, BitArrayLocalId, BitArrayPattern, BitArrayPatternSegment,
     BitArrayPatternSize, BitArrayPatternSizeExpr, BitArrayPatternValue, BitArrayStringPattern,
     Endianness, FloatLocalId, IntLocalId, LocalId, PatternBinding, Signedness, StringEncoding,
-    ValueType,
+    UtfCodepointLocalId, ValueType,
 };
 use crate::planner::context::PlanContext;
 use crate::planner::error::{InvalidTypedAstReason, PlanError, UnsupportedBitArraySegmentReason};
@@ -42,17 +42,6 @@ fn plan_segment(
     {
         return unsupported_segment(UnsupportedBitArraySegmentReason::NativeEndianness);
     }
-    if segment.options.iter().any(|option| {
-        matches!(
-            option,
-            BitArrayOption::Utf8Codepoint { .. }
-                | BitArrayOption::Utf16Codepoint { .. }
-                | BitArrayOption::Utf32Codepoint { .. }
-        )
-    }) {
-        return unsupported_segment(UnsupportedBitArraySegmentReason::UtfCodepoint);
-    }
-
     let kind = segment_kind(&segment)?;
     validate_segment_options(&segment, kind)?;
     let endianness = segment_endianness(&segment);
@@ -90,6 +79,10 @@ fn plan_segment(
             pattern: plan_string_pattern(*segment.value)?,
             encoding,
         }),
+        SegmentKind::UtfCodepoint(encoding) => Ok(BitArrayPatternSegment::UtfCodepoint {
+            pattern: plan_utf_codepoint_pattern(*segment.value, context)?,
+            encoding,
+        }),
     }
 }
 
@@ -99,6 +92,7 @@ enum SegmentKind {
     Float,
     Bits,
     String(StringEncoding),
+    UtfCodepoint(StringEncoding),
 }
 
 fn validate_segment_options(
@@ -155,6 +149,12 @@ fn validate_segment_options(
         SegmentKind::String(StringEncoding::Utf16(_) | StringEncoding::Utf32(_)) => {
             signedness_count + size_count + unit_count != 0
         }
+        SegmentKind::UtfCodepoint(StringEncoding::Utf8) => {
+            signedness_count + endianness_count + size_count + unit_count != 0
+        }
+        SegmentKind::UtfCodepoint(StringEncoding::Utf16(_) | StringEncoding::Utf32(_)) => {
+            signedness_count + size_count + unit_count != 0
+        }
     };
 
     if [duplicate_option, invalid_unit, incompatible_modifier].contains(&true) {
@@ -180,10 +180,16 @@ fn segment_kind(
             BitArrayOption::Utf32 { .. } => Some(SegmentKind::String(StringEncoding::Utf32(
                 segment_endianness(segment),
             ))),
-            BitArrayOption::Utf8Codepoint { .. }
-            | BitArrayOption::Utf16Codepoint { .. }
-            | BitArrayOption::Utf32Codepoint { .. }
-            | BitArrayOption::Signed { .. }
+            BitArrayOption::Utf8Codepoint { .. } => {
+                Some(SegmentKind::UtfCodepoint(StringEncoding::Utf8))
+            }
+            BitArrayOption::Utf16Codepoint { .. } => Some(SegmentKind::UtfCodepoint(
+                StringEncoding::Utf16(segment_endianness(segment)),
+            )),
+            BitArrayOption::Utf32Codepoint { .. } => Some(SegmentKind::UtfCodepoint(
+                StringEncoding::Utf32(segment_endianness(segment)),
+            )),
+            BitArrayOption::Signed { .. }
             | BitArrayOption::Unsigned { .. }
             | BitArrayOption::Big { .. }
             | BitArrayOption::Little { .. }
@@ -395,6 +401,32 @@ fn plan_string_pattern(pattern: Pattern<Arc<Type>>) -> Result<BitArrayStringPatt
     }
 }
 
+fn plan_utf_codepoint_pattern(
+    pattern: Pattern<Arc<Type>>,
+    context: &mut PlanContext<'_>,
+) -> Result<BitArrayBindingPattern<UtfCodepointLocalId>, PlanError> {
+    match pattern {
+        Pattern::Variable { name, type_, .. } if type_.is_utf_codepoint() => {
+            let local = context.define_utf_codepoint_local(name.clone());
+            Ok(BitArrayBindingPattern::Bind(PatternBinding::new(
+                local, name,
+            )))
+        }
+        Pattern::Discard { type_, .. } if type_.is_utf_codepoint() => {
+            Ok(BitArrayBindingPattern::Discard)
+        }
+        Pattern::Assign { name, pattern, .. } => {
+            let pattern = plan_utf_codepoint_pattern(*pattern, context)?;
+            let local = context.define_utf_codepoint_local(name.clone());
+            Ok(BitArrayBindingPattern::Alias {
+                pattern: Box::new(pattern),
+                binding: PatternBinding::new(local, name),
+            })
+        }
+        _ => Err(invalid_pattern()),
+    }
+}
+
 fn is_total_pattern(segments: &[BitArraySegment<Pattern<Arc<Type>>, Arc<Type>>]) -> bool {
     segments.len() == 1
         && segments[0].size().is_none()
@@ -419,7 +451,7 @@ mod tests {
     use crate::plan::{
         BitArrayBindingPattern, BitArrayLocalId, BitArrayPattern, BitArrayPatternSegment,
         BitArrayPatternSizeExpr, BitArrayStringPattern, Endianness, FloatLocalId, IntLocalId,
-        PatternBinding, Signedness, StringEncoding,
+        PatternBinding, Signedness, StringEncoding, UtfCodepointLocalId,
     };
     use crate::planner::context::{AnonymousFunctions, PlanContext};
     use crate::planner::error::{
@@ -447,25 +479,6 @@ pub fn main() {
             ),
             PlanError::UnsupportedBitArraySegment {
                 reason: UnsupportedBitArraySegmentReason::NativeEndianness,
-            },
-        );
-    }
-
-    #[test]
-    fn reject_profile_bit_array_pattern_utf_codepoint() {
-        assert_eq!(
-            expect_plan_error(
-                r#"
-pub fn main() {
-  case <<"A":utf8>> {
-    <<_:utf8_codepoint>> -> 1
-    _ -> 0
-  }
-}
-"#,
-            ),
-            PlanError::UnsupportedBitArraySegment {
-                reason: UnsupportedBitArraySegmentReason::UtfCodepoint,
             },
         );
     }
@@ -521,6 +534,60 @@ pub fn main() {
             })
         };
         let mut cases = Vec::new();
+
+        cases.push((
+            vec![segment(
+                discard(type_::int()),
+                vec![BitArrayOption::Utf8Codepoint {
+                    location: dummy_span(),
+                }],
+                type_::int(),
+            )],
+            invalid(),
+        ));
+        cases.push((
+            vec![segment(
+                alias("codepoint_alias", discard(type_::int())),
+                vec![BitArrayOption::Utf8Codepoint {
+                    location: dummy_span(),
+                }],
+                type_::utf_codepoint(),
+            )],
+            invalid(),
+        ));
+        for options in [
+            vec![
+                BitArrayOption::Utf8Codepoint {
+                    location: dummy_span(),
+                },
+                BitArrayOption::Big {
+                    location: dummy_span(),
+                },
+            ],
+            vec![
+                BitArrayOption::Utf16Codepoint {
+                    location: dummy_span(),
+                },
+                BitArrayOption::Signed {
+                    location: dummy_span(),
+                },
+            ],
+            vec![
+                BitArrayOption::Utf32Codepoint {
+                    location: dummy_span(),
+                },
+                size(int_size()),
+            ],
+        ] {
+            cases.push((
+                vec![segment(
+                    discard(type_::utf_codepoint()),
+                    options,
+                    type_::utf_codepoint(),
+                )],
+                invalid(),
+            ));
+        }
 
         for options in [
             vec![
@@ -823,6 +890,67 @@ pub fn main() {
                     unit: 1,
                 }]),
                 true,
+            )),
+        ));
+        cases.push((
+            vec![
+                segment(
+                    Pattern::Variable {
+                        location: dummy_span(),
+                        name: "codepoint".into(),
+                        type_: type_::utf_codepoint(),
+                        origin: VariableOrigin::generated(),
+                    },
+                    vec![BitArrayOption::Utf8Codepoint {
+                        location: dummy_span(),
+                    }],
+                    type_::utf_codepoint(),
+                ),
+                segment(
+                    discard(type_::utf_codepoint()),
+                    vec![
+                        BitArrayOption::Utf16Codepoint {
+                            location: dummy_span(),
+                        },
+                        BitArrayOption::Little {
+                            location: dummy_span(),
+                        },
+                    ],
+                    type_::utf_codepoint(),
+                ),
+                segment(
+                    alias("codepoint_alias", discard(type_::utf_codepoint())),
+                    vec![BitArrayOption::Utf32Codepoint {
+                        location: dummy_span(),
+                    }],
+                    type_::utf_codepoint(),
+                ),
+            ],
+            Ok((
+                BitArrayPattern::new(vec![
+                    BitArrayPatternSegment::UtfCodepoint {
+                        pattern: BitArrayBindingPattern::Bind(PatternBinding::new(
+                            UtfCodepointLocalId(0),
+                            "codepoint".into(),
+                        )),
+                        encoding: StringEncoding::Utf8,
+                    },
+                    BitArrayPatternSegment::UtfCodepoint {
+                        pattern: BitArrayBindingPattern::Discard,
+                        encoding: StringEncoding::Utf16(Endianness::Little),
+                    },
+                    BitArrayPatternSegment::UtfCodepoint {
+                        pattern: BitArrayBindingPattern::Alias {
+                            pattern: Box::new(BitArrayBindingPattern::Discard),
+                            binding: PatternBinding::new(
+                                UtfCodepointLocalId(1),
+                                "codepoint_alias".into(),
+                            ),
+                        },
+                        encoding: StringEncoding::Utf32(Endianness::Big),
+                    },
+                ]),
+                false,
             )),
         ));
         cases.push((

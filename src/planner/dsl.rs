@@ -11,10 +11,11 @@ pub(crate) use expression::{
     int_function_call_arg, int_function_closure, int_function_ref, let_bool_function_step,
     let_bool_step, let_float_step, let_int_function_step, let_int_step, let_list_step,
     let_nil_function_step, let_nil_step, let_string_function_step, let_string_step, let_tuple_step,
-    list, list_function_ref, list_spread, local_bool, local_float, local_int, local_int_function,
-    local_list, local_nil, local_string, local_tuple, nil, nil_arg, nil_function_ref, not_equal,
-    string, string_arg, string_function_ref, tuple, tuple_arg, tuple_function_closure,
-    tuple_function_ref,
+    let_utf_codepoint_step, list, list_function_ref, list_spread, local_bool, local_float,
+    local_int, local_int_function, local_list, local_nil, local_string, local_tuple,
+    local_utf_codepoint, nil, nil_arg, nil_function_ref, not_equal, string, string_arg,
+    string_function_ref, tuple, tuple_arg, tuple_function_closure, tuple_function_ref,
+    utf_codepoint_function_ref,
 };
 pub(crate) use function::{
     bool_function_return_block, bool_function_return_bool_case, bool_function_return_expr,
@@ -39,6 +40,7 @@ pub(crate) use function::{
     string_function_return_int_case, string_function_return_string_case,
     string_function_return_tail_call, string_return_block, string_return_bool_case,
     string_return_expr, string_return_float_case, string_return_int_case,
-    string_return_string_case, string_return_tail_call,
+    string_return_string_case, string_return_tail_call, utf_codepoint_return_block,
+    utf_codepoint_return_expr,
 };
 pub(crate) use module::{module, module_with_anonymous};

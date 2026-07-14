@@ -53,6 +53,10 @@ fn bit_array_segment(segment: module::BitArrayPatternSegment) -> execution::BitA
             },
             encoding: encoding.into(),
         },
+        M::UtfCodepoint { pattern, encoding } => E::UtfCodepoint {
+            pattern: binding_pattern(pattern, |local| execution::UtfCodepointLocalId(local.0)),
+            encoding: encoding.into(),
+        },
     }
 }
 

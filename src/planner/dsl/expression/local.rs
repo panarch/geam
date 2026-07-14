@@ -1,9 +1,10 @@
-use super::{BitArray, Bool, Float, Int, List, Nil, String, Tuple};
+use super::{BitArray, Bool, Float, Int, List, Nil, String, Tuple, UtfCodepoint};
 use crate::plan::{
     BitArrayExpr, BitArrayLocalId, BoolExpr, BoolListLocalId, BoolLocalId, FloatExpr,
     FloatListLocalId, FloatLocalId, FunctionListLocalId, IntExpr, IntListLocalId, IntLocalId,
     ListExpr, ListListLocalId, ListLocal, NilExpr, NilListLocalId, NilLocalId, StringExpr,
-    StringListLocalId, StringLocalId, TupleExpr, TupleListLocalId, TupleLocalId, ValueType,
+    StringListLocalId, StringLocalId, TupleExpr, TupleListLocalId, TupleLocalId, UtfCodepointExpr,
+    UtfCodepointLocalId, ValueType,
 };
 use ecow::EcoString;
 
@@ -17,6 +18,13 @@ pub(crate) fn local_string(index: usize, name: impl Into<EcoString>) -> String {
 
 pub(crate) fn local_bit_array(index: usize, name: impl Into<EcoString>) -> BitArray {
     BitArray(BitArrayExpr::local_get(BitArrayLocalId(index), name.into()))
+}
+
+pub(crate) fn local_utf_codepoint(index: usize, name: impl Into<EcoString>) -> UtfCodepoint {
+    UtfCodepoint(UtfCodepointExpr::local_get(
+        UtfCodepointLocalId(index),
+        name.into(),
+    ))
 }
 
 pub(crate) fn local_float(index: usize, name: impl Into<EcoString>) -> Float {
@@ -59,6 +67,9 @@ pub(super) fn list_local(index: usize, element_type: ValueType) -> ListLocal {
         ValueType::Int => ListLocal::int(IntListLocalId(index)),
         ValueType::String => ListLocal::string(StringListLocalId(index)),
         ValueType::BitArray => ListLocal::bit_array(crate::plan::BitArrayListLocalId(index)),
+        ValueType::UtfCodepoint => {
+            ListLocal::utf_codepoint(crate::plan::UtfCodepointListLocalId(index))
+        }
         ValueType::Float => ListLocal::float(FloatListLocalId(index)),
         ValueType::Bool => ListLocal::bool(BoolListLocalId(index)),
         ValueType::Nil => ListLocal::nil(NilListLocalId(index)),
@@ -74,14 +85,14 @@ pub(super) fn list_local(index: usize, element_type: ValueType) -> ListLocal {
 mod tests {
     use super::{
         local_bit_array, local_bool, local_float, local_int, local_list, local_nil, local_string,
-        local_tuple,
+        local_tuple, local_utf_codepoint,
     };
     use crate::plan::{
         BitArrayExpr, BitArrayListLocalId, BitArrayLocalId, BoolExpr, BoolListLocalId, BoolLocalId,
         FloatExpr, FloatListLocalId, FloatLocalId, FunctionListLocalId, FunctionType, IntExpr,
         IntListLocalId, IntLocalId, ListExpr, ListListLocalId, ListLocal, NilExpr, NilListLocalId,
         NilLocalId, StringExpr, StringListLocalId, StringLocalId, TupleExpr, TupleListLocalId,
-        TupleLocalId, ValueType,
+        TupleLocalId, UtfCodepointExpr, UtfCodepointListLocalId, UtfCodepointLocalId, ValueType,
     };
 
     #[test]
@@ -97,6 +108,10 @@ mod tests {
         assert_eq!(
             local_bit_array(14, "bits").0,
             BitArrayExpr::local_get(BitArrayLocalId(14), "bits".into()),
+        );
+        assert_eq!(
+            local_utf_codepoint(15, "codepoint").0,
+            UtfCodepointExpr::local_get(UtfCodepointLocalId(15), "codepoint".into()),
         );
         assert_eq!(
             local_float(2, "ratio").0,
@@ -129,6 +144,13 @@ mod tests {
         assert_eq!(
             local_list(14, "bits", ValueType::BitArray).0,
             ListExpr::local_get(ListLocal::bit_array(BitArrayListLocalId(14)), "bits".into(),),
+        );
+        assert_eq!(
+            local_list(15, "codepoints", ValueType::UtfCodepoint).0,
+            ListExpr::local_get(
+                ListLocal::utf_codepoint(UtfCodepointListLocalId(15)),
+                "codepoints".into(),
+            ),
         );
         assert_eq!(
             local_list(8, "floats", ValueType::Float).0,

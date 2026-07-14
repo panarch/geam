@@ -28,6 +28,14 @@ pub(super) fn function_return_expr(
             *runtime_id,
             primitive::bit_array_return(actual),
         )),
+        (
+            ValueType::UtfCodepoint,
+            RuntimeFunctionId::UtfCodepoint(runtime_id),
+            ExprKind::UtfCodepoint(actual),
+        ) => Ok(ReturnExpr::utf_codepoint_body(
+            *runtime_id,
+            primitive::utf_codepoint_return(actual),
+        )),
         (ValueType::Float, RuntimeFunctionId::Float(runtime_id), ExprKind::Float(actual)) => Ok(
             ReturnExpr::float_body(*runtime_id, primitive::float_return(actual)),
         ),
@@ -70,6 +78,16 @@ pub(super) fn function_return_expr(
             *runtime_id,
             primitive::typed_list_return_body(actual),
         )),
+        (
+            ValueType::List(expected),
+            RuntimeFunctionId::List(ListFunctionId::UtfCodepoint(runtime_id)),
+            ExprKind::List(ListExpr::UtfCodepoint(actual)),
+        ) if expected.as_ref() == &ValueType::UtfCodepoint => {
+            Ok(ReturnExpr::utf_codepoint_list_body(
+                *runtime_id,
+                primitive::typed_list_return_body(actual),
+            ))
+        }
         (
             ValueType::List(expected),
             RuntimeFunctionId::List(ListFunctionId::Float(runtime_id)),
@@ -162,12 +180,12 @@ pub(super) fn function_return_expr(
 mod tests {
     use super::function_return_expr;
     use crate::plan::{
-        BoolListFunctionId, Expr, FloatExpr, FloatListFunctionId, FunctionExpr, FunctionFunctionId,
-        FunctionListFunctionId, FunctionType, IntFunctionExpr, IntFunctionFunctionId,
-        IntFunctionId, IntFunctionReference, IntListFunctionId, IntLocalId, ListExpr,
-        ListFunctionId, ListListFunctionId, NilListFunctionId, ParamLocal, ReturnBody, ReturnExpr,
-        RuntimeFunctionId, StringFunctionFunctionId, StringListFunctionId, TupleListFunctionId,
-        ValueType,
+        BitArrayListFunctionId, BoolListFunctionId, Expr, FloatExpr, FloatListFunctionId,
+        FunctionExpr, FunctionFunctionId, FunctionListFunctionId, FunctionType, IntFunctionExpr,
+        IntFunctionFunctionId, IntFunctionId, IntFunctionReference, IntListFunctionId, IntLocalId,
+        ListExpr, ListFunctionId, ListListFunctionId, NilListFunctionId, ParamLocal, ReturnBody,
+        ReturnExpr, RuntimeFunctionId, StringFunctionFunctionId, StringListFunctionId,
+        TupleListFunctionId, UtfCodepointListFunctionId, ValueType,
     };
     use crate::planner::{InvalidFunctionShapeReason, InvalidTypedAstReason, PlanError};
 
@@ -273,6 +291,44 @@ mod tests {
                     string
                         .into_string()
                         .expect("expression should be List(String)"),
+                ),
+            )),
+        );
+
+        let bit_array = ListExpr::value(Vec::new(), ValueType::BitArray);
+        assert_eq!(
+            function_return_expr(
+                &"bit_arrays".into(),
+                &ValueType::List(Box::new(ValueType::BitArray)),
+                &RuntimeFunctionId::List(ListFunctionId::BitArray(BitArrayListFunctionId(0))),
+                Expr::list(bit_array.clone()),
+            ),
+            Ok(ReturnExpr::bit_array_list_body(
+                BitArrayListFunctionId(0),
+                ReturnBody::expr(
+                    bit_array
+                        .into_bit_array()
+                        .expect("expression should be List(BitArray)"),
+                ),
+            )),
+        );
+
+        let utf_codepoint = ListExpr::value(Vec::new(), ValueType::UtfCodepoint);
+        assert_eq!(
+            function_return_expr(
+                &"utf_codepoints".into(),
+                &ValueType::List(Box::new(ValueType::UtfCodepoint)),
+                &RuntimeFunctionId::List(ListFunctionId::UtfCodepoint(UtfCodepointListFunctionId(
+                    0
+                ),)),
+                Expr::list(utf_codepoint.clone()),
+            ),
+            Ok(ReturnExpr::utf_codepoint_list_body(
+                UtfCodepointListFunctionId(0),
+                ReturnBody::expr(
+                    utf_codepoint
+                        .into_utf_codepoint()
+                        .expect("expression should be List(UtfCodepoint)"),
                 ),
             )),
         );

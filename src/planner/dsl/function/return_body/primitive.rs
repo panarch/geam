@@ -2,13 +2,77 @@ use super::FunctionReturn;
 use crate::plan::{
     BoolFunctionId, BoolReturn, CallArg, FloatFunctionId, FloatReturn, IntFunctionId, IntReturn,
     ListFunctionId, ListReturn, NilFunctionId, NilReturn, ReturnBody, Step, StringFunctionId,
-    StringReturn, ValueType,
+    StringReturn, UtfCodepointFunctionId, UtfCodepointReturn, ValueType,
 };
-use crate::planner::dsl::expression::{Bool, Float, Int, List, Nil, String};
+use crate::planner::dsl::expression::{Bool, Float, Int, List, Nil, String, UtfCodepoint};
 use num_bigint::BigInt;
 
 pub(crate) fn int_return_expr(expression: Int) -> IntReturn {
     ReturnBody::expr(expression.into())
+}
+
+pub(crate) fn utf_codepoint_return_expr(expression: UtfCodepoint) -> UtfCodepointReturn {
+    ReturnBody::expr(expression.into())
+}
+
+pub(crate) fn utf_codepoint_return_tail_call(
+    function: usize,
+    args: impl IntoIterator<Item = CallArg>,
+) -> UtfCodepointReturn {
+    ReturnBody::tail_call(UtfCodepointFunctionId(function), args.into_iter().collect())
+}
+
+pub(crate) fn utf_codepoint_return_bool_case(
+    subject: Bool,
+    true_: UtfCodepointReturn,
+    false_: UtfCodepointReturn,
+) -> UtfCodepointReturn {
+    ReturnBody::bool_case(subject.into(), true_, false_)
+}
+
+pub(crate) fn utf_codepoint_return_int_case(
+    subject: Int,
+    clauses: impl IntoIterator<Item = (i64, UtfCodepointReturn)>,
+    fallback: UtfCodepointReturn,
+) -> UtfCodepointReturn {
+    ReturnBody::int_case(
+        subject.into(),
+        clauses
+            .into_iter()
+            .map(|(value, branch)| (BigInt::from(value), branch))
+            .collect(),
+        fallback,
+    )
+}
+
+pub(crate) fn utf_codepoint_return_string_case(
+    subject: String,
+    clauses: impl IntoIterator<Item = (&'static str, UtfCodepointReturn)>,
+    fallback: UtfCodepointReturn,
+) -> UtfCodepointReturn {
+    ReturnBody::string_case(
+        subject.into(),
+        clauses
+            .into_iter()
+            .map(|(value, branch)| (value.into(), branch))
+            .collect(),
+        fallback,
+    )
+}
+
+pub(crate) fn utf_codepoint_return_float_case(
+    subject: Float,
+    clauses: impl IntoIterator<Item = (f64, UtfCodepointReturn)>,
+    fallback: UtfCodepointReturn,
+) -> UtfCodepointReturn {
+    ReturnBody::float_case(subject.into(), clauses.into_iter().collect(), fallback)
+}
+
+pub(crate) fn utf_codepoint_return_block(
+    steps: impl IntoIterator<Item = Step>,
+    return_: UtfCodepointReturn,
+) -> UtfCodepointReturn {
+    ReturnBody::block(steps.into_iter().collect(), return_)
 }
 
 pub(crate) fn int_return_tail_call(
@@ -417,12 +481,17 @@ mod tests {
         nil_return_float_case, nil_return_int_case, nil_return_string_case, nil_return_tail_call,
         string_return_block, string_return_bool_case, string_return_expr, string_return_float_case,
         string_return_int_case, string_return_string_case, string_return_tail_call,
+        utf_codepoint_return_block, utf_codepoint_return_bool_case, utf_codepoint_return_expr,
+        utf_codepoint_return_float_case, utf_codepoint_return_int_case,
+        utf_codepoint_return_string_case, utf_codepoint_return_tail_call,
     };
     use crate::plan::{
         BoolFunctionId, CallArg, FloatFunctionId, IntFunctionId, ListFunctionId, ListReturn,
-        NilFunctionId, ReturnBody, Step, StringFunctionId,
+        NilFunctionId, ReturnBody, Step, StringFunctionId, UtfCodepointFunctionId,
     };
-    use crate::planner::dsl::expression::{bool_, float, int, list, nil, string};
+    use crate::planner::dsl::expression::{
+        bool_, float, int, list, local_utf_codepoint, nil, string,
+    };
     use num_bigint::BigInt;
 
     #[test]
@@ -444,6 +513,57 @@ mod tests {
         assert_eq!(
             list_return_expr(list([int(1)], crate::plan::ValueType::Int)),
             ListReturn::expr(list([int(1)], crate::plan::ValueType::Int).into()),
+        );
+    }
+
+    #[test]
+    fn utf_codepoint_return_helpers_build_exact_shapes() {
+        let first = utf_codepoint_return_expr(local_utf_codepoint(0, "first"));
+        let second = utf_codepoint_return_expr(local_utf_codepoint(1, "second"));
+
+        assert_eq!(
+            first,
+            ReturnBody::expr(local_utf_codepoint(0, "first").into()),
+        );
+        assert_eq!(
+            utf_codepoint_return_tail_call(2, Vec::<CallArg>::new()),
+            ReturnBody::tail_call(UtfCodepointFunctionId(2), Vec::new()),
+        );
+        assert_eq!(
+            utf_codepoint_return_bool_case(bool_(true), first.clone(), second.clone()),
+            ReturnBody::bool_case(bool_(true).into(), first.clone(), second.clone()),
+        );
+        assert_eq!(
+            utf_codepoint_return_int_case(int(1), [(1, first.clone())], second.clone()),
+            ReturnBody::int_case(
+                int(1).into(),
+                vec![(BigInt::from(1), first.clone())],
+                second.clone(),
+            ),
+        );
+        assert_eq!(
+            utf_codepoint_return_string_case(
+                string("key"),
+                [("one", first.clone())],
+                second.clone(),
+            ),
+            ReturnBody::string_case(
+                string("key").into(),
+                vec![("one".into(), first.clone())],
+                second.clone(),
+            ),
+        );
+        assert_eq!(
+            utf_codepoint_return_float_case(float(1.0), [(1.0, first.clone())], second.clone(),),
+            ReturnBody::float_case(
+                float(1.0).into(),
+                vec![(1.0, first.clone())],
+                second.clone(),
+            ),
+        );
+        assert_eq!(
+            utf_codepoint_return_block([Step::evaluate(int(1).into())], first.clone()),
+            ReturnBody::block(vec![Step::evaluate(int(1).into())], first),
         );
     }
 

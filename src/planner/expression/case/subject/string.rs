@@ -376,6 +376,10 @@ fn string_case_expr(
             clauses: bit_array_case_clauses(clauses)?,
             fallback,
         },
+        ExprKind::UtfCodepoint(fallback) => StringCaseBranches::UtfCodepoint {
+            clauses: utf_codepoint_case_clauses(clauses)?,
+            fallback,
+        },
         ExprKind::Float(fallback) => StringCaseBranches::Float {
             clauses: float_case_clauses(clauses)?,
             fallback,
@@ -437,6 +441,21 @@ fn bit_array_case_clauses(
     let mut typed_clauses = Vec::with_capacity(clauses.len());
     for (value, clause) in clauses {
         let ExprKind::BitArray(clause) = clause.into_kind() else {
+            return Err(invalid_case_shape(
+                InvalidCaseShapeReason::BranchReturnTypeMismatch,
+            ));
+        };
+        typed_clauses.push((value, clause));
+    }
+    Ok(typed_clauses)
+}
+
+fn utf_codepoint_case_clauses(
+    clauses: Vec<(EcoString, Expr)>,
+) -> Result<Vec<(EcoString, crate::plan::UtfCodepointExpr)>, PlanError> {
+    let mut typed_clauses = Vec::with_capacity(clauses.len());
+    for (value, clause) in clauses {
+        let ExprKind::UtfCodepoint(clause) = clause.into_kind() else {
             return Err(invalid_case_shape(
                 InvalidCaseShapeReason::BranchReturnTypeMismatch,
             ));
@@ -548,6 +567,12 @@ fn function_case_branches(
                 fallback,
             })
         }
+        crate::plan::FunctionExprKind::UtfCodepoint(fallback) => {
+            Ok(StringCaseBranches::UtfCodepointFunction {
+                clauses: utf_codepoint_function_case_clauses(clauses)?,
+                fallback,
+            })
+        }
         crate::plan::FunctionExprKind::Float(fallback) => Ok(StringCaseBranches::FloatFunction {
             clauses: float_function_case_clauses(clauses)?,
             fallback,
@@ -628,6 +653,26 @@ fn bit_array_function_case_clauses(
             ));
         };
         let crate::plan::FunctionExprKind::BitArray(clause) = function.into_kind() else {
+            return Err(invalid_case_shape(
+                InvalidCaseShapeReason::BranchReturnTypeMismatch,
+            ));
+        };
+        typed_clauses.push((value, clause));
+    }
+    Ok(typed_clauses)
+}
+
+fn utf_codepoint_function_case_clauses(
+    clauses: Vec<(EcoString, Expr)>,
+) -> Result<Vec<(EcoString, crate::plan::UtfCodepointFunctionExpr)>, PlanError> {
+    let mut typed_clauses = Vec::with_capacity(clauses.len());
+    for (value, clause) in clauses {
+        let ExprKind::Function(function) = clause.into_kind() else {
+            return Err(invalid_case_shape(
+                InvalidCaseShapeReason::BranchReturnTypeMismatch,
+            ));
+        };
+        let crate::plan::FunctionExprKind::UtfCodepoint(clause) = function.into_kind() else {
             return Err(invalid_case_shape(
                 InvalidCaseShapeReason::BranchReturnTypeMismatch,
             ));
@@ -764,7 +809,7 @@ mod tests {
         FunctionFunctionId, FunctionType, IntFunctionExpr, IntFunctionFunctionId, IntFunctionId,
         IntLocalId, ListFunctionId, LocalId, NilFunctionId, RuntimeFunctionId, Step,
         StringCaseBranches, StringExpr, StringFunctionId, StringLocalId, StringReturn,
-        TupleFunctionId, ValueType,
+        TupleFunctionId, UtfCodepointExpr, UtfCodepointFunctionId, UtfCodepointLocalId, ValueType,
     };
     use crate::planner::dsl::{
         bit_array, bit_array_function_ref, bool_, bool_return_expr, bool_return_string_case, float,
@@ -1872,6 +1917,64 @@ fn return_value(value: String) {
 
     #[test]
     fn plan_string_case_function_branch_return_families_direct() {
+        let codepoint = |local| {
+            Expr::utf_codepoint(UtfCodepointExpr::local_get(
+                UtfCodepointLocalId(local),
+                "codepoint".into(),
+            ))
+        };
+        assert_eq!(
+            super::string_case_expr(
+                string("one").into(),
+                vec![("one".into(), codepoint(0))],
+                codepoint(1),
+            ),
+            Ok(Expr::string_case(
+                string("one").into(),
+                StringCaseBranches::UtfCodepoint {
+                    clauses: vec![(
+                        "one".into(),
+                        UtfCodepointExpr::local_get(UtfCodepointLocalId(0), "codepoint".into(),),
+                    )],
+                    fallback: UtfCodepointExpr::local_get(
+                        UtfCodepointLocalId(1),
+                        "codepoint".into(),
+                    ),
+                },
+            )),
+        );
+        assert_eq!(
+            super::string_case_expr(
+                string("one").into(),
+                vec![("one".into(), int(1).into())],
+                codepoint(1),
+            ),
+            Err(case_branch_return_type_mismatch()),
+        );
+        assert_eq!(
+            super::function_case_branches(
+                vec![("one".into(), utf_codepoint_function_ref_expr(0))],
+                utf_codepoint_function_ref_expr(1)
+                    .into_function()
+                    .expect("function expression"),
+            ),
+            Ok(StringCaseBranches::UtfCodepointFunction {
+                clauses: vec![(
+                    "one".into(),
+                    utf_codepoint_function_ref_expr(0)
+                        .into_function()
+                        .expect("function expression")
+                        .into_utf_codepoint()
+                        .expect("utf codepoint function expression"),
+                )],
+                fallback: utf_codepoint_function_ref_expr(1)
+                    .into_function()
+                    .expect("function expression")
+                    .into_utf_codepoint()
+                    .expect("utf codepoint function expression"),
+            }),
+        );
+
         assert_eq!(
             super::string_case_expr(
                 string("one").into(),
@@ -2046,6 +2149,21 @@ fn return_value(value: String) {
     #[test]
     fn reject_margin_string_case_function_clause_family_mismatch_direct() {
         assert_eq!(
+            super::utf_codepoint_case_clauses(vec![("one".into(), Expr::from(int(1)))]),
+            Err(case_branch_return_type_mismatch()),
+        );
+        assert_eq!(
+            super::utf_codepoint_function_case_clauses(vec![("one".into(), Expr::from(int(1)),)]),
+            Err(case_branch_return_type_mismatch()),
+        );
+        assert_eq!(
+            super::utf_codepoint_function_case_clauses(vec![(
+                "one".into(),
+                int_function_ref_expr(0),
+            )]),
+            Err(case_branch_return_type_mismatch()),
+        );
+        assert_eq!(
             super::bit_array_case_clauses(vec![("one".into(), Expr::from(int(1)))]),
             Err(case_branch_return_type_mismatch()),
         );
@@ -2124,6 +2242,7 @@ fn return_value(value: String) {
 
         assert_string_function_case_branch_mismatch(int_function_ref_expr(1));
         assert_string_function_case_branch_mismatch(string_function_ref_expr(1));
+        assert_string_function_case_branch_mismatch(utf_codepoint_function_ref_expr(1));
         assert_string_function_case_branch_mismatch(float_function_ref_expr(1));
         assert_string_function_case_branch_mismatch(bool_function_ref_expr(1));
         assert_string_function_case_branch_mismatch(nil_function_ref_expr(1));
@@ -2187,6 +2306,14 @@ fn return_value(value: String) {
                 return_type: vec![ValueType::Int],
             },
             [LocalId::Int(IntLocalId(0))],
+        )
+        .into()
+    }
+
+    fn utf_codepoint_function_ref_expr(id: usize) -> crate::plan::Expr {
+        function_ref(
+            RuntimeFunctionId::UtfCodepoint(UtfCodepointFunctionId(id)),
+            [LocalId::UtfCodepoint(UtfCodepointLocalId(0))],
         )
         .into()
     }

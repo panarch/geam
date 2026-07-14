@@ -14,14 +14,14 @@ pub(in crate::runtime) use evaluated::{
     EvaluatedCaptureKind, EvaluatedFloatFunction, EvaluatedFunctionFunction,
     EvaluatedFunctionValue, EvaluatedFunctionValueKind, EvaluatedIntFunction, EvaluatedListCapture,
     EvaluatedListFunction, EvaluatedNilFunction, EvaluatedStringFunction, EvaluatedTupleFunction,
-    EvaluatedValue,
+    EvaluatedUtfCodepointFunction, EvaluatedValue,
 };
 #[cfg(test)]
 pub(in crate::runtime) use state::RuntimeState;
 pub(crate) use value::{
     BitArrayFunctionValue, BoolFunctionValue, CaptureListValue, CaptureValue, FloatFunctionValue,
     FunctionFunctionValue, FunctionValueKind, IntFunctionValue, ListFunctionValue,
-    NilFunctionValue, StringFunctionValue, TupleFunctionValue,
+    NilFunctionValue, StringFunctionValue, TupleFunctionValue, UtfCodepointFunctionValue,
 };
 pub use value::{
     BitArrayValue, BitArrayValueLengthError, FunctionValue, ListValue, ListValueItemTypeMismatch,

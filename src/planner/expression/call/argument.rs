@@ -2,7 +2,8 @@ use super::CaptureSubstitution;
 use crate::plan::{
     BitArrayListLocalId, BoolListLocalId, CallArg, Expr, FloatListLocalId, FunctionListLocalId,
     IntListLocalId, ListFunctionLocal, ListListLocalId, ListLocal, NilListLocalId, ParamLocal,
-    StringListLocalId, TupleFunctionLocalId, TupleListLocalId, TupleLocalId, ValueType,
+    StringListLocalId, TupleFunctionLocalId, TupleListLocalId, TupleLocalId,
+    UtfCodepointListLocalId, ValueType,
 };
 use crate::planner::context::{FunctionParam, PlanContext};
 use crate::planner::error::{InvalidCallShapeReason, InvalidTypedAstReason, PlanError};
@@ -51,6 +52,7 @@ fn function_call_param_locals(params: &[ValueType]) -> Vec<ParamLocal> {
     let mut next_int = 0;
     let mut next_string = 0;
     let mut next_bit_array = 0;
+    let mut next_utf_codepoint = 0;
     let mut next_float = 0;
     let mut next_bool = 0;
     let mut next_nil = 0;
@@ -58,6 +60,7 @@ fn function_call_param_locals(params: &[ValueType]) -> Vec<ParamLocal> {
     let mut next_int_list = 0;
     let mut next_string_list = 0;
     let mut next_bit_array_list = 0;
+    let mut next_utf_codepoint_list = 0;
     let mut next_float_list = 0;
     let mut next_bool_list = 0;
     let mut next_nil_list = 0;
@@ -67,6 +70,7 @@ fn function_call_param_locals(params: &[ValueType]) -> Vec<ParamLocal> {
     let mut next_int_function = 0;
     let mut next_string_function = 0;
     let mut next_bit_array_function = 0;
+    let mut next_utf_codepoint_function = 0;
     let mut next_float_function = 0;
     let mut next_bool_function = 0;
     let mut next_nil_function = 0;
@@ -90,6 +94,12 @@ fn function_call_param_locals(params: &[ValueType]) -> Vec<ParamLocal> {
             ValueType::BitArray => {
                 let local = ParamLocal::bit_array(crate::plan::BitArrayLocalId(next_bit_array));
                 next_bit_array += 1;
+                local
+            }
+            ValueType::UtfCodepoint => {
+                let local =
+                    ParamLocal::utf_codepoint(crate::plan::UtfCodepointLocalId(next_utf_codepoint));
+                next_utf_codepoint += 1;
                 local
             }
             ValueType::Float => {
@@ -127,6 +137,13 @@ fn function_call_param_locals(params: &[ValueType]) -> Vec<ParamLocal> {
                     ValueType::BitArray => {
                         let local = ListLocal::bit_array(BitArrayListLocalId(next_bit_array_list));
                         next_bit_array_list += 1;
+                        local
+                    }
+                    ValueType::UtfCodepoint => {
+                        let local = ListLocal::utf_codepoint(UtfCodepointListLocalId(
+                            next_utf_codepoint_list,
+                        ));
+                        next_utf_codepoint_list += 1;
                         local
                     }
                     ValueType::Float => {
@@ -190,6 +207,14 @@ fn function_call_param_locals(params: &[ValueType]) -> Vec<ParamLocal> {
                         type_.as_ref().clone(),
                     );
                     next_bit_array_function += 1;
+                    local
+                }
+                ValueType::UtfCodepoint => {
+                    let local = ParamLocal::utf_codepoint_function(
+                        crate::plan::UtfCodepointFunctionLocalId(next_utf_codepoint_function),
+                        type_.as_ref().clone(),
+                    );
+                    next_utf_codepoint_function += 1;
                     local
                 }
                 ValueType::Float => {
@@ -279,7 +304,7 @@ mod tests {
     use crate::plan::{
         BitArrayListLocalId, BoolListLocalId, FloatListLocalId, FunctionListLocalId, FunctionType,
         IntListLocalId, ListListLocalId, ListLocal, NilListLocalId, ParamLocal, StringListLocalId,
-        TupleListLocalId, ValueType,
+        TupleListLocalId, UtfCodepointListLocalId, ValueType,
     };
 
     #[test]
@@ -290,12 +315,14 @@ mod tests {
                 ValueType::Float,
                 ValueType::String,
                 ValueType::BitArray,
+                ValueType::UtfCodepoint,
                 ValueType::Bool,
                 ValueType::Nil,
                 ValueType::Int,
                 ValueType::List(Box::new(ValueType::Int)),
                 ValueType::List(Box::new(ValueType::String)),
                 ValueType::List(Box::new(ValueType::BitArray)),
+                ValueType::List(Box::new(ValueType::UtfCodepoint)),
                 ValueType::List(Box::new(ValueType::Float)),
                 ValueType::List(Box::new(ValueType::Bool)),
                 ValueType::List(Box::new(ValueType::Nil)),
@@ -316,6 +343,10 @@ mod tests {
                 ValueType::Function(Box::new(FunctionType::new(
                     vec![ValueType::BitArray],
                     ValueType::BitArray,
+                ))),
+                ValueType::Function(Box::new(FunctionType::new(
+                    vec![ValueType::UtfCodepoint],
+                    ValueType::UtfCodepoint,
                 ))),
                 ValueType::Function(Box::new(FunctionType::new(
                     vec![ValueType::Float],
@@ -347,12 +378,14 @@ mod tests {
                 ParamLocal::float(crate::plan::FloatLocalId(0)),
                 ParamLocal::string(crate::plan::StringLocalId(0)),
                 ParamLocal::bit_array(crate::plan::BitArrayLocalId(0)),
+                ParamLocal::utf_codepoint(crate::plan::UtfCodepointLocalId(0)),
                 ParamLocal::bool(crate::plan::BoolLocalId(0)),
                 ParamLocal::nil(crate::plan::NilLocalId(0)),
                 ParamLocal::int(crate::plan::IntLocalId(1)),
                 ParamLocal::list(ListLocal::int(IntListLocalId(0))),
                 ParamLocal::list(ListLocal::string(StringListLocalId(0))),
                 ParamLocal::list(ListLocal::bit_array(BitArrayListLocalId(0))),
+                ParamLocal::list(ListLocal::utf_codepoint(UtfCodepointListLocalId(0))),
                 ParamLocal::list(ListLocal::float(FloatListLocalId(0))),
                 ParamLocal::list(ListLocal::bool(BoolListLocalId(0))),
                 ParamLocal::list(ListLocal::nil(NilListLocalId(0))),
@@ -373,6 +406,10 @@ mod tests {
                 ParamLocal::bit_array_function(
                     crate::plan::BitArrayFunctionLocalId(0),
                     FunctionType::new(vec![ValueType::BitArray], ValueType::BitArray),
+                ),
+                ParamLocal::utf_codepoint_function(
+                    crate::plan::UtfCodepointFunctionLocalId(0),
+                    FunctionType::new(vec![ValueType::UtfCodepoint], ValueType::UtfCodepoint,),
                 ),
                 ParamLocal::float_function(
                     crate::plan::FloatFunctionLocalId(0),

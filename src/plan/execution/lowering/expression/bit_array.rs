@@ -125,6 +125,12 @@ fn bit_array_segment(
                 }
             },
         },
+        module::BitArraySegment::UtfCodepoint { value, encoding } => {
+            execution::BitArraySegment::UtfCodepoint {
+                value: super::utf_codepoint_expr(value, context),
+                encoding: encoding.into(),
+            }
+        }
         module::BitArraySegment::Bits(value) => {
             execution::BitArraySegment::Bits(bit_array_expr(value, context))
         }

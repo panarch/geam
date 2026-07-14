@@ -24,7 +24,9 @@ pub(crate) use expression::{
     NilFunctionExprKind, NilListExpr, NilListItem, PanicExpr, PanicExprKind, StringEncoding,
     StringExpr, StringExprKind, StringFunctionExpr, StringFunctionExprKind, StringListExpr,
     StringListItem, TupleExpr, TupleExprKind, TupleFunctionExpr, TupleFunctionExprKind,
-    TupleListExpr, TupleListItem, TypedListExpr, TypedListExprKind,
+    TupleListExpr, TupleListItem, TypedListExpr, TypedListExprKind, UtfCodepointExpr,
+    UtfCodepointExprKind, UtfCodepointFunctionExpr, UtfCodepointFunctionExprKind,
+    UtfCodepointListExpr, UtfCodepointListItem,
 };
 pub(crate) use frame::FrameLayout;
 pub(crate) use id::{
@@ -46,7 +48,10 @@ pub(crate) use id::{
     StringListFunctionFunctionId, StringListFunctionId, StringListFunctionLocalId,
     StringListLocalId, StringLocalId, TupleFunctionFunctionId, TupleFunctionId,
     TupleFunctionLocalId, TupleListFunctionFunctionId, TupleListFunctionId,
-    TupleListFunctionLocalId, TupleListLocalId, TupleLocalId,
+    TupleListFunctionLocalId, TupleListLocalId, TupleLocalId, UtfCodepointFunctionFunctionId,
+    UtfCodepointFunctionId, UtfCodepointFunctionLocalId, UtfCodepointListFunctionFunctionId,
+    UtfCodepointListFunctionId, UtfCodepointListFunctionLocalId, UtfCodepointListLocalId,
+    UtfCodepointLocalId,
 };
 pub(crate) use param::ParamLocal;
 pub(crate) use pattern::{
@@ -61,7 +66,7 @@ pub(crate) use return_::{
     FunctionListReturn, IntFunctionReturn, IntListReturn, IntReturn, ListFunctionReturn,
     ListListReturn, NilFunctionReturn, NilListReturn, NilReturn, ReturnBody, ReturnBodyKind,
     StringFunctionReturn, StringListReturn, StringReturn, TupleFunctionReturn, TupleListReturn,
-    TupleReturn,
+    TupleReturn, UtfCodepointFunctionReturn, UtfCodepointListReturn, UtfCodepointReturn,
 };
 pub(crate) use step::{
     AssertBinding, AssertPattern, ListAssertPattern, ListAssertTail, Step, StepKind,
@@ -69,7 +74,7 @@ pub(crate) use step::{
 pub(crate) use value_type::{
     BitArrayListTypeId, BoolListTypeId, FloatListTypeId, FunctionListTypeId, FunctionType,
     IntListTypeId, ListListTypeId, ListStorageTypeId, ListTypeId, NilListTypeId, StringListTypeId,
-    TupleListTypeId, ValueType,
+    TupleListTypeId, UtfCodepointListTypeId, ValueType,
 };
 
 use self::function::ExecutableFunction;
@@ -156,6 +161,13 @@ impl ExecutionPlan {
         self.functions.bit_array_function(id)
     }
 
+    pub(crate) fn utf_codepoint_function(
+        &self,
+        id: UtfCodepointFunctionId,
+    ) -> &ExecutableFunction<UtfCodepointReturn> {
+        self.functions.utf_codepoint_function(id)
+    }
+
     pub(crate) fn bool_function(&self, id: BoolFunctionId) -> &ExecutableFunction<BoolReturn> {
         self.functions.bool_function(id)
     }
@@ -188,6 +200,14 @@ impl ExecutionPlan {
     #[cfg(test)]
     pub(crate) fn bit_array_list_function_id(&self, index: usize) -> BitArrayListFunctionId {
         self.functions.bit_array_list_function_id(index)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn utf_codepoint_list_function_id(
+        &self,
+        index: usize,
+    ) -> UtfCodepointListFunctionId {
+        self.functions.utf_codepoint_list_function_id(index)
     }
 
     #[cfg(test)]
@@ -232,6 +252,13 @@ impl ExecutionPlan {
         id: BitArrayListFunctionId,
     ) -> &ExecutableFunction<BitArrayListReturn> {
         self.functions.bit_array_list_function(id)
+    }
+
+    pub(crate) fn utf_codepoint_list_function(
+        &self,
+        id: UtfCodepointListFunctionId,
+    ) -> &ExecutableFunction<UtfCodepointListReturn> {
+        self.functions.utf_codepoint_list_function(id)
     }
 
     pub(crate) fn float_list_function(
@@ -302,6 +329,13 @@ impl ExecutionPlan {
         id: BitArrayFunctionFunctionId,
     ) -> &ExecutableFunction<BitArrayFunctionReturn> {
         self.functions.bit_array_function_function(id)
+    }
+
+    pub(crate) fn utf_codepoint_function_function(
+        &self,
+        id: UtfCodepointFunctionFunctionId,
+    ) -> &ExecutableFunction<UtfCodepointFunctionReturn> {
+        self.functions.utf_codepoint_function_function(id)
     }
 
     pub(crate) fn bool_function_function(

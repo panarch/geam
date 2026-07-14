@@ -2,13 +2,14 @@ use super::{
     BitArrayExpr, BitArrayFunctionExpr, BoolExpr, BoolFunctionExpr, Expr, ExprKind, FloatExpr,
     FloatFunctionExpr, FunctionFunctionExpr, IntExpr, IntFunctionExpr, ListExpr, ListFunctionExpr,
     ListLocalExpr, NilExpr, NilFunctionExpr, StringExpr, StringFunctionExpr, TupleExpr,
-    TupleFunctionExpr,
+    TupleFunctionExpr, UtfCodepointExpr, UtfCodepointFunctionExpr,
 };
 use crate::plan::{
     BitArrayFunctionLocalId, BitArrayLocalId, BoolFunctionLocalId, BoolLocalId,
     FloatFunctionLocalId, FloatLocalId, FunctionFunctionLocalId, IntFunctionLocalId, IntLocalId,
     ListFunctionLocal, ListLocal, NilFunctionLocalId, NilLocalId, ParamLocal,
     StringFunctionLocalId, StringLocalId, TupleFunctionLocalId, TupleLocalId,
+    UtfCodepointFunctionLocalId, UtfCodepointLocalId,
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -29,6 +30,10 @@ pub(crate) enum CallArgKind {
     BitArray {
         local: BitArrayLocalId,
         value: BitArrayExpr,
+    },
+    UtfCodepoint {
+        local: UtfCodepointLocalId,
+        value: UtfCodepointExpr,
     },
     Float {
         local: FloatLocalId,
@@ -58,6 +63,10 @@ pub(crate) enum CallArgKind {
     BitArrayFunction {
         local: BitArrayFunctionLocalId,
         value: BitArrayFunctionExpr,
+    },
+    UtfCodepointFunction {
+        local: UtfCodepointFunctionLocalId,
+        value: UtfCodepointFunctionExpr,
     },
     FloatFunction {
         local: FloatFunctionLocalId,
@@ -104,6 +113,10 @@ pub(crate) enum CaptureArgKind {
         local: BitArrayLocalId,
         value: BitArrayExpr,
     },
+    UtfCodepoint {
+        local: UtfCodepointLocalId,
+        value: UtfCodepointExpr,
+    },
     Float {
         local: FloatLocalId,
         value: FloatExpr,
@@ -132,6 +145,10 @@ pub(crate) enum CaptureArgKind {
     BitArrayFunction {
         local: BitArrayFunctionLocalId,
         value: BitArrayFunctionExpr,
+    },
+    UtfCodepointFunction {
+        local: UtfCodepointFunctionLocalId,
+        value: UtfCodepointFunctionExpr,
     },
     FloatFunction {
         local: FloatFunctionLocalId,
@@ -169,6 +186,9 @@ impl Expr {
             (ParamLocal::BitArray(local), ExprKind::BitArray(value)) => {
                 Some(CallArg::bit_array(*local, value))
             }
+            (ParamLocal::UtfCodepoint(local), ExprKind::UtfCodepoint(value)) => {
+                Some(CallArg::utf_codepoint(*local, value))
+            }
             (ParamLocal::Float(local), ExprKind::Float(value)) => {
                 Some(CallArg::float(*local, value))
             }
@@ -198,6 +218,13 @@ impl Expr {
                 ParamLocal::List(ListLocal::BitArray(local)),
                 ExprKind::List(ListExpr::BitArray(value)),
             ) => Some(CallArg::list(ListLocalExpr::BitArray {
+                local: *local,
+                value,
+            })),
+            (
+                ParamLocal::List(ListLocal::UtfCodepoint(local)),
+                ExprKind::List(ListExpr::UtfCodepoint(value)),
+            ) => Some(CallArg::list(ListLocalExpr::UtfCodepoint {
                 local: *local,
                 value,
             })),
@@ -277,6 +304,15 @@ impl Expr {
                 .into_bit_array()
                 .map(|value| CallArg::bit_array_function(*local, value)),
             (
+                ParamLocal::UtfCodepointFunction {
+                    local,
+                    type_: expected,
+                },
+                ExprKind::Function(value),
+            ) if value.type_() == expected => value
+                .into_utf_codepoint()
+                .map(|value| CallArg::utf_codepoint_function(*local, value)),
+            (
                 ParamLocal::FloatFunction {
                     local,
                     type_: expected,
@@ -352,6 +388,12 @@ impl CallArg {
         }
     }
 
+    pub(crate) fn utf_codepoint(local: UtfCodepointLocalId, value: UtfCodepointExpr) -> Self {
+        Self {
+            kind: CallArgKind::UtfCodepoint { local, value },
+        }
+    }
+
     pub(crate) fn float(local: FloatLocalId, value: FloatExpr) -> Self {
         Self {
             kind: CallArgKind::Float { local, value },
@@ -400,6 +442,15 @@ impl CallArg {
     ) -> Self {
         Self {
             kind: CallArgKind::BitArrayFunction { local, value },
+        }
+    }
+
+    pub(crate) fn utf_codepoint_function(
+        local: UtfCodepointFunctionLocalId,
+        value: UtfCodepointFunctionExpr,
+    ) -> Self {
+        Self {
+            kind: CallArgKind::UtfCodepointFunction { local, value },
         }
     }
 
@@ -470,6 +521,12 @@ impl CaptureArg {
         }
     }
 
+    pub(crate) fn utf_codepoint(local: UtfCodepointLocalId, value: UtfCodepointExpr) -> Self {
+        Self {
+            kind: CaptureArgKind::UtfCodepoint { local, value },
+        }
+    }
+
     pub(crate) fn float(local: FloatLocalId, value: FloatExpr) -> Self {
         Self {
             kind: CaptureArgKind::Float { local, value },
@@ -518,6 +575,15 @@ impl CaptureArg {
     ) -> Self {
         Self {
             kind: CaptureArgKind::BitArrayFunction { local, value },
+        }
+    }
+
+    pub(crate) fn utf_codepoint_function(
+        local: UtfCodepointFunctionLocalId,
+        value: UtfCodepointFunctionExpr,
+    ) -> Self {
+        Self {
+            kind: CaptureArgKind::UtfCodepointFunction { local, value },
         }
     }
 

@@ -79,6 +79,8 @@ pub enum InvalidExpressionType {
     String,
     #[error("BitArray")]
     BitArray,
+    #[error("UtfCodepoint")]
+    UtfCodepoint,
     #[error("Float")]
     Float,
     #[error("Bool")]

@@ -9,7 +9,7 @@ use super::evaluated::{EvaluatedBitArray, EvaluatedFunctionValue, EvaluatedValue
 use crate::plan::execution::{
     BitArrayListTypeId, BoolListTypeId, ExecutionPlan, FloatListTypeId, FunctionListTypeId,
     IntListTypeId, ListListTypeId, ListStorageTypeId, ListTypeId, NilListTypeId, StringListTypeId,
-    TupleListTypeId,
+    TupleListTypeId, UtfCodepointListTypeId,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -17,6 +17,7 @@ enum ListStorageKey {
     Int { slot: usize },
     String { slot: usize },
     BitArray { slot: usize },
+    UtfCodepoint { slot: usize },
     Float { slot: usize },
     Bool { slot: usize },
     Nil { slot: usize },
@@ -53,6 +54,7 @@ impl ListStorageKey {
             Self::Int { slot }
             | Self::String { slot }
             | Self::BitArray { slot }
+            | Self::UtfCodepoint { slot }
             | Self::Float { slot }
             | Self::Bool { slot }
             | Self::Nil { slot }
@@ -113,6 +115,11 @@ macro_rules! typed_list_value_id {
 typed_list_value_id!(IntListValueId, IntListTypeId, Int);
 typed_list_value_id!(StringListValueId, StringListTypeId, String);
 typed_list_value_id!(BitArrayListValueId, BitArrayListTypeId, BitArray);
+typed_list_value_id!(
+    UtfCodepointListValueId,
+    UtfCodepointListTypeId,
+    UtfCodepoint
+);
 typed_list_value_id!(FloatListValueId, FloatListTypeId, Float);
 typed_list_value_id!(BoolListValueId, BoolListTypeId, Bool);
 typed_list_value_id!(NilListValueId, NilListTypeId, Nil);
@@ -125,6 +132,7 @@ pub(super) enum ListValueId {
     Int(IntListValueId),
     String(StringListValueId),
     BitArray(BitArrayListValueId),
+    UtfCodepoint(UtfCodepointListValueId),
     Float(FloatListValueId),
     Bool(BoolListValueId),
     Nil(NilListValueId),
@@ -139,6 +147,7 @@ impl ListValueId {
             Self::Int(value) => value.type_id().list_type(),
             Self::String(value) => value.type_id().list_type(),
             Self::BitArray(value) => value.type_id().list_type(),
+            Self::UtfCodepoint(value) => value.type_id().list_type(),
             Self::Float(value) => value.type_id().list_type(),
             Self::Bool(value) => value.type_id().list_type(),
             Self::Nil(value) => value.type_id().list_type(),
@@ -153,6 +162,7 @@ impl ListValueId {
             Self::Int(value) => value.into_core(),
             Self::String(value) => value.into_core(),
             Self::BitArray(value) => value.into_core(),
+            Self::UtfCodepoint(value) => value.into_core(),
             Self::Float(value) => value.into_core(),
             Self::Bool(value) => value.into_core(),
             Self::Nil(value) => value.into_core(),
@@ -174,6 +184,9 @@ impl ListValueId {
             }
             ListStorageTypeId::BitArray(type_id) => {
                 Self::BitArray(BitArrayListValueId::new(type_id, core))
+            }
+            ListStorageTypeId::UtfCodepoint(type_id) => {
+                Self::UtfCodepoint(UtfCodepointListValueId::new(type_id, core))
             }
             ListStorageTypeId::Float(type_id) => Self::Float(FloatListValueId::new(type_id, core)),
             ListStorageTypeId::Bool(type_id) => Self::Bool(BoolListValueId::new(type_id, core)),
@@ -221,6 +234,7 @@ pub(in crate::runtime) struct RuntimeState {
     ints: ListPool<Vec<BigInt>>,
     strings: ListPool<Vec<EcoString>>,
     bit_arrays: ListPool<Vec<EvaluatedBitArray>>,
+    utf_codepoints: ListPool<Vec<char>>,
     floats: ListPool<Vec<f64>>,
     bools: ListPool<Vec<bool>>,
     nils: ListPool<usize>,
@@ -236,6 +250,7 @@ impl RuntimeState {
             ints: ListPool::default(),
             strings: ListPool::default(),
             bit_arrays: ListPool::default(),
+            utf_codepoints: ListPool::default(),
             floats: ListPool::default(),
             bools: ListPool::default(),
             nils: ListPool::default(),
@@ -256,6 +271,7 @@ impl RuntimeState {
                 ListStorageKey::Int { slot } => drop(self.ints.release(slot)),
                 ListStorageKey::String { slot } => drop(self.strings.release(slot)),
                 ListStorageKey::BitArray { slot } => drop(self.bit_arrays.release(slot)),
+                ListStorageKey::UtfCodepoint { slot } => drop(self.utf_codepoints.release(slot)),
                 ListStorageKey::Float { slot } => drop(self.floats.release(slot)),
                 ListStorageKey::Bool { slot } => drop(self.bools.release(slot)),
                 ListStorageKey::Nil { slot } => {
@@ -305,6 +321,16 @@ impl RuntimeState {
         self.prepare_allocation();
         let slot = self.bit_arrays.allocate(values);
         BitArrayListValueId::new(type_id, self.core(ListStorageKey::BitArray { slot }))
+    }
+
+    pub(super) fn utf_codepoint(
+        &mut self,
+        type_id: UtfCodepointListTypeId,
+        values: Vec<char>,
+    ) -> UtfCodepointListValueId {
+        self.prepare_allocation();
+        let slot = self.utf_codepoints.allocate(values);
+        UtfCodepointListValueId::new(type_id, self.core(ListStorageKey::UtfCodepoint { slot }))
     }
 
     pub(super) fn float(&mut self, type_id: FloatListTypeId, values: Vec<f64>) -> FloatListValueId {
@@ -367,6 +393,10 @@ impl RuntimeState {
         self.bit_arrays.get(value.core.slot())
     }
 
+    pub(super) fn utf_codepoint_values(&self, value: &UtfCodepointListValueId) -> &[char] {
+        self.utf_codepoints.get(value.core.slot())
+    }
+
     pub(super) fn float_values(&self, value: &FloatListValueId) -> &[f64] {
         self.floats.get(value.core.slot())
     }
@@ -396,6 +426,7 @@ impl RuntimeState {
             ListValueId::Int(value) => self.int_values(value).len(),
             ListValueId::String(value) => self.string_values(value).len(),
             ListValueId::BitArray(value) => self.bit_array_values(value).len(),
+            ListValueId::UtfCodepoint(value) => self.utf_codepoint_values(value).len(),
             ListValueId::Float(value) => self.float_values(value).len(),
             ListValueId::Bool(value) => self.bool_values(value).len(),
             ListValueId::Nil(value) => self.nil_len(value),
@@ -428,6 +459,12 @@ impl RuntimeState {
                 .iter()
                 .cloned()
                 .map(EvaluatedValue::BitArray)
+                .collect(),
+            ListValueId::UtfCodepoint(value) => self
+                .utf_codepoint_values(value)
+                .iter()
+                .copied()
+                .map(EvaluatedValue::UtfCodepoint)
                 .collect(),
             ListValueId::Float(value) => self
                 .float_values(value)
@@ -486,6 +523,11 @@ impl RuntimeState {
                 let values = values[count.min(values.len())..].to_vec();
                 self.bit_array(value.type_id(), values).into()
             }
+            ListValueId::UtfCodepoint(value) => {
+                let values = self.utf_codepoint_values(value);
+                let values = values[count.min(values.len())..].to_vec();
+                self.utf_codepoint(value.type_id(), values).into()
+            }
             ListValueId::Float(value) => {
                 let values = self.float_values(value);
                 let values = values[count.min(values.len())..].to_vec();
@@ -526,13 +568,15 @@ mod tests {
     use crate::runtime::frame::Frame;
     use crate::runtime::function::return_body::run_int_list_loop;
     use crate::runtime::{
-        EvaluatedCapture, EvaluatedFunctionValue, EvaluatedIntFunction, EvaluatedValue,
+        EvaluatedBitArray, EvaluatedCapture, EvaluatedFunctionValue, EvaluatedIntFunction,
+        EvaluatedValue,
     };
 
     const EVERY_LIST_FAMILY_SOURCE: &str = r#"
 fn ints() -> List(Int) { [] }
 fn strings() -> List(String) { [] }
 fn bit_arrays() -> List(BitArray) { [] }
+fn utf_codepoints() -> List(UtfCodepoint) { [] }
 fn floats() -> List(Float) { [] }
 fn bools() -> List(Bool) { [] }
 fn nils() -> List(Nil) { [] }
@@ -678,6 +722,16 @@ pub fn main() { 0 }
             plan.string_list_function_id(0).type_id(),
             vec!["one".into()],
         );
+        let bit_array = state.bit_array(
+            plan.bit_array_list_function_id(0).type_id(),
+            vec![EvaluatedBitArray::new(bitvec::vec::BitVec::from_vec(vec![
+                1,
+            ]))],
+        );
+        let utf_codepoint = state.utf_codepoint(
+            plan.utf_codepoint_list_function_id(0).type_id(),
+            vec!['\u{10ffff}'],
+        );
         let float = state.float(plan.float_list_function_id(0).type_id(), vec![1.5]);
         let bool_ = state.bool(plan.bool_list_function_id(0).type_id(), vec![true]);
         let nil = state.nil(plan.nil_list_function_id(0).type_id(), 1);
@@ -697,6 +751,8 @@ pub fn main() { 0 }
         let values = [
             ListValueId::Int(int),
             ListValueId::String(string),
+            ListValueId::BitArray(bit_array),
+            ListValueId::UtfCodepoint(utf_codepoint),
             ListValueId::Float(float),
             ListValueId::Bool(bool_),
             ListValueId::Nil(nil),

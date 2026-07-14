@@ -9,7 +9,9 @@ use super::{
     NilFunctionExpr, NilFunctionFunctionId, NilFunctionId, NilListExpr, NilListFunctionId, Step,
     StringExpr, StringFunctionExpr, StringFunctionFunctionId, StringFunctionId, StringListExpr,
     StringListFunctionId, TupleExpr, TupleFunctionExpr, TupleFunctionFunctionId, TupleFunctionId,
-    TupleListExpr, TupleListFunctionId,
+    TupleListExpr, TupleListFunctionId, UtfCodepointExpr, UtfCodepointFunctionExpr,
+    UtfCodepointFunctionFunctionId, UtfCodepointFunctionId, UtfCodepointListExpr,
+    UtfCodepointListFunctionId,
 };
 use ecow::EcoString;
 use num_bigint::BigInt;
@@ -18,6 +20,7 @@ pub(crate) type IntReturn = ReturnBody<IntExpr, IntFunctionId>;
 pub(crate) type FloatReturn = ReturnBody<FloatExpr, FloatFunctionId>;
 pub(crate) type StringReturn = ReturnBody<StringExpr, StringFunctionId>;
 pub(crate) type BitArrayReturn = ReturnBody<BitArrayExpr, BitArrayFunctionId>;
+pub(crate) type UtfCodepointReturn = ReturnBody<UtfCodepointExpr, UtfCodepointFunctionId>;
 pub(crate) type BoolReturn = ReturnBody<BoolExpr, BoolFunctionId>;
 pub(crate) type NilReturn = ReturnBody<NilExpr, NilFunctionId>;
 pub(crate) type TupleReturn = ReturnBody<TupleExpr, TupleFunctionId>;
@@ -25,6 +28,8 @@ pub(crate) type IntListReturn = ReturnBody<IntListExpr, IntListFunctionId>;
 pub(crate) type FloatListReturn = ReturnBody<FloatListExpr, FloatListFunctionId>;
 pub(crate) type StringListReturn = ReturnBody<StringListExpr, StringListFunctionId>;
 pub(crate) type BitArrayListReturn = ReturnBody<BitArrayListExpr, BitArrayListFunctionId>;
+pub(crate) type UtfCodepointListReturn =
+    ReturnBody<UtfCodepointListExpr, UtfCodepointListFunctionId>;
 pub(crate) type BoolListReturn = ReturnBody<BoolListExpr, BoolListFunctionId>;
 pub(crate) type NilListReturn = ReturnBody<NilListExpr, NilListFunctionId>;
 pub(crate) type TupleListReturn = ReturnBody<TupleListExpr, TupleListFunctionId>;
@@ -35,6 +40,8 @@ pub(crate) type FloatFunctionReturn = ReturnBody<FloatFunctionExpr, FloatFunctio
 pub(crate) type StringFunctionReturn = ReturnBody<StringFunctionExpr, StringFunctionFunctionId>;
 pub(crate) type BitArrayFunctionReturn =
     ReturnBody<BitArrayFunctionExpr, BitArrayFunctionFunctionId>;
+pub(crate) type UtfCodepointFunctionReturn =
+    ReturnBody<UtfCodepointFunctionExpr, UtfCodepointFunctionFunctionId>;
 pub(crate) type BoolFunctionReturn = ReturnBody<BoolFunctionExpr, BoolFunctionFunctionId>;
 pub(crate) type NilFunctionReturn = ReturnBody<NilFunctionExpr, NilFunctionFunctionId>;
 pub(crate) type TupleFunctionReturn = ReturnBody<TupleFunctionExpr, TupleFunctionFunctionId>;

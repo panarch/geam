@@ -20,6 +20,9 @@ pub(super) fn param_local(
         module::ParamLocal::BitArray(local) => {
             execution::ParamLocal::BitArray(execution::BitArrayLocalId(local.0))
         }
+        module::ParamLocal::UtfCodepoint(local) => {
+            execution::ParamLocal::UtfCodepoint(execution::UtfCodepointLocalId(local.0))
+        }
         module::ParamLocal::Bool(local) => {
             execution::ParamLocal::Bool(execution::BoolLocalId(local.0))
         }
@@ -53,6 +56,12 @@ pub(super) fn param_local(
         module::ParamLocal::BitArrayFunction { local, type_ } => {
             execution::ParamLocal::BitArrayFunction {
                 local: execution::BitArrayFunctionLocalId(local.0),
+                type_: context.function_type(type_),
+            }
+        }
+        module::ParamLocal::UtfCodepointFunction { local, type_ } => {
+            execution::ParamLocal::UtfCodepointFunction {
+                local: execution::UtfCodepointFunctionLocalId(local.0),
                 type_: context.function_type(type_),
             }
         }

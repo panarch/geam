@@ -13,6 +13,7 @@ pub(super) fn frame_layout(
         floats: parts.floats,
         strings: parts.strings,
         bit_arrays: parts.bit_arrays,
+        utf_codepoints: parts.utf_codepoints,
         bools: parts.bools,
         tuples: parts.tuples,
         int_lists: (0..parts.int_lists)
@@ -23,6 +24,9 @@ pub(super) fn frame_layout(
             .collect(),
         bit_array_lists: (0..parts.bit_array_lists)
             .map(|_| context.bit_array_list_type())
+            .collect(),
+        utf_codepoint_lists: (0..parts.utf_codepoint_lists)
+            .map(|_| context.utf_codepoint_list_type())
             .collect(),
         float_lists: (0..parts.float_lists)
             .map(|_| context.float_list_type())
@@ -52,6 +56,7 @@ pub(super) fn frame_layout(
         float_functions: parts.float_functions,
         string_functions: parts.string_functions,
         bit_array_functions: parts.bit_array_functions,
+        utf_codepoint_functions: parts.utf_codepoint_functions,
         bool_functions: parts.bool_functions,
         nil_functions: parts.nil_functions,
         tuple_functions: parts.tuple_functions,
@@ -77,12 +82,14 @@ fn all_slots(
   float: Float,
   string: String,
   bit_array: BitArray,
+  utf_codepoint: UtfCodepoint,
   bool: Bool,
   nil: Nil,
   tuple: #(Int),
   int_list: List(Int),
   string_list: List(String),
   bit_array_list: List(BitArray),
+  utf_codepoint_list: List(UtfCodepoint),
   float_list: List(Float),
   bool_list: List(Bool),
   nil_list: List(Nil),
@@ -93,12 +100,14 @@ fn all_slots(
   float_function: fn() -> Float,
   string_function: fn() -> String,
   bit_array_function: fn() -> BitArray,
+  utf_codepoint_function: fn() -> UtfCodepoint,
   bool_function: fn() -> Bool,
   nil_function: fn() -> Nil,
   tuple_function: fn() -> #(Int),
   int_list_function: fn() -> List(Int),
   string_list_function: fn() -> List(String),
   bit_array_list_function: fn() -> List(BitArray),
+  utf_codepoint_list_function: fn() -> List(UtfCodepoint),
   float_list_function: fn() -> List(Float),
   bool_list_function: fn() -> List(Bool),
   nil_list_function: fn() -> List(Nil),
@@ -122,11 +131,13 @@ pub fn main() { 0 }
         assert_eq!(layout.floats(), 1);
         assert_eq!(layout.strings(), 1);
         assert_eq!(layout.bit_arrays(), 1);
+        assert_eq!(layout.utf_codepoints(), 1);
         assert_eq!(layout.bools(), 1);
         assert_eq!(layout.tuples(), 1);
         assert_eq!(layout.int_lists().len(), 1);
         assert_eq!(layout.string_lists().len(), 1);
         assert_eq!(layout.bit_array_lists().len(), 1);
+        assert_eq!(layout.utf_codepoint_lists().len(), 1);
         assert_eq!(layout.float_lists().len(), 1);
         assert_eq!(layout.bool_lists().len(), 1);
         assert_eq!(layout.nil_lists().len(), 1);
@@ -149,6 +160,7 @@ pub fn main() { 0 }
         assert_eq!(layout.float_functions(), 1);
         assert_eq!(layout.string_functions(), 1);
         assert_eq!(layout.bit_array_functions(), 1);
+        assert_eq!(layout.utf_codepoint_functions(), 1);
         assert_eq!(layout.bool_functions(), 1);
         assert_eq!(layout.nil_functions(), 1);
         assert_eq!(layout.tuple_functions(), 1);
@@ -159,6 +171,7 @@ pub fn main() { 0 }
             ValueType::List(Box::new(ValueType::Int)),
             ValueType::List(Box::new(ValueType::String)),
             ValueType::List(Box::new(ValueType::BitArray)),
+            ValueType::List(Box::new(ValueType::UtfCodepoint)),
             ValueType::List(Box::new(ValueType::Float)),
             ValueType::List(Box::new(ValueType::Bool)),
             ValueType::List(Box::new(ValueType::Nil)),

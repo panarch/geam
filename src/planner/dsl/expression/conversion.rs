@@ -1,13 +1,14 @@
 use super::{
     BitArray, BitArrayFunction, Bool, BoolFunction, Float, FloatFunction, Function,
     FunctionFunction, Int, IntFunction, IntoParamLocal, IntoValueType, List, ListFunction, Nil,
-    NilFunction, String, StringFunction, Tuple, TupleFunction,
+    NilFunction, String, StringFunction, Tuple, TupleFunction, UtfCodepoint, UtfCodepointFunction,
 };
 use crate::plan::{
     BitArrayExpr, BitArrayFunctionExpr, BoolExpr, BoolFunctionExpr, Expr, FloatExpr,
     FloatFunctionExpr, FunctionExpr, FunctionFunctionExpr, IntExpr, IntFunctionExpr, ListExpr,
     ListFunctionExpr, LocalId, NilExpr, NilFunctionExpr, ParamLocal, StringExpr,
-    StringFunctionExpr, TupleExpr, TupleFunctionExpr, ValueType,
+    StringFunctionExpr, TupleExpr, TupleFunctionExpr, UtfCodepointExpr, UtfCodepointFunctionExpr,
+    ValueType,
 };
 
 impl From<Int> for Expr {
@@ -25,6 +26,12 @@ impl From<String> for Expr {
 impl From<BitArray> for Expr {
     fn from(value: BitArray) -> Self {
         Self::bit_array(value.into())
+    }
+}
+
+impl From<UtfCodepoint> for Expr {
+    fn from(value: UtfCodepoint) -> Self {
+        Self::utf_codepoint(value.into())
     }
 }
 
@@ -78,6 +85,12 @@ impl From<String> for StringExpr {
 
 impl From<BitArray> for BitArrayExpr {
     fn from(value: BitArray) -> Self {
+        value.0
+    }
+}
+
+impl From<UtfCodepoint> for UtfCodepointExpr {
+    fn from(value: UtfCodepoint) -> Self {
         value.0
     }
 }
@@ -151,6 +164,30 @@ impl From<StringFunction> for StringFunctionExpr {
 impl From<BitArrayFunction> for BitArrayFunctionExpr {
     fn from(value: BitArrayFunction) -> Self {
         value.0
+    }
+}
+
+impl From<UtfCodepointFunction> for UtfCodepointFunctionExpr {
+    fn from(value: UtfCodepointFunction) -> Self {
+        value.0
+    }
+}
+
+impl From<UtfCodepointFunction> for Function {
+    fn from(value: UtfCodepointFunction) -> Self {
+        Function(FunctionExpr::utf_codepoint(value.into()))
+    }
+}
+
+impl From<UtfCodepointFunction> for Expr {
+    fn from(value: UtfCodepointFunction) -> Self {
+        Self::function(FunctionExpr::utf_codepoint(value.into()))
+    }
+}
+
+impl From<UtfCodepointFunction> for FunctionExpr {
+    fn from(value: UtfCodepointFunction) -> Self {
+        FunctionExpr::utf_codepoint(value.into())
     }
 }
 
@@ -310,6 +347,7 @@ impl IntoValueType for LocalId {
             LocalId::Int(_) => ValueType::Int,
             LocalId::String(_) => ValueType::String,
             LocalId::BitArray(_) => ValueType::BitArray,
+            LocalId::UtfCodepoint(_) => ValueType::UtfCodepoint,
             LocalId::Float(_) => ValueType::Float,
             LocalId::Bool(_) => ValueType::Bool,
             LocalId::Nil(_) => ValueType::Nil,
@@ -329,6 +367,7 @@ impl IntoParamLocal for LocalId {
             LocalId::Int(local) => ParamLocal::int(local),
             LocalId::String(local) => ParamLocal::string(local),
             LocalId::BitArray(local) => ParamLocal::bit_array(local),
+            LocalId::UtfCodepoint(local) => ParamLocal::utf_codepoint(local),
             LocalId::Float(local) => ParamLocal::float(local),
             LocalId::Bool(local) => ParamLocal::bool(local),
             LocalId::Nil(local) => ParamLocal::nil(local),
@@ -351,12 +390,13 @@ mod tests {
         FunctionFunctionReference, FunctionType, IntExpr, IntFunctionExpr, IntFunctionFunctionId,
         IntFunctionId, IntFunctionReference, ListExpr, ListFunctionExpr, ListFunctionId,
         ListFunctionReference, NilExpr, ParamLocal, StringExpr, TupleExpr, TupleFunctionExpr,
-        TupleFunctionId, TupleFunctionReference, ValueType,
+        TupleFunctionId, TupleFunctionReference, UtfCodepointExpr, UtfCodepointFunctionExpr,
+        UtfCodepointFunctionId, UtfCodepointFunctionReference, ValueType,
     };
     use crate::planner::dsl::expression::{
         Function, bit_array, bit_array_function_ref, bool_, float, float_function_ref,
-        function_function_ref, int, int_function_ref, list, list_function_ref, nil, string, tuple,
-        tuple_function_ref,
+        function_function_ref, int, int_function_ref, list, list_function_ref, local_utf_codepoint,
+        nil, string, tuple, tuple_function_ref, utf_codepoint_function_ref,
     };
     use num_bigint::BigInt;
 
@@ -379,6 +419,11 @@ mod tests {
         assert_eq!(
             crate::plan::LocalId::BitArray(crate::plan::BitArrayLocalId(5)).into_value_type(),
             ValueType::BitArray,
+        );
+        assert_eq!(
+            crate::plan::LocalId::UtfCodepoint(crate::plan::UtfCodepointLocalId(6))
+                .into_value_type(),
+            ValueType::UtfCodepoint,
         );
         assert_eq!(
             crate::plan::LocalId::Float(crate::plan::FloatLocalId(2)).into_value_type(),
@@ -404,6 +449,11 @@ mod tests {
         assert_eq!(
             crate::plan::LocalId::BitArray(crate::plan::BitArrayLocalId(5)).into_param_local(),
             ParamLocal::bit_array(crate::plan::BitArrayLocalId(5)),
+        );
+        assert_eq!(
+            crate::plan::LocalId::UtfCodepoint(crate::plan::UtfCodepointLocalId(6))
+                .into_param_local(),
+            ParamLocal::utf_codepoint(crate::plan::UtfCodepointLocalId(6)),
         );
         assert_eq!(
             crate::plan::LocalId::Float(crate::plan::FloatLocalId(2)).into_param_local(),
@@ -432,6 +482,13 @@ mod tests {
         assert_eq!(
             Expr::from(bit_array([])),
             Expr::bit_array(BitArrayExpr::value(Vec::new())),
+        );
+        assert_eq!(
+            Expr::from(local_utf_codepoint(0, "codepoint")),
+            Expr::utf_codepoint(UtfCodepointExpr::local_get(
+                crate::plan::UtfCodepointLocalId(0),
+                "codepoint".into(),
+            )),
         );
         assert_eq!(Expr::from(float(1.5)), Expr::float(FloatExpr::value(1.5)));
         assert_eq!(Expr::from(bool_(true)), Expr::bool(BoolExpr::value(true)));
@@ -473,6 +530,30 @@ mod tests {
             ))),
             FunctionExpr::bit_array(BitArrayFunctionExpr::reference(
                 BitArrayFunctionReference::new(BitArrayFunctionId(0), Vec::new()),
+            )),
+        );
+        assert_eq!(
+            Expr::from(utf_codepoint_function_ref(0, Vec::<ParamLocal>::new())),
+            Expr::function(FunctionExpr::utf_codepoint(
+                UtfCodepointFunctionExpr::reference(UtfCodepointFunctionReference::new(
+                    UtfCodepointFunctionId(0),
+                    Vec::new(),
+                )),
+            )),
+        );
+        assert_eq!(
+            FunctionExpr::from(utf_codepoint_function_ref(0, Vec::<ParamLocal>::new(),)),
+            FunctionExpr::utf_codepoint(UtfCodepointFunctionExpr::reference(
+                UtfCodepointFunctionReference::new(UtfCodepointFunctionId(0), Vec::new()),
+            )),
+        );
+        assert_eq!(
+            FunctionExpr::from(Function::from(utf_codepoint_function_ref(
+                0,
+                Vec::<ParamLocal>::new(),
+            ))),
+            FunctionExpr::utf_codepoint(UtfCodepointFunctionExpr::reference(
+                UtfCodepointFunctionReference::new(UtfCodepointFunctionId(0), Vec::new()),
             )),
         );
         assert_eq!(

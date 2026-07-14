@@ -4,7 +4,7 @@ use num_bigint::BigInt;
 use super::{
     BitArrayFunctionValue, BitArrayValue, BoolFunctionValue, FloatFunctionValue,
     FunctionFunctionValue, IntFunctionValue, ListFunctionValue, ListValue, NilFunctionValue,
-    StringFunctionValue, TupleFunctionValue, Value,
+    StringFunctionValue, TupleFunctionValue, UtfCodepointFunctionValue, Value,
 };
 use crate::plan::execution::{
     BitArrayFunctionLocalId, BitArrayListLocalId, BitArrayLocalId, BoolFunctionLocalId,
@@ -12,7 +12,8 @@ use crate::plan::execution::{
     FunctionFunctionLocalId, FunctionListLocalId, IntFunctionLocalId, IntListLocalId, IntLocalId,
     ListFunctionLocal, ListListLocalId, NilFunctionLocalId, NilListLocalId, NilLocalId,
     StringFunctionLocalId, StringListLocalId, StringLocalId, TupleFunctionLocalId,
-    TupleListLocalId, TupleLocalId,
+    TupleListLocalId, TupleLocalId, UtfCodepointFunctionLocalId, UtfCodepointListLocalId,
+    UtfCodepointLocalId,
 };
 use crate::plan::{FunctionType, ValueType};
 
@@ -38,6 +39,10 @@ pub(crate) enum CaptureValueKind {
     BitArray {
         local: BitArrayLocalId,
         value: BitArrayValue,
+    },
+    UtfCodepoint {
+        local: UtfCodepointLocalId,
+        value: char,
     },
     Bool {
         local: BoolLocalId,
@@ -66,6 +71,10 @@ pub(crate) enum CaptureValueKind {
     BitArrayFunction {
         local: BitArrayFunctionLocalId,
         value: BitArrayFunctionValue,
+    },
+    UtfCodepointFunction {
+        local: UtfCodepointFunctionLocalId,
+        value: UtfCodepointFunctionValue,
     },
     BoolFunction {
         local: BoolFunctionLocalId,
@@ -102,6 +111,10 @@ pub(crate) enum CaptureListValue {
     BitArray {
         local: BitArrayListLocalId,
         value: Vec<BitArrayValue>,
+    },
+    UtfCodepoint {
+        local: UtfCodepointListLocalId,
+        value: Vec<char>,
     },
     Float {
         local: FloatListLocalId,
@@ -154,6 +167,12 @@ impl CaptureValue {
     pub(crate) fn bit_array(local: BitArrayLocalId, value: BitArrayValue) -> Self {
         Self {
             kind: CaptureValueKind::BitArray { local, value },
+        }
+    }
+
+    pub(crate) fn utf_codepoint(local: UtfCodepointLocalId, value: char) -> Self {
+        Self {
+            kind: CaptureValueKind::UtfCodepoint { local, value },
         }
     }
 
@@ -211,6 +230,15 @@ impl CaptureValue {
         }
     }
 
+    pub(crate) fn utf_codepoint_function(
+        local: UtfCodepointFunctionLocalId,
+        value: UtfCodepointFunctionValue,
+    ) -> Self {
+        Self {
+            kind: CaptureValueKind::UtfCodepointFunction { local, value },
+        }
+    }
+
     pub(crate) fn bool_function(local: BoolFunctionLocalId, value: BoolFunctionValue) -> Self {
         Self {
             kind: CaptureValueKind::BoolFunction { local, value },
@@ -255,13 +283,14 @@ mod tests {
         IntFunctionId, IntFunctionLocalId, IntListFunctionLocalId, IntListLocalId, IntLocalId,
         ListFunctionId, ListFunctionLocal, NilFunctionId, NilFunctionLocalId, NilLocalId,
         StringFunctionId, StringFunctionLocalId, StringLocalId, TupleFunctionId,
-        TupleFunctionLocalId, TupleLocalId,
+        TupleFunctionLocalId, TupleLocalId, UtfCodepointFunctionId, UtfCodepointFunctionLocalId,
+        UtfCodepointListLocalId, UtfCodepointLocalId,
     };
     use crate::plan::{FunctionType, ValueType};
     use crate::runtime::{
         BitArrayFunctionValue, BitArrayValue, BoolFunctionValue, FloatFunctionValue,
         FunctionFunctionValue, IntFunctionValue, ListFunctionValue, NilFunctionValue,
-        StringFunctionValue, TupleFunctionValue, Value,
+        StringFunctionValue, TupleFunctionValue, UtfCodepointFunctionValue, Value,
     };
 
     #[test]
@@ -296,6 +325,12 @@ mod tests {
             Vec::new(),
             Vec::new(),
             FunctionType::new(Vec::new(), ValueType::BitArray),
+        );
+        let utf_codepoint_function = UtfCodepointFunctionValue::new_with_captures(
+            UtfCodepointFunctionId(0),
+            Vec::new(),
+            Vec::new(),
+            FunctionType::new(Vec::new(), ValueType::UtfCodepoint),
         );
         let bool_function = BoolFunctionValue::new_with_captures(
             BoolFunctionId(0),
@@ -341,6 +376,7 @@ mod tests {
             CaptureValue::float(FloatLocalId(0), 1.5),
             CaptureValue::string(StringLocalId(0), "one".into()),
             CaptureValue::bit_array(BitArrayLocalId(0), BitArrayValue::from_bytes(vec![1])),
+            CaptureValue::utf_codepoint(UtfCodepointLocalId(0), '\u{10ffff}'),
             CaptureValue::bool(BoolLocalId(0), true),
             CaptureValue::nil(NilLocalId(0)),
             CaptureValue::tuple(TupleLocalId(0), vec![Value::Int(1.into())]),
@@ -352,12 +388,20 @@ mod tests {
                 local: BitArrayListLocalId(0),
                 value: vec![BitArrayValue::from_bytes(vec![2])],
             }),
+            CaptureValue::list(CaptureListValue::UtfCodepoint {
+                local: UtfCodepointListLocalId(0),
+                value: vec!['\u{10ffff}'],
+            }),
             CaptureValue::int_function(IntFunctionLocalId(0), int_function.clone()),
             CaptureValue::float_function(FloatFunctionLocalId(0), float_function.clone()),
             CaptureValue::string_function(StringFunctionLocalId(0), string_function.clone()),
             CaptureValue::bit_array_function(
                 BitArrayFunctionLocalId(0),
                 bit_array_function.clone(),
+            ),
+            CaptureValue::utf_codepoint_function(
+                UtfCodepointFunctionLocalId(0),
+                utf_codepoint_function.clone(),
             ),
             CaptureValue::bool_function(BoolFunctionLocalId(0), bool_function.clone()),
             CaptureValue::nil_function(NilFunctionLocalId(0), nil_function.clone()),
@@ -382,6 +426,10 @@ mod tests {
                 local: BitArrayLocalId(0),
                 value: BitArrayValue::from_bytes(vec![1]),
             },
+            CaptureValueKind::UtfCodepoint {
+                local: UtfCodepointLocalId(0),
+                value: '\u{10ffff}',
+            },
             CaptureValueKind::Bool {
                 local: BoolLocalId(0),
                 value: true,
@@ -401,6 +449,10 @@ mod tests {
                 local: BitArrayListLocalId(0),
                 value: vec![BitArrayValue::from_bytes(vec![2])],
             }),
+            CaptureValueKind::List(CaptureListValue::UtfCodepoint {
+                local: UtfCodepointListLocalId(0),
+                value: vec!['\u{10ffff}'],
+            }),
             CaptureValueKind::IntFunction {
                 local: IntFunctionLocalId(0),
                 value: int_function.clone(),
@@ -416,6 +468,10 @@ mod tests {
             CaptureValueKind::BitArrayFunction {
                 local: BitArrayFunctionLocalId(0),
                 value: bit_array_function,
+            },
+            CaptureValueKind::UtfCodepointFunction {
+                local: UtfCodepointFunctionLocalId(0),
+                value: utf_codepoint_function,
             },
             CaptureValueKind::BoolFunction {
                 local: BoolFunctionLocalId(0),

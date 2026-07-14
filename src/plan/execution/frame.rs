@@ -1,6 +1,7 @@
 use super::{
     BitArrayListTypeId, BoolListTypeId, FloatListTypeId, FunctionListTypeId, IntListTypeId,
     ListFunctionLocal, ListListTypeId, NilListTypeId, StringListTypeId, TupleListTypeId,
+    UtfCodepointListTypeId,
 };
 
 #[derive(Default)]
@@ -14,11 +15,13 @@ pub(super) struct FrameSlots {
     pub(super) floats: usize,
     pub(super) strings: usize,
     pub(super) bit_arrays: usize,
+    pub(super) utf_codepoints: usize,
     pub(super) bools: usize,
     pub(super) tuples: usize,
     pub(super) int_lists: Vec<IntListTypeId>,
     pub(super) string_lists: Vec<StringListTypeId>,
     pub(super) bit_array_lists: Vec<BitArrayListTypeId>,
+    pub(super) utf_codepoint_lists: Vec<UtfCodepointListTypeId>,
     pub(super) float_lists: Vec<FloatListTypeId>,
     pub(super) bool_lists: Vec<BoolListTypeId>,
     pub(super) nil_lists: Vec<NilListTypeId>,
@@ -29,6 +32,7 @@ pub(super) struct FrameSlots {
     pub(super) float_functions: usize,
     pub(super) string_functions: usize,
     pub(super) bit_array_functions: usize,
+    pub(super) utf_codepoint_functions: usize,
     pub(super) bool_functions: usize,
     pub(super) nil_functions: usize,
     pub(super) tuple_functions: usize,
@@ -57,6 +61,10 @@ impl FrameLayout {
         self.slots.bit_arrays
     }
 
+    pub(crate) fn utf_codepoints(&self) -> usize {
+        self.slots.utf_codepoints
+    }
+
     pub(crate) fn bools(&self) -> usize {
         self.slots.bools
     }
@@ -75,6 +83,10 @@ impl FrameLayout {
 
     pub(crate) fn bit_array_lists(&self) -> &[BitArrayListTypeId] {
         &self.slots.bit_array_lists
+    }
+
+    pub(crate) fn utf_codepoint_lists(&self) -> &[UtfCodepointListTypeId] {
+        &self.slots.utf_codepoint_lists
     }
 
     pub(crate) fn float_lists(&self) -> &[FloatListTypeId] {
@@ -115,6 +127,10 @@ impl FrameLayout {
 
     pub(crate) fn bit_array_functions(&self) -> usize {
         self.slots.bit_array_functions
+    }
+
+    pub(crate) fn utf_codepoint_functions(&self) -> usize {
+        self.slots.utf_codepoint_functions
     }
 
     pub(crate) fn bool_functions(&self) -> usize {

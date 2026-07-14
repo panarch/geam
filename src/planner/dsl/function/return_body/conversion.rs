@@ -3,12 +3,12 @@ use crate::plan::{
     BitArrayFunctionExpr, BitArrayReturn, BoolFunctionExpr, BoolReturn, FloatFunctionExpr,
     FloatReturn, FunctionExpr, FunctionExprKind, FunctionFunctionExpr, IntFunctionExpr, IntReturn,
     ListFunctionExpr, ListReturn, NilFunctionExpr, NilReturn, ReturnBody, StringFunctionExpr,
-    StringReturn, TupleFunctionExpr, TupleReturn,
+    StringReturn, TupleFunctionExpr, TupleReturn, UtfCodepointFunctionExpr, UtfCodepointReturn,
 };
 use crate::planner::dsl::expression::{
     BitArray, BitArrayFunction, Bool, BoolFunction, Float, FloatFunction, Function,
     FunctionFunction, Int, IntFunction, List, ListFunction, Nil, NilFunction, String,
-    StringFunction, Tuple, TupleFunction,
+    StringFunction, Tuple, TupleFunction, UtfCodepoint, UtfCodepointFunction,
 };
 
 impl From<Int> for FunctionReturn {
@@ -26,6 +26,12 @@ impl From<String> for FunctionReturn {
 impl From<BitArray> for FunctionReturn {
     fn from(value: BitArray) -> Self {
         Self::BitArray(ReturnBody::expr(value.into()))
+    }
+}
+
+impl From<UtfCodepoint> for FunctionReturn {
+    fn from(value: UtfCodepoint) -> Self {
+        Self::UtfCodepoint(ReturnBody::expr(value.into()))
     }
 }
 
@@ -88,6 +94,16 @@ impl From<BitArrayFunction> for FunctionReturn {
     fn from(value: BitArrayFunction) -> Self {
         let expression = BitArrayFunctionExpr::from(value);
         Self::BitArrayFunction {
+            type_: expression.type_().clone(),
+            body: ReturnBody::expr(expression),
+        }
+    }
+}
+
+impl From<UtfCodepointFunction> for FunctionReturn {
+    fn from(value: UtfCodepointFunction) -> Self {
+        let expression = UtfCodepointFunctionExpr::from(value);
+        Self::UtfCodepointFunction {
             type_: expression.type_().clone(),
             body: ReturnBody::expr(expression),
         }
@@ -170,6 +186,10 @@ impl From<Function> for FunctionReturn {
                 type_: expression.type_().clone(),
                 body: ReturnBody::expr(expression),
             },
+            FunctionExprKind::UtfCodepoint(expression) => Self::UtfCodepointFunction {
+                type_: expression.type_().clone(),
+                body: ReturnBody::expr(expression),
+            },
             FunctionExprKind::Float(expression) => Self::FloatFunction {
                 type_: expression.type_().clone(),
                 body: ReturnBody::expr(expression),
@@ -211,6 +231,12 @@ impl From<BitArrayReturn> for FunctionReturn {
     }
 }
 
+impl From<UtfCodepointReturn> for FunctionReturn {
+    fn from(value: UtfCodepointReturn) -> Self {
+        Self::UtfCodepoint(value)
+    }
+}
+
 impl From<StringReturn> for FunctionReturn {
     fn from(value: StringReturn) -> Self {
         Self::String(value)
@@ -242,12 +268,14 @@ mod tests {
         BitArrayFunctionId, BitArrayReturn, BoolFunctionId, BoolReturn, Expr, FloatFunctionId,
         FloatReturn, FunctionFunctionId, FunctionType, IntFunctionFunctionId, IntFunctionId,
         IntReturn, ListFunctionId, ListReturn, NilFunctionId, NilReturn, ParamLocal, ReturnBody,
-        RuntimeFunctionId, StringFunctionId, StringReturn, TupleFunctionId, ValueType,
+        RuntimeFunctionId, StringFunctionId, StringReturn, TupleFunctionId, UtfCodepointFunctionId,
+        UtfCodepointReturn, ValueType,
     };
     use crate::planner::dsl::expression::{
         bit_array, bit_array_function_ref, bool_, bool_function_ref, float, float_function_ref,
-        function_function_ref, function_ref, int, int_function_ref, list, list_function_ref, nil,
-        nil_function_ref, string, string_function_ref, tuple, tuple_function_ref,
+        function_function_ref, function_ref, int, int_function_ref, list, list_function_ref,
+        local_utf_codepoint, nil, nil_function_ref, string, string_function_ref, tuple,
+        tuple_function_ref, utf_codepoint_function_ref,
     };
 
     #[test]
@@ -267,6 +295,20 @@ mod tests {
         assert_eq!(
             FunctionReturn::from(BitArrayReturn::expr(bit_array([]).into())),
             FunctionReturn::BitArray(BitArrayReturn::expr(bit_array([]).into())),
+        );
+        assert_eq!(
+            FunctionReturn::from(local_utf_codepoint(0, "codepoint")),
+            FunctionReturn::UtfCodepoint(ReturnBody::expr(
+                local_utf_codepoint(0, "codepoint").into(),
+            )),
+        );
+        assert_eq!(
+            FunctionReturn::from(UtfCodepointReturn::expr(
+                local_utf_codepoint(0, "codepoint").into(),
+            )),
+            FunctionReturn::UtfCodepoint(UtfCodepointReturn::expr(
+                local_utf_codepoint(0, "codepoint").into(),
+            )),
         );
         assert_eq!(
             FunctionReturn::from(float(1.5)),
@@ -314,6 +356,15 @@ mod tests {
             FunctionReturn::BitArrayFunction {
                 type_: FunctionType::new(Vec::new(), ValueType::BitArray),
                 body: ReturnBody::expr(bit_array_function_ref(0, Vec::<ParamLocal>::new()).into(),),
+            },
+        );
+        assert_eq!(
+            FunctionReturn::from(utf_codepoint_function_ref(0, Vec::<ParamLocal>::new(),)),
+            FunctionReturn::UtfCodepointFunction {
+                type_: FunctionType::new(Vec::new(), ValueType::UtfCodepoint),
+                body: ReturnBody::expr(
+                    utf_codepoint_function_ref(0, Vec::<ParamLocal>::new()).into(),
+                ),
             },
         );
         assert_eq!(
@@ -420,6 +471,18 @@ mod tests {
             FunctionReturn::BitArrayFunction {
                 type_: FunctionType::new(Vec::new(), ValueType::BitArray),
                 body: ReturnBody::expr(bit_array_function_ref(0, Vec::<ParamLocal>::new()).into(),),
+            },
+        );
+        assert_eq!(
+            FunctionReturn::from(function_ref(
+                RuntimeFunctionId::UtfCodepoint(UtfCodepointFunctionId(0)),
+                Vec::<ParamLocal>::new(),
+            )),
+            FunctionReturn::UtfCodepointFunction {
+                type_: FunctionType::new(Vec::new(), ValueType::UtfCodepoint),
+                body: ReturnBody::expr(
+                    utf_codepoint_function_ref(0, Vec::<ParamLocal>::new()).into(),
+                ),
             },
         );
         assert_eq!(

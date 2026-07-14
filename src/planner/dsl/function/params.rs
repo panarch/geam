@@ -3,7 +3,7 @@ use crate::plan::{
     BoolFunctionLocalId, BoolLocalId, FloatFunctionLocalId, FloatLocalId, FunctionFunctionLocalId,
     FunctionType, IntFunctionLocalId, IntLocalId, NilFunctionLocalId, NilLocalId, Param,
     ParamLocal, StringFunctionLocalId, StringLocalId, TupleFunctionLocalId, TupleLocalId,
-    ValueType,
+    UtfCodepointFunctionLocalId, UtfCodepointLocalId, ValueType,
 };
 use ecow::EcoString;
 
@@ -25,6 +25,14 @@ impl FunctionDsl {
     pub(crate) fn param_string(mut self, local: usize, name: impl Into<EcoString>) -> Self {
         self.params.push(Param::named(
             ParamLocal::string(StringLocalId(local)),
+            name.into(),
+        ));
+        self
+    }
+
+    pub(crate) fn param_utf_codepoint(mut self, local: usize, name: impl Into<EcoString>) -> Self {
+        self.params.push(Param::named(
+            ParamLocal::utf_codepoint(UtfCodepointLocalId(local)),
             name.into(),
         ));
         self
@@ -93,6 +101,22 @@ impl FunctionDsl {
             ParamLocal::string_function(
                 StringFunctionLocalId(local),
                 FunctionType::new(arguments.into_iter().collect(), ValueType::String),
+            ),
+            name.into(),
+        ));
+        self
+    }
+
+    pub(crate) fn param_utf_codepoint_function(
+        mut self,
+        local: usize,
+        name: impl Into<EcoString>,
+        arguments: impl IntoIterator<Item = ValueType>,
+    ) -> Self {
+        self.params.push(Param::named(
+            ParamLocal::utf_codepoint_function(
+                UtfCodepointFunctionLocalId(local),
+                FunctionType::new(arguments.into_iter().collect(), ValueType::UtfCodepoint),
             ),
             name.into(),
         ));
@@ -185,7 +209,7 @@ impl FunctionDsl {
 mod tests {
     use crate::plan::{
         FloatFunctionLocalId, FloatLocalId, FunctionType, ParamLocal, TupleFunctionLocalId,
-        TupleLocalId, ValueType,
+        TupleLocalId, UtfCodepointFunctionLocalId, UtfCodepointLocalId, ValueType,
     };
     use crate::planner::dsl::function;
 
@@ -193,8 +217,10 @@ mod tests {
     fn float_param_helpers_build_float_local_shapes() {
         let function = function("main", crate::planner::dsl::int(1))
             .param_float(0, "value")
+            .param_utf_codepoint(0, "codepoint")
             .param_tuple(0, "pair", [ValueType::Int])
             .param_float_function(0, "callback", [ValueType::Float])
+            .param_utf_codepoint_function(0, "codepoint_callback", [ValueType::UtfCodepoint])
             .param_tuple_function(
                 0,
                 "tuple_callback",
@@ -208,17 +234,28 @@ mod tests {
         );
         assert_eq!(
             function.params[1].local(),
-            &ParamLocal::tuple(TupleLocalId(0), vec![ValueType::Int]),
+            &ParamLocal::utf_codepoint(UtfCodepointLocalId(0)),
         );
         assert_eq!(
             function.params[2].local(),
+            &ParamLocal::tuple(TupleLocalId(0), vec![ValueType::Int]),
+        );
+        assert_eq!(
+            function.params[3].local(),
             &ParamLocal::float_function(
                 FloatFunctionLocalId(0),
                 FunctionType::new(vec![ValueType::Float], ValueType::Float),
             ),
         );
         assert_eq!(
-            function.params[3].local(),
+            function.params[4].local(),
+            &ParamLocal::utf_codepoint_function(
+                UtfCodepointFunctionLocalId(0),
+                FunctionType::new(vec![ValueType::UtfCodepoint], ValueType::UtfCodepoint,),
+            ),
+        );
+        assert_eq!(
+            function.params[5].local(),
             &ParamLocal::tuple_function(
                 TupleFunctionLocalId(0),
                 FunctionType::new(
