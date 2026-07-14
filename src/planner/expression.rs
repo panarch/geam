@@ -268,6 +268,7 @@ fn panic_expr(panic: PanicExpr, return_type: ValueType) -> Expr {
         ValueType::Int => Expr::int(IntExpr::panic(panic)),
         ValueType::String => Expr::string(StringExpr::panic(panic)),
         ValueType::BitArray => Expr::bit_array(BitArrayExpr::panic(panic)),
+        ValueType::UtfCodepoint => Expr::utf_codepoint(crate::plan::UtfCodepointExpr::panic(panic)),
         ValueType::Float => Expr::float(FloatExpr::panic(panic)),
         ValueType::Bool => Expr::bool(BoolExpr::panic(panic)),
         ValueType::Nil => Expr::nil(crate::plan::NilExpr::panic(panic)),
@@ -287,6 +288,9 @@ fn panic_function_expr(panic: PanicExpr, type_: FunctionType) -> Expr {
         )),
         ValueType::BitArray => Expr::function(FunctionExpr::bit_array(
             crate::plan::BitArrayFunctionExpr::panic(panic, type_),
+        )),
+        ValueType::UtfCodepoint => Expr::function(FunctionExpr::utf_codepoint(
+            crate::plan::UtfCodepointFunctionExpr::panic(panic, type_),
         )),
         ValueType::Float => Expr::function(FunctionExpr::float(
             crate::plan::FloatFunctionExpr::panic(panic, type_),
@@ -475,6 +479,9 @@ pub(super) fn tuple_index_expr(tuple: TupleExpr, index: usize, return_type: Valu
         ValueType::Int => Expr::int(IntExpr::tuple_index(tuple, index)),
         ValueType::String => Expr::string(StringExpr::tuple_index(tuple, index)),
         ValueType::BitArray => Expr::bit_array(BitArrayExpr::tuple_index(tuple, index)),
+        ValueType::UtfCodepoint => {
+            Expr::utf_codepoint(crate::plan::UtfCodepointExpr::tuple_index(tuple, index))
+        }
         ValueType::Float => Expr::float(FloatExpr::tuple_index(tuple, index)),
         ValueType::Bool => Expr::bool(BoolExpr::tuple_index(tuple, index)),
         ValueType::Nil => Expr::nil(crate::plan::NilExpr::tuple_index(tuple, index)),
@@ -498,6 +505,9 @@ pub(super) fn list_index_expr(
         }
         (ValueType::BitArray, ListExpr::BitArray(list)) => {
             Expr::bit_array(BitArrayExpr::list_index(list, index))
+        }
+        (ValueType::UtfCodepoint, ListExpr::UtfCodepoint(list)) => {
+            Expr::utf_codepoint(crate::plan::UtfCodepointExpr::list_index(list, index))
         }
         (ValueType::Float, ListExpr::Float(list)) => {
             Expr::float(FloatExpr::list_index(list, index))
@@ -531,6 +541,9 @@ fn tuple_index_function_expr(tuple: TupleExpr, index: usize, type_: FunctionType
         )),
         ValueType::BitArray => Expr::function(FunctionExpr::bit_array(
             crate::plan::BitArrayFunctionExpr::tuple_index(tuple, index, type_),
+        )),
+        ValueType::UtfCodepoint => Expr::function(FunctionExpr::utf_codepoint(
+            crate::plan::UtfCodepointFunctionExpr::tuple_index(tuple, index, type_),
         )),
         ValueType::Float => Expr::function(FunctionExpr::float(
             crate::plan::FloatFunctionExpr::tuple_index(tuple, index, type_),
@@ -567,6 +580,9 @@ fn list_index_function_expr(
         )),
         ValueType::BitArray => Expr::function(FunctionExpr::bit_array(
             crate::plan::BitArrayFunctionExpr::list_index(list.clone(), index, type_),
+        )),
+        ValueType::UtfCodepoint => Expr::function(FunctionExpr::utf_codepoint(
+            crate::plan::UtfCodepointFunctionExpr::list_index(list.clone(), index, type_),
         )),
         ValueType::Float => Expr::function(FunctionExpr::float(
             crate::plan::FloatFunctionExpr::list_index(list.clone(), index, type_),
@@ -665,6 +681,7 @@ fn expression_type(expression: &Expr) -> InvalidExpressionType {
         ValueType::Int => InvalidExpressionType::Int,
         ValueType::String => InvalidExpressionType::String,
         ValueType::BitArray => InvalidExpressionType::BitArray,
+        ValueType::UtfCodepoint => InvalidExpressionType::UtfCodepoint,
         ValueType::Float => InvalidExpressionType::Float,
         ValueType::Bool => InvalidExpressionType::Bool,
         ValueType::Nil => InvalidExpressionType::Nil,
@@ -679,6 +696,7 @@ fn value_type_expression_type(type_: ValueType) -> InvalidExpressionType {
         ValueType::Int => InvalidExpressionType::Int,
         ValueType::String => InvalidExpressionType::String,
         ValueType::BitArray => InvalidExpressionType::BitArray,
+        ValueType::UtfCodepoint => InvalidExpressionType::UtfCodepoint,
         ValueType::Float => InvalidExpressionType::Float,
         ValueType::Bool => InvalidExpressionType::Bool,
         ValueType::Nil => InvalidExpressionType::Nil,
@@ -773,7 +791,8 @@ mod tests {
         FunctionExpr, FunctionFunctionExpr, FunctionFunctionId, FunctionReference, FunctionType,
         IntExpr, IntFunctionExpr, IntFunctionFunctionId, IntFunctionId, IntLocalId, ListExpr,
         NilExpr, NilFunctionId, NilLocalId, PanicExpr, PanicSite, ParamLocal, ReturnBody,
-        RuntimeFunctionId, SourceSpan, StringExpr, StringLocalId, TupleExpr, ValueType,
+        RuntimeFunctionId, SourceSpan, StringExpr, StringLocalId, TupleExpr, UtfCodepointExpr,
+        UtfCodepointLocalId, ValueType,
     };
     use crate::planner::context::{AnonymousFunctions, PlanContext};
     use crate::planner::dsl::{
@@ -1295,6 +1314,10 @@ pub fn main() {
         let list_expression = Expr::from(list([int(1)], ValueType::Int));
         let nil_expression = Expr::from(nil());
         let bit_array_expression = Expr::bit_array(BitArrayExpr::value(Vec::new()));
+        let utf_codepoint_expression = Expr::utf_codepoint(UtfCodepointExpr::local_get(
+            UtfCodepointLocalId(0),
+            "codepoint".into(),
+        ));
 
         assert_eq!(
             invalid_expression_type(InvalidExpressionType::Int, expression_type(&expression)),
@@ -1352,6 +1375,27 @@ pub fn main() {
             PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::ExpressionType {
                     expected: InvalidExpressionType::BitArray,
+                    actual: InvalidExpressionType::Int,
+                },
+            },
+        );
+        assert_eq!(
+            invalid_expression_type(
+                InvalidExpressionType::Int,
+                expression_type(&utf_codepoint_expression),
+            ),
+            PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionType {
+                    expected: InvalidExpressionType::Int,
+                    actual: InvalidExpressionType::UtfCodepoint,
+                },
+            },
+        );
+        assert_eq!(
+            invalid_expression_type_for_value(ValueType::UtfCodepoint, ValueType::Int),
+            PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionType {
+                    expected: InvalidExpressionType::UtfCodepoint,
                     actual: InvalidExpressionType::Int,
                 },
             },
@@ -2262,6 +2306,19 @@ pub fn main() {
         assert_eq!(
             super::list_index_expr(string_list, 0, ValueType::String),
             Ok(Expr::string(StringExpr::list_index(typed_string_list, 0))),
+        );
+
+        let utf_codepoint_list = ListExpr::value(Vec::new(), ValueType::UtfCodepoint);
+        let typed_utf_codepoint_list = utf_codepoint_list
+            .clone()
+            .into_utf_codepoint()
+            .expect("utf codepoint item list should build utf codepoint list expression");
+        assert_eq!(
+            super::list_index_expr(utf_codepoint_list, 0, ValueType::UtfCodepoint),
+            Ok(Expr::utf_codepoint(UtfCodepointExpr::list_index(
+                typed_utf_codepoint_list,
+                0,
+            ))),
         );
 
         let float_list = ListExpr::value(Vec::new(), ValueType::Float);

@@ -1,4 +1,6 @@
-use crate::plan::{BitArrayLocalId, Endianness, FloatLocalId, IntLocalId, StringEncoding};
+use crate::plan::{
+    BitArrayLocalId, Endianness, FloatLocalId, IntLocalId, StringEncoding, UtfCodepointLocalId,
+};
 use ecow::EcoString;
 use num_bigint::BigInt;
 
@@ -27,6 +29,10 @@ pub(crate) enum BitArrayPatternSegment {
     },
     String {
         pattern: BitArrayStringPattern,
+        encoding: StringEncoding,
+    },
+    UtfCodepoint {
+        pattern: BitArrayBindingPattern<UtfCodepointLocalId>,
         encoding: StringEncoding,
     },
 }

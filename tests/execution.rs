@@ -45,6 +45,13 @@ mod values {
         bit_array_list_case_result,
         bit_array_list_function_paths,
         bit_array_returned_closure_capture,
+        utf_codepoint_binding_paths,
+        utf_codepoint_composition,
+        utf_codepoint_expression_paths,
+        utf_codepoint_function_value_paths,
+        utf_codepoint_list_function_paths,
+        utf_codepoint_returned_closure_capture,
+        utf_codepoint_segments,
         tuple_value,
         tuple_expression_shapes,
         list_value,
@@ -65,6 +72,7 @@ mod expressions {
         bit_array,
         bit_array_float_16,
         list_bit_array_element,
+        list_utf_codepoint_element,
     );
 }
 
@@ -239,6 +247,7 @@ mod control_flow {
             bit_array_pattern_floats,
             bit_array_pattern_strings,
             bit_array_pattern_composition,
+            bit_array_pattern_utf_codepoint,
             tuple_inner_bit_array_pattern,
             list_inner_bit_array_pattern,
             list_inner_bit_array_pattern_fallthrough,
@@ -270,6 +279,8 @@ mod functions {
         list_bit_array_return,
         anonymous_bit_array_argument,
         anonymous_bit_array_return,
+        utf_codepoint_argument,
+        utf_codepoint_return,
     );
 
     mod basic {
@@ -426,12 +437,14 @@ mod execution_errors {
             panic_int,
             panic_string,
             panic_bit_array,
+            panic_utf_codepoint,
             panic_float,
             panic_bool,
             panic_tuple,
             panic_list,
             panic_list_string,
             panic_list_bit_array,
+            panic_list_utf_codepoint,
             panic_list_float,
             panic_list_bool,
             panic_list_nil,
@@ -441,6 +454,7 @@ mod execution_errors {
             panic_int_function,
             panic_string_function,
             panic_bit_array_function,
+            panic_utf_codepoint_function,
             panic_float_function,
             panic_bool_function,
             panic_nil_function,
@@ -448,6 +462,9 @@ mod execution_errors {
             panic_list_function,
             panic_function_function,
             todo,
+            todo_utf_codepoint,
+            todo_list_utf_codepoint,
+            todo_utf_codepoint_function,
             todo_message,
             todo_assignment,
             empty_function,
@@ -462,6 +479,14 @@ mod execution_errors {
             return_float_case_subject,
             return_string_case_subject,
             return_block_step,
+            utf_codepoint_return_tuple_subject,
+            utf_codepoint_return_bool_case_subject,
+            utf_codepoint_return_int_case_subject,
+            utf_codepoint_return_string_case_subject,
+            utf_codepoint_return_float_case_subject,
+            utf_codepoint_return_block_step,
+            utf_codepoint_list_call_argument,
+            utf_codepoint_let_step,
         );
 
         mod use_syntax {
@@ -481,6 +506,8 @@ mod execution_errors {
             let_assert_empty_list,
             let_assert_message,
             let_assert_bit_array_pattern,
+            let_assert_bit_array_utf_codepoint_default_message,
+            let_assert_bit_array_utf_codepoint_message_error,
         );
     }
 
@@ -519,8 +546,6 @@ mod rejection {
             unsupported_body_after_main,
             result_argument,
             result_return,
-            utf_codepoint_argument,
-            utf_codepoint_return,
         );
     }
 
@@ -528,7 +553,6 @@ mod rejection {
         rejection_cases!("expressions";
             echo,
             result_constructor,
-            list_utf_codepoint_element,
             bit_array_native_endian,
             bit_array_dynamic_size,
             bit_array_sized_bits,
@@ -556,7 +580,6 @@ mod rejection {
     mod case_patterns {
         rejection_cases!("case_patterns";
             result_subject,
-            bit_array_pattern_utf_codepoint,
             bit_array_pattern_native_endian,
         );
     }
@@ -684,6 +707,7 @@ fn render_value(value: &Value) -> String {
             value.bytes(),
             value.bit_len(),
         ),
+        Value::UtfCodepoint(value) => format!("UtfCodepoint({value:?})"),
         Value::Bool(value) => format!("Bool({value})"),
         Value::Nil => "Nil".into(),
         Value::Tuple(values) => format!(
@@ -728,6 +752,7 @@ fn render_value_type(type_: &ValueType) -> String {
         ValueType::Float => "Float".into(),
         ValueType::String => "String".into(),
         ValueType::BitArray => "BitArray".into(),
+        ValueType::UtfCodepoint => "UtfCodepoint".into(),
         ValueType::Bool => "Bool".into(),
         ValueType::Nil => "Nil".into(),
         ValueType::Tuple(elements) => format!(

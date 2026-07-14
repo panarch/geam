@@ -13,7 +13,7 @@ pub use expression::{
     BitArrayExpr, BitArrayFunctionExpr, BoolExpr, BoolFunctionExpr, CallArg, Expr, FloatExpr,
     FloatFunctionExpr, FunctionExpr, FunctionFunctionExpr, IntExpr, IntFunctionExpr,
     ListFunctionExpr, NilExpr, NilFunctionExpr, StringExpr, StringFunctionExpr, TupleExpr,
-    TupleFunctionExpr,
+    TupleFunctionExpr, UtfCodepointExpr, UtfCodepointFunctionExpr,
 };
 pub(crate) use expression::{
     BitArrayExprKind, BitArrayFunctionExprKind, BitArraySegment, BoolCaseBranches, BoolExprKind,
@@ -22,14 +22,15 @@ pub(crate) use expression::{
     FunctionFunctionExprKind, IntCaseBranches, IntExprKind, IntFunctionExprKind, ListElements,
     ListFunctionExprKind, NilExprKind, NilFunctionExprKind, PanicExpr, PanicExprKind,
     StringCaseBranches, StringEncoding, StringExprKind, StringFunctionExprKind, TupleExprKind,
-    TupleFunctionExprKind,
+    TupleFunctionExprKind, UtfCodepointExprKind, UtfCodepointFunctionExprKind,
 };
 pub(crate) use expression::{
     BitArrayListExpr, BitArrayListItem, BoolListCaseBranches, BoolListExpr, BoolListItem,
     FloatListExpr, FloatListItem, FunctionListExpr, FunctionListItem, IntListExpr, IntListItem,
     ListCaseBranches, ListExpr, ListItem, ListListExpr, ListListItem, ListLocalExpr,
     ListSpreadElements, NilListExpr, NilListItem, StringListExpr, StringListItem, TupleListExpr,
-    TupleListItem, TypedListExpr, TypedListExprKind, TypedListReturnKind,
+    TupleListItem, TypedListExpr, TypedListExprKind, TypedListReturnKind, UtfCodepointListExpr,
+    UtfCodepointListItem,
 };
 pub(crate) use frame::FrameLayout;
 #[cfg(test)]
@@ -40,7 +41,8 @@ pub(crate) use function::{
     FunctionFunctionReturn, FunctionListReturn, IntFunctionReturn, IntListReturn, IntReturn,
     ListFunctionReturn, ListListReturn, NilFunctionReturn, NilListReturn, NilReturn, ParamLocal,
     ReturnBody, ReturnBodyKind, ReturnExprKind, StringFunctionReturn, StringListReturn,
-    StringReturn, TupleFunctionReturn, TupleListReturn, TupleReturn,
+    StringReturn, TupleFunctionReturn, TupleListReturn, TupleReturn, UtfCodepointFunctionReturn,
+    UtfCodepointListReturn, UtfCodepointReturn,
 };
 pub use function::{FunctionPlan, Param, ParamBinding, ReturnExpr};
 pub use id::{
@@ -62,7 +64,10 @@ pub use id::{
     StringListFunctionFunctionId, StringListFunctionId, StringListFunctionLocalId,
     StringListLocalId, StringLocalId, TupleFunctionFunctionId, TupleFunctionId,
     TupleFunctionLocalId, TupleListFunctionFunctionId, TupleListFunctionId,
-    TupleListFunctionLocalId, TupleListLocalId, TupleLocalId,
+    TupleListFunctionLocalId, TupleListLocalId, TupleLocalId, UtfCodepointFunctionFunctionId,
+    UtfCodepointFunctionId, UtfCodepointFunctionLocalId, UtfCodepointListFunctionFunctionId,
+    UtfCodepointListFunctionId, UtfCodepointListFunctionLocalId, UtfCodepointListLocalId,
+    UtfCodepointLocalId,
 };
 pub(crate) use id::{FunctionFunctionId, RuntimeFunctionId};
 pub(crate) use pattern::{
@@ -74,6 +79,7 @@ pub(crate) use reference::{
     BitArrayFunctionReference, BoolFunctionReference, FloatFunctionReference,
     FunctionFunctionReference, FunctionReference, IntFunctionReference, ListFunctionReference,
     NilFunctionReference, StringFunctionReference, TupleFunctionReference, TypedFunctionReference,
+    UtfCodepointFunctionReference,
 };
 pub use step::Step;
 pub(crate) use step::{AssertBinding, AssertPattern, ListAssertPattern, ListAssertTail, StepKind};

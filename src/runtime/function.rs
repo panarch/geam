@@ -12,24 +12,26 @@ use crate::plan::execution::{
     FunctionReturnFamily, IntFunctionFunctionId, IntFunctionId, ListFunctionFunctionId,
     ListFunctionId, NilFunctionFunctionId, NilFunctionId, RuntimeFunctionId,
     StringFunctionFunctionId, StringFunctionId, TupleFunctionFunctionId, TupleFunctionId,
+    UtfCodepointFunctionFunctionId, UtfCodepointFunctionId,
 };
 use crate::runtime::error::ExecutionResult;
 use crate::runtime::expression::{
     eval_bit_array_function_expr, eval_bool_function_expr, eval_float_function_expr,
     eval_function_function_expr, eval_int_function_expr, eval_list_function_expr,
     eval_nil_function_expr, eval_string_function_expr, eval_tuple_function_expr,
+    eval_utf_codepoint_function_expr,
 };
 use crate::runtime::frame::Frame;
 use crate::runtime::state::{
     BitArrayListValueId, BoolListValueId, FloatListValueId, FunctionListValueId, IntListValueId,
     ListListValueId, ListValueId, NilListValueId, RuntimeState, StringListValueId,
-    TupleListValueId,
+    TupleListValueId, UtfCodepointListValueId,
 };
 use crate::runtime::{
     EvaluatedBitArray, EvaluatedBitArrayFunction, EvaluatedBoolFunction, EvaluatedFloatFunction,
     EvaluatedFunctionFunction, EvaluatedFunctionValue, EvaluatedIntFunction, EvaluatedListFunction,
-    EvaluatedNilFunction, EvaluatedStringFunction, EvaluatedTupleFunction, EvaluatedValue,
-    ExecutionError, Value,
+    EvaluatedNilFunction, EvaluatedStringFunction, EvaluatedTupleFunction,
+    EvaluatedUtfCodepointFunction, EvaluatedValue, ExecutionError, Value,
 };
 use bind::{bind_arguments, bind_function_value_arguments};
 use ecow::EcoString;
@@ -41,7 +43,8 @@ use return_body::{
     run_int_function_loop, run_int_list_loop, run_int_loop, run_list_function_loop,
     run_list_list_loop, run_list_loop, run_nil_function_loop, run_nil_list_loop, run_nil_loop,
     run_string_function_loop, run_string_list_loop, run_string_loop, run_tuple_function_loop,
-    run_tuple_list_loop, run_tuple_loop,
+    run_tuple_list_loop, run_tuple_loop, run_utf_codepoint_function_loop,
+    run_utf_codepoint_list_loop, run_utf_codepoint_loop,
 };
 
 pub(super) fn run_main(plan: &ExecutionPlan) -> ExecutionResult<Value> {
@@ -64,6 +67,10 @@ pub(super) fn run_main(plan: &ExecutionPlan) -> ExecutionResult<Value> {
         RuntimeFunctionId::BitArray(function) => {
             run_bit_array_call(plan, &mut state, function, &[], &mut caller_frame)
                 .map(EvaluatedValue::BitArray)
+        }
+        RuntimeFunctionId::UtfCodepoint(function) => {
+            run_utf_codepoint_call(plan, &mut state, function, &[], &mut caller_frame)
+                .map(EvaluatedValue::UtfCodepoint)
         }
         RuntimeFunctionId::Bool(function) => {
             run_bool_call(plan, &mut state, function, &[], &mut caller_frame)
@@ -154,6 +161,23 @@ pub(super) fn run_bit_array_call(
         plan.bit_array_function(function).frame_layout(),
     )?;
     run_bit_array_loop(plan, state, function, frame)
+}
+
+pub(super) fn run_utf_codepoint_call(
+    plan: &ExecutionPlan,
+    state: &mut RuntimeState,
+    function: UtfCodepointFunctionId,
+    args: &[CallArg],
+    caller_frame: &mut Frame,
+) -> ExecutionResult<char> {
+    let frame = bind_arguments(
+        plan,
+        state,
+        args,
+        caller_frame,
+        plan.utf_codepoint_function(function).frame_layout(),
+    )?;
+    run_utf_codepoint_loop(plan, state, function, frame)
 }
 
 pub(super) fn run_bool_call(
@@ -273,6 +297,23 @@ pub(in crate::runtime) fn run_bit_array_list_call(
         plan.bit_array_list_function(function).frame_layout(),
     )?;
     run_bit_array_list_loop(plan, state, function, frame)
+}
+
+pub(in crate::runtime) fn run_utf_codepoint_list_call(
+    plan: &ExecutionPlan,
+    state: &mut RuntimeState,
+    function: crate::plan::execution::UtfCodepointListFunctionId,
+    args: &[CallArg],
+    caller_frame: &mut Frame,
+) -> ExecutionResult<UtfCodepointListValueId> {
+    let frame = bind_arguments(
+        plan,
+        state,
+        args,
+        caller_frame,
+        plan.utf_codepoint_list_function(function).frame_layout(),
+    )?;
+    run_utf_codepoint_list_loop(plan, state, function, frame)
 }
 
 pub(in crate::runtime) fn run_float_list_call(
@@ -439,6 +480,26 @@ pub(in crate::runtime) fn run_bit_array_function_call(
     run_bit_array_loop(plan, state, function.runtime_id(), frame)
 }
 
+pub(in crate::runtime) fn run_utf_codepoint_function_call(
+    plan: &ExecutionPlan,
+    state: &mut RuntimeState,
+    function: &crate::plan::execution::UtfCodepointFunctionExpr,
+    args: &[CallArg],
+    caller_frame: &mut Frame,
+) -> ExecutionResult<char> {
+    let function = eval_utf_codepoint_function_expr(plan, state, caller_frame, function)?;
+    let runtime_function = plan.utf_codepoint_function(function.runtime_id());
+    let frame = bind_function_value_arguments(
+        plan,
+        state,
+        args,
+        caller_frame,
+        runtime_function.frame_layout(),
+        function.captures(),
+    )?;
+    run_utf_codepoint_loop(plan, state, function.runtime_id(), frame)
+}
+
 pub(in crate::runtime) fn run_float_function_call(
     plan: &ExecutionPlan,
     state: &mut RuntimeState,
@@ -596,6 +657,31 @@ pub(in crate::runtime) fn run_bit_array_list_function_call(
         function.captures(),
     )?;
     run_bit_array_list_loop(plan, state, runtime_id, frame)
+}
+
+pub(in crate::runtime) fn run_utf_codepoint_list_function_call(
+    plan: &ExecutionPlan,
+    state: &mut RuntimeState,
+    function: &crate::plan::execution::ListFunctionExpr,
+    args: &[CallArg],
+    caller_frame: &mut Frame,
+) -> ExecutionResult<UtfCodepointListValueId> {
+    let function = eval_list_function_expr(plan, state, caller_frame, function)?;
+    let ListFunctionId::UtfCodepoint(runtime_id) = function.runtime_id() else {
+        return Err(ExecutionError::FunctionReturnFamilyMismatch {
+            expected: FunctionReturnFamily::List,
+            actual: FunctionReturnFamily::List,
+        });
+    };
+    let frame = bind_function_value_arguments(
+        plan,
+        state,
+        args,
+        caller_frame,
+        plan.utf_codepoint_list_function(runtime_id).frame_layout(),
+        function.captures(),
+    )?;
+    run_utf_codepoint_list_loop(plan, state, runtime_id, frame)
 }
 
 pub(in crate::runtime) fn run_float_list_function_call(
@@ -756,6 +842,7 @@ fn list_function_frame_layout<'a>(
         ListFunctionId::Int(id) => plan.int_list_function(*id).frame_layout(),
         ListFunctionId::String(id) => plan.string_list_function(*id).frame_layout(),
         ListFunctionId::BitArray(id) => plan.bit_array_list_function(*id).frame_layout(),
+        ListFunctionId::UtfCodepoint(id) => plan.utf_codepoint_list_function(*id).frame_layout(),
         ListFunctionId::Float(id) => plan.float_list_function(*id).frame_layout(),
         ListFunctionId::Bool(id) => plan.bool_list_function(*id).frame_layout(),
         ListFunctionId::Nil(id) => plan.nil_list_function(*id).frame_layout(),
@@ -831,6 +918,24 @@ pub(in crate::runtime) fn run_bit_array_function_returning_function_call(
         plan.bit_array_function_function(function).frame_layout(),
     )?;
     run_bit_array_function_loop(plan, state, function, frame)
+}
+
+pub(in crate::runtime) fn run_utf_codepoint_function_returning_function_call(
+    plan: &ExecutionPlan,
+    state: &mut RuntimeState,
+    function: UtfCodepointFunctionFunctionId,
+    args: &[CallArg],
+    caller_frame: &mut Frame,
+) -> ExecutionResult<EvaluatedUtfCodepointFunction> {
+    let frame = bind_arguments(
+        plan,
+        state,
+        args,
+        caller_frame,
+        plan.utf_codepoint_function_function(function)
+            .frame_layout(),
+    )?;
+    run_utf_codepoint_function_loop(plan, state, function, frame)
 }
 
 pub(in crate::runtime) fn run_bool_function_returning_function_call(
@@ -1030,6 +1135,34 @@ pub(in crate::runtime) fn run_bit_array_function_function_call(
     run_bit_array_function_loop(plan, state, function_id, frame)
 }
 
+pub(in crate::runtime) fn run_utf_codepoint_function_function_call(
+    plan: &ExecutionPlan,
+    state: &mut RuntimeState,
+    function: &crate::plan::execution::FunctionFunctionExpr,
+    args: &[CallArg],
+    caller_frame: &mut Frame,
+) -> ExecutionResult<EvaluatedUtfCodepointFunction> {
+    let function = eval_function_function_expr(plan, state, caller_frame, function)?;
+    let runtime_id = function.runtime_id();
+    let function_id =
+        runtime_id
+            .utf_codepoint()
+            .ok_or(ExecutionError::FunctionReturnFamilyMismatch {
+                expected: FunctionReturnFamily::UtfCodepoint,
+                actual: runtime_id.family(),
+            })?;
+    let runtime_function = plan.utf_codepoint_function_function(function_id);
+    let frame = bind_function_value_arguments(
+        plan,
+        state,
+        args,
+        caller_frame,
+        runtime_function.frame_layout(),
+        function.captures(),
+    )?;
+    run_utf_codepoint_function_loop(plan, state, function_id, frame)
+}
+
 pub(in crate::runtime) fn run_bool_function_function_call(
     plan: &ExecutionPlan,
     state: &mut RuntimeState,
@@ -1200,6 +1333,16 @@ fn run_function_returning_function_call(
             )
             .map(Into::into)
         }
+        crate::plan::execution::FunctionFunctionId::UtfCodepoint(function) => {
+            run_utf_codepoint_function_returning_function_call(
+                plan,
+                state,
+                function,
+                args,
+                caller_frame,
+            )
+            .map(Into::into)
+        }
         crate::plan::execution::FunctionFunctionId::Bool(function) => {
             run_bool_function_returning_function_call(plan, state, function, args, caller_frame)
                 .map(Into::into)
@@ -1231,18 +1374,35 @@ mod tests {
         run_function_function_loop, run_function_list_loop, run_int_function_loop,
         run_int_list_loop, run_list_function_loop, run_list_list_loop, run_nil_function_loop,
         run_nil_list_loop, run_string_function_loop, run_string_list_loop, run_tuple_function_loop,
-        run_tuple_list_loop,
+        run_tuple_list_loop, run_utf_codepoint_function_loop, run_utf_codepoint_list_loop,
     };
     use crate::plan::execution::{
         BoolFunctionFunctionId, CallArg, FloatFunctionFunctionId, FunctionFunctionFunctionId,
         FunctionFunctionId, FunctionFunctionLocalId, FunctionListLocalId, FunctionReturnFamily,
         IntFunctionFunctionId, IntFunctionId, ListFunctionFunctionId, ListFunctionId,
         NilFunctionFunctionId, ReturnBody, ReturnBodyKind, StringFunctionFunctionId,
-        StringFunctionId, TupleFunctionFunctionId,
+        StringFunctionId, TupleFunctionFunctionId, UtfCodepointFunctionFunctionId,
     };
     use crate::runtime::FunctionValueKind;
     use crate::runtime::frame::Frame;
     use crate::runtime::{ExecutionError, Value, run_main};
+
+    #[test]
+    fn source_utf_codepoint_list_function_calls_return_values_and_argument_errors() {
+        assert_eq!(
+            crate::runtime::run_src(include_str!(
+                "../../tests/fixtures/execution/values/utf_codepoint_list_function_paths.gleam"
+            )),
+            Value::Tuple(vec![Value::UtfCodepoint('A'); 6]),
+        );
+        assert_eq!(
+            crate::runtime::run_src_error(include_str!(
+                "../../tests/fixtures/execution_errors/functions/utf_codepoint_list_call_argument.gleam"
+            ))
+            .to_string(),
+            "panic: argument",
+        );
+    }
 
     #[test]
     fn primitive_function_value_calls_propagate_callee_and_argument_panics() {
@@ -1250,6 +1410,7 @@ mod tests {
             "pub fn main() -> Int { case True { True -> panic as \"callee\" False -> fn() { 0 } }() }",
             "pub fn main() -> String { case True { True -> panic as \"callee\" False -> fn() { \"\" } }() }",
             "pub fn main() -> BitArray { case True { True -> panic as \"callee\" False -> fn() { <<>> } }() }",
+            "pub fn main() -> UtfCodepoint { case True { True -> panic as \"callee\" False -> fn() { panic } }() }",
             "pub fn main() -> Float { case True { True -> panic as \"callee\" False -> fn() { 0.0 } }() }",
             "pub fn main() -> Bool { case True { True -> panic as \"callee\" False -> fn() { False } }() }",
             "pub fn main() -> Nil { case True { True -> panic as \"callee\" False -> fn() { Nil } }() }",
@@ -1259,6 +1420,7 @@ mod tests {
             "fn callee(value: Int) -> Int { value } pub fn main() { let function = callee function(panic as \"argument\") }",
             "fn callee(value: Int) -> String { \"value\" } pub fn main() { let function = callee function(panic as \"argument\") }",
             "fn callee(value: Int) -> BitArray { <<value>> } pub fn main() { let function = callee function(panic as \"argument\") }",
+            "fn callee(value: Int) -> UtfCodepoint { panic } pub fn main() { let function = callee function(panic as \"argument\") }",
             "fn callee(value: Int) -> Float { 1.0 } pub fn main() { let function = callee function(panic as \"argument\") }",
             "fn callee(value: Int) -> Bool { True } pub fn main() { let function = callee function(panic as \"argument\") }",
             "fn callee(value: Int) -> Nil { Nil } pub fn main() { let function = callee function(panic as \"argument\") }",
@@ -1285,6 +1447,7 @@ mod tests {
             "pub fn main() -> List(Int) { case True { True -> panic as \"callee\" False -> fn() { [] } }() }",
             "pub fn main() -> List(String) { case True { True -> panic as \"callee\" False -> fn() { [] } }() }",
             "pub fn main() -> List(BitArray) { case True { True -> panic as \"callee\" False -> fn() { [] } }() }",
+            "pub fn main() -> List(UtfCodepoint) { case True { True -> panic as \"callee\" False -> fn() { [] } }() }",
             "pub fn main() -> List(Float) { case True { True -> panic as \"callee\" False -> fn() { [] } }() }",
             "pub fn main() -> List(Bool) { case True { True -> panic as \"callee\" False -> fn() { [] } }() }",
             "pub fn main() -> List(Nil) { case True { True -> panic as \"callee\" False -> fn() { [] } }() }",
@@ -1307,6 +1470,7 @@ mod tests {
             "pub fn main() -> fn() -> Int { case True { True -> panic as \"callee\" False -> fn() { fn() { 0 } } }() }",
             "pub fn main() -> fn() -> String { case True { True -> panic as \"callee\" False -> fn() { fn() { \"\" } } }() }",
             "pub fn main() -> fn() -> BitArray { case True { True -> panic as \"callee\" False -> fn() { fn() { <<>> } } }() }",
+            "pub fn main() -> fn() -> UtfCodepoint { case True { True -> panic as \"callee\" False -> fn() { fn() { panic } } }() }",
             "pub fn main() -> fn() -> Float { case True { True -> panic as \"callee\" False -> fn() { fn() { 0.0 } } }() }",
             "pub fn main() -> fn() -> Bool { case True { True -> panic as \"callee\" False -> fn() { fn() { False } } }() }",
             "pub fn main() -> fn() -> Nil { case True { True -> panic as \"callee\" False -> fn() { fn() { Nil } } }() }",
@@ -1318,6 +1482,7 @@ mod tests {
             "fn callee(value: Int) -> fn() -> Int { fn() { value } } pub fn main() { let function = callee function(panic as \"argument\") }",
             "fn callee(value: Int) -> fn() -> String { fn() { \"value\" } } pub fn main() { let function = callee function(panic as \"argument\") }",
             "fn callee(value: Int) -> fn() -> BitArray { fn() { <<value>> } } pub fn main() { let function = callee function(panic as \"argument\") }",
+            "fn callee(value: Int) -> fn() -> UtfCodepoint { fn() { panic } } pub fn main() { let function = callee function(panic as \"argument\") }",
             "fn callee(value: Int) -> fn() -> Float { fn() { 1.0 } } pub fn main() { let function = callee function(panic as \"argument\") }",
             "fn callee(value: Int) -> fn() -> Bool { fn() { True } } pub fn main() { let function = callee function(panic as \"argument\") }",
             "fn callee(value: Int) -> fn() -> Nil { fn() { Nil } } pub fn main() { let function = callee function(panic as \"argument\") }",
@@ -1346,6 +1511,7 @@ mod tests {
             "fn callee(value: Int) -> Int { value } pub fn main() { let _ = callee(panic) 0 }",
             "fn callee(value: Int) -> String { \"value\" } pub fn main() { let _ = callee(panic) 0 }",
             "fn callee(value: Int) -> BitArray { <<value>> } pub fn main() { let _ = callee(panic) 0 }",
+            "fn callee(value: Int) -> UtfCodepoint { panic } pub fn main() { let _ = callee(panic) 0 }",
             "fn callee(value: Int) -> Float { 1.0 } pub fn main() { let _ = callee(panic) 0 }",
             "fn callee(value: Int) -> Bool { True } pub fn main() { let _ = callee(panic) 0 }",
             "fn callee(value: Int) -> Nil { Nil } pub fn main() { let _ = callee(panic) 0 }",
@@ -1353,6 +1519,7 @@ mod tests {
             "fn callee(value: Int) -> List(Int) { [] } pub fn main() { let _ = callee(panic) 0 }",
             "fn callee(value: Int) -> List(String) { [] } pub fn main() { let _ = callee(panic) 0 }",
             "fn callee(value: Int) -> List(BitArray) { [] } pub fn main() { let _ = callee(panic) 0 }",
+            "fn callee(value: Int) -> List(UtfCodepoint) { [] } pub fn main() { let _ = callee(panic) 0 }",
             "fn callee(value: Int) -> List(Float) { [] } pub fn main() { let _ = callee(panic) 0 }",
             "fn callee(value: Int) -> List(Bool) { [] } pub fn main() { let _ = callee(panic) 0 }",
             "fn callee(value: Int) -> List(Nil) { [] } pub fn main() { let _ = callee(panic) 0 }",
@@ -1407,6 +1574,7 @@ mod tests {
             "fn callee(value: Int) -> List(Int) { [] } pub fn main() { let function = callee function(panic) }",
             "fn callee(value: Int) -> List(String) { [] } pub fn main() { let function = callee function(panic) }",
             "fn callee(value: Int) -> List(BitArray) { [] } pub fn main() { let function = callee function(panic) }",
+            "fn callee(value: Int) -> List(UtfCodepoint) { [] } pub fn main() { let function = callee function(panic) }",
             "fn callee(value: Int) -> List(Float) { [] } pub fn main() { let function = callee function(panic) }",
             "fn callee(value: Int) -> List(Bool) { [] } pub fn main() { let function = callee function(panic) }",
             "fn callee(value: Int) -> List(Nil) { [] } pub fn main() { let function = callee function(panic) }",
@@ -1430,6 +1598,7 @@ mod tests {
 fn ints(function: fn() -> List(Int)) { function() }
 fn strings(function: fn() -> List(String)) { function() }
 fn bit_arrays(function: fn() -> List(BitArray)) { function() }
+fn utf_codepoints(function: fn() -> List(UtfCodepoint)) { function() }
 fn floats(function: fn() -> List(Float)) { function() }
 fn bools(function: fn() -> List(Bool)) { function() }
 fn nils(function: fn() -> List(Nil)) { function() }
@@ -1502,6 +1671,24 @@ pub fn main() { Nil }
         assert_eq!(
             run_bit_array_list_loop(&plan, &mut state, plan.bit_array_list_function_id(0), frame,)
                 .expect_err("direct-mutated list function family must fail"),
+            expected,
+        );
+
+        let function = plan.utf_codepoint_list_function(plan.utf_codepoint_list_function_id(0));
+        let mut state = crate::runtime::RuntimeState::new();
+        let mut frame = Frame::new(function.frame_layout(), &mut state);
+        frame.set_list_function(
+            function.frame_layout().list_functions()[0].clone(),
+            wrong_int.clone(),
+        );
+        assert_eq!(
+            run_utf_codepoint_list_loop(
+                &plan,
+                &mut state,
+                plan.utf_codepoint_list_function_id(0),
+                frame,
+            )
+            .expect_err("direct-mutated list function family must fail"),
             expected,
         );
 
@@ -1590,6 +1777,7 @@ pub fn main() { Nil }
             "fn callee(value: Int) -> fn() -> Int { panic } pub fn main() { let _ = callee(panic) 0 }",
             "fn callee(value: Int) -> fn() -> String { panic } pub fn main() { let _ = callee(panic) 0 }",
             "fn callee(value: Int) -> fn() -> BitArray { panic } pub fn main() { let _ = callee(panic) 0 }",
+            "fn callee(value: Int) -> fn() -> UtfCodepoint { panic } pub fn main() { let _ = callee(panic) 0 }",
             "fn callee(value: Int) -> fn() -> Float { panic } pub fn main() { let _ = callee(panic) 0 }",
             "fn callee(value: Int) -> fn() -> Bool { panic } pub fn main() { let _ = callee(panic) 0 }",
             "fn callee(value: Int) -> fn() -> Nil { panic } pub fn main() { let _ = callee(panic) 0 }",
@@ -1613,6 +1801,7 @@ pub fn main() { Nil }
 fn int_function(provider: fn() -> fn() -> Int) { provider() }
 fn string_function(provider: fn() -> fn() -> String) { provider() }
 fn bit_array_function(provider: fn() -> fn() -> BitArray) { provider() }
+fn utf_codepoint_function(provider: fn() -> fn() -> UtfCodepoint) { provider() }
 fn float_function(provider: fn() -> fn() -> Float) { provider() }
 fn bool_function(provider: fn() -> fn() -> Bool) { provider() }
 fn nil_function(provider: fn() -> fn() -> Nil) { provider() }
@@ -1683,6 +1872,23 @@ pub fn main() { list_function }
             ),
             Err(ExecutionError::FunctionReturnFamilyMismatch {
                 expected: FunctionReturnFamily::BitArray,
+                actual: FunctionReturnFamily::Int,
+            }),
+        );
+
+        let function = plan.utf_codepoint_function_function(UtfCodepointFunctionFunctionId(0));
+        let mut state = crate::runtime::RuntimeState::new();
+        let mut frame = Frame::new(function.frame_layout(), &mut state);
+        frame.set_function_function(FunctionFunctionLocalId(0), wrong_int.clone());
+        assert_eq!(
+            run_utf_codepoint_function_loop(
+                &plan,
+                &mut state,
+                UtfCodepointFunctionFunctionId(0),
+                frame,
+            ),
+            Err(ExecutionError::FunctionReturnFamilyMismatch {
+                expected: FunctionReturnFamily::UtfCodepoint,
                 actual: FunctionReturnFamily::Int,
             }),
         );
@@ -1771,6 +1977,9 @@ fn string_function(values: List(fn() -> String)) {
   case values { [value, ..] -> value _ -> panic }
 }
 fn bit_array_function(values: List(fn() -> BitArray)) {
+  case values { [value, ..] -> value _ -> panic }
+}
+fn utf_codepoint_function(values: List(fn() -> UtfCodepoint)) {
   case values { [value, ..] -> value _ -> panic }
 }
 fn float_function(values: List(fn() -> Float)) {
@@ -1867,6 +2076,27 @@ pub fn main() { list_function }
             ),
             Err(ExecutionError::FunctionReturnFamilyMismatch {
                 expected: FunctionReturnFamily::BitArray,
+                actual: FunctionReturnFamily::Int,
+            }),
+        );
+
+        let function = plan.utf_codepoint_function_function(UtfCodepointFunctionFunctionId(0));
+        let mut state = crate::runtime::RuntimeState::new();
+        let mut frame = Frame::new(function.frame_layout(), &mut state);
+        let value = state.function(
+            function.frame_layout().function_lists()[0],
+            vec![wrong_int.clone().into()],
+        );
+        frame.set_function_list(FunctionListLocalId(0), value);
+        assert_eq!(
+            run_utf_codepoint_function_loop(
+                &plan,
+                &mut state,
+                UtfCodepointFunctionFunctionId(0),
+                frame,
+            ),
+            Err(ExecutionError::FunctionReturnFamilyMismatch {
+                expected: FunctionReturnFamily::UtfCodepoint,
                 actual: FunctionReturnFamily::Int,
             }),
         );

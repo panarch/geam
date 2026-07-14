@@ -4,7 +4,7 @@ use crate::plan;
 use crate::plan::execution::{
     BitArrayListTypeId, BoolListTypeId, FloatListTypeId, FunctionListTypeId, FunctionType,
     IntListTypeId, ListListTypeId, ListStorageTypeId, ListTypeId, NilListTypeId, StringListTypeId,
-    TupleListTypeId, ValueType,
+    TupleListTypeId, UtfCodepointListTypeId, ValueType,
 };
 
 use super::super::value_type::ListTypeTable;
@@ -27,6 +27,7 @@ impl ListTypeInterner {
             plan::ValueType::Float => ValueType::Float,
             plan::ValueType::String => ValueType::String,
             plan::ValueType::BitArray => ValueType::BitArray,
+            plan::ValueType::UtfCodepoint => ValueType::UtfCodepoint,
             plan::ValueType::Bool => ValueType::Bool,
             plan::ValueType::Nil => ValueType::Nil,
             plan::ValueType::Tuple(elements) => ValueType::Tuple(
@@ -59,6 +60,7 @@ impl ListTypeInterner {
             plan::ValueType::Int => self.int_list_type().list_type(),
             plan::ValueType::String => self.string_list_type().list_type(),
             plan::ValueType::BitArray => self.bit_array_list_type().list_type(),
+            plan::ValueType::UtfCodepoint => self.utf_codepoint_list_type().list_type(),
             plan::ValueType::Float => self.float_list_type().list_type(),
             plan::ValueType::Bool => self.bool_list_type().list_type(),
             plan::ValueType::Nil => self.nil_list_type().list_type(),
@@ -103,6 +105,13 @@ impl ListTypeInterner {
             ListStorageTypeId::BitArray(BitArrayListTypeId::new(list_type))
         });
         BitArrayListTypeId::new(list_type)
+    }
+
+    pub(super) fn utf_codepoint_list_type(&mut self) -> UtfCodepointListTypeId {
+        let list_type = self.intern_primitive(plan::ValueType::UtfCodepoint, |list_type| {
+            ListStorageTypeId::UtfCodepoint(UtfCodepointListTypeId::new(list_type))
+        });
+        UtfCodepointListTypeId::new(list_type)
     }
 
     pub(super) fn float_list_type(&mut self) -> FloatListTypeId {

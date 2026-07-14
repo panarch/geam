@@ -4,7 +4,8 @@ use crate::plan::{
     FloatFunctionExpr, FloatFunctionExprKind, FunctionExpr, FunctionExprKind, FunctionFunctionExpr,
     FunctionFunctionExprKind, IntFunctionExpr, IntFunctionExprKind, ListFunctionExpr,
     ListFunctionExprKind, NilFunctionExpr, NilFunctionExprKind, StringFunctionExpr,
-    StringFunctionExprKind, TupleFunctionExpr, TupleFunctionExprKind,
+    StringFunctionExprKind, TupleFunctionExpr, TupleFunctionExprKind, UtfCodepointFunctionExpr,
+    UtfCodepointFunctionExprKind,
 };
 
 impl FrameLayout {
@@ -17,6 +18,9 @@ impl FrameLayout {
             FunctionExprKind::String(expression) => self.include_string_function_expr(expression),
             FunctionExprKind::BitArray(expression) => {
                 self.include_bit_array_function_expr(expression)
+            }
+            FunctionExprKind::UtfCodepoint(expression) => {
+                self.include_utf_codepoint_function_expr(expression)
             }
             FunctionExprKind::Float(expression) => self.include_float_function_expr(expression),
             FunctionExprKind::Bool(expression) => self.include_bool_function_expr(expression),
@@ -291,6 +295,79 @@ impl FrameLayout {
             BitArrayFunctionExprKind::Block { steps, return_ } => {
                 self.include_steps(steps);
                 self.include_bit_array_function_expr(return_);
+            }
+        }
+    }
+
+    pub(in crate::plan::module::frame) fn include_utf_codepoint_function_expr(
+        &mut self,
+        expression: &UtfCodepointFunctionExpr,
+    ) {
+        match expression.kind() {
+            UtfCodepointFunctionExprKind::Reference(_) => {}
+            UtfCodepointFunctionExprKind::Panic(panic) => self.include_panic_expr(panic),
+            UtfCodepointFunctionExprKind::Closure { captures, .. } => {
+                self.include_capture_args(captures)
+            }
+            UtfCodepointFunctionExprKind::LocalGet { local, .. } => {
+                self.include_utf_codepoint_function(*local)
+            }
+            UtfCodepointFunctionExprKind::Call { args, .. } => self.include_call_args(args),
+            UtfCodepointFunctionExprKind::FunctionCall { function, args, .. } => {
+                self.include_function_function_expr(function);
+                self.include_call_args(args);
+            }
+            UtfCodepointFunctionExprKind::TupleIndex { tuple, .. } => {
+                self.include_tuple_expr(tuple)
+            }
+            UtfCodepointFunctionExprKind::ListIndex { list, .. } => {
+                self.include_typed_list_expr(list)
+            }
+            UtfCodepointFunctionExprKind::BoolCase {
+                subject,
+                true_,
+                false_,
+            } => {
+                self.include_bool_expr(subject);
+                self.include_utf_codepoint_function_expr(true_);
+                self.include_utf_codepoint_function_expr(false_);
+            }
+            UtfCodepointFunctionExprKind::IntCase {
+                subject,
+                clauses,
+                fallback,
+            } => {
+                self.include_int_expr(subject);
+                for (_, branch) in clauses {
+                    self.include_utf_codepoint_function_expr(branch);
+                }
+                self.include_utf_codepoint_function_expr(fallback);
+            }
+            UtfCodepointFunctionExprKind::StringCase {
+                subject,
+                clauses,
+                fallback,
+            } => {
+                self.include_string_expr(subject);
+                for (_, branch) in clauses {
+                    self.include_utf_codepoint_function_expr(branch);
+                }
+                self.include_utf_codepoint_function_expr(fallback);
+            }
+            UtfCodepointFunctionExprKind::FloatCase {
+                subject,
+                clauses,
+                fallback,
+            } => {
+                self.include_float_expr(subject);
+                for (_, branch) in clauses {
+                    self.include_utf_codepoint_function_expr(branch);
+                }
+                self.include_utf_codepoint_function_expr(fallback);
+            }
+            UtfCodepointFunctionExprKind::Block { steps, return_ } => {
+                self.include_steps(steps);
+                self.include_utf_codepoint_function_expr(return_);
             }
         }
     }

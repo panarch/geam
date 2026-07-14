@@ -7,6 +7,7 @@ use crate::plan::execution::{
     ListListFunctionId, ListListLocalId, ListListTypeId, ListTypeId, NilExpr, NilListFunctionId,
     NilListLocalId, NilListTypeId, StringExpr, StringListFunctionId, StringListLocalId,
     StringListTypeId, TupleExpr, TupleListFunctionId, TupleListLocalId, TupleListTypeId,
+    UtfCodepointExpr, UtfCodepointListFunctionId, UtfCodepointListLocalId, UtfCodepointListTypeId,
 };
 pub(crate) trait ListItem {
     type ElementExpr;
@@ -26,6 +27,10 @@ pub(crate) struct StringListItem {
 
 pub(crate) struct BitArrayListItem {
     type_id: BitArrayListTypeId,
+}
+
+pub(crate) struct UtfCodepointListItem {
+    type_id: UtfCodepointListTypeId,
 }
 
 pub(crate) struct FloatListItem {
@@ -69,6 +74,7 @@ macro_rules! list_item {
 list_item!(IntListItem, IntListTypeId);
 list_item!(StringListItem, StringListTypeId);
 list_item!(BitArrayListItem, BitArrayListTypeId);
+list_item!(UtfCodepointListItem, UtfCodepointListTypeId);
 list_item!(FloatListItem, FloatListTypeId);
 list_item!(BoolListItem, BoolListTypeId);
 list_item!(NilListItem, NilListTypeId);
@@ -100,6 +106,16 @@ impl ListItem for BitArrayListItem {
     type ElementExpr = BitArrayExpr;
     type Local = BitArrayListLocalId;
     type Function = BitArrayListFunctionId;
+
+    fn list_type(&self) -> ListTypeId {
+        self.type_id.list_type()
+    }
+}
+
+impl ListItem for UtfCodepointListItem {
+    type ElementExpr = UtfCodepointExpr;
+    type Local = UtfCodepointListLocalId;
+    type Function = UtfCodepointListFunctionId;
 
     fn list_type(&self) -> ListTypeId {
         self.type_id.list_type()

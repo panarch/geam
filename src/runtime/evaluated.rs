@@ -12,7 +12,8 @@ use crate::plan::execution::{
     FunctionFunctionId, FunctionFunctionLocalId, FunctionReturnFamily, FunctionType, IntFunctionId,
     IntFunctionLocalId, IntLocalId, ListFunctionId, ListFunctionLocal, NilFunctionId,
     NilFunctionLocalId, NilLocalId, ParamLocal, StringFunctionId, StringFunctionLocalId,
-    StringLocalId, TupleFunctionId, TupleFunctionLocalId, TupleLocalId,
+    StringLocalId, TupleFunctionId, TupleFunctionLocalId, TupleLocalId, UtfCodepointFunctionId,
+    UtfCodepointFunctionLocalId, UtfCodepointLocalId,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -40,6 +41,7 @@ pub(in crate::runtime) enum EvaluatedValue {
     Float(f64),
     String(EcoString),
     BitArray(EvaluatedBitArray),
+    UtfCodepoint(char),
     Bool(bool),
     Nil,
     Tuple(Vec<EvaluatedValue>),
@@ -59,6 +61,8 @@ pub(in crate::runtime) type EvaluatedIntFunction = EvaluatedFunction<IntFunction
 pub(in crate::runtime) type EvaluatedFloatFunction = EvaluatedFunction<FloatFunctionId>;
 pub(in crate::runtime) type EvaluatedStringFunction = EvaluatedFunction<StringFunctionId>;
 pub(in crate::runtime) type EvaluatedBitArrayFunction = EvaluatedFunction<BitArrayFunctionId>;
+pub(in crate::runtime) type EvaluatedUtfCodepointFunction =
+    EvaluatedFunction<UtfCodepointFunctionId>;
 pub(in crate::runtime) type EvaluatedBoolFunction = EvaluatedFunction<BoolFunctionId>;
 pub(in crate::runtime) type EvaluatedNilFunction = EvaluatedFunction<NilFunctionId>;
 pub(in crate::runtime) type EvaluatedTupleFunction = EvaluatedFunction<TupleFunctionId>;
@@ -83,6 +87,7 @@ pub(in crate::runtime) enum EvaluatedFunctionValueKind {
     Float(EvaluatedFloatFunction),
     String(EvaluatedStringFunction),
     BitArray(EvaluatedBitArrayFunction),
+    UtfCodepoint(EvaluatedUtfCodepointFunction),
     Bool(EvaluatedBoolFunction),
     Nil(EvaluatedNilFunction),
     Tuple(EvaluatedTupleFunction),
@@ -113,6 +118,10 @@ pub(in crate::runtime) enum EvaluatedCaptureKind {
         local: BitArrayLocalId,
         value: EvaluatedBitArray,
     },
+    UtfCodepoint {
+        local: UtfCodepointLocalId,
+        value: char,
+    },
     Bool {
         local: BoolLocalId,
         value: bool,
@@ -140,6 +149,10 @@ pub(in crate::runtime) enum EvaluatedCaptureKind {
     BitArrayFunction {
         local: BitArrayFunctionLocalId,
         value: EvaluatedBitArrayFunction,
+    },
+    UtfCodepointFunction {
+        local: UtfCodepointFunctionLocalId,
+        value: EvaluatedUtfCodepointFunction,
     },
     BoolFunction {
         local: BoolFunctionLocalId,
@@ -177,6 +190,10 @@ pub(in crate::runtime) enum EvaluatedListCapture {
         local: crate::plan::execution::BitArrayListLocalId,
         value: super::state::BitArrayListValueId,
     },
+    UtfCodepoint {
+        local: crate::plan::execution::UtfCodepointListLocalId,
+        value: super::state::UtfCodepointListValueId,
+    },
     Float {
         local: crate::plan::execution::FloatListLocalId,
         value: super::state::FloatListValueId,
@@ -210,6 +227,7 @@ impl EvaluatedValue {
             Self::Float(_) => ValueType::Float,
             Self::String(_) => ValueType::String,
             Self::BitArray(_) => ValueType::BitArray,
+            Self::UtfCodepoint(_) => ValueType::UtfCodepoint,
             Self::Bool(_) => ValueType::Bool,
             Self::Nil => ValueType::Nil,
             Self::Tuple(values) => {
@@ -269,6 +287,7 @@ evaluated_function_value_from!(EvaluatedIntFunction, Int);
 evaluated_function_value_from!(EvaluatedFloatFunction, Float);
 evaluated_function_value_from!(EvaluatedStringFunction, String);
 evaluated_function_value_from!(EvaluatedBitArrayFunction, BitArray);
+evaluated_function_value_from!(EvaluatedUtfCodepointFunction, UtfCodepoint);
 evaluated_function_value_from!(EvaluatedBoolFunction, Bool);
 evaluated_function_value_from!(EvaluatedNilFunction, Nil);
 evaluated_function_value_from!(EvaluatedTupleFunction, Tuple);
@@ -290,6 +309,7 @@ impl EvaluatedFunctionValue {
             EvaluatedFunctionValueKind::Float(value) => value.type_(),
             EvaluatedFunctionValueKind::String(value) => value.type_(),
             EvaluatedFunctionValueKind::BitArray(value) => value.type_(),
+            EvaluatedFunctionValueKind::UtfCodepoint(value) => value.type_(),
             EvaluatedFunctionValueKind::Bool(value) => value.type_(),
             EvaluatedFunctionValueKind::Nil(value) => value.type_(),
             EvaluatedFunctionValueKind::Tuple(value) => value.type_(),
@@ -306,6 +326,7 @@ impl EvaluatedFunctionValueKind {
             Self::Float(_) => FunctionReturnFamily::Float,
             Self::String(_) => FunctionReturnFamily::String,
             Self::BitArray(_) => FunctionReturnFamily::BitArray,
+            Self::UtfCodepoint(_) => FunctionReturnFamily::UtfCodepoint,
             Self::Bool(_) => FunctionReturnFamily::Bool,
             Self::Nil(_) => FunctionReturnFamily::Nil,
             Self::Tuple(_) => FunctionReturnFamily::Tuple,
@@ -338,6 +359,10 @@ impl EvaluatedCapture {
 
     pub(in crate::runtime) fn bit_array(local: BitArrayLocalId, value: EvaluatedBitArray) -> Self {
         Self::from_kind(EvaluatedCaptureKind::BitArray { local, value })
+    }
+
+    pub(in crate::runtime) fn utf_codepoint(local: UtfCodepointLocalId, value: char) -> Self {
+        Self::from_kind(EvaluatedCaptureKind::UtfCodepoint { local, value })
     }
 
     pub(in crate::runtime) fn bool(local: BoolLocalId, value: bool) -> Self {
@@ -382,6 +407,13 @@ impl EvaluatedCapture {
         value: EvaluatedBitArrayFunction,
     ) -> Self {
         Self::from_kind(EvaluatedCaptureKind::BitArrayFunction { local, value })
+    }
+
+    pub(in crate::runtime) fn utf_codepoint_function(
+        local: UtfCodepointFunctionLocalId,
+        value: EvaluatedUtfCodepointFunction,
+    ) -> Self {
+        Self::from_kind(EvaluatedCaptureKind::UtfCodepointFunction { local, value })
     }
 
     pub(in crate::runtime) fn bool_function(
@@ -431,6 +463,7 @@ pub(in crate::runtime) fn values_equal(
         (EvaluatedValue::Float(left), EvaluatedValue::Float(right)) => left == right,
         (EvaluatedValue::String(left), EvaluatedValue::String(right)) => left == right,
         (EvaluatedValue::BitArray(left), EvaluatedValue::BitArray(right)) => left == right,
+        (EvaluatedValue::UtfCodepoint(left), EvaluatedValue::UtfCodepoint(right)) => left == right,
         (EvaluatedValue::Bool(left), EvaluatedValue::Bool(right)) => left == right,
         (EvaluatedValue::Nil, EvaluatedValue::Nil) => true,
         (EvaluatedValue::Tuple(left), EvaluatedValue::Tuple(right)) => {
@@ -488,6 +521,10 @@ fn functions_equal(
         (
             EvaluatedFunctionValueKind::BitArray(left),
             EvaluatedFunctionValueKind::BitArray(right),
+        ) => function_values_equal(plan, state, left, right),
+        (
+            EvaluatedFunctionValueKind::UtfCodepoint(left),
+            EvaluatedFunctionValueKind::UtfCodepoint(right),
         ) => function_values_equal(plan, state, left, right),
         (EvaluatedFunctionValueKind::Bool(left), EvaluatedFunctionValueKind::Bool(right)) => {
             function_values_equal(plan, state, left, right)
@@ -564,6 +601,16 @@ fn captures_equal(
             },
         ) => left_local == right_local && left == right,
         (
+            EvaluatedCaptureKind::UtfCodepoint {
+                local: left_local,
+                value: left,
+            },
+            EvaluatedCaptureKind::UtfCodepoint {
+                local: right_local,
+                value: right,
+            },
+        ) => left_local == right_local && left == right,
+        (
             EvaluatedCaptureKind::Bool {
                 local: left_local,
                 value: left,
@@ -623,6 +670,16 @@ fn captures_equal(
                 value: left,
             },
             EvaluatedCaptureKind::StringFunction {
+                local: right_local,
+                value: right,
+            },
+        ) => left_local == right_local && function_values_equal(plan, state, left, right),
+        (
+            EvaluatedCaptureKind::UtfCodepointFunction {
+                local: left_local,
+                value: left,
+            },
+            EvaluatedCaptureKind::UtfCodepointFunction {
                 local: right_local,
                 value: right,
             },
@@ -707,6 +764,19 @@ fn list_captures_equal(
                 value: left,
             },
             EvaluatedListCapture::String {
+                local: right_local,
+                value: right,
+            },
+        ) => {
+            left_local == right_local
+                && lists_equal(plan, state, &left.clone().into(), &right.clone().into())
+        }
+        (
+            EvaluatedListCapture::UtfCodepoint {
+                local: left_local,
+                value: left,
+            },
+            EvaluatedListCapture::UtfCodepoint {
                 local: right_local,
                 value: right,
             },
@@ -802,7 +872,8 @@ mod tests {
         EvaluatedBitArray, EvaluatedBitArrayFunction, EvaluatedBoolFunction, EvaluatedCapture,
         EvaluatedFloatFunction, EvaluatedFunctionFunction, EvaluatedFunctionValue,
         EvaluatedIntFunction, EvaluatedListCapture, EvaluatedListFunction, EvaluatedNilFunction,
-        EvaluatedStringFunction, EvaluatedTupleFunction, EvaluatedValue, values_equal,
+        EvaluatedStringFunction, EvaluatedTupleFunction, EvaluatedUtfCodepointFunction,
+        EvaluatedValue, values_equal,
     };
     use crate::plan::ValueType;
     use crate::plan::execution::{
@@ -813,6 +884,8 @@ mod tests {
         ListFunctionLocal, ListListLocalId, NilFunctionId, NilFunctionLocalId, NilListLocalId,
         NilLocalId, ParamLocal, StringFunctionId, StringFunctionLocalId, StringListLocalId,
         StringLocalId, TupleFunctionId, TupleFunctionLocalId, TupleListLocalId, TupleLocalId,
+        UtfCodepointFunctionId, UtfCodepointFunctionLocalId, UtfCodepointListLocalId,
+        UtfCodepointLocalId,
     };
     use crate::runtime::state::{ListValueId, RuntimeState};
     use bitvec::order::Msb0;
@@ -822,6 +895,7 @@ mod tests {
 fn ints() -> List(Int) { [] }
 fn strings() -> List(String) { [] }
 fn bit_arrays() -> List(BitArray) { [] }
+fn utf_codepoints() -> List(UtfCodepoint) { [] }
 fn floats() -> List(Float) { [] }
 fn bools() -> List(Bool) { [] }
 fn nils() -> List(Nil) { [] }
@@ -859,6 +933,7 @@ pub fn main() { 0 }
             EvaluatedValue::Float(1.5),
             EvaluatedValue::String("one".into()),
             EvaluatedValue::BitArray(EvaluatedBitArray::new(bitvec::vec::BitVec::new())),
+            EvaluatedValue::UtfCodepoint('\u{10ffff}'),
             EvaluatedValue::Bool(true),
             EvaluatedValue::Nil,
             EvaluatedValue::Tuple(vec![EvaluatedValue::Int(1.into())]),
@@ -870,6 +945,7 @@ pub fn main() { 0 }
             ValueType::Float,
             ValueType::String,
             ValueType::BitArray,
+            ValueType::UtfCodepoint,
             ValueType::Bool,
             ValueType::Nil,
             ValueType::Tuple(vec![ValueType::Int]),
@@ -961,6 +1037,26 @@ pub fn main() { 0 }
                     crate::plan::execution::FunctionType::new(
                         Vec::new(),
                         crate::plan::execution::ValueType::BitArray,
+                    ),
+                )),
+            ),
+            (
+                EvaluatedFunctionValue::from(EvaluatedUtfCodepointFunction::new(
+                    UtfCodepointFunctionId(0),
+                    Vec::new(),
+                    Vec::new(),
+                    crate::plan::execution::FunctionType::new(
+                        Vec::new(),
+                        crate::plan::execution::ValueType::UtfCodepoint,
+                    ),
+                )),
+                EvaluatedFunctionValue::from(EvaluatedUtfCodepointFunction::new(
+                    UtfCodepointFunctionId(0),
+                    Vec::new(),
+                    Vec::new(),
+                    crate::plan::execution::FunctionType::new(
+                        Vec::new(),
+                        crate::plan::execution::ValueType::UtfCodepoint,
                     ),
                 )),
             ),
@@ -1129,6 +1225,10 @@ pub fn main() { 0 }
             state.float(plan.float_list_function_id(0).type_id(), vec![1.5]),
             state.float(plan.float_list_function_id(0).type_id(), vec![1.5]),
         );
+        let utf_codepoint_lists = (
+            state.utf_codepoint(plan.utf_codepoint_list_function_id(0).type_id(), vec!['a']),
+            state.utf_codepoint(plan.utf_codepoint_list_function_id(0).type_id(), vec!['a']),
+        );
         let bool_lists = (
             state.bool(plan.bool_list_function_id(0).type_id(), vec![true]),
             state.bool(plan.bool_list_function_id(0).type_id(), vec![true]),
@@ -1177,6 +1277,10 @@ pub fn main() { 0 }
             (
                 ListValueId::String(string_lists.0.clone()),
                 ListValueId::String(string_lists.1.clone()),
+            ),
+            (
+                ListValueId::UtfCodepoint(utf_codepoint_lists.0.clone()),
+                ListValueId::UtfCodepoint(utf_codepoint_lists.1.clone()),
             ),
             (
                 ListValueId::Float(float_lists.0.clone()),
@@ -1285,6 +1389,15 @@ pub fn main() { 0 }
                 crate::plan::execution::ValueType::String,
             ),
         );
+        let captured_utf_codepoint_function = EvaluatedUtfCodepointFunction::new(
+            UtfCodepointFunctionId(0),
+            Vec::new(),
+            Vec::new(),
+            crate::plan::execution::FunctionType::new(
+                Vec::new(),
+                crate::plan::execution::ValueType::UtfCodepoint,
+            ),
+        );
         let captured_bool_function = EvaluatedBoolFunction::new(
             BoolFunctionId(0),
             Vec::new(),
@@ -1345,6 +1458,10 @@ pub fn main() { 0 }
             plan.string_list_function_id(0).type_id(),
             vec!["one".into()],
         );
+        let left_utf_codepoint_list =
+            state.utf_codepoint(plan.utf_codepoint_list_function_id(0).type_id(), vec!['a']);
+        let right_utf_codepoint_list =
+            state.utf_codepoint(plan.utf_codepoint_list_function_id(0).type_id(), vec!['a']);
         let left_float_list = state.float(plan.float_list_function_id(0).type_id(), vec![1.5]);
         let right_float_list = state.float(plan.float_list_function_id(0).type_id(), vec![1.5]);
         let left_bool_list = state.bool(plan.bool_list_function_id(0).type_id(), vec![true]);
@@ -1396,6 +1513,10 @@ pub fn main() { 0 }
                 EvaluatedCapture::string(StringLocalId(0), "one".into()),
             ),
             (
+                EvaluatedCapture::utf_codepoint(UtfCodepointLocalId(0), 'a'),
+                EvaluatedCapture::utf_codepoint(UtfCodepointLocalId(0), 'a'),
+            ),
+            (
                 EvaluatedCapture::bool(BoolLocalId(0), true),
                 EvaluatedCapture::bool(BoolLocalId(0), true),
             ),
@@ -1425,6 +1546,16 @@ pub fn main() { 0 }
                 EvaluatedCapture::list(EvaluatedListCapture::String {
                     local: StringListLocalId(0),
                     value: right_string_list,
+                }),
+            ),
+            (
+                EvaluatedCapture::list(EvaluatedListCapture::UtfCodepoint {
+                    local: UtfCodepointListLocalId(0),
+                    value: left_utf_codepoint_list,
+                }),
+                EvaluatedCapture::list(EvaluatedListCapture::UtfCodepoint {
+                    local: UtfCodepointListLocalId(0),
+                    value: right_utf_codepoint_list,
                 }),
             ),
             (
@@ -1515,6 +1646,16 @@ pub fn main() { 0 }
                 EvaluatedCapture::string_function(
                     StringFunctionLocalId(0),
                     captured_string_function.clone(),
+                ),
+            ),
+            (
+                EvaluatedCapture::utf_codepoint_function(
+                    UtfCodepointFunctionLocalId(0),
+                    captured_utf_codepoint_function.clone(),
+                ),
+                EvaluatedCapture::utf_codepoint_function(
+                    UtfCodepointFunctionLocalId(0),
+                    captured_utf_codepoint_function,
                 ),
             ),
             (

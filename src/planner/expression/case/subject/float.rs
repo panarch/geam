@@ -204,6 +204,10 @@ fn float_case_expr(
             clauses: bit_array_case_clauses(clauses)?,
             fallback,
         },
+        ExprKind::UtfCodepoint(fallback) => FloatCaseBranches::UtfCodepoint {
+            clauses: utf_codepoint_case_clauses(clauses)?,
+            fallback,
+        },
         ExprKind::Float(fallback) => FloatCaseBranches::Float {
             clauses: float_case_clauses(clauses)?,
             fallback,
@@ -263,6 +267,21 @@ fn bit_array_case_clauses(
     let mut typed_clauses = Vec::with_capacity(clauses.len());
     for (value, clause) in clauses {
         let ExprKind::BitArray(clause) = clause.into_kind() else {
+            return Err(invalid_case_shape(
+                InvalidCaseShapeReason::BranchReturnTypeMismatch,
+            ));
+        };
+        typed_clauses.push((value, clause));
+    }
+    Ok(typed_clauses)
+}
+
+fn utf_codepoint_case_clauses(
+    clauses: Vec<(f64, Expr)>,
+) -> Result<Vec<(f64, crate::plan::UtfCodepointExpr)>, PlanError> {
+    let mut typed_clauses = Vec::with_capacity(clauses.len());
+    for (value, clause) in clauses {
+        let ExprKind::UtfCodepoint(clause) = clause.into_kind() else {
             return Err(invalid_case_shape(
                 InvalidCaseShapeReason::BranchReturnTypeMismatch,
             ));
@@ -374,6 +393,12 @@ fn function_case_branches(
                 fallback,
             })
         }
+        crate::plan::FunctionExprKind::UtfCodepoint(fallback) => {
+            Ok(FloatCaseBranches::UtfCodepointFunction {
+                clauses: utf_codepoint_function_case_clauses(clauses)?,
+                fallback,
+            })
+        }
         crate::plan::FunctionExprKind::Float(fallback) => Ok(FloatCaseBranches::FloatFunction {
             clauses: float_function_case_clauses(clauses)?,
             fallback,
@@ -454,6 +479,26 @@ fn bit_array_function_case_clauses(
             ));
         };
         let crate::plan::FunctionExprKind::BitArray(clause) = function.into_kind() else {
+            return Err(invalid_case_shape(
+                InvalidCaseShapeReason::BranchReturnTypeMismatch,
+            ));
+        };
+        typed_clauses.push((value, clause));
+    }
+    Ok(typed_clauses)
+}
+
+fn utf_codepoint_function_case_clauses(
+    clauses: Vec<(f64, Expr)>,
+) -> Result<Vec<(f64, crate::plan::UtfCodepointFunctionExpr)>, PlanError> {
+    let mut typed_clauses = Vec::with_capacity(clauses.len());
+    for (value, clause) in clauses {
+        let ExprKind::Function(function) = clause.into_kind() else {
+            return Err(invalid_case_shape(
+                InvalidCaseShapeReason::BranchReturnTypeMismatch,
+            ));
+        };
+        let crate::plan::FunctionExprKind::UtfCodepoint(clause) = function.into_kind() else {
             return Err(invalid_case_shape(
                 InvalidCaseShapeReason::BranchReturnTypeMismatch,
             ));
@@ -589,7 +634,8 @@ mod tests {
         BoolExpr, BoolFunctionId, Expr, FloatCaseBranches, FloatFunctionFunctionId,
         FloatFunctionId, FloatReturn, FunctionExpr, FunctionFunctionId, FunctionType,
         IntFunctionExpr, IntFunctionId, IntLocalId, ListFunctionId, LocalId, NilFunctionId,
-        RuntimeFunctionId, StringFunctionId, TupleFunctionId, ValueType,
+        RuntimeFunctionId, StringFunctionId, TupleFunctionId, UtfCodepointExpr,
+        UtfCodepointFunctionId, UtfCodepointLocalId, ValueType,
     };
     use crate::planner::dsl::{
         bit_array, bit_array_function_ref, bool_, bool_return_expr, bool_return_float_case, float,
@@ -1015,6 +1061,56 @@ fn duplicate_literal(value: Float) {
 
     #[test]
     fn plan_float_case_function_branch_return_families_direct() {
+        let codepoint = |local| {
+            Expr::utf_codepoint(UtfCodepointExpr::local_get(
+                UtfCodepointLocalId(local),
+                "codepoint".into(),
+            ))
+        };
+        assert_eq!(
+            super::float_case_expr(float(1.0).into(), vec![(1.0, codepoint(0))], codepoint(1),),
+            Ok(Expr::float_case(
+                float(1.0).into(),
+                FloatCaseBranches::UtfCodepoint {
+                    clauses: vec![(
+                        1.0,
+                        UtfCodepointExpr::local_get(UtfCodepointLocalId(0), "codepoint".into(),),
+                    )],
+                    fallback: UtfCodepointExpr::local_get(
+                        UtfCodepointLocalId(1),
+                        "codepoint".into(),
+                    ),
+                },
+            )),
+        );
+        assert_eq!(
+            super::float_case_expr(float(1.0).into(), vec![(1.0, int(1).into())], codepoint(1),),
+            Err(case_branch_return_type_mismatch()),
+        );
+        assert_eq!(
+            super::function_case_branches(
+                vec![(1.0, utf_codepoint_function_ref_expr(0))],
+                utf_codepoint_function_ref_expr(1)
+                    .into_function()
+                    .expect("function expression"),
+            ),
+            Ok(FloatCaseBranches::UtfCodepointFunction {
+                clauses: vec![(
+                    1.0,
+                    utf_codepoint_function_ref_expr(0)
+                        .into_function()
+                        .expect("function expression")
+                        .into_utf_codepoint()
+                        .expect("utf codepoint function expression"),
+                )],
+                fallback: utf_codepoint_function_ref_expr(1)
+                    .into_function()
+                    .expect("function expression")
+                    .into_utf_codepoint()
+                    .expect("utf codepoint function expression"),
+            }),
+        );
+
         assert_eq!(
             super::function_case_branches(
                 vec![(1.0, string_function_ref_expr(0))],
@@ -1591,6 +1687,18 @@ fn add_one(value: Float) {
     #[test]
     fn reject_margin_float_case_function_clause_family_mismatch_direct() {
         assert_eq!(
+            super::utf_codepoint_case_clauses(vec![(1.0, Expr::from(int(1)))]),
+            Err(case_branch_return_type_mismatch()),
+        );
+        assert_eq!(
+            super::utf_codepoint_function_case_clauses(vec![(1.0, Expr::from(int(1)))]),
+            Err(case_branch_return_type_mismatch()),
+        );
+        assert_eq!(
+            super::utf_codepoint_function_case_clauses(vec![(1.0, int_function_ref_expr(0))]),
+            Err(case_branch_return_type_mismatch()),
+        );
+        assert_eq!(
             super::bit_array_case_clauses(vec![(1.0, Expr::from(int(1)))]),
             Err(case_branch_return_type_mismatch()),
         );
@@ -1669,6 +1777,7 @@ fn add_one(value: Float) {
 
         assert_float_function_case_branch_mismatch(int_function_ref_expr(1));
         assert_float_function_case_branch_mismatch(string_function_ref_expr(1));
+        assert_float_function_case_branch_mismatch(utf_codepoint_function_ref_expr(1));
         assert_float_function_case_branch_mismatch(float_function_ref_expr(1));
         assert_float_function_case_branch_mismatch(bool_function_ref_expr(1));
         assert_float_function_case_branch_mismatch(nil_function_ref_expr(1));
@@ -1732,6 +1841,14 @@ fn add_one(value: Float) {
                 return_type: vec![ValueType::Int],
             },
             [LocalId::Int(IntLocalId(0))],
+        )
+        .into()
+    }
+
+    fn utf_codepoint_function_ref_expr(id: usize) -> Expr {
+        function_ref(
+            RuntimeFunctionId::UtfCodepoint(UtfCodepointFunctionId(id)),
+            [LocalId::UtfCodepoint(UtfCodepointLocalId(0))],
         )
         .into()
     }

@@ -4,7 +4,8 @@ use crate::plan::{
     BitArrayExpr, BitArrayFunctionExpr, BoolExpr, BoolFunctionExpr, Expr, ExprKind, FloatExpr,
     FloatFunctionExpr, FunctionExpr, FunctionExprKind, FunctionFunctionExpr, IntExpr,
     IntFunctionExpr, ListExpr, ListFunctionExpr, NilExpr, NilFunctionExpr, Step, StringExpr,
-    StringFunctionExpr, TupleExpr, TupleFunctionExpr, TupleLocalId, ValueType,
+    StringFunctionExpr, TupleExpr, TupleFunctionExpr, TupleLocalId, UtfCodepointExpr,
+    UtfCodepointFunctionExpr, ValueType,
 };
 use crate::planner::context::PlanContext;
 use crate::planner::error::{
@@ -297,6 +298,7 @@ fn value_type_expression_type(type_: ValueType) -> InvalidExpressionType {
         ValueType::Int => InvalidExpressionType::Int,
         ValueType::String => InvalidExpressionType::String,
         ValueType::BitArray => InvalidExpressionType::BitArray,
+        ValueType::UtfCodepoint => InvalidExpressionType::UtfCodepoint,
         ValueType::Float => InvalidExpressionType::Float,
         ValueType::Bool => InvalidExpressionType::Bool,
         ValueType::Nil => InvalidExpressionType::Nil,
@@ -339,6 +341,13 @@ fn plan_variable_runtime_step_and_return(
             (
                 Step::let_bit_array(local, name.clone(), value),
                 Expr::bit_array(BitArrayExpr::local_get(local, name)),
+            )
+        }
+        ExprKind::UtfCodepoint(value) => {
+            let local = context.define_utf_codepoint_local(name.clone());
+            (
+                Step::let_utf_codepoint(local, name.clone(), value),
+                Expr::utf_codepoint(UtfCodepointExpr::local_get(local, name)),
             )
         }
         ExprKind::Float(value) => {
@@ -408,6 +417,17 @@ fn plan_variable_runtime_step_and_return(
                     Expr::function(FunctionExpr::bit_array(BitArrayFunctionExpr::local_get(
                         local, name, type_,
                     ))),
+                )
+            }
+            FunctionExprKind::UtfCodepoint(value) => {
+                let local = context
+                    .define_utf_codepoint_function_local(name.clone(), value.type_().clone());
+                let type_ = value.type_().clone();
+                (
+                    Step::let_utf_codepoint_function(local, name.clone(), value),
+                    Expr::function(FunctionExpr::utf_codepoint(
+                        UtfCodepointFunctionExpr::local_get(local, name, type_),
+                    )),
                 )
             }
             FunctionExprKind::Float(value) => {
@@ -1237,6 +1257,7 @@ pub fn main() {
             (ValueType::Int, InvalidExpressionType::Int),
             (ValueType::String, InvalidExpressionType::String),
             (ValueType::BitArray, InvalidExpressionType::BitArray),
+            (ValueType::UtfCodepoint, InvalidExpressionType::UtfCodepoint),
             (ValueType::Float, InvalidExpressionType::Float),
             (ValueType::Bool, InvalidExpressionType::Bool),
             (ValueType::Nil, InvalidExpressionType::Nil),

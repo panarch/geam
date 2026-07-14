@@ -7,6 +7,7 @@ mod list;
 mod nil;
 mod string;
 mod tuple;
+mod utf_codepoint;
 
 use crate::plan::{
     BoolCaseBranches, BoolExpr, BoolListCaseBranches, BoolLocalId, Expr, ExprKind, FloatExpr,
@@ -33,6 +34,7 @@ pub(super) fn plan(
         Some(ValueType::Int) => int::plan(type_, subject, clauses, context),
         Some(ValueType::String) => string::plan(type_, subject, clauses, context),
         Some(ValueType::BitArray) => bit_array::plan(type_, subject, clauses, context),
+        Some(ValueType::UtfCodepoint) => utf_codepoint::plan(type_, subject, clauses, context),
         Some(ValueType::Float) => float::plan(type_, subject, clauses, context),
         Some(ValueType::Nil) => nil::plan(type_, subject, clauses, context),
         Some(ValueType::Tuple(subject_type)) => {
@@ -229,6 +231,9 @@ fn bool_case_expr(subject: BoolExpr, true_: Expr, false_: Expr) -> Result<Expr, 
         (ExprKind::BitArray(true_), ExprKind::BitArray(false_)) => {
             BoolCaseBranches::BitArray { true_, false_ }
         }
+        (ExprKind::UtfCodepoint(true_), ExprKind::UtfCodepoint(false_)) => {
+            BoolCaseBranches::UtfCodepoint { true_, false_ }
+        }
         (ExprKind::Float(true_), ExprKind::Float(false_)) => {
             BoolCaseBranches::Float { true_, false_ }
         }
@@ -266,6 +271,9 @@ fn bool_list_case_branches(
         }
         (ListExpr::BitArray(true_), ListExpr::BitArray(false_)) => {
             BoolListCaseBranches::BitArray { true_, false_ }
+        }
+        (ListExpr::UtfCodepoint(true_), ListExpr::UtfCodepoint(false_)) => {
+            BoolListCaseBranches::UtfCodepoint { true_, false_ }
         }
         (ListExpr::Float(true_), ListExpr::Float(false_)) => {
             BoolListCaseBranches::Float { true_, false_ }
@@ -308,6 +316,9 @@ fn bool_function_case_branches(
         }
         (FunctionExprKind::BitArray(true_), FunctionExprKind::BitArray(false_)) => {
             BoolCaseBranches::BitArrayFunction { true_, false_ }
+        }
+        (FunctionExprKind::UtfCodepoint(true_), FunctionExprKind::UtfCodepoint(false_)) => {
+            BoolCaseBranches::UtfCodepointFunction { true_, false_ }
         }
         (FunctionExprKind::Float(true_), FunctionExprKind::Float(false_)) => {
             BoolCaseBranches::FloatFunction { true_, false_ }

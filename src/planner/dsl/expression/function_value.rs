@@ -1,6 +1,7 @@
 use super::{
     BitArrayFunction, BoolFunction, FloatFunction, Function, FunctionFunction, IntFunction,
     IntoParamLocal, IntoValueType, ListFunction, NilFunction, StringFunction, TupleFunction,
+    UtfCodepointFunction,
 };
 use crate::plan::{
     BitArrayFunctionExpr, BitArrayFunctionId, BitArrayFunctionLocalId, BitArrayFunctionReference,
@@ -12,7 +13,8 @@ use crate::plan::{
     ListFunctionReference, NilFunctionExpr, NilFunctionId, NilFunctionLocalId,
     NilFunctionReference, ParamLocal, RuntimeFunctionId, StringFunctionExpr, StringFunctionId,
     StringFunctionLocalId, StringFunctionReference, TupleFunctionExpr, TupleFunctionId,
-    TupleFunctionLocalId, TupleFunctionReference, ValueType,
+    TupleFunctionLocalId, TupleFunctionReference, UtfCodepointFunctionExpr, UtfCodepointFunctionId,
+    UtfCodepointFunctionLocalId, UtfCodepointFunctionReference, ValueType,
 };
 
 use ecow::EcoString;
@@ -107,6 +109,40 @@ pub(crate) fn bit_array_function_closure(
 
     BitArrayFunction(BitArrayFunctionExpr::closure(
         BitArrayFunctionId(runtime_id),
+        params,
+        captures.into_iter().collect(),
+        type_,
+    ))
+}
+
+pub(crate) fn utf_codepoint_function_ref(
+    runtime_id: usize,
+    params: impl IntoIterator<Item = impl IntoParamLocal>,
+) -> UtfCodepointFunction {
+    UtfCodepointFunction(UtfCodepointFunctionExpr::reference(
+        UtfCodepointFunctionReference::new(
+            UtfCodepointFunctionId(runtime_id),
+            params
+                .into_iter()
+                .map(IntoParamLocal::into_param_local)
+                .collect(),
+        ),
+    ))
+}
+
+pub(crate) fn utf_codepoint_function_closure(
+    runtime_id: usize,
+    params: impl IntoIterator<Item = impl IntoParamLocal>,
+    captures: impl IntoIterator<Item = CaptureArg>,
+) -> UtfCodepointFunction {
+    let params = params
+        .into_iter()
+        .map(IntoParamLocal::into_param_local)
+        .collect::<Vec<_>>();
+    let type_ = function_type(&params, ValueType::UtfCodepoint);
+
+    UtfCodepointFunction(UtfCodepointFunctionExpr::closure(
+        UtfCodepointFunctionId(runtime_id),
         params,
         captures.into_iter().collect(),
         type_,
@@ -324,6 +360,18 @@ pub(crate) fn local_bit_array_function(
     ))
 }
 
+pub(crate) fn local_utf_codepoint_function(
+    local: usize,
+    name: impl Into<EcoString>,
+    params: impl IntoIterator<Item = impl IntoValueType>,
+) -> UtfCodepointFunction {
+    UtfCodepointFunction(UtfCodepointFunctionExpr::local_get(
+        UtfCodepointFunctionLocalId(local),
+        name.into(),
+        utf_codepoint_function_type(params),
+    ))
+}
+
 pub(crate) fn local_float_function(
     local: usize,
     name: impl Into<EcoString>,
@@ -423,6 +471,12 @@ fn bit_array_function_type(params: impl IntoIterator<Item = impl IntoValueType>)
     dsl_function_type(params, ValueType::BitArray)
 }
 
+fn utf_codepoint_function_type(
+    params: impl IntoIterator<Item = impl IntoValueType>,
+) -> FunctionType {
+    dsl_function_type(params, ValueType::UtfCodepoint)
+}
+
 fn float_function_type(params: impl IntoIterator<Item = impl IntoValueType>) -> FunctionType {
     dsl_function_type(params, ValueType::Float)
 }
@@ -456,8 +510,10 @@ mod tests {
         function_function_ref, function_ref, int_function_closure, int_function_ref,
         list_function_closure, list_function_ref, local_bit_array_function, local_bool_function,
         local_float_function, local_function_function, local_int_function, local_list_function,
-        local_nil_function, local_string_function, local_tuple_function, nil_function_ref,
-        string_function_ref, tuple_function_closure, tuple_function_ref,
+        local_nil_function, local_string_function, local_tuple_function,
+        local_utf_codepoint_function, nil_function_ref, string_function_ref,
+        tuple_function_closure, tuple_function_ref, utf_codepoint_function_closure,
+        utf_codepoint_function_ref,
     };
     use crate::plan::{
         BitArrayFunctionExpr, BitArrayFunctionId, BitArrayFunctionLocalId,
@@ -470,7 +526,8 @@ mod tests {
         NilFunctionLocalId, NilFunctionReference, ParamLocal, RuntimeFunctionId,
         StringFunctionExpr, StringFunctionId, StringFunctionLocalId, StringFunctionReference,
         TupleFunctionExpr, TupleFunctionId, TupleFunctionLocalId, TupleFunctionReference,
-        ValueType,
+        UtfCodepointFunctionExpr, UtfCodepointFunctionId, UtfCodepointFunctionLocalId,
+        UtfCodepointFunctionReference, ValueType,
     };
     use crate::planner::dsl::expression::{Function, float, int};
 
@@ -508,6 +565,21 @@ mod tests {
             BitArrayFunctionExpr::reference(BitArrayFunctionReference::new(
                 BitArrayFunctionId(8),
                 vec![ParamLocal::bit_array(crate::plan::BitArrayLocalId(0))],
+            )),
+        );
+        assert_eq!(
+            utf_codepoint_function_ref(
+                9,
+                [crate::plan::LocalId::UtfCodepoint(
+                    crate::plan::UtfCodepointLocalId(0),
+                )],
+            )
+            .0,
+            UtfCodepointFunctionExpr::reference(UtfCodepointFunctionReference::new(
+                UtfCodepointFunctionId(9),
+                vec![ParamLocal::utf_codepoint(crate::plan::UtfCodepointLocalId(
+                    0
+                ),)],
             )),
         );
         assert_eq!(
@@ -615,6 +687,21 @@ mod tests {
                 BitArrayFunctionLocalId(1),
                 "bits".into(),
                 FunctionType::new(vec![ValueType::BitArray], ValueType::BitArray),
+            ),
+        );
+        assert_eq!(
+            local_utf_codepoint_function(
+                2,
+                "codepoint",
+                [crate::plan::LocalId::UtfCodepoint(
+                    crate::plan::UtfCodepointLocalId(0),
+                )],
+            )
+            .0,
+            UtfCodepointFunctionExpr::local_get(
+                UtfCodepointFunctionLocalId(2),
+                "codepoint".into(),
+                FunctionType::new(vec![ValueType::UtfCodepoint], ValueType::UtfCodepoint,),
             ),
         );
         assert_eq!(
@@ -737,6 +824,24 @@ mod tests {
                 vec![ParamLocal::bit_array(crate::plan::BitArrayLocalId(0))],
                 Vec::new(),
                 FunctionType::new(vec![ValueType::BitArray], ValueType::BitArray),
+            ),
+        );
+        assert_eq!(
+            utf_codepoint_function_closure(
+                2,
+                [ParamLocal::utf_codepoint(crate::plan::UtfCodepointLocalId(
+                    0
+                ),)],
+                [],
+            )
+            .0,
+            UtfCodepointFunctionExpr::closure(
+                UtfCodepointFunctionId(2),
+                vec![ParamLocal::utf_codepoint(crate::plan::UtfCodepointLocalId(
+                    0
+                ),)],
+                Vec::new(),
+                FunctionType::new(vec![ValueType::UtfCodepoint], ValueType::UtfCodepoint,),
             ),
         );
         assert_eq!(

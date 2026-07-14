@@ -1,7 +1,7 @@
 use super::{
     BitArrayFunctionId, BoolFunctionId, FloatFunctionId, FunctionFunctionId, IntFunctionId,
     ListFunctionId, NilFunctionId, ParamLocal, RuntimeFunctionId, StringFunctionId,
-    TupleFunctionId,
+    TupleFunctionId, UtfCodepointFunctionId,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -20,6 +20,7 @@ pub(crate) type IntFunctionReference = TypedFunctionReference<IntFunctionId>;
 pub(crate) type FloatFunctionReference = TypedFunctionReference<FloatFunctionId>;
 pub(crate) type StringFunctionReference = TypedFunctionReference<StringFunctionId>;
 pub(crate) type BitArrayFunctionReference = TypedFunctionReference<BitArrayFunctionId>;
+pub(crate) type UtfCodepointFunctionReference = TypedFunctionReference<UtfCodepointFunctionId>;
 pub(crate) type BoolFunctionReference = TypedFunctionReference<BoolFunctionId>;
 pub(crate) type NilFunctionReference = TypedFunctionReference<NilFunctionId>;
 pub(crate) type TupleFunctionReference = TypedFunctionReference<TupleFunctionId>;

@@ -27,7 +27,9 @@ pub(crate) use module::{
     StringFunctionExprKind, StringFunctionReference, StringFunctionReturn, StringListExpr,
     StringListItem, StringReturn, TupleExprKind, TupleFunctionExprKind, TupleFunctionReference,
     TupleFunctionReturn, TupleListExpr, TupleListItem, TupleReturn, TypedListExpr,
-    TypedListExprKind, TypedListReturnKind,
+    TypedListExprKind, TypedListReturnKind, UtfCodepointExprKind, UtfCodepointFunctionExprKind,
+    UtfCodepointFunctionReference, UtfCodepointFunctionReturn, UtfCodepointListExpr,
+    UtfCodepointListItem, UtfCodepointReturn,
 };
 pub use module::{
     BitArrayExpr, BitArrayFunctionExpr, BitArrayFunctionFunctionId, BitArrayFunctionId,
@@ -51,12 +53,15 @@ pub use module::{
     StringListFunctionFunctionId, StringListFunctionId, StringListFunctionLocalId,
     StringListLocalId, StringLocalId, TupleExpr, TupleFunctionExpr, TupleFunctionFunctionId,
     TupleFunctionId, TupleFunctionLocalId, TupleListFunctionFunctionId, TupleListFunctionId,
-    TupleListFunctionLocalId, TupleListLocalId, TupleLocalId,
+    TupleListFunctionLocalId, TupleListLocalId, TupleLocalId, UtfCodepointExpr,
+    UtfCodepointFunctionExpr, UtfCodepointFunctionFunctionId, UtfCodepointFunctionId,
+    UtfCodepointFunctionLocalId, UtfCodepointListFunctionFunctionId, UtfCodepointListFunctionId,
+    UtfCodepointListFunctionLocalId, UtfCodepointListLocalId, UtfCodepointLocalId,
 };
 #[cfg(test)]
 pub(crate) use module::{
     BitArrayListReturn, BoolListReturn, FloatListReturn, FunctionListReturn, IntListReturn,
-    ListListReturn, NilListReturn, StringListReturn, TupleListReturn,
+    ListListReturn, NilListReturn, StringListReturn, TupleListReturn, UtfCodepointListReturn,
 };
 pub use source::{PanicSite, SourceContext, SourceSpan};
 pub use value_type::{FunctionType, ValueType};

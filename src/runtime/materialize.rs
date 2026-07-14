@@ -2,13 +2,15 @@ use super::evaluated::{
     EvaluatedBitArrayFunction, EvaluatedBoolFunction, EvaluatedCapture, EvaluatedCaptureKind,
     EvaluatedFloatFunction, EvaluatedFunctionFunction, EvaluatedFunctionValue,
     EvaluatedFunctionValueKind, EvaluatedIntFunction, EvaluatedListCapture, EvaluatedListFunction,
-    EvaluatedNilFunction, EvaluatedStringFunction, EvaluatedTupleFunction, EvaluatedValue,
+    EvaluatedNilFunction, EvaluatedStringFunction, EvaluatedTupleFunction,
+    EvaluatedUtfCodepointFunction, EvaluatedValue,
 };
 use super::state::{ListValueId, RuntimeState};
 use super::{
     BitArrayFunctionValue, BitArrayValue, BoolFunctionValue, CaptureListValue, CaptureValue,
     FloatFunctionValue, FunctionFunctionValue, FunctionValue, FunctionValueKind, IntFunctionValue,
-    ListFunctionValue, ListValue, NilFunctionValue, StringFunctionValue, TupleFunctionValue, Value,
+    ListFunctionValue, ListValue, NilFunctionValue, StringFunctionValue, TupleFunctionValue,
+    UtfCodepointFunctionValue, Value,
 };
 use crate::plan::execution::ExecutionPlan;
 
@@ -20,6 +22,7 @@ pub(super) fn value(plan: &ExecutionPlan, state: &RuntimeState, value: Evaluated
         EvaluatedValue::BitArray(value) => {
             Value::BitArray(BitArrayValue::from_evaluated(value.bits()))
         }
+        EvaluatedValue::UtfCodepoint(value) => Value::UtfCodepoint(value),
         EvaluatedValue::Bool(value) => Value::Bool(value),
         EvaluatedValue::Nil => Value::Nil,
         EvaluatedValue::Tuple(values) => Value::Tuple(
@@ -44,6 +47,9 @@ fn list(plan: &ExecutionPlan, state: &RuntimeState, value: &ListValueId) -> List
                 .map(|value| BitArrayValue::from_evaluated(value.bits()))
                 .collect(),
         ),
+        ListValueId::UtfCodepoint(value) => {
+            ListValue::utf_codepoint(state.utf_codepoint_values(value).to_vec())
+        }
         ListValueId::Float(value) => ListValue::float(state.float_values(value).to_vec()),
         ListValueId::Bool(value) => ListValue::bool(state.bool_values(value).to_vec()),
         ListValueId::Nil(value) => ListValue::nil(state.nil_len(value)),
@@ -105,6 +111,9 @@ fn function(
         }
         EvaluatedFunctionValueKind::BitArray(value) => {
             FunctionValueKind::BitArray(bit_array_function(plan, state, value))
+        }
+        EvaluatedFunctionValueKind::UtfCodepoint(value) => {
+            FunctionValueKind::UtfCodepoint(utf_codepoint_function(plan, state, value))
         }
         EvaluatedFunctionValueKind::Bool(value) => {
             FunctionValueKind::Bool(bool_function(plan, state, value))
@@ -170,6 +179,19 @@ fn bit_array_function(
     value: &EvaluatedBitArrayFunction,
 ) -> BitArrayFunctionValue {
     BitArrayFunctionValue::new_with_captures(
+        value.runtime_id(),
+        value.params().to_vec(),
+        captures(plan, state, value.captures()),
+        plan.function_type(value.type_()),
+    )
+}
+
+fn utf_codepoint_function(
+    plan: &ExecutionPlan,
+    state: &RuntimeState,
+    value: &EvaluatedUtfCodepointFunction,
+) -> UtfCodepointFunctionValue {
+    UtfCodepointFunctionValue::new_with_captures(
         value.runtime_id(),
         value.params().to_vec(),
         captures(plan, state, value.captures()),
@@ -282,6 +304,9 @@ fn capture(plan: &ExecutionPlan, state: &RuntimeState, value: &EvaluatedCapture)
         EvaluatedCaptureKind::BitArray { local, value } => {
             CaptureValue::bit_array(*local, BitArrayValue::from_evaluated(value.bits()))
         }
+        EvaluatedCaptureKind::UtfCodepoint { local, value } => {
+            CaptureValue::utf_codepoint(*local, *value)
+        }
         EvaluatedCaptureKind::Bool { local, value } => CaptureValue::bool(*local, *value),
         EvaluatedCaptureKind::Nil { local } => CaptureValue::nil(*local),
         EvaluatedCaptureKind::Tuple { local, value } => CaptureValue::tuple(
@@ -304,6 +329,9 @@ fn capture(plan: &ExecutionPlan, state: &RuntimeState, value: &EvaluatedCapture)
         }
         EvaluatedCaptureKind::BitArrayFunction { local, value } => {
             CaptureValue::bit_array_function(*local, bit_array_function(plan, state, value))
+        }
+        EvaluatedCaptureKind::UtfCodepointFunction { local, value } => {
+            CaptureValue::utf_codepoint_function(*local, utf_codepoint_function(plan, state, value))
         }
         EvaluatedCaptureKind::BoolFunction { local, value } => {
             CaptureValue::bool_function(*local, bool_function(plan, state, value))
@@ -344,6 +372,10 @@ fn list_capture(
                 .iter()
                 .map(|value| BitArrayValue::from_evaluated(value.bits()))
                 .collect(),
+        },
+        EvaluatedListCapture::UtfCodepoint { local, value } => CaptureListValue::UtfCodepoint {
+            local: *local,
+            value: state.utf_codepoint_values(value).to_vec(),
         },
         EvaluatedListCapture::Float { local, value } => CaptureListValue::Float {
             local: *local,
@@ -402,13 +434,16 @@ mod tests {
         ListFunctionLocal, ListListLocalId, NilFunctionId, NilFunctionLocalId, NilListLocalId,
         NilLocalId, StringFunctionId, StringFunctionLocalId, StringListLocalId, StringLocalId,
         TupleFunctionId, TupleFunctionLocalId, TupleListLocalId, TupleLocalId,
+        UtfCodepointFunctionId, UtfCodepointFunctionLocalId, UtfCodepointListLocalId,
+        UtfCodepointLocalId,
     };
     use crate::plan::{FunctionType, ValueType};
     use crate::runtime::evaluated::{
         EvaluatedBitArray, EvaluatedBitArrayFunction, EvaluatedBoolFunction, EvaluatedCapture,
         EvaluatedFloatFunction, EvaluatedFunctionFunction, EvaluatedFunctionValue,
         EvaluatedIntFunction, EvaluatedListCapture, EvaluatedListFunction, EvaluatedNilFunction,
-        EvaluatedStringFunction, EvaluatedTupleFunction, EvaluatedValue,
+        EvaluatedStringFunction, EvaluatedTupleFunction, EvaluatedUtfCodepointFunction,
+        EvaluatedValue,
     };
     use crate::runtime::state::{ListValueId, RuntimeState};
     use crate::runtime::{BitArrayValue, CaptureListValue, CaptureValue, ListValue, Value};
@@ -418,6 +453,7 @@ mod tests {
 fn ints() -> List(Int) { [] }
 fn strings() -> List(String) { [] }
 fn bit_arrays() -> List(BitArray) { [] }
+fn utf_codepoints() -> List(UtfCodepoint) { [] }
 fn floats() -> List(Float) { [] }
 fn bools() -> List(Bool) { [] }
 fn nils() -> List(Nil) { [] }
@@ -450,6 +486,10 @@ pub fn main() { 0 }
             plan.bit_array_list_function_id(0).type_id(),
             vec![bit_array.clone()],
         );
+        let utf_codepoint_list = state.utf_codepoint(
+            plan.utf_codepoint_list_function_id(0).type_id(),
+            vec!['\u{10ffff}'],
+        );
         let float_list = state.float(plan.float_list_function_id(0).type_id(), vec![1.5]);
         let bool_list = state.bool(plan.bool_list_function_id(0).type_id(), vec![true]);
         let nil_list = state.nil(plan.nil_list_function_id(0).type_id(), 1);
@@ -475,12 +515,14 @@ pub fn main() { 0 }
                 EvaluatedValue::Float(1.5),
                 EvaluatedValue::String("one".into()),
                 EvaluatedValue::BitArray(bit_array),
+                EvaluatedValue::UtfCodepoint('\u{10ffff}'),
                 EvaluatedValue::Bool(true),
                 EvaluatedValue::Nil,
                 EvaluatedValue::Tuple(vec![EvaluatedValue::Int(1.into())]),
                 EvaluatedValue::List(ListValueId::Int(int_list)),
                 EvaluatedValue::List(ListValueId::String(string_list)),
                 EvaluatedValue::List(ListValueId::BitArray(bit_array_list)),
+                EvaluatedValue::List(ListValueId::UtfCodepoint(utf_codepoint_list)),
                 EvaluatedValue::List(ListValueId::Float(float_list)),
                 EvaluatedValue::List(ListValueId::Bool(bool_list)),
                 EvaluatedValue::List(ListValueId::Nil(nil_list)),
@@ -497,6 +539,7 @@ pub fn main() { 0 }
                 Value::Float(1.5),
                 Value::String("one".into()),
                 Value::BitArray(BitArrayValue::from_bytes(vec![1])),
+                Value::UtfCodepoint('\u{10ffff}'),
                 Value::Bool(true),
                 Value::Nil,
                 Value::Tuple(vec![Value::Int(1.into())]),
@@ -505,6 +548,7 @@ pub fn main() { 0 }
                 Value::List(ListValue::bit_array(vec![BitArrayValue::from_bytes(vec![
                     1
                 ])])),
+                Value::List(ListValue::utf_codepoint(vec!['\u{10ffff}'])),
                 Value::List(ListValue::float(vec![1.5])),
                 Value::List(ListValue::bool(vec![true])),
                 Value::List(ListValue::nil(1)),
@@ -570,6 +614,15 @@ pub fn main() { 0 }
                 crate::plan::execution::ValueType::BitArray,
             ),
         );
+        let utf_codepoint_function = EvaluatedUtfCodepointFunction::new(
+            UtfCodepointFunctionId(0),
+            Vec::new(),
+            Vec::new(),
+            crate::plan::execution::FunctionType::new(
+                Vec::new(),
+                crate::plan::execution::ValueType::UtfCodepoint,
+            ),
+        );
         let bool_function = EvaluatedBoolFunction::new(
             BoolFunctionId(0),
             Vec::new(),
@@ -630,6 +683,10 @@ pub fn main() { 0 }
             plan.bit_array_list_function_id(0).type_id(),
             vec![bit_array.clone()],
         );
+        let utf_codepoint_list = state.utf_codepoint(
+            plan.utf_codepoint_list_function_id(0).type_id(),
+            vec!['\u{10ffff}'],
+        );
         let float_list = state.float(plan.float_list_function_id(0).type_id(), vec![1.5]);
         let bool_list = state.bool(plan.bool_list_function_id(0).type_id(), vec![true]);
         let nil_list = state.nil(plan.nil_list_function_id(0).type_id(), 1);
@@ -657,6 +714,7 @@ pub fn main() { 0 }
             EvaluatedCapture::float(FloatLocalId(0), 1.5),
             EvaluatedCapture::string(StringLocalId(0), "one".into()),
             EvaluatedCapture::bit_array(BitArrayLocalId(0), bit_array),
+            EvaluatedCapture::utf_codepoint(UtfCodepointLocalId(0), '\u{10ffff}'),
             EvaluatedCapture::bool(BoolLocalId(0), true),
             EvaluatedCapture::nil(NilLocalId(0)),
             EvaluatedCapture::tuple(TupleLocalId(0), vec![EvaluatedValue::Int(1.into())]),
@@ -671,6 +729,10 @@ pub fn main() { 0 }
             EvaluatedCapture::list(EvaluatedListCapture::BitArray {
                 local: BitArrayListLocalId(0),
                 value: bit_array_list,
+            }),
+            EvaluatedCapture::list(EvaluatedListCapture::UtfCodepoint {
+                local: UtfCodepointListLocalId(0),
+                value: utf_codepoint_list,
             }),
             EvaluatedCapture::list(EvaluatedListCapture::Float {
                 local: FloatListLocalId(0),
@@ -703,6 +765,10 @@ pub fn main() { 0 }
                 BitArrayFunctionLocalId(0),
                 bit_array_function.clone(),
             ),
+            EvaluatedCapture::utf_codepoint_function(
+                UtfCodepointFunctionLocalId(0),
+                utf_codepoint_function.clone(),
+            ),
             EvaluatedCapture::bool_function(BoolFunctionLocalId(0), bool_function.clone()),
             EvaluatedCapture::nil_function(NilFunctionLocalId(0), nil_function.clone()),
             EvaluatedCapture::tuple_function(TupleFunctionLocalId(0), tuple_function.clone()),
@@ -717,6 +783,7 @@ pub fn main() { 0 }
             CaptureValue::float(FloatLocalId(0), 1.5),
             CaptureValue::string(StringLocalId(0), "one".into()),
             CaptureValue::bit_array(BitArrayLocalId(0), BitArrayValue::from_bytes(vec![1])),
+            CaptureValue::utf_codepoint(UtfCodepointLocalId(0), '\u{10ffff}'),
             CaptureValue::bool(BoolLocalId(0), true),
             CaptureValue::nil(NilLocalId(0)),
             CaptureValue::tuple(TupleLocalId(0), vec![Value::Int(1.into())]),
@@ -731,6 +798,10 @@ pub fn main() { 0 }
             CaptureValue::list(CaptureListValue::BitArray {
                 local: BitArrayListLocalId(0),
                 value: vec![BitArrayValue::from_bytes(vec![1])],
+            }),
+            CaptureValue::list(CaptureListValue::UtfCodepoint {
+                local: UtfCodepointListLocalId(0),
+                value: vec!['\u{10ffff}'],
             }),
             CaptureValue::list(CaptureListValue::Float {
                 local: FloatListLocalId(0),
@@ -798,6 +869,15 @@ pub fn main() { 0 }
                     FunctionType::new(Vec::new(), ValueType::BitArray),
                 ),
             ),
+            CaptureValue::utf_codepoint_function(
+                UtfCodepointFunctionLocalId(0),
+                crate::runtime::UtfCodepointFunctionValue::new_with_captures(
+                    UtfCodepointFunctionId(0),
+                    Vec::new(),
+                    Vec::new(),
+                    FunctionType::new(Vec::new(), ValueType::UtfCodepoint),
+                ),
+            ),
             CaptureValue::bool_function(
                 BoolFunctionLocalId(0),
                 crate::runtime::BoolFunctionValue::new_with_captures(
@@ -854,6 +934,7 @@ pub fn main() { 0 }
             EvaluatedFunctionValue::from(float_function),
             EvaluatedFunctionValue::from(string_function),
             EvaluatedFunctionValue::from(bit_array_function),
+            EvaluatedFunctionValue::from(utf_codepoint_function),
             EvaluatedFunctionValue::from(bool_function),
             EvaluatedFunctionValue::from(nil_function),
             EvaluatedFunctionValue::from(tuple_function),

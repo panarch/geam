@@ -1,13 +1,14 @@
 use super::{
     BitArray, BitArrayFunction, Bool, BoolFunction, Float, FloatFunction, Int, IntFunction, List,
-    Nil, NilFunction, String, StringFunction, Tuple,
+    Nil, NilFunction, String, StringFunction, Tuple, UtfCodepoint, UtfCodepointFunction,
 };
 use crate::plan::{
     BitArrayFunctionLocalId, BitArrayLocalId, BoolFunctionLocalId, BoolListLocalId, BoolLocalId,
     Expr, FloatFunctionLocalId, FloatListLocalId, FloatLocalId, FunctionListLocalId,
     IntFunctionLocalId, IntListLocalId, IntLocalId, ListExpr, ListListLocalId, ListLocalExpr,
     NilFunctionLocalId, NilListLocalId, NilLocalId, Step, StringFunctionLocalId, StringListLocalId,
-    StringLocalId, TupleListLocalId, TupleLocalId,
+    StringLocalId, TupleListLocalId, TupleLocalId, UtfCodepointFunctionLocalId,
+    UtfCodepointLocalId,
 };
 use ecow::EcoString;
 
@@ -25,6 +26,14 @@ pub(crate) fn let_bit_array_step(
     value: BitArray,
 ) -> Step {
     Step::let_bit_array(BitArrayLocalId(local), name.into(), value.into())
+}
+
+pub(crate) fn let_utf_codepoint_step(
+    local: usize,
+    name: impl Into<EcoString>,
+    value: UtfCodepoint,
+) -> Step {
+    Step::let_utf_codepoint(UtfCodepointLocalId(local), name.into(), value.into())
 }
 
 pub(crate) fn let_float_step(local: usize, name: impl Into<EcoString>, value: Float) -> Step {
@@ -55,6 +64,10 @@ pub(crate) fn let_list_step(local: usize, name: impl Into<EcoString>, value: Lis
         },
         ListExpr::BitArray(value) => ListLocalExpr::BitArray {
             local: crate::plan::BitArrayListLocalId(local),
+            value,
+        },
+        ListExpr::UtfCodepoint(value) => ListLocalExpr::UtfCodepoint {
+            local: crate::plan::UtfCodepointListLocalId(local),
             value,
         },
         ListExpr::Float(value) => ListLocalExpr::Float {
@@ -113,6 +126,18 @@ pub(crate) fn let_bit_array_function_step(
     Step::let_bit_array_function(BitArrayFunctionLocalId(local), name.into(), value.into())
 }
 
+pub(crate) fn let_utf_codepoint_function_step(
+    local: usize,
+    name: impl Into<EcoString>,
+    value: UtfCodepointFunction,
+) -> Step {
+    Step::let_utf_codepoint_function(
+        UtfCodepointFunctionLocalId(local),
+        name.into(),
+        value.into(),
+    )
+}
+
 pub(crate) fn let_float_function_step(
     local: usize,
     name: impl Into<EcoString>,
@@ -147,7 +172,7 @@ mod tests {
         evaluate_step, let_bit_array_function_step, let_bit_array_step, let_bool_function_step,
         let_bool_step, let_float_function_step, let_float_step, let_int_function_step,
         let_int_step, let_list_step, let_nil_function_step, let_nil_step, let_string_function_step,
-        let_string_step, let_tuple_step,
+        let_string_step, let_tuple_step, let_utf_codepoint_function_step, let_utf_codepoint_step,
     };
     use crate::plan::{
         BitArrayExpr, BitArrayFunctionLocalId, BitArrayListLocalId, BitArrayLocalId,
@@ -155,11 +180,13 @@ mod tests {
         FloatListLocalId, FloatLocalId, FunctionListLocalId, FunctionType, IntFunctionLocalId,
         IntListLocalId, IntLocalId, ListExpr, ListListLocalId, ListLocalExpr, NilFunctionLocalId,
         NilListLocalId, NilLocalId, Step, StringFunctionLocalId, StringListLocalId, StringLocalId,
-        TupleListLocalId, TupleLocalId, ValueType,
+        TupleListLocalId, TupleLocalId, UtfCodepointFunctionLocalId, UtfCodepointListLocalId,
+        UtfCodepointLocalId, ValueType,
     };
     use crate::planner::dsl::expression::{
         bit_array, bit_array_function_ref, bool_, bool_function_ref, float, float_function_ref,
-        int, int_function_ref, list, nil, nil_function_ref, string, string_function_ref, tuple,
+        int, int_function_ref, list, local_utf_codepoint, nil, nil_function_ref, string,
+        string_function_ref, tuple, utf_codepoint_function_ref,
     };
 
     #[test]
@@ -178,6 +205,14 @@ mod tests {
                 BitArrayLocalId(14),
                 "bits".into(),
                 BitArrayExpr::value(Vec::new()),
+            ),
+        );
+        assert_eq!(
+            let_utf_codepoint_step(15, "codepoint", local_utf_codepoint(0, "source")),
+            Step::let_utf_codepoint(
+                UtfCodepointLocalId(15),
+                "codepoint".into(),
+                local_utf_codepoint(0, "source").into(),
             ),
         );
         assert_eq!(
@@ -237,6 +272,25 @@ mod tests {
                     value: ListExpr::from(list([bit_array([])], ValueType::BitArray))
                         .into_bit_array()
                         .expect("expected bit array list"),
+                },
+            ),
+        );
+        assert_eq!(
+            let_list_step(
+                15,
+                "codepoints",
+                list([local_utf_codepoint(0, "source")], ValueType::UtfCodepoint,),
+            ),
+            Step::let_list_expr(
+                "codepoints".into(),
+                ListLocalExpr::UtfCodepoint {
+                    local: UtfCodepointListLocalId(15),
+                    value: ListExpr::from(list(
+                        [local_utf_codepoint(0, "source")],
+                        ValueType::UtfCodepoint,
+                    ))
+                    .into_utf_codepoint()
+                    .expect("expected UTF codepoint list"),
                 },
             ),
         );
@@ -401,6 +455,29 @@ mod tests {
                     0,
                     [crate::plan::LocalId::BitArray(
                         crate::plan::BitArrayLocalId(0)
+                    )],
+                )
+                .into(),
+            ),
+        );
+        assert_eq!(
+            let_utf_codepoint_function_step(
+                6,
+                "f",
+                utf_codepoint_function_ref(
+                    0,
+                    [crate::plan::LocalId::UtfCodepoint(
+                        crate::plan::UtfCodepointLocalId(0),
+                    )],
+                ),
+            ),
+            Step::let_utf_codepoint_function(
+                UtfCodepointFunctionLocalId(6),
+                "f".into(),
+                utf_codepoint_function_ref(
+                    0,
+                    [crate::plan::LocalId::UtfCodepoint(
+                        crate::plan::UtfCodepointLocalId(0),
                     )],
                 )
                 .into(),

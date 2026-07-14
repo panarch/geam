@@ -2,12 +2,13 @@ use super::{
     BitArrayExpr, BitArrayFunctionExpr, BoolExpr, BoolFunctionExpr, FloatExpr, FloatFunctionExpr,
     FunctionFunctionExpr, IntExpr, IntFunctionExpr, ListFunctionExpr, ListLocalExpr, NilExpr,
     NilFunctionExpr, StringExpr, StringFunctionExpr, TupleExpr, TupleFunctionExpr,
+    UtfCodepointExpr, UtfCodepointFunctionExpr,
 };
 use crate::plan::execution::{
     BitArrayFunctionLocalId, BitArrayLocalId, BoolFunctionLocalId, BoolLocalId,
     FloatFunctionLocalId, FloatLocalId, FunctionFunctionLocalId, IntFunctionLocalId, IntLocalId,
     ListFunctionLocal, NilFunctionLocalId, NilLocalId, StringFunctionLocalId, StringLocalId,
-    TupleFunctionLocalId, TupleLocalId,
+    TupleFunctionLocalId, TupleLocalId, UtfCodepointFunctionLocalId, UtfCodepointLocalId,
 };
 
 pub struct CallArg {
@@ -26,6 +27,10 @@ pub(crate) enum CallArgKind {
     BitArray {
         local: BitArrayLocalId,
         value: BitArrayExpr,
+    },
+    UtfCodepoint {
+        local: UtfCodepointLocalId,
+        value: UtfCodepointExpr,
     },
     Float {
         local: FloatLocalId,
@@ -55,6 +60,10 @@ pub(crate) enum CallArgKind {
     BitArrayFunction {
         local: BitArrayFunctionLocalId,
         value: BitArrayFunctionExpr,
+    },
+    UtfCodepointFunction {
+        local: UtfCodepointFunctionLocalId,
+        value: UtfCodepointFunctionExpr,
     },
     FloatFunction {
         local: FloatFunctionLocalId,
@@ -99,6 +108,10 @@ pub(crate) enum CaptureArgKind {
         local: BitArrayLocalId,
         value: BitArrayExpr,
     },
+    UtfCodepoint {
+        local: UtfCodepointLocalId,
+        value: UtfCodepointExpr,
+    },
     Float {
         local: FloatLocalId,
         value: FloatExpr,
@@ -127,6 +140,10 @@ pub(crate) enum CaptureArgKind {
     BitArrayFunction {
         local: BitArrayFunctionLocalId,
         value: BitArrayFunctionExpr,
+    },
+    UtfCodepointFunction {
+        local: UtfCodepointFunctionLocalId,
+        value: UtfCodepointFunctionExpr,
     },
     FloatFunction {
         local: FloatFunctionLocalId,

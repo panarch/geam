@@ -5,7 +5,7 @@ use crate::plan::execution::{
     BoolLocalId, FloatFunctionLocalId, FloatLocalId, FunctionFunctionLocalId, IntFunctionLocalId,
     IntLocalId, ListAssertPattern, ListAssertTail, ListFunctionLocal, NilFunctionLocalId,
     NilLocalId, ParamLocal, StepKind, StringFunctionLocalId, StringLocalId, TupleFunctionLocalId,
-    TupleLocalId,
+    TupleLocalId, UtfCodepointFunctionLocalId, UtfCodepointLocalId,
 };
 use crate::runtime::error::ExecutionResult;
 use crate::runtime::expression::{
@@ -15,7 +15,8 @@ use crate::runtime::expression::{
     eval_function_list_expr, eval_int_expr, eval_int_function_expr, eval_int_list_expr,
     eval_list_function_expr, eval_list_list_expr, eval_nil_expr, eval_nil_function_expr,
     eval_nil_list_expr, eval_string_expr, eval_string_function_expr, eval_string_list_expr,
-    eval_tuple_expr, eval_tuple_function_expr, eval_tuple_list_expr, get_list_value,
+    eval_tuple_expr, eval_tuple_function_expr, eval_tuple_list_expr, eval_utf_codepoint_expr,
+    eval_utf_codepoint_function_expr, eval_utf_codepoint_list_expr, get_list_value,
 };
 use crate::runtime::frame::Frame;
 use crate::runtime::state::{ListValueId, RuntimeState};
@@ -23,7 +24,7 @@ use crate::runtime::{
     EvaluatedBitArray, EvaluatedBitArrayFunction, EvaluatedBoolFunction, EvaluatedFloatFunction,
     EvaluatedFunctionFunction, EvaluatedFunctionValue, EvaluatedFunctionValueKind,
     EvaluatedIntFunction, EvaluatedListCapture, EvaluatedListFunction, EvaluatedNilFunction,
-    EvaluatedStringFunction, EvaluatedTupleFunction, EvaluatedValue,
+    EvaluatedStringFunction, EvaluatedTupleFunction, EvaluatedUtfCodepointFunction, EvaluatedValue,
 };
 use crate::runtime::{ExecutionError, PanicKind};
 use ecow::EcoString;
@@ -48,6 +49,10 @@ pub(in crate::runtime) fn execute_steps(
             StepKind::LetBitArray { local, value, .. } => {
                 let value = eval_bit_array_expr(plan, state, frame, value)?;
                 frame.set_bit_array(*local, value);
+            }
+            StepKind::LetUtfCodepoint { local, value, .. } => {
+                let value = eval_utf_codepoint_expr(plan, state, frame, value)?;
+                frame.set_utf_codepoint(*local, value);
             }
             StepKind::LetFloat { local, value, .. } => {
                 let value = eval_float_expr(plan, state, frame, value)?;
@@ -77,6 +82,10 @@ pub(in crate::runtime) fn execute_steps(
             StepKind::LetBitArrayFunction { local, value, .. } => {
                 let value = eval_bit_array_function_expr(plan, state, frame, value)?;
                 frame.set_bit_array_function(*local, value);
+            }
+            StepKind::LetUtfCodepointFunction { local, value, .. } => {
+                let value = eval_utf_codepoint_function_expr(plan, state, frame, value)?;
+                frame.set_utf_codepoint_function(*local, value);
             }
             StepKind::LetFloatFunction { local, value, .. } => {
                 let value = eval_float_function_expr(plan, state, frame, value)?;
@@ -214,6 +223,7 @@ enum PendingBinding {
     Float(FloatLocalId, f64),
     String(StringLocalId, EcoString),
     BitArray(BitArrayLocalId, EvaluatedBitArray),
+    UtfCodepoint(UtfCodepointLocalId, char),
     Bool(BoolLocalId, bool),
     Nil(NilLocalId),
     Tuple(TupleLocalId, Vec<EvaluatedValue>),
@@ -222,6 +232,7 @@ enum PendingBinding {
     FloatFunction(FloatFunctionLocalId, EvaluatedFloatFunction),
     StringFunction(StringFunctionLocalId, EvaluatedStringFunction),
     BitArrayFunction(BitArrayFunctionLocalId, EvaluatedBitArrayFunction),
+    UtfCodepointFunction(UtfCodepointFunctionLocalId, EvaluatedUtfCodepointFunction),
     BoolFunction(BoolFunctionLocalId, EvaluatedBoolFunction),
     NilFunction(NilFunctionLocalId, EvaluatedNilFunction),
     TupleFunction(TupleFunctionLocalId, EvaluatedTupleFunction),
@@ -345,6 +356,9 @@ fn pending_binding(
         (ParamLocal::BitArray(local), EvaluatedValue::BitArray(value)) => {
             Some(PendingBinding::BitArray(*local, value.clone()))
         }
+        (ParamLocal::UtfCodepoint(local), EvaluatedValue::UtfCodepoint(value)) => {
+            Some(PendingBinding::UtfCodepoint(*local, *value))
+        }
         (ParamLocal::Bool(local), EvaluatedValue::Bool(value)) => {
             Some(PendingBinding::Bool(*local, *value))
         }
@@ -390,6 +404,10 @@ fn pending_function_binding(
             ParamLocal::BitArrayFunction { local, .. },
             EvaluatedFunctionValueKind::BitArray(value),
         ) => Some(PendingBinding::BitArrayFunction(*local, value.clone())),
+        (
+            ParamLocal::UtfCodepointFunction { local, .. },
+            EvaluatedFunctionValueKind::UtfCodepoint(value),
+        ) => Some(PendingBinding::UtfCodepointFunction(*local, value.clone())),
         (ParamLocal::BoolFunction { local, .. }, EvaluatedFunctionValueKind::Bool(value)) => {
             Some(PendingBinding::BoolFunction(*local, value.clone()))
         }
@@ -425,6 +443,10 @@ fn pending_list_binding(
             crate::plan::execution::ListLocal::BitArray { local, .. },
             ListValueId::BitArray(value),
         ) => Some(EvaluatedListCapture::BitArray { local, value }),
+        (
+            crate::plan::execution::ListLocal::UtfCodepoint { local, .. },
+            ListValueId::UtfCodepoint(value),
+        ) => Some(EvaluatedListCapture::UtfCodepoint { local, value }),
         (crate::plan::execution::ListLocal::Float { local, .. }, ListValueId::Float(value)) => {
             Some(EvaluatedListCapture::Float { local, value })
         }
@@ -454,6 +476,7 @@ fn frame_set_binding(frame: &mut Frame, binding: PendingBinding) {
         PendingBinding::Float(local, value) => frame.set_float(local, value),
         PendingBinding::String(local, value) => frame.set_string(local, value),
         PendingBinding::BitArray(local, value) => frame.set_bit_array(local, value),
+        PendingBinding::UtfCodepoint(local, value) => frame.set_utf_codepoint(local, value),
         PendingBinding::Bool(local, value) => frame.set_bool(local, value),
         PendingBinding::Nil(local) => frame.set_nil(local),
         PendingBinding::Tuple(local, value) => frame.set_tuple(local, value),
@@ -463,6 +486,9 @@ fn frame_set_binding(frame: &mut Frame, binding: PendingBinding) {
         PendingBinding::StringFunction(local, value) => frame.set_string_function(local, value),
         PendingBinding::BitArrayFunction(local, value) => {
             frame.set_bit_array_function(local, value)
+        }
+        PendingBinding::UtfCodepointFunction(local, value) => {
+            frame.set_utf_codepoint_function(local, value)
         }
         PendingBinding::BoolFunction(local, value) => frame.set_bool_function(local, value),
         PendingBinding::NilFunction(local, value) => frame.set_nil_function(local, value),
@@ -492,6 +518,10 @@ fn execute_let_list(
         crate::plan::execution::ListLocalExpr::BitArray { local, value } => {
             let value = eval_bit_array_list_expr(plan, state, frame, value)?;
             frame.set_bit_array_list(*local, value);
+        }
+        crate::plan::execution::ListLocalExpr::UtfCodepoint { local, value } => {
+            let value = eval_utf_codepoint_list_expr(plan, state, frame, value)?;
+            frame.set_utf_codepoint_list(*local, value);
         }
         crate::plan::execution::ListLocalExpr::Float { local, value } => {
             let value = eval_float_list_expr(plan, state, frame, value)?;
@@ -526,6 +556,9 @@ fn frame_set_list_binding(frame: &mut Frame, value: EvaluatedListCapture) {
         EvaluatedListCapture::Int { local, value } => frame.set_int_list(local, value),
         EvaluatedListCapture::String { local, value } => frame.set_string_list(local, value),
         EvaluatedListCapture::BitArray { local, value } => frame.set_bit_array_list(local, value),
+        EvaluatedListCapture::UtfCodepoint { local, value } => {
+            frame.set_utf_codepoint_list(local, value)
+        }
         EvaluatedListCapture::Float { local, value } => frame.set_float_list(local, value),
         EvaluatedListCapture::Bool { local, value } => frame.set_bool_list(local, value),
         EvaluatedListCapture::Nil { local, value } => frame.set_nil_list(local, value),
@@ -631,6 +664,10 @@ mod tests {
             ("Int", "1"),
             ("String", "\"one\""),
             ("BitArray", "<<1>>"),
+            (
+                "UtfCodepoint",
+                "{ let assert <<value:utf8_codepoint>> = <<65>> value }",
+            ),
             ("Float", "1.0"),
             ("Bool", "True"),
             ("Nil", "Nil"),
@@ -656,6 +693,29 @@ pub fn main() {{
                 crate::runtime::Value::Int(42.into()),
             );
         }
+    }
+
+    #[test]
+    fn let_assert_binds_utf_codepoint_list_elements_and_tails() {
+        assert_eq!(
+            crate::runtime::run_src(
+                r#"
+fn codepoint() -> UtfCodepoint {
+  let assert <<value:utf8_codepoint>> = <<65>>
+  value
+}
+
+pub fn main() {
+  let assert [value, ..rest] = [codepoint(), codepoint()]
+  #(value, rest)
+}
+"#,
+            ),
+            crate::runtime::Value::Tuple(vec![
+                crate::runtime::Value::UtfCodepoint('A'),
+                crate::runtime::Value::List(crate::runtime::ListValue::utf_codepoint(vec!['A'])),
+            ]),
+        );
     }
 
     #[test]
@@ -702,6 +762,7 @@ pub fn main() {{
             "Int",
             "String",
             "BitArray",
+            "UtfCodepoint",
             "Float",
             "Bool",
             "Nil",
@@ -709,6 +770,7 @@ pub fn main() {{
             "List(Int)",
             "List(String)",
             "List(BitArray)",
+            "List(UtfCodepoint)",
             "List(Float)",
             "List(Bool)",
             "List(Nil)",
@@ -718,12 +780,14 @@ pub fn main() {{
             "fn() -> Int",
             "fn() -> String",
             "fn() -> BitArray",
+            "fn() -> UtfCodepoint",
             "fn() -> Float",
             "fn() -> Bool",
             "fn() -> Nil",
             "fn() -> #(Int)",
             "fn() -> List(Int)",
             "fn() -> List(BitArray)",
+            "fn() -> List(UtfCodepoint)",
             "fn() -> fn() -> Int",
         ];
 

@@ -7,24 +7,26 @@ mod nil;
 mod returning_function;
 mod string;
 mod tuple;
+mod utf_codepoint;
 
 use crate::plan::{
     BitArrayFunctionReference, BoolFunctionReference, FloatFunctionReference,
     FunctionFunctionReference, FunctionReference, FunctionType, IntFunctionReference,
     ListFunctionReference, NilFunctionReference, RuntimeFunctionId, StringFunctionReference,
-    TupleFunctionReference,
+    TupleFunctionReference, UtfCodepointFunctionReference,
 };
 
 pub use self::{
     bit_array::BitArrayFunctionExpr, bool::BoolFunctionExpr, float::FloatFunctionExpr,
     int::IntFunctionExpr, list::ListFunctionExpr, nil::NilFunctionExpr,
     returning_function::FunctionFunctionExpr, string::StringFunctionExpr, tuple::TupleFunctionExpr,
+    utf_codepoint::UtfCodepointFunctionExpr,
 };
 pub(crate) use self::{
     bit_array::BitArrayFunctionExprKind, bool::BoolFunctionExprKind, float::FloatFunctionExprKind,
     int::IntFunctionExprKind, list::ListFunctionExprKind, nil::NilFunctionExprKind,
     returning_function::FunctionFunctionExprKind, string::StringFunctionExprKind,
-    tuple::TupleFunctionExprKind,
+    tuple::TupleFunctionExprKind, utf_codepoint::UtfCodepointFunctionExprKind,
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -37,6 +39,7 @@ pub(crate) enum FunctionExprKind {
     Int(IntFunctionExpr),
     String(StringFunctionExpr),
     BitArray(BitArrayFunctionExpr),
+    UtfCodepoint(UtfCodepointFunctionExpr),
     Float(FloatFunctionExpr),
     Bool(BoolFunctionExpr),
     Nil(NilFunctionExpr),
@@ -61,6 +64,9 @@ impl FunctionExpr {
             RuntimeFunctionId::BitArray(id) => Self::bit_array(BitArrayFunctionExpr::reference(
                 BitArrayFunctionReference::new(id, params),
             )),
+            RuntimeFunctionId::UtfCodepoint(id) => Self::utf_codepoint(
+                UtfCodepointFunctionExpr::reference(UtfCodepointFunctionReference::new(id, params)),
+            ),
             RuntimeFunctionId::Bool(id) => Self::bool(BoolFunctionExpr::reference(
                 BoolFunctionReference::new(id, params),
             )),
@@ -97,6 +103,12 @@ impl FunctionExpr {
     pub(crate) fn bit_array(expression: BitArrayFunctionExpr) -> Self {
         Self {
             kind: FunctionExprKind::BitArray(expression),
+        }
+    }
+
+    pub(crate) fn utf_codepoint(expression: UtfCodepointFunctionExpr) -> Self {
+        Self {
+            kind: FunctionExprKind::UtfCodepoint(expression),
         }
     }
 
@@ -141,6 +153,7 @@ impl FunctionExpr {
             FunctionExprKind::Int(expression) => expression.type_(),
             FunctionExprKind::String(expression) => expression.type_(),
             FunctionExprKind::BitArray(expression) => expression.type_(),
+            FunctionExprKind::UtfCodepoint(expression) => expression.type_(),
             FunctionExprKind::Float(expression) => expression.type_(),
             FunctionExprKind::Bool(expression) => expression.type_(),
             FunctionExprKind::Nil(expression) => expression.type_(),
@@ -175,6 +188,13 @@ impl FunctionExpr {
     pub(crate) fn into_bit_array(self) -> Option<BitArrayFunctionExpr> {
         match self.kind {
             FunctionExprKind::BitArray(expression) => Some(expression),
+            _ => None,
+        }
+    }
+
+    pub(crate) fn into_utf_codepoint(self) -> Option<UtfCodepointFunctionExpr> {
+        match self.kind {
+            FunctionExprKind::UtfCodepoint(expression) => Some(expression),
             _ => None,
         }
     }
@@ -240,6 +260,12 @@ impl From<BitArrayFunctionExpr> for FunctionExpr {
     }
 }
 
+impl From<UtfCodepointFunctionExpr> for FunctionExpr {
+    fn from(expression: UtfCodepointFunctionExpr) -> Self {
+        Self::utf_codepoint(expression)
+    }
+}
+
 impl From<FloatFunctionExpr> for FunctionExpr {
     fn from(expression: FloatFunctionExpr) -> Self {
         Self::float(expression)
@@ -281,7 +307,7 @@ mod tests {
     use super::{
         BitArrayFunctionExpr, BoolFunctionExpr, FloatFunctionExpr, FunctionExpr, FunctionExprKind,
         FunctionFunctionExpr, IntFunctionExpr, ListFunctionExpr, NilFunctionExpr,
-        StringFunctionExpr, TupleFunctionExpr,
+        StringFunctionExpr, TupleFunctionExpr, UtfCodepointFunctionExpr,
     };
     use crate::plan::{
         BitArrayFunctionId, BitArrayFunctionReference, BoolFunctionId, BoolFunctionReference,
@@ -289,7 +315,8 @@ mod tests {
         FunctionReference, FunctionType, IntFunctionFunctionId, IntFunctionId,
         IntFunctionReference, ListFunctionId, ListFunctionReference, NilFunctionId,
         NilFunctionReference, ParamLocal, RuntimeFunctionId, StringFunctionId,
-        StringFunctionReference, TupleFunctionId, TupleFunctionReference, ValueType,
+        StringFunctionReference, TupleFunctionId, TupleFunctionReference, UtfCodepointFunctionId,
+        UtfCodepointFunctionReference, ValueType,
     };
 
     #[test]
@@ -305,6 +332,10 @@ mod tests {
         assert_eq!(
             FunctionExpr::bit_array(bit_array_function_value()).kind(),
             &FunctionExprKind::BitArray(bit_array_function_value()),
+        );
+        assert_eq!(
+            FunctionExpr::utf_codepoint(utf_codepoint_function_value()).kind(),
+            &FunctionExprKind::UtfCodepoint(utf_codepoint_function_value()),
         );
         assert_eq!(
             FunctionExpr::float(float_function_value()).kind(),
@@ -347,6 +378,10 @@ mod tests {
             &FunctionExprKind::BitArray(bit_array_function_value()),
         );
         assert_eq!(
+            FunctionExpr::reference(utf_codepoint_function_reference()).kind(),
+            &FunctionExprKind::UtfCodepoint(utf_codepoint_function_value()),
+        );
+        assert_eq!(
             FunctionExpr::reference(float_function_reference()).kind(),
             &FunctionExprKind::Float(float_function_value()),
         );
@@ -387,6 +422,10 @@ mod tests {
             &bit_array_function_type(),
         );
         assert_eq!(
+            FunctionExpr::utf_codepoint(utf_codepoint_function_value()).type_(),
+            &utf_codepoint_function_type(),
+        );
+        assert_eq!(
             FunctionExpr::float(float_function_value()).type_(),
             &float_function_type(),
         );
@@ -424,6 +463,10 @@ mod tests {
             Some(bit_array_function_value()),
         );
         assert_eq!(
+            FunctionExpr::utf_codepoint(utf_codepoint_function_value()).into_utf_codepoint(),
+            Some(utf_codepoint_function_value()),
+        );
+        assert_eq!(
             FunctionExpr::float(float_function_value()).into_float(),
             Some(float_function_value()),
         );
@@ -457,6 +500,10 @@ mod tests {
             FunctionExpr::int(int_function_value()).into_bit_array(),
             None
         );
+        assert_eq!(
+            FunctionExpr::int(int_function_value()).into_utf_codepoint(),
+            None,
+        );
         assert_eq!(FunctionExpr::int(int_function_value()).into_float(), None);
         assert_eq!(FunctionExpr::int(int_function_value()).into_bool(), None);
         assert_eq!(FunctionExpr::int(int_function_value()).into_nil(), None);
@@ -478,6 +525,10 @@ mod tests {
         assert_eq!(
             FunctionExpr::from(bit_array_function_value()),
             FunctionExpr::bit_array(bit_array_function_value()),
+        );
+        assert_eq!(
+            FunctionExpr::from(utf_codepoint_function_value()),
+            FunctionExpr::utf_codepoint(utf_codepoint_function_value()),
         );
         assert_eq!(
             FunctionExpr::from(float_function_value()),
@@ -523,6 +574,15 @@ mod tests {
         FunctionReference::new(
             RuntimeFunctionId::BitArray(BitArrayFunctionId(0)),
             vec![ParamLocal::bit_array(crate::plan::BitArrayLocalId(0))],
+        )
+    }
+
+    fn utf_codepoint_function_reference() -> FunctionReference {
+        FunctionReference::new(
+            RuntimeFunctionId::UtfCodepoint(UtfCodepointFunctionId(0)),
+            vec![ParamLocal::utf_codepoint(crate::plan::UtfCodepointLocalId(
+                0,
+            ))],
         )
     }
 
@@ -603,6 +663,15 @@ mod tests {
         ))
     }
 
+    fn utf_codepoint_function_value() -> UtfCodepointFunctionExpr {
+        UtfCodepointFunctionExpr::reference(UtfCodepointFunctionReference::new(
+            UtfCodepointFunctionId(0),
+            vec![ParamLocal::utf_codepoint(crate::plan::UtfCodepointLocalId(
+                0,
+            ))],
+        ))
+    }
+
     fn float_function_value() -> FloatFunctionExpr {
         FloatFunctionExpr::reference(FloatFunctionReference::new(
             FloatFunctionId(0),
@@ -666,6 +735,10 @@ mod tests {
 
     fn bit_array_function_type() -> FunctionType {
         FunctionType::new(vec![ValueType::BitArray], ValueType::BitArray)
+    }
+
+    fn utf_codepoint_function_type() -> FunctionType {
+        FunctionType::new(vec![ValueType::UtfCodepoint], ValueType::UtfCodepoint)
     }
 
     fn float_function_type() -> FunctionType {

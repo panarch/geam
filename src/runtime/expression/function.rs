@@ -7,6 +7,7 @@ mod nil;
 mod returning_function;
 mod string;
 mod tuple;
+mod utf_codepoint;
 
 use crate::plan::execution::ExecutionPlan;
 use crate::plan::execution::{FunctionExpr, FunctionExprKind};
@@ -19,6 +20,7 @@ pub(in crate::runtime) use self::{
     float::eval_float_function_expr, int::eval_int_function_expr, list::eval_list_function_expr,
     nil::eval_nil_function_expr, returning_function::eval_function_function_expr,
     string::eval_string_function_expr, tuple::eval_tuple_function_expr,
+    utf_codepoint::eval_utf_codepoint_function_expr,
 };
 
 pub(in crate::runtime) fn eval_function_expr(
@@ -36,6 +38,9 @@ pub(in crate::runtime) fn eval_function_expr(
         }
         FunctionExprKind::BitArray(expression) => {
             Ok(eval_bit_array_function_expr(plan, state, frame, expression)?.into())
+        }
+        FunctionExprKind::UtfCodepoint(expression) => {
+            Ok(eval_utf_codepoint_function_expr(plan, state, frame, expression)?.into())
         }
         FunctionExprKind::Float(expression) => {
             Ok(eval_float_function_expr(plan, state, frame, expression)?.into())

@@ -4,6 +4,7 @@ pub enum LocalId {
     Float(FloatLocalId),
     String(StringLocalId),
     BitArray(BitArrayLocalId),
+    UtfCodepoint(UtfCodepointLocalId),
     Bool(BoolLocalId),
     Nil(NilLocalId),
 }
@@ -19,6 +20,9 @@ pub struct StringLocalId(pub(crate) usize);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct BitArrayLocalId(pub(crate) usize);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct UtfCodepointLocalId(pub(crate) usize);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct BoolLocalId(pub(crate) usize);
@@ -37,6 +41,9 @@ pub struct StringListLocalId(pub(crate) usize);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct BitArrayListLocalId(pub(crate) usize);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct UtfCodepointListLocalId(pub(crate) usize);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct FloatListLocalId(pub(crate) usize);
@@ -61,6 +68,7 @@ pub enum ListLocal {
     Int(IntListLocalId),
     String(StringListLocalId),
     BitArray(BitArrayListLocalId),
+    UtfCodepoint(UtfCodepointListLocalId),
     Float(FloatListLocalId),
     Bool(BoolListLocalId),
     Nil(NilListLocalId),
@@ -91,6 +99,9 @@ pub struct StringFunctionLocalId(pub(crate) usize);
 pub struct BitArrayFunctionLocalId(pub(crate) usize);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct UtfCodepointFunctionLocalId(pub(crate) usize);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct BoolFunctionLocalId(pub(crate) usize);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -107,6 +118,9 @@ pub struct StringListFunctionLocalId(pub(crate) usize);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct BitArrayListFunctionLocalId(pub(crate) usize);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct UtfCodepointListFunctionLocalId(pub(crate) usize);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct FloatListFunctionLocalId(pub(crate) usize);
@@ -138,6 +152,10 @@ pub enum ListFunctionLocal {
     },
     BitArray {
         local: BitArrayListFunctionLocalId,
+        type_: crate::plan::FunctionType,
+    },
+    UtfCodepoint {
+        local: UtfCodepointListFunctionLocalId,
         type_: crate::plan::FunctionType,
     },
     Float {
@@ -181,6 +199,7 @@ pub(crate) enum RuntimeFunctionId {
     Float(FloatFunctionId),
     String(StringFunctionId),
     BitArray(BitArrayFunctionId),
+    UtfCodepoint(UtfCodepointFunctionId),
     Bool(BoolFunctionId),
     Nil(NilFunctionId),
     Tuple {
@@ -207,6 +226,9 @@ pub struct StringFunctionId(pub(crate) usize);
 pub struct BitArrayFunctionId(pub(crate) usize);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct UtfCodepointFunctionId(pub(crate) usize);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct BoolFunctionId(pub(crate) usize);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -223,6 +245,9 @@ pub struct StringListFunctionId(pub(crate) usize);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct BitArrayListFunctionId(pub(crate) usize);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct UtfCodepointListFunctionId(pub(crate) usize);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct FloatListFunctionId(pub(crate) usize);
@@ -247,6 +272,7 @@ pub enum ListFunctionId {
     Int(IntListFunctionId),
     String(StringListFunctionId),
     BitArray(BitArrayListFunctionId),
+    UtfCodepoint(UtfCodepointListFunctionId),
     Float(FloatListFunctionId),
     Bool(BoolListFunctionId),
     Nil(NilListFunctionId),
@@ -270,6 +296,7 @@ pub(crate) enum FunctionFunctionId {
     Float(FloatFunctionFunctionId),
     String(StringFunctionFunctionId),
     BitArray(BitArrayFunctionFunctionId),
+    UtfCodepoint(UtfCodepointFunctionFunctionId),
     Bool(BoolFunctionFunctionId),
     Nil(NilFunctionFunctionId),
     Tuple(TupleFunctionFunctionId),
@@ -283,6 +310,7 @@ pub enum FunctionReturnFamily {
     Float,
     String,
     BitArray,
+    UtfCodepoint,
     Bool,
     Nil,
     Tuple,
@@ -303,6 +331,9 @@ pub struct StringFunctionFunctionId(pub(crate) usize);
 pub struct BitArrayFunctionFunctionId(pub(crate) usize);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct UtfCodepointFunctionFunctionId(pub(crate) usize);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct BoolFunctionFunctionId(pub(crate) usize);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -319,6 +350,9 @@ pub struct StringListFunctionFunctionId(pub(crate) usize);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct BitArrayListFunctionFunctionId(pub(crate) usize);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct UtfCodepointListFunctionFunctionId(pub(crate) usize);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct FloatListFunctionFunctionId(pub(crate) usize);
@@ -350,6 +384,10 @@ pub enum ListFunctionFunctionId {
     },
     BitArray {
         id: BitArrayListFunctionFunctionId,
+        type_: crate::plan::FunctionType,
+    },
+    UtfCodepoint {
+        id: UtfCodepointListFunctionFunctionId,
         type_: crate::plan::FunctionType,
     },
     Float {
@@ -391,6 +429,7 @@ impl LocalId {
             Self::Float(_) => crate::plan::ValueType::Float,
             Self::String(_) => crate::plan::ValueType::String,
             Self::BitArray(_) => crate::plan::ValueType::BitArray,
+            Self::UtfCodepoint(_) => crate::plan::ValueType::UtfCodepoint,
             Self::Bool(_) => crate::plan::ValueType::Bool,
             Self::Nil(_) => crate::plan::ValueType::Nil,
         }
@@ -416,6 +455,7 @@ impl FunctionFunctionId {
             Self::Float(_) => FunctionReturnFamily::Float,
             Self::String(_) => FunctionReturnFamily::String,
             Self::BitArray(_) => FunctionReturnFamily::BitArray,
+            Self::UtfCodepoint(_) => FunctionReturnFamily::UtfCodepoint,
             Self::Bool(_) => FunctionReturnFamily::Bool,
             Self::Nil(_) => FunctionReturnFamily::Nil,
             Self::Tuple(_) => FunctionReturnFamily::Tuple,
@@ -441,6 +481,13 @@ impl FunctionFunctionId {
     pub(crate) fn bit_array(&self) -> Option<BitArrayFunctionFunctionId> {
         match self {
             Self::BitArray(id) => Some(*id),
+            _ => None,
+        }
+    }
+
+    pub(crate) fn utf_codepoint(&self) -> Option<UtfCodepointFunctionFunctionId> {
+        match self {
+            Self::UtfCodepoint(id) => Some(*id),
             _ => None,
         }
     }
@@ -500,6 +547,9 @@ impl ListFunctionLocal {
             crate::plan::ValueType::BitArray => {
                 Self::bit_array(BitArrayListFunctionLocalId(index), type_)
             }
+            crate::plan::ValueType::UtfCodepoint => {
+                Self::utf_codepoint(UtfCodepointListFunctionLocalId(index), type_)
+            }
             crate::plan::ValueType::Float => Self::float(FloatListFunctionLocalId(index), type_),
             crate::plan::ValueType::Bool => Self::bool(BoolListFunctionLocalId(index), type_),
             crate::plan::ValueType::Nil => Self::nil(NilListFunctionLocalId(index), type_),
@@ -531,6 +581,13 @@ impl ListFunctionLocal {
         type_: crate::plan::FunctionType,
     ) -> Self {
         Self::BitArray { local, type_ }
+    }
+
+    pub(crate) fn utf_codepoint(
+        local: UtfCodepointListFunctionLocalId,
+        type_: crate::plan::FunctionType,
+    ) -> Self {
+        Self::UtfCodepoint { local, type_ }
     }
 
     pub(crate) fn float(local: FloatListFunctionLocalId, type_: crate::plan::FunctionType) -> Self {
@@ -586,6 +643,7 @@ impl ListFunctionLocal {
             Self::Int { type_, .. }
             | Self::String { type_, .. }
             | Self::BitArray { type_, .. }
+            | Self::UtfCodepoint { type_, .. }
             | Self::Float { type_, .. }
             | Self::Bool { type_, .. }
             | Self::Nil { type_, .. }
@@ -604,6 +662,7 @@ impl ListFunctionLocal {
             Self::Int { .. } => crate::plan::ValueType::Int,
             Self::String { .. } => crate::plan::ValueType::String,
             Self::BitArray { .. } => crate::plan::ValueType::BitArray,
+            Self::UtfCodepoint { .. } => crate::plan::ValueType::UtfCodepoint,
             Self::Float { .. } => crate::plan::ValueType::Float,
             Self::Bool { .. } => crate::plan::ValueType::Bool,
             Self::Nil { .. } => crate::plan::ValueType::Nil,
@@ -618,6 +677,7 @@ impl ListFunctionLocal {
             Self::Int { local, .. } => local.0,
             Self::String { local, .. } => local.0,
             Self::BitArray { local, .. } => local.0,
+            Self::UtfCodepoint { local, .. } => local.0,
             Self::Float { local, .. } => local.0,
             Self::Bool { local, .. } => local.0,
             Self::Nil { local, .. } => local.0,
@@ -635,6 +695,9 @@ impl ListFunctionId {
             crate::plan::ValueType::Int => Self::Int(IntListFunctionId(index)),
             crate::plan::ValueType::String => Self::String(StringListFunctionId(index)),
             crate::plan::ValueType::BitArray => Self::BitArray(BitArrayListFunctionId(index)),
+            crate::plan::ValueType::UtfCodepoint => {
+                Self::UtfCodepoint(UtfCodepointListFunctionId(index))
+            }
             crate::plan::ValueType::Float => Self::Float(FloatListFunctionId(index)),
             crate::plan::ValueType::Bool => Self::Bool(BoolListFunctionId(index)),
             crate::plan::ValueType::Nil => Self::Nil(NilListFunctionId(index)),
@@ -658,6 +721,7 @@ impl ListFunctionId {
             Self::Int(_) => crate::plan::ValueType::Int,
             Self::String(_) => crate::plan::ValueType::String,
             Self::BitArray(_) => crate::plan::ValueType::BitArray,
+            Self::UtfCodepoint(_) => crate::plan::ValueType::UtfCodepoint,
             Self::Float(_) => crate::plan::ValueType::Float,
             Self::Bool(_) => crate::plan::ValueType::Bool,
             Self::Nil(_) => crate::plan::ValueType::Nil,
@@ -687,6 +751,10 @@ impl ListFunctionFunctionId {
             },
             crate::plan::ValueType::BitArray => Self::BitArray {
                 id: BitArrayListFunctionFunctionId(index),
+                type_,
+            },
+            crate::plan::ValueType::UtfCodepoint => Self::UtfCodepoint {
+                id: UtfCodepointListFunctionFunctionId(index),
                 type_,
             },
             crate::plan::ValueType::Float => Self::Float {
@@ -724,6 +792,7 @@ impl ListFunctionFunctionId {
             Self::Int { type_, .. }
             | Self::String { type_, .. }
             | Self::BitArray { type_, .. }
+            | Self::UtfCodepoint { type_, .. }
             | Self::Float { type_, .. }
             | Self::Bool { type_, .. }
             | Self::Nil { type_, .. }
@@ -738,6 +807,7 @@ impl ListFunctionFunctionId {
             Self::Int { .. } => crate::plan::ValueType::Int,
             Self::String { .. } => crate::plan::ValueType::String,
             Self::BitArray { .. } => crate::plan::ValueType::BitArray,
+            Self::UtfCodepoint { .. } => crate::plan::ValueType::UtfCodepoint,
             Self::Float { .. } => crate::plan::ValueType::Float,
             Self::Bool { .. } => crate::plan::ValueType::Bool,
             Self::Nil { .. } => crate::plan::ValueType::Nil,
@@ -759,6 +829,10 @@ impl ListLocal {
 
     pub(crate) fn bit_array(local: BitArrayListLocalId) -> Self {
         Self::BitArray(local)
+    }
+
+    pub(crate) fn utf_codepoint(local: UtfCodepointListLocalId) -> Self {
+        Self::UtfCodepoint(local)
     }
 
     pub(crate) fn float(local: FloatListLocalId) -> Self {
@@ -796,6 +870,7 @@ impl ListLocal {
             Self::Int(_) => crate::plan::ValueType::Int,
             Self::String(_) => crate::plan::ValueType::String,
             Self::BitArray(_) => crate::plan::ValueType::BitArray,
+            Self::UtfCodepoint(_) => crate::plan::ValueType::UtfCodepoint,
             Self::Float(_) => crate::plan::ValueType::Float,
             Self::Bool(_) => crate::plan::ValueType::Bool,
             Self::Nil(_) => crate::plan::ValueType::Nil,
@@ -816,6 +891,7 @@ impl ListLocal {
             Self::Int(_) => "int",
             Self::String(_) => "string",
             Self::BitArray(_) => "bit array",
+            Self::UtfCodepoint(_) => "utf codepoint",
             Self::Float(_) => "float",
             Self::Bool(_) => "bool",
             Self::Nil(_) => "nil",
@@ -830,6 +906,7 @@ impl ListLocal {
             Self::Int(local) => local.0,
             Self::String(local) => local.0,
             Self::BitArray(local) => local.0,
+            Self::UtfCodepoint(local) => local.0,
             Self::Float(local) => local.0,
             Self::Bool(local) => local.0,
             Self::Nil(local) => local.0,
@@ -847,6 +924,7 @@ impl std::fmt::Display for FunctionReturnFamily {
             Self::Float => f.write_str("Float"),
             Self::String => f.write_str("String"),
             Self::BitArray => f.write_str("BitArray"),
+            Self::UtfCodepoint => f.write_str("UtfCodepoint"),
             Self::Bool => f.write_str("Bool"),
             Self::Nil => f.write_str("Nil"),
             Self::Tuple => f.write_str("Tuple"),
@@ -873,7 +951,9 @@ mod tests {
         StringFunctionFunctionId, StringFunctionLocalId, StringListFunctionFunctionId,
         StringListFunctionLocalId, StringListLocalId, TupleFunctionFunctionId,
         TupleFunctionLocalId, TupleListFunctionFunctionId, TupleListFunctionLocalId,
-        TupleListLocalId,
+        TupleListLocalId, UtfCodepointFunctionFunctionId, UtfCodepointFunctionLocalId,
+        UtfCodepointListFunctionFunctionId, UtfCodepointListFunctionLocalId,
+        UtfCodepointListLocalId,
     };
     use crate::plan::{FunctionType, ValueType};
 
@@ -899,6 +979,10 @@ mod tests {
         assert_eq!(
             format!("{:?}", BitArrayFunctionLocalId(3)),
             "BitArrayFunctionLocalId(3)"
+        );
+        assert_eq!(
+            format!("{:?}", UtfCodepointFunctionLocalId(3)),
+            "UtfCodepointFunctionLocalId(3)"
         );
         assert_eq!(
             format!("{:?}", BoolFunctionLocalId(3)),
@@ -949,6 +1033,10 @@ mod tests {
         assert_eq!(
             FunctionFunctionId::BitArray(BitArrayFunctionFunctionId(7)).bit_array(),
             Some(BitArrayFunctionFunctionId(7)),
+        );
+        assert_eq!(
+            FunctionFunctionId::UtfCodepoint(UtfCodepointFunctionFunctionId(8)).utf_codepoint(),
+            Some(UtfCodepointFunctionFunctionId(8)),
         );
         assert_eq!(
             FunctionFunctionId::Bool(BoolFunctionFunctionId(3)).bool(),
@@ -1002,6 +1090,10 @@ mod tests {
             None,
         );
         assert_eq!(
+            FunctionFunctionId::Int(IntFunctionFunctionId(1)).utf_codepoint(),
+            None,
+        );
+        assert_eq!(
             FunctionFunctionId::Int(IntFunctionFunctionId(1)).float(),
             None,
         );
@@ -1046,6 +1138,10 @@ mod tests {
             super::FunctionReturnFamily::BitArray,
         );
         assert_eq!(
+            FunctionFunctionId::UtfCodepoint(UtfCodepointFunctionFunctionId(1)).family(),
+            super::FunctionReturnFamily::UtfCodepoint,
+        );
+        assert_eq!(
             FunctionFunctionId::Bool(BoolFunctionFunctionId(1)).family(),
             super::FunctionReturnFamily::Bool,
         );
@@ -1084,6 +1180,10 @@ mod tests {
             super::FunctionReturnFamily::BitArray.to_string(),
             "BitArray"
         );
+        assert_eq!(
+            super::FunctionReturnFamily::UtfCodepoint.to_string(),
+            "UtfCodepoint"
+        );
         assert_eq!(super::FunctionReturnFamily::Bool.to_string(), "Bool");
         assert_eq!(super::FunctionReturnFamily::Nil.to_string(), "Nil");
         assert_eq!(super::FunctionReturnFamily::Tuple.to_string(), "Tuple");
@@ -1101,6 +1201,7 @@ mod tests {
             ListLocal::int(IntListLocalId(3)),
             ListLocal::string(StringListLocalId(3)),
             ListLocal::bit_array(BitArrayListLocalId(3)),
+            ListLocal::utf_codepoint(UtfCodepointListLocalId(3)),
             ListLocal::float(super::FloatListLocalId(3)),
             ListLocal::bool(super::BoolListLocalId(3)),
             ListLocal::nil(NilListLocalId(3)),
@@ -1118,7 +1219,7 @@ mod tests {
         );
         assert_eq!(
             locals.iter().map(ListLocal::index).collect::<Vec<_>>(),
-            vec![3; 9],
+            vec![3; 10],
         );
     }
 
@@ -1136,6 +1237,7 @@ mod tests {
             ListFunctionLocal::from_item_type(3, cases[6].clone(), item_types[6].clone()),
             ListFunctionLocal::from_item_type(3, cases[7].clone(), item_types[7].clone()),
             ListFunctionLocal::from_item_type(3, cases[8].clone(), item_types[8].clone()),
+            ListFunctionLocal::from_item_type(3, cases[9].clone(), item_types[9].clone()),
         ];
 
         assert_eq!(
@@ -1144,22 +1246,26 @@ mod tests {
                 ListFunctionLocal::int(IntListFunctionLocalId(3), cases[0].clone()),
                 ListFunctionLocal::string(StringListFunctionLocalId(3), cases[1].clone()),
                 ListFunctionLocal::bit_array(BitArrayListFunctionLocalId(3), cases[2].clone(),),
-                ListFunctionLocal::float(FloatListFunctionLocalId(3), cases[3].clone()),
-                ListFunctionLocal::bool(BoolListFunctionLocalId(3), cases[4].clone()),
-                ListFunctionLocal::nil(NilListFunctionLocalId(3), cases[5].clone()),
+                ListFunctionLocal::utf_codepoint(
+                    UtfCodepointListFunctionLocalId(3),
+                    cases[3].clone(),
+                ),
+                ListFunctionLocal::float(FloatListFunctionLocalId(3), cases[4].clone()),
+                ListFunctionLocal::bool(BoolListFunctionLocalId(3), cases[5].clone()),
+                ListFunctionLocal::nil(NilListFunctionLocalId(3), cases[6].clone()),
                 ListFunctionLocal::tuple(
                     TupleListFunctionLocalId(3),
-                    cases[6].clone(),
+                    cases[7].clone(),
                     vec![ValueType::Int, ValueType::String],
                 ),
                 ListFunctionLocal::list(
                     ListListFunctionLocalId(3),
-                    cases[7].clone(),
+                    cases[8].clone(),
                     ValueType::Int,
                 ),
                 ListFunctionLocal::function(
                     FunctionListFunctionLocalId(3),
-                    cases[8].clone(),
+                    cases[9].clone(),
                     FunctionType::new(vec![ValueType::Int], ValueType::String),
                 ),
             ],
@@ -1187,7 +1293,7 @@ mod tests {
                 .iter()
                 .map(ListFunctionLocal::index)
                 .collect::<Vec<_>>(),
-            vec![3; 9],
+            vec![3; 10],
         );
     }
 
@@ -1205,6 +1311,7 @@ mod tests {
             ListFunctionFunctionId::from_item_type(7, cases[6].clone(), item_types[6].clone()),
             ListFunctionFunctionId::from_item_type(7, cases[7].clone(), item_types[7].clone()),
             ListFunctionFunctionId::from_item_type(7, cases[8].clone(), item_types[8].clone()),
+            ListFunctionFunctionId::from_item_type(7, cases[9].clone(), item_types[9].clone()),
         ];
 
         assert_eq!(
@@ -1222,31 +1329,35 @@ mod tests {
                     id: BitArrayListFunctionFunctionId(7),
                     type_: cases[2].clone(),
                 },
+                ListFunctionFunctionId::UtfCodepoint {
+                    id: UtfCodepointListFunctionFunctionId(7),
+                    type_: cases[3].clone(),
+                },
                 ListFunctionFunctionId::Float {
                     id: FloatListFunctionFunctionId(7),
-                    type_: cases[3].clone(),
+                    type_: cases[4].clone(),
                 },
                 ListFunctionFunctionId::Bool {
                     id: BoolListFunctionFunctionId(7),
-                    type_: cases[4].clone(),
+                    type_: cases[5].clone(),
                 },
                 ListFunctionFunctionId::Nil {
                     id: NilListFunctionFunctionId(7),
-                    type_: cases[5].clone(),
+                    type_: cases[6].clone(),
                 },
                 ListFunctionFunctionId::Tuple {
                     id: TupleListFunctionFunctionId(7),
-                    type_: cases[6].clone(),
+                    type_: cases[7].clone(),
                     item_type: vec![ValueType::Int, ValueType::String],
                 },
                 ListFunctionFunctionId::List {
                     id: ListListFunctionFunctionId(7),
-                    type_: cases[7].clone(),
+                    type_: cases[8].clone(),
                     item_type: Box::new(ValueType::Int),
                 },
                 ListFunctionFunctionId::Function {
                     id: FunctionListFunctionFunctionId(7),
-                    type_: cases[8].clone(),
+                    type_: cases[9].clone(),
                     item_type: Box::new(FunctionType::new(vec![ValueType::Int], ValueType::String)),
                 },
             ],
@@ -1261,15 +1372,16 @@ mod tests {
         );
     }
 
-    fn list_function_type_cases() -> [FunctionType; 9] {
+    fn list_function_type_cases() -> [FunctionType; 10] {
         list_item_types().map(list_function_type)
     }
 
-    fn list_item_types() -> [ValueType; 9] {
+    fn list_item_types() -> [ValueType; 10] {
         [
             ValueType::Int,
             ValueType::String,
             ValueType::BitArray,
+            ValueType::UtfCodepoint,
             ValueType::Float,
             ValueType::Bool,
             ValueType::Nil,

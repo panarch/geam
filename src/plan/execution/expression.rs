@@ -9,6 +9,7 @@ mod nil;
 mod panic;
 mod string;
 mod tuple;
+mod utf_codepoint;
 
 pub use self::{
     arg::CallArg,
@@ -18,12 +19,13 @@ pub use self::{
     function::{
         BitArrayFunctionExpr, BoolFunctionExpr, FloatFunctionExpr, FunctionExpr,
         FunctionFunctionExpr, IntFunctionExpr, ListFunctionExpr, NilFunctionExpr,
-        StringFunctionExpr, TupleFunctionExpr,
+        StringFunctionExpr, TupleFunctionExpr, UtfCodepointFunctionExpr,
     },
     int::IntExpr,
     nil::NilExpr,
     string::StringExpr,
     tuple::TupleExpr,
+    utf_codepoint::UtfCodepointExpr,
 };
 pub(crate) use self::{
     arg::{CallArgKind, CaptureArg, CaptureArgKind},
@@ -33,7 +35,7 @@ pub(crate) use self::{
     function::{
         BitArrayFunctionExprKind, BoolFunctionExprKind, FloatFunctionExprKind, FunctionExprKind,
         FunctionFunctionExprKind, IntFunctionExprKind, ListFunctionExprKind, NilFunctionExprKind,
-        StringFunctionExprKind, TupleFunctionExprKind,
+        StringFunctionExprKind, TupleFunctionExprKind, UtfCodepointFunctionExprKind,
     },
     int::IntExprKind,
     list::{
@@ -41,12 +43,13 @@ pub(crate) use self::{
         FloatListItem, FunctionListExpr, FunctionListItem, IntListExpr, IntListItem, ListExpr,
         ListIndexSource, ListItem, ListListExpr, ListListItem, ListLocalExpr, NilListExpr,
         NilListItem, StringListExpr, StringListItem, TupleListExpr, TupleListItem, TypedListExpr,
-        TypedListExprKind,
+        TypedListExprKind, UtfCodepointListExpr, UtfCodepointListItem,
     },
     nil::NilExprKind,
     panic::{PanicExpr, PanicExprKind},
     string::StringExprKind,
     tuple::TupleExprKind,
+    utf_codepoint::UtfCodepointExprKind,
 };
 
 pub struct Expr {
@@ -57,6 +60,7 @@ pub(crate) enum ExprKind {
     Int(IntExpr),
     String(StringExpr),
     BitArray(BitArrayExpr),
+    UtfCodepoint(UtfCodepointExpr),
     Float(FloatExpr),
     Bool(BoolExpr),
     Nil(NilExpr),

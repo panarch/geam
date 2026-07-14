@@ -16,7 +16,10 @@ use crate::plan::{
     RuntimeFunctionId, StringExpr, StringFunctionExpr, StringFunctionFunctionId, StringFunctionId,
     StringFunctionLocalId, StringListFunctionId, StringListItem, StringListLocalId, StringLocalId,
     TupleExpr, TupleFunctionExpr, TupleFunctionFunctionId, TupleFunctionId, TupleFunctionLocalId,
-    TupleListFunctionId, TupleListItem, TupleListLocalId, TupleLocalId, ValueType,
+    TupleListFunctionId, TupleListItem, TupleListLocalId, TupleLocalId, UtfCodepointExpr,
+    UtfCodepointFunctionExpr, UtfCodepointFunctionFunctionId, UtfCodepointFunctionId,
+    UtfCodepointFunctionLocalId, UtfCodepointListFunctionId, UtfCodepointListItem,
+    UtfCodepointListLocalId, UtfCodepointLocalId, ValueType,
 };
 use crate::planner::error::{InvalidTypedAstReason, PlanError};
 use ecow::EcoString;
@@ -49,12 +52,14 @@ pub(super) struct PlanContext<'a> {
     next_float_local: usize,
     next_string_local: usize,
     next_bit_array_local: usize,
+    next_utf_codepoint_local: usize,
     next_bool_local: usize,
     next_nil_local: usize,
     next_tuple_local: usize,
     next_int_list_local: usize,
     next_string_list_local: usize,
     next_bit_array_list_local: usize,
+    next_utf_codepoint_list_local: usize,
     next_float_list_local: usize,
     next_bool_list_local: usize,
     next_nil_list_local: usize,
@@ -65,6 +70,7 @@ pub(super) struct PlanContext<'a> {
     next_float_function_local: usize,
     next_string_function_local: usize,
     next_bit_array_function_local: usize,
+    next_utf_codepoint_function_local: usize,
     next_bool_function_local: usize,
     next_nil_function_local: usize,
     next_tuple_function_local: usize,
@@ -100,6 +106,10 @@ pub(super) enum FunctionLocalBinding {
     },
     BitArray {
         local: BitArrayFunctionLocalId,
+        type_: FunctionType,
+    },
+    UtfCodepoint {
+        local: UtfCodepointFunctionLocalId,
         type_: FunctionType,
     },
     Float {
@@ -141,12 +151,14 @@ impl<'a> PlanContext<'a> {
             next_float_local: 0,
             next_string_local: 0,
             next_bit_array_local: 0,
+            next_utf_codepoint_local: 0,
             next_bool_local: 0,
             next_nil_local: 0,
             next_tuple_local: 0,
             next_int_list_local: 0,
             next_string_list_local: 0,
             next_bit_array_list_local: 0,
+            next_utf_codepoint_list_local: 0,
             next_float_list_local: 0,
             next_bool_list_local: 0,
             next_nil_list_local: 0,
@@ -157,6 +169,7 @@ impl<'a> PlanContext<'a> {
             next_float_function_local: 0,
             next_string_function_local: 0,
             next_bit_array_function_local: 0,
+            next_utf_codepoint_function_local: 0,
             next_bool_function_local: 0,
             next_nil_function_local: 0,
             next_tuple_function_local: 0,
@@ -191,6 +204,9 @@ impl<'a> PlanContext<'a> {
             LocalId::BitArray(local) => {
                 self.next_bit_array_local = self.next_bit_array_local.max(local.0 + 1);
             }
+            LocalId::UtfCodepoint(local) => {
+                self.next_utf_codepoint_local = self.next_utf_codepoint_local.max(local.0 + 1);
+            }
             LocalId::Bool(local) => {
                 self.next_bool_local = self.next_bool_local.max(local.0 + 1);
             }
@@ -214,6 +230,9 @@ impl<'a> PlanContext<'a> {
             }
             ParamLocal::BitArray(local) => {
                 self.define_existing_local(name, LocalId::BitArray(*local));
+            }
+            ParamLocal::UtfCodepoint(local) => {
+                self.define_existing_local(name, LocalId::UtfCodepoint(*local));
             }
             ParamLocal::Bool(local) => {
                 self.define_existing_local(name, LocalId::Bool(*local));
@@ -272,6 +291,17 @@ impl<'a> PlanContext<'a> {
                 self.bindings.insert(
                     name,
                     LocalBinding::Function(FunctionLocalBinding::BitArray {
+                        local: *local,
+                        type_: type_.clone(),
+                    }),
+                );
+            }
+            ParamLocal::UtfCodepointFunction { local, type_ } => {
+                self.next_utf_codepoint_function_local =
+                    self.next_utf_codepoint_function_local.max(local.0 + 1);
+                self.bindings.insert(
+                    name,
+                    LocalBinding::Function(FunctionLocalBinding::UtfCodepoint {
                         local: *local,
                         type_: type_.clone(),
                     }),
@@ -386,6 +416,28 @@ impl<'a> PlanContext<'a> {
     pub(super) fn define_internal_bit_array_function_local(&mut self) -> BitArrayFunctionLocalId {
         let local = BitArrayFunctionLocalId(self.next_bit_array_function_local);
         self.next_bit_array_function_local += 1;
+        local
+    }
+
+    pub(super) fn define_utf_codepoint_function_local(
+        &mut self,
+        name: EcoString,
+        type_: FunctionType,
+    ) -> UtfCodepointFunctionLocalId {
+        let local = UtfCodepointFunctionLocalId(self.next_utf_codepoint_function_local);
+        self.next_utf_codepoint_function_local += 1;
+        self.bindings.insert(
+            name,
+            LocalBinding::Function(FunctionLocalBinding::UtfCodepoint { local, type_ }),
+        );
+        local
+    }
+
+    pub(super) fn define_internal_utf_codepoint_function_local(
+        &mut self,
+    ) -> UtfCodepointFunctionLocalId {
+        let local = UtfCodepointFunctionLocalId(self.next_utf_codepoint_function_local);
+        self.next_utf_codepoint_function_local += 1;
         local
     }
 
@@ -558,6 +610,20 @@ impl<'a> PlanContext<'a> {
         local
     }
 
+    pub(super) fn define_utf_codepoint_local(&mut self, name: EcoString) -> UtfCodepointLocalId {
+        let local = UtfCodepointLocalId(self.next_utf_codepoint_local);
+        self.next_utf_codepoint_local += 1;
+        self.bindings
+            .insert(name, LocalBinding::Primitive(LocalId::UtfCodepoint(local)));
+        local
+    }
+
+    pub(super) fn define_internal_utf_codepoint_local(&mut self) -> UtfCodepointLocalId {
+        let local = UtfCodepointLocalId(self.next_utf_codepoint_local);
+        self.next_utf_codepoint_local += 1;
+        local
+    }
+
     pub(super) fn define_float_local(&mut self, name: EcoString) -> FloatLocalId {
         let local = FloatLocalId(self.next_float_local);
         self.next_float_local += 1;
@@ -681,6 +747,22 @@ impl<'a> PlanContext<'a> {
                     value: crate::plan::BitArrayListExpr::local_get(BitArrayListItem, source, name),
                 }
             }
+            ListLocal::UtfCodepoint(source) => {
+                let local = UtfCodepointListLocalId(self.next_utf_codepoint_list_local);
+                self.next_utf_codepoint_list_local += 1;
+                self.bindings.insert(
+                    name.clone(),
+                    LocalBinding::List(ListLocal::utf_codepoint(local)),
+                );
+                ListLocalExpr::UtfCodepoint {
+                    local,
+                    value: crate::plan::UtfCodepointListExpr::local_get(
+                        UtfCodepointListItem,
+                        source,
+                        name,
+                    ),
+                }
+            }
             ListLocal::Float(source) => {
                 let local = FloatListLocalId(self.next_float_list_local);
                 self.next_float_list_local += 1;
@@ -782,6 +864,11 @@ impl<'a> PlanContext<'a> {
                 self.next_bit_array_list_local += 1;
                 ListLocal::bit_array(local)
             }
+            ValueType::UtfCodepoint => {
+                let local = UtfCodepointListLocalId(self.next_utf_codepoint_list_local);
+                self.next_utf_codepoint_list_local += 1;
+                ListLocal::utf_codepoint(local)
+            }
             ValueType::Float => {
                 let local = FloatListLocalId(self.next_float_list_local);
                 self.next_float_list_local += 1;
@@ -836,6 +923,14 @@ impl<'a> PlanContext<'a> {
                 (
                     ListLocal::bit_array(local),
                     ListLocalExpr::BitArray { local, value },
+                )
+            }
+            ListExpr::UtfCodepoint(value) => {
+                let local = UtfCodepointListLocalId(self.next_utf_codepoint_list_local);
+                self.next_utf_codepoint_list_local += 1;
+                (
+                    ListLocal::utf_codepoint(local),
+                    ListLocalExpr::UtfCodepoint { local, value },
                 )
             }
             ListExpr::Float(value) => {
@@ -908,6 +1003,10 @@ impl<'a> PlanContext<'a> {
             }
             ListLocal::BitArray(local) => {
                 self.next_bit_array_list_local = self.next_bit_array_list_local.max(local.0 + 1);
+            }
+            ListLocal::UtfCodepoint(local) => {
+                self.next_utf_codepoint_list_local =
+                    self.next_utf_codepoint_list_local.max(local.0 + 1);
             }
             ListLocal::Float(local) => {
                 self.next_float_list_local = self.next_float_list_local.max(local.0 + 1);
@@ -1012,12 +1111,14 @@ impl<'a> PlanContext<'a> {
             next_float_local: 0,
             next_string_local: 0,
             next_bit_array_local: 0,
+            next_utf_codepoint_local: 0,
             next_bool_local: 0,
             next_nil_local: 0,
             next_tuple_local: 0,
             next_int_list_local: 0,
             next_string_list_local: 0,
             next_bit_array_list_local: 0,
+            next_utf_codepoint_list_local: 0,
             next_float_list_local: 0,
             next_bool_list_local: 0,
             next_nil_list_local: 0,
@@ -1028,6 +1129,7 @@ impl<'a> PlanContext<'a> {
             next_float_function_local: 0,
             next_string_function_local: 0,
             next_bit_array_function_local: 0,
+            next_utf_codepoint_function_local: 0,
             next_bool_function_local: 0,
             next_nil_function_local: 0,
             next_tuple_function_local: 0,
@@ -1094,6 +1196,10 @@ impl<'a> PlanContext<'a> {
                 let target = self.define_bit_array_local(capture.name.clone());
                 CaptureArg::bit_array(target, BitArrayExpr::local_get(local, capture.name))
             }
+            LocalBinding::Primitive(LocalId::UtfCodepoint(local)) => {
+                let target = self.define_utf_codepoint_local(capture.name.clone());
+                CaptureArg::utf_codepoint(target, UtfCodepointExpr::local_get(local, capture.name))
+            }
             LocalBinding::Primitive(LocalId::Bool(local)) => {
                 let target = self.define_bool_local(capture.name.clone());
                 CaptureArg::bool(target, BoolExpr::local_get(local, capture.name))
@@ -1136,6 +1242,14 @@ impl<'a> PlanContext<'a> {
                 CaptureArg::bit_array_function(
                     target,
                     BitArrayFunctionExpr::local_get(local, capture.name, type_),
+                )
+            }
+            LocalBinding::Function(FunctionLocalBinding::UtfCodepoint { local, type_ }) => {
+                let target =
+                    self.define_utf_codepoint_function_local(capture.name.clone(), type_.clone());
+                CaptureArg::utf_codepoint_function(
+                    target,
+                    UtfCodepointFunctionExpr::local_get(local, capture.name, type_),
                 )
             }
             LocalBinding::Function(FunctionLocalBinding::Bool { local, type_ }) => {
@@ -1272,12 +1386,14 @@ pub(in crate::planner) struct FunctionRuntimeIds {
     next_float: usize,
     next_string: usize,
     next_bit_array: usize,
+    next_utf_codepoint: usize,
     next_bool: usize,
     next_nil: usize,
     next_tuple: usize,
     next_int_list: usize,
     next_string_list: usize,
     next_bit_array_list: usize,
+    next_utf_codepoint_list: usize,
     next_float_list: usize,
     next_bool_list: usize,
     next_nil_list: usize,
@@ -1288,12 +1404,14 @@ pub(in crate::planner) struct FunctionRuntimeIds {
     next_float_function: usize,
     next_string_function: usize,
     next_bit_array_function: usize,
+    next_utf_codepoint_function: usize,
     next_bool_function: usize,
     next_nil_function: usize,
     next_tuple_function: usize,
     next_int_list_function: usize,
     next_string_list_function: usize,
     next_bit_array_list_function: usize,
+    next_utf_codepoint_list_function: usize,
     next_float_list_function: usize,
     next_bool_list_function: usize,
     next_nil_list_function: usize,
@@ -1310,6 +1428,9 @@ impl FunctionRuntimeIds {
             ValueType::Float => RuntimeFunctionId::Float(self.next_float_id()),
             ValueType::String => RuntimeFunctionId::String(self.next_string_id()),
             ValueType::BitArray => RuntimeFunctionId::BitArray(self.next_bit_array_id()),
+            ValueType::UtfCodepoint => {
+                RuntimeFunctionId::UtfCodepoint(self.next_utf_codepoint_id())
+            }
             ValueType::Bool => RuntimeFunctionId::Bool(self.next_bool_id()),
             ValueType::Nil => RuntimeFunctionId::Nil(self.next_nil_id()),
             ValueType::Tuple(return_type) => RuntimeFunctionId::Tuple {
@@ -1329,6 +1450,9 @@ impl FunctionRuntimeIds {
             ValueType::Float => FunctionFunctionId::Float(self.next_float_function_id()),
             ValueType::String => FunctionFunctionId::String(self.next_string_function_id()),
             ValueType::BitArray => FunctionFunctionId::BitArray(self.next_bit_array_function_id()),
+            ValueType::UtfCodepoint => {
+                FunctionFunctionId::UtfCodepoint(self.next_utf_codepoint_function_id())
+            }
             ValueType::Bool => FunctionFunctionId::Bool(self.next_bool_function_id()),
             ValueType::Nil => FunctionFunctionId::Nil(self.next_nil_function_id()),
             ValueType::Tuple(_) => FunctionFunctionId::Tuple(self.next_tuple_function_id()),
@@ -1361,6 +1485,12 @@ impl FunctionRuntimeIds {
         id
     }
 
+    pub(in crate::planner) fn next_utf_codepoint_id(&mut self) -> UtfCodepointFunctionId {
+        let id = UtfCodepointFunctionId(self.next_utf_codepoint);
+        self.next_utf_codepoint += 1;
+        id
+    }
+
     pub(in crate::planner) fn next_float_id(&mut self) -> FloatFunctionId {
         let id = FloatFunctionId(self.next_float);
         self.next_float += 1;
@@ -1390,6 +1520,9 @@ impl FunctionRuntimeIds {
             ValueType::Int => ListFunctionId::Int(self.next_int_list_id()),
             ValueType::String => ListFunctionId::String(self.next_string_list_id()),
             ValueType::BitArray => ListFunctionId::BitArray(self.next_bit_array_list_id()),
+            ValueType::UtfCodepoint => {
+                ListFunctionId::UtfCodepoint(self.next_utf_codepoint_list_id())
+            }
             ValueType::Float => ListFunctionId::Float(self.next_float_list_id()),
             ValueType::Bool => ListFunctionId::Bool(self.next_bool_list_id()),
             ValueType::Nil => ListFunctionId::Nil(self.next_nil_list_id()),
@@ -1423,6 +1556,12 @@ impl FunctionRuntimeIds {
     pub(in crate::planner) fn next_bit_array_list_id(&mut self) -> BitArrayListFunctionId {
         let id = BitArrayListFunctionId(self.next_bit_array_list);
         self.next_bit_array_list += 1;
+        id
+    }
+
+    pub(in crate::planner) fn next_utf_codepoint_list_id(&mut self) -> UtfCodepointListFunctionId {
+        let id = UtfCodepointListFunctionId(self.next_utf_codepoint_list);
+        self.next_utf_codepoint_list += 1;
         id
     }
 
@@ -1477,6 +1616,14 @@ impl FunctionRuntimeIds {
     pub(in crate::planner) fn next_bit_array_function_id(&mut self) -> BitArrayFunctionFunctionId {
         let id = BitArrayFunctionFunctionId(self.next_bit_array_function);
         self.next_bit_array_function += 1;
+        id
+    }
+
+    pub(in crate::planner) fn next_utf_codepoint_function_id(
+        &mut self,
+    ) -> UtfCodepointFunctionFunctionId {
+        let id = UtfCodepointFunctionFunctionId(self.next_utf_codepoint_function);
+        self.next_utf_codepoint_function += 1;
         id
     }
 
@@ -1535,6 +1682,15 @@ impl FunctionRuntimeIds {
                     ValueType::BitArray,
                 );
                 self.next_bit_array_list_function += 1;
+                id
+            }
+            ValueType::UtfCodepoint => {
+                let id = ListFunctionFunctionId::from_item_type(
+                    self.next_utf_codepoint_list_function,
+                    type_,
+                    ValueType::UtfCodepoint,
+                );
+                self.next_utf_codepoint_list_function += 1;
                 id
             }
             ValueType::Float => {
@@ -1618,6 +1774,8 @@ impl ValueType {
             Some(Self::String)
         } else if type_.is_bit_array() {
             Some(Self::BitArray)
+        } else if type_.is_utf_codepoint() {
+            Some(Self::UtfCodepoint)
         } else if type_.is_bool() {
             Some(Self::Bool)
         } else if type_.is_nil() {
@@ -1663,7 +1821,7 @@ mod tests {
         NilLocalId, ParamLocal, RuntimeFunctionId, StringFunctionExpr, StringFunctionLocalId,
         StringListExpr, StringListItem, StringListLocalId, StringLocalId, TupleFunctionExpr,
         TupleFunctionLocalId, TupleListExpr, TupleListItem, TupleListLocalId, TupleLocalId,
-        ValueType,
+        UtfCodepointListExpr, UtfCodepointListItem, UtfCodepointListLocalId, ValueType,
     };
     use ecow::EcoString;
     use gleam_core::ast::Publicity;
@@ -1956,6 +2114,20 @@ mod tests {
                     BitArrayListItem,
                     BitArrayListLocalId(9),
                     "bit_arrays".into(),
+                ),
+            },
+        );
+        assert_eq!(
+            context.define_list_capture_value(
+                "utf_codepoints".into(),
+                ListLocal::utf_codepoint(UtfCodepointListLocalId(9)),
+            ),
+            ListLocalExpr::UtfCodepoint {
+                local: UtfCodepointListLocalId(0),
+                value: UtfCodepointListExpr::local_get(
+                    UtfCodepointListItem,
+                    UtfCodepointListLocalId(9),
+                    "utf_codepoints".into(),
                 ),
             },
         );
@@ -2523,9 +2695,26 @@ mod tests {
             Some(ValueType::BitArray),
         );
         assert_eq!(
+            ValueType::from_gleam(type_::utf_codepoint().as_ref()),
+            Some(ValueType::UtfCodepoint),
+        );
+        assert_eq!(
             ValueType::from_gleam(
                 type_::named("package", "main", "BitArray", Publicity::Public, Vec::new(),)
                     .as_ref(),
+            ),
+            None,
+        );
+        assert_eq!(
+            ValueType::from_gleam(
+                type_::named(
+                    "package",
+                    "main",
+                    "UtfCodepoint",
+                    Publicity::Public,
+                    Vec::new(),
+                )
+                .as_ref(),
             ),
             None,
         );

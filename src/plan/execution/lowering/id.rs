@@ -21,6 +21,10 @@ pub(super) fn list_local(
             local: execution::BitArrayListLocalId(local.0),
             type_id: context.bit_array_list_type(),
         },
+        module::ListLocal::UtfCodepoint(local) => execution::ListLocal::UtfCodepoint {
+            local: execution::UtfCodepointListLocalId(local.0),
+            type_id: context.utf_codepoint_list_type(),
+        },
         module::ListLocal::Float(local) => execution::ListLocal::Float {
             local: execution::FloatListLocalId(local.0),
             type_id: context.float_list_type(),
@@ -72,6 +76,13 @@ pub(super) fn list_function_local(
                 local: execution::BitArrayListFunctionLocalId(local.0),
                 type_: context.function_type(type_),
                 list_type: context.bit_array_list_type(),
+            }
+        }
+        module::ListFunctionLocal::UtfCodepoint { local, type_ } => {
+            execution::ListFunctionLocal::UtfCodepoint {
+                local: execution::UtfCodepointListFunctionLocalId(local.0),
+                type_: context.function_type(type_),
+                list_type: context.utf_codepoint_list_type(),
             }
         }
         module::ListFunctionLocal::Float { local, type_ } => execution::ListFunctionLocal::Float {
@@ -135,6 +146,9 @@ pub(super) fn list_function_id(
         module::ListFunctionId::BitArray(id) => execution::ListFunctionId::BitArray(
             execution::BitArrayListFunctionId::new(id.0, context.bit_array_list_type()),
         ),
+        module::ListFunctionId::UtfCodepoint(id) => execution::ListFunctionId::UtfCodepoint(
+            execution::UtfCodepointListFunctionId::new(id.0, context.utf_codepoint_list_type()),
+        ),
         module::ListFunctionId::Float(id) => execution::ListFunctionId::Float(
             execution::FloatListFunctionId::new(id.0, context.float_list_type()),
         ),
@@ -174,6 +188,11 @@ pub(super) fn function_function_id(
         }
         module::FunctionFunctionId::BitArray(id) => {
             execution::FunctionFunctionId::BitArray(execution::BitArrayFunctionFunctionId(id.0))
+        }
+        module::FunctionFunctionId::UtfCodepoint(id) => {
+            execution::FunctionFunctionId::UtfCodepoint(execution::UtfCodepointFunctionFunctionId(
+                id.0,
+            ))
         }
         module::FunctionFunctionId::Bool(id) => {
             execution::FunctionFunctionId::Bool(execution::BoolFunctionFunctionId(id.0))
@@ -219,6 +238,13 @@ pub(super) fn list_function_function_id(
                 id: execution::BitArrayListFunctionFunctionId(id.0),
                 type_: context.function_type(type_),
                 list_type: context.bit_array_list_type(),
+            }
+        }
+        module::ListFunctionFunctionId::UtfCodepoint { id, type_ } => {
+            execution::ListFunctionFunctionId::UtfCodepoint {
+                id: execution::UtfCodepointListFunctionFunctionId(id.0),
+                type_: context.function_type(type_),
+                list_type: context.utf_codepoint_list_type(),
             }
         }
         module::ListFunctionFunctionId::Float { id, type_ } => {

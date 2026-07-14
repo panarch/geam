@@ -87,6 +87,7 @@ fn render_value(value: &Value) -> String {
             value.bytes(),
             value.bit_len(),
         ),
+        Value::UtfCodepoint(value) => format!("UtfCodepoint({value:?})"),
         Value::Bool(value) => format!("Bool({value})"),
         Value::Nil => "Nil".into(),
         Value::Tuple(values) => format!(
@@ -131,6 +132,7 @@ fn render_value_type(type_: &ValueType) -> String {
         ValueType::Float => "Float".into(),
         ValueType::String => "String".into(),
         ValueType::BitArray => "BitArray".into(),
+        ValueType::UtfCodepoint => "UtfCodepoint".into(),
         ValueType::Bool => "Bool".into(),
         ValueType::Nil => "Nil".into(),
         ValueType::Tuple(types) => format!(
@@ -286,6 +288,10 @@ mod tests {
                 Value::BitArray(BitArrayValue::from_bytes(vec![0xa5])),
                 "BitArray(bytes=[165], bit_len=8)",
             ),
+            (
+                Value::UtfCodepoint('\u{10ffff}'),
+                "UtfCodepoint('\\u{10ffff}')",
+            ),
             (Value::Bool(true), "Bool(true)"),
             (Value::Nil, "Nil"),
             (
@@ -305,6 +311,7 @@ mod tests {
     #[test]
     fn render_value_type_preserves_compound_shapes() {
         assert_eq!(render_value_type(&ValueType::BitArray), "BitArray");
+        assert_eq!(render_value_type(&ValueType::UtfCodepoint), "UtfCodepoint");
         assert_eq!(
             render_value_type(&ValueType::Tuple(vec![ValueType::Int, ValueType::String])),
             "#(Int, String)",

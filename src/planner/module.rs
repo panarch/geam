@@ -259,12 +259,14 @@ pub(super) fn function_params(
     let mut next_float = 0;
     let mut next_string = 0;
     let mut next_bit_array = 0;
+    let mut next_utf_codepoint = 0;
     let mut next_bool = 0;
     let mut next_nil = 0;
     let mut next_tuple = 0;
     let mut next_int_list = 0;
     let mut next_string_list = 0;
     let mut next_bit_array_list = 0;
+    let mut next_utf_codepoint_list = 0;
     let mut next_float_list = 0;
     let mut next_bool_list = 0;
     let mut next_nil_list = 0;
@@ -326,6 +328,13 @@ pub(super) fn function_params(
                     next_bit_array += 1;
                     local
                 }
+                ValueType::UtfCodepoint => {
+                    let local = ParamLocal::utf_codepoint(crate::plan::UtfCodepointLocalId(
+                        next_utf_codepoint,
+                    ));
+                    next_utf_codepoint += 1;
+                    local
+                }
                 ValueType::Bool => {
                     let local = ParamLocal::bool(crate::plan::BoolLocalId(next_bool));
                     next_bool += 1;
@@ -363,6 +372,13 @@ pub(super) fn function_params(
                                 crate::plan::BitArrayListLocalId(next_bit_array_list),
                             );
                             next_bit_array_list += 1;
+                            local
+                        }
+                        ValueType::UtfCodepoint => {
+                            let local = crate::plan::ListLocal::utf_codepoint(
+                                crate::plan::UtfCodepointListLocalId(next_utf_codepoint_list),
+                            );
+                            next_utf_codepoint_list += 1;
                             local
                         }
                         ValueType::Float => {
@@ -436,6 +452,7 @@ struct FunctionParamLocalCounters {
     next_float: usize,
     next_string: usize,
     next_bit_array: usize,
+    next_utf_codepoint: usize,
     next_bool: usize,
     next_nil: usize,
     next_tuple: usize,
@@ -474,6 +491,14 @@ impl FunctionParamLocalCounters {
                     type_.clone(),
                 );
                 self.next_bit_array += 1;
+                local
+            }
+            ValueType::UtfCodepoint => {
+                let local = ParamLocal::utf_codepoint_function(
+                    crate::plan::UtfCodepointFunctionLocalId(self.next_utf_codepoint),
+                    type_.clone(),
+                );
+                self.next_utf_codepoint += 1;
                 local
             }
             ValueType::Bool => {

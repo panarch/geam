@@ -4,6 +4,7 @@ pub enum ValueType {
     Float,
     String,
     BitArray,
+    UtfCodepoint,
     Bool,
     Nil,
     Tuple(Vec<ValueType>),

@@ -52,8 +52,6 @@ pub enum UnsupportedExpressionKind {
 
 #[derive(Debug, Error, Clone, Copy, PartialEq, Eq)]
 pub enum UnsupportedBitArraySegmentReason {
-    #[error("UtfCodepoint segments are not supported")]
-    UtfCodepoint,
     #[error("native-endian segments are not supported")]
     NativeEndianness,
     #[error("dynamic segment sizes are not supported")]

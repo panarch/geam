@@ -2,7 +2,7 @@ use super::CaptureSubstitution;
 use crate::plan::{
     BitArrayExpr, BoolExpr, CallArg, Expr, FloatExpr, FunctionExpr, FunctionFunctionExpr, IntExpr,
     ListExpr, ListFunctionExpr, NilExpr, RuntimeFunctionId, StringExpr, TupleExpr,
-    TupleFunctionExpr, ValueType,
+    TupleFunctionExpr, UtfCodepointExpr, UtfCodepointFunctionExpr, ValueType,
 };
 use crate::planner::context::{FunctionInfo, FunctionParam, PlanContext};
 use crate::planner::error::{InvalidCallShapeReason, InvalidTypedAstReason, PlanError};
@@ -70,6 +70,9 @@ fn call_expr(function: RuntimeFunctionId, args: Vec<CallArg>) -> Expr {
         RuntimeFunctionId::BitArray(function) => {
             Expr::bit_array(BitArrayExpr::call(function, args))
         }
+        RuntimeFunctionId::UtfCodepoint(function) => {
+            Expr::utf_codepoint(UtfCodepointExpr::call(function, args))
+        }
         RuntimeFunctionId::Float(function) => Expr::float(FloatExpr::call(function, args)),
         RuntimeFunctionId::Bool(function) => Expr::bool(BoolExpr::call(function, args)),
         RuntimeFunctionId::Nil(function) => Expr::nil(NilExpr::call(function, args)),
@@ -99,6 +102,13 @@ fn function_returning_function_call_expr(
             Expr::function(FunctionExpr::bit_array(
                 crate::plan::BitArrayFunctionExpr::call(function, args, return_type),
             ))
+        }
+        crate::plan::FunctionFunctionId::UtfCodepoint(function) => {
+            Expr::function(FunctionExpr::utf_codepoint(UtfCodepointFunctionExpr::call(
+                function,
+                args,
+                return_type,
+            )))
         }
         crate::plan::FunctionFunctionId::Float(function) => Expr::function(FunctionExpr::float(
             crate::plan::FloatFunctionExpr::call(function, args, return_type),

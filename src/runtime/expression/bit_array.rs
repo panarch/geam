@@ -4,7 +4,7 @@ use num_bigint::BigInt;
 
 use super::{
     eval_bool_expr, eval_float_expr, eval_int_expr, eval_panic_expr, eval_string_expr,
-    project_bit_array_list_expr, project_tuple_expr,
+    eval_utf_codepoint_expr, project_bit_array_list_expr, project_tuple_expr,
 };
 use crate::plan::ValueType;
 use crate::plan::execution::{
@@ -137,6 +137,10 @@ fn append_segment(
             let value = eval_string_expr(plan, state, frame, value)?;
             append_string(output, value.as_str(), *encoding);
         }
+        BitArraySegment::UtfCodepoint { value, encoding } => {
+            let value = eval_utf_codepoint_expr(plan, state, frame, value)?;
+            append_utf_codepoint(output, value, *encoding);
+        }
         BitArraySegment::Bits(value) => {
             let value = eval_bit_array_expr(plan, state, frame, value)?;
             output.extend_from_bitslice(value.bits());
@@ -233,6 +237,34 @@ fn append_string(output: &mut BitVec<u8, Msb0>, value: &str, encoding: StringEnc
     }
 }
 
+fn append_utf_codepoint(output: &mut BitVec<u8, Msb0>, value: char, encoding: StringEncoding) {
+    match encoding {
+        StringEncoding::Utf8 => {
+            let mut buffer = [0; 4];
+            let encoded = value.encode_utf8(&mut buffer);
+            output.extend_from_bitslice(encoded.as_bytes().view_bits::<Msb0>());
+        }
+        StringEncoding::Utf16(endianness) => {
+            let mut buffer = [0; 2];
+            for code in value.encode_utf16(&mut buffer) {
+                let bytes = match endianness {
+                    Endianness::Big => code.to_be_bytes(),
+                    Endianness::Little => code.to_le_bytes(),
+                };
+                output.extend_from_bitslice(bytes.view_bits::<Msb0>());
+            }
+        }
+        StringEncoding::Utf32(endianness) => {
+            let code = u32::from(value);
+            let bytes = match endianness {
+                Endianness::Big => code.to_be_bytes(),
+                Endianness::Little => code.to_le_bytes(),
+            };
+            output.extend_from_bitslice(bytes.view_bits::<Msb0>());
+        }
+    }
+}
+
 use bitvec::view::BitView;
 
 #[cfg(test)]
@@ -243,7 +275,8 @@ mod tests {
     use crate::plan::{
         BitArrayExpr, BitArrayFunctionId, BitArraySegment, BoolExpr, Endianness, Expr,
         FloatBitSize, FloatExpr, FunctionId, FunctionPlan, IntExpr, ListExpr, ModulePlan,
-        PanicExpr, PanicSite, ReturnExpr, Step, StringEncoding, StringExpr, TupleExpr, ValueType,
+        PanicExpr, PanicSite, ReturnExpr, Step, StringEncoding, StringExpr, TupleExpr,
+        UtfCodepointExpr, ValueType,
     };
     use crate::runtime::{BitArrayValue, ExecutionError, ListValue, Value, run_main};
 
@@ -264,6 +297,10 @@ mod tests {
             }]),
             BitArrayExpr::value(vec![BitArraySegment::String {
                 value: StringExpr::panic(panic()),
+                encoding: StringEncoding::Utf8,
+            }]),
+            BitArrayExpr::value(vec![BitArraySegment::UtfCodepoint {
+                value: UtfCodepointExpr::panic(panic()),
                 encoding: StringEncoding::Utf8,
             }]),
             BitArrayExpr::value(vec![BitArraySegment::Bits(BitArrayExpr::panic(panic()))]),

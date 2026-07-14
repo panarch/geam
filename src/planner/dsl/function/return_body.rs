@@ -6,7 +6,8 @@ use crate::plan::{
     BitArrayFunctionReturn, BitArrayReturn, BoolFunctionReturn, BoolReturn, FloatFunctionReturn,
     FloatReturn, FunctionFunctionReturn, FunctionType, IntFunctionReturn, IntReturn,
     ListFunctionReturn, ListReturn, NilFunctionReturn, NilReturn, ReturnExpr, StringFunctionReturn,
-    StringReturn, TupleFunctionReturn, TupleReturn, ValueType,
+    StringReturn, TupleFunctionReturn, TupleReturn, UtfCodepointFunctionReturn, UtfCodepointReturn,
+    ValueType,
 };
 use crate::planner::context::FunctionRuntimeIds;
 
@@ -18,6 +19,7 @@ pub(crate) enum FunctionReturn {
     Int(IntReturn),
     String(StringReturn),
     BitArray(BitArrayReturn),
+    UtfCodepoint(UtfCodepointReturn),
     Float(FloatReturn),
     Bool(BoolReturn),
     Nil(NilReturn),
@@ -37,6 +39,10 @@ pub(crate) enum FunctionReturn {
     BitArrayFunction {
         type_: FunctionType,
         body: BitArrayFunctionReturn,
+    },
+    UtfCodepointFunction {
+        type_: FunctionType,
+        body: UtfCodepointFunctionReturn,
     },
     FloatFunction {
         type_: FunctionType,
@@ -73,6 +79,9 @@ impl FunctionReturn {
             Self::BitArray(body) => {
                 ReturnExpr::bit_array_body(runtime_ids.next_bit_array_id(), body)
             }
+            Self::UtfCodepoint(body) => {
+                ReturnExpr::utf_codepoint_body(runtime_ids.next_utf_codepoint_id(), body)
+            }
             Self::Float(body) => ReturnExpr::float_body(runtime_ids.next_float_id(), body),
             Self::Bool(body) => ReturnExpr::bool_body(runtime_ids.next_bool_id(), body),
             Self::Nil(body) => ReturnExpr::nil_body(runtime_ids.next_nil_id(), body),
@@ -87,6 +96,9 @@ impl FunctionReturn {
             }
             Self::List(ListReturn::BitArray(body)) => {
                 ReturnExpr::bit_array_list_body(runtime_ids.next_bit_array_list_id(), body)
+            }
+            Self::List(ListReturn::UtfCodepoint(body)) => {
+                ReturnExpr::utf_codepoint_list_body(runtime_ids.next_utf_codepoint_list_id(), body)
             }
             Self::List(ListReturn::Float(body)) => {
                 ReturnExpr::float_list_body(runtime_ids.next_float_list_id(), body)
@@ -114,6 +126,11 @@ impl FunctionReturn {
             }
             Self::BitArrayFunction { type_, body } => ReturnExpr::bit_array_function_body(
                 runtime_ids.next_bit_array_function_id(),
+                type_,
+                body,
+            ),
+            Self::UtfCodepointFunction { type_, body } => ReturnExpr::utf_codepoint_function_body(
+                runtime_ids.next_utf_codepoint_function_id(),
                 type_,
                 body,
             ),
@@ -155,13 +172,14 @@ mod tests {
         FunctionFunctionId, FunctionType, IntFunctionFunctionId, IntFunctionId,
         ListFunctionFunctionId, NilFunctionFunctionId, NilFunctionId, ParamLocal, ReturnBody,
         ReturnExpr, StringFunctionFunctionId, StringFunctionId, TupleFunctionFunctionId,
-        TupleFunctionId, ValueType,
+        TupleFunctionId, UtfCodepointFunctionFunctionId, UtfCodepointFunctionId, ValueType,
     };
     use crate::planner::context::FunctionRuntimeIds;
     use crate::planner::dsl::expression::{
         bit_array, bit_array_function_ref, bool_, bool_function_ref, float, float_function_ref,
-        function_function_ref, int, int_function_ref, list, list_function_ref, nil,
-        nil_function_ref, string, string_function_ref, tuple, tuple_function_ref,
+        function_function_ref, int, int_function_ref, list, list_function_ref, local_utf_codepoint,
+        nil, nil_function_ref, string, string_function_ref, tuple, tuple_function_ref,
+        utf_codepoint_function_ref,
     };
 
     #[test]
@@ -184,6 +202,13 @@ mod tests {
             ReturnExpr::bit_array_body(
                 BitArrayFunctionId(0),
                 ReturnBody::expr(bit_array([]).into()),
+            ),
+        );
+        assert_eq!(
+            FunctionReturn::from(local_utf_codepoint(0, "codepoint")).build(&mut runtime_ids),
+            ReturnExpr::utf_codepoint_body(
+                UtfCodepointFunctionId(0),
+                ReturnBody::expr(local_utf_codepoint(0, "codepoint").into()),
             ),
         );
         assert_eq!(
@@ -238,6 +263,18 @@ mod tests {
                     crate::plan::ListExpr::from(list(Vec::<Expr>::new(), ValueType::BitArray))
                         .into_bit_array()
                         .expect("expression should be List(BitArray)"),
+                ),
+            ),
+        );
+        assert_eq!(
+            FunctionReturn::from(list(Vec::<Expr>::new(), ValueType::UtfCodepoint))
+                .build(&mut runtime_ids),
+            ReturnExpr::utf_codepoint_list_body(
+                crate::plan::UtfCodepointListFunctionId(0),
+                crate::plan::UtfCodepointListReturn::expr(
+                    crate::plan::ListExpr::from(list(Vec::<Expr>::new(), ValueType::UtfCodepoint,))
+                        .into_utf_codepoint()
+                        .expect("expression should be List(UtfCodepoint)"),
                 ),
             ),
         );
@@ -361,6 +398,15 @@ mod tests {
                 BitArrayFunctionFunctionId(0),
                 FunctionType::new(Vec::new(), ValueType::BitArray),
                 ReturnBody::expr(bit_array_function_ref(0, Vec::<ParamLocal>::new()).into()),
+            ),
+        );
+        assert_eq!(
+            FunctionReturn::from(utf_codepoint_function_ref(0, Vec::<ParamLocal>::new(),))
+                .build(&mut runtime_ids),
+            ReturnExpr::utf_codepoint_function_body(
+                UtfCodepointFunctionFunctionId(0),
+                FunctionType::new(Vec::new(), ValueType::UtfCodepoint),
+                ReturnBody::expr(utf_codepoint_function_ref(0, Vec::<ParamLocal>::new()).into(),),
             ),
         );
         assert_eq!(

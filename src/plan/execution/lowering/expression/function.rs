@@ -7,6 +7,7 @@ mod nil;
 mod returning_function;
 mod string;
 mod tuple;
+mod utf_codepoint;
 
 pub(in crate::plan::execution::lowering) use bit_array::bit_array_function_expr;
 pub(in crate::plan::execution::lowering) use bool::bool_function_expr;
@@ -17,6 +18,7 @@ pub(in crate::plan::execution::lowering) use nil::nil_function_expr;
 pub(in crate::plan::execution::lowering) use returning_function::function_function_expr;
 pub(in crate::plan::execution::lowering) use string::string_function_expr;
 pub(in crate::plan::execution::lowering) use tuple::tuple_function_expr;
+pub(in crate::plan::execution::lowering) use utf_codepoint::utf_codepoint_function_expr;
 
 use crate::plan::{execution, module};
 
@@ -65,6 +67,11 @@ pub(in crate::plan::execution::lowering) fn function_expr(
         }
         module::FunctionExprKind::BitArray(expression) => {
             execution::FunctionExprKind::BitArray(bit_array_function_expr(expression, context))
+        }
+        module::FunctionExprKind::UtfCodepoint(expression) => {
+            execution::FunctionExprKind::UtfCodepoint(utf_codepoint_function_expr(
+                expression, context,
+            ))
         }
         module::FunctionExprKind::Float(expression) => {
             execution::FunctionExprKind::Float(float_function_expr(expression, context))

@@ -2,7 +2,7 @@ use crate::plan::{
     BitArrayExpr, BitArrayFunctionExpr, BoolExpr, BoolFunctionExpr, Expr, FloatExpr,
     FloatFunctionExpr, FunctionExpr, FunctionFunctionExpr, IntExpr, IntFunctionExpr, ListExpr,
     ListFunctionExpr, LocalId, NilExpr, NilFunctionExpr, StringExpr, StringFunctionExpr, TupleExpr,
-    TupleFunctionExpr, ValueType,
+    TupleFunctionExpr, UtfCodepointExpr, UtfCodepointFunctionExpr, ValueType,
 };
 use crate::planner::context::{FunctionLocalBinding, PlanContext};
 use crate::planner::error::{
@@ -300,6 +300,9 @@ fn local_get(local: LocalId, name: EcoString, type_: ValueType) -> Result<Expr, 
         (LocalId::BitArray(local), ValueType::BitArray) => {
             Ok(Expr::bit_array(BitArrayExpr::local_get(local, name)))
         }
+        (LocalId::UtfCodepoint(local), ValueType::UtfCodepoint) => Ok(Expr::utf_codepoint(
+            UtfCodepointExpr::local_get(local, name),
+        )),
         (LocalId::Bool(local), ValueType::Bool) => Ok(Expr::bool(BoolExpr::local_get(local, name))),
         (LocalId::Nil(local), ValueType::Nil) => Ok(Expr::nil(NilExpr::local_get(local, name))),
         _ => invalid_expression_shape(InvalidExpressionShapeKind::Invalid),
@@ -317,6 +320,9 @@ fn function_local_get(binding: FunctionLocalBinding, name: EcoString) -> Expr {
         FunctionLocalBinding::BitArray { local, type_ } => Expr::function(FunctionExpr::bit_array(
             BitArrayFunctionExpr::local_get(local, name, type_),
         )),
+        FunctionLocalBinding::UtfCodepoint { local, type_ } => Expr::function(
+            FunctionExpr::utf_codepoint(UtfCodepointFunctionExpr::local_get(local, name, type_)),
+        ),
         FunctionLocalBinding::Float { local, type_ } => Expr::function(FunctionExpr::float(
             FloatFunctionExpr::local_get(local, name, type_),
         )),
@@ -347,6 +353,7 @@ fn contains_function_value(type_: &ValueType) -> bool {
         | ValueType::Float
         | ValueType::String
         | ValueType::BitArray
+        | ValueType::UtfCodepoint
         | ValueType::Bool
         | ValueType::Nil => false,
     }
@@ -367,6 +374,7 @@ fn invalid_expression_type(type_: ValueType) -> InvalidExpressionType {
         ValueType::Float => InvalidExpressionType::Float,
         ValueType::String => InvalidExpressionType::String,
         ValueType::BitArray => InvalidExpressionType::BitArray,
+        ValueType::UtfCodepoint => InvalidExpressionType::UtfCodepoint,
         ValueType::Bool => InvalidExpressionType::Bool,
         ValueType::Nil => InvalidExpressionType::Nil,
         ValueType::Tuple(_) => InvalidExpressionType::Tuple,
@@ -391,7 +399,8 @@ mod tests {
         FunctionType, IntExpr, IntFunctionExpr, IntFunctionLocalId, IntLocalId, ListExpr,
         ListFunctionExpr, ListLocal, LocalId, NilExpr, NilFunctionExpr, NilFunctionLocalId,
         NilLocalId, StringExpr, StringFunctionExpr, StringFunctionLocalId, StringListLocalId,
-        TupleExpr, TupleFunctionExpr, TupleFunctionLocalId, TupleLocalId, ValueType,
+        TupleExpr, TupleFunctionExpr, TupleFunctionLocalId, TupleLocalId, UtfCodepointExpr,
+        UtfCodepointFunctionExpr, UtfCodepointFunctionLocalId, UtfCodepointLocalId, ValueType,
     };
     use crate::planner::context::{AnonymousFunctions, FunctionLocalBinding, PlanContext};
     use crate::planner::support::dummy_span;
@@ -1041,6 +1050,7 @@ mod tests {
         let mut anonymous = AnonymousFunctions::default();
         let mut context = PlanContext::new(&module, &functions, &mut anonymous);
         context.define_bit_array_local("bits".into());
+        context.define_utf_codepoint_local("codepoint".into());
         context.define_nil_local("none".into());
         context.define_tuple_local("pair".into(), vec![ValueType::Int]);
         context.define_list_local("values".into(), ValueType::String);
@@ -1054,6 +1064,13 @@ mod tests {
             Ok(Expr::bit_array(BitArrayExpr::local_get(
                 BitArrayLocalId(0),
                 "bits".into(),
+            ))),
+        );
+        assert_eq!(
+            super::plan_local("codepoint".into(), &context),
+            Ok(Expr::utf_codepoint(UtfCodepointExpr::local_get(
+                UtfCodepointLocalId(0),
+                "codepoint".into(),
             ))),
         );
         assert_eq!(
@@ -1106,6 +1123,8 @@ mod tests {
         let unary_int = FunctionType::new(vec![ValueType::Int], ValueType::Int);
         let unary_string = FunctionType::new(vec![ValueType::String], ValueType::String);
         let unary_bit_array = FunctionType::new(vec![ValueType::BitArray], ValueType::BitArray);
+        let unary_utf_codepoint =
+            FunctionType::new(vec![ValueType::UtfCodepoint], ValueType::UtfCodepoint);
         let unary_float = FunctionType::new(vec![ValueType::Float], ValueType::Float);
         let unary_bool = FunctionType::new(vec![ValueType::Bool], ValueType::Bool);
         let unary_nil = FunctionType::new(vec![ValueType::Nil], ValueType::Nil);
@@ -1157,6 +1176,22 @@ mod tests {
                 "f".into(),
                 unary_bit_array,
             ))),
+        );
+        assert_eq!(
+            function_local_get(
+                FunctionLocalBinding::UtfCodepoint {
+                    local: UtfCodepointFunctionLocalId(0),
+                    type_: unary_utf_codepoint.clone(),
+                },
+                "f".into(),
+            ),
+            Expr::function(FunctionExpr::utf_codepoint(
+                UtfCodepointFunctionExpr::local_get(
+                    UtfCodepointFunctionLocalId(0),
+                    "f".into(),
+                    unary_utf_codepoint,
+                ),
+            )),
         );
         assert_eq!(
             function_local_get(
@@ -1268,6 +1303,7 @@ mod tests {
             ValueType::Float,
             ValueType::String,
             ValueType::BitArray,
+            ValueType::UtfCodepoint,
             ValueType::Bool,
             ValueType::Nil,
             ValueType::List(Box::new(ValueType::Int)),
@@ -1279,6 +1315,7 @@ mod tests {
                 ValueType::Float,
                 ValueType::String,
                 ValueType::BitArray,
+                ValueType::UtfCodepoint,
                 ValueType::Bool,
                 ValueType::Nil,
                 ValueType::Tuple(Vec::new()),
@@ -1291,6 +1328,7 @@ mod tests {
                 InvalidExpressionType::Float,
                 InvalidExpressionType::String,
                 InvalidExpressionType::BitArray,
+                InvalidExpressionType::UtfCodepoint,
                 InvalidExpressionType::Bool,
                 InvalidExpressionType::Nil,
                 InvalidExpressionType::Tuple,

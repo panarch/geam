@@ -91,6 +91,12 @@ fn function_call_expr(
             ))),
             None => Err(function_call_return_type_mismatch()),
         },
+        ValueType::UtfCodepoint => match function.into_utf_codepoint() {
+            Some(function) => Ok(Expr::utf_codepoint(
+                crate::plan::UtfCodepointExpr::function_call(function, args),
+            )),
+            None => Err(function_call_return_type_mismatch()),
+        },
         ValueType::Float => match function.into_float() {
             Some(function) => Ok(Expr::float(crate::plan::FloatExpr::function_call(
                 function, args,
@@ -157,6 +163,9 @@ fn function_returning_function_value_call_expr(
         ValueType::BitArray => Expr::function(FunctionExpr::bit_array(
             crate::plan::BitArrayFunctionExpr::function_call(function, args, return_type),
         )),
+        ValueType::UtfCodepoint => Expr::function(FunctionExpr::utf_codepoint(
+            crate::plan::UtfCodepointFunctionExpr::function_call(function, args, return_type),
+        )),
         ValueType::Float => Expr::function(FunctionExpr::float(
             crate::plan::FloatFunctionExpr::function_call(function, args, return_type),
         )),
@@ -190,7 +199,7 @@ mod tests {
         FunctionFunctionFunctionId, FunctionFunctionId, FunctionType, IntFunctionFunctionId,
         IntLocalId, LocalId, NilFunctionFunctionId, NilFunctionId, ParamLocal, RuntimeFunctionId,
         StringFunctionFunctionId, StringFunctionId, TupleFunctionFunctionId, TupleFunctionId,
-        TupleLocalId, ValueType,
+        TupleLocalId, UtfCodepointFunctionFunctionId, UtfCodepointFunctionId, ValueType,
     };
     use crate::planner::dsl::{
         block_int_function, bool_, bool_case_int_function, call_int_function, function,
@@ -811,6 +820,19 @@ pub fn main() {
         assert_eq!(
             function_call_expr(
                 FunctionExpr::from(function_ref(
+                    RuntimeFunctionId::UtfCodepoint(UtfCodepointFunctionId(0)),
+                    Vec::<ParamLocal>::new(),
+                )),
+                Vec::new(),
+                ValueType::UtfCodepoint,
+            )
+            .expect("utf codepoint function call")
+            .value_type(),
+            ValueType::UtfCodepoint,
+        );
+        assert_eq!(
+            function_call_expr(
+                FunctionExpr::from(function_ref(
                     RuntimeFunctionId::Float(FloatFunctionId(0)),
                     Vec::<ParamLocal>::new(),
                 )),
@@ -913,6 +935,10 @@ pub fn main() {
                 FunctionType::new(vec![ValueType::BitArray], ValueType::BitArray),
             ),
             (
+                FunctionFunctionId::UtfCodepoint(UtfCodepointFunctionFunctionId(0)),
+                FunctionType::new(vec![ValueType::UtfCodepoint], ValueType::UtfCodepoint),
+            ),
+            (
                 FunctionFunctionId::Float(FloatFunctionFunctionId(0)),
                 FunctionType::new(vec![ValueType::Float], ValueType::Float),
             ),
@@ -1002,6 +1028,14 @@ pub fn main() {
                 FunctionExpr::from(int_function_ref(0, Vec::<ParamLocal>::new())),
                 Vec::new(),
                 ValueType::BitArray,
+            ),
+            Err(function_call_return_type_mismatch()),
+        );
+        assert_eq!(
+            function_call_expr(
+                FunctionExpr::from(int_function_ref(0, Vec::<ParamLocal>::new())),
+                Vec::new(),
+                ValueType::UtfCodepoint,
             ),
             Err(function_call_return_type_mismatch()),
         );

@@ -11,12 +11,14 @@ impl FrameLayout {
             ReturnExprKind::Float { body, .. } => self.include_float_return(body),
             ReturnExprKind::String { body, .. } => self.include_string_return(body),
             ReturnExprKind::BitArray { body, .. } => self.include_bit_array_return(body),
+            ReturnExprKind::UtfCodepoint { body, .. } => self.include_utf_codepoint_return(body),
             ReturnExprKind::Bool { body, .. } => self.include_bool_return(body),
             ReturnExprKind::Nil { body, .. } => self.include_nil_return(body),
             ReturnExprKind::Tuple { body, .. } => self.include_tuple_return(body),
             ReturnExprKind::IntList { body, .. } => self.include_typed_list_return(body),
             ReturnExprKind::StringList { body, .. } => self.include_typed_list_return(body),
             ReturnExprKind::BitArrayList { body, .. } => self.include_typed_list_return(body),
+            ReturnExprKind::UtfCodepointList { body, .. } => self.include_typed_list_return(body),
             ReturnExprKind::FloatList { body, .. } => self.include_typed_list_return(body),
             ReturnExprKind::BoolList { body, .. } => self.include_typed_list_return(body),
             ReturnExprKind::NilList { body, .. } => self.include_typed_list_return(body),
@@ -34,6 +36,9 @@ impl FrameLayout {
             }
             ReturnExprKind::BitArrayFunction { body, .. } => {
                 self.include_bit_array_function_return(body);
+            }
+            ReturnExprKind::UtfCodepointFunction { body, .. } => {
+                self.include_utf_codepoint_function_return(body);
             }
             ReturnExprKind::BoolFunction { body, .. } => {
                 self.include_bool_function_return(body);

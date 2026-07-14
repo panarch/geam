@@ -14,7 +14,7 @@ pub use self::function::FunctionValue;
 pub(crate) use self::function::{
     BitArrayFunctionValue, BoolFunctionValue, FloatFunctionValue, FunctionFunctionValue,
     FunctionValueKind, IntFunctionValue, ListFunctionValue, NilFunctionValue, StringFunctionValue,
-    TupleFunctionValue,
+    TupleFunctionValue, UtfCodepointFunctionValue,
 };
 pub use self::list::{ListValue, ListValueItemTypeMismatch};
 
@@ -24,6 +24,7 @@ pub enum Value {
     Float(f64),
     String(EcoString),
     BitArray(BitArrayValue),
+    UtfCodepoint(char),
     Bool(bool),
     Nil,
     Tuple(Vec<Value>),
@@ -38,6 +39,7 @@ impl Value {
             Self::Float(_) => ValueType::Float,
             Self::String(_) => ValueType::String,
             Self::BitArray(_) => ValueType::BitArray,
+            Self::UtfCodepoint(_) => ValueType::UtfCodepoint,
             Self::Bool(_) => ValueType::Bool,
             Self::Nil => ValueType::Nil,
             Self::Tuple(values) => ValueType::Tuple(values.iter().map(Self::value_type).collect()),
@@ -58,6 +60,10 @@ mod tests {
         assert_eq!(
             Value::BitArray(BitArrayValue::from_bytes(vec![1])).value_type(),
             ValueType::BitArray,
+        );
+        assert_eq!(
+            Value::UtfCodepoint('\u{10ffff}').value_type(),
+            ValueType::UtfCodepoint,
         );
         assert_eq!(Value::Bool(true).value_type(), ValueType::Bool);
         assert_eq!(Value::Nil.value_type(), ValueType::Nil);

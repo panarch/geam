@@ -154,6 +154,17 @@ fn bind_function_case_subject(
                 ))),
             )
         }
+        FunctionExprKind::UtfCodepoint(subject) => {
+            let local = context.define_internal_utf_codepoint_function_local();
+            let name = internal_utf_codepoint_function_case_subject_name(local);
+            let type_ = subject.type_().clone();
+            (
+                Step::let_utf_codepoint_function(local, name.clone(), subject),
+                Expr::function(FunctionExpr::utf_codepoint(
+                    crate::plan::UtfCodepointFunctionExpr::local_get(local, name, type_),
+                )),
+            )
+        }
         FunctionExprKind::Float(subject) => {
             let local = context.define_internal_float_function_local();
             let name = internal_float_function_case_subject_name(local);
@@ -240,6 +251,12 @@ fn internal_bit_array_function_case_subject_name(
     format!("<case:bit_array_function:{}>", local.0).into()
 }
 
+fn internal_utf_codepoint_function_case_subject_name(
+    local: crate::plan::UtfCodepointFunctionLocalId,
+) -> EcoString {
+    format!("<case:utf_codepoint_function:{}>", local.0).into()
+}
+
 fn internal_float_function_case_subject_name(
     local: crate::plan::FloatFunctionLocalId,
 ) -> EcoString {
@@ -282,7 +299,7 @@ mod tests {
         function_function_ref, int, int_function_call_arg, int_function_ref, int_return_block,
         int_return_expr, let_bool_function_step, let_int_function_step, let_nil_function_step,
         let_string_function_step, list_function_ref, local_int, local_int_function, module,
-        nil_function_ref, string_function_ref, tuple_function_ref,
+        nil_function_ref, string_function_ref, tuple_function_ref, utf_codepoint_function_ref,
     };
     use crate::planner::plan_module;
     use crate::planner::support::{dummy_span, expect_plan_error};
@@ -446,6 +463,26 @@ pub fn main() {
                     "<case:bit_array_function:0>".into(),
                     FunctionType::new(Vec::new(), ValueType::BitArray),
                 ))),
+            ),
+        );
+        assert_eq!(
+            bind_function_case_subject(
+                utf_codepoint_function_ref(0, Vec::<LocalId>::new()).into(),
+                &mut context,
+            ),
+            (
+                Step::let_utf_codepoint_function(
+                    crate::plan::UtfCodepointFunctionLocalId(0),
+                    "<case:utf_codepoint_function:0>".into(),
+                    utf_codepoint_function_ref(0, Vec::<LocalId>::new()).into(),
+                ),
+                Expr::function(FunctionExpr::utf_codepoint(
+                    crate::plan::UtfCodepointFunctionExpr::local_get(
+                        crate::plan::UtfCodepointFunctionLocalId(0),
+                        "<case:utf_codepoint_function:0>".into(),
+                        FunctionType::new(Vec::new(), ValueType::UtfCodepoint),
+                    ),
+                )),
             ),
         );
         assert_eq!(

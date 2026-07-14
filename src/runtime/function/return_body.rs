@@ -8,7 +8,8 @@ use crate::plan::execution::{
     IntFunctionId, IntListFunctionId, ListFunctionFunctionId, ListFunctionId, ListListFunctionId,
     NilFunctionFunctionId, NilFunctionId, NilListFunctionId, ReturnBody, ReturnBodyKind,
     StringFunctionFunctionId, StringFunctionId, StringListFunctionId, TupleFunctionFunctionId,
-    TupleFunctionId, TupleListFunctionId,
+    TupleFunctionId, TupleListFunctionId, UtfCodepointFunctionFunctionId, UtfCodepointFunctionId,
+    UtfCodepointListFunctionId,
 };
 use crate::runtime::error::ExecutionResult;
 use crate::runtime::expression::{
@@ -18,18 +19,19 @@ use crate::runtime::expression::{
     eval_int_function_expr, eval_int_list_expr, eval_list_function_expr, eval_list_list_expr,
     eval_nil_expr, eval_nil_function_expr, eval_nil_list_expr, eval_string_expr,
     eval_string_function_expr, eval_string_list_expr, eval_tuple_expr, eval_tuple_function_expr,
-    eval_tuple_list_expr,
+    eval_tuple_list_expr, eval_utf_codepoint_expr, eval_utf_codepoint_function_expr,
+    eval_utf_codepoint_list_expr,
 };
 use crate::runtime::frame::Frame;
 use crate::runtime::state::{
     BitArrayListValueId, BoolListValueId, FloatListValueId, FunctionListValueId, IntListValueId,
     ListListValueId, ListValueId, NilListValueId, RuntimeState, StringListValueId,
-    TupleListValueId,
+    TupleListValueId, UtfCodepointListValueId,
 };
 use crate::runtime::{
     EvaluatedBitArray, EvaluatedBitArrayFunction, EvaluatedBoolFunction, EvaluatedFloatFunction,
     EvaluatedFunctionFunction, EvaluatedIntFunction, EvaluatedListFunction, EvaluatedNilFunction,
-    EvaluatedStringFunction, EvaluatedTupleFunction, EvaluatedValue,
+    EvaluatedStringFunction, EvaluatedTupleFunction, EvaluatedUtfCodepointFunction, EvaluatedValue,
 };
 use ecow::EcoString;
 use num_bigint::BigInt;
@@ -250,6 +252,36 @@ pub(super) fn run_bit_array_loop(
     }
 }
 
+pub(super) fn run_utf_codepoint_loop(
+    plan: &ExecutionPlan,
+    state: &mut RuntimeState,
+    mut function: UtfCodepointFunctionId,
+    mut frame: Frame,
+) -> ExecutionResult<char> {
+    loop {
+        let runtime_function = plan.utf_codepoint_function(function);
+        execute_steps(plan, state, runtime_function.steps(), &mut frame)?;
+        let outcome = eval_return_body(
+            plan,
+            state,
+            &mut frame,
+            runtime_function.return_(),
+            eval_utf_codepoint_expr,
+        )?;
+        match outcome {
+            ReturnOutcome::Value(value) => return finish_return(state, frame, value),
+            ReturnOutcome::TailCall {
+                function: next,
+                args,
+            } => {
+                let frame_layout = plan.utf_codepoint_function(next).frame_layout();
+                frame = bind_tail_arguments(plan, state, args, frame, frame_layout)?;
+                function = next;
+            }
+        }
+    }
+}
+
 pub(super) fn run_bool_loop(
     plan: &ExecutionPlan,
     state: &mut RuntimeState,
@@ -340,6 +372,9 @@ pub(super) fn run_list_loop(
         }
         ListFunctionId::BitArray(function) => {
             run_bit_array_list_loop(plan, state, function, frame).map(Into::into)
+        }
+        ListFunctionId::UtfCodepoint(function) => {
+            run_utf_codepoint_list_loop(plan, state, function, frame).map(Into::into)
         }
         ListFunctionId::Float(function) => {
             run_float_list_loop(plan, state, function, frame).map(Into::into)
@@ -445,6 +480,36 @@ pub(super) fn run_bit_array_list_loop(
                 args,
             } => {
                 let frame_layout = plan.bit_array_list_function(next).frame_layout();
+                frame = bind_tail_arguments(plan, state, args, frame, frame_layout)?;
+                function = next;
+            }
+        }
+    }
+}
+
+pub(super) fn run_utf_codepoint_list_loop(
+    plan: &ExecutionPlan,
+    state: &mut RuntimeState,
+    mut function: UtfCodepointListFunctionId,
+    mut frame: Frame,
+) -> ExecutionResult<UtfCodepointListValueId> {
+    loop {
+        let runtime_function = plan.utf_codepoint_list_function(function);
+        execute_steps(plan, state, runtime_function.steps(), &mut frame)?;
+        let outcome = eval_return_body(
+            plan,
+            state,
+            &mut frame,
+            runtime_function.return_(),
+            eval_utf_codepoint_list_expr,
+        )?;
+        match outcome {
+            ReturnOutcome::Value(value) => return finish_return(state, frame, value),
+            ReturnOutcome::TailCall {
+                function: next,
+                args,
+            } => {
+                let frame_layout = plan.utf_codepoint_list_function(next).frame_layout();
                 frame = bind_tail_arguments(plan, state, args, frame, frame_layout)?;
                 function = next;
             }
@@ -737,6 +802,36 @@ pub(super) fn run_bit_array_function_loop(
     }
 }
 
+pub(super) fn run_utf_codepoint_function_loop(
+    plan: &ExecutionPlan,
+    state: &mut RuntimeState,
+    mut function: UtfCodepointFunctionFunctionId,
+    mut frame: Frame,
+) -> ExecutionResult<EvaluatedUtfCodepointFunction> {
+    loop {
+        let runtime_function = plan.utf_codepoint_function_function(function);
+        execute_steps(plan, state, runtime_function.steps(), &mut frame)?;
+        let outcome = eval_return_body(
+            plan,
+            state,
+            &mut frame,
+            runtime_function.return_(),
+            eval_utf_codepoint_function_expr,
+        )?;
+        match outcome {
+            ReturnOutcome::Value(value) => return finish_return(state, frame, value),
+            ReturnOutcome::TailCall {
+                function: next,
+                args,
+            } => {
+                let frame_layout = plan.utf_codepoint_function_function(next).frame_layout();
+                frame = bind_tail_arguments(plan, state, args, frame, frame_layout)?;
+                function = next;
+            }
+        }
+    }
+}
+
 pub(super) fn run_bool_function_loop(
     plan: &ExecutionPlan,
     state: &mut RuntimeState,
@@ -1002,6 +1097,30 @@ mod tests {
                 ),
                 Value::Int(20_000.into()),
             ),
+            (
+                r#"
+fn codepoint() -> UtfCodepoint { let assert <<value:utf8_codepoint>> = <<65>> value }
+fn recurse(count: Int) -> UtfCodepoint { case count { 0 -> codepoint() _ -> recurse(count - 1) } }
+pub fn main() { recurse(3) }
+"#,
+                Value::UtfCodepoint('A'),
+            ),
+            (
+                r#"
+fn codepoint() -> UtfCodepoint { let assert <<value:utf8_codepoint>> = <<65>> value }
+fn recurse(count: Int) -> List(UtfCodepoint) { case count { 0 -> [codepoint()] _ -> recurse(count - 1) } }
+pub fn main() { recurse(3) }
+"#,
+                Value::List(ListValue::utf_codepoint(vec!['A'])),
+            ),
+            (
+                r#"
+fn codepoint() -> UtfCodepoint { let assert <<value:utf8_codepoint>> = <<65>> value }
+fn recurse(count: Int) -> fn() -> UtfCodepoint { case count { 0 -> fn() { codepoint() } _ -> recurse(count - 1) } }
+pub fn main() { recurse(3)() }
+"#,
+                Value::UtfCodepoint('A'),
+            ),
         ];
 
         for (source, expected) in cases {
@@ -1015,6 +1134,7 @@ mod tests {
             ("Int", "0"),
             ("String", "\"\""),
             ("BitArray", "<<>>"),
+            ("UtfCodepoint", "panic"),
             ("Float", "0.0"),
             ("Bool", "False"),
             ("Nil", "Nil"),
@@ -1022,6 +1142,7 @@ mod tests {
             ("List(Int)", "[]"),
             ("List(String)", "[]"),
             ("List(BitArray)", "[]"),
+            ("List(UtfCodepoint)", "[]"),
             ("List(Float)", "[]"),
             ("List(Bool)", "[]"),
             ("List(Nil)", "[]"),
@@ -1031,6 +1152,7 @@ mod tests {
             ("fn() -> Int", "fn() { 0 }"),
             ("fn() -> String", "fn() { \"\" }"),
             ("fn() -> BitArray", "fn() { <<>> }"),
+            ("fn() -> UtfCodepoint", "fn() { panic }"),
             ("fn() -> Float", "fn() { 0.0 }"),
             ("fn() -> Bool", "fn() { False }"),
             ("fn() -> Nil", "fn() { Nil }"),
@@ -1057,6 +1179,7 @@ mod tests {
             "Int",
             "String",
             "BitArray",
+            "UtfCodepoint",
             "Float",
             "Bool",
             "Nil",
@@ -1064,6 +1187,7 @@ mod tests {
             "List(Int)",
             "List(String)",
             "List(BitArray)",
+            "List(UtfCodepoint)",
             "List(Float)",
             "List(Bool)",
             "List(Nil)",
@@ -1073,6 +1197,7 @@ mod tests {
             "fn() -> Int",
             "fn() -> String",
             "fn() -> BitArray",
+            "fn() -> UtfCodepoint",
             "fn() -> Float",
             "fn() -> Bool",
             "fn() -> Nil",
@@ -1129,6 +1254,8 @@ mod tests {
         let sources = [
             "pub fn main() -> List(Int) { panic }",
             "pub fn main() -> List(String) { panic }",
+            "pub fn main() -> List(BitArray) { panic }",
+            "pub fn main() -> List(UtfCodepoint) { panic }",
             "pub fn main() -> List(Float) { panic }",
             "pub fn main() -> List(Bool) { panic }",
             "pub fn main() -> List(Nil) { panic }",

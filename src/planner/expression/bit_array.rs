@@ -46,6 +46,7 @@ enum SegmentKind {
     Float,
     Bits,
     String(StringEncoding),
+    UtfCodepoint(StringEncoding),
 }
 
 fn plan_segment<Value>(
@@ -56,8 +57,10 @@ fn plan_segment<Value>(
     let value_type = value.value_type();
     let mut kind = None;
     let mut endianness = Endianness::Big;
+    let mut explicit_endianness = false;
     let mut size = None;
     let mut unit = 1usize;
+    let mut explicit_unit = false;
 
     for option in options {
         match option {
@@ -75,9 +78,29 @@ fn plan_segment<Value>(
                 &mut kind,
                 SegmentKind::String(StringEncoding::Utf32(Endianness::Big)),
             )?,
-            BitArrayOption::Big { .. } => endianness = Endianness::Big,
-            BitArrayOption::Little { .. } => endianness = Endianness::Little,
-            BitArrayOption::Unit { value, .. } => unit = usize::from(value),
+            BitArrayOption::Utf8Codepoint { .. } => {
+                set_kind(&mut kind, SegmentKind::UtfCodepoint(StringEncoding::Utf8))?
+            }
+            BitArrayOption::Utf16Codepoint { .. } => set_kind(
+                &mut kind,
+                SegmentKind::UtfCodepoint(StringEncoding::Utf16(Endianness::Big)),
+            )?,
+            BitArrayOption::Utf32Codepoint { .. } => set_kind(
+                &mut kind,
+                SegmentKind::UtfCodepoint(StringEncoding::Utf32(Endianness::Big)),
+            )?,
+            BitArrayOption::Big { .. } => {
+                endianness = Endianness::Big;
+                explicit_endianness = true;
+            }
+            BitArrayOption::Little { .. } => {
+                endianness = Endianness::Little;
+                explicit_endianness = true;
+            }
+            BitArrayOption::Unit { value, .. } => {
+                unit = usize::from(value);
+                explicit_unit = true;
+            }
             BitArrayOption::Size { value, .. } => {
                 let Some(value) = int_literal(value.as_ref()) else {
                     return unsupported(UnsupportedBitArraySegmentReason::DynamicSize);
@@ -85,11 +108,6 @@ fn plan_segment<Value>(
                 size = Some(usize::try_from(value).map_err(|_| {
                     unsupported_error(UnsupportedBitArraySegmentReason::SizeOutOfRange)
                 })?);
-            }
-            BitArrayOption::Utf8Codepoint { .. }
-            | BitArrayOption::Utf16Codepoint { .. }
-            | BitArrayOption::Utf32Codepoint { .. } => {
-                return unsupported(UnsupportedBitArraySegmentReason::UtfCodepoint);
             }
             BitArrayOption::Native { .. } => {
                 return unsupported(UnsupportedBitArraySegmentReason::NativeEndianness);
@@ -100,17 +118,21 @@ fn plan_segment<Value>(
         }
     }
 
-    let kind = kind.unwrap_or(match value_type {
-        ValueType::Int => SegmentKind::Int,
-        ValueType::Float => SegmentKind::Float,
-        ValueType::String => SegmentKind::String(StringEncoding::Utf8),
-        ValueType::BitArray => SegmentKind::Bits,
-        ValueType::Bool
-        | ValueType::Nil
-        | ValueType::Tuple(_)
-        | ValueType::List(_)
-        | ValueType::Function(_) => SegmentKind::Bits,
-    });
+    let kind = match kind {
+        Some(kind) => kind,
+        None => match value_type {
+            ValueType::Int => SegmentKind::Int,
+            ValueType::Float => SegmentKind::Float,
+            ValueType::String
+            | ValueType::BitArray
+            | ValueType::UtfCodepoint
+            | ValueType::Bool
+            | ValueType::Nil
+            | ValueType::Tuple(_)
+            | ValueType::List(_)
+            | ValueType::Function(_) => return invalid_segment_option(),
+        },
+    };
 
     match kind {
         SegmentKind::Int => {
@@ -168,6 +190,23 @@ fn plan_segment<Value>(
             };
             Ok(BitArraySegment::String { value, encoding })
         }
+        SegmentKind::UtfCodepoint(encoding) => {
+            if size.is_some()
+                || explicit_unit
+                || matches!(encoding, StringEncoding::Utf8) && explicit_endianness
+            {
+                return invalid_segment_option();
+            }
+            let Some(value) = value.into_utf_codepoint() else {
+                return invalid_segment_option();
+            };
+            let encoding = match encoding {
+                StringEncoding::Utf8 => StringEncoding::Utf8,
+                StringEncoding::Utf16(_) => StringEncoding::Utf16(endianness),
+                StringEncoding::Utf32(_) => StringEncoding::Utf32(endianness),
+            };
+            Ok(BitArraySegment::UtfCodepoint { value, encoding })
+        }
     }
 }
 
@@ -214,7 +253,7 @@ mod tests {
     use crate::plan::{
         BitArrayExpr, BitArraySegment, Endianness, Expr, FloatBitSize, FloatExpr, FunctionExpr,
         FunctionReference, IntExpr, IntFunctionId, ParamLocal, RuntimeFunctionId, StringEncoding,
-        StringExpr,
+        StringExpr, UtfCodepointExpr, UtfCodepointLocalId,
     };
     use crate::planner::error::{
         InvalidExpressionShapeKind, InvalidTypedAstReason, PlanError,
@@ -353,6 +392,98 @@ mod tests {
                 }),
             );
         }
+
+        let codepoint = UtfCodepointExpr::local_get(UtfCodepointLocalId(0), "codepoint".into());
+        let static_size = |_: &()| Some(BigInt::from(1));
+        for (options, expected) in [
+            (
+                vec![BitArrayOption::Utf8Codepoint { location }],
+                StringEncoding::Utf8,
+            ),
+            (
+                vec![
+                    BitArrayOption::Utf16Codepoint { location },
+                    BitArrayOption::Little { location },
+                ],
+                StringEncoding::Utf16(Endianness::Little),
+            ),
+            (
+                vec![
+                    BitArrayOption::Utf32Codepoint { location },
+                    BitArrayOption::Big { location },
+                ],
+                StringEncoding::Utf32(Endianness::Big),
+            ),
+        ] {
+            assert_eq!(
+                plan_segment(Expr::utf_codepoint(codepoint.clone()), options, static_size,),
+                Ok(BitArraySegment::UtfCodepoint {
+                    value: codepoint.clone(),
+                    encoding: expected,
+                }),
+            );
+        }
+        assert_eq!(
+            plan_segment(
+                Expr::utf_codepoint(codepoint.clone()),
+                Vec::new(),
+                static_size,
+            ),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionShape {
+                    kind: InvalidExpressionShapeKind::BitArraySegmentOption,
+                },
+            }),
+        );
+        assert_eq!(
+            plan_segment(
+                Expr::utf_codepoint(codepoint.clone()),
+                vec![
+                    BitArrayOption::Utf8Codepoint { location },
+                    BitArrayOption::Size {
+                        location,
+                        value: Box::new(()),
+                        short_form: false,
+                    },
+                ],
+                static_size,
+            ),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionShape {
+                    kind: InvalidExpressionShapeKind::BitArraySegmentOption,
+                },
+            }),
+        );
+        assert_eq!(
+            plan_segment(
+                Expr::utf_codepoint(codepoint.clone()),
+                vec![
+                    BitArrayOption::Utf8Codepoint { location },
+                    BitArrayOption::Little { location },
+                ],
+                static_size,
+            ),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionShape {
+                    kind: InvalidExpressionShapeKind::BitArraySegmentOption,
+                },
+            }),
+        );
+        assert_eq!(
+            plan_segment(
+                Expr::utf_codepoint(codepoint),
+                vec![
+                    BitArrayOption::Utf16Codepoint { location },
+                    BitArrayOption::Unit { location, value: 1 },
+                ],
+                static_size,
+            ),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionShape {
+                    kind: InvalidExpressionShapeKind::BitArraySegmentOption,
+                },
+            }),
+        );
     }
 
     #[test]
@@ -396,6 +527,18 @@ mod tests {
                 BitArrayOption::Utf16 { location },
                 BitArrayOption::Utf32 { location },
             ],
+            vec![
+                BitArrayOption::Utf8Codepoint { location },
+                BitArrayOption::Utf8Codepoint { location },
+            ],
+            vec![
+                BitArrayOption::Utf16Codepoint { location },
+                BitArrayOption::Utf16Codepoint { location },
+            ],
+            vec![
+                BitArrayOption::Utf32Codepoint { location },
+                BitArrayOption::Utf32Codepoint { location },
+            ],
         ] {
             assert_eq!(
                 plan_segment(Expr::int(IntExpr::value(1.into())), options, |_: &()| None,),
@@ -418,6 +561,28 @@ mod tests {
             plan_segment(
                 Expr::string(StringExpr::value("wrong".into())),
                 vec![BitArrayOption::Int { location }],
+                |_: &()| None,
+            ),
+            invalid,
+        );
+        assert_eq!(
+            plan_segment(
+                Expr::utf_codepoint(UtfCodepointExpr::local_get(
+                    UtfCodepointLocalId(0),
+                    "codepoint".into(),
+                )),
+                vec![
+                    BitArrayOption::Utf8Codepoint { location },
+                    BitArrayOption::Unit { location, value: 2 },
+                ],
+                |_: &()| None,
+            ),
+            invalid,
+        );
+        assert_eq!(
+            plan_segment(
+                Expr::int(IntExpr::value(1.into())),
+                vec![BitArrayOption::Utf8Codepoint { location }],
                 |_: &()| None,
             ),
             invalid,
@@ -541,20 +706,12 @@ mod tests {
 
     #[test]
     fn unsupported_segment_options_keep_distinct_profile_reasons() {
-        let cases = [
-            (
-                BitArrayOption::Utf8Codepoint {
-                    location: SrcSpan::new(0, 0),
-                },
-                UnsupportedBitArraySegmentReason::UtfCodepoint,
-            ),
-            (
-                BitArrayOption::Native {
-                    location: SrcSpan::new(0, 0),
-                },
-                UnsupportedBitArraySegmentReason::NativeEndianness,
-            ),
-        ];
+        let cases = [(
+            BitArrayOption::Native {
+                location: SrcSpan::new(0, 0),
+            },
+            UnsupportedBitArraySegmentReason::NativeEndianness,
+        )];
 
         for (option, reason) in cases {
             assert_eq!(
