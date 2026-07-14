@@ -1,9 +1,10 @@
 use super::FrameLayout;
 use crate::plan::{
-    BitArrayExpr, BitArrayExprKind, BitArraySegment, BoolExpr, BoolExprKind, Expr, ExprKind,
-    FloatExpr, FloatExprKind, IntExpr, IntExprKind, ListElements, ListExpr, ListItem,
-    ListLocalExpr, NilExpr, NilExprKind, PanicExpr, StringExpr, StringExprKind, TupleExpr,
-    TupleExprKind, TypedListExpr, TypedListExprKind, UtfCodepointExpr, UtfCodepointExprKind,
+    BitArrayExpr, BitArrayExprKind, BitArraySegment, BoolExpr, BoolExprKind, CustomExpr,
+    CustomExprKind, Expr, ExprKind, FloatExpr, FloatExprKind, IntExpr, IntExprKind, ListElements,
+    ListExpr, ListItem, ListLocalExpr, NilExpr, NilExprKind, PanicExpr, StringExpr, StringExprKind,
+    TupleExpr, TupleExprKind, TypedListExpr, TypedListExprKind, UtfCodepointExpr,
+    UtfCodepointExprKind,
 };
 
 impl FrameLayout {
@@ -13,6 +14,7 @@ impl FrameLayout {
             ExprKind::String(expression) => self.include_string_expr(expression),
             ExprKind::BitArray(expression) => self.include_bit_array_expr(expression),
             ExprKind::UtfCodepoint(expression) => self.include_utf_codepoint_expr(expression),
+            ExprKind::Custom(expression) => self.include_custom_expr(expression),
             ExprKind::Float(expression) => self.include_float_expr(expression),
             ExprKind::Bool(expression) => self.include_bool_expr(expression),
             ExprKind::Nil(expression) => self.include_nil_expr(expression),
@@ -303,6 +305,71 @@ impl FrameLayout {
         }
     }
 
+    pub(in crate::plan::module::frame) fn include_custom_expr(&mut self, expression: &CustomExpr) {
+        match expression.kind() {
+            CustomExprKind::Constructor { arguments, .. } => {
+                for argument in arguments {
+                    self.include_expr(argument);
+                }
+            }
+            CustomExprKind::Panic(panic) => self.include_panic_expr(panic),
+            CustomExprKind::LocalGet { local, .. } => self.include_custom(*local),
+            CustomExprKind::Call { args, .. } => self.include_call_args(args),
+            CustomExprKind::FunctionCall { function, args } => {
+                self.include_custom_function_expr(function);
+                self.include_call_args(args);
+            }
+            CustomExprKind::TupleIndex { tuple, .. } => self.include_tuple_expr(tuple),
+            CustomExprKind::ListIndex { list, .. } => self.include_typed_list_expr(list),
+            CustomExprKind::BoolCase {
+                subject,
+                true_,
+                false_,
+            } => {
+                self.include_bool_expr(subject);
+                self.include_custom_expr(true_);
+                self.include_custom_expr(false_);
+            }
+            CustomExprKind::IntCase {
+                subject,
+                clauses,
+                fallback,
+            } => {
+                self.include_int_expr(subject);
+                for (_, branch) in clauses {
+                    self.include_custom_expr(branch);
+                }
+                self.include_custom_expr(fallback);
+            }
+            CustomExprKind::StringCase {
+                subject,
+                clauses,
+                fallback,
+            } => {
+                self.include_string_expr(subject);
+                for (_, branch) in clauses {
+                    self.include_custom_expr(branch);
+                }
+                self.include_custom_expr(fallback);
+            }
+            CustomExprKind::FloatCase {
+                subject,
+                clauses,
+                fallback,
+            } => {
+                self.include_float_expr(subject);
+                for (_, branch) in clauses {
+                    self.include_custom_expr(branch);
+                }
+                self.include_custom_expr(fallback);
+            }
+            CustomExprKind::Block { steps, return_ } => {
+                self.include_steps(steps);
+                self.include_custom_expr(return_);
+            }
+        }
+    }
+
     pub(in crate::plan::module::frame) fn include_bool_expr(&mut self, expression: &BoolExpr) {
         match expression.kind() {
             BoolExprKind::Value(_) => {}
@@ -332,6 +399,10 @@ impl FrameLayout {
             BoolExprKind::BitArrayMatches { value, pattern } => {
                 self.include_bit_array_expr(value);
                 self.include_bit_array_pattern(pattern);
+            }
+            BoolExprKind::CustomMatches { value, pattern } => {
+                self.include_custom_expr(value);
+                self.include_assert_pattern(pattern);
             }
             BoolExprKind::And { left, right } => self.include_bool_binary_expr(left, right),
             BoolExprKind::Or { left, right } => self.include_bool_binary_expr(left, right),
@@ -691,6 +762,7 @@ impl FrameLayout {
             ListExpr::String(expression) => self.include_typed_list_expr(expression),
             ListExpr::BitArray(expression) => self.include_typed_list_expr(expression),
             ListExpr::UtfCodepoint(expression) => self.include_typed_list_expr(expression),
+            ListExpr::Custom(expression) => self.include_typed_list_expr(expression),
             ListExpr::Float(expression) => self.include_typed_list_expr(expression),
             ListExpr::Bool(expression) => self.include_typed_list_expr(expression),
             ListExpr::Nil(expression) => self.include_typed_list_expr(expression),
@@ -720,6 +792,14 @@ impl FrameLayout {
             ListLocalExpr::UtfCodepoint { local, value } => {
                 self.include_typed_list_expr(value);
                 self.include_utf_codepoint_list(*local);
+            }
+            ListLocalExpr::Custom {
+                local,
+                item_type,
+                value,
+            } => {
+                self.include_typed_list_expr(value);
+                self.include_custom_list(*local, item_type.clone());
             }
             ListLocalExpr::Float { local, value } => {
                 self.include_typed_list_expr(value);
@@ -870,6 +950,11 @@ impl FrameLayout {
             ListElements::UtfCodepoint(values) => {
                 for value in values {
                     self.include_utf_codepoint_expr(value);
+                }
+            }
+            ListElements::Custom { values, .. } => {
+                for value in values {
+                    self.include_custom_expr(value);
                 }
             }
             ListElements::Float(values) => {

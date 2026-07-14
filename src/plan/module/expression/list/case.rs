@@ -1,6 +1,6 @@
 use super::{
-    BitArrayListExpr, BoolListExpr, FloatListExpr, FunctionListExpr, IntListExpr, ListExpr,
-    ListListExpr, NilListExpr, StringListExpr, TupleListExpr, UtfCodepointListExpr,
+    BitArrayListExpr, BoolListExpr, CustomListExpr, FloatListExpr, FunctionListExpr, IntListExpr,
+    ListExpr, ListListExpr, NilListExpr, StringListExpr, TupleListExpr, UtfCodepointListExpr,
 };
 use crate::plan::ValueType;
 
@@ -21,6 +21,10 @@ pub(crate) enum BoolListCaseBranches {
     UtfCodepoint {
         true_: UtfCodepointListExpr,
         false_: UtfCodepointListExpr,
+    },
+    Custom {
+        true_: CustomListExpr,
+        false_: CustomListExpr,
     },
     Float {
         true_: FloatListExpr,
@@ -65,6 +69,10 @@ pub(crate) enum ListCaseBranches<Pattern> {
     UtfCodepoint {
         clauses: Vec<(Pattern, UtfCodepointListExpr)>,
         fallback: UtfCodepointListExpr,
+    },
+    Custom {
+        clauses: Vec<(Pattern, CustomListExpr)>,
+        fallback: CustomListExpr,
     },
     Float {
         clauses: Vec<(Pattern, FloatListExpr)>,
@@ -118,6 +126,10 @@ impl<Pattern> ListCaseBranches<Pattern> {
             }),
             ListExpr::UtfCodepoint(fallback) => Ok(Self::UtfCodepoint {
                 clauses: typed_utf_codepoint_clauses(clauses)?,
+                fallback,
+            }),
+            ListExpr::Custom(fallback) => Ok(Self::Custom {
+                clauses: typed_custom_clauses(clauses, fallback.element_type())?,
                 fallback,
             }),
             ListExpr::Float(fallback) => Ok(Self::Float {
@@ -228,6 +240,27 @@ fn typed_float_clauses<Pattern>(
     Ok(typed_clauses)
 }
 
+fn typed_custom_clauses<Pattern>(
+    clauses: Vec<(Pattern, ListExpr)>,
+    expected: ValueType,
+) -> Result<Vec<(Pattern, CustomListExpr)>, ListCaseBranchTypeMismatch> {
+    let mut typed_clauses = Vec::with_capacity(clauses.len());
+    for (pattern, branch) in clauses {
+        let actual = branch.element_type();
+        let Some(branch) = branch.into_custom() else {
+            return Err(list_case_branch_type_mismatch(expected, actual));
+        };
+        if branch.element_type() != expected {
+            return Err(list_case_branch_type_mismatch(
+                expected,
+                branch.element_type(),
+            ));
+        }
+        typed_clauses.push((pattern, branch));
+    }
+    Ok(typed_clauses)
+}
+
 fn typed_bool_clauses<Pattern>(
     clauses: Vec<(Pattern, ListExpr)>,
 ) -> Result<Vec<(Pattern, BoolListExpr)>, ListCaseBranchTypeMismatch> {
@@ -327,6 +360,13 @@ mod tests {
         RuntimeFunctionId, StringExpr, TupleExpr, ValueType,
     };
     use num_bigint::BigInt;
+
+    fn custom_type(name: &str) -> crate::plan::CustomType {
+        crate::plan::CustomType::new(
+            crate::plan::CustomTypeName::new("geam".into(), "main".into(), name.into()),
+            Vec::new(),
+        )
+    }
 
     #[test]
     fn bool_case_branches_dispatch_every_non_int_item_family() {
@@ -681,6 +721,8 @@ mod tests {
     fn list_case_branches_report_item_family_mismatch() {
         let int_to_int = FunctionType::new(vec![ValueType::Int], ValueType::Int);
         let int_to_string = FunctionType::new(vec![ValueType::Int], ValueType::String);
+        let first_custom = custom_type("First");
+        let second_custom = custom_type("Second");
 
         assert_eq!(
             ListCaseBranches::from_exprs(
@@ -693,6 +735,29 @@ mod tests {
             Err(ListCaseBranchTypeMismatch {
                 expected: ValueType::Int,
                 actual: ValueType::String,
+            }),
+        );
+        assert_eq!(
+            ListCaseBranches::from_exprs(
+                vec![(BigInt::from(1), ListExpr::value(Vec::new(), ValueType::Int))],
+                ListExpr::value(Vec::new(), ValueType::Custom(first_custom.clone())),
+            ),
+            Err(ListCaseBranchTypeMismatch {
+                expected: ValueType::Custom(first_custom.clone()),
+                actual: ValueType::Int,
+            }),
+        );
+        assert_eq!(
+            ListCaseBranches::from_exprs(
+                vec![(
+                    BigInt::from(1),
+                    ListExpr::value(Vec::new(), ValueType::Custom(second_custom.clone())),
+                )],
+                ListExpr::value(Vec::new(), ValueType::Custom(first_custom.clone())),
+            ),
+            Err(ListCaseBranchTypeMismatch {
+                expected: ValueType::Custom(first_custom),
+                actual: ValueType::Custom(second_custom),
             }),
         );
         assert_eq!(

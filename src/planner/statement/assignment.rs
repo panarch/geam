@@ -1,11 +1,12 @@
 mod assert;
 
 use crate::plan::{
-    BitArrayExpr, BitArrayFunctionExpr, BoolExpr, BoolFunctionExpr, Expr, ExprKind, FloatExpr,
-    FloatFunctionExpr, FunctionExpr, FunctionExprKind, FunctionFunctionExpr, IntExpr,
-    IntFunctionExpr, ListExpr, ListFunctionExpr, NilExpr, NilFunctionExpr, Step, StringExpr,
-    StringFunctionExpr, TupleExpr, TupleFunctionExpr, TupleLocalId, UtfCodepointExpr,
-    UtfCodepointFunctionExpr, ValueType,
+    AssertBinding, BitArrayExpr, BitArrayFunctionExpr, BoolExpr, BoolFunctionExpr,
+    CustomBindingPattern, CustomConstructor, CustomExpr, CustomFunctionExpr, Expr, ExprKind,
+    FloatExpr, FloatFunctionExpr, FunctionExpr, FunctionExprKind, FunctionFunctionExpr, IntExpr,
+    IntFunctionExpr, ListAssertTail, ListExpr, ListFunctionExpr, NilExpr, NilFunctionExpr, Step,
+    StringExpr, StringFunctionExpr, TotalBindingPattern, TupleExpr, TupleFunctionExpr,
+    TupleLocalId, UtfCodepointExpr, UtfCodepointFunctionExpr, ValueType,
 };
 use crate::planner::context::PlanContext;
 use crate::planner::error::{
@@ -24,7 +25,7 @@ pub(super) fn plan_assignment(
 ) -> Result<Vec<Step>, PlanError> {
     match assignment.kind {
         AssignmentKind::Let => {
-            let pattern = plan_binding_pattern(assignment.pattern)?;
+            let pattern = plan_binding_pattern_in_context(assignment.pattern, context)?;
             let value = plan_ordinary_assignment_value(&pattern, assignment.value, context)?;
             plan_assignment_steps(pattern, value, context)
         }
@@ -54,7 +55,7 @@ pub(super) fn plan_final_assignment(
 ) -> Result<PlannedAssignment, PlanError> {
     let (pattern, value) = match assignment.kind {
         AssignmentKind::Let => {
-            let pattern = plan_binding_pattern(assignment.pattern)?;
+            let pattern = plan_binding_pattern_in_context(assignment.pattern, context)?;
             let value = plan_ordinary_assignment_value(&pattern, assignment.value, context)?;
             (pattern, value)
         }
@@ -111,6 +112,10 @@ fn plan_bound_assignment(
         BindingPattern::ListTail { tail, element_type } => {
             plan_list_tail_assignment(tail, element_type, value, context)
         }
+        BindingPattern::Custom {
+            constructor,
+            fields,
+        } => plan_custom_assignment(constructor, fields, value, context),
         BindingPattern::Alias { pattern, name } => {
             plan_alias_assignment(*pattern, name, value, context)
         }
@@ -125,6 +130,10 @@ pub(super) enum BindingPattern {
     ListTail {
         tail: ListTailBinding,
         element_type: ValueType,
+    },
+    Custom {
+        constructor: CustomConstructor,
+        fields: Vec<BindingPattern>,
     },
     Alias {
         pattern: Box<BindingPattern>,
@@ -146,6 +155,10 @@ fn plan_assignment_steps(
         BindingPattern::ListTail { tail, element_type } => {
             plan_list_tail_assignment_steps(tail, element_type, value, context)
         }
+        BindingPattern::Custom {
+            constructor,
+            fields,
+        } => Ok(plan_custom_assignment(constructor, fields, value, context)?.steps),
         BindingPattern::Alias { pattern, name } => {
             Ok(plan_alias_assignment(*pattern, name, value, context)?.steps)
         }
@@ -180,6 +193,10 @@ fn plan_alias_assignment(
         BindingPattern::ListTail { tail, element_type } => {
             plan_list_tail_assignment(tail, element_type, value, context)?
         }
+        BindingPattern::Custom {
+            constructor,
+            fields,
+        } => plan_custom_assignment(constructor, fields, value, context)?,
         BindingPattern::Alias { .. } => {
             return Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::InvalidPattern,
@@ -239,6 +256,108 @@ fn plan_list_tail_assignment(
     }
 }
 
+fn plan_custom_assignment(
+    constructor: CustomConstructor,
+    fields: Vec<BindingPattern>,
+    value: Expr,
+    context: &mut PlanContext<'_>,
+) -> Result<PlannedAssignment, PlanError> {
+    let actual = value.value_type();
+    let value = value
+        .into_custom()
+        .ok_or_else(|| custom_assignment_value_must_be_custom(actual))?;
+    if value.type_() != constructor.type_() || fields.len() != constructor.fields().len() {
+        return Err(invalid_binding_pattern());
+    }
+
+    let local = context.define_internal_custom_local();
+    let name = internal_custom_name(local);
+    let local_value = CustomExpr::local_get(local, name.clone(), constructor.type_().clone());
+    let fields = fields
+        .into_iter()
+        .zip(constructor.fields())
+        .map(|(pattern, field)| plan_total_binding_pattern(pattern, field.type_().clone(), context))
+        .collect::<Result<Vec<_>, _>>()?;
+    let binding = CustomBindingPattern::new(constructor, fields);
+
+    Ok(PlannedAssignment {
+        steps: vec![
+            Step::let_custom(local, name, value),
+            Step::bind_custom_fields(local, binding),
+        ],
+        value: Expr::custom(local_value),
+    })
+}
+
+fn plan_total_binding_pattern(
+    pattern: BindingPattern,
+    expected: ValueType,
+    context: &mut PlanContext<'_>,
+) -> Result<TotalBindingPattern, PlanError> {
+    match pattern {
+        BindingPattern::Named(name) => {
+            let binding =
+                AssertBinding::new(context.define_param_local(name.clone(), expected), name);
+            Ok(TotalBindingPattern::bind(binding))
+        }
+        BindingPattern::Discard => Ok(TotalBindingPattern::discard(expected)),
+        BindingPattern::Tuple(patterns) => {
+            let ValueType::Tuple(types) = expected else {
+                return Err(invalid_binding_pattern());
+            };
+            if patterns.len() != types.len() {
+                return Err(invalid_binding_pattern());
+            }
+            patterns
+                .into_iter()
+                .zip(types)
+                .map(|(pattern, type_)| plan_total_binding_pattern(pattern, type_, context))
+                .collect::<Result<Vec<_>, _>>()
+                .map(TotalBindingPattern::tuple)
+        }
+        BindingPattern::ListTail { tail, element_type } => {
+            if expected != ValueType::List(Box::new(element_type.clone())) {
+                return Err(invalid_binding_pattern());
+            }
+            let tail = match tail {
+                ListTailBinding::Named(name) => ListAssertTail::bind(
+                    context.define_list_local(name.clone(), element_type.clone()),
+                    name,
+                ),
+                ListTailBinding::Discard => ListAssertTail::Ignore,
+            };
+            Ok(TotalBindingPattern::list(element_type, tail))
+        }
+        BindingPattern::Custom {
+            constructor,
+            fields,
+        } => {
+            if expected != ValueType::Custom(constructor.type_().clone())
+                || fields.len() != constructor.fields().len()
+            {
+                return Err(invalid_binding_pattern());
+            }
+            let fields = fields
+                .into_iter()
+                .zip(constructor.fields())
+                .map(|(pattern, field)| {
+                    plan_total_binding_pattern(pattern, field.type_().clone(), context)
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(TotalBindingPattern::custom(CustomBindingPattern::new(
+                constructor,
+                fields,
+            )))
+        }
+        BindingPattern::Alias { pattern, name } => {
+            let pattern = plan_total_binding_pattern(*pattern, expected.clone(), context)?;
+            let binding =
+                AssertBinding::new(context.define_param_local(name.clone(), expected), name);
+            Ok(TotalBindingPattern::alias(pattern, binding))
+        }
+    }
+}
+
 fn plan_tuple_assignment(
     elements: Vec<BindingPattern>,
     value: Expr,
@@ -275,10 +394,23 @@ fn internal_tuple_name(local: TupleLocalId) -> EcoString {
     format!("<tuple:{}>", local.0).into()
 }
 
+fn internal_custom_name(local: crate::plan::CustomLocalId) -> EcoString {
+    format!("<custom:{}>", local.0).into()
+}
+
 fn list_assignment_value_must_be_list(actual: ValueType) -> PlanError {
     PlanError::InvalidTypedAst {
         reason: InvalidTypedAstReason::ExpressionType {
             expected: InvalidExpressionType::List,
+            actual: value_type_expression_type(actual),
+        },
+    }
+}
+
+fn custom_assignment_value_must_be_custom(actual: ValueType) -> PlanError {
+    PlanError::InvalidTypedAst {
+        reason: InvalidTypedAstReason::ExpressionType {
+            expected: InvalidExpressionType::Custom,
             actual: value_type_expression_type(actual),
         },
     }
@@ -299,6 +431,7 @@ fn value_type_expression_type(type_: ValueType) -> InvalidExpressionType {
         ValueType::String => InvalidExpressionType::String,
         ValueType::BitArray => InvalidExpressionType::BitArray,
         ValueType::UtfCodepoint => InvalidExpressionType::UtfCodepoint,
+        ValueType::Custom(_) => InvalidExpressionType::Custom,
         ValueType::Float => InvalidExpressionType::Float,
         ValueType::Bool => InvalidExpressionType::Bool,
         ValueType::Nil => InvalidExpressionType::Nil,
@@ -348,6 +481,14 @@ fn plan_variable_runtime_step_and_return(
             (
                 Step::let_utf_codepoint(local, name.clone(), value),
                 Expr::utf_codepoint(UtfCodepointExpr::local_get(local, name)),
+            )
+        }
+        ExprKind::Custom(value) => {
+            let type_ = value.type_().clone();
+            let local = context.define_custom_local(name.clone(), type_.clone());
+            (
+                Step::let_custom(local, name.clone(), value),
+                Expr::custom(CustomExpr::local_get(local, name, type_)),
             )
         }
         ExprKind::Float(value) => {
@@ -428,6 +569,16 @@ fn plan_variable_runtime_step_and_return(
                     Expr::function(FunctionExpr::utf_codepoint(
                         UtfCodepointFunctionExpr::local_get(local, name, type_),
                     )),
+                )
+            }
+            FunctionExprKind::Custom(value) => {
+                let type_ = value.type_().clone();
+                let local = context.define_custom_function_local(name.clone(), type_.clone());
+                (
+                    Step::let_custom_function(local, name.clone(), value),
+                    Expr::function(FunctionExpr::custom(CustomFunctionExpr::local_get(
+                        local, name, type_,
+                    ))),
                 )
             }
             FunctionExprKind::Float(value) => {
@@ -519,6 +670,54 @@ pub(super) fn plan_binding_pattern(pattern: TypedPattern) -> Result<BindingPatte
             name,
         }),
         pattern => Err(non_variable_pattern_error(&pattern)),
+    }
+}
+
+pub(super) fn plan_binding_pattern_in_context(
+    pattern: TypedPattern,
+    context: &PlanContext<'_>,
+) -> Result<BindingPattern, PlanError> {
+    match pattern {
+        Pattern::Tuple { elements, .. } => elements
+            .into_iter()
+            .map(|element| plan_binding_pattern_in_context(element, context))
+            .collect::<Result<Vec<_>, _>>()
+            .map(BindingPattern::Tuple),
+        Pattern::Constructor {
+            arguments,
+            constructor,
+            type_,
+            ..
+        } if !type_.is_bool() && !type_.is_nil() => {
+            let gleam_core::analyse::Inferred::Known(constructor) = constructor else {
+                return Err(invalid_binding_pattern());
+            };
+            let inferred_variant = type_.custom_type_inferred_variant().map(usize::from)
+                == Some(usize::from(constructor.constructor_index));
+            let field_types = arguments
+                .iter()
+                .map(|argument| crate::planner::pattern::pattern_value_type(&argument.value))
+                .collect::<Result<Vec<_>, _>>()?;
+            let constructor =
+                context.custom_pattern_constructor(type_.as_ref(), &constructor, field_types)?;
+            if !inferred_variant && constructor.constructor_count() != 1 {
+                return Err(invalid_binding_pattern());
+            }
+            let constructor = constructor.into_constructor();
+            let fields = arguments
+                .into_iter()
+                .map(|argument| plan_binding_pattern_in_context(argument.value, context))
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(BindingPattern::Custom {
+                constructor,
+                fields,
+            })
+        }
+        Pattern::Assign { name, pattern, .. } => Ok(BindingPattern::Alias {
+            pattern: Box::new(plan_binding_pattern_in_context(*pattern, context)?),
+            name,
+        }),
+        pattern => plan_binding_pattern(pattern),
     }
 }
 
@@ -656,11 +855,17 @@ pub(super) fn non_variable_pattern_error(pattern: &TypedPattern) -> PlanError {
 
 #[cfg(test)]
 mod tests {
-    use super::{BindingPattern, ListTailBinding, plan_binding_pattern};
-    use crate::plan::{
-        BoolLocalId, Expr, FunctionType, IntLocalId, ListExpr, LocalId, NilLocalId, StringLocalId,
-        ValueType,
+    use super::{
+        BindingPattern, ListTailBinding, invalid_binding_pattern, plan_alias_assignment,
+        plan_assignment_steps, plan_binding_pattern, plan_binding_pattern_in_context,
+        plan_custom_assignment, plan_total_binding_pattern,
     };
+    use crate::plan::{
+        BoolLocalId, CustomConstructor, CustomConstructorDefinition, CustomConstructorField,
+        CustomExpr, CustomType, CustomTypeDefinition, CustomTypeName, CustomTypePublicity, Expr,
+        FunctionType, IntLocalId, ListExpr, LocalId, NilLocalId, StringLocalId, ValueType,
+    };
+    use crate::planner::context::{AnonymousFunctions, FunctionInfo, PlanContext};
     use crate::planner::dsl::{
         bool_, bool_case_int_function, bool_function_ref, equal, function, int, int_function_ref,
         let_bool_function_step, let_int_function_step, let_list_step, let_nil_function_step,
@@ -682,6 +887,7 @@ mod tests {
     use gleam_core::parse::LiteralFloatValue;
     use gleam_core::type_::{self, error::VariableOrigin};
     use num_bigint::BigInt;
+    use std::collections::HashMap;
 
     #[test]
     fn plan_let_and_integer_binop() {
@@ -717,6 +923,370 @@ pub fn main() {
         let expected = module("main", function("main", int(42)).evaluate(int(1)), []);
 
         assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn custom_assignment_rejects_malformed_value_and_nested_binding_shapes() {
+        let module = "main".into();
+        let functions = HashMap::<ecow::EcoString, FunctionInfo>::new();
+        let mut anonymous = AnonymousFunctions::default();
+        let mut context = PlanContext::new(&module, &functions, &mut anonymous);
+        let boxed = custom_constructor("Boxed", vec![ValueType::Int]);
+
+        assert_eq!(
+            plan_custom_assignment(
+                boxed.clone(),
+                vec![BindingPattern::Discard],
+                Expr::from(int(1)),
+                &mut context,
+            )
+            .map(|_| ()),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionType {
+                    expected: InvalidExpressionType::Custom,
+                    actual: InvalidExpressionType::Int,
+                },
+            }),
+        );
+        let other = custom_constructor("Other", Vec::new());
+        assert_eq!(
+            plan_custom_assignment(
+                boxed.clone(),
+                vec![BindingPattern::Discard],
+                Expr::custom(CustomExpr::constructor(other, Vec::new())),
+                &mut context,
+            )
+            .map(|_| ()),
+            Err(invalid_binding_pattern()),
+        );
+
+        let invalid_custom_value = Expr::custom(CustomExpr::constructor(
+            custom_constructor("Other", Vec::new()),
+            Vec::new(),
+        ));
+        assert_eq!(
+            plan_assignment_steps(
+                BindingPattern::Custom {
+                    constructor: boxed.clone(),
+                    fields: vec![BindingPattern::Discard],
+                },
+                invalid_custom_value.clone(),
+                &mut context,
+            ),
+            Err(invalid_binding_pattern()),
+        );
+        assert_eq!(
+            plan_alias_assignment(
+                BindingPattern::Custom {
+                    constructor: boxed.clone(),
+                    fields: vec![BindingPattern::Discard],
+                },
+                "alias".into(),
+                invalid_custom_value,
+                &mut context,
+            )
+            .map(|_| ()),
+            Err(invalid_binding_pattern()),
+        );
+
+        let tuple_field =
+            custom_constructor("TupleBox", vec![ValueType::Tuple(vec![ValueType::Int])]);
+        assert_eq!(
+            plan_custom_assignment(
+                tuple_field.clone(),
+                vec![BindingPattern::Tuple(vec![
+                    BindingPattern::Discard,
+                    BindingPattern::Discard,
+                ])],
+                Expr::custom(CustomExpr::constructor(tuple_field.clone(), Vec::new())),
+                &mut context,
+            )
+            .map(|_| ()),
+            Err(invalid_binding_pattern()),
+        );
+        assert_eq!(
+            plan_custom_assignment(
+                boxed.clone(),
+                Vec::new(),
+                Expr::custom(CustomExpr::constructor(
+                    boxed.clone(),
+                    vec![Expr::from(int(1))],
+                )),
+                &mut context,
+            )
+            .map(|_| ()),
+            Err(invalid_binding_pattern()),
+        );
+
+        assert_eq!(
+            plan_total_binding_pattern(
+                BindingPattern::Tuple(vec![BindingPattern::Discard]),
+                ValueType::Int,
+                &mut context,
+            ),
+            Err(invalid_binding_pattern()),
+        );
+        assert_eq!(
+            plan_total_binding_pattern(
+                BindingPattern::Tuple(vec![BindingPattern::Discard]),
+                ValueType::Tuple(vec![ValueType::Int, ValueType::String]),
+                &mut context,
+            ),
+            Err(invalid_binding_pattern()),
+        );
+        assert_eq!(
+            plan_total_binding_pattern(
+                BindingPattern::ListTail {
+                    tail: ListTailBinding::Discard,
+                    element_type: ValueType::Int,
+                },
+                ValueType::String,
+                &mut context,
+            ),
+            Err(invalid_binding_pattern()),
+        );
+        assert_eq!(
+            plan_total_binding_pattern(
+                BindingPattern::Custom {
+                    constructor: boxed.clone(),
+                    fields: vec![BindingPattern::Discard],
+                },
+                ValueType::Custom(custom_type("Other")),
+                &mut context,
+            ),
+            Err(invalid_binding_pattern()),
+        );
+        assert_eq!(
+            plan_total_binding_pattern(
+                BindingPattern::Custom {
+                    constructor: boxed,
+                    fields: vec![BindingPattern::Tuple(vec![BindingPattern::Discard])],
+                },
+                ValueType::Custom(custom_type("Boxed")),
+                &mut context,
+            ),
+            Err(invalid_binding_pattern()),
+        );
+        assert_eq!(
+            plan_total_binding_pattern(
+                BindingPattern::Alias {
+                    pattern: Box::new(BindingPattern::Tuple(vec![BindingPattern::Discard])),
+                    name: "alias".into(),
+                },
+                ValueType::Int,
+                &mut context,
+            ),
+            Err(invalid_binding_pattern()),
+        );
+    }
+
+    #[test]
+    fn custom_binding_pattern_requires_known_total_constructor_metadata() {
+        let module = "main".into();
+        let functions = HashMap::<ecow::EcoString, FunctionInfo>::new();
+        let mut anonymous = AnonymousFunctions::default();
+        let context = PlanContext::new(&module, &functions, &mut anonymous);
+        let span = dummy_span();
+        let type_ = type_::named(
+            "geam",
+            "main",
+            "Choice",
+            gleam_core::ast::Publicity::Public,
+            Vec::new(),
+        );
+
+        assert_eq!(
+            plan_binding_pattern_in_context(
+                Pattern::Constructor {
+                    location: span,
+                    name_location: span,
+                    name: "Choice".into(),
+                    arguments: Vec::new(),
+                    module: None,
+                    constructor: Inferred::Unknown,
+                    spread: None,
+                    type_: type_.clone(),
+                },
+                &context,
+            ),
+            Err(invalid_binding_pattern()),
+        );
+        assert_eq!(
+            plan_binding_pattern_in_context(
+                Pattern::Constructor {
+                    location: span,
+                    name_location: span,
+                    name: "Choice".into(),
+                    arguments: Vec::new(),
+                    module: None,
+                    constructor: Inferred::Known(gleam_core::type_::PatternConstructor {
+                        name: "Choice".into(),
+                        field_map: None,
+                        documentation: None,
+                        module: "main".into(),
+                        location: span,
+                        constructor_index: 0,
+                    }),
+                    spread: None,
+                    type_: type_.clone(),
+                },
+                &context,
+            ),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::CustomType {
+                    name: "Choice".into(),
+                    reason: crate::planner::InvalidCustomTypeReason::UnknownDefinition,
+                },
+            }),
+        );
+
+        let mut inferred_type = type_.clone();
+        std::sync::Arc::make_mut(&mut inferred_type).set_custom_type_variant(0);
+        let pattern_constructor = || gleam_core::type_::PatternConstructor {
+            name: "Choice".into(),
+            field_map: None,
+            documentation: None,
+            module: "main".into(),
+            location: span,
+            constructor_index: 0,
+        };
+        assert_eq!(
+            plan_binding_pattern_in_context(
+                Pattern::Constructor {
+                    location: span,
+                    name_location: span,
+                    name: "Choice".into(),
+                    arguments: vec![gleam_core::ast::CallArg {
+                        label: None,
+                        location: span,
+                        value: Pattern::BitArraySize(BitArraySize::Int {
+                            location: span,
+                            value: "1".into(),
+                            int_value: BigInt::from(1),
+                        }),
+                        implicit: None,
+                    }],
+                    module: None,
+                    constructor: Inferred::Known(pattern_constructor()),
+                    spread: None,
+                    type_: inferred_type.clone(),
+                },
+                &context,
+            ),
+            Err(invalid_binding_pattern()),
+        );
+        assert_eq!(
+            plan_binding_pattern_in_context(
+                Pattern::Constructor {
+                    location: span,
+                    name_location: span,
+                    name: "Choice".into(),
+                    arguments: Vec::new(),
+                    module: None,
+                    constructor: Inferred::Known(pattern_constructor()),
+                    spread: None,
+                    type_: inferred_type,
+                },
+                &context,
+            ),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::CustomType {
+                    name: "Choice".into(),
+                    reason: crate::planner::InvalidCustomTypeReason::UnknownDefinition,
+                },
+            }),
+        );
+
+        let mut result_type = type_::result(type_::int(), type_::string());
+        std::sync::Arc::make_mut(&mut result_type).set_custom_type_variant(0);
+        assert_eq!(
+            plan_binding_pattern_in_context(
+                Pattern::Constructor {
+                    location: span,
+                    name_location: span,
+                    name: "Ok".into(),
+                    arguments: vec![gleam_core::ast::CallArg {
+                        label: None,
+                        location: span,
+                        value: Pattern::Int {
+                            location: span,
+                            value: "1".into(),
+                            int_value: BigInt::from(1),
+                        },
+                        implicit: None,
+                    }],
+                    module: None,
+                    constructor: Inferred::Known(gleam_core::type_::PatternConstructor {
+                        name: "Ok".into(),
+                        field_map: None,
+                        documentation: None,
+                        module: "gleam".into(),
+                        location: span,
+                        constructor_index: 0,
+                    }),
+                    spread: None,
+                    type_: result_type,
+                },
+                &context,
+            ),
+            Err(invalid_binding_pattern()),
+        );
+
+        let definitions = vec![CustomTypeDefinition::new(
+            custom_type("Choice").type_name().clone(),
+            CustomTypePublicity::Public,
+            false,
+            Vec::new(),
+            vec![
+                CustomConstructorDefinition::new("First".into(), 0, Vec::new()),
+                CustomConstructorDefinition::new("Second".into(), 1, Vec::new()),
+            ],
+        )];
+        let mut anonymous = AnonymousFunctions::default();
+        let context =
+            PlanContext::new_with_custom_types(&module, &functions, &definitions, &mut anonymous);
+        assert_eq!(
+            plan_binding_pattern_in_context(
+                Pattern::Constructor {
+                    location: span,
+                    name_location: span,
+                    name: "First".into(),
+                    arguments: Vec::new(),
+                    module: None,
+                    constructor: Inferred::Known(gleam_core::type_::PatternConstructor {
+                        name: "First".into(),
+                        field_map: None,
+                        documentation: None,
+                        module: "main".into(),
+                        location: span,
+                        constructor_index: 0,
+                    }),
+                    spread: None,
+                    type_,
+                },
+                &context,
+            ),
+            Err(invalid_binding_pattern()),
+        );
+    }
+
+    fn custom_constructor(name: &str, fields: Vec<ValueType>) -> CustomConstructor {
+        CustomConstructor::new(
+            custom_type(name),
+            name.into(),
+            0,
+            fields
+                .into_iter()
+                .map(|type_| CustomConstructorField::new(None, type_))
+                .collect(),
+        )
+    }
+
+    fn custom_type(name: &str) -> CustomType {
+        CustomType::new(
+            CustomTypeName::new("geam".into(), "main".into(), name.into()),
+            Vec::new(),
+        )
     }
 
     #[test]
@@ -815,23 +1385,6 @@ pub fn main() {
         );
 
         assert_eq!(actual, expected);
-    }
-
-    #[test]
-    fn reject_profile_list_tail_assignment_unsupported_element_type() {
-        assert_eq!(
-            expect_plan_error(
-                r#"
-pub fn main() {
-  let [..rest]: List(Result(Int, Nil)) = []
-  1
-}
-"#,
-            ),
-            PlanError::UnsupportedExpression {
-                kind: UnsupportedExpressionKind::UnsupportedListElementType,
-            },
-        );
     }
 
     #[test]
@@ -1258,6 +1811,10 @@ pub fn main() {
             (ValueType::String, InvalidExpressionType::String),
             (ValueType::BitArray, InvalidExpressionType::BitArray),
             (ValueType::UtfCodepoint, InvalidExpressionType::UtfCodepoint),
+            (
+                ValueType::Custom(custom_type("Boxed")),
+                InvalidExpressionType::Custom,
+            ),
             (ValueType::Float, InvalidExpressionType::Float),
             (ValueType::Bool, InvalidExpressionType::Bool),
             (ValueType::Nil, InvalidExpressionType::Nil),
@@ -1699,23 +2256,6 @@ pub fn main() {
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::GeneratedAssignment,
             }),
-        );
-    }
-
-    #[test]
-    fn reject_profile_let_assert_list_literal_element_pattern() {
-        assert_eq!(
-            expect_plan_error(
-                r#"
-pub fn main() {
-  let assert [1] = [1]
-  1
-}
-"#,
-            ),
-            PlanError::UnsupportedPattern {
-                kind: UnsupportedPatternKind::Literal,
-            },
         );
     }
 

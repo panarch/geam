@@ -1,11 +1,11 @@
 use super::FrameLayout;
 use crate::plan::{
     BitArrayFunctionExpr, BitArrayFunctionExprKind, BoolFunctionExpr, BoolFunctionExprKind,
-    FloatFunctionExpr, FloatFunctionExprKind, FunctionExpr, FunctionExprKind, FunctionFunctionExpr,
-    FunctionFunctionExprKind, IntFunctionExpr, IntFunctionExprKind, ListFunctionExpr,
-    ListFunctionExprKind, NilFunctionExpr, NilFunctionExprKind, StringFunctionExpr,
-    StringFunctionExprKind, TupleFunctionExpr, TupleFunctionExprKind, UtfCodepointFunctionExpr,
-    UtfCodepointFunctionExprKind,
+    CustomFunctionExpr, CustomFunctionExprKind, FloatFunctionExpr, FloatFunctionExprKind,
+    FunctionExpr, FunctionExprKind, FunctionFunctionExpr, FunctionFunctionExprKind,
+    IntFunctionExpr, IntFunctionExprKind, ListFunctionExpr, ListFunctionExprKind, NilFunctionExpr,
+    NilFunctionExprKind, StringFunctionExpr, StringFunctionExprKind, TupleFunctionExpr,
+    TupleFunctionExprKind, UtfCodepointFunctionExpr, UtfCodepointFunctionExprKind,
 };
 
 impl FrameLayout {
@@ -22,6 +22,7 @@ impl FrameLayout {
             FunctionExprKind::UtfCodepoint(expression) => {
                 self.include_utf_codepoint_function_expr(expression)
             }
+            FunctionExprKind::Custom(expression) => self.include_custom_function_expr(expression),
             FunctionExprKind::Float(expression) => self.include_float_function_expr(expression),
             FunctionExprKind::Bool(expression) => self.include_bool_function_expr(expression),
             FunctionExprKind::Nil(expression) => self.include_nil_function_expr(expression),
@@ -368,6 +369,71 @@ impl FrameLayout {
             UtfCodepointFunctionExprKind::Block { steps, return_ } => {
                 self.include_steps(steps);
                 self.include_utf_codepoint_function_expr(return_);
+            }
+        }
+    }
+
+    pub(in crate::plan::module::frame) fn include_custom_function_expr(
+        &mut self,
+        expression: &CustomFunctionExpr,
+    ) {
+        match expression.kind() {
+            CustomFunctionExprKind::Constructor(_) | CustomFunctionExprKind::Reference(_) => {}
+            CustomFunctionExprKind::Panic(panic) => self.include_panic_expr(panic),
+            CustomFunctionExprKind::Closure { captures, .. } => self.include_capture_args(captures),
+            CustomFunctionExprKind::LocalGet { local, .. } => self.include_custom_function(*local),
+            CustomFunctionExprKind::Call { args, .. } => self.include_call_args(args),
+            CustomFunctionExprKind::FunctionCall { function, args, .. } => {
+                self.include_function_function_expr(function);
+                self.include_call_args(args);
+            }
+            CustomFunctionExprKind::TupleIndex { tuple, .. } => self.include_tuple_expr(tuple),
+            CustomFunctionExprKind::ListIndex { list, .. } => self.include_typed_list_expr(list),
+            CustomFunctionExprKind::BoolCase {
+                subject,
+                true_,
+                false_,
+            } => {
+                self.include_bool_expr(subject);
+                self.include_custom_function_expr(true_);
+                self.include_custom_function_expr(false_);
+            }
+            CustomFunctionExprKind::IntCase {
+                subject,
+                clauses,
+                fallback,
+            } => {
+                self.include_int_expr(subject);
+                for (_, branch) in clauses {
+                    self.include_custom_function_expr(branch);
+                }
+                self.include_custom_function_expr(fallback);
+            }
+            CustomFunctionExprKind::StringCase {
+                subject,
+                clauses,
+                fallback,
+            } => {
+                self.include_string_expr(subject);
+                for (_, branch) in clauses {
+                    self.include_custom_function_expr(branch);
+                }
+                self.include_custom_function_expr(fallback);
+            }
+            CustomFunctionExprKind::FloatCase {
+                subject,
+                clauses,
+                fallback,
+            } => {
+                self.include_float_expr(subject);
+                for (_, branch) in clauses {
+                    self.include_custom_function_expr(branch);
+                }
+                self.include_custom_function_expr(fallback);
+            }
+            CustomFunctionExprKind::Block { steps, return_ } => {
+                self.include_steps(steps);
+                self.include_custom_function_expr(return_);
             }
         }
     }

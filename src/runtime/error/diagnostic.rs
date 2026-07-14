@@ -45,6 +45,9 @@ impl Diagnostic for ExecutionError {
                 Some(Box::new("geam::function_return_family_mismatch"))
             }
             Self::TupleIndexFamilyMismatch { .. } => Some(Box::new("geam::tuple_index_mismatch")),
+            Self::CustomFieldFamilyMismatch { .. } => {
+                Some(Box::new("geam::custom_field_family_mismatch"))
+            }
             Self::ListIndexOutOfBounds { .. } => Some(Box::new("geam::list_index_out_of_bounds")),
         }
     }
@@ -54,6 +57,7 @@ impl Diagnostic for ExecutionError {
             Self::Panic(panic) => panic.help(),
             Self::FunctionReturnFamilyMismatch { .. }
             | Self::TupleIndexFamilyMismatch { .. }
+            | Self::CustomFieldFamilyMismatch { .. }
             | Self::ListIndexOutOfBounds { .. } => None,
         }
     }
@@ -63,6 +67,7 @@ impl Diagnostic for ExecutionError {
             Self::Panic(panic) => panic.source_code(),
             Self::FunctionReturnFamilyMismatch { .. }
             | Self::TupleIndexFamilyMismatch { .. }
+            | Self::CustomFieldFamilyMismatch { .. }
             | Self::ListIndexOutOfBounds { .. } => None,
         }
     }
@@ -72,6 +77,7 @@ impl Diagnostic for ExecutionError {
             Self::Panic(panic) => panic.labels(),
             Self::FunctionReturnFamilyMismatch { .. }
             | Self::TupleIndexFamilyMismatch { .. }
+            | Self::CustomFieldFamilyMismatch { .. }
             | Self::ListIndexOutOfBounds { .. } => None,
         }
     }
@@ -88,6 +94,17 @@ fn render_value(value: &Value) -> String {
             value.bit_len(),
         ),
         Value::UtfCodepoint(value) => format!("UtfCodepoint({value:?})"),
+        Value::Custom(value) => format!(
+            "{}::{}({})",
+            render_custom_type(value.type_()),
+            value.constructor_name(),
+            value
+                .fields()
+                .iter()
+                .map(|field| render_value(field.value()))
+                .collect::<Vec<_>>()
+                .join(", ")
+        ),
         Value::Bool(value) => format!("Bool({value})"),
         Value::Nil => "Nil".into(),
         Value::Tuple(values) => format!(
@@ -145,6 +162,26 @@ fn render_value_type(type_: &ValueType) -> String {
         ),
         ValueType::List(element) => format!("List({})", render_value_type(element)),
         ValueType::Function(type_) => render_function_type(type_),
+        ValueType::Custom(type_) => render_custom_type(type_),
+    }
+}
+
+fn render_custom_type(type_: &crate::plan::CustomType) -> String {
+    let name = type_.type_name();
+    let identity = format!("{}/{}/{}", name.package(), name.module(), name.name());
+    if type_.arguments().is_empty() {
+        identity
+    } else {
+        format!(
+            "{}({})",
+            identity,
+            type_
+                .arguments()
+                .iter()
+                .map(render_value_type)
+                .collect::<Vec<_>>()
+                .join(", ")
+        )
     }
 }
 
@@ -154,7 +191,9 @@ mod tests {
     use crate::plan::execution::{
         FunctionReturnFamily, IntFunctionId, IntLocalId, ParamLocal, RuntimeFunctionId,
     };
-    use crate::plan::{FunctionType, PanicSite, SourceContext, SourceSpan, ValueType};
+    use crate::plan::{
+        CustomType, CustomTypeName, FunctionType, PanicSite, SourceContext, SourceSpan, ValueType,
+    };
     use crate::runtime::{BitArrayValue, FunctionValue, ListValue, Value};
     use crate::runtime::{ExecutionError, Panic, PanicDetails, PanicKind, PanicMessage};
     use miette::Diagnostic;
@@ -251,6 +290,19 @@ mod tests {
                 "geam::tuple_index_mismatch",
             ),
             (
+                ExecutionError::CustomFieldFamilyMismatch {
+                    custom_type: CustomType::new(
+                        CustomTypeName::new("geam".into(), "main".into(), "Boxed".into()),
+                        Vec::new(),
+                    ),
+                    constructor: "Boxed".into(),
+                    field_index: 0,
+                    expected: ValueType::Int,
+                    actual: ValueType::String,
+                },
+                "geam::custom_field_family_mismatch",
+            ),
+            (
                 ExecutionError::ListIndexOutOfBounds {
                     item_type: ValueType::Int,
                     index: 1,
@@ -306,6 +358,10 @@ mod tests {
         ] {
             assert_eq!(render_value(&value), expected);
         }
+
+        let custom =
+            crate::runtime::run_src("pub type Boxed { Boxed(Int) } pub fn main() { Boxed(1) }");
+        assert_eq!(render_value(&custom), "geam/main/Boxed::Boxed(Int(1))",);
     }
 
     #[test]
@@ -326,6 +382,13 @@ mod tests {
                 ValueType::Nil,
             )))),
             "fn(Float) -> Nil",
+        );
+        assert_eq!(
+            render_value_type(&ValueType::Custom(CustomType::new(
+                CustomTypeName::new("geam".into(), "main".into(), "Boxed".into()),
+                vec![ValueType::Int],
+            ))),
+            "geam/main/Boxed(Int)",
         );
     }
 }

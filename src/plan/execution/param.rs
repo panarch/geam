@@ -1,9 +1,10 @@
 use super::{
     BitArrayFunctionLocalId, BitArrayLocalId, BoolFunctionLocalId, BoolLocalId,
-    FloatFunctionLocalId, FloatLocalId, FunctionFunctionLocalId, FunctionType, IntFunctionLocalId,
-    IntLocalId, ListFunctionLocal, ListLocal, NilFunctionLocalId, NilLocalId,
-    StringFunctionLocalId, StringLocalId, TupleFunctionLocalId, TupleLocalId,
-    UtfCodepointFunctionLocalId, UtfCodepointLocalId, ValueType,
+    CustomFunctionLocalId, CustomLocalId, CustomTypeId, FloatFunctionLocalId, FloatLocalId,
+    FunctionFunctionLocalId, FunctionType, IntFunctionLocalId, IntLocalId, ListFunctionLocal,
+    ListLocal, NilFunctionLocalId, NilLocalId, StringFunctionLocalId, StringLocalId,
+    TupleFunctionLocalId, TupleLocalId, UtfCodepointFunctionLocalId, UtfCodepointLocalId,
+    ValueType,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -13,6 +14,10 @@ pub(crate) enum ParamLocal {
     String(StringLocalId),
     BitArray(BitArrayLocalId),
     UtfCodepoint(UtfCodepointLocalId),
+    Custom {
+        local: CustomLocalId,
+        type_id: CustomTypeId,
+    },
     Bool(BoolLocalId),
     Nil(NilLocalId),
     Tuple {
@@ -38,6 +43,10 @@ pub(crate) enum ParamLocal {
     },
     UtfCodepointFunction {
         local: UtfCodepointFunctionLocalId,
+        type_: FunctionType,
+    },
+    CustomFunction {
+        local: CustomFunctionLocalId,
         type_: FunctionType,
     },
     BoolFunction {
@@ -67,6 +76,7 @@ impl ParamLocal {
             Self::String(_) => ValueType::String,
             Self::BitArray(_) => ValueType::BitArray,
             Self::UtfCodepoint(_) => ValueType::UtfCodepoint,
+            Self::Custom { type_id, .. } => ValueType::Custom(*type_id),
             Self::Bool(_) => ValueType::Bool,
             Self::Nil(_) => ValueType::Nil,
             Self::Tuple { type_, .. } => ValueType::Tuple(type_.clone()),
@@ -76,6 +86,7 @@ impl ParamLocal {
             | Self::StringFunction { type_, .. }
             | Self::BitArrayFunction { type_, .. }
             | Self::UtfCodepointFunction { type_, .. }
+            | Self::CustomFunction { type_, .. }
             | Self::BoolFunction { type_, .. }
             | Self::NilFunction { type_, .. }
             | Self::TupleFunction { type_, .. }

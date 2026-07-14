@@ -3,9 +3,10 @@ use super::steps::execute_steps;
 use crate::plan::execution::ExecutionPlan;
 use crate::plan::execution::{
     BitArrayFunctionFunctionId, BitArrayFunctionId, BitArrayListFunctionId, BoolFunctionFunctionId,
-    BoolFunctionId, BoolListFunctionId, CallArg, FloatFunctionFunctionId, FloatFunctionId,
-    FloatListFunctionId, FunctionFunctionFunctionId, FunctionListFunctionId, IntFunctionFunctionId,
-    IntFunctionId, IntListFunctionId, ListFunctionFunctionId, ListFunctionId, ListListFunctionId,
+    BoolFunctionId, BoolListFunctionId, CallArg, CustomFunctionFunctionId, CustomFunctionId,
+    CustomListFunctionId, FloatFunctionFunctionId, FloatFunctionId, FloatListFunctionId,
+    FunctionFunctionFunctionId, FunctionListFunctionId, IntFunctionFunctionId, IntFunctionId,
+    IntListFunctionId, ListFunctionFunctionId, ListFunctionId, ListListFunctionId,
     NilFunctionFunctionId, NilFunctionId, NilListFunctionId, ReturnBody, ReturnBodyKind,
     StringFunctionFunctionId, StringFunctionId, StringListFunctionId, TupleFunctionFunctionId,
     TupleFunctionId, TupleListFunctionId, UtfCodepointFunctionFunctionId, UtfCodepointFunctionId,
@@ -14,24 +15,25 @@ use crate::plan::execution::{
 use crate::runtime::error::ExecutionResult;
 use crate::runtime::expression::{
     eval_bit_array_expr, eval_bit_array_function_expr, eval_bit_array_list_expr, eval_bool_expr,
-    eval_bool_function_expr, eval_bool_list_expr, eval_float_expr, eval_float_function_expr,
-    eval_float_list_expr, eval_function_function_expr, eval_function_list_expr, eval_int_expr,
-    eval_int_function_expr, eval_int_list_expr, eval_list_function_expr, eval_list_list_expr,
-    eval_nil_expr, eval_nil_function_expr, eval_nil_list_expr, eval_string_expr,
-    eval_string_function_expr, eval_string_list_expr, eval_tuple_expr, eval_tuple_function_expr,
-    eval_tuple_list_expr, eval_utf_codepoint_expr, eval_utf_codepoint_function_expr,
-    eval_utf_codepoint_list_expr,
+    eval_bool_function_expr, eval_bool_list_expr, eval_custom_expr, eval_custom_function_expr,
+    eval_custom_list_expr, eval_float_expr, eval_float_function_expr, eval_float_list_expr,
+    eval_function_function_expr, eval_function_list_expr, eval_int_expr, eval_int_function_expr,
+    eval_int_list_expr, eval_list_function_expr, eval_list_list_expr, eval_nil_expr,
+    eval_nil_function_expr, eval_nil_list_expr, eval_string_expr, eval_string_function_expr,
+    eval_string_list_expr, eval_tuple_expr, eval_tuple_function_expr, eval_tuple_list_expr,
+    eval_utf_codepoint_expr, eval_utf_codepoint_function_expr, eval_utf_codepoint_list_expr,
 };
 use crate::runtime::frame::Frame;
 use crate::runtime::state::{
-    BitArrayListValueId, BoolListValueId, FloatListValueId, FunctionListValueId, IntListValueId,
-    ListListValueId, ListValueId, NilListValueId, RuntimeState, StringListValueId,
+    BitArrayListValueId, BoolListValueId, CustomListValueId, FloatListValueId, FunctionListValueId,
+    IntListValueId, ListListValueId, ListValueId, NilListValueId, RuntimeState, StringListValueId,
     TupleListValueId, UtfCodepointListValueId,
 };
 use crate::runtime::{
-    EvaluatedBitArray, EvaluatedBitArrayFunction, EvaluatedBoolFunction, EvaluatedFloatFunction,
-    EvaluatedFunctionFunction, EvaluatedIntFunction, EvaluatedListFunction, EvaluatedNilFunction,
-    EvaluatedStringFunction, EvaluatedTupleFunction, EvaluatedUtfCodepointFunction, EvaluatedValue,
+    EvaluatedBitArray, EvaluatedBitArrayFunction, EvaluatedBoolFunction, EvaluatedCustomFunction,
+    EvaluatedCustomValue, EvaluatedFloatFunction, EvaluatedFunctionFunction, EvaluatedIntFunction,
+    EvaluatedListFunction, EvaluatedNilFunction, EvaluatedStringFunction, EvaluatedTupleFunction,
+    EvaluatedUtfCodepointFunction, EvaluatedValue,
 };
 use ecow::EcoString;
 use num_bigint::BigInt;
@@ -282,6 +284,36 @@ pub(super) fn run_utf_codepoint_loop(
     }
 }
 
+pub(super) fn run_custom_loop(
+    plan: &ExecutionPlan,
+    state: &mut RuntimeState,
+    mut function: CustomFunctionId,
+    mut frame: Frame,
+) -> ExecutionResult<EvaluatedCustomValue> {
+    loop {
+        let runtime_function = plan.custom_function(function);
+        execute_steps(plan, state, runtime_function.steps(), &mut frame)?;
+        let outcome = eval_return_body(
+            plan,
+            state,
+            &mut frame,
+            runtime_function.return_(),
+            eval_custom_expr,
+        )?;
+        match outcome {
+            ReturnOutcome::Value(value) => return finish_return(state, frame, value),
+            ReturnOutcome::TailCall {
+                function: next,
+                args,
+            } => {
+                let frame_layout = plan.custom_function(next).frame_layout();
+                frame = bind_tail_arguments(plan, state, args, frame, frame_layout)?;
+                function = next;
+            }
+        }
+    }
+}
+
 pub(super) fn run_bool_loop(
     plan: &ExecutionPlan,
     state: &mut RuntimeState,
@@ -375,6 +407,9 @@ pub(super) fn run_list_loop(
         }
         ListFunctionId::UtfCodepoint(function) => {
             run_utf_codepoint_list_loop(plan, state, function, frame).map(Into::into)
+        }
+        ListFunctionId::Custom(function) => {
+            run_custom_list_loop(plan, state, function, frame).map(Into::into)
         }
         ListFunctionId::Float(function) => {
             run_float_list_loop(plan, state, function, frame).map(Into::into)
@@ -510,6 +545,36 @@ pub(super) fn run_utf_codepoint_list_loop(
                 args,
             } => {
                 let frame_layout = plan.utf_codepoint_list_function(next).frame_layout();
+                frame = bind_tail_arguments(plan, state, args, frame, frame_layout)?;
+                function = next;
+            }
+        }
+    }
+}
+
+pub(super) fn run_custom_list_loop(
+    plan: &ExecutionPlan,
+    state: &mut RuntimeState,
+    mut function: CustomListFunctionId,
+    mut frame: Frame,
+) -> ExecutionResult<CustomListValueId> {
+    loop {
+        let runtime_function = plan.custom_list_function(function);
+        execute_steps(plan, state, runtime_function.steps(), &mut frame)?;
+        let outcome = eval_return_body(
+            plan,
+            state,
+            &mut frame,
+            runtime_function.return_(),
+            eval_custom_list_expr,
+        )?;
+        match outcome {
+            ReturnOutcome::Value(value) => return finish_return(state, frame, value),
+            ReturnOutcome::TailCall {
+                function: next,
+                args,
+            } => {
+                let frame_layout = plan.custom_list_function(next).frame_layout();
                 frame = bind_tail_arguments(plan, state, args, frame, frame_layout)?;
                 function = next;
             }
@@ -832,6 +897,36 @@ pub(super) fn run_utf_codepoint_function_loop(
     }
 }
 
+pub(super) fn run_custom_function_loop(
+    plan: &ExecutionPlan,
+    state: &mut RuntimeState,
+    mut function: CustomFunctionFunctionId,
+    mut frame: Frame,
+) -> ExecutionResult<EvaluatedCustomFunction> {
+    loop {
+        let runtime_function = plan.custom_function_function(function);
+        execute_steps(plan, state, runtime_function.steps(), &mut frame)?;
+        let outcome = eval_return_body(
+            plan,
+            state,
+            &mut frame,
+            runtime_function.return_(),
+            eval_custom_function_expr,
+        )?;
+        match outcome {
+            ReturnOutcome::Value(value) => return finish_return(state, frame, value),
+            ReturnOutcome::TailCall {
+                function: next,
+                args,
+            } => {
+                let frame_layout = plan.custom_function_function(next).frame_layout();
+                frame = bind_tail_arguments(plan, state, args, frame, frame_layout)?;
+                function = next;
+            }
+        }
+    }
+}
+
 pub(super) fn run_bool_function_loop(
     plan: &ExecutionPlan,
     state: &mut RuntimeState,
@@ -1121,6 +1216,27 @@ pub fn main() { recurse(3)() }
 "#,
                 Value::UtfCodepoint('A'),
             ),
+            (
+                r#"
+pub type Boxed { Boxed(Int) }
+fn custom_recurse(count: Int) -> Boxed {
+  case count { 0 -> Boxed(40) _ -> custom_recurse(count - 1) }
+}
+fn list_recurse(count: Int) -> List(Boxed) {
+  case count { 0 -> [Boxed(41)] _ -> list_recurse(count - 1) }
+}
+fn function_recurse(count: Int) -> fn() -> Boxed {
+  case count { 0 -> fn() { Boxed(42) } _ -> function_recurse(count - 1) }
+}
+pub fn main() {
+  case custom_recurse(3), list_recurse(3), function_recurse(3)() {
+    Boxed(one), [Boxed(two)], Boxed(three) -> one + two + three
+    _, _, _ -> 0
+  }
+}
+"#,
+                Value::Int(123.into()),
+            ),
         ];
 
         for (source, expected) in cases {
@@ -1171,6 +1287,18 @@ pub fn main() { recurse(3)() }
                 "panic: step",
             );
         }
+
+        let custom_sources = [
+            "pub type Boxed { Boxed(Int) } pub fn main() -> Boxed { let value: Int = panic as \"step\" let _ = value Boxed(0) }",
+            "pub type Boxed { Boxed(Int) } pub fn main() -> List(Boxed) { let value: Int = panic as \"step\" let _ = value [Boxed(0)] }",
+            "pub type Boxed { Boxed(Int) } pub fn main() -> fn() -> Boxed { let value: Int = panic as \"step\" let _ = value fn() { Boxed(0) } }",
+        ];
+        for source in custom_sources {
+            assert_eq!(
+                crate::runtime::run_src_error(source).to_string(),
+                "panic: step",
+            );
+        }
     }
 
     #[test]
@@ -1216,6 +1344,17 @@ pub fn main() { recurse(3)() }
                 "panic: tail",
             );
         }
+
+        let custom_return_types = ["Boxed", "List(Boxed)", "fn() -> Boxed"];
+        for return_type in custom_return_types {
+            let source = format!(
+                "pub type Boxed {{ Boxed(Int) }} fn recurse(value: Int) -> {return_type} {{ recurse(panic as \"tail\") }} pub fn main() -> {return_type} {{ recurse(0) }}",
+            );
+            assert_eq!(
+                crate::runtime::run_src_error(&source).to_string(),
+                "panic: tail",
+            );
+        }
     }
 
     #[test]
@@ -1256,6 +1395,7 @@ pub fn main() { recurse(3)() }
             "pub fn main() -> List(String) { panic }",
             "pub fn main() -> List(BitArray) { panic }",
             "pub fn main() -> List(UtfCodepoint) { panic }",
+            "pub type Boxed { Boxed(Int) } pub fn main() -> List(Boxed) { panic }",
             "pub fn main() -> List(Float) { panic }",
             "pub fn main() -> List(Bool) { panic }",
             "pub fn main() -> List(Nil) { panic }",

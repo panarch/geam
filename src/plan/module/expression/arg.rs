@@ -1,15 +1,15 @@
 use super::{
-    BitArrayExpr, BitArrayFunctionExpr, BoolExpr, BoolFunctionExpr, Expr, ExprKind, FloatExpr,
-    FloatFunctionExpr, FunctionFunctionExpr, IntExpr, IntFunctionExpr, ListExpr, ListFunctionExpr,
-    ListLocalExpr, NilExpr, NilFunctionExpr, StringExpr, StringFunctionExpr, TupleExpr,
-    TupleFunctionExpr, UtfCodepointExpr, UtfCodepointFunctionExpr,
+    BitArrayExpr, BitArrayFunctionExpr, BoolExpr, BoolFunctionExpr, CustomExpr, CustomFunctionExpr,
+    Expr, ExprKind, FloatExpr, FloatFunctionExpr, FunctionFunctionExpr, IntExpr, IntFunctionExpr,
+    ListExpr, ListFunctionExpr, ListLocalExpr, NilExpr, NilFunctionExpr, StringExpr,
+    StringFunctionExpr, TupleExpr, TupleFunctionExpr, UtfCodepointExpr, UtfCodepointFunctionExpr,
 };
 use crate::plan::{
     BitArrayFunctionLocalId, BitArrayLocalId, BoolFunctionLocalId, BoolLocalId,
-    FloatFunctionLocalId, FloatLocalId, FunctionFunctionLocalId, IntFunctionLocalId, IntLocalId,
-    ListFunctionLocal, ListLocal, NilFunctionLocalId, NilLocalId, ParamLocal,
-    StringFunctionLocalId, StringLocalId, TupleFunctionLocalId, TupleLocalId,
-    UtfCodepointFunctionLocalId, UtfCodepointLocalId,
+    CustomFunctionLocalId, CustomLocalId, FloatFunctionLocalId, FloatLocalId,
+    FunctionFunctionLocalId, IntFunctionLocalId, IntLocalId, ListFunctionLocal, ListLocal,
+    NilFunctionLocalId, NilLocalId, ParamLocal, StringFunctionLocalId, StringLocalId,
+    TupleFunctionLocalId, TupleLocalId, UtfCodepointFunctionLocalId, UtfCodepointLocalId,
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -34,6 +34,10 @@ pub(crate) enum CallArgKind {
     UtfCodepoint {
         local: UtfCodepointLocalId,
         value: UtfCodepointExpr,
+    },
+    Custom {
+        local: CustomLocalId,
+        value: CustomExpr,
     },
     Float {
         local: FloatLocalId,
@@ -67,6 +71,10 @@ pub(crate) enum CallArgKind {
     UtfCodepointFunction {
         local: UtfCodepointFunctionLocalId,
         value: UtfCodepointFunctionExpr,
+    },
+    CustomFunction {
+        local: CustomFunctionLocalId,
+        value: CustomFunctionExpr,
     },
     FloatFunction {
         local: FloatFunctionLocalId,
@@ -117,6 +125,10 @@ pub(crate) enum CaptureArgKind {
         local: UtfCodepointLocalId,
         value: UtfCodepointExpr,
     },
+    Custom {
+        local: CustomLocalId,
+        value: CustomExpr,
+    },
     Float {
         local: FloatLocalId,
         value: FloatExpr,
@@ -149,6 +161,10 @@ pub(crate) enum CaptureArgKind {
     UtfCodepointFunction {
         local: UtfCodepointFunctionLocalId,
         value: UtfCodepointFunctionExpr,
+    },
+    CustomFunction {
+        local: CustomFunctionLocalId,
+        value: CustomFunctionExpr,
     },
     FloatFunction {
         local: FloatFunctionLocalId,
@@ -189,6 +205,13 @@ impl Expr {
             (ParamLocal::UtfCodepoint(local), ExprKind::UtfCodepoint(value)) => {
                 Some(CallArg::utf_codepoint(*local, value))
             }
+            (
+                ParamLocal::Custom {
+                    local,
+                    type_: expected,
+                },
+                ExprKind::Custom(value),
+            ) if value.type_() == expected => Some(CallArg::custom(*local, value)),
             (ParamLocal::Float(local), ExprKind::Float(value)) => {
                 Some(CallArg::float(*local, value))
             }
@@ -228,6 +251,16 @@ impl Expr {
                 local: *local,
                 value,
             })),
+            (
+                ParamLocal::List(ListLocal::Custom { local, item_type }),
+                ExprKind::List(ListExpr::Custom(value)),
+            ) if value.item().item_type() == item_type.clone() => {
+                Some(CallArg::list(ListLocalExpr::Custom {
+                    local: *local,
+                    item_type: item_type.clone(),
+                    value,
+                }))
+            }
             (ParamLocal::List(ListLocal::Float(local)), ExprKind::List(ListExpr::Float(value))) => {
                 Some(CallArg::list(ListLocalExpr::Float {
                     local: *local,
@@ -313,6 +346,15 @@ impl Expr {
                 .into_utf_codepoint()
                 .map(|value| CallArg::utf_codepoint_function(*local, value)),
             (
+                ParamLocal::CustomFunction {
+                    local,
+                    type_: expected,
+                },
+                ExprKind::Function(value),
+            ) if value.type_() == expected => value
+                .into_custom()
+                .map(|value| CallArg::custom_function(*local, value)),
+            (
                 ParamLocal::FloatFunction {
                     local,
                     type_: expected,
@@ -394,6 +436,12 @@ impl CallArg {
         }
     }
 
+    pub(crate) fn custom(local: CustomLocalId, value: CustomExpr) -> Self {
+        Self {
+            kind: CallArgKind::Custom { local, value },
+        }
+    }
+
     pub(crate) fn float(local: FloatLocalId, value: FloatExpr) -> Self {
         Self {
             kind: CallArgKind::Float { local, value },
@@ -451,6 +499,12 @@ impl CallArg {
     ) -> Self {
         Self {
             kind: CallArgKind::UtfCodepointFunction { local, value },
+        }
+    }
+
+    pub(crate) fn custom_function(local: CustomFunctionLocalId, value: CustomFunctionExpr) -> Self {
+        Self {
+            kind: CallArgKind::CustomFunction { local, value },
         }
     }
 
@@ -527,6 +581,12 @@ impl CaptureArg {
         }
     }
 
+    pub(crate) fn custom(local: CustomLocalId, value: CustomExpr) -> Self {
+        Self {
+            kind: CaptureArgKind::Custom { local, value },
+        }
+    }
+
     pub(crate) fn float(local: FloatLocalId, value: FloatExpr) -> Self {
         Self {
             kind: CaptureArgKind::Float { local, value },
@@ -584,6 +644,12 @@ impl CaptureArg {
     ) -> Self {
         Self {
             kind: CaptureArgKind::UtfCodepointFunction { local, value },
+        }
+    }
+
+    pub(crate) fn custom_function(local: CustomFunctionLocalId, value: CustomFunctionExpr) -> Self {
+        Self {
+            kind: CaptureArgKind::CustomFunction { local, value },
         }
     }
 

@@ -8,7 +8,8 @@ use super::state::{ListValueId, RuntimeState};
 use crate::plan::ValueType;
 use crate::plan::execution::{
     BitArrayFunctionId, BitArrayFunctionLocalId, BitArrayLocalId, BoolFunctionId,
-    BoolFunctionLocalId, BoolLocalId, FloatFunctionId, FloatFunctionLocalId, FloatLocalId,
+    BoolFunctionLocalId, BoolLocalId, CustomConstructorId, CustomFunctionId, CustomFunctionLocalId,
+    CustomLocalId, CustomTypeId, FloatFunctionId, FloatFunctionLocalId, FloatLocalId,
     FunctionFunctionId, FunctionFunctionLocalId, FunctionReturnFamily, FunctionType, IntFunctionId,
     IntFunctionLocalId, IntLocalId, ListFunctionId, ListFunctionLocal, NilFunctionId,
     NilFunctionLocalId, NilLocalId, ParamLocal, StringFunctionId, StringFunctionLocalId,
@@ -19,6 +20,36 @@ use crate::plan::execution::{
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(in crate::runtime) struct EvaluatedBitArray {
     bits: Rc<BitVec<u8, Msb0>>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub(in crate::runtime) struct EvaluatedCustomValue {
+    constructor: CustomConstructorId,
+    fields: Vec<EvaluatedValue>,
+}
+
+impl EvaluatedCustomValue {
+    pub(in crate::runtime) fn new(
+        constructor: CustomConstructorId,
+        fields: Vec<EvaluatedValue>,
+    ) -> Self {
+        Self {
+            constructor,
+            fields,
+        }
+    }
+
+    pub(in crate::runtime) fn type_id(&self) -> CustomTypeId {
+        self.constructor.type_id()
+    }
+
+    pub(in crate::runtime) fn constructor(&self) -> CustomConstructorId {
+        self.constructor
+    }
+
+    pub(in crate::runtime) fn fields(&self) -> &[EvaluatedValue] {
+        &self.fields
+    }
 }
 
 impl EvaluatedBitArray {
@@ -42,6 +73,7 @@ pub(in crate::runtime) enum EvaluatedValue {
     String(EcoString),
     BitArray(EvaluatedBitArray),
     UtfCodepoint(char),
+    Custom(EvaluatedCustomValue),
     Bool(bool),
     Nil,
     Tuple(Vec<EvaluatedValue>),
@@ -63,6 +95,13 @@ pub(in crate::runtime) type EvaluatedStringFunction = EvaluatedFunction<StringFu
 pub(in crate::runtime) type EvaluatedBitArrayFunction = EvaluatedFunction<BitArrayFunctionId>;
 pub(in crate::runtime) type EvaluatedUtfCodepointFunction =
     EvaluatedFunction<UtfCodepointFunctionId>;
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(in crate::runtime) enum EvaluatedCustomFunctionTarget {
+    Function(CustomFunctionId),
+    Constructor(CustomConstructorId),
+}
+pub(in crate::runtime) type EvaluatedCustomFunction =
+    EvaluatedFunction<EvaluatedCustomFunctionTarget>;
 pub(in crate::runtime) type EvaluatedBoolFunction = EvaluatedFunction<BoolFunctionId>;
 pub(in crate::runtime) type EvaluatedNilFunction = EvaluatedFunction<NilFunctionId>;
 pub(in crate::runtime) type EvaluatedTupleFunction = EvaluatedFunction<TupleFunctionId>;
@@ -88,6 +127,7 @@ pub(in crate::runtime) enum EvaluatedFunctionValueKind {
     String(EvaluatedStringFunction),
     BitArray(EvaluatedBitArrayFunction),
     UtfCodepoint(EvaluatedUtfCodepointFunction),
+    Custom(EvaluatedCustomFunction),
     Bool(EvaluatedBoolFunction),
     Nil(EvaluatedNilFunction),
     Tuple(EvaluatedTupleFunction),
@@ -122,6 +162,10 @@ pub(in crate::runtime) enum EvaluatedCaptureKind {
         local: UtfCodepointLocalId,
         value: char,
     },
+    Custom {
+        local: CustomLocalId,
+        value: EvaluatedCustomValue,
+    },
     Bool {
         local: BoolLocalId,
         value: bool,
@@ -153,6 +197,10 @@ pub(in crate::runtime) enum EvaluatedCaptureKind {
     UtfCodepointFunction {
         local: UtfCodepointFunctionLocalId,
         value: EvaluatedUtfCodepointFunction,
+    },
+    CustomFunction {
+        local: CustomFunctionLocalId,
+        value: EvaluatedCustomFunction,
     },
     BoolFunction {
         local: BoolFunctionLocalId,
@@ -194,6 +242,10 @@ pub(in crate::runtime) enum EvaluatedListCapture {
         local: crate::plan::execution::UtfCodepointListLocalId,
         value: super::state::UtfCodepointListValueId,
     },
+    Custom {
+        local: crate::plan::execution::CustomListLocalId,
+        value: super::state::CustomListValueId,
+    },
     Float {
         local: crate::plan::execution::FloatListLocalId,
         value: super::state::FloatListValueId,
@@ -228,6 +280,7 @@ impl EvaluatedValue {
             Self::String(_) => ValueType::String,
             Self::BitArray(_) => ValueType::BitArray,
             Self::UtfCodepoint(_) => ValueType::UtfCodepoint,
+            Self::Custom(value) => ValueType::Custom(plan.custom_value_type(value.type_id())),
             Self::Bool(_) => ValueType::Bool,
             Self::Nil => ValueType::Nil,
             Self::Tuple(values) => {
@@ -288,6 +341,7 @@ evaluated_function_value_from!(EvaluatedFloatFunction, Float);
 evaluated_function_value_from!(EvaluatedStringFunction, String);
 evaluated_function_value_from!(EvaluatedBitArrayFunction, BitArray);
 evaluated_function_value_from!(EvaluatedUtfCodepointFunction, UtfCodepoint);
+evaluated_function_value_from!(EvaluatedCustomFunction, Custom);
 evaluated_function_value_from!(EvaluatedBoolFunction, Bool);
 evaluated_function_value_from!(EvaluatedNilFunction, Nil);
 evaluated_function_value_from!(EvaluatedTupleFunction, Tuple);
@@ -310,6 +364,7 @@ impl EvaluatedFunctionValue {
             EvaluatedFunctionValueKind::String(value) => value.type_(),
             EvaluatedFunctionValueKind::BitArray(value) => value.type_(),
             EvaluatedFunctionValueKind::UtfCodepoint(value) => value.type_(),
+            EvaluatedFunctionValueKind::Custom(value) => value.type_(),
             EvaluatedFunctionValueKind::Bool(value) => value.type_(),
             EvaluatedFunctionValueKind::Nil(value) => value.type_(),
             EvaluatedFunctionValueKind::Tuple(value) => value.type_(),
@@ -327,6 +382,7 @@ impl EvaluatedFunctionValueKind {
             Self::String(_) => FunctionReturnFamily::String,
             Self::BitArray(_) => FunctionReturnFamily::BitArray,
             Self::UtfCodepoint(_) => FunctionReturnFamily::UtfCodepoint,
+            Self::Custom(_) => FunctionReturnFamily::Custom,
             Self::Bool(_) => FunctionReturnFamily::Bool,
             Self::Nil(_) => FunctionReturnFamily::Nil,
             Self::Tuple(_) => FunctionReturnFamily::Tuple,
@@ -363,6 +419,10 @@ impl EvaluatedCapture {
 
     pub(in crate::runtime) fn utf_codepoint(local: UtfCodepointLocalId, value: char) -> Self {
         Self::from_kind(EvaluatedCaptureKind::UtfCodepoint { local, value })
+    }
+
+    pub(in crate::runtime) fn custom(local: CustomLocalId, value: EvaluatedCustomValue) -> Self {
+        Self::from_kind(EvaluatedCaptureKind::Custom { local, value })
     }
 
     pub(in crate::runtime) fn bool(local: BoolLocalId, value: bool) -> Self {
@@ -416,6 +476,13 @@ impl EvaluatedCapture {
         Self::from_kind(EvaluatedCaptureKind::UtfCodepointFunction { local, value })
     }
 
+    pub(in crate::runtime) fn custom_function(
+        local: CustomFunctionLocalId,
+        value: EvaluatedCustomFunction,
+    ) -> Self {
+        Self::from_kind(EvaluatedCaptureKind::CustomFunction { local, value })
+    }
+
     pub(in crate::runtime) fn bool_function(
         local: BoolFunctionLocalId,
         value: EvaluatedBoolFunction,
@@ -464,6 +531,15 @@ pub(in crate::runtime) fn values_equal(
         (EvaluatedValue::String(left), EvaluatedValue::String(right)) => left == right,
         (EvaluatedValue::BitArray(left), EvaluatedValue::BitArray(right)) => left == right,
         (EvaluatedValue::UtfCodepoint(left), EvaluatedValue::UtfCodepoint(right)) => left == right,
+        (EvaluatedValue::Custom(left), EvaluatedValue::Custom(right)) => {
+            left.constructor == right.constructor
+                && left.fields.len() == right.fields.len()
+                && left
+                    .fields
+                    .iter()
+                    .zip(&right.fields)
+                    .all(|(left, right)| values_equal(plan, state, left, right))
+        }
         (EvaluatedValue::Bool(left), EvaluatedValue::Bool(right)) => left == right,
         (EvaluatedValue::Nil, EvaluatedValue::Nil) => true,
         (EvaluatedValue::Tuple(left), EvaluatedValue::Tuple(right)) => {
@@ -526,6 +602,9 @@ fn functions_equal(
             EvaluatedFunctionValueKind::UtfCodepoint(left),
             EvaluatedFunctionValueKind::UtfCodepoint(right),
         ) => function_values_equal(plan, state, left, right),
+        (EvaluatedFunctionValueKind::Custom(left), EvaluatedFunctionValueKind::Custom(right)) => {
+            function_values_equal(plan, state, left, right)
+        }
         (EvaluatedFunctionValueKind::Bool(left), EvaluatedFunctionValueKind::Bool(right)) => {
             function_values_equal(plan, state, left, right)
         }
@@ -870,21 +949,21 @@ fn list_captures_equal(
 mod tests {
     use super::{
         EvaluatedBitArray, EvaluatedBitArrayFunction, EvaluatedBoolFunction, EvaluatedCapture,
-        EvaluatedFloatFunction, EvaluatedFunctionFunction, EvaluatedFunctionValue,
-        EvaluatedIntFunction, EvaluatedListCapture, EvaluatedListFunction, EvaluatedNilFunction,
-        EvaluatedStringFunction, EvaluatedTupleFunction, EvaluatedUtfCodepointFunction,
-        EvaluatedValue, values_equal,
+        EvaluatedCustomFunction, EvaluatedCustomFunctionTarget, EvaluatedFloatFunction,
+        EvaluatedFunctionFunction, EvaluatedFunctionValue, EvaluatedIntFunction,
+        EvaluatedListCapture, EvaluatedListFunction, EvaluatedNilFunction, EvaluatedStringFunction,
+        EvaluatedTupleFunction, EvaluatedUtfCodepointFunction, EvaluatedValue, values_equal,
     };
     use crate::plan::ValueType;
     use crate::plan::execution::{
         BitArrayFunctionId, BoolFunctionId, BoolFunctionLocalId, BoolListLocalId, BoolLocalId,
-        FloatFunctionId, FloatFunctionLocalId, FloatListLocalId, FloatLocalId, FunctionFunctionId,
-        FunctionFunctionLocalId, FunctionListLocalId, IntFunctionFunctionId, IntFunctionId,
-        IntFunctionLocalId, IntListFunctionLocalId, IntListLocalId, IntLocalId, ListFunctionId,
-        ListFunctionLocal, ListListLocalId, NilFunctionId, NilFunctionLocalId, NilListLocalId,
-        NilLocalId, ParamLocal, StringFunctionId, StringFunctionLocalId, StringListLocalId,
-        StringLocalId, TupleFunctionId, TupleFunctionLocalId, TupleListLocalId, TupleLocalId,
-        UtfCodepointFunctionId, UtfCodepointFunctionLocalId, UtfCodepointListLocalId,
+        CustomFunctionId, FloatFunctionId, FloatFunctionLocalId, FloatListLocalId, FloatLocalId,
+        FunctionFunctionId, FunctionFunctionLocalId, FunctionListLocalId, IntFunctionFunctionId,
+        IntFunctionId, IntFunctionLocalId, IntListFunctionLocalId, IntListLocalId, IntLocalId,
+        ListFunctionId, ListFunctionLocal, ListListLocalId, NilFunctionId, NilFunctionLocalId,
+        NilListLocalId, NilLocalId, ParamLocal, StringFunctionId, StringFunctionLocalId,
+        StringListLocalId, StringLocalId, TupleFunctionId, TupleFunctionLocalId, TupleListLocalId,
+        TupleLocalId, UtfCodepointFunctionId, UtfCodepointFunctionLocalId, UtfCodepointListLocalId,
         UtfCodepointLocalId,
     };
     use crate::runtime::state::{ListValueId, RuntimeState};
@@ -896,6 +975,9 @@ fn ints() -> List(Int) { [] }
 fn strings() -> List(String) { [] }
 fn bit_arrays() -> List(BitArray) { [] }
 fn utf_codepoints() -> List(UtfCodepoint) { [] }
+pub type Boxed { Boxed(Int) }
+fn customs() -> List(Boxed) { [] }
+fn custom() -> Boxed { Boxed(1) }
 fn floats() -> List(Float) { [] }
 fn bools() -> List(Bool) { [] }
 fn nils() -> List(Nil) { [] }
@@ -974,6 +1056,16 @@ pub fn main() { 0 }
             Vec::new(),
             Vec::new(),
             execution_int_type.clone(),
+        );
+        let custom_type = plan.custom_list_function_id(0).type_id().item_type();
+        let custom_function = EvaluatedCustomFunction::new(
+            EvaluatedCustomFunctionTarget::Function(CustomFunctionId(0)),
+            Vec::new(),
+            Vec::new(),
+            crate::plan::execution::FunctionType::new(
+                Vec::new(),
+                crate::plan::execution::ValueType::Custom(custom_type),
+            ),
         );
         let function_pairs = [
             (
@@ -1059,6 +1151,10 @@ pub fn main() { 0 }
                         crate::plan::execution::ValueType::UtfCodepoint,
                     ),
                 )),
+            ),
+            (
+                EvaluatedFunctionValue::from(custom_function.clone()),
+                EvaluatedFunctionValue::from(custom_function),
             ),
             (
                 EvaluatedFunctionValue::from(EvaluatedBoolFunction::new(

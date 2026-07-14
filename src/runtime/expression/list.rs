@@ -2,26 +2,28 @@ use ecow::EcoString;
 use num_bigint::BigInt;
 
 use super::{
-    eval_bit_array_expr, eval_bool_expr, eval_float_expr, eval_function_expr, eval_int_expr,
-    eval_nil_expr, eval_panic_expr, eval_string_expr, eval_tuple_expr, eval_utf_codepoint_expr,
-    project_tuple_expr,
+    eval_bit_array_expr, eval_bool_expr, eval_custom_expr, eval_float_expr, eval_function_expr,
+    eval_int_expr, eval_nil_expr, eval_panic_expr, eval_string_expr, eval_tuple_expr,
+    eval_utf_codepoint_expr, project_tuple_expr,
 };
 use crate::plan::execution::{
-    BitArrayListExpr, BitArrayListItem, BoolListExpr, BoolListItem, ExecutionPlan, FloatListExpr,
-    FloatListItem, FunctionListExpr, FunctionListItem, IntListExpr, IntListItem, ListExpr,
-    ListItem, ListListExpr, ListListItem, NilListExpr, NilListItem, StringListExpr, StringListItem,
-    TupleListExpr, TupleListItem, TypedListExpr, TypedListExprKind, UtfCodepointListExpr,
-    UtfCodepointListItem,
+    BitArrayListExpr, BitArrayListItem, BoolListExpr, BoolListItem, CustomListExpr, CustomListItem,
+    CustomTypeId, ExecutionPlan, FloatListExpr, FloatListItem, FunctionListExpr, FunctionListItem,
+    IntListExpr, IntListItem, ListExpr, ListItem, ListListExpr, ListListItem, NilListExpr,
+    NilListItem, StringListExpr, StringListItem, TupleListExpr, TupleListItem, TypedListExpr,
+    TypedListExprKind, UtfCodepointListExpr, UtfCodepointListItem,
 };
 use crate::plan::{FunctionType, ValueType};
 use crate::runtime::ExecutionError;
-use crate::runtime::evaluated::{EvaluatedBitArray, EvaluatedFunctionValue, EvaluatedValue};
+use crate::runtime::evaluated::{
+    EvaluatedBitArray, EvaluatedCustomValue, EvaluatedFunctionValue, EvaluatedValue,
+};
 use crate::runtime::frame::Frame;
 use crate::runtime::function;
 use crate::runtime::state::{
-    BitArrayListValueId, BoolListValueId, FloatListValueId, FunctionListValueId, IntListValueId,
-    ListHandleCore, ListListValueId, ListValueId, NilListValueId, RuntimeState, StringListValueId,
-    TupleListValueId, UtfCodepointListValueId,
+    BitArrayListValueId, BoolListValueId, CustomListValueId, FloatListValueId, FunctionListValueId,
+    IntListValueId, ListHandleCore, ListListValueId, ListValueId, NilListValueId, RuntimeState,
+    StringListValueId, TupleListValueId, UtfCodepointListValueId,
 };
 
 pub(in crate::runtime) fn eval_list_expr(
@@ -42,6 +44,9 @@ pub(in crate::runtime) fn eval_list_expr(
         }
         ListExpr::UtfCodepoint(expression) => {
             eval_utf_codepoint_list_expr(plan, state, frame, expression).map(Into::into)
+        }
+        ListExpr::Custom(expression) => {
+            eval_custom_list_expr(plan, state, frame, expression).map(Into::into)
         }
         ListExpr::Float(expression) => {
             eval_float_list_expr(plan, state, frame, expression).map(Into::into)
@@ -106,6 +111,15 @@ pub(in crate::runtime) fn eval_float_list_expr(
     frame: &mut Frame,
     expression: &FloatListExpr,
 ) -> Result<FloatListValueId, ExecutionError> {
+    eval_typed_list_expr(plan, state, frame, expression)
+}
+
+pub(in crate::runtime) fn eval_custom_list_expr(
+    plan: &ExecutionPlan,
+    state: &mut RuntimeState,
+    frame: &mut Frame,
+    expression: &CustomListExpr,
+) -> Result<CustomListValueId, ExecutionError> {
     eval_typed_list_expr(plan, state, frame, expression)
 }
 
@@ -457,6 +471,18 @@ primitive_runtime_list_item!(
     run_utf_codepoint_list_function_call
 );
 primitive_runtime_list_item!(
+    CustomListItem,
+    EvaluatedCustomValue,
+    CustomListValueId,
+    Custom,
+    eval_custom_expr,
+    custom_values,
+    custom,
+    get_custom_list,
+    run_custom_list_call,
+    run_custom_list_function_call
+);
+primitive_runtime_list_item!(
     FloatListItem,
     f64,
     FloatListValueId,
@@ -755,6 +781,9 @@ pub(in crate::runtime) fn get_list_value(
         crate::plan::execution::ListLocal::UtfCodepoint { local, .. } => {
             frame.get_utf_codepoint_list(*local).into()
         }
+        crate::plan::execution::ListLocal::Custom { local, .. } => {
+            frame.get_custom_list(*local).into()
+        }
         crate::plan::execution::ListLocal::Float { local, .. } => {
             frame.get_float_list(*local).into()
         }
@@ -848,6 +877,26 @@ project_primitive_list!(
     copied
 );
 
+pub(in crate::runtime) fn project_custom_list_expr(
+    plan: &ExecutionPlan,
+    state: &mut RuntimeState,
+    frame: &mut Frame,
+    list: &CustomListExpr,
+    index: usize,
+    item_type: CustomTypeId,
+) -> Result<EvaluatedCustomValue, ExecutionError> {
+    let list = eval_custom_list_expr(plan, state, frame, list)?;
+    let values = state.custom_values(&list);
+    values
+        .get(index)
+        .cloned()
+        .ok_or_else(|| ExecutionError::ListIndexOutOfBounds {
+            item_type: ValueType::Custom(plan.custom_value_type(item_type)),
+            index,
+            length: values.len(),
+        })
+}
+
 pub(in crate::runtime) fn project_nil_list_expr(
     plan: &ExecutionPlan,
     state: &mut RuntimeState,
@@ -911,9 +960,10 @@ pub(in crate::runtime) fn project_function_list_expr(
 #[cfg(test)]
 mod tests {
     use super::{
-        project_bit_array_list_expr, project_bool_list_expr, project_float_list_expr,
-        project_function_list_expr, project_int_list_expr, project_nil_list_expr,
-        project_string_list_expr, project_tuple_list_expr, project_utf_codepoint_list_expr,
+        project_bit_array_list_expr, project_bool_list_expr, project_custom_list_expr,
+        project_float_list_expr, project_function_list_expr, project_int_list_expr,
+        project_nil_list_expr, project_string_list_expr, project_tuple_list_expr,
+        project_utf_codepoint_list_expr,
     };
     use crate::plan::execution::{
         BitArrayListItem, BoolListItem, FloatListItem, FunctionListItem, IntListItem, ListListItem,
@@ -931,6 +981,64 @@ mod tests {
     use crate::runtime::{ExecutionError, RuntimeState};
 
     #[test]
+    fn source_custom_list_expression_variants_evaluate_exact_values() {
+        let source = r#"
+pub type Boxed {
+  Boxed(Int)
+}
+
+fn boxed(value: Int) -> List(Boxed) {
+  [Boxed(value)]
+}
+
+fn make_boxed(offset: Int) -> fn(Int) -> List(Boxed) {
+  fn(value) { [Boxed(value + offset)] }
+}
+
+fn unbox(values: List(Boxed)) -> Int {
+  case values {
+    [Boxed(value)] -> value
+    _ -> -1
+  }
+}
+
+pub fn main() {
+  let local = [Boxed(2)]
+  let maker = make_boxed
+  #(
+    unbox([Boxed(0)]),
+    unbox([Boxed(1), ..[]]),
+    unbox(local),
+    unbox(boxed(3)),
+    unbox(make_boxed(1)(3)),
+    unbox(maker(1)(4)),
+    unbox(#([Boxed(6)]).0),
+    case [[Boxed(7)]] { [values] -> unbox(values) _ -> -1 },
+    unbox(case True { True -> [Boxed(8)] False -> [] }),
+    unbox(case False { True -> [] False -> [Boxed(9)] }),
+    unbox(case 1 { 1 -> [Boxed(10)] _ -> [] }),
+    unbox(case 0 { 1 -> [] _ -> [Boxed(11)] }),
+    unbox(case "hit" { "hit" -> [Boxed(12)] _ -> [] }),
+    unbox(case "miss" { "hit" -> [] _ -> [Boxed(13)] }),
+    unbox(case 1.0 { 1.0 -> [Boxed(14)] _ -> [] }),
+    unbox(case 0.0 { 1.0 -> [] _ -> [Boxed(15)] }),
+    case [Boxed(0), Boxed(16)] { [_, ..rest] -> unbox(rest) _ -> -1 },
+    unbox({ let _ = 0 [Boxed(17)] }),
+  )
+}
+"#;
+
+        assert_eq!(
+            crate::runtime::run_src(source),
+            crate::runtime::Value::Tuple(
+                (0_i64..=17)
+                    .map(|value| crate::runtime::Value::Int(value.into()))
+                    .collect(),
+            ),
+        );
+    }
+
+    #[test]
     fn list_projection_reports_out_of_bounds_for_every_item_family() {
         let plan = crate::runtime::plan_src(
             r#"
@@ -938,6 +1046,8 @@ fn int_values(values: List(Int)) { values }
 fn string_values(values: List(String)) { values }
 fn bit_array_values(values: List(BitArray)) { values }
 fn utf_codepoint_values(values: List(UtfCodepoint)) { values }
+pub type Boxed { Boxed(Int) }
+fn custom_values(values: List(Boxed)) { values }
 fn float_values(values: List(Float)) { values }
 fn bool_values(values: List(Bool)) { values }
 fn nil_values(values: List(Nil)) { values }
@@ -992,6 +1102,19 @@ pub fn main() { Nil }
             project_utf_codepoint_list_expr(&plan, &mut state, &mut frame, expression, 0),
             Err(ExecutionError::ListIndexOutOfBounds {
                 item_type: ValueType::UtfCodepoint,
+                index: 0,
+                length: 0,
+            }),
+        );
+
+        let function = plan.custom_list_function(plan.custom_list_function_id(0));
+        let expression = expect_expression_return(function.return_());
+        let item_type = expression.item().type_id().item_type();
+        let mut frame = Frame::new(function.frame_layout(), &mut state);
+        assert_eq!(
+            project_custom_list_expr(&plan, &mut state, &mut frame, expression, 0, item_type,),
+            Err(ExecutionError::ListIndexOutOfBounds {
+                item_type: ValueType::Custom(plan.custom_value_type(item_type)),
                 index: 0,
                 length: 0,
             }),
@@ -1081,6 +1204,8 @@ fn first_int(values: List(List(Int))) -> List(Int) { case values { [first, ..] -
 fn first_string(values: List(List(String))) -> List(String) { case values { [first, ..] -> first _ -> [] } }
 fn first_bit_array(values: List(List(BitArray))) -> List(BitArray) { case values { [first, ..] -> first _ -> [] } }
 fn first_utf_codepoint(values: List(List(UtfCodepoint))) -> List(UtfCodepoint) { case values { [first, ..] -> first _ -> [] } }
+pub type Boxed { Boxed(Int) }
+fn first_custom(values: List(List(Boxed))) -> List(Boxed) { case values { [first, ..] -> first _ -> [] } }
 fn first_float(values: List(List(Float))) -> List(Float) { case values { [first, ..] -> first _ -> [] } }
 fn first_bool(values: List(List(Bool))) -> List(Bool) { case values { [first, ..] -> first _ -> [] } }
 fn first_nil(values: List(List(Nil))) -> List(Nil) { case values { [first, ..] -> first _ -> [] } }
@@ -1102,6 +1227,15 @@ pub fn main() { Nil }
         );
 
         let function = plan.bit_array_list_function(plan.bit_array_list_function_id(0));
+        let mut frame = Frame::new(function.frame_layout(), &mut state);
+        assert_nested_list_out_of_bounds(
+            &plan,
+            &mut state,
+            &mut frame,
+            expect_nested_list_binding(function.return_()),
+        );
+
+        let function = plan.custom_list_function(plan.custom_list_function_id(0));
         let mut frame = Frame::new(function.frame_layout(), &mut state);
         assert_nested_list_out_of_bounds(
             &plan,
@@ -1385,12 +1519,14 @@ pub fn main() { Nil }
     }
 
     #[test]
-    fn list_projection_propagates_source_errors_for_primitive_nil_and_tuple_lists() {
+    fn list_projection_propagates_source_errors_for_primitive_nil_tuple_and_custom_lists() {
         let plan = crate::runtime::plan_src(
             r#"
 fn ints() -> List(Int) { panic }
 fn nils() -> List(Nil) { panic }
 fn tuples() -> List(#(Int)) { panic }
+pub type Boxed { Boxed(Int) }
+fn customs() -> List(Boxed) { panic }
 pub fn main() { Nil }
 "#,
         );
@@ -1430,6 +1566,17 @@ pub fn main() { Nil }
             )
             .expect_err("tuple list source should fail")
             .to_string(),
+            "panic: `panic` expression evaluated.",
+        );
+
+        let function = plan.custom_list_function(plan.custom_list_function_id(0));
+        let expression = expect_expression_return(function.return_());
+        let item_type = expression.item().type_id().item_type();
+        let mut frame = Frame::new(function.frame_layout(), &mut state);
+        assert_eq!(
+            project_custom_list_expr(&plan, &mut state, &mut frame, expression, 0, item_type,)
+                .expect_err("custom list source should fail")
+                .to_string(),
             "panic: `panic` expression evaluated.",
         );
     }
@@ -1542,6 +1689,16 @@ pub fn main() { Nil }
                 super::eval_utf_codepoint_list_expr(plan, state, frame, value),
                 Err(ExecutionError::ListIndexOutOfBounds {
                     item_type: ValueType::List(Box::new(ValueType::UtfCodepoint)),
+                    index: 0,
+                    length: 0,
+                }),
+            ),
+            crate::plan::execution::ListLocalExpr::Custom { value, .. } => assert_eq!(
+                super::eval_custom_list_expr(plan, state, frame, value),
+                Err(ExecutionError::ListIndexOutOfBounds {
+                    item_type: ValueType::List(Box::new(ValueType::Custom(
+                        plan.custom_value_type(value.item().type_id().item_type()),
+                    ))),
                     index: 0,
                     length: 0,
                 }),

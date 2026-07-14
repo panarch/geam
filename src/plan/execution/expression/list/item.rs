@@ -1,13 +1,14 @@
 use super::ListExpr;
 use crate::plan::execution::{
     BitArrayExpr, BitArrayListFunctionId, BitArrayListLocalId, BitArrayListTypeId, BoolExpr,
-    BoolListFunctionId, BoolListLocalId, BoolListTypeId, FloatExpr, FloatListFunctionId,
-    FloatListLocalId, FloatListTypeId, FunctionExpr, FunctionListFunctionId, FunctionListLocalId,
-    FunctionListTypeId, IntExpr, IntListFunctionId, IntListLocalId, IntListTypeId,
-    ListListFunctionId, ListListLocalId, ListListTypeId, ListTypeId, NilExpr, NilListFunctionId,
-    NilListLocalId, NilListTypeId, StringExpr, StringListFunctionId, StringListLocalId,
-    StringListTypeId, TupleExpr, TupleListFunctionId, TupleListLocalId, TupleListTypeId,
-    UtfCodepointExpr, UtfCodepointListFunctionId, UtfCodepointListLocalId, UtfCodepointListTypeId,
+    BoolListFunctionId, BoolListLocalId, BoolListTypeId, CustomExpr, CustomListFunctionId,
+    CustomListLocalId, CustomListTypeId, FloatExpr, FloatListFunctionId, FloatListLocalId,
+    FloatListTypeId, FunctionExpr, FunctionListFunctionId, FunctionListLocalId, FunctionListTypeId,
+    IntExpr, IntListFunctionId, IntListLocalId, IntListTypeId, ListListFunctionId, ListListLocalId,
+    ListListTypeId, ListTypeId, NilExpr, NilListFunctionId, NilListLocalId, NilListTypeId,
+    StringExpr, StringListFunctionId, StringListLocalId, StringListTypeId, TupleExpr,
+    TupleListFunctionId, TupleListLocalId, TupleListTypeId, UtfCodepointExpr,
+    UtfCodepointListFunctionId, UtfCodepointListLocalId, UtfCodepointListTypeId,
 };
 pub(crate) trait ListItem {
     type ElementExpr;
@@ -31,6 +32,10 @@ pub(crate) struct BitArrayListItem {
 
 pub(crate) struct UtfCodepointListItem {
     type_id: UtfCodepointListTypeId,
+}
+
+pub(crate) struct CustomListItem {
+    type_id: CustomListTypeId,
 }
 
 pub(crate) struct FloatListItem {
@@ -75,6 +80,7 @@ list_item!(IntListItem, IntListTypeId);
 list_item!(StringListItem, StringListTypeId);
 list_item!(BitArrayListItem, BitArrayListTypeId);
 list_item!(UtfCodepointListItem, UtfCodepointListTypeId);
+list_item!(CustomListItem, CustomListTypeId);
 list_item!(FloatListItem, FloatListTypeId);
 list_item!(BoolListItem, BoolListTypeId);
 list_item!(NilListItem, NilListTypeId);
@@ -116,6 +122,16 @@ impl ListItem for UtfCodepointListItem {
     type ElementExpr = UtfCodepointExpr;
     type Local = UtfCodepointListLocalId;
     type Function = UtfCodepointListFunctionId;
+
+    fn list_type(&self) -> ListTypeId {
+        self.type_id.list_type()
+    }
+}
+
+impl ListItem for CustomListItem {
+    type ElementExpr = CustomExpr;
+    type Local = CustomListLocalId;
+    type Function = CustomListFunctionId;
 
     fn list_type(&self) -> ListTypeId {
         self.type_id.list_type()

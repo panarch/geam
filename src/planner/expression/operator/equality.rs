@@ -1,4 +1,4 @@
-use crate::plan::{BoolExpr, Expr, ValueType};
+use crate::plan::{BoolExpr, Expr};
 use crate::planner::context::PlanContext;
 use crate::planner::error::{PlanError, UnsupportedBinOpKind};
 use gleam_core::ast::TypedExpr;
@@ -10,7 +10,7 @@ pub(super) fn equal(
 ) -> Result<Expr, PlanError> {
     let left = super::super::plan_expr(left, context)?;
     let right = super::super::plan_expr(right, context)?;
-    reject_function_equality(&left, &right, UnsupportedBinOpKind::EqFunction)?;
+    reject_function_equality(&left, &right, UnsupportedBinOpKind::EqFunction, context)?;
 
     Ok(Expr::bool(BoolExpr::equal(left, right)))
 }
@@ -22,7 +22,7 @@ pub(super) fn not_equal(
 ) -> Result<Expr, PlanError> {
     let left = super::super::plan_expr(left, context)?;
     let right = super::super::plan_expr(right, context)?;
-    reject_function_equality(&left, &right, UnsupportedBinOpKind::NotEqFunction)?;
+    reject_function_equality(&left, &right, UnsupportedBinOpKind::NotEqFunction, context)?;
 
     Ok(Expr::bool(BoolExpr::not_equal(left, right)))
 }
@@ -31,35 +31,30 @@ fn reject_function_equality(
     left: &Expr,
     right: &Expr,
     operator: UnsupportedBinOpKind,
+    context: &PlanContext<'_>,
 ) -> Result<(), PlanError> {
-    if contains_function_value(&left.value_type()) || contains_function_value(&right.value_type()) {
+    if context.contains_function_value(&left.value_type())?
+        || context.contains_function_value(&right.value_type())?
+    {
         return Err(PlanError::UnsupportedBinOp { operator });
     }
 
     Ok(())
 }
 
-fn contains_function_value(type_: &ValueType) -> bool {
-    match type_ {
-        ValueType::Function(_) => true,
-        ValueType::Tuple(elements) => elements.iter().any(contains_function_value),
-        ValueType::List(element) => contains_function_value(element),
-        ValueType::Int
-        | ValueType::Float
-        | ValueType::String
-        | ValueType::BitArray
-        | ValueType::UtfCodepoint
-        | ValueType::Bool
-        | ValueType::Nil => false,
-    }
-}
-
 #[cfg(test)]
 mod tests {
+    use crate::plan::{CustomExpr, CustomLocalId, CustomType, CustomTypeName, Expr, IntExpr};
+    use crate::planner::context::{AnonymousFunctions, FunctionInfo, PlanContext};
     use crate::planner::dsl::{bool_, equal, function, int, module, not_equal};
     use crate::planner::plan_module;
     use crate::planner::support::{compile, expect_plan_error};
-    use crate::planner::{PlanError, UnsupportedBinOpKind, UnsupportedExpressionKind};
+    use crate::planner::{
+        InvalidCustomTypeReason, InvalidTypedAstReason, PlanError, UnsupportedBinOpKind,
+        UnsupportedExpressionKind,
+    };
+    use ecow::EcoString;
+    use std::collections::HashMap;
 
     #[test]
     fn plan_equality_operators() {
@@ -169,6 +164,73 @@ pub fn main() {
             PlanError::UnsupportedBinOp {
                 operator: UnsupportedBinOpKind::NotEqFunction,
             },
+        );
+        assert_eq!(
+            expect_plan_error(
+                r#"
+pub type Boxed(value) {
+  Boxed(value)
+}
+
+pub type Wrapper(value) {
+  Wrapper(Boxed(value))
+}
+
+fn value() {
+  1
+}
+
+pub fn main() {
+  Wrapper(Boxed(value)) == Wrapper(Boxed(value))
+}
+"#,
+            ),
+            PlanError::UnsupportedBinOp {
+                operator: UnsupportedBinOpKind::EqFunction,
+            },
+        );
+    }
+
+    #[test]
+    fn equality_preserves_custom_type_definition_errors_from_either_operand() {
+        let module = EcoString::from("main");
+        let functions = HashMap::<EcoString, FunctionInfo>::new();
+        let mut anonymous = AnonymousFunctions::default();
+        let context = PlanContext::new(&module, &functions, &mut anonymous);
+        let missing = CustomType::new(
+            CustomTypeName::new("geam".into(), module.clone(), "Missing".into()),
+            Vec::new(),
+        );
+        let custom = Expr::custom(CustomExpr::local_get(
+            CustomLocalId(0),
+            "missing".into(),
+            missing,
+        ));
+        let int = Expr::int(IntExpr::value(1.into()));
+        let expected = Err(PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::CustomType {
+                name: "Missing".into(),
+                reason: InvalidCustomTypeReason::UnknownDefinition,
+            },
+        });
+
+        assert_eq!(
+            super::reject_function_equality(
+                &custom,
+                &int,
+                UnsupportedBinOpKind::EqFunction,
+                &context,
+            ),
+            expected.clone(),
+        );
+        assert_eq!(
+            super::reject_function_equality(
+                &int,
+                &custom,
+                UnsupportedBinOpKind::EqFunction,
+                &context,
+            ),
+            expected,
         );
     }
 

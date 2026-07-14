@@ -1,5 +1,6 @@
 mod bit_array;
 mod bool_;
+mod custom;
 mod float;
 mod function;
 mod int;
@@ -19,8 +20,95 @@ use crate::planner::error::{InvalidCaseShapeReason, PlanError, UnsupportedCaseRe
 use crate::planner::statement::plan_variable_runtime_step;
 use ecow::EcoString;
 use gleam_core::ast::{Pattern, SrcSpan, TypedClause, TypedClauseGuard, TypedExpr};
-use gleam_core::type_::Type;
+use gleam_core::type_::{Type, TypeVar};
 use std::sync::Arc;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum CaseSubjectVariants {
+    Other,
+    Custom(Option<usize>),
+    Tuple(Vec<CaseSubjectVariants>),
+    List(Box<CaseSubjectVariants>),
+}
+
+impl CaseSubjectVariants {
+    fn from_gleam(type_: &Type) -> Self {
+        match type_ {
+            Type::Var { type_ } => match &*type_.borrow() {
+                TypeVar::Link { type_ } => Self::from_gleam(type_.as_ref()),
+                TypeVar::Unbound { .. } | TypeVar::Generic { .. } => Self::Other,
+            },
+            Type::Tuple { elements } => Self::Tuple(
+                elements
+                    .iter()
+                    .map(|element| Self::from_gleam(element.as_ref()))
+                    .collect(),
+            ),
+            Type::Named { .. } => {
+                if let Some(element) = type_.list_type() {
+                    Self::List(Box::new(Self::from_gleam(element.as_ref())))
+                } else if type_.is_int()
+                    || type_.is_float()
+                    || type_.is_string()
+                    || type_.is_bit_array()
+                    || type_.is_utf_codepoint()
+                    || type_.is_bool()
+                    || type_.is_nil()
+                {
+                    Self::Other
+                } else {
+                    Self::Custom(type_.custom_type_inferred_variant().map(usize::from))
+                }
+            }
+            Type::Fn { .. } => Self::Other,
+        }
+    }
+
+    #[cfg(test)]
+    fn without_inferred_variants(value_type: &ValueType) -> Self {
+        match value_type {
+            ValueType::Custom(_) => Self::Custom(None),
+            ValueType::Tuple(elements) => Self::Tuple(
+                elements
+                    .iter()
+                    .map(Self::without_inferred_variants)
+                    .collect(),
+            ),
+            ValueType::List(element) => {
+                Self::List(Box::new(Self::without_inferred_variants(element)))
+            }
+            ValueType::Int
+            | ValueType::Float
+            | ValueType::String
+            | ValueType::BitArray
+            | ValueType::UtfCodepoint
+            | ValueType::Bool
+            | ValueType::Nil
+            | ValueType::Function(_) => Self::Other,
+        }
+    }
+
+    fn custom_variant(&self) -> Option<usize> {
+        match self {
+            Self::Custom(variant) => *variant,
+            Self::Other | Self::Tuple(_) | Self::List(_) => None,
+        }
+    }
+
+    fn into_tuple(self) -> Option<Vec<Self>> {
+        match self {
+            Self::Tuple(elements) => Some(elements),
+            Self::Other | Self::Custom(_) | Self::List(_) => None,
+        }
+    }
+
+    fn into_list(self) -> Option<Self> {
+        match self {
+            Self::List(element) => Some(*element),
+            Self::Other | Self::Custom(_) | Self::Tuple(_) => None,
+        }
+    }
+}
 
 pub(super) fn plan(
     type_: Arc<Type>,
@@ -29,26 +117,48 @@ pub(super) fn plan(
     context: &mut PlanContext<'_>,
 ) -> Result<Expr, PlanError> {
     let clauses = case_clauses(clauses)?;
-    match ValueType::from_gleam(subject.type_().as_ref()) {
-        Some(ValueType::Bool) => bool_::plan(type_, subject, clauses, context),
-        Some(ValueType::Int) => int::plan(type_, subject, clauses, context),
-        Some(ValueType::String) => string::plan(type_, subject, clauses, context),
-        Some(ValueType::BitArray) => bit_array::plan(type_, subject, clauses, context),
-        Some(ValueType::UtfCodepoint) => utf_codepoint::plan(type_, subject, clauses, context),
-        Some(ValueType::Float) => float::plan(type_, subject, clauses, context),
-        Some(ValueType::Nil) => nil::plan(type_, subject, clauses, context),
-        Some(ValueType::Tuple(subject_type)) => {
-            tuple::plan(type_, subject, subject_type, clauses, context)
-        }
-        Some(ValueType::List(subject_type)) => {
-            list::plan(type_, subject, *subject_type, clauses, context)
-        }
-        Some(ValueType::Function(subject_type)) => {
+    let source_type = subject.type_();
+    let Some(subject_type) = ValueType::from_gleam(source_type.as_ref()) else {
+        return Err(super::unsupported_case(
+            UnsupportedCaseReason::UnsupportedSubjectType,
+        ));
+    };
+    let subject_variants = CaseSubjectVariants::from_gleam(source_type.as_ref());
+    match subject_type {
+        ValueType::Bool => bool_::plan(type_, subject, clauses, context),
+        ValueType::Int => int::plan(type_, subject, clauses, context),
+        ValueType::String => string::plan(type_, subject, clauses, context),
+        ValueType::BitArray => bit_array::plan(type_, subject, clauses, context),
+        ValueType::UtfCodepoint => utf_codepoint::plan(type_, subject, clauses, context),
+        ValueType::Custom(subject_type) => custom::plan(
+            type_,
+            subject,
+            subject_type,
+            subject_variants.custom_variant(),
+            clauses,
+            context,
+        ),
+        ValueType::Float => float::plan(type_, subject, clauses, context),
+        ValueType::Nil => nil::plan(type_, subject, clauses, context),
+        ValueType::Tuple(subject_type) => tuple::plan(
+            type_,
+            subject,
+            subject_type,
+            subject_variants,
+            clauses,
+            context,
+        ),
+        ValueType::List(subject_type) => list::plan(
+            type_,
+            subject,
+            *subject_type,
+            subject_variants,
+            clauses,
+            context,
+        ),
+        ValueType::Function(subject_type) => {
             function::plan(type_, subject, *subject_type, clauses, context)
         }
-        _ => Err(super::unsupported_case(
-            UnsupportedCaseReason::UnsupportedSubjectType,
-        )),
     }
 }
 
@@ -59,12 +169,15 @@ pub(super) fn plan_multi(
     context: &mut PlanContext<'_>,
 ) -> Result<Expr, PlanError> {
     let mut subject_types = Vec::with_capacity(subjects.len());
+    let mut subject_variants = Vec::with_capacity(subjects.len());
     for subject in &subjects {
-        let Some(type_) = ValueType::from_gleam(subject.type_().as_ref()) else {
+        let source_type = subject.type_();
+        let Some(type_) = ValueType::from_gleam(source_type.as_ref()) else {
             return Err(super::unsupported_case(
                 UnsupportedCaseReason::UnsupportedSubjectType,
             ));
         };
+        subject_variants.push(CaseSubjectVariants::from_gleam(source_type.as_ref()));
         subject_types.push(type_);
     }
     let gleam_subject_type = gleam_core::type_::tuple(
@@ -80,7 +193,14 @@ pub(super) fn plan_multi(
     };
     let clauses = multi_subject_case_clauses(clauses, subject_types.len())?;
 
-    tuple::plan(type_, subject, subject_types, clauses, context)
+    tuple::plan(
+        type_,
+        subject,
+        subject_types,
+        CaseSubjectVariants::Tuple(subject_variants),
+        clauses,
+        context,
+    )
 }
 
 struct CaseClause {
@@ -234,6 +354,9 @@ fn bool_case_expr(subject: BoolExpr, true_: Expr, false_: Expr) -> Result<Expr, 
         (ExprKind::UtfCodepoint(true_), ExprKind::UtfCodepoint(false_)) => {
             BoolCaseBranches::UtfCodepoint { true_, false_ }
         }
+        (ExprKind::Custom(true_), ExprKind::Custom(false_)) if true_.type_() == false_.type_() => {
+            BoolCaseBranches::Custom { true_, false_ }
+        }
         (ExprKind::Float(true_), ExprKind::Float(false_)) => {
             BoolCaseBranches::Float { true_, false_ }
         }
@@ -274,6 +397,9 @@ fn bool_list_case_branches(
         }
         (ListExpr::UtfCodepoint(true_), ListExpr::UtfCodepoint(false_)) => {
             BoolListCaseBranches::UtfCodepoint { true_, false_ }
+        }
+        (ListExpr::Custom(true_), ListExpr::Custom(false_)) if true_.item() == false_.item() => {
+            BoolListCaseBranches::Custom { true_, false_ }
         }
         (ListExpr::Float(true_), ListExpr::Float(false_)) => {
             BoolListCaseBranches::Float { true_, false_ }
@@ -320,6 +446,11 @@ fn bool_function_case_branches(
         (FunctionExprKind::UtfCodepoint(true_), FunctionExprKind::UtfCodepoint(false_)) => {
             BoolCaseBranches::UtfCodepointFunction { true_, false_ }
         }
+        (FunctionExprKind::Custom(true_), FunctionExprKind::Custom(false_))
+            if true_.type_() == false_.type_() =>
+        {
+            BoolCaseBranches::CustomFunction { true_, false_ }
+        }
         (FunctionExprKind::Float(true_), FunctionExprKind::Float(false_)) => {
             BoolCaseBranches::FloatFunction { true_, false_ }
         }
@@ -352,14 +483,8 @@ fn case_return_type(case_type: &Type) -> Result<ValueType, PlanError> {
 }
 
 #[cfg(test)]
-fn unsupported_case_return_type() -> Arc<Type> {
-    gleam_core::type_::named(
-        "package",
-        "main",
-        "Unsupported",
-        gleam_core::ast::Publicity::Public,
-        Vec::new(),
-    )
+fn invalid_case_return_type() -> Arc<Type> {
+    gleam_core::type_::generic_var(0)
 }
 
 fn plan_case_branch(
@@ -406,6 +531,7 @@ struct OrderedCaseClauseInput<'a> {
 struct OrderedCasePattern {
     match_condition: BoolExpr,
     branch_bindings: Vec<(EcoString, Expr)>,
+    total_branch_steps: Vec<Step>,
     is_total: bool,
 }
 
@@ -442,6 +568,7 @@ fn plan_ordered_case_clause(
             Ok(OrderedCasePattern {
                 match_condition,
                 branch_bindings,
+                total_branch_steps: Vec::new(),
                 is_total,
             })
         },
@@ -464,19 +591,20 @@ fn plan_ordered_case_candidate(
         let OrderedCasePattern {
             match_condition,
             branch_bindings,
+            total_branch_steps,
             is_total,
         } = plan_pattern(context)?;
         let is_guarded = guard.is_some();
-        let binding_steps = plan_branch_binding_steps(branch_bindings, context);
+        let branch_binding_steps = plan_branch_binding_steps(branch_bindings, context);
         let guard_condition = guard
             .map(|guard| super::guard::plan_bool(guard, context))
             .transpose()?;
         let condition = match guard_condition {
             Some(guard_condition) => {
-                let guard_condition = if binding_steps.is_empty() {
+                let guard_condition = if branch_binding_steps.is_empty() {
                     guard_condition
                 } else {
-                    BoolExpr::block(binding_steps.clone(), guard_condition)
+                    BoolExpr::block(branch_binding_steps.clone(), guard_condition)
                 };
                 BoolExpr::and(match_condition, guard_condition)
             }
@@ -489,6 +617,12 @@ fn plan_ordered_case_candidate(
             context,
         )?;
         validate_case_branch_type(case_type, &branch)?;
+        let mut binding_steps = if is_total && !is_guarded {
+            total_branch_steps
+        } else {
+            Vec::new()
+        };
+        binding_steps.extend(branch_binding_steps);
         let branch = if binding_steps.is_empty() {
             branch
         } else {
@@ -610,6 +744,7 @@ fn internal_bool_case_subject_name(local: BoolLocalId) -> EcoString {
 }
 
 #[cfg(test)]
+#[allow(clippy::arc_with_non_send_sync)]
 mod tests {
     use crate::plan::{
         BoolExpr, BoolListCaseBranches, Expr, FunctionType, IntExpr, ListExpr, ValueType,
@@ -627,8 +762,71 @@ mod tests {
     };
     use ecow::EcoString;
     use gleam_core::ast::TypedExpr;
-    use gleam_core::type_;
+    use gleam_core::type_::{self, Type, TypeVar};
+    use std::cell::RefCell;
     use std::collections::HashMap;
+    use std::sync::Arc;
+
+    #[test]
+    fn case_subject_variants_follow_the_gleam_type_shape() {
+        assert_eq!(
+            super::CaseSubjectVariants::from_gleam(type_::int().as_ref()),
+            super::CaseSubjectVariants::Other,
+        );
+        assert_eq!(
+            super::CaseSubjectVariants::from_gleam(
+                type_::tuple(vec![
+                    type_::int(),
+                    type_::list(type_::result(type_::int(), type_::string())),
+                ])
+                .as_ref(),
+            ),
+            super::CaseSubjectVariants::Tuple(vec![
+                super::CaseSubjectVariants::Other,
+                super::CaseSubjectVariants::List(Box::new(super::CaseSubjectVariants::Custom(
+                    None
+                ),)),
+            ]),
+        );
+        assert_eq!(
+            super::CaseSubjectVariants::from_gleam(type_::generic_var(0).as_ref()),
+            super::CaseSubjectVariants::Other,
+        );
+        assert_eq!(
+            super::CaseSubjectVariants::from_gleam(type_::unbound_var(0).as_ref()),
+            super::CaseSubjectVariants::Other,
+        );
+
+        let linked = Arc::new(Type::Var {
+            type_: Arc::new(RefCell::new(TypeVar::Link {
+                type_: type_::list(type_::result(type_::int(), type_::string())),
+            })),
+        });
+        assert_eq!(
+            super::CaseSubjectVariants::from_gleam(linked.as_ref()),
+            super::CaseSubjectVariants::List(Box::new(super::CaseSubjectVariants::Custom(None),)),
+        );
+    }
+
+    #[test]
+    fn case_subject_variant_accessors_reject_other_shapes() {
+        use super::CaseSubjectVariants as Variants;
+
+        assert_eq!(Variants::Other.custom_variant(), None);
+        assert_eq!(Variants::Tuple(Vec::new()).custom_variant(), None);
+        assert_eq!(
+            Variants::List(Box::new(Variants::Other)).custom_variant(),
+            None
+        );
+
+        assert_eq!(Variants::Other.into_tuple(), None);
+        assert_eq!(Variants::Custom(Some(0)).into_tuple(), None);
+        assert_eq!(Variants::List(Box::new(Variants::Other)).into_tuple(), None);
+
+        assert_eq!(Variants::Other.into_list(), None);
+        assert_eq!(Variants::Custom(Some(0)).into_list(), None);
+        assert_eq!(Variants::Tuple(Vec::new()).into_list(), None);
+    }
 
     #[test]
     fn bool_list_case_branches_preserves_typed_item_family() {

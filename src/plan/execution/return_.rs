@@ -1,17 +1,18 @@
 use super::{
     BitArrayExpr, BitArrayFunctionExpr, BitArrayFunctionFunctionId, BitArrayFunctionId,
     BitArrayListExpr, BitArrayListFunctionId, BoolExpr, BoolFunctionExpr, BoolFunctionFunctionId,
-    BoolFunctionId, BoolListExpr, BoolListFunctionId, CallArg, FloatExpr, FloatFunctionExpr,
-    FloatFunctionFunctionId, FloatFunctionId, FloatListExpr, FloatListFunctionId,
-    FunctionFunctionExpr, FunctionFunctionFunctionId, FunctionListExpr, FunctionListFunctionId,
-    IntExpr, IntFunctionExpr, IntFunctionFunctionId, IntFunctionId, IntListExpr, IntListFunctionId,
-    ListFunctionExpr, ListFunctionFunctionId, ListListExpr, ListListFunctionId, NilExpr,
-    NilFunctionExpr, NilFunctionFunctionId, NilFunctionId, NilListExpr, NilListFunctionId, Step,
-    StringExpr, StringFunctionExpr, StringFunctionFunctionId, StringFunctionId, StringListExpr,
-    StringListFunctionId, TupleExpr, TupleFunctionExpr, TupleFunctionFunctionId, TupleFunctionId,
-    TupleListExpr, TupleListFunctionId, UtfCodepointExpr, UtfCodepointFunctionExpr,
-    UtfCodepointFunctionFunctionId, UtfCodepointFunctionId, UtfCodepointListExpr,
-    UtfCodepointListFunctionId,
+    BoolFunctionId, BoolListExpr, BoolListFunctionId, CallArg, CustomExpr, CustomFunctionExpr,
+    CustomFunctionFunctionId, CustomFunctionId, CustomListExpr, CustomListFunctionId, FloatExpr,
+    FloatFunctionExpr, FloatFunctionFunctionId, FloatFunctionId, FloatListExpr,
+    FloatListFunctionId, FunctionFunctionExpr, FunctionFunctionFunctionId, FunctionListExpr,
+    FunctionListFunctionId, IntExpr, IntFunctionExpr, IntFunctionFunctionId, IntFunctionId,
+    IntListExpr, IntListFunctionId, ListFunctionExpr, ListFunctionFunctionId, ListListExpr,
+    ListListFunctionId, NilExpr, NilFunctionExpr, NilFunctionFunctionId, NilFunctionId,
+    NilListExpr, NilListFunctionId, Step, StringExpr, StringFunctionExpr, StringFunctionFunctionId,
+    StringFunctionId, StringListExpr, StringListFunctionId, TupleExpr, TupleFunctionExpr,
+    TupleFunctionFunctionId, TupleFunctionId, TupleListExpr, TupleListFunctionId, UtfCodepointExpr,
+    UtfCodepointFunctionExpr, UtfCodepointFunctionFunctionId, UtfCodepointFunctionId,
+    UtfCodepointListExpr, UtfCodepointListFunctionId,
 };
 use ecow::EcoString;
 use num_bigint::BigInt;
@@ -21,6 +22,7 @@ pub(crate) type FloatReturn = ReturnBody<FloatExpr, FloatFunctionId>;
 pub(crate) type StringReturn = ReturnBody<StringExpr, StringFunctionId>;
 pub(crate) type BitArrayReturn = ReturnBody<BitArrayExpr, BitArrayFunctionId>;
 pub(crate) type UtfCodepointReturn = ReturnBody<UtfCodepointExpr, UtfCodepointFunctionId>;
+pub(crate) type CustomReturn = ReturnBody<CustomExpr, CustomFunctionId>;
 pub(crate) type BoolReturn = ReturnBody<BoolExpr, BoolFunctionId>;
 pub(crate) type NilReturn = ReturnBody<NilExpr, NilFunctionId>;
 pub(crate) type TupleReturn = ReturnBody<TupleExpr, TupleFunctionId>;
@@ -30,6 +32,7 @@ pub(crate) type StringListReturn = ReturnBody<StringListExpr, StringListFunction
 pub(crate) type BitArrayListReturn = ReturnBody<BitArrayListExpr, BitArrayListFunctionId>;
 pub(crate) type UtfCodepointListReturn =
     ReturnBody<UtfCodepointListExpr, UtfCodepointListFunctionId>;
+pub(crate) type CustomListReturn = ReturnBody<CustomListExpr, CustomListFunctionId>;
 pub(crate) type BoolListReturn = ReturnBody<BoolListExpr, BoolListFunctionId>;
 pub(crate) type NilListReturn = ReturnBody<NilListExpr, NilListFunctionId>;
 pub(crate) type TupleListReturn = ReturnBody<TupleListExpr, TupleListFunctionId>;
@@ -42,6 +45,7 @@ pub(crate) type BitArrayFunctionReturn =
     ReturnBody<BitArrayFunctionExpr, BitArrayFunctionFunctionId>;
 pub(crate) type UtfCodepointFunctionReturn =
     ReturnBody<UtfCodepointFunctionExpr, UtfCodepointFunctionFunctionId>;
+pub(crate) type CustomFunctionReturn = ReturnBody<CustomFunctionExpr, CustomFunctionFunctionId>;
 pub(crate) type BoolFunctionReturn = ReturnBody<BoolFunctionExpr, BoolFunctionFunctionId>;
 pub(crate) type NilFunctionReturn = ReturnBody<NilFunctionExpr, NilFunctionFunctionId>;
 pub(crate) type TupleFunctionReturn = ReturnBody<TupleFunctionExpr, TupleFunctionFunctionId>;

@@ -1,14 +1,15 @@
 use super::{
-    BitArrayExpr, BitArrayFunctionExpr, BoolExpr, BoolFunctionExpr, FloatExpr, FloatFunctionExpr,
-    FunctionFunctionExpr, IntExpr, IntFunctionExpr, ListFunctionExpr, ListLocalExpr, NilExpr,
-    NilFunctionExpr, StringExpr, StringFunctionExpr, TupleExpr, TupleFunctionExpr,
-    UtfCodepointExpr, UtfCodepointFunctionExpr,
+    BitArrayExpr, BitArrayFunctionExpr, BoolExpr, BoolFunctionExpr, CustomExpr, CustomFunctionExpr,
+    FloatExpr, FloatFunctionExpr, FunctionFunctionExpr, IntExpr, IntFunctionExpr, ListFunctionExpr,
+    ListLocalExpr, NilExpr, NilFunctionExpr, StringExpr, StringFunctionExpr, TupleExpr,
+    TupleFunctionExpr, UtfCodepointExpr, UtfCodepointFunctionExpr,
 };
 use crate::plan::execution::{
     BitArrayFunctionLocalId, BitArrayLocalId, BoolFunctionLocalId, BoolLocalId,
-    FloatFunctionLocalId, FloatLocalId, FunctionFunctionLocalId, IntFunctionLocalId, IntLocalId,
-    ListFunctionLocal, NilFunctionLocalId, NilLocalId, StringFunctionLocalId, StringLocalId,
-    TupleFunctionLocalId, TupleLocalId, UtfCodepointFunctionLocalId, UtfCodepointLocalId,
+    CustomFunctionLocalId, CustomLocalId, FloatFunctionLocalId, FloatLocalId,
+    FunctionFunctionLocalId, IntFunctionLocalId, IntLocalId, ListFunctionLocal, NilFunctionLocalId,
+    NilLocalId, StringFunctionLocalId, StringLocalId, TupleFunctionLocalId, TupleLocalId,
+    UtfCodepointFunctionLocalId, UtfCodepointLocalId,
 };
 
 pub struct CallArg {
@@ -31,6 +32,10 @@ pub(crate) enum CallArgKind {
     UtfCodepoint {
         local: UtfCodepointLocalId,
         value: UtfCodepointExpr,
+    },
+    Custom {
+        local: CustomLocalId,
+        value: CustomExpr,
     },
     Float {
         local: FloatLocalId,
@@ -64,6 +69,10 @@ pub(crate) enum CallArgKind {
     UtfCodepointFunction {
         local: UtfCodepointFunctionLocalId,
         value: UtfCodepointFunctionExpr,
+    },
+    CustomFunction {
+        local: CustomFunctionLocalId,
+        value: CustomFunctionExpr,
     },
     FloatFunction {
         local: FloatFunctionLocalId,
@@ -112,6 +121,10 @@ pub(crate) enum CaptureArgKind {
         local: UtfCodepointLocalId,
         value: UtfCodepointExpr,
     },
+    Custom {
+        local: CustomLocalId,
+        value: CustomExpr,
+    },
     Float {
         local: FloatLocalId,
         value: FloatExpr,
@@ -144,6 +157,10 @@ pub(crate) enum CaptureArgKind {
     UtfCodepointFunction {
         local: UtfCodepointFunctionLocalId,
         value: UtfCodepointFunctionExpr,
+    },
+    CustomFunction {
+        local: CustomFunctionLocalId,
+        value: CustomFunctionExpr,
     },
     FloatFunction {
         local: FloatFunctionLocalId,

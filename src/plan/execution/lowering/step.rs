@@ -1,8 +1,8 @@
 use super::expression::{
-    bit_array_expr, bit_array_function_expr, bool_expr, expr, float_expr, function_function_expr,
-    int_expr, int_function_expr, list_function_expr, nil_expr, nil_function_expr, string_expr,
-    string_function_expr, tuple_expr, tuple_function_expr, utf_codepoint_expr,
-    utf_codepoint_function_expr,
+    bit_array_expr, bit_array_function_expr, bool_expr, custom_expr, custom_function_expr, expr,
+    float_expr, function_function_expr, int_expr, int_function_expr, list_function_expr, nil_expr,
+    nil_function_expr, string_expr, string_function_expr, tuple_expr, tuple_function_expr,
+    utf_codepoint_expr, utf_codepoint_function_expr,
 };
 use super::id::{list_function_local, list_local};
 use super::param::param_local;
@@ -62,6 +62,14 @@ fn lower_step(step: module::Step, context: &mut super::LoweringContext) -> execu
         } => E::LetUtfCodepoint {
             local: execution::UtfCodepointLocalId(local.0),
             value: utf_codepoint_expr(value, context),
+        },
+        M::LetCustom {
+            local,
+            name: _,
+            value,
+        } => E::LetCustom {
+            local: execution::CustomLocalId(local.0),
+            value: custom_expr(value, context),
         },
         M::LetBool {
             local,
@@ -130,6 +138,14 @@ fn lower_step(step: module::Step, context: &mut super::LoweringContext) -> execu
             local: execution::UtfCodepointFunctionLocalId(local.0),
             value: utf_codepoint_function_expr(value, context),
         },
+        M::LetCustomFunction {
+            local,
+            name: _,
+            value,
+        } => E::LetCustomFunction {
+            local: execution::CustomFunctionLocalId(local.0),
+            value: custom_function_expr(value, context),
+        },
         M::LetBoolFunction {
             local,
             name: _,
@@ -191,10 +207,27 @@ fn lower_step(step: module::Step, context: &mut super::LoweringContext) -> execu
             pattern_span,
         } => E::AssertBitArray {
             local: execution::BitArrayLocalId(local.0),
+            pattern: bit_array_assert_pattern(pattern),
+            message: message.map(|message| string_expr(message, context)),
+            site,
+            pattern_span,
+        },
+        M::AssertCustom {
+            local,
+            pattern,
+            message,
+            site,
+            pattern_span,
+        } => E::AssertCustom {
+            local: execution::CustomLocalId(local.0),
             pattern: assert_pattern(pattern, context),
             message: message.map(|message| string_expr(message, context)),
             site,
             pattern_span,
+        },
+        M::BindCustomFields { local, pattern } => E::BindCustomFields {
+            local: execution::CustomLocalId(local.0),
+            pattern: custom_binding_pattern(pattern, context),
         },
         M::AssertBool {
             condition,
@@ -209,7 +242,73 @@ fn lower_step(step: module::Step, context: &mut super::LoweringContext) -> execu
     })
 }
 
-fn assert_pattern(
+fn bit_array_assert_pattern(
+    pattern: module::BitArrayAssertPattern,
+) -> execution::BitArrayAssertPattern {
+    match pattern {
+        module::BitArrayAssertPattern::Pattern(pattern) => {
+            execution::BitArrayAssertPattern::Pattern(super::pattern::bit_array_pattern(pattern))
+        }
+        module::BitArrayAssertPattern::Alias {
+            pattern,
+            local,
+            name: _,
+        } => execution::BitArrayAssertPattern::Alias {
+            pattern: Box::new(bit_array_assert_pattern(*pattern)),
+            local: execution::BitArrayLocalId(local.0),
+        },
+    }
+}
+
+fn custom_binding_pattern(
+    pattern: module::CustomBindingPattern,
+    context: &mut super::LoweringContext,
+) -> execution::CustomBindingPattern {
+    let (constructor, fields) = pattern.into_parts();
+    execution::CustomBindingPattern::new(
+        context.custom_constructor(constructor),
+        fields
+            .into_iter()
+            .map(|field| total_binding_pattern(field, context))
+            .collect(),
+    )
+}
+
+fn total_binding_pattern(
+    pattern: module::TotalBindingPattern,
+    context: &mut super::LoweringContext,
+) -> execution::TotalBindingPattern {
+    let (type_, kind) = pattern.into_parts();
+    let kind = match kind {
+        module::TotalBindingPatternKind::Bind(binding) => {
+            execution::TotalBindingPatternKind::Bind(assert_binding(binding, context))
+        }
+        module::TotalBindingPatternKind::Discard => execution::TotalBindingPatternKind::Discard,
+        module::TotalBindingPatternKind::Tuple(elements) => {
+            execution::TotalBindingPatternKind::Tuple(
+                elements
+                    .into_iter()
+                    .map(|element| total_binding_pattern(element, context))
+                    .collect(),
+            )
+        }
+        module::TotalBindingPatternKind::List(tail) => {
+            execution::TotalBindingPatternKind::List(assert_tail(tail, context))
+        }
+        module::TotalBindingPatternKind::Custom(pattern) => {
+            execution::TotalBindingPatternKind::Custom(custom_binding_pattern(pattern, context))
+        }
+        module::TotalBindingPatternKind::Alias { pattern, binding } => {
+            execution::TotalBindingPatternKind::Alias {
+                pattern: Box::new(total_binding_pattern(*pattern, context)),
+                binding: assert_binding(binding, context),
+            }
+        }
+    };
+    execution::TotalBindingPattern::new(context.value_type(type_), kind)
+}
+
+pub(super) fn assert_pattern(
     pattern: module::AssertPattern,
     context: &mut super::LoweringContext,
 ) -> execution::AssertPattern {
@@ -218,6 +317,11 @@ fn assert_pattern(
             execution::AssertPattern::Bind(assert_binding(binding, context))
         }
         module::AssertPattern::Discard => execution::AssertPattern::Discard,
+        module::AssertPattern::Int(value) => execution::AssertPattern::Int(value),
+        module::AssertPattern::Float(value) => execution::AssertPattern::Float(value),
+        module::AssertPattern::String(value) => execution::AssertPattern::String(value),
+        module::AssertPattern::Bool(value) => execution::AssertPattern::Bool(value),
+        module::AssertPattern::Nil => execution::AssertPattern::Nil,
         module::AssertPattern::Tuple(elements) => execution::AssertPattern::Tuple(
             elements
                 .into_iter()
@@ -237,6 +341,25 @@ fn assert_pattern(
         module::AssertPattern::BitArray(pattern) => {
             execution::AssertPattern::BitArray(super::pattern::bit_array_pattern(pattern))
         }
+        module::AssertPattern::Custom(pattern) => {
+            let (constructor, fields) = pattern.into_parts();
+            execution::AssertPattern::Custom(execution::CustomPattern::new(
+                context.custom_constructor(constructor),
+                fields
+                    .into_iter()
+                    .map(|field| assert_pattern(field, context))
+                    .collect(),
+            ))
+        }
+        module::AssertPattern::StringPrefix {
+            prefix,
+            left,
+            right,
+        } => execution::AssertPattern::StringPrefix {
+            prefix,
+            left: left.map(|binding| assert_binding(binding, context)),
+            right: right.map(|binding| assert_binding(binding, context)),
+        },
         module::AssertPattern::Alias { pattern, binding } => execution::AssertPattern::Alias {
             pattern: Box::new(assert_pattern(*pattern, context)),
             binding: assert_binding(binding, context),
@@ -268,11 +391,11 @@ fn assert_tail(
 #[cfg(test)]
 mod tests {
     use crate::plan::execution::{
-        AssertBinding, AssertPattern, BitArrayBindingPattern, BitArrayLocalId,
-        BitArrayPatternSegment, BitArrayPatternSizeExpr, BitArrayPatternValue, ExecutionPlan,
-        IntFunctionId, IntListLocalId, IntLocalId, ListAssertPattern, ListAssertTail,
-        ListFunctionId, ListListFunctionId, ListListTypeId, ListLocal, ListLocalExpr, ParamLocal,
-        RuntimeFunctionId, Step, StepKind,
+        AssertBinding, AssertPattern, BitArrayAssertPattern, BitArrayBindingPattern,
+        BitArrayLocalId, BitArrayPatternSegment, BitArrayPatternSizeExpr, BitArrayPatternValue,
+        ExecutionPlan, IntFunctionId, IntListLocalId, IntLocalId, ListAssertPattern,
+        ListAssertTail, ListFunctionId, ListListFunctionId, ListListTypeId, ListLocal,
+        ListLocalExpr, ParamLocal, RuntimeFunctionId, Step, StepKind,
     };
 
     #[test]
@@ -454,7 +577,7 @@ pub fn main() {
     ) {
         if let StepKind::AssertBitArray {
             local,
-            pattern: AssertPattern::BitArray(pattern),
+            pattern: BitArrayAssertPattern::Pattern(pattern),
             ..
         } = step.kind()
             && let [

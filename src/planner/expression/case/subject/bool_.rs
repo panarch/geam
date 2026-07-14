@@ -1238,7 +1238,7 @@ pub fn main() {
         let (type_, _, _) = super::super::super::expect_case_statement_mut(
             &mut module.definitions.functions[0].body[0],
         );
-        *type_ = super::super::unsupported_case_return_type();
+        *type_ = super::super::invalid_case_return_type();
 
         assert_eq!(
             plan_module(module),

@@ -2,6 +2,7 @@ mod arg;
 mod bit_array;
 mod bool;
 mod case;
+mod custom;
 mod float;
 mod function;
 mod int;
@@ -21,10 +22,11 @@ pub use self::{
     arg::CallArg,
     bit_array::BitArrayExpr,
     bool::BoolExpr,
+    custom::CustomExpr,
     float::FloatExpr,
     function::{
-        BitArrayFunctionExpr, BoolFunctionExpr, FloatFunctionExpr, FunctionExpr,
-        FunctionFunctionExpr, IntFunctionExpr, ListFunctionExpr, NilFunctionExpr,
+        BitArrayFunctionExpr, BoolFunctionExpr, CustomFunctionExpr, FloatFunctionExpr,
+        FunctionExpr, FunctionFunctionExpr, IntFunctionExpr, ListFunctionExpr, NilFunctionExpr,
         StringFunctionExpr, TupleFunctionExpr, UtfCodepointFunctionExpr,
     },
     int::IntExpr,
@@ -37,20 +39,22 @@ pub(crate) use self::{
     arg::{CallArgKind, CaptureArg, CaptureArgKind},
     bit_array::{BitArrayExprKind, BitArraySegment, Endianness, FloatBitSize, StringEncoding},
     bool::BoolExprKind,
+    custom::CustomExprKind,
     float::FloatExprKind,
     function::{
-        BitArrayFunctionExprKind, BoolFunctionExprKind, FloatFunctionExprKind, FunctionExprKind,
-        FunctionFunctionExprKind, IntFunctionExprKind, ListFunctionExprKind, NilFunctionExprKind,
-        StringFunctionExprKind, TupleFunctionExprKind, UtfCodepointFunctionExprKind,
+        BitArrayFunctionExprKind, BoolFunctionExprKind, CustomFunctionExprKind,
+        FloatFunctionExprKind, FunctionExprKind, FunctionFunctionExprKind, IntFunctionExprKind,
+        ListFunctionExprKind, NilFunctionExprKind, StringFunctionExprKind, TupleFunctionExprKind,
+        UtfCodepointFunctionExprKind,
     },
     int::IntExprKind,
     list::{
         BitArrayListExpr, BitArrayListItem, BoolListCaseBranches, BoolListExpr, BoolListItem,
-        FloatListExpr, FloatListItem, FunctionListExpr, FunctionListItem, IntListExpr, IntListItem,
-        ListCaseBranches, ListElements, ListExpr, ListItem, ListListExpr, ListListItem,
-        ListLocalExpr, ListSpreadElements, NilListExpr, NilListItem, StringListExpr,
-        StringListItem, TupleListExpr, TupleListItem, TypedListExpr, TypedListExprKind,
-        TypedListReturnKind, UtfCodepointListExpr, UtfCodepointListItem,
+        CustomListExpr, CustomListItem, FloatListExpr, FloatListItem, FunctionListExpr,
+        FunctionListItem, IntListExpr, IntListItem, ListCaseBranches, ListElements, ListExpr,
+        ListItem, ListListExpr, ListListItem, ListLocalExpr, ListSpreadElements, NilListExpr,
+        NilListItem, StringListExpr, StringListItem, TupleListExpr, TupleListItem, TypedListExpr,
+        TypedListExprKind, TypedListReturnKind, UtfCodepointListExpr, UtfCodepointListItem,
     },
     nil::NilExprKind,
     panic::{PanicExpr, PanicExprKind},
@@ -70,6 +74,7 @@ pub(crate) enum ExprKind {
     String(StringExpr),
     BitArray(BitArrayExpr),
     UtfCodepoint(UtfCodepointExpr),
+    Custom(CustomExpr),
     Float(FloatExpr),
     Bool(BoolExpr),
     Nil(NilExpr),
@@ -100,6 +105,12 @@ impl Expr {
     pub(crate) fn utf_codepoint(expression: UtfCodepointExpr) -> Self {
         Self {
             kind: ExprKind::UtfCodepoint(expression),
+        }
+    }
+
+    pub(crate) fn custom(expression: CustomExpr) -> Self {
+        Self {
+            kind: ExprKind::Custom(expression),
         }
     }
 
@@ -153,6 +164,9 @@ impl Expr {
             BoolCaseBranches::UtfCodepoint { true_, false_ } => {
                 Self::utf_codepoint(UtfCodepointExpr::bool_case(subject, true_, false_))
             }
+            BoolCaseBranches::Custom { true_, false_ } => {
+                Self::custom(CustomExpr::bool_case(subject, true_, false_))
+            }
             BoolCaseBranches::Float { true_, false_ } => {
                 Self::float(FloatExpr::bool_case(subject, true_, false_))
             }
@@ -180,6 +194,9 @@ impl Expr {
                     UtfCodepointFunctionExpr::bool_case(subject, true_, false_),
                 ))
             }
+            BoolCaseBranches::CustomFunction { true_, false_ } => Self::function(
+                FunctionExpr::custom(CustomFunctionExpr::bool_case(subject, true_, false_)),
+            ),
             BoolCaseBranches::FloatFunction { true_, false_ } => Self::function(
                 FunctionExpr::float(FloatFunctionExpr::bool_case(subject, true_, false_)),
             ),
@@ -215,6 +232,9 @@ impl Expr {
             IntCaseBranches::UtfCodepoint { clauses, fallback } => {
                 Self::utf_codepoint(UtfCodepointExpr::int_case(subject, clauses, fallback))
             }
+            IntCaseBranches::Custom { clauses, fallback } => {
+                Self::custom(CustomExpr::int_case(subject, clauses, fallback))
+            }
             IntCaseBranches::Float { clauses, fallback } => {
                 Self::float(FloatExpr::int_case(subject, clauses, fallback))
             }
@@ -242,6 +262,9 @@ impl Expr {
                     UtfCodepointFunctionExpr::int_case(subject, clauses, fallback),
                 ))
             }
+            IntCaseBranches::CustomFunction { clauses, fallback } => Self::function(
+                FunctionExpr::custom(CustomFunctionExpr::int_case(subject, clauses, fallback)),
+            ),
             IntCaseBranches::FloatFunction { clauses, fallback } => Self::function(
                 FunctionExpr::float(FloatFunctionExpr::int_case(subject, clauses, fallback)),
             ),
@@ -277,6 +300,9 @@ impl Expr {
             StringCaseBranches::UtfCodepoint { clauses, fallback } => {
                 Self::utf_codepoint(UtfCodepointExpr::string_case(subject, clauses, fallback))
             }
+            StringCaseBranches::Custom { clauses, fallback } => {
+                Self::custom(CustomExpr::string_case(subject, clauses, fallback))
+            }
             StringCaseBranches::Float { clauses, fallback } => {
                 Self::float(FloatExpr::string_case(subject, clauses, fallback))
             }
@@ -308,6 +334,9 @@ impl Expr {
                     UtfCodepointFunctionExpr::string_case(subject, clauses, fallback),
                 ))
             }
+            StringCaseBranches::CustomFunction { clauses, fallback } => Self::function(
+                FunctionExpr::custom(CustomFunctionExpr::string_case(subject, clauses, fallback)),
+            ),
             StringCaseBranches::FloatFunction { clauses, fallback } => Self::function(
                 FunctionExpr::float(FloatFunctionExpr::string_case(subject, clauses, fallback)),
             ),
@@ -345,6 +374,9 @@ impl Expr {
             FloatCaseBranches::UtfCodepoint { clauses, fallback } => {
                 Self::utf_codepoint(UtfCodepointExpr::float_case(subject, clauses, fallback))
             }
+            FloatCaseBranches::Custom { clauses, fallback } => {
+                Self::custom(CustomExpr::float_case(subject, clauses, fallback))
+            }
             FloatCaseBranches::Float { clauses, fallback } => {
                 Self::float(FloatExpr::float_case(subject, clauses, fallback))
             }
@@ -376,6 +408,9 @@ impl Expr {
                     UtfCodepointFunctionExpr::float_case(subject, clauses, fallback),
                 ))
             }
+            FloatCaseBranches::CustomFunction { clauses, fallback } => Self::function(
+                FunctionExpr::custom(CustomFunctionExpr::float_case(subject, clauses, fallback)),
+            ),
             FloatCaseBranches::FloatFunction { clauses, fallback } => Self::function(
                 FunctionExpr::float(FloatFunctionExpr::float_case(subject, clauses, fallback)),
             ),
@@ -435,6 +470,13 @@ impl Expr {
         }
     }
 
+    pub(crate) fn into_custom(self) -> Option<CustomExpr> {
+        match self.kind {
+            ExprKind::Custom(expression) => Some(expression),
+            _ => None,
+        }
+    }
+
     pub(crate) fn into_float(self) -> Option<FloatExpr> {
         match self.kind {
             ExprKind::Float(expression) => Some(expression),
@@ -484,6 +526,7 @@ impl Expr {
             ExprKind::String(_) => ValueType::String,
             ExprKind::BitArray(_) => ValueType::BitArray,
             ExprKind::UtfCodepoint(_) => ValueType::UtfCodepoint,
+            ExprKind::Custom(expression) => ValueType::Custom(expression.type_().clone()),
             ExprKind::Float(_) => ValueType::Float,
             ExprKind::Bool(_) => ValueType::Bool,
             ExprKind::Nil(_) => ValueType::Nil,
@@ -1175,6 +1218,10 @@ mod tests {
         );
         assert_eq!(
             Expr::int(IntExpr::value(BigInt::from(1))).into_utf_codepoint(),
+            None,
+        );
+        assert_eq!(
+            Expr::int(IntExpr::value(BigInt::from(1))).into_custom(),
             None,
         );
         assert_eq!(

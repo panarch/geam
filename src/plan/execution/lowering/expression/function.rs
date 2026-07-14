@@ -1,5 +1,6 @@
 mod bit_array;
 mod bool;
+mod custom;
 mod float;
 mod int;
 mod list;
@@ -11,6 +12,7 @@ mod utf_codepoint;
 
 pub(in crate::plan::execution::lowering) use bit_array::bit_array_function_expr;
 pub(in crate::plan::execution::lowering) use bool::bool_function_expr;
+pub(in crate::plan::execution::lowering) use custom::custom_function_expr;
 pub(in crate::plan::execution::lowering) use float::float_function_expr;
 pub(in crate::plan::execution::lowering) use int::int_function_expr;
 pub(in crate::plan::execution::lowering) use list::list_function_expr;
@@ -72,6 +74,9 @@ pub(in crate::plan::execution::lowering) fn function_expr(
             execution::FunctionExprKind::UtfCodepoint(utf_codepoint_function_expr(
                 expression, context,
             ))
+        }
+        module::FunctionExprKind::Custom(expression) => {
+            execution::FunctionExprKind::Custom(custom_function_expr(expression, context))
         }
         module::FunctionExprKind::Float(expression) => {
             execution::FunctionExprKind::Float(float_function_expr(expression, context))

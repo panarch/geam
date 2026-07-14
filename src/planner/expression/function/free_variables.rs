@@ -278,10 +278,14 @@ fn collect_pattern(
                 bound.insert(name.clone());
             }
         }
+        Pattern::Constructor { arguments, .. } => {
+            for argument in arguments {
+                collect_pattern(&argument.value, bound, free);
+            }
+        }
         Pattern::Int { .. }
         | Pattern::Float { .. }
         | Pattern::String { .. }
-        | Pattern::Constructor { .. }
         | Pattern::Discard { .. }
         | Pattern::Invalid { .. } => {}
     }

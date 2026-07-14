@@ -207,6 +207,10 @@ fn int_case_expr(
             clauses: utf_codepoint_case_clauses(clauses)?,
             fallback,
         },
+        ExprKind::Custom(fallback) => IntCaseBranches::Custom {
+            clauses: custom_case_clauses(clauses)?,
+            fallback,
+        },
         ExprKind::Float(fallback) => IntCaseBranches::Float {
             clauses: float_case_clauses(clauses)?,
             fallback,
@@ -281,6 +285,21 @@ fn utf_codepoint_case_clauses(
     let mut typed_clauses = Vec::with_capacity(clauses.len());
     for (value, clause) in clauses {
         let ExprKind::UtfCodepoint(clause) = clause.into_kind() else {
+            return Err(invalid_case_shape(
+                InvalidCaseShapeReason::BranchReturnTypeMismatch,
+            ));
+        };
+        typed_clauses.push((value, clause));
+    }
+    Ok(typed_clauses)
+}
+
+fn custom_case_clauses(
+    clauses: Vec<(BigInt, Expr)>,
+) -> Result<Vec<(BigInt, crate::plan::CustomExpr)>, PlanError> {
+    let mut typed_clauses = Vec::with_capacity(clauses.len());
+    for (value, clause) in clauses {
+        let ExprKind::Custom(clause) = clause.into_kind() else {
             return Err(invalid_case_shape(
                 InvalidCaseShapeReason::BranchReturnTypeMismatch,
             ));
@@ -398,6 +417,10 @@ fn function_case_branches(
                 fallback,
             })
         }
+        crate::plan::FunctionExprKind::Custom(fallback) => Ok(IntCaseBranches::CustomFunction {
+            clauses: custom_function_case_clauses(clauses)?,
+            fallback,
+        }),
         crate::plan::FunctionExprKind::Float(fallback) => Ok(IntCaseBranches::FloatFunction {
             clauses: float_function_case_clauses(clauses)?,
             fallback,
@@ -498,6 +521,26 @@ fn utf_codepoint_function_case_clauses(
             ));
         };
         let crate::plan::FunctionExprKind::UtfCodepoint(clause) = function.into_kind() else {
+            return Err(invalid_case_shape(
+                InvalidCaseShapeReason::BranchReturnTypeMismatch,
+            ));
+        };
+        typed_clauses.push((value, clause));
+    }
+    Ok(typed_clauses)
+}
+
+fn custom_function_case_clauses(
+    clauses: Vec<(BigInt, Expr)>,
+) -> Result<Vec<(BigInt, crate::plan::CustomFunctionExpr)>, PlanError> {
+    let mut typed_clauses = Vec::with_capacity(clauses.len());
+    for (value, clause) in clauses {
+        let ExprKind::Function(clause) = clause.into_kind() else {
+            return Err(invalid_case_shape(
+                InvalidCaseShapeReason::BranchReturnTypeMismatch,
+            ));
+        };
+        let Some(clause) = clause.into_custom() else {
             return Err(invalid_case_shape(
                 InvalidCaseShapeReason::BranchReturnTypeMismatch,
             ));
@@ -1078,6 +1121,50 @@ pub fn main() {
 
     #[test]
     fn reject_margin_int_case_function_clause_family_mismatch_direct() {
+        assert_eq!(
+            super::custom_case_clauses(vec![(BigInt::from(1), Expr::from(int(1)))]),
+            Err(case_branch_return_type_mismatch()),
+        );
+        assert_eq!(
+            super::custom_function_case_clauses(vec![(BigInt::from(1), Expr::from(int(1)))]),
+            Err(case_branch_return_type_mismatch()),
+        );
+        assert_eq!(
+            super::custom_function_case_clauses(vec![(BigInt::from(1), int_function_ref_expr(0),)]),
+            Err(case_branch_return_type_mismatch()),
+        );
+
+        let custom_type = crate::plan::CustomType::new(
+            crate::plan::CustomTypeName::new("geam".into(), "main".into(), "Choice".into()),
+            Vec::new(),
+        );
+        assert_eq!(
+            super::int_case_expr(
+                int(1).into(),
+                vec![(BigInt::from(1), Expr::from(int(1)))],
+                Expr::custom(crate::plan::CustomExpr::local_get(
+                    crate::plan::CustomLocalId(0),
+                    "fallback".into(),
+                    custom_type.clone(),
+                )),
+            ),
+            Err(case_branch_return_type_mismatch()),
+        );
+        let function_type = FunctionType::new(Vec::new(), ValueType::Custom(custom_type));
+        assert_eq!(
+            super::int_case_expr(
+                int(1).into(),
+                vec![(BigInt::from(1), Expr::from(int(1)))],
+                Expr::function(FunctionExpr::custom(
+                    crate::plan::CustomFunctionExpr::local_get(
+                        crate::plan::CustomFunctionLocalId(0),
+                        "fallback".into(),
+                        function_type,
+                    ),
+                )),
+            ),
+            Err(case_branch_return_type_mismatch()),
+        );
         assert_eq!(
             super::utf_codepoint_case_clauses(vec![(BigInt::from(1), Expr::from(int(1)))]),
             Err(case_branch_return_type_mismatch()),
@@ -1734,7 +1821,7 @@ fn add_one(value: Int) {
         let (type_, _, _) = super::super::super::expect_case_statement_mut(
             &mut module.definitions.functions[0].body[0],
         );
-        *type_ = super::super::unsupported_case_return_type();
+        *type_ = super::super::invalid_case_return_type();
         assert_eq!(plan_module(module), Err(case_branch_return_type_mismatch()));
 
         assert_eq!(

@@ -14,6 +14,7 @@ pub(super) fn frame_layout(
         strings: parts.strings,
         bit_arrays: parts.bit_arrays,
         utf_codepoints: parts.utf_codepoints,
+        customs: parts.customs,
         bools: parts.bools,
         tuples: parts.tuples,
         int_lists: (0..parts.int_lists)
@@ -27,6 +28,11 @@ pub(super) fn frame_layout(
             .collect(),
         utf_codepoint_lists: (0..parts.utf_codepoint_lists)
             .map(|_| context.utf_codepoint_list_type())
+            .collect(),
+        custom_lists: parts
+            .custom_lists
+            .into_iter()
+            .map(|item| context.custom_list_type(item))
             .collect(),
         float_lists: (0..parts.float_lists)
             .map(|_| context.float_list_type())
@@ -57,6 +63,7 @@ pub(super) fn frame_layout(
         string_functions: parts.string_functions,
         bit_array_functions: parts.bit_array_functions,
         utf_codepoint_functions: parts.utf_codepoint_functions,
+        custom_functions: parts.custom_functions,
         bool_functions: parts.bool_functions,
         nil_functions: parts.nil_functions,
         tuple_functions: parts.tuple_functions,

@@ -8,8 +8,9 @@ pub(crate) use self::{
     case::{BoolListCaseBranches, ListCaseBranches},
     elements::{ListElementTypeMismatch, ListElements, ListSpreadElements},
     item::{
-        BitArrayListItem, BoolListItem, FloatListItem, FunctionListItem, IntListItem, ListItem,
-        ListListItem, NilListItem, StringListItem, TupleListItem, UtfCodepointListItem,
+        BitArrayListItem, BoolListItem, CustomListItem, FloatListItem, FunctionListItem,
+        IntListItem, ListItem, ListListItem, NilListItem, StringListItem, TupleListItem,
+        UtfCodepointListItem,
     },
     local::ListLocalExpr,
     typed::{ListIndexSource, TypedListExpr, TypedListExprKind, TypedListReturnKind},
@@ -27,6 +28,7 @@ pub(crate) enum ListExpr {
     String(StringListExpr),
     BitArray(BitArrayListExpr),
     UtfCodepoint(UtfCodepointListExpr),
+    Custom(CustomListExpr),
     Float(FloatListExpr),
     Bool(BoolListExpr),
     Nil(NilListExpr),
@@ -39,6 +41,7 @@ pub(crate) type IntListExpr = TypedListExpr<IntListItem>;
 pub(crate) type StringListExpr = TypedListExpr<StringListItem>;
 pub(crate) type BitArrayListExpr = TypedListExpr<BitArrayListItem>;
 pub(crate) type UtfCodepointListExpr = TypedListExpr<UtfCodepointListItem>;
+pub(crate) type CustomListExpr = TypedListExpr<CustomListItem>;
 pub(crate) type FloatListExpr = TypedListExpr<FloatListItem>;
 pub(crate) type BoolListExpr = TypedListExpr<BoolListItem>;
 pub(crate) type NilListExpr = TypedListExpr<NilListItem>;
@@ -65,6 +68,9 @@ impl ListExpr {
             }
             ListElements::UtfCodepoint(values) => {
                 Self::UtfCodepoint(UtfCodepointListExpr::value(UtfCodepointListItem, values))
+            }
+            ListElements::Custom { item_type, values } => {
+                Self::Custom(CustomListExpr::value(CustomListItem { item_type }, values))
             }
             ListElements::Float(values) => Self::Float(FloatListExpr::value(FloatListItem, values)),
             ListElements::Bool(values) => Self::Bool(BoolListExpr::value(BoolListItem, values)),
@@ -98,6 +104,9 @@ impl ListExpr {
             ListSpreadElements::UtfCodepoint { values, tail } => {
                 Self::UtfCodepoint(UtfCodepointListExpr::spread(values, tail))
             }
+            ListSpreadElements::Custom { values, tail } => {
+                Self::Custom(CustomListExpr::spread(values, tail))
+            }
             ListSpreadElements::Float { values, tail } => {
                 Self::Float(FloatListExpr::spread(values, tail))
             }
@@ -130,6 +139,11 @@ impl ListExpr {
             }
             ListLocal::UtfCodepoint(local) => Self::UtfCodepoint(UtfCodepointListExpr::local_get(
                 UtfCodepointListItem,
+                local,
+                name,
+            )),
+            ListLocal::Custom { local, item_type } => Self::Custom(CustomListExpr::local_get(
+                CustomListItem { item_type },
                 local,
                 name,
             )),
@@ -169,6 +183,9 @@ impl ListExpr {
             ListFunctionId::UtfCodepoint(function) => Self::UtfCodepoint(
                 UtfCodepointListExpr::call(UtfCodepointListItem, function, args),
             ),
+            ListFunctionId::Custom { id, item_type } => {
+                Self::Custom(CustomListExpr::call(CustomListItem { item_type }, id, args))
+            }
             ListFunctionId::Float(function) => {
                 Self::Float(FloatListExpr::call(FloatListItem, function, args))
             }
@@ -211,6 +228,11 @@ impl ListExpr {
                 function,
                 args,
             )),
+            ValueType::Custom(item_type) => Self::Custom(CustomListExpr::function_call(
+                CustomListItem { item_type },
+                function,
+                args,
+            )),
             ValueType::Float => {
                 Self::Float(FloatListExpr::function_call(FloatListItem, function, args))
             }
@@ -248,6 +270,11 @@ impl ListExpr {
             )),
             ValueType::UtfCodepoint => Self::UtfCodepoint(UtfCodepointListExpr::tuple_index(
                 UtfCodepointListItem,
+                tuple,
+                index,
+            )),
+            ValueType::Custom(item_type) => Self::Custom(CustomListExpr::tuple_index(
+                CustomListItem { item_type },
                 tuple,
                 index,
             )),
@@ -292,6 +319,13 @@ impl ListExpr {
                 UtfCodepointListItem,
                 ListIndexSource::new(list, index),
             )),
+            ValueType::Custom(item_type) => {
+                let item = CustomListItem { item_type };
+                Self::Custom(CustomListExpr::from_list_index(
+                    item,
+                    ListIndexSource::new(list, index),
+                ))
+            }
             ValueType::Float => Self::Float(FloatListExpr::from_list_index(
                 FloatListItem,
                 ListIndexSource::new(list, index),
@@ -338,6 +372,7 @@ impl ListExpr {
             Self::UtfCodepoint(list) => {
                 Self::UtfCodepoint(UtfCodepointListExpr::drop_first(list, count))
             }
+            Self::Custom(list) => Self::Custom(CustomListExpr::drop_first(list, count)),
             Self::Float(list) => Self::Float(FloatListExpr::drop_first(list, count)),
             Self::Bool(list) => Self::Bool(BoolListExpr::drop_first(list, count)),
             Self::Nil(list) => Self::Nil(NilListExpr::drop_first(list, count)),
@@ -354,6 +389,9 @@ impl ListExpr {
             ValueType::BitArray => Self::BitArray(BitArrayListExpr::panic(BitArrayListItem, panic)),
             ValueType::UtfCodepoint => {
                 Self::UtfCodepoint(UtfCodepointListExpr::panic(UtfCodepointListItem, panic))
+            }
+            ValueType::Custom(item_type) => {
+                Self::Custom(CustomListExpr::panic(CustomListItem { item_type }, panic))
             }
             ValueType::Float => Self::Float(FloatListExpr::panic(FloatListItem, panic)),
             ValueType::Bool => Self::Bool(BoolListExpr::panic(BoolListItem, panic)),
@@ -386,6 +424,9 @@ impl ListExpr {
             }
             BoolListCaseBranches::UtfCodepoint { true_, false_ } => {
                 Self::UtfCodepoint(UtfCodepointListExpr::bool_case(subject, true_, false_))
+            }
+            BoolListCaseBranches::Custom { true_, false_ } => {
+                Self::Custom(CustomListExpr::bool_case(subject, true_, false_))
             }
             BoolListCaseBranches::Float { true_, false_ } => {
                 Self::Float(FloatListExpr::bool_case(subject, true_, false_))
@@ -422,6 +463,9 @@ impl ListExpr {
             ListCaseBranches::UtfCodepoint { clauses, fallback } => {
                 Self::UtfCodepoint(UtfCodepointListExpr::int_case(subject, clauses, fallback))
             }
+            ListCaseBranches::Custom { clauses, fallback } => {
+                Self::Custom(CustomListExpr::int_case(subject, clauses, fallback))
+            }
             ListCaseBranches::Float { clauses, fallback } => {
                 Self::Float(FloatListExpr::int_case(subject, clauses, fallback))
             }
@@ -457,6 +501,9 @@ impl ListExpr {
             ListCaseBranches::UtfCodepoint { clauses, fallback } => Self::UtfCodepoint(
                 UtfCodepointListExpr::string_case(subject, clauses, fallback),
             ),
+            ListCaseBranches::Custom { clauses, fallback } => {
+                Self::Custom(CustomListExpr::string_case(subject, clauses, fallback))
+            }
             ListCaseBranches::Float { clauses, fallback } => {
                 Self::Float(FloatListExpr::string_case(subject, clauses, fallback))
             }
@@ -492,6 +539,9 @@ impl ListExpr {
             ListCaseBranches::UtfCodepoint { clauses, fallback } => {
                 Self::UtfCodepoint(UtfCodepointListExpr::float_case(subject, clauses, fallback))
             }
+            ListCaseBranches::Custom { clauses, fallback } => {
+                Self::Custom(CustomListExpr::float_case(subject, clauses, fallback))
+            }
             ListCaseBranches::Float { clauses, fallback } => {
                 Self::Float(FloatListExpr::float_case(subject, clauses, fallback))
             }
@@ -521,6 +571,7 @@ impl ListExpr {
             Self::UtfCodepoint(return_) => {
                 Self::UtfCodepoint(UtfCodepointListExpr::block(steps, return_))
             }
+            Self::Custom(return_) => Self::Custom(CustomListExpr::block(steps, return_)),
             Self::Float(return_) => Self::Float(FloatListExpr::block(steps, return_)),
             Self::Bool(return_) => Self::Bool(BoolListExpr::block(steps, return_)),
             Self::Nil(return_) => Self::Nil(NilListExpr::block(steps, return_)),
@@ -536,6 +587,7 @@ impl ListExpr {
             Self::String(expression) => expression.element_type(),
             Self::BitArray(expression) => expression.element_type(),
             Self::UtfCodepoint(expression) => expression.element_type(),
+            Self::Custom(expression) => expression.element_type(),
             Self::Float(expression) => expression.element_type(),
             Self::Bool(expression) => expression.element_type(),
             Self::Nil(expression) => expression.element_type(),
@@ -569,6 +621,13 @@ impl ListExpr {
     pub(crate) fn into_utf_codepoint(self) -> Option<UtfCodepointListExpr> {
         match self {
             Self::UtfCodepoint(expression) => Some(expression),
+            _ => None,
+        }
+    }
+
+    pub(crate) fn into_custom(self) -> Option<CustomListExpr> {
+        match self {
+            Self::Custom(expression) => Some(expression),
             _ => None,
         }
     }
@@ -641,10 +700,11 @@ impl ListExpr {
 mod tests {
     use super::{
         BitArrayListExpr, BitArrayListItem, BoolListCaseBranches, BoolListExpr, BoolListItem,
-        FloatListExpr, FloatListItem, FunctionListExpr, FunctionListItem, IntListExpr, IntListItem,
-        ListCaseBranches, ListElementTypeMismatch, ListElements, ListExpr, ListIndexSource,
-        ListListExpr, ListListItem, NilListExpr, NilListItem, StringListExpr, StringListItem,
-        TupleListExpr, TupleListItem, UtfCodepointListExpr, UtfCodepointListItem,
+        CustomListExpr, CustomListItem, FloatListExpr, FloatListItem, FunctionListExpr,
+        FunctionListItem, IntListExpr, IntListItem, ListCaseBranches, ListElementTypeMismatch,
+        ListElements, ListExpr, ListIndexSource, ListListExpr, ListListItem, NilListExpr,
+        NilListItem, StringListExpr, StringListItem, TupleListExpr, TupleListItem,
+        UtfCodepointListExpr, UtfCodepointListItem,
     };
     use crate::plan::{
         BitArrayExpr, BoolExpr, Expr, FloatExpr, FunctionExpr, FunctionReference, FunctionType,
@@ -825,6 +885,7 @@ mod tests {
         assert_eq!(int_list.clone().into_string(), None);
         assert_eq!(int_list.clone().into_bit_array(), None);
         assert_eq!(int_list.clone().into_utf_codepoint(), None);
+        assert_eq!(int_list.clone().into_custom(), None);
         assert_eq!(int_list.clone().into_float(), None);
         assert_eq!(int_list.clone().into_bool(), None);
         assert_eq!(int_list.clone().into_nil(), None);
@@ -973,6 +1034,10 @@ mod tests {
             ValueType::String,
             ValueType::BitArray,
             ValueType::UtfCodepoint,
+            ValueType::Custom(crate::plan::CustomType::new(
+                crate::plan::CustomTypeName::new("geam".into(), "main".into(), "Boxed".into()),
+                Vec::new(),
+            )),
             ValueType::Float,
             ValueType::Bool,
             ValueType::Nil,
@@ -1079,11 +1144,16 @@ mod tests {
     #[test]
     fn nested_list_index_dispatch_preserves_every_item_type() {
         let function_type = FunctionType::new(Vec::new(), ValueType::Int);
+        let custom_type = crate::plan::CustomType::new(
+            crate::plan::CustomTypeName::new("geam".into(), "main".into(), "Boxed".into()),
+            Vec::new(),
+        );
         let item_types = vec![
             ValueType::Int,
             ValueType::String,
             ValueType::BitArray,
             ValueType::UtfCodepoint,
+            ValueType::Custom(custom_type),
             ValueType::Float,
             ValueType::Bool,
             ValueType::Nil,
@@ -1118,6 +1188,10 @@ mod tests {
                         ListIndexSource::new(list.clone(), 3),
                     ))
                 }
+                ValueType::Custom(item_type) => ListExpr::Custom(CustomListExpr::from_list_index(
+                    CustomListItem { item_type },
+                    ListIndexSource::new(list.clone(), 3),
+                )),
                 ValueType::Float => ListExpr::Float(FloatListExpr::from_list_index(
                     FloatListItem,
                     ListIndexSource::new(list.clone(), 3),

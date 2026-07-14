@@ -3,13 +3,16 @@ use crate::plan::{
     BitArrayFunctionLocalId, BitArrayListFunctionId, BitArrayListItem, BitArrayListLocalId,
     BitArrayLocalId, BoolExpr, BoolFunctionExpr, BoolFunctionFunctionId, BoolFunctionId,
     BoolFunctionLocalId, BoolListFunctionId, BoolListItem, BoolListLocalId, BoolLocalId,
-    CaptureArg, FloatExpr, FloatFunctionExpr, FloatFunctionFunctionId, FloatFunctionId,
-    FloatFunctionLocalId, FloatListFunctionId, FloatListItem, FloatListLocalId, FloatLocalId,
-    FunctionFunctionExpr, FunctionFunctionFunctionId, FunctionFunctionId, FunctionFunctionLocalId,
-    FunctionId, FunctionListFunctionId, FunctionListItem, FunctionListLocalId, FunctionPlan,
-    FunctionReference, FunctionType, IntExpr, IntFunctionExpr, IntFunctionFunctionId,
-    IntFunctionId, IntFunctionLocalId, IntListFunctionId, IntListItem, IntListLocalId, IntLocalId,
-    ListExpr, ListFunctionExpr, ListFunctionFunctionId, ListFunctionId, ListFunctionLocal,
+    CaptureArg, CustomConstructor, CustomConstructorField, CustomExpr, CustomFunctionExpr,
+    CustomFunctionFunctionId, CustomFunctionId, CustomFunctionLocalId, CustomListFunctionId,
+    CustomListItem, CustomListLocalId, CustomLocalId, CustomTypeDefinition, CustomTypeTemplate,
+    FloatExpr, FloatFunctionExpr, FloatFunctionFunctionId, FloatFunctionId, FloatFunctionLocalId,
+    FloatListFunctionId, FloatListItem, FloatListLocalId, FloatLocalId, FunctionFunctionExpr,
+    FunctionFunctionFunctionId, FunctionFunctionId, FunctionFunctionLocalId, FunctionId,
+    FunctionListFunctionId, FunctionListItem, FunctionListLocalId, FunctionPlan, FunctionReference,
+    FunctionType, IntExpr, IntFunctionExpr, IntFunctionFunctionId, IntFunctionId,
+    IntFunctionLocalId, IntListFunctionId, IntListItem, IntListLocalId, IntLocalId, ListExpr,
+    ListFunctionExpr, ListFunctionFunctionId, ListFunctionId, ListFunctionLocal,
     ListListFunctionId, ListListItem, ListListLocalId, ListLocal, ListLocalExpr, LocalId, NilExpr,
     NilFunctionExpr, NilFunctionFunctionId, NilFunctionId, NilFunctionLocalId, NilListFunctionId,
     NilListItem, NilListLocalId, NilLocalId, PanicSite, ParamBinding, ParamLocal,
@@ -21,10 +24,16 @@ use crate::plan::{
     UtfCodepointFunctionLocalId, UtfCodepointListFunctionId, UtfCodepointListItem,
     UtfCodepointListLocalId, UtfCodepointLocalId, ValueType,
 };
-use crate::planner::error::{InvalidTypedAstReason, PlanError};
+use crate::plan::{CustomType, CustomTypeName};
+use crate::planner::error::{
+    InvalidCustomTypeReason, InvalidTypedAstReason, PlanError, UnsupportedExpressionKind,
+};
 use ecow::EcoString;
-use gleam_core::type_::{Type, TypeVar};
-use std::collections::HashMap;
+use gleam_core::type_::{
+    PRELUDE_MODULE_NAME, PatternConstructor, Type, TypeVar, ValueConstructor,
+    ValueConstructorVariant,
+};
+use std::collections::{HashMap, HashSet};
 use std::ops::Deref;
 
 #[derive(Clone)]
@@ -42,10 +51,27 @@ pub(super) struct FunctionParam {
     pub(super) label: Option<EcoString>,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub(super) struct ResolvedCustomConstructor {
+    constructor: CustomConstructor,
+    constructor_count: usize,
+}
+
+impl ResolvedCustomConstructor {
+    pub(super) fn constructor_count(&self) -> usize {
+        self.constructor_count
+    }
+
+    pub(super) fn into_constructor(self) -> CustomConstructor {
+        self.constructor
+    }
+}
+
 pub(super) struct PlanContext<'a> {
     pub(super) module_name: &'a EcoString,
     current_function: EcoString,
     functions: &'a HashMap<EcoString, FunctionInfo>,
+    custom_types: &'a [CustomTypeDefinition],
     anonymous_functions: &'a mut AnonymousFunctions,
     bindings: HashMap<EcoString, LocalBinding>,
     next_int_local: usize,
@@ -53,6 +79,7 @@ pub(super) struct PlanContext<'a> {
     next_string_local: usize,
     next_bit_array_local: usize,
     next_utf_codepoint_local: usize,
+    next_custom_local: usize,
     next_bool_local: usize,
     next_nil_local: usize,
     next_tuple_local: usize,
@@ -60,6 +87,7 @@ pub(super) struct PlanContext<'a> {
     next_string_list_local: usize,
     next_bit_array_list_local: usize,
     next_utf_codepoint_list_local: usize,
+    next_custom_list_local: usize,
     next_float_list_local: usize,
     next_bool_list_local: usize,
     next_nil_list_local: usize,
@@ -71,6 +99,7 @@ pub(super) struct PlanContext<'a> {
     next_string_function_local: usize,
     next_bit_array_function_local: usize,
     next_utf_codepoint_function_local: usize,
+    next_custom_function_local: usize,
     next_bool_function_local: usize,
     next_nil_function_local: usize,
     next_tuple_function_local: usize,
@@ -81,6 +110,10 @@ pub(super) struct PlanContext<'a> {
 #[derive(Clone)]
 enum LocalBinding {
     Primitive(LocalId),
+    Custom {
+        local: CustomLocalId,
+        type_: CustomType,
+    },
     Tuple {
         local: TupleLocalId,
         type_: Vec<ValueType>,
@@ -89,9 +122,76 @@ enum LocalBinding {
     Function(FunctionLocalBinding),
 }
 
+#[derive(Clone, PartialEq, Eq, Hash)]
+struct CustomFunctionShape {
+    name: CustomTypeName,
+    arguments: Vec<bool>,
+}
+
 pub(super) struct CaptureBinding {
     name: EcoString,
     binding: LocalBinding,
+}
+
+fn instantiate_custom_type_template(
+    template: &CustomTypeTemplate,
+    custom_type: &CustomType,
+) -> Result<ValueType, PlanError> {
+    let type_ = match template {
+        CustomTypeTemplate::Int => ValueType::Int,
+        CustomTypeTemplate::Float => ValueType::Float,
+        CustomTypeTemplate::String => ValueType::String,
+        CustomTypeTemplate::BitArray => ValueType::BitArray,
+        CustomTypeTemplate::UtfCodepoint => ValueType::UtfCodepoint,
+        CustomTypeTemplate::Bool => ValueType::Bool,
+        CustomTypeTemplate::Nil => ValueType::Nil,
+        CustomTypeTemplate::Tuple(elements) => ValueType::Tuple(
+            elements
+                .iter()
+                .map(|element| instantiate_custom_type_template(element, custom_type))
+                .collect::<Result<Vec<_>, _>>()?,
+        ),
+        CustomTypeTemplate::List(element) => ValueType::List(Box::new(
+            instantiate_custom_type_template(element, custom_type)?,
+        )),
+        CustomTypeTemplate::Function { arguments, return_ } => {
+            ValueType::Function(Box::new(FunctionType::new(
+                arguments
+                    .iter()
+                    .map(|argument| instantiate_custom_type_template(argument, custom_type))
+                    .collect::<Result<Vec<_>, _>>()?,
+                instantiate_custom_type_template(return_, custom_type)?,
+            )))
+        }
+        CustomTypeTemplate::Custom { name, arguments } => ValueType::Custom(CustomType::new(
+            name.clone(),
+            arguments
+                .iter()
+                .map(|argument| instantiate_custom_type_template(argument, custom_type))
+                .collect::<Result<Vec<_>, _>>()?,
+        )),
+        CustomTypeTemplate::Parameter(parameter) => {
+            let Some(type_) = custom_type.arguments().get(parameter.0).cloned() else {
+                return Err(PlanError::InvalidTypedAst {
+                    reason: InvalidTypedAstReason::CustomType {
+                        name: custom_type.type_name().name().clone(),
+                        reason: InvalidCustomTypeReason::ParameterType,
+                    },
+                });
+            };
+            type_
+        }
+    };
+    Ok(type_)
+}
+
+fn invalid_custom_type(type_: &CustomType, reason: InvalidCustomTypeReason) -> PlanError {
+    PlanError::InvalidTypedAst {
+        reason: InvalidTypedAstReason::CustomType {
+            name: type_.type_name().name().clone(),
+            reason,
+        },
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -110,6 +210,10 @@ pub(super) enum FunctionLocalBinding {
     },
     UtfCodepoint {
         local: UtfCodepointFunctionLocalId,
+        type_: FunctionType,
+    },
+    Custom {
+        local: CustomFunctionLocalId,
         type_: FunctionType,
     },
     Float {
@@ -136,15 +240,26 @@ pub(super) enum FunctionLocalBinding {
 }
 
 impl<'a> PlanContext<'a> {
+    #[cfg(test)]
     pub(super) fn new(
         module_name: &'a EcoString,
         functions: &'a HashMap<EcoString, FunctionInfo>,
+        anonymous_functions: &'a mut AnonymousFunctions,
+    ) -> Self {
+        Self::new_with_custom_types(module_name, functions, &[], anonymous_functions)
+    }
+
+    pub(super) fn new_with_custom_types(
+        module_name: &'a EcoString,
+        functions: &'a HashMap<EcoString, FunctionInfo>,
+        custom_types: &'a [CustomTypeDefinition],
         anonymous_functions: &'a mut AnonymousFunctions,
     ) -> Self {
         Self {
             module_name,
             current_function: "main".into(),
             functions,
+            custom_types,
             anonymous_functions,
             bindings: HashMap::new(),
             next_int_local: 0,
@@ -152,6 +267,7 @@ impl<'a> PlanContext<'a> {
             next_string_local: 0,
             next_bit_array_local: 0,
             next_utf_codepoint_local: 0,
+            next_custom_local: 0,
             next_bool_local: 0,
             next_nil_local: 0,
             next_tuple_local: 0,
@@ -159,6 +275,7 @@ impl<'a> PlanContext<'a> {
             next_string_list_local: 0,
             next_bit_array_list_local: 0,
             next_utf_codepoint_list_local: 0,
+            next_custom_list_local: 0,
             next_float_list_local: 0,
             next_bool_list_local: 0,
             next_nil_list_local: 0,
@@ -170,6 +287,7 @@ impl<'a> PlanContext<'a> {
             next_string_function_local: 0,
             next_bit_array_function_local: 0,
             next_utf_codepoint_function_local: 0,
+            next_custom_function_local: 0,
             next_bool_function_local: 0,
             next_nil_function_local: 0,
             next_tuple_function_local: 0,
@@ -217,6 +335,81 @@ impl<'a> PlanContext<'a> {
         self.bindings.insert(name, LocalBinding::Primitive(local));
     }
 
+    pub(super) fn define_param_local(&mut self, name: EcoString, type_: ValueType) -> ParamLocal {
+        match type_ {
+            ValueType::Int => ParamLocal::int(self.define_int_local(name)),
+            ValueType::Float => ParamLocal::float(self.define_float_local(name)),
+            ValueType::String => ParamLocal::string(self.define_string_local(name)),
+            ValueType::BitArray => ParamLocal::bit_array(self.define_bit_array_local(name)),
+            ValueType::UtfCodepoint => {
+                ParamLocal::utf_codepoint(self.define_utf_codepoint_local(name))
+            }
+            ValueType::Custom(type_) => {
+                ParamLocal::custom(self.define_custom_local(name, type_.clone()), type_)
+            }
+            ValueType::Bool => ParamLocal::bool(self.define_bool_local(name)),
+            ValueType::Nil => ParamLocal::nil(self.define_nil_local(name)),
+            ValueType::Tuple(type_) => {
+                ParamLocal::tuple(self.define_tuple_local(name, type_.clone()), type_)
+            }
+            ValueType::List(element_type) => {
+                ParamLocal::list(self.define_list_local(name, *element_type))
+            }
+            ValueType::Function(type_) => {
+                let type_ = *type_;
+                match type_.return_() {
+                    ValueType::Int => ParamLocal::int_function(
+                        self.define_int_function_local(name, type_.clone()),
+                        type_,
+                    ),
+                    ValueType::Float => ParamLocal::float_function(
+                        self.define_float_function_local(name, type_.clone()),
+                        type_,
+                    ),
+                    ValueType::String => ParamLocal::string_function(
+                        self.define_string_function_local(name, type_.clone()),
+                        type_,
+                    ),
+                    ValueType::BitArray => ParamLocal::bit_array_function(
+                        self.define_bit_array_function_local(name, type_.clone()),
+                        type_,
+                    ),
+                    ValueType::UtfCodepoint => ParamLocal::utf_codepoint_function(
+                        self.define_utf_codepoint_function_local(name, type_.clone()),
+                        type_,
+                    ),
+                    ValueType::Custom(_) => ParamLocal::custom_function(
+                        self.define_custom_function_local(name, type_.clone()),
+                        type_,
+                    ),
+                    ValueType::Bool => ParamLocal::bool_function(
+                        self.define_bool_function_local(name, type_.clone()),
+                        type_,
+                    ),
+                    ValueType::Nil => ParamLocal::nil_function(
+                        self.define_nil_function_local(name, type_.clone()),
+                        type_,
+                    ),
+                    ValueType::Tuple(_) => ParamLocal::tuple_function(
+                        self.define_tuple_function_local(name, type_.clone()),
+                        type_,
+                    ),
+                    ValueType::List(item_type) => {
+                        ParamLocal::list_function(self.define_list_function_local(
+                            name,
+                            type_.clone(),
+                            item_type.as_ref().clone(),
+                        ))
+                    }
+                    ValueType::Function(_) => ParamLocal::function_function(
+                        self.define_function_function_local(name, type_.clone()),
+                        type_,
+                    ),
+                }
+            }
+        }
+    }
+
     pub(super) fn define_existing_param(&mut self, name: EcoString, local: &ParamLocal) {
         match local {
             ParamLocal::Int(local) => {
@@ -233,6 +426,16 @@ impl<'a> PlanContext<'a> {
             }
             ParamLocal::UtfCodepoint(local) => {
                 self.define_existing_local(name, LocalId::UtfCodepoint(*local));
+            }
+            ParamLocal::Custom { local, type_ } => {
+                self.next_custom_local = self.next_custom_local.max(local.0 + 1);
+                self.bindings.insert(
+                    name,
+                    LocalBinding::Custom {
+                        local: *local,
+                        type_: type_.clone(),
+                    },
+                );
             }
             ParamLocal::Bool(local) => {
                 self.define_existing_local(name, LocalId::Bool(*local));
@@ -302,6 +505,16 @@ impl<'a> PlanContext<'a> {
                 self.bindings.insert(
                     name,
                     LocalBinding::Function(FunctionLocalBinding::UtfCodepoint {
+                        local: *local,
+                        type_: type_.clone(),
+                    }),
+                );
+            }
+            ParamLocal::CustomFunction { local, type_ } => {
+                self.next_custom_function_local = self.next_custom_function_local.max(local.0 + 1);
+                self.bindings.insert(
+                    name,
+                    LocalBinding::Function(FunctionLocalBinding::Custom {
                         local: *local,
                         type_: type_.clone(),
                     }),
@@ -438,6 +651,26 @@ impl<'a> PlanContext<'a> {
     ) -> UtfCodepointFunctionLocalId {
         let local = UtfCodepointFunctionLocalId(self.next_utf_codepoint_function_local);
         self.next_utf_codepoint_function_local += 1;
+        local
+    }
+
+    pub(super) fn define_custom_function_local(
+        &mut self,
+        name: EcoString,
+        type_: FunctionType,
+    ) -> CustomFunctionLocalId {
+        let local = CustomFunctionLocalId(self.next_custom_function_local);
+        self.next_custom_function_local += 1;
+        self.bindings.insert(
+            name,
+            LocalBinding::Function(FunctionLocalBinding::Custom { local, type_ }),
+        );
+        local
+    }
+
+    pub(super) fn define_internal_custom_function_local(&mut self) -> CustomFunctionLocalId {
+        let local = CustomFunctionLocalId(self.next_custom_function_local);
+        self.next_custom_function_local += 1;
         local
     }
 
@@ -624,6 +857,24 @@ impl<'a> PlanContext<'a> {
         local
     }
 
+    pub(super) fn define_custom_local(
+        &mut self,
+        name: EcoString,
+        type_: CustomType,
+    ) -> CustomLocalId {
+        let local = CustomLocalId(self.next_custom_local);
+        self.next_custom_local += 1;
+        self.bindings
+            .insert(name, LocalBinding::Custom { local, type_ });
+        local
+    }
+
+    pub(super) fn define_internal_custom_local(&mut self) -> CustomLocalId {
+        let local = CustomLocalId(self.next_custom_local);
+        self.next_custom_local += 1;
+        local
+    }
+
     pub(super) fn define_float_local(&mut self, name: EcoString) -> FloatLocalId {
         let local = FloatLocalId(self.next_float_local);
         self.next_float_local += 1;
@@ -763,6 +1014,23 @@ impl<'a> PlanContext<'a> {
                     ),
                 }
             }
+            ListLocal::Custom {
+                local: source,
+                item_type,
+            } => {
+                let local = CustomListLocalId(self.next_custom_list_local);
+                self.next_custom_list_local += 1;
+                self.bindings.insert(
+                    name.clone(),
+                    LocalBinding::List(ListLocal::custom(local, item_type.clone())),
+                );
+                let item = CustomListItem::new(item_type);
+                ListLocalExpr::Custom {
+                    local,
+                    item_type: item.item_type(),
+                    value: crate::plan::CustomListExpr::local_get(item, source, name),
+                }
+            }
             ListLocal::Float(source) => {
                 let local = FloatListLocalId(self.next_float_list_local);
                 self.next_float_list_local += 1;
@@ -869,6 +1137,11 @@ impl<'a> PlanContext<'a> {
                 self.next_utf_codepoint_list_local += 1;
                 ListLocal::utf_codepoint(local)
             }
+            ValueType::Custom(item_type) => {
+                let local = CustomListLocalId(self.next_custom_list_local);
+                self.next_custom_list_local += 1;
+                ListLocal::custom(local, item_type)
+            }
             ValueType::Float => {
                 let local = FloatListLocalId(self.next_float_list_local);
                 self.next_float_list_local += 1;
@@ -931,6 +1204,19 @@ impl<'a> PlanContext<'a> {
                 (
                     ListLocal::utf_codepoint(local),
                     ListLocalExpr::UtfCodepoint { local, value },
+                )
+            }
+            ListExpr::Custom(value) => {
+                let local = CustomListLocalId(self.next_custom_list_local);
+                self.next_custom_list_local += 1;
+                let item_type = value.item().item_type();
+                (
+                    ListLocal::custom(local, item_type.clone()),
+                    ListLocalExpr::Custom {
+                        local,
+                        item_type,
+                        value,
+                    },
                 )
             }
             ListExpr::Float(value) => {
@@ -1008,6 +1294,9 @@ impl<'a> PlanContext<'a> {
                 self.next_utf_codepoint_list_local =
                     self.next_utf_codepoint_list_local.max(local.0 + 1);
             }
+            ListLocal::Custom { local, .. } => {
+                self.next_custom_list_local = self.next_custom_list_local.max(local.0 + 1);
+            }
             ListLocal::Float(local) => {
                 self.next_float_list_local = self.next_float_list_local.max(local.0 + 1);
             }
@@ -1032,8 +1321,23 @@ impl<'a> PlanContext<'a> {
     pub(super) fn lookup_local(&self, name: &EcoString) -> Option<(LocalId, ValueType)> {
         match self.bindings.get(name)? {
             LocalBinding::Primitive(local) => Some((*local, local.value_type())),
-            LocalBinding::Tuple { .. } | LocalBinding::List(_) => None,
+            LocalBinding::Custom { .. } | LocalBinding::Tuple { .. } | LocalBinding::List(_) => {
+                None
+            }
             LocalBinding::Function(_) => None,
+        }
+    }
+
+    pub(super) fn lookup_custom_local(
+        &self,
+        name: &EcoString,
+    ) -> Option<(CustomLocalId, CustomType)> {
+        match self.bindings.get(name)? {
+            LocalBinding::Custom { local, type_ } => Some((*local, type_.clone())),
+            LocalBinding::Primitive(_)
+            | LocalBinding::Tuple { .. }
+            | LocalBinding::List(_)
+            | LocalBinding::Function(_) => None,
         }
     }
 
@@ -1043,16 +1347,20 @@ impl<'a> PlanContext<'a> {
     ) -> Option<(TupleLocalId, Vec<ValueType>)> {
         match self.bindings.get(name)? {
             LocalBinding::Tuple { local, type_ } => Some((*local, type_.clone())),
-            LocalBinding::Primitive(_) | LocalBinding::List(_) | LocalBinding::Function(_) => None,
+            LocalBinding::Primitive(_)
+            | LocalBinding::Custom { .. }
+            | LocalBinding::List(_)
+            | LocalBinding::Function(_) => None,
         }
     }
 
     pub(super) fn lookup_list_local(&self, name: &EcoString) -> Option<ListLocal> {
         match self.bindings.get(name)? {
             LocalBinding::List(local) => Some(local.clone()),
-            LocalBinding::Primitive(_) | LocalBinding::Tuple { .. } | LocalBinding::Function(_) => {
-                None
-            }
+            LocalBinding::Primitive(_)
+            | LocalBinding::Custom { .. }
+            | LocalBinding::Tuple { .. }
+            | LocalBinding::Function(_) => None,
         }
     }
 
@@ -1060,10 +1368,378 @@ impl<'a> PlanContext<'a> {
         self.functions.get(name).cloned()
     }
 
+    pub(super) fn custom_constructor(
+        &self,
+        constructor: &ValueConstructor,
+    ) -> Result<CustomConstructor, PlanError> {
+        let ValueConstructorVariant::Record {
+            name,
+            module,
+            variant_index,
+            ..
+        } = &constructor.variant
+        else {
+            return Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionShape {
+                    kind: crate::planner::error::InvalidExpressionShapeKind::RecordConstructor,
+                },
+            });
+        };
+
+        let (field_types, return_type) = match constructor.type_.fn_types() {
+            Some(signature) => signature,
+            None => (Vec::new(), constructor.type_.clone()),
+        };
+        let type_ = match ValueType::from_gleam(return_type.as_ref()) {
+            Some(ValueType::Custom(type_)) => type_,
+            None => {
+                return Err(PlanError::UnsupportedExpression {
+                    kind: UnsupportedExpressionKind::GenericFunction,
+                });
+            }
+            Some(_) => {
+                return Err(PlanError::InvalidTypedAst {
+                    reason: InvalidTypedAstReason::CustomType {
+                        name: name.clone(),
+                        reason: crate::planner::error::InvalidCustomTypeReason::ConstructorType,
+                    },
+                });
+            }
+        };
+        let Some(field_types) = field_types
+            .into_iter()
+            .map(|field| ValueType::from_gleam(field.as_ref()))
+            .collect::<Option<Vec<_>>>()
+        else {
+            return Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::CustomType {
+                    name: name.clone(),
+                    reason: crate::planner::error::InvalidCustomTypeReason::FieldType,
+                },
+            });
+        };
+
+        self.custom_constructor_from_parts(
+            type_,
+            name.clone(),
+            module,
+            usize::from(*variant_index),
+            field_types,
+        )
+        .map(ResolvedCustomConstructor::into_constructor)
+    }
+
+    pub(super) fn custom_pattern_constructor(
+        &self,
+        type_: &Type,
+        constructor: &PatternConstructor,
+        field_types: Vec<ValueType>,
+    ) -> Result<ResolvedCustomConstructor, PlanError> {
+        let type_ = match ValueType::from_gleam(type_) {
+            Some(ValueType::Custom(type_)) => type_,
+            None => {
+                return Err(PlanError::InvalidTypedAst {
+                    reason: InvalidTypedAstReason::CustomType {
+                        name: constructor.name.clone(),
+                        reason: InvalidCustomTypeReason::ConstructorType,
+                    },
+                });
+            }
+            Some(_) => {
+                return Err(PlanError::InvalidTypedAst {
+                    reason: InvalidTypedAstReason::CustomType {
+                        name: constructor.name.clone(),
+                        reason: InvalidCustomTypeReason::ConstructorType,
+                    },
+                });
+            }
+        };
+        self.custom_constructor_from_parts(
+            type_,
+            constructor.name.clone(),
+            &constructor.module,
+            usize::from(constructor.constructor_index),
+            field_types,
+        )
+    }
+
+    fn custom_constructor_from_parts(
+        &self,
+        type_: CustomType,
+        name: EcoString,
+        module: &EcoString,
+        variant_index: usize,
+        field_types: Vec<ValueType>,
+    ) -> Result<ResolvedCustomConstructor, PlanError> {
+        if module != type_.type_name().module() {
+            return Err(invalid_custom_type(
+                &type_,
+                InvalidCustomTypeReason::ConstructorModule,
+            ));
+        }
+        let (fields, constructor_count) = if type_.type_name().package().is_empty()
+            && module == PRELUDE_MODULE_NAME
+            && type_.type_name().module() == PRELUDE_MODULE_NAME
+            && type_.type_name().name() == "Result"
+        {
+            let [ok, error] = type_.arguments() else {
+                return Err(invalid_custom_type(
+                    &type_,
+                    InvalidCustomTypeReason::TypeArgumentCount,
+                ));
+            };
+            match variant_index {
+                0 if name == "Ok" => (vec![(None, ok.clone())], 2),
+                1 if name == "Error" => (vec![(None, error.clone())], 2),
+                0 | 1 => {
+                    return Err(invalid_custom_type(
+                        &type_,
+                        InvalidCustomTypeReason::ConstructorName,
+                    ));
+                }
+                _ => {
+                    return Err(invalid_custom_type(
+                        &type_,
+                        InvalidCustomTypeReason::ConstructorIndex,
+                    ));
+                }
+            }
+        } else {
+            let Some(type_definition) = self
+                .custom_types
+                .iter()
+                .find(|definition| definition.name() == type_.type_name())
+            else {
+                return Err(invalid_custom_type(
+                    &type_,
+                    InvalidCustomTypeReason::UnknownDefinition,
+                ));
+            };
+            if type_definition.parameters().len() != type_.arguments().len() {
+                return Err(invalid_custom_type(
+                    &type_,
+                    InvalidCustomTypeReason::TypeArgumentCount,
+                ));
+            }
+            let Some(constructor_definition) = type_definition.constructor(variant_index) else {
+                return Err(invalid_custom_type(
+                    &type_,
+                    InvalidCustomTypeReason::ConstructorIndex,
+                ));
+            };
+            if constructor_definition.name() != &name {
+                return Err(invalid_custom_type(
+                    &type_,
+                    InvalidCustomTypeReason::ConstructorName,
+                ));
+            };
+            if constructor_definition.fields().len() != field_types.len() {
+                return Err(invalid_custom_type(
+                    &type_,
+                    InvalidCustomTypeReason::ConstructorArity,
+                ));
+            }
+            let mut fields = Vec::with_capacity(constructor_definition.fields().len());
+            for field in constructor_definition.fields() {
+                fields.push((
+                    field.label().cloned(),
+                    instantiate_custom_type_template(field.type_(), &type_)?,
+                ));
+            }
+            (fields, type_definition.constructors().len())
+        };
+        if fields.len() != field_types.len()
+            || fields.iter().map(|(_, type_)| type_).ne(field_types.iter())
+        {
+            return Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::CustomType {
+                    name: type_.type_name().name().clone(),
+                    reason: InvalidCustomTypeReason::FieldType,
+                },
+            });
+        }
+        let fields = fields
+            .into_iter()
+            .map(|(label, type_)| CustomConstructorField::new(label, type_))
+            .collect();
+
+        Ok(ResolvedCustomConstructor {
+            constructor: CustomConstructor::new(type_, name, variant_index, fields),
+            constructor_count,
+        })
+    }
+
+    pub(super) fn contains_function_value(&self, type_: &ValueType) -> Result<bool, PlanError> {
+        self.contains_function_value_with_visited(type_, &mut HashSet::new())
+    }
+
+    fn contains_function_value_with_visited(
+        &self,
+        type_: &ValueType,
+        visited: &mut HashSet<CustomFunctionShape>,
+    ) -> Result<bool, PlanError> {
+        match type_ {
+            ValueType::Function(_) => Ok(true),
+            ValueType::Tuple(elements) => {
+                for element in elements {
+                    if self.contains_function_value_with_visited(element, visited)? {
+                        return Ok(true);
+                    }
+                }
+                Ok(false)
+            }
+            ValueType::List(element) => self.contains_function_value_with_visited(element, visited),
+            ValueType::Custom(type_) => self.custom_type_contains_function(type_, visited),
+            ValueType::Int
+            | ValueType::Float
+            | ValueType::String
+            | ValueType::BitArray
+            | ValueType::UtfCodepoint
+            | ValueType::Bool
+            | ValueType::Nil => Ok(false),
+        }
+    }
+
+    fn custom_type_contains_function(
+        &self,
+        type_: &CustomType,
+        visited: &mut HashSet<CustomFunctionShape>,
+    ) -> Result<bool, PlanError> {
+        let arguments = type_
+            .arguments()
+            .iter()
+            .map(|argument| self.contains_function_value_with_visited(argument, visited))
+            .collect::<Result<Vec<_>, _>>()?;
+        self.custom_shape_contains_function(type_.type_name(), arguments, visited)
+    }
+
+    fn custom_shape_contains_function(
+        &self,
+        name: &CustomTypeName,
+        arguments: Vec<bool>,
+        visited: &mut HashSet<CustomFunctionShape>,
+    ) -> Result<bool, PlanError> {
+        let shape = CustomFunctionShape {
+            name: name.clone(),
+            arguments,
+        };
+        if !visited.insert(shape.clone()) {
+            return Ok(false);
+        }
+
+        let result = if name.package().is_empty()
+            && name.module() == PRELUDE_MODULE_NAME
+            && name.name() == "Result"
+        {
+            if shape.arguments.len() != 2 {
+                return Err(PlanError::InvalidTypedAst {
+                    reason: InvalidTypedAstReason::CustomType {
+                        name: name.name().clone(),
+                        reason: InvalidCustomTypeReason::TypeArgumentCount,
+                    },
+                });
+            }
+            Ok(shape.arguments.iter().copied().any(|argument| argument))
+        } else {
+            let Some(definition) = self
+                .custom_types
+                .iter()
+                .find(|definition| definition.name() == name)
+            else {
+                return Err(PlanError::InvalidTypedAst {
+                    reason: InvalidTypedAstReason::CustomType {
+                        name: name.name().clone(),
+                        reason: InvalidCustomTypeReason::UnknownDefinition,
+                    },
+                });
+            };
+            if definition.parameters().len() != shape.arguments.len() {
+                return Err(PlanError::InvalidTypedAst {
+                    reason: InvalidTypedAstReason::CustomType {
+                        name: name.name().clone(),
+                        reason: InvalidCustomTypeReason::TypeArgumentCount,
+                    },
+                });
+            }
+            let mut contains_function = false;
+            'constructors: for constructor in definition.constructors() {
+                for field in constructor.fields() {
+                    if self.custom_template_contains_function(
+                        field.type_(),
+                        name,
+                        &shape.arguments,
+                        visited,
+                    )? {
+                        contains_function = true;
+                        break 'constructors;
+                    }
+                }
+            }
+            Ok(contains_function)
+        };
+
+        visited.remove(&shape);
+        result
+    }
+
+    fn custom_template_contains_function(
+        &self,
+        template: &CustomTypeTemplate,
+        owner: &CustomTypeName,
+        arguments: &[bool],
+        visited: &mut HashSet<CustomFunctionShape>,
+    ) -> Result<bool, PlanError> {
+        match template {
+            CustomTypeTemplate::Function { .. } => Ok(true),
+            CustomTypeTemplate::Tuple(elements) => {
+                let mut contains_function = false;
+                for element in elements {
+                    contains_function |=
+                        self.custom_template_contains_function(element, owner, arguments, visited)?;
+                }
+                Ok(contains_function)
+            }
+            CustomTypeTemplate::List(element) => {
+                self.custom_template_contains_function(element, owner, arguments, visited)
+            }
+            CustomTypeTemplate::Custom {
+                name,
+                arguments: templates,
+            } => {
+                let mut nested_arguments = Vec::with_capacity(templates.len());
+                for template in templates {
+                    let contains_function = self
+                        .custom_template_contains_function(template, owner, arguments, visited)?;
+                    nested_arguments.push(contains_function);
+                }
+                self.custom_shape_contains_function(name, nested_arguments, visited)
+            }
+            CustomTypeTemplate::Parameter(parameter) => match arguments.get(parameter.0).copied() {
+                Some(contains_function) => Ok(contains_function),
+                None => Err(PlanError::InvalidTypedAst {
+                    reason: InvalidTypedAstReason::CustomType {
+                        name: owner.name().clone(),
+                        reason: InvalidCustomTypeReason::ParameterType,
+                    },
+                }),
+            },
+            CustomTypeTemplate::Int
+            | CustomTypeTemplate::Float
+            | CustomTypeTemplate::String
+            | CustomTypeTemplate::BitArray
+            | CustomTypeTemplate::UtfCodepoint
+            | CustomTypeTemplate::Bool
+            | CustomTypeTemplate::Nil => Ok(false),
+        }
+    }
+
     pub(super) fn lookup_function_local(&self, name: &EcoString) -> Option<FunctionLocalBinding> {
         match self.bindings.get(name)? {
             LocalBinding::Function(binding) => Some(binding.clone()),
-            LocalBinding::Primitive(_) | LocalBinding::Tuple { .. } | LocalBinding::List(_) => None,
+            LocalBinding::Primitive(_)
+            | LocalBinding::Custom { .. }
+            | LocalBinding::Tuple { .. }
+            | LocalBinding::List(_) => None,
         }
     }
 
@@ -1105,6 +1781,7 @@ impl<'a> PlanContext<'a> {
             module_name: self.module_name,
             current_function: function_name,
             functions: self.functions,
+            custom_types: self.custom_types,
             anonymous_functions: self.anonymous_functions,
             bindings: HashMap::new(),
             next_int_local: 0,
@@ -1112,6 +1789,7 @@ impl<'a> PlanContext<'a> {
             next_string_local: 0,
             next_bit_array_local: 0,
             next_utf_codepoint_local: 0,
+            next_custom_local: 0,
             next_bool_local: 0,
             next_nil_local: 0,
             next_tuple_local: 0,
@@ -1119,6 +1797,7 @@ impl<'a> PlanContext<'a> {
             next_string_list_local: 0,
             next_bit_array_list_local: 0,
             next_utf_codepoint_list_local: 0,
+            next_custom_list_local: 0,
             next_float_list_local: 0,
             next_bool_list_local: 0,
             next_nil_list_local: 0,
@@ -1130,6 +1809,7 @@ impl<'a> PlanContext<'a> {
             next_string_function_local: 0,
             next_bit_array_function_local: 0,
             next_utf_codepoint_function_local: 0,
+            next_custom_function_local: 0,
             next_bool_function_local: 0,
             next_nil_function_local: 0,
             next_tuple_function_local: 0,
@@ -1145,13 +1825,11 @@ impl<'a> PlanContext<'a> {
         names
             .iter()
             .map(|name| {
-                let binding =
-                    self.bindings
-                        .get(name)
-                        .cloned()
-                        .ok_or_else(|| PlanError::InvalidTypedAst {
-                            reason: InvalidTypedAstReason::UnknownLocal { name: name.clone() },
-                        })?;
+                let Some(binding) = self.bindings.get(name).cloned() else {
+                    return Err(PlanError::InvalidTypedAst {
+                        reason: InvalidTypedAstReason::UnknownLocal { name: name.clone() },
+                    });
+                };
 
                 Ok(CaptureBinding {
                     name: name.clone(),
@@ -1199,6 +1877,10 @@ impl<'a> PlanContext<'a> {
             LocalBinding::Primitive(LocalId::UtfCodepoint(local)) => {
                 let target = self.define_utf_codepoint_local(capture.name.clone());
                 CaptureArg::utf_codepoint(target, UtfCodepointExpr::local_get(local, capture.name))
+            }
+            LocalBinding::Custom { local, type_ } => {
+                let target = self.define_custom_local(capture.name.clone(), type_.clone());
+                CaptureArg::custom(target, CustomExpr::local_get(local, capture.name, type_))
             }
             LocalBinding::Primitive(LocalId::Bool(local)) => {
                 let target = self.define_bool_local(capture.name.clone());
@@ -1250,6 +1932,13 @@ impl<'a> PlanContext<'a> {
                 CaptureArg::utf_codepoint_function(
                     target,
                     UtfCodepointFunctionExpr::local_get(local, capture.name, type_),
+                )
+            }
+            LocalBinding::Function(FunctionLocalBinding::Custom { local, type_ }) => {
+                let target = self.define_custom_function_local(capture.name.clone(), type_.clone());
+                CaptureArg::custom_function(
+                    target,
+                    CustomFunctionExpr::local_get(local, capture.name, type_),
                 )
             }
             LocalBinding::Function(FunctionLocalBinding::Bool { local, type_ }) => {
@@ -1387,6 +2076,7 @@ pub(in crate::planner) struct FunctionRuntimeIds {
     next_string: usize,
     next_bit_array: usize,
     next_utf_codepoint: usize,
+    next_custom: usize,
     next_bool: usize,
     next_nil: usize,
     next_tuple: usize,
@@ -1394,6 +2084,7 @@ pub(in crate::planner) struct FunctionRuntimeIds {
     next_string_list: usize,
     next_bit_array_list: usize,
     next_utf_codepoint_list: usize,
+    next_custom_list: usize,
     next_float_list: usize,
     next_bool_list: usize,
     next_nil_list: usize,
@@ -1405,6 +2096,7 @@ pub(in crate::planner) struct FunctionRuntimeIds {
     next_string_function: usize,
     next_bit_array_function: usize,
     next_utf_codepoint_function: usize,
+    next_custom_function: usize,
     next_bool_function: usize,
     next_nil_function: usize,
     next_tuple_function: usize,
@@ -1412,6 +2104,7 @@ pub(in crate::planner) struct FunctionRuntimeIds {
     next_string_list_function: usize,
     next_bit_array_list_function: usize,
     next_utf_codepoint_list_function: usize,
+    next_custom_list_function: usize,
     next_float_list_function: usize,
     next_bool_list_function: usize,
     next_nil_list_function: usize,
@@ -1431,6 +2124,10 @@ impl FunctionRuntimeIds {
             ValueType::UtfCodepoint => {
                 RuntimeFunctionId::UtfCodepoint(self.next_utf_codepoint_id())
             }
+            ValueType::Custom(return_type) => RuntimeFunctionId::Custom {
+                id: self.next_custom_id(),
+                return_type: return_type.clone(),
+            },
             ValueType::Bool => RuntimeFunctionId::Bool(self.next_bool_id()),
             ValueType::Nil => RuntimeFunctionId::Nil(self.next_nil_id()),
             ValueType::Tuple(return_type) => RuntimeFunctionId::Tuple {
@@ -1453,6 +2150,7 @@ impl FunctionRuntimeIds {
             ValueType::UtfCodepoint => {
                 FunctionFunctionId::UtfCodepoint(self.next_utf_codepoint_function_id())
             }
+            ValueType::Custom(_) => FunctionFunctionId::Custom(self.next_custom_function_id()),
             ValueType::Bool => FunctionFunctionId::Bool(self.next_bool_function_id()),
             ValueType::Nil => FunctionFunctionId::Nil(self.next_nil_function_id()),
             ValueType::Tuple(_) => FunctionFunctionId::Tuple(self.next_tuple_function_id()),
@@ -1491,6 +2189,12 @@ impl FunctionRuntimeIds {
         id
     }
 
+    pub(in crate::planner) fn next_custom_id(&mut self) -> CustomFunctionId {
+        let id = CustomFunctionId(self.next_custom);
+        self.next_custom += 1;
+        id
+    }
+
     pub(in crate::planner) fn next_float_id(&mut self) -> FloatFunctionId {
         let id = FloatFunctionId(self.next_float);
         self.next_float += 1;
@@ -1523,6 +2227,10 @@ impl FunctionRuntimeIds {
             ValueType::UtfCodepoint => {
                 ListFunctionId::UtfCodepoint(self.next_utf_codepoint_list_id())
             }
+            ValueType::Custom(item_type) => ListFunctionId::Custom {
+                id: self.next_custom_list_id(),
+                item_type,
+            },
             ValueType::Float => ListFunctionId::Float(self.next_float_list_id()),
             ValueType::Bool => ListFunctionId::Bool(self.next_bool_list_id()),
             ValueType::Nil => ListFunctionId::Nil(self.next_nil_list_id()),
@@ -1562,6 +2270,12 @@ impl FunctionRuntimeIds {
     pub(in crate::planner) fn next_utf_codepoint_list_id(&mut self) -> UtfCodepointListFunctionId {
         let id = UtfCodepointListFunctionId(self.next_utf_codepoint_list);
         self.next_utf_codepoint_list += 1;
+        id
+    }
+
+    pub(in crate::planner) fn next_custom_list_id(&mut self) -> CustomListFunctionId {
+        let id = CustomListFunctionId(self.next_custom_list);
+        self.next_custom_list += 1;
         id
     }
 
@@ -1624,6 +2338,12 @@ impl FunctionRuntimeIds {
     ) -> UtfCodepointFunctionFunctionId {
         let id = UtfCodepointFunctionFunctionId(self.next_utf_codepoint_function);
         self.next_utf_codepoint_function += 1;
+        id
+    }
+
+    pub(in crate::planner) fn next_custom_function_id(&mut self) -> CustomFunctionFunctionId {
+        let id = CustomFunctionFunctionId(self.next_custom_function);
+        self.next_custom_function += 1;
         id
     }
 
@@ -1693,6 +2413,15 @@ impl FunctionRuntimeIds {
                 self.next_utf_codepoint_list_function += 1;
                 id
             }
+            ValueType::Custom(item_type) => {
+                let id = ListFunctionFunctionId::from_item_type(
+                    self.next_custom_list_function,
+                    type_,
+                    ValueType::Custom(item_type),
+                );
+                self.next_custom_list_function += 1;
+                id
+            }
             ValueType::Float => {
                 let id = ListFunctionFunctionId::from_item_type(
                     self.next_float_list_function,
@@ -1759,59 +2488,76 @@ impl FunctionRuntimeIds {
 
 impl ValueType {
     pub(super) fn from_gleam(type_: &Type) -> Option<Self> {
-        if let Type::Var { type_ } = type_ {
-            return match type_.borrow().deref() {
+        match type_ {
+            Type::Var { type_ } => match type_.borrow().deref() {
                 TypeVar::Link { type_ } => Self::from_gleam(type_.as_ref()),
                 TypeVar::Unbound { .. } | TypeVar::Generic { .. } => None,
-            };
-        }
-
-        if type_.is_int() {
-            Some(Self::Int)
-        } else if type_.is_float() {
-            Some(Self::Float)
-        } else if type_.is_string() {
-            Some(Self::String)
-        } else if type_.is_bit_array() {
-            Some(Self::BitArray)
-        } else if type_.is_utf_codepoint() {
-            Some(Self::UtfCodepoint)
-        } else if type_.is_bool() {
-            Some(Self::Bool)
-        } else if type_.is_nil() {
-            Some(Self::Nil)
-        } else if let Some(elements) = type_.tuple_types() {
-            let elements = elements
-                .iter()
-                .map(|element| Self::from_gleam(element.as_ref()))
-                .collect::<Option<Vec<_>>>()?;
-            Some(Self::Tuple(elements))
-        } else if let Some(element) = type_.list_type() {
-            let element = Self::from_gleam(element.as_ref())?;
-            Some(Self::List(Box::new(element)))
-        } else if let Some((arguments, return_)) = type_.fn_types() {
-            let arguments = arguments
-                .iter()
-                .map(|argument| Self::from_gleam(argument.as_ref()))
-                .collect::<Option<Vec<_>>>()?;
-            let return_ = Self::from_gleam(return_.as_ref())?;
-            Some(Self::Function(Box::new(FunctionType::new(
-                arguments, return_,
-            ))))
-        } else {
-            None
+            },
+            Type::Tuple { elements } => Some(Self::Tuple(
+                elements
+                    .iter()
+                    .map(|element| Self::from_gleam(element.as_ref()))
+                    .collect::<Option<Vec<_>>>()?,
+            )),
+            Type::Fn { arguments, return_ } => Some(Self::Function(Box::new(FunctionType::new(
+                arguments
+                    .iter()
+                    .map(|argument| Self::from_gleam(argument.as_ref()))
+                    .collect::<Option<Vec<_>>>()?,
+                Self::from_gleam(return_.as_ref())?,
+            )))),
+            Type::Named {
+                package,
+                module,
+                name,
+                arguments,
+                ..
+            } => {
+                if type_.is_int() {
+                    Some(Self::Int)
+                } else if type_.is_float() {
+                    Some(Self::Float)
+                } else if type_.is_string() {
+                    Some(Self::String)
+                } else if type_.is_bit_array() {
+                    Some(Self::BitArray)
+                } else if type_.is_utf_codepoint() {
+                    Some(Self::UtfCodepoint)
+                } else if type_.is_bool() {
+                    Some(Self::Bool)
+                } else if type_.is_nil() {
+                    Some(Self::Nil)
+                } else if let Some(element) = type_.list_type() {
+                    Some(Self::List(Box::new(Self::from_gleam(element.as_ref())?)))
+                } else {
+                    Some(Self::Custom(CustomType::new(
+                        CustomTypeName::new(package.clone(), module.clone(), name.clone()),
+                        arguments
+                            .iter()
+                            .map(|argument| Self::from_gleam(argument.as_ref()))
+                            .collect::<Option<Vec<_>>>()?,
+                    )))
+                }
+            }
         }
     }
 }
 
 #[cfg(test)]
+#[allow(clippy::arc_with_non_send_sync)]
 mod tests {
     use super::FunctionLocalBinding;
-    use super::{AnonymousFunctions, FunctionInfo, FunctionRuntimeIds, PlanContext};
+    use super::{
+        AnonymousFunctions, FunctionInfo, FunctionRuntimeIds, PlanContext,
+        ResolvedCustomConstructor, instantiate_custom_type_template,
+    };
     use crate::plan::{
         BitArrayFunctionExpr, BitArrayFunctionId, BitArrayFunctionLocalId, BitArrayListExpr,
         BitArrayListItem, BitArrayListLocalId, BitArrayLocalId, BoolFunctionExpr,
         BoolFunctionLocalId, BoolListExpr, BoolListItem, BoolListLocalId, BoolLocalId, CaptureArg,
+        CustomConstructor, CustomConstructorDefinition, CustomConstructorField,
+        CustomFieldDefinition, CustomFunctionLocalId, CustomType, CustomTypeDefinition,
+        CustomTypeName, CustomTypeParameterId, CustomTypePublicity, CustomTypeTemplate,
         FloatFunctionExpr, FloatFunctionId, FloatFunctionLocalId, FloatListExpr, FloatListItem,
         FloatListLocalId, FloatLocalId, FunctionFunctionExpr, FunctionFunctionLocalId,
         FunctionListExpr, FunctionListItem, FunctionListLocalId, FunctionType, IntFunctionId,
@@ -1823,10 +2569,836 @@ mod tests {
         TupleFunctionLocalId, TupleListExpr, TupleListItem, TupleListLocalId, TupleLocalId,
         UtfCodepointListExpr, UtfCodepointListItem, UtfCodepointListLocalId, ValueType,
     };
+    use crate::planner::{InvalidCustomTypeReason, InvalidTypedAstReason, PlanError};
     use ecow::EcoString;
     use gleam_core::ast::Publicity;
-    use gleam_core::type_;
+    use gleam_core::type_::{
+        self, Deprecation, PatternConstructor, ValueConstructor, ValueConstructorVariant,
+    };
     use std::collections::HashMap;
+    use std::sync::Arc;
+
+    fn custom_type() -> CustomType {
+        CustomType::new(
+            CustomTypeName::new("geam".into(), "main".into(), "Boxed".into()),
+            Vec::new(),
+        )
+    }
+
+    #[test]
+    fn custom_constructor_and_equality_metadata_reject_invalid_typed_ast_shapes() {
+        let module = EcoString::from("main");
+        let functions = HashMap::<EcoString, FunctionInfo>::new();
+        let generic_name = CustomTypeName::new("geam".into(), module.clone(), "Generic".into());
+        let function_name =
+            CustomTypeName::new("geam".into(), module.clone(), "FunctionBox".into());
+        let tuple_function_name =
+            CustomTypeName::new("geam".into(), module.clone(), "TupleFunctionBox".into());
+        let list_function_name =
+            CustomTypeName::new("geam".into(), module.clone(), "ListFunctionBox".into());
+        let broken_name = CustomTypeName::new("geam".into(), module.clone(), "Broken".into());
+        let tuple_broken_name =
+            CustomTypeName::new("geam".into(), module.clone(), "TupleBroken".into());
+        let custom_argument_broken_name =
+            CustomTypeName::new("geam".into(), module.clone(), "CustomArgumentBroken".into());
+        let nested_broken_name =
+            CustomTypeName::new("geam".into(), module.clone(), "NestedBroken".into());
+        let missing_name = CustomTypeName::new("geam".into(), module.clone(), "Missing".into());
+        let recursive_name = CustomTypeName::new("geam".into(), module.clone(), "Recursive".into());
+        let definitions = vec![
+            CustomTypeDefinition::new(
+                generic_name.clone(),
+                CustomTypePublicity::Public,
+                false,
+                vec![CustomTypeParameterId(0)],
+                vec![CustomConstructorDefinition::new(
+                    "Generic".into(),
+                    0,
+                    vec![CustomFieldDefinition::new(
+                        Some("value".into()),
+                        CustomTypeTemplate::Parameter(CustomTypeParameterId(0)),
+                    )],
+                )],
+            ),
+            CustomTypeDefinition::new(
+                function_name.clone(),
+                CustomTypePublicity::Private,
+                false,
+                Vec::new(),
+                vec![CustomConstructorDefinition::new(
+                    "FunctionBox".into(),
+                    0,
+                    vec![CustomFieldDefinition::new(
+                        None,
+                        CustomTypeTemplate::Function {
+                            arguments: vec![CustomTypeTemplate::Int],
+                            return_: Box::new(CustomTypeTemplate::String),
+                        },
+                    )],
+                )],
+            ),
+            CustomTypeDefinition::new(
+                tuple_function_name.clone(),
+                CustomTypePublicity::Private,
+                false,
+                Vec::new(),
+                vec![CustomConstructorDefinition::new(
+                    "TupleFunctionBox".into(),
+                    0,
+                    vec![CustomFieldDefinition::new(
+                        None,
+                        CustomTypeTemplate::Tuple(vec![
+                            CustomTypeTemplate::Int,
+                            CustomTypeTemplate::Function {
+                                arguments: Vec::new(),
+                                return_: Box::new(CustomTypeTemplate::Nil),
+                            },
+                        ]),
+                    )],
+                )],
+            ),
+            CustomTypeDefinition::new(
+                list_function_name.clone(),
+                CustomTypePublicity::Private,
+                false,
+                Vec::new(),
+                vec![CustomConstructorDefinition::new(
+                    "ListFunctionBox".into(),
+                    0,
+                    vec![CustomFieldDefinition::new(
+                        None,
+                        CustomTypeTemplate::List(Box::new(CustomTypeTemplate::Function {
+                            arguments: Vec::new(),
+                            return_: Box::new(CustomTypeTemplate::Nil),
+                        })),
+                    )],
+                )],
+            ),
+            CustomTypeDefinition::new(
+                broken_name.clone(),
+                CustomTypePublicity::Private,
+                false,
+                vec![CustomTypeParameterId(0)],
+                vec![CustomConstructorDefinition::new(
+                    "Broken".into(),
+                    0,
+                    vec![CustomFieldDefinition::new(
+                        None,
+                        CustomTypeTemplate::Parameter(CustomTypeParameterId(1)),
+                    )],
+                )],
+            ),
+            CustomTypeDefinition::new(
+                tuple_broken_name.clone(),
+                CustomTypePublicity::Private,
+                false,
+                Vec::new(),
+                vec![CustomConstructorDefinition::new(
+                    "TupleBroken".into(),
+                    0,
+                    vec![CustomFieldDefinition::new(
+                        None,
+                        CustomTypeTemplate::Tuple(vec![CustomTypeTemplate::Parameter(
+                            CustomTypeParameterId(0),
+                        )]),
+                    )],
+                )],
+            ),
+            CustomTypeDefinition::new(
+                custom_argument_broken_name.clone(),
+                CustomTypePublicity::Private,
+                false,
+                Vec::new(),
+                vec![CustomConstructorDefinition::new(
+                    "CustomArgumentBroken".into(),
+                    0,
+                    vec![CustomFieldDefinition::new(
+                        None,
+                        CustomTypeTemplate::Custom {
+                            name: generic_name.clone(),
+                            arguments: vec![CustomTypeTemplate::Parameter(CustomTypeParameterId(
+                                0,
+                            ))],
+                        },
+                    )],
+                )],
+            ),
+            CustomTypeDefinition::new(
+                nested_broken_name.clone(),
+                CustomTypePublicity::Private,
+                false,
+                Vec::new(),
+                vec![CustomConstructorDefinition::new(
+                    "NestedBroken".into(),
+                    0,
+                    vec![CustomFieldDefinition::new(
+                        None,
+                        CustomTypeTemplate::Custom {
+                            name: missing_name.clone(),
+                            arguments: Vec::new(),
+                        },
+                    )],
+                )],
+            ),
+            CustomTypeDefinition::new(
+                recursive_name.clone(),
+                CustomTypePublicity::Private,
+                false,
+                Vec::new(),
+                vec![CustomConstructorDefinition::new(
+                    "Recursive".into(),
+                    0,
+                    vec![CustomFieldDefinition::new(
+                        None,
+                        CustomTypeTemplate::Custom {
+                            name: recursive_name.clone(),
+                            arguments: Vec::new(),
+                        },
+                    )],
+                )],
+            ),
+        ];
+        let mut anonymous = AnonymousFunctions::default();
+        let context =
+            PlanContext::new_with_custom_types(&module, &functions, &definitions, &mut anonymous);
+        let generic_int = CustomType::new(generic_name.clone(), vec![ValueType::Int]);
+
+        for (template, expected) in [
+            (CustomTypeTemplate::Float, ValueType::Float),
+            (CustomTypeTemplate::BitArray, ValueType::BitArray),
+            (CustomTypeTemplate::UtfCodepoint, ValueType::UtfCodepoint),
+            (CustomTypeTemplate::Bool, ValueType::Bool),
+            (CustomTypeTemplate::Nil, ValueType::Nil),
+            (
+                CustomTypeTemplate::List(Box::new(CustomTypeTemplate::Int)),
+                ValueType::List(Box::new(ValueType::Int)),
+            ),
+        ] {
+            assert_eq!(
+                instantiate_custom_type_template(&template, &generic_int),
+                Ok(expected),
+            );
+        }
+
+        assert_eq!(
+            context.custom_constructor_from_parts(
+                generic_int.clone(),
+                "Generic".into(),
+                &module,
+                0,
+                vec![ValueType::Int],
+            ),
+            Ok(ResolvedCustomConstructor {
+                constructor: CustomConstructor::new(
+                    generic_int.clone(),
+                    "Generic".into(),
+                    0,
+                    vec![CustomConstructorField::new(
+                        Some("value".into()),
+                        ValueType::Int,
+                    )],
+                ),
+                constructor_count: 1,
+            }),
+        );
+        assert_eq!(
+            context.custom_constructor_from_parts(
+                generic_int.clone(),
+                "Generic".into(),
+                &module,
+                0,
+                vec![ValueType::String],
+            ),
+            Err(invalid_custom_field_error(&generic_int)),
+        );
+        assert_eq!(
+            context.custom_constructor_from_parts(
+                generic_int.clone(),
+                "Wrong".into(),
+                &module,
+                0,
+                vec![ValueType::Int],
+            ),
+            Err(invalid_custom_constructor_error(
+                &generic_int,
+                InvalidCustomTypeReason::ConstructorName,
+            )),
+        );
+        assert_eq!(
+            context.custom_constructor_from_parts(
+                generic_int.clone(),
+                "Generic".into(),
+                &"other".into(),
+                0,
+                vec![ValueType::Int],
+            ),
+            Err(invalid_custom_constructor_error(
+                &generic_int,
+                InvalidCustomTypeReason::ConstructorModule,
+            )),
+        );
+        assert_eq!(
+            context.custom_constructor_from_parts(
+                generic_int.clone(),
+                "Generic".into(),
+                &module,
+                0,
+                Vec::new(),
+            ),
+            Err(invalid_custom_constructor_error(
+                &generic_int,
+                InvalidCustomTypeReason::ConstructorArity,
+            )),
+        );
+        assert_eq!(
+            context.custom_constructor_from_parts(
+                generic_int.clone(),
+                "Generic".into(),
+                &module,
+                1,
+                vec![ValueType::Int],
+            ),
+            Err(invalid_custom_constructor_error(
+                &generic_int,
+                InvalidCustomTypeReason::ConstructorIndex,
+            )),
+        );
+        assert_eq!(
+            context.custom_constructor_from_parts(
+                CustomType::new(
+                    CustomTypeName::new("geam".into(), module.clone(), "Missing".into()),
+                    Vec::new(),
+                ),
+                "Missing".into(),
+                &module,
+                0,
+                Vec::new(),
+            ),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::CustomType {
+                    name: "Missing".into(),
+                    reason: InvalidCustomTypeReason::UnknownDefinition,
+                },
+            }),
+        );
+        let generic_without_arguments = CustomType::new(generic_name.clone(), Vec::new());
+        assert_eq!(
+            context.custom_constructor_from_parts(
+                generic_without_arguments.clone(),
+                "Generic".into(),
+                &module,
+                0,
+                vec![ValueType::Int],
+            ),
+            Err(invalid_custom_constructor_error(
+                &generic_without_arguments,
+                InvalidCustomTypeReason::TypeArgumentCount,
+            )),
+        );
+        assert_eq!(
+            context.contains_function_value(&ValueType::Custom(generic_without_arguments.clone())),
+            Err(invalid_custom_constructor_error(
+                &generic_without_arguments,
+                InvalidCustomTypeReason::TypeArgumentCount,
+            )),
+        );
+
+        let result_type = CustomType::new(
+            CustomTypeName::new(
+                "".into(),
+                type_::PRELUDE_MODULE_NAME.into(),
+                "Result".into(),
+            ),
+            vec![ValueType::Int, ValueType::String],
+        );
+        assert_eq!(
+            ValueType::from_gleam(type_::result(type_::int(), type_::string()).as_ref()),
+            Some(ValueType::Custom(result_type.clone())),
+        );
+        let prelude = result_type.type_name().module().clone();
+        assert_eq!(
+            context.custom_constructor_from_parts(
+                result_type.clone(),
+                "Error".into(),
+                &prelude,
+                1,
+                vec![ValueType::String],
+            ),
+            Ok(ResolvedCustomConstructor {
+                constructor: CustomConstructor::new(
+                    result_type.clone(),
+                    "Error".into(),
+                    1,
+                    vec![CustomConstructorField::new(None, ValueType::String)],
+                ),
+                constructor_count: 2,
+            }),
+        );
+        assert_eq!(
+            context.custom_constructor_from_parts(
+                result_type.clone(),
+                "Error".into(),
+                &prelude,
+                1,
+                vec![ValueType::Int],
+            ),
+            Err(invalid_custom_field_error(&result_type)),
+        );
+        assert_eq!(
+            context.custom_constructor_from_parts(
+                result_type.clone(),
+                "Error".into(),
+                &prelude,
+                0,
+                vec![ValueType::Int],
+            ),
+            Err(invalid_custom_constructor_error(
+                &result_type,
+                InvalidCustomTypeReason::ConstructorName,
+            )),
+        );
+        assert_eq!(
+            context.custom_constructor_from_parts(
+                result_type.clone(),
+                "Ok".into(),
+                &prelude,
+                2,
+                vec![ValueType::Int],
+            ),
+            Err(invalid_custom_constructor_error(
+                &result_type,
+                InvalidCustomTypeReason::ConstructorIndex,
+            )),
+        );
+        let malformed_result_type =
+            CustomType::new(result_type.type_name().clone(), vec![ValueType::Int]);
+        assert_eq!(
+            context.custom_constructor_from_parts(
+                malformed_result_type.clone(),
+                "Ok".into(),
+                &prelude,
+                0,
+                vec![ValueType::Int],
+            ),
+            Err(invalid_custom_constructor_error(
+                &malformed_result_type,
+                InvalidCustomTypeReason::TypeArgumentCount,
+            )),
+        );
+        assert_eq!(
+            context.contains_function_value(&ValueType::Custom(malformed_result_type.clone())),
+            Err(invalid_custom_constructor_error(
+                &malformed_result_type,
+                InvalidCustomTypeReason::TypeArgumentCount,
+            )),
+        );
+        let non_prelude_result = CustomType::new(
+            CustomTypeName::new(
+                "other".into(),
+                type_::PRELUDE_MODULE_NAME.into(),
+                "Result".into(),
+            ),
+            vec![ValueType::Int, ValueType::String],
+        );
+        assert_eq!(
+            context.custom_constructor_from_parts(
+                non_prelude_result.clone(),
+                "Ok".into(),
+                &prelude,
+                0,
+                vec![ValueType::Int],
+            ),
+            Err(invalid_custom_constructor_error(
+                &non_prelude_result,
+                InvalidCustomTypeReason::UnknownDefinition,
+            )),
+        );
+        assert_eq!(
+            context.contains_function_value(&ValueType::Custom(non_prelude_result.clone())),
+            Err(invalid_custom_constructor_error(
+                &non_prelude_result,
+                InvalidCustomTypeReason::UnknownDefinition,
+            )),
+        );
+        assert_eq!(
+            context.contains_function_value(&ValueType::Custom(generic_int)),
+            Ok(false),
+        );
+        assert_eq!(
+            context.contains_function_value(&ValueType::Custom(CustomType::new(
+                recursive_name,
+                Vec::new(),
+            ))),
+            Ok(false),
+        );
+        assert_eq!(
+            context.contains_function_value(&ValueType::Tuple(vec![
+                ValueType::Int,
+                ValueType::Function(Box::new(FunctionType::new(Vec::new(), ValueType::String,))),
+            ])),
+            Ok(true),
+        );
+        assert_eq!(
+            context.contains_function_value(&ValueType::Tuple(vec![
+                ValueType::Int,
+                ValueType::String,
+            ])),
+            Ok(false),
+        );
+        assert_eq!(
+            context.contains_function_value(&ValueType::List(Box::new(ValueType::Function(
+                Box::new(FunctionType::new(Vec::new(), ValueType::Nil)),
+            )))),
+            Ok(true),
+        );
+        assert_eq!(
+            context.contains_function_value(&ValueType::Custom(CustomType::new(
+                function_name,
+                Vec::new(),
+            ))),
+            Ok(true),
+        );
+        assert_eq!(
+            context.contains_function_value(&ValueType::Custom(CustomType::new(
+                tuple_function_name,
+                Vec::new(),
+            ))),
+            Ok(true),
+        );
+        assert_eq!(
+            context.contains_function_value(&ValueType::Custom(CustomType::new(
+                list_function_name,
+                Vec::new(),
+            ))),
+            Ok(true),
+        );
+        assert_eq!(
+            context.contains_function_value(&ValueType::Custom(CustomType::new(
+                result_type.type_name().clone(),
+                vec![
+                    ValueType::Function(Box::new(FunctionType::new(Vec::new(), ValueType::Int,))),
+                    ValueType::String,
+                ],
+            ))),
+            Ok(true),
+        );
+        assert_eq!(
+            context.contains_function_value(&ValueType::Custom(CustomType::new(
+                result_type.type_name().clone(),
+                vec![ValueType::Int, ValueType::String],
+            ))),
+            Ok(false),
+        );
+        let broken = CustomType::new(broken_name, vec![ValueType::Int]);
+        assert_eq!(
+            context.custom_constructor_from_parts(
+                broken.clone(),
+                "Broken".into(),
+                &module,
+                0,
+                vec![ValueType::Int],
+            ),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::CustomType {
+                    name: "Broken".into(),
+                    reason: InvalidCustomTypeReason::ParameterType,
+                },
+            }),
+        );
+        assert_eq!(
+            context.contains_function_value(&ValueType::Custom(broken.clone())),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::CustomType {
+                    name: "Broken".into(),
+                    reason: InvalidCustomTypeReason::ParameterType,
+                },
+            }),
+        );
+        assert_eq!(
+            context.contains_function_value(&ValueType::Custom(CustomType::new(
+                tuple_broken_name,
+                Vec::new(),
+            ))),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::CustomType {
+                    name: "TupleBroken".into(),
+                    reason: InvalidCustomTypeReason::ParameterType,
+                },
+            }),
+        );
+        assert_eq!(
+            context.contains_function_value(&ValueType::Custom(CustomType::new(
+                custom_argument_broken_name,
+                Vec::new(),
+            ))),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::CustomType {
+                    name: "CustomArgumentBroken".into(),
+                    reason: InvalidCustomTypeReason::ParameterType,
+                },
+            }),
+        );
+        assert_eq!(
+            context.contains_function_value(&ValueType::Custom(CustomType::new(
+                result_type.type_name().clone(),
+                vec![ValueType::String, ValueType::Custom(broken.clone())],
+            ))),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::CustomType {
+                    name: "Broken".into(),
+                    reason: InvalidCustomTypeReason::ParameterType,
+                },
+            }),
+        );
+        let missing = CustomType::new(missing_name, Vec::new());
+        assert_eq!(
+            context.contains_function_value(&ValueType::Custom(missing.clone())),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::CustomType {
+                    name: "Missing".into(),
+                    reason: InvalidCustomTypeReason::UnknownDefinition,
+                },
+            }),
+        );
+        assert_eq!(
+            context.contains_function_value(&ValueType::Tuple(vec![ValueType::Custom(
+                missing.clone(),
+            )])),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::CustomType {
+                    name: "Missing".into(),
+                    reason: InvalidCustomTypeReason::UnknownDefinition,
+                },
+            }),
+        );
+        assert_eq!(
+            context.contains_function_value(&ValueType::Custom(CustomType::new(
+                nested_broken_name,
+                Vec::new(),
+            ))),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::CustomType {
+                    name: "Missing".into(),
+                    reason: InvalidCustomTypeReason::UnknownDefinition,
+                },
+            }),
+        );
+
+        let missing_parameter = CustomType::new(generic_name, Vec::new());
+        let parameter_error = Err(PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::CustomType {
+                name: "Generic".into(),
+                reason: InvalidCustomTypeReason::ParameterType,
+            },
+        });
+        assert_eq!(
+            instantiate_custom_type_template(
+                &CustomTypeTemplate::Tuple(vec![CustomTypeTemplate::Parameter(
+                    CustomTypeParameterId(0),
+                )]),
+                &missing_parameter,
+            ),
+            parameter_error.clone(),
+        );
+        assert_eq!(
+            instantiate_custom_type_template(
+                &CustomTypeTemplate::List(Box::new(CustomTypeTemplate::Parameter(
+                    CustomTypeParameterId(0),
+                ))),
+                &missing_parameter,
+            ),
+            parameter_error.clone(),
+        );
+        assert_eq!(
+            instantiate_custom_type_template(
+                &CustomTypeTemplate::Function {
+                    arguments: vec![CustomTypeTemplate::Parameter(CustomTypeParameterId(0))],
+                    return_: Box::new(CustomTypeTemplate::Int),
+                },
+                &missing_parameter,
+            ),
+            parameter_error.clone(),
+        );
+        assert_eq!(
+            instantiate_custom_type_template(
+                &CustomTypeTemplate::Function {
+                    arguments: Vec::new(),
+                    return_: Box::new(CustomTypeTemplate::Parameter(CustomTypeParameterId(0))),
+                },
+                &missing_parameter,
+            ),
+            parameter_error.clone(),
+        );
+        assert_eq!(
+            instantiate_custom_type_template(
+                &CustomTypeTemplate::Custom {
+                    name: missing_parameter.type_name().clone(),
+                    arguments: vec![CustomTypeTemplate::Parameter(CustomTypeParameterId(0))],
+                },
+                &missing_parameter,
+            ),
+            parameter_error,
+        );
+    }
+
+    #[test]
+    fn reject_margin_custom_function_shape_errors_through_module_planning() {
+        let mut tuple_parameter = crate::planner::support::compile(
+            "pub type Box(value) { Box(#(Int, value)) } fn equal(value: Box(Int)) { value == value } pub fn main() { 0 }",
+        );
+        let missing_parameter = type_::generic_var(99);
+        tuple_parameter.definitions.custom_types[0]
+            .typed_parameters
+            .push(missing_parameter.clone());
+        tuple_parameter.definitions.custom_types[0].constructors[0].arguments[0].type_ =
+            type_::tuple(vec![type_::int(), missing_parameter]);
+        let type_argument_count_error = PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::CustomType {
+                name: "Box".into(),
+                reason: InvalidCustomTypeReason::TypeArgumentCount,
+            },
+        };
+        assert_eq!(
+            crate::planner::plan_module(tuple_parameter),
+            Err(type_argument_count_error.clone()),
+        );
+
+        let mut custom_argument = crate::planner::support::compile(
+            "pub type Wrapper(value) { Wrapper(value) } pub type Box(value) { Box(Wrapper(value)) } fn equal(value: Box(Int)) { value == value } pub fn main() { 0 }",
+        );
+        let box_type = custom_argument
+            .definitions
+            .custom_types
+            .iter_mut()
+            .find(|type_| type_.name == "Box")
+            .expect("compiled module should contain Box");
+        let missing_parameter = type_::generic_var(99);
+        box_type.typed_parameters.push(missing_parameter.clone());
+        box_type.constructors[0].arguments[0].type_ = type_::named(
+            "main",
+            "main",
+            "Wrapper",
+            Publicity::Public,
+            vec![missing_parameter],
+        );
+        assert_eq!(
+            crate::planner::plan_module(custom_argument),
+            Err(type_argument_count_error),
+        );
+    }
+
+    #[test]
+    fn custom_constructor_typed_ast_margins_are_exact() {
+        let module = EcoString::from("main");
+        let functions = HashMap::<EcoString, FunctionInfo>::new();
+        let mut anonymous = AnonymousFunctions::default();
+        let context = PlanContext::new(&module, &functions, &mut anonymous);
+        let local = ValueConstructor::local_variable(
+            crate::planner::support::dummy_span(),
+            gleam_core::type_::error::VariableOrigin::generated(),
+            type_::int(),
+        );
+        assert_eq!(
+            context.custom_constructor(&local),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionShape {
+                    kind: crate::planner::InvalidExpressionShapeKind::RecordConstructor,
+                },
+            }),
+        );
+        let invalid_field = ValueConstructor {
+            publicity: Publicity::Private,
+            deprecation: Deprecation::NotDeprecated,
+            type_: Arc::new(gleam_core::type_::Type::Fn {
+                arguments: vec![type_::generic_var(0)],
+                return_: type_::result(type_::int(), type_::string()),
+            }),
+            variant: ValueConstructorVariant::Record {
+                name: "Ok".into(),
+                arity: 1,
+                field_map: None,
+                location: crate::planner::support::dummy_span(),
+                module: type_::PRELUDE_MODULE_NAME.into(),
+                variants_count: 2,
+                variant_index: 0,
+                documentation: None,
+            },
+        };
+        assert_eq!(
+            context.custom_constructor(&invalid_field),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::CustomType {
+                    name: "Ok".into(),
+                    reason: InvalidCustomTypeReason::FieldType,
+                },
+            }),
+        );
+        let invalid_constructor_type = ValueConstructor {
+            type_: type_::int(),
+            ..invalid_field
+        };
+        assert_eq!(
+            context.custom_constructor(&invalid_constructor_type),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::CustomType {
+                    name: "Ok".into(),
+                    reason: InvalidCustomTypeReason::ConstructorType,
+                },
+            }),
+        );
+
+        let pattern = PatternConstructor {
+            name: "Invalid".into(),
+            field_map: None,
+            documentation: None,
+            module: module.clone(),
+            location: crate::planner::support::dummy_span(),
+            constructor_index: 0,
+        };
+        assert_eq!(
+            context.custom_pattern_constructor(
+                type_::generic_var(0).as_ref(),
+                &pattern,
+                Vec::new()
+            ),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::CustomType {
+                    name: "Invalid".into(),
+                    reason: InvalidCustomTypeReason::ConstructorType,
+                },
+            }),
+        );
+        assert_eq!(
+            context.custom_pattern_constructor(type_::int().as_ref(), &pattern, Vec::new()),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::CustomType {
+                    name: "Invalid".into(),
+                    reason: InvalidCustomTypeReason::ConstructorType,
+                },
+            }),
+        );
+    }
+
+    fn invalid_custom_constructor_error(
+        type_: &CustomType,
+        reason: InvalidCustomTypeReason,
+    ) -> PlanError {
+        PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::CustomType {
+                name: type_.type_name().name().clone(),
+                reason,
+            },
+        }
+    }
+
+    fn invalid_custom_field_error(type_: &CustomType) -> PlanError {
+        PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::CustomType {
+                name: type_.type_name().name().clone(),
+                reason: InvalidCustomTypeReason::FieldType,
+            },
+        }
+    }
 
     #[test]
     fn local_scope_restores_names_after_error_without_reusing_ids() {
@@ -1898,6 +3470,7 @@ mod tests {
         let tuple_type = vec![ValueType::Int];
         let string_type = FunctionType::new(Vec::new(), ValueType::String);
         let bit_array_type = FunctionType::new(Vec::new(), ValueType::BitArray);
+        let custom_function_type = FunctionType::new(Vec::new(), ValueType::Custom(custom_type()));
         let float_type = FunctionType::new(Vec::new(), ValueType::Float);
         let bool_type = FunctionType::new(Vec::new(), ValueType::Bool);
         let nil_type = FunctionType::new(Vec::new(), ValueType::Nil);
@@ -1917,6 +3490,10 @@ mod tests {
         context.define_existing_param(
             "bit_array_fn".into(),
             &ParamLocal::bit_array_function(BitArrayFunctionLocalId(4), bit_array_type.clone()),
+        );
+        context.define_existing_param(
+            "custom_fn".into(),
+            &ParamLocal::custom_function(CustomFunctionLocalId(8), custom_function_type.clone()),
         );
         context.define_existing_param(
             "float_fn".into(),
@@ -1951,6 +3528,13 @@ mod tests {
             Some(FunctionLocalBinding::BitArray {
                 local: BitArrayFunctionLocalId(4),
                 type_: bit_array_type.clone(),
+            }),
+        );
+        assert_eq!(
+            context.lookup_function_local(&"custom_fn".into()),
+            Some(FunctionLocalBinding::Custom {
+                local: CustomFunctionLocalId(8),
+                type_: custom_function_type.clone(),
             }),
         );
         assert_eq!(
@@ -1999,6 +3583,16 @@ mod tests {
                 .define_bit_array_function_local("next_bit_array_fn".into(), bit_array_type)
                 .0,
             5,
+        );
+        assert_eq!(
+            context
+                .define_custom_function_local("next_custom_fn".into(), custom_function_type)
+                .0,
+            9,
+        );
+        assert_eq!(
+            context.define_internal_custom_function_local(),
+            CustomFunctionLocalId(10),
         );
         assert_eq!(
             context
@@ -2703,7 +4297,14 @@ mod tests {
                 type_::named("package", "main", "BitArray", Publicity::Public, Vec::new(),)
                     .as_ref(),
             ),
-            None,
+            Some(ValueType::Custom(CustomType::new(
+                crate::plan::CustomTypeName::new(
+                    "package".into(),
+                    "main".into(),
+                    "BitArray".into(),
+                ),
+                Vec::new(),
+            ))),
         );
         assert_eq!(
             ValueType::from_gleam(
@@ -2716,7 +4317,14 @@ mod tests {
                 )
                 .as_ref(),
             ),
-            None,
+            Some(ValueType::Custom(CustomType::new(
+                crate::plan::CustomTypeName::new(
+                    "package".into(),
+                    "main".into(),
+                    "UtfCodepoint".into(),
+                ),
+                Vec::new(),
+            ))),
         );
         assert_eq!(
             ValueType::from_gleam(type_::fn_(Vec::new(), type_::list(type_::int())).as_ref()),
@@ -2744,7 +4352,7 @@ mod tests {
 
     #[test]
     fn value_type_rejects_unsupported_recursive_member_types() {
-        let unsupported = || type_::result(type_::int(), type_::nil());
+        let unsupported = || type_::generic_var(0);
 
         assert_eq!(ValueType::from_gleam(type_::generic_var(0).as_ref()), None);
         assert_eq!(ValueType::from_gleam(type_::unbound_var(0).as_ref()), None);
@@ -2762,6 +4370,19 @@ mod tests {
         );
         assert_eq!(
             ValueType::from_gleam(type_::fn_(Vec::new(), unsupported()).as_ref()),
+            None,
+        );
+        assert_eq!(
+            ValueType::from_gleam(
+                type_::named(
+                    "geam",
+                    "main",
+                    "Boxed",
+                    Publicity::Public,
+                    vec![unsupported()],
+                )
+                .as_ref(),
+            ),
             None,
         );
     }
@@ -2791,6 +4412,13 @@ mod tests {
             RuntimeFunctionId::BitArray(BitArrayFunctionId(0))
         );
         assert_eq!(
+            ids.next(&ValueType::Custom(custom_type())),
+            RuntimeFunctionId::Custom {
+                id: crate::plan::CustomFunctionId(0),
+                return_type: custom_type(),
+            },
+        );
+        assert_eq!(
             ids.next(&ValueType::Bool),
             RuntimeFunctionId::Bool(crate::plan::BoolFunctionId(0))
         );
@@ -2815,6 +4443,10 @@ mod tests {
         assert_eq!(
             ids.next_list_id(ValueType::BitArray),
             crate::plan::ListFunctionId::from_item_type(0, ValueType::BitArray),
+        );
+        assert_eq!(
+            ids.next_list_id(ValueType::Custom(custom_type())),
+            crate::plan::ListFunctionId::from_item_type(0, ValueType::Custom(custom_type()),),
         );
         assert_eq!(
             ids.next_list_id(ValueType::Float),
@@ -2880,6 +4512,8 @@ mod tests {
             ValueType::Int,
             ValueType::String,
             ValueType::BitArray,
+            ValueType::UtfCodepoint,
+            ValueType::Custom(custom_type()),
             ValueType::Float,
             ValueType::Bool,
             ValueType::Nil,

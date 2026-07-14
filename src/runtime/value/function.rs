@@ -2,9 +2,9 @@ use super::CaptureValue;
 use crate::plan::FunctionType;
 
 use crate::plan::execution::{
-    BitArrayFunctionId, BoolFunctionId, FloatFunctionId, FunctionFunctionId, IntFunctionId,
-    ListFunctionId, NilFunctionId, ParamLocal, StringFunctionId, TupleFunctionId,
-    UtfCodepointFunctionId,
+    BitArrayFunctionId, BoolFunctionId, CustomConstructorId, CustomFunctionId, FloatFunctionId,
+    FunctionFunctionId, IntFunctionId, ListFunctionId, NilFunctionId, ParamLocal, StringFunctionId,
+    TupleFunctionId, UtfCodepointFunctionId,
 };
 #[cfg(test)]
 use crate::plan::execution::{FunctionReturnFamily, RuntimeFunctionId};
@@ -21,6 +21,7 @@ pub(crate) enum FunctionValueKind {
     String(StringFunctionValue),
     BitArray(BitArrayFunctionValue),
     UtfCodepoint(UtfCodepointFunctionValue),
+    Custom(CustomFunctionValue),
     Bool(BoolFunctionValue),
     Nil(NilFunctionValue),
     Tuple(TupleFunctionValue),
@@ -66,6 +67,20 @@ pub(crate) struct UtfCodepointFunctionValue {
     params: Vec<ParamLocal>,
     captures: Vec<CaptureValue>,
     type_: FunctionType,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct CustomFunctionValue {
+    target: CustomFunctionValueTarget,
+    params: Vec<ParamLocal>,
+    captures: Vec<CaptureValue>,
+    type_: FunctionType,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum CustomFunctionValueTarget {
+    Function(CustomFunctionId),
+    Constructor(CustomConstructorId),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -135,6 +150,14 @@ impl FunctionValue {
             RuntimeFunctionId::UtfCodepoint(runtime_id) => FunctionValueKind::UtfCodepoint(
                 UtfCodepointFunctionValue::new_with_captures(runtime_id, params, Vec::new(), type_),
             ),
+            RuntimeFunctionId::Custom { id, .. } => {
+                FunctionValueKind::Custom(CustomFunctionValue::new_with_captures(
+                    CustomFunctionValueTarget::Function(id),
+                    params,
+                    Vec::new(),
+                    type_,
+                ))
+            }
             RuntimeFunctionId::Bool(runtime_id) => FunctionValueKind::Bool(
                 BoolFunctionValue::new_with_captures(runtime_id, params, Vec::new(), type_),
             ),
@@ -174,6 +197,7 @@ impl FunctionValue {
             FunctionValueKind::String(value) => value.type_(),
             FunctionValueKind::BitArray(value) => value.type_(),
             FunctionValueKind::UtfCodepoint(value) => value.type_(),
+            FunctionValueKind::Custom(value) => value.type_(),
             FunctionValueKind::Bool(value) => value.type_(),
             FunctionValueKind::Nil(value) => value.type_(),
             FunctionValueKind::Tuple(value) => value.type_(),
@@ -197,6 +221,7 @@ impl FunctionValueKind {
             Self::String(_) => FunctionReturnFamily::String,
             Self::BitArray(_) => FunctionReturnFamily::BitArray,
             Self::UtfCodepoint(_) => FunctionReturnFamily::UtfCodepoint,
+            Self::Custom(_) => FunctionReturnFamily::Custom,
             Self::Bool(_) => FunctionReturnFamily::Bool,
             Self::Nil(_) => FunctionReturnFamily::Nil,
             Self::Tuple(_) => FunctionReturnFamily::Tuple,
@@ -304,6 +329,26 @@ impl UtfCodepointFunctionValue {
     ) -> Self {
         Self {
             runtime_id,
+            params,
+            captures,
+            type_,
+        }
+    }
+
+    pub(crate) fn type_(&self) -> FunctionType {
+        self.type_.clone()
+    }
+}
+
+impl CustomFunctionValue {
+    pub(crate) fn new_with_captures(
+        target: CustomFunctionValueTarget,
+        params: Vec<ParamLocal>,
+        captures: Vec<CaptureValue>,
+        type_: FunctionType,
+    ) -> Self {
+        Self {
+            target,
             params,
             captures,
             type_,
@@ -460,6 +505,14 @@ impl From<UtfCodepointFunctionValue> for FunctionValue {
     }
 }
 
+impl From<CustomFunctionValue> for FunctionValue {
+    fn from(value: CustomFunctionValue) -> Self {
+        Self {
+            kind: FunctionValueKind::Custom(value),
+        }
+    }
+}
+
 impl From<BoolFunctionValue> for FunctionValue {
     fn from(value: BoolFunctionValue) -> Self {
         Self {
@@ -504,7 +557,7 @@ impl From<FunctionFunctionValue> for FunctionValue {
 mod tests {
     use super::{FunctionValue, FunctionValueKind};
     use crate::plan::execution::FunctionReturnFamily;
-    use crate::plan::{FunctionType, ValueType};
+    use crate::plan::{CustomType, CustomTypeName, FunctionType, ValueType};
 
     #[test]
     fn function_value_preserves_every_lowered_return_family() {
@@ -533,6 +586,11 @@ mod tests {
                 "fn value() -> UtfCodepoint { let assert <<value:utf8_codepoint>> = <<65>> value } pub fn main() { value() }",
                 ValueType::UtfCodepoint,
                 FunctionReturnFamily::UtfCodepoint,
+            ),
+            (
+                "pub type Boxed { Boxed(Int) } pub fn main() -> Boxed { Boxed(1) }",
+                boxed_type(),
+                FunctionReturnFamily::Custom,
             ),
             (
                 "pub fn main() -> Bool { True }",
@@ -585,6 +643,10 @@ mod tests {
                 "fn value() -> UtfCodepoint { let assert <<value:utf8_codepoint>> = <<65>> value } pub fn main() { value() }",
                 ValueType::UtfCodepoint,
             ),
+            (
+                "pub type Boxed { Boxed(Int) } pub fn main() -> Boxed { Boxed(1) }",
+                boxed_type(),
+            ),
             ("pub fn main() -> Bool { True }", ValueType::Bool),
             ("pub fn main() -> Nil { Nil }", ValueType::Nil),
             (
@@ -614,6 +676,7 @@ mod tests {
                 FunctionValueKind::String(value) => FunctionValue::from(value.clone()),
                 FunctionValueKind::BitArray(value) => FunctionValue::from(value.clone()),
                 FunctionValueKind::UtfCodepoint(value) => FunctionValue::from(value.clone()),
+                FunctionValueKind::Custom(value) => FunctionValue::from(value.clone()),
                 FunctionValueKind::Bool(value) => FunctionValue::from(value.clone()),
                 FunctionValueKind::Nil(value) => FunctionValue::from(value.clone()),
                 FunctionValueKind::Tuple(value) => FunctionValue::from(value.clone()),
@@ -623,5 +686,12 @@ mod tests {
 
             assert_eq!(converted, value);
         }
+    }
+
+    fn boxed_type() -> ValueType {
+        ValueType::Custom(CustomType::new(
+            CustomTypeName::new("geam".into(), "main".into(), "Boxed".into()),
+            Vec::new(),
+        ))
     }
 }

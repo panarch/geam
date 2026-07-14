@@ -1,10 +1,10 @@
 use super::{BitArray, Bool, Float, Int, List, Nil, String, Tuple, UtfCodepoint};
 use crate::plan::{
-    BitArrayExpr, BitArrayLocalId, BoolExpr, BoolListLocalId, BoolLocalId, FloatExpr,
-    FloatListLocalId, FloatLocalId, FunctionListLocalId, IntExpr, IntListLocalId, IntLocalId,
-    ListExpr, ListListLocalId, ListLocal, NilExpr, NilListLocalId, NilLocalId, StringExpr,
-    StringListLocalId, StringLocalId, TupleExpr, TupleListLocalId, TupleLocalId, UtfCodepointExpr,
-    UtfCodepointLocalId, ValueType,
+    BitArrayExpr, BitArrayLocalId, BoolExpr, BoolListLocalId, BoolLocalId, CustomListLocalId,
+    FloatExpr, FloatListLocalId, FloatLocalId, FunctionListLocalId, IntExpr, IntListLocalId,
+    IntLocalId, ListExpr, ListListLocalId, ListLocal, NilExpr, NilListLocalId, NilLocalId,
+    StringExpr, StringListLocalId, StringLocalId, TupleExpr, TupleListLocalId, TupleLocalId,
+    UtfCodepointExpr, UtfCodepointLocalId, ValueType,
 };
 use ecow::EcoString;
 
@@ -70,6 +70,7 @@ pub(super) fn list_local(index: usize, element_type: ValueType) -> ListLocal {
         ValueType::UtfCodepoint => {
             ListLocal::utf_codepoint(crate::plan::UtfCodepointListLocalId(index))
         }
+        ValueType::Custom(item_type) => ListLocal::custom(CustomListLocalId(index), item_type),
         ValueType::Float => ListLocal::float(FloatListLocalId(index)),
         ValueType::Bool => ListLocal::bool(BoolListLocalId(index)),
         ValueType::Nil => ListLocal::nil(NilListLocalId(index)),
@@ -89,10 +90,11 @@ mod tests {
     };
     use crate::plan::{
         BitArrayExpr, BitArrayListLocalId, BitArrayLocalId, BoolExpr, BoolListLocalId, BoolLocalId,
-        FloatExpr, FloatListLocalId, FloatLocalId, FunctionListLocalId, FunctionType, IntExpr,
-        IntListLocalId, IntLocalId, ListExpr, ListListLocalId, ListLocal, NilExpr, NilListLocalId,
-        NilLocalId, StringExpr, StringListLocalId, StringLocalId, TupleExpr, TupleListLocalId,
-        TupleLocalId, UtfCodepointExpr, UtfCodepointListLocalId, UtfCodepointLocalId, ValueType,
+        CustomListLocalId, CustomType, CustomTypeName, FloatExpr, FloatListLocalId, FloatLocalId,
+        FunctionListLocalId, FunctionType, IntExpr, IntListLocalId, IntLocalId, ListExpr,
+        ListListLocalId, ListLocal, NilExpr, NilListLocalId, NilLocalId, StringExpr,
+        StringListLocalId, StringLocalId, TupleExpr, TupleListLocalId, TupleLocalId,
+        UtfCodepointExpr, UtfCodepointListLocalId, UtfCodepointLocalId, ValueType,
     };
 
     #[test]
@@ -150,6 +152,17 @@ mod tests {
             ListExpr::local_get(
                 ListLocal::utf_codepoint(UtfCodepointListLocalId(15)),
                 "codepoints".into(),
+            ),
+        );
+        let custom_type = CustomType::new(
+            CustomTypeName::new("geam".into(), "main".into(), "Boxed".into()),
+            Vec::new(),
+        );
+        assert_eq!(
+            local_list(16, "customs", ValueType::Custom(custom_type.clone())).0,
+            ListExpr::local_get(
+                ListLocal::custom(CustomListLocalId(16), custom_type),
+                "customs".into(),
             ),
         );
         assert_eq!(

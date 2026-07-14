@@ -1,6 +1,6 @@
 use super::{
-    bool_function_expr, bool_list_expr, call_args, expr, float_expr, int_expr, list_expr,
-    panic_expr, string_expr, tuple_expr,
+    bool_function_expr, bool_list_expr, call_args, custom_expr, expr, float_expr, int_expr,
+    list_expr, panic_expr, string_expr, tuple_expr,
 };
 use crate::plan::{execution, module};
 
@@ -89,6 +89,10 @@ pub(in crate::plan::execution::lowering) fn bool_expr(
         M::BitArrayMatches { value, pattern } => E::BitArrayMatches {
             value: Box::new(super::bit_array_expr(*value, context)),
             pattern: super::super::pattern::bit_array_pattern(pattern),
+        },
+        M::CustomMatches { value, pattern } => E::CustomMatches {
+            value: Box::new(custom_expr(*value, context)),
+            pattern: Box::new(super::super::step::assert_pattern(*pattern, context)),
         },
         M::And { left, right } => E::And {
             left: Box::new(bool_expr(*left, context)),

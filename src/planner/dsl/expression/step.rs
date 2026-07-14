@@ -4,10 +4,10 @@ use super::{
 };
 use crate::plan::{
     BitArrayFunctionLocalId, BitArrayLocalId, BoolFunctionLocalId, BoolListLocalId, BoolLocalId,
-    Expr, FloatFunctionLocalId, FloatListLocalId, FloatLocalId, FunctionListLocalId,
-    IntFunctionLocalId, IntListLocalId, IntLocalId, ListExpr, ListListLocalId, ListLocalExpr,
-    NilFunctionLocalId, NilListLocalId, NilLocalId, Step, StringFunctionLocalId, StringListLocalId,
-    StringLocalId, TupleListLocalId, TupleLocalId, UtfCodepointFunctionLocalId,
+    CustomListLocalId, Expr, FloatFunctionLocalId, FloatListLocalId, FloatLocalId,
+    FunctionListLocalId, IntFunctionLocalId, IntListLocalId, IntLocalId, ListExpr, ListListLocalId,
+    ListLocalExpr, NilFunctionLocalId, NilListLocalId, NilLocalId, Step, StringFunctionLocalId,
+    StringListLocalId, StringLocalId, TupleListLocalId, TupleLocalId, UtfCodepointFunctionLocalId,
     UtfCodepointLocalId,
 };
 use ecow::EcoString;
@@ -68,6 +68,11 @@ pub(crate) fn let_list_step(local: usize, name: impl Into<EcoString>, value: Lis
         },
         ListExpr::UtfCodepoint(value) => ListLocalExpr::UtfCodepoint {
             local: crate::plan::UtfCodepointListLocalId(local),
+            value,
+        },
+        ListExpr::Custom(value) => ListLocalExpr::Custom {
+            local: CustomListLocalId(local),
+            item_type: value.item().item_type(),
             value,
         },
         ListExpr::Float(value) => ListLocalExpr::Float {
@@ -176,12 +181,13 @@ mod tests {
     };
     use crate::plan::{
         BitArrayExpr, BitArrayFunctionLocalId, BitArrayListLocalId, BitArrayLocalId,
-        BoolFunctionLocalId, BoolListLocalId, BoolLocalId, Expr, FloatFunctionLocalId,
-        FloatListLocalId, FloatLocalId, FunctionListLocalId, FunctionType, IntFunctionLocalId,
-        IntListLocalId, IntLocalId, ListExpr, ListListLocalId, ListLocalExpr, NilFunctionLocalId,
-        NilListLocalId, NilLocalId, Step, StringFunctionLocalId, StringListLocalId, StringLocalId,
-        TupleListLocalId, TupleLocalId, UtfCodepointFunctionLocalId, UtfCodepointListLocalId,
-        UtfCodepointLocalId, ValueType,
+        BoolFunctionLocalId, BoolListLocalId, BoolLocalId, CustomListLocalId, CustomType,
+        CustomTypeName, Expr, FloatFunctionLocalId, FloatListLocalId, FloatLocalId,
+        FunctionListLocalId, FunctionType, IntFunctionLocalId, IntListLocalId, IntLocalId,
+        ListExpr, ListListLocalId, ListLocalExpr, NilFunctionLocalId, NilListLocalId, NilLocalId,
+        Step, StringFunctionLocalId, StringListLocalId, StringLocalId, TupleListLocalId,
+        TupleLocalId, UtfCodepointFunctionLocalId, UtfCodepointListLocalId, UtfCodepointLocalId,
+        ValueType,
     };
     use crate::planner::dsl::expression::{
         bit_array, bit_array_function_ref, bool_, bool_function_ref, float, float_function_ref,
@@ -191,6 +197,10 @@ mod tests {
 
     #[test]
     fn step_helpers_build_step_shapes() {
+        let custom_type = CustomType::new(
+            CustomTypeName::new("geam".into(), "main".into(), "Boxed".into()),
+            Vec::new(),
+        );
         assert_eq!(
             let_int_step(0, "x", int(1)),
             Step::let_int(IntLocalId(0), "x".into(), int(1).into()),
@@ -291,6 +301,25 @@ mod tests {
                     ))
                     .into_utf_codepoint()
                     .expect("expected UTF codepoint list"),
+                },
+            ),
+        );
+        assert_eq!(
+            let_list_step(
+                14,
+                "customs",
+                list(Vec::<Expr>::new(), ValueType::Custom(custom_type.clone())),
+            ),
+            Step::let_list_expr(
+                "customs".into(),
+                ListLocalExpr::Custom {
+                    local: CustomListLocalId(14),
+                    item_type: custom_type.clone(),
+                    value: ListExpr::from(
+                        list(Vec::<Expr>::new(), ValueType::Custom(custom_type),)
+                    )
+                    .into_custom()
+                    .expect("expected custom list"),
                 },
             ),
         );

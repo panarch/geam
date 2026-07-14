@@ -25,6 +25,10 @@ pub(super) fn list_local(
             local: execution::UtfCodepointListLocalId(local.0),
             type_id: context.utf_codepoint_list_type(),
         },
+        module::ListLocal::Custom { local, item_type } => execution::ListLocal::Custom {
+            local: execution::CustomListLocalId(local.0),
+            type_id: context.custom_list_type(item_type),
+        },
         module::ListLocal::Float(local) => execution::ListLocal::Float {
             local: execution::FloatListLocalId(local.0),
             type_id: context.float_list_type(),
@@ -85,6 +89,15 @@ pub(super) fn list_function_local(
                 list_type: context.utf_codepoint_list_type(),
             }
         }
+        module::ListFunctionLocal::Custom {
+            local,
+            type_,
+            item_type,
+        } => execution::ListFunctionLocal::Custom {
+            local: execution::CustomListFunctionLocalId(local.0),
+            type_: context.function_type(type_),
+            list_type: context.custom_list_type(item_type),
+        },
         module::ListFunctionLocal::Float { local, type_ } => execution::ListFunctionLocal::Float {
             local: execution::FloatListFunctionLocalId(local.0),
             type_: context.function_type(type_),
@@ -149,6 +162,9 @@ pub(super) fn list_function_id(
         module::ListFunctionId::UtfCodepoint(id) => execution::ListFunctionId::UtfCodepoint(
             execution::UtfCodepointListFunctionId::new(id.0, context.utf_codepoint_list_type()),
         ),
+        module::ListFunctionId::Custom { id, item_type } => execution::ListFunctionId::Custom(
+            execution::CustomListFunctionId::new(id.0, context.custom_list_type(item_type)),
+        ),
         module::ListFunctionId::Float(id) => execution::ListFunctionId::Float(
             execution::FloatListFunctionId::new(id.0, context.float_list_type()),
         ),
@@ -193,6 +209,9 @@ pub(super) fn function_function_id(
             execution::FunctionFunctionId::UtfCodepoint(execution::UtfCodepointFunctionFunctionId(
                 id.0,
             ))
+        }
+        module::FunctionFunctionId::Custom(id) => {
+            execution::FunctionFunctionId::Custom(execution::CustomFunctionFunctionId(id.0))
         }
         module::FunctionFunctionId::Bool(id) => {
             execution::FunctionFunctionId::Bool(execution::BoolFunctionFunctionId(id.0))
@@ -247,6 +266,15 @@ pub(super) fn list_function_function_id(
                 list_type: context.utf_codepoint_list_type(),
             }
         }
+        module::ListFunctionFunctionId::Custom {
+            id,
+            type_,
+            item_type,
+        } => execution::ListFunctionFunctionId::Custom {
+            id: execution::CustomListFunctionFunctionId(id.0),
+            type_: context.function_type(type_),
+            list_type: context.custom_list_type(item_type),
+        },
         module::ListFunctionFunctionId::Float { id, type_ } => {
             execution::ListFunctionFunctionId::Float {
                 id: execution::FloatListFunctionFunctionId(id.0),

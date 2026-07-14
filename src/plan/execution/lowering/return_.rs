@@ -1,11 +1,12 @@
 use super::LoweringContext;
 use super::expression::{
     bit_array_expr, bit_array_function_expr, bit_array_list_expr, bool_expr, bool_function_expr,
-    bool_list_expr, call_args, float_expr, float_function_expr, float_list_expr,
-    function_function_expr, function_list_expr, int_expr, int_function_expr, int_list_expr,
-    list_function_expr, list_list_expr, nil_expr, nil_function_expr, nil_list_expr, string_expr,
-    string_function_expr, string_list_expr, tuple_expr, tuple_function_expr, tuple_list_expr,
-    utf_codepoint_expr, utf_codepoint_function_expr, utf_codepoint_list_expr,
+    bool_list_expr, call_args, custom_expr, custom_function_expr, custom_list_expr, float_expr,
+    float_function_expr, float_list_expr, function_function_expr, function_list_expr, int_expr,
+    int_function_expr, int_list_expr, list_function_expr, list_list_expr, nil_expr,
+    nil_function_expr, nil_list_expr, string_expr, string_function_expr, string_list_expr,
+    tuple_expr, tuple_function_expr, tuple_list_expr, utf_codepoint_expr,
+    utf_codepoint_function_expr, utf_codepoint_list_expr,
 };
 use super::id::list_function_function_id;
 use crate::plan::{execution, module};
@@ -52,6 +53,15 @@ pub(super) fn utf_codepoint_return(
 ) -> execution::UtfCodepointReturn {
     return_body(body, context, utf_codepoint_expr, |id, _| {
         execution::UtfCodepointFunctionId(id.0)
+    })
+}
+
+pub(super) fn custom_return(
+    body: module::CustomReturn,
+    context: &mut LoweringContext,
+) -> execution::CustomReturn {
+    return_body(body, context, custom_expr, |id, _| {
+        execution::CustomFunctionId(id.0)
     })
 }
 
@@ -118,6 +128,16 @@ pub(super) fn utf_codepoint_list_return(
     let type_id = context.utf_codepoint_list_type();
     return_body(body, context, utf_codepoint_list_expr, move |id, _| {
         execution::UtfCodepointListFunctionId::new(id.0, type_id)
+    })
+}
+
+pub(super) fn custom_list_return(
+    body: module::CustomListReturn,
+    type_id: execution::CustomListTypeId,
+    context: &mut LoweringContext,
+) -> execution::CustomListReturn {
+    return_body(body, context, custom_list_expr, move |id, _| {
+        execution::CustomListFunctionId::new(id.0, type_id)
     })
 }
 
@@ -222,6 +242,15 @@ pub(super) fn utf_codepoint_function_return(
 ) -> execution::UtfCodepointFunctionReturn {
     return_body(body, context, utf_codepoint_function_expr, |id, _| {
         execution::UtfCodepointFunctionFunctionId(id.0)
+    })
+}
+
+pub(super) fn custom_function_return(
+    body: module::CustomFunctionReturn,
+    context: &mut LoweringContext,
+) -> execution::CustomFunctionReturn {
+    return_body(body, context, custom_function_expr, |id, _| {
+        execution::CustomFunctionFunctionId(id.0)
     })
 }
 

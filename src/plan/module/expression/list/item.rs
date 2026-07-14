@@ -1,11 +1,12 @@
 use super::{ListElementTypeMismatch, ListElements, ListExpr, TypedListExpr};
 use crate::plan::{
     BitArrayExpr, BitArrayListFunctionId, BitArrayListLocalId, BoolExpr, BoolListFunctionId,
-    BoolListLocalId, Expr, ExprKind, FloatExpr, FloatListFunctionId, FloatListLocalId,
-    FunctionExpr, FunctionListFunctionId, FunctionListLocalId, FunctionType, IntExpr,
-    IntListFunctionId, IntListLocalId, ListListFunctionId, ListListLocalId, ListLocal, NilExpr,
-    NilListFunctionId, NilListLocalId, StringExpr, StringListFunctionId, StringListLocalId,
-    TupleExpr, TupleListFunctionId, TupleListLocalId, UtfCodepointExpr, UtfCodepointListFunctionId,
+    BoolListLocalId, CustomExpr, CustomListFunctionId, CustomListLocalId, CustomType, Expr,
+    ExprKind, FloatExpr, FloatListFunctionId, FloatListLocalId, FunctionExpr,
+    FunctionListFunctionId, FunctionListLocalId, FunctionType, IntExpr, IntListFunctionId,
+    IntListLocalId, ListListFunctionId, ListListLocalId, ListLocal, NilExpr, NilListFunctionId,
+    NilListLocalId, StringExpr, StringListFunctionId, StringListLocalId, TupleExpr,
+    TupleListFunctionId, TupleListLocalId, UtfCodepointExpr, UtfCodepointListFunctionId,
     UtfCodepointListLocalId, ValueType,
 };
 use std::fmt::Debug;
@@ -42,6 +43,11 @@ pub(crate) struct BitArrayListItem;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct UtfCodepointListItem;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct CustomListItem {
+    pub(super) item_type: CustomType,
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct FloatListItem;
@@ -105,6 +111,20 @@ impl FunctionListItem {
     }
 
     pub(crate) fn into_item_type(self) -> FunctionType {
+        self.item_type
+    }
+}
+
+impl CustomListItem {
+    pub(crate) fn new(item_type: CustomType) -> Self {
+        Self { item_type }
+    }
+
+    pub(crate) fn item_type(&self) -> CustomType {
+        self.item_type.clone()
+    }
+
+    pub(crate) fn into_item_type(self) -> CustomType {
         self.item_type
     }
 }
@@ -287,6 +307,49 @@ impl ListItem for TupleListItem {
 
     fn expr_to_facade(expression: TypedListExpr<Self>) -> ListExpr {
         ListExpr::Tuple(expression)
+    }
+}
+
+impl ListItem for CustomListItem {
+    type ElementExpr = CustomExpr;
+    type Local = CustomListLocalId;
+    type Function = CustomListFunctionId;
+
+    fn value_type(&self) -> ValueType {
+        ValueType::Custom(self.item_type.clone())
+    }
+
+    fn local_to_facade(&self, local: Self::Local) -> ListLocal {
+        ListLocal::custom(local, self.item_type.clone())
+    }
+
+    fn elements_from_exprs(
+        item: &Self,
+        values: Vec<Expr>,
+    ) -> Result<Vec<Self::ElementExpr>, ListElementTypeMismatch> {
+        values
+            .into_iter()
+            .map(|value| match value {
+                Expr {
+                    kind: ExprKind::Custom(value),
+                } if value.type_() == &item.item_type => Ok(value),
+                value => Err(ListElementTypeMismatch {
+                    expected: item.value_type(),
+                    actual: value.value_type(),
+                }),
+            })
+            .collect()
+    }
+
+    fn elements_to_facade(item: Self, values: Vec<Self::ElementExpr>) -> ListElements {
+        ListElements::Custom {
+            item_type: item.item_type,
+            values,
+        }
+    }
+
+    fn expr_to_facade(expression: TypedListExpr<Self>) -> ListExpr {
+        ListExpr::Custom(expression)
     }
 }
 

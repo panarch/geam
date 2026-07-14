@@ -126,6 +126,7 @@ fn plan_segment<Value>(
             ValueType::String
             | ValueType::BitArray
             | ValueType::UtfCodepoint
+            | ValueType::Custom(_)
             | ValueType::Bool
             | ValueType::Nil
             | ValueType::Tuple(_)

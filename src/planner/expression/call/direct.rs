@@ -1,8 +1,9 @@
 use super::CaptureSubstitution;
 use crate::plan::{
-    BitArrayExpr, BoolExpr, CallArg, Expr, FloatExpr, FunctionExpr, FunctionFunctionExpr, IntExpr,
-    ListExpr, ListFunctionExpr, NilExpr, RuntimeFunctionId, StringExpr, TupleExpr,
-    TupleFunctionExpr, UtfCodepointExpr, UtfCodepointFunctionExpr, ValueType,
+    BitArrayExpr, BoolExpr, CallArg, CustomExpr, CustomFunctionExpr, Expr, FloatExpr, FunctionExpr,
+    FunctionFunctionExpr, IntExpr, ListExpr, ListFunctionExpr, NilExpr, RuntimeFunctionId,
+    StringExpr, TupleExpr, TupleFunctionExpr, UtfCodepointExpr, UtfCodepointFunctionExpr,
+    ValueType,
 };
 use crate::planner::context::{FunctionInfo, FunctionParam, PlanContext};
 use crate::planner::error::{InvalidCallShapeReason, InvalidTypedAstReason, PlanError};
@@ -73,6 +74,9 @@ fn call_expr(function: RuntimeFunctionId, args: Vec<CallArg>) -> Expr {
         RuntimeFunctionId::UtfCodepoint(function) => {
             Expr::utf_codepoint(UtfCodepointExpr::call(function, args))
         }
+        RuntimeFunctionId::Custom { id, return_type } => {
+            Expr::custom(CustomExpr::call(id, args, return_type))
+        }
         RuntimeFunctionId::Float(function) => Expr::float(FloatExpr::call(function, args)),
         RuntimeFunctionId::Bool(function) => Expr::bool(BoolExpr::call(function, args)),
         RuntimeFunctionId::Nil(function) => Expr::nil(NilExpr::call(function, args)),
@@ -110,6 +114,9 @@ fn function_returning_function_call_expr(
                 return_type,
             )))
         }
+        crate::plan::FunctionFunctionId::Custom(function) => Expr::function(FunctionExpr::custom(
+            CustomFunctionExpr::call(function, args, return_type),
+        )),
         crate::plan::FunctionFunctionId::Float(function) => Expr::function(FunctionExpr::float(
             crate::plan::FloatFunctionExpr::call(function, args, return_type),
         )),
@@ -360,7 +367,7 @@ pub fn main() {
             }),
         );
 
-        let mut unsupported_return_type_call = compile(
+        let mut custom_return_type_mismatch_call = compile(
             r#"
 fn identity(value: Int) {
   value
@@ -372,9 +379,28 @@ pub fn main() {
 "#,
         );
         let (type_, _, _) = expect_call_statement_mut(
-            &mut unsupported_return_type_call.definitions.functions[1].body[0],
+            &mut custom_return_type_mismatch_call.definitions.functions[1].body[0],
         );
         *type_ = type_::result(type_::int(), type_::nil());
+        assert_eq!(
+            plan_module(custom_return_type_mismatch_call),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::CallShape {
+                    reason: InvalidCallShapeReason::LocalFunctionCallReturnTypeMismatch,
+                },
+            }),
+        );
+
+        let mut unsupported_return_type_call = compile(
+            r#"
+fn identity(value: Int) { value }
+pub fn main() { identity(1) }
+"#,
+        );
+        let (type_, _, _) = expect_call_statement_mut(
+            &mut unsupported_return_type_call.definitions.functions[1].body[0],
+        );
+        *type_ = type_::generic_var(0);
         assert_eq!(
             plan_module(unsupported_return_type_call),
             Err(PlanError::InvalidTypedAst {

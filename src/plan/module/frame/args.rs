@@ -9,6 +9,7 @@ impl FrameLayout {
                 CallArgKind::String { value, .. } => self.include_string_expr(value),
                 CallArgKind::BitArray { value, .. } => self.include_bit_array_expr(value),
                 CallArgKind::UtfCodepoint { value, .. } => self.include_utf_codepoint_expr(value),
+                CallArgKind::Custom { value, .. } => self.include_custom_expr(value),
                 CallArgKind::Float { value, .. } => self.include_float_expr(value),
                 CallArgKind::Bool { value, .. } => self.include_bool_expr(value),
                 CallArgKind::Nil { value, .. } => self.include_nil_expr(value),
@@ -23,6 +24,9 @@ impl FrameLayout {
                 }
                 CallArgKind::UtfCodepointFunction { value, .. } => {
                     self.include_utf_codepoint_function_expr(value);
+                }
+                CallArgKind::CustomFunction { value, .. } => {
+                    self.include_custom_function_expr(value);
                 }
                 CallArgKind::FloatFunction { value, .. } => {
                     self.include_float_function_expr(value);
@@ -51,6 +55,7 @@ impl FrameLayout {
                 CaptureArgKind::UtfCodepoint { value, .. } => {
                     self.include_utf_codepoint_expr(value)
                 }
+                CaptureArgKind::Custom { value, .. } => self.include_custom_expr(value),
                 CaptureArgKind::Float { value, .. } => self.include_float_expr(value),
                 CaptureArgKind::Bool { value, .. } => self.include_bool_expr(value),
                 CaptureArgKind::Nil { value, .. } => self.include_nil_expr(value),
@@ -65,6 +70,9 @@ impl FrameLayout {
                 }
                 CaptureArgKind::UtfCodepointFunction { value, .. } => {
                     self.include_utf_codepoint_function_expr(value);
+                }
+                CaptureArgKind::CustomFunction { value, .. } => {
+                    self.include_custom_function_expr(value);
                 }
                 CaptureArgKind::FloatFunction { value, .. } => {
                     self.include_float_function_expr(value);

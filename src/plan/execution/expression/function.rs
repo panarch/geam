@@ -1,5 +1,6 @@
 mod bit_array;
 mod bool;
+mod custom;
 mod float;
 mod int;
 mod list;
@@ -10,14 +11,15 @@ mod tuple;
 mod utf_codepoint;
 
 pub use self::{
-    bit_array::BitArrayFunctionExpr, bool::BoolFunctionExpr, float::FloatFunctionExpr,
-    int::IntFunctionExpr, list::ListFunctionExpr, nil::NilFunctionExpr,
+    bit_array::BitArrayFunctionExpr, bool::BoolFunctionExpr, custom::CustomFunctionExpr,
+    float::FloatFunctionExpr, int::IntFunctionExpr, list::ListFunctionExpr, nil::NilFunctionExpr,
     returning_function::FunctionFunctionExpr, string::StringFunctionExpr, tuple::TupleFunctionExpr,
     utf_codepoint::UtfCodepointFunctionExpr,
 };
 pub(crate) use self::{
-    bit_array::BitArrayFunctionExprKind, bool::BoolFunctionExprKind, float::FloatFunctionExprKind,
-    int::IntFunctionExprKind, list::ListFunctionExprKind, nil::NilFunctionExprKind,
+    bit_array::BitArrayFunctionExprKind, bool::BoolFunctionExprKind,
+    custom::CustomFunctionExprKind, float::FloatFunctionExprKind, int::IntFunctionExprKind,
+    list::ListFunctionExprKind, nil::NilFunctionExprKind,
     returning_function::FunctionFunctionExprKind, string::StringFunctionExprKind,
     tuple::TupleFunctionExprKind, utf_codepoint::UtfCodepointFunctionExprKind,
 };
@@ -31,6 +33,7 @@ pub(crate) enum FunctionExprKind {
     String(StringFunctionExpr),
     BitArray(BitArrayFunctionExpr),
     UtfCodepoint(UtfCodepointFunctionExpr),
+    Custom(CustomFunctionExpr),
     Float(FloatFunctionExpr),
     Bool(BoolFunctionExpr),
     Nil(NilFunctionExpr),

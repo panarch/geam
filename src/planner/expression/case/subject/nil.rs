@@ -242,7 +242,7 @@ pub fn main() {
         let (case_type, _, _) = super::super::super::expect_case_statement_mut(
             &mut unsupported_case_type.definitions.functions[0].body[0],
         );
-        *case_type = super::super::unsupported_case_return_type();
+        *case_type = super::super::invalid_case_return_type();
         assert_eq!(
             plan_module(unsupported_case_type),
             Err(PlanError::InvalidTypedAst {

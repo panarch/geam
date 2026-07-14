@@ -24,6 +24,16 @@ pub enum ExecutionError {
         expected: ValueType,
         actual: ValueType,
     },
+    #[error(
+        "custom field family mismatch in {custom_type:?}::{constructor} field {field_index} (expected {expected:?}, got {actual:?})"
+    )]
+    CustomFieldFamilyMismatch {
+        custom_type: crate::plan::CustomType,
+        constructor: EcoString,
+        field_index: usize,
+        expected: ValueType,
+        actual: ValueType,
+    },
     #[error("list index out of bounds for {item_type:?} list (index {index}, length {length})")]
     ListIndexOutOfBounds {
         item_type: ValueType,
@@ -111,6 +121,26 @@ mod tests {
         assert_eq!(
             error.to_string(),
             "list index out of bounds for Int list (index 1, length 1)",
+        );
+    }
+
+    #[test]
+    fn custom_field_family_mismatch_display() {
+        let custom_type = crate::plan::CustomType::new(
+            crate::plan::CustomTypeName::new("app".into(), "main".into(), "Box".into()),
+            vec![ValueType::Int],
+        );
+        let error = ExecutionError::CustomFieldFamilyMismatch {
+            custom_type,
+            constructor: "Box".into(),
+            field_index: 0,
+            expected: ValueType::Int,
+            actual: ValueType::String,
+        };
+
+        assert_eq!(
+            error.to_string(),
+            "custom field family mismatch in CustomType { name: CustomTypeName { package: \"app\", module: \"main\", name: \"Box\" }, arguments: [Int] }::Box field 0 (expected Int, got String)",
         );
     }
 }

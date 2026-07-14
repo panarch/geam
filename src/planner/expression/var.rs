@@ -1,13 +1,12 @@
 use crate::plan::{
-    BitArrayExpr, BitArrayFunctionExpr, BoolExpr, BoolFunctionExpr, Expr, FloatExpr,
-    FloatFunctionExpr, FunctionExpr, FunctionFunctionExpr, IntExpr, IntFunctionExpr, ListExpr,
-    ListFunctionExpr, LocalId, NilExpr, NilFunctionExpr, StringExpr, StringFunctionExpr, TupleExpr,
-    TupleFunctionExpr, UtfCodepointExpr, UtfCodepointFunctionExpr, ValueType,
+    BitArrayExpr, BitArrayFunctionExpr, BoolExpr, BoolFunctionExpr, CustomExpr, CustomFunctionExpr,
+    Expr, FloatExpr, FloatFunctionExpr, FunctionExpr, FunctionFunctionExpr, IntExpr,
+    IntFunctionExpr, ListExpr, ListFunctionExpr, LocalId, NilExpr, NilFunctionExpr, StringExpr,
+    StringFunctionExpr, TupleExpr, TupleFunctionExpr, UtfCodepointExpr, UtfCodepointFunctionExpr,
+    ValueType,
 };
 use crate::planner::context::{FunctionLocalBinding, PlanContext};
-use crate::planner::error::{
-    InvalidExpressionShapeKind, InvalidTypedAstReason, PlanError, UnsupportedExpressionKind,
-};
+use crate::planner::error::{InvalidExpressionShapeKind, InvalidTypedAstReason, PlanError};
 use ecow::EcoString;
 use gleam_core::type_::{PRELUDE_MODULE_NAME, ValueConstructor, ValueConstructorVariant};
 
@@ -24,6 +23,9 @@ pub(super) fn plan_var(
             if let Some((local, type_)) = context.lookup_tuple_local(&name) {
                 return Ok(Expr::tuple(TupleExpr::local_get(local, name, type_)));
             }
+            if let Some((local, type_)) = context.lookup_custom_local(&name) {
+                return Ok(Expr::custom(CustomExpr::local_get(local, name, type_)));
+            }
             if let Some(local) = context.lookup_list_local(&name) {
                 return Ok(Expr::list(ListExpr::local_get(local, name)));
             }
@@ -36,28 +38,44 @@ pub(super) fn plan_var(
             })
         }
         ValueConstructorVariant::Record {
-            name,
-            module,
+            ref name,
+            ref module,
             arity,
             ..
-        } if module == PRELUDE_MODULE_NAME => {
-            if arity == 0 {
+        } => {
+            if module == PRELUDE_MODULE_NAME && arity == 0 {
                 match name.as_str() {
                     "True" => return Ok(Expr::bool(BoolExpr::value(true))),
                     "False" => return Ok(Expr::bool(BoolExpr::value(false))),
                     "Nil" => return Ok(Expr::nil(NilExpr::value())),
-                    _ => {
-                        return Err(PlanError::InvalidTypedAst {
-                            reason: InvalidTypedAstReason::ExpressionShape {
-                                kind: InvalidExpressionShapeKind::PreludeConstructor,
-                            },
-                        });
-                    }
+                    _ => {}
                 }
             }
 
-            Err(PlanError::UnsupportedExpression {
-                kind: UnsupportedExpressionKind::RecordConstructor,
+            if module == context.module_name
+                || (module == PRELUDE_MODULE_NAME && matches!(name.as_str(), "Ok" | "Error"))
+            {
+                let constructor = context.custom_constructor(&constructor)?;
+                return if arity == 0 {
+                    Ok(Expr::custom(CustomExpr::constructor(
+                        constructor,
+                        Vec::new(),
+                    )))
+                } else {
+                    Ok(Expr::function(FunctionExpr::custom(
+                        CustomFunctionExpr::constructor(constructor),
+                    )))
+                };
+            }
+
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionShape {
+                    kind: if module == PRELUDE_MODULE_NAME {
+                        InvalidExpressionShapeKind::PreludeConstructor
+                    } else {
+                        InvalidExpressionShapeKind::ModuleSelect
+                    },
+                },
             })
         }
         ValueConstructorVariant::ModuleFn {
@@ -94,11 +112,6 @@ pub(super) fn plan_var(
                 kind: InvalidExpressionShapeKind::ModuleSelect,
             },
         }),
-        ValueConstructorVariant::Record { .. } => Err(PlanError::InvalidTypedAst {
-            reason: InvalidTypedAstReason::ExpressionShape {
-                kind: InvalidExpressionShapeKind::RecordConstructor,
-            },
-        }),
     }
 }
 
@@ -116,6 +129,9 @@ fn function_local_get(binding: FunctionLocalBinding, name: EcoString) -> Expr {
         FunctionLocalBinding::UtfCodepoint { local, type_ } => Expr::function(
             FunctionExpr::utf_codepoint(UtfCodepointFunctionExpr::local_get(local, name, type_)),
         ),
+        FunctionLocalBinding::Custom { local, type_ } => Expr::function(FunctionExpr::custom(
+            CustomFunctionExpr::local_get(local, name, type_),
+        )),
         FunctionLocalBinding::Float { local, type_ } => Expr::function(FunctionExpr::float(
             FloatFunctionExpr::local_get(local, name, type_),
         )),
@@ -176,7 +192,8 @@ mod tests {
     use crate::planner::plan_module;
     use crate::planner::support::{compile, dummy_span};
     use crate::planner::{
-        InvalidExpressionShapeKind, InvalidTypedAstReason, PlanError, UnsupportedExpressionKind,
+        InvalidCustomTypeReason, InvalidExpressionShapeKind, InvalidTypedAstReason, PlanError,
+        UnsupportedExpressionKind,
     };
     use ecow::EcoString;
     use gleam_core::ast::{Publicity, Statement, TypedExpr, TypedStatement};
@@ -438,8 +455,9 @@ pub fn main() {
         assert_eq!(
             plan_module(record_constructor),
             Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::ExpressionShape {
-                    kind: InvalidExpressionShapeKind::RecordConstructor,
+                reason: InvalidTypedAstReason::CustomType {
+                    name: "Boxed".into(),
+                    reason: InvalidCustomTypeReason::UnknownDefinition,
                 },
             }),
         );
@@ -455,23 +473,66 @@ pub fn main() {
                 },
             }),
         );
+
+        assert_eq!(
+            plan_module(module_returning_typed_expr(typed_record_constructor(
+                "Boxed",
+                type_::result(type_::int(), type_::nil()),
+                0,
+                "other",
+            ))),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionShape {
+                    kind: InvalidExpressionShapeKind::ModuleSelect,
+                },
+            }),
+        );
     }
 
     #[test]
-    fn prelude_record_constructor_values_are_profile_out() {
+    fn prelude_record_constructor_values_preserve_concrete_function_type() {
+        let function_type = type_::fn_(
+            vec![type_::int()],
+            type_::result(type_::int(), type_::nil()),
+        );
+        let mut module = module_returning_typed_expr(typed_record_constructor(
+            "Ok",
+            function_type.clone(),
+            1,
+            type_::PRELUDE_MODULE_NAME,
+        ));
+        module.definitions.functions[0].return_type = function_type;
+        let plan = plan_module(module).expect("concrete Result constructor should plan");
+
         assert_eq!(
-            plan_module(module_returning_typed_expr(
-                typed_prelude_record_constructor(
-                    "Ok",
-                    type_::fn_(
-                        vec![type_::int()],
-                        type_::result(type_::int(), type_::nil()),
-                    ),
-                    1,
-                )
+            plan.main_function().return_().value_type(),
+            ValueType::Function(Box::new(FunctionType::new(
+                vec![ValueType::Int],
+                ValueType::Custom(crate::plan::CustomType::new(
+                    crate::plan::CustomTypeName::new("".into(), "gleam".into(), "Result".into(),),
+                    vec![ValueType::Int, ValueType::Nil],
+                )),
+            ))),
+        );
+    }
+
+    #[test]
+    fn reject_profile_polymorphic_custom_constructor_value() {
+        assert_eq!(
+            plan_module(compile(
+                r#"
+pub type Boxed(value) {
+  Boxed(value)
+}
+
+pub fn main() {
+  let make = Boxed
+  1
+}
+"#,
             )),
             Err(PlanError::UnsupportedExpression {
-                kind: UnsupportedExpressionKind::RecordConstructor,
+                kind: UnsupportedExpressionKind::GenericFunction,
             }),
         );
     }
@@ -520,10 +581,11 @@ pub fn main() {
         (name, constructor)
     }
 
-    fn typed_prelude_record_constructor(
+    fn typed_record_constructor(
         name: &str,
         type_: std::sync::Arc<type_::Type>,
         arity: u16,
+        module: &str,
     ) -> TypedExpr {
         TypedExpr::Var {
             location: dummy_span(),
@@ -537,7 +599,7 @@ pub fn main() {
                     arity,
                     field_map: None,
                     location: dummy_span(),
-                    module: type_::PRELUDE_MODULE_NAME.into(),
+                    module: module.into(),
                     variants_count: 1,
                     variant_index: 0,
                     documentation: None,

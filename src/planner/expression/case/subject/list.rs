@@ -1,12 +1,17 @@
 use super::super::super::plan_expr_with_expected_source_stop_type;
 use super::super::super::{list_index_expr, tuple_index_expr};
 use super::super::invalid_case_shape;
-use super::{CaseClause, OrderedCaseCandidateInput, OrderedCasePattern, case_return_type};
+use super::{
+    CaseClause, CaseSubjectVariants, OrderedCaseCandidateInput, OrderedCasePattern,
+    case_return_type,
+};
 use crate::plan::{
-    BoolExpr, Expr, ExprKind, FloatExpr, IntExpr, ListExpr, ListLocal, Step, StringExpr, ValueType,
+    BoolExpr, CustomBindingPattern, CustomExpr, Expr, ExprKind, FloatExpr, IntExpr, ListExpr,
+    ListLocal, Step, StringExpr, ValueType,
 };
 use crate::planner::context::PlanContext;
 use crate::planner::error::{InvalidCaseShapeReason, PlanError, UnsupportedExpressionKind};
+use crate::planner::pattern::plan_custom_subject_pattern;
 use ecow::EcoString;
 use gleam_core::ast::{AssignName, Pattern, SrcSpan, TailPattern, TypedExpr};
 use gleam_core::type_::Type;
@@ -16,6 +21,7 @@ pub(super) fn plan(
     type_: Arc<Type>,
     subject: TypedExpr,
     element_type: ValueType,
+    subject_variants: CaseSubjectVariants,
     clauses: Vec<CaseClause>,
     context: &mut PlanContext<'_>,
 ) -> Result<Expr, PlanError> {
@@ -46,12 +52,14 @@ pub(super) fn plan(
                         pattern,
                         subject.clone(),
                         subject_value_type.clone(),
+                        subject_variants.clone(),
                         context,
                     )?;
                     let is_total = pattern.is_total();
                     Ok(OrderedCasePattern {
                         match_condition: pattern.match_condition(),
                         branch_bindings: pattern.branch_bindings,
+                        total_branch_steps: pattern.total_branch_steps,
                         is_total,
                     })
                 },
@@ -67,14 +75,18 @@ pub(super) fn plan(
 pub(super) struct ListCasePattern {
     match_condition: Option<BoolExpr>,
     branch_bindings: Vec<(EcoString, Expr)>,
+    total_branch_steps: Vec<Step>,
     is_total: bool,
 }
+
+pub(super) type ListCasePatternParts = (Option<BoolExpr>, Vec<(EcoString, Expr)>, Vec<Step>, bool);
 
 impl ListCasePattern {
     fn any() -> Self {
         Self {
             match_condition: None,
             branch_bindings: Vec::new(),
+            total_branch_steps: Vec::new(),
             is_total: true,
         }
     }
@@ -83,6 +95,7 @@ impl ListCasePattern {
         Self {
             match_condition: Some(BoolExpr::equal(value, literal)),
             branch_bindings: Vec::new(),
+            total_branch_steps: Vec::new(),
             is_total: false,
         }
     }
@@ -101,6 +114,7 @@ impl ListCasePattern {
         let mut pattern = Self {
             match_condition: Some(BoolExpr::string_starts_with(value.clone(), prefix.clone())),
             branch_bindings: Vec::new(),
+            total_branch_steps: Vec::new(),
             is_total: false,
         };
         let prefix_binding = left_side_assignment
@@ -132,8 +146,13 @@ impl ListCasePattern {
             .unwrap_or_else(|| BoolExpr::value(true))
     }
 
-    pub(super) fn into_parts(self) -> (Option<BoolExpr>, Vec<(EcoString, Expr)>, bool) {
-        (self.match_condition, self.branch_bindings, self.is_total)
+    pub(super) fn into_parts(self) -> ListCasePatternParts {
+        (
+            self.match_condition,
+            self.branch_bindings,
+            self.total_branch_steps,
+            self.is_total,
+        )
     }
 
     fn from_bit_array_pattern(pattern: super::bit_array::BitArrayCasePattern) -> Self {
@@ -141,6 +160,7 @@ impl ListCasePattern {
         Self {
             match_condition: Some(match_condition),
             branch_bindings,
+            total_branch_steps: Vec::new(),
             is_total,
         }
     }
@@ -156,13 +176,21 @@ pub(super) fn plan_list_case_pattern(
     let functions = std::collections::HashMap::new();
     let mut anonymous = crate::planner::context::AnonymousFunctions::default();
     let mut context = PlanContext::new(&module_name, &functions, &mut anonymous);
-    plan_list_case_pattern_with_context(pattern, value, subject_type, &mut context)
+    let subject_variants = CaseSubjectVariants::without_inferred_variants(&subject_type);
+    plan_list_case_pattern_with_context(
+        pattern,
+        value,
+        subject_type,
+        subject_variants,
+        &mut context,
+    )
 }
 
 pub(super) fn plan_list_case_pattern_with_context(
     pattern: Pattern<Arc<Type>>,
     value: Expr,
     subject_type: ValueType,
+    subject_variants: CaseSubjectVariants,
     context: &mut PlanContext<'_>,
 ) -> Result<ListCasePattern, PlanError> {
     match pattern {
@@ -183,6 +211,7 @@ pub(super) fn plan_list_case_pattern_with_context(
                 *pattern,
                 value.clone(),
                 subject_type,
+                subject_variants,
                 context,
             )?;
             Ok(pattern.with_binding(name, value))
@@ -198,10 +227,11 @@ pub(super) fn plan_list_case_pattern_with_context(
             type_,
             value,
             subject_type,
+            subject_variants,
             context,
         ),
         Pattern::Tuple { elements, .. } => {
-            plan_tuple_case_pattern(elements, value, subject_type, context)
+            plan_tuple_case_pattern(elements, value, subject_type, subject_variants, context)
         }
         Pattern::Int { int_value, .. } if subject_type == ValueType::Int => Ok(
             ListCasePattern::literal(value, Expr::int(IntExpr::value(int_value))),
@@ -248,6 +278,34 @@ pub(super) fn plan_list_case_pattern_with_context(
                 ))
             }
         }
+        ref pattern @ Pattern::Constructor {
+            type_: ref pattern_type,
+            ..
+        } if matches!(&subject_type, ValueType::Custom(_))
+            && matches_type(pattern_type.as_ref(), &subject_type) =>
+        {
+            let Some(value) = value.into_custom() else {
+                return Err(invalid_case_shape(
+                    InvalidCaseShapeReason::PatternTypeMismatch,
+                ));
+            };
+            let pattern = plan_custom_subject_pattern(
+                pattern.clone(),
+                subject_variants.custom_variant(),
+                context,
+            )?;
+            let mut total_branch_steps = Vec::new();
+            if let Some(binding) = pattern.custom_binding.clone() {
+                total_branch_steps =
+                    total_custom_binding_steps(value.clone(), binding.into_binding(), context);
+            }
+            Ok(ListCasePattern {
+                match_condition: Some(BoolExpr::custom_matches(value, pattern.pattern)),
+                branch_bindings: Vec::new(),
+                total_branch_steps,
+                is_total: pattern.is_total,
+            })
+        }
         Pattern::StringPrefix {
             left_side_string,
             left_side_assignment,
@@ -288,6 +346,7 @@ fn plan_list_structural_case_pattern(
     type_: Arc<Type>,
     value: Expr,
     subject_type: ValueType,
+    subject_variants: CaseSubjectVariants,
     context: &mut PlanContext<'_>,
 ) -> Result<ListCasePattern, PlanError> {
     let pattern_type =
@@ -305,6 +364,11 @@ fn plan_list_structural_case_pattern(
         ));
     };
     let element_type = *element_type;
+    let Some(element_variants) = subject_variants.into_list() else {
+        return Err(invalid_case_shape(
+            InvalidCaseShapeReason::PatternTypeMismatch,
+        ));
+    };
     let Some(list) = value.into_list() else {
         return Err(invalid_case_shape(
             InvalidCaseShapeReason::PatternTypeMismatch,
@@ -319,6 +383,7 @@ fn plan_list_structural_case_pattern(
             pattern,
             value,
             element_type.clone(),
+            element_variants.clone(),
             context,
         )?);
     }
@@ -342,6 +407,7 @@ fn plan_tuple_case_pattern(
     elements: Vec<Pattern<Arc<Type>>>,
     value: Expr,
     subject_type: ValueType,
+    subject_variants: CaseSubjectVariants,
     context: &mut PlanContext<'_>,
 ) -> Result<ListCasePattern, PlanError> {
     let ValueType::Tuple(element_types) = subject_type else {
@@ -354,6 +420,16 @@ fn plan_tuple_case_pattern(
             InvalidCaseShapeReason::PatternTypeMismatch,
         ));
     }
+    let Some(element_variants) = subject_variants.into_tuple() else {
+        return Err(invalid_case_shape(
+            InvalidCaseShapeReason::PatternTypeMismatch,
+        ));
+    };
+    if element_variants.len() != element_types.len() {
+        return Err(invalid_case_shape(
+            InvalidCaseShapeReason::PatternTypeMismatch,
+        ));
+    }
     let Some(tuple) = value.into_tuple() else {
         return Err(invalid_case_shape(
             InvalidCaseShapeReason::PatternTypeMismatch,
@@ -361,10 +437,15 @@ fn plan_tuple_case_pattern(
     };
 
     let mut patterns = Vec::with_capacity(elements.len());
-    for (index, (pattern, type_)) in elements.into_iter().zip(element_types).enumerate() {
+    for (index, ((pattern, type_), variants)) in elements
+        .into_iter()
+        .zip(element_types)
+        .zip(element_variants)
+        .enumerate()
+    {
         let value = tuple_index_expr(tuple.clone(), index, type_.clone());
         patterns.push(plan_list_case_pattern_with_context(
-            pattern, value, type_, context,
+            pattern, value, type_, variants, context,
         )?);
     }
 
@@ -412,6 +493,9 @@ fn combine_list_case_patterns(patterns: Vec<ListCasePattern>) -> ListCasePattern
         combined.match_condition =
             combine_conditions(combined.match_condition, pattern.match_condition);
         combined.branch_bindings.extend(pattern.branch_bindings);
+        combined
+            .total_branch_steps
+            .extend(pattern.total_branch_steps);
         combined.is_total &= pattern.is_total;
     }
 
@@ -451,17 +535,32 @@ fn internal_list_case_subject_name(local: &ListLocal) -> EcoString {
     format!("<case:list:{}:{}>", local.family_name(), local.index()).into()
 }
 
+fn total_custom_binding_steps(
+    value: CustomExpr,
+    binding: CustomBindingPattern,
+    context: &mut PlanContext<'_>,
+) -> Vec<Step> {
+    let local = context.define_internal_custom_local();
+    let name = format!("<case:list:custom:{}>", local.0).into();
+    vec![
+        Step::let_custom(local, name, value),
+        Step::bind_custom_fields(local, binding),
+    ]
+}
+
 #[cfg(test)]
 mod tests {
     use crate::plan::{
-        BitArrayExpr, BitArrayPattern, BitArrayPatternSegment, BitArrayPatternSize,
-        BitArrayPatternSizeExpr, BitArrayPatternValue, BitArraySegment, BoolExpr, Endianness, Expr,
-        IntExpr, IntListLocalId, IntLocalId, ListExpr, ListLocal, Signedness, Step, StringExpr,
-        ValueType,
+        AssertPattern, BitArrayExpr, BitArrayPattern, BitArrayPatternSegment, BitArrayPatternSize,
+        BitArrayPatternSizeExpr, BitArrayPatternValue, BitArraySegment, BoolExpr,
+        CustomConstructor, CustomConstructorField, CustomExpr, CustomLocalId, CustomPattern,
+        CustomType, CustomTypeName, Endianness, Expr, IntExpr, IntListLocalId, IntLocalId,
+        ListExpr, ListLocal, Signedness, Step, StringExpr, ValueType,
     };
+    use crate::planner::context::{AnonymousFunctions, PlanContext};
     use crate::planner::dsl::{
         bool_, bool_return_block, bool_return_expr, equal, function, int, int_return_block,
-        int_return_expr, let_list_step, list, local_int, local_list, module,
+        int_return_expr, let_list_step, list, local_int, local_list, module, tuple,
     };
     use crate::planner::plan_module;
     use crate::planner::support::{dummy_span, expect_plan_error};
@@ -469,6 +568,62 @@ mod tests {
         InvalidCaseShapeReason, InvalidExpressionType, InvalidTypedAstReason, PlanError,
     };
     use gleam_core::type_::error::VariableOrigin;
+    use std::collections::HashMap;
+
+    #[test]
+    fn reject_margin_list_and_tuple_patterns_with_mismatched_subject_variant_shapes() {
+        let module_name = ecow::EcoString::from("main");
+        let functions = HashMap::new();
+        let mut anonymous = AnonymousFunctions::default();
+        let mut context = PlanContext::new(&module_name, &functions, &mut anonymous);
+        let pattern_error = Err(PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::CaseShape {
+                reason: InvalidCaseShapeReason::PatternTypeMismatch,
+            },
+        });
+
+        assert_eq!(
+            super::plan_list_structural_case_pattern(
+                Vec::new(),
+                None,
+                gleam_core::type_::list(gleam_core::type_::int()),
+                Expr::list(ListExpr::local_get(
+                    ListLocal::int(IntListLocalId(0)),
+                    "values".into(),
+                )),
+                ValueType::List(Box::new(ValueType::Int)),
+                super::super::CaseSubjectVariants::Other,
+                &mut context,
+            ),
+            pattern_error.clone(),
+        );
+
+        let tuple_pattern = vec![gleam_core::ast::Pattern::Discard {
+            location: dummy_span(),
+            name: "_".into(),
+            type_: gleam_core::type_::int(),
+        }];
+        assert_eq!(
+            super::plan_tuple_case_pattern(
+                tuple_pattern.clone(),
+                tuple([int(1)]).into(),
+                ValueType::Tuple(vec![ValueType::Int]),
+                super::super::CaseSubjectVariants::Other,
+                &mut context,
+            ),
+            pattern_error.clone(),
+        );
+        assert_eq!(
+            super::plan_tuple_case_pattern(
+                tuple_pattern,
+                tuple([int(1)]).into(),
+                ValueType::Tuple(vec![ValueType::Int]),
+                super::super::CaseSubjectVariants::Tuple(Vec::new()),
+                &mut context,
+            ),
+            pattern_error,
+        );
+    }
 
     #[test]
     fn plan_list_subject_alias_binds_inner_then_alias_after_single_subject_eval() {
@@ -754,7 +909,7 @@ pub fn main() {
         let (case_type, _, _) = super::super::super::expect_case_statement_mut(
             &mut unsupported_case_type.definitions.functions[0].body[0],
         );
-        *case_type = super::super::unsupported_case_return_type();
+        *case_type = super::super::invalid_case_return_type();
         assert_eq!(
             plan_module(unsupported_case_type),
             Err(PlanError::InvalidTypedAst {
@@ -1000,6 +1155,7 @@ pub fn main() {
                         )),
                     ),
                 ],
+                total_branch_steps: Vec::new(),
                 is_total: false,
             }),
         );
@@ -1022,6 +1178,7 @@ pub fn main() {
                     "Hello, ".into(),
                 )),
                 branch_bindings: Vec::new(),
+                total_branch_steps: Vec::new(),
                 is_total: false,
             }),
         );
@@ -1034,6 +1191,7 @@ pub fn main() {
             super::ListCasePattern {
                 match_condition: Some(BoolExpr::equal(int(1).into(), int(1).into())),
                 branch_bindings: Vec::new(),
+                total_branch_steps: Vec::new(),
                 is_total: false,
             },
         );
@@ -1151,6 +1309,7 @@ pub fn main() {
             Ok(super::ListCasePattern {
                 match_condition: Some(BoolExpr::list_length_equals(list_subject, 1)),
                 branch_bindings: Vec::new(),
+                total_branch_steps: Vec::new(),
                 is_total: false,
             }),
         );
@@ -1170,10 +1329,7 @@ pub fn main() {
                     location: dummy_span(),
                     elements: Vec::new(),
                     tail: None,
-                    type_: gleam_core::type_::list(gleam_core::type_::result(
-                        gleam_core::type_::int(),
-                        gleam_core::type_::nil(),
-                    )),
+                    type_: gleam_core::type_::list(gleam_core::type_::generic_var(0)),
                 },
                 list_subject.clone(),
                 list_type.clone(),
@@ -1280,6 +1436,7 @@ pub fn main() {
                     "rest".into(),
                     Expr::list(ListExpr::drop_first(list_subject.clone(), 0)),
                 )],
+                total_branch_steps: Vec::new(),
                 is_total: true,
             }),
         );
@@ -1304,6 +1461,7 @@ pub fn main() {
             Ok(super::ListCasePattern {
                 match_condition: None,
                 branch_bindings: Vec::new(),
+                total_branch_steps: Vec::new(),
                 is_total: true,
             }),
         );
@@ -1439,6 +1597,7 @@ pub fn main() {
                     ),
                 )),
                 branch_bindings: Vec::new(),
+                total_branch_steps: Vec::new(),
                 is_total: false,
             }),
         );
@@ -1715,5 +1874,191 @@ pub fn main() {
         );
 
         assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn refutable_custom_list_element_keeps_match_without_total_binding_steps() {
+        let module_name = ecow::EcoString::from("main");
+        let functions = HashMap::new();
+        let mut anonymous = AnonymousFunctions::default();
+        let mut context = PlanContext::new(&module_name, &functions, &mut anonymous);
+        let ast_type =
+            gleam_core::type_::result(gleam_core::type_::int(), gleam_core::type_::string());
+        let type_ = CustomType::new(
+            CustomTypeName::new(
+                "".into(),
+                gleam_core::type_::PRELUDE_MODULE_NAME.into(),
+                "Result".into(),
+            ),
+            vec![ValueType::Int, ValueType::String],
+        );
+        let constructor = CustomConstructor::new(
+            type_.clone(),
+            "Ok".into(),
+            0,
+            vec![CustomConstructorField::new(None, ValueType::Int)],
+        );
+        let value = CustomExpr::local_get(CustomLocalId(0), "value".into(), type_.clone());
+        let pattern = gleam_core::ast::Pattern::Constructor {
+            location: dummy_span(),
+            name_location: dummy_span(),
+            name: "Ok".into(),
+            arguments: vec![gleam_core::ast::CallArg {
+                label: None,
+                location: dummy_span(),
+                value: gleam_core::ast::Pattern::Int {
+                    location: dummy_span(),
+                    value: "1".into(),
+                    int_value: 1.into(),
+                },
+                implicit: None,
+            }],
+            module: None,
+            constructor: gleam_core::analyse::Inferred::Known(
+                gleam_core::type_::PatternConstructor {
+                    name: "Ok".into(),
+                    field_map: None,
+                    documentation: None,
+                    module: gleam_core::type_::PRELUDE_MODULE_NAME.into(),
+                    location: dummy_span(),
+                    constructor_index: 0,
+                },
+            ),
+            spread: None,
+            type_: ast_type,
+        };
+
+        assert_eq!(
+            super::plan_list_case_pattern_with_context(
+                pattern,
+                Expr::custom(value.clone()),
+                ValueType::Custom(type_),
+                super::super::CaseSubjectVariants::Other,
+                &mut context,
+            ),
+            Ok(super::ListCasePattern {
+                match_condition: Some(BoolExpr::custom_matches(
+                    value,
+                    AssertPattern::custom(CustomPattern::new(
+                        constructor,
+                        vec![AssertPattern::Int(1.into())],
+                    )),
+                )),
+                branch_bindings: Vec::new(),
+                total_branch_steps: Vec::new(),
+                is_total: false,
+            }),
+        );
+    }
+
+    #[test]
+    fn custom_pattern_rejects_a_non_custom_projected_list_element() {
+        let custom_type = crate::planner::support::compile(
+            "pub type Boxed { Boxed(Int) } fn boxed() -> Boxed { Boxed(1) } pub fn main() { 0 }",
+        )
+        .definitions
+        .functions[0]
+            .return_type
+            .clone();
+        let subject_type = ValueType::from_gleam(custom_type.as_ref())
+            .expect("custom return type should map to a plan type");
+
+        assert_eq!(
+            super::plan_list_case_pattern(
+                gleam_core::ast::Pattern::Constructor {
+                    location: dummy_span(),
+                    name_location: dummy_span(),
+                    name: "Boxed".into(),
+                    arguments: Vec::new(),
+                    module: None,
+                    constructor: Default::default(),
+                    spread: None,
+                    type_: custom_type.clone(),
+                },
+                Expr::int(IntExpr::value(1.into())),
+                subject_type,
+            ),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::CaseShape {
+                    reason: InvalidCaseShapeReason::PatternTypeMismatch,
+                },
+            }),
+        );
+
+        assert_eq!(
+            super::plan_list_case_pattern(
+                gleam_core::ast::Pattern::Constructor {
+                    location: dummy_span(),
+                    name_location: dummy_span(),
+                    name: "Boxed".into(),
+                    arguments: Vec::new(),
+                    module: None,
+                    constructor: Default::default(),
+                    spread: None,
+                    type_: custom_type,
+                },
+                Expr::int(IntExpr::value(1.into())),
+                ValueType::Int,
+            ),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::CaseShape {
+                    reason: InvalidCaseShapeReason::PatternTypeMismatch,
+                },
+            }),
+        );
+
+        let result_ast_type =
+            gleam_core::type_::result(gleam_core::type_::int(), gleam_core::type_::string());
+        let result_type = crate::plan::CustomType::new(
+            crate::plan::CustomTypeName::new(
+                "".into(),
+                gleam_core::type_::PRELUDE_MODULE_NAME.into(),
+                "Result".into(),
+            ),
+            vec![ValueType::Int, ValueType::String],
+        );
+        assert_eq!(
+            super::plan_list_case_pattern(
+                gleam_core::ast::Pattern::Constructor {
+                    location: dummy_span(),
+                    name_location: dummy_span(),
+                    name: "Ok".into(),
+                    arguments: vec![gleam_core::ast::CallArg {
+                        label: None,
+                        location: dummy_span(),
+                        value: gleam_core::ast::Pattern::BitArraySize(
+                            gleam_core::ast::BitArraySize::Int {
+                                location: dummy_span(),
+                                value: "1".into(),
+                                int_value: 1.into(),
+                            },
+                        ),
+                        implicit: None,
+                    }],
+                    module: None,
+                    constructor: gleam_core::analyse::Inferred::Known(
+                        gleam_core::type_::PatternConstructor {
+                            name: "Ok".into(),
+                            field_map: None,
+                            documentation: None,
+                            module: gleam_core::type_::PRELUDE_MODULE_NAME.into(),
+                            location: dummy_span(),
+                            constructor_index: 0,
+                        },
+                    ),
+                    spread: None,
+                    type_: result_ast_type,
+                },
+                Expr::custom(crate::plan::CustomExpr::local_get(
+                    crate::plan::CustomLocalId(0),
+                    "value".into(),
+                    result_type.clone(),
+                )),
+                ValueType::Custom(result_type),
+            ),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::InvalidPattern,
+            }),
+        );
     }
 }

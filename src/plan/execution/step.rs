@@ -1,18 +1,18 @@
 use super::ParamLocal;
 use super::expression::{
-    BitArrayExpr, BitArrayFunctionExpr, BoolExpr, BoolFunctionExpr, Expr, FloatExpr,
-    FloatFunctionExpr, FunctionFunctionExpr, IntExpr, IntFunctionExpr, ListFunctionExpr,
-    ListLocalExpr, NilExpr, NilFunctionExpr, StringExpr, StringFunctionExpr, TupleExpr,
-    TupleFunctionExpr, UtfCodepointExpr, UtfCodepointFunctionExpr,
+    BitArrayExpr, BitArrayFunctionExpr, BoolExpr, BoolFunctionExpr, CustomExpr, CustomFunctionExpr,
+    Expr, FloatExpr, FloatFunctionExpr, FunctionFunctionExpr, IntExpr, IntFunctionExpr,
+    ListFunctionExpr, ListLocalExpr, NilExpr, NilFunctionExpr, StringExpr, StringFunctionExpr,
+    TupleExpr, TupleFunctionExpr, UtfCodepointExpr, UtfCodepointFunctionExpr,
 };
 use super::id::{
     BitArrayFunctionLocalId, BitArrayLocalId, BoolFunctionLocalId, BoolLocalId,
-    FloatFunctionLocalId, FloatLocalId, FunctionFunctionLocalId, IntFunctionLocalId, IntLocalId,
-    ListFunctionLocal, ListLocal, NilFunctionLocalId, NilLocalId, StringFunctionLocalId,
-    StringLocalId, TupleFunctionLocalId, TupleLocalId, UtfCodepointFunctionLocalId,
-    UtfCodepointLocalId,
+    CustomFunctionLocalId, CustomLocalId, FloatFunctionLocalId, FloatLocalId,
+    FunctionFunctionLocalId, IntFunctionLocalId, IntLocalId, ListFunctionLocal, ListLocal,
+    NilFunctionLocalId, NilLocalId, StringFunctionLocalId, StringLocalId, TupleFunctionLocalId,
+    TupleLocalId, UtfCodepointFunctionLocalId, UtfCodepointLocalId,
 };
-use crate::plan::execution::BitArrayPattern;
+use crate::plan::execution::{BitArrayPattern, CustomBindingPattern};
 use crate::plan::{PanicSite, SourceSpan};
 
 pub struct Step {
@@ -26,12 +26,31 @@ pub(crate) struct AssertBinding {
 pub(crate) enum AssertPattern {
     Bind(AssertBinding),
     Discard,
+    Int(num_bigint::BigInt),
+    Float(f64),
+    String(ecow::EcoString),
+    Bool(bool),
+    Nil,
     Tuple(Vec<AssertPattern>),
     List(ListAssertPattern),
     BitArray(BitArrayPattern),
+    Custom(crate::plan::execution::CustomPattern),
+    StringPrefix {
+        prefix: ecow::EcoString,
+        left: Option<AssertBinding>,
+        right: Option<AssertBinding>,
+    },
     Alias {
         pattern: Box<AssertPattern>,
         binding: AssertBinding,
+    },
+}
+
+pub(crate) enum BitArrayAssertPattern {
+    Pattern(BitArrayPattern),
+    Alias {
+        pattern: Box<BitArrayAssertPattern>,
+        local: BitArrayLocalId,
     },
 }
 
@@ -70,6 +89,10 @@ pub(crate) enum StepKind {
         local: UtfCodepointLocalId,
         value: UtfCodepointExpr,
     },
+    LetCustom {
+        local: CustomLocalId,
+        value: CustomExpr,
+    },
     LetBool {
         local: BoolLocalId,
         value: BoolExpr,
@@ -105,6 +128,10 @@ pub(crate) enum StepKind {
         local: UtfCodepointFunctionLocalId,
         value: UtfCodepointFunctionExpr,
     },
+    LetCustomFunction {
+        local: CustomFunctionLocalId,
+        value: CustomFunctionExpr,
+    },
     LetBoolFunction {
         local: BoolFunctionLocalId,
         value: BoolFunctionExpr,
@@ -134,10 +161,21 @@ pub(crate) enum StepKind {
     },
     AssertBitArray {
         local: BitArrayLocalId,
+        pattern: BitArrayAssertPattern,
+        message: Option<StringExpr>,
+        site: PanicSite,
+        pattern_span: SourceSpan,
+    },
+    AssertCustom {
+        local: CustomLocalId,
         pattern: AssertPattern,
         message: Option<StringExpr>,
         site: PanicSite,
         pattern_span: SourceSpan,
+    },
+    BindCustomFields {
+        local: CustomLocalId,
+        pattern: CustomBindingPattern,
     },
     AssertBool {
         condition: BoolExpr,

@@ -175,6 +175,9 @@ fn closure_expr(
         RuntimeFunctionId::UtfCodepoint(runtime_id) => FunctionExpr::utf_codepoint(
             crate::plan::UtfCodepointFunctionExpr::closure(*runtime_id, params, captures, type_),
         ),
+        RuntimeFunctionId::Custom { id, .. } => FunctionExpr::custom(
+            crate::plan::CustomFunctionExpr::closure(*id, params, captures, type_),
+        ),
         RuntimeFunctionId::Float(runtime_id) => FunctionExpr::float(
             crate::plan::FloatFunctionExpr::closure(*runtime_id, params, captures, type_),
         ),
@@ -235,6 +238,12 @@ fn anonymous_function_type(type_: &Type) -> Result<FunctionType, PlanError> {
             reason: InvalidTypedAstReason::ExpressionType {
                 expected: InvalidExpressionType::Function,
                 actual: InvalidExpressionType::UtfCodepoint,
+            },
+        }),
+        Some(ValueType::Custom(_)) => Err(PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::ExpressionType {
+                expected: InvalidExpressionType::Function,
+                actual: InvalidExpressionType::Custom,
             },
         }),
         Some(ValueType::Float) => Err(PlanError::InvalidTypedAst {
@@ -911,7 +920,7 @@ pub fn main() { 0 }
     }
 
     #[test]
-    fn reject_margin_non_supported_non_function_literal_type() {
+    fn reject_margin_non_function_literal_types() {
         let mut module = anonymous_function_module();
         let (type_, _, _) = anonymous_function_expression_mut(&mut module);
         *type_ = gleam_core::type_::list(gleam_core::type_::int());
@@ -932,6 +941,20 @@ pub fn main() { 0 }
 
         assert_eq!(
             plan_module(invalid_shape),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionType {
+                    expected: InvalidExpressionType::Function,
+                    actual: InvalidExpressionType::Custom,
+                },
+            }),
+        );
+
+        let mut invalid_type = anonymous_function_module();
+        let (type_, _, _) = anonymous_function_expression_mut(&mut invalid_type);
+        *type_ = gleam_core::type_::generic_var(99);
+
+        assert_eq!(
+            plan_module(invalid_type),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::ExpressionShape {
                     kind: InvalidExpressionShapeKind::Invalid,

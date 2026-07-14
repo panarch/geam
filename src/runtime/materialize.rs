@@ -1,18 +1,20 @@
 use super::evaluated::{
     EvaluatedBitArrayFunction, EvaluatedBoolFunction, EvaluatedCapture, EvaluatedCaptureKind,
-    EvaluatedFloatFunction, EvaluatedFunctionFunction, EvaluatedFunctionValue,
-    EvaluatedFunctionValueKind, EvaluatedIntFunction, EvaluatedListCapture, EvaluatedListFunction,
-    EvaluatedNilFunction, EvaluatedStringFunction, EvaluatedTupleFunction,
-    EvaluatedUtfCodepointFunction, EvaluatedValue,
+    EvaluatedCustomFunction, EvaluatedCustomValue, EvaluatedFloatFunction,
+    EvaluatedFunctionFunction, EvaluatedFunctionValue, EvaluatedFunctionValueKind,
+    EvaluatedIntFunction, EvaluatedListCapture, EvaluatedListFunction, EvaluatedNilFunction,
+    EvaluatedStringFunction, EvaluatedTupleFunction, EvaluatedUtfCodepointFunction, EvaluatedValue,
 };
 use super::state::{ListValueId, RuntimeState};
 use super::{
     BitArrayFunctionValue, BitArrayValue, BoolFunctionValue, CaptureListValue, CaptureValue,
+    CustomFieldValue, CustomFunctionValue, CustomFunctionValueTarget, CustomValue,
     FloatFunctionValue, FunctionFunctionValue, FunctionValue, FunctionValueKind, IntFunctionValue,
     ListFunctionValue, ListValue, NilFunctionValue, StringFunctionValue, TupleFunctionValue,
     UtfCodepointFunctionValue, Value,
 };
 use crate::plan::execution::ExecutionPlan;
+use crate::runtime::evaluated::EvaluatedCustomFunctionTarget;
 
 pub(super) fn value(plan: &ExecutionPlan, state: &RuntimeState, value: EvaluatedValue) -> Value {
     match value {
@@ -23,6 +25,7 @@ pub(super) fn value(plan: &ExecutionPlan, state: &RuntimeState, value: Evaluated
             Value::BitArray(BitArrayValue::from_evaluated(value.bits()))
         }
         EvaluatedValue::UtfCodepoint(value) => Value::UtfCodepoint(value),
+        EvaluatedValue::Custom(value) => Value::Custom(custom(plan, state, value)),
         EvaluatedValue::Bool(value) => Value::Bool(value),
         EvaluatedValue::Nil => Value::Nil,
         EvaluatedValue::Tuple(values) => Value::Tuple(
@@ -50,6 +53,15 @@ fn list(plan: &ExecutionPlan, state: &RuntimeState, value: &ListValueId) -> List
         ListValueId::UtfCodepoint(value) => {
             ListValue::utf_codepoint(state.utf_codepoint_values(value).to_vec())
         }
+        ListValueId::Custom(value) => ListValue::from_evaluated_custom(
+            plan.custom_value_type(value.type_id().item_type()),
+            state
+                .custom_values(value)
+                .iter()
+                .cloned()
+                .map(|value| custom(plan, state, value))
+                .collect(),
+        ),
         ListValueId::Float(value) => ListValue::float(state.float_values(value).to_vec()),
         ListValueId::Bool(value) => ListValue::bool(state.bool_values(value).to_vec()),
         ListValueId::Nil(value) => ListValue::nil(state.nil_len(value)),
@@ -115,6 +127,9 @@ fn function(
         EvaluatedFunctionValueKind::UtfCodepoint(value) => {
             FunctionValueKind::UtfCodepoint(utf_codepoint_function(plan, state, value))
         }
+        EvaluatedFunctionValueKind::Custom(value) => {
+            FunctionValueKind::Custom(custom_function(plan, state, value))
+        }
         EvaluatedFunctionValueKind::Bool(value) => {
             FunctionValueKind::Bool(bool_function(plan, state, value))
         }
@@ -132,6 +147,27 @@ fn function(
         }
     };
     FunctionValue::from_kind(kind)
+}
+
+fn custom(plan: &ExecutionPlan, state: &RuntimeState, value: EvaluatedCustomValue) -> CustomValue {
+    let constructor = plan.custom_constructor(value.constructor());
+    let fields = constructor
+        .fields()
+        .iter()
+        .zip(value.fields())
+        .map(|(field, value)| {
+            CustomFieldValue::from_evaluated(
+                field.label().cloned(),
+                self::value(plan, state, value.clone()),
+            )
+        })
+        .collect();
+    CustomValue::from_evaluated(
+        plan.custom_value_type(value.type_id()),
+        constructor.name().clone(),
+        constructor.id().index(),
+        fields,
+    )
 }
 
 fn int_function(
@@ -193,6 +229,25 @@ fn utf_codepoint_function(
 ) -> UtfCodepointFunctionValue {
     UtfCodepointFunctionValue::new_with_captures(
         value.runtime_id(),
+        value.params().to_vec(),
+        captures(plan, state, value.captures()),
+        plan.function_type(value.type_()),
+    )
+}
+
+fn custom_function(
+    plan: &ExecutionPlan,
+    state: &RuntimeState,
+    value: &EvaluatedCustomFunction,
+) -> CustomFunctionValue {
+    let target = match value.runtime_id() {
+        EvaluatedCustomFunctionTarget::Function(id) => CustomFunctionValueTarget::Function(id),
+        EvaluatedCustomFunctionTarget::Constructor(id) => {
+            CustomFunctionValueTarget::Constructor(id)
+        }
+    };
+    CustomFunctionValue::new_with_captures(
+        target,
         value.params().to_vec(),
         captures(plan, state, value.captures()),
         plan.function_type(value.type_()),
@@ -307,6 +362,9 @@ fn capture(plan: &ExecutionPlan, state: &RuntimeState, value: &EvaluatedCapture)
         EvaluatedCaptureKind::UtfCodepoint { local, value } => {
             CaptureValue::utf_codepoint(*local, *value)
         }
+        EvaluatedCaptureKind::Custom { local, value } => {
+            CaptureValue::custom(*local, custom(plan, state, value.clone()))
+        }
         EvaluatedCaptureKind::Bool { local, value } => CaptureValue::bool(*local, *value),
         EvaluatedCaptureKind::Nil { local } => CaptureValue::nil(*local),
         EvaluatedCaptureKind::Tuple { local, value } => CaptureValue::tuple(
@@ -332,6 +390,9 @@ fn capture(plan: &ExecutionPlan, state: &RuntimeState, value: &EvaluatedCapture)
         }
         EvaluatedCaptureKind::UtfCodepointFunction { local, value } => {
             CaptureValue::utf_codepoint_function(*local, utf_codepoint_function(plan, state, value))
+        }
+        EvaluatedCaptureKind::CustomFunction { local, value } => {
+            CaptureValue::custom_function(*local, custom_function(plan, state, value))
         }
         EvaluatedCaptureKind::BoolFunction { local, value } => {
             CaptureValue::bool_function(*local, bool_function(plan, state, value))
@@ -376,6 +437,16 @@ fn list_capture(
         EvaluatedListCapture::UtfCodepoint { local, value } => CaptureListValue::UtfCodepoint {
             local: *local,
             value: state.utf_codepoint_values(value).to_vec(),
+        },
+        EvaluatedListCapture::Custom { local, value } => CaptureListValue::Custom {
+            local: *local,
+            item_type: plan.custom_value_type(value.type_id().item_type()),
+            value: state
+                .custom_values(value)
+                .iter()
+                .cloned()
+                .map(|value| custom(plan, state, value))
+                .collect(),
         },
         EvaluatedListCapture::Float { local, value } => CaptureListValue::Float {
             local: *local,
@@ -427,7 +498,8 @@ mod tests {
     use super::value;
     use crate::plan::execution::{
         BitArrayFunctionId, BitArrayFunctionLocalId, BitArrayListLocalId, BitArrayLocalId,
-        BoolFunctionId, BoolFunctionLocalId, BoolListLocalId, BoolLocalId, FloatFunctionId,
+        BoolFunctionId, BoolFunctionLocalId, BoolListLocalId, BoolLocalId, CustomFunctionId,
+        CustomFunctionLocalId, CustomListLocalId, CustomLocalId, FloatFunctionId,
         FloatFunctionLocalId, FloatListLocalId, FloatLocalId, FunctionFunctionId,
         FunctionFunctionLocalId, FunctionListLocalId, IntFunctionFunctionId, IntFunctionId,
         IntFunctionLocalId, IntListFunctionLocalId, IntListLocalId, IntLocalId, ListFunctionId,
@@ -440,21 +512,27 @@ mod tests {
     use crate::plan::{FunctionType, ValueType};
     use crate::runtime::evaluated::{
         EvaluatedBitArray, EvaluatedBitArrayFunction, EvaluatedBoolFunction, EvaluatedCapture,
-        EvaluatedFloatFunction, EvaluatedFunctionFunction, EvaluatedFunctionValue,
-        EvaluatedIntFunction, EvaluatedListCapture, EvaluatedListFunction, EvaluatedNilFunction,
-        EvaluatedStringFunction, EvaluatedTupleFunction, EvaluatedUtfCodepointFunction,
-        EvaluatedValue,
+        EvaluatedCustomFunction, EvaluatedCustomFunctionTarget, EvaluatedFloatFunction,
+        EvaluatedFunctionFunction, EvaluatedFunctionValue, EvaluatedIntFunction,
+        EvaluatedListCapture, EvaluatedListFunction, EvaluatedNilFunction, EvaluatedStringFunction,
+        EvaluatedTupleFunction, EvaluatedUtfCodepointFunction, EvaluatedValue,
     };
     use crate::runtime::state::{ListValueId, RuntimeState};
-    use crate::runtime::{BitArrayValue, CaptureListValue, CaptureValue, ListValue, Value};
+    use crate::runtime::{
+        BitArrayValue, CaptureListValue, CaptureValue, CustomFieldValue, CustomFunctionValue,
+        CustomFunctionValueTarget, CustomValue, ListValue, Value,
+    };
     use bitvec::vec::BitVec;
 
     const EVERY_LIST_FAMILY_SOURCE: &str = r#"
 fn ints() -> List(Int) { [] }
 fn strings() -> List(String) { [] }
 fn bit_arrays() -> List(BitArray) { [] }
-fn utf_codepoints() -> List(UtfCodepoint) { [] }
-fn floats() -> List(Float) { [] }
+    fn utf_codepoints() -> List(UtfCodepoint) { [] }
+    pub type Boxed { Boxed(Int) }
+    fn custom() -> Boxed { Boxed(1) }
+    fn customs() -> List(Boxed) { [] }
+    fn floats() -> List(Float) { [] }
 fn bools() -> List(Bool) { [] }
 fn nils() -> List(Nil) { [] }
 fn tuples() -> List(#(Int)) { [] }
@@ -467,6 +545,25 @@ pub fn main() { 0 }
     fn materializes_every_runtime_value_and_list_storage_family() {
         let plan = crate::runtime::plan_src(EVERY_LIST_FAMILY_SOURCE);
         let mut state = RuntimeState::new();
+        let mut caller_frame = crate::runtime::frame::Frame::new(
+            plan.int_function(IntFunctionId(0)).frame_layout(),
+            &mut state,
+        );
+        let custom_value = crate::runtime::function::run_custom_call(
+            &plan,
+            &mut state,
+            CustomFunctionId(0),
+            &[],
+            &mut caller_frame,
+        )
+        .expect("custom constructor function should evaluate");
+        let custom_type = plan.custom_value_type(custom_value.type_id());
+        let expected_custom_value = CustomValue::from_evaluated(
+            custom_type.clone(),
+            "Boxed".into(),
+            0,
+            vec![CustomFieldValue::from_evaluated(None, Value::Int(1.into()))],
+        );
         let int_function = EvaluatedIntFunction::new(
             IntFunctionId(0),
             Vec::new(),
@@ -489,6 +586,10 @@ pub fn main() { 0 }
         let utf_codepoint_list = state.utf_codepoint(
             plan.utf_codepoint_list_function_id(0).type_id(),
             vec!['\u{10ffff}'],
+        );
+        let custom_list = state.custom(
+            plan.custom_list_function_id(0).type_id(),
+            vec![custom_value.clone()],
         );
         let float_list = state.float(plan.float_list_function_id(0).type_id(), vec![1.5]);
         let bool_list = state.bool(plan.bool_list_function_id(0).type_id(), vec![true]);
@@ -516,6 +617,7 @@ pub fn main() { 0 }
                 EvaluatedValue::String("one".into()),
                 EvaluatedValue::BitArray(bit_array),
                 EvaluatedValue::UtfCodepoint('\u{10ffff}'),
+                EvaluatedValue::Custom(custom_value),
                 EvaluatedValue::Bool(true),
                 EvaluatedValue::Nil,
                 EvaluatedValue::Tuple(vec![EvaluatedValue::Int(1.into())]),
@@ -523,6 +625,7 @@ pub fn main() { 0 }
                 EvaluatedValue::List(ListValueId::String(string_list)),
                 EvaluatedValue::List(ListValueId::BitArray(bit_array_list)),
                 EvaluatedValue::List(ListValueId::UtfCodepoint(utf_codepoint_list)),
+                EvaluatedValue::List(ListValueId::Custom(custom_list)),
                 EvaluatedValue::List(ListValueId::Float(float_list)),
                 EvaluatedValue::List(ListValueId::Bool(bool_list)),
                 EvaluatedValue::List(ListValueId::Nil(nil_list)),
@@ -540,6 +643,7 @@ pub fn main() { 0 }
                 Value::String("one".into()),
                 Value::BitArray(BitArrayValue::from_bytes(vec![1])),
                 Value::UtfCodepoint('\u{10ffff}'),
+                Value::Custom(expected_custom_value.clone()),
                 Value::Bool(true),
                 Value::Nil,
                 Value::Tuple(vec![Value::Int(1.into())]),
@@ -549,6 +653,10 @@ pub fn main() { 0 }
                     1
                 ])])),
                 Value::List(ListValue::utf_codepoint(vec!['\u{10ffff}'])),
+                Value::List(ListValue::from_evaluated_custom(
+                    custom_type,
+                    vec![expected_custom_value],
+                )),
                 Value::List(ListValue::float(vec![1.5])),
                 Value::List(ListValue::bool(vec![true])),
                 Value::List(ListValue::nil(1)),
@@ -576,6 +684,26 @@ pub fn main() { 0 }
     fn materializes_every_function_and_capture_family() {
         let plan = crate::runtime::plan_src(EVERY_LIST_FAMILY_SOURCE);
         let mut state = RuntimeState::new();
+        let mut caller_frame = crate::runtime::frame::Frame::new(
+            plan.int_function(IntFunctionId(0)).frame_layout(),
+            &mut state,
+        );
+        let custom_value = crate::runtime::function::run_custom_call(
+            &plan,
+            &mut state,
+            CustomFunctionId(0),
+            &[],
+            &mut caller_frame,
+        )
+        .expect("custom constructor function should evaluate");
+        let custom_type_id = custom_value.type_id();
+        let custom_type = plan.custom_value_type(custom_type_id);
+        let expected_custom_value = CustomValue::from_evaluated(
+            custom_type.clone(),
+            "Boxed".into(),
+            0,
+            vec![CustomFieldValue::from_evaluated(None, Value::Int(1.into()))],
+        );
         let execution_int_type = crate::plan::execution::FunctionType::new(
             Vec::new(),
             crate::plan::execution::ValueType::Int,
@@ -621,6 +749,15 @@ pub fn main() { 0 }
             crate::plan::execution::FunctionType::new(
                 Vec::new(),
                 crate::plan::execution::ValueType::UtfCodepoint,
+            ),
+        );
+        let custom_function = EvaluatedCustomFunction::new(
+            EvaluatedCustomFunctionTarget::Function(CustomFunctionId(0)),
+            Vec::new(),
+            Vec::new(),
+            crate::plan::execution::FunctionType::new(
+                Vec::new(),
+                crate::plan::execution::ValueType::Custom(custom_type_id),
             ),
         );
         let bool_function = EvaluatedBoolFunction::new(
@@ -687,6 +824,10 @@ pub fn main() { 0 }
             plan.utf_codepoint_list_function_id(0).type_id(),
             vec!['\u{10ffff}'],
         );
+        let custom_list = state.custom(
+            plan.custom_list_function_id(0).type_id(),
+            vec![custom_value.clone()],
+        );
         let float_list = state.float(plan.float_list_function_id(0).type_id(), vec![1.5]);
         let bool_list = state.bool(plan.bool_list_function_id(0).type_id(), vec![true]);
         let nil_list = state.nil(plan.nil_list_function_id(0).type_id(), 1);
@@ -715,6 +856,7 @@ pub fn main() { 0 }
             EvaluatedCapture::string(StringLocalId(0), "one".into()),
             EvaluatedCapture::bit_array(BitArrayLocalId(0), bit_array),
             EvaluatedCapture::utf_codepoint(UtfCodepointLocalId(0), '\u{10ffff}'),
+            EvaluatedCapture::custom(CustomLocalId(0), custom_value),
             EvaluatedCapture::bool(BoolLocalId(0), true),
             EvaluatedCapture::nil(NilLocalId(0)),
             EvaluatedCapture::tuple(TupleLocalId(0), vec![EvaluatedValue::Int(1.into())]),
@@ -733,6 +875,10 @@ pub fn main() { 0 }
             EvaluatedCapture::list(EvaluatedListCapture::UtfCodepoint {
                 local: UtfCodepointListLocalId(0),
                 value: utf_codepoint_list,
+            }),
+            EvaluatedCapture::list(EvaluatedListCapture::Custom {
+                local: CustomListLocalId(0),
+                value: custom_list,
             }),
             EvaluatedCapture::list(EvaluatedListCapture::Float {
                 local: FloatListLocalId(0),
@@ -769,6 +915,7 @@ pub fn main() { 0 }
                 UtfCodepointFunctionLocalId(0),
                 utf_codepoint_function.clone(),
             ),
+            EvaluatedCapture::custom_function(CustomFunctionLocalId(0), custom_function.clone()),
             EvaluatedCapture::bool_function(BoolFunctionLocalId(0), bool_function.clone()),
             EvaluatedCapture::nil_function(NilFunctionLocalId(0), nil_function.clone()),
             EvaluatedCapture::tuple_function(TupleFunctionLocalId(0), tuple_function.clone()),
@@ -784,6 +931,7 @@ pub fn main() { 0 }
             CaptureValue::string(StringLocalId(0), "one".into()),
             CaptureValue::bit_array(BitArrayLocalId(0), BitArrayValue::from_bytes(vec![1])),
             CaptureValue::utf_codepoint(UtfCodepointLocalId(0), '\u{10ffff}'),
+            CaptureValue::custom(CustomLocalId(0), expected_custom_value.clone()),
             CaptureValue::bool(BoolLocalId(0), true),
             CaptureValue::nil(NilLocalId(0)),
             CaptureValue::tuple(TupleLocalId(0), vec![Value::Int(1.into())]),
@@ -802,6 +950,11 @@ pub fn main() { 0 }
             CaptureValue::list(CaptureListValue::UtfCodepoint {
                 local: UtfCodepointListLocalId(0),
                 value: vec!['\u{10ffff}'],
+            }),
+            CaptureValue::list(CaptureListValue::Custom {
+                local: CustomListLocalId(0),
+                item_type: custom_type.clone(),
+                value: vec![expected_custom_value],
             }),
             CaptureValue::list(CaptureListValue::Float {
                 local: FloatListLocalId(0),
@@ -878,6 +1031,15 @@ pub fn main() { 0 }
                     FunctionType::new(Vec::new(), ValueType::UtfCodepoint),
                 ),
             ),
+            CaptureValue::custom_function(
+                CustomFunctionLocalId(0),
+                CustomFunctionValue::new_with_captures(
+                    CustomFunctionValueTarget::Function(CustomFunctionId(0)),
+                    Vec::new(),
+                    Vec::new(),
+                    FunctionType::new(Vec::new(), ValueType::Custom(custom_type)),
+                ),
+            ),
             CaptureValue::bool_function(
                 BoolFunctionLocalId(0),
                 crate::runtime::BoolFunctionValue::new_with_captures(
@@ -935,6 +1097,7 @@ pub fn main() { 0 }
             EvaluatedFunctionValue::from(string_function),
             EvaluatedFunctionValue::from(bit_array_function),
             EvaluatedFunctionValue::from(utf_codepoint_function),
+            EvaluatedFunctionValue::from(custom_function),
             EvaluatedFunctionValue::from(bool_function),
             EvaluatedFunctionValue::from(nil_function),
             EvaluatedFunctionValue::from(tuple_function),
