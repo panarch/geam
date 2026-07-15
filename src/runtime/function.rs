@@ -98,7 +98,7 @@ pub(super) fn run_main(plan: &ExecutionPlan) -> ExecutionResult<Value> {
         }
     }?;
     state.drain_releases();
-    crate::runtime::materialize::value(plan, &state, value)
+    Ok(crate::runtime::materialize::value(plan, &state, value))
 }
 
 pub(super) fn run_int_call(
@@ -563,7 +563,7 @@ pub(in crate::runtime) fn run_custom_function_call(
         }
         EvaluatedCustomFunctionTarget::Constructor(constructor) => {
             let fields = eval_constructor_arguments(plan, state, args, caller_frame)?;
-            Ok(EvaluatedCustomValue::new(constructor, fields))
+            EvaluatedCustomValue::try_from_fields(plan, constructor, fields)
         }
     }
 }

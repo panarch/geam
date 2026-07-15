@@ -5,16 +5,17 @@ use num_bigint::BigInt;
 use std::rc::Rc;
 
 use super::state::{ListValueId, RuntimeState};
+use super::{ExecutionError, error::ExecutionResult};
 use crate::plan::ValueType;
 use crate::plan::execution::{
     BitArrayFunctionId, BitArrayFunctionLocalId, BitArrayLocalId, BoolFunctionId,
     BoolFunctionLocalId, BoolLocalId, CustomConstructorId, CustomFunctionId, CustomFunctionLocalId,
-    CustomLocalId, CustomTypeId, FloatFunctionId, FloatFunctionLocalId, FloatLocalId,
-    FunctionFunctionId, FunctionFunctionLocalId, FunctionReturnFamily, FunctionType, IntFunctionId,
-    IntFunctionLocalId, IntLocalId, ListFunctionId, ListFunctionLocal, NilFunctionId,
-    NilFunctionLocalId, NilLocalId, ParamLocal, StringFunctionId, StringFunctionLocalId,
-    StringLocalId, TupleFunctionId, TupleFunctionLocalId, TupleLocalId, UtfCodepointFunctionId,
-    UtfCodepointFunctionLocalId, UtfCodepointLocalId,
+    CustomLocalId, CustomTypeId, ExecutionPlan, FloatFunctionId, FloatFunctionLocalId,
+    FloatLocalId, FunctionFunctionId, FunctionFunctionLocalId, FunctionReturnFamily, FunctionType,
+    IntFunctionId, IntFunctionLocalId, IntLocalId, ListFunctionId, ListFunctionLocal,
+    NilFunctionId, NilFunctionLocalId, NilLocalId, ParamLocal, StringFunctionId,
+    StringFunctionLocalId, StringLocalId, TupleFunctionId, TupleFunctionLocalId, TupleLocalId,
+    UtfCodepointFunctionId, UtfCodepointFunctionLocalId, UtfCodepointLocalId,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -25,18 +26,29 @@ pub(in crate::runtime) struct EvaluatedBitArray {
 #[derive(Debug, Clone, PartialEq)]
 pub(in crate::runtime) struct EvaluatedCustomValue {
     constructor: CustomConstructorId,
-    fields: Vec<EvaluatedValue>,
+    fields: Box<[EvaluatedValue]>,
 }
 
 impl EvaluatedCustomValue {
-    pub(in crate::runtime) fn new(
+    pub(in crate::runtime) fn try_from_fields(
+        plan: &ExecutionPlan,
         constructor: CustomConstructorId,
         fields: Vec<EvaluatedValue>,
-    ) -> Self {
-        Self {
-            constructor,
-            fields,
+    ) -> ExecutionResult<Self> {
+        let descriptor = plan.custom_constructor(constructor);
+        if descriptor.fields().len() != fields.len() {
+            return Err(ExecutionError::CustomFieldArityMismatch {
+                custom_type: plan.custom_value_type(constructor.type_id()),
+                constructor: descriptor.name().clone(),
+                expected: descriptor.fields().len(),
+                actual: fields.len(),
+            });
         }
+
+        Ok(Self {
+            constructor,
+            fields: fields.into_boxed_slice(),
+        })
     }
 
     pub(in crate::runtime) fn type_id(&self) -> CustomTypeId {
@@ -949,10 +961,11 @@ fn list_captures_equal(
 mod tests {
     use super::{
         EvaluatedBitArray, EvaluatedBitArrayFunction, EvaluatedBoolFunction, EvaluatedCapture,
-        EvaluatedCustomFunction, EvaluatedCustomFunctionTarget, EvaluatedFloatFunction,
-        EvaluatedFunctionFunction, EvaluatedFunctionValue, EvaluatedIntFunction,
-        EvaluatedListCapture, EvaluatedListFunction, EvaluatedNilFunction, EvaluatedStringFunction,
-        EvaluatedTupleFunction, EvaluatedUtfCodepointFunction, EvaluatedValue, values_equal,
+        EvaluatedCustomFunction, EvaluatedCustomFunctionTarget, EvaluatedCustomValue,
+        EvaluatedFloatFunction, EvaluatedFunctionFunction, EvaluatedFunctionValue,
+        EvaluatedIntFunction, EvaluatedListCapture, EvaluatedListFunction, EvaluatedNilFunction,
+        EvaluatedStringFunction, EvaluatedTupleFunction, EvaluatedUtfCodepointFunction,
+        EvaluatedValue, values_equal,
     };
     use crate::plan::ValueType;
     use crate::plan::execution::{
@@ -966,6 +979,7 @@ mod tests {
         TupleLocalId, UtfCodepointFunctionId, UtfCodepointFunctionLocalId, UtfCodepointListLocalId,
         UtfCodepointLocalId,
     };
+    use crate::runtime::ExecutionError;
     use crate::runtime::state::{ListValueId, RuntimeState};
     use bitvec::order::Msb0;
     use bitvec::view::BitView;
@@ -994,6 +1008,117 @@ pub fn main() { 0 }
 
         assert_eq!(value.bits.as_raw_slice(), &[0b0100_0000]);
         assert_eq!(value.bits.len(), 2);
+    }
+
+    #[test]
+    fn evaluated_custom_value_checks_payload_arity_at_construction() {
+        let plan = crate::runtime::plan_src(
+            r#"
+pub type Boxed { Boxed(Int) }
+fn custom() -> Boxed { Boxed(1) }
+pub fn main() { 0 }
+"#,
+        );
+        let mut state = RuntimeState::new();
+        let mut caller_frame = crate::runtime::frame::Frame::new(
+            plan.custom_function(CustomFunctionId(0)).frame_layout(),
+            &mut state,
+        );
+        assert_eq!(
+            crate::runtime::function::run_custom_call(
+                &plan,
+                &mut state,
+                CustomFunctionId(0),
+                &[],
+                &mut caller_frame,
+            )
+            .map(|value| {
+                let constructor = value.constructor();
+                let descriptor = plan.custom_constructor(constructor);
+                assert_eq!(
+                    EvaluatedCustomValue::try_from_fields(
+                        &plan,
+                        constructor,
+                        vec![EvaluatedValue::Int(1.into())],
+                    ),
+                    Ok(EvaluatedCustomValue {
+                        constructor,
+                        fields: vec![EvaluatedValue::Int(1.into())].into_boxed_slice(),
+                    }),
+                );
+                assert_eq!(
+                    EvaluatedCustomValue::try_from_fields(&plan, constructor, Vec::new()),
+                    Err(ExecutionError::CustomFieldArityMismatch {
+                        custom_type: plan.custom_value_type(constructor.type_id()),
+                        constructor: descriptor.name().clone(),
+                        expected: 1,
+                        actual: 0,
+                    }),
+                );
+                assert_eq!(
+                    EvaluatedCustomValue::try_from_fields(
+                        &plan,
+                        constructor,
+                        vec![EvaluatedValue::Int(1.into()), EvaluatedValue::Int(2.into())],
+                    ),
+                    Err(ExecutionError::CustomFieldArityMismatch {
+                        custom_type: plan.custom_value_type(constructor.type_id()),
+                        constructor: descriptor.name().clone(),
+                        expected: 1,
+                        actual: 2,
+                    }),
+                );
+                assert_eq!(
+                    EvaluatedCustomValue::try_from_fields(
+                        &plan,
+                        constructor,
+                        vec![EvaluatedValue::String("wrong family".into())],
+                    ),
+                    Ok(EvaluatedCustomValue {
+                        constructor,
+                        fields: vec![EvaluatedValue::String("wrong family".into())]
+                            .into_boxed_slice(),
+                    }),
+                );
+            }),
+            Ok(()),
+        );
+    }
+
+    #[test]
+    fn evaluated_custom_value_accepts_exact_zero_field_payload() {
+        let plan = crate::runtime::plan_src(
+            r#"
+pub type Empty { Empty }
+fn custom() -> Empty { Empty }
+pub fn main() { 0 }
+"#,
+        );
+        let mut state = RuntimeState::new();
+        let mut caller_frame = crate::runtime::frame::Frame::new(
+            plan.custom_function(CustomFunctionId(0)).frame_layout(),
+            &mut state,
+        );
+        assert_eq!(
+            crate::runtime::function::run_custom_call(
+                &plan,
+                &mut state,
+                CustomFunctionId(0),
+                &[],
+                &mut caller_frame,
+            )
+            .map(|value| {
+                let constructor = value.constructor();
+                assert_eq!(
+                    EvaluatedCustomValue::try_from_fields(&plan, constructor, Vec::new()),
+                    Ok(EvaluatedCustomValue {
+                        constructor,
+                        fields: Vec::new().into_boxed_slice(),
+                    }),
+                );
+            }),
+            Ok(()),
+        );
     }
 
     #[test]

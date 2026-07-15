@@ -65,9 +65,10 @@ Typed projections have the following approved execution invariants:
 - `ExecutionError::CustomFieldFamilyMismatch` is only for a planner-selected
   custom field projection or binding whose runtime field has a different
   exact value type.
-- `ExecutionError::CustomFieldArityMismatch` is only for a custom payload whose
-  field count differs from its constructor descriptor. Materialization and
-  nested binding must propagate it without truncation.
+- `ExecutionError::CustomFieldArityMismatch` is only for evaluated custom
+  payload construction when the supplied field count differs from the
+  constructor descriptor. Successful construction fixes the payload length;
+  frame, binding, projection, and materialization paths must not revalidate it.
 - `ExecutionError::CustomFieldDiscriminantMismatch` is only for total custom
   binding or field projection when the runtime type or constructor is outside
   the planner-selected set. Refutable pattern mismatch remains normal

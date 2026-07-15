@@ -24,7 +24,7 @@ pub(in crate::runtime) fn eval_custom_expr(
                 .iter()
                 .map(|argument| eval_expr(plan, state, frame, argument))
                 .collect::<Result<Vec<_>, _>>()?;
-            Ok(EvaluatedCustomValue::new(*constructor, fields))
+            EvaluatedCustomValue::try_from_fields(plan, *constructor, fields)
         }
         CustomExprKind::LocalGet { local } => Ok(frame.get_custom(*local)),
         CustomExprKind::Call { function, args } => {

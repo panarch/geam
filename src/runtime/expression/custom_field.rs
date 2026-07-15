@@ -28,15 +28,6 @@ pub(in crate::runtime) fn eval_custom_field(
             actual_constructor: actual_constructor.name().clone(),
         });
     }
-    if actual_constructor.fields().len() != value.fields().len() {
-        return Err(ExecutionError::CustomFieldArityMismatch {
-            custom_type: plan.custom_value_type(value.type_id()),
-            constructor: actual_constructor.name().clone(),
-            expected: actual_constructor.fields().len(),
-            actual: value.fields().len(),
-        });
-    }
-
     let field = value.fields()[access.index()].clone();
     Ok((value.constructor(), field))
 }
@@ -99,7 +90,7 @@ mod tests {
     }
 
     #[test]
-    fn custom_field_projection_reports_discriminant_and_arity_invariants() {
+    fn custom_field_projection_reports_discriminant_and_source_invariants() {
         let field = CustomConstructorField::new(Some("value".into()), ValueType::String);
         let boxed = CustomConstructor::new(boxed_type(), "Boxed".into(), 0, vec![field.clone()]);
         let other = CustomConstructor::new(boxed_type(), "Other".into(), 1, vec![field]);
@@ -126,24 +117,6 @@ mod tests {
                     )],
                 ),
             ],
-        );
-        let arity_access = CustomFieldAccess::new(
-            CustomExpr::constructor(boxed.clone(), Vec::new()),
-            0,
-            Some("value".into()),
-            vec![boxed.clone()],
-        );
-        assert_eq!(
-            run_field_projection_module(
-                Expr::string(StringExpr::custom_field(arity_access)),
-                vec![definition.clone()],
-            ),
-            ExecutionError::CustomFieldArityMismatch {
-                custom_type: boxed_type(),
-                constructor: "Boxed".into(),
-                expected: 1,
-                actual: 0,
-            },
         );
         let discriminant_access = CustomFieldAccess::new(
             CustomExpr::constructor(
@@ -360,33 +333,6 @@ mod tests {
                     field_index: 0,
                     expected: expected.clone(),
                     actual: outer_actual_type,
-                },
-            );
-            let constructor = CustomConstructor::new(
-                boxed_type(),
-                "Boxed".into(),
-                0,
-                vec![CustomConstructorField::new(
-                    Some("value".into()),
-                    expected.clone(),
-                )],
-            );
-            let access = CustomFieldAccess::new(
-                CustomExpr::constructor(constructor.clone(), Vec::new()),
-                0,
-                Some("value".into()),
-                vec![constructor],
-            );
-            assert_eq!(
-                run_field_projection_module(
-                    Expr::custom_field(access, expected.clone()),
-                    field_projection_definitions(&expected),
-                ),
-                ExecutionError::CustomFieldArityMismatch {
-                    custom_type: boxed_type(),
-                    constructor: "Boxed".into(),
-                    expected: 1,
-                    actual: 0,
                 },
             );
             let access = CustomFieldAccess::new(
