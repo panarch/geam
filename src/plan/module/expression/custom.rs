@@ -1,6 +1,6 @@
 use super::{
-    BoolExpr, CallArg, CustomFunctionExpr, CustomListExpr, FloatExpr, IntExpr, PanicExpr,
-    StringExpr, TupleExpr,
+    BoolExpr, CallArg, CustomFieldAccess, CustomFunctionExpr, CustomListExpr, FloatExpr, IntExpr,
+    PanicExpr, StringExpr, TupleExpr,
 };
 use crate::plan::{CustomConstructor, CustomFunctionId, CustomLocalId, CustomType, Step};
 use ecow::EcoString;
@@ -34,6 +34,7 @@ pub(crate) enum CustomExprKind {
         tuple: Box<TupleExpr>,
         index: usize,
     },
+    CustomField(CustomFieldAccess),
     ListIndex {
         list: Box<CustomListExpr>,
         index: usize,
@@ -106,6 +107,10 @@ impl CustomExpr {
                 index,
             },
         )
+    }
+
+    pub(crate) fn custom_field(access: CustomFieldAccess, type_: CustomType) -> Self {
+        Self::new(type_, CustomExprKind::CustomField(access))
     }
 
     pub(crate) fn list_index(list: CustomListExpr, index: usize, type_: CustomType) -> Self {

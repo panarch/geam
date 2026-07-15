@@ -23,11 +23,12 @@ use crate::runtime::expression::{
 use crate::runtime::frame::Frame;
 use crate::runtime::state::{ListValueId, RuntimeState};
 use crate::runtime::{
-    EvaluatedBitArray, EvaluatedBitArrayFunction, EvaluatedBoolFunction, EvaluatedCustomFunction,
-    EvaluatedCustomValue, EvaluatedFloatFunction, EvaluatedFunctionFunction,
-    EvaluatedFunctionValue, EvaluatedFunctionValueKind, EvaluatedIntFunction, EvaluatedListCapture,
-    EvaluatedListFunction, EvaluatedNilFunction, EvaluatedStringFunction, EvaluatedTupleFunction,
-    EvaluatedUtfCodepointFunction, EvaluatedValue,
+    BitArrayValue, EvaluatedBitArray, EvaluatedBitArrayFunction, EvaluatedBoolFunction,
+    EvaluatedCustomFunction, EvaluatedCustomValue, EvaluatedFloatFunction,
+    EvaluatedFunctionFunction, EvaluatedFunctionValue, EvaluatedFunctionValueKind,
+    EvaluatedIntFunction, EvaluatedListCapture, EvaluatedListFunction, EvaluatedNilFunction,
+    EvaluatedStringFunction, EvaluatedTupleFunction, EvaluatedUtfCodepointFunction, EvaluatedValue,
+    Value,
 };
 use crate::runtime::{ExecutionError, PanicKind};
 use ecow::EcoString;
@@ -153,7 +154,7 @@ pub(in crate::runtime) fn execute_steps(
                             plan,
                             state,
                             EvaluatedValue::List(value),
-                        ),
+                        )?,
                         *pattern_span,
                     ));
                 }
@@ -179,11 +180,7 @@ pub(in crate::runtime) fn execute_steps(
                         plan.source_context(),
                         message,
                         site.clone(),
-                        crate::runtime::materialize::value(
-                            plan,
-                            state,
-                            EvaluatedValue::BitArray(value),
-                        ),
+                        Value::BitArray(BitArrayValue::from_evaluated(value.bits())),
                         *pattern_span,
                     ));
                 }
@@ -222,7 +219,7 @@ pub(in crate::runtime) fn execute_steps(
                             plan,
                             state,
                             EvaluatedValue::Custom(value),
-                        ),
+                        )?,
                         *pattern_span,
                     ));
                 }
@@ -460,13 +457,10 @@ fn match_assert_pattern(
                 return Ok(None);
             }
             let constructor = plan.custom_constructor(constructor_id);
-            for (field_index, ((field, field_pattern), value)) in constructor
-                .fields()
-                .iter()
-                .zip(pattern.fields())
-                .zip(value.fields())
-                .enumerate()
-            {
+            ensure_custom_field_arity(plan, value)?;
+            for (field_index, field_pattern) in pattern.fields().iter().enumerate() {
+                let field = &constructor.fields()[field_index];
+                let value = &value.fields()[field_index];
                 ensure_custom_field_type(plan, constructor_id, field_index, field.type_(), value)?;
                 if match_assert_pattern(plan, state, frame, field_pattern, value, bindings)?
                     .is_none()
@@ -535,10 +529,39 @@ fn append_custom_field_bindings(
     bindings: &mut Vec<PendingBinding>,
 ) -> ExecutionResult<()> {
     let constructor_id = pattern.constructor();
-    for (field_index, (pattern, value)) in pattern.fields().iter().zip(value.fields()).enumerate() {
+    if value.constructor() != constructor_id {
+        let expected = plan.custom_constructor(constructor_id);
+        let actual = plan.custom_constructor(value.constructor());
+        return Err(ExecutionError::CustomFieldDiscriminantMismatch {
+            expected_type: plan.custom_value_type(constructor_id.type_id()),
+            expected_constructors: vec![expected.name().clone()],
+            actual_type: plan.custom_value_type(value.type_id()),
+            actual_constructor: actual.name().clone(),
+        });
+    }
+    ensure_custom_field_arity(plan, value)?;
+    for (field_index, pattern) in pattern.fields().iter().enumerate() {
+        let value = &value.fields()[field_index];
         append_total_bindings(plan, constructor_id, field_index, value, pattern, bindings)?;
     }
     Ok(())
+}
+
+fn ensure_custom_field_arity(
+    plan: &ExecutionPlan,
+    value: &EvaluatedCustomValue,
+) -> ExecutionResult<()> {
+    let constructor = plan.custom_constructor(value.constructor());
+    if constructor.fields().len() == value.fields().len() {
+        Ok(())
+    } else {
+        Err(ExecutionError::CustomFieldArityMismatch {
+            custom_type: plan.custom_value_type(value.type_id()),
+            constructor: constructor.name().clone(),
+            expected: constructor.fields().len(),
+            actual: value.fields().len(),
+        })
+    }
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -917,9 +940,9 @@ mod tests {
     };
     use crate::plan::ValueType;
     use crate::plan::execution::{
-        AssertBinding, AssertPattern, CustomLocalId, FunctionFunctionId, IntFunctionFunctionId,
-        IntFunctionId, IntListLocalId, IntLocalId, ListAssertPattern, ListLocal, ParamLocal, Step,
-        StepKind, StringLocalId,
+        AssertBinding, AssertPattern, CustomListLocalId, CustomLocalId, FunctionFunctionId,
+        IntFunctionFunctionId, IntFunctionId, IntListLocalId, IntLocalId, ListAssertPattern,
+        ListLocal, ParamLocal, Step, StepKind, StringLocalId,
     };
     use crate::runtime::expression::eval_custom_expr;
     use crate::runtime::frame::Frame;
@@ -1684,6 +1707,219 @@ pub fn main() {
             }),
         );
         assert_eq!(bindings, Vec::new());
+    }
+
+    #[test]
+    fn custom_assert_reports_direct_mutated_field_arity_mismatch() {
+        let plan = crate::runtime::plan_src(
+            r#"
+pub type Choice { Boxed(Int) Other }
+pub fn main() {
+  let assert Boxed(value) = Boxed(1)
+  value
+}
+"#,
+        );
+        let function = plan.int_function(IntFunctionId(0));
+        let (pattern, custom_pattern) = function
+            .steps()
+            .iter()
+            .find_map(|step| match step.kind() {
+                StepKind::AssertCustom {
+                    pattern: pattern @ AssertPattern::Custom(custom_pattern),
+                    ..
+                } => Some((pattern, custom_pattern)),
+                _ => None,
+            })
+            .expect("source should lower an assert-custom step");
+        let constructor_id = custom_pattern.constructor();
+        let constructor = plan.custom_constructor(constructor_id);
+        let value = EvaluatedValue::Custom(EvaluatedCustomValue::new(constructor_id, Vec::new()));
+        let mut state = crate::runtime::RuntimeState::new();
+        let mut frame = Frame::new(function.frame_layout(), &mut state);
+        let mut bindings = Vec::new();
+
+        assert_eq!(
+            match_assert_pattern(
+                &plan,
+                &mut state,
+                &mut frame,
+                pattern,
+                &value,
+                &mut bindings,
+            ),
+            Err(ExecutionError::CustomFieldArityMismatch {
+                custom_type: plan.custom_value_type(constructor_id.type_id()),
+                constructor: constructor.name().clone(),
+                expected: 1,
+                actual: 0,
+            }),
+        );
+        assert_eq!(bindings, Vec::new());
+    }
+
+    #[test]
+    fn assert_panic_materialization_propagates_custom_field_arity_mismatch() {
+        let list_plan = crate::runtime::plan_src(
+            r#"
+pub type Boxed { Boxed(Int) }
+pub fn main() {
+  let values = [Boxed(1)]
+  let assert [] = values
+  0
+}
+"#,
+        );
+        let list_function = list_plan.int_function(IntFunctionId(0));
+        assert_eq!(list_function.steps().len(), 3);
+        let mut list_state = crate::runtime::RuntimeState::new();
+        let mut list_frame = Frame::new(list_function.frame_layout(), &mut list_state);
+        execute_steps(
+            &list_plan,
+            &mut list_state,
+            &list_function.steps()[..2],
+            &mut list_frame,
+        )
+        .expect("list value should evaluate");
+        let list_local = CustomListLocalId(1);
+        let list_type = list_function.frame_layout().custom_lists()[1];
+        let original = list_frame.get_custom_list(list_local);
+        let constructor = list_state.custom_values(&original)[0].constructor();
+        let descriptor = list_plan.custom_constructor(constructor);
+        let malformed = EvaluatedCustomValue::new(constructor, Vec::new());
+        let list = list_state.custom(list_type, vec![malformed]);
+        list_frame.set_custom_list(list_local, list);
+        assert_eq!(
+            execute_steps(
+                &list_plan,
+                &mut list_state,
+                &list_function.steps()[2..],
+                &mut list_frame,
+            ),
+            Err(ExecutionError::CustomFieldArityMismatch {
+                custom_type: list_plan.custom_value_type(constructor.type_id()),
+                constructor: descriptor.name().clone(),
+                expected: 1,
+                actual: 0,
+            }),
+        );
+
+        let custom_plan = crate::runtime::plan_src(
+            r#"
+pub type Choice { Boxed(Int) Other }
+pub fn main() {
+  let assert Boxed(value) = Other
+  value
+}
+"#,
+        );
+        let custom_function = custom_plan.int_function(IntFunctionId(0));
+        assert_eq!(custom_function.steps().len(), 2);
+        let mut custom_state = crate::runtime::RuntimeState::new();
+        let mut custom_frame = Frame::new(custom_function.frame_layout(), &mut custom_state);
+        execute_steps(
+            &custom_plan,
+            &mut custom_state,
+            &custom_function.steps()[..1],
+            &mut custom_frame,
+        )
+        .expect("custom value should evaluate");
+        let custom_local = CustomLocalId(0);
+        let original = custom_frame.get_custom(custom_local);
+        let constructor = original.constructor();
+        let descriptor = custom_plan.custom_constructor(constructor);
+        custom_frame.set_custom(
+            custom_local,
+            EvaluatedCustomValue::new(constructor, vec![EvaluatedValue::Int(1.into())]),
+        );
+        assert_eq!(
+            execute_steps(
+                &custom_plan,
+                &mut custom_state,
+                &custom_function.steps()[1..],
+                &mut custom_frame,
+            ),
+            Err(ExecutionError::CustomFieldArityMismatch {
+                custom_type: custom_plan.custom_value_type(constructor.type_id()),
+                constructor: descriptor.name().clone(),
+                expected: 0,
+                actual: 1,
+            }),
+        );
+    }
+
+    #[test]
+    fn custom_total_binding_reports_discriminant_and_arity_mismatches() {
+        let plan = crate::runtime::plan_src(
+            r#"
+pub type Choice { Boxed(Int) Other(Int) }
+pub fn main() {
+  let other = Other(2)
+  let Boxed(value) = Boxed(1)
+  value
+}
+"#,
+        );
+        let function = plan.int_function(IntFunctionId(0));
+        let custom_exprs = function
+            .steps()
+            .iter()
+            .filter_map(|step| match step.kind() {
+                StepKind::LetCustom { value, .. } => Some(value),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        let pattern = function
+            .steps()
+            .iter()
+            .find_map(|step| match step.kind() {
+                StepKind::BindCustomFields { pattern, .. } => Some(pattern),
+                _ => None,
+            })
+            .expect("source should lower a total custom binding");
+        let mut state = crate::runtime::RuntimeState::new();
+        let mut frame = Frame::new(function.frame_layout(), &mut state);
+        let other = eval_custom_expr(&plan, &mut state, &mut frame, custom_exprs[0])
+            .expect("other constructor should evaluate");
+        let boxed = eval_custom_expr(&plan, &mut state, &mut frame, custom_exprs[1])
+            .expect("boxed constructor should evaluate");
+        let expected = plan.custom_constructor(pattern.constructor());
+        let actual = plan.custom_constructor(other.constructor());
+
+        assert_eq!(
+            bind_custom_fields(&plan, pattern, &other),
+            Err(ExecutionError::CustomFieldDiscriminantMismatch {
+                expected_type: plan.custom_value_type(pattern.constructor().type_id()),
+                expected_constructors: vec![expected.name().clone()],
+                actual_type: plan.custom_value_type(other.type_id()),
+                actual_constructor: actual.name().clone(),
+            }),
+        );
+
+        let missing = EvaluatedCustomValue::new(boxed.constructor(), Vec::new());
+        assert_eq!(
+            bind_custom_fields(&plan, pattern, &missing),
+            Err(ExecutionError::CustomFieldArityMismatch {
+                custom_type: plan.custom_value_type(boxed.type_id()),
+                constructor: expected.name().clone(),
+                expected: 1,
+                actual: 0,
+            }),
+        );
+
+        let extra = EvaluatedCustomValue::new(
+            boxed.constructor(),
+            vec![EvaluatedValue::Int(1.into()), EvaluatedValue::Int(2.into())],
+        );
+        assert_eq!(
+            bind_custom_fields(&plan, pattern, &extra),
+            Err(ExecutionError::CustomFieldArityMismatch {
+                custom_type: plan.custom_value_type(boxed.type_id()),
+                constructor: expected.name().clone(),
+                expected: 1,
+                actual: 2,
+            }),
+        );
     }
 
     #[test]

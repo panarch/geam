@@ -3,6 +3,7 @@ mod bit_array;
 mod bool;
 mod case;
 mod custom;
+mod custom_field;
 mod float;
 mod function;
 mod int;
@@ -40,6 +41,7 @@ pub(crate) use self::{
     bit_array::{BitArrayExprKind, BitArraySegment, Endianness, FloatBitSize, StringEncoding},
     bool::BoolExprKind,
     custom::CustomExprKind,
+    custom_field::CustomFieldAccess,
     float::FloatExprKind,
     function::{
         BitArrayFunctionExprKind, BoolFunctionExprKind, CustomFunctionExprKind,
@@ -147,6 +149,24 @@ impl Expr {
     pub(crate) fn function(expression: FunctionExpr) -> Self {
         Self {
             kind: ExprKind::Function(expression),
+        }
+    }
+
+    pub(crate) fn custom_field(access: CustomFieldAccess, return_type: ValueType) -> Self {
+        match return_type {
+            ValueType::Int => Self::int(IntExpr::custom_field(access)),
+            ValueType::String => Self::string(StringExpr::custom_field(access)),
+            ValueType::BitArray => Self::bit_array(BitArrayExpr::custom_field(access)),
+            ValueType::UtfCodepoint => Self::utf_codepoint(UtfCodepointExpr::custom_field(access)),
+            ValueType::Custom(type_) => Self::custom(CustomExpr::custom_field(access, type_)),
+            ValueType::Float => Self::float(FloatExpr::custom_field(access)),
+            ValueType::Bool => Self::bool(BoolExpr::custom_field(access)),
+            ValueType::Nil => Self::nil(NilExpr::custom_field(access)),
+            ValueType::Tuple(type_) => Self::tuple(TupleExpr::custom_field(access, type_)),
+            ValueType::List(item_type) => Self::list(ListExpr::custom_field(access, *item_type)),
+            ValueType::Function(type_) => {
+                Self::function(FunctionExpr::custom_field(access, *type_))
+            }
         }
     }
 

@@ -1,3 +1,4 @@
+use crate::plan::CustomFieldAccess;
 use crate::plan::{
     BitArrayFunctionFunctionId, BitArrayFunctionId, BitArrayFunctionLocalId,
     BitArrayFunctionReference, BoolExpr, CaptureArg, FloatExpr, FunctionFunctionExpr,
@@ -39,6 +40,7 @@ pub(crate) enum BitArrayFunctionExprKind {
         index: usize,
         type_: FunctionType,
     },
+    CustomField(CustomFieldAccess),
     ListIndex {
         list: Box<FunctionListExpr>,
         index: usize,
@@ -148,6 +150,13 @@ impl BitArrayFunctionExpr {
                 index,
                 type_,
             },
+        }
+    }
+
+    pub(crate) fn custom_field(access: CustomFieldAccess, type_: FunctionType) -> Self {
+        Self {
+            type_,
+            kind: BitArrayFunctionExprKind::CustomField(access),
         }
     }
 

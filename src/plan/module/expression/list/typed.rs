@@ -1,4 +1,5 @@
 use super::{ListItem, ListListExpr};
+use crate::plan::CustomFieldAccess;
 use crate::plan::{
     BoolExpr, CallArg, FloatExpr, IntExpr, ListFunctionExpr, PanicExpr, Step, StringExpr,
     TupleExpr, ValueType,
@@ -43,6 +44,7 @@ pub(crate) enum TypedListExprKind<Item: ListItem> {
         tuple: Box<TupleExpr>,
         index: usize,
     },
+    CustomField(CustomFieldAccess),
     ListIndex(ListIndexSource<Item>),
     DropFirst {
         list: Box<TypedListExprKind<Item>>,
@@ -254,6 +256,10 @@ impl<Item: ListItem> TypedListExpr<Item> {
                 index,
             },
         )
+    }
+
+    pub(super) fn custom_field(item: Item, access: CustomFieldAccess) -> Self {
+        Self::new(item, TypedListExprKind::CustomField(access))
     }
 
     pub(super) fn from_list_index(item: Item, source: ListIndexSource<Item>) -> Self {

@@ -1,3 +1,4 @@
+use crate::plan::execution::CustomFieldAccess;
 use crate::plan::execution::FunctionType;
 use crate::plan::execution::{
     BoolExpr, ClosureTemplate, FloatExpr, FunctionFunctionFunctionId, FunctionFunctionId,
@@ -31,6 +32,7 @@ pub(crate) enum FunctionFunctionExprKind {
         index: usize,
         type_: FunctionType,
     },
+    CustomField(CustomFieldAccess),
     ListIndex {
         list: Box<FunctionListExpr>,
         index: usize,

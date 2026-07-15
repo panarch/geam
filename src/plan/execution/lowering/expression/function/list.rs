@@ -56,6 +56,9 @@ pub(in crate::plan::execution::lowering) fn list_function_expr(
             index,
             type_: context.function_type(type_),
         },
+        M::CustomField(access) => {
+            E::CustomField(super::super::custom_field_access(access, context))
+        }
         M::ListIndex { list, index, type_ } => E::ListIndex {
             list: Box::new(super::super::function_list_expr(*list, context)),
             index,

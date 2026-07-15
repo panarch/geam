@@ -1,5 +1,6 @@
 use super::{
-    BoolExpr, CallArg, FloatExpr, IntExpr, PanicExpr, StringExpr, TupleFunctionExpr, TupleListExpr,
+    BoolExpr, CallArg, CustomFieldAccess, FloatExpr, IntExpr, PanicExpr, StringExpr,
+    TupleFunctionExpr, TupleListExpr,
 };
 use crate::plan::execution::ValueType;
 use crate::plan::execution::{Step, TupleFunctionId, TupleLocalId};
@@ -28,6 +29,7 @@ pub(crate) enum TupleExprKind {
         tuple: Box<TupleExpr>,
         index: usize,
     },
+    CustomField(CustomFieldAccess),
     ListIndex {
         list: Box<TupleListExpr>,
         index: usize,

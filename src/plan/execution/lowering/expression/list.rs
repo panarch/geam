@@ -196,6 +196,7 @@ where
             tuple: Box::new(tuple_expr(*tuple, context)),
             index,
         },
+        M::CustomField(access) => E::CustomField(super::custom_field_access(access, context)),
         M::ListIndex(source) => {
             let (list, index) = source.into_parts();
             E::ListIndex(execution::ListIndexSource::from_parts(

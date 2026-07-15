@@ -34,6 +34,24 @@ pub enum ExecutionError {
         expected: ValueType,
         actual: ValueType,
     },
+    #[error(
+        "custom field arity mismatch in {custom_type:?}::{constructor} (expected {expected}, got {actual})"
+    )]
+    CustomFieldArityMismatch {
+        custom_type: crate::plan::CustomType,
+        constructor: EcoString,
+        expected: usize,
+        actual: usize,
+    },
+    #[error(
+        "custom field discriminant mismatch (expected {expected_type:?} constructors {expected_constructors:?}, got {actual_type:?}::{actual_constructor})"
+    )]
+    CustomFieldDiscriminantMismatch {
+        expected_type: crate::plan::CustomType,
+        expected_constructors: Vec<EcoString>,
+        actual_type: crate::plan::CustomType,
+        actual_constructor: EcoString,
+    },
     #[error("list index out of bounds for {item_type:?} list (index {index}, length {length})")]
     ListIndexOutOfBounds {
         item_type: ValueType,
@@ -141,6 +159,48 @@ mod tests {
         assert_eq!(
             error.to_string(),
             "custom field family mismatch in CustomType { name: CustomTypeName { package: \"app\", module: \"main\", name: \"Box\" }, arguments: [Int] }::Box field 0 (expected Int, got String)",
+        );
+    }
+
+    #[test]
+    fn custom_field_arity_mismatch_display() {
+        let custom_type = crate::plan::CustomType::new(
+            crate::plan::CustomTypeName::new("app".into(), "main".into(), "Box".into()),
+            vec![ValueType::Int],
+        );
+        let error = ExecutionError::CustomFieldArityMismatch {
+            custom_type,
+            constructor: "Box".into(),
+            expected: 1,
+            actual: 0,
+        };
+
+        assert_eq!(
+            error.to_string(),
+            "custom field arity mismatch in CustomType { name: CustomTypeName { package: \"app\", module: \"main\", name: \"Box\" }, arguments: [Int] }::Box (expected 1, got 0)",
+        );
+    }
+
+    #[test]
+    fn custom_field_discriminant_mismatch_display() {
+        let expected_type = crate::plan::CustomType::new(
+            crate::plan::CustomTypeName::new("app".into(), "main".into(), "Shape".into()),
+            Vec::new(),
+        );
+        let actual_type = crate::plan::CustomType::new(
+            crate::plan::CustomTypeName::new("app".into(), "main".into(), "Other".into()),
+            Vec::new(),
+        );
+        let error = ExecutionError::CustomFieldDiscriminantMismatch {
+            expected_type,
+            expected_constructors: vec!["Circle".into(), "Square".into()],
+            actual_type,
+            actual_constructor: "Other".into(),
+        };
+
+        assert_eq!(
+            error.to_string(),
+            "custom field discriminant mismatch (expected CustomType { name: CustomTypeName { package: \"app\", module: \"main\", name: \"Shape\" }, arguments: [] } constructors [\"Circle\", \"Square\"], got CustomType { name: CustomTypeName { package: \"app\", module: \"main\", name: \"Other\" }, arguments: [] }::Other)",
         );
     }
 }

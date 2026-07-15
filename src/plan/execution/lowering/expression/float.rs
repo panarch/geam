@@ -1,6 +1,6 @@
 use super::{
-    bool_expr, call_args, float_function_expr, float_list_expr, int_expr, panic_expr, string_expr,
-    tuple_expr,
+    bool_expr, call_args, custom_field_access, float_function_expr, float_list_expr, int_expr,
+    panic_expr, string_expr, tuple_expr,
 };
 use crate::plan::{execution, module};
 
@@ -28,6 +28,7 @@ pub(in crate::plan::execution::lowering) fn float_expr(
             tuple: Box::new(tuple_expr(*tuple, context)),
             index,
         },
+        M::CustomField(access) => E::CustomField(custom_field_access(access, context)),
         M::ListIndex { list, index } => E::ListIndex {
             list: Box::new(float_list_expr(*list, context)),
             index,

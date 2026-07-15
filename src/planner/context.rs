@@ -3,16 +3,16 @@ use crate::plan::{
     BitArrayFunctionLocalId, BitArrayListFunctionId, BitArrayListItem, BitArrayListLocalId,
     BitArrayLocalId, BoolExpr, BoolFunctionExpr, BoolFunctionFunctionId, BoolFunctionId,
     BoolFunctionLocalId, BoolListFunctionId, BoolListItem, BoolListLocalId, BoolLocalId,
-    CaptureArg, CustomConstructor, CustomConstructorField, CustomExpr, CustomFunctionExpr,
-    CustomFunctionFunctionId, CustomFunctionId, CustomFunctionLocalId, CustomListFunctionId,
-    CustomListItem, CustomListLocalId, CustomLocalId, CustomTypeDefinition, CustomTypeTemplate,
-    FloatExpr, FloatFunctionExpr, FloatFunctionFunctionId, FloatFunctionId, FloatFunctionLocalId,
-    FloatListFunctionId, FloatListItem, FloatListLocalId, FloatLocalId, FunctionFunctionExpr,
-    FunctionFunctionFunctionId, FunctionFunctionId, FunctionFunctionLocalId, FunctionId,
-    FunctionListFunctionId, FunctionListItem, FunctionListLocalId, FunctionPlan, FunctionReference,
-    FunctionType, IntExpr, IntFunctionExpr, IntFunctionFunctionId, IntFunctionId,
-    IntFunctionLocalId, IntListFunctionId, IntListItem, IntListLocalId, IntLocalId, ListExpr,
-    ListFunctionExpr, ListFunctionFunctionId, ListFunctionId, ListFunctionLocal,
+    CaptureArg, CustomConstructor, CustomConstructorField, CustomExpr, CustomFieldAccess,
+    CustomFunctionExpr, CustomFunctionFunctionId, CustomFunctionId, CustomFunctionLocalId,
+    CustomListFunctionId, CustomListItem, CustomListLocalId, CustomLocalId, CustomTypeDefinition,
+    CustomTypeTemplate, FloatExpr, FloatFunctionExpr, FloatFunctionFunctionId, FloatFunctionId,
+    FloatFunctionLocalId, FloatListFunctionId, FloatListItem, FloatListLocalId, FloatLocalId,
+    FunctionFunctionExpr, FunctionFunctionFunctionId, FunctionFunctionId, FunctionFunctionLocalId,
+    FunctionId, FunctionListFunctionId, FunctionListItem, FunctionListLocalId, FunctionPlan,
+    FunctionReference, FunctionType, IntExpr, IntFunctionExpr, IntFunctionFunctionId,
+    IntFunctionId, IntFunctionLocalId, IntListFunctionId, IntListItem, IntListLocalId, IntLocalId,
+    ListExpr, ListFunctionExpr, ListFunctionFunctionId, ListFunctionId, ListFunctionLocal,
     ListListFunctionId, ListListItem, ListListLocalId, ListLocal, ListLocalExpr, LocalId, NilExpr,
     NilFunctionExpr, NilFunctionFunctionId, NilFunctionId, NilFunctionLocalId, NilListFunctionId,
     NilListItem, NilListLocalId, NilLocalId, PanicSite, ParamBinding, ParamLocal,
@@ -1461,6 +1461,78 @@ impl<'a> PlanContext<'a> {
             usize::from(constructor.constructor_index),
             field_types,
         )
+    }
+
+    pub(super) fn custom_field_access(
+        &self,
+        source: CustomExpr,
+        source_type: &Type,
+        index: usize,
+        label: Option<EcoString>,
+        expected: &ValueType,
+    ) -> Result<CustomFieldAccess, PlanError> {
+        let custom_type = source.type_();
+        let Some(type_definition) = self
+            .custom_types
+            .iter()
+            .find(|definition| definition.name() == custom_type.type_name())
+        else {
+            return Err(invalid_custom_type(
+                custom_type,
+                InvalidCustomTypeReason::UnknownDefinition,
+            ));
+        };
+        if type_definition.parameters().len() != custom_type.arguments().len() {
+            return Err(invalid_custom_type(
+                custom_type,
+                InvalidCustomTypeReason::TypeArgumentCount,
+            ));
+        }
+
+        let inferred_variant = source_type.custom_type_inferred_variant().map(usize::from);
+        let constructors = match inferred_variant {
+            Some(index) => vec![type_definition.constructor(index).ok_or_else(|| {
+                invalid_custom_type(custom_type, InvalidCustomTypeReason::ConstructorIndex)
+            })?],
+            None => type_definition.constructors().iter().collect(),
+        };
+        let mut allowed = Vec::with_capacity(constructors.len());
+        for constructor in constructors {
+            let field = constructor.fields().get(index).ok_or_else(|| {
+                invalid_custom_type(custom_type, InvalidCustomTypeReason::FieldIndex)
+            })?;
+            if field.label() != label.as_ref() {
+                return Err(invalid_custom_type(
+                    custom_type,
+                    InvalidCustomTypeReason::FieldLabel,
+                ));
+            }
+            let actual = instantiate_custom_type_template(field.type_(), custom_type)?;
+            if &actual != expected {
+                return Err(invalid_custom_type(
+                    custom_type,
+                    InvalidCustomTypeReason::FieldType,
+                ));
+            }
+            let fields = constructor
+                .fields()
+                .iter()
+                .map(|field| {
+                    Ok(CustomConstructorField::new(
+                        field.label().cloned(),
+                        instantiate_custom_type_template(field.type_(), custom_type)?,
+                    ))
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+            allowed.push(CustomConstructor::new(
+                custom_type.clone(),
+                constructor.name().clone(),
+                constructor.index(),
+                fields,
+            ));
+        }
+
+        Ok(CustomFieldAccess::new(source, index, label, allowed))
     }
 
     fn custom_constructor_from_parts(

@@ -54,6 +54,10 @@ pub enum InvalidCustomTypeReason {
     ConstructorType,
     #[error("constructor field type is invalid")]
     FieldType,
+    #[error("constructor field index is invalid")]
+    FieldIndex,
+    #[error("constructor field label is invalid")]
+    FieldLabel,
     #[error("type parameter is not generic")]
     ParameterType,
     #[error("custom type definition is missing")]
@@ -90,6 +94,8 @@ pub enum InvalidExpressionShapeKind {
     PreludeConstructor,
     #[error("record constructor")]
     RecordConstructor,
+    #[error("record access")]
+    RecordAccess,
 }
 
 #[derive(Debug, Error, Clone, Copy, PartialEq, Eq)]

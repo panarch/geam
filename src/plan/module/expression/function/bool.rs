@@ -1,3 +1,4 @@
+use crate::plan::CustomFieldAccess;
 use crate::plan::{
     BoolExpr, BoolFunctionFunctionId, BoolFunctionId, BoolFunctionLocalId, BoolFunctionReference,
     CaptureArg, FloatExpr, FunctionFunctionExpr, FunctionListExpr, FunctionType, IntExpr,
@@ -39,6 +40,7 @@ pub(crate) enum BoolFunctionExprKind {
         index: usize,
         type_: FunctionType,
     },
+    CustomField(CustomFieldAccess),
     ListIndex {
         list: Box<FunctionListExpr>,
         index: usize,
@@ -148,6 +150,13 @@ impl BoolFunctionExpr {
                 index,
                 type_,
             },
+        }
+    }
+
+    pub(crate) fn custom_field(access: CustomFieldAccess, type_: FunctionType) -> Self {
+        Self {
+            type_,
+            kind: BoolFunctionExprKind::CustomField(access),
         }
     }
 

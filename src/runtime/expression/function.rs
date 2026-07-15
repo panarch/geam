@@ -10,11 +10,12 @@ mod string;
 mod tuple;
 mod utf_codepoint;
 
-use crate::plan::execution::ExecutionPlan;
+use crate::plan::ValueType;
+use crate::plan::execution::{CustomConstructorId, CustomFieldAccess, ExecutionPlan};
 use crate::plan::execution::{FunctionExpr, FunctionExprKind};
 use crate::runtime::frame::Frame;
 use crate::runtime::state::RuntimeState;
-use crate::runtime::{EvaluatedFunctionValue, ExecutionError};
+use crate::runtime::{EvaluatedFunctionValue, EvaluatedValue, ExecutionError};
 
 pub(in crate::runtime) use self::{
     bit_array::eval_bit_array_function_expr, bool::eval_bool_function_expr,
@@ -64,6 +65,27 @@ pub(in crate::runtime) fn eval_function_expr(
         FunctionExprKind::Function(expression) => {
             Ok(eval_function_function_expr(plan, state, frame, expression)?.into())
         }
+    }
+}
+
+fn eval_custom_field_function(
+    plan: &ExecutionPlan,
+    state: &mut RuntimeState,
+    frame: &mut Frame,
+    access: &CustomFieldAccess,
+) -> Result<(CustomConstructorId, ValueType, EvaluatedFunctionValue), ExecutionError> {
+    let (constructor, value) = super::eval_custom_field(plan, state, frame, access)?;
+    let descriptor = plan.custom_constructor(constructor);
+    let expected = plan.value_type(descriptor.fields()[access.index()].type_());
+    match value {
+        EvaluatedValue::Function(value) => Ok((constructor, expected, value)),
+        other => Err(ExecutionError::CustomFieldFamilyMismatch {
+            custom_type: plan.custom_value_type(constructor.type_id()),
+            constructor: descriptor.name().clone(),
+            field_index: access.index(),
+            expected,
+            actual: other.value_type(plan),
+        }),
     }
 }
 

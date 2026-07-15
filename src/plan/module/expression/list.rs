@@ -16,7 +16,8 @@ pub(crate) use self::{
     typed::{ListIndexSource, TypedListExpr, TypedListExprKind, TypedListReturnKind},
 };
 use super::{
-    BoolExpr, CallArg, Expr, FloatExpr, IntExpr, ListFunctionExpr, PanicExpr, StringExpr, TupleExpr,
+    BoolExpr, CallArg, CustomFieldAccess, Expr, FloatExpr, IntExpr, ListFunctionExpr, PanicExpr,
+    StringExpr, TupleExpr,
 };
 use crate::plan::{ListFunctionId, ListLocal, Step, ValueType};
 use ecow::EcoString;
@@ -297,6 +298,41 @@ impl ListExpr {
                 };
                 Self::Function(FunctionListExpr::tuple_index(item, tuple, index))
             }
+        }
+    }
+
+    pub(crate) fn custom_field(access: CustomFieldAccess, element_type: ValueType) -> Self {
+        match element_type {
+            ValueType::Int => Self::Int(IntListExpr::custom_field(IntListItem, access)),
+            ValueType::String => Self::String(StringListExpr::custom_field(StringListItem, access)),
+            ValueType::BitArray => {
+                Self::BitArray(BitArrayListExpr::custom_field(BitArrayListItem, access))
+            }
+            ValueType::UtfCodepoint => Self::UtfCodepoint(UtfCodepointListExpr::custom_field(
+                UtfCodepointListItem,
+                access,
+            )),
+            ValueType::Custom(item_type) => Self::Custom(CustomListExpr::custom_field(
+                CustomListItem { item_type },
+                access,
+            )),
+            ValueType::Float => Self::Float(FloatListExpr::custom_field(FloatListItem, access)),
+            ValueType::Bool => Self::Bool(BoolListExpr::custom_field(BoolListItem, access)),
+            ValueType::Nil => Self::Nil(NilListExpr::custom_field(NilListItem, access)),
+            ValueType::Tuple(item_type) => Self::Tuple(TupleListExpr::custom_field(
+                TupleListItem { item_type },
+                access,
+            )),
+            ValueType::List(item_type) => Self::List(ListListExpr::custom_field(
+                ListListItem { item_type },
+                access,
+            )),
+            ValueType::Function(item_type) => Self::Function(FunctionListExpr::custom_field(
+                FunctionListItem {
+                    item_type: *item_type,
+                },
+                access,
+            )),
         }
     }
 
@@ -707,11 +743,12 @@ mod tests {
         UtfCodepointListExpr, UtfCodepointListItem,
     };
     use crate::plan::{
-        BitArrayExpr, BoolExpr, Expr, FloatExpr, FunctionExpr, FunctionReference, FunctionType,
-        IntExpr, IntFunctionId, IntListFunctionId, IntListLocalId, ListFunctionExpr,
-        ListFunctionId, ListFunctionReference, ListLocal, NilExpr, PanicExpr, PanicSite,
-        RuntimeFunctionId, Step, StringExpr, TupleExpr, UtfCodepointExpr, UtfCodepointLocalId,
-        ValueType,
+        BitArrayExpr, BoolExpr, CustomConstructor, CustomConstructorField, CustomExpr,
+        CustomFieldAccess, CustomLocalId, CustomType, CustomTypeName, Expr, FloatExpr,
+        FunctionExpr, FunctionReference, FunctionType, IntExpr, IntFunctionId, IntListFunctionId,
+        IntListLocalId, ListFunctionExpr, ListFunctionId, ListFunctionReference, ListLocal,
+        NilExpr, PanicExpr, PanicSite, RuntimeFunctionId, Step, StringExpr, TupleExpr,
+        UtfCodepointExpr, UtfCodepointLocalId, ValueType,
     };
     use num_bigint::BigInt;
 
@@ -958,6 +995,103 @@ mod tests {
             ListExpr::String(StringListExpr::from_list_index(
                 StringListItem,
                 ListIndexSource::new(nested, 0),
+            )),
+        );
+    }
+
+    #[test]
+    fn custom_field_constructor_dispatches_every_item_family() {
+        let custom_type = CustomType::new(
+            CustomTypeName::new("geam".into(), "main".into(), "Boxed".into()),
+            Vec::new(),
+        );
+        let access = CustomFieldAccess::new(
+            CustomExpr::local_get(CustomLocalId(0), "boxed".into(), custom_type.clone()),
+            0,
+            Some("value".into()),
+            vec![CustomConstructor::new(
+                custom_type.clone(),
+                "Boxed".into(),
+                0,
+                vec![CustomConstructorField::new(
+                    Some("value".into()),
+                    ValueType::Int,
+                )],
+            )],
+        );
+        let function_type = FunctionType::new(Vec::new(), ValueType::Int);
+
+        assert_eq!(
+            ListExpr::custom_field(access.clone(), ValueType::Int),
+            ListExpr::Int(IntListExpr::custom_field(IntListItem, access.clone())),
+        );
+        assert_eq!(
+            ListExpr::custom_field(access.clone(), ValueType::String),
+            ListExpr::String(StringListExpr::custom_field(StringListItem, access.clone(),)),
+        );
+        assert_eq!(
+            ListExpr::custom_field(access.clone(), ValueType::BitArray),
+            ListExpr::BitArray(BitArrayListExpr::custom_field(
+                BitArrayListItem,
+                access.clone(),
+            )),
+        );
+        assert_eq!(
+            ListExpr::custom_field(access.clone(), ValueType::UtfCodepoint),
+            ListExpr::UtfCodepoint(UtfCodepointListExpr::custom_field(
+                UtfCodepointListItem,
+                access.clone(),
+            )),
+        );
+        assert_eq!(
+            ListExpr::custom_field(access.clone(), ValueType::Custom(custom_type.clone())),
+            ListExpr::Custom(CustomListExpr::custom_field(
+                CustomListItem {
+                    item_type: custom_type,
+                },
+                access.clone(),
+            )),
+        );
+        assert_eq!(
+            ListExpr::custom_field(access.clone(), ValueType::Float),
+            ListExpr::Float(FloatListExpr::custom_field(FloatListItem, access.clone(),)),
+        );
+        assert_eq!(
+            ListExpr::custom_field(access.clone(), ValueType::Bool),
+            ListExpr::Bool(BoolListExpr::custom_field(BoolListItem, access.clone())),
+        );
+        assert_eq!(
+            ListExpr::custom_field(access.clone(), ValueType::Nil),
+            ListExpr::Nil(NilListExpr::custom_field(NilListItem, access.clone())),
+        );
+        assert_eq!(
+            ListExpr::custom_field(access.clone(), ValueType::Tuple(vec![ValueType::Int]),),
+            ListExpr::Tuple(TupleListExpr::custom_field(
+                TupleListItem {
+                    item_type: vec![ValueType::Int],
+                },
+                access.clone(),
+            )),
+        );
+        assert_eq!(
+            ListExpr::custom_field(access.clone(), ValueType::List(Box::new(ValueType::String)),),
+            ListExpr::List(ListListExpr::custom_field(
+                ListListItem {
+                    item_type: Box::new(ValueType::String),
+                },
+                access.clone(),
+            )),
+        );
+        assert_eq!(
+            ListExpr::custom_field(
+                access.clone(),
+                ValueType::Function(Box::new(function_type.clone())),
+            ),
+            ListExpr::Function(FunctionListExpr::custom_field(
+                FunctionListItem {
+                    item_type: function_type,
+                },
+                access,
             )),
         );
     }

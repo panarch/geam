@@ -1,5 +1,6 @@
 use super::{
-    BoolExpr, CallArg, FloatExpr, IntExpr, PanicExpr, StringFunctionExpr, StringListExpr, TupleExpr,
+    BoolExpr, CallArg, CustomFieldAccess, FloatExpr, IntExpr, PanicExpr, StringFunctionExpr,
+    StringListExpr, TupleExpr,
 };
 use crate::plan::{Step, StringFunctionId, StringLocalId};
 use ecow::EcoString;
@@ -29,6 +30,7 @@ pub(crate) enum StringExprKind {
         tuple: Box<TupleExpr>,
         index: usize,
     },
+    CustomField(CustomFieldAccess),
     ListIndex {
         list: Box<StringListExpr>,
         index: usize,
@@ -102,6 +104,12 @@ impl StringExpr {
                 tuple: Box::new(tuple),
                 index,
             },
+        }
+    }
+
+    pub(crate) fn custom_field(access: CustomFieldAccess) -> Self {
+        Self {
+            kind: StringExprKind::CustomField(access),
         }
     }
 

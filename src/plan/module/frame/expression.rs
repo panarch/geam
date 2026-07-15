@@ -41,6 +41,7 @@ impl FrameLayout {
                 self.include_call_args(args);
             }
             IntExprKind::TupleIndex { tuple, .. } => self.include_tuple_expr(tuple),
+            IntExprKind::CustomField(access) => self.include_custom_expr(access.source()),
             IntExprKind::ListIndex { list, .. } => self.include_typed_list_expr(list),
             IntExprKind::Add { left, right }
             | IntExprKind::Sub { left, right }
@@ -111,6 +112,7 @@ impl FrameLayout {
                 self.include_call_args(args);
             }
             StringExprKind::TupleIndex { tuple, .. } => self.include_tuple_expr(tuple),
+            StringExprKind::CustomField(access) => self.include_custom_expr(access.source()),
             StringExprKind::ListIndex { list, .. } => self.include_typed_list_expr(list),
             StringExprKind::Concatenate { left, right } => {
                 self.include_string_expr(left);
@@ -192,6 +194,7 @@ impl FrameLayout {
                 self.include_call_args(args);
             }
             BitArrayExprKind::TupleIndex { tuple, .. } => self.include_tuple_expr(tuple),
+            BitArrayExprKind::CustomField(access) => self.include_custom_expr(access.source()),
             BitArrayExprKind::ListIndex { list, .. } => self.include_typed_list_expr(list),
             BitArrayExprKind::BoolCase {
                 subject,
@@ -255,6 +258,9 @@ impl FrameLayout {
                 self.include_call_args(args);
             }
             UtfCodepointExprKind::TupleIndex { tuple, .. } => self.include_tuple_expr(tuple),
+            UtfCodepointExprKind::CustomField(access) => {
+                self.include_custom_expr(access.source());
+            }
             UtfCodepointExprKind::ListIndex { list, .. } => self.include_typed_list_expr(list),
             UtfCodepointExprKind::BoolCase {
                 subject,
@@ -320,6 +326,7 @@ impl FrameLayout {
                 self.include_call_args(args);
             }
             CustomExprKind::TupleIndex { tuple, .. } => self.include_tuple_expr(tuple),
+            CustomExprKind::CustomField(access) => self.include_custom_expr(access.source()),
             CustomExprKind::ListIndex { list, .. } => self.include_typed_list_expr(list),
             CustomExprKind::BoolCase {
                 subject,
@@ -381,6 +388,7 @@ impl FrameLayout {
                 self.include_call_args(args);
             }
             BoolExprKind::TupleIndex { tuple, .. } => self.include_tuple_expr(tuple),
+            BoolExprKind::CustomField(access) => self.include_custom_expr(access.source()),
             BoolExprKind::ListIndex { list, .. } => self.include_typed_list_expr(list),
             BoolExprKind::Not(value) => self.include_bool_expr(value),
             BoolExprKind::LtInt { left, right } => self.include_int_binary_expr(left, right),
@@ -573,6 +581,7 @@ impl FrameLayout {
                 self.include_call_args(args);
             }
             NilExprKind::TupleIndex { tuple, .. } => self.include_tuple_expr(tuple),
+            NilExprKind::CustomField(access) => self.include_custom_expr(access.source()),
             NilExprKind::ListIndex { list, .. } => self.include_typed_list_expr(list),
             NilExprKind::BoolCase {
                 subject,
@@ -634,6 +643,7 @@ impl FrameLayout {
                 self.include_call_args(args);
             }
             FloatExprKind::TupleIndex { tuple, .. } => self.include_tuple_expr(tuple),
+            FloatExprKind::CustomField(access) => self.include_custom_expr(access.source()),
             FloatExprKind::ListIndex { list, .. } => self.include_typed_list_expr(list),
             FloatExprKind::Add { left, right }
             | FloatExprKind::Sub { left, right }
@@ -706,6 +716,7 @@ impl FrameLayout {
                 self.include_call_args(args);
             }
             TupleExprKind::TupleIndex { tuple, .. } => self.include_tuple_expr(tuple),
+            TupleExprKind::CustomField(access) => self.include_custom_expr(access.source()),
             TupleExprKind::ListIndex { list, .. } => self.include_typed_list_expr(list),
             TupleExprKind::BoolCase {
                 subject,
@@ -868,6 +879,7 @@ impl FrameLayout {
                 self.include_call_args(args);
             }
             TypedListExprKind::TupleIndex { tuple, .. } => self.include_tuple_expr(tuple),
+            TypedListExprKind::CustomField(access) => self.include_custom_expr(access.source()),
             TypedListExprKind::ListIndex(source) => self.include_typed_list_expr(source.list()),
             TypedListExprKind::DropFirst { list, .. } => {
                 self.include_typed_list_expr_kind(item, list)

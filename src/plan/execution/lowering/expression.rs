@@ -1,6 +1,7 @@
 mod bit_array;
 mod bool;
 mod custom;
+mod custom_field;
 mod float;
 mod function;
 mod int;
@@ -15,6 +16,7 @@ use crate::plan::module;
 
 pub(super) use bool::bool_expr;
 pub(super) use custom::custom_expr;
+pub(super) use custom_field::custom_field_access;
 pub(super) use float::float_expr;
 pub(super) use function::{
     bit_array_function_expr, bool_function_expr, custom_function_expr, float_function_expr,

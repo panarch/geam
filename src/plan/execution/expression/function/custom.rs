@@ -1,7 +1,7 @@
 use crate::plan::execution::{
-    BoolExpr, ClosureTemplate, CustomConstructorId, CustomFunctionFunctionId, CustomFunctionId,
-    CustomFunctionLocalId, FloatExpr, FunctionFunctionExpr, FunctionListExpr, FunctionReference,
-    FunctionType, IntExpr, PanicExpr, Step, StringExpr, TupleExpr,
+    BoolExpr, ClosureTemplate, CustomConstructorId, CustomFieldAccess, CustomFunctionFunctionId,
+    CustomFunctionId, CustomFunctionLocalId, FloatExpr, FunctionFunctionExpr, FunctionListExpr,
+    FunctionReference, FunctionType, IntExpr, PanicExpr, Step, StringExpr, TupleExpr,
 };
 use ecow::EcoString;
 use num_bigint::BigInt;
@@ -31,6 +31,7 @@ pub(crate) enum CustomFunctionExprKind {
         index: usize,
         type_: FunctionType,
     },
+    CustomField(CustomFieldAccess),
     ListIndex {
         list: Box<FunctionListExpr>,
         index: usize,

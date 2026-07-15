@@ -98,7 +98,7 @@ pub(super) fn run_main(plan: &ExecutionPlan) -> ExecutionResult<Value> {
         }
     }?;
     state.drain_releases();
-    Ok(crate::runtime::materialize::value(plan, &state, value))
+    crate::runtime::materialize::value(plan, &state, value)
 }
 
 pub(super) fn run_int_call(

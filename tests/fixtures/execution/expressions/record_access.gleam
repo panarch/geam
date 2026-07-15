@@ -7,4 +7,4 @@ pub fn main() {
   person.name
 }
 
-// geam:reject unsupported expression: record access
+// geam:expect String("Lucy")

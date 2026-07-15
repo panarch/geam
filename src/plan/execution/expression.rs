@@ -2,6 +2,7 @@ mod arg;
 mod bit_array;
 mod bool;
 mod custom;
+mod custom_field;
 mod float;
 mod function;
 mod int;
@@ -34,6 +35,7 @@ pub(crate) use self::{
     bit_array::{BitArrayExprKind, BitArraySegment, Endianness, FloatBitSize, StringEncoding},
     bool::BoolExprKind,
     custom::CustomExprKind,
+    custom_field::CustomFieldAccess,
     float::FloatExprKind,
     function::{
         BitArrayFunctionExprKind, BoolFunctionExprKind, CustomFunctionExprKind,

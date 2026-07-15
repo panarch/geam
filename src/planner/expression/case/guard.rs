@@ -8,7 +8,7 @@ use crate::plan::{
 use crate::planner::context::{FunctionLocalBinding, PlanContext};
 use crate::planner::error::{
     InvalidExpressionShapeKind, InvalidExpressionType, InvalidTypedAstReason, PlanError,
-    UnsupportedBinOpKind, UnsupportedExpressionKind,
+    UnsupportedBinOpKind,
 };
 use ecow::EcoString;
 use gleam_core::ast::{BinOp, ClauseGuard};
@@ -57,9 +57,27 @@ fn plan_expr(
         ClauseGuard::ModuleSelect { .. } => {
             invalid_expression_shape(InvalidExpressionShapeKind::ModuleSelect)
         }
-        ClauseGuard::FieldAccess { .. } => Err(PlanError::UnsupportedExpression {
-            kind: UnsupportedExpressionKind::RecordAccess,
-        }),
+        ClauseGuard::FieldAccess {
+            index: Some(index),
+            label,
+            type_,
+            container,
+            ..
+        } => {
+            let container_type = container.type_();
+            let container = plan_expr(*container, context)?;
+            super::super::record_access::plan_from_expr(
+                type_,
+                Some(label),
+                index,
+                container_type,
+                container,
+                context,
+            )
+        }
+        ClauseGuard::FieldAccess { index: None, .. } => {
+            invalid_expression_shape(InvalidExpressionShapeKind::RecordAccess)
+        }
         ClauseGuard::Invalid { .. } => {
             invalid_expression_shape(InvalidExpressionShapeKind::Invalid)
         }
@@ -403,7 +421,7 @@ mod tests {
     use crate::planner::support::dummy_span;
     use crate::planner::{
         InvalidExpressionShapeKind, InvalidExpressionType, InvalidTypedAstReason, PlanError,
-        UnsupportedBinOpKind, UnsupportedExpressionKind,
+        UnsupportedBinOpKind,
     };
     use ecow::EcoString;
     use gleam_core::ast::{BinOp, ClauseGuard, Constant, Publicity};
@@ -520,9 +538,43 @@ mod tests {
                 },
                 &mut context,
             ),
-            Err(PlanError::UnsupportedExpression {
-                kind: UnsupportedExpressionKind::RecordAccess,
-            }),
+            Err(expression_type_error(
+                InvalidExpressionType::Custom,
+                InvalidExpressionType::Int,
+            )),
+        );
+        assert_eq!(
+            plan_expr(
+                ClauseGuard::FieldAccess {
+                    label_location: dummy_span(),
+                    index: Some(0),
+                    label: "field".into(),
+                    type_: type_::int(),
+                    container: Box::new(ClauseGuard::Invalid {
+                        location: dummy_span(),
+                        type_: type_::int(),
+                    }),
+                },
+                &mut context,
+            ),
+            Err(invalid_expression_shape(
+                InvalidExpressionShapeKind::Invalid,
+            )),
+        );
+        assert_eq!(
+            plan_expr(
+                ClauseGuard::FieldAccess {
+                    label_location: dummy_span(),
+                    index: None,
+                    label: "field".into(),
+                    type_: type_::int(),
+                    container: Box::new(int_constant(1)),
+                },
+                &mut context,
+            ),
+            Err(invalid_expression_shape(
+                InvalidExpressionShapeKind::RecordAccess,
+            )),
         );
         assert_eq!(
             plan_expr(

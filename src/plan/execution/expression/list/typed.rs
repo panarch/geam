@@ -1,6 +1,7 @@
 use super::{ListItem, ListListExpr};
 use crate::plan::execution::{
-    BoolExpr, CallArg, FloatExpr, IntExpr, ListFunctionExpr, PanicExpr, Step, StringExpr, TupleExpr,
+    BoolExpr, CallArg, CustomFieldAccess, FloatExpr, IntExpr, ListFunctionExpr, PanicExpr, Step,
+    StringExpr, TupleExpr,
 };
 use ecow::EcoString;
 use num_bigint::BigInt;
@@ -38,6 +39,7 @@ pub(crate) enum TypedListExprKind<Item: ListItem> {
         tuple: Box<TupleExpr>,
         index: usize,
     },
+    CustomField(CustomFieldAccess),
     ListIndex(ListIndexSource<Item>),
     DropFirst {
         list: Box<TypedListExprKind<Item>>,

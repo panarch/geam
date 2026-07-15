@@ -1,6 +1,6 @@
 use super::{
-    BoolExpr, CallArg, FloatExpr, IntExpr, NilFunctionExpr, NilListExpr, PanicExpr, StringExpr,
-    TupleExpr,
+    BoolExpr, CallArg, CustomFieldAccess, FloatExpr, IntExpr, NilFunctionExpr, NilListExpr,
+    PanicExpr, StringExpr, TupleExpr,
 };
 use crate::plan::{NilFunctionId, NilLocalId, Step};
 use ecow::EcoString;
@@ -30,6 +30,7 @@ pub(crate) enum NilExprKind {
         tuple: Box<TupleExpr>,
         index: usize,
     },
+    CustomField(CustomFieldAccess),
     ListIndex {
         list: Box<NilListExpr>,
         index: usize,
@@ -95,6 +96,12 @@ impl NilExpr {
                 tuple: Box::new(tuple),
                 index,
             },
+        }
+    }
+
+    pub(crate) fn custom_field(access: CustomFieldAccess) -> Self {
+        Self {
+            kind: NilExprKind::CustomField(access),
         }
     }
 

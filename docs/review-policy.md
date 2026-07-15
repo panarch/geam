@@ -62,10 +62,16 @@ Typed projections have the following approved execution invariants:
   evaluation when the runtime list value lacks the planner-selected element.
   Source-reachable list matching must guard list-index projections with the
   planner-selected length condition.
-- `ExecutionError::CustomFieldFamilyMismatch` is only for planner-selected
-  custom constructor field binding when the runtime field has a different
-  value family. It must not represent constructor arity or discriminant
-  mismatch.
+- `ExecutionError::CustomFieldFamilyMismatch` is only for a planner-selected
+  custom field projection or binding whose runtime field has a different
+  exact value type.
+- `ExecutionError::CustomFieldArityMismatch` is only for a custom payload whose
+  field count differs from its constructor descriptor. Materialization and
+  nested binding must propagate it without truncation.
+- `ExecutionError::CustomFieldDiscriminantMismatch` is only for total custom
+  binding or field projection when the runtime type or constructor is outside
+  the planner-selected set. Refutable pattern mismatch remains normal
+  fallthrough.
 
 List item-family identity must be preserved by the execution list type graph,
 family-specific frame/function boundaries, and RC-backed typed runtime handles.

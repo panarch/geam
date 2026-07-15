@@ -1,3 +1,4 @@
+use super::eval_custom_field_function;
 use crate::plan::ValueType;
 use crate::plan::execution::ExecutionPlan;
 use crate::plan::execution::{FunctionReturnFamily, TupleFunctionExpr, TupleFunctionExprKind};
@@ -66,6 +67,23 @@ pub(in crate::runtime) fn eval_tuple_function_expr(
                     expected: ValueType::Function(Box::new(plan.function_type(type_))),
                     actual: other.value_type(plan),
                 }),
+            }
+        }
+        TupleFunctionExprKind::CustomField(access) => {
+            let (constructor, expected, function) =
+                eval_custom_field_function(plan, state, frame, access)?;
+            match function.kind() {
+                EvaluatedFunctionValueKind::Tuple(value) => Ok(value.clone()),
+                _ => {
+                    let descriptor = plan.custom_constructor(constructor);
+                    Err(ExecutionError::CustomFieldFamilyMismatch {
+                        custom_type: plan.custom_value_type(constructor.type_id()),
+                        constructor: descriptor.name().clone(),
+                        field_index: access.index(),
+                        expected,
+                        actual: ValueType::Function(Box::new(plan.function_type(function.type_()))),
+                    })
+                }
             }
         }
         TupleFunctionExprKind::ListIndex { list, index, type_ } => {

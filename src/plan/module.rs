@@ -25,12 +25,12 @@ pub use expression::{
 pub(crate) use expression::{
     BitArrayExprKind, BitArrayFunctionExprKind, BitArraySegment, BoolCaseBranches, BoolExprKind,
     BoolFunctionExprKind, CallArgKind, CaptureArg, CaptureArgKind, CustomExprKind,
-    CustomFunctionExprKind, Endianness, ExprKind, FloatBitSize, FloatCaseBranches, FloatExprKind,
-    FloatFunctionExprKind, FunctionExprKind, FunctionFunctionExprKind, IntCaseBranches,
-    IntExprKind, IntFunctionExprKind, ListElements, ListFunctionExprKind, NilExprKind,
-    NilFunctionExprKind, PanicExpr, PanicExprKind, StringCaseBranches, StringEncoding,
-    StringExprKind, StringFunctionExprKind, TupleExprKind, TupleFunctionExprKind,
-    UtfCodepointExprKind, UtfCodepointFunctionExprKind,
+    CustomFieldAccess, CustomFunctionExprKind, Endianness, ExprKind, FloatBitSize,
+    FloatCaseBranches, FloatExprKind, FloatFunctionExprKind, FunctionExprKind,
+    FunctionFunctionExprKind, IntCaseBranches, IntExprKind, IntFunctionExprKind, ListElements,
+    ListFunctionExprKind, NilExprKind, NilFunctionExprKind, PanicExpr, PanicExprKind,
+    StringCaseBranches, StringEncoding, StringExprKind, StringFunctionExprKind, TupleExprKind,
+    TupleFunctionExprKind, UtfCodepointExprKind, UtfCodepointFunctionExprKind,
 };
 pub(crate) use expression::{
     BitArrayListExpr, BitArrayListItem, BoolListCaseBranches, BoolListExpr, BoolListItem,

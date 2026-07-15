@@ -1,6 +1,6 @@
 use super::{
-    BitArrayFunctionExpr, BitArrayListExpr, BoolExpr, CallArg, FloatExpr, IntExpr, PanicExpr,
-    StringExpr, TupleExpr, UtfCodepointExpr,
+    BitArrayFunctionExpr, BitArrayListExpr, BoolExpr, CallArg, CustomFieldAccess, FloatExpr,
+    IntExpr, PanicExpr, StringExpr, TupleExpr, UtfCodepointExpr,
 };
 use crate::plan::{BitArrayFunctionId, BitArrayLocalId, Step};
 use ecow::EcoString;
@@ -73,6 +73,7 @@ pub(crate) enum BitArrayExprKind {
         tuple: Box<TupleExpr>,
         index: usize,
     },
+    CustomField(CustomFieldAccess),
     ListIndex {
         list: Box<BitArrayListExpr>,
         index: usize,
@@ -129,6 +130,10 @@ impl BitArrayExpr {
             tuple: Box::new(tuple),
             index,
         })
+    }
+
+    pub(crate) fn custom_field(access: CustomFieldAccess) -> Self {
+        Self::new(BitArrayExprKind::CustomField(access))
     }
 
     pub(crate) fn list_index(list: BitArrayListExpr, index: usize) -> Self {

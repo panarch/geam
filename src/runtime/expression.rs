@@ -1,6 +1,7 @@
 mod bit_array;
 mod bool;
 mod custom;
+mod custom_field;
 mod float;
 mod function;
 mod int;
@@ -22,6 +23,7 @@ pub(super) use self::{
     bit_array::eval_bit_array_expr,
     bool::eval_bool_expr,
     custom::eval_custom_expr,
+    custom_field::eval_custom_field,
     float::eval_float_expr,
     function::{
         eval_bit_array_function_expr, eval_bool_function_expr, eval_custom_function_expr,

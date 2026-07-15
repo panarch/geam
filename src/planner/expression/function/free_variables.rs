@@ -193,8 +193,8 @@ fn collect_expr(expression: &TypedExpr, bound: &mut HashSet<EcoString>, free: &m
                 }
             }
         }
-        TypedExpr::RecordAccess { .. }
-        | TypedExpr::PositionalAccess { .. }
+        TypedExpr::RecordAccess { record, .. } => collect_expr(record, bound, free),
+        TypedExpr::PositionalAccess { .. }
         | TypedExpr::Echo { .. }
         | TypedExpr::RecordUpdate { .. }
         | TypedExpr::ModuleSelect { .. } => {}
@@ -513,6 +513,26 @@ pub fn main() {
 "#,
             ),
             vec!["value".to_string(), "size".to_string()],
+        );
+    }
+
+    #[test]
+    fn anonymous_free_variables_include_record_access_source() {
+        assert_eq!(
+            anonymous_function_free_variables(
+                r#"
+type Boxed {
+  Boxed(value: Int)
+}
+
+pub fn main() {
+  let boxed = Boxed(1)
+  fn() { boxed.value }
+  1
+}
+"#,
+            ),
+            vec!["boxed".to_string()],
         );
     }
 

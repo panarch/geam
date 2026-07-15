@@ -1,5 +1,5 @@
 use super::{
-    BoolExpr, CallArg, FloatExpr, IntExpr, PanicExpr, StringExpr, TupleExpr,
+    BoolExpr, CallArg, CustomFieldAccess, FloatExpr, IntExpr, PanicExpr, StringExpr, TupleExpr,
     UtfCodepointFunctionExpr, UtfCodepointListExpr,
 };
 use crate::plan::execution::{Step, UtfCodepointFunctionId, UtfCodepointLocalId};
@@ -26,6 +26,7 @@ pub(crate) enum UtfCodepointExprKind {
         tuple: Box<TupleExpr>,
         index: usize,
     },
+    CustomField(CustomFieldAccess),
     ListIndex {
         list: Box<UtfCodepointListExpr>,
         index: usize,

@@ -1,3 +1,4 @@
+use crate::plan::CustomFieldAccess;
 use crate::plan::{
     BoolExpr, CaptureArg, FloatExpr, FunctionFunctionExpr, FunctionListExpr, FunctionType, IntExpr,
     PanicExpr, ParamLocal, Step, StringExpr, TupleExpr, UtfCodepointFunctionFunctionId,
@@ -39,6 +40,7 @@ pub(crate) enum UtfCodepointFunctionExprKind {
         index: usize,
         type_: FunctionType,
     },
+    CustomField(CustomFieldAccess),
     ListIndex {
         list: Box<FunctionListExpr>,
         index: usize,
@@ -148,6 +150,13 @@ impl UtfCodepointFunctionExpr {
                 index,
                 type_,
             },
+        }
+    }
+
+    pub(crate) fn custom_field(access: CustomFieldAccess, type_: FunctionType) -> Self {
+        Self {
+            type_,
+            kind: UtfCodepointFunctionExprKind::CustomField(access),
         }
     }
 

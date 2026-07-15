@@ -1,3 +1,4 @@
+use super::eval_custom_field_function;
 use crate::plan::ValueType;
 use crate::plan::execution::{
     ExecutionPlan, FunctionReturnFamily, UtfCodepointFunctionExpr, UtfCodepointFunctionExprKind,
@@ -73,6 +74,23 @@ pub(in crate::runtime) fn eval_utf_codepoint_function_expr(
                     _ => Err(ExecutionError::TupleIndexFamilyMismatch { expected, actual }),
                 },
                 _ => Err(ExecutionError::TupleIndexFamilyMismatch { expected, actual }),
+            }
+        }
+        UtfCodepointFunctionExprKind::CustomField(access) => {
+            let (constructor, expected, function) =
+                eval_custom_field_function(plan, state, frame, access)?;
+            match function.kind() {
+                EvaluatedFunctionValueKind::UtfCodepoint(value) => Ok(value.clone()),
+                _ => {
+                    let descriptor = plan.custom_constructor(constructor);
+                    Err(ExecutionError::CustomFieldFamilyMismatch {
+                        custom_type: plan.custom_value_type(constructor.type_id()),
+                        constructor: descriptor.name().clone(),
+                        field_index: access.index(),
+                        expected,
+                        actual: ValueType::Function(Box::new(plan.function_type(function.type_()))),
+                    })
+                }
             }
         }
         UtfCodepointFunctionExprKind::ListIndex { list, index, type_ } => {

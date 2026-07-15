@@ -2,9 +2,9 @@ use ecow::EcoString;
 use num_bigint::BigInt;
 
 use super::{
-    eval_bit_array_expr, eval_bool_expr, eval_custom_expr, eval_float_expr, eval_function_expr,
-    eval_int_expr, eval_nil_expr, eval_panic_expr, eval_string_expr, eval_tuple_expr,
-    eval_utf_codepoint_expr, project_tuple_expr,
+    eval_bit_array_expr, eval_bool_expr, eval_custom_expr, eval_custom_field, eval_float_expr,
+    eval_function_expr, eval_int_expr, eval_nil_expr, eval_panic_expr, eval_string_expr,
+    eval_tuple_expr, eval_utf_codepoint_expr, project_tuple_expr,
 };
 use crate::plan::execution::{
     BitArrayListExpr, BitArrayListItem, BoolListExpr, BoolListItem, CustomListExpr, CustomListItem,
@@ -215,6 +215,35 @@ fn eval_typed_list_expr_kind<Item: RuntimeListItem>(
                     expected,
                     actual: other.value_type(plan),
                 }),
+            }
+        }
+        TypedListExprKind::CustomField(access) => {
+            let expected = plan.list_value_type(item.list_type());
+            let (constructor, value) = eval_custom_field(plan, state, frame, access)?;
+            match value {
+                EvaluatedValue::List(value) => {
+                    let actual = plan.list_value_type(value.list_type());
+                    Item::from_tuple_value(value).ok_or_else(|| {
+                        let descriptor = plan.custom_constructor(constructor);
+                        ExecutionError::CustomFieldFamilyMismatch {
+                            custom_type: plan.custom_value_type(constructor.type_id()),
+                            constructor: descriptor.name().clone(),
+                            field_index: access.index(),
+                            expected,
+                            actual,
+                        }
+                    })
+                }
+                other => {
+                    let descriptor = plan.custom_constructor(constructor);
+                    Err(ExecutionError::CustomFieldFamilyMismatch {
+                        custom_type: plan.custom_value_type(constructor.type_id()),
+                        constructor: descriptor.name().clone(),
+                        field_index: access.index(),
+                        expected,
+                        actual: other.value_type(plan),
+                    })
+                }
             }
         }
         TypedListExprKind::ListIndex(source) => {

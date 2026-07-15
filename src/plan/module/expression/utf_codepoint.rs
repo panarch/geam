@@ -1,5 +1,5 @@
 use super::{
-    BoolExpr, CallArg, FloatExpr, IntExpr, PanicExpr, StringExpr, TupleExpr,
+    BoolExpr, CallArg, CustomFieldAccess, FloatExpr, IntExpr, PanicExpr, StringExpr, TupleExpr,
     UtfCodepointFunctionExpr, UtfCodepointListExpr,
 };
 use crate::plan::{Step, UtfCodepointFunctionId, UtfCodepointLocalId};
@@ -29,6 +29,7 @@ pub(crate) enum UtfCodepointExprKind {
         tuple: Box<TupleExpr>,
         index: usize,
     },
+    CustomField(CustomFieldAccess),
     ListIndex {
         list: Box<UtfCodepointListExpr>,
         index: usize,
@@ -81,6 +82,10 @@ impl UtfCodepointExpr {
             tuple: Box::new(tuple),
             index,
         })
+    }
+
+    pub(crate) fn custom_field(access: CustomFieldAccess) -> Self {
+        Self::new(UtfCodepointExprKind::CustomField(access))
     }
 
     pub(crate) fn list_index(list: UtfCodepointListExpr, index: usize) -> Self {

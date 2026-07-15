@@ -78,6 +78,9 @@ mod expressions {
         bit_array_float_16,
         list_bit_array_element,
         list_utf_codepoint_element,
+        record_access,
+        record_access_combinations,
+        record_access_families,
         result_constructor,
     );
 }
@@ -572,7 +575,6 @@ mod rejection {
             bit_array_dynamic_size,
             bit_array_sized_bits,
             polymorphic_custom_constructor,
-            record_access,
             record_update,
         );
     }

@@ -44,8 +44,6 @@ pub enum UnsupportedExpressionKind {
     Echo,
     #[error("generic function")]
     GenericFunction,
-    #[error("record access")]
-    RecordAccess,
     #[error("record update")]
     RecordUpdate,
     #[error("list element type is not supported")]

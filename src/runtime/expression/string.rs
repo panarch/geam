@@ -1,6 +1,6 @@
 use super::{
-    eval_bool_expr, eval_float_expr, eval_int_expr, eval_panic_expr, project_string_list_expr,
-    project_tuple_expr,
+    eval_bool_expr, eval_custom_field, eval_float_expr, eval_int_expr, eval_panic_expr,
+    project_string_list_expr, project_tuple_expr,
 };
 use crate::plan::ValueType;
 use crate::plan::execution::ExecutionPlan;
@@ -34,6 +34,22 @@ pub(in crate::runtime) fn eval_string_expr(
                     expected: ValueType::String,
                     actual: other.value_type(plan),
                 }),
+            }
+        }
+        StringExprKind::CustomField(access) => {
+            let (constructor, value) = eval_custom_field(plan, state, frame, access)?;
+            match value {
+                EvaluatedValue::String(value) => Ok(value),
+                other => {
+                    let descriptor = plan.custom_constructor(constructor);
+                    Err(ExecutionError::CustomFieldFamilyMismatch {
+                        custom_type: plan.custom_value_type(constructor.type_id()),
+                        constructor: descriptor.name().clone(),
+                        field_index: access.index(),
+                        expected: ValueType::String,
+                        actual: other.value_type(plan),
+                    })
+                }
             }
         }
         StringExprKind::ListIndex { list, index } => {

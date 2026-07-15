@@ -1,5 +1,6 @@
 use super::{
-    BoolExpr, CallArg, FloatFunctionExpr, FloatListExpr, IntExpr, PanicExpr, StringExpr, TupleExpr,
+    BoolExpr, CallArg, CustomFieldAccess, FloatFunctionExpr, FloatListExpr, IntExpr, PanicExpr,
+    StringExpr, TupleExpr,
 };
 use crate::plan::execution::{FloatFunctionId, FloatLocalId, Step};
 use ecow::EcoString;
@@ -26,6 +27,7 @@ pub(crate) enum FloatExprKind {
         tuple: Box<TupleExpr>,
         index: usize,
     },
+    CustomField(CustomFieldAccess),
     ListIndex {
         list: Box<FloatListExpr>,
         index: usize,

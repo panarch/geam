@@ -11,10 +11,10 @@ mod tuple;
 mod utf_codepoint;
 
 use crate::plan::{
-    BitArrayFunctionReference, BoolFunctionReference, CustomFunctionReference,
+    BitArrayFunctionReference, BoolFunctionReference, CustomFieldAccess, CustomFunctionReference,
     FloatFunctionReference, FunctionFunctionReference, FunctionReference, FunctionType,
     IntFunctionReference, ListFunctionReference, NilFunctionReference, RuntimeFunctionId,
-    StringFunctionReference, TupleFunctionReference, UtfCodepointFunctionReference,
+    StringFunctionReference, TupleFunctionReference, UtfCodepointFunctionReference, ValueType,
 };
 
 pub use self::{
@@ -52,6 +52,30 @@ pub(crate) enum FunctionExprKind {
 }
 
 impl FunctionExpr {
+    pub(crate) fn custom_field(access: CustomFieldAccess, type_: FunctionType) -> Self {
+        match type_.return_().clone() {
+            ValueType::Int => Self::int(IntFunctionExpr::custom_field(access, type_)),
+            ValueType::String => Self::string(StringFunctionExpr::custom_field(access, type_)),
+            ValueType::BitArray => {
+                Self::bit_array(BitArrayFunctionExpr::custom_field(access, type_))
+            }
+            ValueType::UtfCodepoint => {
+                Self::utf_codepoint(UtfCodepointFunctionExpr::custom_field(access, type_))
+            }
+            ValueType::Custom(_) => Self::custom(CustomFunctionExpr::custom_field(access, type_)),
+            ValueType::Float => Self::float(FloatFunctionExpr::custom_field(access, type_)),
+            ValueType::Bool => Self::bool(BoolFunctionExpr::custom_field(access, type_)),
+            ValueType::Nil => Self::nil(NilFunctionExpr::custom_field(access, type_)),
+            ValueType::Tuple(_) => Self::tuple(TupleFunctionExpr::custom_field(access, type_)),
+            ValueType::List(item_type) => {
+                Self::list(ListFunctionExpr::custom_field(access, type_, *item_type))
+            }
+            ValueType::Function(_) => {
+                Self::function(FunctionFunctionExpr::custom_field(access, type_))
+            }
+        }
+    }
+
     pub(crate) fn reference(reference: FunctionReference) -> Self {
         let (runtime_id, params) = reference.into_parts();
         match runtime_id {

@@ -6,6 +6,7 @@ mod constant;
 mod function;
 mod operator;
 mod pipeline;
+mod record_access;
 mod var;
 
 use crate::plan::{
@@ -84,9 +85,13 @@ pub(super) fn plan_expr(
             clauses,
             ..
         } => case::plan_case(type_, subjects, clauses, context),
-        TypedExpr::RecordAccess { .. } => Err(PlanError::UnsupportedExpression {
-            kind: UnsupportedExpressionKind::RecordAccess,
-        }),
+        TypedExpr::RecordAccess {
+            type_,
+            label,
+            index,
+            record,
+            ..
+        } => record_access::plan(type_, label, index, *record, context),
         TypedExpr::PositionalAccess { .. } => Err(PlanError::InvalidTypedAst {
             reason: InvalidTypedAstReason::ExpressionShape {
                 kind: InvalidExpressionShapeKind::PositionalAccess,
@@ -1183,20 +1188,6 @@ pub fn main() {
             ),
             (
                 r#"
-pub type Boxed {
-  Boxed(value: Int)
-}
-
-pub fn main() {
-  Boxed(1).value
-}
-"#,
-                PlanError::UnsupportedExpression {
-                    kind: UnsupportedExpressionKind::RecordAccess,
-                },
-            ),
-            (
-                r#"
 pub type Person {
   Person(name: String, age: Int)
 }
@@ -1208,24 +1199,6 @@ pub fn main() {
 "#,
                 PlanError::UnsupportedExpression {
                     kind: UnsupportedExpressionKind::RecordUpdate,
-                },
-            ),
-            (
-                r#"
-pub type Person {
-  Person(name: String, age: Int)
-}
-
-pub fn main() {
-  let person = Person(name: "Lucy", age: 30)
-  case person {
-    Person(..) if person.age > 0 -> 1
-    _ -> 0
-  }
-}
-"#,
-                PlanError::UnsupportedExpression {
-                    kind: UnsupportedExpressionKind::RecordAccess,
                 },
             ),
         ];

@@ -1,6 +1,6 @@
 use super::{
-    BoolFunctionExpr, BoolListExpr, CallArg, CustomExpr, Expr, FloatExpr, IntExpr, ListExpr,
-    PanicExpr, StringExpr, TupleExpr,
+    BoolFunctionExpr, BoolListExpr, CallArg, CustomExpr, CustomFieldAccess, Expr, FloatExpr,
+    IntExpr, ListExpr, PanicExpr, StringExpr, TupleExpr,
 };
 use crate::plan::{AssertPattern, BitArrayExpr, BitArrayPattern};
 use crate::plan::{BoolFunctionId, BoolLocalId, Step};
@@ -31,6 +31,7 @@ pub(crate) enum BoolExprKind {
         tuple: Box<TupleExpr>,
         index: usize,
     },
+    CustomField(CustomFieldAccess),
     ListIndex {
         list: Box<BoolListExpr>,
         index: usize,
@@ -165,6 +166,12 @@ impl BoolExpr {
                 tuple: Box::new(tuple),
                 index,
             },
+        }
+    }
+
+    pub(crate) fn custom_field(access: CustomFieldAccess) -> Self {
+        Self {
+            kind: BoolExprKind::CustomField(access),
         }
     }
 
