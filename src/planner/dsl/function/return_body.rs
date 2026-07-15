@@ -48,10 +48,7 @@ pub(crate) enum FunctionReturn {
         type_: FunctionType,
         body: UtfCodepointFunctionReturn,
     },
-    CustomFunction {
-        type_: FunctionType,
-        body: CustomFunctionReturn,
-    },
+    CustomFunction(CustomFunctionReturn),
     FloatFunction {
         type_: FunctionType,
         body: FloatFunctionReturn,
@@ -73,10 +70,7 @@ pub(crate) enum FunctionReturn {
         type_: FunctionType,
         body: ListFunctionReturn,
     },
-    FunctionFunction {
-        type_: FunctionType,
-        body: FunctionFunctionReturn,
-    },
+    FunctionFunction(FunctionFunctionReturn),
 }
 
 impl FunctionReturn {
@@ -148,8 +142,9 @@ impl FunctionReturn {
                 type_,
                 body,
             ),
-            Self::CustomFunction { type_, body } => {
-                ReturnExpr::custom_function_body(runtime_ids.next_custom_function_id(), type_, body)
+            Self::CustomFunction(body) => {
+                let runtime_id = runtime_ids.next_custom_function_id(body.type_().clone());
+                ReturnExpr::custom_function_body(runtime_id.index(), body)
             }
             Self::FloatFunction { type_, body } => {
                 ReturnExpr::float_function_body(runtime_ids.next_float_function_id(), type_, body)
@@ -171,11 +166,10 @@ impl FunctionReturn {
                 runtime_ids.next_list_function_id(type_, item_type),
                 body,
             ),
-            Self::FunctionFunction { type_, body } => ReturnExpr::function_function_body(
-                runtime_ids.next_function_function_id(),
-                type_,
-                body,
-            ),
+            Self::FunctionFunction(body) => {
+                let runtime_id = runtime_ids.next_function_function_id(body.type_().clone());
+                ReturnExpr::function_function_body(runtime_id.index(), body)
+            }
         }
     }
 }
@@ -186,10 +180,10 @@ mod tests {
     use crate::plan::module::CustomListReturn;
     use crate::plan::{
         BitArrayFunctionFunctionId, BitArrayFunctionId, BoolFunctionFunctionId, BoolFunctionId,
-        CustomExpr, CustomFunctionExpr, CustomFunctionFunctionId, CustomFunctionId,
-        CustomFunctionLocalId, CustomListFunctionId, CustomLocalId, CustomReturn, CustomType,
-        CustomTypeName, Expr, FloatFunctionFunctionId, FloatFunctionId, FunctionFunctionFunctionId,
-        FunctionFunctionId, FunctionType, IntFunctionFunctionId, IntFunctionId,
+        CustomExpr, CustomFunctionExpr, CustomFunctionId, CustomFunctionLocalId,
+        CustomFunctionReturn, CustomListFunctionId, CustomLocalId, CustomReturn, CustomType,
+        CustomTypeName, Expr, FloatFunctionFunctionId, FloatFunctionId, FunctionFunctionId,
+        FunctionFunctionReturn, FunctionType, IntFunctionFunctionId, IntFunctionId,
         ListFunctionFunctionId, NilFunctionFunctionId, NilFunctionId, ParamLocal, ReturnBody,
         ReturnExpr, StringFunctionFunctionId, StringFunctionId, TupleFunctionFunctionId,
         TupleFunctionId, UtfCodepointFunctionFunctionId, UtfCodepointFunctionId, ValueType,
@@ -504,15 +498,8 @@ mod tests {
             ))
             .build(&mut runtime_ids),
             ReturnExpr::function_function_body(
-                FunctionFunctionFunctionId(0),
-                FunctionType::new(
-                    Vec::new(),
-                    ValueType::Function(Box::new(FunctionType::new(
-                        vec![ValueType::Int],
-                        ValueType::Int,
-                    ))),
-                ),
-                ReturnBody::expr(
+                0,
+                FunctionFunctionReturn::expr(
                     function_function_ref(
                         FunctionFunctionId::Int(IntFunctionFunctionId(1)),
                         Vec::<ParamLocal>::new(),
@@ -558,23 +545,15 @@ mod tests {
             ),
         );
 
-        let function_type = FunctionType::new(Vec::new(), ValueType::Custom(custom_type()));
+        let function_type = crate::plan::CustomFunctionType::new(Vec::new(), custom_type());
         let custom_function = CustomFunctionExpr::local_get(
-            CustomFunctionLocalId(0),
+            crate::plan::CustomFunctionLocal::new(CustomFunctionLocalId(0), function_type.clone()),
             "function".into(),
-            function_type.clone(),
         );
         assert_eq!(
-            FunctionReturn::CustomFunction {
-                type_: function_type.clone(),
-                body: ReturnBody::expr(custom_function.clone()),
-            }
-            .build(&mut runtime_ids),
-            ReturnExpr::custom_function_body(
-                CustomFunctionFunctionId(0),
-                function_type,
-                ReturnBody::expr(custom_function),
-            ),
+            FunctionReturn::CustomFunction(CustomFunctionReturn::expr(custom_function.clone()))
+                .build(&mut runtime_ids),
+            ReturnExpr::custom_function_body(0, CustomFunctionReturn::expr(custom_function),),
         );
     }
 }

@@ -1,9 +1,10 @@
 use super::FunctionReturn;
 use crate::plan::{
-    BitArrayFunctionExpr, BitArrayReturn, BoolFunctionExpr, BoolReturn, FloatFunctionExpr,
-    FloatReturn, FunctionExpr, FunctionExprKind, FunctionFunctionExpr, IntFunctionExpr, IntReturn,
-    ListFunctionExpr, ListReturn, NilFunctionExpr, NilReturn, ReturnBody, StringFunctionExpr,
-    StringReturn, TupleFunctionExpr, TupleReturn, UtfCodepointFunctionExpr, UtfCodepointReturn,
+    BitArrayFunctionExpr, BitArrayReturn, BoolFunctionExpr, BoolReturn, CustomFunctionReturn,
+    FloatFunctionExpr, FloatReturn, FunctionExpr, FunctionExprKind, FunctionFunctionExpr,
+    FunctionFunctionReturn, IntFunctionExpr, IntReturn, ListFunctionExpr, ListReturn,
+    NilFunctionExpr, NilReturn, ReturnBody, StringFunctionExpr, StringReturn, TupleFunctionExpr,
+    TupleReturn, UtfCodepointFunctionExpr, UtfCodepointReturn,
 };
 use crate::planner::dsl::expression::{
     BitArray, BitArrayFunction, Bool, BoolFunction, Float, FloatFunction, Function,
@@ -163,11 +164,9 @@ impl From<ListFunction> for FunctionReturn {
 
 impl From<FunctionFunction> for FunctionReturn {
     fn from(value: FunctionFunction) -> Self {
-        let expression = FunctionFunctionExpr::from(value);
-        Self::FunctionFunction {
-            type_: expression.type_().clone(),
-            body: ReturnBody::expr(expression),
-        }
+        Self::FunctionFunction(FunctionFunctionReturn::expr(FunctionFunctionExpr::from(
+            value,
+        )))
     }
 }
 
@@ -190,10 +189,9 @@ impl From<Function> for FunctionReturn {
                 type_: expression.type_().clone(),
                 body: ReturnBody::expr(expression),
             },
-            FunctionExprKind::Custom(expression) => Self::CustomFunction {
-                type_: expression.type_().clone(),
-                body: ReturnBody::expr(expression),
-            },
+            FunctionExprKind::Custom(expression) => {
+                Self::CustomFunction(CustomFunctionReturn::expr(expression))
+            }
             FunctionExprKind::Float(expression) => Self::FloatFunction {
                 type_: expression.type_().clone(),
                 body: ReturnBody::expr(expression),
@@ -215,10 +213,9 @@ impl From<Function> for FunctionReturn {
                 type_: expression.type_().clone(),
                 body: ReturnBody::expr(expression),
             },
-            FunctionExprKind::Function(expression) => Self::FunctionFunction {
-                type_: expression.type_().clone(),
-                body: ReturnBody::expr(expression),
-            },
+            FunctionExprKind::Function(expression) => {
+                Self::FunctionFunction(FunctionFunctionReturn::expr(expression))
+            }
         }
     }
 }
@@ -270,11 +267,12 @@ mod tests {
     use super::FunctionReturn;
     use crate::plan::{
         BitArrayFunctionId, BitArrayReturn, BoolFunctionId, BoolReturn, CustomFunctionExpr,
-        CustomFunctionId, CustomFunctionReference, CustomType, CustomTypeName, Expr,
-        FloatFunctionId, FloatReturn, FunctionFunctionId, FunctionType, IntFunctionFunctionId,
-        IntFunctionId, IntReturn, ListFunctionId, ListReturn, NilFunctionId, NilReturn, ParamLocal,
-        ReturnBody, RuntimeFunctionId, StringFunctionId, StringReturn, TupleFunctionId,
-        UtfCodepointFunctionId, UtfCodepointReturn, ValueType,
+        CustomFunctionId, CustomFunctionReference, CustomFunctionReturn, CustomType,
+        CustomTypeName, Expr, FloatFunctionId, FloatReturn, FunctionFunctionId,
+        FunctionFunctionReturn, FunctionType, IntFunctionFunctionId, IntFunctionId, IntReturn,
+        ListFunctionId, ListReturn, NilFunctionId, NilReturn, ParamLocal, ReturnBody,
+        RuntimeFunctionId, StringFunctionId, StringReturn, TupleFunctionId, UtfCodepointFunctionId,
+        UtfCodepointReturn, ValueType,
     };
     use crate::planner::dsl::expression::{
         bit_array, bit_array_function_ref, bool_, bool_function_ref, float, float_function_ref,
@@ -349,7 +347,6 @@ mod tests {
 
     #[test]
     fn custom_conversions_build_exact_function_return_family() {
-        let function_type = FunctionType::new(Vec::new(), ValueType::Custom(custom_type()));
         assert_eq!(
             FunctionReturn::from(function_ref(
                 RuntimeFunctionId::Custom {
@@ -358,13 +355,12 @@ mod tests {
                 },
                 Vec::<ParamLocal>::new(),
             )),
-            FunctionReturn::CustomFunction {
-                type_: function_type,
-                body: ReturnBody::expr(CustomFunctionExpr::reference(
+            FunctionReturn::CustomFunction(CustomFunctionReturn::expr(
+                CustomFunctionExpr::reference(
                     CustomFunctionReference::new(CustomFunctionId(0), Vec::new()),
                     custom_type(),
-                )),
-            },
+                ),
+            )),
         );
     }
 
@@ -454,23 +450,14 @@ mod tests {
                 Vec::<ParamLocal>::new(),
                 FunctionType::new(vec![ValueType::Int], ValueType::Int),
             )),
-            FunctionReturn::FunctionFunction {
-                type_: FunctionType::new(
-                    Vec::new(),
-                    ValueType::Function(Box::new(FunctionType::new(
-                        vec![ValueType::Int],
-                        ValueType::Int,
-                    ))),
-                ),
-                body: ReturnBody::expr(
-                    function_function_ref(
-                        FunctionFunctionId::Int(IntFunctionFunctionId(0)),
-                        Vec::<ParamLocal>::new(),
-                        FunctionType::new(vec![ValueType::Int], ValueType::Int),
-                    )
-                    .into(),
-                ),
-            },
+            FunctionReturn::FunctionFunction(FunctionFunctionReturn::expr(
+                function_function_ref(
+                    FunctionFunctionId::Int(IntFunctionFunctionId(0)),
+                    Vec::<ParamLocal>::new(),
+                    FunctionType::new(vec![ValueType::Int], ValueType::Int),
+                )
+                .into(),
+            )),
         );
     }
 
@@ -587,23 +574,14 @@ mod tests {
                 },
                 Vec::<ParamLocal>::new(),
             )),
-            FunctionReturn::FunctionFunction {
-                type_: FunctionType::new(
-                    Vec::new(),
-                    ValueType::Function(Box::new(FunctionType::new(
-                        vec![ValueType::Int],
-                        ValueType::Int,
-                    ))),
-                ),
-                body: ReturnBody::expr(
-                    function_function_ref(
-                        FunctionFunctionId::Int(IntFunctionFunctionId(0)),
-                        Vec::<ParamLocal>::new(),
-                        FunctionType::new(vec![ValueType::Int], ValueType::Int),
-                    )
-                    .into(),
-                ),
-            },
+            FunctionReturn::FunctionFunction(FunctionFunctionReturn::expr(
+                function_function_ref(
+                    FunctionFunctionId::Int(IntFunctionFunctionId(0)),
+                    Vec::<ParamLocal>::new(),
+                    FunctionType::new(vec![ValueType::Int], ValueType::Int),
+                )
+                .into(),
+            )),
         );
     }
 

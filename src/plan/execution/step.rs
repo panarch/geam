@@ -7,10 +7,10 @@ use super::expression::{
 };
 use super::id::{
     BitArrayFunctionLocalId, BitArrayLocalId, BoolFunctionLocalId, BoolLocalId,
-    CustomFunctionLocalId, CustomLocalId, FloatFunctionLocalId, FloatLocalId,
-    FunctionFunctionLocalId, IntFunctionLocalId, IntLocalId, ListFunctionLocal, ListLocal,
-    NilFunctionLocalId, NilLocalId, StringFunctionLocalId, StringLocalId, TupleFunctionLocalId,
-    TupleLocalId, UtfCodepointFunctionLocalId, UtfCodepointLocalId,
+    CustomFunctionLocal, CustomLocalId, FloatFunctionLocalId, FloatLocalId, FunctionFunctionLocal,
+    IntFunctionLocalId, IntLocalId, ListFunctionLocal, ListLocal, NilFunctionLocalId, NilLocalId,
+    StringFunctionLocalId, StringLocalId, TupleFunctionLocalId, TupleLocalId,
+    UtfCodepointFunctionLocalId, UtfCodepointLocalId,
 };
 use crate::plan::execution::{BitArrayPattern, CustomBindingPattern};
 use crate::plan::{PanicSite, SourceSpan};
@@ -129,7 +129,7 @@ pub(crate) enum StepKind {
         value: UtfCodepointFunctionExpr,
     },
     LetCustomFunction {
-        local: CustomFunctionLocalId,
+        local: CustomFunctionLocal,
         value: CustomFunctionExpr,
     },
     LetBoolFunction {
@@ -149,7 +149,7 @@ pub(crate) enum StepKind {
         value: ListFunctionExpr,
     },
     LetFunctionFunction {
-        local: FunctionFunctionLocalId,
+        local: FunctionFunctionLocal,
         value: FunctionFunctionExpr,
     },
     AssertList {

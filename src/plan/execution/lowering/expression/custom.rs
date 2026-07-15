@@ -13,16 +13,18 @@ pub(in crate::plan::execution::lowering) fn custom_expr(
 
     let (type_, kind) = expression.into_parts();
     let kind = match kind {
-        M::Constructor {
-            constructor,
-            arguments,
-        } => E::Constructor {
-            constructor: context.custom_constructor(constructor),
-            arguments: arguments
-                .into_iter()
-                .map(|argument| expr(argument, context))
-                .collect(),
-        },
+        M::Constructor(construction) => {
+            let (constructor, fields) = construction.into_parts();
+            E::Constructor(execution::CustomConstruction::from_parts(
+                context.custom_constructor(constructor),
+                fields
+                    .into_vec()
+                    .into_iter()
+                    .map(|field| expr(field, context))
+                    .collect::<Vec<_>>()
+                    .into_boxed_slice(),
+            ))
+        }
         M::LocalGet { local, name: _ } => E::LocalGet {
             local: execution::CustomLocalId(local.0),
         },
@@ -30,10 +32,13 @@ pub(in crate::plan::execution::lowering) fn custom_expr(
             function: execution::CustomFunctionId(function.0),
             args: call_args(args, context),
         },
-        M::FunctionCall { function, args } => E::FunctionCall {
-            function: Box::new(custom_function_expr(*function, context)),
-            args: call_args(args, context),
-        },
+        M::FunctionCall(call) => {
+            let (function, arguments) = call.into_parts();
+            E::FunctionCall(execution::CustomFunctionCall::from_parts(
+                custom_function_expr(function, context),
+                call_args(arguments.into_vec(), context).into_boxed_slice(),
+            ))
+        }
         M::TupleIndex { tuple, index } => E::TupleIndex {
             tuple: Box::new(tuple_expr(*tuple, context)),
             index,

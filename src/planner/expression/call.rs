@@ -139,10 +139,13 @@ fn plan_call_expression(
                     context,
                     capture,
                 )?;
-                return Ok(Expr::custom(CustomExpr::constructor(
-                    constructor,
-                    arguments,
-                )));
+                return CustomExpr::try_constructor(constructor, arguments)
+                    .map(Expr::custom)
+                    .map_err(|_| PlanError::InvalidTypedAst {
+                        reason: InvalidTypedAstReason::CallShape {
+                            reason: InvalidCallShapeReason::FunctionCallArityMismatch,
+                        },
+                    });
             }
             ValueConstructorVariant::Record { .. } => {
                 return Err(PlanError::InvalidTypedAst {
@@ -440,6 +443,66 @@ pub fn main() { Boxed(1) }
         arguments.clear();
         assert_eq!(
             plan_module(constructor_arity_mismatch),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::CallShape {
+                    reason: InvalidCallShapeReason::FunctionCallArityMismatch,
+                },
+            }),
+        );
+
+        let mut constructor_descriptor_arity_mismatch = compile(
+            r#"
+pub type Boxed { Boxed(Int) }
+pub fn main() { Boxed(1) }
+"#,
+        );
+        let (_, function, arguments) = expect_call_statement_mut(
+            &mut constructor_descriptor_arity_mismatch.definitions.functions[0].body[0],
+        );
+        let constructor = expect_var_constructor_mut(function);
+        constructor.variant = ValueConstructorVariant::Record {
+            name: "Boxed".into(),
+            arity: 0,
+            field_map: None,
+            location: dummy_span(),
+            module: "main".into(),
+            variants_count: 1,
+            variant_index: 0,
+            documentation: None,
+        };
+        arguments.clear();
+        assert_eq!(
+            plan_module(constructor_descriptor_arity_mismatch),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::CallShape {
+                    reason: InvalidCallShapeReason::FunctionCallArityMismatch,
+                },
+            }),
+        );
+
+        let mut extra_constructor_argument = compile(
+            r#"
+pub type Boxed { Boxed(Int) }
+pub fn main() { Boxed(1) }
+"#,
+        );
+        let (_, function, arguments) = expect_call_statement_mut(
+            &mut extra_constructor_argument.definitions.functions[0].body[0],
+        );
+        let constructor = expect_var_constructor_mut(function);
+        constructor.variant = ValueConstructorVariant::Record {
+            name: "Boxed".into(),
+            arity: 2,
+            field_map: None,
+            location: dummy_span(),
+            module: "main".into(),
+            variants_count: 1,
+            variant_index: 0,
+            documentation: None,
+        };
+        arguments.push(arguments[0].clone());
+        assert_eq!(
+            plan_module(extra_constructor_argument),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::CallShape {
                     reason: InvalidCallShapeReason::FunctionCallArityMismatch,

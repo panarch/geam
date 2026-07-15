@@ -14,7 +14,6 @@ use super::{
     UtfCodepointFunctionValue, Value,
 };
 use crate::plan::execution::ExecutionPlan;
-use crate::runtime::evaluated::EvaluatedCustomFunctionTarget;
 
 pub(super) fn value(plan: &ExecutionPlan, state: &RuntimeState, value: EvaluatedValue) -> Value {
     match value {
@@ -240,10 +239,12 @@ fn custom_function(
     state: &RuntimeState,
     value: &EvaluatedCustomFunction,
 ) -> CustomFunctionValue {
-    let target = match value.runtime_id() {
-        EvaluatedCustomFunctionTarget::Function(id) => CustomFunctionValueTarget::Function(id),
-        EvaluatedCustomFunctionTarget::Constructor(id) => {
-            CustomFunctionValueTarget::Constructor(id)
+    let target = match value {
+        EvaluatedCustomFunction::Function(value) => {
+            CustomFunctionValueTarget::Function(value.runtime_id())
+        }
+        EvaluatedCustomFunction::Constructor(value) => {
+            CustomFunctionValueTarget::Constructor(value.runtime_id())
         }
     };
     CustomFunctionValue::new_with_captures(
@@ -392,7 +393,7 @@ fn capture(plan: &ExecutionPlan, state: &RuntimeState, value: &EvaluatedCapture)
             CaptureValue::utf_codepoint_function(*local, utf_codepoint_function(plan, state, value))
         }
         EvaluatedCaptureKind::CustomFunction { local, value } => {
-            CaptureValue::custom_function(*local, custom_function(plan, state, value))
+            CaptureValue::custom_function(local.id(), custom_function(plan, state, value))
         }
         EvaluatedCaptureKind::BoolFunction { local, value } => {
             CaptureValue::bool_function(*local, bool_function(plan, state, value))
@@ -407,7 +408,7 @@ fn capture(plan: &ExecutionPlan, state: &RuntimeState, value: &EvaluatedCapture)
             CaptureValue::list_function(local.clone(), list_function(plan, state, value))
         }
         EvaluatedCaptureKind::FunctionFunction { local, value } => {
-            CaptureValue::function_function(*local, function_function(plan, state, value))
+            CaptureValue::function_function(local.id(), function_function(plan, state, value))
         }
     }
 }
@@ -512,10 +513,10 @@ mod tests {
     use crate::plan::{FunctionType, ValueType};
     use crate::runtime::evaluated::{
         EvaluatedBitArray, EvaluatedBitArrayFunction, EvaluatedBoolFunction, EvaluatedCapture,
-        EvaluatedCustomFunction, EvaluatedCustomFunctionTarget, EvaluatedFloatFunction,
-        EvaluatedFunctionFunction, EvaluatedFunctionValue, EvaluatedIntFunction,
-        EvaluatedListCapture, EvaluatedListFunction, EvaluatedNilFunction, EvaluatedStringFunction,
-        EvaluatedTupleFunction, EvaluatedUtfCodepointFunction, EvaluatedValue,
+        EvaluatedCustomFunction, EvaluatedFloatFunction, EvaluatedFunctionFunction,
+        EvaluatedFunctionValue, EvaluatedIntFunction, EvaluatedListCapture, EvaluatedListFunction,
+        EvaluatedNilFunction, EvaluatedStringFunction, EvaluatedTupleFunction,
+        EvaluatedUtfCodepointFunction, EvaluatedValue,
     };
     use crate::runtime::state::{ListValueId, RuntimeState};
     use crate::runtime::{
@@ -539,6 +540,8 @@ fn tuples() -> List(#(Int)) { [] }
 fn lists() -> List(List(Int)) { [] }
 fn nested_customs() -> List(List(Boxed)) { [] }
 fn functions() -> List(fn() -> Int) { [] }
+fn take_custom_function(value: fn() -> Boxed) { 0 }
+fn take_function_function(value: fn() -> fn() -> Int) { 0 }
 pub fn main() { 0 }
 "#;
 
@@ -705,10 +708,8 @@ pub fn main() { 0 }
             0,
             vec![CustomFieldValue::from_evaluated(None, Value::Int(1.into()))],
         );
-        let constructor_function = EvaluatedCustomFunction::new(
-            EvaluatedCustomFunctionTarget::Constructor(custom_value.constructor()),
-            vec![crate::plan::execution::ParamLocal::Int(IntLocalId(0))],
-            Vec::new(),
+        let constructor_function = EvaluatedCustomFunction::constructor(
+            custom_value.constructor(),
             crate::plan::execution::FunctionType::new(
                 vec![crate::plan::execution::ValueType::Int],
                 crate::plan::execution::ValueType::Custom(custom_value.type_id()),
@@ -722,7 +723,7 @@ pub fn main() { 0 }
             ),
             Value::Function(FunctionValue::from(CustomFunctionValue::new_with_captures(
                 CustomFunctionValueTarget::Constructor(custom_value.constructor()),
-                vec![crate::plan::execution::ParamLocal::Int(IntLocalId(0))],
+                Vec::new(),
                 Vec::new(),
                 FunctionType::new(vec![ValueType::Int], ValueType::Custom(custom_type.clone())),
             ),)),
@@ -774,8 +775,8 @@ pub fn main() { 0 }
                 crate::plan::execution::ValueType::UtfCodepoint,
             ),
         );
-        let custom_function = EvaluatedCustomFunction::new(
-            EvaluatedCustomFunctionTarget::Function(CustomFunctionId(0)),
+        let custom_function = EvaluatedCustomFunction::function(
+            CustomFunctionId(0),
             Vec::new(),
             Vec::new(),
             crate::plan::execution::FunctionType::new(
@@ -833,6 +834,16 @@ pub fn main() { 0 }
                 crate::plan::execution::ValueType::Function(Box::new(execution_int_type.clone())),
             ),
         );
+        let custom_function_local = plan
+            .int_function(IntFunctionId(1))
+            .frame_layout()
+            .custom_functions()[0]
+            .clone();
+        let function_function_local = plan
+            .int_function(IntFunctionId(2))
+            .frame_layout()
+            .function_functions()[0]
+            .clone();
         let int_list = state.int(plan.int_list_function_id(0).type_id(), vec![1.into()]);
         let string_list = state.string(
             plan.string_list_function_id(0).type_id(),
@@ -938,15 +949,12 @@ pub fn main() { 0 }
                 UtfCodepointFunctionLocalId(0),
                 utf_codepoint_function.clone(),
             ),
-            EvaluatedCapture::custom_function(CustomFunctionLocalId(0), custom_function.clone()),
+            EvaluatedCapture::custom_function(custom_function_local, custom_function.clone()),
             EvaluatedCapture::bool_function(BoolFunctionLocalId(0), bool_function.clone()),
             EvaluatedCapture::nil_function(NilFunctionLocalId(0), nil_function.clone()),
             EvaluatedCapture::tuple_function(TupleFunctionLocalId(0), tuple_function.clone()),
             EvaluatedCapture::list_function(list_function_local.clone(), list_function.clone()),
-            EvaluatedCapture::function_function(
-                FunctionFunctionLocalId(0),
-                function_function.clone(),
-            ),
+            EvaluatedCapture::function_function(function_function_local, function_function.clone()),
         ];
         let expected = [
             CaptureValue::int(IntLocalId(0), 1.into()),

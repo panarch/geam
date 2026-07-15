@@ -307,9 +307,9 @@ impl FunctionTables {
 
     pub(super) fn custom_function_function(
         &self,
-        id: CustomFunctionFunctionId,
+        id: &CustomFunctionFunctionId,
     ) -> &ExecutableFunction<CustomFunctionReturn> {
-        &self.custom_function_functions[id.0]
+        &self.custom_function_functions[id.index()]
     }
 
     pub(super) fn bool_function_function(
@@ -360,9 +360,9 @@ impl FunctionTables {
 
     pub(super) fn function_function_function(
         &self,
-        id: FunctionFunctionFunctionId,
+        id: &FunctionFunctionFunctionId,
     ) -> &ExecutableFunction<FunctionFunctionReturn> {
-        &self.function_function_functions[id.0]
+        &self.function_function_functions[id.index()]
     }
 }
 

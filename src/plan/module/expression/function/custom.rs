@@ -1,15 +1,16 @@
+use super::returning_function::FunctionFunctionCallMismatch;
 use crate::plan::{
     BoolExpr, CaptureArg, CustomConstructor, CustomFieldAccess, CustomFunctionFunctionId,
-    CustomFunctionId, CustomFunctionLocalId, CustomFunctionReference, CustomType, FloatExpr,
-    FunctionFunctionExpr, FunctionListExpr, FunctionType, IntExpr, PanicExpr, ParamLocal, Step,
-    StringExpr, TupleExpr, ValueType,
+    CustomFunctionId, CustomFunctionLocal, CustomFunctionReference, CustomFunctionType, CustomType,
+    FloatExpr, FunctionFunctionExpr, FunctionListExpr, FunctionType, IntExpr, PanicExpr,
+    ParamLocal, Step, StringExpr, TupleExpr,
 };
 use ecow::EcoString;
 use num_bigint::BigInt;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct CustomFunctionExpr {
-    type_: FunctionType,
+    type_: CustomFunctionType,
     kind: CustomFunctionExprKind,
 }
 
@@ -23,66 +24,62 @@ pub(crate) enum CustomFunctionExprKind {
         captures: Vec<CaptureArg>,
     },
     LocalGet {
-        local: CustomFunctionLocalId,
+        local: CustomFunctionLocal,
         name: EcoString,
     },
     Call {
         function: CustomFunctionFunctionId,
         args: Vec<crate::plan::CallArg>,
-        type_: FunctionType,
     },
     FunctionCall {
         function: Box<FunctionFunctionExpr>,
         args: Vec<crate::plan::CallArg>,
-        type_: FunctionType,
     },
     TupleIndex {
         tuple: Box<TupleExpr>,
         index: usize,
-        type_: FunctionType,
     },
     CustomField(CustomFieldAccess),
     ListIndex {
         list: Box<FunctionListExpr>,
         index: usize,
-        type_: FunctionType,
     },
     Panic(PanicExpr),
     BoolCase {
         subject: Box<BoolExpr>,
-        true_: Box<CustomFunctionExpr>,
-        false_: Box<CustomFunctionExpr>,
+        true_: Box<CustomFunctionExprKind>,
+        false_: Box<CustomFunctionExprKind>,
     },
     IntCase {
         subject: Box<IntExpr>,
-        clauses: Vec<(BigInt, CustomFunctionExpr)>,
-        fallback: Box<CustomFunctionExpr>,
+        clauses: Vec<(BigInt, CustomFunctionExprKind)>,
+        fallback: Box<CustomFunctionExprKind>,
     },
     StringCase {
         subject: Box<StringExpr>,
-        clauses: Vec<(EcoString, CustomFunctionExpr)>,
-        fallback: Box<CustomFunctionExpr>,
+        clauses: Vec<(EcoString, CustomFunctionExprKind)>,
+        fallback: Box<CustomFunctionExprKind>,
     },
     FloatCase {
         subject: Box<FloatExpr>,
-        clauses: Vec<(f64, CustomFunctionExpr)>,
-        fallback: Box<CustomFunctionExpr>,
+        clauses: Vec<(f64, CustomFunctionExprKind)>,
+        fallback: Box<CustomFunctionExprKind>,
     },
     Block {
         steps: Vec<Step>,
-        return_: Box<CustomFunctionExpr>,
+        return_: Box<CustomFunctionExprKind>,
     },
 }
 
 impl CustomFunctionExpr {
     pub(crate) fn constructor(constructor: CustomConstructor) -> Self {
-        let type_ = FunctionType::new(
+        let type_ = CustomFunctionType::new(
             constructor
                 .fields()
                 .iter()
                 .map(|field| field.type_().clone())
                 .collect(),
-            ValueType::Custom(constructor.type_().clone()),
+            constructor.type_().clone(),
         );
         Self {
             type_,
@@ -91,9 +88,9 @@ impl CustomFunctionExpr {
     }
 
     pub(crate) fn reference(value: CustomFunctionReference, return_type: CustomType) -> Self {
-        let type_ = FunctionType::new(
+        let type_ = CustomFunctionType::new(
             value.params().iter().map(ParamLocal::value_type).collect(),
-            ValueType::Custom(return_type),
+            return_type,
         );
         Self {
             type_,
@@ -105,7 +102,7 @@ impl CustomFunctionExpr {
         runtime_id: CustomFunctionId,
         params: Vec<ParamLocal>,
         captures: Vec<CaptureArg>,
-        type_: FunctionType,
+        type_: CustomFunctionType,
     ) -> Self {
         Self {
             type_,
@@ -117,11 +114,8 @@ impl CustomFunctionExpr {
         }
     }
 
-    pub(crate) fn local_get(
-        local: CustomFunctionLocalId,
-        name: EcoString,
-        type_: FunctionType,
-    ) -> Self {
+    pub(crate) fn local_get(local: CustomFunctionLocal, name: EcoString) -> Self {
+        let type_ = local.type_().clone();
         Self {
             type_,
             kind: CustomFunctionExprKind::LocalGet { local, name },
@@ -131,63 +125,73 @@ impl CustomFunctionExpr {
     pub(crate) fn call(
         function: CustomFunctionFunctionId,
         args: Vec<crate::plan::CallArg>,
-        type_: FunctionType,
     ) -> Self {
+        let type_ = function.type_().clone();
         Self {
-            type_: type_.clone(),
-            kind: CustomFunctionExprKind::Call {
-                function,
-                args,
-                type_,
-            },
+            type_,
+            kind: CustomFunctionExprKind::Call { function, args },
         }
     }
 
-    pub(crate) fn function_call(
+    pub(crate) fn try_function_call(
         function: FunctionFunctionExpr,
         args: Vec<crate::plan::CallArg>,
-        type_: FunctionType,
-    ) -> Self {
-        Self {
-            type_: type_.clone(),
+    ) -> Result<Self, FunctionFunctionCallMismatch> {
+        let expected = function.function_function_type().argument_types().len();
+        if expected != args.len() {
+            return Err(FunctionFunctionCallMismatch::ArgumentCount {
+                expected,
+                actual: args.len(),
+            });
+        }
+
+        let returned = function.function_function_type().return_();
+        let crate::plan::ValueType::Custom(return_) = returned.return_() else {
+            return Err(FunctionFunctionCallMismatch::ReturnFamily);
+        };
+        let type_ = CustomFunctionType::new(returned.argument_types().to_vec(), return_.clone());
+
+        Ok(Self {
+            type_,
             kind: CustomFunctionExprKind::FunctionCall {
                 function: Box::new(function),
                 args,
-                type_,
             },
-        }
+        })
     }
 
-    pub(crate) fn tuple_index(tuple: TupleExpr, index: usize, type_: FunctionType) -> Self {
+    pub(crate) fn tuple_index(tuple: TupleExpr, index: usize, type_: CustomFunctionType) -> Self {
         Self {
-            type_: type_.clone(),
+            type_,
             kind: CustomFunctionExprKind::TupleIndex {
                 tuple: Box::new(tuple),
                 index,
-                type_,
             },
         }
     }
 
-    pub(crate) fn custom_field(access: CustomFieldAccess, type_: FunctionType) -> Self {
+    pub(crate) fn custom_field(access: CustomFieldAccess, type_: CustomFunctionType) -> Self {
         Self {
             type_,
             kind: CustomFunctionExprKind::CustomField(access),
         }
     }
 
-    pub(crate) fn list_index(list: FunctionListExpr, index: usize, type_: FunctionType) -> Self {
+    pub(crate) fn list_index(
+        list: FunctionListExpr,
+        index: usize,
+        type_: CustomFunctionType,
+    ) -> Self {
         Self {
-            type_: type_.clone(),
+            type_,
             kind: CustomFunctionExprKind::ListIndex {
                 list: Box::new(list),
                 index,
-                type_,
             },
         }
     }
 
-    pub(crate) fn panic(panic: PanicExpr, type_: FunctionType) -> Self {
+    pub(crate) fn panic(panic: PanicExpr, type_: CustomFunctionType) -> Self {
         Self {
             type_,
             kind: CustomFunctionExprKind::Panic(panic),
@@ -195,8 +199,10 @@ impl CustomFunctionExpr {
     }
 
     pub(crate) fn bool_case(subject: BoolExpr, true_: Self, false_: Self) -> Self {
+        let (type_, true_) = true_.into_parts();
+        let (_, false_) = false_.into_parts();
         Self {
-            type_: true_.type_.clone(),
+            type_,
             kind: CustomFunctionExprKind::BoolCase {
                 subject: Box::new(subject),
                 true_: Box::new(true_),
@@ -206,8 +212,13 @@ impl CustomFunctionExpr {
     }
 
     pub(crate) fn int_case(subject: IntExpr, clauses: Vec<(BigInt, Self)>, fallback: Self) -> Self {
+        let clauses = clauses
+            .into_iter()
+            .map(|(pattern, branch)| (pattern, branch.into_parts().1))
+            .collect();
+        let (type_, fallback) = fallback.into_parts();
         Self {
-            type_: fallback.type_.clone(),
+            type_,
             kind: CustomFunctionExprKind::IntCase {
                 subject: Box::new(subject),
                 clauses,
@@ -221,8 +232,13 @@ impl CustomFunctionExpr {
         clauses: Vec<(EcoString, Self)>,
         fallback: Self,
     ) -> Self {
+        let clauses = clauses
+            .into_iter()
+            .map(|(pattern, branch)| (pattern, branch.into_parts().1))
+            .collect();
+        let (type_, fallback) = fallback.into_parts();
         Self {
-            type_: fallback.type_.clone(),
+            type_,
             kind: CustomFunctionExprKind::StringCase {
                 subject: Box::new(subject),
                 clauses,
@@ -236,8 +252,13 @@ impl CustomFunctionExpr {
         clauses: Vec<(f64, Self)>,
         fallback: Self,
     ) -> Self {
+        let clauses = clauses
+            .into_iter()
+            .map(|(pattern, branch)| (pattern, branch.into_parts().1))
+            .collect();
+        let (type_, fallback) = fallback.into_parts();
         Self {
-            type_: fallback.type_.clone(),
+            type_,
             kind: CustomFunctionExprKind::FloatCase {
                 subject: Box::new(subject),
                 clauses,
@@ -247,8 +268,9 @@ impl CustomFunctionExpr {
     }
 
     pub(crate) fn block(steps: Vec<Step>, return_: Self) -> Self {
+        let (type_, return_) = return_.into_parts();
         Self {
-            type_: return_.type_.clone(),
+            type_,
             kind: CustomFunctionExprKind::Block {
                 steps,
                 return_: Box::new(return_),
@@ -256,13 +278,124 @@ impl CustomFunctionExpr {
         }
     }
 
-    pub fn type_(&self) -> &FunctionType {
+    pub(crate) fn custom_function_type(&self) -> &CustomFunctionType {
         &self.type_
+    }
+    pub fn type_(&self) -> FunctionType {
+        self.type_.to_function_type()
     }
     pub(crate) fn kind(&self) -> &CustomFunctionExprKind {
         &self.kind
     }
-    pub(crate) fn into_parts(self) -> (FunctionType, CustomFunctionExprKind) {
+    pub(crate) fn into_parts(self) -> (CustomFunctionType, CustomFunctionExprKind) {
         (self.type_, self.kind)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{CustomFunctionExpr, CustomFunctionExprKind};
+    use crate::plan::{
+        BoolExpr, CallArg, CustomFunctionFunctionId, CustomFunctionId, CustomFunctionReference,
+        CustomFunctionType, CustomType, CustomTypeName, FunctionFunctionCallMismatch,
+        FunctionFunctionExpr, FunctionFunctionId, FunctionFunctionReference, FunctionType, IntExpr,
+        IntFunctionFunctionId, IntLocalId, ParamLocal, ValueType,
+    };
+
+    #[test]
+    fn same_result_children_store_only_callable_bodies() {
+        let expression = CustomFunctionExpr::block(
+            Vec::new(),
+            CustomFunctionExpr::bool_case(
+                BoolExpr::value(true),
+                function_value(),
+                function_value(),
+            ),
+        );
+
+        assert_eq!(
+            expression.into_parts(),
+            (
+                function_type(),
+                CustomFunctionExprKind::Block {
+                    steps: Vec::new(),
+                    return_: Box::new(CustomFunctionExprKind::BoolCase {
+                        subject: Box::new(BoolExpr::value(true)),
+                        true_: Box::new(CustomFunctionExprKind::Reference(function_reference())),
+                        false_: Box::new(CustomFunctionExprKind::Reference(function_reference())),
+                    }),
+                },
+            ),
+        );
+    }
+
+    #[test]
+    fn function_call_derives_custom_type_and_checks_argument_count() {
+        let function = function_call_callee();
+        let argument = CallArg::int(IntLocalId(0), IntExpr::value(1.into()));
+        let expression =
+            CustomFunctionExpr::try_function_call(function.clone(), vec![argument.clone()])
+                .expect("exact custom function call");
+
+        assert_eq!(
+            expression.into_parts(),
+            (
+                function_type(),
+                CustomFunctionExprKind::FunctionCall {
+                    function: Box::new(function.clone()),
+                    args: vec![argument.clone()],
+                },
+            ),
+        );
+        assert_eq!(
+            CustomFunctionExpr::try_function_call(function, Vec::new()),
+            Err(FunctionFunctionCallMismatch::ArgumentCount {
+                expected: 1,
+                actual: 0,
+            }),
+        );
+        assert_eq!(
+            CustomFunctionExpr::try_function_call(wrong_return_family_callee(), vec![argument]),
+            Err(FunctionFunctionCallMismatch::ReturnFamily),
+        );
+    }
+
+    fn function_value() -> CustomFunctionExpr {
+        CustomFunctionExpr::reference(function_reference(), custom_type())
+    }
+
+    fn function_reference() -> CustomFunctionReference {
+        CustomFunctionReference::new(CustomFunctionId(0), Vec::new())
+    }
+
+    fn function_call_callee() -> FunctionFunctionExpr {
+        FunctionFunctionExpr::reference(
+            FunctionFunctionReference::new(
+                FunctionFunctionId::Custom(CustomFunctionFunctionId::new(0, function_type())),
+                vec![ParamLocal::int(IntLocalId(0))],
+            ),
+            function_type().to_function_type(),
+        )
+    }
+
+    fn wrong_return_family_callee() -> FunctionFunctionExpr {
+        FunctionFunctionExpr::reference(
+            FunctionFunctionReference::new(
+                FunctionFunctionId::Int(IntFunctionFunctionId(0)),
+                vec![ParamLocal::int(IntLocalId(0))],
+            ),
+            FunctionType::new(Vec::new(), ValueType::Int),
+        )
+    }
+
+    fn function_type() -> CustomFunctionType {
+        CustomFunctionType::new(Vec::new(), custom_type())
+    }
+
+    fn custom_type() -> CustomType {
+        CustomType::new(
+            CustomTypeName::new("geam".into(), "main".into(), "Boxed".into()),
+            Vec::new(),
+        )
     }
 }

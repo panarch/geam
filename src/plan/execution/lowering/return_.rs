@@ -1,11 +1,11 @@
 use super::LoweringContext;
 use super::expression::{
     bit_array_expr, bit_array_function_expr, bit_array_list_expr, bool_expr, bool_function_expr,
-    bool_list_expr, call_args, custom_expr, custom_function_expr, custom_list_expr, float_expr,
-    float_function_expr, float_list_expr, function_function_expr, function_list_expr, int_expr,
-    int_function_expr, int_list_expr, list_function_expr, list_list_expr, nil_expr,
-    nil_function_expr, nil_list_expr, string_expr, string_function_expr, string_list_expr,
-    tuple_expr, tuple_function_expr, tuple_list_expr, utf_codepoint_expr,
+    bool_list_expr, call_args, custom_expr, custom_function_expr_kind, custom_list_expr,
+    float_expr, float_function_expr, float_list_expr, function_function_expr_kind,
+    function_list_expr, int_expr, int_function_expr, int_list_expr, list_function_expr,
+    list_list_expr, nil_expr, nil_function_expr, nil_list_expr, string_expr, string_function_expr,
+    string_list_expr, tuple_expr, tuple_function_expr, tuple_list_expr, utf_codepoint_expr,
     utf_codepoint_function_expr, utf_codepoint_list_expr,
 };
 use super::id::list_function_function_id;
@@ -249,9 +249,10 @@ pub(super) fn custom_function_return(
     body: module::CustomFunctionReturn,
     context: &mut LoweringContext,
 ) -> execution::CustomFunctionReturn {
-    return_body(body, context, custom_function_expr, |id, _| {
-        execution::CustomFunctionFunctionId(id.0)
-    })
+    let (type_, body) = body.into_parts();
+    let type_ = context.custom_function_type(type_);
+    let body = return_body(body, context, custom_function_expr_kind, |index, _| index);
+    execution::CustomFunctionReturn::from_parts(type_, body)
 }
 
 pub(super) fn bool_function_return(
@@ -292,9 +293,10 @@ pub(super) fn function_function_return(
     body: module::FunctionFunctionReturn,
     context: &mut LoweringContext,
 ) -> execution::FunctionFunctionReturn {
-    return_body(body, context, function_function_expr, |id, _| {
-        execution::FunctionFunctionFunctionId(id.0)
-    })
+    let (type_, body) = body.into_parts();
+    let type_ = context.function_function_type(type_);
+    let body = return_body(body, context, function_function_expr_kind, |index, _| index);
+    execution::FunctionFunctionReturn::from_parts(type_, body)
 }
 
 fn return_body<ModuleExpression, ModuleFunction, ExecutionExpression, ExecutionFunction>(
@@ -414,9 +416,68 @@ fn return_body<ModuleExpression, ModuleFunction, ExecutionExpression, ExecutionF
 #[cfg(test)]
 mod tests {
     use crate::plan::execution::{
-        ExecutionPlan, ListFunctionId, ListListFunctionId, ReturnBody, ReturnBodyKind,
-        RuntimeFunctionId,
+        CustomFunctionFunctionId, CustomFunctionType, ExecutionPlan, FunctionFunctionFunctionId,
+        FunctionFunctionId, FunctionFunctionType, FunctionType, ListFunctionId, ListListFunctionId,
+        ReturnBody, ReturnBodyKind, RuntimeFunctionId, ValueType,
     };
+
+    #[test]
+    fn lowering_seals_custom_callable_return_type_around_tail_indices() {
+        let plan = execution_plan(
+            r#"
+pub type Boxed { Boxed(Int) }
+
+fn build(value: Int) -> Boxed { Boxed(value) }
+
+fn factory() -> fn(Int) -> Boxed { factory() }
+
+pub fn main() -> fn(Int) -> Boxed { factory() }
+"#,
+        );
+        let type_ = CustomFunctionType::new(
+            vec![ValueType::Int],
+            plan.custom_constructor_id(0, 0).type_id(),
+        );
+        let main = CustomFunctionFunctionId::new(0, type_.clone());
+        assert_eq!(
+            plan.main_runtime(),
+            RuntimeFunctionId::Function {
+                id: FunctionFunctionId::Custom(main.clone()),
+                return_type: type_.to_function_type(),
+            },
+        );
+        let return_ = plan.custom_function_function(&main).return_();
+
+        assert_eq!(return_.type_(), main.type_());
+        assert_eq!(return_.function_id(1).type_(), main.type_());
+    }
+
+    #[test]
+    fn lowering_seals_nested_callable_return_type_around_tail_indices() {
+        let plan = execution_plan(
+            r#"
+fn factory() -> fn() -> fn(Int) -> Int { factory() }
+
+pub fn main() -> fn() -> fn(Int) -> Int { factory() }
+"#,
+        );
+        let type_ = FunctionFunctionType::new(
+            Vec::new(),
+            FunctionType::new(vec![ValueType::Int], ValueType::Int),
+        );
+        let main = FunctionFunctionFunctionId::new(0, type_.clone());
+        assert_eq!(
+            plan.main_runtime(),
+            RuntimeFunctionId::Function {
+                id: FunctionFunctionId::Function(main.clone()),
+                return_type: type_.to_function_type(),
+            },
+        );
+        let return_ = plan.function_function_function(&main).return_();
+
+        assert_eq!(return_.type_(), main.type_());
+        assert_eq!(return_.function_id(1).type_(), main.type_());
+    }
 
     #[test]
     fn lowering_carries_exact_nested_list_type_through_tail_calls() {

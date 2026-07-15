@@ -115,7 +115,7 @@ fn function_returning_function_call_expr(
             )))
         }
         crate::plan::FunctionFunctionId::Custom(function) => Expr::function(FunctionExpr::custom(
-            CustomFunctionExpr::call(function, args, return_type),
+            CustomFunctionExpr::call(function, args),
         )),
         crate::plan::FunctionFunctionId::Float(function) => Expr::function(FunctionExpr::float(
             crate::plan::FloatFunctionExpr::call(function, args, return_type),
@@ -133,7 +133,7 @@ fn function_returning_function_call_expr(
             Expr::function(FunctionExpr::list(ListFunctionExpr::call(function, args)))
         }
         crate::plan::FunctionFunctionId::Function(function) => Expr::function(
-            FunctionExpr::function(FunctionFunctionExpr::call(function, args, return_type)),
+            FunctionExpr::function(FunctionFunctionExpr::call(function, args)),
         ),
     }
 }
@@ -655,7 +655,13 @@ pub fn main() {
                 ),
             ),
             (
-                FunctionFunctionId::Function(FunctionFunctionFunctionId(0)),
+                FunctionFunctionId::Function(FunctionFunctionFunctionId::new(
+                    0,
+                    crate::plan::FunctionFunctionType::new(
+                        Vec::new(),
+                        FunctionType::new(vec![ValueType::Int], ValueType::Int),
+                    ),
+                )),
                 FunctionType::new(
                     Vec::new(),
                     ValueType::Function(Box::new(FunctionType::new(

@@ -462,14 +462,13 @@ impl FunctionTableBuilder {
                     return_type: context.function_type(type_),
                 }
             }
-            module::ReturnExprKind::CustomFunction {
-                runtime_id,
-                type_,
-                body,
-            } => {
-                let id = CustomFunctionFunctionId(runtime_id.0);
+            module::ReturnExprKind::CustomFunction { runtime_id, body } => {
+                let id = CustomFunctionFunctionId::new(
+                    runtime_id.index(),
+                    context.custom_function_type(runtime_id.type_().clone()),
+                );
                 self.custom_function_functions.push((
-                    runtime_id.0,
+                    runtime_id.index(),
                     ExecutableFunction::new(
                         frame_layout,
                         steps,
@@ -477,8 +476,8 @@ impl FunctionTableBuilder {
                     ),
                 ));
                 RuntimeFunctionId::Function {
+                    return_type: id.type_().to_function_type(),
                     id: FunctionFunctionId::Custom(id),
-                    return_type: context.function_type(type_),
                 }
             }
             module::ReturnExprKind::BoolFunction {
@@ -554,14 +553,13 @@ impl FunctionTableBuilder {
                     return_type,
                 }
             }
-            module::ReturnExprKind::FunctionFunction {
-                runtime_id,
-                type_,
-                body,
-            } => {
-                let id = FunctionFunctionFunctionId(runtime_id.0);
+            module::ReturnExprKind::FunctionFunction { runtime_id, body } => {
+                let id = FunctionFunctionFunctionId::new(
+                    runtime_id.index(),
+                    context.function_function_type(runtime_id.type_().clone()),
+                );
                 self.function_function_functions.push((
-                    runtime_id.0,
+                    runtime_id.index(),
                     ExecutableFunction::new(
                         frame_layout,
                         steps,
@@ -569,8 +567,8 @@ impl FunctionTableBuilder {
                     ),
                 ));
                 RuntimeFunctionId::Function {
+                    return_type: id.type_().to_function_type(),
                     id: FunctionFunctionId::Function(id),
-                    return_type: context.function_type(type_),
                 }
             }
         }

@@ -6,9 +6,9 @@ use super::{
 };
 use crate::plan::execution::{
     BitArrayFunctionLocalId, BitArrayLocalId, BoolFunctionLocalId, BoolLocalId,
-    CustomFunctionLocalId, CustomLocalId, FloatFunctionLocalId, FloatLocalId,
-    FunctionFunctionLocalId, IntFunctionLocalId, IntLocalId, ListFunctionLocal, NilFunctionLocalId,
-    NilLocalId, StringFunctionLocalId, StringLocalId, TupleFunctionLocalId, TupleLocalId,
+    CustomFunctionLocal, CustomLocalId, FloatFunctionLocalId, FloatLocalId, FunctionFunctionLocal,
+    IntFunctionLocalId, IntLocalId, ListFunctionLocal, NilFunctionLocalId, NilLocalId,
+    StringFunctionLocalId, StringLocalId, TupleFunctionLocalId, TupleLocalId,
     UtfCodepointFunctionLocalId, UtfCodepointLocalId,
 };
 
@@ -71,7 +71,7 @@ pub(crate) enum CallArgKind {
         value: UtfCodepointFunctionExpr,
     },
     CustomFunction {
-        local: CustomFunctionLocalId,
+        local: CustomFunctionLocal,
         value: CustomFunctionExpr,
     },
     FloatFunction {
@@ -95,7 +95,7 @@ pub(crate) enum CallArgKind {
         value: ListFunctionExpr,
     },
     FunctionFunction {
-        local: FunctionFunctionLocalId,
+        local: FunctionFunctionLocal,
         value: FunctionFunctionExpr,
     },
 }
@@ -159,7 +159,7 @@ pub(crate) enum CaptureArgKind {
         value: UtfCodepointFunctionExpr,
     },
     CustomFunction {
-        local: CustomFunctionLocalId,
+        local: CustomFunctionLocal,
         value: CustomFunctionExpr,
     },
     FloatFunction {
@@ -183,7 +183,7 @@ pub(crate) enum CaptureArgKind {
         value: ListFunctionExpr,
     },
     FunctionFunction {
-        local: FunctionFunctionLocalId,
+        local: FunctionFunctionLocal,
         value: FunctionFunctionExpr,
     },
 }

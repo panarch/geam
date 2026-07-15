@@ -256,12 +256,12 @@ impl Tuple {
         FunctionFunction(FunctionFunctionExpr::tuple_index(
             self.into(),
             index,
-            FunctionType::new(
+            crate::plan::FunctionFunctionType::new(
                 params
                     .into_iter()
                     .map(IntoValueType::into_value_type)
                     .collect(),
-                ValueType::Function(Box::new(return_type)),
+                return_type,
             ),
         ))
     }
@@ -629,9 +629,9 @@ mod tests {
                 )
                 .into(),
                 14,
-                FunctionType::new(
+                crate::plan::FunctionFunctionType::new(
                     vec![ValueType::Int],
-                    ValueType::Function(Box::new(returned_function_type)),
+                    returned_function_type,
                 ),
             ),
         );

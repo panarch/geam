@@ -36,7 +36,7 @@ pub(super) fn plan_function_value_call(
             }
         }
     };
-    let function_type = function.type_().clone();
+    let function_type = function.type_();
     let return_type = ValueType::from_gleam(type_.as_ref()).ok_or(PlanError::InvalidTypedAst {
         reason: InvalidTypedAstReason::CallShape {
             reason: InvalidCallShapeReason::FunctionCallUnsupportedReturnType,
@@ -97,12 +97,14 @@ fn function_call_expr(
             )),
             None => Err(function_call_return_type_mismatch()),
         },
-        ValueType::Custom(return_type) => match function.into_custom() {
-            Some(function) => Ok(Expr::custom(crate::plan::CustomExpr::function_call(
-                function,
-                args,
-                return_type,
-            ))),
+        ValueType::Custom(_) => match function.into_custom() {
+            Some(function) => crate::plan::CustomExpr::try_function_call(function, args)
+                .map(Expr::custom)
+                .map_err(|_| PlanError::InvalidTypedAst {
+                    reason: InvalidTypedAstReason::CallShape {
+                        reason: InvalidCallShapeReason::FunctionCallArityMismatch,
+                    },
+                }),
             None => Err(function_call_return_type_mismatch()),
         },
         ValueType::Float => match function.into_float() {
@@ -138,11 +140,9 @@ fn function_call_expr(
             None => Err(function_call_return_type_mismatch()),
         },
         ValueType::Function(return_type) => match function.into_function() {
-            Some(function) => Ok(function_returning_function_value_call_expr(
-                function,
-                args,
-                *return_type,
-            )),
+            Some(function) => {
+                function_returning_function_value_call_expr(function, args, *return_type)
+            }
             None => Err(function_call_return_type_mismatch()),
         },
     }
@@ -160,8 +160,8 @@ fn function_returning_function_value_call_expr(
     function: FunctionFunctionExpr,
     args: Vec<CallArg>,
     return_type: crate::plan::FunctionType,
-) -> Expr {
-    match return_type.return_().clone() {
+) -> Result<Expr, PlanError> {
+    Ok(match return_type.return_().clone() {
         ValueType::Int => Expr::function(FunctionExpr::int(
             crate::plan::IntFunctionExpr::function_call(function, args, return_type),
         )),
@@ -174,9 +174,12 @@ fn function_returning_function_value_call_expr(
         ValueType::UtfCodepoint => Expr::function(FunctionExpr::utf_codepoint(
             crate::plan::UtfCodepointFunctionExpr::function_call(function, args, return_type),
         )),
-        ValueType::Custom(_) => Expr::function(FunctionExpr::custom(
-            crate::plan::CustomFunctionExpr::function_call(function, args, return_type),
-        )),
+        ValueType::Custom(_) => {
+            return crate::plan::CustomFunctionExpr::try_function_call(function, args)
+                .map(FunctionExpr::custom)
+                .map(Expr::function)
+                .map_err(function_function_call_mismatch);
+        }
         ValueType::Float => Expr::function(FunctionExpr::float(
             crate::plan::FloatFunctionExpr::function_call(function, args, return_type),
         )),
@@ -192,9 +195,28 @@ fn function_returning_function_value_call_expr(
         ValueType::List(item_type) => Expr::function(FunctionExpr::list(
             crate::plan::ListFunctionExpr::function_call(function, args, return_type, *item_type),
         )),
-        ValueType::Function(_) => Expr::function(FunctionExpr::function(
-            FunctionFunctionExpr::function_call(function, args, return_type),
-        )),
+        ValueType::Function(_) => {
+            return FunctionFunctionExpr::try_function_call(function, args)
+                .map(FunctionExpr::function)
+                .map(Expr::function)
+                .map_err(function_function_call_mismatch);
+        }
+    })
+}
+
+fn function_function_call_mismatch(
+    mismatch: crate::plan::FunctionFunctionCallMismatch,
+) -> PlanError {
+    let reason = match mismatch {
+        crate::plan::FunctionFunctionCallMismatch::ArgumentCount { .. } => {
+            InvalidCallShapeReason::FunctionCallArityMismatch
+        }
+        crate::plan::FunctionFunctionCallMismatch::ReturnFamily => {
+            InvalidCallShapeReason::FunctionCallReturnTypeMismatch
+        }
+    };
+    PlanError::InvalidTypedAst {
+        reason: InvalidTypedAstReason::CallShape { reason },
     }
 }
 
@@ -206,12 +228,13 @@ mod tests {
     };
     use crate::plan::{
         BitArrayFunctionFunctionId, BitArrayFunctionId, BoolFunctionFunctionId, BoolFunctionId,
-        CustomType, CustomTypeName, Expr, FloatFunctionFunctionId, FloatFunctionId, FunctionExpr,
-        FunctionFunctionExpr, FunctionFunctionFunctionId, FunctionFunctionId, FunctionType,
-        IntFunctionFunctionId, IntLocalId, LocalId, NilFunctionFunctionId, NilFunctionId,
-        ParamLocal, RuntimeFunctionId, StringFunctionFunctionId, StringFunctionId,
-        TupleFunctionFunctionId, TupleFunctionId, TupleLocalId, UtfCodepointFunctionFunctionId,
-        UtfCodepointFunctionId, ValueType,
+        CustomConstructor, CustomConstructorField, CustomFunctionExpr, CustomFunctionFunctionId,
+        CustomFunctionType, CustomType, CustomTypeName, Expr, FloatFunctionFunctionId,
+        FloatFunctionId, FunctionExpr, FunctionFunctionExpr, FunctionFunctionFunctionId,
+        FunctionFunctionId, FunctionType, IntFunctionFunctionId, IntLocalId, LocalId,
+        NilFunctionFunctionId, NilFunctionId, ParamLocal, RuntimeFunctionId,
+        StringFunctionFunctionId, StringFunctionId, TupleFunctionFunctionId, TupleFunctionId,
+        TupleLocalId, UtfCodepointFunctionFunctionId, UtfCodepointFunctionId, ValueType,
     };
     use crate::planner::dsl::{
         block_int_function, bool_, bool_case_int_function, call_int_function, function,
@@ -940,7 +963,13 @@ pub fn main() {
         assert_eq!(
             function_call_expr(
                 FunctionExpr::from(function_function_ref(
-                    FunctionFunctionId::Function(FunctionFunctionFunctionId(0)),
+                    FunctionFunctionId::Function(FunctionFunctionFunctionId::new(
+                        0,
+                        crate::plan::FunctionFunctionType::new(
+                            Vec::new(),
+                            returned_function_type.clone(),
+                        ),
+                    )),
                     Vec::<ParamLocal>::new(),
                     returned_function_type.clone(),
                 )),
@@ -955,6 +984,10 @@ pub fn main() {
 
     #[test]
     fn function_returning_function_value_call_expr_preserves_return_family() {
+        let custom_type = CustomType::new(
+            CustomTypeName::new("geam".into(), "main".into(), "Boxed".into()),
+            Vec::new(),
+        );
         let cases = [
             (
                 FunctionFunctionId::Int(IntFunctionFunctionId(0)),
@@ -971,6 +1004,13 @@ pub fn main() {
             (
                 FunctionFunctionId::UtfCodepoint(UtfCodepointFunctionFunctionId(0)),
                 FunctionType::new(vec![ValueType::UtfCodepoint], ValueType::UtfCodepoint),
+            ),
+            (
+                FunctionFunctionId::Custom(CustomFunctionFunctionId::new(
+                    0,
+                    CustomFunctionType::new(vec![ValueType::Int], custom_type.clone()),
+                )),
+                FunctionType::new(vec![ValueType::Int], ValueType::Custom(custom_type.clone())),
             ),
             (
                 FunctionFunctionId::Float(FloatFunctionFunctionId(0)),
@@ -1006,7 +1046,13 @@ pub fn main() {
                 ),
             ),
             (
-                FunctionFunctionId::Function(FunctionFunctionFunctionId(0)),
+                FunctionFunctionId::Function(FunctionFunctionFunctionId::new(
+                    0,
+                    crate::plan::FunctionFunctionType::new(
+                        Vec::new(),
+                        FunctionType::new(vec![ValueType::Int], ValueType::Int),
+                    ),
+                )),
                 FunctionType::new(
                     Vec::new(),
                     ValueType::Function(Box::new(FunctionType::new(
@@ -1030,6 +1076,7 @@ pub fn main() {
                     Vec::new(),
                     returned_function_type.clone(),
                 )
+                .expect("function-returning function call")
                 .value_type(),
                 ValueType::Function(Box::new(returned_function_type)),
             );
@@ -1143,6 +1190,79 @@ pub fn main() {
                 ValueType::List(Box::new(ValueType::Int)),
             ),
             Err(function_call_return_type_mismatch()),
+        );
+    }
+
+    #[test]
+    fn reject_margin_custom_function_call_argument_count() {
+        let custom_type = CustomType::new(
+            CustomTypeName::new("geam".into(), "main".into(), "Boxed".into()),
+            Vec::new(),
+        );
+        let function =
+            FunctionExpr::custom(CustomFunctionExpr::constructor(CustomConstructor::new(
+                custom_type.clone(),
+                "Boxed".into(),
+                0,
+                vec![CustomConstructorField::new(None, ValueType::Int)],
+            )));
+
+        assert_eq!(
+            function_call_expr(function, Vec::new(), ValueType::Custom(custom_type)),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::CallShape {
+                    reason: InvalidCallShapeReason::FunctionCallArityMismatch,
+                },
+            }),
+        );
+    }
+
+    #[test]
+    fn reject_margin_function_returning_function_call_shape() {
+        let custom_type = CustomType::new(
+            CustomTypeName::new("geam".into(), "main".into(), "Boxed".into()),
+            Vec::new(),
+        );
+        let returned_custom_function =
+            FunctionType::new(Vec::new(), ValueType::Custom(custom_type.clone()));
+        let function = FunctionFunctionExpr::from(function_function_ref(
+            FunctionFunctionId::Custom(CustomFunctionFunctionId::new(
+                0,
+                CustomFunctionType::new(Vec::new(), custom_type.clone()),
+            )),
+            vec![ParamLocal::int(IntLocalId(0))],
+            returned_custom_function.clone(),
+        ));
+
+        assert_eq!(
+            function_returning_function_value_call_expr(
+                function,
+                Vec::new(),
+                returned_custom_function.clone(),
+            ),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::CallShape {
+                    reason: InvalidCallShapeReason::FunctionCallArityMismatch,
+                },
+            }),
+        );
+
+        let function = FunctionFunctionExpr::from(function_function_ref(
+            FunctionFunctionId::Int(IntFunctionFunctionId(0)),
+            Vec::<ParamLocal>::new(),
+            FunctionType::new(Vec::new(), ValueType::Int),
+        ));
+        assert_eq!(
+            function_returning_function_value_call_expr(
+                function,
+                Vec::new(),
+                returned_custom_function,
+            ),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::CallShape {
+                    reason: InvalidCallShapeReason::FunctionCallReturnTypeMismatch,
+                },
+            }),
         );
     }
 

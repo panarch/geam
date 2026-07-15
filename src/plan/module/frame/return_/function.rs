@@ -399,8 +399,15 @@ impl FrameLayout {
         &mut self,
         body: &crate::plan::CustomFunctionReturn,
     ) {
-        match body.kind() {
-            ReturnBodyKind::Expr(expression) => self.include_custom_function_expr(expression),
+        self.include_custom_function_return_body(body.kind());
+    }
+
+    fn include_custom_function_return_body(
+        &mut self,
+        body: &ReturnBodyKind<crate::plan::CustomFunctionExprKind, usize>,
+    ) {
+        match body {
+            ReturnBodyKind::Expr(expression) => self.include_custom_function_expr_kind(expression),
             ReturnBodyKind::TailCall { args, .. } => self.include_call_args(args),
             ReturnBodyKind::BoolCase {
                 subject,
@@ -408,8 +415,8 @@ impl FrameLayout {
                 false_,
             } => {
                 self.include_bool_expr(subject);
-                self.include_custom_function_return(true_);
-                self.include_custom_function_return(false_);
+                self.include_custom_function_return_body(true_.kind());
+                self.include_custom_function_return_body(false_.kind());
             }
             ReturnBodyKind::IntCase {
                 subject,
@@ -418,9 +425,9 @@ impl FrameLayout {
             } => {
                 self.include_int_expr(subject);
                 for (_, branch) in clauses {
-                    self.include_custom_function_return(branch);
+                    self.include_custom_function_return_body(branch.kind());
                 }
-                self.include_custom_function_return(fallback);
+                self.include_custom_function_return_body(fallback.kind());
             }
             ReturnBodyKind::FloatCase {
                 subject,
@@ -429,9 +436,9 @@ impl FrameLayout {
             } => {
                 self.include_float_expr(subject);
                 for (_, branch) in clauses {
-                    self.include_custom_function_return(branch);
+                    self.include_custom_function_return_body(branch.kind());
                 }
-                self.include_custom_function_return(fallback);
+                self.include_custom_function_return_body(fallback.kind());
             }
             ReturnBodyKind::StringCase {
                 subject,
@@ -440,13 +447,13 @@ impl FrameLayout {
             } => {
                 self.include_string_expr(subject);
                 for (_, branch) in clauses {
-                    self.include_custom_function_return(branch);
+                    self.include_custom_function_return_body(branch.kind());
                 }
-                self.include_custom_function_return(fallback);
+                self.include_custom_function_return_body(fallback.kind());
             }
             ReturnBodyKind::Block { steps, return_ } => {
                 self.include_steps(steps);
-                self.include_custom_function_return(return_);
+                self.include_custom_function_return_body(return_.kind());
             }
         }
     }
@@ -567,8 +574,17 @@ impl FrameLayout {
         &mut self,
         body: &crate::plan::FunctionFunctionReturn,
     ) {
-        match body.kind() {
-            ReturnBodyKind::Expr(expression) => self.include_function_function_expr(expression),
+        self.include_function_function_return_body(body.kind());
+    }
+
+    fn include_function_function_return_body(
+        &mut self,
+        body: &ReturnBodyKind<crate::plan::FunctionFunctionExprKind, usize>,
+    ) {
+        match body {
+            ReturnBodyKind::Expr(expression) => {
+                self.include_function_function_expr_kind(expression)
+            }
             ReturnBodyKind::TailCall { args, .. } => self.include_call_args(args),
             ReturnBodyKind::BoolCase {
                 subject,
@@ -576,8 +592,8 @@ impl FrameLayout {
                 false_,
             } => {
                 self.include_bool_expr(subject);
-                self.include_function_function_return(true_);
-                self.include_function_function_return(false_);
+                self.include_function_function_return_body(true_.kind());
+                self.include_function_function_return_body(false_.kind());
             }
             ReturnBodyKind::IntCase {
                 subject,
@@ -586,9 +602,9 @@ impl FrameLayout {
             } => {
                 self.include_int_expr(subject);
                 for (_, branch) in clauses {
-                    self.include_function_function_return(branch);
+                    self.include_function_function_return_body(branch.kind());
                 }
-                self.include_function_function_return(fallback);
+                self.include_function_function_return_body(fallback.kind());
             }
             ReturnBodyKind::FloatCase {
                 subject,
@@ -597,9 +613,9 @@ impl FrameLayout {
             } => {
                 self.include_float_expr(subject);
                 for (_, branch) in clauses {
-                    self.include_function_function_return(branch);
+                    self.include_function_function_return_body(branch.kind());
                 }
-                self.include_function_function_return(fallback);
+                self.include_function_function_return_body(fallback.kind());
             }
             ReturnBodyKind::StringCase {
                 subject,
@@ -608,13 +624,13 @@ impl FrameLayout {
             } => {
                 self.include_string_expr(subject);
                 for (_, branch) in clauses {
-                    self.include_function_function_return(branch);
+                    self.include_function_function_return_body(branch.kind());
                 }
-                self.include_function_function_return(fallback);
+                self.include_function_function_return_body(fallback.kind());
             }
             ReturnBodyKind::Block { steps, return_ } => {
                 self.include_steps(steps);
-                self.include_function_function_return(return_);
+                self.include_function_function_return_body(return_.kind());
             }
         }
     }
@@ -625,11 +641,12 @@ mod tests {
     use crate::plan::{
         BitArrayFunctionExpr, BitArrayFunctionFunctionId, BitArrayFunctionLocalId, BoolExpr,
         BoolFunctionExpr, BoolFunctionFunctionId, BoolFunctionLocalId, BoolLocalId, CallArg,
-        CustomFunctionExpr, CustomFunctionFunctionId, CustomFunctionLocalId, CustomType,
-        CustomTypeName, Expr, FloatExpr, FloatFunctionExpr, FloatFunctionFunctionId,
-        FloatFunctionLocalId, FloatLocalId, FrameLayout, FunctionFunctionExpr,
-        FunctionFunctionFunctionId, FunctionFunctionLocalId, FunctionType, IntExpr,
-        IntFunctionFunctionId, IntFunctionLocalId, IntLocalId, ListFunctionExpr,
+        CustomFunctionExpr, CustomFunctionFunctionId, CustomFunctionLocal, CustomFunctionLocalId,
+        CustomFunctionReturn, CustomFunctionType, CustomType, CustomTypeName, Expr, FloatExpr,
+        FloatFunctionExpr, FloatFunctionFunctionId, FloatFunctionLocalId, FloatLocalId,
+        FrameLayout, FunctionFunctionExpr, FunctionFunctionFunctionId, FunctionFunctionLocal,
+        FunctionFunctionLocalId, FunctionFunctionReturn, FunctionFunctionType, FunctionType,
+        IntExpr, IntFunctionFunctionId, IntFunctionLocalId, IntLocalId, ListFunctionExpr,
         ListFunctionFunctionId, ListFunctionLocal, NilFunctionExpr, NilFunctionFunctionId,
         NilFunctionLocalId, ReturnBody, ReturnExpr, Step, StringExpr, StringFunctionExpr,
         StringFunctionFunctionId, StringFunctionLocalId, StringLocalId, ValueType,
@@ -844,43 +861,59 @@ mod tests {
         assert_eq!(layout.bools(), 8);
         assert_eq!(layout.nil_functions(), 6);
 
-        let function_function_type = super::super::super::test_helpers::int_function_expr()
-            .type_()
-            .clone();
+        let function_function_type = FunctionFunctionType::new(
+            Vec::new(),
+            super::super::super::test_helpers::int_function_expr()
+                .type_()
+                .clone(),
+        );
         let function_function_return = ReturnExpr::function_function_body(
-            FunctionFunctionFunctionId(0),
-            function_function_type.clone(),
-            ReturnBody::block(
+            0,
+            FunctionFunctionReturn::expr(FunctionFunctionExpr::block(
                 vec![Step::evaluate(Expr::int(IntExpr::local_get(
                     IntLocalId(13),
                     "function_function_step".into(),
                 )))],
-                ReturnBody::bool_case(
+                FunctionFunctionExpr::bool_case(
                     BoolExpr::local_get(BoolLocalId(8), "function_function_flag".into()),
-                    ReturnBody::int_case(
+                    FunctionFunctionExpr::int_case(
                         IntExpr::local_get(IntLocalId(26), "function_function_subject".into()),
                         vec![(
                             1.into(),
-                            ReturnBody::tail_call(FunctionFunctionFunctionId(1), Vec::new()),
+                            FunctionFunctionExpr::call(
+                                FunctionFunctionFunctionId::new(1, function_function_type.clone()),
+                                Vec::new(),
+                            ),
                         )],
-                        ReturnBody::expr(FunctionFunctionExpr::local_get(
-                            FunctionFunctionLocalId(4),
+                        FunctionFunctionExpr::local_get(
+                            FunctionFunctionLocal::new(
+                                FunctionFunctionLocalId(4),
+                                function_function_type.clone(),
+                            ),
                             "function_function_fallback".into(),
-                            function_function_type.clone(),
-                        )),
+                        ),
                     ),
-                    ReturnBody::expr(FunctionFunctionExpr::local_get(
-                        FunctionFunctionLocalId(5),
+                    FunctionFunctionExpr::local_get(
+                        FunctionFunctionLocal::new(
+                            FunctionFunctionLocalId(5),
+                            function_function_type,
+                        ),
                         "function_function_false".into(),
-                        function_function_type,
-                    )),
+                    ),
                 ),
-            ),
+            )),
         );
         let layout = FrameLayout::from_function_parts(&[], &[], &function_function_return);
         assert_eq!(layout.ints(), 27);
         assert_eq!(layout.bools(), 9);
-        assert_eq!(layout.function_functions(), 6);
+        assert_eq!(
+            layout
+                .function_functions()
+                .iter()
+                .map(FunctionFunctionLocal::id)
+                .collect::<Vec<_>>(),
+            vec![FunctionFunctionLocalId(4), FunctionFunctionLocalId(5)],
+        );
     }
 
     #[test]
@@ -1098,32 +1131,42 @@ mod tests {
         assert_eq!(layout.strings(), 4);
         assert_eq!(layout.nil_functions(), 9);
 
-        let function_function_type = super::super::super::test_helpers::int_function_expr()
-            .type_()
-            .clone();
+        let function_function_type = FunctionFunctionType::new(
+            Vec::new(),
+            super::super::super::test_helpers::int_function_expr()
+                .type_()
+                .clone(),
+        );
         let function_function_return = ReturnExpr::function_function_body(
-            FunctionFunctionFunctionId(0),
-            function_function_type.clone(),
-            ReturnBody::string_case(
+            0,
+            FunctionFunctionReturn::expr(FunctionFunctionExpr::string_case(
                 StringExpr::local_get(StringLocalId(4), "function_function_subject".into()),
                 vec![(
                     "one".into(),
-                    ReturnBody::expr(FunctionFunctionExpr::local_get(
-                        FunctionFunctionLocalId(9),
+                    FunctionFunctionExpr::local_get(
+                        FunctionFunctionLocal::new(
+                            FunctionFunctionLocalId(9),
+                            function_function_type.clone(),
+                        ),
                         "function_function_branch".into(),
-                        function_function_type.clone(),
-                    )),
+                    ),
                 )],
-                ReturnBody::expr(FunctionFunctionExpr::local_get(
-                    FunctionFunctionLocalId(10),
+                FunctionFunctionExpr::local_get(
+                    FunctionFunctionLocal::new(FunctionFunctionLocalId(10), function_function_type),
                     "function_function_fallback".into(),
-                    function_function_type,
-                )),
-            ),
+                ),
+            )),
         );
         let layout = FrameLayout::from_function_parts(&[], &[], &function_function_return);
         assert_eq!(layout.strings(), 5);
-        assert_eq!(layout.function_functions(), 11);
+        assert_eq!(
+            layout
+                .function_functions()
+                .iter()
+                .map(FunctionFunctionLocal::id)
+                .collect::<Vec<_>>(),
+            vec![FunctionFunctionLocalId(9), FunctionFunctionLocalId(10)],
+        );
     }
 
     #[test]
@@ -1132,58 +1175,59 @@ mod tests {
             CustomTypeName::new("geam".into(), "main".into(), "Boxed".into()),
             Vec::new(),
         );
-        let type_ = FunctionType::new(Vec::new(), ValueType::Custom(custom_type));
+        let type_ = CustomFunctionType::new(Vec::new(), custom_type);
         let return_ = ReturnExpr::custom_function_body(
-            CustomFunctionFunctionId(0),
-            type_.clone(),
-            ReturnBody::block(
+            0,
+            CustomFunctionReturn::expr(CustomFunctionExpr::block(
                 vec![Step::evaluate(Expr::int(IntExpr::local_get(
                     IntLocalId(2),
                     "step".into(),
                 )))],
-                ReturnBody::bool_case(
+                CustomFunctionExpr::bool_case(
                     BoolExpr::local_get(BoolLocalId(1), "flag".into()),
-                    ReturnBody::int_case(
+                    CustomFunctionExpr::int_case(
                         IntExpr::local_get(IntLocalId(3), "int_subject".into()),
                         vec![(
                             1.into(),
-                            ReturnBody::expr(CustomFunctionExpr::local_get(
-                                CustomFunctionLocalId(2),
+                            CustomFunctionExpr::local_get(
+                                CustomFunctionLocal::new(CustomFunctionLocalId(2), type_.clone()),
                                 "int_branch".into(),
-                                type_.clone(),
-                            )),
+                            ),
                         )],
-                        ReturnBody::float_case(
+                        CustomFunctionExpr::float_case(
                             FloatExpr::local_get(FloatLocalId(4), "float_subject".into()),
                             vec![(
                                 1.0,
-                                ReturnBody::expr(CustomFunctionExpr::local_get(
-                                    CustomFunctionLocalId(3),
+                                CustomFunctionExpr::local_get(
+                                    CustomFunctionLocal::new(
+                                        CustomFunctionLocalId(3),
+                                        type_.clone(),
+                                    ),
                                     "float_branch".into(),
-                                    type_.clone(),
-                                )),
+                                ),
                             )],
-                            ReturnBody::expr(CustomFunctionExpr::local_get(
-                                CustomFunctionLocalId(4),
+                            CustomFunctionExpr::local_get(
+                                CustomFunctionLocal::new(CustomFunctionLocalId(4), type_.clone()),
                                 "float_fallback".into(),
-                                type_.clone(),
-                            )),
+                            ),
                         ),
                     ),
-                    ReturnBody::string_case(
+                    CustomFunctionExpr::string_case(
                         StringExpr::local_get(StringLocalId(5), "string_subject".into()),
                         vec![(
                             "tail".into(),
-                            ReturnBody::tail_call(CustomFunctionFunctionId(1), Vec::new()),
+                            CustomFunctionExpr::call(
+                                CustomFunctionFunctionId::new(1, type_.clone()),
+                                Vec::new(),
+                            ),
                         )],
-                        ReturnBody::expr(CustomFunctionExpr::local_get(
-                            CustomFunctionLocalId(5),
+                        CustomFunctionExpr::local_get(
+                            CustomFunctionLocal::new(CustomFunctionLocalId(5), type_),
                             "string_fallback".into(),
-                            type_,
-                        )),
+                        ),
                     ),
                 ),
-            ),
+            )),
         );
 
         let layout = FrameLayout::from_function_parts(&[], &[], &return_);
@@ -1192,7 +1236,19 @@ mod tests {
         assert_eq!(layout.floats(), 5);
         assert_eq!(layout.strings(), 6);
         assert_eq!(layout.bools(), 2);
-        assert_eq!(layout.custom_functions, 6);
+        assert_eq!(
+            layout
+                .custom_functions
+                .iter()
+                .map(CustomFunctionLocal::id)
+                .collect::<Vec<_>>(),
+            vec![
+                CustomFunctionLocalId(2),
+                CustomFunctionLocalId(3),
+                CustomFunctionLocalId(4),
+                CustomFunctionLocalId(5),
+            ],
+        );
     }
 
     #[test]
@@ -1347,32 +1403,42 @@ mod tests {
         assert_eq!(layout.floats(), 5);
         assert_eq!(layout.nil_functions(), 11);
 
-        let function_function_type = super::super::super::test_helpers::int_function_expr()
-            .type_()
-            .clone();
+        let function_function_type = FunctionFunctionType::new(
+            Vec::new(),
+            super::super::super::test_helpers::int_function_expr()
+                .type_()
+                .clone(),
+        );
         let function_function_return = ReturnExpr::function_function_body(
-            FunctionFunctionFunctionId(0),
-            function_function_type.clone(),
-            ReturnBody::float_case(
+            0,
+            FunctionFunctionReturn::expr(FunctionFunctionExpr::float_case(
                 FloatExpr::local_get(FloatLocalId(5), "function_function_subject".into()),
                 vec![(
                     1.0,
-                    ReturnBody::expr(FunctionFunctionExpr::local_get(
-                        FunctionFunctionLocalId(11),
+                    FunctionFunctionExpr::local_get(
+                        FunctionFunctionLocal::new(
+                            FunctionFunctionLocalId(11),
+                            function_function_type.clone(),
+                        ),
                         "function_function_branch".into(),
-                        function_function_type.clone(),
-                    )),
+                    ),
                 )],
-                ReturnBody::expr(FunctionFunctionExpr::local_get(
-                    FunctionFunctionLocalId(12),
+                FunctionFunctionExpr::local_get(
+                    FunctionFunctionLocal::new(FunctionFunctionLocalId(12), function_function_type),
                     "function_function_fallback".into(),
-                    function_function_type,
-                )),
-            ),
+                ),
+            )),
         );
         let layout = FrameLayout::from_function_parts(&[], &[], &function_function_return);
         assert_eq!(layout.floats(), 6);
-        assert_eq!(layout.function_functions(), 13);
+        assert_eq!(
+            layout
+                .function_functions()
+                .iter()
+                .map(FunctionFunctionLocal::id)
+                .collect::<Vec<_>>(),
+            vec![FunctionFunctionLocalId(11), FunctionFunctionLocalId(12)],
+        );
     }
 
     #[test]

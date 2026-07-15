@@ -347,8 +347,8 @@ fn function_local_get(binding: FunctionLocalBinding, name: EcoString) -> Expr {
         FunctionLocalBinding::UtfCodepoint { local, type_ } => Expr::function(
             FunctionExpr::utf_codepoint(UtfCodepointFunctionExpr::local_get(local, name, type_)),
         ),
-        FunctionLocalBinding::Custom { local, type_ } => Expr::function(FunctionExpr::custom(
-            CustomFunctionExpr::local_get(local, name, type_),
+        FunctionLocalBinding::Custom(local) => Expr::function(FunctionExpr::custom(
+            CustomFunctionExpr::local_get(local, name),
         )),
         FunctionLocalBinding::Float { local, type_ } => Expr::function(FunctionExpr::float(
             FloatFunctionExpr::local_get(local, name, type_),
@@ -365,8 +365,8 @@ fn function_local_get(binding: FunctionLocalBinding, name: EcoString) -> Expr {
         FunctionLocalBinding::List(local) => {
             Expr::function(FunctionExpr::list(ListFunctionExpr::local_get(local, name)))
         }
-        FunctionLocalBinding::Function { local, type_ } => Expr::function(FunctionExpr::function(
-            FunctionFunctionExpr::local_get(local, name, type_),
+        FunctionLocalBinding::Function(local) => Expr::function(FunctionExpr::function(
+            FunctionFunctionExpr::local_get(local, name),
         )),
     }
 }
@@ -409,8 +409,9 @@ mod tests {
     use crate::plan::{
         BitArrayExpr, BitArrayFunctionExpr, BitArrayFunctionLocalId, BitArrayLocalId, BoolExpr,
         BoolFunctionExpr, BoolFunctionLocalId, BoolLocalId, CustomFunctionExpr,
-        CustomFunctionLocalId, CustomType, CustomTypeName, Expr, FloatExpr, FloatFunctionExpr,
-        FloatFunctionLocalId, FunctionExpr, FunctionFunctionExpr, FunctionFunctionLocalId,
+        CustomFunctionLocal, CustomFunctionLocalId, CustomFunctionType, CustomType, CustomTypeName,
+        Expr, FloatExpr, FloatFunctionExpr, FloatFunctionLocalId, FunctionExpr,
+        FunctionFunctionExpr, FunctionFunctionLocal, FunctionFunctionLocalId, FunctionFunctionType,
         FunctionType, IntExpr, IntFunctionExpr, IntFunctionLocalId, IntLocalId, ListExpr,
         ListFunctionExpr, ListLocal, LocalId, NilExpr, NilFunctionExpr, NilFunctionLocalId,
         NilLocalId, StringExpr, StringFunctionExpr, StringFunctionLocalId, StringListLocalId,
@@ -1194,19 +1195,15 @@ mod tests {
             CustomTypeName::new("geam".into(), "main".into(), "Boxed".into()),
             Vec::new(),
         );
-        let unary_custom = FunctionType::new(
-            vec![ValueType::Custom(custom_type.clone())],
-            ValueType::Custom(custom_type),
-        );
+        let unary_custom =
+            CustomFunctionType::new(vec![ValueType::Custom(custom_type.clone())], custom_type);
         let unary_float = FunctionType::new(vec![ValueType::Float], ValueType::Float);
         let unary_bool = FunctionType::new(vec![ValueType::Bool], ValueType::Bool);
         let unary_nil = FunctionType::new(vec![ValueType::Nil], ValueType::Nil);
         let tuple_type = FunctionType::new(Vec::new(), ValueType::Tuple(vec![ValueType::Int]));
         let list_type = FunctionType::new(Vec::new(), ValueType::List(Box::new(ValueType::Int)));
-        let function_type = FunctionType::new(
-            Vec::new(),
-            ValueType::Function(Box::new(FunctionType::new(Vec::new(), ValueType::Int))),
-        );
+        let function_type =
+            FunctionFunctionType::new(Vec::new(), FunctionType::new(Vec::new(), ValueType::Int));
 
         assert_eq!(
             function_local_get(
@@ -1268,16 +1265,15 @@ mod tests {
         );
         assert_eq!(
             function_local_get(
-                FunctionLocalBinding::Custom {
-                    local: CustomFunctionLocalId(0),
-                    type_: unary_custom.clone(),
-                },
+                FunctionLocalBinding::Custom(CustomFunctionLocal::new(
+                    CustomFunctionLocalId(0),
+                    unary_custom.clone(),
+                )),
                 "f".into(),
             ),
             Expr::function(FunctionExpr::custom(CustomFunctionExpr::local_get(
-                CustomFunctionLocalId(0),
+                CustomFunctionLocal::new(CustomFunctionLocalId(0), unary_custom),
                 "f".into(),
-                unary_custom,
             ))),
         );
         assert_eq!(
@@ -1359,16 +1355,15 @@ mod tests {
         );
         assert_eq!(
             function_local_get(
-                FunctionLocalBinding::Function {
-                    local: FunctionFunctionLocalId(0),
-                    type_: function_type.clone(),
-                },
+                FunctionLocalBinding::Function(FunctionFunctionLocal::new(
+                    FunctionFunctionLocalId(0),
+                    function_type.clone(),
+                )),
                 "f".into(),
             ),
             Expr::function(FunctionExpr::function(FunctionFunctionExpr::local_get(
-                FunctionFunctionLocalId(0),
+                FunctionFunctionLocal::new(FunctionFunctionLocalId(0), function_type),
                 "f".into(),
-                function_type,
             ))),
         );
     }

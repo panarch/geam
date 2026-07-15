@@ -192,7 +192,7 @@ pub(super) fn function_return_expr(
             ValueType::Function(expected),
             RuntimeFunctionId::Function { id, return_type },
             ExprKind::Function(actual),
-        ) if expected.as_ref() == actual.type_() && expected.as_ref() == return_type => {
+        ) if *expected.as_ref() == actual.type_() && expected.as_ref() == return_type => {
             function_value::function_returning_function_expr(name, id.clone(), actual)
         }
         _ => Err(PlanError::InvalidTypedAst {

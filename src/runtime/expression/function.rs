@@ -18,11 +18,17 @@ use crate::runtime::state::RuntimeState;
 use crate::runtime::{EvaluatedFunctionValue, EvaluatedValue, ExecutionError};
 
 pub(in crate::runtime) use self::{
-    bit_array::eval_bit_array_function_expr, bool::eval_bool_function_expr,
-    custom::eval_custom_function_expr, float::eval_float_function_expr,
-    int::eval_int_function_expr, list::eval_list_function_expr, nil::eval_nil_function_expr,
-    returning_function::eval_function_function_expr, string::eval_string_function_expr,
-    tuple::eval_tuple_function_expr, utf_codepoint::eval_utf_codepoint_function_expr,
+    bit_array::eval_bit_array_function_expr,
+    bool::eval_bool_function_expr,
+    custom::{eval_custom_function_expr, eval_custom_function_expr_kind},
+    float::eval_float_function_expr,
+    int::eval_int_function_expr,
+    list::eval_list_function_expr,
+    nil::eval_nil_function_expr,
+    returning_function::{eval_function_function_expr, eval_function_function_expr_kind},
+    string::eval_string_function_expr,
+    tuple::eval_tuple_function_expr,
+    utf_codepoint::eval_utf_codepoint_function_expr,
 };
 
 pub(in crate::runtime) fn eval_function_expr(

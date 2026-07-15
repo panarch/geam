@@ -4,7 +4,7 @@ use super::expression::{
     nil_function_expr, string_expr, string_function_expr, tuple_expr, tuple_function_expr,
     utf_codepoint_expr, utf_codepoint_function_expr,
 };
-use super::id::{list_function_local, list_local};
+use super::id::{custom_function_local, function_function_local, list_function_local, list_local};
 use super::param::param_local;
 use crate::plan::{execution, module};
 
@@ -143,7 +143,7 @@ fn lower_step(step: module::Step, context: &mut super::LoweringContext) -> execu
             name: _,
             value,
         } => E::LetCustomFunction {
-            local: execution::CustomFunctionLocalId(local.0),
+            local: custom_function_local(local, context),
             value: custom_function_expr(value, context),
         },
         M::LetBoolFunction {
@@ -183,7 +183,7 @@ fn lower_step(step: module::Step, context: &mut super::LoweringContext) -> execu
             name: _,
             value,
         } => E::LetFunctionFunction {
-            local: execution::FunctionFunctionLocalId(local.0),
+            local: function_function_local(local, context),
             value: function_function_expr(value, context),
         },
         M::AssertList {

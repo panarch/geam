@@ -27,9 +27,10 @@ pub(super) use self::{
     float::eval_float_expr,
     function::{
         eval_bit_array_function_expr, eval_bool_function_expr, eval_custom_function_expr,
-        eval_float_function_expr, eval_function_expr, eval_function_function_expr,
-        eval_int_function_expr, eval_list_function_expr, eval_nil_function_expr,
-        eval_string_function_expr, eval_tuple_function_expr, eval_utf_codepoint_function_expr,
+        eval_custom_function_expr_kind, eval_float_function_expr, eval_function_expr,
+        eval_function_function_expr, eval_function_function_expr_kind, eval_int_function_expr,
+        eval_list_function_expr, eval_nil_function_expr, eval_string_function_expr,
+        eval_tuple_function_expr, eval_utf_codepoint_function_expr,
     },
     int::eval_int_expr,
     list::{
@@ -136,7 +137,7 @@ fn eval_panic_message(
 mod tests {
     use super::{
         eval_bool_expr, eval_bool_function_expr, eval_bool_list_expr, eval_float_expr,
-        eval_float_function_expr, eval_float_list_expr, eval_function_function_expr,
+        eval_float_function_expr, eval_float_list_expr, eval_function_function_expr_kind,
         eval_function_list_expr, eval_int_expr, eval_int_function_expr, eval_int_list_expr,
         eval_list_function_expr, eval_list_list_expr, eval_nil_expr, eval_nil_function_expr,
         eval_nil_list_expr, eval_string_expr, eval_string_function_expr, eval_string_list_expr,
@@ -145,16 +146,16 @@ mod tests {
     };
     use crate::plan::execution::{
         BoolFunctionFunctionId, BoolFunctionId, FloatFunctionFunctionId, FloatFunctionId,
-        FunctionFunctionFunctionId, IntFunctionFunctionId, IntFunctionId, NilFunctionFunctionId,
-        NilFunctionId, ReturnBody, ReturnBodyKind, StringFunctionFunctionId, StringFunctionId,
-        TupleFunctionFunctionId, TupleFunctionId, TupleLocalId, UtfCodepointFunctionFunctionId,
-        UtfCodepointFunctionId,
+        FunctionFunctionExprKind, FunctionFunctionFunctionId, FunctionFunctionReturn,
+        IntFunctionFunctionId, IntFunctionId, NilFunctionFunctionId, NilFunctionId, ReturnBody,
+        ReturnBodyKind, StringFunctionFunctionId, StringFunctionId, TupleFunctionFunctionId,
+        TupleFunctionId, TupleLocalId, UtfCodepointFunctionFunctionId, UtfCodepointFunctionId,
     };
     use crate::plan::{FunctionType, ValueType};
     use crate::runtime::frame::Frame;
     use crate::runtime::{
         EvaluatedFunctionValue, EvaluatedIntFunction, EvaluatedStringFunction,
-        EvaluatedUtfCodepointFunction, EvaluatedValue, ExecutionError,
+        EvaluatedUtfCodepointFunction, EvaluatedValue, ExecutionError, FunctionValueKind, Value,
     };
 
     #[test]
@@ -231,8 +232,12 @@ fn tuple_function(value: #(fn() -> #(Int))) { value.0 }
 fn list_function(value: #(fn() -> List(Int))) { value.0 }
 fn function_function(value: #(fn() -> fn() -> Int)) { value.0 }
 
-pub fn main() { Nil }
+pub fn main() { function_function }
 "#,
+        );
+        let function_function_id = expect_function_function_function_id(
+            crate::runtime::run_main(&plan)
+                .expect("main should return the function_function reference"),
         );
         let actual = ValueType::Tuple(Vec::new());
         let wrong_tuple = vec![EvaluatedValue::Tuple(Vec::new())];
@@ -301,7 +306,7 @@ pub fn main() { Nil }
             }),
         );
 
-        let function = plan.nil_function(NilFunctionId(1));
+        let function = plan.nil_function(NilFunctionId(0));
         let expression = expression_return(function.return_())
             .expect("source function should have an expression return body");
         let mut state = crate::runtime::RuntimeState::new();
@@ -556,14 +561,21 @@ pub fn main() { Nil }
             }),
         );
 
-        let function = plan.function_function_function(FunctionFunctionFunctionId(0));
-        let expression = expression_return(function.return_())
+        let function = plan.function_function_function(&function_function_id);
+        let return_ = function.return_();
+        let expression = function_function_expression_return(return_)
             .expect("source function should have an expression return body");
         let mut state = crate::runtime::RuntimeState::new();
         let mut frame = Frame::new(function.frame_layout(), &mut state);
         frame.set_tuple(TupleLocalId(0), wrong_tuple.clone());
         assert_eq!(
-            eval_function_function_expr(&plan, &mut state, &mut frame, expression),
+            eval_function_function_expr_kind(
+                &plan,
+                &mut state,
+                &mut frame,
+                return_.type_(),
+                expression,
+            ),
             Err(ExecutionError::TupleIndexFamilyMismatch {
                 expected: ValueType::Function(Box::new(expected_function_types[7].clone())),
                 actual: actual.clone(),
@@ -712,8 +724,9 @@ pub fn main() { Nil }
             }),
         );
 
-        let function = plan.function_function_function(FunctionFunctionFunctionId(0));
-        let expression = expression_return(function.return_())
+        let function = plan.function_function_function(&function_function_id);
+        let return_ = function.return_();
+        let expression = function_function_expression_return(return_)
             .expect("source function should have an expression return body");
         let mut state = crate::runtime::RuntimeState::new();
         let mut frame = Frame::new(function.frame_layout(), &mut state);
@@ -722,7 +735,13 @@ pub fn main() { Nil }
             vec![EvaluatedValue::Function(wrong_int_function.into())],
         );
         assert_eq!(
-            eval_function_function_expr(&plan, &mut state, &mut frame, expression),
+            eval_function_function_expr_kind(
+                &plan,
+                &mut state,
+                &mut frame,
+                return_.type_(),
+                expression,
+            ),
             Err(ExecutionError::TupleIndexFamilyMismatch {
                 expected: ValueType::Function(Box::new(expected_function_types[7].clone())),
                 actual: wrong_int_type,
@@ -868,8 +887,12 @@ fn tuple_function() -> fn() -> #(Int) { tuple_function() }
 fn list_function() -> fn() -> List(Int) { list_function() }
 fn function_function() -> fn() -> fn() -> Int { function_function() }
 
-pub fn main() { Nil }
+pub fn main() { function_function }
 "#,
+        );
+        let function_function_id = expect_function_function_function_id(
+            crate::runtime::run_main(&plan)
+                .expect("main should return the function_function reference"),
         );
 
         assert_eq!(
@@ -889,7 +912,7 @@ pub fn main() { Nil }
             None,
         );
         assert_eq!(
-            expression_return(plan.nil_function(NilFunctionId(1)).return_()).map(|_| ()),
+            expression_return(plan.nil_function(NilFunctionId(0)).return_()).map(|_| ()),
             None,
         );
         assert_eq!(
@@ -1021,8 +1044,8 @@ pub fn main() { Nil }
             None,
         );
         assert_eq!(
-            expression_return(
-                plan.function_function_function(FunctionFunctionFunctionId(0))
+            function_function_expression_return(
+                plan.function_function_function(&function_function_id)
                     .return_(),
             )
             .map(|_| ()),
@@ -1067,10 +1090,45 @@ pub fn main() { Nil }
         );
     }
 
+    #[test]
+    #[should_panic(expected = "expected a function returning a function function")]
+    fn function_function_fixture_guard_rejects_non_function_value() {
+        let _ = expect_function_function_function_id(Value::Int(0.into()));
+    }
+
+    #[test]
+    #[should_panic(expected = "expected a function returning a function function")]
+    fn function_function_fixture_guard_rejects_primitive_function() {
+        let value = crate::runtime::run_src("pub fn main() { fn() { 1 } }");
+        let _ = expect_function_function_function_id(value);
+    }
+
+    fn expect_function_function_function_id(value: Value) -> FunctionFunctionFunctionId {
+        match value {
+            Value::Function(function) => match function.kind() {
+                FunctionValueKind::Function(function) => function
+                    .runtime_id()
+                    .function()
+                    .expect("expected a function returning a function function"),
+                _ => panic!("expected a function returning a function function"),
+            },
+            _ => panic!("expected a function returning a function function"),
+        }
+    }
+
     fn expression_return<Expression, Function>(
         body: &ReturnBody<Expression, Function>,
     ) -> Option<&Expression> {
         match body.kind() {
+            ReturnBodyKind::Expr(expression) => Some(expression),
+            _ => None,
+        }
+    }
+
+    fn function_function_expression_return(
+        body: &FunctionFunctionReturn,
+    ) -> Option<&FunctionFunctionExprKind> {
+        match body.body().kind() {
             ReturnBodyKind::Expr(expression) => Some(expression),
             _ => None,
         }

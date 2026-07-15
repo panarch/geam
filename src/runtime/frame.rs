@@ -1,11 +1,12 @@
 use crate::plan::execution::{
     BitArrayFunctionLocalId, BitArrayListLocalId, BitArrayLocalId, BoolFunctionLocalId,
-    BoolListLocalId, BoolLocalId, CustomFunctionLocalId, CustomListLocalId, CustomLocalId,
-    FloatFunctionLocalId, FloatListLocalId, FloatLocalId, FrameLayout, FunctionFunctionLocalId,
-    FunctionListLocalId, IntFunctionLocalId, IntListLocalId, IntLocalId, ListFunctionLocal,
-    ListListLocalId, NilFunctionLocalId, NilListLocalId, NilLocalId, StringFunctionLocalId,
-    StringListLocalId, StringLocalId, TupleFunctionLocalId, TupleListLocalId, TupleLocalId,
-    UtfCodepointFunctionLocalId, UtfCodepointListLocalId, UtfCodepointLocalId,
+    BoolListLocalId, BoolLocalId, CustomFunctionLocal, CustomFunctionLocalId, CustomListLocalId,
+    CustomLocalId, FloatFunctionLocalId, FloatListLocalId, FloatLocalId, FrameLayout,
+    FunctionFunctionLocal, FunctionFunctionLocalId, FunctionListLocalId, IntFunctionLocalId,
+    IntListLocalId, IntLocalId, ListFunctionLocal, ListListLocalId, NilFunctionLocalId,
+    NilListLocalId, NilLocalId, StringFunctionLocalId, StringListLocalId, StringLocalId,
+    TupleFunctionLocalId, TupleListLocalId, TupleLocalId, UtfCodepointFunctionLocalId,
+    UtfCodepointListLocalId, UtfCodepointLocalId,
 };
 use crate::runtime::evaluated::{
     EvaluatedBitArray, EvaluatedBitArrayFunction, EvaluatedBoolFunction, EvaluatedCustomFunction,
@@ -126,12 +127,12 @@ impl Frame {
             string_functions: HashMap::with_capacity(layout.string_functions()),
             bit_array_functions: HashMap::with_capacity(layout.bit_array_functions()),
             utf_codepoint_functions: HashMap::with_capacity(layout.utf_codepoint_functions()),
-            custom_functions: HashMap::with_capacity(layout.custom_functions()),
+            custom_functions: HashMap::with_capacity(layout.custom_functions().len()),
             bool_functions: HashMap::with_capacity(layout.bool_functions()),
             nil_functions: HashMap::with_capacity(layout.nil_functions()),
             tuple_functions: HashMap::with_capacity(layout.tuple_functions()),
             list_functions: HashMap::with_capacity(layout.list_functions().len()),
-            function_functions: HashMap::with_capacity(layout.function_functions()),
+            function_functions: HashMap::with_capacity(layout.function_functions().len()),
         }
     }
 
@@ -377,17 +378,17 @@ impl Frame {
 
     pub(super) fn set_custom_function(
         &mut self,
-        local: CustomFunctionLocalId,
+        local: &CustomFunctionLocal,
         value: EvaluatedCustomFunction,
     ) {
-        self.custom_functions.insert(local, value);
+        self.custom_functions.insert(local.id(), value);
     }
 
     pub(super) fn get_custom_function(
         &self,
-        local: CustomFunctionLocalId,
+        local: &CustomFunctionLocal,
     ) -> EvaluatedCustomFunction {
-        self.custom_functions[&local].clone()
+        self.custom_functions[&local.id()].clone()
     }
 
     pub(super) fn set_bool_function(
@@ -440,17 +441,17 @@ impl Frame {
 
     pub(super) fn set_function_function(
         &mut self,
-        local: FunctionFunctionLocalId,
+        local: &FunctionFunctionLocal,
         value: EvaluatedFunctionFunction,
     ) {
-        self.function_functions.insert(local, value);
+        self.function_functions.insert(local.id(), value);
     }
 
     pub(super) fn get_function_function(
         &self,
-        local: FunctionFunctionLocalId,
+        local: &FunctionFunctionLocal,
     ) -> EvaluatedFunctionFunction {
-        self.function_functions[&local].clone()
+        self.function_functions[&local.id()].clone()
     }
 }
 

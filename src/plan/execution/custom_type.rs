@@ -43,6 +43,15 @@ impl CustomTypeTable {
     pub(crate) fn len(&self) -> usize {
         self.types.len()
     }
+
+    #[cfg(test)]
+    pub(crate) fn constructor_id(
+        &self,
+        type_index: usize,
+        constructor_index: usize,
+    ) -> super::CustomConstructorId {
+        self.types[type_index].constructors[&constructor_index].id()
+    }
 }
 
 impl CustomTypeDescriptor {

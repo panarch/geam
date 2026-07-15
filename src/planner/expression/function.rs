@@ -175,9 +175,18 @@ fn closure_expr(
         RuntimeFunctionId::UtfCodepoint(runtime_id) => FunctionExpr::utf_codepoint(
             crate::plan::UtfCodepointFunctionExpr::closure(*runtime_id, params, captures, type_),
         ),
-        RuntimeFunctionId::Custom { id, .. } => FunctionExpr::custom(
-            crate::plan::CustomFunctionExpr::closure(*id, params, captures, type_),
-        ),
+        RuntimeFunctionId::Custom { id, return_type } => {
+            let callable_type = crate::plan::CustomFunctionType::new(
+                type_.argument_types().to_vec(),
+                return_type.clone(),
+            );
+            FunctionExpr::custom(crate::plan::CustomFunctionExpr::closure(
+                *id,
+                params,
+                captures,
+                callable_type,
+            ))
+        }
         RuntimeFunctionId::Float(runtime_id) => FunctionExpr::float(
             crate::plan::FloatFunctionExpr::closure(*runtime_id, params, captures, type_),
         ),
@@ -202,12 +211,15 @@ fn closure_expr(
             captures,
         )),
         RuntimeFunctionId::Function { id, return_type } => {
+            let callable_type = crate::plan::FunctionFunctionType::new(
+                type_.argument_types().to_vec(),
+                return_type.clone(),
+            );
             FunctionExpr::function(crate::plan::FunctionFunctionExpr::closure(
                 id.clone(),
                 params,
                 captures,
-                type_,
-                return_type.clone(),
+                callable_type,
             ))
         }
     }
@@ -620,7 +632,7 @@ pub fn main() {
 
         assert_eq!(
             expression.type_(),
-            &FunctionType::new(Vec::new(), ValueType::Tuple(return_type)),
+            FunctionType::new(Vec::new(), ValueType::Tuple(return_type)),
         );
     }
 

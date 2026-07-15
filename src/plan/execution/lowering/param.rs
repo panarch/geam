@@ -1,4 +1,4 @@
-use super::id::{list_function_local, list_local};
+use super::id::{custom_function_local, function_function_local, list_function_local, list_local};
 use crate::plan::module;
 
 pub(super) fn param_local(
@@ -69,11 +69,8 @@ pub(super) fn param_local(
                 type_: context.function_type(type_),
             }
         }
-        module::ParamLocal::CustomFunction { local, type_ } => {
-            execution::ParamLocal::CustomFunction {
-                local: execution::CustomFunctionLocalId(local.0),
-                type_: context.function_type(type_),
-            }
+        module::ParamLocal::CustomFunction(local) => {
+            execution::ParamLocal::CustomFunction(custom_function_local(local, context))
         }
         module::ParamLocal::BoolFunction { local, type_ } => execution::ParamLocal::BoolFunction {
             local: execution::BoolFunctionLocalId(local.0),
@@ -92,11 +89,8 @@ pub(super) fn param_local(
         module::ParamLocal::ListFunction(local) => {
             execution::ParamLocal::ListFunction(list_function_local(local, context))
         }
-        module::ParamLocal::FunctionFunction { local, type_ } => {
-            execution::ParamLocal::FunctionFunction {
-                local: execution::FunctionFunctionLocalId(local.0),
-                type_: context.function_type(type_),
-            }
+        module::ParamLocal::FunctionFunction(local) => {
+            execution::ParamLocal::FunctionFunction(function_function_local(local, context))
         }
     }
 }
@@ -176,13 +170,13 @@ pub fn main() {
         assert_eq!(
             reference.params(),
             &[
-                ParamLocal::CustomFunction {
-                    local: crate::plan::execution::CustomFunctionLocalId(0),
-                    type_: crate::plan::execution::FunctionType::new(
+                ParamLocal::CustomFunction(crate::plan::execution::CustomFunctionLocal::new(
+                    crate::plan::execution::CustomFunctionLocalId(0),
+                    crate::plan::execution::CustomFunctionType::new(
                         vec![ValueType::Int],
-                        ValueType::Custom(return_type),
+                        return_type,
                     ),
-                },
+                )),
                 ParamLocal::Int(crate::plan::execution::IntLocalId(0)),
             ],
         );

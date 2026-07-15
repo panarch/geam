@@ -4,25 +4,26 @@ use crate::plan::{
     BitArrayLocalId, BoolExpr, BoolFunctionExpr, BoolFunctionFunctionId, BoolFunctionId,
     BoolFunctionLocalId, BoolListFunctionId, BoolListItem, BoolListLocalId, BoolLocalId,
     CaptureArg, CustomConstructor, CustomConstructorField, CustomExpr, CustomFieldAccess,
-    CustomFunctionExpr, CustomFunctionFunctionId, CustomFunctionId, CustomFunctionLocalId,
-    CustomListFunctionId, CustomListItem, CustomListLocalId, CustomLocalId, CustomTypeDefinition,
-    CustomTypeTemplate, FloatExpr, FloatFunctionExpr, FloatFunctionFunctionId, FloatFunctionId,
-    FloatFunctionLocalId, FloatListFunctionId, FloatListItem, FloatListLocalId, FloatLocalId,
-    FunctionFunctionExpr, FunctionFunctionFunctionId, FunctionFunctionId, FunctionFunctionLocalId,
-    FunctionId, FunctionListFunctionId, FunctionListItem, FunctionListLocalId, FunctionPlan,
-    FunctionReference, FunctionType, IntExpr, IntFunctionExpr, IntFunctionFunctionId,
-    IntFunctionId, IntFunctionLocalId, IntListFunctionId, IntListItem, IntListLocalId, IntLocalId,
-    ListExpr, ListFunctionExpr, ListFunctionFunctionId, ListFunctionId, ListFunctionLocal,
-    ListListFunctionId, ListListItem, ListListLocalId, ListLocal, ListLocalExpr, LocalId, NilExpr,
-    NilFunctionExpr, NilFunctionFunctionId, NilFunctionId, NilFunctionLocalId, NilListFunctionId,
-    NilListItem, NilListLocalId, NilLocalId, PanicSite, ParamBinding, ParamLocal,
-    RuntimeFunctionId, StringExpr, StringFunctionExpr, StringFunctionFunctionId, StringFunctionId,
-    StringFunctionLocalId, StringListFunctionId, StringListItem, StringListLocalId, StringLocalId,
-    TupleExpr, TupleFunctionExpr, TupleFunctionFunctionId, TupleFunctionId, TupleFunctionLocalId,
-    TupleListFunctionId, TupleListItem, TupleListLocalId, TupleLocalId, UtfCodepointExpr,
-    UtfCodepointFunctionExpr, UtfCodepointFunctionFunctionId, UtfCodepointFunctionId,
-    UtfCodepointFunctionLocalId, UtfCodepointListFunctionId, UtfCodepointListItem,
-    UtfCodepointListLocalId, UtfCodepointLocalId, ValueType,
+    CustomFunctionExpr, CustomFunctionFunctionId, CustomFunctionId, CustomFunctionLocal,
+    CustomFunctionLocalId, CustomFunctionType, CustomListFunctionId, CustomListItem,
+    CustomListLocalId, CustomLocalId, CustomTypeDefinition, CustomTypeTemplate, FloatExpr,
+    FloatFunctionExpr, FloatFunctionFunctionId, FloatFunctionId, FloatFunctionLocalId,
+    FloatListFunctionId, FloatListItem, FloatListLocalId, FloatLocalId, FunctionFunctionExpr,
+    FunctionFunctionFunctionId, FunctionFunctionId, FunctionFunctionLocal, FunctionFunctionLocalId,
+    FunctionFunctionType, FunctionId, FunctionListFunctionId, FunctionListItem,
+    FunctionListLocalId, FunctionPlan, FunctionReference, FunctionType, IntExpr, IntFunctionExpr,
+    IntFunctionFunctionId, IntFunctionId, IntFunctionLocalId, IntListFunctionId, IntListItem,
+    IntListLocalId, IntLocalId, ListExpr, ListFunctionExpr, ListFunctionFunctionId, ListFunctionId,
+    ListFunctionLocal, ListListFunctionId, ListListItem, ListListLocalId, ListLocal, ListLocalExpr,
+    LocalId, NilExpr, NilFunctionExpr, NilFunctionFunctionId, NilFunctionId, NilFunctionLocalId,
+    NilListFunctionId, NilListItem, NilListLocalId, NilLocalId, PanicSite, ParamBinding,
+    ParamLocal, RuntimeFunctionId, StringExpr, StringFunctionExpr, StringFunctionFunctionId,
+    StringFunctionId, StringFunctionLocalId, StringListFunctionId, StringListItem,
+    StringListLocalId, StringLocalId, TupleExpr, TupleFunctionExpr, TupleFunctionFunctionId,
+    TupleFunctionId, TupleFunctionLocalId, TupleListFunctionId, TupleListItem, TupleListLocalId,
+    TupleLocalId, UtfCodepointExpr, UtfCodepointFunctionExpr, UtfCodepointFunctionFunctionId,
+    UtfCodepointFunctionId, UtfCodepointFunctionLocalId, UtfCodepointListFunctionId,
+    UtfCodepointListItem, UtfCodepointListLocalId, UtfCodepointLocalId, ValueType,
 };
 use crate::plan::{CustomType, CustomTypeName};
 use crate::planner::error::{
@@ -212,10 +213,7 @@ pub(super) enum FunctionLocalBinding {
         local: UtfCodepointFunctionLocalId,
         type_: FunctionType,
     },
-    Custom {
-        local: CustomFunctionLocalId,
-        type_: FunctionType,
-    },
+    Custom(CustomFunctionLocal),
     Float {
         local: FloatFunctionLocalId,
         type_: FunctionType,
@@ -233,10 +231,7 @@ pub(super) enum FunctionLocalBinding {
         type_: FunctionType,
     },
     List(ListFunctionLocal),
-    Function {
-        local: FunctionFunctionLocalId,
-        type_: FunctionType,
-    },
+    Function(FunctionFunctionLocal),
 }
 
 impl<'a> PlanContext<'a> {
@@ -378,10 +373,13 @@ impl<'a> PlanContext<'a> {
                         self.define_utf_codepoint_function_local(name, type_.clone()),
                         type_,
                     ),
-                    ValueType::Custom(_) => ParamLocal::custom_function(
-                        self.define_custom_function_local(name, type_.clone()),
-                        type_,
-                    ),
+                    ValueType::Custom(return_) => {
+                        let type_ = CustomFunctionType::new(
+                            type_.argument_types().to_vec(),
+                            return_.clone(),
+                        );
+                        ParamLocal::custom_function(self.define_custom_function_local(name, type_))
+                    }
                     ValueType::Bool => ParamLocal::bool_function(
                         self.define_bool_function_local(name, type_.clone()),
                         type_,
@@ -401,10 +399,15 @@ impl<'a> PlanContext<'a> {
                             item_type.as_ref().clone(),
                         ))
                     }
-                    ValueType::Function(_) => ParamLocal::function_function(
-                        self.define_function_function_local(name, type_.clone()),
-                        type_,
-                    ),
+                    ValueType::Function(return_) => {
+                        let type_ = FunctionFunctionType::new(
+                            type_.argument_types().to_vec(),
+                            return_.as_ref().clone(),
+                        );
+                        ParamLocal::function_function(
+                            self.define_function_function_local(name, type_),
+                        )
+                    }
                 }
             }
         }
@@ -510,14 +513,12 @@ impl<'a> PlanContext<'a> {
                     }),
                 );
             }
-            ParamLocal::CustomFunction { local, type_ } => {
-                self.next_custom_function_local = self.next_custom_function_local.max(local.0 + 1);
+            ParamLocal::CustomFunction(local) => {
+                self.next_custom_function_local =
+                    self.next_custom_function_local.max(local.id().0 + 1);
                 self.bindings.insert(
                     name,
-                    LocalBinding::Function(FunctionLocalBinding::Custom {
-                        local: *local,
-                        type_: type_.clone(),
-                    }),
+                    LocalBinding::Function(FunctionLocalBinding::Custom(local.clone())),
                 );
             }
             ParamLocal::BoolFunction { local, type_ } => {
@@ -558,15 +559,12 @@ impl<'a> PlanContext<'a> {
                     LocalBinding::Function(FunctionLocalBinding::List(local.clone())),
                 );
             }
-            ParamLocal::FunctionFunction { local, type_ } => {
+            ParamLocal::FunctionFunction(local) => {
                 self.next_function_function_local =
-                    self.next_function_function_local.max(local.0 + 1);
+                    self.next_function_function_local.max(local.id().0 + 1);
                 self.bindings.insert(
                     name,
-                    LocalBinding::Function(FunctionLocalBinding::Function {
-                        local: *local,
-                        type_: type_.clone(),
-                    }),
+                    LocalBinding::Function(FunctionLocalBinding::Function(local.clone())),
                 );
             }
         }
@@ -657,19 +655,28 @@ impl<'a> PlanContext<'a> {
     pub(super) fn define_custom_function_local(
         &mut self,
         name: EcoString,
-        type_: FunctionType,
-    ) -> CustomFunctionLocalId {
-        let local = CustomFunctionLocalId(self.next_custom_function_local);
+        type_: CustomFunctionType,
+    ) -> CustomFunctionLocal {
+        let local = CustomFunctionLocal::new(
+            CustomFunctionLocalId(self.next_custom_function_local),
+            type_,
+        );
         self.next_custom_function_local += 1;
         self.bindings.insert(
             name,
-            LocalBinding::Function(FunctionLocalBinding::Custom { local, type_ }),
+            LocalBinding::Function(FunctionLocalBinding::Custom(local.clone())),
         );
         local
     }
 
-    pub(super) fn define_internal_custom_function_local(&mut self) -> CustomFunctionLocalId {
-        let local = CustomFunctionLocalId(self.next_custom_function_local);
+    pub(super) fn define_internal_custom_function_local(
+        &mut self,
+        type_: CustomFunctionType,
+    ) -> CustomFunctionLocal {
+        let local = CustomFunctionLocal::new(
+            CustomFunctionLocalId(self.next_custom_function_local),
+            type_,
+        );
         self.next_custom_function_local += 1;
         local
     }
@@ -784,19 +791,28 @@ impl<'a> PlanContext<'a> {
     pub(super) fn define_function_function_local(
         &mut self,
         name: EcoString,
-        type_: FunctionType,
-    ) -> FunctionFunctionLocalId {
-        let local = FunctionFunctionLocalId(self.next_function_function_local);
+        type_: FunctionFunctionType,
+    ) -> FunctionFunctionLocal {
+        let local = FunctionFunctionLocal::new(
+            FunctionFunctionLocalId(self.next_function_function_local),
+            type_,
+        );
         self.next_function_function_local += 1;
         self.bindings.insert(
             name,
-            LocalBinding::Function(FunctionLocalBinding::Function { local, type_ }),
+            LocalBinding::Function(FunctionLocalBinding::Function(local.clone())),
         );
         local
     }
 
-    pub(super) fn define_internal_function_function_local(&mut self) -> FunctionFunctionLocalId {
-        let local = FunctionFunctionLocalId(self.next_function_function_local);
+    pub(super) fn define_internal_function_function_local(
+        &mut self,
+        type_: FunctionFunctionType,
+    ) -> FunctionFunctionLocal {
+        let local = FunctionFunctionLocal::new(
+            FunctionFunctionLocalId(self.next_function_function_local),
+            type_,
+        );
         self.next_function_function_local += 1;
         local
     }
@@ -2006,11 +2022,12 @@ impl<'a> PlanContext<'a> {
                     UtfCodepointFunctionExpr::local_get(local, capture.name, type_),
                 )
             }
-            LocalBinding::Function(FunctionLocalBinding::Custom { local, type_ }) => {
-                let target = self.define_custom_function_local(capture.name.clone(), type_.clone());
+            LocalBinding::Function(FunctionLocalBinding::Custom(local)) => {
+                let target =
+                    self.define_custom_function_local(capture.name.clone(), local.type_().clone());
                 CaptureArg::custom_function(
-                    target,
-                    CustomFunctionExpr::local_get(local, capture.name, type_),
+                    target.id(),
+                    CustomFunctionExpr::local_get(local, capture.name),
                 )
             }
             LocalBinding::Function(FunctionLocalBinding::Bool { local, type_ }) => {
@@ -2042,12 +2059,12 @@ impl<'a> PlanContext<'a> {
                 );
                 CaptureArg::list_function(target, ListFunctionExpr::local_get(local, capture.name))
             }
-            LocalBinding::Function(FunctionLocalBinding::Function { local, type_ }) => {
-                let target =
-                    self.define_function_function_local(capture.name.clone(), type_.clone());
+            LocalBinding::Function(FunctionLocalBinding::Function(local)) => {
+                let target = self
+                    .define_function_function_local(capture.name.clone(), local.type_().clone());
                 CaptureArg::function_function(
-                    target,
-                    FunctionFunctionExpr::local_get(local, capture.name, type_),
+                    target.id(),
+                    FunctionFunctionExpr::local_get(local, capture.name),
                 )
             }
         }
@@ -2222,16 +2239,24 @@ impl FunctionRuntimeIds {
             ValueType::UtfCodepoint => {
                 FunctionFunctionId::UtfCodepoint(self.next_utf_codepoint_function_id())
             }
-            ValueType::Custom(_) => FunctionFunctionId::Custom(self.next_custom_function_id()),
+            ValueType::Custom(return_) => FunctionFunctionId::Custom(self.next_custom_function_id(
+                crate::plan::CustomFunctionType::new(
+                    return_type.argument_types().to_vec(),
+                    return_.clone(),
+                ),
+            )),
             ValueType::Bool => FunctionFunctionId::Bool(self.next_bool_function_id()),
             ValueType::Nil => FunctionFunctionId::Nil(self.next_nil_function_id()),
             ValueType::Tuple(_) => FunctionFunctionId::Tuple(self.next_tuple_function_id()),
             ValueType::List(item_type) => FunctionFunctionId::List(
                 self.next_list_function_id(return_type.clone(), item_type.as_ref().clone()),
             ),
-            ValueType::Function(_) => {
-                FunctionFunctionId::Function(self.next_function_function_id())
-            }
+            ValueType::Function(return_) => FunctionFunctionId::Function(
+                self.next_function_function_id(crate::plan::FunctionFunctionType::new(
+                    return_type.argument_types().to_vec(),
+                    return_.as_ref().clone(),
+                )),
+            ),
         };
 
         RuntimeFunctionId::Function { id, return_type }
@@ -2413,8 +2438,11 @@ impl FunctionRuntimeIds {
         id
     }
 
-    pub(in crate::planner) fn next_custom_function_id(&mut self) -> CustomFunctionFunctionId {
-        let id = CustomFunctionFunctionId(self.next_custom_function);
+    pub(in crate::planner) fn next_custom_function_id(
+        &mut self,
+        type_: crate::plan::CustomFunctionType,
+    ) -> CustomFunctionFunctionId {
+        let id = CustomFunctionFunctionId::new(self.next_custom_function, type_);
         self.next_custom_function += 1;
         id
     }
@@ -2551,8 +2579,11 @@ impl FunctionRuntimeIds {
         }
     }
 
-    pub(in crate::planner) fn next_function_function_id(&mut self) -> FunctionFunctionFunctionId {
-        let id = FunctionFunctionFunctionId(self.next_function_function);
+    pub(in crate::planner) fn next_function_function_id(
+        &mut self,
+        type_: crate::plan::FunctionFunctionType,
+    ) -> FunctionFunctionFunctionId {
+        let id = FunctionFunctionFunctionId::new(self.next_function_function, type_);
         self.next_function_function += 1;
         id
     }
@@ -2628,10 +2659,11 @@ mod tests {
         BitArrayListItem, BitArrayListLocalId, BitArrayLocalId, BoolFunctionExpr,
         BoolFunctionLocalId, BoolListExpr, BoolListItem, BoolListLocalId, BoolLocalId, CaptureArg,
         CustomConstructor, CustomConstructorDefinition, CustomConstructorField,
-        CustomFieldDefinition, CustomFunctionLocalId, CustomType, CustomTypeDefinition,
-        CustomTypeName, CustomTypeParameterId, CustomTypePublicity, CustomTypeTemplate,
-        FloatFunctionExpr, FloatFunctionId, FloatFunctionLocalId, FloatListExpr, FloatListItem,
-        FloatListLocalId, FloatLocalId, FunctionFunctionExpr, FunctionFunctionLocalId,
+        CustomFieldDefinition, CustomFunctionLocal, CustomFunctionLocalId, CustomFunctionType,
+        CustomType, CustomTypeDefinition, CustomTypeName, CustomTypeParameterId,
+        CustomTypePublicity, CustomTypeTemplate, FloatFunctionExpr, FloatFunctionId,
+        FloatFunctionLocalId, FloatListExpr, FloatListItem, FloatListLocalId, FloatLocalId,
+        FunctionFunctionExpr, FunctionFunctionLocal, FunctionFunctionLocalId, FunctionFunctionType,
         FunctionListExpr, FunctionListItem, FunctionListLocalId, FunctionType, IntFunctionId,
         IntFunctionLocalId, IntListExpr, IntListItem, IntListLocalId, IntLocalId, ListExpr,
         ListFunctionExpr, ListListExpr, ListListItem, ListListLocalId, ListLocal, ListLocalExpr,
@@ -3542,14 +3574,12 @@ mod tests {
         let tuple_type = vec![ValueType::Int];
         let string_type = FunctionType::new(Vec::new(), ValueType::String);
         let bit_array_type = FunctionType::new(Vec::new(), ValueType::BitArray);
-        let custom_function_type = FunctionType::new(Vec::new(), ValueType::Custom(custom_type()));
+        let custom_function_type = CustomFunctionType::new(Vec::new(), custom_type());
         let float_type = FunctionType::new(Vec::new(), ValueType::Float);
         let bool_type = FunctionType::new(Vec::new(), ValueType::Bool);
         let nil_type = FunctionType::new(Vec::new(), ValueType::Nil);
-        let function_type = FunctionType::new(
-            Vec::new(),
-            ValueType::Function(Box::new(FunctionType::new(Vec::new(), ValueType::Int))),
-        );
+        let function_type =
+            FunctionFunctionType::new(Vec::new(), FunctionType::new(Vec::new(), ValueType::Int));
 
         context.define_existing_param(
             "tuple".into(),
@@ -3565,7 +3595,10 @@ mod tests {
         );
         context.define_existing_param(
             "custom_fn".into(),
-            &ParamLocal::custom_function(CustomFunctionLocalId(8), custom_function_type.clone()),
+            &ParamLocal::custom_function(CustomFunctionLocal::new(
+                CustomFunctionLocalId(8),
+                custom_function_type.clone(),
+            )),
         );
         context.define_existing_param(
             "float_fn".into(),
@@ -3581,7 +3614,10 @@ mod tests {
         );
         context.define_existing_param(
             "function_fn".into(),
-            &ParamLocal::function_function(FunctionFunctionLocalId(7), function_type.clone()),
+            &ParamLocal::function_function(FunctionFunctionLocal::new(
+                FunctionFunctionLocalId(7),
+                function_type.clone(),
+            )),
         );
 
         assert_eq!(
@@ -3604,10 +3640,10 @@ mod tests {
         );
         assert_eq!(
             context.lookup_function_local(&"custom_fn".into()),
-            Some(FunctionLocalBinding::Custom {
-                local: CustomFunctionLocalId(8),
-                type_: custom_function_type.clone(),
-            }),
+            Some(FunctionLocalBinding::Custom(CustomFunctionLocal::new(
+                CustomFunctionLocalId(8),
+                custom_function_type.clone(),
+            ))),
         );
         assert_eq!(
             context.lookup_function_local(&"float_fn".into()),
@@ -3632,10 +3668,10 @@ mod tests {
         );
         assert_eq!(
             context.lookup_function_local(&"function_fn".into()),
-            Some(FunctionLocalBinding::Function {
-                local: FunctionFunctionLocalId(7),
-                type_: function_type.clone(),
-            }),
+            Some(FunctionLocalBinding::Function(FunctionFunctionLocal::new(
+                FunctionFunctionLocalId(7),
+                function_type.clone(),
+            ))),
         );
 
         assert_eq!(
@@ -3659,12 +3695,18 @@ mod tests {
         assert_eq!(
             context
                 .define_custom_function_local("next_custom_fn".into(), custom_function_type)
-                .0,
-            9,
+                .id(),
+            CustomFunctionLocalId(9),
         );
         assert_eq!(
-            context.define_internal_custom_function_local(),
-            CustomFunctionLocalId(10),
+            context.define_internal_custom_function_local(CustomFunctionType::new(
+                Vec::new(),
+                custom_type(),
+            )),
+            CustomFunctionLocal::new(
+                CustomFunctionLocalId(10),
+                CustomFunctionType::new(Vec::new(), custom_type()),
+            ),
         );
         assert_eq!(
             context
@@ -3687,8 +3729,8 @@ mod tests {
         assert_eq!(
             context
                 .define_function_function_local("next_function_fn".into(), function_type)
-                .0,
-            8,
+                .id(),
+            FunctionFunctionLocalId(8),
         );
     }
 
@@ -4109,8 +4151,17 @@ mod tests {
             ),
         );
         assert_eq!(
-            context.define_internal_function_function_local(),
-            FunctionFunctionLocalId(0),
+            context.define_internal_function_function_local(FunctionFunctionType::new(
+                Vec::new(),
+                FunctionType::new(Vec::new(), ValueType::Int),
+            )),
+            FunctionFunctionLocal::new(
+                FunctionFunctionLocalId(0),
+                FunctionFunctionType::new(
+                    Vec::new(),
+                    FunctionType::new(Vec::new(), ValueType::Int),
+                ),
+            ),
         );
         assert_eq!(
             context.lookup_function_local(&"<case:int_function:0>".into()),
@@ -4290,10 +4341,8 @@ mod tests {
         let bit_array_type = FunctionType::new(Vec::new(), ValueType::BitArray);
         let bool_type = FunctionType::new(Vec::new(), ValueType::Bool);
         let nil_type = FunctionType::new(Vec::new(), ValueType::Nil);
-        let function_type = FunctionType::new(
-            Vec::new(),
-            ValueType::Function(Box::new(FunctionType::new(Vec::new(), ValueType::Int))),
-        );
+        let function_type =
+            FunctionFunctionType::new(Vec::new(), FunctionType::new(Vec::new(), ValueType::Int));
 
         context.define_string_function_local("string_fn".into(), string_type.clone());
         context.define_bit_array_function_local("bit_array_fn".into(), bit_array_type.clone());
@@ -4345,9 +4394,8 @@ mod tests {
                 CaptureArg::function_function(
                     FunctionFunctionLocalId(1),
                     FunctionFunctionExpr::local_get(
-                        FunctionFunctionLocalId(0),
+                        FunctionFunctionLocal::new(FunctionFunctionLocalId(0), function_type,),
                         "function_fn".into(),
-                        function_type,
                     ),
                 ),
             ],

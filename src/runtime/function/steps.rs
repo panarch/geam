@@ -2,8 +2,8 @@ use crate::plan::ValueType;
 use crate::plan::execution::ExecutionPlan;
 use crate::plan::execution::{
     AssertBinding, AssertPattern, BitArrayFunctionLocalId, BitArrayLocalId, BoolFunctionLocalId,
-    BoolLocalId, CustomBindingPattern, CustomConstructorId, CustomFunctionLocalId, CustomLocalId,
-    FloatFunctionLocalId, FloatLocalId, FunctionFunctionLocalId, IntFunctionLocalId, IntLocalId,
+    BoolLocalId, CustomBindingPattern, CustomConstructorId, CustomFunctionLocal, CustomLocalId,
+    FloatFunctionLocalId, FloatLocalId, FunctionFunctionLocal, IntFunctionLocalId, IntLocalId,
     ListAssertPattern, ListAssertTail, ListFunctionLocal, NilFunctionLocalId, NilLocalId,
     ParamLocal, StepKind, StringFunctionLocalId, StringLocalId, TotalBindingPattern,
     TupleFunctionLocalId, TupleLocalId, UtfCodepointFunctionLocalId, UtfCodepointLocalId,
@@ -97,7 +97,7 @@ pub(in crate::runtime) fn execute_steps(
             }
             StepKind::LetCustomFunction { local, value, .. } => {
                 let value = eval_custom_function_expr(plan, state, frame, value)?;
-                frame.set_custom_function(*local, value);
+                frame.set_custom_function(local, value);
             }
             StepKind::LetFloatFunction { local, value, .. } => {
                 let value = eval_float_function_expr(plan, state, frame, value)?;
@@ -121,7 +121,7 @@ pub(in crate::runtime) fn execute_steps(
             }
             StepKind::LetFunctionFunction { local, value, .. } => {
                 let value = eval_function_function_expr(plan, state, frame, value)?;
-                frame.set_function_function(*local, value);
+                frame.set_function_function(local, value);
             }
             StepKind::AssertList {
                 local,
@@ -297,12 +297,12 @@ enum PendingBinding {
     StringFunction(StringFunctionLocalId, EvaluatedStringFunction),
     BitArrayFunction(BitArrayFunctionLocalId, EvaluatedBitArrayFunction),
     UtfCodepointFunction(UtfCodepointFunctionLocalId, EvaluatedUtfCodepointFunction),
-    CustomFunction(CustomFunctionLocalId, EvaluatedCustomFunction),
+    CustomFunction(CustomFunctionLocal, EvaluatedCustomFunction),
     BoolFunction(BoolFunctionLocalId, EvaluatedBoolFunction),
     NilFunction(NilFunctionLocalId, EvaluatedNilFunction),
     TupleFunction(TupleFunctionLocalId, EvaluatedTupleFunction),
     ListFunction(ListFunctionLocal, EvaluatedListFunction),
-    FunctionFunction(FunctionFunctionLocalId, EvaluatedFunctionFunction),
+    FunctionFunction(FunctionFunctionLocal, EvaluatedFunctionFunction),
 }
 
 pub(in crate::runtime) fn match_and_apply_assert_pattern(
@@ -740,8 +740,8 @@ fn pending_function_binding(
             ParamLocal::UtfCodepointFunction { local, .. },
             EvaluatedFunctionValueKind::UtfCodepoint(value),
         ) => Some(PendingBinding::UtfCodepointFunction(*local, value.clone())),
-        (ParamLocal::CustomFunction { local, .. }, EvaluatedFunctionValueKind::Custom(value)) => {
-            Some(PendingBinding::CustomFunction(*local, value.clone()))
+        (ParamLocal::CustomFunction(local), EvaluatedFunctionValueKind::Custom(value)) => {
+            Some(PendingBinding::CustomFunction(local.clone(), value.clone()))
         }
         (ParamLocal::BoolFunction { local, .. }, EvaluatedFunctionValueKind::Bool(value)) => {
             Some(PendingBinding::BoolFunction(*local, value.clone()))
@@ -755,10 +755,9 @@ fn pending_function_binding(
         (ParamLocal::ListFunction(local), EvaluatedFunctionValueKind::List(value)) => {
             Some(PendingBinding::ListFunction(local.clone(), value.clone()))
         }
-        (
-            ParamLocal::FunctionFunction { local, .. },
-            EvaluatedFunctionValueKind::Function(value),
-        ) => Some(PendingBinding::FunctionFunction(*local, value.clone())),
+        (ParamLocal::FunctionFunction(local), EvaluatedFunctionValueKind::Function(value)) => Some(
+            PendingBinding::FunctionFunction(local.clone(), value.clone()),
+        ),
         _ => None,
     }
 }
@@ -829,13 +828,13 @@ fn frame_set_binding(frame: &mut Frame, binding: PendingBinding) {
         PendingBinding::UtfCodepointFunction(local, value) => {
             frame.set_utf_codepoint_function(local, value)
         }
-        PendingBinding::CustomFunction(local, value) => frame.set_custom_function(local, value),
+        PendingBinding::CustomFunction(local, value) => frame.set_custom_function(&local, value),
         PendingBinding::BoolFunction(local, value) => frame.set_bool_function(local, value),
         PendingBinding::NilFunction(local, value) => frame.set_nil_function(local, value),
         PendingBinding::TupleFunction(local, value) => frame.set_tuple_function(local, value),
         PendingBinding::ListFunction(local, value) => frame.set_list_function(local, value),
         PendingBinding::FunctionFunction(local, value) => {
-            frame.set_function_function(local, value);
+            frame.set_function_function(&local, value);
         }
     }
 }
@@ -1544,21 +1543,18 @@ pub fn main() {
         )
         .expect("custom setup should execute");
         let constructor_id = frame.get_custom(custom_local).constructor();
+        let value = EvaluatedCustomValue::from_fields(
+            constructor_id,
+            vec![EvaluatedValue::String("wrong".into())].into_boxed_slice(),
+        );
+        frame.set_custom(custom_local, value);
         assert_eq!(
-            EvaluatedCustomValue::try_from_fields(
+            execute_steps(
                 &custom_plan,
-                constructor_id,
-                vec![EvaluatedValue::String("wrong".into())],
-            )
-            .and_then(|value| {
-                frame.set_custom(custom_local, value);
-                execute_steps(
-                    &custom_plan,
-                    &mut state,
-                    &function.steps()[assert_index..=assert_index],
-                    &mut frame,
-                )
-            }),
+                &mut state,
+                &function.steps()[assert_index..=assert_index],
+                &mut frame,
+            ),
             Err(ExecutionError::CustomFieldFamilyMismatch {
                 custom_type: custom_plan.custom_value_type(constructor_id.type_id()),
                 constructor: "Boxed".into(),
@@ -1601,22 +1597,19 @@ pub fn main() {
         .expect("custom-list setup should execute");
         let constructor_id =
             state.custom_values(&frame.get_custom_list(list_local))[0].constructor();
+        let value = EvaluatedCustomValue::from_fields(
+            constructor_id,
+            vec![EvaluatedValue::String("wrong".into())].into_boxed_slice(),
+        );
+        let wrong = state.custom(list_type, vec![value]);
+        frame.set_custom_list(list_local, wrong);
         assert_eq!(
-            EvaluatedCustomValue::try_from_fields(
+            execute_steps(
                 &list_plan,
-                constructor_id,
-                vec![EvaluatedValue::String("wrong".into())],
-            )
-            .and_then(|value| {
-                let wrong = state.custom(list_type, vec![value]);
-                frame.set_custom_list(list_local, wrong);
-                execute_steps(
-                    &list_plan,
-                    &mut state,
-                    &function.steps()[assert_index..=assert_index],
-                    &mut frame,
-                )
-            }),
+                &mut state,
+                &function.steps()[assert_index..=assert_index],
+                &mut frame,
+            ),
             Err(ExecutionError::CustomFieldFamilyMismatch {
                 custom_type: list_plan.custom_value_type(constructor_id.type_id()),
                 constructor: "Boxed".into(),
@@ -1671,13 +1664,12 @@ pub fn main() {
             Ok(false),
         );
 
+        let value = EvaluatedCustomValue::from_fields(
+            constructor_id,
+            vec![EvaluatedValue::String("wrong".into())].into_boxed_slice(),
+        );
         assert_eq!(
-            EvaluatedCustomValue::try_from_fields(
-                &plan,
-                constructor_id,
-                vec![EvaluatedValue::String("wrong".into())],
-            )
-            .and_then(|value| match_assert_pattern(
+            match_assert_pattern(
                 &plan,
                 &mut state,
                 &mut frame,
@@ -1685,7 +1677,7 @@ pub fn main() {
                 &EvaluatedValue::Custom(value),
                 &mut bindings,
             )
-            .map(|_| ())),
+            .map(|_| ()),
             Err(ExecutionError::CustomFieldFamilyMismatch {
                 custom_type: plan.custom_value_type(constructor_id.type_id()),
                 constructor: constructor.name().clone(),
@@ -1793,43 +1785,30 @@ pub fn main() {
         };
         let tuple_pattern = &list_pattern.elements()[0];
 
+        let malformed_inner = EvaluatedCustomValue::from_fields(
+            inner.constructor(),
+            vec![EvaluatedValue::String("wrong".into())].into_boxed_slice(),
+        );
+        let malformed = EvaluatedCustomValue::from_fields(
+            outer.constructor(),
+            vec![EvaluatedValue::Custom(malformed_inner)].into_boxed_slice(),
+        );
         assert_eq!(
-            EvaluatedCustomValue::try_from_fields(
+            match_and_apply_assert_pattern(
                 &plan,
-                inner.constructor(),
-                vec![EvaluatedValue::String("wrong".into())],
-            )
-            .and_then(|malformed_inner| EvaluatedCustomValue::try_from_fields(
-                &plan,
-                outer.constructor(),
-                vec![EvaluatedValue::Custom(malformed_inner)],
-            ))
-            .map(|malformed| {
-                assert_eq!(
-                    match_and_apply_assert_pattern(
-                        &plan,
-                        &mut state,
-                        &mut frame,
-                        tuple_pattern,
-                        &EvaluatedValue::Tuple(vec![EvaluatedValue::Custom(malformed.clone())]),
-                    ),
-                    Err(expected.clone()),
-                );
-                let malformed_list = ListValueId::Tuple(
-                    state.tuple(list_type, vec![vec![EvaluatedValue::Custom(malformed)]]),
-                );
-                assert_eq!(
-                    match_list_assert_pattern(
-                        &plan,
-                        &mut state,
-                        &mut frame,
-                        list_pattern,
-                        &malformed_list,
-                    ),
-                    Err(expected),
-                );
-            }),
-            Ok(()),
+                &mut state,
+                &mut frame,
+                tuple_pattern,
+                &EvaluatedValue::Tuple(vec![EvaluatedValue::Custom(malformed.clone())]),
+            ),
+            Err(expected.clone()),
+        );
+        let malformed_list = ListValueId::Tuple(
+            state.tuple(list_type, vec![vec![EvaluatedValue::Custom(malformed)]]),
+        );
+        assert_eq!(
+            match_list_assert_pattern(&plan, &mut state, &mut frame, list_pattern, &malformed_list,),
+            Err(expected),
         );
     }
 
@@ -1872,21 +1851,20 @@ pub fn main() {
             Ok(None),
         );
         assert_eq!(bindings, Vec::new());
+        let value = EvaluatedCustomValue::from_fields(
+            constructor_id,
+            vec![EvaluatedValue::Int(2.into())].into_boxed_slice(),
+        );
         assert_eq!(
-            EvaluatedCustomValue::try_from_fields(
-                &plan,
-                constructor_id,
-                vec![EvaluatedValue::Int(2.into())],
-            )
-            .map(|value| match_assert_pattern(
+            match_assert_pattern(
                 &plan,
                 &mut state,
                 &mut frame,
                 pattern,
                 &EvaluatedValue::Custom(value),
                 &mut bindings,
-            )),
-            Ok(Ok(None)),
+            ),
+            Ok(None),
         );
         assert_eq!(bindings, Vec::new());
     }
@@ -1963,32 +1941,30 @@ pub fn main() {
             let actual = replacement.value_type(&plan);
             let mut fields = value.fields().to_vec();
             fields[field_index] = replacement;
+            let mutated =
+                EvaluatedCustomValue::from_fields(constructor_id, fields.into_boxed_slice());
             assert_eq!(
-                EvaluatedCustomValue::try_from_fields(&plan, constructor_id, fields)
-                    .map(|mutated| bind_custom_fields(&plan, pattern, &mutated)),
-                Ok(Err(ExecutionError::CustomFieldFamilyMismatch {
+                bind_custom_fields(&plan, pattern, &mutated),
+                Err(ExecutionError::CustomFieldFamilyMismatch {
                     custom_type: plan.custom_value_type(constructor_id.type_id()),
                     constructor: constructor.name().clone(),
                     field_index,
                     expected,
                     actual,
-                })),
+                }),
             );
         }
 
         let mut fields = value.fields().to_vec();
         fields[0] = EvaluatedValue::String("wrong".into());
+        let value = EvaluatedCustomValue::from_fields(constructor_id, fields.into_boxed_slice());
+        frame.set_custom(custom_local, value);
         assert_eq!(
-            EvaluatedCustomValue::try_from_fields(&plan, constructor_id, fields).and_then(
-                |value| {
-                    frame.set_custom(custom_local, value);
-                    execute_steps(
-                        &plan,
-                        &mut state,
-                        &steps[bind_index..=bind_index],
-                        &mut frame,
-                    )
-                }
+            execute_steps(
+                &plan,
+                &mut state,
+                &steps[bind_index..=bind_index],
+                &mut frame,
             ),
             Err(ExecutionError::CustomFieldFamilyMismatch {
                 custom_type: plan.custom_value_type(constructor_id.type_id()),
@@ -2045,25 +2021,22 @@ pub fn main() {
             vec!["wrong".into()],
         )));
         let inner = expect_custom_value(&value.fields()[2]);
+        let wrong_inner = EvaluatedCustomValue::from_fields(
+            inner.constructor(),
+            vec![EvaluatedValue::String("wrong".into())].into_boxed_slice(),
+        );
+        let mut fields = value.fields().to_vec();
+        fields[2] = EvaluatedValue::Custom(wrong_inner);
+        let mutated = EvaluatedCustomValue::from_fields(constructor_id, fields.into_boxed_slice());
         assert_eq!(
-            EvaluatedCustomValue::try_from_fields(
-                &plan,
-                inner.constructor(),
-                vec![EvaluatedValue::String("wrong".into())],
-            )
-            .and_then(|wrong_inner| {
-                let mut fields = value.fields().to_vec();
-                fields[2] = EvaluatedValue::Custom(wrong_inner);
-                EvaluatedCustomValue::try_from_fields(&plan, constructor_id, fields)
-            })
-            .map(|mutated| bind_custom_fields(&plan, pattern, &mutated)),
-            Ok(Err(ExecutionError::CustomFieldFamilyMismatch {
+            bind_custom_fields(&plan, pattern, &mutated),
+            Err(ExecutionError::CustomFieldFamilyMismatch {
                 custom_type: plan.custom_value_type(inner.constructor().type_id()),
                 constructor: plan.custom_constructor(inner.constructor()).name().clone(),
                 field_index: 0,
                 expected: ValueType::Int,
                 actual: ValueType::String,
-            })),
+            }),
         );
         let replacements = vec![
             (
@@ -2121,16 +2094,17 @@ pub fn main() {
         {
             let mut fields = value.fields().to_vec();
             fields[mutation_index] = replacement;
+            let mutated =
+                EvaluatedCustomValue::from_fields(constructor_id, fields.into_boxed_slice());
             assert_eq!(
-                EvaluatedCustomValue::try_from_fields(&plan, constructor_id, fields)
-                    .map(|mutated| bind_custom_fields(&plan, pattern, &mutated)),
-                Ok(Err(ExecutionError::CustomFieldFamilyMismatch {
+                bind_custom_fields(&plan, pattern, &mutated),
+                Err(ExecutionError::CustomFieldFamilyMismatch {
                     custom_type: plan.custom_value_type(error_constructor.type_id()),
                     constructor: plan.custom_constructor(error_constructor).name().clone(),
                     field_index,
                     expected,
                     actual,
-                })),
+                }),
             );
         }
     }

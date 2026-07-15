@@ -12,12 +12,16 @@ mod utf_codepoint;
 
 pub(in crate::plan::execution::lowering) use bit_array::bit_array_function_expr;
 pub(in crate::plan::execution::lowering) use bool::bool_function_expr;
-pub(in crate::plan::execution::lowering) use custom::custom_function_expr;
+pub(in crate::plan::execution::lowering) use custom::{
+    custom_function_expr, custom_function_expr_kind,
+};
 pub(in crate::plan::execution::lowering) use float::float_function_expr;
 pub(in crate::plan::execution::lowering) use int::int_function_expr;
 pub(in crate::plan::execution::lowering) use list::list_function_expr;
 pub(in crate::plan::execution::lowering) use nil::nil_function_expr;
-pub(in crate::plan::execution::lowering) use returning_function::function_function_expr;
+pub(in crate::plan::execution::lowering) use returning_function::{
+    function_function_expr, function_function_expr_kind,
+};
 pub(in crate::plan::execution::lowering) use string::string_function_expr;
 pub(in crate::plan::execution::lowering) use tuple::tuple_function_expr;
 pub(in crate::plan::execution::lowering) use utf_codepoint::utf_codepoint_function_expr;

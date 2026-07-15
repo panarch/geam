@@ -101,10 +101,11 @@ mod tests {
     use crate::plan::{
         BoolExpr, BoolFunctionExpr, BoolFunctionLocalId, CallArg, CaptureArg, Expr, FloatExpr,
         FloatFunctionExpr, FloatFunctionLocalId, FloatLocalId, FunctionExpr, FunctionFunctionExpr,
-        FunctionFunctionId, FunctionFunctionLocalId, IntExpr, IntFunctionFunctionId, IntFunctionId,
-        IntFunctionLocalId, IntListLocalId, ListExpr, ListFunctionExpr, ListLocal, ReturnExpr,
-        Step, StringExpr, StringFunctionExpr, StringFunctionLocalId, StringLocalId, TupleExpr,
-        TupleFunctionExpr, TupleFunctionLocalId, TupleLocalId, ValueType,
+        FunctionFunctionId, FunctionFunctionLocal, FunctionFunctionLocalId, IntExpr,
+        IntFunctionFunctionId, IntFunctionId, IntFunctionLocalId, IntListLocalId, ListExpr,
+        ListFunctionExpr, ListLocal, ParamLocal, ReturnExpr, Step, StringExpr, StringFunctionExpr,
+        StringFunctionLocalId, StringLocalId, TupleExpr, TupleFunctionExpr, TupleFunctionLocalId,
+        TupleLocalId, ValueType,
     };
 
     #[test]
@@ -202,14 +203,18 @@ mod tests {
                             "list_function_arg".into(),
                         ),
                     ),
-                    CallArg::function_function(
-                        FunctionFunctionLocalId(1),
-                        FunctionFunctionExpr::local_get(
+                    Expr::function(FunctionExpr::function(FunctionFunctionExpr::local_get(
+                        FunctionFunctionLocal::new(
                             FunctionFunctionLocalId(10),
-                            "function_function_arg".into(),
                             returning_function_type.clone(),
                         ),
-                    ),
+                        "function_function_arg".into(),
+                    )))
+                    .into_call_arg(&ParamLocal::function_function(FunctionFunctionLocal::new(
+                        FunctionFunctionLocalId(1),
+                        returning_function_type.clone(),
+                    )))
+                    .expect("matching function-returning-function argument"),
                 ],
             ))),
             Step::evaluate(Expr::function(FunctionExpr::function(
@@ -340,14 +345,15 @@ mod tests {
                         CaptureArg::function_function(
                             FunctionFunctionLocalId(2),
                             FunctionFunctionExpr::local_get(
-                                FunctionFunctionLocalId(14),
+                                FunctionFunctionLocal::new(
+                                    FunctionFunctionLocalId(14),
+                                    returning_function_type.clone(),
+                                ),
                                 "function_function_capture".into(),
-                                returning_function_type.clone(),
                             ),
                         ),
                     ],
                     returning_function_type.clone(),
-                    int_function_type,
                 ),
             ))),
         ];
@@ -358,7 +364,14 @@ mod tests {
         assert_eq!(layout.string_functions(), 12);
         assert_eq!(layout.bool_functions(), 13);
         assert_eq!(layout.nil_functions(), 14);
-        assert_eq!(layout.function_functions(), 15);
+        assert_eq!(
+            layout
+                .function_functions()
+                .iter()
+                .map(FunctionFunctionLocal::id)
+                .collect::<Vec<_>>(),
+            vec![FunctionFunctionLocalId(10), FunctionFunctionLocalId(14)],
+        );
         assert_eq!(layout.strings(), 16);
         assert_eq!(layout.bools(), 17);
         assert_eq!(layout.nils(), 18);

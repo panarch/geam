@@ -16,22 +16,23 @@ pub(in crate::runtime) fn eval_custom_expr(
     expression: &CustomExpr,
 ) -> Result<EvaluatedCustomValue, ExecutionError> {
     match expression.kind() {
-        CustomExprKind::Constructor {
-            constructor,
-            arguments,
-        } => {
-            let fields = arguments
+        CustomExprKind::Constructor(construction) => {
+            let fields = construction
+                .fields()
                 .iter()
-                .map(|argument| eval_expr(plan, state, frame, argument))
+                .map(|field| eval_expr(plan, state, frame, field))
                 .collect::<Result<Vec<_>, _>>()?;
-            EvaluatedCustomValue::try_from_fields(plan, *constructor, fields)
+            Ok(EvaluatedCustomValue::from_fields(
+                construction.constructor(),
+                fields.into_boxed_slice(),
+            ))
         }
         CustomExprKind::LocalGet { local } => Ok(frame.get_custom(*local)),
         CustomExprKind::Call { function, args } => {
             function::run_custom_call(plan, state, *function, args, frame)
         }
-        CustomExprKind::FunctionCall { function, args } => {
-            function::run_custom_function_call(plan, state, function, args, frame)
+        CustomExprKind::FunctionCall(call) => {
+            function::run_custom_function_call(plan, state, call, frame)
         }
         CustomExprKind::TupleIndex { tuple, index } => {
             let expected = ValueType::Custom(plan.custom_value_type(expression.type_id()));
@@ -204,16 +205,18 @@ pub fn main() {
     fn module_child_errors_propagate_through_custom_expression_wrappers() {
         let panic = || PanicExpr::panic_at(None, PanicSite::unknown());
         let value = || {
-            CustomExpr::constructor(
+            CustomExpr::try_constructor(
                 boxed_constructor(),
                 vec![Expr::int(IntExpr::value(1.into()))],
             )
+            .expect("test custom construction should be valid")
         };
         let expressions = [
-            CustomExpr::constructor(
+            CustomExpr::try_constructor(
                 boxed_constructor(),
                 vec![Expr::int(IntExpr::panic(panic()))],
-            ),
+            )
+            .expect("test custom construction should be valid"),
             CustomExpr::tuple_index(
                 TupleExpr::panic(panic(), vec![ValueType::Custom(boxed_type())]),
                 0,

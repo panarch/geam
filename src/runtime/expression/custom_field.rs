@@ -37,11 +37,15 @@ mod tests {
     use crate::plan::{
         CustomConstructor, CustomConstructorDefinition, CustomConstructorField, CustomExpr,
         CustomFieldAccess, CustomFieldDefinition, CustomType, CustomTypeDefinition, CustomTypeName,
-        CustomTypePublicity, CustomTypeTemplate, Expr, FunctionExpr, FunctionPlan,
-        FunctionReference, FunctionType, IntExpr, IntFunctionId, ListExpr, ModulePlan, ReturnBody,
-        ReturnExpr, RuntimeFunctionId, StringExpr, StringFunctionId, TupleExpr, ValueType,
+        CustomTypePublicity, CustomTypeTemplate, Expr, FunctionExpr, FunctionFunctionExpr,
+        FunctionFunctionId, FunctionFunctionReference, FunctionPlan, FunctionReference,
+        FunctionType, IntExpr, IntFunctionFunctionId, IntFunctionId, IntLocalId, ListExpr,
+        ModulePlan, ParamLocal, ReturnBody, ReturnExpr, RuntimeFunctionId, StringExpr,
+        StringFunctionId, TupleExpr, ValueType,
     };
-    use crate::plan::{FunctionId, TupleFunctionId};
+    use crate::plan::{
+        CustomFunctionExpr, CustomFunctionId, CustomFunctionReference, FunctionId, TupleFunctionId,
+    };
     use crate::runtime::{
         BitArrayValue, CustomFieldValue, CustomValue, ExecutionError, ListValue, Value,
     };
@@ -119,10 +123,11 @@ mod tests {
             ],
         );
         let discriminant_access = CustomFieldAccess::new(
-            CustomExpr::constructor(
+            CustomExpr::try_constructor(
                 other,
                 vec![Expr::string(StringExpr::value("wrong constructor".into()))],
-            ),
+            )
+            .expect("test custom construction should be valid"),
             0,
             Some("value".into()),
             vec![boxed.clone()],
@@ -140,7 +145,7 @@ mod tests {
             },
         );
         let source_error_access = CustomFieldAccess::new(
-            CustomExpr::constructor(
+            CustomExpr::try_constructor(
                 boxed.clone(),
                 vec![Expr::string(StringExpr::tuple_index(
                     TupleExpr::value(
@@ -149,7 +154,8 @@ mod tests {
                     ),
                     0,
                 ))],
-            ),
+            )
+            .expect("test custom construction should be valid"),
             0,
             Some("value".into()),
             vec![boxed],
@@ -274,7 +280,8 @@ mod tests {
                 )],
             );
             let access = CustomFieldAccess::new(
-                CustomExpr::constructor(constructor.clone(), vec![actual_value]),
+                CustomExpr::try_constructor(constructor.clone(), vec![actual_value])
+                    .expect("test custom construction should be valid"),
                 0,
                 Some("value".into()),
                 vec![constructor],
@@ -317,7 +324,8 @@ mod tests {
                 )],
             );
             let access = CustomFieldAccess::new(
-                CustomExpr::constructor(constructor.clone(), vec![outer_actual]),
+                CustomExpr::try_constructor(constructor.clone(), vec![outer_actual])
+                    .expect("test custom construction should be valid"),
                 0,
                 Some("value".into()),
                 vec![constructor],
@@ -367,6 +375,107 @@ mod tests {
                 },
             );
         }
+    }
+
+    #[test]
+    fn custom_function_field_projection_rejects_same_family_signature_mismatch() {
+        let inner_type = CustomType::new(inner_name(), Vec::new());
+        let expected_function =
+            FunctionType::new(Vec::new(), ValueType::Custom(inner_type.clone()));
+        let actual_function =
+            FunctionType::new(vec![ValueType::Int], ValueType::Custom(inner_type.clone()));
+        let constructor = CustomConstructor::new(
+            boxed_type(),
+            "Boxed".into(),
+            0,
+            vec![CustomConstructorField::new(
+                Some("value".into()),
+                ValueType::Function(Box::new(expected_function.clone())),
+            )],
+        );
+        let actual_value = Expr::function(FunctionExpr::custom(CustomFunctionExpr::reference(
+            CustomFunctionReference::new(CustomFunctionId(0), vec![ParamLocal::int(IntLocalId(0))]),
+            inner_type,
+        )));
+        let access = CustomFieldAccess::new(
+            CustomExpr::try_constructor(constructor.clone(), vec![actual_value])
+                .expect("test custom construction should be valid"),
+            0,
+            Some("value".into()),
+            vec![constructor],
+        );
+
+        assert_eq!(
+            run_field_projection_module(
+                Expr::custom_field(
+                    access,
+                    ValueType::Function(Box::new(expected_function.clone())),
+                ),
+                field_projection_definitions(&ValueType::Function(Box::new(
+                    expected_function.clone(),
+                ))),
+            ),
+            ExecutionError::CustomFieldFamilyMismatch {
+                custom_type: boxed_type(),
+                constructor: "Boxed".into(),
+                field_index: 0,
+                expected: ValueType::Function(Box::new(expected_function)),
+                actual: ValueType::Function(Box::new(actual_function)),
+            },
+        );
+    }
+
+    #[test]
+    fn function_function_field_projection_rejects_same_family_signature_mismatch() {
+        let returned = FunctionType::new(Vec::new(), ValueType::Int);
+        let expected_function =
+            FunctionType::new(Vec::new(), ValueType::Function(Box::new(returned.clone())));
+        let actual_function = FunctionType::new(
+            vec![ValueType::Int],
+            ValueType::Function(Box::new(returned.clone())),
+        );
+        let constructor = CustomConstructor::new(
+            boxed_type(),
+            "Boxed".into(),
+            0,
+            vec![CustomConstructorField::new(
+                Some("value".into()),
+                ValueType::Function(Box::new(expected_function.clone())),
+            )],
+        );
+        let actual_value = Expr::function(FunctionExpr::function(FunctionFunctionExpr::reference(
+            FunctionFunctionReference::new(
+                FunctionFunctionId::Int(IntFunctionFunctionId(0)),
+                vec![ParamLocal::int(IntLocalId(0))],
+            ),
+            returned,
+        )));
+        let access = CustomFieldAccess::new(
+            CustomExpr::try_constructor(constructor.clone(), vec![actual_value])
+                .expect("test custom construction should be valid"),
+            0,
+            Some("value".into()),
+            vec![constructor],
+        );
+
+        assert_eq!(
+            run_field_projection_module(
+                Expr::custom_field(
+                    access,
+                    ValueType::Function(Box::new(expected_function.clone())),
+                ),
+                field_projection_definitions(&ValueType::Function(Box::new(
+                    expected_function.clone(),
+                ))),
+            ),
+            ExecutionError::CustomFieldFamilyMismatch {
+                custom_type: boxed_type(),
+                constructor: "Boxed".into(),
+                field_index: 0,
+                expected: ValueType::Function(Box::new(expected_function)),
+                actual: ValueType::Function(Box::new(actual_function)),
+            },
+        );
     }
 
     fn field_projection_definitions(expected: &ValueType) -> Vec<CustomTypeDefinition> {

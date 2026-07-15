@@ -1,14 +1,13 @@
 use crate::plan::{
     BitArrayFunctionExpr, BitArrayFunctionExprKind, BitArrayFunctionReturn, BoolFunctionExpr,
-    BoolFunctionExprKind, BoolFunctionReturn, CustomFunctionExpr, CustomFunctionExprKind,
-    CustomFunctionReturn, FloatFunctionExpr, FloatFunctionExprKind, FloatFunctionReturn,
-    FunctionExpr, FunctionExprKind, FunctionFunctionExpr, FunctionFunctionExprKind,
-    FunctionFunctionId, FunctionFunctionReturn, IntFunctionExpr, IntFunctionExprKind,
-    IntFunctionReturn, ListFunctionExpr, ListFunctionExprKind, ListFunctionReturn, NilFunctionExpr,
-    NilFunctionExprKind, NilFunctionReturn, ReturnBody, ReturnExpr, StringFunctionExpr,
-    StringFunctionExprKind, StringFunctionReturn, TupleFunctionExpr, TupleFunctionExprKind,
-    TupleFunctionReturn, UtfCodepointFunctionExpr, UtfCodepointFunctionExprKind,
-    UtfCodepointFunctionReturn,
+    BoolFunctionExprKind, BoolFunctionReturn, CustomFunctionExpr, CustomFunctionReturn,
+    FloatFunctionExpr, FloatFunctionExprKind, FloatFunctionReturn, FunctionExpr, FunctionExprKind,
+    FunctionFunctionExpr, FunctionFunctionId, FunctionFunctionReturn, IntFunctionExpr,
+    IntFunctionExprKind, IntFunctionReturn, ListFunctionExpr, ListFunctionExprKind,
+    ListFunctionReturn, NilFunctionExpr, NilFunctionExprKind, NilFunctionReturn, ReturnBody,
+    ReturnExpr, StringFunctionExpr, StringFunctionExprKind, StringFunctionReturn,
+    TupleFunctionExpr, TupleFunctionExprKind, TupleFunctionReturn, UtfCodepointFunctionExpr,
+    UtfCodepointFunctionExprKind, UtfCodepointFunctionReturn,
 };
 use crate::planner::error::{InvalidFunctionShapeReason, InvalidTypedAstReason, PlanError};
 use ecow::EcoString;
@@ -51,14 +50,9 @@ pub(super) fn function_returning_function_expr(
                 utf_codepoint_function_return(actual),
             ))
         }
-        (FunctionFunctionId::Custom(runtime_id), FunctionExprKind::Custom(actual)) => {
-            let type_ = actual.type_().clone();
-            Ok(ReturnExpr::custom_function_body(
-                runtime_id,
-                type_,
-                custom_function_return(actual),
-            ))
-        }
+        (FunctionFunctionId::Custom(runtime_id), FunctionExprKind::Custom(actual)) => Ok(
+            ReturnExpr::custom_function_body(runtime_id.index(), custom_function_return(actual)),
+        ),
         (FunctionFunctionId::Float(runtime_id), FunctionExprKind::Float(actual)) => {
             let type_ = actual.type_().clone();
             Ok(ReturnExpr::float_function_body(
@@ -95,10 +89,8 @@ pub(super) fn function_returning_function_expr(
             ReturnExpr::list_function_body(runtime_id, list_function_return(actual)),
         ),
         (FunctionFunctionId::Function(runtime_id), FunctionExprKind::Function(actual)) => {
-            let type_ = actual.type_().clone();
             Ok(ReturnExpr::function_function_body(
-                runtime_id,
-                type_,
+                runtime_id.index(),
                 function_function_return(actual),
             ))
         }
@@ -112,60 +104,7 @@ pub(super) fn function_returning_function_expr(
 }
 
 fn custom_function_return(expression: CustomFunctionExpr) -> CustomFunctionReturn {
-    match expression.kind() {
-        CustomFunctionExprKind::Call { function, args, .. } => {
-            ReturnBody::tail_call(*function, args.clone())
-        }
-        CustomFunctionExprKind::BoolCase {
-            subject,
-            true_,
-            false_,
-        } => ReturnBody::bool_case(
-            (**subject).clone(),
-            custom_function_return((**true_).clone()),
-            custom_function_return((**false_).clone()),
-        ),
-        CustomFunctionExprKind::IntCase {
-            subject,
-            clauses,
-            fallback,
-        } => ReturnBody::int_case(
-            (**subject).clone(),
-            clauses
-                .iter()
-                .map(|(value, branch)| (value.clone(), custom_function_return(branch.clone())))
-                .collect(),
-            custom_function_return((**fallback).clone()),
-        ),
-        CustomFunctionExprKind::StringCase {
-            subject,
-            clauses,
-            fallback,
-        } => ReturnBody::string_case(
-            (**subject).clone(),
-            clauses
-                .iter()
-                .map(|(value, branch)| (value.clone(), custom_function_return(branch.clone())))
-                .collect(),
-            custom_function_return((**fallback).clone()),
-        ),
-        CustomFunctionExprKind::FloatCase {
-            subject,
-            clauses,
-            fallback,
-        } => ReturnBody::float_case(
-            (**subject).clone(),
-            clauses
-                .iter()
-                .map(|(value, branch)| (*value, custom_function_return(branch.clone())))
-                .collect(),
-            custom_function_return((**fallback).clone()),
-        ),
-        CustomFunctionExprKind::Block { steps, return_ } => {
-            ReturnBody::block(steps.clone(), custom_function_return((**return_).clone()))
-        }
-        _ => ReturnBody::expr(expression),
-    }
+    CustomFunctionReturn::expr(expression)
 }
 
 fn int_function_return(expression: IntFunctionExpr) -> IntFunctionReturn {
@@ -690,60 +629,7 @@ fn list_function_return(expression: ListFunctionExpr) -> ListFunctionReturn {
 }
 
 fn function_function_return(expression: FunctionFunctionExpr) -> FunctionFunctionReturn {
-    match expression.kind() {
-        FunctionFunctionExprKind::Call { function, args, .. } => {
-            ReturnBody::tail_call(*function, args.clone())
-        }
-        FunctionFunctionExprKind::BoolCase {
-            subject,
-            true_,
-            false_,
-        } => ReturnBody::bool_case(
-            (**subject).clone(),
-            function_function_return((**true_).clone()),
-            function_function_return((**false_).clone()),
-        ),
-        FunctionFunctionExprKind::IntCase {
-            subject,
-            clauses,
-            fallback,
-        } => ReturnBody::int_case(
-            (**subject).clone(),
-            clauses
-                .iter()
-                .map(|(value, branch)| (value.clone(), function_function_return(branch.clone())))
-                .collect(),
-            function_function_return((**fallback).clone()),
-        ),
-        FunctionFunctionExprKind::StringCase {
-            subject,
-            clauses,
-            fallback,
-        } => ReturnBody::string_case(
-            (**subject).clone(),
-            clauses
-                .iter()
-                .map(|(value, branch)| (value.clone(), function_function_return(branch.clone())))
-                .collect(),
-            function_function_return((**fallback).clone()),
-        ),
-        FunctionFunctionExprKind::FloatCase {
-            subject,
-            clauses,
-            fallback,
-        } => ReturnBody::float_case(
-            (**subject).clone(),
-            clauses
-                .iter()
-                .map(|(value, branch)| (*value, function_function_return(branch.clone())))
-                .collect(),
-            function_function_return((**fallback).clone()),
-        ),
-        FunctionFunctionExprKind::Block { steps, return_ } => {
-            ReturnBody::block(steps.clone(), function_function_return((**return_).clone()))
-        }
-        _ => ReturnBody::expr(expression),
-    }
+    FunctionFunctionReturn::expr(expression)
 }
 
 #[cfg(test)]
@@ -756,10 +642,11 @@ mod tests {
         BitArrayFunctionExpr, BitArrayFunctionFunctionId, BitArrayFunctionId,
         BitArrayFunctionReference, BoolExpr, BoolFunctionExpr, BoolFunctionFunctionId,
         BoolFunctionId, BoolFunctionReference, CustomFunctionExpr, CustomFunctionFunctionId,
-        CustomFunctionId, CustomFunctionReference, CustomType, CustomTypeName, FloatExpr,
-        FloatFunctionExpr, FloatFunctionFunctionId, FloatFunctionId, FloatFunctionReference,
-        FunctionExpr, FunctionFunctionExpr, FunctionFunctionFunctionId, FunctionFunctionId,
-        FunctionFunctionReference, FunctionType, IntExpr, IntFunctionExpr, IntFunctionFunctionId,
+        CustomFunctionId, CustomFunctionReference, CustomFunctionType, CustomType, CustomTypeName,
+        FloatExpr, FloatFunctionExpr, FloatFunctionFunctionId, FloatFunctionId,
+        FloatFunctionReference, FunctionExpr, FunctionFunctionExpr, FunctionFunctionFunctionId,
+        FunctionFunctionId, FunctionFunctionReference, FunctionFunctionReturn,
+        FunctionFunctionType, FunctionType, IntExpr, IntFunctionExpr, IntFunctionFunctionId,
         IntFunctionId, IntFunctionReference, IntLocalId, ListFunctionExpr, ListFunctionFunctionId,
         ListFunctionId, ListFunctionReference, NilFunctionExpr, NilFunctionFunctionId,
         NilFunctionId, NilFunctionReference, ParamLocal, ReturnBody, ReturnExpr, StringExpr,
@@ -948,7 +835,10 @@ mod tests {
         assert_eq!(
             function_returning_function_expr(
                 &"main".into(),
-                FunctionFunctionId::Function(FunctionFunctionFunctionId(0)),
+                FunctionFunctionId::Function(FunctionFunctionFunctionId::new(
+                    0,
+                    FunctionFunctionType::new(Vec::new(), function_return_type.clone()),
+                )),
                 FunctionExpr::function(FunctionFunctionExpr::reference(
                     FunctionFunctionReference::new(
                         FunctionFunctionId::Int(IntFunctionFunctionId(0)),
@@ -958,7 +848,7 @@ mod tests {
                 )),
             ),
             Ok(ReturnExpr::function_function(
-                FunctionFunctionFunctionId(0),
+                0,
                 FunctionFunctionExpr::reference(
                     FunctionFunctionReference::new(
                         FunctionFunctionId::Int(IntFunctionFunctionId(0)),
@@ -1094,20 +984,15 @@ mod tests {
         assert_eq!(
             function_returning_function_expr(
                 &"function_function".into(),
-                FunctionFunctionId::Function(FunctionFunctionFunctionId(0)),
+                FunctionFunctionId::Function(FunctionFunctionFunctionId::new(
+                    0,
+                    FunctionFunctionType::new(Vec::new(), float_function_type()),
+                )),
                 FunctionExpr::function(function_function_float_case()),
             ),
             Ok(ReturnExpr::function_function_body(
-                FunctionFunctionFunctionId(0),
-                FunctionType::new(
-                    Vec::new(),
-                    ValueType::Function(Box::new(float_function_type())),
-                ),
-                ReturnBody::float_case(
-                    FloatExpr::value(1.0),
-                    vec![(1.0, ReturnBody::expr(function_function_value()))],
-                    ReturnBody::expr(function_function_value()),
-                ),
+                0,
+                FunctionFunctionReturn::expr(function_function_float_case()),
             )),
         );
     }
@@ -1117,22 +1002,26 @@ mod tests {
         let value = custom_function_value();
         assert_eq!(
             custom_function_return(CustomFunctionExpr::call(
-                CustomFunctionFunctionId(0),
+                CustomFunctionFunctionId::new(0, custom_function_type()),
                 Vec::new(),
-                custom_function_type(),
-            )),
-            ReturnBody::tail_call(CustomFunctionFunctionId(0), Vec::new()),
+            ))
+            .into_parts(),
+            (custom_function_type(), ReturnBody::tail_call(0, Vec::new()),),
         );
         assert_eq!(
             custom_function_return(CustomFunctionExpr::bool_case(
                 BoolExpr::value(true),
                 value.clone(),
                 value.clone(),
-            )),
-            ReturnBody::bool_case(
-                BoolExpr::value(true),
-                ReturnBody::expr(value.clone()),
-                ReturnBody::expr(value.clone()),
+            ))
+            .into_parts(),
+            (
+                custom_function_type(),
+                ReturnBody::bool_case(
+                    BoolExpr::value(true),
+                    ReturnBody::expr(value.clone().into_parts().1),
+                    ReturnBody::expr(value.clone().into_parts().1),
+                ),
             ),
         );
         assert_eq!(
@@ -1140,11 +1029,15 @@ mod tests {
                 IntExpr::value(1.into()),
                 vec![(1.into(), value.clone())],
                 value.clone(),
-            )),
-            ReturnBody::int_case(
-                IntExpr::value(1.into()),
-                vec![(1.into(), ReturnBody::expr(value.clone()))],
-                ReturnBody::expr(value.clone()),
+            ))
+            .into_parts(),
+            (
+                custom_function_type(),
+                ReturnBody::int_case(
+                    IntExpr::value(1.into()),
+                    vec![(1.into(), ReturnBody::expr(value.clone().into_parts().1))],
+                    ReturnBody::expr(value.clone().into_parts().1),
+                ),
             ),
         );
         assert_eq!(
@@ -1152,11 +1045,15 @@ mod tests {
                 StringExpr::value("one".into()),
                 vec![("one".into(), value.clone())],
                 value.clone(),
-            )),
-            ReturnBody::string_case(
-                StringExpr::value("one".into()),
-                vec![("one".into(), ReturnBody::expr(value.clone()))],
-                ReturnBody::expr(value.clone()),
+            ))
+            .into_parts(),
+            (
+                custom_function_type(),
+                ReturnBody::string_case(
+                    StringExpr::value("one".into()),
+                    vec![("one".into(), ReturnBody::expr(value.clone().into_parts().1),)],
+                    ReturnBody::expr(value.clone().into_parts().1),
+                ),
             ),
         );
         assert_eq!(
@@ -1164,11 +1061,15 @@ mod tests {
                 FloatExpr::value(1.0),
                 vec![(1.0, value.clone())],
                 value.clone(),
-            )),
-            ReturnBody::float_case(
-                FloatExpr::value(1.0),
-                vec![(1.0, ReturnBody::expr(value.clone()))],
-                ReturnBody::expr(value.clone()),
+            ))
+            .into_parts(),
+            (
+                custom_function_type(),
+                ReturnBody::float_case(
+                    FloatExpr::value(1.0),
+                    vec![(1.0, ReturnBody::expr(value.clone().into_parts().1))],
+                    ReturnBody::expr(value.clone().into_parts().1),
+                ),
             ),
         );
         assert_eq!(
@@ -1177,12 +1078,16 @@ mod tests {
                     IntExpr::value(1.into()),
                 ))],
                 value.clone(),
-            )),
-            ReturnBody::block(
-                vec![crate::plan::Step::evaluate(crate::plan::Expr::int(
-                    IntExpr::value(1.into()),
-                ))],
-                ReturnBody::expr(value),
+            ))
+            .into_parts(),
+            (
+                custom_function_type(),
+                ReturnBody::block(
+                    vec![crate::plan::Step::evaluate(crate::plan::Expr::int(
+                        IntExpr::value(1.into()),
+                    ))],
+                    ReturnBody::expr(value.into_parts().1),
+                ),
             ),
         );
     }
@@ -1572,8 +1477,8 @@ mod tests {
         )
     }
 
-    fn custom_function_type() -> FunctionType {
-        FunctionType::new(vec![ValueType::Float], ValueType::Custom(custom_type()))
+    fn custom_function_type() -> CustomFunctionType {
+        CustomFunctionType::new(vec![ValueType::Float], custom_type())
     }
 
     fn custom_function_value() -> CustomFunctionExpr {

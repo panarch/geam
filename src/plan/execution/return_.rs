@@ -1,18 +1,19 @@
 use super::{
     BitArrayExpr, BitArrayFunctionExpr, BitArrayFunctionFunctionId, BitArrayFunctionId,
     BitArrayListExpr, BitArrayListFunctionId, BoolExpr, BoolFunctionExpr, BoolFunctionFunctionId,
-    BoolFunctionId, BoolListExpr, BoolListFunctionId, CallArg, CustomExpr, CustomFunctionExpr,
-    CustomFunctionFunctionId, CustomFunctionId, CustomListExpr, CustomListFunctionId, FloatExpr,
-    FloatFunctionExpr, FloatFunctionFunctionId, FloatFunctionId, FloatListExpr,
-    FloatListFunctionId, FunctionFunctionExpr, FunctionFunctionFunctionId, FunctionListExpr,
-    FunctionListFunctionId, IntExpr, IntFunctionExpr, IntFunctionFunctionId, IntFunctionId,
-    IntListExpr, IntListFunctionId, ListFunctionExpr, ListFunctionFunctionId, ListListExpr,
-    ListListFunctionId, NilExpr, NilFunctionExpr, NilFunctionFunctionId, NilFunctionId,
-    NilListExpr, NilListFunctionId, Step, StringExpr, StringFunctionExpr, StringFunctionFunctionId,
-    StringFunctionId, StringListExpr, StringListFunctionId, TupleExpr, TupleFunctionExpr,
-    TupleFunctionFunctionId, TupleFunctionId, TupleListExpr, TupleListFunctionId, UtfCodepointExpr,
-    UtfCodepointFunctionExpr, UtfCodepointFunctionFunctionId, UtfCodepointFunctionId,
-    UtfCodepointListExpr, UtfCodepointListFunctionId,
+    BoolFunctionId, BoolListExpr, BoolListFunctionId, CallArg, CustomExpr, CustomFunctionExprKind,
+    CustomFunctionFunctionId, CustomFunctionId, CustomFunctionType, CustomListExpr,
+    CustomListFunctionId, FloatExpr, FloatFunctionExpr, FloatFunctionFunctionId, FloatFunctionId,
+    FloatListExpr, FloatListFunctionId, FunctionFunctionExprKind, FunctionFunctionFunctionId,
+    FunctionFunctionType, FunctionListExpr, FunctionListFunctionId, IntExpr, IntFunctionExpr,
+    IntFunctionFunctionId, IntFunctionId, IntListExpr, IntListFunctionId, ListFunctionExpr,
+    ListFunctionFunctionId, ListListExpr, ListListFunctionId, NilExpr, NilFunctionExpr,
+    NilFunctionFunctionId, NilFunctionId, NilListExpr, NilListFunctionId, Step, StringExpr,
+    StringFunctionExpr, StringFunctionFunctionId, StringFunctionId, StringListExpr,
+    StringListFunctionId, TupleExpr, TupleFunctionExpr, TupleFunctionFunctionId, TupleFunctionId,
+    TupleListExpr, TupleListFunctionId, UtfCodepointExpr, UtfCodepointFunctionExpr,
+    UtfCodepointFunctionFunctionId, UtfCodepointFunctionId, UtfCodepointListExpr,
+    UtfCodepointListFunctionId,
 };
 use ecow::EcoString;
 use num_bigint::BigInt;
@@ -45,13 +46,18 @@ pub(crate) type BitArrayFunctionReturn =
     ReturnBody<BitArrayFunctionExpr, BitArrayFunctionFunctionId>;
 pub(crate) type UtfCodepointFunctionReturn =
     ReturnBody<UtfCodepointFunctionExpr, UtfCodepointFunctionFunctionId>;
-pub(crate) type CustomFunctionReturn = ReturnBody<CustomFunctionExpr, CustomFunctionFunctionId>;
+pub(crate) struct CustomFunctionReturn {
+    type_: CustomFunctionType,
+    body: ReturnBody<CustomFunctionExprKind, usize>,
+}
 pub(crate) type BoolFunctionReturn = ReturnBody<BoolFunctionExpr, BoolFunctionFunctionId>;
 pub(crate) type NilFunctionReturn = ReturnBody<NilFunctionExpr, NilFunctionFunctionId>;
 pub(crate) type TupleFunctionReturn = ReturnBody<TupleFunctionExpr, TupleFunctionFunctionId>;
 pub(crate) type ListFunctionReturn = ReturnBody<ListFunctionExpr, ListFunctionFunctionId>;
-pub(crate) type FunctionFunctionReturn =
-    ReturnBody<FunctionFunctionExpr, FunctionFunctionFunctionId>;
+pub(crate) struct FunctionFunctionReturn {
+    type_: FunctionFunctionType,
+    body: ReturnBody<FunctionFunctionExprKind, usize>,
+}
 
 pub(crate) struct ReturnBody<Expression, Function> {
     kind: ReturnBodyKind<Expression, Function>,
@@ -96,5 +102,47 @@ impl<Expression, Function> ReturnBody<Expression, Function> {
 
     pub(crate) fn kind(&self) -> &ReturnBodyKind<Expression, Function> {
         &self.kind
+    }
+}
+
+impl CustomFunctionReturn {
+    pub(in crate::plan::execution) fn from_parts(
+        type_: CustomFunctionType,
+        body: ReturnBody<CustomFunctionExprKind, usize>,
+    ) -> Self {
+        Self { type_, body }
+    }
+
+    pub(crate) fn type_(&self) -> &CustomFunctionType {
+        &self.type_
+    }
+
+    pub(crate) fn body(&self) -> &ReturnBody<CustomFunctionExprKind, usize> {
+        &self.body
+    }
+
+    pub(crate) fn function_id(&self, index: usize) -> CustomFunctionFunctionId {
+        CustomFunctionFunctionId::new(index, self.type_.clone())
+    }
+}
+
+impl FunctionFunctionReturn {
+    pub(in crate::plan::execution) fn from_parts(
+        type_: FunctionFunctionType,
+        body: ReturnBody<FunctionFunctionExprKind, usize>,
+    ) -> Self {
+        Self { type_, body }
+    }
+
+    pub(crate) fn type_(&self) -> &FunctionFunctionType {
+        &self.type_
+    }
+
+    pub(crate) fn body(&self) -> &ReturnBody<FunctionFunctionExprKind, usize> {
+        &self.body
+    }
+
+    pub(crate) fn function_id(&self, index: usize) -> FunctionFunctionFunctionId {
+        FunctionFunctionFunctionId::new(index, self.type_.clone())
     }
 }

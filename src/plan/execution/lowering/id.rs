@@ -2,6 +2,28 @@ use crate::plan::module;
 
 use super::LoweringContext;
 
+pub(super) fn custom_function_local(
+    local: module::CustomFunctionLocal,
+    context: &mut LoweringContext,
+) -> super::super::CustomFunctionLocal {
+    let (id, type_) = local.into_parts();
+    super::super::CustomFunctionLocal::new(
+        super::super::CustomFunctionLocalId(id.0),
+        context.custom_function_type(type_),
+    )
+}
+
+pub(super) fn function_function_local(
+    local: module::FunctionFunctionLocal,
+    context: &mut LoweringContext,
+) -> super::super::FunctionFunctionLocal {
+    let (id, type_) = local.into_parts();
+    super::super::FunctionFunctionLocal::new(
+        super::super::FunctionFunctionLocalId(id.0),
+        context.function_function_type(type_),
+    )
+}
+
 pub(super) fn list_local(
     local: module::ListLocal,
     context: &mut LoweringContext,
@@ -211,7 +233,10 @@ pub(super) fn function_function_id(
             ))
         }
         module::FunctionFunctionId::Custom(id) => {
-            execution::FunctionFunctionId::Custom(execution::CustomFunctionFunctionId(id.0))
+            execution::FunctionFunctionId::Custom(execution::CustomFunctionFunctionId::new(
+                id.index(),
+                context.custom_function_type(id.type_().clone()),
+            ))
         }
         module::FunctionFunctionId::Bool(id) => {
             execution::FunctionFunctionId::Bool(execution::BoolFunctionFunctionId(id.0))
@@ -226,7 +251,10 @@ pub(super) fn function_function_id(
             execution::FunctionFunctionId::List(list_function_function_id(id, context))
         }
         module::FunctionFunctionId::Function(id) => {
-            execution::FunctionFunctionId::Function(execution::FunctionFunctionFunctionId(id.0))
+            execution::FunctionFunctionId::Function(execution::FunctionFunctionFunctionId::new(
+                id.index(),
+                context.function_function_type(id.type_().clone()),
+            ))
         }
     }
 }

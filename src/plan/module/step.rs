@@ -7,10 +7,11 @@ use super::expression::{
 use super::function::ParamLocal;
 use super::id::{
     BitArrayFunctionLocalId, BitArrayLocalId, BoolFunctionLocalId, BoolLocalId,
-    CustomFunctionLocalId, CustomLocalId, FloatFunctionLocalId, FloatLocalId,
-    FunctionFunctionLocalId, IntFunctionLocalId, IntLocalId, ListFunctionLocal, ListLocal,
-    NilFunctionLocalId, NilLocalId, StringFunctionLocalId, StringLocalId, TupleFunctionLocalId,
-    TupleLocalId, UtfCodepointFunctionLocalId, UtfCodepointLocalId,
+    CustomFunctionLocal, CustomFunctionLocalId, CustomLocalId, FloatFunctionLocalId, FloatLocalId,
+    FunctionFunctionLocal, FunctionFunctionLocalId, IntFunctionLocalId, IntLocalId,
+    ListFunctionLocal, ListLocal, NilFunctionLocalId, NilLocalId, StringFunctionLocalId,
+    StringLocalId, TupleFunctionLocalId, TupleLocalId, UtfCodepointFunctionLocalId,
+    UtfCodepointLocalId,
 };
 use crate::plan::{BitArrayPattern, CustomBindingPattern};
 use crate::plan::{PanicSite, SourceSpan, ValueType};
@@ -157,7 +158,7 @@ pub(crate) enum StepKind {
         value: UtfCodepointFunctionExpr,
     },
     LetCustomFunction {
-        local: CustomFunctionLocalId,
+        local: CustomFunctionLocal,
         name: EcoString,
         value: CustomFunctionExpr,
     },
@@ -182,7 +183,7 @@ pub(crate) enum StepKind {
         value: ListFunctionExpr,
     },
     LetFunctionFunction {
-        local: FunctionFunctionLocalId,
+        local: FunctionFunctionLocal,
         name: EcoString,
         value: FunctionFunctionExpr,
     },
@@ -436,6 +437,7 @@ impl Step {
         name: EcoString,
         value: CustomFunctionExpr,
     ) -> Self {
+        let local = CustomFunctionLocal::new(local, value.custom_function_type().clone());
         Self {
             kind: StepKind::LetCustomFunction { local, name, value },
         }
@@ -486,6 +488,7 @@ impl Step {
         name: EcoString,
         value: FunctionFunctionExpr,
     ) -> Self {
+        let local = FunctionFunctionLocal::new(local, value.function_function_type().clone());
         Self {
             kind: StepKind::LetFunctionFunction { local, name, value },
         }
@@ -584,9 +587,12 @@ impl Step {
 mod tests {
     use super::{Step, StepKind};
     use crate::plan::{
-        AssertPattern, BoolExpr, Expr, IntExpr, IntFunctionId, IntFunctionLocalId,
-        IntFunctionReference, IntListLocalId, IntLocalId, ListAssertPattern, ListAssertTail,
-        ListLocal, ParamLocal, StringExpr, ValueType,
+        AssertPattern, BoolExpr, CustomFunctionExpr, CustomFunctionLocal, CustomFunctionLocalId,
+        CustomFunctionType, CustomType, CustomTypeName, Expr, FunctionFunctionExpr,
+        FunctionFunctionLocal, FunctionFunctionLocalId, FunctionFunctionType, FunctionType,
+        IntExpr, IntFunctionId, IntFunctionLocalId, IntFunctionReference, IntListLocalId,
+        IntLocalId, ListAssertPattern, ListAssertTail, ListLocal, PanicExpr, PanicSite, ParamLocal,
+        StringExpr, ValueType,
     };
     use num_bigint::BigInt;
 
@@ -654,6 +660,58 @@ mod tests {
                 message: None,
                 site: crate::plan::PanicSite::unknown(),
                 pattern_span: crate::plan::SourceSpan::new(0, 0),
+            },
+        );
+    }
+
+    #[test]
+    fn callable_let_steps_derive_the_local_type_from_the_value() {
+        let custom_type = CustomType::new(
+            CustomTypeName::new("geam".into(), "main".into(), "Boxed".into()),
+            Vec::new(),
+        );
+        let custom_function_type =
+            CustomFunctionType::new(vec![ValueType::Int], custom_type.clone());
+        let custom_value = CustomFunctionExpr::panic(
+            PanicExpr::panic_at(None, PanicSite::unknown()),
+            custom_function_type.clone(),
+        );
+        assert_eq!(
+            Step::let_custom_function(
+                CustomFunctionLocalId(3),
+                "custom".into(),
+                custom_value.clone(),
+            )
+            .kind(),
+            &StepKind::LetCustomFunction {
+                local: CustomFunctionLocal::new(CustomFunctionLocalId(3), custom_function_type,),
+                name: "custom".into(),
+                value: custom_value,
+            },
+        );
+
+        let function_function_type = FunctionFunctionType::new(
+            vec![ValueType::String],
+            FunctionType::new(vec![ValueType::Bool], ValueType::Int),
+        );
+        let function_value = FunctionFunctionExpr::panic(
+            PanicExpr::panic_at(None, PanicSite::unknown()),
+            function_function_type.clone(),
+        );
+        assert_eq!(
+            Step::let_function_function(
+                FunctionFunctionLocalId(4),
+                "function".into(),
+                function_value.clone(),
+            )
+            .kind(),
+            &StepKind::LetFunctionFunction {
+                local: FunctionFunctionLocal::new(
+                    FunctionFunctionLocalId(4),
+                    function_function_type,
+                ),
+                name: "function".into(),
+                value: function_value,
             },
         );
     }

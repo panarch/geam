@@ -1,7 +1,7 @@
 use super::{invalid_expression_type, invalid_expression_type_for_value};
 use crate::plan::{
-    BoolExpr, CustomExpr, CustomFunctionExpr, Expr, FloatExpr, FunctionExpr, IntExpr, ListExpr,
-    NilExpr, StringExpr, TupleExpr, ValueType,
+    BoolExpr, CustomExpr, Expr, FloatExpr, FunctionExpr, IntExpr, ListExpr, NilExpr, StringExpr,
+    TupleExpr, ValueType,
 };
 use crate::planner::context::PlanContext;
 use crate::planner::error::{
@@ -243,9 +243,9 @@ fn plan_record(
         return invalid_expression_shape(InvalidExpressionShapeKind::RecordConstructor);
     };
 
-    if !matches!(constructor.variant, ValueConstructorVariant::Record { .. }) {
+    let ValueConstructorVariant::Record { arity, .. } = &constructor.variant else {
         return invalid_expression_shape(InvalidExpressionShapeKind::Invalid);
-    }
+    };
     let Some(arguments) = arguments else {
         return plan_record_constructor(constructor, context);
     };
@@ -253,13 +253,16 @@ fn plan_record(
         return plan_record_constructor(constructor, context);
     }
     let constructor = context.custom_constructor(&constructor)?;
-    if arguments.len() != constructor.fields().len() {
+    if usize::from(*arity) != arguments.len() {
         return invalid_expression_shape(InvalidExpressionShapeKind::RecordConstructor);
     }
     let arguments = arguments
         .into_iter()
-        .zip(constructor.fields())
-        .map(|(argument, field)| {
+        .enumerate()
+        .map(|(index, argument)| {
+            let Some(field) = constructor.fields().get(index) else {
+                return invalid_expression_shape(InvalidExpressionShapeKind::RecordConstructor);
+            };
             if let Some(label) = &argument.label
                 && field.label() != Some(label)
             {
@@ -275,10 +278,13 @@ fn plan_record(
             Ok(argument)
         })
         .collect::<Result<Vec<_>, _>>()?;
-    Ok(Expr::custom(CustomExpr::constructor(
-        constructor,
-        arguments,
-    )))
+    CustomExpr::try_constructor(constructor, arguments)
+        .map(Expr::custom)
+        .map_err(|_| PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::ExpressionShape {
+                kind: InvalidExpressionShapeKind::RecordConstructor,
+            },
+        })
 }
 
 fn plan_record_constructor(
@@ -310,16 +316,10 @@ fn plan_record_constructor(
         return invalid_expression_shape(InvalidExpressionShapeKind::RecordConstructor);
     }
     let constructor = context.custom_constructor(&constructor)?;
-    if constructor.fields().is_empty() {
-        Ok(Expr::custom(CustomExpr::constructor(
-            constructor,
-            Vec::new(),
-        )))
-    } else {
-        Ok(Expr::function(FunctionExpr::custom(
-            CustomFunctionExpr::constructor(constructor),
-        )))
+    if usize::from(*arity) != constructor.fields().len() {
+        return invalid_expression_shape(InvalidExpressionShapeKind::RecordConstructor);
     }
+    Ok(crate::plan::module::custom_constructor_expr(constructor))
 }
 
 fn invalid_expression_shape(kind: InvalidExpressionShapeKind) -> Result<Expr, PlanError> {
@@ -494,7 +494,10 @@ pub fn main() { empty }
             &ReturnExpr::custom_body(
                 CustomFunctionId(0),
                 type_,
-                CustomReturn::expr(CustomExpr::constructor(constructor, Vec::new())),
+                CustomReturn::expr(
+                    CustomExpr::try_constructor(constructor, Vec::new())
+                        .expect("test custom construction should be valid"),
+                ),
             ),
         );
     }
@@ -533,10 +536,13 @@ pub fn main() { older_lucy }
             &ReturnExpr::custom_body(
                 CustomFunctionId(0),
                 type_,
-                CustomReturn::expr(CustomExpr::constructor(
-                    constructor,
-                    vec![Expr::from(string("Lucy")), Expr::from(int(31))],
-                )),
+                CustomReturn::expr(
+                    CustomExpr::try_constructor(
+                        constructor,
+                        vec![Expr::from(string("Lucy")), Expr::from(int(31))],
+                    )
+                    .expect("test custom construction should be valid"),
+                ),
             ),
         );
     }
@@ -1166,6 +1172,23 @@ pub fn main() {
                 },
             }),
         );
+        let mut extra_argument_constructor = record_constructor("Ok", "gleam", 2);
+        extra_argument_constructor.type_ = type_::fn_(
+            vec![type_::int()],
+            type_::result(type_::int(), type_::string()),
+        );
+        assert_eq!(
+            plan_record(
+                Some(vec![int_argument(None), int_argument(None)]),
+                Some(extra_argument_constructor),
+                &context,
+            ),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionShape {
+                    kind: InvalidExpressionShapeKind::RecordConstructor,
+                },
+            }),
+        );
         assert_eq!(
             plan_record(
                 Some(vec![int_argument(Some("wrong".into()))]),
@@ -1252,6 +1275,60 @@ pub fn main() {
         );
         assert_eq!(
             plan_record_constructor(record_constructor("External", "gleam", 1), &context),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionShape {
+                    kind: InvalidExpressionShapeKind::RecordConstructor,
+                },
+            }),
+        );
+        let mut mismatched_result_constructor = record_constructor("Ok", "gleam", 2);
+        mismatched_result_constructor.type_ = type_::fn_(
+            vec![type_::int()],
+            type_::result(type_::int(), type_::string()),
+        );
+        assert_eq!(
+            plan_record_constructor(mismatched_result_constructor, &context),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionShape {
+                    kind: InvalidExpressionShapeKind::RecordConstructor,
+                },
+            }),
+        );
+    }
+
+    #[test]
+    fn reject_margin_constant_record_descriptor_argument_count() {
+        let mut module = compile(
+            r#"
+pub type Pair { Pair(Int, Int) }
+const pair = Pair(1, 2)
+pub fn main() { pair }
+"#,
+        );
+        let custom_type = module.definitions.constants[0].type_.clone();
+        let mut constructor = record_constructor("Pair", "main", 1);
+        constructor.type_ = type_::fn_(vec![type_::int(), type_::int()], custom_type.clone());
+        *main_module_constant_literal_mut(&mut module) = Constant::Record {
+            location: dummy_span(),
+            module: None,
+            name: "Pair".into(),
+            arguments: Some(vec![gleam_core::ast::CallArg {
+                label: None,
+                location: dummy_span(),
+                value: Constant::Int {
+                    location: dummy_span(),
+                    value: "1".into(),
+                    int_value: 1.into(),
+                },
+                implicit: None,
+            }]),
+            type_: custom_type,
+            field_map: Inferred::Unknown,
+            record_constructor: Some(Box::new(constructor)),
+        };
+
+        assert_eq!(
+            plan_module(module),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::ExpressionShape {
                     kind: InvalidExpressionShapeKind::RecordConstructor,

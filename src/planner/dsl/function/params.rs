@@ -195,10 +195,13 @@ impl FunctionDsl {
         mut self,
         local: usize,
         name: impl Into<EcoString>,
-        type_: FunctionType,
+        type_: crate::plan::FunctionFunctionType,
     ) -> Self {
         self.params.push(Param::named(
-            ParamLocal::function_function(FunctionFunctionLocalId(local), type_),
+            ParamLocal::function_function(crate::plan::FunctionFunctionLocal::new(
+                FunctionFunctionLocalId(local),
+                type_,
+            )),
             name.into(),
         ));
         self

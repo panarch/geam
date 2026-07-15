@@ -313,17 +313,17 @@ impl FrameLayout {
 
     pub(in crate::plan::module::frame) fn include_custom_expr(&mut self, expression: &CustomExpr) {
         match expression.kind() {
-            CustomExprKind::Constructor { arguments, .. } => {
-                for argument in arguments {
-                    self.include_expr(argument);
+            CustomExprKind::Constructor(construction) => {
+                for field in construction.fields() {
+                    self.include_expr(field);
                 }
             }
             CustomExprKind::Panic(panic) => self.include_panic_expr(panic),
             CustomExprKind::LocalGet { local, .. } => self.include_custom(*local),
             CustomExprKind::Call { args, .. } => self.include_call_args(args),
-            CustomExprKind::FunctionCall { function, args } => {
-                self.include_custom_function_expr(function);
-                self.include_call_args(args);
+            CustomExprKind::FunctionCall(call) => {
+                self.include_custom_function_expr(call.function());
+                self.include_call_args(call.arguments());
             }
             CustomExprKind::TupleIndex { tuple, .. } => self.include_tuple_expr(tuple),
             CustomExprKind::CustomField(access) => self.include_custom_expr(access.source()),

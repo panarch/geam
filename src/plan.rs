@@ -14,11 +14,12 @@ pub(crate) use module::{
     BoolFunctionReference, BoolFunctionReturn, BoolListCaseBranches, BoolListExpr, BoolListItem,
     BoolReturn, CallArgKind, CaptureArg, CaptureArgKind, CustomBindingPattern, CustomConstructor,
     CustomConstructorField, CustomExprKind, CustomFieldAccess, CustomFunctionExprKind,
-    CustomFunctionReference, CustomFunctionReturn, CustomListExpr, CustomListItem, CustomPattern,
-    CustomReturn, Endianness, ExprKind, FloatBitSize, FloatCaseBranches, FloatExprKind,
-    FloatFunctionExprKind, FloatFunctionReference, FloatFunctionReturn, FloatListExpr,
-    FloatListItem, FloatReturn, FrameLayout, FunctionExprKind, FunctionFunctionExprKind,
-    FunctionFunctionId, FunctionFunctionReference, FunctionFunctionReturn, FunctionListExpr,
+    CustomFunctionLocal, CustomFunctionReference, CustomFunctionReturn, CustomListExpr,
+    CustomListItem, CustomPattern, CustomReturn, Endianness, ExprKind, FloatBitSize,
+    FloatCaseBranches, FloatExprKind, FloatFunctionExprKind, FloatFunctionReference,
+    FloatFunctionReturn, FloatListExpr, FloatListItem, FloatReturn, FrameLayout, FunctionExprKind,
+    FunctionFunctionCallMismatch, FunctionFunctionExprKind, FunctionFunctionId,
+    FunctionFunctionLocal, FunctionFunctionReference, FunctionFunctionReturn, FunctionListExpr,
     FunctionListItem, FunctionReference, IntCaseBranches, IntExprKind, IntFunctionExprKind,
     IntFunctionReference, IntFunctionReturn, IntListExpr, IntListItem, IntReturn,
     ListAssertPattern, ListAssertTail, ListCaseBranches, ListElements, ListExpr,
@@ -72,4 +73,5 @@ pub(crate) use module::{
     ListListReturn, NilListReturn, StringListReturn, TupleListReturn, UtfCodepointListReturn,
 };
 pub use source::{PanicSite, SourceContext, SourceSpan};
+pub(crate) use value_type::{CustomFunctionType, FunctionFunctionType};
 pub use value_type::{CustomType, CustomTypeName, FunctionType, ValueType};

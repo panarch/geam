@@ -6,10 +6,11 @@ use super::{
 };
 use crate::plan::{
     BitArrayFunctionLocalId, BitArrayLocalId, BoolFunctionLocalId, BoolLocalId,
-    CustomFunctionLocalId, CustomLocalId, FloatFunctionLocalId, FloatLocalId,
-    FunctionFunctionLocalId, IntFunctionLocalId, IntLocalId, ListFunctionLocal, ListLocal,
-    NilFunctionLocalId, NilLocalId, ParamLocal, StringFunctionLocalId, StringLocalId,
-    TupleFunctionLocalId, TupleLocalId, UtfCodepointFunctionLocalId, UtfCodepointLocalId,
+    CustomFunctionLocal, CustomFunctionLocalId, CustomLocalId, FloatFunctionLocalId, FloatLocalId,
+    FunctionFunctionLocal, FunctionFunctionLocalId, IntFunctionLocalId, IntLocalId,
+    ListFunctionLocal, ListLocal, NilFunctionLocalId, NilLocalId, ParamLocal,
+    StringFunctionLocalId, StringLocalId, TupleFunctionLocalId, TupleLocalId,
+    UtfCodepointFunctionLocalId, UtfCodepointLocalId,
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -73,7 +74,7 @@ pub(crate) enum CallArgKind {
         value: UtfCodepointFunctionExpr,
     },
     CustomFunction {
-        local: CustomFunctionLocalId,
+        local: CustomFunctionLocal,
         value: CustomFunctionExpr,
     },
     FloatFunction {
@@ -97,7 +98,7 @@ pub(crate) enum CallArgKind {
         value: ListFunctionExpr,
     },
     FunctionFunction {
-        local: FunctionFunctionLocalId,
+        local: FunctionFunctionLocal,
         value: FunctionFunctionExpr,
     },
 }
@@ -163,7 +164,7 @@ pub(crate) enum CaptureArgKind {
         value: UtfCodepointFunctionExpr,
     },
     CustomFunction {
-        local: CustomFunctionLocalId,
+        local: CustomFunctionLocal,
         value: CustomFunctionExpr,
     },
     FloatFunction {
@@ -187,7 +188,7 @@ pub(crate) enum CaptureArgKind {
         value: ListFunctionExpr,
     },
     FunctionFunction {
-        local: FunctionFunctionLocalId,
+        local: FunctionFunctionLocal,
         value: FunctionFunctionExpr,
     },
 }
@@ -315,7 +316,7 @@ impl Expr {
                     type_: expected,
                 },
                 ExprKind::Function(value),
-            ) if value.type_() == expected => value
+            ) if value.type_() == *expected => value
                 .into_int()
                 .map(|value| CallArg::int_function(*local, value)),
             (
@@ -324,7 +325,7 @@ impl Expr {
                     type_: expected,
                 },
                 ExprKind::Function(value),
-            ) if value.type_() == expected => value
+            ) if value.type_() == *expected => value
                 .into_string()
                 .map(|value| CallArg::string_function(*local, value)),
             (
@@ -333,7 +334,7 @@ impl Expr {
                     type_: expected,
                 },
                 ExprKind::Function(value),
-            ) if value.type_() == expected => value
+            ) if value.type_() == *expected => value
                 .into_bit_array()
                 .map(|value| CallArg::bit_array_function(*local, value)),
             (
@@ -342,25 +343,23 @@ impl Expr {
                     type_: expected,
                 },
                 ExprKind::Function(value),
-            ) if value.type_() == expected => value
+            ) if value.type_() == *expected => value
                 .into_utf_codepoint()
                 .map(|value| CallArg::utf_codepoint_function(*local, value)),
-            (
-                ParamLocal::CustomFunction {
-                    local,
-                    type_: expected,
-                },
-                ExprKind::Function(value),
-            ) if value.type_() == expected => value
-                .into_custom()
-                .map(|value| CallArg::custom_function(*local, value)),
+            (ParamLocal::CustomFunction(local), ExprKind::Function(value))
+                if value.type_() == local.type_().to_function_type() =>
+            {
+                value
+                    .into_custom()
+                    .map(|value| CallArg::custom_function(local.clone(), value))
+            }
             (
                 ParamLocal::FloatFunction {
                     local,
                     type_: expected,
                 },
                 ExprKind::Function(value),
-            ) if value.type_() == expected => value
+            ) if value.type_() == *expected => value
                 .into_float()
                 .map(|value| CallArg::float_function(*local, value)),
             (
@@ -369,7 +368,7 @@ impl Expr {
                     type_: expected,
                 },
                 ExprKind::Function(value),
-            ) if value.type_() == expected => value
+            ) if value.type_() == *expected => value
                 .into_bool()
                 .map(|value| CallArg::bool_function(*local, value)),
             (
@@ -378,7 +377,7 @@ impl Expr {
                     type_: expected,
                 },
                 ExprKind::Function(value),
-            ) if value.type_() == expected => value
+            ) if value.type_() == *expected => value
                 .into_nil()
                 .map(|value| CallArg::nil_function(*local, value)),
             (
@@ -387,25 +386,23 @@ impl Expr {
                     type_: expected,
                 },
                 ExprKind::Function(value),
-            ) if value.type_() == expected => value
+            ) if value.type_() == *expected => value
                 .into_tuple()
                 .map(|value| CallArg::tuple_function(*local, value)),
             (ParamLocal::ListFunction(local), ExprKind::Function(value))
-                if value.type_() == local.type_() =>
+                if value.type_() == *local.type_() =>
             {
                 value
                     .into_list()
                     .map(|value| CallArg::list_function(local.clone(), value))
             }
-            (
-                ParamLocal::FunctionFunction {
-                    local,
-                    type_: expected,
-                },
-                ExprKind::Function(value),
-            ) if value.type_() == expected => value
-                .into_function()
-                .map(|value| CallArg::function_function(*local, value)),
+            (ParamLocal::FunctionFunction(local), ExprKind::Function(value))
+                if value.type_() == local.type_().to_function_type() =>
+            {
+                value
+                    .into_function()
+                    .map(|value| CallArg::function_function(local.clone(), value))
+            }
             _ => None,
         }
     }
@@ -502,7 +499,7 @@ impl CallArg {
         }
     }
 
-    pub(crate) fn custom_function(local: CustomFunctionLocalId, value: CustomFunctionExpr) -> Self {
+    fn custom_function(local: CustomFunctionLocal, value: CustomFunctionExpr) -> Self {
         Self {
             kind: CallArgKind::CustomFunction { local, value },
         }
@@ -538,10 +535,7 @@ impl CallArg {
         }
     }
 
-    pub(crate) fn function_function(
-        local: FunctionFunctionLocalId,
-        value: FunctionFunctionExpr,
-    ) -> Self {
+    fn function_function(local: FunctionFunctionLocal, value: FunctionFunctionExpr) -> Self {
         Self {
             kind: CallArgKind::FunctionFunction { local, value },
         }
@@ -648,6 +642,7 @@ impl CaptureArg {
     }
 
     pub(crate) fn custom_function(local: CustomFunctionLocalId, value: CustomFunctionExpr) -> Self {
+        let local = CustomFunctionLocal::new(local, value.custom_function_type().clone());
         Self {
             kind: CaptureArgKind::CustomFunction { local, value },
         }
@@ -687,6 +682,7 @@ impl CaptureArg {
         local: FunctionFunctionLocalId,
         value: FunctionFunctionExpr,
     ) -> Self {
+        let local = FunctionFunctionLocal::new(local, value.function_function_type().clone());
         Self {
             kind: CaptureArgKind::FunctionFunction { local, value },
         }
@@ -703,23 +699,25 @@ impl CaptureArg {
 
 #[cfg(test)]
 mod tests {
-    use super::CallArg;
+    use super::{CallArg, CaptureArg, CaptureArgKind};
     use crate::plan::{
         BitArrayExpr, BitArrayFunctionExpr, BitArrayFunctionId, BitArrayFunctionLocalId,
         BitArrayFunctionReference, BitArrayListLocalId, BitArrayLocalId, BoolExpr,
         BoolFunctionExpr, BoolFunctionId, BoolFunctionLocalId, BoolFunctionReference,
-        BoolListLocalId, BoolLocalId, Expr, FloatExpr, FloatFunctionExpr, FloatFunctionId,
-        FloatFunctionLocalId, FloatFunctionReference, FloatListLocalId, FloatLocalId, FunctionExpr,
-        FunctionFunctionExpr, FunctionFunctionId, FunctionFunctionLocalId,
-        FunctionFunctionReference, FunctionListLocalId, FunctionReference, FunctionType, IntExpr,
+        BoolListLocalId, BoolLocalId, CustomFunctionExpr, CustomFunctionLocal,
+        CustomFunctionLocalId, CustomFunctionType, CustomType, CustomTypeName, Expr, FloatExpr,
+        FloatFunctionExpr, FloatFunctionId, FloatFunctionLocalId, FloatFunctionReference,
+        FloatListLocalId, FloatLocalId, FunctionExpr, FunctionFunctionExpr, FunctionFunctionId,
+        FunctionFunctionLocal, FunctionFunctionLocalId, FunctionFunctionReference,
+        FunctionFunctionType, FunctionListLocalId, FunctionReference, FunctionType, IntExpr,
         IntFunctionExpr, IntFunctionFunctionId, IntFunctionId, IntFunctionLocalId,
         IntFunctionReference, IntListLocalId, IntLocalId, ListExpr, ListFunctionExpr,
         ListFunctionId, ListFunctionReference, ListListLocalId, ListLocal, ListLocalExpr, NilExpr,
         NilFunctionExpr, NilFunctionId, NilFunctionLocalId, NilFunctionReference, NilListLocalId,
-        NilLocalId, ParamLocal, RuntimeFunctionId, StringExpr, StringFunctionExpr,
-        StringFunctionId, StringFunctionLocalId, StringFunctionReference, StringListLocalId,
-        StringLocalId, TupleExpr, TupleFunctionExpr, TupleFunctionId, TupleFunctionLocalId,
-        TupleFunctionReference, TupleListLocalId, TupleLocalId, ValueType,
+        NilLocalId, PanicExpr, PanicSite, ParamLocal, RuntimeFunctionId, StringExpr,
+        StringFunctionExpr, StringFunctionId, StringFunctionLocalId, StringFunctionReference,
+        StringListLocalId, StringLocalId, TupleExpr, TupleFunctionExpr, TupleFunctionId,
+        TupleFunctionLocalId, TupleFunctionReference, TupleListLocalId, TupleLocalId, ValueType,
     };
     use num_bigint::BigInt;
 
@@ -882,13 +880,16 @@ mod tests {
         );
         assert_eq!(
             Expr::function(FunctionExpr::function(function_function_expr())).into_call_arg(
-                &ParamLocal::function_function(
+                &ParamLocal::function_function(FunctionFunctionLocal::new(
                     FunctionFunctionLocalId(0),
-                    function_function_type()
-                )
+                    exact_function_function_type(),
+                ))
             ),
             Some(CallArg::function_function(
-                FunctionFunctionLocalId(0),
+                FunctionFunctionLocal::new(
+                    FunctionFunctionLocalId(0),
+                    exact_function_function_type(),
+                ),
                 function_function_expr(),
             )),
         );
@@ -927,8 +928,10 @@ mod tests {
                 function_function_type(),
             )))
             .into_call_arg(&ParamLocal::function_function(
-                FunctionFunctionLocalId(0),
-                function_function_type(),
+                FunctionFunctionLocal::new(
+                    FunctionFunctionLocalId(0),
+                    exact_function_function_type(),
+                )
             )),
             None,
         );
@@ -960,6 +963,115 @@ mod tests {
         assert_eq!(
             Expr::int(IntExpr::value(BigInt::from(1)))
                 .into_call_arg(&ParamLocal::bool(BoolLocalId(0))),
+            None,
+        );
+    }
+
+    #[test]
+    fn callable_capture_args_derive_the_local_type_from_the_value() {
+        let custom_type = CustomType::new(
+            CustomTypeName::new("geam".into(), "main".into(), "Boxed".into()),
+            Vec::new(),
+        );
+        let custom_function_type =
+            CustomFunctionType::new(vec![ValueType::Int], custom_type.clone());
+        let custom_value = CustomFunctionExpr::panic(
+            PanicExpr::panic_at(None, PanicSite::unknown()),
+            custom_function_type.clone(),
+        );
+        assert_eq!(
+            CaptureArg::custom_function(CustomFunctionLocalId(2), custom_value.clone()).kind(),
+            &CaptureArgKind::CustomFunction {
+                local: CustomFunctionLocal::new(CustomFunctionLocalId(2), custom_function_type,),
+                value: custom_value,
+            },
+        );
+
+        let function_function_type = FunctionFunctionType::new(
+            vec![ValueType::String],
+            FunctionType::new(vec![ValueType::Bool], ValueType::Int),
+        );
+        let function_value = FunctionFunctionExpr::panic(
+            PanicExpr::panic_at(None, PanicSite::unknown()),
+            function_function_type.clone(),
+        );
+        assert_eq!(
+            CaptureArg::function_function(FunctionFunctionLocalId(3), function_value.clone())
+                .kind(),
+            &CaptureArgKind::FunctionFunction {
+                local: FunctionFunctionLocal::new(
+                    FunctionFunctionLocalId(3),
+                    function_function_type,
+                ),
+                value: function_value,
+            },
+        );
+    }
+
+    #[test]
+    fn callable_call_args_require_the_exact_callable_type() {
+        let custom_type = CustomType::new(
+            CustomTypeName::new("geam".into(), "main".into(), "Boxed".into()),
+            Vec::new(),
+        );
+        let custom_function_type =
+            CustomFunctionType::new(vec![ValueType::Int], custom_type.clone());
+        let custom_value = CustomFunctionExpr::panic(
+            PanicExpr::panic_at(None, PanicSite::unknown()),
+            custom_function_type.clone(),
+        );
+        assert_eq!(
+            Expr::function(FunctionExpr::custom(custom_value.clone())).into_call_arg(
+                &ParamLocal::custom_function(CustomFunctionLocal::new(
+                    CustomFunctionLocalId(4),
+                    custom_function_type.clone(),
+                )),
+            ),
+            Some(CallArg::custom_function(
+                CustomFunctionLocal::new(CustomFunctionLocalId(4), custom_function_type),
+                custom_value.clone(),
+            )),
+        );
+        assert_eq!(
+            Expr::function(FunctionExpr::custom(custom_value)).into_call_arg(
+                &ParamLocal::custom_function(CustomFunctionLocal::new(
+                    CustomFunctionLocalId(4),
+                    CustomFunctionType::new(vec![ValueType::String], custom_type),
+                )),
+            ),
+            None,
+        );
+
+        let function_function_type = FunctionFunctionType::new(
+            vec![ValueType::Bool],
+            FunctionType::new(vec![ValueType::Int], ValueType::String),
+        );
+        let function_value = FunctionFunctionExpr::panic(
+            PanicExpr::panic_at(None, PanicSite::unknown()),
+            function_function_type.clone(),
+        );
+        assert_eq!(
+            Expr::function(FunctionExpr::function(function_value.clone())).into_call_arg(
+                &ParamLocal::function_function(FunctionFunctionLocal::new(
+                    FunctionFunctionLocalId(5),
+                    function_function_type.clone(),
+                )),
+            ),
+            Some(CallArg::function_function(
+                FunctionFunctionLocal::new(FunctionFunctionLocalId(5), function_function_type,),
+                function_value.clone(),
+            )),
+        );
+        assert_eq!(
+            Expr::function(FunctionExpr::function(function_value)).into_call_arg(
+                &ParamLocal::function_function(FunctionFunctionLocal::new(
+                    FunctionFunctionLocalId(5),
+                    FunctionFunctionType::new(
+                        vec![ValueType::Bool],
+                        FunctionType::new(vec![ValueType::Float], ValueType::String),
+                    ),
+                )),
+            ),
             None,
         );
     }
@@ -1271,5 +1383,9 @@ mod tests {
 
     fn function_function_type() -> FunctionType {
         FunctionType::new(Vec::new(), ValueType::Function(Box::new(function_type())))
+    }
+
+    fn exact_function_function_type() -> FunctionFunctionType {
+        FunctionFunctionType::new(Vec::new(), function_type())
     }
 }

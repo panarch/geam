@@ -1,13 +1,13 @@
 use crate::plan::execution::{
     BoolExpr, ClosureTemplate, CustomConstructorId, CustomFieldAccess, CustomFunctionFunctionId,
-    CustomFunctionId, CustomFunctionLocalId, FloatExpr, FunctionFunctionExpr, FunctionListExpr,
-    FunctionReference, FunctionType, IntExpr, PanicExpr, Step, StringExpr, TupleExpr,
+    CustomFunctionId, CustomFunctionLocal, CustomFunctionType, FloatExpr, FunctionFunctionExpr,
+    FunctionListExpr, FunctionReference, IntExpr, PanicExpr, Step, StringExpr, TupleExpr,
 };
 use ecow::EcoString;
 use num_bigint::BigInt;
 
 pub struct CustomFunctionExpr {
-    type_: FunctionType,
+    type_: CustomFunctionType,
     kind: CustomFunctionExprKind,
 }
 
@@ -16,7 +16,7 @@ pub(crate) enum CustomFunctionExprKind {
     Reference(FunctionReference<CustomFunctionId>),
     Closure(ClosureTemplate<CustomFunctionId>),
     LocalGet {
-        local: CustomFunctionLocalId,
+        local: CustomFunctionLocal,
     },
     Call {
         function: CustomFunctionFunctionId,
@@ -29,50 +29,48 @@ pub(crate) enum CustomFunctionExprKind {
     TupleIndex {
         tuple: Box<TupleExpr>,
         index: usize,
-        type_: FunctionType,
     },
     CustomField(CustomFieldAccess),
     ListIndex {
         list: Box<FunctionListExpr>,
         index: usize,
-        type_: FunctionType,
     },
     Panic(PanicExpr),
     BoolCase {
         subject: Box<BoolExpr>,
-        true_: Box<CustomFunctionExpr>,
-        false_: Box<CustomFunctionExpr>,
+        true_: Box<CustomFunctionExprKind>,
+        false_: Box<CustomFunctionExprKind>,
     },
     IntCase {
         subject: Box<IntExpr>,
-        clauses: Vec<(BigInt, CustomFunctionExpr)>,
-        fallback: Box<CustomFunctionExpr>,
+        clauses: Vec<(BigInt, CustomFunctionExprKind)>,
+        fallback: Box<CustomFunctionExprKind>,
     },
     StringCase {
         subject: Box<StringExpr>,
-        clauses: Vec<(EcoString, CustomFunctionExpr)>,
-        fallback: Box<CustomFunctionExpr>,
+        clauses: Vec<(EcoString, CustomFunctionExprKind)>,
+        fallback: Box<CustomFunctionExprKind>,
     },
     FloatCase {
         subject: Box<FloatExpr>,
-        clauses: Vec<(f64, CustomFunctionExpr)>,
-        fallback: Box<CustomFunctionExpr>,
+        clauses: Vec<(f64, CustomFunctionExprKind)>,
+        fallback: Box<CustomFunctionExprKind>,
     },
     Block {
         steps: Vec<Step>,
-        return_: Box<CustomFunctionExpr>,
+        return_: Box<CustomFunctionExprKind>,
     },
 }
 
 impl CustomFunctionExpr {
     pub(in crate::plan::execution) fn from_parts(
-        type_: FunctionType,
+        type_: CustomFunctionType,
         kind: CustomFunctionExprKind,
     ) -> Self {
         Self { type_, kind }
     }
 
-    pub(crate) fn type_(&self) -> &FunctionType {
+    pub(crate) fn custom_function_type(&self) -> &CustomFunctionType {
         &self.type_
     }
 

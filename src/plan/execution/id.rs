@@ -130,6 +130,12 @@ pub struct UtfCodepointFunctionLocalId(pub(crate) usize);
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct CustomFunctionLocalId(pub(crate) usize);
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub(crate) struct CustomFunctionLocal {
+    id: CustomFunctionLocalId,
+    type_: super::CustomFunctionType,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct BoolFunctionLocalId(pub(crate) usize);
 
@@ -233,6 +239,12 @@ pub enum ListFunctionLocal {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct FunctionFunctionLocalId(pub(crate) usize);
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub(crate) struct FunctionFunctionLocal {
+    id: FunctionFunctionLocalId,
+    type_: super::FunctionFunctionType,
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum RuntimeFunctionId {
@@ -381,8 +393,11 @@ pub struct BitArrayFunctionFunctionId(pub(crate) usize);
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct UtfCodepointFunctionFunctionId(pub(crate) usize);
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct CustomFunctionFunctionId(pub(crate) usize);
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CustomFunctionFunctionId {
+    index: usize,
+    type_: super::CustomFunctionType,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct BoolFunctionFunctionId(pub(crate) usize);
@@ -485,8 +500,76 @@ pub enum ListFunctionFunctionId {
     },
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct FunctionFunctionFunctionId(pub(crate) usize);
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FunctionFunctionFunctionId {
+    index: usize,
+    type_: super::FunctionFunctionType,
+}
+
+impl CustomFunctionLocal {
+    pub(in crate::plan::execution) fn new(
+        id: CustomFunctionLocalId,
+        type_: super::CustomFunctionType,
+    ) -> Self {
+        Self { id, type_ }
+    }
+
+    pub(crate) fn id(&self) -> CustomFunctionLocalId {
+        self.id
+    }
+
+    pub(crate) fn type_(&self) -> &super::CustomFunctionType {
+        &self.type_
+    }
+}
+
+impl FunctionFunctionLocal {
+    pub(in crate::plan::execution) fn new(
+        id: FunctionFunctionLocalId,
+        type_: super::FunctionFunctionType,
+    ) -> Self {
+        Self { id, type_ }
+    }
+
+    pub(crate) fn id(&self) -> FunctionFunctionLocalId {
+        self.id
+    }
+
+    pub(crate) fn type_(&self) -> &super::FunctionFunctionType {
+        &self.type_
+    }
+}
+
+impl CustomFunctionFunctionId {
+    pub(in crate::plan::execution) fn new(index: usize, type_: super::CustomFunctionType) -> Self {
+        Self { index, type_ }
+    }
+
+    pub(crate) fn index(&self) -> usize {
+        self.index
+    }
+
+    pub(crate) fn type_(&self) -> &super::CustomFunctionType {
+        &self.type_
+    }
+}
+
+impl FunctionFunctionFunctionId {
+    pub(in crate::plan::execution) fn new(
+        index: usize,
+        type_: super::FunctionFunctionType,
+    ) -> Self {
+        Self { index, type_ }
+    }
+
+    pub(crate) fn index(&self) -> usize {
+        self.index
+    }
+
+    pub(crate) fn type_(&self) -> &super::FunctionFunctionType {
+        &self.type_
+    }
+}
 
 impl FunctionFunctionId {
     pub(crate) fn family(&self) -> FunctionReturnFamily {
@@ -535,7 +618,7 @@ impl FunctionFunctionId {
 
     pub(crate) fn custom(&self) -> Option<CustomFunctionFunctionId> {
         match self {
-            Self::Custom(id) => Some(*id),
+            Self::Custom(id) => Some(id.clone()),
             _ => None,
         }
     }
@@ -577,7 +660,7 @@ impl FunctionFunctionId {
 
     pub(crate) fn function(&self) -> Option<FunctionFunctionFunctionId> {
         match self {
-            Self::Function(id) => Some(*id),
+            Self::Function(id) => Some(id.clone()),
             _ => None,
         }
     }
@@ -947,9 +1030,13 @@ pub fn main() { Nil }
 
     #[test]
     fn custom_function_function_id_projection_is_typed() {
-        let id = FunctionFunctionId::Custom(CustomFunctionFunctionId(2));
+        let function = CustomFunctionFunctionId::new(
+            2,
+            super::super::CustomFunctionType::new(Vec::new(), super::super::CustomTypeId::new(0)),
+        );
+        let id = FunctionFunctionId::Custom(function.clone());
 
-        assert_eq!(id.custom(), Some(CustomFunctionFunctionId(2)));
+        assert_eq!(id.custom(), Some(function));
         assert_eq!(
             FunctionFunctionId::Int(IntFunctionFunctionId(0)).custom(),
             None,

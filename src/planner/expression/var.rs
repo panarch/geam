@@ -56,16 +56,14 @@ pub(super) fn plan_var(
                 || (module == PRELUDE_MODULE_NAME && matches!(name.as_str(), "Ok" | "Error"))
             {
                 let constructor = context.custom_constructor(&constructor)?;
-                return if arity == 0 {
-                    Ok(Expr::custom(CustomExpr::constructor(
-                        constructor,
-                        Vec::new(),
-                    )))
-                } else {
-                    Ok(Expr::function(FunctionExpr::custom(
-                        CustomFunctionExpr::constructor(constructor),
-                    )))
-                };
+                if usize::from(arity) != constructor.fields().len() {
+                    return Err(PlanError::InvalidTypedAst {
+                        reason: InvalidTypedAstReason::ExpressionShape {
+                            kind: InvalidExpressionShapeKind::RecordConstructor,
+                        },
+                    });
+                }
+                return Ok(crate::plan::module::custom_constructor_expr(constructor));
             }
 
             Err(PlanError::InvalidTypedAst {
@@ -129,8 +127,8 @@ fn function_local_get(binding: FunctionLocalBinding, name: EcoString) -> Expr {
         FunctionLocalBinding::UtfCodepoint { local, type_ } => Expr::function(
             FunctionExpr::utf_codepoint(UtfCodepointFunctionExpr::local_get(local, name, type_)),
         ),
-        FunctionLocalBinding::Custom { local, type_ } => Expr::function(FunctionExpr::custom(
-            CustomFunctionExpr::local_get(local, name, type_),
+        FunctionLocalBinding::Custom(local) => Expr::function(FunctionExpr::custom(
+            CustomFunctionExpr::local_get(local, name),
         )),
         FunctionLocalBinding::Float { local, type_ } => Expr::function(FunctionExpr::float(
             FloatFunctionExpr::local_get(local, name, type_),
@@ -147,8 +145,8 @@ fn function_local_get(binding: FunctionLocalBinding, name: EcoString) -> Expr {
         FunctionLocalBinding::List(local) => {
             Expr::function(FunctionExpr::list(ListFunctionExpr::local_get(local, name)))
         }
-        FunctionLocalBinding::Function { local, type_ } => Expr::function(FunctionExpr::function(
-            FunctionFunctionExpr::local_get(local, name, type_),
+        FunctionLocalBinding::Function(local) => Expr::function(FunctionExpr::function(
+            FunctionFunctionExpr::local_get(local, name),
         )),
     }
 }
@@ -458,6 +456,34 @@ pub fn main() {
                 reason: InvalidTypedAstReason::CustomType {
                     name: "Boxed".into(),
                     reason: InvalidCustomTypeReason::UnknownDefinition,
+                },
+            }),
+        );
+
+        let mut constructor_arity_mismatch = compile(
+            r#"
+pub type Boxed { Boxed(Int) }
+pub fn main() { Boxed }
+"#,
+        );
+        let (_, constructor) = expect_var_mut(expect_expression_statement_mut(
+            &mut constructor_arity_mismatch.definitions.functions[0].body[0],
+        ));
+        constructor.variant = ValueConstructorVariant::Record {
+            name: "Boxed".into(),
+            arity: 0,
+            field_map: None,
+            location: dummy_span(),
+            module: "main".into(),
+            variants_count: 1,
+            variant_index: 0,
+            documentation: None,
+        };
+        assert_eq!(
+            plan_module(constructor_arity_mismatch),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionShape {
+                    kind: InvalidExpressionShapeKind::RecordConstructor,
                 },
             }),
         );

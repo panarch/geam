@@ -16,19 +16,20 @@ pub(crate) use expression::{
     BitArrayExpr, BitArrayExprKind, BitArrayFunctionExpr, BitArrayFunctionExprKind,
     BitArrayListExpr, BitArrayListItem, BitArraySegment, BoolExpr, BoolExprKind, BoolFunctionExpr,
     BoolFunctionExprKind, BoolListExpr, BoolListItem, CallArg, CallArgKind, CaptureArg,
-    CaptureArgKind, CustomExpr, CustomExprKind, CustomFieldAccess, CustomFunctionExpr,
-    CustomFunctionExprKind, CustomListExpr, CustomListItem, Endianness, Expr, ExprKind,
-    FloatBitSize, FloatExpr, FloatExprKind, FloatFunctionExpr, FloatFunctionExprKind,
-    FloatListExpr, FloatListItem, FunctionExpr, FunctionExprKind, FunctionFunctionExpr,
-    FunctionFunctionExprKind, FunctionListExpr, FunctionListItem, IntExpr, IntExprKind,
-    IntFunctionExpr, IntFunctionExprKind, IntListExpr, IntListItem, ListExpr, ListFunctionExpr,
-    ListFunctionExprKind, ListIndexSource, ListItem, ListListExpr, ListListItem, ListLocalExpr,
-    NilExpr, NilExprKind, NilFunctionExpr, NilFunctionExprKind, NilListExpr, NilListItem,
-    PanicExpr, PanicExprKind, StringEncoding, StringExpr, StringExprKind, StringFunctionExpr,
-    StringFunctionExprKind, StringListExpr, StringListItem, TupleExpr, TupleExprKind,
-    TupleFunctionExpr, TupleFunctionExprKind, TupleListExpr, TupleListItem, TypedListExpr,
-    TypedListExprKind, UtfCodepointExpr, UtfCodepointExprKind, UtfCodepointFunctionExpr,
-    UtfCodepointFunctionExprKind, UtfCodepointListExpr, UtfCodepointListItem,
+    CaptureArgKind, CustomConstruction, CustomExpr, CustomExprKind, CustomFieldAccess,
+    CustomFunctionCall, CustomFunctionExpr, CustomFunctionExprKind, CustomListExpr, CustomListItem,
+    Endianness, Expr, ExprKind, FloatBitSize, FloatExpr, FloatExprKind, FloatFunctionExpr,
+    FloatFunctionExprKind, FloatListExpr, FloatListItem, FunctionExpr, FunctionExprKind,
+    FunctionFunctionExpr, FunctionFunctionExprKind, FunctionListExpr, FunctionListItem, IntExpr,
+    IntExprKind, IntFunctionExpr, IntFunctionExprKind, IntListExpr, IntListItem, ListExpr,
+    ListFunctionExpr, ListFunctionExprKind, ListIndexSource, ListItem, ListListExpr, ListListItem,
+    ListLocalExpr, NilExpr, NilExprKind, NilFunctionExpr, NilFunctionExprKind, NilListExpr,
+    NilListItem, PanicExpr, PanicExprKind, StringEncoding, StringExpr, StringExprKind,
+    StringFunctionExpr, StringFunctionExprKind, StringListExpr, StringListItem, TupleExpr,
+    TupleExprKind, TupleFunctionExpr, TupleFunctionExprKind, TupleListExpr, TupleListItem,
+    TypedListExpr, TypedListExprKind, UtfCodepointExpr, UtfCodepointExprKind,
+    UtfCodepointFunctionExpr, UtfCodepointFunctionExprKind, UtfCodepointListExpr,
+    UtfCodepointListItem,
 };
 pub(crate) use frame::FrameLayout;
 pub(crate) use id::{
@@ -36,22 +37,23 @@ pub(crate) use id::{
     BitArrayListFunctionFunctionId, BitArrayListFunctionId, BitArrayListFunctionLocalId,
     BitArrayListLocalId, BitArrayLocalId, BoolFunctionFunctionId, BoolFunctionId,
     BoolFunctionLocalId, BoolListFunctionFunctionId, BoolListFunctionId, BoolListFunctionLocalId,
-    BoolListLocalId, BoolLocalId, CustomFunctionFunctionId, CustomFunctionId,
+    BoolListLocalId, BoolLocalId, CustomFunctionFunctionId, CustomFunctionId, CustomFunctionLocal,
     CustomFunctionLocalId, CustomListFunctionFunctionId, CustomListFunctionId,
     CustomListFunctionLocalId, CustomListLocalId, CustomLocalId, FloatFunctionFunctionId,
     FloatFunctionId, FloatFunctionLocalId, FloatListFunctionFunctionId, FloatListFunctionId,
     FloatListFunctionLocalId, FloatListLocalId, FloatLocalId, FunctionFunctionFunctionId,
-    FunctionFunctionId, FunctionFunctionLocalId, FunctionListFunctionFunctionId,
-    FunctionListFunctionId, FunctionListFunctionLocalId, FunctionListLocalId, FunctionReturnFamily,
-    IntFunctionFunctionId, IntFunctionId, IntFunctionLocalId, IntListFunctionFunctionId,
-    IntListFunctionId, IntListFunctionLocalId, IntListLocalId, IntLocalId, ListFunctionFunctionId,
-    ListFunctionId, ListFunctionLocal, ListListFunctionFunctionId, ListListFunctionId,
-    ListListFunctionLocalId, ListListLocalId, ListLocal, NilFunctionFunctionId, NilFunctionId,
-    NilFunctionLocalId, NilListFunctionFunctionId, NilListFunctionId, NilListFunctionLocalId,
-    NilListLocalId, NilLocalId, RuntimeFunctionId, StringFunctionFunctionId, StringFunctionId,
-    StringFunctionLocalId, StringListFunctionFunctionId, StringListFunctionId,
-    StringListFunctionLocalId, StringListLocalId, StringLocalId, TupleFunctionFunctionId,
-    TupleFunctionId, TupleFunctionLocalId, TupleListFunctionFunctionId, TupleListFunctionId,
+    FunctionFunctionId, FunctionFunctionLocal, FunctionFunctionLocalId,
+    FunctionListFunctionFunctionId, FunctionListFunctionId, FunctionListFunctionLocalId,
+    FunctionListLocalId, FunctionReturnFamily, IntFunctionFunctionId, IntFunctionId,
+    IntFunctionLocalId, IntListFunctionFunctionId, IntListFunctionId, IntListFunctionLocalId,
+    IntListLocalId, IntLocalId, ListFunctionFunctionId, ListFunctionId, ListFunctionLocal,
+    ListListFunctionFunctionId, ListListFunctionId, ListListFunctionLocalId, ListListLocalId,
+    ListLocal, NilFunctionFunctionId, NilFunctionId, NilFunctionLocalId, NilListFunctionFunctionId,
+    NilListFunctionId, NilListFunctionLocalId, NilListLocalId, NilLocalId, RuntimeFunctionId,
+    StringFunctionFunctionId, StringFunctionId, StringFunctionLocalId,
+    StringListFunctionFunctionId, StringListFunctionId, StringListFunctionLocalId,
+    StringListLocalId, StringLocalId, TupleFunctionFunctionId, TupleFunctionId,
+    TupleFunctionLocalId, TupleListFunctionFunctionId, TupleListFunctionId,
     TupleListFunctionLocalId, TupleListLocalId, TupleLocalId, UtfCodepointFunctionFunctionId,
     UtfCodepointFunctionId, UtfCodepointFunctionLocalId, UtfCodepointListFunctionFunctionId,
     UtfCodepointListFunctionId, UtfCodepointListFunctionLocalId, UtfCodepointListLocalId,
@@ -78,10 +80,10 @@ pub(crate) use step::{
     StepKind,
 };
 pub(crate) use value_type::{
-    BitArrayListTypeId, BoolListTypeId, CustomConstructorId, CustomListTypeId, CustomTypeId,
-    FloatListTypeId, FunctionListTypeId, FunctionType, IntListTypeId, ListListTypeId,
-    ListStorageTypeId, ListTypeId, NilListTypeId, StringListTypeId, TupleListTypeId,
-    UtfCodepointListTypeId, ValueType,
+    BitArrayListTypeId, BoolListTypeId, CustomConstructorId, CustomFunctionType, CustomListTypeId,
+    CustomTypeId, FloatListTypeId, FunctionFunctionType, FunctionListTypeId, FunctionType,
+    IntListTypeId, ListListTypeId, ListStorageTypeId, ListTypeId, NilListTypeId, StringListTypeId,
+    TupleListTypeId, UtfCodepointListTypeId, ValueType,
 };
 
 use self::custom_type::CustomTypeTable;
@@ -158,6 +160,16 @@ impl ExecutionPlan {
         id: CustomConstructorId,
     ) -> &custom_type::CustomConstructorDescriptor {
         self.custom_types.constructor(id)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn custom_constructor_id(
+        &self,
+        type_index: usize,
+        constructor_index: usize,
+    ) -> CustomConstructorId {
+        self.custom_types
+            .constructor_id(type_index, constructor_index)
     }
 
     pub(crate) fn int_function(&self, id: IntFunctionId) -> &ExecutableFunction<IntReturn> {
@@ -380,7 +392,7 @@ impl ExecutionPlan {
 
     pub(crate) fn custom_function_function(
         &self,
-        id: CustomFunctionFunctionId,
+        id: &CustomFunctionFunctionId,
     ) -> &ExecutableFunction<CustomFunctionReturn> {
         self.functions.custom_function_function(id)
     }
@@ -423,7 +435,7 @@ impl ExecutionPlan {
 
     pub(crate) fn function_function_function(
         &self,
-        id: FunctionFunctionFunctionId,
+        id: &FunctionFunctionFunctionId,
     ) -> &ExecutableFunction<FunctionFunctionReturn> {
         self.functions.function_function_function(id)
     }

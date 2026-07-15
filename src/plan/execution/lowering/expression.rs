@@ -19,9 +19,10 @@ pub(super) use custom::custom_expr;
 pub(super) use custom_field::custom_field_access;
 pub(super) use float::float_expr;
 pub(super) use function::{
-    bit_array_function_expr, bool_function_expr, custom_function_expr, float_function_expr,
-    function_expr, function_function_expr, int_function_expr, list_function_expr,
-    nil_function_expr, string_function_expr, tuple_function_expr, utf_codepoint_function_expr,
+    bit_array_function_expr, bool_function_expr, custom_function_expr, custom_function_expr_kind,
+    float_function_expr, function_expr, function_function_expr, function_function_expr_kind,
+    int_function_expr, list_function_expr, nil_function_expr, string_function_expr,
+    tuple_function_expr, utf_codepoint_function_expr,
 };
 pub(super) use int::int_expr;
 pub(super) use list::{
@@ -165,7 +166,7 @@ pub(super) fn call_arg(
             value: utf_codepoint_function_expr(value, context),
         },
         M::CustomFunction { local, value } => E::CustomFunction {
-            local: execution::CustomFunctionLocalId(local.0),
+            local: crate::plan::execution::lowering::id::custom_function_local(local, context),
             value: custom_function_expr(value, context),
         },
         M::FloatFunction { local, value } => E::FloatFunction {
@@ -189,7 +190,7 @@ pub(super) fn call_arg(
             value: list_function_expr(value, context),
         },
         M::FunctionFunction { local, value } => E::FunctionFunction {
-            local: execution::FunctionFunctionLocalId(local.0),
+            local: crate::plan::execution::lowering::id::function_function_local(local, context),
             value: function_function_expr(value, context),
         },
     })
@@ -266,7 +267,7 @@ fn capture_arg(
             value: utf_codepoint_function_expr(value, context),
         },
         M::CustomFunction { local, value } => E::CustomFunction {
-            local: execution::CustomFunctionLocalId(local.0),
+            local: crate::plan::execution::lowering::id::custom_function_local(local, context),
             value: custom_function_expr(value, context),
         },
         M::FloatFunction { local, value } => E::FloatFunction {
@@ -290,7 +291,7 @@ fn capture_arg(
             value: list_function_expr(value, context),
         },
         M::FunctionFunction { local, value } => E::FunctionFunction {
-            local: execution::FunctionFunctionLocalId(local.0),
+            local: crate::plan::execution::lowering::id::function_function_local(local, context),
             value: function_function_expr(value, context),
         },
     })

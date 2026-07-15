@@ -1,7 +1,7 @@
 use super::{
-    BitArrayListTypeId, BoolListTypeId, CustomListTypeId, FloatListTypeId, FunctionListTypeId,
-    IntListTypeId, ListFunctionLocal, ListListTypeId, NilListTypeId, StringListTypeId,
-    TupleListTypeId, UtfCodepointListTypeId,
+    BitArrayListTypeId, BoolListTypeId, CustomFunctionLocal, CustomListTypeId, FloatListTypeId,
+    FunctionFunctionLocal, FunctionListTypeId, IntListTypeId, ListFunctionLocal, ListListTypeId,
+    NilListTypeId, StringListTypeId, TupleListTypeId, UtfCodepointListTypeId,
 };
 
 #[derive(Default)]
@@ -35,12 +35,12 @@ pub(super) struct FrameSlots {
     pub(super) string_functions: usize,
     pub(super) bit_array_functions: usize,
     pub(super) utf_codepoint_functions: usize,
-    pub(super) custom_functions: usize,
+    pub(super) custom_functions: Vec<CustomFunctionLocal>,
     pub(super) bool_functions: usize,
     pub(super) nil_functions: usize,
     pub(super) tuple_functions: usize,
     pub(super) list_functions: Vec<ListFunctionLocal>,
-    pub(super) function_functions: usize,
+    pub(super) function_functions: Vec<FunctionFunctionLocal>,
 }
 
 impl FrameLayout {
@@ -144,8 +144,8 @@ impl FrameLayout {
         self.slots.utf_codepoint_functions
     }
 
-    pub(crate) fn custom_functions(&self) -> usize {
-        self.slots.custom_functions
+    pub(crate) fn custom_functions(&self) -> &[CustomFunctionLocal] {
+        &self.slots.custom_functions
     }
 
     pub(crate) fn bool_functions(&self) -> usize {
@@ -164,7 +164,7 @@ impl FrameLayout {
         &self.slots.list_functions
     }
 
-    pub(crate) fn function_functions(&self) -> usize {
-        self.slots.function_functions
+    pub(crate) fn function_functions(&self) -> &[FunctionFunctionLocal] {
+        &self.slots.function_functions
     }
 }

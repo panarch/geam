@@ -34,7 +34,7 @@ pub(crate) use self::{
     arg::{CallArgKind, CaptureArg, CaptureArgKind},
     bit_array::{BitArrayExprKind, BitArraySegment, Endianness, FloatBitSize, StringEncoding},
     bool::BoolExprKind,
-    custom::CustomExprKind,
+    custom::{CustomConstruction, CustomExprKind, CustomFunctionCall},
     custom_field::CustomFieldAccess,
     float::FloatExprKind,
     function::{

@@ -262,15 +262,16 @@ pub(crate) fn return_nil_function(type_: FunctionType, body: NilFunctionReturn) 
 pub(crate) fn function_function_return_expr(
     expression: FunctionFunction,
 ) -> FunctionFunctionReturn {
-    ReturnBody::expr(expression.into())
+    FunctionFunctionReturn::expr(expression.into())
 }
 
 pub(crate) fn function_function_return_tail_call(
     function: usize,
+    type_: crate::plan::FunctionFunctionType,
     args: impl IntoIterator<Item = CallArg>,
 ) -> FunctionFunctionReturn {
-    ReturnBody::tail_call(
-        FunctionFunctionFunctionId(function),
+    FunctionFunctionReturn::tail_call(
+        FunctionFunctionFunctionId::new(function, type_),
         args.into_iter().collect(),
     )
 }
@@ -280,7 +281,7 @@ pub(crate) fn function_function_return_int_case(
     clauses: impl IntoIterator<Item = (i64, FunctionFunctionReturn)>,
     fallback: FunctionFunctionReturn,
 ) -> FunctionFunctionReturn {
-    ReturnBody::int_case(
+    FunctionFunctionReturn::int_case(
         subject.into(),
         clauses
             .into_iter()
@@ -295,7 +296,7 @@ pub(crate) fn function_function_return_string_case(
     clauses: impl IntoIterator<Item = (&'static str, FunctionFunctionReturn)>,
     fallback: FunctionFunctionReturn,
 ) -> FunctionFunctionReturn {
-    ReturnBody::string_case(
+    FunctionFunctionReturn::string_case(
         subject.into(),
         clauses
             .into_iter()
@@ -309,14 +310,11 @@ pub(crate) fn function_function_return_block(
     steps: impl IntoIterator<Item = Step>,
     return_: FunctionFunctionReturn,
 ) -> FunctionFunctionReturn {
-    ReturnBody::block(steps.into_iter().collect(), return_)
+    FunctionFunctionReturn::block(steps.into_iter().collect(), return_)
 }
 
-pub(crate) fn return_function_function(
-    type_: FunctionType,
-    body: FunctionFunctionReturn,
-) -> FunctionReturn {
-    FunctionReturn::FunctionFunction { type_, body }
+pub(crate) fn return_function_function(body: FunctionFunctionReturn) -> FunctionReturn {
+    FunctionReturn::FunctionFunction(body)
 }
 
 #[cfg(test)]
@@ -339,8 +337,8 @@ mod tests {
     };
     use crate::plan::{
         BoolFunctionFunctionId, CallArg, FunctionFunctionFunctionId, FunctionFunctionId,
-        FunctionType, IntFunctionFunctionId, NilFunctionFunctionId, ParamLocal, ReturnBody, Step,
-        StringFunctionFunctionId, ValueType,
+        FunctionFunctionReturn, FunctionType, IntFunctionFunctionId, NilFunctionFunctionId,
+        ParamLocal, ReturnBody, Step, StringFunctionFunctionId, ValueType,
     };
     use crate::planner::dsl::expression::{
         bool_, bool_function_ref, function_function_ref, int, int_function_ref, nil_function_ref,
@@ -374,7 +372,7 @@ mod tests {
                 Vec::<ParamLocal>::new(),
                 returned_function_type,
             )),
-            ReturnBody::expr(
+            FunctionFunctionReturn::expr(
                 function_function_ref(
                     FunctionFunctionId::Int(IntFunctionFunctionId(0)),
                     Vec::<ParamLocal>::new(),
@@ -404,8 +402,24 @@ mod tests {
             ReturnBody::tail_call(NilFunctionFunctionId(3), Vec::new()),
         );
         assert_eq!(
-            function_function_return_tail_call(4, Vec::<CallArg>::new()),
-            ReturnBody::tail_call(FunctionFunctionFunctionId(4), Vec::new()),
+            function_function_return_tail_call(
+                4,
+                crate::plan::FunctionFunctionType::new(
+                    Vec::new(),
+                    FunctionType::new(Vec::new(), ValueType::Int),
+                ),
+                Vec::<CallArg>::new(),
+            ),
+            FunctionFunctionReturn::tail_call(
+                FunctionFunctionFunctionId::new(
+                    4,
+                    crate::plan::FunctionFunctionType::new(
+                        Vec::new(),
+                        FunctionType::new(Vec::new(), ValueType::Int),
+                    ),
+                ),
+                Vec::new(),
+            ),
         );
     }
 
@@ -549,7 +563,7 @@ mod tests {
                     FunctionType::new(vec![ValueType::Int], ValueType::Int),
                 )),
             ),
-            ReturnBody::int_case(
+            FunctionFunctionReturn::int_case(
                 int(1).into(),
                 vec![(
                     BigInt::from(1),
@@ -654,7 +668,13 @@ mod tests {
                     )),
                 )],
                 function_function_return_expr(function_function_ref(
-                    FunctionFunctionId::Function(FunctionFunctionFunctionId(1)),
+                    FunctionFunctionId::Function(FunctionFunctionFunctionId::new(
+                        1,
+                        crate::plan::FunctionFunctionType::new(
+                            Vec::new(),
+                            returned_function_type.clone(),
+                        ),
+                    )),
                     Vec::<ParamLocal>::new(),
                     FunctionType::new(
                         Vec::new(),
@@ -662,7 +682,7 @@ mod tests {
                     ),
                 )),
             ),
-            ReturnBody::string_case(
+            FunctionFunctionReturn::string_case(
                 string("key").into(),
                 vec![(
                     "one".into(),
@@ -673,7 +693,13 @@ mod tests {
                     )),
                 )],
                 function_function_return_expr(function_function_ref(
-                    FunctionFunctionId::Function(FunctionFunctionFunctionId(1)),
+                    FunctionFunctionId::Function(FunctionFunctionFunctionId::new(
+                        1,
+                        crate::plan::FunctionFunctionType::new(
+                            Vec::new(),
+                            returned_function_type.clone(),
+                        ),
+                    )),
                     Vec::<ParamLocal>::new(),
                     FunctionType::new(
                         Vec::new(),
@@ -738,7 +764,7 @@ mod tests {
                     returned_function_type.clone(),
                 )),
             ),
-            ReturnBody::block(
+            FunctionFunctionReturn::block(
                 vec![Step::evaluate(int(0).into())],
                 function_function_return_expr(function_function_ref(
                     FunctionFunctionId::Int(IntFunctionFunctionId(0)),
@@ -794,28 +820,30 @@ mod tests {
             },
         );
         assert_eq!(
-            return_function_function(
-                FunctionType::new(
-                    Vec::new(),
-                    ValueType::Function(Box::new(returned_function_type.clone())),
-                ),
-                function_function_return_expr(function_function_ref(
-                    FunctionFunctionId::Function(FunctionFunctionFunctionId(0)),
-                    Vec::<ParamLocal>::new(),
-                    returned_function_type.clone(),
+            return_function_function(function_function_return_expr(function_function_ref(
+                FunctionFunctionId::Function(FunctionFunctionFunctionId::new(
+                    0,
+                    crate::plan::FunctionFunctionType::new(
+                        Vec::new(),
+                        returned_function_type.clone(),
+                    ),
                 )),
-            ),
-            super::super::FunctionReturn::FunctionFunction {
-                type_: FunctionType::new(
-                    Vec::new(),
-                    ValueType::Function(Box::new(returned_function_type.clone())),
-                ),
-                body: function_function_return_expr(function_function_ref(
-                    FunctionFunctionId::Function(FunctionFunctionFunctionId(0)),
+                Vec::<ParamLocal>::new(),
+                returned_function_type.clone(),
+            )),),
+            super::super::FunctionReturn::FunctionFunction(function_function_return_expr(
+                function_function_ref(
+                    FunctionFunctionId::Function(FunctionFunctionFunctionId::new(
+                        0,
+                        crate::plan::FunctionFunctionType::new(
+                            Vec::new(),
+                            returned_function_type.clone(),
+                        ),
+                    )),
                     Vec::<ParamLocal>::new(),
                     returned_function_type,
-                )),
-            },
+                )
+            ),),
         );
     }
 }

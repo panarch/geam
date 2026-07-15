@@ -1,7 +1,7 @@
 use super::{
     BitArrayFunctionLocalId, BitArrayLocalId, BoolFunctionLocalId, BoolLocalId,
-    CustomFunctionLocalId, CustomLocalId, CustomTypeId, FloatFunctionLocalId, FloatLocalId,
-    FunctionFunctionLocalId, FunctionType, IntFunctionLocalId, IntLocalId, ListFunctionLocal,
+    CustomFunctionLocal, CustomLocalId, CustomTypeId, FloatFunctionLocalId, FloatLocalId,
+    FunctionFunctionLocal, FunctionType, IntFunctionLocalId, IntLocalId, ListFunctionLocal,
     ListLocal, NilFunctionLocalId, NilLocalId, StringFunctionLocalId, StringLocalId,
     TupleFunctionLocalId, TupleLocalId, UtfCodepointFunctionLocalId, UtfCodepointLocalId,
     ValueType,
@@ -45,10 +45,7 @@ pub(crate) enum ParamLocal {
         local: UtfCodepointFunctionLocalId,
         type_: FunctionType,
     },
-    CustomFunction {
-        local: CustomFunctionLocalId,
-        type_: FunctionType,
-    },
+    CustomFunction(CustomFunctionLocal),
     BoolFunction {
         local: BoolFunctionLocalId,
         type_: FunctionType,
@@ -62,10 +59,7 @@ pub(crate) enum ParamLocal {
         type_: FunctionType,
     },
     ListFunction(ListFunctionLocal),
-    FunctionFunction {
-        local: FunctionFunctionLocalId,
-        type_: FunctionType,
-    },
+    FunctionFunction(FunctionFunctionLocal),
 }
 
 impl ParamLocal {
@@ -86,12 +80,16 @@ impl ParamLocal {
             | Self::StringFunction { type_, .. }
             | Self::BitArrayFunction { type_, .. }
             | Self::UtfCodepointFunction { type_, .. }
-            | Self::CustomFunction { type_, .. }
             | Self::BoolFunction { type_, .. }
             | Self::NilFunction { type_, .. }
-            | Self::TupleFunction { type_, .. }
-            | Self::FunctionFunction { type_, .. } => ValueType::Function(Box::new(type_.clone())),
+            | Self::TupleFunction { type_, .. } => ValueType::Function(Box::new(type_.clone())),
+            Self::CustomFunction(local) => {
+                ValueType::Function(Box::new(local.type_().to_function_type()))
+            }
             Self::ListFunction(local) => ValueType::Function(Box::new(local.type_().clone())),
+            Self::FunctionFunction(local) => {
+                ValueType::Function(Box::new(local.type_().to_function_type()))
+            }
         }
     }
 }

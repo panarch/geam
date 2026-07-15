@@ -418,7 +418,7 @@ impl ListItem for FunctionListItem {
             .map(|value| match value {
                 Expr {
                     kind: ExprKind::Function(value),
-                } if value.type_() == &item.item_type => Ok(value),
+                } if value.type_() == item.item_type => Ok(value),
                 value => Err(ListElementTypeMismatch {
                     expected: item.value_type(),
                     actual: value.value_type(),

@@ -326,10 +326,8 @@ pub fn main() {
         let string_to_string = function_type([ValueType::String], ValueType::String);
         let bool_to_bool = function_type([ValueType::Bool], ValueType::Bool);
         let nil_to_nil = function_type([ValueType::Nil], ValueType::Nil);
-        let int_to_int_function = function_type(
-            [ValueType::Int],
-            ValueType::Function(Box::new(int_to_int.clone())),
-        );
+        let int_to_int_function =
+            crate::plan::FunctionFunctionType::new(vec![ValueType::Int], int_to_int.clone());
         let expected = module(
             "main",
             function(
@@ -442,27 +440,25 @@ pub fn main() {
                 .param_int(0, "n"),
                 function(
                     "get_getter",
-                    return_function_function(
-                        int_to_int_function.clone(),
-                        function_function_return_block(
-                            [],
-                            function_function_return_int_case(
-                                local_int(0, "n"),
-                                [(
-                                    0,
-                                    function_function_return_expr(function_function_ref(
-                                        FunctionFunctionId::Int(IntFunctionFunctionId(0)),
-                                        [LocalId::Int(IntLocalId(0))],
-                                        int_to_int.clone(),
-                                    )),
-                                )],
-                                function_function_return_tail_call(
-                                    0,
-                                    [int_arg(0, local_int(0, "n").sub_int(int(1)))],
-                                ),
+                    return_function_function(function_function_return_block(
+                        [],
+                        function_function_return_int_case(
+                            local_int(0, "n"),
+                            [(
+                                0,
+                                function_function_return_expr(function_function_ref(
+                                    FunctionFunctionId::Int(IntFunctionFunctionId(0)),
+                                    [LocalId::Int(IntLocalId(0))],
+                                    int_to_int.clone(),
+                                )),
+                            )],
+                            function_function_return_tail_call(
+                                0,
+                                int_to_int_function.clone(),
+                                [int_arg(0, local_int(0, "n").sub_int(int(1)))],
                             ),
                         ),
-                    ),
+                    )),
                 )
                 .param_int(0, "n"),
             ],
@@ -731,10 +727,6 @@ pub fn main() {
         let string_to_string = function_type([ValueType::String], ValueType::String);
         let bool_to_bool = function_type([ValueType::Bool], ValueType::Bool);
         let nil_to_nil = function_type([ValueType::Nil], ValueType::Nil);
-        let string_to_int_function = function_type(
-            [ValueType::String],
-            ValueType::Function(Box::new(int_to_int.clone())),
-        );
         let expected = module(
             "main",
             function(
@@ -859,25 +851,22 @@ pub fn main() {
                 .param_string(0, "key"),
                 function(
                     "choose_getter",
-                    return_function_function(
-                        string_to_int_function,
-                        function_function_return_string_case(
-                            local_string(0, "key"),
-                            [(
-                                "one",
-                                function_function_return_expr(function_function_ref(
-                                    FunctionFunctionId::Int(IntFunctionFunctionId(0)),
-                                    [LocalId::String(StringLocalId(0))],
-                                    int_to_int.clone(),
-                                )),
-                            )],
+                    return_function_function(function_function_return_string_case(
+                        local_string(0, "key"),
+                        [(
+                            "one",
                             function_function_return_expr(function_function_ref(
-                                FunctionFunctionId::Int(IntFunctionFunctionId(1)),
+                                FunctionFunctionId::Int(IntFunctionFunctionId(0)),
                                 [LocalId::String(StringLocalId(0))],
-                                int_to_int,
+                                int_to_int.clone(),
                             )),
-                        ),
-                    ),
+                        )],
+                        function_function_return_expr(function_function_ref(
+                            FunctionFunctionId::Int(IntFunctionFunctionId(1)),
+                            [LocalId::String(StringLocalId(0))],
+                            int_to_int,
+                        )),
+                    )),
                 )
                 .param_string(0, "key"),
             ],

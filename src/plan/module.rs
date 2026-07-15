@@ -16,6 +16,7 @@ pub use custom_type::{
     CustomTypeParameterId, CustomTypePublicity, CustomTypeTemplate,
 };
 
+pub(crate) use expression::custom_constructor_expr;
 pub use expression::{
     BitArrayExpr, BitArrayFunctionExpr, BoolExpr, BoolFunctionExpr, CallArg, CustomExpr,
     CustomFunctionExpr, Expr, FloatExpr, FloatFunctionExpr, FunctionExpr, FunctionFunctionExpr,
@@ -27,10 +28,11 @@ pub(crate) use expression::{
     BoolFunctionExprKind, CallArgKind, CaptureArg, CaptureArgKind, CustomExprKind,
     CustomFieldAccess, CustomFunctionExprKind, Endianness, ExprKind, FloatBitSize,
     FloatCaseBranches, FloatExprKind, FloatFunctionExprKind, FunctionExprKind,
-    FunctionFunctionExprKind, IntCaseBranches, IntExprKind, IntFunctionExprKind, ListElements,
-    ListFunctionExprKind, NilExprKind, NilFunctionExprKind, PanicExpr, PanicExprKind,
-    StringCaseBranches, StringEncoding, StringExprKind, StringFunctionExprKind, TupleExprKind,
-    TupleFunctionExprKind, UtfCodepointExprKind, UtfCodepointFunctionExprKind,
+    FunctionFunctionCallMismatch, FunctionFunctionExprKind, IntCaseBranches, IntExprKind,
+    IntFunctionExprKind, ListElements, ListFunctionExprKind, NilExprKind, NilFunctionExprKind,
+    PanicExpr, PanicExprKind, StringCaseBranches, StringEncoding, StringExprKind,
+    StringFunctionExprKind, TupleExprKind, TupleFunctionExprKind, UtfCodepointExprKind,
+    UtfCodepointFunctionExprKind,
 };
 pub(crate) use expression::{
     BitArrayListExpr, BitArrayListItem, BoolListCaseBranches, BoolListExpr, BoolListItem,
@@ -80,7 +82,9 @@ pub use id::{
     UtfCodepointListFunctionId, UtfCodepointListFunctionLocalId, UtfCodepointListLocalId,
     UtfCodepointLocalId,
 };
-pub(crate) use id::{FunctionFunctionId, RuntimeFunctionId};
+pub(crate) use id::{
+    CustomFunctionLocal, FunctionFunctionId, FunctionFunctionLocal, RuntimeFunctionId,
+};
 pub(crate) use pattern::{
     BitArrayBindingPattern, BitArrayPattern, BitArrayPatternSegment, BitArrayPatternSize,
     BitArrayPatternSizeExpr, BitArrayPatternValue, BitArrayStringPattern, CustomBindingPattern,

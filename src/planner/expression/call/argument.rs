@@ -234,11 +234,14 @@ fn function_call_param_locals(params: &[ValueType]) -> Vec<ParamLocal> {
                     next_utf_codepoint_function += 1;
                     local
                 }
-                ValueType::Custom(_) => {
-                    let local = ParamLocal::custom_function(
+                ValueType::Custom(return_type) => {
+                    let local = ParamLocal::custom_function(crate::plan::CustomFunctionLocal::new(
                         crate::plan::CustomFunctionLocalId(next_custom_function),
-                        type_.as_ref().clone(),
-                    );
+                        crate::plan::CustomFunctionType::new(
+                            type_.argument_types().to_vec(),
+                            return_type.clone(),
+                        ),
+                    ));
                     next_custom_function += 1;
                     local
                 }
@@ -283,11 +286,15 @@ fn function_call_param_locals(params: &[ValueType]) -> Vec<ParamLocal> {
                     next_list_function += 1;
                     local
                 }
-                ValueType::Function(_) => {
-                    let local = ParamLocal::function_function(
-                        crate::plan::FunctionFunctionLocalId(next_function_function),
-                        type_.as_ref().clone(),
-                    );
+                ValueType::Function(return_type) => {
+                    let local =
+                        ParamLocal::function_function(crate::plan::FunctionFunctionLocal::new(
+                            crate::plan::FunctionFunctionLocalId(next_function_function),
+                            crate::plan::FunctionFunctionType::new(
+                                type_.argument_types().to_vec(),
+                                return_type.as_ref().clone(),
+                            ),
+                        ));
                     next_function_function += 1;
                     local
                 }
@@ -304,8 +311,15 @@ pub(super) fn plan_custom_constructor_args(
 ) -> Result<Vec<Expr>, PlanError> {
     arguments
         .into_iter()
-        .zip(constructor.fields())
-        .map(|(argument, field)| {
+        .enumerate()
+        .map(|(index, argument)| {
+            let Some(field) = constructor.fields().get(index) else {
+                return Err(PlanError::InvalidTypedAst {
+                    reason: InvalidTypedAstReason::CallShape {
+                        reason: InvalidCallShapeReason::FunctionCallArityMismatch,
+                    },
+                });
+            };
             if let Some(label) = &argument.label
                 && field.label() != Some(label)
             {
@@ -502,16 +516,13 @@ mod tests {
                     ),
                     ValueType::Int,
                 )),
-                ParamLocal::function_function(
+                ParamLocal::function_function(crate::plan::FunctionFunctionLocal::new(
                     crate::plan::FunctionFunctionLocalId(0),
-                    FunctionType::new(
+                    crate::plan::FunctionFunctionType::new(
                         Vec::new(),
-                        ValueType::Function(Box::new(FunctionType::new(
-                            Vec::new(),
-                            ValueType::Int,
-                        ))),
+                        FunctionType::new(Vec::new(), ValueType::Int),
                     ),
-                ),
+                )),
             ],
         );
         assert_eq!(

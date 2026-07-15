@@ -519,11 +519,14 @@ impl FunctionParamLocalCounters {
                 self.next_utf_codepoint += 1;
                 local
             }
-            ValueType::Custom(_) => {
-                let local = ParamLocal::custom_function(
+            ValueType::Custom(return_type) => {
+                let local = ParamLocal::custom_function(crate::plan::CustomFunctionLocal::new(
                     crate::plan::CustomFunctionLocalId(self.next_custom),
-                    type_.clone(),
-                );
+                    crate::plan::CustomFunctionType::new(
+                        type_.argument_types().to_vec(),
+                        return_type.clone(),
+                    ),
+                ));
                 self.next_custom += 1;
                 local
             }
@@ -561,11 +564,14 @@ impl FunctionParamLocalCounters {
                 self.next_list += 1;
                 local
             }
-            ValueType::Function(_) => {
-                let local = ParamLocal::function_function(
+            ValueType::Function(return_type) => {
+                let local = ParamLocal::function_function(crate::plan::FunctionFunctionLocal::new(
                     FunctionFunctionLocalId(self.next_function),
-                    type_.clone(),
-                );
+                    crate::plan::FunctionFunctionType::new(
+                        type_.argument_types().to_vec(),
+                        return_type.as_ref().clone(),
+                    ),
+                ));
                 self.next_function += 1;
                 local
             }
@@ -1154,10 +1160,7 @@ fn tuple_getter(callback: fn(#(Int)) -> #(String)) {
                 function("getter", int(1)).param_function_function(
                     0,
                     "callback",
-                    FunctionType::new(
-                        Vec::new(),
-                        ValueType::Function(Box::new(returned_function_type)),
-                    ),
+                    crate::plan::FunctionFunctionType::new(Vec::new(), returned_function_type),
                 ),
                 function("tuple_getter", int(1)).param_tuple_function(
                     0,

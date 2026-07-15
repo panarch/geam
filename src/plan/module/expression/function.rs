@@ -24,11 +24,17 @@ pub use self::{
     utf_codepoint::UtfCodepointFunctionExpr,
 };
 pub(crate) use self::{
-    bit_array::BitArrayFunctionExprKind, bool::BoolFunctionExprKind,
-    custom::CustomFunctionExprKind, float::FloatFunctionExprKind, int::IntFunctionExprKind,
-    list::ListFunctionExprKind, nil::NilFunctionExprKind,
-    returning_function::FunctionFunctionExprKind, string::StringFunctionExprKind,
-    tuple::TupleFunctionExprKind, utf_codepoint::UtfCodepointFunctionExprKind,
+    bit_array::BitArrayFunctionExprKind,
+    bool::BoolFunctionExprKind,
+    custom::CustomFunctionExprKind,
+    float::FloatFunctionExprKind,
+    int::IntFunctionExprKind,
+    list::ListFunctionExprKind,
+    nil::NilFunctionExprKind,
+    returning_function::{FunctionFunctionCallMismatch, FunctionFunctionExprKind},
+    string::StringFunctionExprKind,
+    tuple::TupleFunctionExprKind,
+    utf_codepoint::UtfCodepointFunctionExprKind,
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -62,7 +68,13 @@ impl FunctionExpr {
             ValueType::UtfCodepoint => {
                 Self::utf_codepoint(UtfCodepointFunctionExpr::custom_field(access, type_))
             }
-            ValueType::Custom(_) => Self::custom(CustomFunctionExpr::custom_field(access, type_)),
+            ValueType::Custom(return_type) => {
+                let arguments = type_.argument_types().to_vec();
+                Self::custom(CustomFunctionExpr::custom_field(
+                    access,
+                    crate::plan::CustomFunctionType::new(arguments, return_type),
+                ))
+            }
             ValueType::Float => Self::float(FloatFunctionExpr::custom_field(access, type_)),
             ValueType::Bool => Self::bool(BoolFunctionExpr::custom_field(access, type_)),
             ValueType::Nil => Self::nil(NilFunctionExpr::custom_field(access, type_)),
@@ -70,8 +82,12 @@ impl FunctionExpr {
             ValueType::List(item_type) => {
                 Self::list(ListFunctionExpr::custom_field(access, type_, *item_type))
             }
-            ValueType::Function(_) => {
-                Self::function(FunctionFunctionExpr::custom_field(access, type_))
+            ValueType::Function(return_type) => {
+                let arguments = type_.argument_types().to_vec();
+                Self::function(FunctionFunctionExpr::custom_field(
+                    access,
+                    crate::plan::FunctionFunctionType::new(arguments, *return_type),
+                ))
             }
         }
     }
@@ -187,19 +203,19 @@ impl FunctionExpr {
         }
     }
 
-    pub fn type_(&self) -> &FunctionType {
+    pub fn type_(&self) -> FunctionType {
         match &self.kind {
-            FunctionExprKind::Int(expression) => expression.type_(),
-            FunctionExprKind::String(expression) => expression.type_(),
-            FunctionExprKind::BitArray(expression) => expression.type_(),
-            FunctionExprKind::UtfCodepoint(expression) => expression.type_(),
+            FunctionExprKind::Int(expression) => expression.type_().clone(),
+            FunctionExprKind::String(expression) => expression.type_().clone(),
+            FunctionExprKind::BitArray(expression) => expression.type_().clone(),
+            FunctionExprKind::UtfCodepoint(expression) => expression.type_().clone(),
             FunctionExprKind::Custom(expression) => expression.type_(),
-            FunctionExprKind::Float(expression) => expression.type_(),
-            FunctionExprKind::Bool(expression) => expression.type_(),
-            FunctionExprKind::Nil(expression) => expression.type_(),
-            FunctionExprKind::Tuple(expression) => expression.type_(),
-            FunctionExprKind::List(expression) => expression.type_(),
-            FunctionExprKind::Function(expression) => expression.type_(),
+            FunctionExprKind::Float(expression) => expression.type_().clone(),
+            FunctionExprKind::Bool(expression) => expression.type_().clone(),
+            FunctionExprKind::Nil(expression) => expression.type_().clone(),
+            FunctionExprKind::Tuple(expression) => expression.type_().clone(),
+            FunctionExprKind::List(expression) => expression.type_().clone(),
+            FunctionExprKind::Function(expression) => expression.type_().clone(),
         }
     }
 
@@ -458,40 +474,40 @@ mod tests {
     fn function_expr_type_accessors() {
         assert_eq!(
             FunctionExpr::int(int_function_value()).type_(),
-            &int_function_type(),
+            int_function_type(),
         );
         assert_eq!(
             FunctionExpr::string(string_function_value()).type_(),
-            &string_function_type(),
+            string_function_type(),
         );
         assert_eq!(
             FunctionExpr::bit_array(bit_array_function_value()).type_(),
-            &bit_array_function_type(),
+            bit_array_function_type(),
         );
         assert_eq!(
             FunctionExpr::utf_codepoint(utf_codepoint_function_value()).type_(),
-            &utf_codepoint_function_type(),
+            utf_codepoint_function_type(),
         );
         assert_eq!(
             FunctionExpr::float(float_function_value()).type_(),
-            &float_function_type(),
+            float_function_type(),
         );
         assert_eq!(
             FunctionExpr::bool(bool_function_value()).type_(),
-            &bool_function_type()
+            bool_function_type()
         );
-        assert_eq!(FunctionExpr::nil(nil_function_value()).type_(), &nil_type());
+        assert_eq!(FunctionExpr::nil(nil_function_value()).type_(), nil_type());
         assert_eq!(
             FunctionExpr::tuple(tuple_function_value()).type_(),
-            &tuple_function_type(),
+            tuple_function_type(),
         );
         assert_eq!(
             FunctionExpr::list(list_function_value()).type_(),
-            &list_function_type()
+            list_function_type()
         );
         assert_eq!(
             FunctionExpr::function(function_function_value()).type_(),
-            &function_function_type(),
+            function_function_type(),
         );
     }
 

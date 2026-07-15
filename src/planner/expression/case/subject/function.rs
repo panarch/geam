@@ -3,8 +3,8 @@ use super::super::invalid_case_shape;
 use super::{CaseClause, OrderedCaseClauseInput, case_return_type};
 use crate::plan::{
     BitArrayFunctionExpr, BoolExpr, CustomFunctionExpr, Expr, ExprKind, FunctionExpr,
-    FunctionExprKind, FunctionFunctionExpr, FunctionFunctionLocalId, FunctionType, IntFunctionExpr,
-    IntFunctionLocalId, Step, ValueType,
+    FunctionExprKind, FunctionFunctionExpr, FunctionType, IntFunctionExpr, IntFunctionLocalId,
+    Step, ValueType,
 };
 use crate::planner::context::PlanContext;
 use crate::planner::error::{InvalidCaseShapeReason, PlanError};
@@ -166,13 +166,13 @@ fn bind_function_case_subject(
             )
         }
         FunctionExprKind::Custom(subject) => {
-            let local = context.define_internal_custom_function_local();
-            let name = internal_custom_function_case_subject_name(local);
-            let type_ = subject.type_().clone();
+            let local = context
+                .define_internal_custom_function_local(subject.custom_function_type().clone());
+            let name = internal_custom_function_case_subject_name(&local);
             (
-                Step::let_custom_function(local, name.clone(), subject),
+                Step::let_custom_function(local.id(), name.clone(), subject),
                 Expr::function(FunctionExpr::custom(CustomFunctionExpr::local_get(
-                    local, name, type_,
+                    local, name,
                 ))),
             )
         }
@@ -233,13 +233,13 @@ fn bind_function_case_subject(
             )
         }
         FunctionExprKind::Function(subject) => {
-            let local = context.define_internal_function_function_local();
-            let name = internal_function_function_case_subject_name(local);
-            let type_ = subject.type_().clone();
+            let local = context
+                .define_internal_function_function_local(subject.function_function_type().clone());
+            let name = internal_function_function_case_subject_name(&local);
             (
-                Step::let_function_function(local, name.clone(), subject),
+                Step::let_function_function(local.id(), name.clone(), subject),
                 Expr::function(FunctionExpr::function(FunctionFunctionExpr::local_get(
-                    local, name, type_,
+                    local, name,
                 ))),
             )
         }
@@ -269,9 +269,9 @@ fn internal_utf_codepoint_function_case_subject_name(
 }
 
 fn internal_custom_function_case_subject_name(
-    local: crate::plan::CustomFunctionLocalId,
+    local: &crate::plan::CustomFunctionLocal,
 ) -> EcoString {
-    format!("<case:custom_function:{}>", local.0).into()
+    format!("<case:custom_function:{}>", local.id().0).into()
 }
 
 fn internal_float_function_case_subject_name(
@@ -298,8 +298,10 @@ fn internal_list_function_case_subject_name(local: &crate::plan::ListFunctionLoc
     format!("<case:list_function:{}>", local.index()).into()
 }
 
-fn internal_function_function_case_subject_name(local: FunctionFunctionLocalId) -> EcoString {
-    format!("<case:function_function:{}>", local.0).into()
+fn internal_function_function_case_subject_name(
+    local: &crate::plan::FunctionFunctionLocal,
+) -> EcoString {
+    format!("<case:function_function:{}>", local.id().0).into()
 }
 
 #[cfg(test)]
@@ -508,11 +510,13 @@ pub fn main() {
             Vec::new(),
         );
         let custom_function_type =
-            FunctionType::new(Vec::new(), ValueType::Custom(custom_type.clone()));
+            crate::plan::CustomFunctionType::new(Vec::new(), custom_type.clone());
         let custom_subject = CustomFunctionExpr::local_get(
-            CustomFunctionLocalId(7),
+            crate::plan::CustomFunctionLocal::new(
+                CustomFunctionLocalId(7),
+                custom_function_type.clone(),
+            ),
             "source".into(),
-            custom_function_type.clone(),
         );
         assert_eq!(
             bind_function_case_subject(FunctionExpr::custom(custom_subject.clone()), &mut context,),
@@ -523,9 +527,11 @@ pub fn main() {
                     custom_subject,
                 ),
                 Expr::function(FunctionExpr::custom(CustomFunctionExpr::local_get(
-                    CustomFunctionLocalId(0),
+                    crate::plan::CustomFunctionLocal::new(
+                        CustomFunctionLocalId(0),
+                        custom_function_type,
+                    ),
                     "<case:custom_function:0>".into(),
-                    custom_function_type,
                 ))),
             ),
         );
@@ -644,14 +650,13 @@ pub fn main() {
                 )),
             ),
         );
-        let function_function_type = FunctionType::new(
-            Vec::new(),
-            ValueType::Function(Box::new(empty_function_type.clone())),
-        );
+        let function_function_type =
+            crate::plan::FunctionFunctionType::new(Vec::new(), empty_function_type.clone());
+        let function_id = FunctionFunctionFunctionId::new(0, function_function_type.clone());
         assert_eq!(
             bind_function_case_subject(
                 function_function_ref(
-                    FunctionFunctionId::Function(FunctionFunctionFunctionId(0)),
+                    FunctionFunctionId::Function(function_id.clone()),
                     Vec::<LocalId>::new(),
                     empty_function_type.clone(),
                 )
@@ -663,16 +668,18 @@ pub fn main() {
                     FunctionFunctionLocalId(0),
                     "<case:function_function:0>".into(),
                     function_function_ref(
-                        FunctionFunctionId::Function(FunctionFunctionFunctionId(0)),
+                        FunctionFunctionId::Function(function_id),
                         Vec::<LocalId>::new(),
                         empty_function_type,
                     )
                     .into(),
                 ),
                 Expr::function(FunctionExpr::function(FunctionFunctionExpr::local_get(
-                    FunctionFunctionLocalId(0),
+                    crate::plan::FunctionFunctionLocal::new(
+                        FunctionFunctionLocalId(0),
+                        function_function_type,
+                    ),
                     "<case:function_function:0>".into(),
-                    function_function_type,
                 ))),
             ),
         );

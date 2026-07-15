@@ -308,9 +308,12 @@ fn panic_function_expr(panic: PanicExpr, type_: FunctionType) -> Expr {
         ValueType::UtfCodepoint => Expr::function(FunctionExpr::utf_codepoint(
             crate::plan::UtfCodepointFunctionExpr::panic(panic, type_),
         )),
-        ValueType::Custom(_) => Expr::function(FunctionExpr::custom(CustomFunctionExpr::panic(
-            panic, type_,
-        ))),
+        ValueType::Custom(return_type) => {
+            Expr::function(FunctionExpr::custom(CustomFunctionExpr::panic(
+                panic,
+                crate::plan::CustomFunctionType::new(type_.argument_types().to_vec(), return_type),
+            )))
+        }
         ValueType::Float => Expr::function(FunctionExpr::float(
             crate::plan::FloatFunctionExpr::panic(panic, type_),
         )),
@@ -326,9 +329,15 @@ fn panic_function_expr(panic: PanicExpr, type_: FunctionType) -> Expr {
         ValueType::List(item_type) => Expr::function(FunctionExpr::list(
             crate::plan::ListFunctionExpr::panic(panic, type_, *item_type),
         )),
-        ValueType::Function(_) => Expr::function(FunctionExpr::function(
-            FunctionFunctionExpr::panic(panic, type_),
-        )),
+        ValueType::Function(return_type) => {
+            Expr::function(FunctionExpr::function(FunctionFunctionExpr::panic(
+                panic,
+                crate::plan::FunctionFunctionType::new(
+                    type_.argument_types().to_vec(),
+                    *return_type,
+                ),
+            )))
+        }
     }
 }
 
@@ -568,9 +577,13 @@ fn tuple_index_function_expr(tuple: TupleExpr, index: usize, type_: FunctionType
         ValueType::UtfCodepoint => Expr::function(FunctionExpr::utf_codepoint(
             crate::plan::UtfCodepointFunctionExpr::tuple_index(tuple, index, type_),
         )),
-        ValueType::Custom(_) => Expr::function(FunctionExpr::custom(
-            CustomFunctionExpr::tuple_index(tuple, index, type_),
-        )),
+        ValueType::Custom(return_type) => {
+            Expr::function(FunctionExpr::custom(CustomFunctionExpr::tuple_index(
+                tuple,
+                index,
+                crate::plan::CustomFunctionType::new(type_.argument_types().to_vec(), return_type),
+            )))
+        }
         ValueType::Float => Expr::function(FunctionExpr::float(
             crate::plan::FloatFunctionExpr::tuple_index(tuple, index, type_),
         )),
@@ -586,9 +599,16 @@ fn tuple_index_function_expr(tuple: TupleExpr, index: usize, type_: FunctionType
         ValueType::List(item_type) => Expr::function(FunctionExpr::list(
             crate::plan::ListFunctionExpr::tuple_index(tuple, index, type_, *item_type),
         )),
-        ValueType::Function(_) => Expr::function(FunctionExpr::function(
-            FunctionFunctionExpr::tuple_index(tuple, index, type_),
-        )),
+        ValueType::Function(return_type) => {
+            Expr::function(FunctionExpr::function(FunctionFunctionExpr::tuple_index(
+                tuple,
+                index,
+                crate::plan::FunctionFunctionType::new(
+                    type_.argument_types().to_vec(),
+                    *return_type,
+                ),
+            )))
+        }
     }
 }
 
@@ -610,9 +630,13 @@ fn list_index_function_expr(
         ValueType::UtfCodepoint => Expr::function(FunctionExpr::utf_codepoint(
             crate::plan::UtfCodepointFunctionExpr::list_index(list.clone(), index, type_),
         )),
-        ValueType::Custom(_) => Expr::function(FunctionExpr::custom(
-            CustomFunctionExpr::list_index(list.clone(), index, type_),
-        )),
+        ValueType::Custom(return_type) => {
+            Expr::function(FunctionExpr::custom(CustomFunctionExpr::list_index(
+                list.clone(),
+                index,
+                crate::plan::CustomFunctionType::new(type_.argument_types().to_vec(), return_type),
+            )))
+        }
         ValueType::Float => Expr::function(FunctionExpr::float(
             crate::plan::FloatFunctionExpr::list_index(list.clone(), index, type_),
         )),
@@ -628,9 +652,16 @@ fn list_index_function_expr(
         ValueType::List(item_type) => Expr::function(FunctionExpr::list(
             crate::plan::ListFunctionExpr::list_index(list.clone(), index, type_, *item_type),
         )),
-        ValueType::Function(_) => Expr::function(FunctionExpr::function(
-            FunctionFunctionExpr::list_index(list, index, type_),
-        )),
+        ValueType::Function(return_type) => {
+            Expr::function(FunctionExpr::function(FunctionFunctionExpr::list_index(
+                list,
+                index,
+                crate::plan::FunctionFunctionType::new(
+                    type_.argument_types().to_vec(),
+                    *return_type,
+                ),
+            )))
+        }
     }
 }
 
@@ -820,11 +851,11 @@ mod tests {
     use crate::plan::{
         BitArrayExpr, BitArrayFunctionExpr, BoolExpr, BoolFunctionId, BoolLocalId, CustomExpr,
         CustomLocalId, CustomType, CustomTypeName, Expr, FloatExpr, FunctionExpr,
-        FunctionFunctionExpr, FunctionFunctionId, FunctionReference, FunctionType, IntExpr,
-        IntFunctionExpr, IntFunctionFunctionId, IntFunctionId, IntLocalId, ListExpr, NilExpr,
-        NilFunctionId, NilLocalId, PanicExpr, PanicSite, ParamLocal, ReturnBody, RuntimeFunctionId,
-        SourceSpan, StringExpr, StringLocalId, TupleExpr, UtfCodepointExpr, UtfCodepointLocalId,
-        ValueType,
+        FunctionFunctionExpr, FunctionFunctionId, FunctionFunctionType, FunctionReference,
+        FunctionType, IntExpr, IntFunctionExpr, IntFunctionFunctionId, IntFunctionId, IntLocalId,
+        ListExpr, NilExpr, NilFunctionId, NilLocalId, PanicExpr, PanicSite, ParamLocal, ReturnBody,
+        RuntimeFunctionId, SourceSpan, StringExpr, StringLocalId, TupleExpr, UtfCodepointExpr,
+        UtfCodepointLocalId, ValueType,
     };
     use crate::planner::context::{AnonymousFunctions, PlanContext};
     use crate::planner::dsl::{
@@ -1045,12 +1076,9 @@ pub fn main() -> Int {
                 crate::plan::IntFunctionExpr::panic(panic.clone(), int_function_type),
             ))),
         );
-        let function_function_type = FunctionType::new(
+        let function_function_type = FunctionFunctionType::new(
             Vec::new(),
-            ValueType::Function(Box::new(FunctionType::new(
-                vec![ValueType::Int],
-                ValueType::Int,
-            ))),
+            FunctionType::new(vec![ValueType::Int], ValueType::Int),
         );
         assert_eq!(
             super::plan_expr(

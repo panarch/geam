@@ -5,11 +5,20 @@ pub(in crate::plan::execution::lowering) fn custom_function_expr(
     expression: module::CustomFunctionExpr,
     context: &mut super::super::super::LoweringContext,
 ) -> execution::CustomFunctionExpr {
+    let (type_, kind) = expression.into_parts();
+    let kind = custom_function_expr_kind(kind, context);
+
+    execution::CustomFunctionExpr::from_parts(context.custom_function_type(type_), kind)
+}
+
+pub(in crate::plan::execution::lowering) fn custom_function_expr_kind(
+    kind: module::CustomFunctionExprKind,
+    context: &mut super::super::super::LoweringContext,
+) -> execution::CustomFunctionExprKind {
     use execution::CustomFunctionExprKind as E;
     use module::CustomFunctionExprKind as M;
 
-    let (type_, kind) = expression.into_parts();
-    let kind = match kind {
+    match kind {
         M::Constructor(constructor) => E::Constructor(context.custom_constructor(constructor)),
         M::Reference(value) => E::Reference(super::function_reference(value, context, |id, _| {
             execution::CustomFunctionId(id.0)
@@ -26,40 +35,29 @@ pub(in crate::plan::execution::lowering) fn custom_function_expr(
             |id, _| execution::CustomFunctionId(id.0),
         )),
         M::LocalGet { local, name: _ } => E::LocalGet {
-            local: execution::CustomFunctionLocalId(local.0),
+            local: crate::plan::execution::lowering::id::custom_function_local(local, context),
         },
-        M::Call {
-            function,
-            args,
-            type_: _,
-        } => E::Call {
-            function: execution::CustomFunctionFunctionId(function.0),
+        M::Call { function, args } => E::Call {
+            function: execution::CustomFunctionFunctionId::new(
+                function.index(),
+                context.custom_function_type(function.type_().clone()),
+            ),
             args: super::super::call_args(args, context),
         },
-        M::FunctionCall {
-            function,
-            args,
-            type_: _,
-        } => E::FunctionCall {
+        M::FunctionCall { function, args } => E::FunctionCall {
             function: Box::new(function_function_expr(*function, context)),
             args: super::super::call_args(args, context),
         },
-        M::TupleIndex {
-            tuple,
-            index,
-            type_,
-        } => E::TupleIndex {
+        M::TupleIndex { tuple, index } => E::TupleIndex {
             tuple: Box::new(super::super::tuple_expr(*tuple, context)),
             index,
-            type_: context.function_type(type_),
         },
         M::CustomField(access) => {
             E::CustomField(super::super::custom_field_access(access, context))
         }
-        M::ListIndex { list, index, type_ } => E::ListIndex {
+        M::ListIndex { list, index } => E::ListIndex {
             list: Box::new(super::super::function_list_expr(*list, context)),
             index,
-            type_: context.function_type(type_),
         },
         M::Panic(value) => E::Panic(super::super::panic_expr(value, context)),
         M::BoolCase {
@@ -68,8 +66,8 @@ pub(in crate::plan::execution::lowering) fn custom_function_expr(
             false_,
         } => E::BoolCase {
             subject: Box::new(super::super::bool_expr(*subject, context)),
-            true_: Box::new(custom_function_expr(*true_, context)),
-            false_: Box::new(custom_function_expr(*false_, context)),
+            true_: Box::new(custom_function_expr_kind(*true_, context)),
+            false_: Box::new(custom_function_expr_kind(*false_, context)),
         },
         M::IntCase {
             subject,
@@ -79,9 +77,9 @@ pub(in crate::plan::execution::lowering) fn custom_function_expr(
             subject: Box::new(super::super::int_expr(*subject, context)),
             clauses: clauses
                 .into_iter()
-                .map(|(pattern, branch)| (pattern, custom_function_expr(branch, context)))
+                .map(|(pattern, branch)| (pattern, custom_function_expr_kind(branch, context)))
                 .collect(),
-            fallback: Box::new(custom_function_expr(*fallback, context)),
+            fallback: Box::new(custom_function_expr_kind(*fallback, context)),
         },
         M::StringCase {
             subject,
@@ -91,9 +89,9 @@ pub(in crate::plan::execution::lowering) fn custom_function_expr(
             subject: Box::new(super::super::string_expr(*subject, context)),
             clauses: clauses
                 .into_iter()
-                .map(|(pattern, branch)| (pattern, custom_function_expr(branch, context)))
+                .map(|(pattern, branch)| (pattern, custom_function_expr_kind(branch, context)))
                 .collect(),
-            fallback: Box::new(custom_function_expr(*fallback, context)),
+            fallback: Box::new(custom_function_expr_kind(*fallback, context)),
         },
         M::FloatCase {
             subject,
@@ -103,15 +101,13 @@ pub(in crate::plan::execution::lowering) fn custom_function_expr(
             subject: Box::new(super::super::float_expr(*subject, context)),
             clauses: clauses
                 .into_iter()
-                .map(|(pattern, branch)| (pattern, custom_function_expr(branch, context)))
+                .map(|(pattern, branch)| (pattern, custom_function_expr_kind(branch, context)))
                 .collect(),
-            fallback: Box::new(custom_function_expr(*fallback, context)),
+            fallback: Box::new(custom_function_expr_kind(*fallback, context)),
         },
         M::Block { steps, return_ } => E::Block {
             steps: crate::plan::execution::lowering::step::steps(steps, context),
-            return_: Box::new(custom_function_expr(*return_, context)),
+            return_: Box::new(custom_function_expr_kind(*return_, context)),
         },
-    };
-
-    execution::CustomFunctionExpr::from_parts(context.function_type(type_), kind)
+    }
 }

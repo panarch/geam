@@ -2220,16 +2220,18 @@ fn return_value(value: String) {
             ),
             Err(case_branch_return_type_mismatch()),
         );
-        let function_type = FunctionType::new(Vec::new(), ValueType::Custom(custom_type));
+        let function_type = crate::plan::CustomFunctionType::new(Vec::new(), custom_type);
         assert_eq!(
             super::string_case_expr(
                 string("one").into(),
                 vec![("one".into(), Expr::from(int(1)))],
                 Expr::function(FunctionExpr::custom(
                     crate::plan::CustomFunctionExpr::local_get(
-                        crate::plan::CustomFunctionLocalId(0),
+                        crate::plan::CustomFunctionLocal::new(
+                            crate::plan::CustomFunctionLocalId(0),
+                            function_type,
+                        ),
                         "fallback".into(),
-                        function_type,
                     ),
                 )),
             ),

@@ -32,6 +32,20 @@ impl LoweringContext {
         self.types.function_type(type_)
     }
 
+    fn custom_function_type(
+        &mut self,
+        type_: crate::plan::CustomFunctionType,
+    ) -> super::CustomFunctionType {
+        self.types.custom_function_type(type_)
+    }
+
+    fn function_function_type(
+        &mut self,
+        type_: crate::plan::FunctionFunctionType,
+    ) -> super::FunctionFunctionType {
+        self.types.function_function_type(type_)
+    }
+
     fn int_list_type(&mut self) -> super::IntListTypeId {
         self.types.int_list_type()
     }

@@ -1,4 +1,4 @@
-use super::id::list_function_local;
+use super::id::{custom_function_local, function_function_local, list_function_local};
 use crate::plan::module;
 
 pub(super) fn frame_layout(
@@ -63,7 +63,11 @@ pub(super) fn frame_layout(
         string_functions: parts.string_functions,
         bit_array_functions: parts.bit_array_functions,
         utf_codepoint_functions: parts.utf_codepoint_functions,
-        custom_functions: parts.custom_functions,
+        custom_functions: parts
+            .custom_functions
+            .into_iter()
+            .map(|local| custom_function_local(local, context))
+            .collect(),
         bool_functions: parts.bool_functions,
         nil_functions: parts.nil_functions,
         tuple_functions: parts.tuple_functions,
@@ -72,7 +76,11 @@ pub(super) fn frame_layout(
             .into_iter()
             .map(|local| list_function_local(local, context))
             .collect(),
-        function_functions: parts.function_functions,
+        function_functions: parts
+            .function_functions
+            .into_iter()
+            .map(|local| function_function_local(local, context))
+            .collect(),
     })
 }
 
@@ -171,7 +179,7 @@ pub fn main() { 0 }
         assert_eq!(layout.bool_functions(), 1);
         assert_eq!(layout.nil_functions(), 1);
         assert_eq!(layout.tuple_functions(), 1);
-        assert_eq!(layout.function_functions(), 1);
+        assert_eq!(layout.function_functions().len(), 1);
 
         let item_function_type = FunctionType::new(Vec::new(), ValueType::Int);
         let expected_returns = [

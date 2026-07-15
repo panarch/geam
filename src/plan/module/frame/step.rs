@@ -72,7 +72,7 @@ impl FrameLayout {
             }
             StepKind::LetCustomFunction { local, value, .. } => {
                 self.include_custom_function_expr(value);
-                self.include_custom_function(*local);
+                self.include_custom_function(local.clone());
             }
             StepKind::LetBoolFunction { local, value, .. } => {
                 self.include_bool_function_expr(value);
@@ -92,7 +92,7 @@ impl FrameLayout {
             }
             StepKind::LetFunctionFunction { local, value, .. } => {
                 self.include_function_function_expr(value);
-                self.include_function_function(*local);
+                self.include_function_function(local.clone());
             }
             StepKind::AssertList {
                 local,

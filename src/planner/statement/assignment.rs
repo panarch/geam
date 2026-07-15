@@ -572,12 +572,14 @@ fn plan_variable_runtime_step_and_return(
                 )
             }
             FunctionExprKind::Custom(value) => {
-                let type_ = value.type_().clone();
-                let local = context.define_custom_function_local(name.clone(), type_.clone());
+                let local = context.define_custom_function_local(
+                    name.clone(),
+                    value.custom_function_type().clone(),
+                );
                 (
-                    Step::let_custom_function(local, name.clone(), value),
+                    Step::let_custom_function(local.id(), name.clone(), value),
                     Expr::function(FunctionExpr::custom(CustomFunctionExpr::local_get(
-                        local, name, type_,
+                        local, name,
                     ))),
                 )
             }
@@ -635,13 +637,14 @@ fn plan_variable_runtime_step_and_return(
                 )
             }
             FunctionExprKind::Function(value) => {
-                let local =
-                    context.define_function_function_local(name.clone(), value.type_().clone());
-                let type_ = value.type_().clone();
+                let local = context.define_function_function_local(
+                    name.clone(),
+                    value.function_function_type().clone(),
+                );
                 (
-                    Step::let_function_function(local, name.clone(), value),
+                    Step::let_function_function(local.id(), name.clone(), value),
                     Expr::function(FunctionExpr::function(FunctionFunctionExpr::local_get(
-                        local, name, type_,
+                        local, name,
                     ))),
                 )
             }
@@ -953,17 +956,20 @@ pub fn main() {
             plan_custom_assignment(
                 boxed.clone(),
                 vec![BindingPattern::Discard],
-                Expr::custom(CustomExpr::constructor(other, Vec::new())),
+                Expr::custom(
+                    CustomExpr::try_constructor(other, Vec::new())
+                        .expect("test custom construction should be valid"),
+                ),
                 &mut context,
             )
             .map(|_| ()),
             Err(invalid_binding_pattern()),
         );
 
-        let invalid_custom_value = Expr::custom(CustomExpr::constructor(
-            custom_constructor("Other", Vec::new()),
-            Vec::new(),
-        ));
+        let invalid_custom_value = Expr::custom(
+            CustomExpr::try_constructor(custom_constructor("Other", Vec::new()), Vec::new())
+                .expect("test custom construction should be valid"),
+        );
         assert_eq!(
             plan_assignment_steps(
                 BindingPattern::Custom {
@@ -998,7 +1004,16 @@ pub fn main() {
                     BindingPattern::Discard,
                     BindingPattern::Discard,
                 ])],
-                Expr::custom(CustomExpr::constructor(tuple_field.clone(), Vec::new())),
+                Expr::custom(
+                    CustomExpr::try_constructor(
+                        tuple_field.clone(),
+                        vec![Expr::tuple(crate::plan::TupleExpr::value(
+                            vec![Expr::from(int(1))],
+                            vec![ValueType::Int],
+                        ))],
+                    )
+                    .expect("test custom construction should be valid"),
+                ),
                 &mut context,
             )
             .map(|_| ()),
@@ -1008,10 +1023,10 @@ pub fn main() {
             plan_custom_assignment(
                 boxed.clone(),
                 Vec::new(),
-                Expr::custom(CustomExpr::constructor(
-                    boxed.clone(),
-                    vec![Expr::from(int(1))],
-                )),
+                Expr::custom(
+                    CustomExpr::try_constructor(boxed.clone(), vec![Expr::from(int(1))])
+                        .expect("test custom construction should be valid"),
+                ),
                 &mut context,
             )
             .map(|_| ()),

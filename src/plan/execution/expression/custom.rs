@@ -13,11 +13,22 @@ pub struct CustomExpr {
     kind: CustomExprKind,
 }
 
+pub(crate) struct CustomConstruction {
+    constructor: CustomConstructorId,
+    fields: Box<[super::Expr]>,
+}
+
+pub(crate) struct CustomCallArguments {
+    values: Box<[CallArg]>,
+}
+
+pub(crate) struct CustomFunctionCall {
+    function: Box<CustomFunctionExpr>,
+    arguments: CustomCallArguments,
+}
+
 pub(crate) enum CustomExprKind {
-    Constructor {
-        constructor: CustomConstructorId,
-        arguments: Vec<super::Expr>,
-    },
+    Constructor(CustomConstruction),
     LocalGet {
         local: CustomLocalId,
     },
@@ -25,10 +36,7 @@ pub(crate) enum CustomExprKind {
         function: CustomFunctionId,
         args: Vec<CallArg>,
     },
-    FunctionCall {
-        function: Box<CustomFunctionExpr>,
-        args: Vec<CallArg>,
-    },
+    FunctionCall(CustomFunctionCall),
     TupleIndex {
         tuple: Box<TupleExpr>,
         index: usize,
@@ -79,5 +87,45 @@ impl CustomExpr {
 
     pub(crate) fn kind(&self) -> &CustomExprKind {
         &self.kind
+    }
+}
+
+impl CustomConstruction {
+    pub(in crate::plan::execution) fn from_parts(
+        constructor: CustomConstructorId,
+        fields: Box<[super::Expr]>,
+    ) -> Self {
+        Self {
+            constructor,
+            fields,
+        }
+    }
+
+    pub(crate) fn constructor(&self) -> CustomConstructorId {
+        self.constructor
+    }
+
+    pub(crate) fn fields(&self) -> &[super::Expr] {
+        &self.fields
+    }
+}
+
+impl CustomFunctionCall {
+    pub(in crate::plan::execution) fn from_parts(
+        function: CustomFunctionExpr,
+        arguments: Box<[CallArg]>,
+    ) -> Self {
+        Self {
+            function: Box::new(function),
+            arguments: CustomCallArguments { values: arguments },
+        }
+    }
+
+    pub(crate) fn function(&self) -> &CustomFunctionExpr {
+        &self.function
+    }
+
+    pub(crate) fn arguments(&self) -> &[CallArg] {
+        &self.arguments.values
     }
 }

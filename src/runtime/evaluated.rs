@@ -5,17 +5,16 @@ use num_bigint::BigInt;
 use std::rc::Rc;
 
 use super::state::{ListValueId, RuntimeState};
-use super::{ExecutionError, error::ExecutionResult};
 use crate::plan::ValueType;
 use crate::plan::execution::{
     BitArrayFunctionId, BitArrayFunctionLocalId, BitArrayLocalId, BoolFunctionId,
-    BoolFunctionLocalId, BoolLocalId, CustomConstructorId, CustomFunctionId, CustomFunctionLocalId,
-    CustomLocalId, CustomTypeId, ExecutionPlan, FloatFunctionId, FloatFunctionLocalId,
-    FloatLocalId, FunctionFunctionId, FunctionFunctionLocalId, FunctionReturnFamily, FunctionType,
-    IntFunctionId, IntFunctionLocalId, IntLocalId, ListFunctionId, ListFunctionLocal,
-    NilFunctionId, NilFunctionLocalId, NilLocalId, ParamLocal, StringFunctionId,
-    StringFunctionLocalId, StringLocalId, TupleFunctionId, TupleFunctionLocalId, TupleLocalId,
-    UtfCodepointFunctionId, UtfCodepointFunctionLocalId, UtfCodepointLocalId,
+    BoolFunctionLocalId, BoolLocalId, CustomConstructorId, CustomFunctionId, CustomFunctionLocal,
+    CustomLocalId, CustomTypeId, FloatFunctionId, FloatFunctionLocalId, FloatLocalId,
+    FunctionFunctionId, FunctionFunctionLocal, FunctionReturnFamily, FunctionType, IntFunctionId,
+    IntFunctionLocalId, IntLocalId, ListFunctionId, ListFunctionLocal, NilFunctionId,
+    NilFunctionLocalId, NilLocalId, ParamLocal, StringFunctionId, StringFunctionLocalId,
+    StringLocalId, TupleFunctionId, TupleFunctionLocalId, TupleLocalId, UtfCodepointFunctionId,
+    UtfCodepointFunctionLocalId, UtfCodepointLocalId,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -30,25 +29,14 @@ pub(in crate::runtime) struct EvaluatedCustomValue {
 }
 
 impl EvaluatedCustomValue {
-    pub(in crate::runtime) fn try_from_fields(
-        plan: &ExecutionPlan,
+    pub(in crate::runtime) fn from_fields(
         constructor: CustomConstructorId,
-        fields: Vec<EvaluatedValue>,
-    ) -> ExecutionResult<Self> {
-        let descriptor = plan.custom_constructor(constructor);
-        if descriptor.fields().len() != fields.len() {
-            return Err(ExecutionError::CustomFieldArityMismatch {
-                custom_type: plan.custom_value_type(constructor.type_id()),
-                constructor: descriptor.name().clone(),
-                expected: descriptor.fields().len(),
-                actual: fields.len(),
-            });
-        }
-
-        Ok(Self {
+        fields: Box<[EvaluatedValue]>,
+    ) -> Self {
+        Self {
             constructor,
-            fields: fields.into_boxed_slice(),
-        })
+            fields,
+        }
     }
 
     pub(in crate::runtime) fn type_id(&self) -> CustomTypeId {
@@ -107,13 +95,11 @@ pub(in crate::runtime) type EvaluatedStringFunction = EvaluatedFunction<StringFu
 pub(in crate::runtime) type EvaluatedBitArrayFunction = EvaluatedFunction<BitArrayFunctionId>;
 pub(in crate::runtime) type EvaluatedUtfCodepointFunction =
     EvaluatedFunction<UtfCodepointFunctionId>;
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(in crate::runtime) enum EvaluatedCustomFunctionTarget {
-    Function(CustomFunctionId),
-    Constructor(CustomConstructorId),
+#[derive(Debug, Clone, PartialEq)]
+pub(in crate::runtime) enum EvaluatedCustomFunction {
+    Function(EvaluatedFunction<CustomFunctionId>),
+    Constructor(EvaluatedFunction<CustomConstructorId>),
 }
-pub(in crate::runtime) type EvaluatedCustomFunction =
-    EvaluatedFunction<EvaluatedCustomFunctionTarget>;
 pub(in crate::runtime) type EvaluatedBoolFunction = EvaluatedFunction<BoolFunctionId>;
 pub(in crate::runtime) type EvaluatedNilFunction = EvaluatedFunction<NilFunctionId>;
 pub(in crate::runtime) type EvaluatedTupleFunction = EvaluatedFunction<TupleFunctionId>;
@@ -211,7 +197,7 @@ pub(in crate::runtime) enum EvaluatedCaptureKind {
         value: EvaluatedUtfCodepointFunction,
     },
     CustomFunction {
-        local: CustomFunctionLocalId,
+        local: CustomFunctionLocal,
         value: EvaluatedCustomFunction,
     },
     BoolFunction {
@@ -231,7 +217,7 @@ pub(in crate::runtime) enum EvaluatedCaptureKind {
         value: EvaluatedListFunction,
     },
     FunctionFunction {
-        local: FunctionFunctionLocalId,
+        local: FunctionFunctionLocal,
         value: EvaluatedFunctionFunction,
     },
 }
@@ -335,6 +321,50 @@ impl<Id: Clone> EvaluatedFunction<Id> {
 
     pub(in crate::runtime) fn type_(&self) -> &FunctionType {
         &self.type_
+    }
+}
+
+impl EvaluatedCustomFunction {
+    pub(in crate::runtime) fn function(
+        runtime_id: CustomFunctionId,
+        params: Vec<ParamLocal>,
+        captures: Vec<EvaluatedCapture>,
+        type_: FunctionType,
+    ) -> Self {
+        Self::Function(EvaluatedFunction::new(runtime_id, params, captures, type_))
+    }
+
+    pub(in crate::runtime) fn constructor(
+        constructor: CustomConstructorId,
+        type_: FunctionType,
+    ) -> Self {
+        Self::Constructor(EvaluatedFunction::new(
+            constructor,
+            Vec::new(),
+            Vec::new(),
+            type_,
+        ))
+    }
+
+    pub(in crate::runtime) fn params(&self) -> &[ParamLocal] {
+        match self {
+            Self::Function(value) => value.params(),
+            Self::Constructor(value) => value.params(),
+        }
+    }
+
+    pub(in crate::runtime) fn captures(&self) -> &[EvaluatedCapture] {
+        match self {
+            Self::Function(value) => value.captures(),
+            Self::Constructor(value) => value.captures(),
+        }
+    }
+
+    pub(in crate::runtime) fn type_(&self) -> &FunctionType {
+        match self {
+            Self::Function(value) => value.type_(),
+            Self::Constructor(value) => value.type_(),
+        }
     }
 }
 
@@ -489,7 +519,7 @@ impl EvaluatedCapture {
     }
 
     pub(in crate::runtime) fn custom_function(
-        local: CustomFunctionLocalId,
+        local: CustomFunctionLocal,
         value: EvaluatedCustomFunction,
     ) -> Self {
         Self::from_kind(EvaluatedCaptureKind::CustomFunction { local, value })
@@ -524,7 +554,7 @@ impl EvaluatedCapture {
     }
 
     pub(in crate::runtime) fn function_function(
-        local: FunctionFunctionLocalId,
+        local: FunctionFunctionLocal,
         value: EvaluatedFunctionFunction,
     ) -> Self {
         Self::from_kind(EvaluatedCaptureKind::FunctionFunction { local, value })
@@ -615,7 +645,7 @@ fn functions_equal(
             EvaluatedFunctionValueKind::UtfCodepoint(right),
         ) => function_values_equal(plan, state, left, right),
         (EvaluatedFunctionValueKind::Custom(left), EvaluatedFunctionValueKind::Custom(right)) => {
-            function_values_equal(plan, state, left, right)
+            custom_function_values_equal(plan, state, left, right)
         }
         (EvaluatedFunctionValueKind::Bool(left), EvaluatedFunctionValueKind::Bool(right)) => {
             function_values_equal(plan, state, left, right)
@@ -652,6 +682,24 @@ fn function_values_equal<Id: PartialEq>(
             .iter()
             .zip(&right.captures)
             .all(|(left, right)| captures_equal(plan, state, left, right))
+}
+
+fn custom_function_values_equal(
+    plan: &crate::ExecutionPlan,
+    state: &RuntimeState,
+    left: &EvaluatedCustomFunction,
+    right: &EvaluatedCustomFunction,
+) -> bool {
+    match (left, right) {
+        (EvaluatedCustomFunction::Function(left), EvaluatedCustomFunction::Function(right)) => {
+            function_values_equal(plan, state, left, right)
+        }
+        (
+            EvaluatedCustomFunction::Constructor(left),
+            EvaluatedCustomFunction::Constructor(right),
+        ) => function_values_equal(plan, state, left, right),
+        _ => false,
+    }
 }
 
 fn captures_equal(
@@ -961,25 +1009,23 @@ fn list_captures_equal(
 mod tests {
     use super::{
         EvaluatedBitArray, EvaluatedBitArrayFunction, EvaluatedBoolFunction, EvaluatedCapture,
-        EvaluatedCustomFunction, EvaluatedCustomFunctionTarget, EvaluatedCustomValue,
-        EvaluatedFloatFunction, EvaluatedFunctionFunction, EvaluatedFunctionValue,
-        EvaluatedIntFunction, EvaluatedListCapture, EvaluatedListFunction, EvaluatedNilFunction,
-        EvaluatedStringFunction, EvaluatedTupleFunction, EvaluatedUtfCodepointFunction,
-        EvaluatedValue, values_equal,
+        EvaluatedCustomFunction, EvaluatedFloatFunction, EvaluatedFunctionFunction,
+        EvaluatedFunctionValue, EvaluatedIntFunction, EvaluatedListCapture, EvaluatedListFunction,
+        EvaluatedNilFunction, EvaluatedStringFunction, EvaluatedTupleFunction,
+        EvaluatedUtfCodepointFunction, EvaluatedValue, values_equal,
     };
     use crate::plan::ValueType;
     use crate::plan::execution::{
         BitArrayFunctionId, BoolFunctionId, BoolFunctionLocalId, BoolListLocalId, BoolLocalId,
         CustomFunctionId, FloatFunctionId, FloatFunctionLocalId, FloatListLocalId, FloatLocalId,
-        FunctionFunctionId, FunctionFunctionLocalId, FunctionListLocalId, IntFunctionFunctionId,
-        IntFunctionId, IntFunctionLocalId, IntListFunctionLocalId, IntListLocalId, IntLocalId,
-        ListFunctionId, ListFunctionLocal, ListListLocalId, NilFunctionId, NilFunctionLocalId,
-        NilListLocalId, NilLocalId, ParamLocal, StringFunctionId, StringFunctionLocalId,
-        StringListLocalId, StringLocalId, TupleFunctionId, TupleFunctionLocalId, TupleListLocalId,
-        TupleLocalId, UtfCodepointFunctionId, UtfCodepointFunctionLocalId, UtfCodepointListLocalId,
+        FunctionFunctionId, FunctionListLocalId, IntFunctionFunctionId, IntFunctionId,
+        IntFunctionLocalId, IntListFunctionLocalId, IntListLocalId, IntLocalId, ListFunctionId,
+        ListFunctionLocal, ListListLocalId, NilFunctionId, NilFunctionLocalId, NilListLocalId,
+        NilLocalId, ParamLocal, StringFunctionId, StringFunctionLocalId, StringListLocalId,
+        StringLocalId, TupleFunctionId, TupleFunctionLocalId, TupleListLocalId, TupleLocalId,
+        UtfCodepointFunctionId, UtfCodepointFunctionLocalId, UtfCodepointListLocalId,
         UtfCodepointLocalId,
     };
-    use crate::runtime::ExecutionError;
     use crate::runtime::state::{ListValueId, RuntimeState};
     use bitvec::order::Msb0;
     use bitvec::view::BitView;
@@ -998,6 +1044,7 @@ fn nils() -> List(Nil) { [] }
 fn tuples() -> List(#(Int)) { [] }
 fn lists() -> List(List(Int)) { [] }
 fn functions() -> List(fn() -> Int) { [] }
+fn take_function_function(value: fn() -> fn() -> Int) { 0 }
 pub fn main() { 0 }
 "#;
 
@@ -1008,117 +1055,6 @@ pub fn main() { 0 }
 
         assert_eq!(value.bits.as_raw_slice(), &[0b0100_0000]);
         assert_eq!(value.bits.len(), 2);
-    }
-
-    #[test]
-    fn evaluated_custom_value_checks_payload_arity_at_construction() {
-        let plan = crate::runtime::plan_src(
-            r#"
-pub type Boxed { Boxed(Int) }
-fn custom() -> Boxed { Boxed(1) }
-pub fn main() { 0 }
-"#,
-        );
-        let mut state = RuntimeState::new();
-        let mut caller_frame = crate::runtime::frame::Frame::new(
-            plan.custom_function(CustomFunctionId(0)).frame_layout(),
-            &mut state,
-        );
-        assert_eq!(
-            crate::runtime::function::run_custom_call(
-                &plan,
-                &mut state,
-                CustomFunctionId(0),
-                &[],
-                &mut caller_frame,
-            )
-            .map(|value| {
-                let constructor = value.constructor();
-                let descriptor = plan.custom_constructor(constructor);
-                assert_eq!(
-                    EvaluatedCustomValue::try_from_fields(
-                        &plan,
-                        constructor,
-                        vec![EvaluatedValue::Int(1.into())],
-                    ),
-                    Ok(EvaluatedCustomValue {
-                        constructor,
-                        fields: vec![EvaluatedValue::Int(1.into())].into_boxed_slice(),
-                    }),
-                );
-                assert_eq!(
-                    EvaluatedCustomValue::try_from_fields(&plan, constructor, Vec::new()),
-                    Err(ExecutionError::CustomFieldArityMismatch {
-                        custom_type: plan.custom_value_type(constructor.type_id()),
-                        constructor: descriptor.name().clone(),
-                        expected: 1,
-                        actual: 0,
-                    }),
-                );
-                assert_eq!(
-                    EvaluatedCustomValue::try_from_fields(
-                        &plan,
-                        constructor,
-                        vec![EvaluatedValue::Int(1.into()), EvaluatedValue::Int(2.into())],
-                    ),
-                    Err(ExecutionError::CustomFieldArityMismatch {
-                        custom_type: plan.custom_value_type(constructor.type_id()),
-                        constructor: descriptor.name().clone(),
-                        expected: 1,
-                        actual: 2,
-                    }),
-                );
-                assert_eq!(
-                    EvaluatedCustomValue::try_from_fields(
-                        &plan,
-                        constructor,
-                        vec![EvaluatedValue::String("wrong family".into())],
-                    ),
-                    Ok(EvaluatedCustomValue {
-                        constructor,
-                        fields: vec![EvaluatedValue::String("wrong family".into())]
-                            .into_boxed_slice(),
-                    }),
-                );
-            }),
-            Ok(()),
-        );
-    }
-
-    #[test]
-    fn evaluated_custom_value_accepts_exact_zero_field_payload() {
-        let plan = crate::runtime::plan_src(
-            r#"
-pub type Empty { Empty }
-fn custom() -> Empty { Empty }
-pub fn main() { 0 }
-"#,
-        );
-        let mut state = RuntimeState::new();
-        let mut caller_frame = crate::runtime::frame::Frame::new(
-            plan.custom_function(CustomFunctionId(0)).frame_layout(),
-            &mut state,
-        );
-        assert_eq!(
-            crate::runtime::function::run_custom_call(
-                &plan,
-                &mut state,
-                CustomFunctionId(0),
-                &[],
-                &mut caller_frame,
-            )
-            .map(|value| {
-                let constructor = value.constructor();
-                assert_eq!(
-                    EvaluatedCustomValue::try_from_fields(&plan, constructor, Vec::new()),
-                    Ok(EvaluatedCustomValue {
-                        constructor,
-                        fields: Vec::new().into_boxed_slice(),
-                    }),
-                );
-            }),
-            Ok(()),
-        );
     }
 
     #[test]
@@ -1183,13 +1119,26 @@ pub fn main() { 0 }
             execution_int_type.clone(),
         );
         let custom_type = plan.custom_list_function_id(0).type_id().item_type();
-        let custom_function = EvaluatedCustomFunction::new(
-            EvaluatedCustomFunctionTarget::Function(CustomFunctionId(0)),
+        let custom_function = EvaluatedCustomFunction::function(
+            CustomFunctionId(0),
             Vec::new(),
             Vec::new(),
             crate::plan::execution::FunctionType::new(
                 Vec::new(),
                 crate::plan::execution::ValueType::Custom(custom_type),
+            ),
+        );
+        let constructor_id = plan.custom_constructor_id(0, 0);
+        let constructor = plan.custom_constructor(constructor_id);
+        let constructor_function = EvaluatedCustomFunction::constructor(
+            constructor_id,
+            crate::plan::execution::FunctionType::new(
+                constructor
+                    .fields()
+                    .iter()
+                    .map(|field| field.type_().clone())
+                    .collect(),
+                crate::plan::execution::ValueType::Custom(constructor_id.type_id()),
             ),
         );
         let function_pairs = [
@@ -1279,7 +1228,11 @@ pub fn main() { 0 }
             ),
             (
                 EvaluatedFunctionValue::from(custom_function.clone()),
-                EvaluatedFunctionValue::from(custom_function),
+                EvaluatedFunctionValue::from(custom_function.clone()),
+            ),
+            (
+                EvaluatedFunctionValue::from(constructor_function.clone()),
+                EvaluatedFunctionValue::from(constructor_function.clone()),
             ),
             (
                 EvaluatedFunctionValue::from(EvaluatedBoolFunction::new(
@@ -1408,6 +1361,12 @@ pub fn main() { 0 }
                 "matching function families must compare equal",
             );
         }
+        assert!(!values_equal(
+            &plan,
+            &state,
+            &EvaluatedValue::Function(EvaluatedFunctionValue::from(custom_function)),
+            &EvaluatedValue::Function(EvaluatedFunctionValue::from(constructor_function)),
+        ));
         assert!(
             !values_equal(
                 &plan,
@@ -1669,6 +1628,11 @@ pub fn main() { 0 }
                 crate::plan::execution::ValueType::Function(Box::new(execution_int_type.clone())),
             ),
         );
+        let function_function_local = plan
+            .int_function(IntFunctionId(1))
+            .frame_layout()
+            .function_functions()[0]
+            .clone();
         let left_int_list = state.int(plan.int_list_function_id(0).type_id(), vec![1.into()]);
         let right_int_list = state.int(plan.int_list_function_id(0).type_id(), vec![1.into()]);
         let left_string_list = state.string(
@@ -1921,11 +1885,11 @@ pub fn main() { 0 }
             ),
             (
                 EvaluatedCapture::function_function(
-                    FunctionFunctionLocalId(0),
+                    function_function_local.clone(),
                     captured_function_function.clone(),
                 ),
                 EvaluatedCapture::function_function(
-                    FunctionFunctionLocalId(0),
+                    function_function_local,
                     captured_function_function,
                 ),
             ),

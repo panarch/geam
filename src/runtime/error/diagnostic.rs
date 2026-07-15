@@ -48,9 +48,6 @@ impl Diagnostic for ExecutionError {
             Self::CustomFieldFamilyMismatch { .. } => {
                 Some(Box::new("geam::custom_field_family_mismatch"))
             }
-            Self::CustomFieldArityMismatch { .. } => {
-                Some(Box::new("geam::custom_field_arity_mismatch"))
-            }
             Self::CustomFieldDiscriminantMismatch { .. } => {
                 Some(Box::new("geam::custom_field_discriminant_mismatch"))
             }
@@ -64,7 +61,6 @@ impl Diagnostic for ExecutionError {
             Self::FunctionReturnFamilyMismatch { .. }
             | Self::TupleIndexFamilyMismatch { .. }
             | Self::CustomFieldFamilyMismatch { .. }
-            | Self::CustomFieldArityMismatch { .. }
             | Self::CustomFieldDiscriminantMismatch { .. }
             | Self::ListIndexOutOfBounds { .. } => None,
         }
@@ -76,7 +72,6 @@ impl Diagnostic for ExecutionError {
             Self::FunctionReturnFamilyMismatch { .. }
             | Self::TupleIndexFamilyMismatch { .. }
             | Self::CustomFieldFamilyMismatch { .. }
-            | Self::CustomFieldArityMismatch { .. }
             | Self::CustomFieldDiscriminantMismatch { .. }
             | Self::ListIndexOutOfBounds { .. } => None,
         }
@@ -88,7 +83,6 @@ impl Diagnostic for ExecutionError {
             Self::FunctionReturnFamilyMismatch { .. }
             | Self::TupleIndexFamilyMismatch { .. }
             | Self::CustomFieldFamilyMismatch { .. }
-            | Self::CustomFieldArityMismatch { .. }
             | Self::CustomFieldDiscriminantMismatch { .. }
             | Self::ListIndexOutOfBounds { .. } => None,
         }
@@ -313,18 +307,6 @@ mod tests {
                     actual: ValueType::String,
                 },
                 "geam::custom_field_family_mismatch",
-            ),
-            (
-                ExecutionError::CustomFieldArityMismatch {
-                    custom_type: CustomType::new(
-                        CustomTypeName::new("geam".into(), "main".into(), "Boxed".into()),
-                        Vec::new(),
-                    ),
-                    constructor: "Boxed".into(),
-                    expected: 1,
-                    actual: 0,
-                },
-                "geam::custom_field_arity_mismatch",
             ),
             (
                 ExecutionError::CustomFieldDiscriminantMismatch {

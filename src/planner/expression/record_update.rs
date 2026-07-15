@@ -64,7 +64,13 @@ pub(super) fn plan(
         &implicit_target,
         context,
     )?;
-    let result = CustomExpr::constructor(constructor, arguments);
+    let result = CustomExpr::try_constructor(constructor, arguments).map_err(|_| {
+        PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::RecordUpdateShape {
+                reason: InvalidRecordUpdateShapeReason::ArgumentCount,
+            },
+        }
+    })?;
 
     Ok(Expr::custom(CustomExpr::block(vec![step], result)))
 }
@@ -76,16 +82,15 @@ fn plan_arguments(
     implicit_target: &ImplicitTarget,
     context: &mut PlanContext<'_>,
 ) -> Result<Vec<Expr>, PlanError> {
-    if arguments.len() != constructor.fields().len() {
-        return Err(PlanError::InvalidTypedAst {
-            reason: InvalidTypedAstReason::RecordUpdateShape {
-                reason: InvalidRecordUpdateShapeReason::ArgumentCount,
-            },
-        });
-    }
-
     let mut planned = Vec::with_capacity(arguments.len());
-    for (index, (argument, field)) in arguments.into_iter().zip(constructor.fields()).enumerate() {
+    for (index, argument) in arguments.into_iter().enumerate() {
+        let Some(field) = constructor.fields().get(index) else {
+            return Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::RecordUpdateShape {
+                    reason: InvalidRecordUpdateShapeReason::ArgumentCount,
+                },
+            });
+        };
         if argument.label.as_ref() != field.label() {
             return Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::RecordUpdateShape {
@@ -390,10 +395,11 @@ pub fn main() {
             Some("name".into()),
             vec![constructor.clone()],
         )));
-        let updated = CustomExpr::constructor(
+        let updated = CustomExpr::try_constructor(
             constructor,
             vec![projected_name, Expr::int(IntExpr::value(31.into()))],
-        );
+        )
+        .expect("test record construction should be valid");
 
         assert_eq!(
             plan.main_function().return_(),
@@ -433,13 +439,14 @@ pub fn main() {
             None,
             vec![constructor.clone()],
         )));
-        let updated = CustomExpr::constructor(
+        let updated = CustomExpr::try_constructor(
             constructor,
             vec![
                 projected_value,
                 Expr::string(StringExpr::value("two".into())),
             ],
-        );
+        )
+        .expect("test record construction should be valid");
 
         assert_eq!(
             plan.main_function().return_(),
@@ -473,13 +480,14 @@ pub fn main() {
         let source = CustomExpr::local_get(CustomLocalId(0), "person".into(), type_.clone());
         let local = CustomLocalId(1);
         let local_name = ecow::EcoString::from("<record:update:1>");
-        let updated = CustomExpr::constructor(
+        let updated = CustomExpr::try_constructor(
             constructor,
             vec![
                 Expr::string(StringExpr::value("Mia".into())),
                 Expr::int(IntExpr::value(31.into())),
             ],
-        );
+        )
+        .expect("test record construction should be valid");
 
         assert_eq!(
             plan.main_function().return_(),
@@ -658,6 +666,15 @@ pub fn main() {
         arguments.pop();
         assert_eq!(
             plan_module(wrong_count),
+            Err(invalid_shape(InvalidRecordUpdateShapeReason::ArgumentCount,)),
+        );
+
+        let mut extra_argument = compile(SOURCE);
+        let (_, _, _, _, arguments) =
+            record_update_parts_mut(&mut extra_argument.definitions.functions[0].body[1]);
+        arguments.push(arguments[0].clone());
+        assert_eq!(
+            plan_module(extra_argument),
             Err(invalid_shape(InvalidRecordUpdateShapeReason::ArgumentCount,)),
         );
     }

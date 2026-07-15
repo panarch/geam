@@ -325,14 +325,16 @@ pub(crate) fn function_function_closure(
         .into_iter()
         .map(IntoParamLocal::into_param_local)
         .collect::<Vec<_>>();
-    let type_ = function_type(&params, ValueType::Function(Box::new(return_type.clone())));
+    let type_ = crate::plan::FunctionFunctionType::new(
+        params.iter().map(ParamLocal::value_type).collect(),
+        return_type,
+    );
 
     FunctionFunction(FunctionFunctionExpr::closure(
         runtime_id,
         params,
         captures.into_iter().collect(),
         type_,
-        return_type,
     ))
 }
 
@@ -450,12 +452,11 @@ pub(crate) fn local_list_function(
 pub(crate) fn local_function_function(
     local: usize,
     name: impl Into<EcoString>,
-    type_: FunctionType,
+    type_: crate::plan::FunctionFunctionType,
 ) -> FunctionFunction {
     FunctionFunction(FunctionFunctionExpr::local_get(
-        FunctionFunctionLocalId(local),
+        crate::plan::FunctionFunctionLocal::new(FunctionFunctionLocalId(local), type_),
         name.into(),
-        type_,
     ))
 }
 
@@ -778,25 +779,21 @@ mod tests {
             local_function_function(
                 0,
                 "f",
-                FunctionType::new(
+                crate::plan::FunctionFunctionType::new(
                     Vec::new(),
-                    ValueType::Function(Box::new(FunctionType::new(
-                        vec![ValueType::Int],
-                        ValueType::Int,
-                    ))),
+                    FunctionType::new(vec![ValueType::Int], ValueType::Int),
                 ),
             )
             .0,
             FunctionFunctionExpr::local_get(
-                FunctionFunctionLocalId(0),
-                "f".into(),
-                FunctionType::new(
-                    Vec::new(),
-                    ValueType::Function(Box::new(FunctionType::new(
-                        vec![ValueType::Int],
-                        ValueType::Int,
-                    ))),
+                crate::plan::FunctionFunctionLocal::new(
+                    FunctionFunctionLocalId(0),
+                    crate::plan::FunctionFunctionType::new(
+                        Vec::new(),
+                        FunctionType::new(vec![ValueType::Int], ValueType::Int),
+                    ),
                 ),
+                "f".into(),
             ),
         );
     }
@@ -876,14 +873,10 @@ mod tests {
                 FunctionFunctionId::Int(IntFunctionFunctionId(0)),
                 Vec::new(),
                 vec![crate::planner::dsl::expression::capture_int(0, int(1))],
-                FunctionType::new(
+                crate::plan::FunctionFunctionType::new(
                     Vec::new(),
-                    ValueType::Function(Box::new(FunctionType::new(
-                        vec![ValueType::Int],
-                        ValueType::Int,
-                    ))),
+                    FunctionType::new(vec![ValueType::Int], ValueType::Int),
                 ),
-                FunctionType::new(vec![ValueType::Int], ValueType::Int),
             ),
         );
         assert_eq!(
@@ -934,7 +927,7 @@ mod tests {
             .into_function()
             .expect("function-returning-function expression")
             .type_(),
-            &FunctionType::new(
+            FunctionType::new(
                 Vec::new(),
                 ValueType::Function(Box::new(returned_function_type)),
             ),

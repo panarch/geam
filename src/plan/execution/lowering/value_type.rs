@@ -2,10 +2,10 @@ use std::collections::HashMap;
 
 use crate::plan;
 use crate::plan::execution::{
-    BitArrayListTypeId, BoolListTypeId, CustomConstructorId, CustomListTypeId, CustomTypeId,
-    FloatListTypeId, FunctionListTypeId, FunctionType, IntListTypeId, ListListTypeId,
-    ListStorageTypeId, ListTypeId, NilListTypeId, StringListTypeId, TupleListTypeId,
-    UtfCodepointListTypeId, ValueType,
+    BitArrayListTypeId, BoolListTypeId, CustomConstructorId, CustomFunctionType, CustomListTypeId,
+    CustomTypeId, FloatListTypeId, FunctionFunctionType, FunctionListTypeId, FunctionType,
+    IntListTypeId, ListListTypeId, ListStorageTypeId, ListTypeId, NilListTypeId, StringListTypeId,
+    TupleListTypeId, UtfCodepointListTypeId, ValueType,
 };
 
 use super::super::custom_type::{
@@ -74,6 +74,36 @@ impl TypeInterner {
                 .map(|argument| self.value_type(argument))
                 .collect(),
             self.value_type(type_.return_().clone()),
+        )
+    }
+
+    pub(super) fn custom_function_type(
+        &mut self,
+        type_: plan::CustomFunctionType,
+    ) -> CustomFunctionType {
+        CustomFunctionType::new(
+            type_
+                .argument_types()
+                .iter()
+                .cloned()
+                .map(|argument| self.value_type(argument))
+                .collect(),
+            self.custom_type(type_.return_().clone()),
+        )
+    }
+
+    pub(super) fn function_function_type(
+        &mut self,
+        type_: plan::FunctionFunctionType,
+    ) -> FunctionFunctionType {
+        FunctionFunctionType::new(
+            type_
+                .argument_types()
+                .iter()
+                .cloned()
+                .map(|argument| self.value_type(argument))
+                .collect(),
+            self.function_type(type_.return_().clone()),
         )
     }
 

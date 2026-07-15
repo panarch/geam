@@ -35,15 +35,6 @@ pub enum ExecutionError {
         actual: ValueType,
     },
     #[error(
-        "custom field arity mismatch in {custom_type:?}::{constructor} (expected {expected}, got {actual})"
-    )]
-    CustomFieldArityMismatch {
-        custom_type: crate::plan::CustomType,
-        constructor: EcoString,
-        expected: usize,
-        actual: usize,
-    },
-    #[error(
         "custom field discriminant mismatch (expected {expected_type:?} constructors {expected_constructors:?}, got {actual_type:?}::{actual_constructor})"
     )]
     CustomFieldDiscriminantMismatch {
@@ -159,25 +150,6 @@ mod tests {
         assert_eq!(
             error.to_string(),
             "custom field family mismatch in CustomType { name: CustomTypeName { package: \"app\", module: \"main\", name: \"Box\" }, arguments: [Int] }::Box field 0 (expected Int, got String)",
-        );
-    }
-
-    #[test]
-    fn custom_field_arity_mismatch_display() {
-        let custom_type = crate::plan::CustomType::new(
-            crate::plan::CustomTypeName::new("app".into(), "main".into(), "Box".into()),
-            vec![ValueType::Int],
-        );
-        let error = ExecutionError::CustomFieldArityMismatch {
-            custom_type,
-            constructor: "Box".into(),
-            expected: 1,
-            actual: 0,
-        };
-
-        assert_eq!(
-            error.to_string(),
-            "custom field arity mismatch in CustomType { name: CustomTypeName { package: \"app\", module: \"main\", name: \"Box\" }, arguments: [Int] }::Box (expected 1, got 0)",
         );
     }
 

@@ -34,6 +34,18 @@ pub struct FunctionType {
     return_: Box<ValueType>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub(crate) struct CustomFunctionType {
+    arguments: Vec<ValueType>,
+    return_: CustomType,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub(crate) struct FunctionFunctionType {
+    arguments: Vec<ValueType>,
+    return_: Box<FunctionType>,
+}
+
 impl FunctionType {
     pub(crate) fn new(arguments: Vec<ValueType>, return_: ValueType) -> Self {
         Self {
@@ -48,6 +60,51 @@ impl FunctionType {
 
     pub fn argument_types(&self) -> &[ValueType] {
         &self.arguments
+    }
+}
+
+impl CustomFunctionType {
+    pub(crate) fn new(arguments: Vec<ValueType>, return_: CustomType) -> Self {
+        Self { arguments, return_ }
+    }
+
+    pub(crate) fn return_(&self) -> &CustomType {
+        &self.return_
+    }
+
+    pub(crate) fn argument_types(&self) -> &[ValueType] {
+        &self.arguments
+    }
+
+    pub(crate) fn to_function_type(&self) -> FunctionType {
+        FunctionType::new(
+            self.arguments.clone(),
+            ValueType::Custom(self.return_.clone()),
+        )
+    }
+}
+
+impl FunctionFunctionType {
+    pub(crate) fn new(arguments: Vec<ValueType>, return_: FunctionType) -> Self {
+        Self {
+            arguments,
+            return_: Box::new(return_),
+        }
+    }
+
+    pub(crate) fn return_(&self) -> &FunctionType {
+        &self.return_
+    }
+
+    pub(crate) fn argument_types(&self) -> &[ValueType] {
+        &self.arguments
+    }
+
+    pub(crate) fn to_function_type(&self) -> FunctionType {
+        FunctionType::new(
+            self.arguments.clone(),
+            ValueType::Function(self.return_.clone()),
+        )
     }
 }
 

@@ -114,6 +114,12 @@ pub struct UtfCodepointFunctionLocalId(pub(crate) usize);
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct CustomFunctionLocalId(pub(crate) usize);
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub(crate) struct CustomFunctionLocal {
+    id: CustomFunctionLocalId,
+    type_: crate::plan::CustomFunctionType,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct BoolFunctionLocalId(pub(crate) usize);
 
@@ -210,6 +216,12 @@ pub enum ListFunctionLocal {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct FunctionFunctionLocalId(pub(crate) usize);
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub(crate) struct FunctionFunctionLocal {
+    id: FunctionFunctionLocalId,
+    type_: crate::plan::FunctionFunctionType,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct FunctionId(usize);
@@ -370,8 +382,11 @@ pub struct BitArrayFunctionFunctionId(pub(crate) usize);
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct UtfCodepointFunctionFunctionId(pub(crate) usize);
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct CustomFunctionFunctionId(pub(crate) usize);
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CustomFunctionFunctionId {
+    index: usize,
+    type_: crate::plan::CustomFunctionType,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct BoolFunctionFunctionId(pub(crate) usize);
@@ -467,8 +482,78 @@ pub enum ListFunctionFunctionId {
     },
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct FunctionFunctionFunctionId(pub(crate) usize);
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FunctionFunctionFunctionId {
+    index: usize,
+    type_: crate::plan::FunctionFunctionType,
+}
+
+impl CustomFunctionLocal {
+    pub(crate) fn new(id: CustomFunctionLocalId, type_: crate::plan::CustomFunctionType) -> Self {
+        Self { id, type_ }
+    }
+
+    pub(crate) fn id(&self) -> CustomFunctionLocalId {
+        self.id
+    }
+
+    pub(crate) fn type_(&self) -> &crate::plan::CustomFunctionType {
+        &self.type_
+    }
+
+    pub(crate) fn into_parts(self) -> (CustomFunctionLocalId, crate::plan::CustomFunctionType) {
+        (self.id, self.type_)
+    }
+}
+
+impl FunctionFunctionLocal {
+    pub(crate) fn new(
+        id: FunctionFunctionLocalId,
+        type_: crate::plan::FunctionFunctionType,
+    ) -> Self {
+        Self { id, type_ }
+    }
+
+    pub(crate) fn id(&self) -> FunctionFunctionLocalId {
+        self.id
+    }
+
+    pub(crate) fn type_(&self) -> &crate::plan::FunctionFunctionType {
+        &self.type_
+    }
+
+    pub(crate) fn into_parts(self) -> (FunctionFunctionLocalId, crate::plan::FunctionFunctionType) {
+        (self.id, self.type_)
+    }
+}
+
+impl CustomFunctionFunctionId {
+    pub(crate) fn new(index: usize, type_: crate::plan::CustomFunctionType) -> Self {
+        Self { index, type_ }
+    }
+
+    pub(crate) fn index(&self) -> usize {
+        self.index
+    }
+
+    pub(crate) fn type_(&self) -> &crate::plan::CustomFunctionType {
+        &self.type_
+    }
+}
+
+impl FunctionFunctionFunctionId {
+    pub(crate) fn new(index: usize, type_: crate::plan::FunctionFunctionType) -> Self {
+        Self { index, type_ }
+    }
+
+    pub(crate) fn index(&self) -> usize {
+        self.index
+    }
+
+    pub(crate) fn type_(&self) -> &crate::plan::FunctionFunctionType {
+        &self.type_
+    }
+}
 
 impl LocalId {
     pub(crate) fn value_type(self) -> crate::plan::ValueType {
@@ -543,7 +628,7 @@ impl FunctionFunctionId {
 
     pub(crate) fn custom(&self) -> Option<CustomFunctionFunctionId> {
         match self {
-            Self::Custom(id) => Some(*id),
+            Self::Custom(id) => Some(id.clone()),
             _ => None,
         }
     }
@@ -585,7 +670,7 @@ impl FunctionFunctionId {
 
     pub(crate) fn function(&self) -> Option<FunctionFunctionFunctionId> {
         match self {
-            Self::Function(id) => Some(*id),
+            Self::Function(id) => Some(id.clone()),
             _ => None,
         }
     }
@@ -1050,7 +1135,10 @@ mod tests {
         UtfCodepointListFunctionFunctionId, UtfCodepointListFunctionLocalId,
         UtfCodepointListLocalId,
     };
-    use crate::plan::{CustomType, CustomTypeName, FunctionType, ValueType};
+    use crate::plan::{
+        CustomFunctionType, CustomType, CustomTypeName, FunctionFunctionType, FunctionType,
+        ValueType,
+    };
 
     fn custom_type() -> CustomType {
         CustomType::new(
@@ -1120,6 +1208,12 @@ mod tests {
 
     #[test]
     fn function_function_id_typed_projection() {
+        let custom =
+            CustomFunctionFunctionId::new(9, CustomFunctionType::new(Vec::new(), custom_type()));
+        let function = FunctionFunctionFunctionId::new(
+            6,
+            FunctionFunctionType::new(Vec::new(), FunctionType::new(Vec::new(), ValueType::Int)),
+        );
         assert_eq!(
             FunctionFunctionId::Int(IntFunctionFunctionId(1)).int(),
             Some(IntFunctionFunctionId(1)),
@@ -1141,8 +1235,8 @@ mod tests {
             Some(UtfCodepointFunctionFunctionId(8)),
         );
         assert_eq!(
-            FunctionFunctionId::Custom(CustomFunctionFunctionId(9)).custom(),
-            Some(CustomFunctionFunctionId(9)),
+            FunctionFunctionId::Custom(custom.clone()).custom(),
+            Some(custom),
         );
         assert_eq!(
             FunctionFunctionId::Bool(BoolFunctionFunctionId(3)).bool(),
@@ -1176,8 +1270,8 @@ mod tests {
             )),
         );
         assert_eq!(
-            FunctionFunctionId::Function(FunctionFunctionFunctionId(6)).function(),
-            Some(FunctionFunctionFunctionId(6)),
+            FunctionFunctionId::Function(function.clone()).function(),
+            Some(function),
         );
     }
 
@@ -1252,7 +1346,11 @@ mod tests {
             super::FunctionReturnFamily::UtfCodepoint,
         );
         assert_eq!(
-            FunctionFunctionId::Custom(CustomFunctionFunctionId(1)).family(),
+            FunctionFunctionId::Custom(CustomFunctionFunctionId::new(
+                1,
+                CustomFunctionType::new(Vec::new(), custom_type()),
+            ))
+            .family(),
             super::FunctionReturnFamily::Custom,
         );
         assert_eq!(
@@ -1280,7 +1378,14 @@ mod tests {
             super::FunctionReturnFamily::List,
         );
         assert_eq!(
-            FunctionFunctionId::Function(FunctionFunctionFunctionId(1)).family(),
+            FunctionFunctionId::Function(FunctionFunctionFunctionId::new(
+                1,
+                FunctionFunctionType::new(
+                    Vec::new(),
+                    FunctionType::new(Vec::new(), ValueType::Int),
+                ),
+            ))
+            .family(),
             super::FunctionReturnFamily::Function,
         );
     }

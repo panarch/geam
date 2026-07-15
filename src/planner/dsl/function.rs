@@ -71,12 +71,9 @@ mod tests {
             .param_function_function(
                 0,
                 "j",
-                FunctionType::new(
+                crate::plan::FunctionFunctionType::new(
                     Vec::new(),
-                    ValueType::Function(Box::new(FunctionType::new(
-                        vec![ValueType::Int],
-                        ValueType::Int,
-                    ))),
+                    FunctionType::new(vec![ValueType::Int], ValueType::Int),
                 ),
             )
             .let_int(1, "x", int(2))
@@ -89,12 +86,9 @@ mod tests {
                 crate::planner::dsl::expression::local_function_function(
                     0,
                     "j",
-                    FunctionType::new(
+                    crate::plan::FunctionFunctionType::new(
                         Vec::new(),
-                        ValueType::Function(Box::new(FunctionType::new(
-                            vec![ValueType::Int],
-                            ValueType::Int,
-                        ))),
+                        FunctionType::new(vec![ValueType::Int], ValueType::Int),
                     ),
                 ),
             )
@@ -212,7 +206,10 @@ mod tests {
         assert_eq!(
             function_return.return_().runtime_id(),
             RuntimeFunctionId::Function {
-                id: FunctionFunctionId::Function(crate::plan::FunctionFunctionFunctionId(0)),
+                id: FunctionFunctionId::Function(crate::plan::FunctionFunctionFunctionId::new(
+                    0,
+                    crate::plan::FunctionFunctionType::new(Vec::new(), return_type.clone(),),
+                ),),
                 return_type: FunctionType::new(
                     Vec::new(),
                     ValueType::Function(Box::new(return_type)),
@@ -342,7 +339,13 @@ mod tests {
         assert_eq!(
             function_return.return_().runtime_id(),
             RuntimeFunctionId::Function {
-                id: FunctionFunctionId::Function(crate::plan::FunctionFunctionFunctionId(0)),
+                id: FunctionFunctionId::Function(crate::plan::FunctionFunctionFunctionId::new(
+                    0,
+                    crate::plan::FunctionFunctionType::new(
+                        Vec::new(),
+                        FunctionType::new(Vec::new(), ValueType::Int),
+                    ),
+                ),),
                 return_type: FunctionType::new(
                     Vec::new(),
                     ValueType::Function(Box::new(FunctionType::new(Vec::new(), ValueType::Int))),

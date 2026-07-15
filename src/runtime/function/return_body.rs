@@ -15,13 +15,14 @@ use crate::plan::execution::{
 use crate::runtime::error::ExecutionResult;
 use crate::runtime::expression::{
     eval_bit_array_expr, eval_bit_array_function_expr, eval_bit_array_list_expr, eval_bool_expr,
-    eval_bool_function_expr, eval_bool_list_expr, eval_custom_expr, eval_custom_function_expr,
+    eval_bool_function_expr, eval_bool_list_expr, eval_custom_expr, eval_custom_function_expr_kind,
     eval_custom_list_expr, eval_float_expr, eval_float_function_expr, eval_float_list_expr,
-    eval_function_function_expr, eval_function_list_expr, eval_int_expr, eval_int_function_expr,
-    eval_int_list_expr, eval_list_function_expr, eval_list_list_expr, eval_nil_expr,
-    eval_nil_function_expr, eval_nil_list_expr, eval_string_expr, eval_string_function_expr,
-    eval_string_list_expr, eval_tuple_expr, eval_tuple_function_expr, eval_tuple_list_expr,
-    eval_utf_codepoint_expr, eval_utf_codepoint_function_expr, eval_utf_codepoint_list_expr,
+    eval_function_function_expr_kind, eval_function_list_expr, eval_int_expr,
+    eval_int_function_expr, eval_int_list_expr, eval_list_function_expr, eval_list_list_expr,
+    eval_nil_expr, eval_nil_function_expr, eval_nil_list_expr, eval_string_expr,
+    eval_string_function_expr, eval_string_list_expr, eval_tuple_expr, eval_tuple_function_expr,
+    eval_tuple_list_expr, eval_utf_codepoint_expr, eval_utf_codepoint_function_expr,
+    eval_utf_codepoint_list_expr,
 };
 use crate::runtime::frame::Frame;
 use crate::runtime::state::{
@@ -69,20 +70,17 @@ fn bind_tail_arguments(
     Ok(next)
 }
 
-fn eval_return_body<'a, Expression, Function, Value>(
+fn eval_return_body<'a, Expression, Function, Value, Eval>(
     plan: &ExecutionPlan,
     state: &mut RuntimeState,
     frame: &mut Frame,
     body: &'a ReturnBody<Expression, Function>,
-    eval_expression: fn(
-        &ExecutionPlan,
-        &mut RuntimeState,
-        &mut Frame,
-        &Expression,
-    ) -> ExecutionResult<Value>,
+    eval_expression: Eval,
 ) -> ExecutionResult<ReturnOutcome<'a, Value, Function>>
 where
     Function: Clone,
+    Eval: Copy
+        + Fn(&ExecutionPlan, &mut RuntimeState, &mut Frame, &Expression) -> ExecutionResult<Value>,
 {
     match body.kind() {
         ReturnBodyKind::Expr(expression) => {
@@ -904,22 +902,27 @@ pub(super) fn run_custom_function_loop(
     mut frame: Frame,
 ) -> ExecutionResult<EvaluatedCustomFunction> {
     loop {
-        let runtime_function = plan.custom_function_function(function);
+        let runtime_function = plan.custom_function_function(&function);
         execute_steps(plan, state, runtime_function.steps(), &mut frame)?;
+        let return_ = runtime_function.return_();
+        let type_ = return_.type_();
         let outcome = eval_return_body(
             plan,
             state,
             &mut frame,
-            runtime_function.return_(),
-            eval_custom_function_expr,
+            return_.body(),
+            |plan, state, frame, kind| {
+                eval_custom_function_expr_kind(plan, state, frame, type_, kind)
+            },
         )?;
         match outcome {
             ReturnOutcome::Value(value) => return finish_return(state, frame, value),
             ReturnOutcome::TailCall {
-                function: next,
+                function: next_index,
                 args,
             } => {
-                let frame_layout = plan.custom_function_function(next).frame_layout();
+                let next = return_.function_id(next_index);
+                let frame_layout = plan.custom_function_function(&next).frame_layout();
                 frame = bind_tail_arguments(plan, state, args, frame, frame_layout)?;
                 function = next;
             }
@@ -1034,17 +1037,27 @@ pub(super) fn run_function_function_loop(
     mut frame: Frame,
 ) -> ExecutionResult<EvaluatedFunctionFunction> {
     loop {
-        let runtime_function = plan.function_function_function(function);
+        let runtime_function = plan.function_function_function(&function);
         execute_steps(plan, state, runtime_function.steps(), &mut frame)?;
-        let eval = eval_function_function_expr;
-        let outcome = eval_return_body(plan, state, &mut frame, runtime_function.return_(), eval)?;
+        let return_ = runtime_function.return_();
+        let type_ = return_.type_();
+        let outcome = eval_return_body(
+            plan,
+            state,
+            &mut frame,
+            return_.body(),
+            |plan, state, frame, kind| {
+                eval_function_function_expr_kind(plan, state, frame, type_, kind)
+            },
+        )?;
         match outcome {
             ReturnOutcome::Value(value) => return finish_return(state, frame, value),
             ReturnOutcome::TailCall {
-                function: next,
+                function: next_index,
                 args,
             } => {
-                let frame_layout = plan.function_function_function(next).frame_layout();
+                let next = return_.function_id(next_index);
+                let frame_layout = plan.function_function_function(&next).frame_layout();
                 frame = bind_tail_arguments(plan, state, args, frame, frame_layout)?;
                 function = next;
             }

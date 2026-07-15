@@ -9,9 +9,9 @@ use super::id::{
     BitArrayFunctionFunctionId, BitArrayFunctionId, BitArrayFunctionLocalId,
     BitArrayListFunctionId, BitArrayLocalId, BoolFunctionFunctionId, BoolFunctionId,
     BoolFunctionLocalId, BoolListFunctionId, BoolLocalId, CustomFunctionFunctionId,
-    CustomFunctionId, CustomFunctionLocalId, CustomListFunctionId, CustomLocalId,
+    CustomFunctionId, CustomFunctionLocal, CustomListFunctionId, CustomLocalId,
     FloatFunctionFunctionId, FloatFunctionId, FloatFunctionLocalId, FloatListFunctionId,
-    FloatLocalId, FunctionFunctionFunctionId, FunctionFunctionLocalId, FunctionId,
+    FloatLocalId, FunctionFunctionFunctionId, FunctionFunctionLocal, FunctionId,
     FunctionListFunctionId, IntFunctionFunctionId, IntFunctionId, IntFunctionLocalId,
     IntListFunctionId, IntLocalId, ListFunctionFunctionId, ListFunctionLocal, ListListFunctionId,
     ListLocal, NilFunctionFunctionId, NilFunctionId, NilFunctionLocalId, NilListFunctionId,
@@ -22,7 +22,7 @@ use super::id::{
     UtfCodepointLocalId,
 };
 use super::step::Step;
-use crate::plan::{CustomType, FunctionType, ValueType};
+use crate::plan::{CustomFunctionType, CustomType, FunctionFunctionType, FunctionType, ValueType};
 use ecow::EcoString;
 use num_bigint::BigInt;
 
@@ -91,10 +91,7 @@ pub(crate) enum ParamLocal {
         local: UtfCodepointFunctionLocalId,
         type_: FunctionType,
     },
-    CustomFunction {
-        local: CustomFunctionLocalId,
-        type_: FunctionType,
-    },
+    CustomFunction(CustomFunctionLocal),
     BoolFunction {
         local: BoolFunctionLocalId,
         type_: FunctionType,
@@ -108,10 +105,7 @@ pub(crate) enum ParamLocal {
         type_: FunctionType,
     },
     ListFunction(ListFunctionLocal),
-    FunctionFunction {
-        local: FunctionFunctionLocalId,
-        type_: FunctionType,
-    },
+    FunctionFunction(FunctionFunctionLocal),
 }
 
 pub(crate) struct FunctionExecutionParts {
@@ -149,14 +143,20 @@ pub(crate) type BitArrayFunctionReturn =
     ReturnBody<super::BitArrayFunctionExpr, BitArrayFunctionFunctionId>;
 pub(crate) type UtfCodepointFunctionReturn =
     ReturnBody<super::UtfCodepointFunctionExpr, UtfCodepointFunctionFunctionId>;
-pub(crate) type CustomFunctionReturn =
-    ReturnBody<super::CustomFunctionExpr, CustomFunctionFunctionId>;
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct CustomFunctionReturn {
+    type_: CustomFunctionType,
+    body: ReturnBody<super::CustomFunctionExprKind, usize>,
+}
 pub(crate) type BoolFunctionReturn = ReturnBody<super::BoolFunctionExpr, BoolFunctionFunctionId>;
 pub(crate) type NilFunctionReturn = ReturnBody<super::NilFunctionExpr, NilFunctionFunctionId>;
 pub(crate) type TupleFunctionReturn = ReturnBody<super::TupleFunctionExpr, TupleFunctionFunctionId>;
 pub(crate) type ListFunctionReturn = ReturnBody<super::ListFunctionExpr, ListFunctionFunctionId>;
-pub(crate) type FunctionFunctionReturn =
-    ReturnBody<super::FunctionFunctionExpr, FunctionFunctionFunctionId>;
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct FunctionFunctionReturn {
+    type_: FunctionFunctionType,
+    body: ReturnBody<super::FunctionFunctionExprKind, usize>,
+}
 
 #[cfg(test)]
 #[derive(Debug, Clone, PartialEq)]
@@ -933,7 +933,6 @@ pub(crate) enum ReturnExprKind {
     },
     CustomFunction {
         runtime_id: CustomFunctionFunctionId,
-        type_: FunctionType,
         body: CustomFunctionReturn,
     },
     BoolFunction {
@@ -957,7 +956,6 @@ pub(crate) enum ReturnExprKind {
     },
     FunctionFunction {
         runtime_id: FunctionFunctionFunctionId,
-        type_: FunctionType,
         body: FunctionFunctionReturn,
     },
 }
@@ -1339,17 +1337,10 @@ impl ReturnExpr {
         }
     }
 
-    pub(crate) fn custom_function_body(
-        runtime_id: CustomFunctionFunctionId,
-        type_: FunctionType,
-        body: CustomFunctionReturn,
-    ) -> Self {
+    pub(crate) fn custom_function_body(runtime_index: usize, body: CustomFunctionReturn) -> Self {
+        let runtime_id = CustomFunctionFunctionId::new(runtime_index, body.type_().clone());
         Self {
-            kind: ReturnExprKind::CustomFunction {
-                runtime_id,
-                type_,
-                body,
-            },
+            kind: ReturnExprKind::CustomFunction { runtime_id, body },
         }
     }
 
@@ -1441,24 +1432,19 @@ impl ReturnExpr {
 
     #[cfg(test)]
     pub(crate) fn function_function(
-        runtime_id: FunctionFunctionFunctionId,
+        runtime_index: usize,
         expression: super::FunctionFunctionExpr,
     ) -> Self {
-        let type_ = expression.type_().clone();
-        Self::function_function_body(runtime_id, type_, ReturnBody::expr(expression))
+        Self::function_function_body(runtime_index, FunctionFunctionReturn::expr(expression))
     }
 
     pub(crate) fn function_function_body(
-        runtime_id: FunctionFunctionFunctionId,
-        type_: FunctionType,
+        runtime_index: usize,
         body: FunctionFunctionReturn,
     ) -> Self {
+        let runtime_id = FunctionFunctionFunctionId::new(runtime_index, body.type_().clone());
         Self {
-            kind: ReturnExprKind::FunctionFunction {
-                runtime_id,
-                type_,
-                body,
-            },
+            kind: ReturnExprKind::FunctionFunction { runtime_id, body },
         }
     }
 
@@ -1507,15 +1493,19 @@ impl ReturnExpr {
             | ReturnExprKind::StringFunction { type_, .. }
             | ReturnExprKind::BitArrayFunction { type_, .. }
             | ReturnExprKind::UtfCodepointFunction { type_, .. }
-            | ReturnExprKind::CustomFunction { type_, .. }
             | ReturnExprKind::BoolFunction { type_, .. }
             | ReturnExprKind::NilFunction { type_, .. }
-            | ReturnExprKind::TupleFunction { type_, .. }
-            | ReturnExprKind::FunctionFunction { type_, .. } => {
+            | ReturnExprKind::TupleFunction { type_, .. } => {
                 ValueType::Function(Box::new(type_.clone()))
+            }
+            ReturnExprKind::CustomFunction { runtime_id, .. } => {
+                ValueType::Function(Box::new(runtime_id.type_().to_function_type()))
             }
             ReturnExprKind::ListFunction { runtime_id, .. } => {
                 ValueType::Function(Box::new(runtime_id.type_().clone()))
+            }
+            ReturnExprKind::FunctionFunction { runtime_id, .. } => {
+                ValueType::Function(Box::new(runtime_id.type_().to_function_type()))
             }
         }
     }
@@ -1627,11 +1617,9 @@ impl ReturnExpr {
                 id: FunctionFunctionId::UtfCodepoint(*runtime_id),
                 return_type: type_.clone(),
             },
-            ReturnExprKind::CustomFunction {
-                runtime_id, type_, ..
-            } => RuntimeFunctionId::Function {
-                id: FunctionFunctionId::Custom(*runtime_id),
-                return_type: type_.clone(),
+            ReturnExprKind::CustomFunction { runtime_id, .. } => RuntimeFunctionId::Function {
+                id: FunctionFunctionId::Custom(runtime_id.clone()),
+                return_type: runtime_id.type_().to_function_type(),
             },
             ReturnExprKind::BoolFunction {
                 runtime_id, type_, ..
@@ -1655,13 +1643,227 @@ impl ReturnExpr {
                 id: FunctionFunctionId::List(runtime_id.clone()),
                 return_type: runtime_id.type_().clone(),
             },
-            ReturnExprKind::FunctionFunction {
-                runtime_id, type_, ..
-            } => RuntimeFunctionId::Function {
-                id: FunctionFunctionId::Function(*runtime_id),
-                return_type: type_.clone(),
+            ReturnExprKind::FunctionFunction { runtime_id, .. } => RuntimeFunctionId::Function {
+                id: FunctionFunctionId::Function(runtime_id.clone()),
+                return_type: runtime_id.type_().to_function_type(),
             },
         }
+    }
+}
+
+impl CustomFunctionReturn {
+    pub(crate) fn expr(expression: super::CustomFunctionExpr) -> Self {
+        let (type_, kind) = expression.into_parts();
+        Self {
+            type_,
+            body: custom_function_return_body(kind),
+        }
+    }
+
+    pub(crate) fn type_(&self) -> &CustomFunctionType {
+        &self.type_
+    }
+
+    pub(crate) fn kind(&self) -> &ReturnBodyKind<super::CustomFunctionExprKind, usize> {
+        self.body.kind()
+    }
+
+    pub(crate) fn into_parts(
+        self,
+    ) -> (
+        CustomFunctionType,
+        ReturnBody<super::CustomFunctionExprKind, usize>,
+    ) {
+        (self.type_, self.body)
+    }
+}
+
+fn custom_function_return_body(
+    kind: super::CustomFunctionExprKind,
+) -> ReturnBody<super::CustomFunctionExprKind, usize> {
+    use super::CustomFunctionExprKind as K;
+
+    match kind {
+        K::Call { function, args } => ReturnBody::tail_call(function.index(), args),
+        K::BoolCase {
+            subject,
+            true_,
+            false_,
+        } => ReturnBody::bool_case(
+            *subject,
+            custom_function_return_body(*true_),
+            custom_function_return_body(*false_),
+        ),
+        K::IntCase {
+            subject,
+            clauses,
+            fallback,
+        } => ReturnBody::int_case(
+            *subject,
+            clauses
+                .into_iter()
+                .map(|(pattern, branch)| (pattern, custom_function_return_body(branch)))
+                .collect(),
+            custom_function_return_body(*fallback),
+        ),
+        K::FloatCase {
+            subject,
+            clauses,
+            fallback,
+        } => ReturnBody::float_case(
+            *subject,
+            clauses
+                .into_iter()
+                .map(|(pattern, branch)| (pattern, custom_function_return_body(branch)))
+                .collect(),
+            custom_function_return_body(*fallback),
+        ),
+        K::StringCase {
+            subject,
+            clauses,
+            fallback,
+        } => ReturnBody::string_case(
+            *subject,
+            clauses
+                .into_iter()
+                .map(|(pattern, branch)| (pattern, custom_function_return_body(branch)))
+                .collect(),
+            custom_function_return_body(*fallback),
+        ),
+        K::Block { steps, return_ } => {
+            ReturnBody::block(steps, custom_function_return_body(*return_))
+        }
+        kind => ReturnBody::expr(kind),
+    }
+}
+
+impl FunctionFunctionReturn {
+    pub(crate) fn expr(expression: super::FunctionFunctionExpr) -> Self {
+        let (type_, kind) = expression.into_parts();
+        Self {
+            type_,
+            body: function_function_return_body(kind),
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn tail_call(function: FunctionFunctionFunctionId, args: Vec<CallArg>) -> Self {
+        Self {
+            type_: function.type_().clone(),
+            body: ReturnBody::tail_call(function.index(), args),
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn int_case(subject: IntExpr, clauses: Vec<(BigInt, Self)>, fallback: Self) -> Self {
+        let clauses = clauses
+            .into_iter()
+            .map(|(pattern, branch)| (pattern, branch.body))
+            .collect();
+        Self {
+            type_: fallback.type_,
+            body: ReturnBody::int_case(subject, clauses, fallback.body),
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn string_case(
+        subject: StringExpr,
+        clauses: Vec<(EcoString, Self)>,
+        fallback: Self,
+    ) -> Self {
+        let clauses = clauses
+            .into_iter()
+            .map(|(pattern, branch)| (pattern, branch.body))
+            .collect();
+        Self {
+            type_: fallback.type_,
+            body: ReturnBody::string_case(subject, clauses, fallback.body),
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn block(steps: Vec<Step>, return_: Self) -> Self {
+        Self {
+            type_: return_.type_,
+            body: ReturnBody::block(steps, return_.body),
+        }
+    }
+
+    pub(crate) fn type_(&self) -> &FunctionFunctionType {
+        &self.type_
+    }
+
+    pub(crate) fn kind(&self) -> &ReturnBodyKind<super::FunctionFunctionExprKind, usize> {
+        self.body.kind()
+    }
+
+    pub(crate) fn into_parts(
+        self,
+    ) -> (
+        FunctionFunctionType,
+        ReturnBody<super::FunctionFunctionExprKind, usize>,
+    ) {
+        (self.type_, self.body)
+    }
+}
+
+fn function_function_return_body(
+    kind: super::FunctionFunctionExprKind,
+) -> ReturnBody<super::FunctionFunctionExprKind, usize> {
+    use super::FunctionFunctionExprKind as K;
+
+    match kind {
+        K::Call { function, args } => ReturnBody::tail_call(function.index(), args),
+        K::BoolCase {
+            subject,
+            true_,
+            false_,
+        } => ReturnBody::bool_case(
+            *subject,
+            function_function_return_body(*true_),
+            function_function_return_body(*false_),
+        ),
+        K::IntCase {
+            subject,
+            clauses,
+            fallback,
+        } => ReturnBody::int_case(
+            *subject,
+            clauses
+                .into_iter()
+                .map(|(pattern, branch)| (pattern, function_function_return_body(branch)))
+                .collect(),
+            function_function_return_body(*fallback),
+        ),
+        K::FloatCase {
+            subject,
+            clauses,
+            fallback,
+        } => ReturnBody::float_case(
+            *subject,
+            clauses
+                .into_iter()
+                .map(|(pattern, branch)| (pattern, function_function_return_body(branch)))
+                .collect(),
+            function_function_return_body(*fallback),
+        ),
+        K::StringCase {
+            subject,
+            clauses,
+            fallback,
+        } => ReturnBody::string_case(
+            *subject,
+            clauses
+                .into_iter()
+                .map(|(pattern, branch)| (pattern, function_function_return_body(branch)))
+                .collect(),
+            function_function_return_body(*fallback),
+        ),
+        K::Block { steps, return_ } => {
+            ReturnBody::block(steps, function_function_return_body(*return_))
+        }
+        kind => ReturnBody::expr(kind),
     }
 }
 
@@ -1839,8 +2041,8 @@ impl ParamLocal {
         Self::UtfCodepointFunction { local, type_ }
     }
 
-    pub(crate) fn custom_function(local: CustomFunctionLocalId, type_: FunctionType) -> Self {
-        Self::CustomFunction { local, type_ }
+    pub(crate) fn custom_function(local: CustomFunctionLocal) -> Self {
+        Self::CustomFunction(local)
     }
 
     pub(crate) fn bool_function(local: BoolFunctionLocalId, type_: FunctionType) -> Self {
@@ -1859,8 +2061,8 @@ impl ParamLocal {
         Self::ListFunction(local)
     }
 
-    pub(crate) fn function_function(local: FunctionFunctionLocalId, type_: FunctionType) -> Self {
-        Self::FunctionFunction { local, type_ }
+    pub(crate) fn function_function(local: FunctionFunctionLocal) -> Self {
+        Self::FunctionFunction(local)
     }
 
     pub(crate) fn value_type(&self) -> ValueType {
@@ -1880,12 +2082,16 @@ impl ParamLocal {
             | Self::StringFunction { type_, .. }
             | Self::BitArrayFunction { type_, .. }
             | Self::UtfCodepointFunction { type_, .. }
-            | Self::CustomFunction { type_, .. }
             | Self::BoolFunction { type_, .. }
             | Self::NilFunction { type_, .. }
-            | Self::TupleFunction { type_, .. }
-            | Self::FunctionFunction { type_, .. } => ValueType::Function(Box::new(type_.clone())),
+            | Self::TupleFunction { type_, .. } => ValueType::Function(Box::new(type_.clone())),
+            Self::CustomFunction(local) => {
+                ValueType::Function(Box::new(local.type_().to_function_type()))
+            }
             Self::ListFunction(local) => local.value_type(),
+            Self::FunctionFunction(local) => {
+                ValueType::Function(Box::new(local.type_().to_function_type()))
+            }
         }
     }
 }
@@ -1894,23 +2100,24 @@ impl ParamLocal {
 mod tests {
     use super::{
         BitArrayListReturn, BoolListReturn, CustomFunctionReturn, CustomListReturn, CustomReturn,
-        FloatListReturn, FunctionListReturn, FunctionPlan, IntListReturn, ListListReturn,
-        ListReturn, NilListReturn, Param, ParamBinding, ParamLocal, ReturnBodyKind, ReturnExpr,
-        StringListReturn, TupleListReturn,
+        FloatListReturn, FunctionFunctionReturn, FunctionListReturn, FunctionPlan, IntListReturn,
+        ListListReturn, ListReturn, NilListReturn, Param, ParamBinding, ParamLocal, ReturnBody,
+        ReturnBodyKind, ReturnExpr, StringListReturn, TupleListReturn,
     };
     use crate::plan::{
         BitArrayExpr, BitArrayFunctionExpr, BitArrayFunctionFunctionId, BitArrayFunctionId,
         BitArrayFunctionReference, BitArrayListFunctionId, BoolExpr, BoolFunctionExpr,
         BoolFunctionFunctionId, BoolFunctionId, BoolFunctionLocalId, BoolFunctionReference,
         BoolLocalId, CustomExpr, CustomFunctionExpr, CustomFunctionFunctionId, CustomFunctionId,
-        CustomFunctionReference, CustomListFunctionId, CustomLocalId, CustomType, CustomTypeName,
-        Expr, FloatExpr, FloatFunctionExpr, FloatFunctionFunctionId, FloatFunctionId,
-        FloatFunctionLocalId, FloatFunctionReference, FloatListFunctionId, FloatLocalId,
-        FunctionFunctionExpr, FunctionFunctionFunctionId, FunctionFunctionId,
-        FunctionFunctionLocalId, FunctionFunctionReference, FunctionId, FunctionListFunctionId,
-        FunctionType, IntExpr, IntFunctionExpr, IntFunctionFunctionId, IntFunctionId,
-        IntFunctionLocalId, IntFunctionReference, IntListFunctionId, IntListLocalId, IntLocalId,
-        ListExpr, ListFunctionExpr, ListFunctionFunctionId, ListFunctionId, ListFunctionReference,
+        CustomFunctionReference, CustomFunctionType, CustomListFunctionId, CustomLocalId,
+        CustomType, CustomTypeName, Expr, FloatExpr, FloatFunctionExpr, FloatFunctionFunctionId,
+        FloatFunctionId, FloatFunctionLocalId, FloatFunctionReference, FloatListFunctionId,
+        FloatLocalId, FunctionFunctionExpr, FunctionFunctionFunctionId, FunctionFunctionId,
+        FunctionFunctionLocal, FunctionFunctionLocalId, FunctionFunctionReference,
+        FunctionFunctionType, FunctionId, FunctionListFunctionId, FunctionType, IntExpr,
+        IntFunctionExpr, IntFunctionFunctionId, IntFunctionId, IntFunctionLocalId,
+        IntFunctionReference, IntListFunctionId, IntListLocalId, IntLocalId, ListExpr,
+        ListFunctionExpr, ListFunctionFunctionId, ListFunctionId, ListFunctionReference,
         ListListFunctionId, ListLocal, NilExpr, NilFunctionExpr, NilFunctionFunctionId,
         NilFunctionId, NilFunctionLocalId, NilFunctionReference, NilListFunctionId,
         RuntimeFunctionId, StringExpr, StringFunctionExpr, StringFunctionFunctionId,
@@ -1928,6 +2135,56 @@ mod tests {
             CustomTypeName::new("geam".into(), "main".into(), "Boxed".into()),
             Vec::new(),
         )
+    }
+
+    #[test]
+    fn callable_returns_own_exact_type_around_itemless_bodies() {
+        let custom_function_type = CustomFunctionType::new(vec![ValueType::Int], custom_type());
+        let custom_return = CustomFunctionReturn::expr(CustomFunctionExpr::block(
+            Vec::new(),
+            CustomFunctionExpr::call(
+                CustomFunctionFunctionId::new(7, custom_function_type.clone()),
+                Vec::new(),
+            ),
+        ));
+
+        assert_eq!(
+            custom_return,
+            CustomFunctionReturn {
+                type_: custom_function_type,
+                body: ReturnBody {
+                    kind: ReturnBodyKind::Block {
+                        steps: Vec::new(),
+                        return_: Box::new(ReturnBody {
+                            kind: ReturnBodyKind::TailCall {
+                                function: 7,
+                                args: Vec::new(),
+                            },
+                        }),
+                    },
+                },
+            },
+        );
+
+        let returned = FunctionType::new(vec![ValueType::String], ValueType::Int);
+        let function_function_type = FunctionFunctionType::new(vec![ValueType::Bool], returned);
+        let function_return = FunctionFunctionReturn::expr(FunctionFunctionExpr::call(
+            FunctionFunctionFunctionId::new(9, function_function_type.clone()),
+            Vec::new(),
+        ));
+
+        assert_eq!(
+            function_return,
+            FunctionFunctionReturn {
+                type_: function_function_type,
+                body: ReturnBody {
+                    kind: ReturnBodyKind::TailCall {
+                        function: 9,
+                        args: Vec::new(),
+                    },
+                },
+            },
+        );
     }
 
     #[test]
@@ -2136,7 +2393,7 @@ mod tests {
         let return_type = FunctionType::new(Vec::new(), ValueType::Int);
         assert_eq!(
             ReturnExpr::function_function(
-                FunctionFunctionFunctionId(0),
+                0,
                 FunctionFunctionExpr::reference(
                     FunctionFunctionReference::new(
                         FunctionFunctionId::Int(IntFunctionFunctionId(0)),
@@ -2327,8 +2584,7 @@ mod tests {
         let tuple_type = vec![ValueType::Int];
         let int_function_type = FunctionType::new(Vec::new(), ValueType::Int);
         let custom_type = custom_type();
-        let custom_function_type =
-            FunctionType::new(Vec::new(), ValueType::Custom(custom_type.clone()));
+        let custom_function_type = CustomFunctionType::new(Vec::new(), custom_type.clone());
         let expressions = vec![
             (
                 ReturnExpr::int(IntFunctionId(0), IntExpr::value(1.into())),
@@ -2459,16 +2715,18 @@ mod tests {
             ),
             (
                 ReturnExpr::custom_function_body(
-                    CustomFunctionFunctionId(14),
-                    custom_function_type.clone(),
+                    14,
                     CustomFunctionReturn::expr(CustomFunctionExpr::reference(
                         CustomFunctionReference::new(CustomFunctionId(0), Vec::new()),
                         custom_type,
                     )),
                 ),
                 RuntimeFunctionId::Function {
-                    id: FunctionFunctionId::Custom(CustomFunctionFunctionId(14)),
-                    return_type: custom_function_type,
+                    id: FunctionFunctionId::Custom(CustomFunctionFunctionId::new(
+                        14,
+                        custom_function_type.clone(),
+                    )),
+                    return_type: custom_function_type.to_function_type(),
                 },
             ),
             (
@@ -2539,7 +2797,7 @@ mod tests {
             ),
             (
                 ReturnExpr::function_function(
-                    FunctionFunctionFunctionId(13),
+                    13,
                     FunctionFunctionExpr::reference(
                         FunctionFunctionReference::new(
                             FunctionFunctionId::Int(IntFunctionFunctionId(0)),
@@ -2549,7 +2807,10 @@ mod tests {
                     ),
                 ),
                 RuntimeFunctionId::Function {
-                    id: FunctionFunctionId::Function(FunctionFunctionFunctionId(13)),
+                    id: FunctionFunctionId::Function(FunctionFunctionFunctionId::new(
+                        13,
+                        FunctionFunctionType::new(Vec::new(), int_function_type.clone()),
+                    )),
                     return_type: FunctionType::new(
                         Vec::new(),
                         ValueType::Function(Box::new(int_function_type)),
@@ -2697,13 +2958,13 @@ mod tests {
             ))),
         );
         assert_eq!(
-            ParamLocal::function_function(
+            ParamLocal::function_function(FunctionFunctionLocal::new(
                 FunctionFunctionLocalId(0),
-                FunctionType::new(
+                FunctionFunctionType::new(
                     Vec::new(),
-                    ValueType::Function(Box::new(FunctionType::new(Vec::new(), ValueType::Int))),
+                    FunctionType::new(Vec::new(), ValueType::Int),
                 ),
-            )
+            ),)
             .value_type(),
             ValueType::Function(Box::new(FunctionType::new(
                 Vec::new(),

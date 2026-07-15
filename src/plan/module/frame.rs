@@ -9,14 +9,14 @@ use std::borrow::Borrow;
 use super::function::{Param, ParamLocal, ReturnExpr};
 use super::id::{
     BitArrayFunctionLocalId, BitArrayListLocalId, BitArrayLocalId, BoolFunctionLocalId,
-    BoolListLocalId, BoolLocalId, CustomFunctionLocalId, CustomListLocalId, CustomLocalId,
-    FloatFunctionLocalId, FloatListLocalId, FloatLocalId, FunctionFunctionLocalId,
-    FunctionListLocalId, IntFunctionLocalId, IntListLocalId, IntLocalId, ListFunctionLocal,
-    ListListLocalId, ListLocal, NilFunctionLocalId, NilListLocalId, NilLocalId,
-    StringFunctionLocalId, StringListLocalId, StringLocalId, TupleFunctionLocalId,
+    BoolListLocalId, BoolLocalId, CustomListLocalId, CustomLocalId, FloatFunctionLocalId,
+    FloatListLocalId, FloatLocalId, FunctionListLocalId, IntFunctionLocalId, IntListLocalId,
+    IntLocalId, ListFunctionLocal, ListListLocalId, ListLocal, NilFunctionLocalId, NilListLocalId,
+    NilLocalId, StringFunctionLocalId, StringListLocalId, StringLocalId, TupleFunctionLocalId,
     TupleListLocalId, TupleLocalId, UtfCodepointFunctionLocalId, UtfCodepointListLocalId,
     UtfCodepointLocalId,
 };
+use super::id::{CustomFunctionLocal, FunctionFunctionLocal};
 use super::step::Step;
 use crate::plan::{CustomType, FunctionType, ValueType};
 
@@ -47,12 +47,12 @@ pub(crate) struct FrameLayout {
     string_functions: usize,
     bit_array_functions: usize,
     utf_codepoint_functions: usize,
-    custom_functions: usize,
+    custom_functions: Vec<CustomFunctionLocal>,
     bool_functions: usize,
     nil_functions: usize,
     tuple_functions: usize,
     list_functions: Vec<ListFunctionLocal>,
-    function_functions: usize,
+    function_functions: Vec<FunctionFunctionLocal>,
 }
 
 pub(crate) struct FrameLayoutParts {
@@ -81,12 +81,12 @@ pub(crate) struct FrameLayoutParts {
     pub(crate) string_functions: usize,
     pub(crate) bit_array_functions: usize,
     pub(crate) utf_codepoint_functions: usize,
-    pub(crate) custom_functions: usize,
+    pub(crate) custom_functions: Vec<CustomFunctionLocal>,
     pub(crate) bool_functions: usize,
     pub(crate) nil_functions: usize,
     pub(crate) tuple_functions: usize,
     pub(crate) list_functions: Vec<ListFunctionLocal>,
-    pub(crate) function_functions: usize,
+    pub(crate) function_functions: Vec<FunctionFunctionLocal>,
 }
 
 impl FrameLayout {
@@ -161,12 +161,12 @@ impl FrameLayout {
             ParamLocal::UtfCodepointFunction { local, .. } => {
                 self.include_utf_codepoint_function(*local)
             }
-            ParamLocal::CustomFunction { local, .. } => self.include_custom_function(*local),
+            ParamLocal::CustomFunction(local) => self.include_custom_function(local.clone()),
             ParamLocal::BoolFunction { local, .. } => self.include_bool_function(*local),
             ParamLocal::NilFunction { local, .. } => self.include_nil_function(*local),
             ParamLocal::TupleFunction { local, .. } => self.include_tuple_function(*local),
             ParamLocal::ListFunction(local) => self.include_list_function(local.clone()),
-            ParamLocal::FunctionFunction { local, .. } => self.include_function_function(*local),
+            ParamLocal::FunctionFunction(local) => self.include_function_function(local.clone()),
         }
     }
 
@@ -316,8 +316,10 @@ impl FrameLayout {
         self.utf_codepoint_functions = self.utf_codepoint_functions.max(local.0 + 1);
     }
 
-    pub(crate) fn include_custom_function(&mut self, local: CustomFunctionLocalId) {
-        self.custom_functions = self.custom_functions.max(local.0 + 1);
+    pub(crate) fn include_custom_function(&mut self, local: CustomFunctionLocal) {
+        if !self.custom_functions.contains(&local) {
+            self.custom_functions.push(local);
+        }
     }
 
     pub(crate) fn include_bool_function(&mut self, local: BoolFunctionLocalId) {
@@ -338,8 +340,10 @@ impl FrameLayout {
         }
     }
 
-    pub(crate) fn include_function_function(&mut self, local: FunctionFunctionLocalId) {
-        self.function_functions = self.function_functions.max(local.0 + 1);
+    pub(crate) fn include_function_function(&mut self, local: FunctionFunctionLocal) {
+        if !self.function_functions.contains(&local) {
+            self.function_functions.push(local);
+        }
     }
 
     #[cfg(test)]
@@ -448,8 +452,8 @@ impl FrameLayout {
     }
 
     #[cfg(test)]
-    pub(crate) fn function_functions(&self) -> usize {
-        self.function_functions
+    pub(crate) fn function_functions(&self) -> &[FunctionFunctionLocal] {
+        &self.function_functions
     }
 }
 
@@ -457,10 +461,10 @@ impl FrameLayout {
 pub(super) mod test_helpers {
     use crate::plan::{
         BoolFunctionExpr, BoolFunctionId, BoolFunctionReference, BoolLocalId, FloatFunctionExpr,
-        FloatFunctionId, FloatFunctionReference, FloatLocalId, FunctionType, IntFunctionExpr,
-        IntFunctionId, IntFunctionReference, IntLocalId, NilFunctionExpr, NilFunctionId,
-        NilFunctionReference, NilLocalId, ParamLocal, StringFunctionExpr, StringFunctionId,
-        StringFunctionReference, StringLocalId, ValueType,
+        FloatFunctionId, FloatFunctionReference, FloatLocalId, FunctionFunctionType,
+        IntFunctionExpr, IntFunctionId, IntFunctionReference, IntLocalId, NilFunctionExpr,
+        NilFunctionId, NilFunctionReference, NilLocalId, ParamLocal, StringFunctionExpr,
+        StringFunctionId, StringFunctionReference, StringLocalId,
     };
 
     pub(super) fn int_function_expr() -> IntFunctionExpr {
@@ -498,11 +502,8 @@ pub(super) mod test_helpers {
         ))
     }
 
-    pub(super) fn function_returning_int_function_type() -> FunctionType {
-        FunctionType::new(
-            Vec::new(),
-            ValueType::Function(Box::new(int_function_expr().type_().clone())),
-        )
+    pub(super) fn function_returning_int_function_type() -> FunctionFunctionType {
+        FunctionFunctionType::new(Vec::new(), int_function_expr().type_().clone())
     }
 }
 
@@ -523,7 +524,7 @@ mod tests {
         assert_eq!(layout, cloned);
         assert_eq!(
             format!("{layout:?}"),
-            "FrameLayout { ints: 0, floats: 0, strings: 0, bit_arrays: 0, utf_codepoints: 0, customs: 0, bools: 0, nils: 0, tuples: 0, int_lists: 0, string_lists: 0, bit_array_lists: 0, utf_codepoint_lists: 0, custom_lists: [], float_lists: 0, bool_lists: 0, nil_lists: 0, tuple_lists: [], list_lists: [], function_lists: [], int_functions: 0, float_functions: 0, string_functions: 0, bit_array_functions: 0, utf_codepoint_functions: 0, custom_functions: 0, bool_functions: 0, nil_functions: 0, tuple_functions: 0, list_functions: [], function_functions: 0 }",
+            "FrameLayout { ints: 0, floats: 0, strings: 0, bit_arrays: 0, utf_codepoints: 0, customs: 0, bools: 0, nils: 0, tuples: 0, int_lists: 0, string_lists: 0, bit_array_lists: 0, utf_codepoint_lists: 0, custom_lists: [], float_lists: 0, bool_lists: 0, nil_lists: 0, tuple_lists: [], list_lists: [], function_lists: [], int_functions: 0, float_functions: 0, string_functions: 0, bit_array_functions: 0, utf_codepoint_functions: 0, custom_functions: [], bool_functions: 0, nil_functions: 0, tuple_functions: 0, list_functions: [], function_functions: [] }",
         );
     }
 

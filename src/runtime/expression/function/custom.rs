@@ -1,11 +1,11 @@
 use super::eval_custom_field_function;
 use crate::plan::ValueType;
 use crate::plan::execution::{
-    CustomFunctionExpr, CustomFunctionExprKind, ExecutionPlan, FunctionReturnFamily,
+    CustomFunctionExpr, CustomFunctionExprKind, CustomFunctionType, ExecutionPlan,
+    FunctionReturnFamily,
 };
 use crate::runtime::evaluated::{
-    EvaluatedCustomFunction, EvaluatedCustomFunctionTarget, EvaluatedFunctionValueKind,
-    EvaluatedValue, function_type,
+    EvaluatedCustomFunction, EvaluatedFunctionValueKind, EvaluatedValue, function_type,
 };
 use crate::runtime::expression::{
     eval_bool_expr, eval_float_expr, eval_int_expr, eval_panic_expr, eval_string_expr,
@@ -21,45 +21,64 @@ pub(in crate::runtime) fn eval_custom_function_expr(
     frame: &mut Frame,
     expression: &CustomFunctionExpr,
 ) -> Result<EvaluatedCustomFunction, ExecutionError> {
-    match expression.kind() {
-        CustomFunctionExprKind::Constructor(constructor) => Ok(EvaluatedCustomFunction::new(
-            EvaluatedCustomFunctionTarget::Constructor(*constructor),
-            Vec::new(),
-            Vec::new(),
-            expression.type_().clone(),
-        )),
-        CustomFunctionExprKind::Reference(reference) => Ok(EvaluatedCustomFunction::new(
-            EvaluatedCustomFunctionTarget::Function(*reference.function()),
+    eval_custom_function_expr_kind(
+        plan,
+        state,
+        frame,
+        expression.custom_function_type(),
+        expression.kind(),
+    )
+}
+
+pub(in crate::runtime) fn eval_custom_function_expr_kind(
+    plan: &ExecutionPlan,
+    state: &mut RuntimeState,
+    frame: &mut Frame,
+    type_: &CustomFunctionType,
+    kind: &CustomFunctionExprKind,
+) -> Result<EvaluatedCustomFunction, ExecutionError> {
+    match kind {
+        CustomFunctionExprKind::Constructor(constructor) => Ok(
+            EvaluatedCustomFunction::constructor(*constructor, type_.to_function_type()),
+        ),
+        CustomFunctionExprKind::Reference(reference) => Ok(EvaluatedCustomFunction::function(
+            *reference.function(),
             reference.params().to_vec(),
             Vec::new(),
-            function_type(reference.params(), expression.type_().return_().clone()),
+            function_type(
+                reference.params(),
+                crate::plan::execution::ValueType::Custom(type_.return_()),
+            ),
         )),
-        CustomFunctionExprKind::Closure(template) => Ok(EvaluatedCustomFunction::new(
-            EvaluatedCustomFunctionTarget::Function(*template.function()),
+        CustomFunctionExprKind::Closure(template) => Ok(EvaluatedCustomFunction::function(
+            *template.function(),
             template.params().to_vec(),
             function::eval_capture_args(plan, state, frame, template.captures())?,
-            expression.type_().clone(),
+            type_.to_function_type(),
         )),
-        CustomFunctionExprKind::LocalGet { local } => Ok(frame.get_custom_function(*local)),
+        CustomFunctionExprKind::LocalGet { local } => Ok(frame.get_custom_function(local)),
         CustomFunctionExprKind::Call { function, args } => {
             function::run_custom_function_returning_function_call(
-                plan, state, *function, args, frame,
+                plan,
+                state,
+                function.clone(),
+                args,
+                frame,
             )
         }
         CustomFunctionExprKind::FunctionCall { function, args } => {
             function::run_custom_function_function_call(plan, state, function, args, frame)
         }
-        CustomFunctionExprKind::TupleIndex {
-            tuple,
-            index,
-            type_,
-        } => {
-            let expected = ValueType::Function(Box::new(plan.function_type(type_)));
+        CustomFunctionExprKind::TupleIndex { tuple, index } => {
+            let expected =
+                ValueType::Function(Box::new(plan.function_type(&type_.to_function_type())));
             let value = project_tuple_expr(plan, state, frame, tuple, *index, expected.clone())?;
             let actual = value.value_type(plan);
             match value {
                 EvaluatedValue::Function(function) => match function.kind() {
-                    EvaluatedFunctionValueKind::Custom(value) => Ok(value.clone()),
+                    EvaluatedFunctionValueKind::Custom(value) if actual == expected => {
+                        Ok(value.clone())
+                    }
                     _ => Err(ExecutionError::TupleIndexFamilyMismatch { expected, actual }),
                 },
                 _ => Err(ExecutionError::TupleIndexFamilyMismatch { expected, actual }),
@@ -68,8 +87,11 @@ pub(in crate::runtime) fn eval_custom_function_expr(
         CustomFunctionExprKind::CustomField(access) => {
             let (constructor, expected, function) =
                 eval_custom_field_function(plan, state, frame, access)?;
+            let actual = ValueType::Function(Box::new(plan.function_type(function.type_())));
             match function.kind() {
-                EvaluatedFunctionValueKind::Custom(value) => Ok(value.clone()),
+                EvaluatedFunctionValueKind::Custom(value) if actual == expected => {
+                    Ok(value.clone())
+                }
                 _ => {
                     let descriptor = plan.custom_constructor(constructor);
                     Err(ExecutionError::CustomFieldFamilyMismatch {
@@ -77,14 +99,15 @@ pub(in crate::runtime) fn eval_custom_function_expr(
                         constructor: descriptor.name().clone(),
                         field_index: access.index(),
                         expected,
-                        actual: ValueType::Function(Box::new(plan.function_type(function.type_()))),
+                        actual,
                     })
                 }
             }
         }
-        CustomFunctionExprKind::ListIndex { list, index, type_ } => {
-            let type_ = plan.function_type(type_);
-            let function = project_function_list_expr(plan, state, frame, list, *index, &type_)?;
+        CustomFunctionExprKind::ListIndex { list, index } => {
+            let public_type = plan.function_type(&type_.to_function_type());
+            let function =
+                project_function_list_expr(plan, state, frame, list, *index, &public_type)?;
             match function.kind() {
                 EvaluatedFunctionValueKind::Custom(value) => Ok(value.clone()),
                 _ => Err(ExecutionError::FunctionReturnFamilyMismatch {
@@ -102,9 +125,9 @@ pub(in crate::runtime) fn eval_custom_function_expr(
             false_,
         } => {
             if eval_bool_expr(plan, state, frame, subject)? {
-                eval_custom_function_expr(plan, state, frame, true_)
+                eval_custom_function_expr_kind(plan, state, frame, type_, true_)
             } else {
-                eval_custom_function_expr(plan, state, frame, false_)
+                eval_custom_function_expr_kind(plan, state, frame, type_, false_)
             }
         }
         CustomFunctionExprKind::IntCase {
@@ -115,10 +138,10 @@ pub(in crate::runtime) fn eval_custom_function_expr(
             let subject = eval_int_expr(plan, state, frame, subject)?;
             for (pattern, branch) in clauses {
                 if pattern == &subject {
-                    return eval_custom_function_expr(plan, state, frame, branch);
+                    return eval_custom_function_expr_kind(plan, state, frame, type_, branch);
                 }
             }
-            eval_custom_function_expr(plan, state, frame, fallback)
+            eval_custom_function_expr_kind(plan, state, frame, type_, fallback)
         }
         CustomFunctionExprKind::StringCase {
             subject,
@@ -128,10 +151,10 @@ pub(in crate::runtime) fn eval_custom_function_expr(
             let subject = eval_string_expr(plan, state, frame, subject)?;
             for (pattern, branch) in clauses {
                 if pattern == &subject {
-                    return eval_custom_function_expr(plan, state, frame, branch);
+                    return eval_custom_function_expr_kind(plan, state, frame, type_, branch);
                 }
             }
-            eval_custom_function_expr(plan, state, frame, fallback)
+            eval_custom_function_expr_kind(plan, state, frame, type_, fallback)
         }
         CustomFunctionExprKind::FloatCase {
             subject,
@@ -141,14 +164,14 @@ pub(in crate::runtime) fn eval_custom_function_expr(
             let subject = eval_float_expr(plan, state, frame, subject)?;
             for (pattern, branch) in clauses {
                 if pattern == &subject {
-                    return eval_custom_function_expr(plan, state, frame, branch);
+                    return eval_custom_function_expr_kind(plan, state, frame, type_, branch);
                 }
             }
-            eval_custom_function_expr(plan, state, frame, fallback)
+            eval_custom_function_expr_kind(plan, state, frame, type_, fallback)
         }
         CustomFunctionExprKind::Block { steps, return_ } => {
             function::execute_steps(plan, state, steps, frame)?;
-            eval_custom_function_expr(plan, state, frame, return_)
+            eval_custom_function_expr_kind(plan, state, frame, type_, return_)
         }
     }
 }
@@ -156,12 +179,12 @@ pub(in crate::runtime) fn eval_custom_function_expr(
 #[cfg(test)]
 mod tests {
     use crate::plan::{
-        BoolExpr, CaptureArg, CustomFunctionExpr, CustomFunctionFunctionId, CustomFunctionId,
-        CustomFunctionReference, CustomFunctionReturn, CustomType, CustomTypeDefinition,
-        CustomTypeName, CustomTypePublicity, Expr, FloatExpr, FunctionExpr, FunctionId,
-        FunctionListExpr, FunctionPlan, FunctionType, IntExpr, IntFunctionExpr, IntFunctionId,
-        IntFunctionReference, IntLocalId, ListExpr, ModulePlan, PanicExpr, PanicSite, ReturnExpr,
-        Step, StringExpr, TupleExpr, ValueType,
+        BoolExpr, CaptureArg, CustomFunctionExpr, CustomFunctionId, CustomFunctionLocal,
+        CustomFunctionLocalId, CustomFunctionReference, CustomFunctionReturn, CustomFunctionType,
+        CustomType, CustomTypeDefinition, CustomTypeName, CustomTypePublicity, Expr, FloatExpr,
+        FunctionExpr, FunctionId, FunctionListExpr, FunctionPlan, FunctionType, IntExpr,
+        IntFunctionExpr, IntFunctionId, IntFunctionReference, IntLocalId, ListExpr, ModulePlan,
+        PanicExpr, PanicSite, ParamLocal, ReturnExpr, Step, StringExpr, TupleExpr, ValueType,
     };
     use crate::runtime::{ExecutionError, run_main};
 
@@ -219,20 +242,58 @@ pub fn main() {
     }
 
     #[test]
+    fn returned_constructor_callables_preserve_arity_through_nested_returns() {
+        let source = r#"
+pub type Boxed {
+  Boxed(Int)
+}
+
+fn tail_factory(remaining: Int) -> fn(Int) -> Boxed {
+  case remaining {
+    0 -> Boxed
+    _ -> tail_factory(remaining - 1)
+  }
+}
+
+fn choose_factory(flag: Bool) -> fn(Int) -> Boxed {
+  case flag {
+    True -> Boxed
+    False -> tail_factory(1)
+  }
+}
+
+fn nested_factory() -> fn() -> fn(Int) -> Boxed {
+  fn() { choose_factory(False) }
+}
+
+pub fn main() {
+  case nested_factory()()(42) {
+    Boxed(value) -> value
+  }
+}
+"#;
+
+        assert_eq!(
+            crate::runtime::run_src(source),
+            crate::runtime::Value::Int(42.into()),
+        );
+    }
+
+    #[test]
     fn custom_function_tuple_projection_reports_direct_mutated_family_mismatches() {
         let type_ = boxed_function_type();
         let tuple = TupleExpr::value(
             vec![Expr::function(FunctionExpr::int(
                 IntFunctionExpr::reference(IntFunctionReference::new(IntFunctionId(0), Vec::new())),
             ))],
-            vec![ValueType::Function(Box::new(type_.clone()))],
+            vec![ValueType::Function(Box::new(type_.to_function_type()))],
         );
         let expression = CustomFunctionExpr::tuple_index(tuple, 0, type_.clone());
 
         assert_eq!(
             run_module_custom_function_expression(expression),
             ExecutionError::TupleIndexFamilyMismatch {
-                expected: ValueType::Function(Box::new(type_.clone())),
+                expected: ValueType::Function(Box::new(type_.to_function_type())),
                 actual: ValueType::Function(Box::new(FunctionType::new(
                     Vec::new(),
                     ValueType::Int,
@@ -242,15 +303,38 @@ pub fn main() {
 
         let tuple = TupleExpr::value(
             vec![Expr::int(IntExpr::value(1.into()))],
-            vec![ValueType::Function(Box::new(type_.clone()))],
+            vec![ValueType::Function(Box::new(type_.to_function_type()))],
         );
         let expression = CustomFunctionExpr::tuple_index(tuple, 0, type_.clone());
 
         assert_eq!(
             run_module_custom_function_expression(expression),
             ExecutionError::TupleIndexFamilyMismatch {
-                expected: ValueType::Function(Box::new(type_)),
+                expected: ValueType::Function(Box::new(type_.to_function_type())),
                 actual: ValueType::Int,
+            },
+        );
+
+        let actual_type = CustomFunctionType::new(vec![ValueType::Int], boxed_type());
+        let tuple = TupleExpr::value(
+            vec![Expr::function(FunctionExpr::custom(
+                CustomFunctionExpr::reference(
+                    CustomFunctionReference::new(
+                        CustomFunctionId(0),
+                        vec![ParamLocal::int(IntLocalId(0))],
+                    ),
+                    boxed_type(),
+                ),
+            ))],
+            vec![ValueType::Function(Box::new(type_.to_function_type()))],
+        );
+        let expression = CustomFunctionExpr::tuple_index(tuple, 0, type_.clone());
+
+        assert_eq!(
+            run_module_custom_function_expression(expression),
+            ExecutionError::TupleIndexFamilyMismatch {
+                expected: ValueType::Function(Box::new(type_.to_function_type())),
+                actual: ValueType::Function(Box::new(actual_type.to_function_type())),
             },
         );
     }
@@ -273,14 +357,17 @@ pub fn main() {
                 type_.clone(),
             ),
             CustomFunctionExpr::tuple_index(
-                TupleExpr::panic(panic(), vec![ValueType::Function(Box::new(type_.clone()))]),
+                TupleExpr::panic(
+                    panic(),
+                    vec![ValueType::Function(Box::new(type_.to_function_type()))],
+                ),
                 0,
                 type_.clone(),
             ),
             CustomFunctionExpr::list_index(
                 FunctionListExpr::from(ListExpr::panic(
                     panic(),
-                    ValueType::Function(Box::new(type_.clone())),
+                    ValueType::Function(Box::new(type_.to_function_type())),
                 )),
                 0,
                 type_.clone(),
@@ -304,16 +391,22 @@ pub fn main() {
     }
 
     fn run_module_custom_function_expression(expression: CustomFunctionExpr) -> ExecutionError {
-        let type_ = expression.type_().clone();
+        let local = CustomFunctionLocal::new(
+            CustomFunctionLocalId(0),
+            expression.custom_function_type().clone(),
+        );
         let main = FunctionPlan::new(
             FunctionId::new(0),
             "main".into(),
             Vec::new(),
-            Vec::new(),
+            vec![Step::let_custom_function(
+                local.id(),
+                "value".into(),
+                expression,
+            )],
             ReturnExpr::custom_function_body(
-                CustomFunctionFunctionId(0),
-                type_,
-                CustomFunctionReturn::expr(expression),
+                0,
+                CustomFunctionReturn::expr(CustomFunctionExpr::local_get(local, "value".into())),
             ),
         );
         let module = ModulePlan::new("main".into(), main, Vec::new())
@@ -323,8 +416,8 @@ pub fn main() {
         run_main(&plan).expect_err("module expression should fail at runtime")
     }
 
-    fn boxed_function_type() -> FunctionType {
-        FunctionType::new(Vec::new(), ValueType::Custom(boxed_type()))
+    fn boxed_function_type() -> CustomFunctionType {
+        CustomFunctionType::new(Vec::new(), boxed_type())
     }
 
     fn boxed_type() -> CustomType {

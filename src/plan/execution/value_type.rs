@@ -101,6 +101,18 @@ pub(crate) struct FunctionType {
     return_: Box<ValueType>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub(crate) struct CustomFunctionType {
+    arguments: Vec<ValueType>,
+    return_: CustomTypeId,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub(crate) struct FunctionFunctionType {
+    arguments: Vec<ValueType>,
+    return_: Box<FunctionType>,
+}
+
 #[derive(Default)]
 pub(super) struct ListTypeTable {
     types: Vec<ListStorageTypeId>,
@@ -178,6 +190,42 @@ impl FunctionType {
 
     pub(crate) fn argument_types(&self) -> &[ValueType] {
         &self.arguments
+    }
+}
+
+impl CustomFunctionType {
+    pub(in crate::plan::execution) fn new(
+        arguments: Vec<ValueType>,
+        return_: CustomTypeId,
+    ) -> Self {
+        Self { arguments, return_ }
+    }
+
+    pub(crate) fn return_(&self) -> CustomTypeId {
+        self.return_
+    }
+
+    pub(crate) fn to_function_type(&self) -> FunctionType {
+        FunctionType::new(self.arguments.clone(), ValueType::Custom(self.return_))
+    }
+}
+
+impl FunctionFunctionType {
+    pub(in crate::plan::execution) fn new(
+        arguments: Vec<ValueType>,
+        return_: FunctionType,
+    ) -> Self {
+        Self {
+            arguments,
+            return_: Box::new(return_),
+        }
+    }
+
+    pub(crate) fn to_function_type(&self) -> FunctionType {
+        FunctionType::new(
+            self.arguments.clone(),
+            ValueType::Function(self.return_.clone()),
+        )
     }
 }
 
