@@ -1,7 +1,7 @@
 use crate::plan::execution::{
     BitArrayFunctionLocalId, BitArrayListLocalId, BitArrayLocalId, BoolFunctionLocalId,
     BoolListLocalId, BoolLocalId, CustomFunctionLocal, CustomFunctionLocalId, CustomListLocalId,
-    CustomLocalId, FloatFunctionLocalId, FloatListLocalId, FloatLocalId, FrameLayout,
+    CustomLocal, CustomLocalId, FloatFunctionLocalId, FloatListLocalId, FloatLocalId, FrameLayout,
     FunctionFunctionLocal, FunctionFunctionLocalId, FunctionListLocalId, IntFunctionLocalId,
     IntListLocalId, IntLocalId, ListFunctionLocal, ListListLocalId, NilFunctionLocalId,
     NilListLocalId, NilLocalId, StringFunctionLocalId, StringListLocalId, StringLocalId,
@@ -64,7 +64,7 @@ impl Frame {
             strings: vec![EcoString::default(); layout.strings()],
             bit_arrays: vec![EvaluatedBitArray::new(Default::default()); layout.bit_arrays()],
             utf_codepoints: vec!['\0'; layout.utf_codepoints()],
-            customs: HashMap::with_capacity(layout.customs()),
+            customs: HashMap::with_capacity(layout.customs().len()),
             bools: vec![false; layout.bools()],
             tuples: vec![Vec::new(); layout.tuples()],
             int_lists: layout
@@ -90,7 +90,7 @@ impl Frame {
             custom_lists: layout
                 .custom_lists()
                 .iter()
-                .map(|type_id| state.custom(*type_id, Vec::new()))
+                .map(|type_id| state.empty_custom(*type_id))
                 .collect(),
             float_lists: layout
                 .float_lists()
@@ -176,12 +176,12 @@ impl Frame {
         self.utf_codepoints[local.0]
     }
 
-    pub(super) fn set_custom(&mut self, local: CustomLocalId, value: EvaluatedCustomValue) {
-        self.customs.insert(local, value);
+    pub(super) fn set_custom(&mut self, local: CustomLocal, value: EvaluatedCustomValue) {
+        self.customs.insert(local.id(), value);
     }
 
-    pub(super) fn get_custom(&self, local: CustomLocalId) -> EvaluatedCustomValue {
-        self.customs[&local].clone()
+    pub(super) fn get_custom(&self, local: CustomLocal) -> EvaluatedCustomValue {
+        self.customs[&local.id()].clone()
     }
 
     pub(super) fn set_bool(&mut self, local: BoolLocalId, value: bool) {

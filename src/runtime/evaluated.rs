@@ -9,7 +9,7 @@ use crate::plan::ValueType;
 use crate::plan::execution::{
     BitArrayFunctionId, BitArrayFunctionLocalId, BitArrayLocalId, BoolFunctionId,
     BoolFunctionLocalId, BoolLocalId, CustomConstructorId, CustomFunctionId, CustomFunctionLocal,
-    CustomLocalId, CustomTypeId, FloatFunctionId, FloatFunctionLocalId, FloatLocalId,
+    CustomLocal, CustomTypeId, FloatFunctionId, FloatFunctionLocalId, FloatLocalId,
     FunctionFunctionId, FunctionFunctionLocal, FunctionReturnFamily, FunctionType, IntFunctionId,
     IntFunctionLocalId, IntLocalId, ListFunctionId, ListFunctionLocal, NilFunctionId,
     NilFunctionLocalId, NilLocalId, ParamLocal, StringFunctionId, StringFunctionLocalId,
@@ -161,7 +161,7 @@ pub(in crate::runtime) enum EvaluatedCaptureKind {
         value: char,
     },
     Custom {
-        local: CustomLocalId,
+        local: CustomLocal,
         value: EvaluatedCustomValue,
     },
     Bool {
@@ -463,7 +463,7 @@ impl EvaluatedCapture {
         Self::from_kind(EvaluatedCaptureKind::UtfCodepoint { local, value })
     }
 
-    pub(in crate::runtime) fn custom(local: CustomLocalId, value: EvaluatedCustomValue) -> Self {
+    pub(in crate::runtime) fn custom(local: CustomLocal, value: EvaluatedCustomValue) -> Self {
         Self::from_kind(EvaluatedCaptureKind::Custom { local, value })
     }
 

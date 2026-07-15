@@ -202,9 +202,8 @@ pub fn main() {
             Vec::new(),
         );
         let custom = Expr::custom(CustomExpr::local_get(
-            CustomLocalId(0),
+            crate::plan::CustomLocal::new(CustomLocalId(0), missing),
             "missing".into(),
-            missing,
         ));
         let int = Expr::int(IntExpr::value(1.into()));
         let expected = Err(PlanError::InvalidTypedAst {

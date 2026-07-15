@@ -2,6 +2,17 @@ use crate::plan::module;
 
 use super::LoweringContext;
 
+pub(super) fn custom_local(
+    local: module::CustomLocal,
+    context: &mut LoweringContext,
+) -> super::super::CustomLocal {
+    let (id, type_) = local.into_parts();
+    super::super::CustomLocal::new(
+        super::super::CustomLocalId(id.0),
+        context.custom_type(type_),
+    )
+}
+
 pub(super) fn custom_function_local(
     local: module::CustomFunctionLocal,
     context: &mut LoweringContext,

@@ -296,9 +296,8 @@ mod tests {
             ListElements::from_exprs(
                 ValueType::Custom(first_custom.clone()),
                 vec![Expr::custom(CustomExpr::local_get(
-                    CustomLocalId(0),
+                    crate::plan::CustomLocal::new(CustomLocalId(0), second_custom.clone()),
                     "value".into(),
-                    second_custom.clone(),
                 ))],
             ),
             Err(ListElementTypeMismatch {

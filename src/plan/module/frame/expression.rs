@@ -319,7 +319,7 @@ impl FrameLayout {
                 }
             }
             CustomExprKind::Panic(panic) => self.include_panic_expr(panic),
-            CustomExprKind::LocalGet { local, .. } => self.include_custom(*local),
+            CustomExprKind::LocalGet { local, .. } => self.include_custom(local.clone()),
             CustomExprKind::Call { args, .. } => self.include_call_args(args),
             CustomExprKind::FunctionCall(call) => {
                 self.include_custom_function_expr(call.function());

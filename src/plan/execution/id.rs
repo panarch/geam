@@ -22,6 +22,12 @@ pub struct UtfCodepointLocalId(pub(crate) usize);
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct CustomLocalId(pub(crate) usize);
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub(crate) struct CustomLocal {
+    id: CustomLocalId,
+    type_id: CustomTypeId,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct BoolLocalId(pub(crate) usize);
 
@@ -520,6 +526,20 @@ impl CustomFunctionLocal {
 
     pub(crate) fn type_(&self) -> &super::CustomFunctionType {
         &self.type_
+    }
+}
+
+impl CustomLocal {
+    pub(in crate::plan::execution) fn new(id: CustomLocalId, type_id: CustomTypeId) -> Self {
+        Self { id, type_id }
+    }
+
+    pub(crate) fn id(self) -> CustomLocalId {
+        self.id
+    }
+
+    pub(crate) fn type_id(self) -> CustomTypeId {
+        self.type_id
     }
 }
 

@@ -514,7 +514,10 @@ mod tests {
     #[test]
     fn function_return_build_allocates_custom_runtime_ids() {
         let mut runtime_ids = FunctionRuntimeIds::default();
-        let custom = CustomExpr::local_get(CustomLocalId(0), "value".into(), custom_type());
+        let custom = CustomExpr::local_get(
+            crate::plan::CustomLocal::new(CustomLocalId(0), custom_type()),
+            "value".into(),
+        );
         assert_eq!(
             FunctionReturn::Custom {
                 type_: custom_type(),

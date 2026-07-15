@@ -23,8 +23,8 @@ pub(super) fn plan_var(
             if let Some((local, type_)) = context.lookup_tuple_local(&name) {
                 return Ok(Expr::tuple(TupleExpr::local_get(local, name, type_)));
             }
-            if let Some((local, type_)) = context.lookup_custom_local(&name) {
-                return Ok(Expr::custom(CustomExpr::local_get(local, name, type_)));
+            if let Some(local) = context.lookup_custom_local(&name) {
+                return Ok(Expr::custom(CustomExpr::local_get(local, name)));
             }
             if let Some(local) = context.lookup_list_local(&name) {
                 return Ok(Expr::list(ListExpr::local_get(local, name)));

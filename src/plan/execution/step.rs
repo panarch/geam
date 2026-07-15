@@ -1,13 +1,13 @@
 use super::ParamLocal;
 use super::expression::{
-    BitArrayExpr, BitArrayFunctionExpr, BoolExpr, BoolFunctionExpr, CustomExpr, CustomFunctionExpr,
-    Expr, FloatExpr, FloatFunctionExpr, FunctionFunctionExpr, IntExpr, IntFunctionExpr,
-    ListFunctionExpr, ListLocalExpr, NilExpr, NilFunctionExpr, StringExpr, StringFunctionExpr,
-    TupleExpr, TupleFunctionExpr, UtfCodepointExpr, UtfCodepointFunctionExpr,
+    BitArrayExpr, BitArrayFunctionExpr, BoolExpr, BoolFunctionExpr, CustomFunctionExpr,
+    CustomLocalExpr, Expr, FloatExpr, FloatFunctionExpr, FunctionFunctionExpr, IntExpr,
+    IntFunctionExpr, ListFunctionExpr, ListLocalExpr, NilExpr, NilFunctionExpr, StringExpr,
+    StringFunctionExpr, TupleExpr, TupleFunctionExpr, UtfCodepointExpr, UtfCodepointFunctionExpr,
 };
 use super::id::{
     BitArrayFunctionLocalId, BitArrayLocalId, BoolFunctionLocalId, BoolLocalId,
-    CustomFunctionLocal, CustomLocalId, FloatFunctionLocalId, FloatLocalId, FunctionFunctionLocal,
+    CustomFunctionLocal, CustomLocal, FloatFunctionLocalId, FloatLocalId, FunctionFunctionLocal,
     IntFunctionLocalId, IntLocalId, ListFunctionLocal, ListLocal, NilFunctionLocalId, NilLocalId,
     StringFunctionLocalId, StringLocalId, TupleFunctionLocalId, TupleLocalId,
     UtfCodepointFunctionLocalId, UtfCodepointLocalId,
@@ -89,10 +89,7 @@ pub(crate) enum StepKind {
         local: UtfCodepointLocalId,
         value: UtfCodepointExpr,
     },
-    LetCustom {
-        local: CustomLocalId,
-        value: CustomExpr,
-    },
+    LetCustom(CustomLocalExpr),
     LetBool {
         local: BoolLocalId,
         value: BoolExpr,
@@ -167,14 +164,14 @@ pub(crate) enum StepKind {
         pattern_span: SourceSpan,
     },
     AssertCustom {
-        local: CustomLocalId,
+        local: CustomLocal,
         pattern: AssertPattern,
         message: Option<StringExpr>,
         site: PanicSite,
         pattern_span: SourceSpan,
     },
     BindCustomFields {
-        local: CustomLocalId,
+        local: CustomLocal,
         pattern: CustomBindingPattern,
     },
     AssertBool {

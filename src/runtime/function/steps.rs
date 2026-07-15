@@ -2,7 +2,7 @@ use crate::plan::ValueType;
 use crate::plan::execution::ExecutionPlan;
 use crate::plan::execution::{
     AssertBinding, AssertPattern, BitArrayFunctionLocalId, BitArrayLocalId, BoolFunctionLocalId,
-    BoolLocalId, CustomBindingPattern, CustomConstructorId, CustomFunctionLocal, CustomLocalId,
+    BoolLocalId, CustomBindingPattern, CustomConstructorId, CustomFunctionLocal, CustomLocal,
     FloatFunctionLocalId, FloatLocalId, FunctionFunctionLocal, IntFunctionLocalId, IntLocalId,
     ListAssertPattern, ListAssertTail, ListFunctionLocal, NilFunctionLocalId, NilLocalId,
     ParamLocal, StepKind, StringFunctionLocalId, StringLocalId, TotalBindingPattern,
@@ -58,9 +58,9 @@ pub(in crate::runtime) fn execute_steps(
                 let value = eval_utf_codepoint_expr(plan, state, frame, value)?;
                 frame.set_utf_codepoint(*local, value);
             }
-            StepKind::LetCustom { local, value, .. } => {
-                let value = eval_custom_expr(plan, state, frame, value)?;
-                frame.set_custom(*local, value);
+            StepKind::LetCustom(binding) => {
+                let value = eval_custom_expr(plan, state, frame, binding.value())?;
+                frame.set_custom(binding.local(), value);
             }
             StepKind::LetFloat { local, value, .. } => {
                 let value = eval_float_expr(plan, state, frame, value)?;
@@ -287,7 +287,7 @@ enum PendingBinding {
     String(StringLocalId, EcoString),
     BitArray(BitArrayLocalId, EvaluatedBitArray),
     UtfCodepoint(UtfCodepointLocalId, char),
-    Custom(CustomLocalId, EvaluatedCustomValue),
+    Custom(CustomLocal, EvaluatedCustomValue),
     Bool(BoolLocalId, bool),
     Nil(NilLocalId),
     Tuple(TupleLocalId, Vec<EvaluatedValue>),
@@ -686,8 +686,8 @@ fn pending_binding(
         (ParamLocal::UtfCodepoint(local), EvaluatedValue::UtfCodepoint(value)) => {
             Some(PendingBinding::UtfCodepoint(*local, *value))
         }
-        (ParamLocal::Custom { local, type_id }, EvaluatedValue::Custom(value))
-            if *type_id == value.type_id() =>
+        (ParamLocal::Custom(local), EvaluatedValue::Custom(value))
+            if local.type_id() == value.type_id() =>
         {
             Some(PendingBinding::Custom(*local, value.clone()))
         }
@@ -920,7 +920,7 @@ mod tests {
     };
     use crate::plan::ValueType;
     use crate::plan::execution::{
-        AssertBinding, AssertPattern, CustomLocalId, FunctionFunctionId, IntFunctionFunctionId,
+        AssertBinding, AssertPattern, CustomLocal, FunctionFunctionId, IntFunctionFunctionId,
         IntFunctionId, IntListLocalId, IntLocalId, ListAssertPattern, ListLocal, ParamLocal, Step,
         StepKind, StringLocalId,
     };
@@ -1564,54 +1564,56 @@ pub fn main() {
             }),
         );
 
-        let list_plan = crate::runtime::plan_src(
+        let tuple_list_plan = crate::runtime::plan_src(
             r#"
 pub type Boxed { Boxed(Int) }
 pub fn main() {
-  let assert [Boxed(value)] = [Boxed(1)]
+  let assert [#(Boxed(value))] = [#(Boxed(1))]
   value
 }
 "#,
         );
-        let function = list_plan.int_function(IntFunctionId(0));
+        let function = tuple_list_plan.int_function(IntFunctionId(0));
         let (assert_index, list_local, list_type) = function
             .steps()
             .iter()
             .enumerate()
             .find_map(|(index, step)| match step.kind() {
                 StepKind::AssertList {
-                    local: ListLocal::Custom { local, type_id },
+                    local: ListLocal::Tuple { local, type_id },
                     ..
                 } => Some((index, *local, *type_id)),
                 _ => None,
             })
-            .expect("source should lower a custom-list assert step");
+            .expect("source should lower a tuple-list assert step");
         let mut state = crate::runtime::RuntimeState::new();
         let mut frame = Frame::new(function.frame_layout(), &mut state);
         execute_steps(
-            &list_plan,
+            &tuple_list_plan,
             &mut state,
             &function.steps()[..assert_index],
             &mut frame,
         )
-        .expect("custom-list setup should execute");
+        .expect("tuple-list setup should execute");
+        let existing = frame.get_tuple_list(list_local);
         let constructor_id =
-            state.custom_values(&frame.get_custom_list(list_local))[0].constructor();
-        let value = EvaluatedCustomValue::from_fields(
+            expect_custom_value(&state.tuple_values(&existing)[0][0]).constructor();
+        let malformed = EvaluatedCustomValue::from_fields(
             constructor_id,
             vec![EvaluatedValue::String("wrong".into())].into_boxed_slice(),
         );
-        let wrong = state.custom(list_type, vec![value]);
-        frame.set_custom_list(list_local, wrong);
+        let wrong = state.tuple(list_type, vec![vec![EvaluatedValue::Custom(malformed)]]);
+        frame.set_tuple_list(list_local, wrong);
+
         assert_eq!(
             execute_steps(
-                &list_plan,
+                &tuple_list_plan,
                 &mut state,
                 &function.steps()[assert_index..=assert_index],
                 &mut frame,
             ),
             Err(ExecutionError::CustomFieldFamilyMismatch {
-                custom_type: list_plan.custom_value_type(constructor_id.type_id()),
+                custom_type: tuple_list_plan.custom_value_type(constructor_id.type_id()),
                 constructor: "Boxed".into(),
                 field_index: 0,
                 expected: ValueType::Int,
@@ -1706,7 +1708,7 @@ pub fn main() {
             .steps()
             .iter()
             .filter_map(|step| match step.kind() {
-                StepKind::LetCustom { value, .. } => Some(value),
+                StepKind::LetCustom(binding) => Some(binding.value()),
                 _ => None,
             })
             .collect::<Vec<_>>();
@@ -1909,7 +1911,7 @@ pub fn main() {
             .iter()
             .enumerate()
             .find_map(|(index, step)| match step.kind() {
-                StepKind::LetCustom { local, value } => Some((index, *local, value)),
+                StepKind::LetCustom(binding) => Some((index, binding.local(), binding.value())),
                 _ => None,
             })
             .expect("source should lower a custom value step");
@@ -1997,7 +1999,7 @@ pub fn main() {
             .iter()
             .enumerate()
             .find_map(|(index, step)| match step.kind() {
-                StepKind::LetCustom { value, .. } => Some((index, value)),
+                StepKind::LetCustom(binding) => Some((index, binding.value())),
                 _ => None,
             })
             .expect("source should lower the Fields value step");
@@ -2416,9 +2418,9 @@ pub fn main() {
         }
     }
 
-    fn expect_let_custom_local(step: &Step) -> CustomLocalId {
+    fn expect_let_custom_local(step: &Step) -> CustomLocal {
         match step.kind() {
-            StepKind::LetCustom { local, .. } => *local,
+            StepKind::LetCustom(binding) => binding.local(),
             _ => panic!("expected a let-custom step"),
         }
     }

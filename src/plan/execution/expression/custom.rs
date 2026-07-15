@@ -3,7 +3,7 @@ use super::{
     PanicExpr, StringExpr, TupleExpr,
 };
 use crate::plan::execution::{
-    CustomConstructorId, CustomFunctionId, CustomLocalId, CustomTypeId, Step,
+    CustomConstructorId, CustomFunctionId, CustomLocal, CustomTypeId, Step,
 };
 use ecow::EcoString;
 use num_bigint::BigInt;
@@ -11,6 +11,11 @@ use num_bigint::BigInt;
 pub struct CustomExpr {
     type_id: CustomTypeId,
     kind: CustomExprKind,
+}
+
+pub(crate) struct CustomLocalExpr {
+    local: CustomLocal,
+    value: CustomExpr,
 }
 
 pub(crate) struct CustomConstruction {
@@ -30,7 +35,7 @@ pub(crate) struct CustomFunctionCall {
 pub(crate) enum CustomExprKind {
     Constructor(CustomConstruction),
     LocalGet {
-        local: CustomLocalId,
+        local: CustomLocal,
     },
     Call {
         function: CustomFunctionId,
@@ -87,6 +92,20 @@ impl CustomExpr {
 
     pub(crate) fn kind(&self) -> &CustomExprKind {
         &self.kind
+    }
+}
+
+impl CustomLocalExpr {
+    pub(in crate::plan::execution) fn new(local: CustomLocal, value: CustomExpr) -> Self {
+        Self { local, value }
+    }
+
+    pub(crate) fn local(&self) -> CustomLocal {
+        self.local
+    }
+
+    pub(crate) fn value(&self) -> &CustomExpr {
+        &self.value
     }
 }
 

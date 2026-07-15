@@ -1,14 +1,14 @@
 use super::expression::{
     BitArrayExpr, BitArrayFunctionExpr, BoolExpr, BoolFunctionExpr, CustomExpr, CustomFunctionExpr,
-    Expr, FloatExpr, FloatFunctionExpr, FunctionFunctionExpr, IntExpr, IntFunctionExpr,
-    ListFunctionExpr, ListLocalExpr, NilExpr, NilFunctionExpr, StringExpr, StringFunctionExpr,
-    TupleExpr, TupleFunctionExpr, UtfCodepointExpr, UtfCodepointFunctionExpr,
+    CustomLocalExpr, Expr, FloatExpr, FloatFunctionExpr, FunctionFunctionExpr, IntExpr,
+    IntFunctionExpr, ListFunctionExpr, ListLocalExpr, NilExpr, NilFunctionExpr, StringExpr,
+    StringFunctionExpr, TupleExpr, TupleFunctionExpr, UtfCodepointExpr, UtfCodepointFunctionExpr,
 };
 use super::function::ParamLocal;
 use super::id::{
     BitArrayFunctionLocalId, BitArrayLocalId, BoolFunctionLocalId, BoolLocalId,
-    CustomFunctionLocal, CustomFunctionLocalId, CustomLocalId, FloatFunctionLocalId, FloatLocalId,
-    FunctionFunctionLocal, FunctionFunctionLocalId, IntFunctionLocalId, IntLocalId,
+    CustomFunctionLocal, CustomFunctionLocalId, CustomLocal, CustomLocalId, FloatFunctionLocalId,
+    FloatLocalId, FunctionFunctionLocal, FunctionFunctionLocalId, IntFunctionLocalId, IntLocalId,
     ListFunctionLocal, ListLocal, NilFunctionLocalId, NilLocalId, StringFunctionLocalId,
     StringLocalId, TupleFunctionLocalId, TupleLocalId, UtfCodepointFunctionLocalId,
     UtfCodepointLocalId,
@@ -109,9 +109,8 @@ pub(crate) enum StepKind {
         value: UtfCodepointExpr,
     },
     LetCustom {
-        local: CustomLocalId,
+        binding: CustomLocalExpr,
         name: EcoString,
-        value: CustomExpr,
     },
     LetBool {
         local: BoolLocalId,
@@ -202,14 +201,14 @@ pub(crate) enum StepKind {
         pattern_span: SourceSpan,
     },
     AssertCustom {
-        local: CustomLocalId,
+        local: CustomLocal,
         pattern: AssertPattern,
         message: Option<StringExpr>,
         site: PanicSite,
         pattern_span: SourceSpan,
     },
     BindCustomFields {
-        local: CustomLocalId,
+        local: CustomLocal,
         pattern: CustomBindingPattern,
     },
     AssertBool {
@@ -354,7 +353,10 @@ impl Step {
 
     pub(crate) fn let_custom(local: CustomLocalId, name: EcoString, value: CustomExpr) -> Self {
         Self {
-            kind: StepKind::LetCustom { local, name, value },
+            kind: StepKind::LetCustom {
+                binding: CustomLocalExpr::from_value(local, value),
+                name,
+            },
         }
     }
 
@@ -551,7 +553,7 @@ impl Step {
     }
 
     pub(crate) fn assert_custom_at(
-        local: CustomLocalId,
+        local: CustomLocal,
         pattern: AssertPattern,
         message: Option<StringExpr>,
         site: PanicSite,
@@ -569,6 +571,7 @@ impl Step {
     }
 
     pub(crate) fn bind_custom_fields(local: CustomLocalId, pattern: CustomBindingPattern) -> Self {
+        let local = CustomLocal::new(local, pattern.constructor().type_().clone());
         Self {
             kind: StepKind::BindCustomFields { local, pattern },
         }

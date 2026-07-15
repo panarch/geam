@@ -1,4 +1,6 @@
-use super::id::{custom_function_local, function_function_local, list_function_local, list_local};
+use super::id::{
+    custom_function_local, custom_local, function_function_local, list_function_local, list_local,
+};
 use crate::plan::module;
 
 pub(super) fn param_local(
@@ -23,10 +25,9 @@ pub(super) fn param_local(
         module::ParamLocal::UtfCodepoint(local) => {
             execution::ParamLocal::UtfCodepoint(execution::UtfCodepointLocalId(local.0))
         }
-        module::ParamLocal::Custom { local, type_ } => execution::ParamLocal::Custom {
-            local: execution::CustomLocalId(local.0),
-            type_id: context.custom_type(type_),
-        },
+        module::ParamLocal::Custom(local) => {
+            execution::ParamLocal::Custom(custom_local(local, context))
+        }
         module::ParamLocal::Bool(local) => {
             execution::ParamLocal::Bool(execution::BoolLocalId(local.0))
         }

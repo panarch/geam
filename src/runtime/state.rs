@@ -9,9 +9,9 @@ use super::evaluated::{
     EvaluatedBitArray, EvaluatedCustomValue, EvaluatedFunctionValue, EvaluatedValue,
 };
 use crate::plan::execution::{
-    BitArrayListTypeId, BoolListTypeId, CustomListTypeId, ExecutionPlan, FloatListTypeId,
-    FunctionListTypeId, IntListTypeId, ListListTypeId, ListStorageTypeId, ListTypeId,
-    NilListTypeId, StringListTypeId, TupleListTypeId, UtfCodepointListTypeId,
+    BitArrayListTypeId, BoolListTypeId, CustomListItem, CustomListTypeId, ExecutionPlan,
+    FloatListTypeId, FunctionListTypeId, IntListTypeId, ListListTypeId, ListStorageTypeId,
+    ListTypeId, NilListTypeId, StringListTypeId, TupleListTypeId, UtfCodepointListTypeId,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -131,6 +131,27 @@ typed_list_value_id!(NilListValueId, NilListTypeId, Nil);
 typed_list_value_id!(TupleListValueId, TupleListTypeId, Tuple);
 typed_list_value_id!(ListListValueId, ListListTypeId, List);
 typed_list_value_id!(FunctionListValueId, FunctionListTypeId, Function);
+
+pub(super) struct CustomListAllocation {
+    type_id: CustomListTypeId,
+    values: Vec<EvaluatedCustomValue>,
+}
+
+impl CustomListAllocation {
+    pub(super) fn from_item(item: &CustomListItem, values: Vec<EvaluatedCustomValue>) -> Self {
+        Self {
+            type_id: item.type_id(),
+            values,
+        }
+    }
+
+    fn from_value(value: &CustomListValueId, values: Vec<EvaluatedCustomValue>) -> Self {
+        Self {
+            type_id: value.type_id(),
+            values,
+        }
+    }
+}
 
 #[derive(Debug, Clone, PartialEq)]
 pub(super) enum ListValueId {
@@ -347,13 +368,18 @@ impl RuntimeState {
         UtfCodepointListValueId::new(type_id, self.core(ListStorageKey::UtfCodepoint { slot }))
     }
 
-    pub(super) fn custom(
-        &mut self,
-        type_id: CustomListTypeId,
-        values: Vec<EvaluatedCustomValue>,
-    ) -> CustomListValueId {
+    pub(super) fn custom(&mut self, allocation: CustomListAllocation) -> CustomListValueId {
         self.prepare_allocation();
-        let slot = self.customs.allocate(values);
+        let slot = self.customs.allocate(allocation.values);
+        CustomListValueId::new(
+            allocation.type_id,
+            self.core(ListStorageKey::Custom { slot }),
+        )
+    }
+
+    pub(super) fn empty_custom(&mut self, type_id: CustomListTypeId) -> CustomListValueId {
+        self.prepare_allocation();
+        let slot = self.customs.allocate(Vec::new());
         CustomListValueId::new(type_id, self.core(ListStorageKey::Custom { slot }))
     }
 
@@ -566,7 +592,8 @@ impl RuntimeState {
             ListValueId::Custom(value) => {
                 let values = self.custom_values(value);
                 let values = values[count.min(values.len())..].to_vec();
-                self.custom(value.type_id(), values).into()
+                self.custom(CustomListAllocation::from_value(value, values))
+                    .into()
             }
             ListValueId::Float(value) => {
                 let values = self.float_values(value);
@@ -774,8 +801,7 @@ pub fn main() { 0 }
             plan.utf_codepoint_list_function_id(0).type_id(),
             vec!['\u{10ffff}'],
         );
-        let custom_type = plan.custom_list_function_id(0).type_id();
-        let custom = state.custom(custom_type, Vec::new());
+        let custom = state.empty_custom(plan.custom_list_function_id(0).type_id());
         let float = state.float(plan.float_list_function_id(0).type_id(), vec![1.5]);
         let bool_ = state.bool(plan.bool_list_function_id(0).type_id(), vec![true]);
         let nil = state.nil(plan.nil_list_function_id(0).type_id(), 1);

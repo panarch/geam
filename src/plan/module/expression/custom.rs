@@ -2,7 +2,9 @@ use super::{
     BoolExpr, CallArg, CustomFieldAccess, CustomFunctionExpr, CustomListExpr, FloatExpr, IntExpr,
     PanicExpr, StringExpr, TupleExpr,
 };
-use crate::plan::{CustomConstructor, CustomFunctionId, CustomLocalId, CustomType, Step};
+use crate::plan::{
+    CustomConstructor, CustomFunctionId, CustomLocal, CustomLocalId, CustomType, Step,
+};
 use ecow::EcoString;
 use num_bigint::BigInt;
 
@@ -10,6 +12,12 @@ use num_bigint::BigInt;
 pub struct CustomExpr {
     type_: CustomType,
     kind: CustomExprKind,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct CustomLocalExpr {
+    local: CustomLocal,
+    value: CustomExpr,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -39,7 +47,7 @@ pub(crate) struct CustomFunctionCall {
 pub(crate) enum CustomExprKind {
     Constructor(CustomConstruction),
     LocalGet {
-        local: CustomLocalId,
+        local: CustomLocal,
         name: EcoString,
     },
     Call {
@@ -110,8 +118,11 @@ impl CustomExpr {
             .map(|construction| Self::new(type_, CustomExprKind::Constructor(construction)))
     }
 
-    pub(crate) fn local_get(local: CustomLocalId, name: EcoString, type_: CustomType) -> Self {
-        Self::new(type_, CustomExprKind::LocalGet { local, name })
+    pub(crate) fn local_get(local: CustomLocal, name: EcoString) -> Self {
+        Self::new(
+            local.type_().clone(),
+            CustomExprKind::LocalGet { local, name },
+        )
     }
 
     pub(crate) fn call(function: CustomFunctionId, args: Vec<CallArg>, type_: CustomType) -> Self {
@@ -229,6 +240,29 @@ impl CustomExpr {
 
     fn new(type_: CustomType, kind: CustomExprKind) -> Self {
         Self { type_, kind }
+    }
+}
+
+impl CustomLocalExpr {
+    pub(crate) fn from_value(local: CustomLocalId, value: CustomExpr) -> Self {
+        let local = CustomLocal::new(local, value.type_().clone());
+        Self { local, value }
+    }
+
+    pub(super) fn from_parts(local: CustomLocal, value: CustomExpr) -> Self {
+        Self { local, value }
+    }
+
+    pub(crate) fn local(&self) -> &CustomLocal {
+        &self.local
+    }
+
+    pub(crate) fn value(&self) -> &CustomExpr {
+        &self.value
+    }
+
+    pub(crate) fn into_parts(self) -> (CustomLocal, CustomExpr) {
+        (self.local, self.value)
     }
 }
 

@@ -33,9 +33,9 @@ impl FrameLayout {
                 self.include_utf_codepoint_expr(value);
                 self.include_utf_codepoint(*local);
             }
-            StepKind::LetCustom { local, value, .. } => {
-                self.include_custom_expr(value);
-                self.include_custom(*local);
+            StepKind::LetCustom { binding, .. } => {
+                self.include_custom_expr(binding.value());
+                self.include_custom(binding.local().clone());
             }
             StepKind::LetBool { local, value, .. } => {
                 self.include_bool_expr(value);
@@ -124,14 +124,14 @@ impl FrameLayout {
                 message,
                 ..
             } => {
-                self.include_custom(*local);
+                self.include_custom(local.clone());
                 self.include_assert_pattern(pattern);
                 if let Some(message) = message {
                     self.include_string_expr(message);
                 }
             }
             StepKind::BindCustomFields { local, pattern } => {
-                self.include_custom(*local);
+                self.include_custom(local.clone());
                 self.include_custom_binding_pattern(pattern);
             }
             StepKind::AssertBool {

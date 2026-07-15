@@ -1,8 +1,9 @@
 use super::{
     BitArrayExpr, BitArrayFunctionExpr, BoolExpr, BoolFunctionExpr, CustomExpr, CustomFunctionExpr,
-    Expr, ExprKind, FloatExpr, FloatFunctionExpr, FunctionFunctionExpr, IntExpr, IntFunctionExpr,
-    ListExpr, ListFunctionExpr, ListLocalExpr, NilExpr, NilFunctionExpr, StringExpr,
-    StringFunctionExpr, TupleExpr, TupleFunctionExpr, UtfCodepointExpr, UtfCodepointFunctionExpr,
+    CustomLocalExpr, Expr, ExprKind, FloatExpr, FloatFunctionExpr, FunctionFunctionExpr, IntExpr,
+    IntFunctionExpr, ListExpr, ListFunctionExpr, ListLocalExpr, NilExpr, NilFunctionExpr,
+    StringExpr, StringFunctionExpr, TupleExpr, TupleFunctionExpr, UtfCodepointExpr,
+    UtfCodepointFunctionExpr,
 };
 use crate::plan::{
     BitArrayFunctionLocalId, BitArrayLocalId, BoolFunctionLocalId, BoolLocalId,
@@ -36,10 +37,7 @@ pub(crate) enum CallArgKind {
         local: UtfCodepointLocalId,
         value: UtfCodepointExpr,
     },
-    Custom {
-        local: CustomLocalId,
-        value: CustomExpr,
-    },
+    Custom(CustomLocalExpr),
     Float {
         local: FloatLocalId,
         value: FloatExpr,
@@ -126,10 +124,7 @@ pub(crate) enum CaptureArgKind {
         local: UtfCodepointLocalId,
         value: UtfCodepointExpr,
     },
-    Custom {
-        local: CustomLocalId,
-        value: CustomExpr,
-    },
+    Custom(CustomLocalExpr),
     Float {
         local: FloatLocalId,
         value: FloatExpr,
@@ -206,13 +201,14 @@ impl Expr {
             (ParamLocal::UtfCodepoint(local), ExprKind::UtfCodepoint(value)) => {
                 Some(CallArg::utf_codepoint(*local, value))
             }
-            (
-                ParamLocal::Custom {
-                    local,
-                    type_: expected,
-                },
-                ExprKind::Custom(value),
-            ) if value.type_() == expected => Some(CallArg::custom(*local, value)),
+            (ParamLocal::Custom(local), ExprKind::Custom(value))
+                if local.type_() == value.type_() =>
+            {
+                Some(CallArg::custom(CustomLocalExpr::from_parts(
+                    local.clone(),
+                    value,
+                )))
+            }
             (ParamLocal::Float(local), ExprKind::Float(value)) => {
                 Some(CallArg::float(*local, value))
             }
@@ -433,9 +429,9 @@ impl CallArg {
         }
     }
 
-    pub(crate) fn custom(local: CustomLocalId, value: CustomExpr) -> Self {
+    pub(crate) fn custom(binding: CustomLocalExpr) -> Self {
         Self {
-            kind: CallArgKind::Custom { local, value },
+            kind: CallArgKind::Custom(binding),
         }
     }
 
@@ -577,7 +573,7 @@ impl CaptureArg {
 
     pub(crate) fn custom(local: CustomLocalId, value: CustomExpr) -> Self {
         Self {
-            kind: CaptureArgKind::Custom { local, value },
+            kind: CaptureArgKind::Custom(CustomLocalExpr::from_value(local, value)),
         }
     }
 
@@ -699,25 +695,26 @@ impl CaptureArg {
 
 #[cfg(test)]
 mod tests {
-    use super::{CallArg, CaptureArg, CaptureArgKind};
+    use super::{CallArg, CaptureArg, CaptureArgKind, CustomLocalExpr};
     use crate::plan::{
         BitArrayExpr, BitArrayFunctionExpr, BitArrayFunctionId, BitArrayFunctionLocalId,
         BitArrayFunctionReference, BitArrayListLocalId, BitArrayLocalId, BoolExpr,
         BoolFunctionExpr, BoolFunctionId, BoolFunctionLocalId, BoolFunctionReference,
-        BoolListLocalId, BoolLocalId, CustomFunctionExpr, CustomFunctionLocal,
-        CustomFunctionLocalId, CustomFunctionType, CustomType, CustomTypeName, Expr, FloatExpr,
-        FloatFunctionExpr, FloatFunctionId, FloatFunctionLocalId, FloatFunctionReference,
-        FloatListLocalId, FloatLocalId, FunctionExpr, FunctionFunctionExpr, FunctionFunctionId,
-        FunctionFunctionLocal, FunctionFunctionLocalId, FunctionFunctionReference,
-        FunctionFunctionType, FunctionListLocalId, FunctionReference, FunctionType, IntExpr,
-        IntFunctionExpr, IntFunctionFunctionId, IntFunctionId, IntFunctionLocalId,
-        IntFunctionReference, IntListLocalId, IntLocalId, ListExpr, ListFunctionExpr,
-        ListFunctionId, ListFunctionReference, ListListLocalId, ListLocal, ListLocalExpr, NilExpr,
-        NilFunctionExpr, NilFunctionId, NilFunctionLocalId, NilFunctionReference, NilListLocalId,
-        NilLocalId, PanicExpr, PanicSite, ParamLocal, RuntimeFunctionId, StringExpr,
-        StringFunctionExpr, StringFunctionId, StringFunctionLocalId, StringFunctionReference,
-        StringListLocalId, StringLocalId, TupleExpr, TupleFunctionExpr, TupleFunctionId,
-        TupleFunctionLocalId, TupleFunctionReference, TupleListLocalId, TupleLocalId, ValueType,
+        BoolListLocalId, BoolLocalId, CustomExpr, CustomFunctionExpr, CustomFunctionLocal,
+        CustomFunctionLocalId, CustomFunctionType, CustomLocal, CustomLocalId, CustomType,
+        CustomTypeName, Expr, FloatExpr, FloatFunctionExpr, FloatFunctionId, FloatFunctionLocalId,
+        FloatFunctionReference, FloatListLocalId, FloatLocalId, FunctionExpr, FunctionFunctionExpr,
+        FunctionFunctionId, FunctionFunctionLocal, FunctionFunctionLocalId,
+        FunctionFunctionReference, FunctionFunctionType, FunctionListLocalId, FunctionReference,
+        FunctionType, IntExpr, IntFunctionExpr, IntFunctionFunctionId, IntFunctionId,
+        IntFunctionLocalId, IntFunctionReference, IntListLocalId, IntLocalId, ListExpr,
+        ListFunctionExpr, ListFunctionId, ListFunctionReference, ListListLocalId, ListLocal,
+        ListLocalExpr, NilExpr, NilFunctionExpr, NilFunctionId, NilFunctionLocalId,
+        NilFunctionReference, NilListLocalId, NilLocalId, PanicExpr, PanicSite, ParamLocal,
+        RuntimeFunctionId, StringExpr, StringFunctionExpr, StringFunctionId, StringFunctionLocalId,
+        StringFunctionReference, StringListLocalId, StringLocalId, TupleExpr, TupleFunctionExpr,
+        TupleFunctionId, TupleFunctionLocalId, TupleFunctionReference, TupleListLocalId,
+        TupleLocalId, ValueType,
     };
     use num_bigint::BigInt;
 
@@ -743,6 +740,32 @@ mod tests {
                 BitArrayLocalId(0),
                 BitArrayExpr::value(Vec::new()),
             )),
+        );
+        let custom_type = CustomType::new(
+            CustomTypeName::new("geam".into(), "main".into(), "Boxed".into()),
+            Vec::new(),
+        );
+        let custom_value = CustomExpr::panic(
+            PanicExpr::panic_at(None, PanicSite::unknown()),
+            custom_type.clone(),
+        );
+        assert_eq!(
+            Expr::custom(custom_value.clone())
+                .into_call_arg(&ParamLocal::custom(CustomLocalId(0), custom_type.clone(),)),
+            Some(CallArg::custom(CustomLocalExpr::from_parts(
+                CustomLocal::new(CustomLocalId(0), custom_type.clone()),
+                custom_value.clone(),
+            ))),
+        );
+        assert_eq!(
+            Expr::custom(custom_value).into_call_arg(&ParamLocal::custom(
+                CustomLocalId(0),
+                CustomType::new(
+                    CustomTypeName::new("geam".into(), "main".into(), "Other".into()),
+                    Vec::new(),
+                ),
+            )),
+            None,
         );
         assert_eq!(
             Expr::float(FloatExpr::value(1.5)).into_call_arg(&ParamLocal::float(FloatLocalId(0))),
@@ -1005,6 +1028,26 @@ mod tests {
                 ),
                 value: function_value,
             },
+        );
+    }
+
+    #[test]
+    fn custom_capture_arg_derives_the_local_type_from_the_value() {
+        let custom_type = CustomType::new(
+            CustomTypeName::new("geam".into(), "main".into(), "Boxed".into()),
+            Vec::new(),
+        );
+        let value = CustomExpr::panic(
+            PanicExpr::panic_at(None, PanicSite::unknown()),
+            custom_type.clone(),
+        );
+
+        assert_eq!(
+            CaptureArg::custom(CustomLocalId(3), value.clone()).kind(),
+            &CaptureArgKind::Custom(CustomLocalExpr::from_parts(
+                CustomLocal::new(CustomLocalId(3), custom_type),
+                value,
+            )),
         );
     }
 

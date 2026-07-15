@@ -8,7 +8,7 @@ use super::{
 };
 use crate::plan::execution::{
     BitArrayFunctionLocalId, BitArrayListLocalId, BitArrayLocalId, BoolFunctionLocalId,
-    BoolListLocalId, BoolLocalId, CustomFunctionLocalId, CustomListLocalId, CustomLocalId,
+    BoolListLocalId, BoolLocalId, CustomFunctionLocalId, CustomListLocalId, CustomLocal,
     FloatFunctionLocalId, FloatListLocalId, FloatLocalId, FunctionFunctionLocalId,
     FunctionListLocalId, IntFunctionLocalId, IntListLocalId, IntLocalId, ListFunctionLocal,
     ListListLocalId, NilFunctionLocalId, NilListLocalId, NilLocalId, StringFunctionLocalId,
@@ -45,7 +45,7 @@ pub(crate) enum CaptureValueKind {
         value: char,
     },
     Custom {
-        local: CustomLocalId,
+        local: CustomLocal,
         value: CustomValue,
     },
     Bool {
@@ -189,7 +189,7 @@ impl CaptureValue {
         }
     }
 
-    pub(crate) fn custom(local: CustomLocalId, value: CustomValue) -> Self {
+    pub(crate) fn custom(local: CustomLocal, value: CustomValue) -> Self {
         Self {
             kind: CaptureValueKind::Custom { local, value },
         }

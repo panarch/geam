@@ -430,13 +430,13 @@ impl<'a> PlanContext<'a> {
             ParamLocal::UtfCodepoint(local) => {
                 self.define_existing_local(name, LocalId::UtfCodepoint(*local));
             }
-            ParamLocal::Custom { local, type_ } => {
-                self.next_custom_local = self.next_custom_local.max(local.0 + 1);
+            ParamLocal::Custom(local) => {
+                self.next_custom_local = self.next_custom_local.max(local.id().0 + 1);
                 self.bindings.insert(
                     name,
                     LocalBinding::Custom {
-                        local: *local,
-                        type_: type_.clone(),
+                        local: local.id(),
+                        type_: local.type_().clone(),
                     },
                 );
             }
@@ -1344,12 +1344,11 @@ impl<'a> PlanContext<'a> {
         }
     }
 
-    pub(super) fn lookup_custom_local(
-        &self,
-        name: &EcoString,
-    ) -> Option<(CustomLocalId, CustomType)> {
+    pub(super) fn lookup_custom_local(&self, name: &EcoString) -> Option<crate::plan::CustomLocal> {
         match self.bindings.get(name)? {
-            LocalBinding::Custom { local, type_ } => Some((*local, type_.clone())),
+            LocalBinding::Custom { local, type_ } => {
+                Some(crate::plan::CustomLocal::new(*local, type_.clone()))
+            }
             LocalBinding::Primitive(_)
             | LocalBinding::Tuple { .. }
             | LocalBinding::List(_)
@@ -1968,7 +1967,13 @@ impl<'a> PlanContext<'a> {
             }
             LocalBinding::Custom { local, type_ } => {
                 let target = self.define_custom_local(capture.name.clone(), type_.clone());
-                CaptureArg::custom(target, CustomExpr::local_get(local, capture.name, type_))
+                CaptureArg::custom(
+                    target,
+                    CustomExpr::local_get(
+                        crate::plan::CustomLocal::new(local, type_),
+                        capture.name,
+                    ),
+                )
             }
             LocalBinding::Primitive(LocalId::Bool(local)) => {
                 let target = self.define_bool_local(capture.name.clone());

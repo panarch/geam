@@ -294,8 +294,8 @@ fn plan_local(name: EcoString, context: &PlanContext<'_>) -> Result<Expr, PlanEr
     if let Some((local, type_)) = context.lookup_local(&name) {
         return local_get(local, name, type_);
     }
-    if let Some((local, type_)) = context.lookup_custom_local(&name) {
-        return Ok(Expr::custom(CustomExpr::local_get(local, name, type_)));
+    if let Some(local) = context.lookup_custom_local(&name) {
+        return Ok(Expr::custom(CustomExpr::local_get(local, name)));
     }
     if let Some((local, type_)) = context.lookup_tuple_local(&name) {
         return Ok(Expr::tuple(TupleExpr::local_get(local, name, type_)));

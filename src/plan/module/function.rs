@@ -9,7 +9,7 @@ use super::id::{
     BitArrayFunctionFunctionId, BitArrayFunctionId, BitArrayFunctionLocalId,
     BitArrayListFunctionId, BitArrayLocalId, BoolFunctionFunctionId, BoolFunctionId,
     BoolFunctionLocalId, BoolListFunctionId, BoolLocalId, CustomFunctionFunctionId,
-    CustomFunctionId, CustomFunctionLocal, CustomListFunctionId, CustomLocalId,
+    CustomFunctionId, CustomFunctionLocal, CustomListFunctionId, CustomLocal, CustomLocalId,
     FloatFunctionFunctionId, FloatFunctionId, FloatFunctionLocalId, FloatListFunctionId,
     FloatLocalId, FunctionFunctionFunctionId, FunctionFunctionLocal, FunctionId,
     FunctionListFunctionId, IntFunctionFunctionId, IntFunctionId, IntFunctionLocalId,
@@ -60,10 +60,7 @@ pub(crate) enum ParamLocal {
     String(StringLocalId),
     BitArray(BitArrayLocalId),
     UtfCodepoint(UtfCodepointLocalId),
-    Custom {
-        local: CustomLocalId,
-        type_: CustomType,
-    },
+    Custom(CustomLocal),
     Bool(BoolLocalId),
     Nil(NilLocalId),
     Tuple {
@@ -1999,7 +1996,7 @@ impl ParamLocal {
     }
 
     pub(crate) fn custom(local: CustomLocalId, type_: CustomType) -> Self {
-        Self::Custom { local, type_ }
+        Self::Custom(CustomLocal::new(local, type_))
     }
 
     pub(crate) fn bool(local: BoolLocalId) -> Self {
@@ -2072,7 +2069,7 @@ impl ParamLocal {
             Self::String(_) => ValueType::String,
             Self::BitArray(_) => ValueType::BitArray,
             Self::UtfCodepoint(_) => ValueType::UtfCodepoint,
-            Self::Custom { type_, .. } => ValueType::Custom(type_.clone()),
+            Self::Custom(local) => ValueType::Custom(local.type_().clone()),
             Self::Bool(_) => ValueType::Bool,
             Self::Nil(_) => ValueType::Nil,
             Self::Tuple { type_, .. } => ValueType::Tuple(type_.clone()),
@@ -2617,9 +2614,8 @@ mod tests {
                     CustomFunctionId(14),
                     custom_type.clone(),
                     CustomReturn::expr(CustomExpr::local_get(
-                        CustomLocalId(0),
+                        crate::plan::CustomLocal::new(CustomLocalId(0), custom_type.clone()),
                         "custom".into(),
-                        custom_type.clone(),
                     )),
                 ),
                 RuntimeFunctionId::Custom {

@@ -1339,12 +1339,14 @@ pub fn main() {
             "codepoint".into(),
         ));
         let custom_expression = Expr::custom(CustomExpr::local_get(
-            CustomLocalId(0),
-            "boxed".into(),
-            CustomType::new(
-                CustomTypeName::new("geam".into(), "main".into(), "Boxed".into()),
-                Vec::new(),
+            crate::plan::CustomLocal::new(
+                CustomLocalId(0),
+                CustomType::new(
+                    CustomTypeName::new("geam".into(), "main".into(), "Boxed".into()),
+                    Vec::new(),
+                ),
             ),
+            "boxed".into(),
         ));
 
         assert_eq!(

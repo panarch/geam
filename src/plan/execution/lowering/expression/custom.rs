@@ -26,7 +26,7 @@ pub(in crate::plan::execution::lowering) fn custom_expr(
             ))
         }
         M::LocalGet { local, name: _ } => E::LocalGet {
-            local: execution::CustomLocalId(local.0),
+            local: super::super::id::custom_local(local, context),
         },
         M::Call { function, args } => E::Call {
             function: execution::CustomFunctionId(function.0),

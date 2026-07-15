@@ -170,8 +170,9 @@ fn plan_assert_custom_assignment(
         .map(|message| plan_assert_message(message, context))
         .transpose()?;
     let local = context.define_internal_custom_local();
+    let typed_local = crate::plan::CustomLocal::new(local, pattern_type.clone());
     let name = internal_custom_name(local);
-    let local_value = crate::plan::CustomExpr::local_get(local, name.clone(), pattern_type);
+    let local_value = crate::plan::CustomExpr::local_get(typed_local.clone(), name.clone());
     let site = context.panic_site(location);
     let pattern_span = pattern.location().into();
     let pattern = crate::planner::pattern::plan_runtime_pattern(pattern, context)?.pattern;
@@ -179,7 +180,7 @@ fn plan_assert_custom_assignment(
     Ok(PlannedAssignment {
         steps: vec![
             Step::let_custom(local, name, value),
-            Step::assert_custom_at(local, pattern, message, site, pattern_span),
+            Step::assert_custom_at(typed_local, pattern, message, site, pattern_span),
         ],
         value: Expr::custom(local_value),
     })

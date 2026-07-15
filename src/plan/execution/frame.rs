@@ -1,7 +1,7 @@
 use super::{
-    BitArrayListTypeId, BoolListTypeId, CustomFunctionLocal, CustomListTypeId, FloatListTypeId,
-    FunctionFunctionLocal, FunctionListTypeId, IntListTypeId, ListFunctionLocal, ListListTypeId,
-    NilListTypeId, StringListTypeId, TupleListTypeId, UtfCodepointListTypeId,
+    BitArrayListTypeId, BoolListTypeId, CustomFunctionLocal, CustomListTypeId, CustomLocal,
+    FloatListTypeId, FunctionFunctionLocal, FunctionListTypeId, IntListTypeId, ListFunctionLocal,
+    ListListTypeId, NilListTypeId, StringListTypeId, TupleListTypeId, UtfCodepointListTypeId,
 };
 
 #[derive(Default)]
@@ -16,7 +16,7 @@ pub(super) struct FrameSlots {
     pub(super) strings: usize,
     pub(super) bit_arrays: usize,
     pub(super) utf_codepoints: usize,
-    pub(super) customs: usize,
+    pub(super) customs: Vec<CustomLocal>,
     pub(super) bools: usize,
     pub(super) tuples: usize,
     pub(super) int_lists: Vec<IntListTypeId>,
@@ -68,8 +68,8 @@ impl FrameLayout {
         self.slots.utf_codepoints
     }
 
-    pub(crate) fn customs(&self) -> usize {
-        self.slots.customs
+    pub(crate) fn customs(&self) -> &[CustomLocal] {
+        &self.slots.customs
     }
 
     pub(crate) fn bools(&self) -> usize {

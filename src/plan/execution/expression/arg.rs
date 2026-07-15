@@ -1,12 +1,12 @@
 use super::{
-    BitArrayExpr, BitArrayFunctionExpr, BoolExpr, BoolFunctionExpr, CustomExpr, CustomFunctionExpr,
-    FloatExpr, FloatFunctionExpr, FunctionFunctionExpr, IntExpr, IntFunctionExpr, ListFunctionExpr,
-    ListLocalExpr, NilExpr, NilFunctionExpr, StringExpr, StringFunctionExpr, TupleExpr,
-    TupleFunctionExpr, UtfCodepointExpr, UtfCodepointFunctionExpr,
+    BitArrayExpr, BitArrayFunctionExpr, BoolExpr, BoolFunctionExpr, CustomFunctionExpr,
+    CustomLocalExpr, FloatExpr, FloatFunctionExpr, FunctionFunctionExpr, IntExpr, IntFunctionExpr,
+    ListFunctionExpr, ListLocalExpr, NilExpr, NilFunctionExpr, StringExpr, StringFunctionExpr,
+    TupleExpr, TupleFunctionExpr, UtfCodepointExpr, UtfCodepointFunctionExpr,
 };
 use crate::plan::execution::{
     BitArrayFunctionLocalId, BitArrayLocalId, BoolFunctionLocalId, BoolLocalId,
-    CustomFunctionLocal, CustomLocalId, FloatFunctionLocalId, FloatLocalId, FunctionFunctionLocal,
+    CustomFunctionLocal, FloatFunctionLocalId, FloatLocalId, FunctionFunctionLocal,
     IntFunctionLocalId, IntLocalId, ListFunctionLocal, NilFunctionLocalId, NilLocalId,
     StringFunctionLocalId, StringLocalId, TupleFunctionLocalId, TupleLocalId,
     UtfCodepointFunctionLocalId, UtfCodepointLocalId,
@@ -33,10 +33,7 @@ pub(crate) enum CallArgKind {
         local: UtfCodepointLocalId,
         value: UtfCodepointExpr,
     },
-    Custom {
-        local: CustomLocalId,
-        value: CustomExpr,
-    },
+    Custom(CustomLocalExpr),
     Float {
         local: FloatLocalId,
         value: FloatExpr,
@@ -121,10 +118,7 @@ pub(crate) enum CaptureArgKind {
         local: UtfCodepointLocalId,
         value: UtfCodepointExpr,
     },
-    Custom {
-        local: CustomLocalId,
-        value: CustomExpr,
-    },
+    Custom(CustomLocalExpr),
     Float {
         local: FloatLocalId,
         value: FloatExpr,

@@ -1898,7 +1898,10 @@ pub fn main() {
             0,
             vec![CustomConstructorField::new(None, ValueType::Int)],
         );
-        let value = CustomExpr::local_get(CustomLocalId(0), "value".into(), type_.clone());
+        let value = CustomExpr::local_get(
+            crate::plan::CustomLocal::new(CustomLocalId(0), type_.clone()),
+            "value".into(),
+        );
         let pattern = gleam_core::ast::Pattern::Constructor {
             location: dummy_span(),
             name_location: dummy_span(),
@@ -2050,9 +2053,11 @@ pub fn main() {
                     type_: result_ast_type,
                 },
                 Expr::custom(crate::plan::CustomExpr::local_get(
-                    crate::plan::CustomLocalId(0),
+                    crate::plan::CustomLocal::new(
+                        crate::plan::CustomLocalId(0),
+                        result_type.clone(),
+                    ),
                     "value".into(),
-                    result_type.clone(),
                 )),
                 ValueType::Custom(result_type),
             ),

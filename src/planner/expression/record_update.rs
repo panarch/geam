@@ -54,9 +54,10 @@ pub(super) fn plan(
     }
 
     let local = context.define_internal_custom_local();
+    let typed_local = crate::plan::CustomLocal::new(local, source_custom_type);
     let local_name = internal_local_name(local);
     let step = Step::let_custom(local, local_name.clone(), source);
-    let local_get = CustomExpr::local_get(local, local_name, source_custom_type);
+    let local_get = CustomExpr::local_get(typed_local, local_name);
     let arguments = plan_arguments(
         arguments,
         &constructor,
@@ -386,11 +387,17 @@ pub fn main() {
                 CustomConstructorField::new(Some("age".into()), ValueType::Int),
             ],
         );
-        let source = CustomExpr::local_get(CustomLocalId(0), "person".into(), type_.clone());
+        let source = CustomExpr::local_get(
+            crate::plan::CustomLocal::new(CustomLocalId(0), type_.clone()),
+            "person".into(),
+        );
         let local = CustomLocalId(1);
         let local_name = ecow::EcoString::from("<record:update:1>");
         let projected_name = Expr::string(StringExpr::custom_field(CustomFieldAccess::new(
-            CustomExpr::local_get(local, local_name.clone(), type_.clone()),
+            CustomExpr::local_get(
+                crate::plan::CustomLocal::new(local, type_.clone()),
+                local_name.clone(),
+            ),
             0,
             Some("name".into()),
             vec![constructor.clone()],
@@ -430,11 +437,17 @@ pub fn main() {
                 CustomConstructorField::new(Some("label".into()), ValueType::String),
             ],
         );
-        let source = CustomExpr::local_get(CustomLocalId(0), "boxed".into(), type_.clone());
+        let source = CustomExpr::local_get(
+            crate::plan::CustomLocal::new(CustomLocalId(0), type_.clone()),
+            "boxed".into(),
+        );
         let local = CustomLocalId(1);
         let local_name = ecow::EcoString::from("<record:update:1>");
         let projected_value = Expr::int(IntExpr::custom_field(CustomFieldAccess::new(
-            CustomExpr::local_get(local, local_name.clone(), type_.clone()),
+            CustomExpr::local_get(
+                crate::plan::CustomLocal::new(local, type_.clone()),
+                local_name.clone(),
+            ),
             0,
             None,
             vec![constructor.clone()],
@@ -477,7 +490,10 @@ pub fn main() {
                 CustomConstructorField::new(Some("age".into()), ValueType::Int),
             ],
         );
-        let source = CustomExpr::local_get(CustomLocalId(0), "person".into(), type_.clone());
+        let source = CustomExpr::local_get(
+            crate::plan::CustomLocal::new(CustomLocalId(0), type_.clone()),
+            "person".into(),
+        );
         let local = CustomLocalId(1);
         let local_name = ecow::EcoString::from("<record:update:1>");
         let updated = CustomExpr::try_constructor(

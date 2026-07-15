@@ -1,10 +1,9 @@
 use super::{
     BitArrayFunctionLocalId, BitArrayLocalId, BoolFunctionLocalId, BoolLocalId,
-    CustomFunctionLocal, CustomLocalId, CustomTypeId, FloatFunctionLocalId, FloatLocalId,
-    FunctionFunctionLocal, FunctionType, IntFunctionLocalId, IntLocalId, ListFunctionLocal,
-    ListLocal, NilFunctionLocalId, NilLocalId, StringFunctionLocalId, StringLocalId,
-    TupleFunctionLocalId, TupleLocalId, UtfCodepointFunctionLocalId, UtfCodepointLocalId,
-    ValueType,
+    CustomFunctionLocal, CustomLocal, FloatFunctionLocalId, FloatLocalId, FunctionFunctionLocal,
+    FunctionType, IntFunctionLocalId, IntLocalId, ListFunctionLocal, ListLocal, NilFunctionLocalId,
+    NilLocalId, StringFunctionLocalId, StringLocalId, TupleFunctionLocalId, TupleLocalId,
+    UtfCodepointFunctionLocalId, UtfCodepointLocalId, ValueType,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -14,10 +13,7 @@ pub(crate) enum ParamLocal {
     String(StringLocalId),
     BitArray(BitArrayLocalId),
     UtfCodepoint(UtfCodepointLocalId),
-    Custom {
-        local: CustomLocalId,
-        type_id: CustomTypeId,
-    },
+    Custom(CustomLocal),
     Bool(BoolLocalId),
     Nil(NilLocalId),
     Tuple {
@@ -70,7 +66,7 @@ impl ParamLocal {
             Self::String(_) => ValueType::String,
             Self::BitArray(_) => ValueType::BitArray,
             Self::UtfCodepoint(_) => ValueType::UtfCodepoint,
-            Self::Custom { type_id, .. } => ValueType::Custom(*type_id),
+            Self::Custom(local) => ValueType::Custom(local.type_id()),
             Self::Bool(_) => ValueType::Bool,
             Self::Nil(_) => ValueType::Nil,
             Self::Tuple { type_, .. } => ValueType::Tuple(type_.clone()),

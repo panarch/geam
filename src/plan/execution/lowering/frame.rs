@@ -1,4 +1,6 @@
-use super::id::{custom_function_local, function_function_local, list_function_local};
+use super::id::{
+    custom_function_local, custom_local, function_function_local, list_function_local,
+};
 use crate::plan::module;
 
 pub(super) fn frame_layout(
@@ -14,7 +16,11 @@ pub(super) fn frame_layout(
         strings: parts.strings,
         bit_arrays: parts.bit_arrays,
         utf_codepoints: parts.utf_codepoints,
-        customs: parts.customs,
+        customs: parts
+            .customs
+            .into_iter()
+            .map(|local| custom_local(local, context))
+            .collect(),
         bools: parts.bools,
         tuples: parts.tuples,
         int_lists: (0..parts.int_lists)

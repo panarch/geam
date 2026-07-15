@@ -83,7 +83,7 @@ pub use id::{
     UtfCodepointLocalId,
 };
 pub(crate) use id::{
-    CustomFunctionLocal, FunctionFunctionId, FunctionFunctionLocal, RuntimeFunctionId,
+    CustomFunctionLocal, CustomLocal, FunctionFunctionId, FunctionFunctionLocal, RuntimeFunctionId,
 };
 pub(crate) use pattern::{
     BitArrayBindingPattern, BitArrayPattern, BitArrayPatternSegment, BitArrayPatternSize,

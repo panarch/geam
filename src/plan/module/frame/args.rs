@@ -9,7 +9,9 @@ impl FrameLayout {
                 CallArgKind::String { value, .. } => self.include_string_expr(value),
                 CallArgKind::BitArray { value, .. } => self.include_bit_array_expr(value),
                 CallArgKind::UtfCodepoint { value, .. } => self.include_utf_codepoint_expr(value),
-                CallArgKind::Custom { value, .. } => self.include_custom_expr(value),
+                CallArgKind::Custom(binding) => {
+                    self.include_custom_expr(binding.value());
+                }
                 CallArgKind::Float { value, .. } => self.include_float_expr(value),
                 CallArgKind::Bool { value, .. } => self.include_bool_expr(value),
                 CallArgKind::Nil { value, .. } => self.include_nil_expr(value),
@@ -55,7 +57,9 @@ impl FrameLayout {
                 CaptureArgKind::UtfCodepoint { value, .. } => {
                     self.include_utf_codepoint_expr(value)
                 }
-                CaptureArgKind::Custom { value, .. } => self.include_custom_expr(value),
+                CaptureArgKind::Custom(binding) => {
+                    self.include_custom_expr(binding.value());
+                }
                 CaptureArgKind::Float { value, .. } => self.include_float_expr(value),
                 CaptureArgKind::Bool { value, .. } => self.include_bool_expr(value),
                 CaptureArgKind::Nil { value, .. } => self.include_nil_expr(value),

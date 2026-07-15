@@ -68,9 +68,9 @@ fn bind_arguments_into(
                 let value = eval_utf_codepoint_expr(plan, state, caller_frame, value)?;
                 frame.set_utf_codepoint(*local, value);
             }
-            CallArgKind::Custom { local, value } => {
-                let value = eval_custom_expr(plan, state, caller_frame, value)?;
-                frame.set_custom(*local, value);
+            CallArgKind::Custom(binding) => {
+                let value = eval_custom_expr(plan, state, caller_frame, binding.value())?;
+                frame.set_custom(binding.local(), value);
             }
             CallArgKind::Float { local, value } => {
                 let value = eval_float_expr(plan, state, caller_frame, value)?;
@@ -165,8 +165,8 @@ pub(super) fn eval_call_argument_values(
             CallArgKind::UtfCodepoint { value, .. } => {
                 EvaluatedValue::UtfCodepoint(eval_utf_codepoint_expr(plan, state, frame, value)?)
             }
-            CallArgKind::Custom { value, .. } => {
-                EvaluatedValue::Custom(eval_custom_expr(plan, state, frame, value)?)
+            CallArgKind::Custom(binding) => {
+                EvaluatedValue::Custom(eval_custom_expr(plan, state, frame, binding.value())?)
             }
             CallArgKind::Bool { value, .. } => {
                 EvaluatedValue::Bool(eval_bool_expr(plan, state, frame, value)?)
@@ -284,9 +284,10 @@ pub(in crate::runtime) fn eval_capture_args(
                 *local,
                 eval_utf_codepoint_expr(plan, state, frame, value)?,
             ),
-            CaptureArgKind::Custom { local, value } => {
-                EvaluatedCapture::custom(*local, eval_custom_expr(plan, state, frame, value)?)
-            }
+            CaptureArgKind::Custom(binding) => EvaluatedCapture::custom(
+                binding.local(),
+                eval_custom_expr(plan, state, frame, binding.value())?,
+            ),
             CaptureArgKind::Float { local, value } => {
                 EvaluatedCapture::float(*local, eval_float_expr(plan, state, frame, value)?)
             }

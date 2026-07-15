@@ -840,9 +840,8 @@ mod tests {
                     "step".into(),
                 )))],
                 ReturnBody::expr(CustomExpr::local_get(
-                    CustomLocalId(3),
+                    crate::plan::CustomLocal::new(CustomLocalId(3), type_.clone()),
                     "return".into(),
-                    type_,
                 )),
             ),
         );
@@ -850,6 +849,9 @@ mod tests {
         let layout = FrameLayout::from_function_parts(&[], &[], &return_);
 
         assert_eq!(layout.ints(), 3);
-        assert_eq!(layout.customs, 4);
+        assert_eq!(
+            layout.customs,
+            vec![crate::plan::CustomLocal::new(CustomLocalId(3), type_)]
+        );
     }
 }

@@ -4,7 +4,9 @@ use super::expression::{
     nil_function_expr, string_expr, string_function_expr, tuple_expr, tuple_function_expr,
     utf_codepoint_expr, utf_codepoint_function_expr,
 };
-use super::id::{custom_function_local, function_function_local, list_function_local, list_local};
+use super::id::{
+    custom_function_local, custom_local, function_function_local, list_function_local, list_local,
+};
 use super::param::param_local;
 use crate::plan::{execution, module};
 
@@ -63,14 +65,13 @@ fn lower_step(step: module::Step, context: &mut super::LoweringContext) -> execu
             local: execution::UtfCodepointLocalId(local.0),
             value: utf_codepoint_expr(value, context),
         },
-        M::LetCustom {
-            local,
-            name: _,
-            value,
-        } => E::LetCustom {
-            local: execution::CustomLocalId(local.0),
-            value: custom_expr(value, context),
-        },
+        M::LetCustom { binding, name: _ } => {
+            let (local, value) = binding.into_parts();
+            E::LetCustom(execution::CustomLocalExpr::new(
+                custom_local(local, context),
+                custom_expr(value, context),
+            ))
+        }
         M::LetBool {
             local,
             name: _,
@@ -219,14 +220,14 @@ fn lower_step(step: module::Step, context: &mut super::LoweringContext) -> execu
             site,
             pattern_span,
         } => E::AssertCustom {
-            local: execution::CustomLocalId(local.0),
+            local: custom_local(local, context),
             pattern: assert_pattern(pattern, context),
             message: message.map(|message| string_expr(message, context)),
             site,
             pattern_span,
         },
         M::BindCustomFields { local, pattern } => E::BindCustomFields {
-            local: execution::CustomLocalId(local.0),
+            local: custom_local(local, context),
             pattern: custom_binding_pattern(pattern, context),
         },
         M::AssertBool {

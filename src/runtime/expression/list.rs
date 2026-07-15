@@ -21,9 +21,10 @@ use crate::runtime::evaluated::{
 use crate::runtime::frame::Frame;
 use crate::runtime::function;
 use crate::runtime::state::{
-    BitArrayListValueId, BoolListValueId, CustomListValueId, FloatListValueId, FunctionListValueId,
-    IntListValueId, ListHandleCore, ListListValueId, ListValueId, NilListValueId, RuntimeState,
-    StringListValueId, TupleListValueId, UtfCodepointListValueId,
+    BitArrayListValueId, BoolListValueId, CustomListAllocation, CustomListValueId,
+    FloatListValueId, FunctionListValueId, IntListValueId, ListHandleCore, ListListValueId,
+    ListValueId, NilListValueId, RuntimeState, StringListValueId, TupleListValueId,
+    UtfCodepointListValueId,
 };
 
 pub(in crate::runtime) fn eval_list_expr(
@@ -499,18 +500,70 @@ primitive_runtime_list_item!(
     run_utf_codepoint_list_call,
     run_utf_codepoint_list_function_call
 );
-primitive_runtime_list_item!(
-    CustomListItem,
-    EvaluatedCustomValue,
-    CustomListValueId,
-    Custom,
-    eval_custom_expr,
-    custom_values,
-    custom,
-    get_custom_list,
-    run_custom_list_call,
-    run_custom_list_function_call
-);
+impl RuntimeListItem for CustomListItem {
+    type Values = Vec<EvaluatedCustomValue>;
+    type Handle = CustomListValueId;
+
+    fn eval_elements(
+        plan: &ExecutionPlan,
+        state: &mut RuntimeState,
+        frame: &mut Frame,
+        elements: &[Self::ElementExpr],
+    ) -> Result<Self::Values, ExecutionError> {
+        elements
+            .iter()
+            .map(|element| eval_custom_expr(plan, state, frame, element))
+            .collect()
+    }
+
+    fn allocate(state: &mut RuntimeState, item: &Self, values: Self::Values) -> Self::Handle {
+        state.custom(CustomListAllocation::from_item(item, values))
+    }
+
+    fn append(state: &RuntimeState, values: &mut Self::Values, tail: &Self::Handle) {
+        values.extend(state.custom_values(tail).iter().cloned());
+    }
+
+    fn drop_first(state: &RuntimeState, values: &Self::Handle, count: usize) -> Self::Values {
+        let values = state.custom_values(values);
+        values[count.min(values.len())..].to_vec()
+    }
+
+    fn from_tuple_value(value: ListValueId) -> Option<Self::Handle> {
+        match value {
+            ListValueId::Custom(value) => Some(value),
+            _ => None,
+        }
+    }
+
+    fn from_core(item: &Self, core: ListHandleCore) -> Self::Handle {
+        CustomListValueId::new(item.type_id(), core)
+    }
+
+    fn get_local(frame: &Frame, local: Self::Local) -> Self::Handle {
+        frame.get_custom_list(local)
+    }
+
+    fn run_call(
+        plan: &ExecutionPlan,
+        state: &mut RuntimeState,
+        function: Self::Function,
+        args: &[crate::plan::execution::CallArg],
+        frame: &mut Frame,
+    ) -> Result<Self::Handle, ExecutionError> {
+        function::run_custom_list_call(plan, state, function, args, frame)
+    }
+
+    fn run_function_call(
+        plan: &ExecutionPlan,
+        state: &mut RuntimeState,
+        function: &crate::plan::execution::ListFunctionExpr,
+        args: &[crate::plan::execution::CallArg],
+        frame: &mut Frame,
+    ) -> Result<Self::Handle, ExecutionError> {
+        function::run_custom_list_function_call(plan, state, function, args, frame)
+    }
+}
 primitive_runtime_list_item!(
     FloatListItem,
     f64,

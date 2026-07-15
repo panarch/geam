@@ -145,13 +145,10 @@ fn bind_subject(
     context: &mut PlanContext<'_>,
 ) -> (Step, CustomLocalId, CustomExpr) {
     let local = context.define_internal_custom_local();
+    let typed_local = crate::plan::CustomLocal::new(local, subject_type);
     let name = internal_subject_name(local);
     let step = Step::let_custom(local, name.clone(), subject);
-    (
-        step,
-        local,
-        CustomExpr::local_get(local, name, subject_type),
-    )
+    (step, local, CustomExpr::local_get(typed_local, name))
 }
 
 fn internal_subject_name(local: CustomLocalId) -> EcoString {
@@ -286,8 +283,10 @@ pub fn main() { 0 }
             CustomTypeName::new("geam".into(), "main".into(), "Choice".into()),
             Vec::new(),
         );
-        let subject =
-            CustomExpr::local_get(CustomLocalId(0), "subject".into(), subject_type.clone());
+        let subject = CustomExpr::local_get(
+            crate::plan::CustomLocal::new(CustomLocalId(0), subject_type.clone()),
+            "subject".into(),
+        );
 
         let planned = super::plan_pattern(
             gleam_core::ast::Pattern::Variable {

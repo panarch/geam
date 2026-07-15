@@ -27,6 +27,12 @@ pub struct UtfCodepointLocalId(pub(crate) usize);
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct CustomLocalId(pub(crate) usize);
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub(crate) struct CustomLocal {
+    id: CustomLocalId,
+    type_: crate::plan::CustomType,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct BoolLocalId(pub(crate) usize);
 
@@ -502,6 +508,24 @@ impl CustomFunctionLocal {
     }
 
     pub(crate) fn into_parts(self) -> (CustomFunctionLocalId, crate::plan::CustomFunctionType) {
+        (self.id, self.type_)
+    }
+}
+
+impl CustomLocal {
+    pub(crate) fn new(id: CustomLocalId, type_: crate::plan::CustomType) -> Self {
+        Self { id, type_ }
+    }
+
+    pub(crate) fn id(&self) -> CustomLocalId {
+        self.id
+    }
+
+    pub(crate) fn type_(&self) -> &crate::plan::CustomType {
+        &self.type_
+    }
+
+    pub(crate) fn into_parts(self) -> (CustomLocalId, crate::plan::CustomType) {
         (self.id, self.type_)
     }
 }

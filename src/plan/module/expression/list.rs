@@ -1006,7 +1006,10 @@ mod tests {
             Vec::new(),
         );
         let access = CustomFieldAccess::new(
-            CustomExpr::local_get(CustomLocalId(0), "boxed".into(), custom_type.clone()),
+            CustomExpr::local_get(
+                crate::plan::CustomLocal::new(CustomLocalId(0), custom_type.clone()),
+                "boxed".into(),
+            ),
             0,
             Some("value".into()),
             vec![CustomConstructor::new(

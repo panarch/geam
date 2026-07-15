@@ -271,8 +271,9 @@ fn plan_custom_assignment(
     }
 
     let local = context.define_internal_custom_local();
+    let typed_local = crate::plan::CustomLocal::new(local, constructor.type_().clone());
     let name = internal_custom_name(local);
-    let local_value = CustomExpr::local_get(local, name.clone(), constructor.type_().clone());
+    let local_value = CustomExpr::local_get(typed_local, name.clone());
     let fields = fields
         .into_iter()
         .zip(constructor.fields())
@@ -486,9 +487,10 @@ fn plan_variable_runtime_step_and_return(
         ExprKind::Custom(value) => {
             let type_ = value.type_().clone();
             let local = context.define_custom_local(name.clone(), type_.clone());
+            let typed_local = crate::plan::CustomLocal::new(local, type_);
             (
                 Step::let_custom(local, name.clone(), value),
-                Expr::custom(CustomExpr::local_get(local, name, type_)),
+                Expr::custom(CustomExpr::local_get(typed_local, name)),
             )
         }
         ExprKind::Float(value) => {

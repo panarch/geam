@@ -408,7 +408,10 @@ mod tests {
     }
 
     fn custom_local_expr(type_: CustomType) -> CustomExpr {
-        CustomExpr::local_get(CustomLocalId(0), "value".into(), type_)
+        CustomExpr::local_get(
+            crate::plan::CustomLocal::new(CustomLocalId(0), type_),
+            "value".into(),
+        )
     }
 
     fn custom_error(type_: &CustomType, reason: InvalidCustomTypeReason) -> PlanError {

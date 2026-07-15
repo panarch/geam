@@ -128,10 +128,13 @@ pub(super) fn call_arg(
             local: execution::UtfCodepointLocalId(local.0),
             value: utf_codepoint_expr(value, context),
         },
-        M::Custom { local, value } => E::Custom {
-            local: execution::CustomLocalId(local.0),
-            value: custom_expr(value, context),
-        },
+        M::Custom(binding) => {
+            let (local, value) = binding.into_parts();
+            E::Custom(execution::CustomLocalExpr::new(
+                super::id::custom_local(local, context),
+                custom_expr(value, context),
+            ))
+        }
         M::Float { local, value } => E::Float {
             local: execution::FloatLocalId(local.0),
             value: float_expr(value, context),
@@ -229,10 +232,13 @@ fn capture_arg(
             local: execution::UtfCodepointLocalId(local.0),
             value: utf_codepoint_expr(value, context),
         },
-        M::Custom { local, value } => E::Custom {
-            local: execution::CustomLocalId(local.0),
-            value: custom_expr(value, context),
-        },
+        M::Custom(binding) => {
+            let (local, value) = binding.into_parts();
+            E::Custom(execution::CustomLocalExpr::new(
+                super::id::custom_local(local, context),
+                custom_expr(value, context),
+            ))
+        }
         M::Float { local, value } => E::Float {
             local: execution::FloatLocalId(local.0),
             value: float_expr(value, context),

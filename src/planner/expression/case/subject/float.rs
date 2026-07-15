@@ -1751,9 +1751,11 @@ fn add_one(value: Float) {
                 float(1.0).into(),
                 vec![(1.0, Expr::from(int(1)))],
                 Expr::custom(crate::plan::CustomExpr::local_get(
-                    crate::plan::CustomLocalId(0),
+                    crate::plan::CustomLocal::new(
+                        crate::plan::CustomLocalId(0),
+                        custom_type.clone(),
+                    ),
                     "fallback".into(),
-                    custom_type.clone(),
                 )),
             ),
             Err(case_branch_return_type_mismatch()),

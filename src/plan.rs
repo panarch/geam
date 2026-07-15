@@ -15,7 +15,7 @@ pub(crate) use module::{
     BoolReturn, CallArgKind, CaptureArg, CaptureArgKind, CustomBindingPattern, CustomConstructor,
     CustomConstructorField, CustomExprKind, CustomFieldAccess, CustomFunctionExprKind,
     CustomFunctionLocal, CustomFunctionReference, CustomFunctionReturn, CustomListExpr,
-    CustomListItem, CustomPattern, CustomReturn, Endianness, ExprKind, FloatBitSize,
+    CustomListItem, CustomLocal, CustomPattern, CustomReturn, Endianness, ExprKind, FloatBitSize,
     FloatCaseBranches, FloatExprKind, FloatFunctionExprKind, FloatFunctionReference,
     FloatFunctionReturn, FloatListExpr, FloatListItem, FloatReturn, FrameLayout, FunctionExprKind,
     FunctionFunctionCallMismatch, FunctionFunctionExprKind, FunctionFunctionId,
