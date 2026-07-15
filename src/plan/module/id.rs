@@ -239,10 +239,7 @@ pub(crate) enum RuntimeFunctionId {
     String(StringFunctionId),
     BitArray(BitArrayFunctionId),
     UtfCodepoint(UtfCodepointFunctionId),
-    Custom {
-        id: CustomFunctionId,
-        return_type: crate::plan::CustomType,
-    },
+    Custom(CustomFunctionId),
     Bool(BoolFunctionId),
     Nil(NilFunctionId),
     Tuple {
@@ -271,8 +268,11 @@ pub struct BitArrayFunctionId(pub(crate) usize);
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct UtfCodepointFunctionId(pub(crate) usize);
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct CustomFunctionId(pub(crate) usize);
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CustomFunctionId {
+    index: usize,
+    return_type: crate::plan::CustomType,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct BoolFunctionId(pub(crate) usize);
@@ -527,6 +527,24 @@ impl CustomLocal {
 
     pub(crate) fn into_parts(self) -> (CustomLocalId, crate::plan::CustomType) {
         (self.id, self.type_)
+    }
+}
+
+impl CustomFunctionId {
+    pub(crate) fn new(index: usize, return_type: crate::plan::CustomType) -> Self {
+        Self { index, return_type }
+    }
+
+    pub(crate) fn index(&self) -> usize {
+        self.index
+    }
+
+    pub(crate) fn return_type(&self) -> &crate::plan::CustomType {
+        &self.return_type
+    }
+
+    pub(crate) fn into_parts(self) -> (usize, crate::plan::CustomType) {
+        (self.index, self.return_type)
     }
 }
 
@@ -1143,21 +1161,21 @@ mod tests {
         BitArrayFunctionFunctionId, BitArrayFunctionLocalId, BitArrayListFunctionFunctionId,
         BitArrayListFunctionLocalId, BitArrayListLocalId, BoolFunctionFunctionId,
         BoolFunctionLocalId, BoolListFunctionFunctionId, BoolListFunctionLocalId,
-        CustomFunctionFunctionId, CustomListFunctionFunctionId, CustomListFunctionLocalId,
-        CustomListLocalId, FloatFunctionFunctionId, FloatFunctionLocalId,
-        FloatListFunctionFunctionId, FloatListFunctionLocalId, FunctionFunctionFunctionId,
-        FunctionFunctionId, FunctionFunctionLocalId, FunctionId, FunctionListFunctionFunctionId,
-        FunctionListFunctionLocalId, FunctionListLocalId, IntFunctionFunctionId,
-        IntFunctionLocalId, IntListFunctionFunctionId, IntListFunctionLocalId, IntListLocalId,
-        ListFunctionFunctionId, ListFunctionLocal, ListListFunctionFunctionId,
-        ListListFunctionLocalId, ListListLocalId, ListLocal, NilFunctionFunctionId,
-        NilFunctionLocalId, NilListFunctionFunctionId, NilListFunctionLocalId, NilListLocalId,
-        StringFunctionFunctionId, StringFunctionLocalId, StringListFunctionFunctionId,
-        StringListFunctionLocalId, StringListLocalId, TupleFunctionFunctionId,
-        TupleFunctionLocalId, TupleListFunctionFunctionId, TupleListFunctionLocalId,
-        TupleListLocalId, UtfCodepointFunctionFunctionId, UtfCodepointFunctionLocalId,
-        UtfCodepointListFunctionFunctionId, UtfCodepointListFunctionLocalId,
-        UtfCodepointListLocalId,
+        CustomFunctionFunctionId, CustomFunctionId, CustomListFunctionFunctionId,
+        CustomListFunctionLocalId, CustomListLocalId, FloatFunctionFunctionId,
+        FloatFunctionLocalId, FloatListFunctionFunctionId, FloatListFunctionLocalId,
+        FunctionFunctionFunctionId, FunctionFunctionId, FunctionFunctionLocalId, FunctionId,
+        FunctionListFunctionFunctionId, FunctionListFunctionLocalId, FunctionListLocalId,
+        IntFunctionFunctionId, IntFunctionLocalId, IntListFunctionFunctionId,
+        IntListFunctionLocalId, IntListLocalId, ListFunctionFunctionId, ListFunctionLocal,
+        ListListFunctionFunctionId, ListListFunctionLocalId, ListListLocalId, ListLocal,
+        NilFunctionFunctionId, NilFunctionLocalId, NilListFunctionFunctionId,
+        NilListFunctionLocalId, NilListLocalId, StringFunctionFunctionId, StringFunctionLocalId,
+        StringListFunctionFunctionId, StringListFunctionLocalId, StringListLocalId,
+        TupleFunctionFunctionId, TupleFunctionLocalId, TupleListFunctionFunctionId,
+        TupleListFunctionLocalId, TupleListLocalId, UtfCodepointFunctionFunctionId,
+        UtfCodepointFunctionLocalId, UtfCodepointListFunctionFunctionId,
+        UtfCodepointListFunctionLocalId, UtfCodepointListLocalId,
     };
     use crate::plan::{
         CustomFunctionType, CustomType, CustomTypeName, FunctionFunctionType, FunctionType,
@@ -1174,6 +1192,16 @@ mod tests {
     #[test]
     fn function_id_index() {
         assert_eq!(FunctionId::new(5).index(), 5);
+    }
+
+    #[test]
+    fn custom_function_id_owns_its_return_type() {
+        let type_ = custom_type();
+        let id = CustomFunctionId::new(5, type_.clone());
+
+        assert_eq!(id.index(), 5);
+        assert_eq!(id.return_type(), &type_);
+        assert_eq!(id.into_parts(), (5, type_));
     }
 
     #[test]

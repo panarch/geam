@@ -74,9 +74,7 @@ fn call_expr(function: RuntimeFunctionId, args: Vec<CallArg>) -> Expr {
         RuntimeFunctionId::UtfCodepoint(function) => {
             Expr::utf_codepoint(UtfCodepointExpr::call(function, args))
         }
-        RuntimeFunctionId::Custom { id, return_type } => {
-            Expr::custom(CustomExpr::call(id, args, return_type))
-        }
+        RuntimeFunctionId::Custom(function) => Expr::custom(CustomExpr::call(function, args)),
         RuntimeFunctionId::Float(function) => Expr::float(FloatExpr::call(function, args)),
         RuntimeFunctionId::Bool(function) => Expr::bool(BoolExpr::call(function, args)),
         RuntimeFunctionId::Nil(function) => Expr::nil(NilExpr::call(function, args)),

@@ -979,18 +979,12 @@ fn after() -> Result(Int, Nil) {
             vec![
                 (
                     "before".into(),
-                    RuntimeFunctionId::Custom {
-                        id: CustomFunctionId(0),
-                        return_type: result_custom_type(),
-                    },
+                    RuntimeFunctionId::Custom(CustomFunctionId::new(0, result_custom_type(),)),
                     result_type(),
                 ),
                 (
                     "after".into(),
-                    RuntimeFunctionId::Custom {
-                        id: CustomFunctionId(1),
-                        return_type: result_custom_type(),
-                    },
+                    RuntimeFunctionId::Custom(CustomFunctionId::new(1, result_custom_type(),)),
                     result_type(),
                 ),
             ],

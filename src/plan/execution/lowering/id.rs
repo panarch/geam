@@ -13,6 +13,14 @@ pub(super) fn custom_local(
     )
 }
 
+pub(super) fn custom_function_id(
+    id: module::CustomFunctionId,
+    context: &mut LoweringContext,
+) -> super::super::CustomFunctionId {
+    let (index, return_type) = id.into_parts();
+    super::super::CustomFunctionId::new(index, context.custom_type(return_type))
+}
+
 pub(super) fn custom_function_local(
     local: module::CustomFunctionLocal,
     context: &mut LoweringContext,

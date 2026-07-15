@@ -312,7 +312,14 @@ impl FrameLayout {
     }
 
     pub(in crate::plan::module::frame) fn include_custom_expr(&mut self, expression: &CustomExpr) {
-        match expression.kind() {
+        self.include_custom_expr_kind(expression.kind());
+    }
+
+    pub(in crate::plan::module::frame) fn include_custom_expr_kind(
+        &mut self,
+        kind: &CustomExprKind,
+    ) {
+        match kind {
             CustomExprKind::Constructor(construction) => {
                 for field in construction.fields() {
                     self.include_expr(field);
@@ -334,8 +341,8 @@ impl FrameLayout {
                 false_,
             } => {
                 self.include_bool_expr(subject);
-                self.include_custom_expr(true_);
-                self.include_custom_expr(false_);
+                self.include_custom_expr_kind(true_);
+                self.include_custom_expr_kind(false_);
             }
             CustomExprKind::IntCase {
                 subject,
@@ -344,9 +351,9 @@ impl FrameLayout {
             } => {
                 self.include_int_expr(subject);
                 for (_, branch) in clauses {
-                    self.include_custom_expr(branch);
+                    self.include_custom_expr_kind(branch);
                 }
-                self.include_custom_expr(fallback);
+                self.include_custom_expr_kind(fallback);
             }
             CustomExprKind::StringCase {
                 subject,
@@ -355,9 +362,9 @@ impl FrameLayout {
             } => {
                 self.include_string_expr(subject);
                 for (_, branch) in clauses {
-                    self.include_custom_expr(branch);
+                    self.include_custom_expr_kind(branch);
                 }
-                self.include_custom_expr(fallback);
+                self.include_custom_expr_kind(fallback);
             }
             CustomExprKind::FloatCase {
                 subject,
@@ -366,13 +373,13 @@ impl FrameLayout {
             } => {
                 self.include_float_expr(subject);
                 for (_, branch) in clauses {
-                    self.include_custom_expr(branch);
+                    self.include_custom_expr_kind(branch);
                 }
-                self.include_custom_expr(fallback);
+                self.include_custom_expr_kind(fallback);
             }
             CustomExprKind::Block { steps, return_ } => {
                 self.include_steps(steps);
-                self.include_custom_expr(return_);
+                self.include_custom_expr_kind(return_);
             }
         }
     }

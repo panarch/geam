@@ -259,10 +259,7 @@ pub(crate) enum RuntimeFunctionId {
     String(StringFunctionId),
     BitArray(BitArrayFunctionId),
     UtfCodepoint(UtfCodepointFunctionId),
-    Custom {
-        id: CustomFunctionId,
-        return_type: CustomTypeId,
-    },
+    Custom(CustomFunctionId),
     Bool(BoolFunctionId),
     Nil(NilFunctionId),
     Tuple {
@@ -292,7 +289,10 @@ pub struct BitArrayFunctionId(pub(crate) usize);
 pub struct UtfCodepointFunctionId(pub(crate) usize);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct CustomFunctionId(pub(crate) usize);
+pub struct CustomFunctionId {
+    index: usize,
+    return_type: CustomTypeId,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct BoolFunctionId(pub(crate) usize);
@@ -540,6 +540,21 @@ impl CustomLocal {
 
     pub(crate) fn type_id(self) -> CustomTypeId {
         self.type_id
+    }
+}
+
+impl CustomFunctionId {
+    pub(in crate::plan::execution) fn new(index: usize, return_type: CustomTypeId) -> Self {
+        Self { index, return_type }
+    }
+
+    pub(crate) fn index(self) -> usize {
+        self.index
+    }
+
+    #[cfg(test)]
+    pub(crate) fn return_type(self) -> CustomTypeId {
+        self.return_type
     }
 }
 

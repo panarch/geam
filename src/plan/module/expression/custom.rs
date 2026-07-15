@@ -67,27 +67,27 @@ pub(crate) enum CustomExprKind {
     Panic(PanicExpr),
     BoolCase {
         subject: Box<BoolExpr>,
-        true_: Box<CustomExpr>,
-        false_: Box<CustomExpr>,
+        true_: Box<CustomExprKind>,
+        false_: Box<CustomExprKind>,
     },
     IntCase {
         subject: Box<IntExpr>,
-        clauses: Vec<(BigInt, CustomExpr)>,
-        fallback: Box<CustomExpr>,
+        clauses: Vec<(BigInt, CustomExprKind)>,
+        fallback: Box<CustomExprKind>,
     },
     StringCase {
         subject: Box<StringExpr>,
-        clauses: Vec<(EcoString, CustomExpr)>,
-        fallback: Box<CustomExpr>,
+        clauses: Vec<(EcoString, CustomExprKind)>,
+        fallback: Box<CustomExprKind>,
     },
     FloatCase {
         subject: Box<FloatExpr>,
-        clauses: Vec<(f64, CustomExpr)>,
-        fallback: Box<CustomExpr>,
+        clauses: Vec<(f64, CustomExprKind)>,
+        fallback: Box<CustomExprKind>,
     },
     Block {
         steps: Vec<Step>,
-        return_: Box<CustomExpr>,
+        return_: Box<CustomExprKind>,
     },
 }
 
@@ -125,8 +125,11 @@ impl CustomExpr {
         )
     }
 
-    pub(crate) fn call(function: CustomFunctionId, args: Vec<CallArg>, type_: CustomType) -> Self {
-        Self::new(type_, CustomExprKind::Call { function, args })
+    pub(crate) fn call(function: CustomFunctionId, args: Vec<CallArg>) -> Self {
+        Self::new(
+            function.return_type().clone(),
+            CustomExprKind::Call { function, args },
+        )
     }
 
     pub(crate) fn try_function_call(
@@ -167,8 +170,10 @@ impl CustomExpr {
     }
 
     pub(crate) fn bool_case(subject: BoolExpr, true_: Self, false_: Self) -> Self {
+        let (type_, true_) = true_.into_parts();
+        let (_, false_) = false_.into_parts();
         Self::new(
-            true_.type_.clone(),
+            type_,
             CustomExprKind::BoolCase {
                 subject: Box::new(subject),
                 true_: Box::new(true_),
@@ -178,8 +183,13 @@ impl CustomExpr {
     }
 
     pub(crate) fn int_case(subject: IntExpr, clauses: Vec<(BigInt, Self)>, fallback: Self) -> Self {
+        let clauses = clauses
+            .into_iter()
+            .map(|(pattern, branch)| (pattern, branch.into_parts().1))
+            .collect();
+        let (type_, fallback) = fallback.into_parts();
         Self::new(
-            fallback.type_.clone(),
+            type_,
             CustomExprKind::IntCase {
                 subject: Box::new(subject),
                 clauses,
@@ -193,8 +203,13 @@ impl CustomExpr {
         clauses: Vec<(EcoString, Self)>,
         fallback: Self,
     ) -> Self {
+        let clauses = clauses
+            .into_iter()
+            .map(|(pattern, branch)| (pattern, branch.into_parts().1))
+            .collect();
+        let (type_, fallback) = fallback.into_parts();
         Self::new(
-            fallback.type_.clone(),
+            type_,
             CustomExprKind::StringCase {
                 subject: Box::new(subject),
                 clauses,
@@ -208,8 +223,13 @@ impl CustomExpr {
         clauses: Vec<(f64, Self)>,
         fallback: Self,
     ) -> Self {
+        let clauses = clauses
+            .into_iter()
+            .map(|(pattern, branch)| (pattern, branch.into_parts().1))
+            .collect();
+        let (type_, fallback) = fallback.into_parts();
         Self::new(
-            fallback.type_.clone(),
+            type_,
             CustomExprKind::FloatCase {
                 subject: Box::new(subject),
                 clauses,
@@ -219,8 +239,9 @@ impl CustomExpr {
     }
 
     pub(crate) fn block(steps: Vec<Step>, return_: Self) -> Self {
+        let (type_, return_) = return_.into_parts();
         Self::new(
-            return_.type_.clone(),
+            type_,
             CustomExprKind::Block {
                 steps,
                 return_: Box::new(return_),
@@ -437,6 +458,45 @@ mod tests {
             &CustomExprKind::FunctionCall(
                 super::CustomFunctionCall::try_new(function, vec![argument])
                     .expect("exact custom function call should be valid"),
+            ),
+        );
+    }
+
+    #[test]
+    fn same_result_children_store_only_custom_bodies() {
+        let type_ = CustomType::new(
+            CustomTypeName::new("geam".into(), "main".into(), "Boxed".into()),
+            Vec::new(),
+        );
+        let constructor = CustomConstructor::new(type_.clone(), "Boxed".into(), 0, Vec::new());
+        let branch = CustomExpr::try_constructor(constructor.clone(), Vec::new())
+            .expect("zero-field custom construction should be valid");
+        let fallback = CustomExpr::try_constructor(constructor.clone(), Vec::new())
+            .expect("zero-field custom construction should be valid");
+
+        let expression = CustomExpr::block(
+            Vec::new(),
+            CustomExpr::bool_case(crate::plan::BoolExpr::value(true), branch, fallback),
+        );
+
+        assert_eq!(
+            expression.into_parts(),
+            (
+                type_,
+                CustomExprKind::Block {
+                    steps: Vec::new(),
+                    return_: Box::new(CustomExprKind::BoolCase {
+                        subject: Box::new(crate::plan::BoolExpr::value(true)),
+                        true_: Box::new(CustomExprKind::Constructor(
+                            super::CustomConstruction::try_new(constructor.clone(), Vec::new())
+                                .expect("zero-field custom construction should be valid"),
+                        )),
+                        false_: Box::new(CustomExprKind::Constructor(
+                            super::CustomConstruction::try_new(constructor, Vec::new())
+                                .expect("zero-field custom construction should be valid"),
+                        )),
+                    }),
+                },
             ),
         );
     }

@@ -3,19 +3,19 @@ use super::super::table::FunctionTables;
 use super::super::{
     BitArrayFunctionFunctionId, BitArrayFunctionId, BitArrayFunctionReturn, BitArrayListFunctionId,
     BitArrayListReturn, BitArrayReturn, BoolFunctionFunctionId, BoolFunctionId, BoolFunctionReturn,
-    BoolListFunctionId, BoolListReturn, BoolReturn, CustomFunctionFunctionId, CustomFunctionId,
-    CustomFunctionReturn, CustomListFunctionId, CustomListReturn, CustomReturn,
-    FloatFunctionFunctionId, FloatFunctionId, FloatFunctionReturn, FloatListFunctionId,
-    FloatListReturn, FloatReturn, FunctionFunctionFunctionId, FunctionFunctionId,
-    FunctionFunctionReturn, FunctionListFunctionId, FunctionListReturn, IntFunctionFunctionId,
-    IntFunctionId, IntFunctionReturn, IntListFunctionId, IntListReturn, IntReturn,
-    ListFunctionFunctionId, ListFunctionId, ListFunctionReturn, ListListFunctionId, ListListReturn,
-    NilFunctionFunctionId, NilFunctionId, NilFunctionReturn, NilListFunctionId, NilListReturn,
-    NilReturn, RuntimeFunctionId, StringFunctionFunctionId, StringFunctionId, StringFunctionReturn,
-    StringListFunctionId, StringListReturn, StringReturn, TupleFunctionFunctionId, TupleFunctionId,
-    TupleFunctionReturn, TupleListFunctionId, TupleListReturn, TupleReturn,
-    UtfCodepointFunctionFunctionId, UtfCodepointFunctionId, UtfCodepointFunctionReturn,
-    UtfCodepointListFunctionId, UtfCodepointListReturn, UtfCodepointReturn,
+    BoolListFunctionId, BoolListReturn, BoolReturn, CustomFunctionFunctionId, CustomFunctionReturn,
+    CustomListFunctionId, CustomListReturn, CustomReturn, FloatFunctionFunctionId, FloatFunctionId,
+    FloatFunctionReturn, FloatListFunctionId, FloatListReturn, FloatReturn,
+    FunctionFunctionFunctionId, FunctionFunctionId, FunctionFunctionReturn, FunctionListFunctionId,
+    FunctionListReturn, IntFunctionFunctionId, IntFunctionId, IntFunctionReturn, IntListFunctionId,
+    IntListReturn, IntReturn, ListFunctionFunctionId, ListFunctionId, ListFunctionReturn,
+    ListListFunctionId, ListListReturn, NilFunctionFunctionId, NilFunctionId, NilFunctionReturn,
+    NilListFunctionId, NilListReturn, NilReturn, RuntimeFunctionId, StringFunctionFunctionId,
+    StringFunctionId, StringFunctionReturn, StringListFunctionId, StringListReturn, StringReturn,
+    TupleFunctionFunctionId, TupleFunctionId, TupleFunctionReturn, TupleListFunctionId,
+    TupleListReturn, TupleReturn, UtfCodepointFunctionFunctionId, UtfCodepointFunctionId,
+    UtfCodepointFunctionReturn, UtfCodepointListFunctionId, UtfCodepointListReturn,
+    UtfCodepointReturn,
 };
 use super::LoweringContext;
 use crate::plan::module;
@@ -149,22 +149,17 @@ impl FunctionTableBuilder {
                 ));
                 RuntimeFunctionId::UtfCodepoint(id)
             }
-            module::ReturnExprKind::Custom {
-                runtime_id,
-                type_,
-                body,
-            } => {
-                let id = CustomFunctionId(runtime_id.0);
-                let return_type = context.custom_type(type_);
+            module::ReturnExprKind::Custom { runtime_id, body } => {
+                let id = super::id::custom_function_id(runtime_id, context);
                 self.custom_functions.push((
-                    runtime_id.0,
+                    id.index(),
                     ExecutableFunction::new(
                         frame_layout,
                         steps,
                         super::return_::custom_return(body, context),
                     ),
                 ));
-                RuntimeFunctionId::Custom { id, return_type }
+                RuntimeFunctionId::Custom(id)
             }
             module::ReturnExprKind::Bool { runtime_id, body } => {
                 let id = BoolFunctionId(runtime_id.0);

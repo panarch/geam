@@ -1,64 +1,13 @@
 use crate::plan::{
     BitArrayExpr, BitArrayExprKind, BitArrayReturn, BoolExpr, BoolExprKind, BoolReturn, CustomExpr,
-    CustomExprKind, CustomReturn, FloatExpr, FloatExprKind, FloatReturn, IntExpr, IntExprKind,
-    IntReturn, ListItem, NilExpr, NilExprKind, NilReturn, ReturnBody, StringExpr, StringExprKind,
-    StringReturn, TupleExpr, TupleExprKind, TupleReturn, TypedListExpr, TypedListReturnKind,
-    UtfCodepointExpr, UtfCodepointExprKind, UtfCodepointReturn,
+    CustomReturn, FloatExpr, FloatExprKind, FloatReturn, IntExpr, IntExprKind, IntReturn, ListItem,
+    NilExpr, NilExprKind, NilReturn, ReturnBody, StringExpr, StringExprKind, StringReturn,
+    TupleExpr, TupleExprKind, TupleReturn, TypedListExpr, TypedListReturnKind, UtfCodepointExpr,
+    UtfCodepointExprKind, UtfCodepointReturn,
 };
 
 pub(super) fn custom_return(expression: CustomExpr) -> CustomReturn {
-    match expression.kind() {
-        CustomExprKind::Call { function, args } => ReturnBody::tail_call(*function, args.clone()),
-        CustomExprKind::BoolCase {
-            subject,
-            true_,
-            false_,
-        } => ReturnBody::bool_case(
-            (**subject).clone(),
-            custom_return((**true_).clone()),
-            custom_return((**false_).clone()),
-        ),
-        CustomExprKind::IntCase {
-            subject,
-            clauses,
-            fallback,
-        } => ReturnBody::int_case(
-            (**subject).clone(),
-            clauses
-                .iter()
-                .map(|(value, branch)| (value.clone(), custom_return(branch.clone())))
-                .collect(),
-            custom_return((**fallback).clone()),
-        ),
-        CustomExprKind::StringCase {
-            subject,
-            clauses,
-            fallback,
-        } => ReturnBody::string_case(
-            (**subject).clone(),
-            clauses
-                .iter()
-                .map(|(value, branch)| (value.clone(), custom_return(branch.clone())))
-                .collect(),
-            custom_return((**fallback).clone()),
-        ),
-        CustomExprKind::FloatCase {
-            subject,
-            clauses,
-            fallback,
-        } => ReturnBody::float_case(
-            (**subject).clone(),
-            clauses
-                .iter()
-                .map(|(value, branch)| (*value, custom_return(branch.clone())))
-                .collect(),
-            custom_return((**fallback).clone()),
-        ),
-        CustomExprKind::Block { steps, return_ } => {
-            ReturnBody::block(steps.clone(), custom_return((**return_).clone()))
-        }
-        _ => ReturnBody::expr(expression),
-    }
+    CustomReturn::expr(expression)
 }
 
 #[cfg(test)]

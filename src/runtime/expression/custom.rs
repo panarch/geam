@@ -15,7 +15,17 @@ pub(in crate::runtime) fn eval_custom_expr(
     frame: &mut Frame,
     expression: &CustomExpr,
 ) -> Result<EvaluatedCustomValue, ExecutionError> {
-    match expression.kind() {
+    eval_custom_expr_kind(plan, state, frame, expression.type_id(), expression.kind())
+}
+
+pub(in crate::runtime) fn eval_custom_expr_kind(
+    plan: &ExecutionPlan,
+    state: &mut RuntimeState,
+    frame: &mut Frame,
+    type_id: crate::plan::execution::CustomTypeId,
+    kind: &CustomExprKind,
+) -> Result<EvaluatedCustomValue, ExecutionError> {
+    match kind {
         CustomExprKind::Constructor(construction) => {
             let fields = construction
                 .fields()
@@ -35,7 +45,7 @@ pub(in crate::runtime) fn eval_custom_expr(
             function::run_custom_function_call(plan, state, call, frame)
         }
         CustomExprKind::TupleIndex { tuple, index } => {
-            let expected = ValueType::Custom(plan.custom_value_type(expression.type_id()));
+            let expected = ValueType::Custom(plan.custom_value_type(type_id));
             match project_tuple_expr(plan, state, frame, tuple, *index, expected.clone())? {
                 EvaluatedValue::Custom(value) => Ok(value),
                 other => Err(ExecutionError::TupleIndexFamilyMismatch {
@@ -45,7 +55,7 @@ pub(in crate::runtime) fn eval_custom_expr(
             }
         }
         CustomExprKind::CustomField(access) => {
-            let expected = ValueType::Custom(plan.custom_value_type(expression.type_id()));
+            let expected = ValueType::Custom(plan.custom_value_type(type_id));
             let (constructor, value) = eval_custom_field(plan, state, frame, access)?;
             match value {
                 EvaluatedValue::Custom(value) => Ok(value),
@@ -62,7 +72,7 @@ pub(in crate::runtime) fn eval_custom_expr(
             }
         }
         CustomExprKind::ListIndex { list, index } => {
-            project_custom_list_expr(plan, state, frame, list, *index, expression.type_id())
+            project_custom_list_expr(plan, state, frame, list, *index, type_id)
         }
         CustomExprKind::Panic(panic) => {
             eval_panic_expr(plan, state, frame, panic).map(|never| match never {})
@@ -73,9 +83,9 @@ pub(in crate::runtime) fn eval_custom_expr(
             false_,
         } => {
             if eval_bool_expr(plan, state, frame, subject)? {
-                eval_custom_expr(plan, state, frame, true_)
+                eval_custom_expr_kind(plan, state, frame, type_id, true_)
             } else {
-                eval_custom_expr(plan, state, frame, false_)
+                eval_custom_expr_kind(plan, state, frame, type_id, false_)
             }
         }
         CustomExprKind::IntCase {
@@ -86,10 +96,10 @@ pub(in crate::runtime) fn eval_custom_expr(
             let subject = eval_int_expr(plan, state, frame, subject)?;
             for (pattern, branch) in clauses {
                 if pattern == &subject {
-                    return eval_custom_expr(plan, state, frame, branch);
+                    return eval_custom_expr_kind(plan, state, frame, type_id, branch);
                 }
             }
-            eval_custom_expr(plan, state, frame, fallback)
+            eval_custom_expr_kind(plan, state, frame, type_id, fallback)
         }
         CustomExprKind::StringCase {
             subject,
@@ -99,10 +109,10 @@ pub(in crate::runtime) fn eval_custom_expr(
             let subject = eval_string_expr(plan, state, frame, subject)?;
             for (pattern, branch) in clauses {
                 if pattern == &subject {
-                    return eval_custom_expr(plan, state, frame, branch);
+                    return eval_custom_expr_kind(plan, state, frame, type_id, branch);
                 }
             }
-            eval_custom_expr(plan, state, frame, fallback)
+            eval_custom_expr_kind(plan, state, frame, type_id, fallback)
         }
         CustomExprKind::FloatCase {
             subject,
@@ -112,14 +122,14 @@ pub(in crate::runtime) fn eval_custom_expr(
             let subject = eval_float_expr(plan, state, frame, subject)?;
             for (pattern, branch) in clauses {
                 if pattern == &subject {
-                    return eval_custom_expr(plan, state, frame, branch);
+                    return eval_custom_expr_kind(plan, state, frame, type_id, branch);
                 }
             }
-            eval_custom_expr(plan, state, frame, fallback)
+            eval_custom_expr_kind(plan, state, frame, type_id, fallback)
         }
         CustomExprKind::Block { steps, return_ } => {
             function::execute_steps(plan, state, steps, frame)?;
-            eval_custom_expr(plan, state, frame, return_)
+            eval_custom_expr_kind(plan, state, frame, type_id, return_)
         }
     }
 }
@@ -128,10 +138,10 @@ pub(in crate::runtime) fn eval_custom_expr(
 mod tests {
     use crate::plan::{
         BoolExpr, CustomConstructor, CustomConstructorDefinition, CustomConstructorField,
-        CustomExpr, CustomFieldDefinition, CustomFunctionId, CustomReturn, CustomType,
-        CustomTypeDefinition, CustomTypeName, CustomTypePublicity, CustomTypeTemplate, Expr,
-        FloatExpr, FunctionId, FunctionPlan, IntExpr, ModulePlan, PanicExpr, PanicSite, ReturnExpr,
-        Step, StringExpr, TupleExpr, ValueType,
+        CustomExpr, CustomFieldDefinition, CustomReturn, CustomType, CustomTypeDefinition,
+        CustomTypeName, CustomTypePublicity, CustomTypeTemplate, Expr, FloatExpr, FunctionId,
+        FunctionPlan, IntExpr, ModulePlan, PanicExpr, PanicSite, ReturnExpr, Step, StringExpr,
+        TupleExpr, ValueType,
     };
     use crate::runtime::{ExecutionError, run_main};
 
@@ -193,7 +203,7 @@ pub fn main() {
         );
 
         assert_eq!(
-            run_module_custom_expression(expression, type_.clone()),
+            run_module_custom_expression(expression),
             ExecutionError::TupleIndexFamilyMismatch {
                 expected: ValueType::Custom(type_),
                 actual: ValueType::Int,
@@ -211,6 +221,10 @@ pub fn main() {
             )
             .expect("test custom construction should be valid")
         };
+        let wrap = |expression| {
+            CustomExpr::try_constructor(wrapper_constructor(), vec![Expr::custom(expression)])
+                .expect("test custom wrapper construction should be valid")
+        };
         let expressions = [
             CustomExpr::try_constructor(
                 boxed_constructor(),
@@ -222,41 +236,74 @@ pub fn main() {
                 0,
                 boxed_type(),
             ),
-            CustomExpr::bool_case(BoolExpr::panic(panic()), value(), value()),
-            CustomExpr::int_case(IntExpr::panic(panic()), Vec::new(), value()),
-            CustomExpr::string_case(StringExpr::panic(panic()), Vec::new(), value()),
-            CustomExpr::float_case(FloatExpr::panic(panic()), Vec::new(), value()),
-            CustomExpr::block(
+            wrap(CustomExpr::bool_case(
+                BoolExpr::panic(panic()),
+                value(),
+                value(),
+            )),
+            wrap(CustomExpr::int_case(
+                IntExpr::panic(panic()),
+                Vec::new(),
+                value(),
+            )),
+            wrap(CustomExpr::string_case(
+                StringExpr::panic(panic()),
+                Vec::new(),
+                value(),
+            )),
+            wrap(CustomExpr::float_case(
+                FloatExpr::panic(panic()),
+                Vec::new(),
+                value(),
+            )),
+            wrap(CustomExpr::block(
                 vec![Step::evaluate(Expr::int(IntExpr::panic(panic())))],
                 value(),
-            ),
+            )),
+            wrap(CustomExpr::bool_case(
+                BoolExpr::value(true),
+                CustomExpr::panic(panic(), boxed_type()),
+                value(),
+            )),
+            wrap(CustomExpr::int_case(
+                IntExpr::value(1.into()),
+                vec![(1.into(), CustomExpr::panic(panic(), boxed_type()))],
+                value(),
+            )),
+            wrap(CustomExpr::string_case(
+                StringExpr::value("hit".into()),
+                vec![("hit".into(), CustomExpr::panic(panic(), boxed_type()))],
+                value(),
+            )),
+            wrap(CustomExpr::float_case(
+                FloatExpr::value(1.0),
+                vec![(1.0, CustomExpr::panic(panic(), boxed_type()))],
+                value(),
+            )),
+            wrap(CustomExpr::block(
+                Vec::new(),
+                CustomExpr::panic(panic(), boxed_type()),
+            )),
         ];
 
         for expression in expressions {
             assert_eq!(
-                run_module_custom_expression(expression, boxed_type()).to_string(),
+                run_module_custom_expression(expression).to_string(),
                 "panic: `panic` expression evaluated.",
             );
         }
     }
 
-    fn run_module_custom_expression(
-        expression: crate::plan::CustomExpr,
-        type_: CustomType,
-    ) -> ExecutionError {
+    fn run_module_custom_expression(expression: crate::plan::CustomExpr) -> ExecutionError {
         let main = FunctionPlan::new(
             FunctionId::new(0),
             "main".into(),
             Vec::new(),
             Vec::new(),
-            ReturnExpr::custom_body(
-                CustomFunctionId(0),
-                type_.clone(),
-                CustomReturn::expr(expression),
-            ),
+            ReturnExpr::custom_body(0, CustomReturn::expr(expression)),
         );
         let module = ModulePlan::new("main".into(), main, Vec::new())
-            .with_custom_types(vec![boxed_definition()]);
+            .with_custom_types(vec![boxed_definition(), wrapper_definition()]);
         let plan = crate::ExecutionPlan::from_module_plan(module);
 
         run_main(&plan).expect_err("module expression should fail at runtime")
@@ -286,6 +333,44 @@ pub fn main() {
             "Boxed".into(),
             0,
             vec![CustomConstructorField::new(None, ValueType::Int)],
+        )
+    }
+
+    fn wrapper_definition() -> CustomTypeDefinition {
+        CustomTypeDefinition::new(
+            CustomTypeName::new("geam".into(), "main".into(), "Wrapper".into()),
+            CustomTypePublicity::Private,
+            false,
+            Vec::new(),
+            vec![CustomConstructorDefinition::new(
+                "Wrapper".into(),
+                0,
+                vec![CustomFieldDefinition::new(
+                    None,
+                    CustomTypeTemplate::Custom {
+                        name: CustomTypeName::new("geam".into(), "main".into(), "Boxed".into()),
+                        arguments: Vec::new(),
+                    },
+                )],
+            )],
+        )
+    }
+
+    fn wrapper_constructor() -> CustomConstructor {
+        CustomConstructor::new(
+            CustomType::new(
+                CustomTypeName::new("geam".into(), "main".into(), "Wrapper".into()),
+                Vec::new(),
+            ),
+            "Wrapper".into(),
+            0,
+            vec![CustomConstructorField::new(
+                None,
+                ValueType::Custom(CustomType::new(
+                    CustomTypeName::new("geam".into(), "main".into(), "Boxed".into()),
+                    Vec::new(),
+                )),
+            )],
         )
     }
 

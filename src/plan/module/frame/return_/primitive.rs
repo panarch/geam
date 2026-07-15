@@ -397,8 +397,15 @@ impl FrameLayout {
         &mut self,
         body: &crate::plan::CustomReturn,
     ) {
+        self.include_custom_return_body(body.body());
+    }
+
+    fn include_custom_return_body(
+        &mut self,
+        body: &crate::plan::ReturnBody<crate::plan::CustomExprKind, usize>,
+    ) {
         match body.kind() {
-            ReturnBodyKind::Expr(expression) => self.include_custom_expr(expression),
+            ReturnBodyKind::Expr(expression) => self.include_custom_expr_kind(expression),
             ReturnBodyKind::TailCall { args, .. } => self.include_call_args(args),
             ReturnBodyKind::BoolCase {
                 subject,
@@ -406,8 +413,8 @@ impl FrameLayout {
                 false_,
             } => {
                 self.include_bool_expr(subject);
-                self.include_custom_return(true_);
-                self.include_custom_return(false_);
+                self.include_custom_return_body(true_);
+                self.include_custom_return_body(false_);
             }
             ReturnBodyKind::IntCase {
                 subject,
@@ -416,9 +423,9 @@ impl FrameLayout {
             } => {
                 self.include_int_expr(subject);
                 for (_, branch) in clauses {
-                    self.include_custom_return(branch);
+                    self.include_custom_return_body(branch);
                 }
-                self.include_custom_return(fallback);
+                self.include_custom_return_body(fallback);
             }
             ReturnBodyKind::FloatCase {
                 subject,
@@ -427,9 +434,9 @@ impl FrameLayout {
             } => {
                 self.include_float_expr(subject);
                 for (_, branch) in clauses {
-                    self.include_custom_return(branch);
+                    self.include_custom_return_body(branch);
                 }
-                self.include_custom_return(fallback);
+                self.include_custom_return_body(fallback);
             }
             ReturnBodyKind::StringCase {
                 subject,
@@ -438,13 +445,13 @@ impl FrameLayout {
             } => {
                 self.include_string_expr(subject);
                 for (_, branch) in clauses {
-                    self.include_custom_return(branch);
+                    self.include_custom_return_body(branch);
                 }
-                self.include_custom_return(fallback);
+                self.include_custom_return_body(fallback);
             }
             ReturnBodyKind::Block { steps, return_ } => {
                 self.include_steps(steps);
-                self.include_custom_return(return_);
+                self.include_custom_return_body(return_);
             }
         }
     }
@@ -567,10 +574,10 @@ impl FrameLayout {
 #[cfg(test)]
 mod tests {
     use crate::plan::{
-        BoolExpr, BoolLocalId, CallArg, CustomExpr, CustomFunctionId, CustomLocalId, CustomType,
-        CustomTypeName, Expr, FloatExpr, FloatLocalId, FrameLayout, IntExpr, IntFunctionId,
-        IntLocalId, NilExpr, NilLocalId, ReturnBody, ReturnExpr, Step, StringExpr, StringLocalId,
-        TupleExpr, TupleFunctionId, TupleLocalId,
+        BoolExpr, BoolLocalId, CallArg, CustomExpr, CustomLocalId, CustomType, CustomTypeName,
+        Expr, FloatExpr, FloatLocalId, FrameLayout, IntExpr, IntFunctionId, IntLocalId, NilExpr,
+        NilLocalId, ReturnBody, ReturnExpr, Step, StringExpr, StringLocalId, TupleExpr,
+        TupleFunctionId, TupleLocalId,
     };
 
     #[test]
@@ -832,14 +839,13 @@ mod tests {
             Vec::new(),
         );
         let return_ = ReturnExpr::custom_body(
-            CustomFunctionId(0),
-            type_.clone(),
-            ReturnBody::block(
+            0,
+            crate::plan::CustomReturn::block(
                 vec![Step::evaluate(Expr::int(IntExpr::local_get(
                     IntLocalId(2),
                     "step".into(),
                 )))],
-                ReturnBody::expr(CustomExpr::local_get(
+                crate::plan::CustomReturn::expr(CustomExpr::local_get(
                     crate::plan::CustomLocal::new(CustomLocalId(3), type_.clone()),
                     "return".into(),
                 )),

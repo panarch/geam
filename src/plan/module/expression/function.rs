@@ -110,12 +110,9 @@ impl FunctionExpr {
             RuntimeFunctionId::UtfCodepoint(id) => Self::utf_codepoint(
                 UtfCodepointFunctionExpr::reference(UtfCodepointFunctionReference::new(id, params)),
             ),
-            RuntimeFunctionId::Custom { id, return_type } => {
-                Self::custom(CustomFunctionExpr::reference(
-                    CustomFunctionReference::new(id, params),
-                    return_type,
-                ))
-            }
+            RuntimeFunctionId::Custom(id) => Self::custom(CustomFunctionExpr::reference(
+                CustomFunctionReference::new(id, params),
+            )),
             RuntimeFunctionId::Bool(id) => Self::bool(BoolFunctionExpr::reference(
                 BoolFunctionReference::new(id, params),
             )),

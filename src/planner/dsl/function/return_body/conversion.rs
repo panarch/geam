@@ -349,17 +349,14 @@ mod tests {
     fn custom_conversions_build_exact_function_return_family() {
         assert_eq!(
             FunctionReturn::from(function_ref(
-                RuntimeFunctionId::Custom {
-                    id: CustomFunctionId(0),
-                    return_type: custom_type(),
-                },
+                RuntimeFunctionId::Custom(CustomFunctionId::new(0, custom_type())),
                 Vec::<ParamLocal>::new(),
             )),
             FunctionReturn::CustomFunction(CustomFunctionReturn::expr(
-                CustomFunctionExpr::reference(
-                    CustomFunctionReference::new(CustomFunctionId(0), Vec::new()),
-                    custom_type(),
-                ),
+                CustomFunctionExpr::reference(CustomFunctionReference::new(
+                    CustomFunctionId::new(0, custom_type()),
+                    Vec::new(),
+                ),),
             )),
         );
     }

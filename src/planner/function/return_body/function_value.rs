@@ -1482,13 +1482,10 @@ mod tests {
     }
 
     fn custom_function_value() -> CustomFunctionExpr {
-        CustomFunctionExpr::reference(
-            CustomFunctionReference::new(
-                CustomFunctionId(0),
-                vec![ParamLocal::float(crate::plan::FloatLocalId(0))],
-            ),
-            custom_type(),
-        )
+        CustomFunctionExpr::reference(CustomFunctionReference::new(
+            CustomFunctionId::new(0, custom_type()),
+            vec![ParamLocal::float(crate::plan::FloatLocalId(0))],
+        ))
     }
 
     fn custom_type() -> CustomType {

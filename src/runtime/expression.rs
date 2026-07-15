@@ -22,7 +22,7 @@ use std::convert::Infallible;
 pub(super) use self::{
     bit_array::eval_bit_array_expr,
     bool::eval_bool_expr,
-    custom::eval_custom_expr,
+    custom::{eval_custom_expr, eval_custom_expr_kind},
     custom_field::eval_custom_field,
     float::eval_float_expr,
     function::{

@@ -1017,14 +1017,13 @@ mod tests {
     use crate::plan::ValueType;
     use crate::plan::execution::{
         BitArrayFunctionId, BoolFunctionId, BoolFunctionLocalId, BoolListLocalId, BoolLocalId,
-        CustomFunctionId, FloatFunctionId, FloatFunctionLocalId, FloatListLocalId, FloatLocalId,
-        FunctionFunctionId, FunctionListLocalId, IntFunctionFunctionId, IntFunctionId,
-        IntFunctionLocalId, IntListFunctionLocalId, IntListLocalId, IntLocalId, ListFunctionId,
-        ListFunctionLocal, ListListLocalId, NilFunctionId, NilFunctionLocalId, NilListLocalId,
-        NilLocalId, ParamLocal, StringFunctionId, StringFunctionLocalId, StringListLocalId,
-        StringLocalId, TupleFunctionId, TupleFunctionLocalId, TupleListLocalId, TupleLocalId,
-        UtfCodepointFunctionId, UtfCodepointFunctionLocalId, UtfCodepointListLocalId,
-        UtfCodepointLocalId,
+        FloatFunctionId, FloatFunctionLocalId, FloatListLocalId, FloatLocalId, FunctionFunctionId,
+        FunctionListLocalId, IntFunctionFunctionId, IntFunctionId, IntFunctionLocalId,
+        IntListFunctionLocalId, IntListLocalId, IntLocalId, ListFunctionId, ListFunctionLocal,
+        ListListLocalId, NilFunctionId, NilFunctionLocalId, NilListLocalId, NilLocalId, ParamLocal,
+        StringFunctionId, StringFunctionLocalId, StringListLocalId, StringLocalId, TupleFunctionId,
+        TupleFunctionLocalId, TupleListLocalId, TupleLocalId, UtfCodepointFunctionId,
+        UtfCodepointFunctionLocalId, UtfCodepointListLocalId, UtfCodepointLocalId,
     };
     use crate::runtime::state::{ListValueId, RuntimeState};
     use bitvec::order::Msb0;
@@ -1120,7 +1119,7 @@ pub fn main() { 0 }
         );
         let custom_type = plan.custom_list_function_id(0).type_id().item_type();
         let custom_function = EvaluatedCustomFunction::function(
-            CustomFunctionId(0),
+            plan.custom_function_id(0),
             Vec::new(),
             Vec::new(),
             crate::plan::execution::FunctionType::new(

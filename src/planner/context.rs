@@ -2218,10 +2218,9 @@ impl FunctionRuntimeIds {
             ValueType::UtfCodepoint => {
                 RuntimeFunctionId::UtfCodepoint(self.next_utf_codepoint_id())
             }
-            ValueType::Custom(return_type) => RuntimeFunctionId::Custom {
-                id: self.next_custom_id(),
-                return_type: return_type.clone(),
-            },
+            ValueType::Custom(return_type) => {
+                RuntimeFunctionId::Custom(self.next_custom_id(return_type.clone()))
+            }
             ValueType::Bool => RuntimeFunctionId::Bool(self.next_bool_id()),
             ValueType::Nil => RuntimeFunctionId::Nil(self.next_nil_id()),
             ValueType::Tuple(return_type) => RuntimeFunctionId::Tuple {
@@ -2291,8 +2290,11 @@ impl FunctionRuntimeIds {
         id
     }
 
-    pub(in crate::planner) fn next_custom_id(&mut self) -> CustomFunctionId {
-        let id = CustomFunctionId(self.next_custom);
+    pub(in crate::planner) fn next_custom_id(
+        &mut self,
+        return_type: CustomType,
+    ) -> CustomFunctionId {
+        let id = CustomFunctionId::new(self.next_custom, return_type);
         self.next_custom += 1;
         id
     }
@@ -4538,10 +4540,7 @@ mod tests {
         );
         assert_eq!(
             ids.next(&ValueType::Custom(custom_type())),
-            RuntimeFunctionId::Custom {
-                id: crate::plan::CustomFunctionId(0),
-                return_type: custom_type(),
-            },
+            RuntimeFunctionId::Custom(crate::plan::CustomFunctionId::new(0, custom_type())),
         );
         assert_eq!(
             ids.next(&ValueType::Bool),

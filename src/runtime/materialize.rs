@@ -499,15 +499,15 @@ mod tests {
     use super::value;
     use crate::plan::execution::{
         BitArrayFunctionId, BitArrayFunctionLocalId, BitArrayListLocalId, BitArrayLocalId,
-        BoolFunctionId, BoolFunctionLocalId, BoolListLocalId, BoolLocalId, CustomFunctionId,
-        CustomFunctionLocalId, CustomListLocalId, FloatFunctionId, FloatFunctionLocalId,
-        FloatListLocalId, FloatLocalId, FunctionFunctionId, FunctionFunctionLocalId,
-        FunctionListLocalId, IntFunctionFunctionId, IntFunctionId, IntFunctionLocalId,
-        IntListFunctionLocalId, IntListLocalId, IntLocalId, ListFunctionId, ListFunctionLocal,
-        ListListLocalId, NilFunctionId, NilFunctionLocalId, NilListLocalId, NilLocalId,
-        StringFunctionId, StringFunctionLocalId, StringListLocalId, StringLocalId, TupleFunctionId,
-        TupleFunctionLocalId, TupleListLocalId, TupleLocalId, UtfCodepointFunctionId,
-        UtfCodepointFunctionLocalId, UtfCodepointListLocalId, UtfCodepointLocalId,
+        BoolFunctionId, BoolFunctionLocalId, BoolListLocalId, BoolLocalId, CustomFunctionLocalId,
+        CustomListLocalId, FloatFunctionId, FloatFunctionLocalId, FloatListLocalId, FloatLocalId,
+        FunctionFunctionId, FunctionFunctionLocalId, FunctionListLocalId, IntFunctionFunctionId,
+        IntFunctionId, IntFunctionLocalId, IntListFunctionLocalId, IntListLocalId, IntLocalId,
+        ListFunctionId, ListFunctionLocal, ListListLocalId, NilFunctionId, NilFunctionLocalId,
+        NilListLocalId, NilLocalId, StringFunctionId, StringFunctionLocalId, StringListLocalId,
+        StringLocalId, TupleFunctionId, TupleFunctionLocalId, TupleListLocalId, TupleLocalId,
+        UtfCodepointFunctionId, UtfCodepointFunctionLocalId, UtfCodepointListLocalId,
+        UtfCodepointLocalId,
     };
     use crate::plan::{FunctionType, ValueType};
     use crate::runtime::evaluated::{
@@ -556,7 +556,7 @@ pub fn main() { 0 }
         let custom_value = crate::runtime::function::run_custom_call(
             &plan,
             &mut state,
-            CustomFunctionId(0),
+            plan.custom_function_id(0),
             &[],
             &mut caller_frame,
         )
@@ -699,7 +699,7 @@ pub fn main() { 0 }
         let custom_value = crate::runtime::function::run_custom_call(
             &plan,
             &mut state,
-            CustomFunctionId(0),
+            plan.custom_function_id(0),
             &[],
             &mut caller_frame,
         )
@@ -780,7 +780,7 @@ pub fn main() { 0 }
             ),
         );
         let custom_function = EvaluatedCustomFunction::function(
-            CustomFunctionId(0),
+            plan.custom_function_id(0),
             Vec::new(),
             Vec::new(),
             crate::plan::execution::FunctionType::new(
@@ -892,7 +892,7 @@ pub fn main() { 0 }
             list_type: plan.int_list_function_id(0).type_id(),
         };
         let custom_local = plan
-            .custom_function(CustomFunctionId(1))
+            .custom_function(plan.custom_function_id(1))
             .frame_layout()
             .customs()[0];
 
@@ -1077,7 +1077,7 @@ pub fn main() { 0 }
             CaptureValue::custom_function(
                 CustomFunctionLocalId(0),
                 CustomFunctionValue::new_with_captures(
-                    CustomFunctionValueTarget::Function(CustomFunctionId(0)),
+                    CustomFunctionValueTarget::Function(plan.custom_function_id(0)),
                     Vec::new(),
                     Vec::new(),
                     FunctionType::new(Vec::new(), ValueType::Custom(custom_type)),

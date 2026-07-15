@@ -1,9 +1,9 @@
 use super::returning_function::FunctionFunctionCallMismatch;
 use crate::plan::{
     BoolExpr, CaptureArg, CustomConstructor, CustomFieldAccess, CustomFunctionFunctionId,
-    CustomFunctionId, CustomFunctionLocal, CustomFunctionReference, CustomFunctionType, CustomType,
-    FloatExpr, FunctionFunctionExpr, FunctionListExpr, FunctionType, IntExpr, PanicExpr,
-    ParamLocal, Step, StringExpr, TupleExpr,
+    CustomFunctionId, CustomFunctionLocal, CustomFunctionReference, CustomFunctionType, FloatExpr,
+    FunctionFunctionExpr, FunctionListExpr, FunctionType, IntExpr, PanicExpr, ParamLocal, Step,
+    StringExpr, TupleExpr,
 };
 use ecow::EcoString;
 use num_bigint::BigInt;
@@ -87,10 +87,10 @@ impl CustomFunctionExpr {
         }
     }
 
-    pub(crate) fn reference(value: CustomFunctionReference, return_type: CustomType) -> Self {
+    pub(crate) fn reference(value: CustomFunctionReference) -> Self {
         let type_ = CustomFunctionType::new(
             value.params().iter().map(ParamLocal::value_type).collect(),
-            return_type,
+            value.function().return_type().clone(),
         );
         Self {
             type_,
@@ -102,8 +102,11 @@ impl CustomFunctionExpr {
         runtime_id: CustomFunctionId,
         params: Vec<ParamLocal>,
         captures: Vec<CaptureArg>,
-        type_: CustomFunctionType,
     ) -> Self {
+        let type_ = CustomFunctionType::new(
+            params.iter().map(ParamLocal::value_type).collect(),
+            runtime_id.return_type().clone(),
+        );
         Self {
             type_,
             kind: CustomFunctionExprKind::Closure {
@@ -361,11 +364,11 @@ mod tests {
     }
 
     fn function_value() -> CustomFunctionExpr {
-        CustomFunctionExpr::reference(function_reference(), custom_type())
+        CustomFunctionExpr::reference(function_reference())
     }
 
     fn function_reference() -> CustomFunctionReference {
-        CustomFunctionReference::new(CustomFunctionId(0), Vec::new())
+        CustomFunctionReference::new(CustomFunctionId::new(0, custom_type()), Vec::new())
     }
 
     fn function_call_callee() -> FunctionFunctionExpr {

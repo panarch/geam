@@ -910,7 +910,7 @@ pub fn main() {
         let mut frame = Frame::new(function.frame_layout(), &mut state);
         let custom_function_local = function.frame_layout().custom_functions()[0].clone();
         let custom_function = crate::runtime::EvaluatedCustomFunction::function(
-            crate::plan::execution::CustomFunctionId(0),
+            plan.custom_function_id(0),
             Vec::new(),
             Vec::new(),
             custom_function_local.type_().to_function_type(),

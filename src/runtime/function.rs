@@ -74,8 +74,8 @@ pub(super) fn run_main(plan: &ExecutionPlan) -> ExecutionResult<Value> {
             run_utf_codepoint_call(plan, &mut state, function, &[], &mut caller_frame)
                 .map(EvaluatedValue::UtfCodepoint)
         }
-        RuntimeFunctionId::Custom { id, .. } => {
-            run_custom_call(plan, &mut state, id, &[], &mut caller_frame)
+        RuntimeFunctionId::Custom(function) => {
+            run_custom_call(plan, &mut state, function, &[], &mut caller_frame)
                 .map(EvaluatedValue::Custom)
         }
         RuntimeFunctionId::Bool(function) => {

@@ -178,7 +178,12 @@ impl FunctionTables {
         &self,
         id: CustomFunctionId,
     ) -> &ExecutableFunction<CustomReturn> {
-        &self.custom_functions[id.0]
+        &self.custom_functions[id.index()]
+    }
+
+    #[cfg(test)]
+    pub(super) fn custom_function_id(&self, index: usize) -> CustomFunctionId {
+        CustomFunctionId::new(index, self.custom_functions[index].return_().type_id())
     }
 
     pub(super) fn bool_function(&self, id: BoolFunctionId) -> &ExecutableFunction<BoolReturn> {

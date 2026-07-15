@@ -332,8 +332,8 @@ fn invalid_expression_shape(kind: InvalidExpressionShapeKind) -> Result<Expr, Pl
 mod tests {
     use super::{plan, plan_record, plan_record_constructor};
     use crate::plan::{
-        CustomConstructor, CustomConstructorField, CustomExpr, CustomFunctionId, CustomReturn,
-        CustomType, CustomTypeName, Expr, IntLocalId, LocalId, ReturnExpr, ValueType,
+        CustomConstructor, CustomConstructorField, CustomExpr, CustomReturn, CustomType,
+        CustomTypeName, Expr, IntLocalId, LocalId, ReturnExpr, ValueType,
     };
     use crate::planner::context::{AnonymousFunctions, PlanContext};
     use crate::planner::dsl::{
@@ -492,8 +492,7 @@ pub fn main() { empty }
         assert_eq!(
             plan.main_function().return_(),
             &ReturnExpr::custom_body(
-                CustomFunctionId(0),
-                type_,
+                0,
                 CustomReturn::expr(
                     CustomExpr::try_constructor(constructor, Vec::new())
                         .expect("test custom construction should be valid"),
@@ -534,8 +533,7 @@ pub fn main() { older_lucy }
         assert_eq!(
             plan.main_function().return_(),
             &ReturnExpr::custom_body(
-                CustomFunctionId(0),
-                type_,
+                0,
                 CustomReturn::expr(
                     CustomExpr::try_constructor(
                         constructor,

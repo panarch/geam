@@ -54,27 +54,27 @@ pub(crate) enum CustomExprKind {
     Panic(PanicExpr),
     BoolCase {
         subject: Box<BoolExpr>,
-        true_: Box<CustomExpr>,
-        false_: Box<CustomExpr>,
+        true_: Box<CustomExprKind>,
+        false_: Box<CustomExprKind>,
     },
     IntCase {
         subject: Box<IntExpr>,
-        clauses: Vec<(BigInt, CustomExpr)>,
-        fallback: Box<CustomExpr>,
+        clauses: Vec<(BigInt, CustomExprKind)>,
+        fallback: Box<CustomExprKind>,
     },
     StringCase {
         subject: Box<StringExpr>,
-        clauses: Vec<(EcoString, CustomExpr)>,
-        fallback: Box<CustomExpr>,
+        clauses: Vec<(EcoString, CustomExprKind)>,
+        fallback: Box<CustomExprKind>,
     },
     FloatCase {
         subject: Box<FloatExpr>,
-        clauses: Vec<(f64, CustomExpr)>,
-        fallback: Box<CustomExpr>,
+        clauses: Vec<(f64, CustomExprKind)>,
+        fallback: Box<CustomExprKind>,
     },
     Block {
         steps: Vec<Step>,
-        return_: Box<CustomExpr>,
+        return_: Box<CustomExprKind>,
     },
 }
 

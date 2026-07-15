@@ -150,7 +150,7 @@ impl FunctionValue {
             RuntimeFunctionId::UtfCodepoint(runtime_id) => FunctionValueKind::UtfCodepoint(
                 UtfCodepointFunctionValue::new_with_captures(runtime_id, params, Vec::new(), type_),
             ),
-            RuntimeFunctionId::Custom { id, .. } => {
+            RuntimeFunctionId::Custom(id) => {
                 FunctionValueKind::Custom(CustomFunctionValue::new_with_captures(
                     CustomFunctionValueTarget::Function(id),
                     params,

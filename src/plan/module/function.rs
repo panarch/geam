@@ -116,7 +116,11 @@ pub(crate) type FloatReturn = ReturnBody<FloatExpr, FloatFunctionId>;
 pub(crate) type StringReturn = ReturnBody<StringExpr, StringFunctionId>;
 pub(crate) type BitArrayReturn = ReturnBody<BitArrayExpr, BitArrayFunctionId>;
 pub(crate) type UtfCodepointReturn = ReturnBody<UtfCodepointExpr, UtfCodepointFunctionId>;
-pub(crate) type CustomReturn = ReturnBody<CustomExpr, CustomFunctionId>;
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct CustomReturn {
+    type_: CustomType,
+    body: ReturnBody<super::CustomExprKind, usize>,
+}
 pub(crate) type BoolReturn = ReturnBody<BoolExpr, BoolFunctionId>;
 pub(crate) type NilReturn = ReturnBody<NilExpr, NilFunctionId>;
 pub(crate) type TupleReturn = ReturnBody<TupleExpr, TupleFunctionId>;
@@ -839,7 +843,6 @@ pub(crate) enum ReturnExprKind {
     },
     Custom {
         runtime_id: CustomFunctionId,
-        type_: CustomType,
         body: CustomReturn,
     },
     Bool {
@@ -1065,17 +1068,10 @@ impl ReturnExpr {
         }
     }
 
-    pub(crate) fn custom_body(
-        runtime_id: CustomFunctionId,
-        type_: CustomType,
-        body: CustomReturn,
-    ) -> Self {
+    pub(crate) fn custom_body(runtime_index: usize, body: CustomReturn) -> Self {
+        let runtime_id = CustomFunctionId::new(runtime_index, body.type_().clone());
         Self {
-            kind: ReturnExprKind::Custom {
-                runtime_id,
-                type_,
-                body,
-            },
+            kind: ReturnExprKind::Custom { runtime_id, body },
         }
     }
 
@@ -1460,7 +1456,9 @@ impl ReturnExpr {
             ReturnExprKind::String { .. } => ValueType::String,
             ReturnExprKind::BitArray { .. } => ValueType::BitArray,
             ReturnExprKind::UtfCodepoint { .. } => ValueType::UtfCodepoint,
-            ReturnExprKind::Custom { type_, .. } => ValueType::Custom(type_.clone()),
+            ReturnExprKind::Custom { runtime_id, .. } => {
+                ValueType::Custom(runtime_id.return_type().clone())
+            }
             ReturnExprKind::Bool { .. } => ValueType::Bool,
             ReturnExprKind::Nil { .. } => ValueType::Nil,
             ReturnExprKind::Tuple { type_, .. } => ValueType::Tuple(type_.clone()),
@@ -1517,12 +1515,9 @@ impl ReturnExpr {
             ReturnExprKind::UtfCodepoint { runtime_id, .. } => {
                 RuntimeFunctionId::UtfCodepoint(*runtime_id)
             }
-            ReturnExprKind::Custom {
-                runtime_id, type_, ..
-            } => RuntimeFunctionId::Custom {
-                id: *runtime_id,
-                return_type: type_.clone(),
-            },
+            ReturnExprKind::Custom { runtime_id, .. } => {
+                RuntimeFunctionId::Custom(runtime_id.clone())
+            }
             ReturnExprKind::Bool { runtime_id, .. } => RuntimeFunctionId::Bool(*runtime_id),
             ReturnExprKind::Nil { runtime_id, .. } => RuntimeFunctionId::Nil(*runtime_id),
             ReturnExprKind::Tuple {
@@ -1645,6 +1640,91 @@ impl ReturnExpr {
                 return_type: runtime_id.type_().to_function_type(),
             },
         }
+    }
+}
+
+impl CustomReturn {
+    pub(crate) fn expr(expression: CustomExpr) -> Self {
+        let (type_, kind) = expression.into_parts();
+        Self {
+            type_,
+            body: custom_return_body(kind),
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn block(steps: Vec<Step>, return_: Self) -> Self {
+        Self {
+            type_: return_.type_,
+            body: ReturnBody::block(steps, return_.body),
+        }
+    }
+
+    pub(crate) fn type_(&self) -> &CustomType {
+        &self.type_
+    }
+
+    pub(crate) fn body(&self) -> &ReturnBody<super::CustomExprKind, usize> {
+        &self.body
+    }
+
+    pub(crate) fn into_parts(self) -> (CustomType, ReturnBody<super::CustomExprKind, usize>) {
+        (self.type_, self.body)
+    }
+}
+
+fn custom_return_body(kind: super::CustomExprKind) -> ReturnBody<super::CustomExprKind, usize> {
+    use super::CustomExprKind as K;
+
+    match kind {
+        K::Call { function, args } => ReturnBody::tail_call(function.index(), args),
+        K::BoolCase {
+            subject,
+            true_,
+            false_,
+        } => ReturnBody::bool_case(
+            *subject,
+            custom_return_body(*true_),
+            custom_return_body(*false_),
+        ),
+        K::IntCase {
+            subject,
+            clauses,
+            fallback,
+        } => ReturnBody::int_case(
+            *subject,
+            clauses
+                .into_iter()
+                .map(|(pattern, branch)| (pattern, custom_return_body(branch)))
+                .collect(),
+            custom_return_body(*fallback),
+        ),
+        K::FloatCase {
+            subject,
+            clauses,
+            fallback,
+        } => ReturnBody::float_case(
+            *subject,
+            clauses
+                .into_iter()
+                .map(|(pattern, branch)| (pattern, custom_return_body(branch)))
+                .collect(),
+            custom_return_body(*fallback),
+        ),
+        K::StringCase {
+            subject,
+            clauses,
+            fallback,
+        } => ReturnBody::string_case(
+            *subject,
+            clauses
+                .into_iter()
+                .map(|(pattern, branch)| (pattern, custom_return_body(branch)))
+                .collect(),
+            custom_return_body(*fallback),
+        ),
+        K::Block { steps, return_ } => ReturnBody::block(steps, custom_return_body(*return_)),
+        kind => ReturnBody::expr(kind),
     }
 }
 
@@ -2185,6 +2265,49 @@ mod tests {
     }
 
     #[test]
+    fn custom_returns_own_one_type_around_itemless_tail_calls() {
+        let type_ = custom_type();
+        let function = CustomFunctionId::new(7, type_.clone());
+        let body = CustomReturn::expr(CustomExpr::block(
+            Vec::new(),
+            CustomExpr::bool_case(
+                BoolExpr::value(true),
+                CustomExpr::call(function.clone(), Vec::new()),
+                CustomExpr::call(function, Vec::new()),
+            ),
+        ));
+
+        assert_eq!(
+            body,
+            CustomReturn {
+                type_,
+                body: ReturnBody {
+                    kind: ReturnBodyKind::Block {
+                        steps: Vec::new(),
+                        return_: Box::new(ReturnBody {
+                            kind: ReturnBodyKind::BoolCase {
+                                subject: BoolExpr::value(true),
+                                true_: Box::new(ReturnBody {
+                                    kind: ReturnBodyKind::TailCall {
+                                        function: 7,
+                                        args: Vec::new(),
+                                    },
+                                }),
+                                false_: Box::new(ReturnBody {
+                                    kind: ReturnBodyKind::TailCall {
+                                        function: 7,
+                                        args: Vec::new(),
+                                    },
+                                }),
+                            },
+                        }),
+                    },
+                },
+            },
+        );
+    }
+
+    #[test]
     fn function_plan_accessors() {
         let param = Param::named(ParamLocal::int(IntLocalId(0)), "x".into());
         let return_ = ReturnExpr::int(IntFunctionId(0), IntExpr::value(BigInt::from(1)));
@@ -2611,17 +2734,13 @@ mod tests {
             ),
             (
                 ReturnExpr::custom_body(
-                    CustomFunctionId(14),
-                    custom_type.clone(),
+                    14,
                     CustomReturn::expr(CustomExpr::local_get(
                         crate::plan::CustomLocal::new(CustomLocalId(0), custom_type.clone()),
                         "custom".into(),
                     )),
                 ),
-                RuntimeFunctionId::Custom {
-                    id: CustomFunctionId(14),
-                    return_type: custom_type.clone(),
-                },
+                RuntimeFunctionId::Custom(CustomFunctionId::new(14, custom_type.clone())),
             ),
             (
                 ReturnExpr::bool(BoolFunctionId(3), BoolExpr::value(true)),
@@ -2713,8 +2832,10 @@ mod tests {
                 ReturnExpr::custom_function_body(
                     14,
                     CustomFunctionReturn::expr(CustomFunctionExpr::reference(
-                        CustomFunctionReference::new(CustomFunctionId(0), Vec::new()),
-                        custom_type,
+                        CustomFunctionReference::new(
+                            CustomFunctionId::new(0, custom_type),
+                            Vec::new(),
+                        ),
                     )),
                 ),
                 RuntimeFunctionId::Function {

@@ -208,6 +208,11 @@ impl ExecutionPlan {
         self.functions.custom_function(id)
     }
 
+    #[cfg(test)]
+    pub(crate) fn custom_function_id(&self, index: usize) -> CustomFunctionId {
+        self.functions.custom_function_id(index)
+    }
+
     pub(crate) fn bool_function(&self, id: BoolFunctionId) -> &ExecutableFunction<BoolReturn> {
         self.functions.bool_function(id)
     }

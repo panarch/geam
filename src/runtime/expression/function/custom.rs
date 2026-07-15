@@ -318,13 +318,10 @@ pub fn main() {
         let actual_type = CustomFunctionType::new(vec![ValueType::Int], boxed_type());
         let tuple = TupleExpr::value(
             vec![Expr::function(FunctionExpr::custom(
-                CustomFunctionExpr::reference(
-                    CustomFunctionReference::new(
-                        CustomFunctionId(0),
-                        vec![ParamLocal::int(IntLocalId(0))],
-                    ),
-                    boxed_type(),
-                ),
+                CustomFunctionExpr::reference(CustomFunctionReference::new(
+                    CustomFunctionId::new(0, boxed_type()),
+                    vec![ParamLocal::int(IntLocalId(0))],
+                )),
             ))],
             vec![ValueType::Function(Box::new(type_.to_function_type()))],
         );
@@ -343,18 +340,17 @@ pub fn main() {
     fn module_child_errors_propagate_through_custom_function_wrappers() {
         let panic = || PanicExpr::panic_at(None, PanicSite::unknown());
         let fallback = || {
-            CustomFunctionExpr::reference(
-                CustomFunctionReference::new(CustomFunctionId(0), Vec::new()),
-                boxed_type(),
-            )
+            CustomFunctionExpr::reference(CustomFunctionReference::new(
+                CustomFunctionId::new(0, boxed_type()),
+                Vec::new(),
+            ))
         };
         let type_ = boxed_function_type();
         let expressions = [
             CustomFunctionExpr::closure(
-                CustomFunctionId(0),
+                CustomFunctionId::new(0, boxed_type()),
                 Vec::new(),
                 vec![CaptureArg::int(IntLocalId(0), IntExpr::panic(panic()))],
-                type_.clone(),
             ),
             CustomFunctionExpr::tuple_index(
                 TupleExpr::panic(

@@ -394,8 +394,10 @@ mod tests {
             )],
         );
         let actual_value = Expr::function(FunctionExpr::custom(CustomFunctionExpr::reference(
-            CustomFunctionReference::new(CustomFunctionId(0), vec![ParamLocal::int(IntLocalId(0))]),
-            inner_type,
+            CustomFunctionReference::new(
+                CustomFunctionId::new(0, inner_type),
+                vec![ParamLocal::int(IntLocalId(0))],
+            ),
         )));
         let access = CustomFieldAccess::new(
             CustomExpr::try_constructor(constructor.clone(), vec![actual_value])

@@ -459,14 +459,11 @@ mod tests {
 
     #[test]
     fn function_block_helper_preserves_custom_return_family() {
-        let runtime_id = RuntimeFunctionId::Custom {
-            id: CustomFunctionId(0),
-            return_type: custom_type(),
-        };
-        let value = CustomFunctionExpr::reference(
-            CustomFunctionReference::new(CustomFunctionId(0), Vec::new()),
-            custom_type(),
-        );
+        let runtime_id = RuntimeFunctionId::Custom(CustomFunctionId::new(0, custom_type()));
+        let value = CustomFunctionExpr::reference(CustomFunctionReference::new(
+            CustomFunctionId::new(0, custom_type()),
+            Vec::new(),
+        ));
 
         assert_eq!(
             FunctionExpr::from(block_function(

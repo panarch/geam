@@ -303,9 +303,9 @@ fn internal_local_name(local: CustomLocalId) -> EcoString {
 #[cfg(test)]
 mod tests {
     use crate::plan::{
-        CustomConstructor, CustomConstructorField, CustomExpr, CustomFieldAccess, CustomFunctionId,
-        CustomLocalId, CustomReturn, CustomType, CustomTypeName, Expr, IntExpr, ReturnExpr, Step,
-        StringExpr, ValueType,
+        CustomConstructor, CustomConstructorField, CustomExpr, CustomFieldAccess, CustomLocalId,
+        CustomReturn, CustomType, CustomTypeName, Expr, IntExpr, ReturnExpr, Step, StringExpr,
+        ValueType,
     };
     use crate::planner::support::{compile, dummy_span};
     use crate::planner::{
@@ -411,8 +411,7 @@ pub fn main() {
         assert_eq!(
             plan.main_function().return_(),
             &ReturnExpr::custom_body(
-                CustomFunctionId(0),
-                type_,
+                0,
                 CustomReturn::block(
                     vec![Step::let_custom(local, local_name, source)],
                     CustomReturn::expr(updated),
@@ -464,8 +463,7 @@ pub fn main() {
         assert_eq!(
             plan.main_function().return_(),
             &ReturnExpr::custom_body(
-                CustomFunctionId(0),
-                type_,
+                0,
                 CustomReturn::block(
                     vec![Step::let_custom(local, local_name, source)],
                     CustomReturn::expr(updated),
@@ -508,8 +506,7 @@ pub fn main() {
         assert_eq!(
             plan.main_function().return_(),
             &ReturnExpr::custom_body(
-                CustomFunctionId(0),
-                type_,
+                0,
                 CustomReturn::block(
                     vec![Step::let_custom(local, local_name, source)],
                     CustomReturn::expr(updated),

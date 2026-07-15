@@ -15,7 +15,7 @@ use super::id::list_function_local;
 use crate::plan::module;
 
 pub(super) use bool::bool_expr;
-pub(super) use custom::custom_expr;
+pub(super) use custom::{custom_expr, custom_expr_kind};
 pub(super) use custom_field::custom_field_access;
 pub(super) use float::float_expr;
 pub(super) use function::{

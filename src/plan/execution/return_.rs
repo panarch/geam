@@ -1,7 +1,7 @@
 use super::{
     BitArrayExpr, BitArrayFunctionExpr, BitArrayFunctionFunctionId, BitArrayFunctionId,
     BitArrayListExpr, BitArrayListFunctionId, BoolExpr, BoolFunctionExpr, BoolFunctionFunctionId,
-    BoolFunctionId, BoolListExpr, BoolListFunctionId, CallArg, CustomExpr, CustomFunctionExprKind,
+    BoolFunctionId, BoolListExpr, BoolListFunctionId, CallArg, CustomFunctionExprKind,
     CustomFunctionFunctionId, CustomFunctionId, CustomFunctionType, CustomListExpr,
     CustomListFunctionId, FloatExpr, FloatFunctionExpr, FloatFunctionFunctionId, FloatFunctionId,
     FloatListExpr, FloatListFunctionId, FunctionFunctionExprKind, FunctionFunctionFunctionId,
@@ -23,7 +23,10 @@ pub(crate) type FloatReturn = ReturnBody<FloatExpr, FloatFunctionId>;
 pub(crate) type StringReturn = ReturnBody<StringExpr, StringFunctionId>;
 pub(crate) type BitArrayReturn = ReturnBody<BitArrayExpr, BitArrayFunctionId>;
 pub(crate) type UtfCodepointReturn = ReturnBody<UtfCodepointExpr, UtfCodepointFunctionId>;
-pub(crate) type CustomReturn = ReturnBody<CustomExpr, CustomFunctionId>;
+pub(crate) struct CustomReturn {
+    type_id: super::CustomTypeId,
+    body: ReturnBody<super::CustomExprKind, usize>,
+}
 pub(crate) type BoolReturn = ReturnBody<BoolExpr, BoolFunctionId>;
 pub(crate) type NilReturn = ReturnBody<NilExpr, NilFunctionId>;
 pub(crate) type TupleReturn = ReturnBody<TupleExpr, TupleFunctionId>;
@@ -102,6 +105,27 @@ impl<Expression, Function> ReturnBody<Expression, Function> {
 
     pub(crate) fn kind(&self) -> &ReturnBodyKind<Expression, Function> {
         &self.kind
+    }
+}
+
+impl CustomReturn {
+    pub(in crate::plan::execution) fn from_parts(
+        type_id: super::CustomTypeId,
+        body: ReturnBody<super::CustomExprKind, usize>,
+    ) -> Self {
+        Self { type_id, body }
+    }
+
+    pub(crate) fn type_id(&self) -> super::CustomTypeId {
+        self.type_id
+    }
+
+    pub(crate) fn body(&self) -> &ReturnBody<super::CustomExprKind, usize> {
+        &self.body
+    }
+
+    pub(crate) fn function_id(&self, index: usize) -> CustomFunctionId {
+        CustomFunctionId::new(index, self.type_id)
     }
 }
 

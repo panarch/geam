@@ -1,7 +1,7 @@
 use super::LoweringContext;
 use super::expression::{
     bit_array_expr, bit_array_function_expr, bit_array_list_expr, bool_expr, bool_function_expr,
-    bool_list_expr, call_args, custom_expr, custom_function_expr_kind, custom_list_expr,
+    bool_list_expr, call_args, custom_expr_kind, custom_function_expr_kind, custom_list_expr,
     float_expr, float_function_expr, float_list_expr, function_function_expr_kind,
     function_list_expr, int_expr, int_function_expr, int_list_expr, list_function_expr,
     list_list_expr, nil_expr, nil_function_expr, nil_list_expr, string_expr, string_function_expr,
@@ -60,9 +60,10 @@ pub(super) fn custom_return(
     body: module::CustomReturn,
     context: &mut LoweringContext,
 ) -> execution::CustomReturn {
-    return_body(body, context, custom_expr, |id, _| {
-        execution::CustomFunctionId(id.0)
-    })
+    let (type_, body) = body.into_parts();
+    let type_id = context.custom_type(type_);
+    let body = return_body(body, context, custom_expr_kind, |index, _| index);
+    execution::CustomReturn::from_parts(type_id, body)
 }
 
 pub(super) fn bool_return(

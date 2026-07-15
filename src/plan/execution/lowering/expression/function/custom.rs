@@ -20,9 +20,11 @@ pub(in crate::plan::execution::lowering) fn custom_function_expr_kind(
 
     match kind {
         M::Constructor(constructor) => E::Constructor(context.custom_constructor(constructor)),
-        M::Reference(value) => E::Reference(super::function_reference(value, context, |id, _| {
-            execution::CustomFunctionId(id.0)
-        })),
+        M::Reference(value) => {
+            E::Reference(super::function_reference(value, context, |id, context| {
+                super::super::super::id::custom_function_id(id, context)
+            }))
+        }
         M::Closure {
             runtime_id,
             params,
@@ -32,7 +34,7 @@ pub(in crate::plan::execution::lowering) fn custom_function_expr_kind(
             params,
             captures,
             context,
-            |id, _| execution::CustomFunctionId(id.0),
+            super::super::super::id::custom_function_id,
         )),
         M::LocalGet { local, name: _ } => E::LocalGet {
             local: crate::plan::execution::lowering::id::custom_function_local(local, context),

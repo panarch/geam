@@ -99,9 +99,9 @@ pub(super) fn param_local(
 #[cfg(test)]
 mod tests {
     use crate::plan::execution::{
-        CustomFunctionExprKind, CustomFunctionId, ExecutionPlan, ListFunctionExpr,
-        ListFunctionExprKind, ListFunctionId, ListListFunctionId, ListListTypeId, ListLocal,
-        ParamLocal, RuntimeFunctionId, Step, StepKind, ValueType,
+        CustomFunctionExprKind, ExecutionPlan, ListFunctionExpr, ListFunctionExprKind,
+        ListFunctionId, ListListFunctionId, ListListTypeId, ListLocal, ParamLocal,
+        RuntimeFunctionId, Step, StepKind, ValueType,
     };
 
     #[test]
@@ -167,7 +167,7 @@ pub fn main() {
             })
             .expect("main should bind the custom-returning function reference");
 
-        assert_eq!(reference.function(), &CustomFunctionId(1));
+        assert_eq!(reference.function(), &plan.custom_function_id(1));
         assert_eq!(
             reference.params(),
             &[
@@ -261,7 +261,7 @@ pub fn main() {
         crate::plan::execution::CustomTypeId,
     ) {
         match plan.main_runtime() {
-            RuntimeFunctionId::Custom { id, return_type } => (id, return_type),
+            RuntimeFunctionId::Custom(id) => (id, id.return_type()),
             _ => panic!("expected a custom-returning main function"),
         }
     }

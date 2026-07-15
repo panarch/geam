@@ -8,11 +8,18 @@ pub(in crate::plan::execution::lowering) fn custom_expr(
     expression: module::CustomExpr,
     context: &mut super::super::LoweringContext,
 ) -> execution::CustomExpr {
+    let (type_, kind) = expression.into_parts();
+    execution::CustomExpr::from_parts(context.custom_type(type_), custom_expr_kind(kind, context))
+}
+
+pub(in crate::plan::execution::lowering) fn custom_expr_kind(
+    kind: module::CustomExprKind,
+    context: &mut super::super::LoweringContext,
+) -> execution::CustomExprKind {
     use execution::CustomExprKind as E;
     use module::CustomExprKind as M;
 
-    let (type_, kind) = expression.into_parts();
-    let kind = match kind {
+    match kind {
         M::Constructor(construction) => {
             let (constructor, fields) = construction.into_parts();
             E::Constructor(execution::CustomConstruction::from_parts(
@@ -29,7 +36,7 @@ pub(in crate::plan::execution::lowering) fn custom_expr(
             local: super::super::id::custom_local(local, context),
         },
         M::Call { function, args } => E::Call {
-            function: execution::CustomFunctionId(function.0),
+            function: super::super::id::custom_function_id(function, context),
             args: call_args(args, context),
         },
         M::FunctionCall(call) => {
@@ -55,8 +62,8 @@ pub(in crate::plan::execution::lowering) fn custom_expr(
             false_,
         } => E::BoolCase {
             subject: Box::new(bool_expr(*subject, context)),
-            true_: Box::new(custom_expr(*true_, context)),
-            false_: Box::new(custom_expr(*false_, context)),
+            true_: Box::new(custom_expr_kind(*true_, context)),
+            false_: Box::new(custom_expr_kind(*false_, context)),
         },
         M::IntCase {
             subject,
@@ -66,9 +73,9 @@ pub(in crate::plan::execution::lowering) fn custom_expr(
             subject: Box::new(int_expr(*subject, context)),
             clauses: clauses
                 .into_iter()
-                .map(|(pattern, branch)| (pattern, custom_expr(branch, context)))
+                .map(|(pattern, branch)| (pattern, custom_expr_kind(branch, context)))
                 .collect(),
-            fallback: Box::new(custom_expr(*fallback, context)),
+            fallback: Box::new(custom_expr_kind(*fallback, context)),
         },
         M::StringCase {
             subject,
@@ -78,9 +85,9 @@ pub(in crate::plan::execution::lowering) fn custom_expr(
             subject: Box::new(string_expr(*subject, context)),
             clauses: clauses
                 .into_iter()
-                .map(|(pattern, branch)| (pattern, custom_expr(branch, context)))
+                .map(|(pattern, branch)| (pattern, custom_expr_kind(branch, context)))
                 .collect(),
-            fallback: Box::new(custom_expr(*fallback, context)),
+            fallback: Box::new(custom_expr_kind(*fallback, context)),
         },
         M::FloatCase {
             subject,
@@ -90,15 +97,13 @@ pub(in crate::plan::execution::lowering) fn custom_expr(
             subject: Box::new(float_expr(*subject, context)),
             clauses: clauses
                 .into_iter()
-                .map(|(pattern, branch)| (pattern, custom_expr(branch, context)))
+                .map(|(pattern, branch)| (pattern, custom_expr_kind(branch, context)))
                 .collect(),
-            fallback: Box::new(custom_expr(*fallback, context)),
+            fallback: Box::new(custom_expr_kind(*fallback, context)),
         },
         M::Block { steps, return_ } => E::Block {
             steps: super::super::step::steps(steps, context),
-            return_: Box::new(custom_expr(*return_, context)),
+            return_: Box::new(custom_expr_kind(*return_, context)),
         },
-    };
-
-    execution::CustomExpr::from_parts(context.custom_type(type_), kind)
+    }
 }

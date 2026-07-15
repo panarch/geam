@@ -4,9 +4,9 @@ mod primitive;
 
 use crate::plan::{
     BitArrayFunctionReturn, BitArrayReturn, BoolFunctionReturn, BoolReturn, CustomFunctionReturn,
-    CustomReturn, CustomType, FloatFunctionReturn, FloatReturn, FunctionFunctionReturn,
-    FunctionType, IntFunctionReturn, IntReturn, ListFunctionReturn, ListReturn, NilFunctionReturn,
-    NilReturn, ReturnExpr, StringFunctionReturn, StringReturn, TupleFunctionReturn, TupleReturn,
+    CustomReturn, FloatFunctionReturn, FloatReturn, FunctionFunctionReturn, FunctionType,
+    IntFunctionReturn, IntReturn, ListFunctionReturn, ListReturn, NilFunctionReturn, NilReturn,
+    ReturnExpr, StringFunctionReturn, StringReturn, TupleFunctionReturn, TupleReturn,
     UtfCodepointFunctionReturn, UtfCodepointReturn, ValueType,
 };
 use crate::planner::context::FunctionRuntimeIds;
@@ -20,10 +20,7 @@ pub(crate) enum FunctionReturn {
     String(StringReturn),
     BitArray(BitArrayReturn),
     UtfCodepoint(UtfCodepointReturn),
-    Custom {
-        type_: CustomType,
-        body: CustomReturn,
-    },
+    Custom(CustomReturn),
     Float(FloatReturn),
     Bool(BoolReturn),
     Nil(NilReturn),
@@ -84,8 +81,9 @@ impl FunctionReturn {
             Self::UtfCodepoint(body) => {
                 ReturnExpr::utf_codepoint_body(runtime_ids.next_utf_codepoint_id(), body)
             }
-            Self::Custom { type_, body } => {
-                ReturnExpr::custom_body(runtime_ids.next_custom_id(), type_, body)
+            Self::Custom(body) => {
+                let runtime_index = runtime_ids.next_custom_id(body.type_().clone()).index();
+                ReturnExpr::custom_body(runtime_index, body)
             }
             Self::Float(body) => ReturnExpr::float_body(runtime_ids.next_float_id(), body),
             Self::Bool(body) => ReturnExpr::bool_body(runtime_ids.next_bool_id(), body),
@@ -180,13 +178,13 @@ mod tests {
     use crate::plan::module::CustomListReturn;
     use crate::plan::{
         BitArrayFunctionFunctionId, BitArrayFunctionId, BoolFunctionFunctionId, BoolFunctionId,
-        CustomExpr, CustomFunctionExpr, CustomFunctionId, CustomFunctionLocalId,
-        CustomFunctionReturn, CustomListFunctionId, CustomLocalId, CustomReturn, CustomType,
-        CustomTypeName, Expr, FloatFunctionFunctionId, FloatFunctionId, FunctionFunctionId,
-        FunctionFunctionReturn, FunctionType, IntFunctionFunctionId, IntFunctionId,
-        ListFunctionFunctionId, NilFunctionFunctionId, NilFunctionId, ParamLocal, ReturnBody,
-        ReturnExpr, StringFunctionFunctionId, StringFunctionId, TupleFunctionFunctionId,
-        TupleFunctionId, UtfCodepointFunctionFunctionId, UtfCodepointFunctionId, ValueType,
+        CustomExpr, CustomFunctionExpr, CustomFunctionLocalId, CustomFunctionReturn,
+        CustomListFunctionId, CustomLocalId, CustomReturn, CustomType, CustomTypeName, Expr,
+        FloatFunctionFunctionId, FloatFunctionId, FunctionFunctionId, FunctionFunctionReturn,
+        FunctionType, IntFunctionFunctionId, IntFunctionId, ListFunctionFunctionId,
+        NilFunctionFunctionId, NilFunctionId, ParamLocal, ReturnBody, ReturnExpr,
+        StringFunctionFunctionId, StringFunctionId, TupleFunctionFunctionId, TupleFunctionId,
+        UtfCodepointFunctionFunctionId, UtfCodepointFunctionId, ValueType,
     };
     use crate::planner::context::FunctionRuntimeIds;
     use crate::planner::dsl::expression::{
@@ -519,16 +517,8 @@ mod tests {
             "value".into(),
         );
         assert_eq!(
-            FunctionReturn::Custom {
-                type_: custom_type(),
-                body: CustomReturn::expr(custom.clone()),
-            }
-            .build(&mut runtime_ids),
-            ReturnExpr::custom_body(
-                CustomFunctionId(0),
-                custom_type(),
-                CustomReturn::expr(custom),
-            ),
+            FunctionReturn::Custom(CustomReturn::expr(custom.clone())).build(&mut runtime_ids),
+            ReturnExpr::custom_body(0, CustomReturn::expr(custom)),
         );
 
         let custom_list =

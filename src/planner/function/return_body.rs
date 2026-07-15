@@ -38,16 +38,11 @@ pub(super) fn function_return_expr(
         )),
         (
             ValueType::Custom(expected),
-            RuntimeFunctionId::Custom {
-                id: runtime_id,
-                return_type,
-            },
+            RuntimeFunctionId::Custom(runtime_id),
             ExprKind::Custom(actual),
-        ) if expected == actual.type_() && expected == return_type => Ok(ReturnExpr::custom_body(
-            *runtime_id,
-            expected.clone(),
-            primitive::custom_return(actual),
-        )),
+        ) if expected == actual.type_() && expected == runtime_id.return_type() => Ok(
+            ReturnExpr::custom_body(runtime_id.index(), primitive::custom_return(actual)),
+        ),
         (ValueType::Float, RuntimeFunctionId::Float(runtime_id), ExprKind::Float(actual)) => Ok(
             ReturnExpr::float_body(*runtime_id, primitive::float_return(actual)),
         ),
