@@ -32,6 +32,10 @@ pub enum InvalidTypedAstReason {
     CaseShape { reason: InvalidCaseShapeReason },
     #[error("pipeline shape: {reason}")]
     PipelineShape { reason: InvalidPipelineShapeReason },
+    #[error("record update shape: {reason}")]
+    RecordUpdateShape {
+        reason: InvalidRecordUpdateShapeReason,
+    },
     #[error("use shape: {reason}")]
     UseShape { reason: InvalidUseShapeReason },
     #[error("unknown local variable: {name}")]
@@ -96,6 +100,28 @@ pub enum InvalidExpressionShapeKind {
     RecordConstructor,
     #[error("record access")]
     RecordAccess,
+    #[error("record update")]
+    RecordUpdate,
+}
+
+#[derive(Debug, Error, Clone, Copy, PartialEq, Eq)]
+pub enum InvalidRecordUpdateShapeReason {
+    #[error("record constructor")]
+    Constructor,
+    #[error("record constructor argument count")]
+    ArgumentCount,
+    #[error("record constructor argument label")]
+    ArgumentLabel,
+    #[error("record update base assignment")]
+    BaseAssignment,
+    #[error("record update implicit argument origin")]
+    ImplicitArgumentOrigin,
+    #[error("record update implicit field access")]
+    ImplicitFieldAccess,
+    #[error("record update implicit field target")]
+    ImplicitFieldTarget,
+    #[error("record update type")]
+    Type,
 }
 
 #[derive(Debug, Error, Clone, Copy, PartialEq, Eq)]

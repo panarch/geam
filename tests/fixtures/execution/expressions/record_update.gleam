@@ -7,4 +7,4 @@ pub fn main() {
   Person(..person, age: 31)
 }
 
-// geam:reject unsupported expression: record update
+// geam:expect Custom(type=geam/main/Person, constructor=Person#0, fields=[name: String("Lucy"), age: Int(31)])

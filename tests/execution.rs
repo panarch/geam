@@ -81,6 +81,9 @@ mod expressions {
         record_access,
         record_access_combinations,
         record_access_families,
+        record_update,
+        record_update_combinations,
+        record_update_families,
         result_constructor,
     );
 }
@@ -575,7 +578,6 @@ mod rejection {
             bit_array_dynamic_size,
             bit_array_sized_bits,
             polymorphic_custom_constructor,
-            record_update,
         );
     }
 

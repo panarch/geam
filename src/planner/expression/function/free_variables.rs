@@ -194,9 +194,20 @@ fn collect_expr(expression: &TypedExpr, bound: &mut HashSet<EcoString>, free: &m
             }
         }
         TypedExpr::RecordAccess { record, .. } => collect_expr(record, bound, free),
+        TypedExpr::RecordUpdate {
+            updated_record,
+            arguments,
+            ..
+        } => {
+            collect_expr(updated_record, bound, free);
+            for argument in arguments {
+                if argument.implicit.is_none() {
+                    collect_expr(&argument.value, bound, free);
+                }
+            }
+        }
         TypedExpr::PositionalAccess { .. }
         | TypedExpr::Echo { .. }
-        | TypedExpr::RecordUpdate { .. }
         | TypedExpr::ModuleSelect { .. } => {}
     }
 }
@@ -533,6 +544,27 @@ pub fn main() {
 "#,
             ),
             vec!["boxed".to_string()],
+        );
+    }
+
+    #[test]
+    fn anonymous_free_variables_include_record_update_base_and_explicit_arguments_once() {
+        assert_eq!(
+            anonymous_function_free_variables(
+                r#"
+type Person {
+  Person(name: String, age: Int)
+}
+
+pub fn main() {
+  let person = Person(name: "Lucy", age: 30)
+  let age = 31
+  fn() { Person(..person, age: age) }
+  1
+}
+"#,
+            ),
+            vec!["person".to_string(), "age".to_string()],
         );
     }
 

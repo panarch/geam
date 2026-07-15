@@ -7,7 +7,8 @@ mod unsupported;
 pub use invalid::{
     InvalidCallShapeReason, InvalidCaseShapeReason, InvalidCustomTypeReason,
     InvalidExpressionShapeKind, InvalidExpressionType, InvalidFunctionShapeReason,
-    InvalidPipelineShapeReason, InvalidTypedAstReason, InvalidUseShapeReason,
+    InvalidPipelineShapeReason, InvalidRecordUpdateShapeReason, InvalidTypedAstReason,
+    InvalidUseShapeReason,
 };
 pub use unsupported::{
     UnsupportedArgumentReason, UnsupportedBinOpKind, UnsupportedBitArraySegmentReason,

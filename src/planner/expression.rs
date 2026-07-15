@@ -7,6 +7,7 @@ mod function;
 mod operator;
 mod pipeline;
 mod record_access;
+mod record_update;
 mod var;
 
 use crate::plan::{
@@ -127,9 +128,21 @@ pub(super) fn plan_expr(
         TypedExpr::BitArray { segments, .. } => {
             bit_array::plan_expression(segments, context).map(Expr::bit_array)
         }
-        TypedExpr::RecordUpdate { .. } => Err(PlanError::UnsupportedExpression {
-            kind: UnsupportedExpressionKind::RecordUpdate,
-        }),
+        TypedExpr::RecordUpdate {
+            type_,
+            updated_record,
+            updated_record_assigned_name,
+            constructor,
+            arguments,
+            ..
+        } => record_update::plan(
+            type_,
+            *updated_record,
+            updated_record_assigned_name,
+            *constructor,
+            arguments,
+            context,
+        ),
         TypedExpr::Invalid { .. } => Err(PlanError::InvalidTypedAst {
             reason: InvalidTypedAstReason::ExpressionShape {
                 kind: InvalidExpressionShapeKind::Invalid,
@@ -1184,21 +1197,6 @@ pub fn main() {
                 r#"pub fn main() { echo 1 }"#,
                 PlanError::UnsupportedExpression {
                     kind: UnsupportedExpressionKind::Echo,
-                },
-            ),
-            (
-                r#"
-pub type Person {
-  Person(name: String, age: Int)
-}
-
-pub fn main() {
-  let person = Person(name: "Lucy", age: 30)
-  Person(..person, age: 31)
-}
-"#,
-                PlanError::UnsupportedExpression {
-                    kind: UnsupportedExpressionKind::RecordUpdate,
                 },
             ),
         ];

@@ -52,9 +52,9 @@ pub(in crate::planner::expression) fn plan(
         Constant::BitArray { segments, .. } => {
             super::bit_array::plan_constant(segments, context).map(Expr::bit_array)
         }
-        Constant::RecordUpdate { .. } => Err(PlanError::UnsupportedExpression {
-            kind: UnsupportedExpressionKind::RecordUpdate,
-        }),
+        Constant::RecordUpdate { .. } => {
+            invalid_expression_shape(InvalidExpressionShapeKind::RecordUpdate)
+        }
         Constant::Todo { .. } | Constant::Invalid { .. } => {
             invalid_expression_shape(InvalidExpressionShapeKind::Invalid)
         }
@@ -1078,8 +1078,10 @@ pub fn main() {
                 type_: type_::int(),
                 field_map: Inferred::Unknown,
             }),
-            Err(PlanError::UnsupportedExpression {
-                kind: UnsupportedExpressionKind::RecordUpdate,
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionShape {
+                    kind: InvalidExpressionShapeKind::RecordUpdate,
+                },
             }),
         );
     }
