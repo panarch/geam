@@ -74,6 +74,7 @@ pub(crate) struct FunctionListItem {
 }
 
 impl TupleListItem {
+    #[cfg(test)]
     pub(crate) fn new(item_type: Vec<ValueType>) -> Self {
         Self { item_type }
     }
@@ -88,6 +89,7 @@ impl TupleListItem {
 }
 
 impl ListListItem {
+    #[cfg(test)]
     pub(crate) fn new(item_type: Box<ValueType>) -> Self {
         Self { item_type }
     }
@@ -102,6 +104,7 @@ impl ListListItem {
 }
 
 impl FunctionListItem {
+    #[cfg(test)]
     pub(crate) fn new(item_type: FunctionType) -> Self {
         Self { item_type }
     }
@@ -116,10 +119,6 @@ impl FunctionListItem {
 }
 
 impl CustomListItem {
-    pub(crate) fn new(item_type: CustomType) -> Self {
-        Self { item_type }
-    }
-
     pub(crate) fn item_type(&self) -> CustomType {
         self.item_type.clone()
     }
@@ -163,6 +162,7 @@ macro_rules! primitive_list_item {
                     .map(|value| match value {
                         Expr {
                             kind: $expr_pattern,
+                            ..
                         } => Ok($expr_value),
                         value => Err(ListElementTypeMismatch {
                             expected: $value_type,
@@ -289,6 +289,7 @@ impl ListItem for TupleListItem {
             .map(|value| match value {
                 Expr {
                     kind: ExprKind::Tuple(value),
+                    ..
                 } if value.type_() == item.item_type.as_slice() => Ok(value),
                 value => Err(ListElementTypeMismatch {
                     expected: item.value_type(),
@@ -332,6 +333,7 @@ impl ListItem for CustomListItem {
             .map(|value| match value {
                 Expr {
                     kind: ExprKind::Custom(value),
+                    ..
                 } if value.type_() == &item.item_type => Ok(value),
                 value => Err(ListElementTypeMismatch {
                     expected: item.value_type(),
@@ -375,6 +377,7 @@ impl ListItem for ListListItem {
             .map(|value| match value {
                 Expr {
                     kind: ExprKind::List(value),
+                    ..
                 } if value.element_type() == item.item_type.as_ref().clone() => Ok(value),
                 value => Err(ListElementTypeMismatch {
                     expected: item.value_type(),
@@ -418,6 +421,7 @@ impl ListItem for FunctionListItem {
             .map(|value| match value {
                 Expr {
                     kind: ExprKind::Function(value),
+                    ..
                 } if value.type_() == item.item_type => Ok(value),
                 value => Err(ListElementTypeMismatch {
                     expected: item.value_type(),

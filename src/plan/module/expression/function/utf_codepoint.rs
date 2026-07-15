@@ -1,7 +1,9 @@
 use crate::plan::CustomFieldAccess;
+#[cfg(test)]
+use crate::plan::ParamLocal;
 use crate::plan::{
     BoolExpr, CaptureArg, FloatExpr, FunctionFunctionExpr, FunctionListExpr, FunctionType, IntExpr,
-    PanicExpr, ParamLocal, Step, StringExpr, TupleExpr, UtfCodepointFunctionFunctionId,
+    PanicExpr, ParamSlot, Step, StringExpr, TupleExpr, UtfCodepointFunctionFunctionId,
     UtfCodepointFunctionId, UtfCodepointFunctionLocalId, UtfCodepointFunctionReference,
 };
 use ecow::EcoString;
@@ -18,7 +20,7 @@ pub(crate) enum UtfCodepointFunctionExprKind {
     Reference(UtfCodepointFunctionReference),
     Closure {
         runtime_id: UtfCodepointFunctionId,
-        params: Vec<ParamLocal>,
+        params: Vec<ParamSlot>,
         captures: Vec<CaptureArg>,
     },
     LocalGet {
@@ -76,7 +78,11 @@ pub(crate) enum UtfCodepointFunctionExprKind {
 impl UtfCodepointFunctionExpr {
     pub(crate) fn reference(value: UtfCodepointFunctionReference) -> Self {
         let type_ = FunctionType::new(
-            value.params().iter().map(ParamLocal::value_type).collect(),
+            value
+                .params()
+                .iter()
+                .map(crate::plan::ParamSlot::value_type)
+                .collect(),
             crate::plan::ValueType::UtfCodepoint,
         );
         Self {
@@ -85,9 +91,9 @@ impl UtfCodepointFunctionExpr {
         }
     }
 
-    pub(crate) fn closure(
+    pub(crate) fn closure_slots(
         runtime_id: UtfCodepointFunctionId,
-        params: Vec<ParamLocal>,
+        params: Vec<ParamSlot>,
         captures: Vec<CaptureArg>,
         type_: FunctionType,
     ) -> Self {
@@ -99,6 +105,21 @@ impl UtfCodepointFunctionExpr {
                 captures,
             },
         }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn closure(
+        runtime_id: UtfCodepointFunctionId,
+        params: Vec<ParamLocal>,
+        captures: Vec<CaptureArg>,
+        type_: FunctionType,
+    ) -> Self {
+        Self::closure_slots(
+            runtime_id,
+            params.into_iter().map(ParamSlot::from_local).collect(),
+            captures,
+            type_,
+        )
     }
 
     pub(crate) fn local_get(
@@ -294,7 +315,9 @@ mod tests {
             .kind(),
             &UtfCodepointFunctionExprKind::Closure {
                 runtime_id: UtfCodepointFunctionId(0),
-                params: vec![ParamLocal::utf_codepoint(UtfCodepointLocalId(0))],
+                params: vec![crate::plan::ParamSlot::from_local(
+                    ParamLocal::utf_codepoint(UtfCodepointLocalId(0))
+                )],
                 captures: Vec::new(),
             },
         );

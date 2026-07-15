@@ -22,18 +22,20 @@ pub(in crate::runtime) fn eval_nil_function_expr(
     match expression.kind() {
         NilFunctionExprKind::Reference(reference) => Ok(EvaluatedNilFunction::new(
             *reference.function(),
-            reference.params().to_vec(),
+            reference.param_locals(),
             Vec::new(),
-            crate::runtime::evaluated::function_type(
+            crate::runtime::evaluated::function_type_from_slots(
+                plan,
                 reference.params(),
                 crate::plan::execution::ValueType::Nil,
             ),
         )),
         NilFunctionExprKind::Closure(template) => Ok(EvaluatedNilFunction::new(
             *template.function(),
-            template.params().to_vec(),
+            template.param_locals(),
             function::eval_capture_args(plan, state, frame, template.captures())?,
-            crate::runtime::evaluated::function_type(
+            crate::runtime::evaluated::function_type_from_slots(
+                plan,
                 template.params(),
                 crate::plan::execution::ValueType::Nil,
             ),

@@ -1,9 +1,9 @@
-use super::ParamLocal;
 use super::expression::{
     BitArrayExpr, BitArrayFunctionExpr, BoolExpr, BoolFunctionExpr, CustomFunctionExpr,
     CustomLocalExpr, Expr, FloatExpr, FloatFunctionExpr, FunctionFunctionExpr, IntExpr,
     IntFunctionExpr, ListFunctionExpr, ListLocalExpr, NilExpr, NilFunctionExpr, StringExpr,
-    StringFunctionExpr, TupleExpr, TupleFunctionExpr, UtfCodepointExpr, UtfCodepointFunctionExpr,
+    StringFunctionExpr, TupleExpr, TupleFunctionExpr, TypedFunctionExpr, UtfCodepointExpr,
+    UtfCodepointFunctionExpr,
 };
 use super::id::{
     BitArrayFunctionLocalId, BitArrayLocalId, BoolFunctionLocalId, BoolLocalId,
@@ -12,6 +12,7 @@ use super::id::{
     StringFunctionLocalId, StringLocalId, TupleFunctionLocalId, TupleLocalId,
     UtfCodepointFunctionLocalId, UtfCodepointLocalId,
 };
+use super::{ParamLocal, ParamSlot};
 use crate::plan::execution::{BitArrayPattern, CustomBindingPattern};
 use crate::plan::{PanicSite, SourceSpan};
 
@@ -20,7 +21,11 @@ pub struct Step {
 }
 
 pub(crate) struct AssertBinding {
-    local: ParamLocal,
+    slot: ParamSlot,
+}
+
+pub(crate) struct StringAssertBinding {
+    local: StringLocalId,
 }
 
 pub(crate) enum AssertPattern {
@@ -37,8 +42,8 @@ pub(crate) enum AssertPattern {
     Custom(crate::plan::execution::CustomPattern),
     StringPrefix {
         prefix: ecow::EcoString,
-        left: Option<AssertBinding>,
-        right: Option<AssertBinding>,
+        left: Option<StringAssertBinding>,
+        right: Option<StringAssertBinding>,
     },
     Alias {
         pattern: Box<AssertPattern>,
@@ -107,47 +112,47 @@ pub(crate) enum StepKind {
     },
     LetIntFunction {
         local: IntFunctionLocalId,
-        value: IntFunctionExpr,
+        value: TypedFunctionExpr<IntFunctionExpr>,
     },
     LetFloatFunction {
         local: FloatFunctionLocalId,
-        value: FloatFunctionExpr,
+        value: TypedFunctionExpr<FloatFunctionExpr>,
     },
     LetStringFunction {
         local: StringFunctionLocalId,
-        value: StringFunctionExpr,
+        value: TypedFunctionExpr<StringFunctionExpr>,
     },
     LetBitArrayFunction {
         local: BitArrayFunctionLocalId,
-        value: BitArrayFunctionExpr,
+        value: TypedFunctionExpr<BitArrayFunctionExpr>,
     },
     LetUtfCodepointFunction {
         local: UtfCodepointFunctionLocalId,
-        value: UtfCodepointFunctionExpr,
+        value: TypedFunctionExpr<UtfCodepointFunctionExpr>,
     },
     LetCustomFunction {
         local: CustomFunctionLocal,
-        value: CustomFunctionExpr,
+        value: TypedFunctionExpr<CustomFunctionExpr>,
     },
     LetBoolFunction {
         local: BoolFunctionLocalId,
-        value: BoolFunctionExpr,
+        value: TypedFunctionExpr<BoolFunctionExpr>,
     },
     LetNilFunction {
         local: NilFunctionLocalId,
-        value: NilFunctionExpr,
+        value: TypedFunctionExpr<NilFunctionExpr>,
     },
     LetTupleFunction {
         local: TupleFunctionLocalId,
-        value: TupleFunctionExpr,
+        value: TypedFunctionExpr<TupleFunctionExpr>,
     },
     LetListFunction {
         local: ListFunctionLocal,
-        value: ListFunctionExpr,
+        value: TypedFunctionExpr<ListFunctionExpr>,
     },
     LetFunctionFunction {
         local: FunctionFunctionLocal,
-        value: FunctionFunctionExpr,
+        value: TypedFunctionExpr<FunctionFunctionExpr>,
     },
     AssertList {
         local: ListLocal,
@@ -183,12 +188,26 @@ pub(crate) enum StepKind {
 }
 
 impl AssertBinding {
-    pub(crate) fn new(local: ParamLocal) -> Self {
-        Self { local }
+    pub(crate) fn new(slot: ParamSlot) -> Self {
+        Self { slot }
     }
 
     pub(crate) fn local(&self) -> &ParamLocal {
-        &self.local
+        self.slot.local()
+    }
+
+    pub(crate) fn shape(&self) -> super::ValueShapeId {
+        self.slot.shape()
+    }
+}
+
+impl StringAssertBinding {
+    pub(super) fn new(local: StringLocalId) -> Self {
+        Self { local }
+    }
+
+    pub(crate) fn local(&self) -> StringLocalId {
+        self.local
     }
 }
 

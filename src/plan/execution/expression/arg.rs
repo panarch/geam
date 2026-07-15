@@ -2,7 +2,7 @@ use super::{
     BitArrayExpr, BitArrayFunctionExpr, BoolExpr, BoolFunctionExpr, CustomFunctionExpr,
     CustomLocalExpr, FloatExpr, FloatFunctionExpr, FunctionFunctionExpr, IntExpr, IntFunctionExpr,
     ListFunctionExpr, ListLocalExpr, NilExpr, NilFunctionExpr, StringExpr, StringFunctionExpr,
-    TupleExpr, TupleFunctionExpr, UtfCodepointExpr, UtfCodepointFunctionExpr,
+    TupleExpr, TupleFunctionExpr, TypedFunctionExpr, UtfCodepointExpr, UtfCodepointFunctionExpr,
 };
 use crate::plan::execution::{
     BitArrayFunctionLocalId, BitArrayLocalId, BoolFunctionLocalId, BoolLocalId,
@@ -53,47 +53,47 @@ pub(crate) enum CallArgKind {
     List(ListLocalExpr),
     IntFunction {
         local: IntFunctionLocalId,
-        value: IntFunctionExpr,
+        value: TypedFunctionExpr<IntFunctionExpr>,
     },
     StringFunction {
         local: StringFunctionLocalId,
-        value: StringFunctionExpr,
+        value: TypedFunctionExpr<StringFunctionExpr>,
     },
     BitArrayFunction {
         local: BitArrayFunctionLocalId,
-        value: BitArrayFunctionExpr,
+        value: TypedFunctionExpr<BitArrayFunctionExpr>,
     },
     UtfCodepointFunction {
         local: UtfCodepointFunctionLocalId,
-        value: UtfCodepointFunctionExpr,
+        value: TypedFunctionExpr<UtfCodepointFunctionExpr>,
     },
     CustomFunction {
         local: CustomFunctionLocal,
-        value: CustomFunctionExpr,
+        value: TypedFunctionExpr<CustomFunctionExpr>,
     },
     FloatFunction {
         local: FloatFunctionLocalId,
-        value: FloatFunctionExpr,
+        value: TypedFunctionExpr<FloatFunctionExpr>,
     },
     BoolFunction {
         local: BoolFunctionLocalId,
-        value: BoolFunctionExpr,
+        value: TypedFunctionExpr<BoolFunctionExpr>,
     },
     NilFunction {
         local: NilFunctionLocalId,
-        value: NilFunctionExpr,
+        value: TypedFunctionExpr<NilFunctionExpr>,
     },
     TupleFunction {
         local: TupleFunctionLocalId,
-        value: TupleFunctionExpr,
+        value: TypedFunctionExpr<TupleFunctionExpr>,
     },
     ListFunction {
         local: ListFunctionLocal,
-        value: ListFunctionExpr,
+        value: TypedFunctionExpr<ListFunctionExpr>,
     },
     FunctionFunction {
         local: FunctionFunctionLocal,
-        value: FunctionFunctionExpr,
+        value: TypedFunctionExpr<FunctionFunctionExpr>,
     },
 }
 
@@ -138,47 +138,47 @@ pub(crate) enum CaptureArgKind {
     List(ListLocalExpr),
     IntFunction {
         local: IntFunctionLocalId,
-        value: IntFunctionExpr,
+        value: TypedFunctionExpr<IntFunctionExpr>,
     },
     StringFunction {
         local: StringFunctionLocalId,
-        value: StringFunctionExpr,
+        value: TypedFunctionExpr<StringFunctionExpr>,
     },
     BitArrayFunction {
         local: BitArrayFunctionLocalId,
-        value: BitArrayFunctionExpr,
+        value: TypedFunctionExpr<BitArrayFunctionExpr>,
     },
     UtfCodepointFunction {
         local: UtfCodepointFunctionLocalId,
-        value: UtfCodepointFunctionExpr,
+        value: TypedFunctionExpr<UtfCodepointFunctionExpr>,
     },
     CustomFunction {
         local: CustomFunctionLocal,
-        value: CustomFunctionExpr,
+        value: TypedFunctionExpr<CustomFunctionExpr>,
     },
     FloatFunction {
         local: FloatFunctionLocalId,
-        value: FloatFunctionExpr,
+        value: TypedFunctionExpr<FloatFunctionExpr>,
     },
     BoolFunction {
         local: BoolFunctionLocalId,
-        value: BoolFunctionExpr,
+        value: TypedFunctionExpr<BoolFunctionExpr>,
     },
     NilFunction {
         local: NilFunctionLocalId,
-        value: NilFunctionExpr,
+        value: TypedFunctionExpr<NilFunctionExpr>,
     },
     TupleFunction {
         local: TupleFunctionLocalId,
-        value: TupleFunctionExpr,
+        value: TypedFunctionExpr<TupleFunctionExpr>,
     },
     ListFunction {
         local: ListFunctionLocal,
-        value: ListFunctionExpr,
+        value: TypedFunctionExpr<ListFunctionExpr>,
     },
     FunctionFunction {
         local: FunctionFunctionLocal,
-        value: FunctionFunctionExpr,
+        value: TypedFunctionExpr<FunctionFunctionExpr>,
     },
 }
 

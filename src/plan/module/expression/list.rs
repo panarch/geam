@@ -55,7 +55,10 @@ impl ListExpr {
         elements: Vec<Expr>,
         element_type: ValueType,
     ) -> Result<Self, ListElementTypeMismatch> {
-        ListElements::from_exprs(element_type, elements).map(Self::from_elements)
+        let item_shape = list_item_shape(&elements, &element_type)?;
+        ListElements::from_exprs(element_type, elements)
+            .map(Self::from_elements)
+            .map(|value| value.with_item_shape(item_shape))
     }
 
     pub(crate) fn from_elements(elements: ListElements) -> Self {
@@ -633,6 +636,40 @@ impl ListExpr {
         }
     }
 
+    pub(crate) fn item_shape(&self) -> &crate::plan::ValueShape {
+        match self {
+            Self::Int(expression) => expression.item_shape(),
+            Self::String(expression) => expression.item_shape(),
+            Self::BitArray(expression) => expression.item_shape(),
+            Self::UtfCodepoint(expression) => expression.item_shape(),
+            Self::Custom(expression) => expression.item_shape(),
+            Self::Float(expression) => expression.item_shape(),
+            Self::Bool(expression) => expression.item_shape(),
+            Self::Nil(expression) => expression.item_shape(),
+            Self::Tuple(expression) => expression.item_shape(),
+            Self::List(expression) => expression.item_shape(),
+            Self::Function(expression) => expression.item_shape(),
+        }
+    }
+
+    pub(crate) fn with_item_shape(self, item_shape: crate::plan::ValueShape) -> Self {
+        match self {
+            Self::Int(expression) => Self::Int(expression.with_item_shape(item_shape)),
+            Self::String(expression) => Self::String(expression.with_item_shape(item_shape)),
+            Self::BitArray(expression) => Self::BitArray(expression.with_item_shape(item_shape)),
+            Self::UtfCodepoint(expression) => {
+                Self::UtfCodepoint(expression.with_item_shape(item_shape))
+            }
+            Self::Custom(expression) => Self::Custom(expression.with_item_shape(item_shape)),
+            Self::Float(expression) => Self::Float(expression.with_item_shape(item_shape)),
+            Self::Bool(expression) => Self::Bool(expression.with_item_shape(item_shape)),
+            Self::Nil(expression) => Self::Nil(expression.with_item_shape(item_shape)),
+            Self::Tuple(expression) => Self::Tuple(expression.with_item_shape(item_shape)),
+            Self::List(expression) => Self::List(expression.with_item_shape(item_shape)),
+            Self::Function(expression) => Self::Function(expression.with_item_shape(item_shape)),
+        }
+    }
+
     pub(crate) fn into_int(self) -> Option<IntListExpr> {
         match self {
             Self::Int(expression) => Some(expression),
@@ -711,6 +748,41 @@ impl ListExpr {
     }
 }
 
+fn list_item_shape(
+    elements: &[Expr],
+    element_type: &ValueType,
+) -> Result<crate::plan::ValueShape, ListElementTypeMismatch> {
+    let Some((first, rest)) = elements.split_first() else {
+        return Ok(crate::plan::ValueShape::from_value_type(
+            element_type.clone(),
+        ));
+    };
+    if first.value_type() != *element_type {
+        return Err(ListElementTypeMismatch {
+            expected: element_type.clone(),
+            actual: first.value_type(),
+        });
+    }
+
+    let mut shape = first.value_shape().clone();
+    for element in rest {
+        if element.value_type() != *element_type {
+            return Err(ListElementTypeMismatch {
+                expected: element_type.clone(),
+                actual: element.value_type(),
+            });
+        }
+        let Some(merged) = shape.merge(element.value_shape()) else {
+            return Err(ListElementTypeMismatch {
+                expected: element_type.clone(),
+                actual: element.value_type(),
+            });
+        };
+        shape = merged;
+    }
+    Ok(shape)
+}
+
 #[cfg(test)]
 impl ListExpr {
     pub(crate) fn value(elements: Vec<Expr>, element_type: ValueType) -> Self {
@@ -743,12 +815,13 @@ mod tests {
         UtfCodepointListExpr, UtfCodepointListItem,
     };
     use crate::plan::{
-        BitArrayExpr, BoolExpr, CustomConstructor, CustomConstructorField, CustomExpr,
-        CustomFieldAccess, CustomLocalId, CustomType, CustomTypeName, Expr, FloatExpr,
-        FunctionExpr, FunctionReference, FunctionType, IntExpr, IntFunctionId, IntListFunctionId,
+        BitArrayExpr, BoolExpr, CustomConstructor, CustomConstructorField,
+        CustomConstructorRefinement, CustomExpr, CustomFieldAccess, CustomLocal, CustomLocalId,
+        CustomType, CustomTypeName, CustomValueShape, Expr, FloatExpr, FunctionExpr,
+        FunctionReference, FunctionShape, FunctionType, IntExpr, IntFunctionId, IntListFunctionId,
         IntListLocalId, ListFunctionExpr, ListFunctionId, ListFunctionReference, ListLocal,
         NilExpr, PanicExpr, PanicSite, RuntimeFunctionId, Step, StringExpr, TupleExpr,
-        UtfCodepointExpr, UtfCodepointLocalId, ValueType,
+        UtfCodepointExpr, UtfCodepointLocalId, ValueShape, ValueType,
     };
     use num_bigint::BigInt;
 
@@ -848,6 +921,64 @@ mod tests {
                 },
                 vec![function],
             )),
+        );
+    }
+
+    #[test]
+    fn value_constructor_rejects_later_nominal_and_refinement_mismatches() {
+        assert_eq!(
+            ListExpr::try_value(
+                vec![
+                    Expr::int(IntExpr::value(1.into())),
+                    Expr::string(StringExpr::value("wrong".into())),
+                ],
+                ValueType::Int,
+            ),
+            Err(ListElementTypeMismatch {
+                expected: ValueType::Int,
+                actual: ValueType::String,
+            }),
+        );
+
+        let type_ = CustomType::new(
+            CustomTypeName::new("geam".into(), "main".into(), "Choice".into()),
+            Vec::new(),
+        );
+        let function_type =
+            FunctionType::new(vec![ValueType::Custom(type_.clone())], ValueType::Int);
+        let function = |id, constructor| {
+            let custom_shape = CustomValueShape::new(
+                type_.type_name().clone(),
+                Vec::new(),
+                CustomConstructorRefinement::Exact(constructor),
+            );
+            let shape = FunctionShape::new(
+                vec![ValueShape::Custom(custom_shape.clone())],
+                ValueShape::Int,
+            );
+            FunctionExpr::reference(FunctionReference::new(
+                RuntimeFunctionId::Int(IntFunctionId(id)),
+                vec![crate::plan::ParamLocal::Custom(CustomLocal::from_shape(
+                    CustomLocalId(0),
+                    custom_shape,
+                ))],
+            ))
+            .with_resolved_shape(shape)
+            .expect("function shape has the same nominal type")
+        };
+
+        assert_eq!(
+            ListExpr::try_value(
+                vec![
+                    Expr::function(function(0, 0)),
+                    Expr::function(function(1, 1)),
+                ],
+                ValueType::Function(Box::new(function_type.clone())),
+            ),
+            Err(ListElementTypeMismatch {
+                expected: ValueType::Function(Box::new(function_type.clone())),
+                actual: ValueType::Function(Box::new(function_type)),
+            }),
         );
     }
 

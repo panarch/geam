@@ -12,9 +12,10 @@ pub use error::{ExecutionError, Panic, PanicDetails, PanicKind, PanicMessage};
 pub(in crate::runtime) use evaluated::{
     EvaluatedBitArray, EvaluatedBitArrayFunction, EvaluatedBoolFunction, EvaluatedCapture,
     EvaluatedCaptureKind, EvaluatedCustomFunction, EvaluatedCustomValue, EvaluatedFloatFunction,
-    EvaluatedFunctionFunction, EvaluatedFunctionValue, EvaluatedFunctionValueKind,
-    EvaluatedIntFunction, EvaluatedListCapture, EvaluatedListFunction, EvaluatedNilFunction,
-    EvaluatedStringFunction, EvaluatedTupleFunction, EvaluatedUtfCodepointFunction, EvaluatedValue,
+    EvaluatedFunction, EvaluatedFunctionFunction, EvaluatedFunctionValue,
+    EvaluatedFunctionValueKind, EvaluatedIntFunction, EvaluatedListCapture, EvaluatedListFunction,
+    EvaluatedNilFunction, EvaluatedStringFunction, EvaluatedTupleFunction,
+    EvaluatedUtfCodepointFunction, EvaluatedValue,
 };
 #[cfg(test)]
 pub(in crate::runtime) use state::RuntimeState;

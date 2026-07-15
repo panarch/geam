@@ -51,47 +51,47 @@ impl FrameLayout {
             }
             StepKind::LetList { value, .. } => self.include_list_local_expr(value),
             StepKind::LetIntFunction { local, value, .. } => {
-                self.include_int_function_expr(value);
+                self.include_int_function_expr(value.expression());
                 self.include_int_function(*local);
             }
             StepKind::LetFloatFunction { local, value, .. } => {
-                self.include_float_function_expr(value);
+                self.include_float_function_expr(value.expression());
                 self.include_float_function(*local);
             }
             StepKind::LetStringFunction { local, value, .. } => {
-                self.include_string_function_expr(value);
+                self.include_string_function_expr(value.expression());
                 self.include_string_function(*local);
             }
             StepKind::LetBitArrayFunction { local, value, .. } => {
-                self.include_bit_array_function_expr(value);
+                self.include_bit_array_function_expr(value.expression());
                 self.include_bit_array_function(*local);
             }
             StepKind::LetUtfCodepointFunction { local, value, .. } => {
-                self.include_utf_codepoint_function_expr(value);
+                self.include_utf_codepoint_function_expr(value.expression());
                 self.include_utf_codepoint_function(*local);
             }
             StepKind::LetCustomFunction { local, value, .. } => {
-                self.include_custom_function_expr(value);
+                self.include_custom_function_expr(value.expression());
                 self.include_custom_function(local.clone());
             }
             StepKind::LetBoolFunction { local, value, .. } => {
-                self.include_bool_function_expr(value);
+                self.include_bool_function_expr(value.expression());
                 self.include_bool_function(*local);
             }
             StepKind::LetNilFunction { local, value, .. } => {
-                self.include_nil_function_expr(value);
+                self.include_nil_function_expr(value.expression());
                 self.include_nil_function(*local);
             }
             StepKind::LetTupleFunction { local, value, .. } => {
-                self.include_tuple_function_expr(value);
+                self.include_tuple_function_expr(value.expression());
                 self.include_tuple_function(*local);
             }
             StepKind::LetListFunction { local, value, .. } => {
-                self.include_list_function_expr(value);
+                self.include_list_function_expr(value.expression());
                 self.include_list_function(local.clone());
             }
             StepKind::LetFunctionFunction { local, value, .. } => {
-                self.include_function_function_expr(value);
+                self.include_function_function_expr(value.expression());
                 self.include_function_function(local.clone());
             }
             StepKind::AssertList {
@@ -223,10 +223,10 @@ impl FrameLayout {
             }
             AssertPattern::StringPrefix { left, right, .. } => {
                 if let Some(binding) = left {
-                    self.include_local(binding.local());
+                    self.include_string(binding.local());
                 }
                 if let Some(binding) = right {
-                    self.include_local(binding.local());
+                    self.include_string(binding.local());
                 }
             }
             AssertPattern::Alias { pattern, binding } => {
@@ -245,7 +245,7 @@ mod tests {
         Expr, IntExpr, IntFunctionId, IntLocalId, ListAssertPattern, ListAssertTail, ListLocal,
         NilExpr, NilFunctionExpr, NilFunctionLocalId, NilLocalId, PanicSite, ParamLocal,
         ReturnExpr, SourceSpan, StringExpr, StringFunctionExpr, StringFunctionLocalId,
-        StringLocalId, TupleListLocalId, ValueType,
+        StringLocalId, TupleListLocalId, ValueShape, ValueType,
     };
 
     #[test]
@@ -403,26 +403,31 @@ mod tests {
                     AssertPattern::Bind(AssertBinding::new(
                         ParamLocal::int(IntLocalId(0)),
                         "number".into(),
+                        ValueShape::Int,
                     )),
                     AssertPattern::alias(
                         AssertPattern::Discard,
-                        AssertBinding::new(ParamLocal::string(StringLocalId(0)), "text".into()),
+                        AssertBinding::new(
+                            ParamLocal::string(StringLocalId(0)),
+                            "text".into(),
+                            ValueShape::String,
+                        ),
                     ),
                     AssertPattern::StringPrefix {
                         prefix: "pre".into(),
-                        left: Some(AssertBinding::new(
-                            ParamLocal::string(StringLocalId(1)),
+                        left: Some(crate::plan::StringAssertBinding::new(
+                            StringLocalId(1),
                             "prefix".into(),
                         )),
-                        right: Some(AssertBinding::new(
-                            ParamLocal::string(StringLocalId(2)),
+                        right: Some(crate::plan::StringAssertBinding::new(
+                            StringLocalId(2),
                             "suffix".into(),
                         )),
                     },
                     AssertPattern::StringPrefix {
                         prefix: "left".into(),
-                        left: Some(AssertBinding::new(
-                            ParamLocal::string(StringLocalId(3)),
+                        left: Some(crate::plan::StringAssertBinding::new(
+                            StringLocalId(3),
                             "left_only".into(),
                         )),
                         right: None,

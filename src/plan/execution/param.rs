@@ -3,8 +3,14 @@ use super::{
     CustomFunctionLocal, CustomLocal, FloatFunctionLocalId, FloatLocalId, FunctionFunctionLocal,
     FunctionType, IntFunctionLocalId, IntLocalId, ListFunctionLocal, ListLocal, NilFunctionLocalId,
     NilLocalId, StringFunctionLocalId, StringLocalId, TupleFunctionLocalId, TupleLocalId,
-    UtfCodepointFunctionLocalId, UtfCodepointLocalId, ValueType,
+    UtfCodepointFunctionLocalId, UtfCodepointLocalId, ValueShapeId, ValueType,
 };
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ParamSlot {
+    local: ParamLocal,
+    shape: ValueShapeId,
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum ParamLocal {
@@ -58,34 +64,16 @@ pub(crate) enum ParamLocal {
     FunctionFunction(FunctionFunctionLocal),
 }
 
-impl ParamLocal {
-    pub(crate) fn value_type(&self) -> ValueType {
-        match self {
-            Self::Int(_) => ValueType::Int,
-            Self::Float(_) => ValueType::Float,
-            Self::String(_) => ValueType::String,
-            Self::BitArray(_) => ValueType::BitArray,
-            Self::UtfCodepoint(_) => ValueType::UtfCodepoint,
-            Self::Custom(local) => ValueType::Custom(local.type_id()),
-            Self::Bool(_) => ValueType::Bool,
-            Self::Nil(_) => ValueType::Nil,
-            Self::Tuple { type_, .. } => ValueType::Tuple(type_.clone()),
-            Self::List(local) => ValueType::List(local.list_type()),
-            Self::IntFunction { type_, .. }
-            | Self::FloatFunction { type_, .. }
-            | Self::StringFunction { type_, .. }
-            | Self::BitArrayFunction { type_, .. }
-            | Self::UtfCodepointFunction { type_, .. }
-            | Self::BoolFunction { type_, .. }
-            | Self::NilFunction { type_, .. }
-            | Self::TupleFunction { type_, .. } => ValueType::Function(Box::new(type_.clone())),
-            Self::CustomFunction(local) => {
-                ValueType::Function(Box::new(local.type_().to_function_type()))
-            }
-            Self::ListFunction(local) => ValueType::Function(Box::new(local.type_().clone())),
-            Self::FunctionFunction(local) => {
-                ValueType::Function(Box::new(local.type_().to_function_type()))
-            }
-        }
+impl ParamSlot {
+    pub(super) fn new(local: ParamLocal, shape: ValueShapeId) -> Self {
+        Self { local, shape }
+    }
+
+    pub(crate) fn local(&self) -> &ParamLocal {
+        &self.local
+    }
+
+    pub(crate) fn shape(&self) -> ValueShapeId {
+        self.shape
     }
 }

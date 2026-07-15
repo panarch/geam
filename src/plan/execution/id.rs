@@ -25,7 +25,7 @@ pub struct CustomLocalId(pub(crate) usize);
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) struct CustomLocal {
     id: CustomLocalId,
-    type_id: CustomTypeId,
+    shape: super::CustomValueShape,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -291,7 +291,7 @@ pub struct UtfCodepointFunctionId(pub(crate) usize);
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CustomFunctionId {
     index: usize,
-    return_type: CustomTypeId,
+    return_shape: super::CustomValueShape,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -524,14 +524,18 @@ impl CustomFunctionLocal {
         self.id
     }
 
+    #[cfg(test)]
     pub(crate) fn type_(&self) -> &super::CustomFunctionType {
         &self.type_
     }
 }
 
 impl CustomLocal {
-    pub(in crate::plan::execution) fn new(id: CustomLocalId, type_id: CustomTypeId) -> Self {
-        Self { id, type_id }
+    pub(in crate::plan::execution) fn new(
+        id: CustomLocalId,
+        shape: super::CustomValueShape,
+    ) -> Self {
+        Self { id, shape }
     }
 
     pub(crate) fn id(self) -> CustomLocalId {
@@ -539,13 +543,19 @@ impl CustomLocal {
     }
 
     pub(crate) fn type_id(self) -> CustomTypeId {
-        self.type_id
+        self.shape.type_id()
     }
 }
 
 impl CustomFunctionId {
-    pub(in crate::plan::execution) fn new(index: usize, return_type: CustomTypeId) -> Self {
-        Self { index, return_type }
+    pub(in crate::plan::execution) fn new(
+        index: usize,
+        return_shape: super::CustomValueShape,
+    ) -> Self {
+        Self {
+            index,
+            return_shape,
+        }
     }
 
     pub(crate) fn index(self) -> usize {
@@ -554,7 +564,7 @@ impl CustomFunctionId {
 
     #[cfg(test)]
     pub(crate) fn return_type(self) -> CustomTypeId {
-        self.return_type
+        self.return_shape.type_id()
     }
 }
 
@@ -568,10 +578,6 @@ impl FunctionFunctionLocal {
 
     pub(crate) fn id(&self) -> FunctionFunctionLocalId {
         self.id
-    }
-
-    pub(crate) fn type_(&self) -> &super::FunctionFunctionType {
-        &self.type_
     }
 }
 
@@ -702,6 +708,7 @@ impl FunctionFunctionId {
 }
 
 impl ListFunctionLocal {
+    #[cfg(test)]
     pub(crate) fn type_(&self) -> &FunctionType {
         match self {
             Self::Int { type_, .. }
@@ -732,6 +739,25 @@ impl ListFunctionLocal {
             Self::Tuple { list_type, .. } => list_type.list_type(),
             Self::List { list_type, .. } => list_type.list_type(),
             Self::Function { list_type, .. } => list_type.list_type(),
+        }
+    }
+}
+
+#[cfg(test)]
+impl ListLocal {
+    pub(crate) fn list_type(&self) -> ListTypeId {
+        match self {
+            Self::Int { type_id, .. } => type_id.list_type(),
+            Self::String { type_id, .. } => type_id.list_type(),
+            Self::BitArray { type_id, .. } => type_id.list_type(),
+            Self::UtfCodepoint { type_id, .. } => type_id.list_type(),
+            Self::Custom { type_id, .. } => type_id.list_type(),
+            Self::Float { type_id, .. } => type_id.list_type(),
+            Self::Bool { type_id, .. } => type_id.list_type(),
+            Self::Nil { type_id, .. } => type_id.list_type(),
+            Self::Tuple { type_id, .. } => type_id.list_type(),
+            Self::List { type_id, .. } => type_id.list_type(),
+            Self::Function { type_id, .. } => type_id.list_type(),
         }
     }
 }
@@ -768,24 +794,6 @@ impl ListFunctionFunctionId {
             | Self::Tuple { type_, .. }
             | Self::List { type_, .. }
             | Self::Function { type_, .. } => type_,
-        }
-    }
-}
-
-impl ListLocal {
-    pub(crate) fn list_type(&self) -> ListTypeId {
-        match self {
-            Self::Int { type_id, .. } => type_id.list_type(),
-            Self::String { type_id, .. } => type_id.list_type(),
-            Self::BitArray { type_id, .. } => type_id.list_type(),
-            Self::UtfCodepoint { type_id, .. } => type_id.list_type(),
-            Self::Custom { type_id, .. } => type_id.list_type(),
-            Self::Float { type_id, .. } => type_id.list_type(),
-            Self::Bool { type_id, .. } => type_id.list_type(),
-            Self::Nil { type_id, .. } => type_id.list_type(),
-            Self::Tuple { type_id, .. } => type_id.list_type(),
-            Self::List { type_id, .. } => type_id.list_type(),
-            Self::Function { type_id, .. } => type_id.list_type(),
         }
     }
 }
@@ -1065,9 +1073,20 @@ pub fn main() { Nil }
 
     #[test]
     fn custom_function_function_id_projection_is_typed() {
+        let return_type = super::super::CustomTypeId::new(0);
         let function = CustomFunctionFunctionId::new(
             2,
-            super::super::CustomFunctionType::new(Vec::new(), super::super::CustomTypeId::new(0)),
+            super::super::CustomFunctionType::from_shapes(
+                super::super::FunctionType::new(
+                    Vec::new(),
+                    super::super::ValueType::Custom(return_type),
+                ),
+                Vec::new(),
+                super::super::CustomValueShape::new(
+                    return_type,
+                    super::super::CustomValueShapeId::new(0),
+                ),
+            ),
         );
         let id = FunctionFunctionId::Custom(function.clone());
 

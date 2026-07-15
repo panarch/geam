@@ -17,8 +17,9 @@ use crate::runtime::expression::{
     eval_int_function_expr, eval_int_list_expr, eval_list_function_expr, eval_list_list_expr,
     eval_nil_expr, eval_nil_function_expr, eval_nil_list_expr, eval_string_expr,
     eval_string_function_expr, eval_string_list_expr, eval_tuple_expr, eval_tuple_function_expr,
-    eval_tuple_list_expr, eval_utf_codepoint_expr, eval_utf_codepoint_function_expr,
-    eval_utf_codepoint_list_expr, get_list_value,
+    eval_tuple_list_expr, eval_typed_custom_function_expr, eval_typed_function_expr,
+    eval_utf_codepoint_expr, eval_utf_codepoint_function_expr, eval_utf_codepoint_list_expr,
+    get_list_value,
 };
 use crate::runtime::frame::Frame;
 use crate::runtime::state::{ListValueId, RuntimeState};
@@ -80,47 +81,78 @@ pub(in crate::runtime) fn execute_steps(
             }
             StepKind::LetList { value, .. } => execute_let_list(plan, state, frame, value)?,
             StepKind::LetIntFunction { local, value, .. } => {
-                let value = eval_int_function_expr(plan, state, frame, value)?;
+                let value =
+                    eval_typed_function_expr(plan, state, frame, value, eval_int_function_expr)?;
                 frame.set_int_function(*local, value);
             }
             StepKind::LetStringFunction { local, value, .. } => {
-                let value = eval_string_function_expr(plan, state, frame, value)?;
+                let value =
+                    eval_typed_function_expr(plan, state, frame, value, eval_string_function_expr)?;
                 frame.set_string_function(*local, value);
             }
             StepKind::LetBitArrayFunction { local, value, .. } => {
-                let value = eval_bit_array_function_expr(plan, state, frame, value)?;
+                let value = eval_typed_function_expr(
+                    plan,
+                    state,
+                    frame,
+                    value,
+                    eval_bit_array_function_expr,
+                )?;
                 frame.set_bit_array_function(*local, value);
             }
             StepKind::LetUtfCodepointFunction { local, value, .. } => {
-                let value = eval_utf_codepoint_function_expr(plan, state, frame, value)?;
+                let value = eval_typed_function_expr(
+                    plan,
+                    state,
+                    frame,
+                    value,
+                    eval_utf_codepoint_function_expr,
+                )?;
                 frame.set_utf_codepoint_function(*local, value);
             }
             StepKind::LetCustomFunction { local, value, .. } => {
-                let value = eval_custom_function_expr(plan, state, frame, value)?;
+                let value = eval_typed_custom_function_expr(
+                    plan,
+                    state,
+                    frame,
+                    value,
+                    eval_custom_function_expr,
+                )?;
                 frame.set_custom_function(local, value);
             }
             StepKind::LetFloatFunction { local, value, .. } => {
-                let value = eval_float_function_expr(plan, state, frame, value)?;
+                let value =
+                    eval_typed_function_expr(plan, state, frame, value, eval_float_function_expr)?;
                 frame.set_float_function(*local, value);
             }
             StepKind::LetBoolFunction { local, value, .. } => {
-                let value = eval_bool_function_expr(plan, state, frame, value)?;
+                let value =
+                    eval_typed_function_expr(plan, state, frame, value, eval_bool_function_expr)?;
                 frame.set_bool_function(*local, value);
             }
             StepKind::LetNilFunction { local, value, .. } => {
-                let value = eval_nil_function_expr(plan, state, frame, value)?;
+                let value =
+                    eval_typed_function_expr(plan, state, frame, value, eval_nil_function_expr)?;
                 frame.set_nil_function(*local, value);
             }
             StepKind::LetTupleFunction { local, value, .. } => {
-                let value = eval_tuple_function_expr(plan, state, frame, value)?;
+                let value =
+                    eval_typed_function_expr(plan, state, frame, value, eval_tuple_function_expr)?;
                 frame.set_tuple_function(*local, value);
             }
             StepKind::LetListFunction { local, value, .. } => {
-                let value = eval_list_function_expr(plan, state, frame, value)?;
+                let value =
+                    eval_typed_function_expr(plan, state, frame, value, eval_list_function_expr)?;
                 frame.set_list_function(local.clone(), value);
             }
             StepKind::LetFunctionFunction { local, value, .. } => {
-                let value = eval_function_function_expr(plan, state, frame, value)?;
+                let value = eval_typed_function_expr(
+                    plan,
+                    state,
+                    frame,
+                    value,
+                    eval_function_function_expr,
+                )?;
                 frame.set_function_function(local, value);
             }
             StepKind::AssertList {
@@ -481,20 +513,10 @@ fn match_assert_pattern(
                 return Ok(None);
             };
             if let Some(binding) = left {
-                let Some(binding) =
-                    pending_binding(plan, binding, &EvaluatedValue::String(prefix.clone()))
-                else {
-                    return Ok(None);
-                };
-                bindings.push(binding);
+                bindings.push(PendingBinding::String(binding.local(), prefix.clone()));
             }
             if let Some(binding) = right {
-                let Some(binding) =
-                    pending_binding(plan, binding, &EvaluatedValue::String(suffix.into()))
-                else {
-                    return Ok(None);
-                };
-                bindings.push(binding);
+                bindings.push(PendingBinding::String(binding.local(), suffix.into()));
             }
             Ok(Some(()))
         }
@@ -696,7 +718,7 @@ fn pending_binding(
         }
         (ParamLocal::Nil(local), EvaluatedValue::Nil) => Some(PendingBinding::Nil(*local)),
         (ParamLocal::Tuple { local, .. }, EvaluatedValue::Tuple(value))
-            if plan.value_type(&target.local().value_type())
+            if plan.value_type(&plan.shape_value_type(target.shape()))
                 == ValueType::Tuple(value.iter().map(|value| value.value_type(plan)).collect()) =>
         {
             Some(PendingBinding::Tuple(*local, value.clone()))
@@ -704,25 +726,23 @@ fn pending_binding(
         (ParamLocal::List(local), EvaluatedValue::List(value)) => {
             pending_list_binding(local.clone(), value.clone()).map(PendingBinding::List)
         }
-        (_, EvaluatedValue::Function(value)) => {
-            pending_function_binding(plan, target.local(), value)
-        }
+        (_, EvaluatedValue::Function(value)) => pending_function_binding(plan, target, value),
         _ => None,
     }
 }
 
 fn pending_function_binding(
     plan: &ExecutionPlan,
-    target: &ParamLocal,
+    target: &AssertBinding,
     value: &EvaluatedFunctionValue,
 ) -> Option<PendingBinding> {
-    if plan.value_type(&target.value_type())
+    if plan.value_type(&plan.shape_value_type(target.shape()))
         != ValueType::Function(Box::new(plan.function_type(value.type_())))
     {
         return None;
     }
 
-    match (target, value.kind()) {
+    match (target.local(), value.kind()) {
         (ParamLocal::IntFunction { local, .. }, EvaluatedFunctionValueKind::Int(value)) => {
             Some(PendingBinding::IntFunction(*local, value.clone()))
         }
@@ -916,13 +936,13 @@ fn frame_set_list_binding(frame: &mut Frame, value: EvaluatedListCapture) {
 mod tests {
     use super::{
         PendingBinding, bind_custom_fields, execute_steps, match_and_apply_assert_pattern,
-        match_assert_pattern, match_list_assert_pattern,
+        match_assert_pattern, match_list_assert_pattern, pending_binding,
     };
     use crate::plan::ValueType;
     use crate::plan::execution::{
-        AssertBinding, AssertPattern, CustomLocal, FunctionFunctionId, IntFunctionFunctionId,
-        IntFunctionId, IntListLocalId, IntLocalId, ListAssertPattern, ListLocal, ParamLocal, Step,
-        StepKind, StringLocalId,
+        AssertPattern, CustomLocal, FunctionFunctionId, IntFunctionFunctionId, IntFunctionId,
+        IntListLocalId, IntLocalId, ListAssertPattern, ListLocal, Step, StepKind, StringFunctionId,
+        StringLocalId,
     };
     use crate::runtime::expression::eval_custom_expr;
     use crate::runtime::frame::Frame;
@@ -1430,29 +1450,6 @@ pub fn main() {
                 },
                 EvaluatedValue::String("suffix".into()),
             ),
-            (
-                AssertPattern::StringPrefix {
-                    prefix: "pre".into(),
-                    left: Some(AssertBinding::new(ParamLocal::Int(IntLocalId(0)))),
-                    right: None,
-                },
-                EvaluatedValue::String("prefix".into()),
-            ),
-            (
-                AssertPattern::StringPrefix {
-                    prefix: "pre".into(),
-                    left: None,
-                    right: Some(AssertBinding::new(ParamLocal::Int(IntLocalId(0)))),
-                },
-                EvaluatedValue::String("prefix".into()),
-            ),
-            (
-                AssertPattern::Alias {
-                    pattern: Box::new(AssertPattern::Discard),
-                    binding: AssertBinding::new(ParamLocal::Int(IntLocalId(0))),
-                },
-                EvaluatedValue::String("wrong".into()),
-            ),
         ];
 
         for (pattern, value) in cases {
@@ -1471,26 +1468,62 @@ pub fn main() {
             assert_eq!(bindings, Vec::new());
         }
 
-        let pattern = AssertPattern::StringPrefix {
-            prefix: "pre".into(),
-            left: None,
-            right: Some(AssertBinding::new(ParamLocal::String(StringLocalId(0)))),
-        };
-        let mut bindings = Vec::new();
-        assert_eq!(
-            match_assert_pattern(
-                &plan,
-                &mut state,
-                &mut frame,
-                &pattern,
-                &EvaluatedValue::String("prefix".into()),
-                &mut bindings,
-            ),
-            Ok(Some(())),
+        let int_binding_plan = crate::runtime::plan_src(
+            r#"
+pub fn main() {
+  let assert [value] = [1]
+  value
+}
+"#,
         );
+        let int_function = int_binding_plan.int_function(IntFunctionId(0));
+        let int_binding = int_function
+            .steps()
+            .iter()
+            .find_map(|step| match step.kind() {
+                StepKind::AssertList { pattern, .. } => {
+                    Some(&expect_list_assert_pattern(pattern).elements()[0])
+                }
+                _ => None,
+            })
+            .map(expect_assert_binding)
+            .expect("source should lower an int assert binding");
         assert_eq!(
-            bindings,
-            vec![PendingBinding::String(StringLocalId(0), "fix".into())],
+            pending_binding(
+                &int_binding_plan,
+                int_binding,
+                &EvaluatedValue::String("wrong".into()),
+            ),
+            None,
+        );
+
+        let string_binding_plan = crate::runtime::plan_src(
+            r#"
+pub fn main() {
+  let assert [value] = ["prefix"]
+  value
+}
+"#,
+        );
+        let string_function = string_binding_plan.string_function(StringFunctionId(0));
+        let string_binding = string_function
+            .steps()
+            .iter()
+            .find_map(|step| match step.kind() {
+                StepKind::AssertList { pattern, .. } => {
+                    Some(&expect_list_assert_pattern(pattern).elements()[0])
+                }
+                _ => None,
+            })
+            .map(expect_assert_binding)
+            .expect("source should lower a string assert binding");
+        assert_eq!(
+            pending_binding(
+                &string_binding_plan,
+                string_binding,
+                &EvaluatedValue::String("fix".into()),
+            ),
+            Some(PendingBinding::String(StringLocalId(0), "fix".into())),
         );
 
         let mut bindings = Vec::new();
@@ -2409,6 +2442,19 @@ pub fn main() {
             AssertPattern::List(pattern) => pattern,
             _ => panic!("expected a list assert pattern"),
         }
+    }
+
+    fn expect_assert_binding(pattern: &AssertPattern) -> &crate::plan::execution::AssertBinding {
+        match pattern {
+            AssertPattern::Bind(binding) => binding,
+            _ => panic!("expected an assert binding"),
+        }
+    }
+
+    #[test]
+    #[should_panic(expected = "expected an assert binding")]
+    fn assert_binding_shape_guard_rejects_discard_patterns() {
+        let _ = expect_assert_binding(&AssertPattern::Discard);
     }
 
     fn expect_custom_value(value: &EvaluatedValue) -> &EvaluatedCustomValue {

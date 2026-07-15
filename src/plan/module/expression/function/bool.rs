@@ -1,8 +1,10 @@
 use crate::plan::CustomFieldAccess;
+#[cfg(test)]
+use crate::plan::ParamLocal;
 use crate::plan::{
     BoolExpr, BoolFunctionFunctionId, BoolFunctionId, BoolFunctionLocalId, BoolFunctionReference,
     CaptureArg, FloatExpr, FunctionFunctionExpr, FunctionListExpr, FunctionType, IntExpr,
-    PanicExpr, ParamLocal, Step, StringExpr, TupleExpr,
+    PanicExpr, ParamSlot, Step, StringExpr, TupleExpr,
 };
 use ecow::EcoString;
 use num_bigint::BigInt;
@@ -18,7 +20,7 @@ pub(crate) enum BoolFunctionExprKind {
     Reference(BoolFunctionReference),
     Closure {
         runtime_id: BoolFunctionId,
-        params: Vec<ParamLocal>,
+        params: Vec<ParamSlot>,
         captures: Vec<CaptureArg>,
     },
     LocalGet {
@@ -76,7 +78,11 @@ pub(crate) enum BoolFunctionExprKind {
 impl BoolFunctionExpr {
     pub(crate) fn reference(value: BoolFunctionReference) -> Self {
         let type_ = FunctionType::new(
-            value.params().iter().map(ParamLocal::value_type).collect(),
+            value
+                .params()
+                .iter()
+                .map(crate::plan::ParamSlot::value_type)
+                .collect(),
             crate::plan::ValueType::Bool,
         );
         Self {
@@ -85,9 +91,9 @@ impl BoolFunctionExpr {
         }
     }
 
-    pub(crate) fn closure(
+    pub(crate) fn closure_slots(
         runtime_id: BoolFunctionId,
-        params: Vec<ParamLocal>,
+        params: Vec<ParamSlot>,
         captures: Vec<CaptureArg>,
         type_: FunctionType,
     ) -> Self {
@@ -99,6 +105,21 @@ impl BoolFunctionExpr {
                 captures,
             },
         }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn closure(
+        runtime_id: BoolFunctionId,
+        params: Vec<ParamLocal>,
+        captures: Vec<CaptureArg>,
+        type_: FunctionType,
+    ) -> Self {
+        Self::closure_slots(
+            runtime_id,
+            params.into_iter().map(ParamSlot::from_local).collect(),
+            captures,
+            type_,
+        )
     }
 
     pub(crate) fn local_get(
@@ -293,7 +314,9 @@ mod tests {
             .kind(),
             &BoolFunctionExprKind::Closure {
                 runtime_id: BoolFunctionId(0),
-                params: vec![ParamLocal::bool(BoolLocalId(0))],
+                params: vec![crate::plan::ParamSlot::from_local(ParamLocal::bool(
+                    BoolLocalId(0)
+                ))],
                 captures: Vec::new(),
             },
         );

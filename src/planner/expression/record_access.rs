@@ -1,5 +1,5 @@
 use super::{expression_type, invalid_expression_type, plan_expr};
-use crate::plan::{Expr, ValueType};
+use crate::plan::{Expr, ValueShape};
 use crate::planner::context::PlanContext;
 #[cfg(not(target_pointer_width = "64"))]
 use crate::planner::error::InvalidTypedAstReason;
@@ -43,16 +43,20 @@ pub(super) fn plan_from_expr(
     let record = record
         .into_custom()
         .ok_or_else(|| invalid_expression_type(InvalidExpressionType::Custom, actual))?;
-    let expected = ValueType::from_gleam(type_.as_ref()).ok_or_else(|| {
+    let expected_shape = ValueShape::from_gleam(type_.as_ref()).ok_or_else(|| {
         invalid_expression_type(
             InvalidExpressionType::Unsupported,
             InvalidExpressionType::Custom,
         )
     })?;
-    let access =
+    let expected = expected_shape.value_type();
+    let (access, source_shape) =
         context.custom_field_access(record, record_type.as_ref(), index, label, &expected)?;
+    let resolved_shape = source_shape.refine(&expected_shape).ok_or_else(|| {
+        super::invalid_expression_type_for_value(expected.clone(), source_shape.value_type())
+    })?;
 
-    Ok(Expr::custom_field(access, expected))
+    Ok(Expr::custom_field_shape(access, resolved_shape))
 }
 
 #[cfg(test)]
@@ -60,9 +64,10 @@ pub(super) fn plan_from_expr(
 mod tests {
     use super::{plan, plan_from_expr};
     use crate::plan::{
-        CustomConstructorDefinition, CustomExpr, CustomFieldDefinition, CustomLocalId, CustomType,
-        CustomTypeDefinition, CustomTypeName, CustomTypeParameterId, CustomTypePublicity,
-        CustomTypeTemplate, Expr, IntExpr, ValueType,
+        CustomConstructorDefinition, CustomConstructorRefinement, CustomExpr,
+        CustomFieldDefinition, CustomLocal, CustomLocalId, CustomType, CustomTypeDefinition,
+        CustomTypeName, CustomTypeParameterId, CustomTypePublicity, CustomTypeTemplate,
+        CustomValueShape, Expr, FunctionShape, FunctionType, IntExpr, ValueShape, ValueType,
     };
     use crate::planner::context::{AnonymousFunctions, FunctionInfo, PlanContext};
     use crate::planner::support::dummy_span;
@@ -364,6 +369,193 @@ mod tests {
         );
     }
 
+    #[test]
+    fn record_access_rejects_empty_and_incompatible_shared_field_shapes() {
+        let module = EcoString::from("main");
+        let functions = HashMap::<EcoString, FunctionInfo>::new();
+        let empty_name = CustomTypeName::new("geam".into(), module.clone(), "Empty".into());
+        let shared_name = CustomTypeName::new("geam".into(), module.clone(), "Shared".into());
+        let definitions = vec![
+            CustomTypeDefinition::new(
+                empty_name.clone(),
+                CustomTypePublicity::Private,
+                false,
+                Vec::new(),
+                Vec::new(),
+            ),
+            CustomTypeDefinition::new(
+                shared_name.clone(),
+                CustomTypePublicity::Private,
+                false,
+                vec![CustomTypeParameterId(0), CustomTypeParameterId(1)],
+                vec![
+                    CustomConstructorDefinition::new(
+                        "First".into(),
+                        0,
+                        vec![CustomFieldDefinition::new(
+                            Some("value".into()),
+                            CustomTypeTemplate::Parameter(CustomTypeParameterId(0)),
+                        )],
+                    ),
+                    CustomConstructorDefinition::new(
+                        "Second".into(),
+                        1,
+                        vec![CustomFieldDefinition::new(
+                            Some("value".into()),
+                            CustomTypeTemplate::Parameter(CustomTypeParameterId(1)),
+                        )],
+                    ),
+                ],
+            ),
+        ];
+        let mut anonymous = AnonymousFunctions::default();
+        let context =
+            PlanContext::new_with_custom_types(&module, &functions, &definitions, &mut anonymous);
+
+        let empty = CustomType::new(empty_name.clone(), Vec::new());
+        let empty_source = Arc::new(Type::Named {
+            publicity: Publicity::Private,
+            package: "geam".into(),
+            module: module.clone(),
+            name: empty_name.name().clone(),
+            arguments: Vec::new(),
+            inferred_variant: None,
+        });
+        assert_eq!(
+            context.custom_field_access(
+                custom_local_expr(empty.clone()),
+                empty_source.as_ref(),
+                0,
+                Some("value".into()),
+                &ValueType::Int,
+            ),
+            Err(custom_error(&empty, InvalidCustomTypeReason::FieldIndex,)),
+        );
+
+        let choice = CustomType::new(
+            CustomTypeName::new("geam".into(), module.clone(), "Choice".into()),
+            Vec::new(),
+        );
+        let function_type =
+            FunctionType::new(vec![ValueType::Custom(choice.clone())], ValueType::Int);
+        let function_shape = |constructor| {
+            ValueShape::Function(Box::new(FunctionShape::new(
+                vec![ValueShape::Custom(CustomValueShape::new(
+                    choice.type_name().clone(),
+                    Vec::new(),
+                    CustomConstructorRefinement::Exact(constructor),
+                ))],
+                ValueShape::Int,
+            )))
+        };
+        let shared_shape = CustomValueShape::new(
+            shared_name.clone(),
+            vec![function_shape(0), function_shape(1)],
+            CustomConstructorRefinement::Any,
+        );
+        let shared = shared_shape.type_().clone();
+        let source = CustomExpr::local_get(
+            CustomLocal::from_shape(CustomLocalId(0), shared_shape),
+            "shared".into(),
+        );
+        let shared_source = Arc::new(Type::Named {
+            publicity: Publicity::Private,
+            package: "geam".into(),
+            module: module.clone(),
+            name: shared_name.name().clone(),
+            arguments: vec![
+                type_::fn_(vec![named_custom_type(&choice)], type_::int()),
+                type_::fn_(vec![named_custom_type(&choice)], type_::int()),
+            ],
+            inferred_variant: None,
+        });
+        assert_eq!(
+            context.custom_field_access(
+                source,
+                shared_source.as_ref(),
+                0,
+                Some("value".into()),
+                &ValueType::Function(Box::new(function_type)),
+            ),
+            Err(custom_error(&shared, InvalidCustomTypeReason::FieldType,)),
+        );
+    }
+
+    #[test]
+    fn record_access_rejects_conflicting_result_refinements() {
+        let module = EcoString::from("main");
+        let functions = HashMap::<EcoString, FunctionInfo>::new();
+        let choice_name = CustomTypeName::new("geam".into(), module.clone(), "Choice".into());
+        let definitions = vec![
+            generic_definition(&module),
+            CustomTypeDefinition::new(
+                choice_name.clone(),
+                CustomTypePublicity::Private,
+                false,
+                Vec::new(),
+                vec![
+                    CustomConstructorDefinition::new("First".into(), 0, Vec::new()),
+                    CustomConstructorDefinition::new("Second".into(), 1, Vec::new()),
+                ],
+            ),
+        ];
+        let choice = CustomType::new(choice_name.clone(), Vec::new());
+        let first_shape = CustomValueShape::new(
+            choice_name,
+            Vec::new(),
+            CustomConstructorRefinement::Exact(0),
+        );
+        let source_shape = CustomValueShape::new(
+            generic_type(&module, vec![ValueType::Custom(choice.clone())])
+                .type_name()
+                .clone(),
+            vec![ValueShape::Custom(first_shape)],
+            CustomConstructorRefinement::Exact(0),
+        );
+        let source = Expr::custom(CustomExpr::local_get(
+            CustomLocal::from_shape(CustomLocalId(0), source_shape),
+            "record".into(),
+        ));
+        let record_type = generic_gleam_type(
+            &module,
+            vec![Arc::new(Type::Named {
+                publicity: Publicity::Private,
+                package: "geam".into(),
+                module: module.clone(),
+                name: "Choice".into(),
+                arguments: Vec::new(),
+                inferred_variant: Some(0),
+            })],
+            Some(0),
+        );
+        let expected = Arc::new(Type::Named {
+            publicity: Publicity::Private,
+            package: "geam".into(),
+            module: module.clone(),
+            name: "Choice".into(),
+            arguments: Vec::new(),
+            inferred_variant: Some(1),
+        });
+        let mut anonymous = AnonymousFunctions::default();
+        let mut context =
+            PlanContext::new_with_custom_types(&module, &functions, &definitions, &mut anonymous);
+
+        assert_eq!(
+            plan_from_expr(
+                expected,
+                Some("value".into()),
+                0,
+                record_type,
+                source,
+                &mut context,
+            ),
+            Err(super::super::invalid_expression_type_for_value(
+                ValueType::Custom(choice.clone()),
+                ValueType::Custom(choice),
+            )),
+        );
+    }
+
     fn generic_definition(module: &EcoString) -> CustomTypeDefinition {
         CustomTypeDefinition::new(
             CustomTypeName::new("geam".into(), module.clone(), "Generic".into()),
@@ -400,6 +592,17 @@ mod tests {
             name: "Generic".into(),
             arguments,
             inferred_variant,
+        })
+    }
+
+    fn named_custom_type(type_: &CustomType) -> Arc<Type> {
+        Arc::new(Type::Named {
+            publicity: Publicity::Private,
+            package: type_.type_name().package().clone(),
+            module: type_.type_name().module().clone(),
+            name: type_.type_name().name().clone(),
+            arguments: Vec::new(),
+            inferred_variant: None,
         })
     }
 

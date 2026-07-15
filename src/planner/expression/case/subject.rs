@@ -13,7 +13,7 @@ mod utf_codepoint;
 use crate::plan::{
     BoolCaseBranches, BoolExpr, BoolListCaseBranches, BoolLocalId, Expr, ExprKind, FloatExpr,
     FloatLocalId, FunctionExprKind, IntExpr, IntLocalId, ListExpr, Step, StringExpr, StringLocalId,
-    ValueType,
+    ValueShape, ValueType,
 };
 use crate::planner::context::PlanContext;
 use crate::planner::error::{InvalidCaseShapeReason, PlanError, UnsupportedCaseReason};
@@ -118,11 +118,12 @@ pub(super) fn plan(
 ) -> Result<Expr, PlanError> {
     let clauses = case_clauses(clauses)?;
     let source_type = subject.type_();
-    let Some(subject_type) = ValueType::from_gleam(source_type.as_ref()) else {
+    let Some(subject_shape) = ValueShape::from_gleam(source_type.as_ref()) else {
         return Err(super::unsupported_case(
             UnsupportedCaseReason::UnsupportedSubjectType,
         ));
     };
+    let subject_type = subject_shape.value_type();
     let subject_variants = CaseSubjectVariants::from_gleam(source_type.as_ref());
     match subject_type {
         ValueType::Bool => bool_::plan(type_, subject, clauses, context),
@@ -134,6 +135,7 @@ pub(super) fn plan(
             type_,
             subject,
             subject_type,
+            subject_shape,
             subject_variants.custom_variant(),
             clauses,
             context,
@@ -144,6 +146,7 @@ pub(super) fn plan(
             type_,
             subject,
             subject_type,
+            subject_shape,
             subject_variants,
             clauses,
             context,
@@ -152,13 +155,19 @@ pub(super) fn plan(
             type_,
             subject,
             *subject_type,
+            subject_shape,
             subject_variants,
             clauses,
             context,
         ),
-        ValueType::Function(subject_type) => {
-            function::plan(type_, subject, *subject_type, clauses, context)
-        }
+        ValueType::Function(subject_type) => function::plan(
+            type_,
+            subject,
+            *subject_type,
+            subject_shape,
+            clauses,
+            context,
+        ),
     }
 }
 
@@ -169,16 +178,18 @@ pub(super) fn plan_multi(
     context: &mut PlanContext<'_>,
 ) -> Result<Expr, PlanError> {
     let mut subject_types = Vec::with_capacity(subjects.len());
+    let mut subject_shapes = Vec::with_capacity(subjects.len());
     let mut subject_variants = Vec::with_capacity(subjects.len());
     for subject in &subjects {
         let source_type = subject.type_();
-        let Some(type_) = ValueType::from_gleam(source_type.as_ref()) else {
+        let Some(shape) = ValueShape::from_gleam(source_type.as_ref()) else {
             return Err(super::unsupported_case(
                 UnsupportedCaseReason::UnsupportedSubjectType,
             ));
         };
         subject_variants.push(CaseSubjectVariants::from_gleam(source_type.as_ref()));
-        subject_types.push(type_);
+        subject_types.push(shape.value_type());
+        subject_shapes.push(shape);
     }
     let gleam_subject_type = gleam_core::type_::tuple(
         subjects
@@ -197,6 +208,7 @@ pub(super) fn plan_multi(
         type_,
         subject,
         subject_types,
+        ValueShape::Tuple(subject_shapes.into_boxed_slice()),
         CaseSubjectVariants::Tuple(subject_variants),
         clauses,
         context,
@@ -343,6 +355,8 @@ fn validate_case_branch_type(case_type: &Type, branch: &Expr) -> Result<(), Plan
 }
 
 fn bool_case_expr(subject: BoolExpr, true_: Expr, false_: Expr) -> Result<Expr, PlanError> {
+    let true_shape = true_.value_shape().clone();
+    let false_shape = false_.value_shape().clone();
     let branches = match (true_.into_kind(), false_.into_kind()) {
         (ExprKind::Int(true_), ExprKind::Int(false_)) => BoolCaseBranches::Int { true_, false_ },
         (ExprKind::String(true_), ExprKind::String(false_)) => {
@@ -354,9 +368,11 @@ fn bool_case_expr(subject: BoolExpr, true_: Expr, false_: Expr) -> Result<Expr, 
         (ExprKind::UtfCodepoint(true_), ExprKind::UtfCodepoint(false_)) => {
             BoolCaseBranches::UtfCodepoint { true_, false_ }
         }
-        (ExprKind::Custom(true_), ExprKind::Custom(false_)) if true_.type_() == false_.type_() => {
-            BoolCaseBranches::Custom { true_, false_ }
-        }
+        (ExprKind::Custom(true_), ExprKind::Custom(false_)) => BoolCaseBranches::Custom(
+            crate::plan::CustomBoolCaseBranches::try_new(true_, false_).ok_or_else(|| {
+                super::invalid_case_shape(InvalidCaseShapeReason::BranchReturnTypeMismatch)
+            })?,
+        ),
         (ExprKind::Float(true_), ExprKind::Float(false_)) => {
             BoolCaseBranches::Float { true_, false_ }
         }
@@ -377,8 +393,24 @@ fn bool_case_expr(subject: BoolExpr, true_: Expr, false_: Expr) -> Result<Expr, 
             ));
         }
     };
+    let shape = case_result_shape(std::iter::once(&true_shape), &false_shape)?;
 
-    Ok(Expr::bool_case(subject, branches))
+    Expr::bool_case(subject, branches)
+        .with_resolved_shape(shape)
+        .ok_or_else(|| super::invalid_case_shape(InvalidCaseShapeReason::BranchReturnTypeMismatch))
+}
+
+fn case_result_shape<'a>(
+    branches: impl IntoIterator<Item = &'a crate::plan::ValueShape>,
+    fallback: &crate::plan::ValueShape,
+) -> Result<crate::plan::ValueShape, PlanError> {
+    let mut shape = fallback.clone();
+    for branch in branches {
+        shape = branch.merge(&shape).ok_or_else(|| {
+            super::invalid_case_shape(InvalidCaseShapeReason::BranchReturnTypeMismatch)
+        })?;
+    }
+    Ok(shape)
 }
 
 fn bool_list_case_branches(
@@ -477,8 +509,8 @@ fn bool_function_case_branches(
     })
 }
 
-fn case_return_type(case_type: &Type) -> Result<ValueType, PlanError> {
-    ValueType::from_gleam(case_type)
+fn case_return_shape(case_type: &Type) -> Result<ValueShape, PlanError> {
+    ValueShape::from_gleam(case_type)
         .ok_or_else(|| super::invalid_case_shape(InvalidCaseShapeReason::BranchReturnTypeMismatch))
 }
 
@@ -489,16 +521,16 @@ fn invalid_case_return_type() -> Arc<Type> {
 
 fn plan_case_branch(
     case_type: &Type,
-    return_type: &ValueType,
+    return_shape: &ValueShape,
     then: TypedExpr,
     branch_bindings: Vec<(EcoString, Expr)>,
     context: &mut PlanContext<'_>,
 ) -> Result<Expr, PlanError> {
     context.with_local_scope(|context| {
         let steps = plan_branch_binding_steps(branch_bindings, context);
-        let branch = super::super::plan_expr_with_expected_source_stop_type(
+        let branch = super::super::plan_expr_with_expected_source_stop_shape(
             then,
-            return_type.clone(),
+            return_shape.clone(),
             context,
         )?;
         validate_case_branch_type(case_type, &branch)?;
@@ -520,7 +552,7 @@ struct OrderedCaseClause {
 
 struct OrderedCaseClauseInput<'a> {
     case_type: &'a Type,
-    return_type: &'a ValueType,
+    return_shape: &'a ValueShape,
     then: TypedExpr,
     branch_bindings: Vec<(EcoString, Expr)>,
     guard: Option<TypedClauseGuard>,
@@ -537,7 +569,7 @@ struct OrderedCasePattern {
 
 struct OrderedCaseCandidateInput<'a> {
     case_type: &'a Type,
-    return_type: &'a ValueType,
+    return_shape: &'a ValueShape,
     then: TypedExpr,
     guard: Option<TypedClauseGuard>,
 }
@@ -548,7 +580,7 @@ fn plan_ordered_case_clause(
 ) -> Result<OrderedCaseClause, PlanError> {
     let OrderedCaseClauseInput {
         case_type,
-        return_type,
+        return_shape,
         then,
         branch_bindings,
         guard,
@@ -559,7 +591,7 @@ fn plan_ordered_case_clause(
     plan_ordered_case_candidate(
         OrderedCaseCandidateInput {
             case_type,
-            return_type,
+            return_shape,
             then,
             guard,
         },
@@ -582,7 +614,7 @@ fn plan_ordered_case_candidate(
 ) -> Result<OrderedCaseClause, PlanError> {
     let OrderedCaseCandidateInput {
         case_type,
-        return_type,
+        return_shape,
         then,
         guard,
     } = input;
@@ -611,9 +643,9 @@ fn plan_ordered_case_candidate(
             None => match_condition,
         };
 
-        let branch = super::super::plan_expr_with_expected_source_stop_type(
+        let branch = super::super::plan_expr_with_expected_source_stop_shape(
             then,
-            return_type.clone(),
+            return_shape.clone(),
             context,
         )?;
         validate_case_branch_type(case_type, &branch)?;
@@ -1419,7 +1451,7 @@ pub fn main() {
         let actual = super::plan_ordered_case_clause(
             super::OrderedCaseClauseInput {
                 case_type: case_type.as_ref(),
-                return_type: &crate::plan::ValueType::String,
+                return_shape: &crate::plan::ValueShape::String,
                 then: super::super::super::typed_int_expr(1),
                 branch_bindings: Vec::new(),
                 guard: None,

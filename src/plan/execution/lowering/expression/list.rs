@@ -150,7 +150,7 @@ fn typed_list_expr<Item>(
 where
     Item: LowerListItem,
 {
-    let (item, kind) = expression.into_item_and_kind();
+    let (_item_shape, item, kind) = expression.into_shape_item_and_kind();
     let item = item.lower_item(context);
     let kind = typed_list_kind::<Item>(kind, &item, context);
     execution::TypedListExpr::from_item_and_kind(item, kind)

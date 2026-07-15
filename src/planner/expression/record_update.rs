@@ -54,7 +54,7 @@ pub(super) fn plan(
     }
 
     let local = context.define_internal_custom_local();
-    let typed_local = crate::plan::CustomLocal::new(local, source_custom_type);
+    let typed_local = crate::plan::CustomLocal::from_shape(local, source.shape().clone());
     let local_name = internal_local_name(local);
     let step = Step::let_custom(local, local_name.clone(), source);
     let local_get = CustomExpr::local_get(typed_local, local_name);
@@ -65,15 +65,17 @@ pub(super) fn plan(
         &implicit_target,
         context,
     )?;
-    let result = CustomExpr::try_constructor(constructor, arguments).map_err(|_| {
-        PlanError::InvalidTypedAst {
-            reason: InvalidTypedAstReason::RecordUpdateShape {
-                reason: InvalidRecordUpdateShapeReason::ArgumentCount,
-            },
-        }
-    })?;
-
-    Ok(Expr::custom(CustomExpr::block(vec![step], result)))
+    let construction =
+        crate::plan::CustomConstruction::try_new(constructor, arguments).map_err(|_| {
+            PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::RecordUpdateShape {
+                    reason: InvalidRecordUpdateShapeReason::ArgumentCount,
+                },
+            }
+        })?;
+    context
+        .custom_expr_from_construction(construction)
+        .map(|result| Expr::custom(CustomExpr::block(vec![step], result)))
 }
 
 fn plan_arguments(
@@ -387,26 +389,34 @@ pub fn main() {
                 CustomConstructorField::new(Some("age".into()), ValueType::Int),
             ],
         );
+        let shape = crate::plan::CustomValueShape::new(
+            type_.type_name().clone(),
+            Vec::new(),
+            crate::plan::CustomConstructorRefinement::Exact(0),
+        );
         let source = CustomExpr::local_get(
-            crate::plan::CustomLocal::new(CustomLocalId(0), type_.clone()),
+            crate::plan::CustomLocal::from_shape(CustomLocalId(0), shape.clone()),
             "person".into(),
         );
         let local = CustomLocalId(1);
         let local_name = ecow::EcoString::from("<record:update:1>");
         let projected_name = Expr::string(StringExpr::custom_field(CustomFieldAccess::new(
             CustomExpr::local_get(
-                crate::plan::CustomLocal::new(local, type_.clone()),
+                crate::plan::CustomLocal::from_shape(local, shape.clone()),
                 local_name.clone(),
             ),
             0,
             Some("name".into()),
             vec![constructor.clone()],
         )));
-        let updated = CustomExpr::try_constructor(
-            constructor,
-            vec![projected_name, Expr::int(IntExpr::value(31.into()))],
-        )
-        .expect("test record construction should be valid");
+        let updated = CustomExpr::from_construction(
+            shape,
+            crate::plan::CustomConstruction::try_new(
+                constructor,
+                vec![projected_name, Expr::int(IntExpr::value(31.into()))],
+            )
+            .expect("test record construction should be valid"),
+        );
 
         assert_eq!(
             plan.main_function().return_(),
@@ -436,29 +446,37 @@ pub fn main() {
                 CustomConstructorField::new(Some("label".into()), ValueType::String),
             ],
         );
+        let shape = crate::plan::CustomValueShape::new(
+            type_.type_name().clone(),
+            vec![crate::plan::ValueShape::Int],
+            crate::plan::CustomConstructorRefinement::Exact(0),
+        );
         let source = CustomExpr::local_get(
-            crate::plan::CustomLocal::new(CustomLocalId(0), type_.clone()),
+            crate::plan::CustomLocal::from_shape(CustomLocalId(0), shape.clone()),
             "boxed".into(),
         );
         let local = CustomLocalId(1);
         let local_name = ecow::EcoString::from("<record:update:1>");
         let projected_value = Expr::int(IntExpr::custom_field(CustomFieldAccess::new(
             CustomExpr::local_get(
-                crate::plan::CustomLocal::new(local, type_.clone()),
+                crate::plan::CustomLocal::from_shape(local, shape.clone()),
                 local_name.clone(),
             ),
             0,
             None,
             vec![constructor.clone()],
         )));
-        let updated = CustomExpr::try_constructor(
-            constructor,
-            vec![
-                projected_value,
-                Expr::string(StringExpr::value("two".into())),
-            ],
-        )
-        .expect("test record construction should be valid");
+        let updated = CustomExpr::from_construction(
+            shape,
+            crate::plan::CustomConstruction::try_new(
+                constructor,
+                vec![
+                    projected_value,
+                    Expr::string(StringExpr::value("two".into())),
+                ],
+            )
+            .expect("test record construction should be valid"),
+        );
 
         assert_eq!(
             plan.main_function().return_(),
@@ -488,20 +506,28 @@ pub fn main() {
                 CustomConstructorField::new(Some("age".into()), ValueType::Int),
             ],
         );
+        let shape = crate::plan::CustomValueShape::new(
+            type_.type_name().clone(),
+            Vec::new(),
+            crate::plan::CustomConstructorRefinement::Exact(0),
+        );
         let source = CustomExpr::local_get(
-            crate::plan::CustomLocal::new(CustomLocalId(0), type_.clone()),
+            crate::plan::CustomLocal::from_shape(CustomLocalId(0), shape.clone()),
             "person".into(),
         );
         let local = CustomLocalId(1);
         let local_name = ecow::EcoString::from("<record:update:1>");
-        let updated = CustomExpr::try_constructor(
-            constructor,
-            vec![
-                Expr::string(StringExpr::value("Mia".into())),
-                Expr::int(IntExpr::value(31.into())),
-            ],
-        )
-        .expect("test record construction should be valid");
+        let updated = CustomExpr::from_construction(
+            shape,
+            crate::plan::CustomConstruction::try_new(
+                constructor,
+                vec![
+                    Expr::string(StringExpr::value("Mia".into())),
+                    Expr::int(IntExpr::value(31.into())),
+                ],
+            )
+            .expect("test record construction should be valid"),
+        );
 
         assert_eq!(
             plan.main_function().return_(),

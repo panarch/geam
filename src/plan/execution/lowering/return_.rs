@@ -60,10 +60,10 @@ pub(super) fn custom_return(
     body: module::CustomReturn,
     context: &mut LoweringContext,
 ) -> execution::CustomReturn {
-    let (type_, body) = body.into_parts();
-    let type_id = context.custom_type(type_);
+    let (shape, body) = body.into_parts();
+    let shape = context.custom_value_shape(shape);
     let body = return_body(body, context, custom_expr_kind, |index, _| index);
-    execution::CustomReturn::from_parts(type_id, body)
+    execution::CustomReturn::from_parts(shape, body)
 }
 
 pub(super) fn bool_return(
@@ -202,102 +202,122 @@ pub(super) fn function_list_return(
     })
 }
 pub(super) fn int_function_return(
+    shape: crate::plan::FunctionShape,
     body: module::IntFunctionReturn,
     context: &mut LoweringContext,
 ) -> execution::IntFunctionReturn {
-    return_body(body, context, int_function_expr, |id, _| {
+    let body = return_body(body, context, int_function_expr, |id, _| {
         execution::IntFunctionFunctionId(id.0)
-    })
+    });
+    execution::TypedFunctionReturn::new(context.function_shape(shape), body)
 }
 
 pub(super) fn float_function_return(
+    shape: crate::plan::FunctionShape,
     body: module::FloatFunctionReturn,
     context: &mut LoweringContext,
 ) -> execution::FloatFunctionReturn {
-    return_body(body, context, float_function_expr, |id, _| {
+    let body = return_body(body, context, float_function_expr, |id, _| {
         execution::FloatFunctionFunctionId(id.0)
-    })
+    });
+    execution::TypedFunctionReturn::new(context.function_shape(shape), body)
 }
 
 pub(super) fn string_function_return(
+    shape: crate::plan::FunctionShape,
     body: module::StringFunctionReturn,
     context: &mut LoweringContext,
 ) -> execution::StringFunctionReturn {
-    return_body(body, context, string_function_expr, |id, _| {
+    let body = return_body(body, context, string_function_expr, |id, _| {
         execution::StringFunctionFunctionId(id.0)
-    })
+    });
+    execution::TypedFunctionReturn::new(context.function_shape(shape), body)
 }
 
 pub(super) fn bit_array_function_return(
+    shape: crate::plan::FunctionShape,
     body: module::BitArrayFunctionReturn,
     context: &mut LoweringContext,
 ) -> execution::BitArrayFunctionReturn {
-    return_body(body, context, bit_array_function_expr, |id, _| {
+    let body = return_body(body, context, bit_array_function_expr, |id, _| {
         execution::BitArrayFunctionFunctionId(id.0)
-    })
+    });
+    execution::TypedFunctionReturn::new(context.function_shape(shape), body)
 }
 
 pub(super) fn utf_codepoint_function_return(
+    shape: crate::plan::FunctionShape,
     body: module::UtfCodepointFunctionReturn,
     context: &mut LoweringContext,
 ) -> execution::UtfCodepointFunctionReturn {
-    return_body(body, context, utf_codepoint_function_expr, |id, _| {
+    let body = return_body(body, context, utf_codepoint_function_expr, |id, _| {
         execution::UtfCodepointFunctionFunctionId(id.0)
-    })
+    });
+    execution::TypedFunctionReturn::new(context.function_shape(shape), body)
 }
 
 pub(super) fn custom_function_return(
+    shape: crate::plan::FunctionShape,
     body: module::CustomFunctionReturn,
     context: &mut LoweringContext,
 ) -> execution::CustomFunctionReturn {
     let (type_, body) = body.into_parts();
     let type_ = context.custom_function_type(type_);
     let body = return_body(body, context, custom_function_expr_kind, |index, _| index);
-    execution::CustomFunctionReturn::from_parts(type_, body)
+    execution::CustomFunctionReturn::from_parts(context.function_shape(shape), type_, body)
 }
 
 pub(super) fn bool_function_return(
+    shape: crate::plan::FunctionShape,
     body: module::BoolFunctionReturn,
     context: &mut LoweringContext,
 ) -> execution::BoolFunctionReturn {
-    return_body(body, context, bool_function_expr, |id, _| {
+    let body = return_body(body, context, bool_function_expr, |id, _| {
         execution::BoolFunctionFunctionId(id.0)
-    })
+    });
+    execution::TypedFunctionReturn::new(context.function_shape(shape), body)
 }
 
 pub(super) fn nil_function_return(
+    shape: crate::plan::FunctionShape,
     body: module::NilFunctionReturn,
     context: &mut LoweringContext,
 ) -> execution::NilFunctionReturn {
-    return_body(body, context, nil_function_expr, |id, _| {
+    let body = return_body(body, context, nil_function_expr, |id, _| {
         execution::NilFunctionFunctionId(id.0)
-    })
+    });
+    execution::TypedFunctionReturn::new(context.function_shape(shape), body)
 }
 
 pub(super) fn tuple_function_return(
+    shape: crate::plan::FunctionShape,
     body: module::TupleFunctionReturn,
     context: &mut LoweringContext,
 ) -> execution::TupleFunctionReturn {
-    return_body(body, context, tuple_function_expr, |id, _| {
+    let body = return_body(body, context, tuple_function_expr, |id, _| {
         execution::TupleFunctionFunctionId(id.0)
-    })
+    });
+    execution::TypedFunctionReturn::new(context.function_shape(shape), body)
 }
 
 pub(super) fn list_function_return(
+    shape: crate::plan::FunctionShape,
     body: module::ListFunctionReturn,
     context: &mut LoweringContext,
 ) -> execution::ListFunctionReturn {
-    return_body(body, context, list_function_expr, list_function_function_id)
+    let body = return_body(body, context, list_function_expr, list_function_function_id);
+    execution::TypedFunctionReturn::new(context.function_shape(shape), body)
 }
 
 pub(super) fn function_function_return(
+    shape: crate::plan::FunctionShape,
     body: module::FunctionFunctionReturn,
     context: &mut LoweringContext,
 ) -> execution::FunctionFunctionReturn {
     let (type_, body) = body.into_parts();
     let type_ = context.function_function_type(type_);
     let body = return_body(body, context, function_function_expr_kind, |index, _| index);
-    execution::FunctionFunctionReturn::from_parts(type_, body)
+    execution::FunctionFunctionReturn::from_parts(context.function_shape(shape), type_, body)
 }
 
 fn return_body<ModuleExpression, ModuleFunction, ExecutionExpression, ExecutionFunction>(
@@ -417,9 +437,8 @@ fn return_body<ModuleExpression, ModuleFunction, ExecutionExpression, ExecutionF
 #[cfg(test)]
 mod tests {
     use crate::plan::execution::{
-        CustomFunctionFunctionId, CustomFunctionType, ExecutionPlan, FunctionFunctionFunctionId,
-        FunctionFunctionId, FunctionFunctionType, FunctionType, ListFunctionId, ListListFunctionId,
-        ReturnBody, ReturnBodyKind, RuntimeFunctionId, ValueType,
+        ExecutionPlan, FunctionFunctionId, ListFunctionId, ListListFunctionId, ReturnBody,
+        ReturnBodyKind, RuntimeFunctionId,
     };
 
     #[test]
@@ -435,16 +454,12 @@ fn factory() -> fn(Int) -> Boxed { factory() }
 pub fn main() -> fn(Int) -> Boxed { factory() }
 "#,
         );
-        let type_ = CustomFunctionType::new(
-            vec![ValueType::Int],
-            plan.custom_constructor_id(0, 0).type_id(),
-        );
-        let main = CustomFunctionFunctionId::new(0, type_.clone());
+        let main = plan.custom_function_function_id(0);
         assert_eq!(
             plan.main_runtime(),
             RuntimeFunctionId::Function {
                 id: FunctionFunctionId::Custom(main.clone()),
-                return_type: type_.to_function_type(),
+                return_type: main.type_().to_function_type(),
             },
         );
         let return_ = plan.custom_function_function(&main).return_();
@@ -462,16 +477,12 @@ fn factory() -> fn() -> fn(Int) -> Int { factory() }
 pub fn main() -> fn() -> fn(Int) -> Int { factory() }
 "#,
         );
-        let type_ = FunctionFunctionType::new(
-            Vec::new(),
-            FunctionType::new(vec![ValueType::Int], ValueType::Int),
-        );
-        let main = FunctionFunctionFunctionId::new(0, type_.clone());
+        let main = plan.function_function_function_id(0);
         assert_eq!(
             plan.main_runtime(),
             RuntimeFunctionId::Function {
                 id: FunctionFunctionId::Function(main.clone()),
-                return_type: type_.to_function_type(),
+                return_type: main.type_().to_function_type(),
             },
         );
         let return_ = plan.function_function_function(&main).return_();

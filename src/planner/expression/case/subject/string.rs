@@ -1,7 +1,7 @@
 use super::super::super::plan_string_expr;
 use super::super::invalid_case_shape;
-use super::{CaseClause, OrderedCaseClauseInput, case_return_type};
-use crate::plan::{BoolExpr, Expr, ExprKind, StringCaseBranches, StringExpr, ValueType};
+use super::{CaseClause, OrderedCaseClauseInput, case_return_shape};
+use crate::plan::{BoolExpr, Expr, ExprKind, StringCaseBranches, StringExpr, ValueShape};
 use crate::planner::context::PlanContext;
 use crate::planner::error::{InvalidCaseShapeReason, PlanError};
 use ecow::EcoString;
@@ -16,7 +16,7 @@ pub(super) fn plan(
     context: &mut PlanContext<'_>,
 ) -> Result<Expr, PlanError> {
     let subject = plan_string_expr(subject, context)?;
-    let return_type = case_return_type(type_.as_ref())?;
+    let return_shape = case_return_shape(type_.as_ref())?;
     if clauses.iter().any(|clause| {
         clause.guard.is_some()
             || clause.has_alternative_patterns()
@@ -24,7 +24,7 @@ pub(super) fn plan(
     }) {
         let (subject_step, subject) = super::bind_string_case_subject(subject, context);
         let case =
-            plan_ordered_string_case(type_.as_ref(), return_type, subject, clauses, context)?;
+            plan_ordered_string_case(type_.as_ref(), return_shape, subject, clauses, context)?;
         return Ok(super::case_subject_block(subject_step, case));
     }
     let needs_subject_binding = clauses.iter().any(clause_has_string_bound_name);
@@ -39,8 +39,13 @@ pub(super) fn plan(
     for clause in clauses {
         let pattern = plan_literal_string_case_pattern(clause.pattern)?;
         let bindings = pattern.branch_bindings(&subject);
-        let branch =
-            super::plan_case_branch(type_.as_ref(), &return_type, clause.then, bindings, context)?;
+        let branch = super::plan_case_branch(
+            type_.as_ref(),
+            &return_shape,
+            clause.then,
+            bindings,
+            context,
+        )?;
 
         match pattern {
             LiteralStringCasePattern::Literal { value, .. } => {
@@ -72,7 +77,7 @@ pub(super) fn plan(
 
 fn plan_ordered_string_case(
     case_type: &Type,
-    return_type: ValueType,
+    return_shape: ValueShape,
     subject: StringExpr,
     clauses: Vec<CaseClause>,
     context: &mut PlanContext<'_>,
@@ -87,7 +92,7 @@ fn plan_ordered_string_case(
             ordered_clauses.push(super::plan_ordered_case_clause(
                 OrderedCaseClauseInput {
                     case_type,
-                    return_type: &return_type,
+                    return_shape: &return_shape,
                     then: clause.then.clone(),
                     branch_bindings: bindings,
                     guard: clause.guard.clone(),
@@ -363,6 +368,11 @@ fn string_case_expr(
     clauses: Vec<(EcoString, Expr)>,
     fallback: Expr,
 ) -> Result<Expr, PlanError> {
+    let clause_shapes = clauses
+        .iter()
+        .map(|(_, branch)| branch.value_shape().clone())
+        .collect::<Vec<_>>();
+    let fallback_shape = fallback.value_shape().clone();
     let branches = match fallback.into_kind() {
         ExprKind::Int(fallback) => StringCaseBranches::Int {
             clauses: int_case_clauses(clauses)?,
@@ -380,10 +390,12 @@ fn string_case_expr(
             clauses: utf_codepoint_case_clauses(clauses)?,
             fallback,
         },
-        ExprKind::Custom(fallback) => StringCaseBranches::Custom {
-            clauses: custom_case_clauses(clauses)?,
-            fallback,
-        },
+        ExprKind::Custom(fallback) => StringCaseBranches::Custom(
+            crate::plan::CustomCaseBranches::try_new(custom_case_clauses(clauses)?, fallback)
+                .ok_or_else(|| {
+                    invalid_case_shape(InvalidCaseShapeReason::BranchReturnTypeMismatch)
+                })?,
+        ),
         ExprKind::Float(fallback) => StringCaseBranches::Float {
             clauses: float_case_clauses(clauses)?,
             fallback,
@@ -405,8 +417,11 @@ fn string_case_expr(
         }
         ExprKind::Function(fallback) => function_case_branches(clauses, fallback)?,
     };
+    let shape = super::case_result_shape(clause_shapes.iter(), &fallback_shape)?;
 
-    Ok(Expr::string_case(subject, branches))
+    Expr::string_case(subject, branches)
+        .with_resolved_shape(shape)
+        .ok_or_else(|| invalid_case_shape(InvalidCaseShapeReason::BranchReturnTypeMismatch))
 }
 
 fn int_case_clauses(
@@ -2204,6 +2219,37 @@ fn return_value(value: String) {
             Err(case_branch_return_type_mismatch()),
         );
 
+        let custom_expr = |name: &str, local| {
+            let type_ = crate::plan::CustomType::new(
+                crate::plan::CustomTypeName::new("geam".into(), "main".into(), name.into()),
+                Vec::new(),
+            );
+            Expr::custom(crate::plan::CustomExpr::local_get(
+                crate::plan::CustomLocal::new(crate::plan::CustomLocalId(local), type_),
+                name.into(),
+            ))
+        };
+        assert_eq!(
+            super::string_case_expr(
+                string("one").into(),
+                vec![("one".into(), custom_expr("First", 0))],
+                custom_expr("Second", 1),
+            ),
+            Err(case_branch_return_type_mismatch()),
+        );
+        let tuple_expr = |expression: Expr| {
+            let type_ = expression.value_type();
+            Expr::tuple(crate::plan::TupleExpr::value(vec![expression], vec![type_]))
+        };
+        assert_eq!(
+            super::string_case_expr(
+                string("one").into(),
+                vec![("one".into(), tuple_expr(custom_expr("First", 0)))],
+                tuple_expr(custom_expr("Second", 1)),
+            ),
+            Err(case_branch_return_type_mismatch()),
+        );
+
         let custom_type = crate::plan::CustomType::new(
             crate::plan::CustomTypeName::new("geam".into(), "main".into(), "Choice".into()),
             Vec::new(),
@@ -2219,6 +2265,35 @@ fn return_value(value: String) {
                     ),
                     "fallback".into(),
                 )),
+            ),
+            Err(case_branch_return_type_mismatch()),
+        );
+
+        let malformed_return_type = crate::plan::CustomType::new(
+            crate::plan::CustomTypeName::new("geam".into(), "main".into(), "Malformed".into()),
+            Vec::new(),
+        );
+        let malformed_function = |id| {
+            let function = int_function_ref_expr(id)
+                .into_function()
+                .expect("test expression is function-valued")
+                .into_int()
+                .expect("test expression is Int-returning");
+            Expr::function(FunctionExpr::int_with_shape(
+                function,
+                crate::plan::FunctionShape::new(
+                    vec![crate::plan::ValueShape::Int],
+                    crate::plan::ValueShape::Custom(crate::plan::CustomValueShape::any(
+                        malformed_return_type.clone(),
+                    )),
+                ),
+            ))
+        };
+        assert_eq!(
+            super::string_case_expr(
+                string("one").into(),
+                vec![("one".into(), malformed_function(0))],
+                malformed_function(1),
             ),
             Err(case_branch_return_type_mismatch()),
         );

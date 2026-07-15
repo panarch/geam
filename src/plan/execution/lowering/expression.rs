@@ -22,7 +22,7 @@ pub(super) use function::{
     bit_array_function_expr, bool_function_expr, custom_function_expr, custom_function_expr_kind,
     float_function_expr, function_expr, function_function_expr, function_function_expr_kind,
     int_function_expr, list_function_expr, nil_function_expr, string_function_expr,
-    tuple_function_expr, utf_codepoint_function_expr,
+    tuple_function_expr, typed_function_expr, utf_codepoint_function_expr,
 };
 pub(super) use int::int_expr;
 pub(super) use list::{
@@ -41,7 +41,8 @@ pub(super) fn expr(
     expression: module::Expr,
     context: &mut super::LoweringContext,
 ) -> execution::Expr {
-    execution::Expr::from_kind(match expression.into_kind() {
+    let (_shape, kind) = expression.into_parts();
+    execution::Expr::from_kind(match kind {
         module::ExprKind::Int(expression) => {
             execution::ExprKind::Int(int_expr(expression, context))
         }
@@ -154,47 +155,47 @@ pub(super) fn call_arg(
         M::List(value) => E::List(list::list_local_expr(value, context)),
         M::IntFunction { local, value } => E::IntFunction {
             local: execution::IntFunctionLocalId(local.0),
-            value: int_function_expr(value, context),
+            value: typed_function_expr(value, context, int_function_expr),
         },
         M::StringFunction { local, value } => E::StringFunction {
             local: execution::StringFunctionLocalId(local.0),
-            value: string_function_expr(value, context),
+            value: typed_function_expr(value, context, string_function_expr),
         },
         M::BitArrayFunction { local, value } => E::BitArrayFunction {
             local: execution::BitArrayFunctionLocalId(local.0),
-            value: bit_array_function_expr(value, context),
+            value: typed_function_expr(value, context, bit_array_function_expr),
         },
         M::UtfCodepointFunction { local, value } => E::UtfCodepointFunction {
             local: execution::UtfCodepointFunctionLocalId(local.0),
-            value: utf_codepoint_function_expr(value, context),
+            value: typed_function_expr(value, context, utf_codepoint_function_expr),
         },
         M::CustomFunction { local, value } => E::CustomFunction {
             local: crate::plan::execution::lowering::id::custom_function_local(local, context),
-            value: custom_function_expr(value, context),
+            value: typed_function_expr(value, context, custom_function_expr),
         },
         M::FloatFunction { local, value } => E::FloatFunction {
             local: execution::FloatFunctionLocalId(local.0),
-            value: float_function_expr(value, context),
+            value: typed_function_expr(value, context, float_function_expr),
         },
         M::BoolFunction { local, value } => E::BoolFunction {
             local: execution::BoolFunctionLocalId(local.0),
-            value: bool_function_expr(value, context),
+            value: typed_function_expr(value, context, bool_function_expr),
         },
         M::NilFunction { local, value } => E::NilFunction {
             local: execution::NilFunctionLocalId(local.0),
-            value: nil_function_expr(value, context),
+            value: typed_function_expr(value, context, nil_function_expr),
         },
         M::TupleFunction { local, value } => E::TupleFunction {
             local: execution::TupleFunctionLocalId(local.0),
-            value: tuple_function_expr(value, context),
+            value: typed_function_expr(value, context, tuple_function_expr),
         },
         M::ListFunction { local, value } => E::ListFunction {
             local: list_function_local(local, context),
-            value: list_function_expr(value, context),
+            value: typed_function_expr(value, context, list_function_expr),
         },
         M::FunctionFunction { local, value } => E::FunctionFunction {
             local: crate::plan::execution::lowering::id::function_function_local(local, context),
-            value: function_function_expr(value, context),
+            value: typed_function_expr(value, context, function_function_expr),
         },
     })
 }
@@ -258,47 +259,47 @@ fn capture_arg(
         M::List(value) => E::List(list::list_local_expr(value, context)),
         M::IntFunction { local, value } => E::IntFunction {
             local: execution::IntFunctionLocalId(local.0),
-            value: int_function_expr(value, context),
+            value: typed_function_expr(value, context, int_function_expr),
         },
         M::StringFunction { local, value } => E::StringFunction {
             local: execution::StringFunctionLocalId(local.0),
-            value: string_function_expr(value, context),
+            value: typed_function_expr(value, context, string_function_expr),
         },
         M::BitArrayFunction { local, value } => E::BitArrayFunction {
             local: execution::BitArrayFunctionLocalId(local.0),
-            value: bit_array_function_expr(value, context),
+            value: typed_function_expr(value, context, bit_array_function_expr),
         },
         M::UtfCodepointFunction { local, value } => E::UtfCodepointFunction {
             local: execution::UtfCodepointFunctionLocalId(local.0),
-            value: utf_codepoint_function_expr(value, context),
+            value: typed_function_expr(value, context, utf_codepoint_function_expr),
         },
         M::CustomFunction { local, value } => E::CustomFunction {
             local: crate::plan::execution::lowering::id::custom_function_local(local, context),
-            value: custom_function_expr(value, context),
+            value: typed_function_expr(value, context, custom_function_expr),
         },
         M::FloatFunction { local, value } => E::FloatFunction {
             local: execution::FloatFunctionLocalId(local.0),
-            value: float_function_expr(value, context),
+            value: typed_function_expr(value, context, float_function_expr),
         },
         M::BoolFunction { local, value } => E::BoolFunction {
             local: execution::BoolFunctionLocalId(local.0),
-            value: bool_function_expr(value, context),
+            value: typed_function_expr(value, context, bool_function_expr),
         },
         M::NilFunction { local, value } => E::NilFunction {
             local: execution::NilFunctionLocalId(local.0),
-            value: nil_function_expr(value, context),
+            value: typed_function_expr(value, context, nil_function_expr),
         },
         M::TupleFunction { local, value } => E::TupleFunction {
             local: execution::TupleFunctionLocalId(local.0),
-            value: tuple_function_expr(value, context),
+            value: typed_function_expr(value, context, tuple_function_expr),
         },
         M::ListFunction { local, value } => E::ListFunction {
             local: list_function_local(local, context),
-            value: list_function_expr(value, context),
+            value: typed_function_expr(value, context, list_function_expr),
         },
         M::FunctionFunction { local, value } => E::FunctionFunction {
             local: crate::plan::execution::lowering::id::function_function_local(local, context),
-            value: function_function_expr(value, context),
+            value: typed_function_expr(value, context, function_function_expr),
         },
     })
 }

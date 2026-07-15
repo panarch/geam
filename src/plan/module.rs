@@ -25,13 +25,14 @@ pub use expression::{
 };
 pub(crate) use expression::{
     BitArrayExprKind, BitArrayFunctionExprKind, BitArraySegment, BoolCaseBranches, BoolExprKind,
-    BoolFunctionExprKind, CallArgKind, CaptureArg, CaptureArgKind, CustomExprKind,
-    CustomFieldAccess, CustomFunctionExprKind, Endianness, ExprKind, FloatBitSize,
-    FloatCaseBranches, FloatExprKind, FloatFunctionExprKind, FunctionExprKind,
-    FunctionFunctionCallMismatch, FunctionFunctionExprKind, IntCaseBranches, IntExprKind,
-    IntFunctionExprKind, ListElements, ListFunctionExprKind, NilExprKind, NilFunctionExprKind,
-    PanicExpr, PanicExprKind, StringCaseBranches, StringEncoding, StringExprKind,
-    StringFunctionExprKind, TupleExprKind, TupleFunctionExprKind, UtfCodepointExprKind,
+    BoolFunctionExprKind, CallArgKind, CaptureArg, CaptureArgKind, CustomBoolCaseBranches,
+    CustomCaseBranches, CustomConstruction, CustomExprKind, CustomFieldAccess,
+    CustomFunctionExprKind, Endianness, ExprKind, FloatBitSize, FloatCaseBranches, FloatExprKind,
+    FloatFunctionExprKind, FunctionExprKind, FunctionFunctionCallMismatch,
+    FunctionFunctionExprKind, IntCaseBranches, IntExprKind, IntFunctionExprKind, ListElements,
+    ListFunctionExprKind, NilExprKind, NilFunctionExprKind, PanicExpr, PanicExprKind,
+    StringCaseBranches, StringEncoding, StringExprKind, StringFunctionExprKind, TupleExprKind,
+    TupleFunctionExprKind, TypedFunctionExpr, TypedFunctionExprKind, UtfCodepointExprKind,
     UtfCodepointFunctionExprKind,
 };
 pub(crate) use expression::{
@@ -50,7 +51,7 @@ pub(crate) use function::{
     BoolReturn, CustomFunctionReturn, CustomListReturn, CustomReturn, FloatFunctionReturn,
     FloatListReturn, FloatReturn, FunctionExecutionParts, FunctionFunctionReturn,
     FunctionListReturn, IntFunctionReturn, IntListReturn, IntReturn, ListFunctionReturn,
-    ListListReturn, NilFunctionReturn, NilListReturn, NilReturn, ParamLocal, ReturnBody,
+    ListListReturn, NilFunctionReturn, NilListReturn, NilReturn, ParamLocal, ParamSlot, ReturnBody,
     ReturnBodyKind, ReturnExprKind, StringFunctionReturn, StringListReturn, StringReturn,
     TupleFunctionReturn, TupleListReturn, TupleReturn, UtfCodepointFunctionReturn,
     UtfCodepointListReturn, UtfCodepointReturn,
@@ -99,7 +100,7 @@ pub(crate) use reference::{
 pub use step::Step;
 pub(crate) use step::{
     AssertBinding, AssertPattern, BitArrayAssertPattern, ListAssertPattern, ListAssertTail,
-    StepKind,
+    StepKind, StringAssertBinding,
 };
 
 #[derive(Debug, PartialEq)]

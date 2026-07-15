@@ -1,10 +1,10 @@
-use super::super::super::plan_expr_with_expected_source_stop_type;
+use super::super::super::plan_expr_with_expected_source_stop_shape;
 use super::super::invalid_case_shape;
-use super::{CaseClause, OrderedCaseClauseInput, case_return_type};
+use super::{CaseClause, OrderedCaseClauseInput, case_return_shape};
 use crate::plan::{
     BitArrayFunctionExpr, BoolExpr, CustomFunctionExpr, Expr, ExprKind, FunctionExpr,
-    FunctionExprKind, FunctionFunctionExpr, FunctionType, IntFunctionExpr, IntFunctionLocalId,
-    Step, ValueType,
+    FunctionFunctionExpr, FunctionType, IntFunctionExpr, IntFunctionLocalId, Step,
+    TypedFunctionExprKind, ValueShape, ValueType,
 };
 use crate::planner::context::PlanContext;
 use crate::planner::error::{InvalidCaseShapeReason, PlanError};
@@ -17,13 +17,13 @@ pub(super) fn plan(
     type_: Arc<Type>,
     subject: TypedExpr,
     subject_type: FunctionType,
+    subject_shape: ValueShape,
     clauses: Vec<CaseClause>,
     context: &mut PlanContext<'_>,
 ) -> Result<Expr, PlanError> {
     let subject_value_type = ValueType::Function(Box::new(subject_type));
-    let subject =
-        plan_expr_with_expected_source_stop_type(subject, subject_value_type.clone(), context)?;
-    let return_type = case_return_type(type_.as_ref())?;
+    let subject = plan_expr_with_expected_source_stop_shape(subject, subject_shape, context)?;
+    let return_shape = case_return_shape(type_.as_ref())?;
 
     let ExprKind::Function(subject) = subject.into_kind() else {
         return Err(invalid_case_shape(
@@ -40,7 +40,7 @@ pub(super) fn plan(
             ordered_clauses.push(super::plan_ordered_case_clause(
                 OrderedCaseClauseInput {
                     case_type: type_.as_ref(),
-                    return_type: &return_type,
+                    return_shape: &return_shape,
                     then: clause.then.clone(),
                     branch_bindings: bindings,
                     guard: clause.guard.clone(),
@@ -120,130 +120,150 @@ fn bind_function_case_subject(
     subject: FunctionExpr,
     context: &mut PlanContext<'_>,
 ) -> (Step, Expr) {
-    match subject.into_kind() {
-        FunctionExprKind::Int(subject) => {
+    let (step, subject) = match subject.into_typed_kind() {
+        TypedFunctionExprKind::Int(subject) => {
+            let shape = subject.shape().clone();
             let local = context.define_internal_int_function_local();
             let name = internal_int_function_case_subject_name(local);
-            let type_ = subject.type_().clone();
+            let type_ = subject.expression().type_().clone();
             (
-                Step::let_int_function(local, name.clone(), subject),
-                Expr::function(FunctionExpr::int(IntFunctionExpr::local_get(
-                    local, name, type_,
-                ))),
+                Step::let_int_function_expr(local, name.clone(), subject),
+                FunctionExpr::int_with_shape(IntFunctionExpr::local_get(local, name, type_), shape),
             )
         }
-        FunctionExprKind::String(subject) => {
+        TypedFunctionExprKind::String(subject) => {
+            let shape = subject.shape().clone();
             let local = context.define_internal_string_function_local();
             let name = internal_string_function_case_subject_name(local);
-            let type_ = subject.type_().clone();
+            let type_ = subject.expression().type_().clone();
             (
-                Step::let_string_function(local, name.clone(), subject),
-                Expr::function(FunctionExpr::string(
+                Step::let_string_function_expr(local, name.clone(), subject),
+                FunctionExpr::string_with_shape(
                     crate::plan::StringFunctionExpr::local_get(local, name, type_),
-                )),
+                    shape,
+                ),
             )
         }
-        FunctionExprKind::BitArray(subject) => {
+        TypedFunctionExprKind::BitArray(subject) => {
+            let shape = subject.shape().clone();
             let local = context.define_internal_bit_array_function_local();
             let name = internal_bit_array_function_case_subject_name(local);
-            let type_ = subject.type_().clone();
+            let type_ = subject.expression().type_().clone();
             (
-                Step::let_bit_array_function(local, name.clone(), subject),
-                Expr::function(FunctionExpr::bit_array(BitArrayFunctionExpr::local_get(
-                    local, name, type_,
-                ))),
+                Step::let_bit_array_function_expr(local, name.clone(), subject),
+                FunctionExpr::bit_array_with_shape(
+                    BitArrayFunctionExpr::local_get(local, name, type_),
+                    shape,
+                ),
             )
         }
-        FunctionExprKind::UtfCodepoint(subject) => {
+        TypedFunctionExprKind::UtfCodepoint(subject) => {
+            let shape = subject.shape().clone();
             let local = context.define_internal_utf_codepoint_function_local();
             let name = internal_utf_codepoint_function_case_subject_name(local);
-            let type_ = subject.type_().clone();
+            let type_ = subject.expression().type_().clone();
             (
-                Step::let_utf_codepoint_function(local, name.clone(), subject),
-                Expr::function(FunctionExpr::utf_codepoint(
+                Step::let_utf_codepoint_function_expr(local, name.clone(), subject),
+                FunctionExpr::utf_codepoint_with_shape(
                     crate::plan::UtfCodepointFunctionExpr::local_get(local, name, type_),
-                )),
+                    shape,
+                ),
             )
         }
-        FunctionExprKind::Custom(subject) => {
-            let local = context
-                .define_internal_custom_function_local(subject.custom_function_type().clone());
+        TypedFunctionExprKind::Custom(subject) => {
+            let local = context.define_internal_custom_function_local(
+                subject.expression().custom_function_type().clone(),
+            );
             let name = internal_custom_function_case_subject_name(&local);
             (
-                Step::let_custom_function(local.id(), name.clone(), subject),
-                Expr::function(FunctionExpr::custom(CustomFunctionExpr::local_get(
-                    local, name,
-                ))),
+                Step::let_custom_function_expr(local.id(), name.clone(), subject),
+                FunctionExpr::custom(CustomFunctionExpr::local_get(local, name)),
             )
         }
-        FunctionExprKind::Float(subject) => {
+        TypedFunctionExprKind::Float(subject) => {
+            let shape = subject.shape().clone();
             let local = context.define_internal_float_function_local();
             let name = internal_float_function_case_subject_name(local);
-            let type_ = subject.type_().clone();
+            let type_ = subject.expression().type_().clone();
             (
-                Step::let_float_function(local, name.clone(), subject),
-                Expr::function(FunctionExpr::float(
+                Step::let_float_function_expr(local, name.clone(), subject),
+                FunctionExpr::float_with_shape(
                     crate::plan::FloatFunctionExpr::local_get(local, name, type_),
-                )),
+                    shape,
+                ),
             )
         }
-        FunctionExprKind::Bool(subject) => {
+        TypedFunctionExprKind::Bool(subject) => {
+            let shape = subject.shape().clone();
             let local = context.define_internal_bool_function_local();
             let name = internal_bool_function_case_subject_name(local);
-            let type_ = subject.type_().clone();
+            let type_ = subject.expression().type_().clone();
             (
-                Step::let_bool_function(local, name.clone(), subject),
-                Expr::function(FunctionExpr::bool(
+                Step::let_bool_function_expr(local, name.clone(), subject),
+                FunctionExpr::bool_with_shape(
                     crate::plan::BoolFunctionExpr::local_get(local, name, type_),
-                )),
+                    shape,
+                ),
             )
         }
-        FunctionExprKind::Nil(subject) => {
+        TypedFunctionExprKind::Nil(subject) => {
+            let shape = subject.shape().clone();
             let local = context.define_internal_nil_function_local();
             let name = internal_nil_function_case_subject_name(local);
-            let type_ = subject.type_().clone();
+            let type_ = subject.expression().type_().clone();
             (
-                Step::let_nil_function(local, name.clone(), subject),
-                Expr::function(FunctionExpr::nil(crate::plan::NilFunctionExpr::local_get(
-                    local, name, type_,
-                ))),
+                Step::let_nil_function_expr(local, name.clone(), subject),
+                FunctionExpr::nil_with_shape(
+                    crate::plan::NilFunctionExpr::local_get(local, name, type_),
+                    shape,
+                ),
             )
         }
-        FunctionExprKind::Tuple(subject) => {
+        TypedFunctionExprKind::Tuple(subject) => {
+            let shape = subject.shape().clone();
             let local = context.define_internal_tuple_function_local();
             let name = internal_tuple_function_case_subject_name(local);
-            let type_ = subject.type_().clone();
+            let type_ = subject.expression().type_().clone();
             (
-                Step::let_tuple_function(local, name.clone(), subject),
-                Expr::function(FunctionExpr::tuple(
+                Step::let_tuple_function_expr(local, name.clone(), subject),
+                FunctionExpr::tuple_with_shape(
                     crate::plan::TupleFunctionExpr::local_get(local, name, type_),
-                )),
+                    shape,
+                ),
             )
         }
-        FunctionExprKind::List(subject) => {
-            let type_ = subject.type_().clone();
-            let local =
-                context.define_internal_list_function_local(type_, subject.return_item_type());
+        TypedFunctionExprKind::List(subject) => {
+            let shape = subject.shape().clone();
+            let type_ = subject.expression().type_().clone();
+            let local = context.define_internal_list_function_local(
+                type_,
+                subject.expression().return_item_type(),
+            );
             let name = internal_list_function_case_subject_name(&local);
             (
-                Step::let_list_function(local.clone(), name.clone(), subject),
-                Expr::function(FunctionExpr::list(
+                Step::let_list_function_expr(local.clone(), name.clone(), subject),
+                FunctionExpr::list_with_shape(
                     crate::plan::ListFunctionExpr::local_get(local, name),
-                )),
+                    shape,
+                ),
             )
         }
-        FunctionExprKind::Function(subject) => {
-            let local = context
-                .define_internal_function_function_local(subject.function_function_type().clone());
+        TypedFunctionExprKind::Function(subject) => {
+            let shape = subject.shape().clone();
+            let local = context.define_internal_function_function_local(
+                subject.expression().function_function_type().clone(),
+            );
             let name = internal_function_function_case_subject_name(&local);
             (
-                Step::let_function_function(local.id(), name.clone(), subject),
-                Expr::function(FunctionExpr::function(FunctionFunctionExpr::local_get(
-                    local, name,
-                ))),
+                Step::let_function_function_expr(local.id(), name.clone(), subject),
+                FunctionExpr::function_with_shape(
+                    FunctionFunctionExpr::local_get(local, name),
+                    shape,
+                ),
             )
         }
-    }
+    };
+    (step, Expr::function(subject))
 }
 
 fn internal_int_function_case_subject_name(local: IntFunctionLocalId) -> EcoString {
@@ -308,10 +328,10 @@ fn internal_function_function_case_subject_name(
 mod tests {
     use super::bind_function_case_subject;
     use crate::plan::{
-        BitArrayFunctionExpr, BitArrayFunctionLocalId, CustomFunctionExpr, CustomFunctionLocalId,
-        CustomType, CustomTypeName, Expr, FunctionExpr, FunctionFunctionExpr,
-        FunctionFunctionFunctionId, FunctionFunctionId, FunctionFunctionLocalId, FunctionType,
-        IntLocalId, LocalId, Step, ValueType,
+        BitArrayFunctionExpr, BitArrayFunctionLocalId, CustomConstructorRefinement,
+        CustomFunctionExpr, CustomFunctionLocalId, CustomType, CustomTypeName, CustomValueShape,
+        Expr, FunctionExpr, FunctionFunctionExpr, FunctionFunctionFunctionId, FunctionFunctionId,
+        FunctionFunctionLocalId, FunctionType, IntLocalId, LocalId, Step, ValueType,
     };
     use crate::planner::context::{AnonymousFunctions, FunctionInfo, PlanContext};
     use crate::planner::dsl::{
@@ -509,8 +529,13 @@ pub fn main() {
             CustomTypeName::new("geam".into(), "main".into(), "Boxed".into()),
             Vec::new(),
         );
+        let custom_return_shape = CustomValueShape::new(
+            custom_type.type_name().clone(),
+            Vec::new(),
+            CustomConstructorRefinement::Exact(0),
+        );
         let custom_function_type =
-            crate::plan::CustomFunctionType::new(Vec::new(), custom_type.clone());
+            crate::plan::CustomFunctionType::from_shapes(Vec::new(), custom_return_shape);
         let custom_subject = CustomFunctionExpr::local_get(
             crate::plan::CustomFunctionLocal::new(
                 CustomFunctionLocalId(7),

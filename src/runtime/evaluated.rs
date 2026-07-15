@@ -106,11 +106,18 @@ pub(in crate::runtime) type EvaluatedTupleFunction = EvaluatedFunction<TupleFunc
 pub(in crate::runtime) type EvaluatedListFunction = EvaluatedFunction<ListFunctionId>;
 pub(in crate::runtime) type EvaluatedFunctionFunction = EvaluatedFunction<FunctionFunctionId>;
 
-pub(in crate::runtime) fn function_type(
-    params: &[ParamLocal],
+pub(in crate::runtime) fn function_type_from_slots(
+    plan: &crate::plan::execution::ExecutionPlan,
+    params: &[crate::plan::execution::ParamSlot],
     return_: crate::plan::execution::ValueType,
 ) -> FunctionType {
-    FunctionType::new(params.iter().map(ParamLocal::value_type).collect(), return_)
+    FunctionType::new(
+        params
+            .iter()
+            .map(|param| plan.shape_value_type(param.shape()))
+            .collect(),
+        return_,
+    )
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -322,6 +329,11 @@ impl<Id: Clone> EvaluatedFunction<Id> {
     pub(in crate::runtime) fn type_(&self) -> &FunctionType {
         &self.type_
     }
+
+    pub(in crate::runtime) fn with_type(mut self, type_: FunctionType) -> Self {
+        self.type_ = type_;
+        self
+    }
 }
 
 impl EvaluatedCustomFunction {
@@ -364,6 +376,13 @@ impl EvaluatedCustomFunction {
         match self {
             Self::Function(value) => value.type_(),
             Self::Constructor(value) => value.type_(),
+        }
+    }
+
+    pub(in crate::runtime) fn with_type(self, type_: FunctionType) -> Self {
+        match self {
+            Self::Function(value) => Self::Function(value.with_type(type_)),
+            Self::Constructor(value) => Self::Constructor(value.with_type(type_)),
         }
     }
 }
@@ -413,6 +432,45 @@ impl EvaluatedFunctionValue {
             EvaluatedFunctionValueKind::List(value) => value.type_(),
             EvaluatedFunctionValueKind::Function(value) => value.type_(),
         }
+    }
+
+    pub(in crate::runtime) fn with_type(self, type_: FunctionType) -> Self {
+        let kind = match self.kind {
+            EvaluatedFunctionValueKind::Int(value) => {
+                EvaluatedFunctionValueKind::Int(value.with_type(type_))
+            }
+            EvaluatedFunctionValueKind::Float(value) => {
+                EvaluatedFunctionValueKind::Float(value.with_type(type_))
+            }
+            EvaluatedFunctionValueKind::String(value) => {
+                EvaluatedFunctionValueKind::String(value.with_type(type_))
+            }
+            EvaluatedFunctionValueKind::BitArray(value) => {
+                EvaluatedFunctionValueKind::BitArray(value.with_type(type_))
+            }
+            EvaluatedFunctionValueKind::UtfCodepoint(value) => {
+                EvaluatedFunctionValueKind::UtfCodepoint(value.with_type(type_))
+            }
+            EvaluatedFunctionValueKind::Custom(value) => {
+                EvaluatedFunctionValueKind::Custom(value.with_type(type_))
+            }
+            EvaluatedFunctionValueKind::Bool(value) => {
+                EvaluatedFunctionValueKind::Bool(value.with_type(type_))
+            }
+            EvaluatedFunctionValueKind::Nil(value) => {
+                EvaluatedFunctionValueKind::Nil(value.with_type(type_))
+            }
+            EvaluatedFunctionValueKind::Tuple(value) => {
+                EvaluatedFunctionValueKind::Tuple(value.with_type(type_))
+            }
+            EvaluatedFunctionValueKind::List(value) => {
+                EvaluatedFunctionValueKind::List(value.with_type(type_))
+            }
+            EvaluatedFunctionValueKind::Function(value) => {
+                EvaluatedFunctionValueKind::Function(value.with_type(type_))
+            }
+        };
+        Self { kind }
     }
 }
 

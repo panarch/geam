@@ -2,8 +2,8 @@ use super::{
     BitArrayExpr, BitArrayFunctionExpr, BoolExpr, BoolFunctionExpr, CustomExpr, CustomFunctionExpr,
     CustomLocalExpr, Expr, ExprKind, FloatExpr, FloatFunctionExpr, FunctionFunctionExpr, IntExpr,
     IntFunctionExpr, ListExpr, ListFunctionExpr, ListLocalExpr, NilExpr, NilFunctionExpr,
-    StringExpr, StringFunctionExpr, TupleExpr, TupleFunctionExpr, UtfCodepointExpr,
-    UtfCodepointFunctionExpr,
+    StringExpr, StringFunctionExpr, TupleExpr, TupleFunctionExpr, TypedFunctionExpr,
+    UtfCodepointExpr, UtfCodepointFunctionExpr,
 };
 use crate::plan::{
     BitArrayFunctionLocalId, BitArrayLocalId, BoolFunctionLocalId, BoolLocalId,
@@ -57,47 +57,47 @@ pub(crate) enum CallArgKind {
     List(ListLocalExpr),
     IntFunction {
         local: IntFunctionLocalId,
-        value: IntFunctionExpr,
+        value: TypedFunctionExpr<IntFunctionExpr>,
     },
     StringFunction {
         local: StringFunctionLocalId,
-        value: StringFunctionExpr,
+        value: TypedFunctionExpr<StringFunctionExpr>,
     },
     BitArrayFunction {
         local: BitArrayFunctionLocalId,
-        value: BitArrayFunctionExpr,
+        value: TypedFunctionExpr<BitArrayFunctionExpr>,
     },
     UtfCodepointFunction {
         local: UtfCodepointFunctionLocalId,
-        value: UtfCodepointFunctionExpr,
+        value: TypedFunctionExpr<UtfCodepointFunctionExpr>,
     },
     CustomFunction {
         local: CustomFunctionLocal,
-        value: CustomFunctionExpr,
+        value: TypedFunctionExpr<CustomFunctionExpr>,
     },
     FloatFunction {
         local: FloatFunctionLocalId,
-        value: FloatFunctionExpr,
+        value: TypedFunctionExpr<FloatFunctionExpr>,
     },
     BoolFunction {
         local: BoolFunctionLocalId,
-        value: BoolFunctionExpr,
+        value: TypedFunctionExpr<BoolFunctionExpr>,
     },
     NilFunction {
         local: NilFunctionLocalId,
-        value: NilFunctionExpr,
+        value: TypedFunctionExpr<NilFunctionExpr>,
     },
     TupleFunction {
         local: TupleFunctionLocalId,
-        value: TupleFunctionExpr,
+        value: TypedFunctionExpr<TupleFunctionExpr>,
     },
     ListFunction {
         local: ListFunctionLocal,
-        value: ListFunctionExpr,
+        value: TypedFunctionExpr<ListFunctionExpr>,
     },
     FunctionFunction {
         local: FunctionFunctionLocal,
-        value: FunctionFunctionExpr,
+        value: TypedFunctionExpr<FunctionFunctionExpr>,
     },
 }
 
@@ -144,47 +144,47 @@ pub(crate) enum CaptureArgKind {
     List(ListLocalExpr),
     IntFunction {
         local: IntFunctionLocalId,
-        value: IntFunctionExpr,
+        value: TypedFunctionExpr<IntFunctionExpr>,
     },
     StringFunction {
         local: StringFunctionLocalId,
-        value: StringFunctionExpr,
+        value: TypedFunctionExpr<StringFunctionExpr>,
     },
     BitArrayFunction {
         local: BitArrayFunctionLocalId,
-        value: BitArrayFunctionExpr,
+        value: TypedFunctionExpr<BitArrayFunctionExpr>,
     },
     UtfCodepointFunction {
         local: UtfCodepointFunctionLocalId,
-        value: UtfCodepointFunctionExpr,
+        value: TypedFunctionExpr<UtfCodepointFunctionExpr>,
     },
     CustomFunction {
         local: CustomFunctionLocal,
-        value: CustomFunctionExpr,
+        value: TypedFunctionExpr<CustomFunctionExpr>,
     },
     FloatFunction {
         local: FloatFunctionLocalId,
-        value: FloatFunctionExpr,
+        value: TypedFunctionExpr<FloatFunctionExpr>,
     },
     BoolFunction {
         local: BoolFunctionLocalId,
-        value: BoolFunctionExpr,
+        value: TypedFunctionExpr<BoolFunctionExpr>,
     },
     NilFunction {
         local: NilFunctionLocalId,
-        value: NilFunctionExpr,
+        value: TypedFunctionExpr<NilFunctionExpr>,
     },
     TupleFunction {
         local: TupleFunctionLocalId,
-        value: TupleFunctionExpr,
+        value: TypedFunctionExpr<TupleFunctionExpr>,
     },
     ListFunction {
         local: ListFunctionLocal,
-        value: ListFunctionExpr,
+        value: TypedFunctionExpr<ListFunctionExpr>,
     },
     FunctionFunction {
         local: FunctionFunctionLocal,
-        value: FunctionFunctionExpr,
+        value: TypedFunctionExpr<FunctionFunctionExpr>,
     },
 }
 
@@ -313,8 +313,8 @@ impl Expr {
                 },
                 ExprKind::Function(value),
             ) if value.type_() == *expected => value
-                .into_int()
-                .map(|value| CallArg::int_function(*local, value)),
+                .into_typed_int()
+                .map(|value| CallArg::int_function_expr(*local, value)),
             (
                 ParamLocal::StringFunction {
                     local,
@@ -322,8 +322,8 @@ impl Expr {
                 },
                 ExprKind::Function(value),
             ) if value.type_() == *expected => value
-                .into_string()
-                .map(|value| CallArg::string_function(*local, value)),
+                .into_typed_string()
+                .map(|value| CallArg::string_function_expr(*local, value)),
             (
                 ParamLocal::BitArrayFunction {
                     local,
@@ -331,8 +331,8 @@ impl Expr {
                 },
                 ExprKind::Function(value),
             ) if value.type_() == *expected => value
-                .into_bit_array()
-                .map(|value| CallArg::bit_array_function(*local, value)),
+                .into_typed_bit_array()
+                .map(|value| CallArg::bit_array_function_expr(*local, value)),
             (
                 ParamLocal::UtfCodepointFunction {
                     local,
@@ -340,14 +340,14 @@ impl Expr {
                 },
                 ExprKind::Function(value),
             ) if value.type_() == *expected => value
-                .into_utf_codepoint()
-                .map(|value| CallArg::utf_codepoint_function(*local, value)),
+                .into_typed_utf_codepoint()
+                .map(|value| CallArg::utf_codepoint_function_expr(*local, value)),
             (ParamLocal::CustomFunction(local), ExprKind::Function(value))
                 if value.type_() == local.type_().to_function_type() =>
             {
                 value
-                    .into_custom()
-                    .map(|value| CallArg::custom_function(local.clone(), value))
+                    .into_typed_custom()
+                    .map(|value| CallArg::custom_function_expr(local.clone(), value))
             }
             (
                 ParamLocal::FloatFunction {
@@ -356,8 +356,8 @@ impl Expr {
                 },
                 ExprKind::Function(value),
             ) if value.type_() == *expected => value
-                .into_float()
-                .map(|value| CallArg::float_function(*local, value)),
+                .into_typed_float()
+                .map(|value| CallArg::float_function_expr(*local, value)),
             (
                 ParamLocal::BoolFunction {
                     local,
@@ -365,8 +365,8 @@ impl Expr {
                 },
                 ExprKind::Function(value),
             ) if value.type_() == *expected => value
-                .into_bool()
-                .map(|value| CallArg::bool_function(*local, value)),
+                .into_typed_bool()
+                .map(|value| CallArg::bool_function_expr(*local, value)),
             (
                 ParamLocal::NilFunction {
                     local,
@@ -374,8 +374,8 @@ impl Expr {
                 },
                 ExprKind::Function(value),
             ) if value.type_() == *expected => value
-                .into_nil()
-                .map(|value| CallArg::nil_function(*local, value)),
+                .into_typed_nil()
+                .map(|value| CallArg::nil_function_expr(*local, value)),
             (
                 ParamLocal::TupleFunction {
                     local,
@@ -383,21 +383,21 @@ impl Expr {
                 },
                 ExprKind::Function(value),
             ) if value.type_() == *expected => value
-                .into_tuple()
-                .map(|value| CallArg::tuple_function(*local, value)),
+                .into_typed_tuple()
+                .map(|value| CallArg::tuple_function_expr(*local, value)),
             (ParamLocal::ListFunction(local), ExprKind::Function(value))
                 if value.type_() == *local.type_() =>
             {
                 value
-                    .into_list()
-                    .map(|value| CallArg::list_function(local.clone(), value))
+                    .into_typed_list()
+                    .map(|value| CallArg::list_function_expr(local.clone(), value))
             }
             (ParamLocal::FunctionFunction(local), ExprKind::Function(value))
                 if value.type_() == local.type_().to_function_type() =>
             {
                 value
-                    .into_function()
-                    .map(|value| CallArg::function_function(local.clone(), value))
+                    .into_typed_function()
+                    .map(|value| CallArg::function_function_expr(local.clone(), value))
             }
             _ => None,
         }
@@ -465,76 +465,172 @@ impl CallArg {
         }
     }
 
-    pub(crate) fn int_function(local: IntFunctionLocalId, value: IntFunctionExpr) -> Self {
+    fn int_function_expr(
+        local: IntFunctionLocalId,
+        value: TypedFunctionExpr<IntFunctionExpr>,
+    ) -> Self {
         Self {
             kind: CallArgKind::IntFunction { local, value },
         }
     }
 
-    pub(crate) fn string_function(local: StringFunctionLocalId, value: StringFunctionExpr) -> Self {
+    fn string_function_expr(
+        local: StringFunctionLocalId,
+        value: TypedFunctionExpr<StringFunctionExpr>,
+    ) -> Self {
         Self {
             kind: CallArgKind::StringFunction { local, value },
         }
     }
 
-    pub(crate) fn bit_array_function(
+    fn bit_array_function_expr(
         local: BitArrayFunctionLocalId,
-        value: BitArrayFunctionExpr,
+        value: TypedFunctionExpr<BitArrayFunctionExpr>,
     ) -> Self {
         Self {
             kind: CallArgKind::BitArrayFunction { local, value },
         }
     }
 
-    pub(crate) fn utf_codepoint_function(
+    fn utf_codepoint_function_expr(
         local: UtfCodepointFunctionLocalId,
-        value: UtfCodepointFunctionExpr,
+        value: TypedFunctionExpr<UtfCodepointFunctionExpr>,
     ) -> Self {
         Self {
             kind: CallArgKind::UtfCodepointFunction { local, value },
         }
     }
 
-    fn custom_function(local: CustomFunctionLocal, value: CustomFunctionExpr) -> Self {
+    fn custom_function_expr(
+        local: CustomFunctionLocal,
+        value: TypedFunctionExpr<CustomFunctionExpr>,
+    ) -> Self {
         Self {
             kind: CallArgKind::CustomFunction { local, value },
         }
     }
 
-    pub(crate) fn float_function(local: FloatFunctionLocalId, value: FloatFunctionExpr) -> Self {
+    fn float_function_expr(
+        local: FloatFunctionLocalId,
+        value: TypedFunctionExpr<FloatFunctionExpr>,
+    ) -> Self {
         Self {
             kind: CallArgKind::FloatFunction { local, value },
         }
     }
 
-    pub(crate) fn bool_function(local: BoolFunctionLocalId, value: BoolFunctionExpr) -> Self {
+    fn bool_function_expr(
+        local: BoolFunctionLocalId,
+        value: TypedFunctionExpr<BoolFunctionExpr>,
+    ) -> Self {
         Self {
             kind: CallArgKind::BoolFunction { local, value },
         }
     }
 
-    pub(crate) fn nil_function(local: NilFunctionLocalId, value: NilFunctionExpr) -> Self {
+    fn nil_function_expr(
+        local: NilFunctionLocalId,
+        value: TypedFunctionExpr<NilFunctionExpr>,
+    ) -> Self {
         Self {
             kind: CallArgKind::NilFunction { local, value },
         }
     }
 
-    pub(crate) fn tuple_function(local: TupleFunctionLocalId, value: TupleFunctionExpr) -> Self {
+    fn tuple_function_expr(
+        local: TupleFunctionLocalId,
+        value: TypedFunctionExpr<TupleFunctionExpr>,
+    ) -> Self {
         Self {
             kind: CallArgKind::TupleFunction { local, value },
         }
     }
 
-    pub(crate) fn list_function(local: ListFunctionLocal, value: ListFunctionExpr) -> Self {
+    fn list_function_expr(
+        local: ListFunctionLocal,
+        value: TypedFunctionExpr<ListFunctionExpr>,
+    ) -> Self {
         Self {
             kind: CallArgKind::ListFunction { local, value },
         }
     }
 
-    fn function_function(local: FunctionFunctionLocal, value: FunctionFunctionExpr) -> Self {
+    fn function_function_expr(
+        local: FunctionFunctionLocal,
+        value: TypedFunctionExpr<FunctionFunctionExpr>,
+    ) -> Self {
         Self {
             kind: CallArgKind::FunctionFunction { local, value },
         }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn int_function(local: IntFunctionLocalId, value: IntFunctionExpr) -> Self {
+        let shape = crate::plan::FunctionShape::from_function_type(value.type_().clone());
+        Self::int_function_expr(local, TypedFunctionExpr::new(shape, value))
+    }
+
+    #[cfg(test)]
+    pub(crate) fn string_function(local: StringFunctionLocalId, value: StringFunctionExpr) -> Self {
+        let shape = crate::plan::FunctionShape::from_function_type(value.type_().clone());
+        Self::string_function_expr(local, TypedFunctionExpr::new(shape, value))
+    }
+
+    #[cfg(test)]
+    pub(crate) fn bit_array_function(
+        local: BitArrayFunctionLocalId,
+        value: BitArrayFunctionExpr,
+    ) -> Self {
+        let shape = crate::plan::FunctionShape::from_function_type(value.type_().clone());
+        Self::bit_array_function_expr(local, TypedFunctionExpr::new(shape, value))
+    }
+
+    #[cfg(test)]
+    pub(crate) fn custom_function(local: CustomFunctionLocal, value: CustomFunctionExpr) -> Self {
+        let shape = crate::plan::FunctionShape::new(
+            value.custom_function_type().argument_shapes().to_vec(),
+            crate::plan::ValueShape::Custom(value.custom_function_type().return_().clone()),
+        );
+        Self::custom_function_expr(local, TypedFunctionExpr::new(shape, value))
+    }
+
+    #[cfg(test)]
+    pub(crate) fn float_function(local: FloatFunctionLocalId, value: FloatFunctionExpr) -> Self {
+        let shape = crate::plan::FunctionShape::from_function_type(value.type_().clone());
+        Self::float_function_expr(local, TypedFunctionExpr::new(shape, value))
+    }
+
+    #[cfg(test)]
+    pub(crate) fn bool_function(local: BoolFunctionLocalId, value: BoolFunctionExpr) -> Self {
+        let shape = crate::plan::FunctionShape::from_function_type(value.type_().clone());
+        Self::bool_function_expr(local, TypedFunctionExpr::new(shape, value))
+    }
+
+    #[cfg(test)]
+    pub(crate) fn nil_function(local: NilFunctionLocalId, value: NilFunctionExpr) -> Self {
+        let shape = crate::plan::FunctionShape::from_function_type(value.type_().clone());
+        Self::nil_function_expr(local, TypedFunctionExpr::new(shape, value))
+    }
+
+    #[cfg(test)]
+    pub(crate) fn tuple_function(local: TupleFunctionLocalId, value: TupleFunctionExpr) -> Self {
+        let shape = crate::plan::FunctionShape::from_function_type(value.type_().clone());
+        Self::tuple_function_expr(local, TypedFunctionExpr::new(shape, value))
+    }
+
+    #[cfg(test)]
+    pub(crate) fn list_function(local: ListFunctionLocal, value: ListFunctionExpr) -> Self {
+        let shape = crate::plan::FunctionShape::from_function_type(value.type_().clone());
+        Self::list_function_expr(local, TypedFunctionExpr::new(shape, value))
+    }
+
+    #[cfg(test)]
+    pub(crate) fn function_function(
+        local: FunctionFunctionLocal,
+        value: FunctionFunctionExpr,
+    ) -> Self {
+        let shape = crate::plan::FunctionShape::from_function_type(value.type_());
+        Self::function_function_expr(local, TypedFunctionExpr::new(shape, value))
     }
 
     pub(crate) fn kind(&self) -> &CallArgKind {
@@ -607,81 +703,185 @@ impl CaptureArg {
         }
     }
 
-    pub(crate) fn int_function(local: IntFunctionLocalId, value: IntFunctionExpr) -> Self {
+    pub(crate) fn int_function_expr(
+        local: IntFunctionLocalId,
+        value: TypedFunctionExpr<IntFunctionExpr>,
+    ) -> Self {
         Self {
             kind: CaptureArgKind::IntFunction { local, value },
         }
     }
 
-    pub(crate) fn string_function(local: StringFunctionLocalId, value: StringFunctionExpr) -> Self {
+    pub(crate) fn string_function_expr(
+        local: StringFunctionLocalId,
+        value: TypedFunctionExpr<StringFunctionExpr>,
+    ) -> Self {
         Self {
             kind: CaptureArgKind::StringFunction { local, value },
         }
     }
 
-    pub(crate) fn bit_array_function(
+    pub(crate) fn bit_array_function_expr(
         local: BitArrayFunctionLocalId,
-        value: BitArrayFunctionExpr,
+        value: TypedFunctionExpr<BitArrayFunctionExpr>,
     ) -> Self {
         Self {
             kind: CaptureArgKind::BitArrayFunction { local, value },
         }
     }
 
-    pub(crate) fn utf_codepoint_function(
+    pub(crate) fn utf_codepoint_function_expr(
         local: UtfCodepointFunctionLocalId,
-        value: UtfCodepointFunctionExpr,
+        value: TypedFunctionExpr<UtfCodepointFunctionExpr>,
     ) -> Self {
         Self {
             kind: CaptureArgKind::UtfCodepointFunction { local, value },
         }
     }
 
-    pub(crate) fn custom_function(local: CustomFunctionLocalId, value: CustomFunctionExpr) -> Self {
-        let local = CustomFunctionLocal::new(local, value.custom_function_type().clone());
+    pub(crate) fn custom_function_expr(
+        local: CustomFunctionLocalId,
+        value: TypedFunctionExpr<CustomFunctionExpr>,
+    ) -> Self {
+        let local =
+            CustomFunctionLocal::new(local, value.expression().custom_function_type().clone());
         Self {
             kind: CaptureArgKind::CustomFunction { local, value },
         }
     }
 
-    pub(crate) fn float_function(local: FloatFunctionLocalId, value: FloatFunctionExpr) -> Self {
+    pub(crate) fn float_function_expr(
+        local: FloatFunctionLocalId,
+        value: TypedFunctionExpr<FloatFunctionExpr>,
+    ) -> Self {
         Self {
             kind: CaptureArgKind::FloatFunction { local, value },
         }
     }
 
-    pub(crate) fn bool_function(local: BoolFunctionLocalId, value: BoolFunctionExpr) -> Self {
+    pub(crate) fn bool_function_expr(
+        local: BoolFunctionLocalId,
+        value: TypedFunctionExpr<BoolFunctionExpr>,
+    ) -> Self {
         Self {
             kind: CaptureArgKind::BoolFunction { local, value },
         }
     }
 
-    pub(crate) fn nil_function(local: NilFunctionLocalId, value: NilFunctionExpr) -> Self {
+    pub(crate) fn nil_function_expr(
+        local: NilFunctionLocalId,
+        value: TypedFunctionExpr<NilFunctionExpr>,
+    ) -> Self {
         Self {
             kind: CaptureArgKind::NilFunction { local, value },
         }
     }
 
-    pub(crate) fn tuple_function(local: TupleFunctionLocalId, value: TupleFunctionExpr) -> Self {
+    pub(crate) fn tuple_function_expr(
+        local: TupleFunctionLocalId,
+        value: TypedFunctionExpr<TupleFunctionExpr>,
+    ) -> Self {
         Self {
             kind: CaptureArgKind::TupleFunction { local, value },
         }
     }
 
-    pub(crate) fn list_function(local: ListFunctionLocal, value: ListFunctionExpr) -> Self {
+    pub(crate) fn list_function_expr(
+        local: ListFunctionLocal,
+        value: TypedFunctionExpr<ListFunctionExpr>,
+    ) -> Self {
         Self {
             kind: CaptureArgKind::ListFunction { local, value },
         }
     }
 
+    pub(crate) fn function_function_expr(
+        local: FunctionFunctionLocalId,
+        value: TypedFunctionExpr<FunctionFunctionExpr>,
+    ) -> Self {
+        let local =
+            FunctionFunctionLocal::new(local, value.expression().function_function_type().clone());
+        Self {
+            kind: CaptureArgKind::FunctionFunction { local, value },
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn int_function(local: IntFunctionLocalId, value: IntFunctionExpr) -> Self {
+        let shape = crate::plan::FunctionShape::from_function_type(value.type_().clone());
+        Self::int_function_expr(local, TypedFunctionExpr::new(shape, value))
+    }
+
+    #[cfg(test)]
+    pub(crate) fn string_function(local: StringFunctionLocalId, value: StringFunctionExpr) -> Self {
+        let shape = crate::plan::FunctionShape::from_function_type(value.type_().clone());
+        Self::string_function_expr(local, TypedFunctionExpr::new(shape, value))
+    }
+
+    #[cfg(test)]
+    pub(crate) fn bit_array_function(
+        local: BitArrayFunctionLocalId,
+        value: BitArrayFunctionExpr,
+    ) -> Self {
+        let shape = crate::plan::FunctionShape::from_function_type(value.type_().clone());
+        Self::bit_array_function_expr(local, TypedFunctionExpr::new(shape, value))
+    }
+
+    #[cfg(test)]
+    pub(crate) fn utf_codepoint_function(
+        local: UtfCodepointFunctionLocalId,
+        value: UtfCodepointFunctionExpr,
+    ) -> Self {
+        let shape = crate::plan::FunctionShape::from_function_type(value.type_().clone());
+        Self::utf_codepoint_function_expr(local, TypedFunctionExpr::new(shape, value))
+    }
+
+    #[cfg(test)]
+    pub(crate) fn custom_function(local: CustomFunctionLocalId, value: CustomFunctionExpr) -> Self {
+        let shape = crate::plan::FunctionShape::new(
+            value.custom_function_type().argument_shapes().to_vec(),
+            crate::plan::ValueShape::Custom(value.custom_function_type().return_().clone()),
+        );
+        Self::custom_function_expr(local, TypedFunctionExpr::new(shape, value))
+    }
+
+    #[cfg(test)]
+    pub(crate) fn float_function(local: FloatFunctionLocalId, value: FloatFunctionExpr) -> Self {
+        let shape = crate::plan::FunctionShape::from_function_type(value.type_().clone());
+        Self::float_function_expr(local, TypedFunctionExpr::new(shape, value))
+    }
+
+    #[cfg(test)]
+    pub(crate) fn bool_function(local: BoolFunctionLocalId, value: BoolFunctionExpr) -> Self {
+        let shape = crate::plan::FunctionShape::from_function_type(value.type_().clone());
+        Self::bool_function_expr(local, TypedFunctionExpr::new(shape, value))
+    }
+
+    #[cfg(test)]
+    pub(crate) fn nil_function(local: NilFunctionLocalId, value: NilFunctionExpr) -> Self {
+        let shape = crate::plan::FunctionShape::from_function_type(value.type_().clone());
+        Self::nil_function_expr(local, TypedFunctionExpr::new(shape, value))
+    }
+
+    #[cfg(test)]
+    pub(crate) fn tuple_function(local: TupleFunctionLocalId, value: TupleFunctionExpr) -> Self {
+        let shape = crate::plan::FunctionShape::from_function_type(value.type_().clone());
+        Self::tuple_function_expr(local, TypedFunctionExpr::new(shape, value))
+    }
+
+    #[cfg(test)]
+    pub(crate) fn list_function(local: ListFunctionLocal, value: ListFunctionExpr) -> Self {
+        let shape = crate::plan::FunctionShape::from_function_type(value.type_().clone());
+        Self::list_function_expr(local, TypedFunctionExpr::new(shape, value))
+    }
+
+    #[cfg(test)]
     pub(crate) fn function_function(
         local: FunctionFunctionLocalId,
         value: FunctionFunctionExpr,
     ) -> Self {
-        let local = FunctionFunctionLocal::new(local, value.function_function_type().clone());
-        Self {
-            kind: CaptureArgKind::FunctionFunction { local, value },
-        }
+        let shape = crate::plan::FunctionShape::from_function_type(value.type_());
+        Self::function_function_expr(local, TypedFunctionExpr::new(shape, value))
     }
 
     pub(crate) fn kind(&self) -> &CaptureArgKind {
@@ -695,7 +895,7 @@ impl CaptureArg {
 
 #[cfg(test)]
 mod tests {
-    use super::{CallArg, CaptureArg, CaptureArgKind, CustomLocalExpr};
+    use super::{CallArg, CaptureArg, CaptureArgKind, CustomLocalExpr, TypedFunctionExpr};
     use crate::plan::{
         BitArrayExpr, BitArrayFunctionExpr, BitArrayFunctionId, BitArrayFunctionLocalId,
         BitArrayFunctionReference, BitArrayListLocalId, BitArrayLocalId, BoolExpr,
@@ -706,15 +906,15 @@ mod tests {
         FloatFunctionReference, FloatListLocalId, FloatLocalId, FunctionExpr, FunctionFunctionExpr,
         FunctionFunctionId, FunctionFunctionLocal, FunctionFunctionLocalId,
         FunctionFunctionReference, FunctionFunctionType, FunctionListLocalId, FunctionReference,
-        FunctionType, IntExpr, IntFunctionExpr, IntFunctionFunctionId, IntFunctionId,
-        IntFunctionLocalId, IntFunctionReference, IntListLocalId, IntLocalId, ListExpr,
-        ListFunctionExpr, ListFunctionId, ListFunctionReference, ListListLocalId, ListLocal,
-        ListLocalExpr, NilExpr, NilFunctionExpr, NilFunctionId, NilFunctionLocalId,
+        FunctionShape, FunctionType, IntExpr, IntFunctionExpr, IntFunctionFunctionId,
+        IntFunctionId, IntFunctionLocalId, IntFunctionReference, IntListLocalId, IntLocalId,
+        ListExpr, ListFunctionExpr, ListFunctionId, ListFunctionReference, ListListLocalId,
+        ListLocal, ListLocalExpr, NilExpr, NilFunctionExpr, NilFunctionId, NilFunctionLocalId,
         NilFunctionReference, NilListLocalId, NilLocalId, PanicExpr, PanicSite, ParamLocal,
         RuntimeFunctionId, StringExpr, StringFunctionExpr, StringFunctionId, StringFunctionLocalId,
         StringFunctionReference, StringListLocalId, StringLocalId, TupleExpr, TupleFunctionExpr,
         TupleFunctionId, TupleFunctionLocalId, TupleFunctionReference, TupleListLocalId,
-        TupleLocalId, ValueType,
+        TupleLocalId, ValueShape, ValueType,
     };
     use num_bigint::BigInt;
 
@@ -1002,11 +1202,15 @@ mod tests {
             PanicExpr::panic_at(None, PanicSite::unknown()),
             custom_function_type.clone(),
         );
+        let custom_shape = FunctionShape::new(
+            custom_function_type.argument_shapes().to_vec(),
+            ValueShape::Custom(custom_function_type.return_().clone()),
+        );
         assert_eq!(
             CaptureArg::custom_function(CustomFunctionLocalId(2), custom_value.clone()).kind(),
             &CaptureArgKind::CustomFunction {
                 local: CustomFunctionLocal::new(CustomFunctionLocalId(2), custom_function_type,),
-                value: custom_value,
+                value: TypedFunctionExpr::new(custom_shape, custom_value),
             },
         );
 
@@ -1018,6 +1222,7 @@ mod tests {
             PanicExpr::panic_at(None, PanicSite::unknown()),
             function_function_type.clone(),
         );
+        let function_shape = FunctionShape::from_function_type(function_value.type_());
         assert_eq!(
             CaptureArg::function_function(FunctionFunctionLocalId(3), function_value.clone())
                 .kind(),
@@ -1026,7 +1231,7 @@ mod tests {
                     FunctionFunctionLocalId(3),
                     function_function_type,
                 ),
-                value: function_value,
+                value: TypedFunctionExpr::new(function_shape, function_value),
             },
         );
     }

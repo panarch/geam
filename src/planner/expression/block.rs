@@ -1,10 +1,4 @@
-use crate::plan::{
-    BitArrayExpr, BitArrayFunctionExpr, BoolExpr, BoolFunctionExpr, CustomExpr, CustomFunctionExpr,
-    Expr, ExprKind, FloatExpr, FloatFunctionExpr, FunctionExpr, FunctionExprKind,
-    FunctionFunctionExpr, IntExpr, IntFunctionExpr, ListExpr, ListFunctionExpr, NilExpr,
-    NilFunctionExpr, Step, StringExpr, StringFunctionExpr, TupleExpr, TupleFunctionExpr,
-    UtfCodepointExpr, UtfCodepointFunctionExpr, ValueType,
-};
+use crate::plan::{Expr, Step, ValueShape};
 use crate::planner::context::PlanContext;
 use crate::planner::error::PlanError;
 use crate::planner::statement::plan_non_empty_steps_and_return;
@@ -21,9 +15,9 @@ pub(super) fn plan(
     })
 }
 
-pub(super) fn plan_with_expected_source_stop_type(
+pub(super) fn plan_with_expected_source_stop_shape(
     statements: Vec1<TypedStatement>,
-    expected: &ValueType,
+    expected: &ValueShape,
     context: &mut PlanContext<'_>,
 ) -> Result<Expr, PlanError> {
     context.with_local_scope(|context| {
@@ -33,55 +27,7 @@ pub(super) fn plan_with_expected_source_stop_type(
 }
 
 pub(super) fn block_expr(steps: Vec<Step>, return_: Expr) -> Expr {
-    match return_.into_kind() {
-        ExprKind::Int(return_) => Expr::int(IntExpr::block(steps, return_)),
-        ExprKind::String(return_) => Expr::string(StringExpr::block(steps, return_)),
-        ExprKind::BitArray(return_) => Expr::bit_array(BitArrayExpr::block(steps, return_)),
-        ExprKind::UtfCodepoint(return_) => {
-            Expr::utf_codepoint(UtfCodepointExpr::block(steps, return_))
-        }
-        ExprKind::Custom(return_) => Expr::custom(CustomExpr::block(steps, return_)),
-        ExprKind::Float(return_) => Expr::float(FloatExpr::block(steps, return_)),
-        ExprKind::Bool(return_) => Expr::bool(BoolExpr::block(steps, return_)),
-        ExprKind::Nil(return_) => Expr::nil(NilExpr::block(steps, return_)),
-        ExprKind::Tuple(return_) => Expr::tuple(TupleExpr::block(steps, return_)),
-        ExprKind::List(return_) => Expr::list(ListExpr::block(steps, return_)),
-        ExprKind::Function(return_) => match return_.into_kind() {
-            FunctionExprKind::Int(return_) => {
-                Expr::function(FunctionExpr::int(IntFunctionExpr::block(steps, return_)))
-            }
-            FunctionExprKind::String(return_) => Expr::function(FunctionExpr::string(
-                StringFunctionExpr::block(steps, return_),
-            )),
-            FunctionExprKind::BitArray(return_) => Expr::function(FunctionExpr::bit_array(
-                BitArrayFunctionExpr::block(steps, return_),
-            )),
-            FunctionExprKind::UtfCodepoint(return_) => Expr::function(FunctionExpr::utf_codepoint(
-                UtfCodepointFunctionExpr::block(steps, return_),
-            )),
-            FunctionExprKind::Custom(return_) => Expr::function(FunctionExpr::custom(
-                CustomFunctionExpr::block(steps, return_),
-            )),
-            FunctionExprKind::Float(return_) => Expr::function(FunctionExpr::float(
-                FloatFunctionExpr::block(steps, return_),
-            )),
-            FunctionExprKind::Bool(return_) => {
-                Expr::function(FunctionExpr::bool(BoolFunctionExpr::block(steps, return_)))
-            }
-            FunctionExprKind::Nil(return_) => {
-                Expr::function(FunctionExpr::nil(NilFunctionExpr::block(steps, return_)))
-            }
-            FunctionExprKind::Tuple(return_) => Expr::function(FunctionExpr::tuple(
-                TupleFunctionExpr::block(steps, return_),
-            )),
-            FunctionExprKind::List(return_) => {
-                Expr::function(FunctionExpr::list(ListFunctionExpr::block(steps, return_)))
-            }
-            FunctionExprKind::Function(return_) => Expr::function(FunctionExpr::function(
-                FunctionFunctionExpr::block(steps, return_),
-            )),
-        },
-    }
+    Expr::block(steps, return_)
 }
 
 #[cfg(test)]

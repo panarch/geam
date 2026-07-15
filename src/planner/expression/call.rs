@@ -3,7 +3,7 @@ mod direct;
 mod function_value;
 mod implicit;
 
-use crate::plan::{CustomExpr, Expr};
+use crate::plan::Expr;
 use crate::planner::context::PlanContext;
 use crate::planner::error::{
     InvalidCallShapeReason, InvalidTypedAstReason, InvalidUseShapeReason, PlanError,
@@ -139,13 +139,15 @@ fn plan_call_expression(
                     context,
                     capture,
                 )?;
-                return CustomExpr::try_constructor(constructor, arguments)
-                    .map(Expr::custom)
+                let construction = crate::plan::CustomConstruction::try_new(constructor, arguments)
                     .map_err(|_| PlanError::InvalidTypedAst {
                         reason: InvalidTypedAstReason::CallShape {
                             reason: InvalidCallShapeReason::FunctionCallArityMismatch,
                         },
-                    });
+                    })?;
+                return context
+                    .custom_expr_from_construction(construction)
+                    .map(Expr::custom);
             }
             ValueConstructorVariant::Record { .. } => {
                 return Err(PlanError::InvalidTypedAst {

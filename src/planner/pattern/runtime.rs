@@ -1,7 +1,7 @@
 use crate::plan::{
     AssertBinding, AssertPattern, BitArrayBindingPattern, BitArrayPatternSegment,
     CustomBindingPattern, CustomPattern, ListAssertPattern, ListAssertTail, ParamLocal,
-    TotalBindingPattern, ValueType,
+    TotalBindingPattern, ValueShape, ValueType,
 };
 use crate::planner::context::PlanContext;
 use crate::planner::error::{InvalidTypedAstReason, PlanError};
@@ -158,9 +158,9 @@ pub(in crate::planner) fn plan_runtime_pattern(
             })
         }
         Pattern::Assign { name, pattern, .. } => {
-            let type_ = pattern_value_type(&pattern)?;
+            let shape = pattern_value_shape(&pattern)?;
             let planned = plan_runtime_pattern(*pattern, context)?;
-            let binding = define_value_binding(name, type_, context);
+            let binding = define_value_binding(name, shape, context);
             Ok(PlannedRuntimePattern {
                 pattern: AssertPattern::alias(planned.pattern, binding.clone()),
                 is_total: planned.is_total,
@@ -197,26 +197,27 @@ fn plan_list_pattern(
     type_: Arc<Type>,
     context: &mut PlanContext<'_>,
 ) -> Result<PlannedRuntimePattern, PlanError> {
-    let Some(ValueType::List(element_type)) = ValueType::from_gleam(type_.as_ref()) else {
+    let Some(ValueShape::List(item_shape)) = ValueShape::from_gleam(type_.as_ref()) else {
         return Err(invalid_pattern());
     };
+    let element_type = item_shape.value_type();
     let has_no_elements = elements.is_empty();
     let mut patterns = Vec::with_capacity(elements.len());
     for element in elements {
         patterns.push(plan_runtime_pattern(element, context)?.pattern);
     }
     let tail = tail
-        .map(|tail| plan_list_tail(tail, element_type.as_ref(), context))
+        .map(|tail| plan_list_tail(tail, item_shape.as_ref(), context))
         .transpose()?;
     let is_total = has_no_elements && tail.is_some();
     let total_binding = if is_total {
         tail.clone()
-            .map(|tail| TotalBindingPattern::list(element_type.as_ref().clone(), tail))
+            .map(|tail| TotalBindingPattern::list(element_type.clone(), tail))
     } else {
         None
     };
     Ok(PlannedRuntimePattern {
-        pattern: AssertPattern::list(ListAssertPattern::new(*element_type, patterns, tail)),
+        pattern: AssertPattern::list(ListAssertPattern::new(element_type, patterns, tail)),
         is_total,
         total_binding,
         custom_binding: None,
@@ -225,22 +226,22 @@ fn plan_list_pattern(
 
 fn plan_list_tail(
     tail: TailPattern<Arc<Type>>,
-    element_type: &ValueType,
+    item_shape: &ValueShape,
     context: &mut PlanContext<'_>,
 ) -> Result<ListAssertTail, PlanError> {
     match tail.pattern {
         Pattern::Variable { name, type_, .. }
-            if ValueType::from_gleam(type_.as_ref())
-                == Some(ValueType::List(Box::new(element_type.clone()))) =>
+            if ValueShape::from_gleam(type_.as_ref())
+                == Some(ValueShape::List(Box::new(item_shape.clone()))) =>
         {
             Ok(ListAssertTail::bind(
-                context.define_list_local(name.clone(), element_type.clone()),
+                context.define_list_local_shape(name.clone(), item_shape.clone()),
                 name,
             ))
         }
         Pattern::Discard { type_, .. }
-            if ValueType::from_gleam(type_.as_ref())
-                == Some(ValueType::List(Box::new(element_type.clone()))) =>
+            if ValueShape::from_gleam(type_.as_ref())
+                == Some(ValueShape::List(Box::new(item_shape.clone()))) =>
         {
             Ok(ListAssertTail::Ignore)
         }
@@ -358,14 +359,18 @@ fn total_bits_binding(
     match pattern {
         BitArrayBindingPattern::Bind(binding) => {
             let (local, name) = binding.clone().into_parts();
-            TotalBindingPattern::bind(AssertBinding::new(ParamLocal::bit_array(local), name))
+            TotalBindingPattern::bind(AssertBinding::new(
+                ParamLocal::bit_array(local),
+                name,
+                ValueShape::BitArray,
+            ))
         }
         BitArrayBindingPattern::Discard => TotalBindingPattern::discard(ValueType::BitArray),
         BitArrayBindingPattern::Alias { pattern, binding } => {
             let (local, name) = binding.clone().into_parts();
             TotalBindingPattern::alias(
                 total_bits_binding(pattern),
-                AssertBinding::new(ParamLocal::bit_array(local), name),
+                AssertBinding::new(ParamLocal::bit_array(local), name, ValueShape::BitArray),
             )
         }
     }
@@ -376,50 +381,59 @@ fn define_binding(
     type_: &Type,
     context: &mut PlanContext<'_>,
 ) -> Result<AssertBinding, PlanError> {
-    let type_ = ValueType::from_gleam(type_).ok_or_else(invalid_pattern)?;
-    Ok(define_value_binding(name, type_, context))
+    let shape = ValueShape::from_gleam(type_).ok_or_else(invalid_pattern)?;
+    Ok(define_value_binding(name, shape, context))
 }
 
 fn define_value_binding(
     name: EcoString,
-    type_: ValueType,
+    shape: ValueShape,
     context: &mut PlanContext<'_>,
 ) -> AssertBinding {
-    AssertBinding::new(context.define_param_local(name.clone(), type_), name)
+    AssertBinding::new(
+        context.define_param_local_shape(name.clone(), shape.clone()),
+        name,
+        shape,
+    )
 }
 
-fn define_string_binding(name: EcoString, context: &mut PlanContext<'_>) -> AssertBinding {
-    AssertBinding::new(
-        ParamLocal::string(context.define_string_local(name.clone())),
-        name,
-    )
+fn define_string_binding(
+    name: EcoString,
+    context: &mut PlanContext<'_>,
+) -> crate::plan::StringAssertBinding {
+    crate::plan::StringAssertBinding::new(context.define_string_local(name.clone()), name)
 }
 
 pub(in crate::planner) fn pattern_value_type(
     pattern: &TypedPattern,
 ) -> Result<ValueType, PlanError> {
-    let type_ = match pattern {
-        Pattern::Int { .. } => ValueType::Int,
-        Pattern::Float { .. } => ValueType::Float,
-        Pattern::String { .. } | Pattern::StringPrefix { .. } => ValueType::String,
+    pattern_value_shape(pattern).map(|shape| shape.value_type())
+}
+
+fn pattern_value_shape(pattern: &TypedPattern) -> Result<ValueShape, PlanError> {
+    let shape = match pattern {
+        Pattern::Int { .. } => ValueShape::Int,
+        Pattern::Float { .. } => ValueShape::Float,
+        Pattern::String { .. } | Pattern::StringPrefix { .. } => ValueShape::String,
         Pattern::Variable { type_, .. }
         | Pattern::Discard { type_, .. }
         | Pattern::List { type_, .. }
         | Pattern::Constructor { type_, .. }
         | Pattern::Invalid { type_, .. } => {
-            ValueType::from_gleam(type_.as_ref()).ok_or_else(invalid_pattern)?
+            ValueShape::from_gleam(type_.as_ref()).ok_or_else(invalid_pattern)?
         }
-        Pattern::Tuple { elements, .. } => ValueType::Tuple(
+        Pattern::Tuple { elements, .. } => ValueShape::Tuple(
             elements
                 .iter()
-                .map(pattern_value_type)
-                .collect::<Result<Vec<_>, _>>()?,
+                .map(pattern_value_shape)
+                .collect::<Result<Vec<_>, _>>()?
+                .into_boxed_slice(),
         ),
-        Pattern::BitArray { .. } => ValueType::BitArray,
-        Pattern::Assign { pattern, .. } => pattern_value_type(pattern)?,
+        Pattern::BitArray { .. } => ValueShape::BitArray,
+        Pattern::Assign { pattern, .. } => pattern_value_shape(pattern)?,
         Pattern::BitArraySize(_) => return Err(invalid_pattern()),
     };
-    Ok(type_)
+    Ok(shape)
 }
 
 fn invalid_pattern() -> PlanError {
@@ -435,7 +449,7 @@ mod tests {
         plan_custom_pattern, plan_list_tail, plan_nil_pattern, plan_runtime_pattern,
         total_bit_array_binding,
     };
-    use crate::plan::{AssertPattern, BitArrayPattern, ValueType};
+    use crate::plan::{AssertPattern, BitArrayPattern, ValueShape, ValueType};
     use crate::planner::context::{AnonymousFunctions, FunctionInfo, PlanContext};
     use crate::planner::{InvalidCustomTypeReason, InvalidTypedAstReason, PlanError};
     use ecow::EcoString;
@@ -566,7 +580,7 @@ mod tests {
                         int_value: BigInt::from(1),
                     },
                 },
-                &ValueType::Int,
+                &ValueShape::Int,
                 &mut context,
             ),
             Err(invalid_pattern()),

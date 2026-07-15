@@ -13,6 +13,7 @@ mod string;
 mod tuple;
 mod utf_codepoint;
 
+pub(crate) use self::function::TypedFunctionExpr;
 pub use self::{
     arg::CallArg,
     bit_array::BitArrayExpr,

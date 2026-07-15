@@ -918,7 +918,10 @@ pub fn main() { 0 }
                     value: value.clone(),
                 },
             )],
-            crate::runtime::evaluated::function_type(&[], crate::plan::execution::ValueType::Int),
+            crate::plan::execution::FunctionType::new(
+                Vec::new(),
+                crate::plan::execution::ValueType::Int,
+            ),
         );
 
         drop(value);

@@ -1,8 +1,10 @@
 use crate::plan::CustomFieldAccess;
+#[cfg(test)]
+use crate::plan::ParamLocal;
 use crate::plan::{
     BitArrayFunctionFunctionId, BitArrayFunctionId, BitArrayFunctionLocalId,
     BitArrayFunctionReference, BoolExpr, CaptureArg, FloatExpr, FunctionFunctionExpr,
-    FunctionListExpr, FunctionType, IntExpr, PanicExpr, ParamLocal, Step, StringExpr, TupleExpr,
+    FunctionListExpr, FunctionType, IntExpr, PanicExpr, ParamSlot, Step, StringExpr, TupleExpr,
 };
 use ecow::EcoString;
 use num_bigint::BigInt;
@@ -18,7 +20,7 @@ pub(crate) enum BitArrayFunctionExprKind {
     Reference(BitArrayFunctionReference),
     Closure {
         runtime_id: BitArrayFunctionId,
-        params: Vec<ParamLocal>,
+        params: Vec<ParamSlot>,
         captures: Vec<CaptureArg>,
     },
     LocalGet {
@@ -76,7 +78,11 @@ pub(crate) enum BitArrayFunctionExprKind {
 impl BitArrayFunctionExpr {
     pub(crate) fn reference(value: BitArrayFunctionReference) -> Self {
         let type_ = FunctionType::new(
-            value.params().iter().map(ParamLocal::value_type).collect(),
+            value
+                .params()
+                .iter()
+                .map(crate::plan::ParamSlot::value_type)
+                .collect(),
             crate::plan::ValueType::BitArray,
         );
         Self {
@@ -85,9 +91,9 @@ impl BitArrayFunctionExpr {
         }
     }
 
-    pub(crate) fn closure(
+    pub(crate) fn closure_slots(
         runtime_id: BitArrayFunctionId,
-        params: Vec<ParamLocal>,
+        params: Vec<ParamSlot>,
         captures: Vec<CaptureArg>,
         type_: FunctionType,
     ) -> Self {
@@ -99,6 +105,21 @@ impl BitArrayFunctionExpr {
                 captures,
             },
         }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn closure(
+        runtime_id: BitArrayFunctionId,
+        params: Vec<ParamLocal>,
+        captures: Vec<CaptureArg>,
+        type_: FunctionType,
+    ) -> Self {
+        Self::closure_slots(
+            runtime_id,
+            params.into_iter().map(ParamSlot::from_local).collect(),
+            captures,
+            type_,
+        )
     }
 
     pub(crate) fn local_get(
@@ -294,7 +315,9 @@ mod tests {
             .kind(),
             &BitArrayFunctionExprKind::Closure {
                 runtime_id: BitArrayFunctionId(0),
-                params: vec![ParamLocal::bit_array(BitArrayLocalId(0))],
+                params: vec![crate::plan::ParamSlot::from_local(ParamLocal::bit_array(
+                    BitArrayLocalId(0)
+                ))],
                 captures: Vec::new(),
             },
         );

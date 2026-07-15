@@ -364,100 +364,109 @@ impl FunctionTableBuilder {
             }
             module::ReturnExprKind::IntFunction {
                 runtime_id,
-                type_,
+                shape,
                 body,
             } => {
                 let id = IntFunctionFunctionId(runtime_id.0);
+                let return_type = context.function_type(shape.type_());
                 self.int_function_functions.push((
                     runtime_id.0,
                     ExecutableFunction::new(
                         frame_layout,
                         steps,
-                        super::return_::int_function_return(body, context),
+                        super::return_::int_function_return(shape, body, context),
                     ),
                 ));
                 RuntimeFunctionId::Function {
                     id: FunctionFunctionId::Int(id),
-                    return_type: context.function_type(type_),
+                    return_type,
                 }
             }
             module::ReturnExprKind::FloatFunction {
                 runtime_id,
-                type_,
+                shape,
                 body,
             } => {
                 let id = FloatFunctionFunctionId(runtime_id.0);
+                let return_type = context.function_type(shape.type_());
                 self.float_function_functions.push((
                     runtime_id.0,
                     ExecutableFunction::new(
                         frame_layout,
                         steps,
-                        super::return_::float_function_return(body, context),
+                        super::return_::float_function_return(shape, body, context),
                     ),
                 ));
                 RuntimeFunctionId::Function {
                     id: FunctionFunctionId::Float(id),
-                    return_type: context.function_type(type_),
+                    return_type,
                 }
             }
             module::ReturnExprKind::StringFunction {
                 runtime_id,
-                type_,
+                shape,
                 body,
             } => {
                 let id = StringFunctionFunctionId(runtime_id.0);
+                let return_type = context.function_type(shape.type_());
                 self.string_function_functions.push((
                     runtime_id.0,
                     ExecutableFunction::new(
                         frame_layout,
                         steps,
-                        super::return_::string_function_return(body, context),
+                        super::return_::string_function_return(shape, body, context),
                     ),
                 ));
                 RuntimeFunctionId::Function {
                     id: FunctionFunctionId::String(id),
-                    return_type: context.function_type(type_),
+                    return_type,
                 }
             }
             module::ReturnExprKind::BitArrayFunction {
                 runtime_id,
-                type_,
+                shape,
                 body,
             } => {
                 let id = BitArrayFunctionFunctionId(runtime_id.0);
+                let return_type = context.function_type(shape.type_());
                 self.bit_array_function_functions.push((
                     runtime_id.0,
                     ExecutableFunction::new(
                         frame_layout,
                         steps,
-                        super::return_::bit_array_function_return(body, context),
+                        super::return_::bit_array_function_return(shape, body, context),
                     ),
                 ));
                 RuntimeFunctionId::Function {
                     id: FunctionFunctionId::BitArray(id),
-                    return_type: context.function_type(type_),
+                    return_type,
                 }
             }
             module::ReturnExprKind::UtfCodepointFunction {
                 runtime_id,
-                type_,
+                shape,
                 body,
             } => {
                 let id = UtfCodepointFunctionFunctionId(runtime_id.0);
+                let return_type = context.function_type(shape.type_());
                 self.utf_codepoint_function_functions.push((
                     runtime_id.0,
                     ExecutableFunction::new(
                         frame_layout,
                         steps,
-                        super::return_::utf_codepoint_function_return(body, context),
+                        super::return_::utf_codepoint_function_return(shape, body, context),
                     ),
                 ));
                 RuntimeFunctionId::Function {
                     id: FunctionFunctionId::UtfCodepoint(id),
-                    return_type: context.function_type(type_),
+                    return_type,
                 }
             }
-            module::ReturnExprKind::CustomFunction { runtime_id, body } => {
+            module::ReturnExprKind::CustomFunction {
+                runtime_id,
+                shape,
+                body,
+            } => {
                 let id = CustomFunctionFunctionId::new(
                     runtime_id.index(),
                     context.custom_function_type(runtime_id.type_().clone()),
@@ -467,7 +476,7 @@ impl FunctionTableBuilder {
                     ExecutableFunction::new(
                         frame_layout,
                         steps,
-                        super::return_::custom_function_return(body, context),
+                        super::return_::custom_function_return(shape, body, context),
                     ),
                 ));
                 RuntimeFunctionId::Function {
@@ -477,62 +486,69 @@ impl FunctionTableBuilder {
             }
             module::ReturnExprKind::BoolFunction {
                 runtime_id,
-                type_,
+                shape,
                 body,
             } => {
                 let id = BoolFunctionFunctionId(runtime_id.0);
+                let return_type = context.function_type(shape.type_());
                 self.bool_function_functions.push((
                     runtime_id.0,
                     ExecutableFunction::new(
                         frame_layout,
                         steps,
-                        super::return_::bool_function_return(body, context),
+                        super::return_::bool_function_return(shape, body, context),
                     ),
                 ));
                 RuntimeFunctionId::Function {
                     id: FunctionFunctionId::Bool(id),
-                    return_type: context.function_type(type_),
+                    return_type,
                 }
             }
             module::ReturnExprKind::NilFunction {
                 runtime_id,
-                type_,
+                shape,
                 body,
             } => {
                 let id = NilFunctionFunctionId(runtime_id.0);
+                let return_type = context.function_type(shape.type_());
                 self.nil_function_functions.push((
                     runtime_id.0,
                     ExecutableFunction::new(
                         frame_layout,
                         steps,
-                        super::return_::nil_function_return(body, context),
+                        super::return_::nil_function_return(shape, body, context),
                     ),
                 ));
                 RuntimeFunctionId::Function {
                     id: FunctionFunctionId::Nil(id),
-                    return_type: context.function_type(type_),
+                    return_type,
                 }
             }
             module::ReturnExprKind::TupleFunction {
                 runtime_id,
-                type_,
+                shape,
                 body,
             } => {
                 let id = TupleFunctionFunctionId(runtime_id.0);
+                let return_type = context.function_type(shape.type_());
                 self.tuple_function_functions.push((
                     runtime_id.0,
                     ExecutableFunction::new(
                         frame_layout,
                         steps,
-                        super::return_::tuple_function_return(body, context),
+                        super::return_::tuple_function_return(shape, body, context),
                     ),
                 ));
                 RuntimeFunctionId::Function {
                     id: FunctionFunctionId::Tuple(id),
-                    return_type: context.function_type(type_),
+                    return_type,
                 }
             }
-            module::ReturnExprKind::ListFunction { runtime_id, body } => {
+            module::ReturnExprKind::ListFunction {
+                runtime_id,
+                shape,
+                body,
+            } => {
                 let runtime_id = super::id::list_function_function_id(runtime_id, context);
                 let return_type = runtime_id.type_().clone();
                 self.push_list_function_function(
@@ -540,7 +556,7 @@ impl FunctionTableBuilder {
                     ExecutableFunction::new(
                         frame_layout,
                         steps,
-                        super::return_::list_function_return(body, context),
+                        super::return_::list_function_return(shape, body, context),
                     ),
                 );
                 RuntimeFunctionId::Function {
@@ -548,7 +564,11 @@ impl FunctionTableBuilder {
                     return_type,
                 }
             }
-            module::ReturnExprKind::FunctionFunction { runtime_id, body } => {
+            module::ReturnExprKind::FunctionFunction {
+                runtime_id,
+                shape,
+                body,
+            } => {
                 let id = FunctionFunctionFunctionId::new(
                     runtime_id.index(),
                     context.function_function_type(runtime_id.type_().clone()),
@@ -558,7 +578,7 @@ impl FunctionTableBuilder {
                     ExecutableFunction::new(
                         frame_layout,
                         steps,
-                        super::return_::function_function_return(body, context),
+                        super::return_::function_function_return(shape, body, context),
                     ),
                 ));
                 RuntimeFunctionId::Function {

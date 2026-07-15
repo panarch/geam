@@ -25,7 +25,8 @@ pub(super) fn plan_direct_function_call(
             },
         });
     }
-    let function_return_type = function.return_type();
+    let function_return_shape = function.return_shape();
+    let function_return_type = function_return_shape.value_type();
     let function_id = function.runtime_id;
     let return_type = ValueType::from_gleam(type_.as_ref()).ok_or(PlanError::InvalidTypedAst {
         reason: InvalidTypedAstReason::CallShape {
@@ -42,7 +43,13 @@ pub(super) fn plan_direct_function_call(
     validate_argument_labels(&arguments, &function.params)?;
     let args = super::argument::plan_call_args(arguments, &function.params, context, capture)?;
 
-    Ok(call_expr(function_id, args))
+    call_expr(function_id, args)
+        .with_resolved_shape(function_return_shape)
+        .ok_or(PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::CallShape {
+                reason: InvalidCallShapeReason::LocalFunctionCallReturnTypeMismatch,
+            },
+        })
 }
 
 fn validate_argument_labels(

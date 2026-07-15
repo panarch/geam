@@ -9,7 +9,8 @@ use crate::runtime::expression::{
     eval_int_list_expr, eval_list_function_expr, eval_list_list_expr, eval_nil_expr,
     eval_nil_function_expr, eval_nil_list_expr, eval_string_expr, eval_string_function_expr,
     eval_string_list_expr, eval_tuple_expr, eval_tuple_function_expr, eval_tuple_list_expr,
-    eval_utf_codepoint_expr, eval_utf_codepoint_function_expr, eval_utf_codepoint_list_expr,
+    eval_typed_custom_function_expr, eval_typed_function_expr, eval_utf_codepoint_expr,
+    eval_utf_codepoint_function_expr, eval_utf_codepoint_list_expr,
 };
 use crate::runtime::frame::Frame;
 use crate::runtime::state::RuntimeState;
@@ -92,47 +93,113 @@ fn bind_arguments_into(
                 bind_list_argument(plan, state, caller_frame, frame, value)?
             }
             CallArgKind::IntFunction { local, value } => {
-                let value = eval_int_function_expr(plan, state, caller_frame, value)?;
+                let value = eval_typed_function_expr(
+                    plan,
+                    state,
+                    caller_frame,
+                    value,
+                    eval_int_function_expr,
+                )?;
                 frame.set_int_function(*local, value);
             }
             CallArgKind::StringFunction { local, value } => {
-                let value = eval_string_function_expr(plan, state, caller_frame, value)?;
+                let value = eval_typed_function_expr(
+                    plan,
+                    state,
+                    caller_frame,
+                    value,
+                    eval_string_function_expr,
+                )?;
                 frame.set_string_function(*local, value);
             }
             CallArgKind::BitArrayFunction { local, value } => {
-                let value = eval_bit_array_function_expr(plan, state, caller_frame, value)?;
+                let value = eval_typed_function_expr(
+                    plan,
+                    state,
+                    caller_frame,
+                    value,
+                    eval_bit_array_function_expr,
+                )?;
                 frame.set_bit_array_function(*local, value);
             }
             CallArgKind::UtfCodepointFunction { local, value } => {
-                let value = eval_utf_codepoint_function_expr(plan, state, caller_frame, value)?;
+                let value = eval_typed_function_expr(
+                    plan,
+                    state,
+                    caller_frame,
+                    value,
+                    eval_utf_codepoint_function_expr,
+                )?;
                 frame.set_utf_codepoint_function(*local, value);
             }
             CallArgKind::CustomFunction { local, value } => {
-                let value = eval_custom_function_expr(plan, state, caller_frame, value)?;
+                let value = eval_typed_custom_function_expr(
+                    plan,
+                    state,
+                    caller_frame,
+                    value,
+                    eval_custom_function_expr,
+                )?;
                 frame.set_custom_function(local, value);
             }
             CallArgKind::FloatFunction { local, value } => {
-                let value = eval_float_function_expr(plan, state, caller_frame, value)?;
+                let value = eval_typed_function_expr(
+                    plan,
+                    state,
+                    caller_frame,
+                    value,
+                    eval_float_function_expr,
+                )?;
                 frame.set_float_function(*local, value);
             }
             CallArgKind::BoolFunction { local, value } => {
-                let value = eval_bool_function_expr(plan, state, caller_frame, value)?;
+                let value = eval_typed_function_expr(
+                    plan,
+                    state,
+                    caller_frame,
+                    value,
+                    eval_bool_function_expr,
+                )?;
                 frame.set_bool_function(*local, value);
             }
             CallArgKind::NilFunction { local, value } => {
-                let value = eval_nil_function_expr(plan, state, caller_frame, value)?;
+                let value = eval_typed_function_expr(
+                    plan,
+                    state,
+                    caller_frame,
+                    value,
+                    eval_nil_function_expr,
+                )?;
                 frame.set_nil_function(*local, value);
             }
             CallArgKind::TupleFunction { local, value } => {
-                let value = eval_tuple_function_expr(plan, state, caller_frame, value)?;
+                let value = eval_typed_function_expr(
+                    plan,
+                    state,
+                    caller_frame,
+                    value,
+                    eval_tuple_function_expr,
+                )?;
                 frame.set_tuple_function(*local, value);
             }
             CallArgKind::ListFunction { local, value } => {
-                let value = eval_list_function_expr(plan, state, caller_frame, value)?;
+                let value = eval_typed_function_expr(
+                    plan,
+                    state,
+                    caller_frame,
+                    value,
+                    eval_list_function_expr,
+                )?;
                 frame.set_list_function(local.clone(), value);
             }
             CallArgKind::FunctionFunction { local, value } => {
-                let value = eval_function_function_expr(plan, state, caller_frame, value)?;
+                let value = eval_typed_function_expr(
+                    plan,
+                    state,
+                    caller_frame,
+                    value,
+                    eval_function_function_expr,
+                )?;
                 frame.set_function_function(local, value);
             }
         }
@@ -181,38 +248,59 @@ pub(super) fn eval_call_argument_values(
             CallArgKind::List(value) => {
                 EvaluatedValue::List(eval_list_local_expr(plan, state, frame, value)?)
             }
-            CallArgKind::IntFunction { value, .. } => {
-                EvaluatedValue::Function(eval_int_function_expr(plan, state, frame, value)?.into())
-            }
+            CallArgKind::IntFunction { value, .. } => EvaluatedValue::Function(
+                eval_typed_function_expr(plan, state, frame, value, eval_int_function_expr)?.into(),
+            ),
             CallArgKind::FloatFunction { value, .. } => EvaluatedValue::Function(
-                eval_float_function_expr(plan, state, frame, value)?.into(),
+                eval_typed_function_expr(plan, state, frame, value, eval_float_function_expr)?
+                    .into(),
             ),
             CallArgKind::StringFunction { value, .. } => EvaluatedValue::Function(
-                eval_string_function_expr(plan, state, frame, value)?.into(),
+                eval_typed_function_expr(plan, state, frame, value, eval_string_function_expr)?
+                    .into(),
             ),
             CallArgKind::BitArrayFunction { value, .. } => EvaluatedValue::Function(
-                eval_bit_array_function_expr(plan, state, frame, value)?.into(),
+                eval_typed_function_expr(plan, state, frame, value, eval_bit_array_function_expr)?
+                    .into(),
             ),
             CallArgKind::UtfCodepointFunction { value, .. } => EvaluatedValue::Function(
-                eval_utf_codepoint_function_expr(plan, state, frame, value)?.into(),
+                eval_typed_function_expr(
+                    plan,
+                    state,
+                    frame,
+                    value,
+                    eval_utf_codepoint_function_expr,
+                )?
+                .into(),
             ),
             CallArgKind::CustomFunction { value, .. } => EvaluatedValue::Function(
-                eval_custom_function_expr(plan, state, frame, value)?.into(),
+                eval_typed_custom_function_expr(
+                    plan,
+                    state,
+                    frame,
+                    value,
+                    eval_custom_function_expr,
+                )?
+                .into(),
             ),
-            CallArgKind::BoolFunction { value, .. } => {
-                EvaluatedValue::Function(eval_bool_function_expr(plan, state, frame, value)?.into())
-            }
-            CallArgKind::NilFunction { value, .. } => {
-                EvaluatedValue::Function(eval_nil_function_expr(plan, state, frame, value)?.into())
-            }
+            CallArgKind::BoolFunction { value, .. } => EvaluatedValue::Function(
+                eval_typed_function_expr(plan, state, frame, value, eval_bool_function_expr)?
+                    .into(),
+            ),
+            CallArgKind::NilFunction { value, .. } => EvaluatedValue::Function(
+                eval_typed_function_expr(plan, state, frame, value, eval_nil_function_expr)?.into(),
+            ),
             CallArgKind::TupleFunction { value, .. } => EvaluatedValue::Function(
-                eval_tuple_function_expr(plan, state, frame, value)?.into(),
+                eval_typed_function_expr(plan, state, frame, value, eval_tuple_function_expr)?
+                    .into(),
             ),
-            CallArgKind::ListFunction { value, .. } => {
-                EvaluatedValue::Function(eval_list_function_expr(plan, state, frame, value)?.into())
-            }
+            CallArgKind::ListFunction { value, .. } => EvaluatedValue::Function(
+                eval_typed_function_expr(plan, state, frame, value, eval_list_function_expr)?
+                    .into(),
+            ),
             CallArgKind::FunctionFunction { value, .. } => EvaluatedValue::Function(
-                eval_function_function_expr(plan, state, frame, value)?.into(),
+                eval_typed_function_expr(plan, state, frame, value, eval_function_function_expr)?
+                    .into(),
             ),
         });
     }
@@ -304,52 +392,76 @@ pub(in crate::runtime) fn eval_capture_args(
             CaptureArgKind::List(value) => eval_list_capture(plan, state, frame, value)?,
             CaptureArgKind::IntFunction { local, value } => EvaluatedCapture::int_function(
                 *local,
-                eval_int_function_expr(plan, state, frame, value)?,
+                eval_typed_function_expr(plan, state, frame, value, eval_int_function_expr)?,
             ),
             CaptureArgKind::StringFunction { local, value } => EvaluatedCapture::string_function(
                 *local,
-                eval_string_function_expr(plan, state, frame, value)?,
+                eval_typed_function_expr(plan, state, frame, value, eval_string_function_expr)?,
             ),
             CaptureArgKind::BitArrayFunction { local, value } => {
                 EvaluatedCapture::bit_array_function(
                     *local,
-                    eval_bit_array_function_expr(plan, state, frame, value)?,
+                    eval_typed_function_expr(
+                        plan,
+                        state,
+                        frame,
+                        value,
+                        eval_bit_array_function_expr,
+                    )?,
                 )
             }
             CaptureArgKind::UtfCodepointFunction { local, value } => {
                 EvaluatedCapture::utf_codepoint_function(
                     *local,
-                    eval_utf_codepoint_function_expr(plan, state, frame, value)?,
+                    eval_typed_function_expr(
+                        plan,
+                        state,
+                        frame,
+                        value,
+                        eval_utf_codepoint_function_expr,
+                    )?,
                 )
             }
             CaptureArgKind::CustomFunction { local, value } => EvaluatedCapture::custom_function(
                 local.clone(),
-                eval_custom_function_expr(plan, state, frame, value)?,
+                eval_typed_custom_function_expr(
+                    plan,
+                    state,
+                    frame,
+                    value,
+                    eval_custom_function_expr,
+                )?,
             ),
             CaptureArgKind::FloatFunction { local, value } => EvaluatedCapture::float_function(
                 *local,
-                eval_float_function_expr(plan, state, frame, value)?,
+                eval_typed_function_expr(plan, state, frame, value, eval_float_function_expr)?,
             ),
             CaptureArgKind::BoolFunction { local, value } => EvaluatedCapture::bool_function(
                 *local,
-                eval_bool_function_expr(plan, state, frame, value)?,
+                eval_typed_function_expr(plan, state, frame, value, eval_bool_function_expr)?,
             ),
             CaptureArgKind::NilFunction { local, value } => EvaluatedCapture::nil_function(
                 *local,
-                eval_nil_function_expr(plan, state, frame, value)?,
+                eval_typed_function_expr(plan, state, frame, value, eval_nil_function_expr)?,
             ),
             CaptureArgKind::TupleFunction { local, value } => EvaluatedCapture::tuple_function(
                 *local,
-                eval_tuple_function_expr(plan, state, frame, value)?,
+                eval_typed_function_expr(plan, state, frame, value, eval_tuple_function_expr)?,
             ),
             CaptureArgKind::ListFunction { local, value } => EvaluatedCapture::list_function(
                 local.clone(),
-                eval_list_function_expr(plan, state, frame, value)?,
+                eval_typed_function_expr(plan, state, frame, value, eval_list_function_expr)?,
             ),
             CaptureArgKind::FunctionFunction { local, value } => {
                 EvaluatedCapture::function_function(
                     local.clone(),
-                    eval_function_function_expr(plan, state, frame, value)?,
+                    eval_typed_function_expr(
+                        plan,
+                        state,
+                        frame,
+                        value,
+                        eval_function_function_expr,
+                    )?,
                 )
             }
         });

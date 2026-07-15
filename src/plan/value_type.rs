@@ -1,3 +1,4 @@
+use super::{CustomValueShape, ValueShape};
 use ecow::EcoString;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -36,14 +37,14 @@ pub struct FunctionType {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub(crate) struct CustomFunctionType {
-    arguments: Vec<ValueType>,
-    return_: CustomType,
+    arguments: Vec<ValueShape>,
+    return_: CustomValueShape,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub(crate) struct FunctionFunctionType {
-    arguments: Vec<ValueType>,
-    return_: Box<FunctionType>,
+    arguments: Box<[ValueShape]>,
+    return_: Box<super::FunctionShape>,
 }
 
 impl FunctionType {
@@ -64,46 +65,79 @@ impl FunctionType {
 }
 
 impl CustomFunctionType {
+    #[cfg(test)]
     pub(crate) fn new(arguments: Vec<ValueType>, return_: CustomType) -> Self {
+        Self::from_shapes(
+            arguments
+                .into_iter()
+                .map(ValueShape::from_value_type)
+                .collect(),
+            CustomValueShape::any(return_),
+        )
+    }
+
+    pub(crate) fn from_shapes(arguments: Vec<ValueShape>, return_: CustomValueShape) -> Self {
         Self { arguments, return_ }
     }
 
-    pub(crate) fn return_(&self) -> &CustomType {
+    pub(crate) fn return_(&self) -> &CustomValueShape {
         &self.return_
     }
 
-    pub(crate) fn argument_types(&self) -> &[ValueType] {
+    pub(crate) fn argument_shapes(&self) -> &[ValueShape] {
         &self.arguments
+    }
+
+    pub(crate) fn argument_types(&self) -> Vec<ValueType> {
+        self.arguments.iter().map(ValueShape::value_type).collect()
     }
 
     pub(crate) fn to_function_type(&self) -> FunctionType {
         FunctionType::new(
-            self.arguments.clone(),
-            ValueType::Custom(self.return_.clone()),
+            self.argument_types(),
+            ValueType::Custom(self.return_.type_().clone()),
         )
     }
 }
 
 impl FunctionFunctionType {
     pub(crate) fn new(arguments: Vec<ValueType>, return_: FunctionType) -> Self {
+        Self::from_shapes(
+            arguments
+                .into_iter()
+                .map(ValueShape::from_value_type)
+                .collect(),
+            super::FunctionShape::from_function_type(return_),
+        )
+    }
+
+    pub(crate) fn from_shapes(arguments: Vec<ValueShape>, return_: super::FunctionShape) -> Self {
         Self {
-            arguments,
+            arguments: arguments.into_boxed_slice(),
             return_: Box::new(return_),
         }
     }
 
-    pub(crate) fn return_(&self) -> &FunctionType {
+    pub(crate) fn return_shape(&self) -> &super::FunctionShape {
         &self.return_
     }
 
-    pub(crate) fn argument_types(&self) -> &[ValueType] {
+    pub(crate) fn argument_shapes(&self) -> &[ValueShape] {
         &self.arguments
+    }
+
+    pub(crate) fn argument_types(&self) -> Vec<ValueType> {
+        self.arguments.iter().map(ValueShape::value_type).collect()
+    }
+
+    pub(crate) fn return_type(&self) -> FunctionType {
+        self.return_.type_()
     }
 
     pub(crate) fn to_function_type(&self) -> FunctionType {
         FunctionType::new(
-            self.arguments.clone(),
-            ValueType::Function(self.return_.clone()),
+            self.argument_types(),
+            ValueType::Function(Box::new(self.return_type())),
         )
     }
 }

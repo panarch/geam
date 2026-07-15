@@ -3,7 +3,7 @@ mod return_body;
 use self::return_body::function_return_expr;
 use crate::plan::{
     CaptureArg, CustomTypeDefinition, FunctionPlan, Param, ParamBinding, ReturnExpr,
-    RuntimeFunctionId, Step, ValueType,
+    RuntimeFunctionId, Step, ValueShape,
 };
 use crate::planner::context::{AnonymousFunctions, FunctionInfo, FunctionParam, PlanContext};
 use crate::planner::error::{
@@ -46,8 +46,8 @@ pub(super) fn plan_function(
         anonymous_functions,
     );
     context.set_current_function(name.clone());
-    let params = define_params(&info.params, &mut context);
-    let return_type = info.return_type();
+    let params = define_params(&info.params, &mut context)?;
+    let return_shape = info.return_shape();
     let planned = plan_steps_and_return(
         function.body,
         &mut context,
@@ -57,9 +57,14 @@ pub(super) fn plan_function(
                 reason: InvalidFunctionShapeReason::EmptyBody,
             },
         },
-        Some(&return_type),
+        Some(&return_shape),
     )?;
-    let return_ = function_return_expr(&name, &return_type, &info.runtime_id, planned.return_)?;
+    let return_ = function_return_expr(
+        &name,
+        &return_shape.value_type(),
+        &info.runtime_id,
+        planned.return_,
+    )?;
 
     Ok(FunctionPlan::new(
         info.id,
@@ -72,21 +77,26 @@ pub(super) fn plan_function(
 
 pub(super) fn plan_anonymous_function_body(
     name: &EcoString,
-    return_type: &ValueType,
+    return_shape: &ValueShape,
     runtime_id: &RuntimeFunctionId,
     params: &[FunctionParam],
     captures: Vec<crate::planner::context::CaptureBinding>,
     body: Vec1<TypedStatement>,
     context: &mut PlanContext<'_>,
 ) -> Result<PlannedFunctionBody, PlanError> {
-    let params = define_params(params, context);
+    let params = define_params(params, context)?;
     let captures = context.define_captures(captures);
     let planned = crate::planner::statement::plan_non_empty_steps_and_return(
         body,
         context,
-        Some(return_type),
+        Some(return_shape),
     )?;
-    let return_ = function_return_expr(name, return_type, runtime_id, planned.return_)?;
+    let return_ = function_return_expr(
+        name,
+        &return_shape.value_type(),
+        runtime_id,
+        planned.return_,
+    )?;
 
     Ok(PlannedFunctionBody {
         params,
@@ -110,15 +120,29 @@ pub(super) fn anonymous_function_plan(
     )
 }
 
-fn define_params(params: &[FunctionParam], context: &mut PlanContext<'_>) -> Vec<Param> {
+fn define_params(
+    params: &[FunctionParam],
+    context: &mut PlanContext<'_>,
+) -> Result<Vec<Param>, PlanError> {
     params
         .iter()
         .map(|param| match &param.binding {
             ParamBinding::Named(name) => {
-                context.define_existing_param(name.clone(), &param.local);
-                Param::named(param.local.clone(), name.clone())
+                context.define_existing_param(
+                    name.clone(),
+                    param.local(),
+                    param.shape().clone(),
+                )?;
+                Ok(Param::named_shape(
+                    param.local().clone(),
+                    name.clone(),
+                    param.shape().clone(),
+                ))
             }
-            ParamBinding::Discard => Param::discard(param.local.clone()),
+            ParamBinding::Discard => Ok(Param::discard_shape(
+                param.local().clone(),
+                param.shape().clone(),
+            )),
         })
         .collect()
 }
@@ -1444,7 +1468,7 @@ pub fn main() -> Int
         let info = FunctionInfo {
             id: FunctionId::new(0),
             runtime_id: RuntimeFunctionId::Int(IntFunctionId(0)),
-            return_type: ValueType::Int,
+            return_shape: crate::plan::ValueShape::Int,
             params: Vec::new(),
         };
         let mut anonymous = crate::planner::context::AnonymousFunctions::default();
@@ -1464,6 +1488,64 @@ pub fn main() -> Int
                     reason: InvalidFunctionShapeReason::Anonymous,
                 },
             }),
+        );
+    }
+
+    #[test]
+    fn function_owners_reject_mismatched_parameter_slots() {
+        let invalid_param = crate::planner::context::FunctionParam::new(
+            crate::plan::ParamLocal::int(IntLocalId(0)),
+            crate::plan::ValueShape::String,
+            crate::plan::ParamBinding::Named("value".into()),
+            None,
+        );
+        let expected = PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::ExpressionShape {
+                kind: crate::planner::InvalidExpressionShapeKind::Invalid,
+            },
+        };
+
+        let mut named_module = compile_minimal_module();
+        let named_function = named_module.definitions.functions.remove(0);
+        let info = FunctionInfo {
+            id: FunctionId::new(0),
+            runtime_id: RuntimeFunctionId::Int(IntFunctionId(0)),
+            return_shape: crate::plan::ValueShape::Int,
+            params: vec![invalid_param.clone()],
+        };
+        let mut anonymous = crate::planner::context::AnonymousFunctions::default();
+        assert_eq!(
+            super::plan_function(
+                info,
+                &"main".into(),
+                &Default::default(),
+                &[],
+                named_function,
+                &mut anonymous,
+            ),
+            Err(expected.clone()),
+        );
+
+        let mut anonymous_module = compile_minimal_module();
+        let mut anonymous_body = anonymous_module.definitions.functions.remove(0).body;
+        let anonymous_body = vec1::Vec1::new(anonymous_body.remove(0));
+        let functions = Default::default();
+        let mut anonymous = crate::planner::context::AnonymousFunctions::default();
+        let module_name = "main".into();
+        let mut context =
+            crate::planner::context::PlanContext::new(&module_name, &functions, &mut anonymous);
+        assert_eq!(
+            super::plan_anonymous_function_body(
+                &"<anonymous:0>".into(),
+                &crate::plan::ValueShape::Int,
+                &RuntimeFunctionId::Int(IntFunctionId(0)),
+                &[invalid_param],
+                Vec::new(),
+                anonymous_body,
+                &mut context,
+            )
+            .map(|_| ()),
+            Err(expected),
         );
     }
 }

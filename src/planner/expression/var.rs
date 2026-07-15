@@ -6,7 +6,9 @@ use crate::plan::{
     ValueType,
 };
 use crate::planner::context::{FunctionLocalBinding, PlanContext};
-use crate::planner::error::{InvalidExpressionShapeKind, InvalidTypedAstReason, PlanError};
+use crate::planner::error::{
+    InvalidExpressionShapeKind, InvalidTypedAstReason, PlanError, UnsupportedExpressionKind,
+};
 use ecow::EcoString;
 use gleam_core::type_::{PRELUDE_MODULE_NAME, ValueConstructor, ValueConstructorVariant};
 
@@ -20,17 +22,25 @@ pub(super) fn plan_var(
             if let Some((local, type_)) = context.lookup_local(&name) {
                 return local_get(local, name, type_);
             }
-            if let Some((local, type_)) = context.lookup_tuple_local(&name) {
-                return Ok(Expr::tuple(TupleExpr::local_get(local, name, type_)));
+            if let Some((local, shape)) = context.lookup_tuple_local(&name) {
+                let type_ = shape
+                    .iter()
+                    .map(crate::plan::ValueShape::value_type)
+                    .collect();
+                return Ok(Expr::tuple(
+                    TupleExpr::local_get(local, name, type_).with_shape(shape),
+                ));
             }
             if let Some(local) = context.lookup_custom_local(&name) {
                 return Ok(Expr::custom(CustomExpr::local_get(local, name)));
             }
-            if let Some(local) = context.lookup_list_local(&name) {
-                return Ok(Expr::list(ListExpr::local_get(local, name)));
+            if let Some((local, item_shape)) = context.lookup_list_local(&name) {
+                return Ok(Expr::list(
+                    ListExpr::local_get(local, name).with_item_shape(item_shape),
+                ));
             }
-            if let Some(binding) = context.lookup_function_local(&name) {
-                return Ok(function_local_get(binding, name));
+            if let Some((binding, shape)) = context.lookup_function_local(&name) {
+                return function_local_get(binding, name, shape);
             }
 
             Err(PlanError::InvalidTypedAst {
@@ -55,6 +65,11 @@ pub(super) fn plan_var(
             if module == context.module_name
                 || (module == PRELUDE_MODULE_NAME && matches!(name.as_str(), "Ok" | "Error"))
             {
+                let shape = crate::plan::ValueShape::from_gleam(constructor.type_.as_ref()).ok_or(
+                    PlanError::UnsupportedExpression {
+                        kind: UnsupportedExpressionKind::GenericFunction,
+                    },
+                )?;
                 let constructor = context.custom_constructor(&constructor)?;
                 if usize::from(arity) != constructor.fields().len() {
                     return Err(PlanError::InvalidTypedAst {
@@ -63,7 +78,13 @@ pub(super) fn plan_var(
                         },
                     });
                 }
-                return Ok(crate::plan::module::custom_constructor_expr(constructor));
+                return crate::plan::module::custom_constructor_expr(constructor)
+                    .with_shape(shape)
+                    .ok_or(PlanError::InvalidTypedAst {
+                        reason: InvalidTypedAstReason::ExpressionShape {
+                            kind: InvalidExpressionShapeKind::RecordConstructor,
+                        },
+                    });
             }
 
             Err(PlanError::InvalidTypedAst {
@@ -93,9 +114,17 @@ pub(super) fn plan_var(
                         reason: InvalidTypedAstReason::UnknownLocal { name: name.clone() },
                     })?;
 
+            let shape = function.shape();
             let reference = function.reference();
 
-            Ok(Expr::function(FunctionExpr::reference(reference)))
+            FunctionExpr::reference(reference)
+                .with_resolved_shape(shape)
+                .map(Expr::function)
+                .ok_or(PlanError::InvalidTypedAst {
+                    reason: InvalidTypedAstReason::ExpressionShape {
+                        kind: InvalidExpressionShapeKind::Invalid,
+                    },
+                })
         }
         ValueConstructorVariant::ModuleFn { .. } => Err(PlanError::InvalidTypedAst {
             reason: InvalidTypedAstReason::ExpressionShape {
@@ -113,42 +142,54 @@ pub(super) fn plan_var(
     }
 }
 
-fn function_local_get(binding: FunctionLocalBinding, name: EcoString) -> Expr {
-    match binding {
-        FunctionLocalBinding::Int { local, type_ } => Expr::function(FunctionExpr::int(
-            IntFunctionExpr::local_get(local, name, type_),
-        )),
-        FunctionLocalBinding::String { local, type_ } => Expr::function(FunctionExpr::string(
-            StringFunctionExpr::local_get(local, name, type_),
-        )),
-        FunctionLocalBinding::BitArray { local, type_ } => Expr::function(FunctionExpr::bit_array(
-            BitArrayFunctionExpr::local_get(local, name, type_),
-        )),
-        FunctionLocalBinding::UtfCodepoint { local, type_ } => Expr::function(
-            FunctionExpr::utf_codepoint(UtfCodepointFunctionExpr::local_get(local, name, type_)),
-        ),
-        FunctionLocalBinding::Custom(local) => Expr::function(FunctionExpr::custom(
-            CustomFunctionExpr::local_get(local, name),
-        )),
-        FunctionLocalBinding::Float { local, type_ } => Expr::function(FunctionExpr::float(
-            FloatFunctionExpr::local_get(local, name, type_),
-        )),
-        FunctionLocalBinding::Bool { local, type_ } => Expr::function(FunctionExpr::bool(
-            BoolFunctionExpr::local_get(local, name, type_),
-        )),
-        FunctionLocalBinding::Nil { local, type_ } => Expr::function(FunctionExpr::nil(
-            NilFunctionExpr::local_get(local, name, type_),
-        )),
-        FunctionLocalBinding::Tuple { local, type_ } => Expr::function(FunctionExpr::tuple(
-            TupleFunctionExpr::local_get(local, name, type_),
-        )),
-        FunctionLocalBinding::List(local) => {
-            Expr::function(FunctionExpr::list(ListFunctionExpr::local_get(local, name)))
+fn function_local_get(
+    binding: FunctionLocalBinding,
+    name: EcoString,
+    shape: crate::plan::FunctionShape,
+) -> Result<Expr, PlanError> {
+    let expression = match binding {
+        FunctionLocalBinding::Int { local, type_ } => {
+            FunctionExpr::int(IntFunctionExpr::local_get(local, name, type_))
         }
-        FunctionLocalBinding::Function(local) => Expr::function(FunctionExpr::function(
-            FunctionFunctionExpr::local_get(local, name),
-        )),
-    }
+        FunctionLocalBinding::String { local, type_ } => {
+            FunctionExpr::string(StringFunctionExpr::local_get(local, name, type_))
+        }
+        FunctionLocalBinding::BitArray { local, type_ } => {
+            FunctionExpr::bit_array(BitArrayFunctionExpr::local_get(local, name, type_))
+        }
+        FunctionLocalBinding::UtfCodepoint { local, type_ } => {
+            FunctionExpr::utf_codepoint(UtfCodepointFunctionExpr::local_get(local, name, type_))
+        }
+        FunctionLocalBinding::Custom(local) => {
+            FunctionExpr::custom(CustomFunctionExpr::local_get(local, name))
+        }
+        FunctionLocalBinding::Float { local, type_ } => {
+            FunctionExpr::float(FloatFunctionExpr::local_get(local, name, type_))
+        }
+        FunctionLocalBinding::Bool { local, type_ } => {
+            FunctionExpr::bool(BoolFunctionExpr::local_get(local, name, type_))
+        }
+        FunctionLocalBinding::Nil { local, type_ } => {
+            FunctionExpr::nil(NilFunctionExpr::local_get(local, name, type_))
+        }
+        FunctionLocalBinding::Tuple { local, type_ } => {
+            FunctionExpr::tuple(TupleFunctionExpr::local_get(local, name, type_))
+        }
+        FunctionLocalBinding::List(local) => {
+            FunctionExpr::list(ListFunctionExpr::local_get(local, name))
+        }
+        FunctionLocalBinding::Function(local) => {
+            FunctionExpr::function(FunctionFunctionExpr::local_get(local, name))
+        }
+    };
+    expression
+        .with_resolved_shape(shape)
+        .map(Expr::function)
+        .ok_or(PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::ExpressionShape {
+                kind: InvalidExpressionShapeKind::Invalid,
+            },
+        })
 }
 
 fn local_get(local: LocalId, name: EcoString, type_: ValueType) -> Result<Expr, PlanError> {

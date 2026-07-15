@@ -28,6 +28,16 @@ pub(in crate::plan::execution::lowering) use utf_codepoint::utf_codepoint_functi
 
 use crate::plan::{execution, module};
 
+pub(in crate::plan::execution::lowering) fn typed_function_expr<ModuleExpr, ExecutionExpr>(
+    expression: module::TypedFunctionExpr<ModuleExpr>,
+    context: &mut super::super::LoweringContext,
+    lower: impl FnOnce(ModuleExpr, &mut super::super::LoweringContext) -> ExecutionExpr,
+) -> execution::TypedFunctionExpr<ExecutionExpr> {
+    let (shape, expression) = expression.into_parts();
+    let shape = context.function_shape(shape);
+    execution::TypedFunctionExpr::new(shape, lower(expression, context))
+}
+
 fn function_reference<ModuleFunction, ExecutionFunction>(
     reference: module::TypedFunctionReference<ModuleFunction>,
     context: &mut super::super::LoweringContext,
@@ -38,14 +48,14 @@ fn function_reference<ModuleFunction, ExecutionFunction>(
         lower_function(function, context),
         params
             .into_iter()
-            .map(|param| crate::plan::execution::lowering::param::param_local(param, context))
+            .map(|param| crate::plan::execution::lowering::param::param_slot(param, context))
             .collect(),
     )
 }
 
 fn closure_template<ModuleFunction, ExecutionFunction>(
     function: ModuleFunction,
-    params: Vec<module::ParamLocal>,
+    params: Vec<module::ParamSlot>,
     captures: Vec<module::CaptureArg>,
     context: &mut super::super::LoweringContext,
     lower_function: impl FnOnce(ModuleFunction, &mut super::super::LoweringContext) -> ExecutionFunction,
@@ -54,7 +64,7 @@ fn closure_template<ModuleFunction, ExecutionFunction>(
         lower_function(function, context),
         params
             .into_iter()
-            .map(|param| crate::plan::execution::lowering::param::param_local(param, context))
+            .map(|param| crate::plan::execution::lowering::param::param_slot(param, context))
             .collect(),
         super::capture_args(captures, context),
     )
@@ -64,43 +74,48 @@ pub(in crate::plan::execution::lowering) fn function_expr(
     expression: module::FunctionExpr,
     context: &mut super::super::LoweringContext,
 ) -> execution::FunctionExpr {
-    execution::FunctionExpr::from_kind(match expression.into_kind() {
-        module::FunctionExprKind::Int(expression) => {
-            execution::FunctionExprKind::Int(int_function_expr(expression, context))
-        }
-        module::FunctionExprKind::String(expression) => {
-            execution::FunctionExprKind::String(string_function_expr(expression, context))
-        }
-        module::FunctionExprKind::BitArray(expression) => {
-            execution::FunctionExprKind::BitArray(bit_array_function_expr(expression, context))
-        }
-        module::FunctionExprKind::UtfCodepoint(expression) => {
-            execution::FunctionExprKind::UtfCodepoint(utf_codepoint_function_expr(
-                expression, context,
-            ))
-        }
-        module::FunctionExprKind::Custom(expression) => {
-            execution::FunctionExprKind::Custom(custom_function_expr(expression, context))
-        }
-        module::FunctionExprKind::Float(expression) => {
-            execution::FunctionExprKind::Float(float_function_expr(expression, context))
-        }
-        module::FunctionExprKind::Bool(expression) => {
-            execution::FunctionExprKind::Bool(bool_function_expr(expression, context))
-        }
-        module::FunctionExprKind::Nil(expression) => {
-            execution::FunctionExprKind::Nil(nil_function_expr(expression, context))
-        }
-        module::FunctionExprKind::Tuple(expression) => {
-            execution::FunctionExprKind::Tuple(tuple_function_expr(expression, context))
-        }
-        module::FunctionExprKind::List(expression) => {
-            execution::FunctionExprKind::List(list_function_expr(expression, context))
-        }
-        module::FunctionExprKind::Function(expression) => {
-            execution::FunctionExprKind::Function(function_function_expr(expression, context))
-        }
-    })
+    let (shape, kind) = expression.into_parts();
+    let shape = context.function_shape(shape);
+    execution::FunctionExpr::from_parts(
+        shape,
+        match kind {
+            module::FunctionExprKind::Int(expression) => {
+                execution::FunctionExprKind::Int(int_function_expr(expression, context))
+            }
+            module::FunctionExprKind::String(expression) => {
+                execution::FunctionExprKind::String(string_function_expr(expression, context))
+            }
+            module::FunctionExprKind::BitArray(expression) => {
+                execution::FunctionExprKind::BitArray(bit_array_function_expr(expression, context))
+            }
+            module::FunctionExprKind::UtfCodepoint(expression) => {
+                execution::FunctionExprKind::UtfCodepoint(utf_codepoint_function_expr(
+                    expression, context,
+                ))
+            }
+            module::FunctionExprKind::Custom(expression) => {
+                execution::FunctionExprKind::Custom(custom_function_expr(expression, context))
+            }
+            module::FunctionExprKind::Float(expression) => {
+                execution::FunctionExprKind::Float(float_function_expr(expression, context))
+            }
+            module::FunctionExprKind::Bool(expression) => {
+                execution::FunctionExprKind::Bool(bool_function_expr(expression, context))
+            }
+            module::FunctionExprKind::Nil(expression) => {
+                execution::FunctionExprKind::Nil(nil_function_expr(expression, context))
+            }
+            module::FunctionExprKind::Tuple(expression) => {
+                execution::FunctionExprKind::Tuple(tuple_function_expr(expression, context))
+            }
+            module::FunctionExprKind::List(expression) => {
+                execution::FunctionExprKind::List(list_function_expr(expression, context))
+            }
+            module::FunctionExprKind::Function(expression) => {
+                execution::FunctionExprKind::Function(function_function_expr(expression, context))
+            }
+        },
+    )
 }
 
 #[cfg(test)]
@@ -128,13 +143,26 @@ mod tests {
         assert_eq!(reference_local, IntFunctionLocalId(0));
         let reference = expect_int_function_reference(reference_value);
         assert_eq!(reference.function(), &IntFunctionId(1));
-        assert_eq!(reference.params(), &[ParamLocal::Int(IntLocalId(0))]);
+        assert_eq!(reference.params().len(), 1);
+        assert_eq!(
+            reference.params()[0].local(),
+            &ParamLocal::Int(IntLocalId(0))
+        );
+        assert_eq!(
+            plan.value_type(&plan.shape_value_type(reference.params()[0].shape())),
+            crate::plan::ValueType::Int,
+        );
 
         let (closure_local, closure_value) = expect_int_function_binding(&main.steps()[2]);
         assert_eq!(closure_local, IntFunctionLocalId(1));
         let closure = expect_int_function_closure(closure_value);
         assert_eq!(closure.function(), &IntFunctionId(2));
-        assert_eq!(closure.params(), &[ParamLocal::Int(IntLocalId(0))]);
+        assert_eq!(closure.params().len(), 1);
+        assert_eq!(closure.params()[0].local(), &ParamLocal::Int(IntLocalId(0)));
+        assert_eq!(
+            plan.value_type(&plan.shape_value_type(closure.params()[0].shape())),
+            crate::plan::ValueType::Int,
+        );
         assert_eq!(closure.captures().len(), 1);
         let (capture_local, capture_value) = expect_int_capture(&closure.captures()[0]);
         assert_eq!(capture_local, IntLocalId(1));
@@ -304,7 +332,8 @@ pub fn main() { choose()(1) }
 
         let _ = expect_expression_return(
             plan.int_function_function(IntFunctionFunctionId(0))
-                .return_(),
+                .return_()
+                .body(),
         );
     }
 
@@ -334,7 +363,7 @@ pub fn main() {
 
     fn expect_int_function_binding(step: &Step) -> (IntFunctionLocalId, &IntFunctionExpr) {
         match step.kind() {
-            StepKind::LetIntFunction { local, value } => (*local, value),
+            StepKind::LetIntFunction { local, value } => (*local, value.expression()),
             _ => panic!("expected an Int function binding step"),
         }
     }

@@ -1,5 +1,5 @@
 use super::CaptureSubstitution;
-use crate::plan::{CallArg, Expr, FunctionExpr, FunctionFunctionExpr, ValueType};
+use crate::plan::{CallArg, Expr, FunctionExpr, FunctionFunctionExpr, ValueShape, ValueType};
 use crate::planner::context::PlanContext;
 use crate::planner::error::{
     InvalidCallShapeReason, InvalidExpressionType, InvalidTypedAstReason, PlanError,
@@ -36,7 +36,8 @@ pub(super) fn plan_function_value_call(
             }
         }
     };
-    let function_type = function.type_();
+    let function_shape = function.shape().clone();
+    let function_type = function_shape.type_();
     let return_type = ValueType::from_gleam(type_.as_ref()).ok_or(PlanError::InvalidTypedAst {
         reason: InvalidTypedAstReason::CallShape {
             reason: InvalidCallShapeReason::FunctionCallUnsupportedReturnType,
@@ -59,45 +60,46 @@ pub(super) fn plan_function_value_call(
 
     let args = super::argument::plan_function_call_args(
         arguments,
-        function_type.argument_types(),
+        function_shape.argument_shapes(),
         context,
         capture,
     )?;
 
-    function_call_expr(function, args, return_type)
+    let return_shape = function_shape.return_shape().clone();
+    function_call_expr(function, args, return_shape)
 }
 
 fn function_call_expr(
     function: FunctionExpr,
     args: Vec<CallArg>,
-    return_type: ValueType,
+    return_shape: ValueShape,
 ) -> Result<Expr, PlanError> {
-    match return_type {
-        ValueType::Int => match function.into_int() {
+    match return_shape {
+        ValueShape::Int => match function.into_int() {
             Some(function) => Ok(Expr::int(crate::plan::IntExpr::function_call(
                 function, args,
             ))),
             None => Err(function_call_return_type_mismatch()),
         },
-        ValueType::String => match function.into_string() {
+        ValueShape::String => match function.into_string() {
             Some(function) => Ok(Expr::string(crate::plan::StringExpr::function_call(
                 function, args,
             ))),
             None => Err(function_call_return_type_mismatch()),
         },
-        ValueType::BitArray => match function.into_bit_array() {
+        ValueShape::BitArray => match function.into_bit_array() {
             Some(function) => Ok(Expr::bit_array(crate::plan::BitArrayExpr::function_call(
                 function, args,
             ))),
             None => Err(function_call_return_type_mismatch()),
         },
-        ValueType::UtfCodepoint => match function.into_utf_codepoint() {
+        ValueShape::UtfCodepoint => match function.into_utf_codepoint() {
             Some(function) => Ok(Expr::utf_codepoint(
                 crate::plan::UtfCodepointExpr::function_call(function, args),
             )),
             None => Err(function_call_return_type_mismatch()),
         },
-        ValueType::Custom(_) => match function.into_custom() {
+        ValueShape::Custom(_) => match function.into_custom() {
             Some(function) => crate::plan::CustomExpr::try_function_call(function, args)
                 .map(Expr::custom)
                 .map_err(|_| PlanError::InvalidTypedAst {
@@ -107,42 +109,42 @@ fn function_call_expr(
                 }),
             None => Err(function_call_return_type_mismatch()),
         },
-        ValueType::Float => match function.into_float() {
+        ValueShape::Float => match function.into_float() {
             Some(function) => Ok(Expr::float(crate::plan::FloatExpr::function_call(
                 function, args,
             ))),
             None => Err(function_call_return_type_mismatch()),
         },
-        ValueType::Bool => match function.into_bool() {
+        ValueShape::Bool => match function.into_bool() {
             Some(function) => Ok(Expr::bool(crate::plan::BoolExpr::function_call(
                 function, args,
             ))),
             None => Err(function_call_return_type_mismatch()),
         },
-        ValueType::Nil => match function.into_nil() {
+        ValueShape::Nil => match function.into_nil() {
             Some(function) => Ok(Expr::nil(crate::plan::NilExpr::function_call(
                 function, args,
             ))),
             None => Err(function_call_return_type_mismatch()),
         },
-        ValueType::Tuple(return_type) => match function.into_tuple() {
-            Some(function) => Ok(Expr::tuple(crate::plan::TupleExpr::function_call(
-                function,
-                args,
-                return_type,
-            ))),
-            None => Err(function_call_return_type_mismatch()),
-        },
-        ValueType::List(_) => match function.into_list() {
-            Some(function) => Ok(Expr::list(crate::plan::ListExpr::function_call(
-                function, args,
-            ))),
-            None => Err(function_call_return_type_mismatch()),
-        },
-        ValueType::Function(return_type) => match function.into_function() {
+        ValueShape::Tuple(return_shape) => match function.into_tuple() {
             Some(function) => {
-                function_returning_function_value_call_expr(function, args, *return_type)
+                let return_type = return_shape.iter().map(ValueShape::value_type).collect();
+                Ok(Expr::tuple(
+                    crate::plan::TupleExpr::function_call(function, args, return_type)
+                        .with_shape(return_shape),
+                ))
             }
+            None => Err(function_call_return_type_mismatch()),
+        },
+        ValueShape::List(item_shape) => match function.into_list() {
+            Some(function) => Ok(Expr::list(
+                crate::plan::ListExpr::function_call(function, args).with_item_shape(*item_shape),
+            )),
+            None => Err(function_call_return_type_mismatch()),
+        },
+        ValueShape::Function(_) => match function.into_function() {
+            Some(function) => function_returning_function_value_call_expr(function, args),
             None => Err(function_call_return_type_mismatch()),
         },
     }
@@ -159,43 +161,58 @@ fn function_call_return_type_mismatch() -> PlanError {
 fn function_returning_function_value_call_expr(
     function: FunctionFunctionExpr,
     args: Vec<CallArg>,
-    return_type: crate::plan::FunctionType,
 ) -> Result<Expr, PlanError> {
-    Ok(match return_type.return_().clone() {
-        ValueType::Int => Expr::function(FunctionExpr::int(
+    let return_shape = function.function_function_type().return_shape().clone();
+    let return_type = return_shape.type_();
+    Ok(match return_shape.return_shape().clone() {
+        ValueShape::Int => Expr::function(FunctionExpr::int_with_shape(
             crate::plan::IntFunctionExpr::function_call(function, args, return_type),
+            return_shape,
         )),
-        ValueType::String => Expr::function(FunctionExpr::string(
+        ValueShape::String => Expr::function(FunctionExpr::string_with_shape(
             crate::plan::StringFunctionExpr::function_call(function, args, return_type),
+            return_shape,
         )),
-        ValueType::BitArray => Expr::function(FunctionExpr::bit_array(
+        ValueShape::BitArray => Expr::function(FunctionExpr::bit_array_with_shape(
             crate::plan::BitArrayFunctionExpr::function_call(function, args, return_type),
+            return_shape,
         )),
-        ValueType::UtfCodepoint => Expr::function(FunctionExpr::utf_codepoint(
+        ValueShape::UtfCodepoint => Expr::function(FunctionExpr::utf_codepoint_with_shape(
             crate::plan::UtfCodepointFunctionExpr::function_call(function, args, return_type),
+            return_shape,
         )),
-        ValueType::Custom(_) => {
+        ValueShape::Custom(_) => {
             return crate::plan::CustomFunctionExpr::try_function_call(function, args)
                 .map(FunctionExpr::custom)
                 .map(Expr::function)
                 .map_err(function_function_call_mismatch);
         }
-        ValueType::Float => Expr::function(FunctionExpr::float(
+        ValueShape::Float => Expr::function(FunctionExpr::float_with_shape(
             crate::plan::FloatFunctionExpr::function_call(function, args, return_type),
+            return_shape,
         )),
-        ValueType::Bool => Expr::function(FunctionExpr::bool(
+        ValueShape::Bool => Expr::function(FunctionExpr::bool_with_shape(
             crate::plan::BoolFunctionExpr::function_call(function, args, return_type),
+            return_shape,
         )),
-        ValueType::Nil => Expr::function(FunctionExpr::nil(
+        ValueShape::Nil => Expr::function(FunctionExpr::nil_with_shape(
             crate::plan::NilFunctionExpr::function_call(function, args, return_type),
+            return_shape,
         )),
-        ValueType::Tuple(_) => Expr::function(FunctionExpr::tuple(
+        ValueShape::Tuple(_) => Expr::function(FunctionExpr::tuple_with_shape(
             crate::plan::TupleFunctionExpr::function_call(function, args, return_type),
+            return_shape,
         )),
-        ValueType::List(item_type) => Expr::function(FunctionExpr::list(
-            crate::plan::ListFunctionExpr::function_call(function, args, return_type, *item_type),
+        ValueShape::List(item_shape) => Expr::function(FunctionExpr::list_with_shape(
+            crate::plan::ListFunctionExpr::function_call(
+                function,
+                args,
+                return_type,
+                item_shape.value_type(),
+            ),
+            return_shape,
         )),
-        ValueType::Function(_) => {
+        ValueShape::Function(_) => {
             return FunctionFunctionExpr::try_function_call(function, args)
                 .map(FunctionExpr::function)
                 .map(Expr::function)
@@ -223,7 +240,7 @@ fn function_function_call_mismatch(
 #[cfg(test)]
 mod tests {
     use super::{
-        function_call_expr, function_call_return_type_mismatch,
+        function_call_expr, function_call_return_type_mismatch, function_function_call_mismatch,
         function_returning_function_value_call_expr,
     };
     use crate::plan::{
@@ -234,7 +251,8 @@ mod tests {
         FunctionFunctionId, FunctionType, IntFunctionFunctionId, IntLocalId, LocalId,
         NilFunctionFunctionId, NilFunctionId, ParamLocal, RuntimeFunctionId,
         StringFunctionFunctionId, StringFunctionId, TupleFunctionFunctionId, TupleFunctionId,
-        TupleLocalId, UtfCodepointFunctionFunctionId, UtfCodepointFunctionId, ValueType,
+        TupleLocalId, UtfCodepointFunctionFunctionId, UtfCodepointFunctionId, ValueShape,
+        ValueType,
     };
     use crate::planner::dsl::{
         block_int_function, bool_, bool_case_int_function, call_int_function, function,
@@ -855,7 +873,7 @@ pub fn main() {
                     Vec::<ParamLocal>::new(),
                 )),
                 Vec::new(),
-                ValueType::String,
+                ValueShape::String,
             )
             .expect("string function call")
             .value_type(),
@@ -868,7 +886,7 @@ pub fn main() {
                     Vec::<ParamLocal>::new(),
                 )),
                 Vec::new(),
-                ValueType::BitArray,
+                ValueShape::BitArray,
             )
             .expect("bit array function call")
             .value_type(),
@@ -881,7 +899,7 @@ pub fn main() {
                     Vec::<ParamLocal>::new(),
                 )),
                 Vec::new(),
-                ValueType::UtfCodepoint,
+                ValueShape::UtfCodepoint,
             )
             .expect("utf codepoint function call")
             .value_type(),
@@ -894,7 +912,7 @@ pub fn main() {
                     Vec::<ParamLocal>::new(),
                 )),
                 Vec::new(),
-                ValueType::Float,
+                ValueShape::Float,
             )
             .expect("float function call")
             .value_type(),
@@ -907,7 +925,7 @@ pub fn main() {
                     Vec::<ParamLocal>::new(),
                 )),
                 Vec::new(),
-                ValueType::Bool,
+                ValueShape::Bool,
             )
             .expect("bool function call")
             .value_type(),
@@ -920,7 +938,7 @@ pub fn main() {
                     Vec::<ParamLocal>::new(),
                 )),
                 Vec::new(),
-                ValueType::Nil,
+                ValueShape::Nil,
             )
             .expect("nil function call")
             .value_type(),
@@ -936,7 +954,7 @@ pub fn main() {
                     Vec::<ParamLocal>::new(),
                 )),
                 Vec::new(),
-                ValueType::Tuple(vec![ValueType::Int]),
+                ValueShape::Tuple(vec![ValueShape::Int].into_boxed_slice()),
             )
             .expect("tuple function call")
             .value_type(),
@@ -952,7 +970,7 @@ pub fn main() {
                     Vec::<ParamLocal>::new(),
                 )),
                 Vec::new(),
-                ValueType::List(Box::new(ValueType::Int)),
+                ValueShape::List(Box::new(ValueShape::Int)),
             )
             .expect("list function call")
             .value_type(),
@@ -974,7 +992,9 @@ pub fn main() {
                     returned_function_type.clone(),
                 )),
                 Vec::new(),
-                ValueType::Function(Box::new(returned_function_type.clone())),
+                ValueShape::Function(Box::new(crate::plan::FunctionShape::from_function_type(
+                    returned_function_type.clone(),
+                ))),
             )
             .expect("function-returning function call")
             .value_type(),
@@ -1071,13 +1091,9 @@ pub fn main() {
             ));
 
             assert_eq!(
-                function_returning_function_value_call_expr(
-                    function,
-                    Vec::new(),
-                    returned_function_type.clone(),
-                )
-                .expect("function-returning function call")
-                .value_type(),
+                function_returning_function_value_call_expr(function, Vec::new(),)
+                    .expect("function-returning function call")
+                    .value_type(),
                 ValueType::Function(Box::new(returned_function_type)),
             );
         }
@@ -1092,7 +1108,7 @@ pub fn main() {
                     Vec::<ParamLocal>::new(),
                 )),
                 Vec::new(),
-                ValueType::Int,
+                ValueShape::Int,
             ),
             Err(function_call_return_type_mismatch()),
         );
@@ -1100,7 +1116,7 @@ pub fn main() {
             function_call_expr(
                 FunctionExpr::from(int_function_ref(0, Vec::<ParamLocal>::new())),
                 Vec::new(),
-                ValueType::String,
+                ValueShape::String,
             ),
             Err(function_call_return_type_mismatch()),
         );
@@ -1108,7 +1124,7 @@ pub fn main() {
             function_call_expr(
                 FunctionExpr::from(int_function_ref(0, Vec::<ParamLocal>::new())),
                 Vec::new(),
-                ValueType::BitArray,
+                ValueShape::BitArray,
             ),
             Err(function_call_return_type_mismatch()),
         );
@@ -1116,7 +1132,7 @@ pub fn main() {
             function_call_expr(
                 FunctionExpr::from(int_function_ref(0, Vec::<ParamLocal>::new())),
                 Vec::new(),
-                ValueType::UtfCodepoint,
+                ValueShape::UtfCodepoint,
             ),
             Err(function_call_return_type_mismatch()),
         );
@@ -1124,10 +1140,10 @@ pub fn main() {
             function_call_expr(
                 FunctionExpr::from(int_function_ref(0, Vec::<ParamLocal>::new())),
                 Vec::new(),
-                ValueType::Custom(CustomType::new(
+                ValueShape::from_value_type(ValueType::Custom(CustomType::new(
                     CustomTypeName::new("geam".into(), "main".into(), "Boxed".into()),
                     Vec::new(),
-                )),
+                ))),
             ),
             Err(function_call_return_type_mismatch()),
         );
@@ -1135,7 +1151,7 @@ pub fn main() {
             function_call_expr(
                 FunctionExpr::from(int_function_ref(0, Vec::<ParamLocal>::new())),
                 Vec::new(),
-                ValueType::Float,
+                ValueShape::Float,
             ),
             Err(function_call_return_type_mismatch()),
         );
@@ -1143,7 +1159,7 @@ pub fn main() {
             function_call_expr(
                 FunctionExpr::from(int_function_ref(0, Vec::<ParamLocal>::new())),
                 Vec::new(),
-                ValueType::Bool,
+                ValueShape::Bool,
             ),
             Err(function_call_return_type_mismatch()),
         );
@@ -1151,7 +1167,7 @@ pub fn main() {
             function_call_expr(
                 FunctionExpr::from(int_function_ref(0, Vec::<ParamLocal>::new())),
                 Vec::new(),
-                ValueType::Nil,
+                ValueShape::Nil,
             ),
             Err(function_call_return_type_mismatch()),
         );
@@ -1159,7 +1175,7 @@ pub fn main() {
             function_call_expr(
                 FunctionExpr::from(int_function_ref(0, Vec::<ParamLocal>::new())),
                 Vec::new(),
-                ValueType::Tuple(vec![ValueType::Int]),
+                ValueShape::Tuple(vec![ValueShape::Int].into_boxed_slice()),
             ),
             Err(function_call_return_type_mismatch()),
         );
@@ -1171,7 +1187,7 @@ pub fn main() {
                     [ValueType::Int],
                 )),
                 Vec::new(),
-                ValueType::Int,
+                ValueShape::Int,
             ),
             Err(function_call_return_type_mismatch()),
         );
@@ -1179,7 +1195,10 @@ pub fn main() {
             function_call_expr(
                 FunctionExpr::from(int_function_ref(0, Vec::<ParamLocal>::new())),
                 Vec::new(),
-                ValueType::Function(Box::new(FunctionType::new(Vec::new(), ValueType::Int))),
+                ValueShape::Function(Box::new(crate::plan::FunctionShape::new(
+                    Vec::new(),
+                    ValueShape::Int,
+                ))),
             ),
             Err(function_call_return_type_mismatch()),
         );
@@ -1187,7 +1206,7 @@ pub fn main() {
             function_call_expr(
                 FunctionExpr::from(int_function_ref(0, Vec::<ParamLocal>::new())),
                 Vec::new(),
-                ValueType::List(Box::new(ValueType::Int)),
+                ValueShape::List(Box::new(ValueShape::Int)),
             ),
             Err(function_call_return_type_mismatch()),
         );
@@ -1208,7 +1227,11 @@ pub fn main() {
             )));
 
         assert_eq!(
-            function_call_expr(function, Vec::new(), ValueType::Custom(custom_type)),
+            function_call_expr(
+                function,
+                Vec::new(),
+                ValueShape::from_value_type(ValueType::Custom(custom_type)),
+            ),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::CallShape {
                     reason: InvalidCallShapeReason::FunctionCallArityMismatch,
@@ -1235,34 +1258,22 @@ pub fn main() {
         ));
 
         assert_eq!(
-            function_returning_function_value_call_expr(
-                function,
-                Vec::new(),
-                returned_custom_function.clone(),
-            ),
+            function_returning_function_value_call_expr(function, Vec::new(),),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::CallShape {
                     reason: InvalidCallShapeReason::FunctionCallArityMismatch,
                 },
             }),
         );
-
-        let function = FunctionFunctionExpr::from(function_function_ref(
-            FunctionFunctionId::Int(IntFunctionFunctionId(0)),
-            Vec::<ParamLocal>::new(),
-            FunctionType::new(Vec::new(), ValueType::Int),
-        ));
         assert_eq!(
-            function_returning_function_value_call_expr(
-                function,
-                Vec::new(),
-                returned_custom_function,
+            function_function_call_mismatch(
+                crate::plan::FunctionFunctionCallMismatch::ReturnFamily,
             ),
-            Err(PlanError::InvalidTypedAst {
+            PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::CallShape {
                     reason: InvalidCallShapeReason::FunctionCallReturnTypeMismatch,
                 },
-            }),
+            },
         );
     }
 

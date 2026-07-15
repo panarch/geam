@@ -17,32 +17,38 @@ impl FrameLayout {
                 CallArgKind::Nil { value, .. } => self.include_nil_expr(value),
                 CallArgKind::Tuple { value, .. } => self.include_tuple_expr(value),
                 CallArgKind::List(value) => self.include_list_local_expr(value),
-                CallArgKind::IntFunction { value, .. } => self.include_int_function_expr(value),
+                CallArgKind::IntFunction { value, .. } => {
+                    self.include_int_function_expr(value.expression())
+                }
                 CallArgKind::StringFunction { value, .. } => {
-                    self.include_string_function_expr(value);
+                    self.include_string_function_expr(value.expression());
                 }
                 CallArgKind::BitArrayFunction { value, .. } => {
-                    self.include_bit_array_function_expr(value);
+                    self.include_bit_array_function_expr(value.expression());
                 }
                 CallArgKind::UtfCodepointFunction { value, .. } => {
-                    self.include_utf_codepoint_function_expr(value);
+                    self.include_utf_codepoint_function_expr(value.expression());
                 }
                 CallArgKind::CustomFunction { value, .. } => {
-                    self.include_custom_function_expr(value);
+                    self.include_custom_function_expr(value.expression());
                 }
                 CallArgKind::FloatFunction { value, .. } => {
-                    self.include_float_function_expr(value);
+                    self.include_float_function_expr(value.expression());
                 }
-                CallArgKind::BoolFunction { value, .. } => self.include_bool_function_expr(value),
-                CallArgKind::NilFunction { value, .. } => self.include_nil_function_expr(value),
+                CallArgKind::BoolFunction { value, .. } => {
+                    self.include_bool_function_expr(value.expression())
+                }
+                CallArgKind::NilFunction { value, .. } => {
+                    self.include_nil_function_expr(value.expression())
+                }
                 CallArgKind::TupleFunction { value, .. } => {
-                    self.include_tuple_function_expr(value);
+                    self.include_tuple_function_expr(value.expression());
                 }
                 CallArgKind::ListFunction { value, .. } => {
-                    self.include_list_function_expr(value);
+                    self.include_list_function_expr(value.expression());
                 }
                 CallArgKind::FunctionFunction { value, .. } => {
-                    self.include_function_function_expr(value);
+                    self.include_function_function_expr(value.expression());
                 }
             }
         }
@@ -65,34 +71,38 @@ impl FrameLayout {
                 CaptureArgKind::Nil { value, .. } => self.include_nil_expr(value),
                 CaptureArgKind::Tuple { value, .. } => self.include_tuple_expr(value),
                 CaptureArgKind::List(value) => self.include_list_local_expr(value),
-                CaptureArgKind::IntFunction { value, .. } => self.include_int_function_expr(value),
+                CaptureArgKind::IntFunction { value, .. } => {
+                    self.include_int_function_expr(value.expression())
+                }
                 CaptureArgKind::StringFunction { value, .. } => {
-                    self.include_string_function_expr(value);
+                    self.include_string_function_expr(value.expression());
                 }
                 CaptureArgKind::BitArrayFunction { value, .. } => {
-                    self.include_bit_array_function_expr(value);
+                    self.include_bit_array_function_expr(value.expression());
                 }
                 CaptureArgKind::UtfCodepointFunction { value, .. } => {
-                    self.include_utf_codepoint_function_expr(value);
+                    self.include_utf_codepoint_function_expr(value.expression());
                 }
                 CaptureArgKind::CustomFunction { value, .. } => {
-                    self.include_custom_function_expr(value);
+                    self.include_custom_function_expr(value.expression());
                 }
                 CaptureArgKind::FloatFunction { value, .. } => {
-                    self.include_float_function_expr(value);
+                    self.include_float_function_expr(value.expression());
                 }
                 CaptureArgKind::BoolFunction { value, .. } => {
-                    self.include_bool_function_expr(value)
+                    self.include_bool_function_expr(value.expression())
                 }
-                CaptureArgKind::NilFunction { value, .. } => self.include_nil_function_expr(value),
+                CaptureArgKind::NilFunction { value, .. } => {
+                    self.include_nil_function_expr(value.expression())
+                }
                 CaptureArgKind::TupleFunction { value, .. } => {
-                    self.include_tuple_function_expr(value);
+                    self.include_tuple_function_expr(value.expression());
                 }
                 CaptureArgKind::ListFunction { value, .. } => {
-                    self.include_list_function_expr(value);
+                    self.include_list_function_expr(value.expression());
                 }
                 CaptureArgKind::FunctionFunction { value, .. } => {
-                    self.include_function_function_expr(value);
+                    self.include_function_function_expr(value.expression());
                 }
             }
         }

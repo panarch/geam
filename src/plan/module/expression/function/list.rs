@@ -1,13 +1,15 @@
+#[cfg(test)]
+use crate::plan::ParamLocal;
 use crate::plan::{
     BoolExpr, CaptureArg, CustomFieldAccess, FloatExpr, FunctionFunctionExpr, FunctionListExpr,
     FunctionType, IntExpr, ListFunctionFunctionId, ListFunctionId, ListFunctionLocal,
-    ListFunctionReference, PanicExpr, ParamLocal, Step, StringExpr, TupleExpr, ValueType,
+    ListFunctionReference, PanicExpr, ParamSlot, Step, StringExpr, TupleExpr, ValueType,
 };
 use ecow::EcoString;
 use num_bigint::BigInt;
 
-fn function_type(params: &[ParamLocal], return_: ValueType) -> FunctionType {
-    FunctionType::new(params.iter().map(ParamLocal::value_type).collect(), return_)
+fn function_type(params: &[ParamSlot], return_: ValueType) -> FunctionType {
+    FunctionType::new(params.iter().map(ParamSlot::value_type).collect(), return_)
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -22,7 +24,7 @@ pub(crate) enum ListFunctionExprKind {
     Reference(ListFunctionReference),
     Closure {
         runtime_id: ListFunctionId,
-        params: Vec<ParamLocal>,
+        params: Vec<ParamSlot>,
         captures: Vec<CaptureArg>,
     },
     LocalGet {
@@ -88,9 +90,9 @@ impl ListFunctionExpr {
         }
     }
 
-    pub(crate) fn closure(
+    pub(crate) fn closure_slots(
         runtime_id: ListFunctionId,
-        params: Vec<ParamLocal>,
+        params: Vec<ParamSlot>,
         captures: Vec<CaptureArg>,
     ) -> Self {
         let item_type = runtime_id.item_type();
@@ -104,6 +106,19 @@ impl ListFunctionExpr {
                 captures,
             },
         }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn closure(
+        runtime_id: ListFunctionId,
+        params: Vec<ParamLocal>,
+        captures: Vec<CaptureArg>,
+    ) -> Self {
+        Self::closure_slots(
+            runtime_id,
+            params.into_iter().map(ParamSlot::from_local).collect(),
+            captures,
+        )
     }
 
     pub(crate) fn local_get(local: ListFunctionLocal, name: EcoString) -> Self {
@@ -318,7 +333,9 @@ mod tests {
             .kind(),
             &ListFunctionExprKind::Closure {
                 runtime_id: ListFunctionId::from_item_type(0, crate::plan::ValueType::Int),
-                params: vec![ParamLocal::int(crate::plan::IntLocalId(0))],
+                params: vec![crate::plan::ParamSlot::from_local(ParamLocal::int(
+                    crate::plan::IntLocalId(0)
+                ))],
                 captures: Vec::new(),
             },
         );

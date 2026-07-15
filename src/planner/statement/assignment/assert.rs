@@ -348,7 +348,7 @@ mod tests {
         BitArrayLocalId, BitArrayPattern, BitArrayPatternSegment, BitArrayPatternSize,
         BitArrayPatternSizeExpr, BitArrayPatternValue, BitArraySegment, Endianness, IntExpr,
         IntListLocalId, IntLocalId, ListAssertPattern, ListAssertTail, ListLocal, PanicSite,
-        ParamLocal, Signedness, SourceSpan, Step, StringExpr, ValueType,
+        ParamLocal, Signedness, SourceSpan, Step, StringExpr, ValueShape, ValueType,
     };
     use crate::planner::context::{AnonymousFunctions, PlanContext};
     use crate::planner::dsl::{
@@ -672,6 +672,7 @@ pub fn main() {
                         vec![AssertPattern::Bind(AssertBinding::new(
                             ParamLocal::int(IntLocalId(0)),
                             "first".into(),
+                            ValueShape::Int,
                         ))],
                         Some(ListAssertTail::bind(
                             ListLocal::int(IntListLocalId(1)),
@@ -714,6 +715,7 @@ pub fn main() {
                         vec![AssertPattern::Bind(AssertBinding::new(
                             ParamLocal::int(IntLocalId(0)),
                             "first".into(),
+                            ValueShape::Int,
                         ))],
                         Some(ListAssertTail::Ignore),
                     )),

@@ -96,12 +96,21 @@ pub(super) fn param_local(
     }
 }
 
+pub(super) fn param_slot(
+    slot: module::ParamSlot,
+    context: &mut super::LoweringContext,
+) -> super::super::ParamSlot {
+    let (local, shape) = slot.into_parts();
+    let shape = context.value_shape(shape);
+    super::super::ParamSlot::new(param_local(local, context), shape)
+}
+
 #[cfg(test)]
 mod tests {
     use crate::plan::execution::{
         CustomFunctionExprKind, ExecutionPlan, ListFunctionExpr, ListFunctionExprKind,
         ListFunctionId, ListListFunctionId, ListListTypeId, ListLocal, ParamLocal,
-        RuntimeFunctionId, Step, StepKind, ValueType,
+        RuntimeFunctionId, Step, StepKind,
     };
 
     #[test]
@@ -126,7 +135,7 @@ pub fn main() {
 
         assert_eq!(type_id, target.type_id());
         assert_eq!(
-            plan.value_type(&reference.params()[0].value_type()),
+            plan.value_type(&plan.shape_value_type(reference.params()[0].shape())),
             crate::plan::ValueType::List(Box::new(crate::plan::ValueType::List(Box::new(
                 crate::plan::ValueType::Int,
             )))),
@@ -153,32 +162,30 @@ pub fn main() {
 }
 "#,
         );
-        let (main_id, return_type) = expect_custom_main(&plan);
+        let (main_id, _) = expect_custom_main(&plan);
         let main = plan.custom_function(main_id);
         let reference = main
             .steps()
             .iter()
             .find_map(|step| match step.kind() {
-                StepKind::LetCustomFunction { value, .. } => match value.kind() {
+                StepKind::LetCustomFunction { value, .. } => match value.expression().kind() {
                     CustomFunctionExprKind::Reference(reference) => Some(reference),
                     _ => None,
                 },
                 _ => None,
             })
             .expect("main should bind the custom-returning function reference");
-
         assert_eq!(reference.function(), &plan.custom_function_id(1));
+        let target = plan.custom_function(*reference.function());
         assert_eq!(
-            reference.params(),
-            &[
-                ParamLocal::CustomFunction(crate::plan::execution::CustomFunctionLocal::new(
-                    crate::plan::execution::CustomFunctionLocalId(0),
-                    crate::plan::execution::CustomFunctionType::new(
-                        vec![ValueType::Int],
-                        return_type,
-                    ),
-                )),
-                ParamLocal::Int(crate::plan::execution::IntLocalId(0)),
+            reference
+                .params()
+                .iter()
+                .map(crate::plan::execution::ParamSlot::local)
+                .collect::<Vec<_>>(),
+            vec![
+                &ParamLocal::CustomFunction(target.frame_layout().custom_functions()[0].clone()),
+                &ParamLocal::Int(crate::plan::execution::IntLocalId(0)),
             ],
         );
     }
@@ -240,6 +247,18 @@ pub fn main() {
         let _ = expect_single_nested_list_param(reference.params());
     }
 
+    #[test]
+    #[should_panic(expected = "expected one nested-list parameter")]
+    fn nested_list_param_fixture_guard_rejects_multiple_params() {
+        let plan = execution_plan(
+            "fn identity(values: List(List(Int)), other: Int) { values } pub fn main() { let function = identity function([], 1) }",
+        );
+        let main = plan.list_list_function_id(0);
+        let value = expect_list_function_binding(&plan.list_list_function(main).steps()[0]);
+        let reference = expect_list_function_reference(value);
+        let _ = expect_single_nested_list_param(reference.params());
+    }
+
     fn execution_plan(source: &str) -> ExecutionPlan {
         let typed = crate::compile_typed_module("main", "main.gleam", source)
             .expect("source should compile");
@@ -268,7 +287,7 @@ pub fn main() {
 
     fn expect_list_function_binding(step: &Step) -> &ListFunctionExpr {
         match step.kind() {
-            StepKind::LetListFunction { value, .. } => value,
+            StepKind::LetListFunction { value, .. } => value.expression(),
             _ => panic!("expected a list-function binding step"),
         }
     }
@@ -289,9 +308,14 @@ pub fn main() {
         }
     }
 
-    fn expect_single_nested_list_param(params: &[ParamLocal]) -> ListListTypeId {
+    fn expect_single_nested_list_param(
+        params: &[crate::plan::execution::ParamSlot],
+    ) -> ListListTypeId {
         match params {
-            [ParamLocal::List(ListLocal::List { type_id, .. })] => *type_id,
+            [param] => match param.local() {
+                ParamLocal::List(ListLocal::List { type_id, .. }) => *type_id,
+                _ => panic!("expected one nested-list parameter"),
+            },
             _ => panic!("expected one nested-list parameter"),
         }
     }

@@ -1,7 +1,9 @@
 use crate::plan::CustomFieldAccess;
+#[cfg(test)]
+use crate::plan::ParamLocal;
 use crate::plan::{
     BoolExpr, CaptureArg, FloatExpr, FunctionFunctionExpr, FunctionListExpr, FunctionType, IntExpr,
-    PanicExpr, ParamLocal, Step, StringExpr, StringFunctionFunctionId, StringFunctionId,
+    PanicExpr, ParamSlot, Step, StringExpr, StringFunctionFunctionId, StringFunctionId,
     StringFunctionLocalId, StringFunctionReference, TupleExpr,
 };
 use ecow::EcoString;
@@ -18,7 +20,7 @@ pub(crate) enum StringFunctionExprKind {
     Reference(StringFunctionReference),
     Closure {
         runtime_id: StringFunctionId,
-        params: Vec<ParamLocal>,
+        params: Vec<ParamSlot>,
         captures: Vec<CaptureArg>,
     },
     LocalGet {
@@ -76,7 +78,11 @@ pub(crate) enum StringFunctionExprKind {
 impl StringFunctionExpr {
     pub(crate) fn reference(value: StringFunctionReference) -> Self {
         let type_ = FunctionType::new(
-            value.params().iter().map(ParamLocal::value_type).collect(),
+            value
+                .params()
+                .iter()
+                .map(crate::plan::ParamSlot::value_type)
+                .collect(),
             crate::plan::ValueType::String,
         );
         Self {
@@ -85,9 +91,9 @@ impl StringFunctionExpr {
         }
     }
 
-    pub(crate) fn closure(
+    pub(crate) fn closure_slots(
         runtime_id: StringFunctionId,
-        params: Vec<ParamLocal>,
+        params: Vec<ParamSlot>,
         captures: Vec<CaptureArg>,
         type_: FunctionType,
     ) -> Self {
@@ -99,6 +105,21 @@ impl StringFunctionExpr {
                 captures,
             },
         }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn closure(
+        runtime_id: StringFunctionId,
+        params: Vec<ParamLocal>,
+        captures: Vec<CaptureArg>,
+        type_: FunctionType,
+    ) -> Self {
+        Self::closure_slots(
+            runtime_id,
+            params.into_iter().map(ParamSlot::from_local).collect(),
+            captures,
+            type_,
+        )
     }
 
     pub(crate) fn local_get(
@@ -293,7 +314,9 @@ mod tests {
             .kind(),
             &StringFunctionExprKind::Closure {
                 runtime_id: StringFunctionId(0),
-                params: vec![ParamLocal::string(StringLocalId(0))],
+                params: vec![crate::plan::ParamSlot::from_local(ParamLocal::string(
+                    StringLocalId(0)
+                ))],
                 captures: Vec::new(),
             },
         );

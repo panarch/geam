@@ -22,18 +22,20 @@ pub(in crate::runtime) fn eval_list_function_expr(
     match expression.kind() {
         ListFunctionExprKind::Reference(reference) => Ok(EvaluatedListFunction::new(
             reference.function().clone(),
-            reference.params().to_vec(),
+            reference.param_locals(),
             Vec::new(),
-            crate::runtime::evaluated::function_type(
+            crate::runtime::evaluated::function_type_from_slots(
+                plan,
                 reference.params(),
                 crate::plan::execution::ValueType::List(reference.function().list_type()),
             ),
         )),
         ListFunctionExprKind::Closure(template) => Ok(EvaluatedListFunction::new(
             template.function().clone(),
-            template.params().to_vec(),
+            template.param_locals(),
             function::eval_capture_args(plan, state, frame, template.captures())?,
-            crate::runtime::evaluated::function_type(
+            crate::runtime::evaluated::function_type_from_slots(
+                plan,
                 template.params(),
                 crate::plan::execution::ValueType::List(template.function().list_type()),
             ),

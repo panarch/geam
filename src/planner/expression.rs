@@ -12,8 +12,8 @@ mod var;
 
 use crate::plan::{
     BitArrayExpr, BoolExpr, CustomExpr, CustomFunctionExpr, Expr, FloatExpr, FunctionExpr,
-    FunctionFunctionExpr, FunctionType, IntExpr, ListExpr, PanicExpr, StringExpr, TupleExpr,
-    ValueType,
+    FunctionFunctionExpr, FunctionShape, IntExpr, ListExpr, PanicExpr, StringExpr, TupleExpr,
+    ValueShape, ValueType,
 };
 use crate::planner::context::PlanContext;
 use crate::planner::error::{
@@ -27,7 +27,8 @@ pub(super) fn plan_expr(
     expression: TypedExpr,
     context: &mut PlanContext<'_>,
 ) -> Result<Expr, PlanError> {
-    match expression {
+    let shape = crate::plan::ValueShape::from_gleam(&expression.type_());
+    let expression = match expression {
         TypedExpr::Int { int_value, .. } => Ok(Expr::int(IntExpr::value(int_value))),
         TypedExpr::String { value, .. } => Ok(Expr::string(StringExpr::value(value))),
         TypedExpr::Float { float_value, .. } => {
@@ -148,6 +149,16 @@ pub(super) fn plan_expr(
                 kind: InvalidExpressionShapeKind::Invalid,
             },
         }),
+    }?;
+    match shape {
+        Some(shape) if shape.value_type() == expression.value_type() => expression
+            .with_shape(shape)
+            .ok_or_else(|| PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionShape {
+                    kind: InvalidExpressionShapeKind::Invalid,
+                },
+            }),
+        Some(_) | None => Ok(expression),
     }
 }
 
@@ -157,7 +168,7 @@ fn plan_panic_expr(
     type_: std::sync::Arc<gleam_core::type_::Type>,
     context: &mut PlanContext<'_>,
 ) -> Result<Expr, PlanError> {
-    let return_type = ValueType::from_gleam(type_.as_ref()).ok_or_else(|| {
+    let return_shape = ValueShape::from_gleam(type_.as_ref()).ok_or_else(|| {
         invalid_expression_type(
             InvalidExpressionType::Unsupported,
             InvalidExpressionType::Unsupported,
@@ -165,7 +176,7 @@ fn plan_panic_expr(
     })?;
 
     let site = context.panic_site(location);
-    plan_panic_expr_with_type(message, return_type, site, context)
+    plan_panic_expr_with_shape(message, return_shape, site, context)
 }
 
 fn plan_todo_expr(
@@ -175,32 +186,32 @@ fn plan_todo_expr(
     type_: std::sync::Arc<gleam_core::type_::Type>,
     context: &mut PlanContext<'_>,
 ) -> Result<Expr, PlanError> {
-    let return_type = ValueType::from_gleam(type_.as_ref()).ok_or_else(|| {
+    let return_shape = ValueShape::from_gleam(type_.as_ref()).ok_or_else(|| {
         invalid_expression_type(
             InvalidExpressionType::Unsupported,
             InvalidExpressionType::Unsupported,
         )
     })?;
 
-    plan_todo_expr_with_type(location, kind, message, return_type, context)
+    plan_todo_expr_with_shape(location, kind, message, return_shape, context)
 }
 
-fn plan_panic_expr_with_type(
+fn plan_panic_expr_with_shape(
     message: Option<TypedExpr>,
-    return_type: ValueType,
+    return_shape: ValueShape,
     site: crate::plan::PanicSite,
     context: &mut PlanContext<'_>,
 ) -> Result<Expr, PlanError> {
     let message = plan_panic_message(message, context)?;
 
-    Ok(panic_expr(PanicExpr::panic_at(message, site), return_type))
+    Ok(panic_expr(PanicExpr::panic_at(message, site), return_shape))
 }
 
-fn plan_todo_expr_with_type(
+fn plan_todo_expr_with_shape(
     location: gleam_core::ast::SrcSpan,
     kind: TodoKind,
     message: Option<TypedExpr>,
-    return_type: ValueType,
+    return_shape: ValueShape,
     context: &mut PlanContext<'_>,
 ) -> Result<Expr, PlanError> {
     let site = match &kind {
@@ -220,7 +231,7 @@ fn plan_todo_expr_with_type(
         }
     };
 
-    Ok(panic_expr(panic, return_type))
+    Ok(panic_expr(panic, return_shape))
 }
 
 fn plan_panic_message(
@@ -252,13 +263,25 @@ pub(super) fn plan_expr_with_expected_source_stop_type(
     expected: ValueType,
     context: &mut PlanContext<'_>,
 ) -> Result<Expr, PlanError> {
+    plan_expr_with_expected_source_stop_shape(
+        expression,
+        ValueShape::from_value_type(expected),
+        context,
+    )
+}
+
+pub(super) fn plan_expr_with_expected_source_stop_shape(
+    expression: TypedExpr,
+    expected: ValueShape,
+    context: &mut PlanContext<'_>,
+) -> Result<Expr, PlanError> {
     match expression {
         TypedExpr::Todo {
             location,
             kind,
             message,
             ..
-        } => plan_todo_expr_with_type(
+        } => plan_todo_expr_with_shape(
             location,
             kind,
             message.map(|message| *message),
@@ -269,73 +292,96 @@ pub(super) fn plan_expr_with_expected_source_stop_type(
             location, message, ..
         } => {
             let site = context.panic_site(location);
-            plan_panic_expr_with_type(message.map(|message| *message), expected, site, context)
+            plan_panic_expr_with_shape(message.map(|message| *message), expected, site, context)
         }
         TypedExpr::Block { statements, .. } => {
-            block::plan_with_expected_source_stop_type(statements, &expected, context)
+            block::plan_with_expected_source_stop_shape(statements, &expected, context)
         }
         expression => plan_expr(expression, context),
     }
 }
 
-fn panic_expr(panic: PanicExpr, return_type: ValueType) -> Expr {
-    match return_type {
-        ValueType::Int => Expr::int(IntExpr::panic(panic)),
-        ValueType::String => Expr::string(StringExpr::panic(panic)),
-        ValueType::BitArray => Expr::bit_array(BitArrayExpr::panic(panic)),
-        ValueType::UtfCodepoint => Expr::utf_codepoint(crate::plan::UtfCodepointExpr::panic(panic)),
-        ValueType::Custom(type_) => Expr::custom(CustomExpr::panic(panic, type_)),
-        ValueType::Float => Expr::float(FloatExpr::panic(panic)),
-        ValueType::Bool => Expr::bool(BoolExpr::panic(panic)),
-        ValueType::Nil => Expr::nil(crate::plan::NilExpr::panic(panic)),
-        ValueType::Tuple(type_) => Expr::tuple(TupleExpr::panic(panic, type_)),
-        ValueType::List(type_) => Expr::list(ListExpr::panic(panic, *type_)),
-        ValueType::Function(type_) => panic_function_expr(panic, *type_),
+fn panic_expr(panic: PanicExpr, return_shape: ValueShape) -> Expr {
+    match return_shape {
+        ValueShape::Int => Expr::int(IntExpr::panic(panic)),
+        ValueShape::String => Expr::string(StringExpr::panic(panic)),
+        ValueShape::BitArray => Expr::bit_array(BitArrayExpr::panic(panic)),
+        ValueShape::UtfCodepoint => {
+            Expr::utf_codepoint(crate::plan::UtfCodepointExpr::panic(panic))
+        }
+        ValueShape::Custom(shape) => {
+            Expr::custom(CustomExpr::panic(panic, shape.type_().clone()).with_shape(shape))
+        }
+        ValueShape::Float => Expr::float(FloatExpr::panic(panic)),
+        ValueShape::Bool => Expr::bool(BoolExpr::panic(panic)),
+        ValueShape::Nil => Expr::nil(crate::plan::NilExpr::panic(panic)),
+        ValueShape::Tuple(shape) => {
+            let type_ = shape.iter().map(ValueShape::value_type).collect();
+            Expr::tuple(TupleExpr::panic(panic, type_).with_shape(shape))
+        }
+        ValueShape::List(item_shape) => {
+            let item_type = item_shape.value_type();
+            Expr::list(ListExpr::panic(panic, item_type).with_item_shape(*item_shape))
+        }
+        ValueShape::Function(shape) => panic_function_expr(panic, *shape),
     }
 }
 
-fn panic_function_expr(panic: PanicExpr, type_: FunctionType) -> Expr {
-    match type_.return_().clone() {
-        ValueType::Int => Expr::function(FunctionExpr::int(crate::plan::IntFunctionExpr::panic(
-            panic, type_,
-        ))),
-        ValueType::String => Expr::function(FunctionExpr::string(
+fn panic_function_expr(panic: PanicExpr, shape: FunctionShape) -> Expr {
+    let type_ = shape.type_();
+    match shape.return_shape().clone() {
+        ValueShape::Int => Expr::function(FunctionExpr::int_with_shape(
+            crate::plan::IntFunctionExpr::panic(panic, type_),
+            shape,
+        )),
+        ValueShape::String => Expr::function(FunctionExpr::string_with_shape(
             crate::plan::StringFunctionExpr::panic(panic, type_),
+            shape,
         )),
-        ValueType::BitArray => Expr::function(FunctionExpr::bit_array(
+        ValueShape::BitArray => Expr::function(FunctionExpr::bit_array_with_shape(
             crate::plan::BitArrayFunctionExpr::panic(panic, type_),
+            shape,
         )),
-        ValueType::UtfCodepoint => Expr::function(FunctionExpr::utf_codepoint(
+        ValueShape::UtfCodepoint => Expr::function(FunctionExpr::utf_codepoint_with_shape(
             crate::plan::UtfCodepointFunctionExpr::panic(panic, type_),
+            shape,
         )),
-        ValueType::Custom(return_type) => {
+        ValueShape::Custom(return_shape) => {
+            let callable = crate::plan::CustomFunctionType::from_shapes(
+                shape.argument_shapes().to_vec(),
+                return_shape,
+            );
             Expr::function(FunctionExpr::custom(CustomFunctionExpr::panic(
-                panic,
-                crate::plan::CustomFunctionType::new(type_.argument_types().to_vec(), return_type),
+                panic, callable,
             )))
         }
-        ValueType::Float => Expr::function(FunctionExpr::float(
+        ValueShape::Float => Expr::function(FunctionExpr::float_with_shape(
             crate::plan::FloatFunctionExpr::panic(panic, type_),
+            shape,
         )),
-        ValueType::Bool => Expr::function(FunctionExpr::bool(
+        ValueShape::Bool => Expr::function(FunctionExpr::bool_with_shape(
             crate::plan::BoolFunctionExpr::panic(panic, type_),
+            shape,
         )),
-        ValueType::Nil => Expr::function(FunctionExpr::nil(crate::plan::NilFunctionExpr::panic(
-            panic, type_,
-        ))),
-        ValueType::Tuple(_) => Expr::function(FunctionExpr::tuple(
+        ValueShape::Nil => Expr::function(FunctionExpr::nil_with_shape(
+            crate::plan::NilFunctionExpr::panic(panic, type_),
+            shape,
+        )),
+        ValueShape::Tuple(_) => Expr::function(FunctionExpr::tuple_with_shape(
             crate::plan::TupleFunctionExpr::panic(panic, type_),
+            shape,
         )),
-        ValueType::List(item_type) => Expr::function(FunctionExpr::list(
-            crate::plan::ListFunctionExpr::panic(panic, type_, *item_type),
+        ValueShape::List(item_shape) => Expr::function(FunctionExpr::list_with_shape(
+            crate::plan::ListFunctionExpr::panic(panic, type_, item_shape.value_type()),
+            shape,
         )),
-        ValueType::Function(return_type) => {
+        ValueShape::Function(return_shape) => {
+            let callable = crate::plan::FunctionFunctionType::from_shapes(
+                shape.argument_shapes().to_vec(),
+                *return_shape,
+            );
             Expr::function(FunctionExpr::function(FunctionFunctionExpr::panic(
-                panic,
-                crate::plan::FunctionFunctionType::new(
-                    type_.argument_types().to_vec(),
-                    *return_type,
-                ),
+                panic, callable,
             )))
         }
     }
@@ -346,12 +392,12 @@ fn plan_tuple(
     elements: Vec<TypedExpr>,
     context: &mut PlanContext<'_>,
 ) -> Result<Expr, PlanError> {
-    let expected_type = match ValueType::from_gleam(type_.as_ref()) {
-        Some(ValueType::Tuple(type_)) => type_,
+    let expected_shape = match ValueShape::from_gleam(type_.as_ref()) {
+        Some(ValueShape::Tuple(shape)) => shape,
         Some(actual) => {
             return Err(invalid_expression_type_for_value(
                 ValueType::Tuple(vec![]),
-                actual,
+                actual.value_type(),
             ));
         }
         None => {
@@ -362,7 +408,11 @@ fn plan_tuple(
         }
     };
 
-    if elements.len() != expected_type.len() {
+    let expected_type = expected_shape
+        .iter()
+        .map(ValueShape::value_type)
+        .collect::<Vec<_>>();
+    if elements.len() != expected_shape.len() {
         return Err(invalid_expression_type_for_value(
             ValueType::Tuple(expected_type),
             ValueType::Tuple(Vec::new()),
@@ -371,9 +421,9 @@ fn plan_tuple(
 
     let planned_elements = elements
         .into_iter()
-        .zip(&expected_type)
+        .zip(&expected_shape)
         .map(|(element, expected)| {
-            plan_expr_with_expected_source_stop_type(element, expected.clone(), context)
+            plan_expr_with_expected_source_stop_shape(element, expected.clone(), context)
         })
         .collect::<Result<Vec<_>, _>>()?;
     let actual_type = planned_elements
@@ -413,36 +463,32 @@ fn plan_list(
         };
     };
 
-    let expected_element_type = match ValueType::from_gleam(list_element_type.as_ref()) {
-        Some(type_) => type_,
+    let expected_item_shape = match ValueShape::from_gleam(list_element_type.as_ref()) {
+        Some(shape) => shape,
         None => {
             return Err(PlanError::UnsupportedExpression {
                 kind: UnsupportedExpressionKind::UnsupportedListElementType,
             });
         }
     };
+    let expected_element_type = expected_item_shape.value_type();
 
     let planned_elements = elements
         .into_iter()
         .map(|element| {
-            plan_expr_with_expected_source_stop_type(
-                element,
-                expected_element_type.clone(),
-                context,
-            )
+            plan_expr_with_expected_source_stop_shape(element, expected_item_shape.clone(), context)
         })
         .collect::<Result<Vec<_>, _>>()?;
 
     let Some(tail) = tail else {
-        return Ok(Expr::list(
-            ListExpr::try_value(planned_elements, expected_element_type)
-                .map_err(|error| invalid_expression_type_for_value(error.expected, error.actual))?,
-        ));
+        let list = ListExpr::try_value(planned_elements, expected_element_type)
+            .map_err(|error| invalid_expression_type_for_value(error.expected, error.actual))?;
+        return Ok(Expr::list(list));
     };
 
-    let tail = plan_expr_with_expected_source_stop_type(
+    let tail = plan_expr_with_expected_source_stop_shape(
         tail,
-        ValueType::List(Box::new(expected_element_type.clone())),
+        ValueShape::List(Box::new(expected_item_shape.clone())),
         context,
     )?;
     let actual = tail.value_type();
@@ -492,32 +538,49 @@ fn plan_tuple_index(
             InvalidExpressionType::Tuple,
         )
     })?;
-    let actual = tuple.type_().get(index).cloned().ok_or_else(|| {
-        invalid_expression_type_for_value(expected.clone(), ValueType::Tuple(vec![]))
-    })?;
-    if actual != expected {
-        return Err(invalid_expression_type_for_value(expected.clone(), actual));
-    }
-
-    Ok(tuple_index_expr(tuple, index, expected))
+    tuple_index_expr(tuple, index, expected)
 }
 
-pub(super) fn tuple_index_expr(tuple: TupleExpr, index: usize, return_type: ValueType) -> Expr {
-    match return_type {
-        ValueType::Int => Expr::int(IntExpr::tuple_index(tuple, index)),
-        ValueType::String => Expr::string(StringExpr::tuple_index(tuple, index)),
-        ValueType::BitArray => Expr::bit_array(BitArrayExpr::tuple_index(tuple, index)),
-        ValueType::UtfCodepoint => {
+pub(super) fn tuple_index_expr(
+    tuple: TupleExpr,
+    index: usize,
+    return_type: ValueType,
+) -> Result<Expr, PlanError> {
+    let shape = tuple.shape().get(index).cloned().ok_or_else(|| {
+        invalid_expression_type_for_value(return_type.clone(), ValueType::Tuple(Vec::new()))
+    })?;
+    let actual = shape.value_type();
+    if actual != return_type {
+        return Err(invalid_expression_type_for_value(return_type, actual));
+    }
+    Ok(match shape {
+        crate::plan::ValueShape::Int => Expr::int(IntExpr::tuple_index(tuple, index)),
+        crate::plan::ValueShape::String => Expr::string(StringExpr::tuple_index(tuple, index)),
+        crate::plan::ValueShape::BitArray => {
+            Expr::bit_array(BitArrayExpr::tuple_index(tuple, index))
+        }
+        crate::plan::ValueShape::UtfCodepoint => {
             Expr::utf_codepoint(crate::plan::UtfCodepointExpr::tuple_index(tuple, index))
         }
-        ValueType::Custom(type_) => Expr::custom(CustomExpr::tuple_index(tuple, index, type_)),
-        ValueType::Float => Expr::float(FloatExpr::tuple_index(tuple, index)),
-        ValueType::Bool => Expr::bool(BoolExpr::tuple_index(tuple, index)),
-        ValueType::Nil => Expr::nil(crate::plan::NilExpr::tuple_index(tuple, index)),
-        ValueType::Tuple(type_) => Expr::tuple(TupleExpr::tuple_index(tuple, index, type_)),
-        ValueType::List(type_) => Expr::list(ListExpr::tuple_index(tuple, index, *type_)),
-        ValueType::Function(type_) => tuple_index_function_expr(tuple, index, *type_),
-    }
+        crate::plan::ValueShape::Custom(shape) => {
+            Expr::custom(CustomExpr::tuple_index_shape(tuple, index, shape))
+        }
+        crate::plan::ValueShape::Float => Expr::float(FloatExpr::tuple_index(tuple, index)),
+        crate::plan::ValueShape::Bool => Expr::bool(BoolExpr::tuple_index(tuple, index)),
+        crate::plan::ValueShape::Nil => Expr::nil(crate::plan::NilExpr::tuple_index(tuple, index)),
+        crate::plan::ValueShape::Tuple(shape) => {
+            let type_ = shape
+                .iter()
+                .map(crate::plan::ValueShape::value_type)
+                .collect();
+            Expr::tuple(TupleExpr::tuple_index(tuple, index, type_).with_shape(shape))
+        }
+        crate::plan::ValueShape::List(item_shape) => {
+            let item_type = item_shape.value_type();
+            Expr::list(ListExpr::tuple_index(tuple, index, item_type).with_item_shape(*item_shape))
+        }
+        crate::plan::ValueShape::Function(shape) => tuple_index_function_expr(tuple, index, *shape),
+    })
 }
 
 pub(super) fn list_index_expr(
@@ -525,89 +588,140 @@ pub(super) fn list_index_expr(
     index: usize,
     return_type: ValueType,
 ) -> Result<Expr, PlanError> {
+    let item_shape = list.item_shape().clone();
     let expected = ValueType::List(Box::new(return_type.clone()));
     let actual = list.element_type();
-    Ok(match (return_type, list) {
-        (ValueType::Int, ListExpr::Int(list)) => Expr::int(IntExpr::list_index(list, index)),
-        (ValueType::String, ListExpr::String(list)) => {
+    if item_shape.value_type() != return_type {
+        return Err(invalid_expression_type_for_value(expected, actual));
+    }
+    Ok(match (item_shape, list) {
+        (crate::plan::ValueShape::Int, ListExpr::Int(list)) => {
+            Expr::int(IntExpr::list_index(list, index))
+        }
+        (crate::plan::ValueShape::String, ListExpr::String(list)) => {
             Expr::string(StringExpr::list_index(list, index))
         }
-        (ValueType::BitArray, ListExpr::BitArray(list)) => {
+        (crate::plan::ValueShape::BitArray, ListExpr::BitArray(list)) => {
             Expr::bit_array(BitArrayExpr::list_index(list, index))
         }
-        (ValueType::UtfCodepoint, ListExpr::UtfCodepoint(list)) => {
+        (crate::plan::ValueShape::UtfCodepoint, ListExpr::UtfCodepoint(list)) => {
             Expr::utf_codepoint(crate::plan::UtfCodepointExpr::list_index(list, index))
         }
-        (ValueType::Custom(type_), ListExpr::Custom(list)) if list.item().item_type() == type_ => {
-            Expr::custom(CustomExpr::list_index(list, index, type_))
+        (crate::plan::ValueShape::Custom(shape), ListExpr::Custom(list))
+            if list.item().item_type() == *shape.type_() =>
+        {
+            Expr::custom(CustomExpr::list_index_shape(list, index, shape))
         }
-        (ValueType::Float, ListExpr::Float(list)) => {
+        (crate::plan::ValueShape::Float, ListExpr::Float(list)) => {
             Expr::float(FloatExpr::list_index(list, index))
         }
-        (ValueType::Bool, ListExpr::Bool(list)) => Expr::bool(BoolExpr::list_index(list, index)),
-        (ValueType::Nil, ListExpr::Nil(list)) => {
+        (crate::plan::ValueShape::Bool, ListExpr::Bool(list)) => {
+            Expr::bool(BoolExpr::list_index(list, index))
+        }
+        (crate::plan::ValueShape::Nil, ListExpr::Nil(list)) => {
             Expr::nil(crate::plan::NilExpr::list_index(list, index))
         }
-        (ValueType::Tuple(type_), ListExpr::Tuple(list)) if list.item().item_type() == type_ => {
-            Expr::tuple(TupleExpr::list_index(list, index, type_))
-        }
-        (ValueType::List(type_), ListExpr::List(list)) if list.item().item_type() == type_ => {
-            Expr::list(ListExpr::list_index(list, index))
-        }
-        (ValueType::Function(type_), ListExpr::Function(list))
-            if list.item().item_type() == *type_.as_ref() =>
+        (crate::plan::ValueShape::Tuple(shape), ListExpr::Tuple(list))
+            if list.item().item_type()
+                == shape
+                    .iter()
+                    .map(crate::plan::ValueShape::value_type)
+                    .collect::<Vec<_>>() =>
         {
-            list_index_function_expr(list, index, *type_)
+            let type_ = shape
+                .iter()
+                .map(crate::plan::ValueShape::value_type)
+                .collect();
+            Expr::tuple(TupleExpr::list_index(list, index, type_).with_shape(shape))
         }
-        _ => return Err(invalid_expression_type_for_value(expected, actual)),
+        (crate::plan::ValueShape::List(item_shape), ListExpr::List(list))
+            if list.item().item_type() == Box::new(item_shape.value_type()) =>
+        {
+            Expr::list(ListExpr::list_index(list, index).with_item_shape(*item_shape))
+        }
+        (crate::plan::ValueShape::Function(shape), ListExpr::Function(list))
+            if list.item().item_type() == shape.type_() =>
+        {
+            list_index_function_expr(list, index, *shape)
+        }
+        _ => {
+            return Err(invalid_expression_type_for_value(expected, actual));
+        }
     })
 }
 
-fn tuple_index_function_expr(tuple: TupleExpr, index: usize, type_: FunctionType) -> Expr {
-    match type_.return_().clone() {
-        ValueType::Int => Expr::function(FunctionExpr::int(
+fn tuple_index_function_expr(
+    tuple: TupleExpr,
+    index: usize,
+    shape: crate::plan::FunctionShape,
+) -> Expr {
+    let type_ = shape.type_();
+    match shape.return_shape().clone() {
+        crate::plan::ValueShape::Int => Expr::function(FunctionExpr::int_with_shape(
             crate::plan::IntFunctionExpr::tuple_index(tuple, index, type_),
+            shape,
         )),
-        ValueType::String => Expr::function(FunctionExpr::string(
+        crate::plan::ValueShape::String => Expr::function(FunctionExpr::string_with_shape(
             crate::plan::StringFunctionExpr::tuple_index(tuple, index, type_),
+            shape,
         )),
-        ValueType::BitArray => Expr::function(FunctionExpr::bit_array(
+        crate::plan::ValueShape::BitArray => Expr::function(FunctionExpr::bit_array_with_shape(
             crate::plan::BitArrayFunctionExpr::tuple_index(tuple, index, type_),
+            shape,
         )),
-        ValueType::UtfCodepoint => Expr::function(FunctionExpr::utf_codepoint(
-            crate::plan::UtfCodepointFunctionExpr::tuple_index(tuple, index, type_),
-        )),
-        ValueType::Custom(return_type) => {
+        crate::plan::ValueShape::UtfCodepoint => {
+            Expr::function(FunctionExpr::utf_codepoint_with_shape(
+                crate::plan::UtfCodepointFunctionExpr::tuple_index(tuple, index, type_),
+                shape,
+            ))
+        }
+        crate::plan::ValueShape::Custom(return_shape) => {
             Expr::function(FunctionExpr::custom(CustomFunctionExpr::tuple_index(
                 tuple,
                 index,
-                crate::plan::CustomFunctionType::new(type_.argument_types().to_vec(), return_type),
-            )))
-        }
-        ValueType::Float => Expr::function(FunctionExpr::float(
-            crate::plan::FloatFunctionExpr::tuple_index(tuple, index, type_),
-        )),
-        ValueType::Bool => Expr::function(FunctionExpr::bool(
-            crate::plan::BoolFunctionExpr::tuple_index(tuple, index, type_),
-        )),
-        ValueType::Nil => Expr::function(FunctionExpr::nil(
-            crate::plan::NilFunctionExpr::tuple_index(tuple, index, type_),
-        )),
-        ValueType::Tuple(_) => Expr::function(FunctionExpr::tuple(
-            crate::plan::TupleFunctionExpr::tuple_index(tuple, index, type_),
-        )),
-        ValueType::List(item_type) => Expr::function(FunctionExpr::list(
-            crate::plan::ListFunctionExpr::tuple_index(tuple, index, type_, *item_type),
-        )),
-        ValueType::Function(return_type) => {
-            Expr::function(FunctionExpr::function(FunctionFunctionExpr::tuple_index(
-                tuple,
-                index,
-                crate::plan::FunctionFunctionType::new(
-                    type_.argument_types().to_vec(),
-                    *return_type,
+                crate::plan::CustomFunctionType::from_shapes(
+                    shape.argument_shapes().to_vec(),
+                    return_shape,
                 ),
             )))
+        }
+        crate::plan::ValueShape::Float => Expr::function(FunctionExpr::float_with_shape(
+            crate::plan::FloatFunctionExpr::tuple_index(tuple, index, type_),
+            shape,
+        )),
+        crate::plan::ValueShape::Bool => Expr::function(FunctionExpr::bool_with_shape(
+            crate::plan::BoolFunctionExpr::tuple_index(tuple, index, type_),
+            shape,
+        )),
+        crate::plan::ValueShape::Nil => Expr::function(FunctionExpr::nil_with_shape(
+            crate::plan::NilFunctionExpr::tuple_index(tuple, index, type_),
+            shape,
+        )),
+        crate::plan::ValueShape::Tuple(_) => Expr::function(FunctionExpr::tuple_with_shape(
+            crate::plan::TupleFunctionExpr::tuple_index(tuple, index, type_),
+            shape,
+        )),
+        crate::plan::ValueShape::List(item_shape) => Expr::function(FunctionExpr::list_with_shape(
+            crate::plan::ListFunctionExpr::tuple_index(
+                tuple,
+                index,
+                type_,
+                item_shape.value_type(),
+            ),
+            shape,
+        )),
+        crate::plan::ValueShape::Function(return_shape) => {
+            Expr::function(FunctionExpr::function_with_shape(
+                FunctionFunctionExpr::tuple_index(
+                    tuple,
+                    index,
+                    crate::plan::FunctionFunctionType::from_shapes(
+                        shape.argument_shapes().to_vec(),
+                        *return_shape,
+                    ),
+                ),
+                shape,
+            ))
         }
     }
 }
@@ -615,52 +729,75 @@ fn tuple_index_function_expr(tuple: TupleExpr, index: usize, type_: FunctionType
 fn list_index_function_expr(
     list: crate::plan::FunctionListExpr,
     index: usize,
-    type_: FunctionType,
+    shape: crate::plan::FunctionShape,
 ) -> Expr {
-    match type_.return_().clone() {
-        ValueType::Int => Expr::function(FunctionExpr::int(
+    let type_ = shape.type_();
+    match shape.return_shape().clone() {
+        crate::plan::ValueShape::Int => Expr::function(FunctionExpr::int_with_shape(
             crate::plan::IntFunctionExpr::list_index(list.clone(), index, type_),
+            shape,
         )),
-        ValueType::String => Expr::function(FunctionExpr::string(
+        crate::plan::ValueShape::String => Expr::function(FunctionExpr::string_with_shape(
             crate::plan::StringFunctionExpr::list_index(list.clone(), index, type_),
+            shape,
         )),
-        ValueType::BitArray => Expr::function(FunctionExpr::bit_array(
+        crate::plan::ValueShape::BitArray => Expr::function(FunctionExpr::bit_array_with_shape(
             crate::plan::BitArrayFunctionExpr::list_index(list.clone(), index, type_),
+            shape,
         )),
-        ValueType::UtfCodepoint => Expr::function(FunctionExpr::utf_codepoint(
-            crate::plan::UtfCodepointFunctionExpr::list_index(list.clone(), index, type_),
-        )),
-        ValueType::Custom(return_type) => {
+        crate::plan::ValueShape::UtfCodepoint => {
+            Expr::function(FunctionExpr::utf_codepoint_with_shape(
+                crate::plan::UtfCodepointFunctionExpr::list_index(list.clone(), index, type_),
+                shape,
+            ))
+        }
+        crate::plan::ValueShape::Custom(return_shape) => {
             Expr::function(FunctionExpr::custom(CustomFunctionExpr::list_index(
                 list.clone(),
                 index,
-                crate::plan::CustomFunctionType::new(type_.argument_types().to_vec(), return_type),
-            )))
-        }
-        ValueType::Float => Expr::function(FunctionExpr::float(
-            crate::plan::FloatFunctionExpr::list_index(list.clone(), index, type_),
-        )),
-        ValueType::Bool => Expr::function(FunctionExpr::bool(
-            crate::plan::BoolFunctionExpr::list_index(list.clone(), index, type_),
-        )),
-        ValueType::Nil => Expr::function(FunctionExpr::nil(
-            crate::plan::NilFunctionExpr::list_index(list.clone(), index, type_),
-        )),
-        ValueType::Tuple(_) => Expr::function(FunctionExpr::tuple(
-            crate::plan::TupleFunctionExpr::list_index(list.clone(), index, type_),
-        )),
-        ValueType::List(item_type) => Expr::function(FunctionExpr::list(
-            crate::plan::ListFunctionExpr::list_index(list.clone(), index, type_, *item_type),
-        )),
-        ValueType::Function(return_type) => {
-            Expr::function(FunctionExpr::function(FunctionFunctionExpr::list_index(
-                list,
-                index,
-                crate::plan::FunctionFunctionType::new(
-                    type_.argument_types().to_vec(),
-                    *return_type,
+                crate::plan::CustomFunctionType::from_shapes(
+                    shape.argument_shapes().to_vec(),
+                    return_shape,
                 ),
             )))
+        }
+        crate::plan::ValueShape::Float => Expr::function(FunctionExpr::float_with_shape(
+            crate::plan::FloatFunctionExpr::list_index(list.clone(), index, type_),
+            shape,
+        )),
+        crate::plan::ValueShape::Bool => Expr::function(FunctionExpr::bool_with_shape(
+            crate::plan::BoolFunctionExpr::list_index(list.clone(), index, type_),
+            shape,
+        )),
+        crate::plan::ValueShape::Nil => Expr::function(FunctionExpr::nil_with_shape(
+            crate::plan::NilFunctionExpr::list_index(list.clone(), index, type_),
+            shape,
+        )),
+        crate::plan::ValueShape::Tuple(_) => Expr::function(FunctionExpr::tuple_with_shape(
+            crate::plan::TupleFunctionExpr::list_index(list.clone(), index, type_),
+            shape,
+        )),
+        crate::plan::ValueShape::List(item_shape) => Expr::function(FunctionExpr::list_with_shape(
+            crate::plan::ListFunctionExpr::list_index(
+                list.clone(),
+                index,
+                type_,
+                item_shape.value_type(),
+            ),
+            shape,
+        )),
+        crate::plan::ValueShape::Function(return_shape) => {
+            Expr::function(FunctionExpr::function_with_shape(
+                FunctionFunctionExpr::list_index(
+                    list,
+                    index,
+                    crate::plan::FunctionFunctionType::from_shapes(
+                        shape.argument_shapes().to_vec(),
+                        *return_shape,
+                    ),
+                ),
+                shape,
+            ))
         }
     }
 }
@@ -842,6 +979,7 @@ pub(in crate::planner::expression) fn typed_prelude_constructor(
 }
 
 #[cfg(test)]
+#[allow(clippy::arc_with_non_send_sync)]
 mod tests {
     use super::{
         expression_type, invalid_expression_type, invalid_expression_type_for_value,
@@ -855,7 +993,7 @@ mod tests {
         FunctionType, IntExpr, IntFunctionExpr, IntFunctionFunctionId, IntFunctionId, IntLocalId,
         ListExpr, NilExpr, NilFunctionId, NilLocalId, PanicExpr, PanicSite, ParamLocal, ReturnBody,
         RuntimeFunctionId, SourceSpan, StringExpr, StringLocalId, TupleExpr, UtfCodepointExpr,
-        UtfCodepointLocalId, ValueType,
+        UtfCodepointLocalId, ValueShape, ValueType,
     };
     use crate::planner::context::{AnonymousFunctions, PlanContext};
     use crate::planner::dsl::{
@@ -870,8 +1008,8 @@ mod tests {
         InvalidExpressionShapeKind, InvalidExpressionType, InvalidTypedAstReason, PlanError,
         UnsupportedExpressionKind,
     };
-    use gleam_core::ast::{Constant, TypedExpr};
-    use gleam_core::type_::{self, ModuleValueConstructor};
+    use gleam_core::ast::{Constant, Statement, TypedExpr, TypedModule};
+    use gleam_core::type_::{self, ModuleValueConstructor, Type};
     use num_bigint::BigInt;
     use std::collections::HashMap;
 
@@ -914,6 +1052,75 @@ pub fn main() -> Bool {
                 )),
             ),
         );
+    }
+
+    #[test]
+    fn expression_planning_rejects_conflicting_constructor_refinement_metadata() {
+        let mut module = compile(
+            r#"
+pub type Choice {
+  First
+  Second
+}
+
+pub fn main() {
+  First
+}
+"#,
+        );
+        set_main_constructor_inferred_variant(&mut module, 1);
+
+        assert_eq!(
+            plan_module(module),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionShape {
+                    kind: InvalidExpressionShapeKind::RecordConstructor,
+                },
+            }),
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "test expression should be a constructor value")]
+    fn constructor_refinement_fixture_guard_rejects_non_variable_expression() {
+        let mut module = compile("pub fn main() { 1 }");
+
+        set_main_constructor_inferred_variant(&mut module, 0);
+    }
+
+    #[test]
+    #[should_panic(expected = "test constructor should have a named custom type")]
+    fn constructor_refinement_fixture_guard_rejects_tuple_variable() {
+        let mut module = compile("pub fn main(value: #(Int)) { value }");
+
+        set_main_constructor_inferred_variant(&mut module, 0);
+    }
+
+    fn set_main_constructor_inferred_variant(module: &mut TypedModule, index: u16) {
+        let Statement::Expression(TypedExpr::Var { constructor, .. }) =
+            &mut module.definitions.functions[0].body[0]
+        else {
+            panic!("test expression should be a constructor value");
+        };
+        let Type::Named {
+            publicity,
+            package,
+            module: type_module,
+            name,
+            arguments,
+            ..
+        } = constructor.type_.as_ref()
+        else {
+            panic!("test constructor should have a named custom type");
+        };
+        constructor.type_ = std::sync::Arc::new(Type::Named {
+            publicity: *publicity,
+            package: package.clone(),
+            module: type_module.clone(),
+            name: name.clone(),
+            arguments: arguments.clone(),
+            inferred_variant: Some(index),
+        });
     }
 
     #[test]
@@ -1459,15 +1666,17 @@ pub fn main() {
     #[test]
     fn list_index_function_expr_preserves_bit_array_return_family() {
         let type_ = FunctionType::new(Vec::new(), ValueType::BitArray);
+        let shape = crate::plan::FunctionShape::from_function_type(type_.clone());
         let list = ListExpr::value(Vec::new(), ValueType::Function(Box::new(type_.clone())))
             .into_function()
             .expect("function list");
 
         assert_eq!(
-            list_index_function_expr(list.clone(), 2, type_.clone()),
-            Expr::function(FunctionExpr::bit_array(BitArrayFunctionExpr::list_index(
-                list, 2, type_,
-            ))),
+            list_index_function_expr(list.clone(), 2, shape.clone()),
+            Expr::function(FunctionExpr::bit_array_with_shape(
+                BitArrayFunctionExpr::list_index(list, 2, type_),
+                shape,
+            )),
         );
     }
 
@@ -2501,6 +2710,17 @@ pub fn main() {
                     actual: InvalidExpressionType::Function,
                 },
             }),
+        );
+    }
+
+    #[test]
+    fn reject_margin_list_index_rejects_facade_and_shape_family_conflict() {
+        let list = ListExpr::value(Vec::new(), ValueType::Int).with_item_shape(ValueShape::String);
+        let list_type = ValueType::List(Box::new(ValueType::String));
+
+        assert_eq!(
+            super::list_index_expr(list, 0, ValueType::String),
+            Err(invalid_expression_type_for_value(list_type, ValueType::Int)),
         );
     }
 

@@ -6,10 +6,10 @@ pub(super) fn custom_local(
     local: module::CustomLocal,
     context: &mut LoweringContext,
 ) -> super::super::CustomLocal {
-    let (id, type_) = local.into_parts();
+    let (id, shape) = local.into_parts();
     super::super::CustomLocal::new(
         super::super::CustomLocalId(id.0),
-        context.custom_type(type_),
+        context.custom_value_shape(shape),
     )
 }
 
@@ -17,8 +17,8 @@ pub(super) fn custom_function_id(
     id: module::CustomFunctionId,
     context: &mut LoweringContext,
 ) -> super::super::CustomFunctionId {
-    let (index, return_type) = id.into_parts();
-    super::super::CustomFunctionId::new(index, context.custom_type(return_type))
+    let (index, return_shape) = id.into_parts();
+    super::super::CustomFunctionId::new(index, context.custom_value_shape(return_shape))
 }
 
 pub(super) fn custom_function_local(
@@ -471,7 +471,7 @@ pub fn main() {
 
     fn expect_list_function_binding(step: &Step) -> (&ListFunctionLocal, &ListFunctionExpr) {
         match step.kind() {
-            StepKind::LetListFunction { local, value } => (local, value),
+            StepKind::LetListFunction { local, value } => (local, value.expression()),
             _ => panic!("expected a list-function binding step"),
         }
     }

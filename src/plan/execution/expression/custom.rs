@@ -3,13 +3,13 @@ use super::{
     PanicExpr, StringExpr, TupleExpr,
 };
 use crate::plan::execution::{
-    CustomConstructorId, CustomFunctionId, CustomLocal, CustomTypeId, Step,
+    CustomConstructorId, CustomFunctionId, CustomLocal, CustomTypeId, CustomValueShape, Step,
 };
 use ecow::EcoString;
 use num_bigint::BigInt;
 
 pub struct CustomExpr {
-    type_id: CustomTypeId,
+    shape: CustomValueShape,
     kind: CustomExprKind,
 }
 
@@ -80,14 +80,18 @@ pub(crate) enum CustomExprKind {
 
 impl CustomExpr {
     pub(in crate::plan::execution) fn from_parts(
-        type_id: CustomTypeId,
+        shape: CustomValueShape,
         kind: CustomExprKind,
     ) -> Self {
-        Self { type_id, kind }
+        Self { shape, kind }
     }
 
     pub(crate) fn type_id(&self) -> CustomTypeId {
-        self.type_id
+        self.shape.type_id()
+    }
+
+    pub(crate) fn shape(&self) -> &CustomValueShape {
+        &self.shape
     }
 
     pub(crate) fn kind(&self) -> &CustomExprKind {

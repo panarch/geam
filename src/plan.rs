@@ -1,39 +1,37 @@
 pub mod execution;
 pub mod module;
 mod source;
+mod value_shape;
 mod value_type;
 
 #[cfg(test)]
 pub(crate) use module::ListReturn;
 pub(crate) use module::{
     AssertBinding, AssertPattern, BitArrayAssertPattern, BitArrayBindingPattern, BitArrayExprKind,
-    BitArrayFunctionExprKind, BitArrayFunctionReference, BitArrayFunctionReturn, BitArrayListExpr,
-    BitArrayListItem, BitArrayPattern, BitArrayPatternSegment, BitArrayPatternSize,
-    BitArrayPatternSizeExpr, BitArrayPatternValue, BitArrayReturn, BitArraySegment,
-    BitArrayStringPattern, BoolCaseBranches, BoolExprKind, BoolFunctionExprKind,
-    BoolFunctionReference, BoolFunctionReturn, BoolListCaseBranches, BoolListExpr, BoolListItem,
-    BoolReturn, CallArgKind, CaptureArg, CaptureArgKind, CustomBindingPattern, CustomConstructor,
+    BitArrayFunctionExprKind, BitArrayFunctionReference, BitArrayFunctionReturn, BitArrayPattern,
+    BitArrayPatternSegment, BitArrayPatternSize, BitArrayPatternSizeExpr, BitArrayPatternValue,
+    BitArrayReturn, BitArraySegment, BitArrayStringPattern, BoolCaseBranches, BoolExprKind,
+    BoolFunctionExprKind, BoolFunctionReference, BoolFunctionReturn, BoolListCaseBranches,
+    BoolReturn, CallArgKind, CaptureArg, CaptureArgKind, CustomBindingPattern,
+    CustomBoolCaseBranches, CustomCaseBranches, CustomConstruction, CustomConstructor,
     CustomConstructorField, CustomExprKind, CustomFieldAccess, CustomFunctionExprKind,
-    CustomFunctionLocal, CustomFunctionReference, CustomFunctionReturn, CustomListExpr,
-    CustomListItem, CustomLocal, CustomPattern, CustomReturn, Endianness, ExprKind, FloatBitSize,
-    FloatCaseBranches, FloatExprKind, FloatFunctionExprKind, FloatFunctionReference,
-    FloatFunctionReturn, FloatListExpr, FloatListItem, FloatReturn, FrameLayout, FunctionExprKind,
-    FunctionFunctionCallMismatch, FunctionFunctionExprKind, FunctionFunctionId,
+    CustomFunctionLocal, CustomFunctionReference, CustomFunctionReturn, CustomLocal, CustomPattern,
+    CustomReturn, Endianness, ExprKind, FloatBitSize, FloatCaseBranches, FloatExprKind,
+    FloatFunctionExprKind, FloatFunctionReference, FloatFunctionReturn, FloatReturn, FrameLayout,
+    FunctionExprKind, FunctionFunctionCallMismatch, FunctionFunctionExprKind, FunctionFunctionId,
     FunctionFunctionLocal, FunctionFunctionReference, FunctionFunctionReturn, FunctionListExpr,
-    FunctionListItem, FunctionReference, IntCaseBranches, IntExprKind, IntFunctionExprKind,
-    IntFunctionReference, IntFunctionReturn, IntListExpr, IntListItem, IntReturn,
-    ListAssertPattern, ListAssertTail, ListCaseBranches, ListElements, ListExpr,
-    ListFunctionExprKind, ListFunctionReference, ListFunctionReturn, ListItem, ListListExpr,
-    ListListItem, ListLocalExpr, ListSpreadElements, NilExprKind, NilFunctionExprKind,
-    NilFunctionReference, NilFunctionReturn, NilListExpr, NilListItem, NilReturn, PanicExpr,
-    ParamLocal, PatternBinding, ReturnBody, ReturnBodyKind, ReturnExprKind, RuntimeFunctionId,
-    Signedness, StepKind, StringCaseBranches, StringEncoding, StringExprKind,
-    StringFunctionExprKind, StringFunctionReference, StringFunctionReturn, StringListExpr,
-    StringListItem, StringReturn, TotalBindingPattern, TupleExprKind, TupleFunctionExprKind,
-    TupleFunctionReference, TupleFunctionReturn, TupleListExpr, TupleListItem, TupleReturn,
-    TypedListExpr, TypedListExprKind, TypedListReturnKind, UtfCodepointExprKind,
-    UtfCodepointFunctionExprKind, UtfCodepointFunctionReference, UtfCodepointFunctionReturn,
-    UtfCodepointListExpr, UtfCodepointListItem, UtfCodepointReturn,
+    FunctionReference, IntCaseBranches, IntExprKind, IntFunctionExprKind, IntFunctionReference,
+    IntFunctionReturn, IntReturn, ListAssertPattern, ListAssertTail, ListCaseBranches,
+    ListElements, ListExpr, ListFunctionExprKind, ListFunctionReference, ListFunctionReturn,
+    ListItem, ListLocalExpr, ListSpreadElements, NilExprKind, NilFunctionExprKind,
+    NilFunctionReference, NilFunctionReturn, NilReturn, PanicExpr, ParamLocal, ParamSlot,
+    PatternBinding, ReturnBody, ReturnBodyKind, ReturnExprKind, RuntimeFunctionId, Signedness,
+    StepKind, StringAssertBinding, StringCaseBranches, StringEncoding, StringExprKind,
+    StringFunctionExprKind, StringFunctionReference, StringFunctionReturn, StringReturn,
+    TotalBindingPattern, TupleExprKind, TupleFunctionExprKind, TupleFunctionReference,
+    TupleFunctionReturn, TupleReturn, TypedFunctionExpr, TypedFunctionExprKind, TypedListExpr,
+    TypedListExprKind, TypedListReturnKind, UtfCodepointExprKind, UtfCodepointFunctionExprKind,
+    UtfCodepointFunctionReference, UtfCodepointFunctionReturn, UtfCodepointReturn,
 };
 pub use module::{
     BitArrayExpr, BitArrayFunctionExpr, BitArrayFunctionFunctionId, BitArrayFunctionId,
@@ -69,9 +67,16 @@ pub use module::{
 };
 #[cfg(test)]
 pub(crate) use module::{
-    BitArrayListReturn, BoolListReturn, FloatListReturn, FunctionListReturn, IntListReturn,
-    ListListReturn, NilListReturn, StringListReturn, TupleListReturn, UtfCodepointListReturn,
+    BitArrayListExpr, BitArrayListItem, BitArrayListReturn, BoolListExpr, BoolListItem,
+    BoolListReturn, FloatListExpr, FloatListItem, FloatListReturn, FunctionListItem,
+    FunctionListReturn, IntListExpr, IntListItem, IntListReturn, ListListExpr, ListListItem,
+    ListListReturn, NilListExpr, NilListItem, NilListReturn, StringListExpr, StringListItem,
+    StringListReturn, TupleListExpr, TupleListItem, TupleListReturn, UtfCodepointListExpr,
+    UtfCodepointListItem, UtfCodepointListReturn,
 };
 pub use source::{PanicSite, SourceContext, SourceSpan};
+pub(crate) use value_shape::{
+    CustomConstructorRefinement, CustomValueShape, FunctionShape, ValueShape,
+};
 pub(crate) use value_type::{CustomFunctionType, FunctionFunctionType};
 pub use value_type::{CustomType, CustomTypeName, FunctionType, ValueType};

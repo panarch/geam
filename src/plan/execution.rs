@@ -10,6 +10,7 @@ mod reference;
 mod return_;
 mod step;
 mod table;
+mod value_shape;
 mod value_type;
 
 pub(crate) use expression::{
@@ -27,8 +28,8 @@ pub(crate) use expression::{
     NilFunctionExprKind, NilListExpr, NilListItem, PanicExpr, PanicExprKind, StringEncoding,
     StringExpr, StringExprKind, StringFunctionExpr, StringFunctionExprKind, StringListExpr,
     StringListItem, TupleExpr, TupleExprKind, TupleFunctionExpr, TupleFunctionExprKind,
-    TupleListExpr, TupleListItem, TypedListExpr, TypedListExprKind, UtfCodepointExpr,
-    UtfCodepointExprKind, UtfCodepointFunctionExpr, UtfCodepointFunctionExprKind,
+    TupleListExpr, TupleListItem, TypedFunctionExpr, TypedListExpr, TypedListExprKind,
+    UtfCodepointExpr, UtfCodepointExprKind, UtfCodepointFunctionExpr, UtfCodepointFunctionExprKind,
     UtfCodepointListExpr, UtfCodepointListItem,
 };
 pub(crate) use frame::FrameLayout;
@@ -59,7 +60,7 @@ pub(crate) use id::{
     UtfCodepointListFunctionId, UtfCodepointListFunctionLocalId, UtfCodepointListLocalId,
     UtfCodepointLocalId,
 };
-pub(crate) use param::ParamLocal;
+pub(crate) use param::{ParamLocal, ParamSlot};
 pub(crate) use pattern::{
     BitArrayBindingPattern, BitArrayPattern, BitArrayPatternSegment, BitArrayPatternSize,
     BitArrayPatternSizeExpr, BitArrayPatternValue, BitArrayStringPattern, CustomBindingPattern,
@@ -72,12 +73,16 @@ pub(crate) use return_::{
     FloatListReturn, FloatReturn, FunctionFunctionReturn, FunctionListReturn, IntFunctionReturn,
     IntListReturn, IntReturn, ListFunctionReturn, ListListReturn, NilFunctionReturn, NilListReturn,
     NilReturn, ReturnBody, ReturnBodyKind, StringFunctionReturn, StringListReturn, StringReturn,
-    TupleFunctionReturn, TupleListReturn, TupleReturn, UtfCodepointFunctionReturn,
-    UtfCodepointListReturn, UtfCodepointReturn,
+    TupleFunctionReturn, TupleListReturn, TupleReturn, TypedFunctionReturn,
+    UtfCodepointFunctionReturn, UtfCodepointListReturn, UtfCodepointReturn,
 };
 pub(crate) use step::{
     AssertBinding, AssertPattern, BitArrayAssertPattern, ListAssertPattern, ListAssertTail, Step,
-    StepKind,
+    StepKind, StringAssertBinding,
+};
+pub(crate) use value_shape::{
+    CustomConstructorRefinement, CustomValueShape, CustomValueShapeId, FunctionShape,
+    ValueShapeDescriptor, ValueShapeId,
 };
 pub(crate) use value_type::{
     BitArrayListTypeId, BoolListTypeId, CustomConstructorId, CustomFunctionType, CustomListTypeId,
@@ -89,6 +94,7 @@ pub(crate) use value_type::{
 use self::custom_type::CustomTypeTable;
 use self::function::ExecutableFunction;
 use self::table::FunctionTables;
+use self::value_shape::ValueShapeTable;
 use self::value_type::ListTypeTable;
 use crate::plan::{ModulePlan, SourceContext};
 use ecow::EcoString;
@@ -100,6 +106,7 @@ pub struct ExecutionPlan {
     functions: FunctionTables,
     list_types: ListTypeTable,
     custom_types: CustomTypeTable,
+    value_shapes: ValueShapeTable,
 }
 
 impl ExecutionPlan {
@@ -153,6 +160,86 @@ impl ExecutionPlan {
 
     pub(crate) fn custom_value_type(&self, id: CustomTypeId) -> crate::plan::CustomType {
         self.custom_types.value_type(id)
+    }
+
+    pub(crate) fn custom_shape_refinement(
+        &self,
+        shape: &CustomValueShape,
+    ) -> CustomConstructorRefinement {
+        self.value_shapes.custom(shape.shape_id()).constructor()
+    }
+
+    pub(crate) fn custom_shape_value_type(
+        &self,
+        shape: &CustomValueShape,
+    ) -> crate::plan::CustomType {
+        self.custom_shape_type(shape.shape_id())
+    }
+
+    pub(crate) fn custom_shape_constructor_names(
+        &self,
+        shape: &CustomValueShape,
+    ) -> Vec<EcoString> {
+        match self.custom_shape_refinement(shape) {
+            CustomConstructorRefinement::Any => {
+                self.custom_types.constructor_names(shape.type_id())
+            }
+            CustomConstructorRefinement::Exact(index) => vec![
+                self.custom_constructor(CustomConstructorId::new(shape.type_id(), index))
+                    .name()
+                    .clone(),
+            ],
+        }
+    }
+
+    fn custom_shape_type(&self, id: CustomValueShapeId) -> crate::plan::CustomType {
+        let shape = self.value_shapes.custom(id);
+        let nominal = self.custom_types.value_type(shape.type_id());
+        crate::plan::CustomType::new(
+            nominal.type_name().clone(),
+            shape
+                .arguments()
+                .iter()
+                .map(|argument| self.value_shape_type(*argument))
+                .collect(),
+        )
+    }
+
+    fn value_shape_type(&self, id: ValueShapeId) -> crate::plan::ValueType {
+        match self.value_shapes.get(id) {
+            ValueShapeDescriptor::Int => crate::plan::ValueType::Int,
+            ValueShapeDescriptor::Float => crate::plan::ValueType::Float,
+            ValueShapeDescriptor::String => crate::plan::ValueType::String,
+            ValueShapeDescriptor::BitArray => crate::plan::ValueType::BitArray,
+            ValueShapeDescriptor::UtfCodepoint => crate::plan::ValueType::UtfCodepoint,
+            ValueShapeDescriptor::Bool => crate::plan::ValueType::Bool,
+            ValueShapeDescriptor::Nil => crate::plan::ValueType::Nil,
+            ValueShapeDescriptor::Tuple(elements) => crate::plan::ValueType::Tuple(
+                elements
+                    .iter()
+                    .map(|element| self.value_shape_type(*element))
+                    .collect(),
+            ),
+            ValueShapeDescriptor::List(item) => {
+                crate::plan::ValueType::List(Box::new(self.value_shape_type(*item)))
+            }
+            ValueShapeDescriptor::Function { arguments, return_ } => {
+                crate::plan::ValueType::Function(Box::new(crate::plan::FunctionType::new(
+                    arguments
+                        .iter()
+                        .map(|argument| self.value_shape_type(*argument))
+                        .collect(),
+                    self.value_shape_type(*return_),
+                )))
+            }
+            ValueShapeDescriptor::Custom(custom) => {
+                crate::plan::ValueType::Custom(self.custom_shape_type(*custom))
+            }
+        }
+    }
+
+    pub(crate) fn shape_value_type(&self, id: ValueShapeId) -> ValueType {
+        self.value_shapes.value_type(id).clone()
     }
 
     pub(crate) fn custom_constructor(
@@ -402,6 +489,11 @@ impl ExecutionPlan {
         self.functions.custom_function_function(id)
     }
 
+    #[cfg(test)]
+    pub(crate) fn custom_function_function_id(&self, index: usize) -> CustomFunctionFunctionId {
+        self.functions.custom_function_function_id(index)
+    }
+
     pub(crate) fn bool_function_function(
         &self,
         id: BoolFunctionFunctionId,
@@ -443,5 +535,10 @@ impl ExecutionPlan {
         id: &FunctionFunctionFunctionId,
     ) -> &ExecutableFunction<FunctionFunctionReturn> {
         self.functions.function_function_function(id)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn function_function_function_id(&self, index: usize) -> FunctionFunctionFunctionId {
+        self.functions.function_function_function_id(index)
     }
 }

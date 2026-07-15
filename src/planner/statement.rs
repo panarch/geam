@@ -3,11 +3,11 @@ mod use_;
 
 pub(in crate::planner) use assignment::plan_variable_runtime_step;
 
-use crate::plan::{Expr, NilExpr, Step, ValueType};
+use crate::plan::{Expr, NilExpr, Step, ValueShape};
 use crate::planner::context::PlanContext;
 use crate::planner::error::{InvalidTypedAstReason, PlanError};
 use crate::planner::expression::{
-    plan_bool_expr, plan_expr, plan_expr_with_expected_source_stop_type, plan_string_expr,
+    plan_bool_expr, plan_expr, plan_expr_with_expected_source_stop_shape, plan_string_expr,
 };
 use gleam_core::ast::{Statement, TypedAssert};
 use vec1::Vec1;
@@ -21,30 +21,30 @@ pub(super) fn plan_steps_and_return(
     mut statements: Vec<gleam_core::ast::TypedStatement>,
     context: &mut PlanContext<'_>,
     empty_error: PlanError,
-    expected_return_type: Option<&ValueType>,
+    expected_return_shape: Option<&ValueShape>,
 ) -> Result<PlannedStatements, PlanError> {
     let Some(last_statement) = statements.pop() else {
         return Err(empty_error);
     };
 
-    plan_ordered_steps_and_return(statements, last_statement, context, expected_return_type)
+    plan_ordered_steps_and_return(statements, last_statement, context, expected_return_shape)
 }
 
 pub(super) fn plan_non_empty_steps_and_return(
     statements: Vec1<gleam_core::ast::TypedStatement>,
     context: &mut PlanContext<'_>,
-    expected_return_type: Option<&ValueType>,
+    expected_return_shape: Option<&ValueShape>,
 ) -> Result<PlannedStatements, PlanError> {
     let (statements, last_statement) = statements.split_off_last();
 
-    plan_ordered_steps_and_return(statements, last_statement, context, expected_return_type)
+    plan_ordered_steps_and_return(statements, last_statement, context, expected_return_shape)
 }
 
 fn plan_ordered_steps_and_return(
     statements: Vec<gleam_core::ast::TypedStatement>,
     last_statement: gleam_core::ast::TypedStatement,
     context: &mut PlanContext<'_>,
-    expected_return_type: Option<&ValueType>,
+    expected_return_shape: Option<&ValueShape>,
 ) -> Result<PlannedStatements, PlanError> {
     let mut steps = Vec::new();
     for statement in statements {
@@ -52,9 +52,9 @@ fn plan_ordered_steps_and_return(
     }
 
     let return_ = match last_statement {
-        Statement::Expression(expression) => match expected_return_type {
-            Some(type_) => {
-                plan_expr_with_expected_source_stop_type(expression, type_.clone(), context)?
+        Statement::Expression(expression) => match expected_return_shape {
+            Some(shape) => {
+                plan_expr_with_expected_source_stop_shape(expression, shape.clone(), context)?
             }
             None => plan_expr(expression, context)?,
         },
@@ -79,7 +79,7 @@ pub(super) fn plan_runtime_steps(
 ) -> Result<Vec<Step>, PlanError> {
     match statement {
         Statement::Expression(expression) => Ok(vec![Step::evaluate(
-            plan_expr_with_expected_source_stop_type(expression, ValueType::Nil, context)?,
+            plan_expr_with_expected_source_stop_shape(expression, ValueShape::Nil, context)?,
         )]),
         Statement::Assignment(assignment) => assignment::plan_assignment(*assignment, context),
         Statement::Use(_) => Err(PlanError::InvalidTypedAst {

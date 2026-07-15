@@ -9,6 +9,7 @@ use num_bigint::BigInt;
 #[derive(Debug, Clone, PartialEq)]
 pub struct TupleExpr {
     type_: Vec<ValueType>,
+    shape: Box<[crate::plan::ValueShape]>,
     kind: TupleExprKind,
 }
 
@@ -64,18 +65,31 @@ pub(crate) enum TupleExprKind {
 }
 
 impl TupleExpr {
+    fn new(type_: Vec<ValueType>, kind: TupleExprKind) -> Self {
+        let shape = type_
+            .iter()
+            .cloned()
+            .map(crate::plan::ValueShape::from_value_type)
+            .collect::<Vec<_>>()
+            .into_boxed_slice();
+        Self { type_, shape, kind }
+    }
+
     pub(crate) fn value(elements: Vec<super::Expr>, type_: Vec<ValueType>) -> Self {
+        let shape = elements
+            .iter()
+            .map(|element| element.value_shape().clone())
+            .collect::<Vec<_>>()
+            .into_boxed_slice();
         Self {
             type_,
+            shape,
             kind: TupleExprKind::Value(elements),
         }
     }
 
     pub(crate) fn local_get(local: TupleLocalId, name: EcoString, type_: Vec<ValueType>) -> Self {
-        Self {
-            type_,
-            kind: TupleExprKind::LocalGet { local, name },
-        }
+        Self::new(type_, TupleExprKind::LocalGet { local, name })
     }
 
     pub(crate) fn call(
@@ -83,10 +97,7 @@ impl TupleExpr {
         args: Vec<CallArg>,
         type_: Vec<ValueType>,
     ) -> Self {
-        Self {
-            type_,
-            kind: TupleExprKind::Call { function, args },
-        }
+        Self::new(type_, TupleExprKind::Call { function, args })
     }
 
     pub(crate) fn function_call(
@@ -94,30 +105,27 @@ impl TupleExpr {
         args: Vec<CallArg>,
         type_: Vec<ValueType>,
     ) -> Self {
-        Self {
+        Self::new(
             type_,
-            kind: TupleExprKind::FunctionCall {
+            TupleExprKind::FunctionCall {
                 function: Box::new(function),
                 args,
             },
-        }
+        )
     }
 
     pub(crate) fn tuple_index(tuple: TupleExpr, index: usize, type_: Vec<ValueType>) -> Self {
-        Self {
+        Self::new(
             type_,
-            kind: TupleExprKind::TupleIndex {
+            TupleExprKind::TupleIndex {
                 tuple: Box::new(tuple),
                 index,
             },
-        }
+        )
     }
 
     pub(crate) fn custom_field(access: CustomFieldAccess, type_: Vec<ValueType>) -> Self {
-        Self {
-            type_,
-            kind: TupleExprKind::CustomField(access),
-        }
+        Self::new(type_, TupleExprKind::CustomField(access))
     }
 
     pub(crate) fn list_index(
@@ -125,31 +133,28 @@ impl TupleExpr {
         index: usize,
         type_: Vec<ValueType>,
     ) -> Self {
-        Self {
+        Self::new(
             type_,
-            kind: TupleExprKind::ListIndex {
+            TupleExprKind::ListIndex {
                 list: Box::new(list.into()),
                 index,
             },
-        }
+        )
     }
 
     pub(crate) fn panic(panic: PanicExpr, type_: Vec<ValueType>) -> Self {
-        Self {
-            type_,
-            kind: TupleExprKind::Panic(panic),
-        }
+        Self::new(type_, TupleExprKind::Panic(panic))
     }
 
     pub(crate) fn bool_case(subject: BoolExpr, true_: TupleExpr, false_: TupleExpr) -> Self {
-        Self {
-            type_: true_.type_.clone(),
-            kind: TupleExprKind::BoolCase {
+        Self::new(
+            true_.type_.clone(),
+            TupleExprKind::BoolCase {
                 subject: Box::new(subject),
                 true_: Box::new(true_),
                 false_: Box::new(false_),
             },
-        }
+        )
     }
 
     pub(crate) fn int_case(
@@ -157,14 +162,14 @@ impl TupleExpr {
         clauses: Vec<(BigInt, TupleExpr)>,
         fallback: TupleExpr,
     ) -> Self {
-        Self {
-            type_: fallback.type_.clone(),
-            kind: TupleExprKind::IntCase {
+        Self::new(
+            fallback.type_.clone(),
+            TupleExprKind::IntCase {
                 subject: Box::new(subject),
                 clauses,
                 fallback: Box::new(fallback),
             },
-        }
+        )
     }
 
     pub(crate) fn string_case(
@@ -172,14 +177,14 @@ impl TupleExpr {
         clauses: Vec<(EcoString, TupleExpr)>,
         fallback: TupleExpr,
     ) -> Self {
-        Self {
-            type_: fallback.type_.clone(),
-            kind: TupleExprKind::StringCase {
+        Self::new(
+            fallback.type_.clone(),
+            TupleExprKind::StringCase {
                 subject: Box::new(subject),
                 clauses,
                 fallback: Box::new(fallback),
             },
-        }
+        )
     }
 
     pub(crate) fn float_case(
@@ -187,24 +192,24 @@ impl TupleExpr {
         clauses: Vec<(f64, TupleExpr)>,
         fallback: TupleExpr,
     ) -> Self {
-        Self {
-            type_: fallback.type_.clone(),
-            kind: TupleExprKind::FloatCase {
+        Self::new(
+            fallback.type_.clone(),
+            TupleExprKind::FloatCase {
                 subject: Box::new(subject),
                 clauses,
                 fallback: Box::new(fallback),
             },
-        }
+        )
     }
 
     pub(crate) fn block(steps: Vec<Step>, return_: TupleExpr) -> Self {
-        Self {
-            type_: return_.type_.clone(),
-            kind: TupleExprKind::Block {
+        Self::new(
+            return_.type_.clone(),
+            TupleExprKind::Block {
                 steps,
                 return_: Box::new(return_),
             },
-        }
+        )
     }
 
     pub fn type_(&self) -> &[ValueType] {
@@ -215,8 +220,23 @@ impl TupleExpr {
         &self.kind
     }
 
-    pub(crate) fn into_parts(self) -> (Vec<ValueType>, TupleExprKind) {
-        (self.type_, self.kind)
+    pub(crate) fn shape(&self) -> &[crate::plan::ValueShape] {
+        &self.shape
+    }
+
+    pub(crate) fn with_shape(mut self, shape: Box<[crate::plan::ValueShape]>) -> Self {
+        self.shape = shape;
+        self
+    }
+
+    pub(crate) fn into_parts(
+        self,
+    ) -> (
+        Vec<ValueType>,
+        Box<[crate::plan::ValueShape]>,
+        TupleExprKind,
+    ) {
+        (self.type_, self.shape, self.kind)
     }
 }
 

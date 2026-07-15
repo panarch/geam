@@ -2,12 +2,11 @@ use super::expression::{
     bit_array_expr, bit_array_function_expr, bool_expr, custom_expr, custom_function_expr, expr,
     float_expr, function_function_expr, int_expr, int_function_expr, list_function_expr, nil_expr,
     nil_function_expr, string_expr, string_function_expr, tuple_expr, tuple_function_expr,
-    utf_codepoint_expr, utf_codepoint_function_expr,
+    typed_function_expr, utf_codepoint_expr, utf_codepoint_function_expr,
 };
 use super::id::{
     custom_function_local, custom_local, function_function_local, list_function_local, list_local,
 };
-use super::param::param_local;
 use crate::plan::{execution, module};
 
 pub(super) fn steps(
@@ -105,7 +104,7 @@ fn lower_step(step: module::Step, context: &mut super::LoweringContext) -> execu
             value,
         } => E::LetIntFunction {
             local: execution::IntFunctionLocalId(local.0),
-            value: int_function_expr(value, context),
+            value: typed_function_expr(value, context, int_function_expr),
         },
         M::LetFloatFunction {
             local,
@@ -113,7 +112,7 @@ fn lower_step(step: module::Step, context: &mut super::LoweringContext) -> execu
             value,
         } => E::LetFloatFunction {
             local: execution::FloatFunctionLocalId(local.0),
-            value: super::expression::float_function_expr(value, context),
+            value: typed_function_expr(value, context, super::expression::float_function_expr),
         },
         M::LetStringFunction {
             local,
@@ -121,7 +120,7 @@ fn lower_step(step: module::Step, context: &mut super::LoweringContext) -> execu
             value,
         } => E::LetStringFunction {
             local: execution::StringFunctionLocalId(local.0),
-            value: string_function_expr(value, context),
+            value: typed_function_expr(value, context, string_function_expr),
         },
         M::LetBitArrayFunction {
             local,
@@ -129,7 +128,7 @@ fn lower_step(step: module::Step, context: &mut super::LoweringContext) -> execu
             value,
         } => E::LetBitArrayFunction {
             local: execution::BitArrayFunctionLocalId(local.0),
-            value: bit_array_function_expr(value, context),
+            value: typed_function_expr(value, context, bit_array_function_expr),
         },
         M::LetUtfCodepointFunction {
             local,
@@ -137,7 +136,7 @@ fn lower_step(step: module::Step, context: &mut super::LoweringContext) -> execu
             value,
         } => E::LetUtfCodepointFunction {
             local: execution::UtfCodepointFunctionLocalId(local.0),
-            value: utf_codepoint_function_expr(value, context),
+            value: typed_function_expr(value, context, utf_codepoint_function_expr),
         },
         M::LetCustomFunction {
             local,
@@ -145,7 +144,7 @@ fn lower_step(step: module::Step, context: &mut super::LoweringContext) -> execu
             value,
         } => E::LetCustomFunction {
             local: custom_function_local(local, context),
-            value: custom_function_expr(value, context),
+            value: typed_function_expr(value, context, custom_function_expr),
         },
         M::LetBoolFunction {
             local,
@@ -153,7 +152,7 @@ fn lower_step(step: module::Step, context: &mut super::LoweringContext) -> execu
             value,
         } => E::LetBoolFunction {
             local: execution::BoolFunctionLocalId(local.0),
-            value: super::expression::bool_function_expr(value, context),
+            value: typed_function_expr(value, context, super::expression::bool_function_expr),
         },
         M::LetNilFunction {
             local,
@@ -161,7 +160,7 @@ fn lower_step(step: module::Step, context: &mut super::LoweringContext) -> execu
             value,
         } => E::LetNilFunction {
             local: execution::NilFunctionLocalId(local.0),
-            value: nil_function_expr(value, context),
+            value: typed_function_expr(value, context, nil_function_expr),
         },
         M::LetTupleFunction {
             local,
@@ -169,7 +168,7 @@ fn lower_step(step: module::Step, context: &mut super::LoweringContext) -> execu
             value,
         } => E::LetTupleFunction {
             local: execution::TupleFunctionLocalId(local.0),
-            value: tuple_function_expr(value, context),
+            value: typed_function_expr(value, context, tuple_function_expr),
         },
         M::LetListFunction {
             local,
@@ -177,7 +176,7 @@ fn lower_step(step: module::Step, context: &mut super::LoweringContext) -> execu
             value,
         } => E::LetListFunction {
             local: list_function_local(local, context),
-            value: list_function_expr(value, context),
+            value: typed_function_expr(value, context, list_function_expr),
         },
         M::LetFunctionFunction {
             local,
@@ -185,7 +184,7 @@ fn lower_step(step: module::Step, context: &mut super::LoweringContext) -> execu
             value,
         } => E::LetFunctionFunction {
             local: function_function_local(local, context),
-            value: function_function_expr(value, context),
+            value: typed_function_expr(value, context, function_function_expr),
         },
         M::AssertList {
             local,
@@ -358,8 +357,8 @@ pub(super) fn assert_pattern(
             right,
         } => execution::AssertPattern::StringPrefix {
             prefix,
-            left: left.map(|binding| assert_binding(binding, context)),
-            right: right.map(|binding| assert_binding(binding, context)),
+            left: left.map(string_assert_binding),
+            right: right.map(string_assert_binding),
         },
         module::AssertPattern::Alias { pattern, binding } => execution::AssertPattern::Alias {
             pattern: Box::new(assert_pattern(*pattern, context)),
@@ -368,12 +367,17 @@ pub(super) fn assert_pattern(
     }
 }
 
+fn string_assert_binding(binding: module::StringAssertBinding) -> execution::StringAssertBinding {
+    let (local, _) = binding.into_parts();
+    execution::StringAssertBinding::new(execution::StringLocalId(local.0))
+}
+
 fn assert_binding(
     binding: module::AssertBinding,
     context: &mut super::LoweringContext,
 ) -> execution::AssertBinding {
-    let (local, _) = binding.into_parts();
-    execution::AssertBinding::new(param_local(local, context))
+    let (slot, _) = binding.into_parts();
+    execution::AssertBinding::new(super::param::param_slot(slot, context))
 }
 
 fn assert_tail(
@@ -529,8 +533,8 @@ pub fn main() {
         let (_, pattern) = expect_list_assert(&plan.list_list_function(main).steps()[2]);
         let pattern = expect_list_pattern(pattern);
         let rest = expect_tail_binding(pattern.tail());
-        let binding = AssertBinding::new(ParamLocal::List(rest.clone()));
-        let _ = expect_int_list_binding(&binding);
+        let local = ParamLocal::List(rest.clone());
+        let _ = expect_int_list_local(&local);
     }
 
     #[test]
@@ -647,7 +651,11 @@ pub fn main() {
     }
 
     fn expect_int_list_binding(binding: &AssertBinding) -> crate::plan::execution::IntListTypeId {
-        match binding.local() {
+        expect_int_list_local(binding.local())
+    }
+
+    fn expect_int_list_local(local: &ParamLocal) -> crate::plan::execution::IntListTypeId {
+        match local {
             ParamLocal::List(ListLocal::Int { type_id, .. }) => *type_id,
             _ => panic!("expected a List(Int) binding"),
         }

@@ -3,10 +3,10 @@ mod assert;
 use crate::plan::{
     AssertBinding, BitArrayExpr, BitArrayFunctionExpr, BoolExpr, BoolFunctionExpr,
     CustomBindingPattern, CustomConstructor, CustomExpr, CustomFunctionExpr, Expr, ExprKind,
-    FloatExpr, FloatFunctionExpr, FunctionExpr, FunctionExprKind, FunctionFunctionExpr, IntExpr,
-    IntFunctionExpr, ListAssertTail, ListExpr, ListFunctionExpr, NilExpr, NilFunctionExpr, Step,
-    StringExpr, StringFunctionExpr, TotalBindingPattern, TupleExpr, TupleFunctionExpr,
-    TupleLocalId, UtfCodepointExpr, UtfCodepointFunctionExpr, ValueType,
+    FloatExpr, FloatFunctionExpr, FunctionExpr, FunctionFunctionExpr, IntExpr, IntFunctionExpr,
+    ListAssertTail, ListExpr, ListFunctionExpr, NilExpr, NilFunctionExpr, Step, StringExpr,
+    StringFunctionExpr, TotalBindingPattern, TupleExpr, TupleFunctionExpr, TupleLocalId,
+    TypedFunctionExprKind, UtfCodepointExpr, UtfCodepointFunctionExpr, ValueShape, ValueType,
 };
 use crate::planner::context::PlanContext;
 use crate::planner::error::{
@@ -271,7 +271,7 @@ fn plan_custom_assignment(
     }
 
     let local = context.define_internal_custom_local();
-    let typed_local = crate::plan::CustomLocal::new(local, constructor.type_().clone());
+    let typed_local = crate::plan::CustomLocal::from_shape(local, value.shape().clone());
     let name = internal_custom_name(local);
     let local_value = CustomExpr::local_get(typed_local, name.clone());
     let fields = fields
@@ -297,8 +297,12 @@ fn plan_total_binding_pattern(
 ) -> Result<TotalBindingPattern, PlanError> {
     match pattern {
         BindingPattern::Named(name) => {
-            let binding =
-                AssertBinding::new(context.define_param_local(name.clone(), expected), name);
+            let shape = ValueShape::from_value_type(expected);
+            let binding = AssertBinding::new(
+                context.define_param_local_shape(name.clone(), shape.clone()),
+                name,
+                shape,
+            );
             Ok(TotalBindingPattern::bind(binding))
         }
         BindingPattern::Discard => Ok(TotalBindingPattern::discard(expected)),
@@ -352,8 +356,12 @@ fn plan_total_binding_pattern(
         }
         BindingPattern::Alias { pattern, name } => {
             let pattern = plan_total_binding_pattern(*pattern, expected.clone(), context)?;
-            let binding =
-                AssertBinding::new(context.define_param_local(name.clone(), expected), name);
+            let shape = ValueShape::from_value_type(expected);
+            let binding = AssertBinding::new(
+                context.define_param_local_shape(name.clone(), shape.clone()),
+                name,
+                shape,
+            );
             Ok(TotalBindingPattern::alias(pattern, binding))
         }
     }
@@ -368,6 +376,7 @@ fn plan_tuple_assignment(
     let value = value
         .into_tuple()
         .ok_or_else(|| tuple_assignment_value_must_be_tuple(actual))?;
+    let shape = value.shape().to_vec().into_boxed_slice();
     let type_ = value.type_().to_vec();
     if elements.len() != type_.len() {
         return Err(PlanError::InvalidTypedAst {
@@ -377,11 +386,11 @@ fn plan_tuple_assignment(
 
     let local = context.define_internal_tuple_local();
     let name = internal_tuple_name(local);
-    let tuple_local = TupleExpr::local_get(local, name.clone(), type_.clone());
+    let tuple_local = TupleExpr::local_get(local, name.clone(), type_.clone()).with_shape(shape);
     let mut steps = vec![Step::let_tuple(local, name, value)];
 
     for (index, (pattern, type_)) in elements.into_iter().zip(type_).enumerate() {
-        let element = tuple_index_expr(tuple_local.clone(), index, type_);
+        let element = tuple_index_expr(tuple_local.clone(), index, type_)?;
         steps.extend(plan_assignment_steps(pattern, element, context)?);
     }
 
@@ -485,9 +494,9 @@ fn plan_variable_runtime_step_and_return(
             )
         }
         ExprKind::Custom(value) => {
-            let type_ = value.type_().clone();
-            let local = context.define_custom_local(name.clone(), type_.clone());
-            let typed_local = crate::plan::CustomLocal::new(local, type_);
+            let shape = value.shape().clone();
+            let local = context.define_custom_local_shape(name.clone(), shape.clone());
+            let typed_local = crate::plan::CustomLocal::from_shape(local, shape);
             (
                 Step::let_custom(local, name.clone(), value),
                 Expr::custom(CustomExpr::local_get(typed_local, name)),
@@ -515,11 +524,12 @@ fn plan_variable_runtime_step_and_return(
             )
         }
         ExprKind::Tuple(value) => {
-            let local = context.define_tuple_local(name.clone(), value.type_().to_vec());
+            let shape = value.shape().to_vec().into_boxed_slice();
+            let local = context.define_tuple_local_shape(name.clone(), shape.clone());
             let type_ = value.type_().to_vec();
             (
                 Step::let_tuple(local, name.clone(), value),
-                Expr::tuple(TupleExpr::local_get(local, name, type_)),
+                Expr::tuple(TupleExpr::local_get(local, name, type_).with_shape(shape)),
             )
         }
         ExprKind::List(value) => {
@@ -529,128 +539,182 @@ fn plan_variable_runtime_step_and_return(
                 Expr::list(ListExpr::local_get(local, name)),
             )
         }
-        ExprKind::Function(value) => match value.into_kind() {
-            FunctionExprKind::Int(value) => {
-                let local = context.define_int_function_local(name.clone(), value.type_().clone());
-                let type_ = value.type_().clone();
-                (
-                    Step::let_int_function(local, name.clone(), value),
-                    Expr::function(FunctionExpr::int(IntFunctionExpr::local_get(
-                        local, name, type_,
-                    ))),
-                )
-            }
-            FunctionExprKind::String(value) => {
-                let local =
-                    context.define_string_function_local(name.clone(), value.type_().clone());
-                let type_ = value.type_().clone();
-                (
-                    Step::let_string_function(local, name.clone(), value),
-                    Expr::function(FunctionExpr::string(StringFunctionExpr::local_get(
-                        local, name, type_,
-                    ))),
-                )
-            }
-            FunctionExprKind::BitArray(value) => {
-                let local =
-                    context.define_bit_array_function_local(name.clone(), value.type_().clone());
-                let type_ = value.type_().clone();
-                (
-                    Step::let_bit_array_function(local, name.clone(), value),
-                    Expr::function(FunctionExpr::bit_array(BitArrayFunctionExpr::local_get(
-                        local, name, type_,
-                    ))),
-                )
-            }
-            FunctionExprKind::UtfCodepoint(value) => {
-                let local = context
-                    .define_utf_codepoint_function_local(name.clone(), value.type_().clone());
-                let type_ = value.type_().clone();
-                (
-                    Step::let_utf_codepoint_function(local, name.clone(), value),
-                    Expr::function(FunctionExpr::utf_codepoint(
-                        UtfCodepointFunctionExpr::local_get(local, name, type_),
-                    )),
-                )
-            }
-            FunctionExprKind::Custom(value) => {
-                let local = context.define_custom_function_local(
-                    name.clone(),
-                    value.custom_function_type().clone(),
-                );
-                (
-                    Step::let_custom_function(local.id(), name.clone(), value),
-                    Expr::function(FunctionExpr::custom(CustomFunctionExpr::local_get(
-                        local, name,
-                    ))),
-                )
-            }
-            FunctionExprKind::Float(value) => {
-                let local =
-                    context.define_float_function_local(name.clone(), value.type_().clone());
-                let type_ = value.type_().clone();
-                (
-                    Step::let_float_function(local, name.clone(), value),
-                    Expr::function(FunctionExpr::float(FloatFunctionExpr::local_get(
-                        local, name, type_,
-                    ))),
-                )
-            }
-            FunctionExprKind::Bool(value) => {
-                let local = context.define_bool_function_local(name.clone(), value.type_().clone());
-                let type_ = value.type_().clone();
-                (
-                    Step::let_bool_function(local, name.clone(), value),
-                    Expr::function(FunctionExpr::bool(BoolFunctionExpr::local_get(
-                        local, name, type_,
-                    ))),
-                )
-            }
-            FunctionExprKind::Nil(value) => {
-                let local = context.define_nil_function_local(name.clone(), value.type_().clone());
-                let type_ = value.type_().clone();
-                (
-                    Step::let_nil_function(local, name.clone(), value),
-                    Expr::function(FunctionExpr::nil(NilFunctionExpr::local_get(
-                        local, name, type_,
-                    ))),
-                )
-            }
-            FunctionExprKind::Tuple(value) => {
-                let local =
-                    context.define_tuple_function_local(name.clone(), value.type_().clone());
-                let type_ = value.type_().clone();
-                (
-                    Step::let_tuple_function(local, name.clone(), value),
-                    Expr::function(FunctionExpr::tuple(TupleFunctionExpr::local_get(
-                        local, name, type_,
-                    ))),
-                )
-            }
-            FunctionExprKind::List(value) => {
-                let local = context.define_list_function_local(
-                    name.clone(),
-                    value.type_().clone(),
-                    value.return_item_type(),
-                );
-                (
-                    Step::let_list_function(local.clone(), name.clone(), value),
-                    Expr::function(FunctionExpr::list(ListFunctionExpr::local_get(local, name))),
-                )
-            }
-            FunctionExprKind::Function(value) => {
-                let local = context.define_function_function_local(
-                    name.clone(),
-                    value.function_function_type().clone(),
-                );
-                (
-                    Step::let_function_function(local.id(), name.clone(), value),
-                    Expr::function(FunctionExpr::function(FunctionFunctionExpr::local_get(
-                        local, name,
-                    ))),
-                )
-            }
-        },
+        ExprKind::Function(value) => {
+            let (step, expression) = match value.into_typed_kind() {
+                TypedFunctionExprKind::Int(value) => {
+                    let shape = value.shape().clone();
+                    let local = context.define_int_function_local_shape(
+                        name.clone(),
+                        value.expression().type_().clone(),
+                        shape.clone(),
+                    );
+                    let type_ = value.expression().type_().clone();
+                    (
+                        Step::let_int_function_expr(local, name.clone(), value),
+                        FunctionExpr::int_with_shape(
+                            IntFunctionExpr::local_get(local, name, type_),
+                            shape,
+                        ),
+                    )
+                }
+                TypedFunctionExprKind::String(value) => {
+                    let shape = value.shape().clone();
+                    let local = context.define_string_function_local_shape(
+                        name.clone(),
+                        value.expression().type_().clone(),
+                        shape.clone(),
+                    );
+                    let type_ = value.expression().type_().clone();
+                    (
+                        Step::let_string_function_expr(local, name.clone(), value),
+                        FunctionExpr::string_with_shape(
+                            StringFunctionExpr::local_get(local, name, type_),
+                            shape,
+                        ),
+                    )
+                }
+                TypedFunctionExprKind::BitArray(value) => {
+                    let shape = value.shape().clone();
+                    let local = context.define_bit_array_function_local_shape(
+                        name.clone(),
+                        value.expression().type_().clone(),
+                        shape.clone(),
+                    );
+                    let type_ = value.expression().type_().clone();
+                    (
+                        Step::let_bit_array_function_expr(local, name.clone(), value),
+                        FunctionExpr::bit_array_with_shape(
+                            BitArrayFunctionExpr::local_get(local, name, type_),
+                            shape,
+                        ),
+                    )
+                }
+                TypedFunctionExprKind::UtfCodepoint(value) => {
+                    let shape = value.shape().clone();
+                    let local = context.define_utf_codepoint_function_local_shape(
+                        name.clone(),
+                        value.expression().type_().clone(),
+                        shape.clone(),
+                    );
+                    let type_ = value.expression().type_().clone();
+                    (
+                        Step::let_utf_codepoint_function_expr(local, name.clone(), value),
+                        FunctionExpr::utf_codepoint_with_shape(
+                            UtfCodepointFunctionExpr::local_get(local, name, type_),
+                            shape,
+                        ),
+                    )
+                }
+                TypedFunctionExprKind::Custom(value) => {
+                    let shape = value.shape().clone();
+                    let local = context.define_custom_function_local_shape(
+                        name.clone(),
+                        value.expression().custom_function_type().clone(),
+                        shape.clone(),
+                    );
+                    (
+                        Step::let_custom_function_expr(local.id(), name.clone(), value),
+                        FunctionExpr::custom(CustomFunctionExpr::local_get(local, name)),
+                    )
+                }
+                TypedFunctionExprKind::Float(value) => {
+                    let shape = value.shape().clone();
+                    let local = context.define_float_function_local_shape(
+                        name.clone(),
+                        value.expression().type_().clone(),
+                        shape.clone(),
+                    );
+                    let type_ = value.expression().type_().clone();
+                    (
+                        Step::let_float_function_expr(local, name.clone(), value),
+                        FunctionExpr::float_with_shape(
+                            FloatFunctionExpr::local_get(local, name, type_),
+                            shape,
+                        ),
+                    )
+                }
+                TypedFunctionExprKind::Bool(value) => {
+                    let shape = value.shape().clone();
+                    let local = context.define_bool_function_local_shape(
+                        name.clone(),
+                        value.expression().type_().clone(),
+                        shape.clone(),
+                    );
+                    let type_ = value.expression().type_().clone();
+                    (
+                        Step::let_bool_function_expr(local, name.clone(), value),
+                        FunctionExpr::bool_with_shape(
+                            BoolFunctionExpr::local_get(local, name, type_),
+                            shape,
+                        ),
+                    )
+                }
+                TypedFunctionExprKind::Nil(value) => {
+                    let shape = value.shape().clone();
+                    let local = context.define_nil_function_local_shape(
+                        name.clone(),
+                        value.expression().type_().clone(),
+                        shape.clone(),
+                    );
+                    let type_ = value.expression().type_().clone();
+                    (
+                        Step::let_nil_function_expr(local, name.clone(), value),
+                        FunctionExpr::nil_with_shape(
+                            NilFunctionExpr::local_get(local, name, type_),
+                            shape,
+                        ),
+                    )
+                }
+                TypedFunctionExprKind::Tuple(value) => {
+                    let shape = value.shape().clone();
+                    let local = context.define_tuple_function_local_shape(
+                        name.clone(),
+                        value.expression().type_().clone(),
+                        shape.clone(),
+                    );
+                    let type_ = value.expression().type_().clone();
+                    (
+                        Step::let_tuple_function_expr(local, name.clone(), value),
+                        FunctionExpr::tuple_with_shape(
+                            TupleFunctionExpr::local_get(local, name, type_),
+                            shape,
+                        ),
+                    )
+                }
+                TypedFunctionExprKind::List(value) => {
+                    let shape = value.shape().clone();
+                    let local = context.define_list_function_local_shape(
+                        name.clone(),
+                        value.expression().type_().clone(),
+                        value.expression().return_item_type(),
+                        shape.clone(),
+                    );
+                    (
+                        Step::let_list_function_expr(local.clone(), name.clone(), value),
+                        FunctionExpr::list_with_shape(
+                            ListFunctionExpr::local_get(local, name),
+                            shape,
+                        ),
+                    )
+                }
+                TypedFunctionExprKind::Function(value) => {
+                    let shape = value.shape().clone();
+                    let local = context.define_function_function_local_shape(
+                        name.clone(),
+                        value.expression().function_function_type().clone(),
+                        shape.clone(),
+                    );
+                    (
+                        Step::let_function_function_expr(local.id(), name.clone(), value),
+                        FunctionExpr::function_with_shape(
+                            FunctionFunctionExpr::local_get(local, name),
+                            shape,
+                        ),
+                    )
+                }
+            };
+            (step, Expr::function(expression))
+        }
     }
 }
 
@@ -1816,6 +1880,33 @@ pub fn main() {
                 reason: InvalidTypedAstReason::ExpressionType {
                     expected: InvalidExpressionType::Tuple,
                     actual: InvalidExpressionType::Int,
+                },
+            }),
+        );
+    }
+
+    #[test]
+    fn tuple_assignment_rejects_conflicting_element_shape() {
+        let module = ecow::EcoString::from("main");
+        let functions = HashMap::new();
+        let mut anonymous = AnonymousFunctions::default();
+        let mut context = PlanContext::new(&module, &functions, &mut anonymous);
+        let value = Expr::tuple(
+            crate::plan::TupleExpr::local_get(
+                crate::plan::TupleLocalId(0),
+                "pair".into(),
+                vec![ValueType::Int],
+            )
+            .with_shape(vec![crate::plan::ValueShape::String].into_boxed_slice()),
+        );
+
+        assert_eq!(
+            super::plan_tuple_assignment(vec![super::BindingPattern::Discard], value, &mut context)
+                .map(|_| ()),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionType {
+                    expected: InvalidExpressionType::Int,
+                    actual: InvalidExpressionType::String,
                 },
             }),
         );

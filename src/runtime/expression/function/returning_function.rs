@@ -40,13 +40,13 @@ pub(in crate::runtime) fn eval_function_function_expr_kind(
     match kind {
         FunctionFunctionExprKind::Reference(reference) => Ok(EvaluatedFunctionFunction::new(
             reference.function().clone(),
-            reference.params().to_vec(),
+            reference.param_locals(),
             Vec::new(),
             type_.to_function_type(),
         )),
         FunctionFunctionExprKind::Closure(template) => Ok(EvaluatedFunctionFunction::new(
             template.function().clone(),
-            template.params().to_vec(),
+            template.param_locals(),
             function::eval_capture_args(plan, state, frame, template.captures())?,
             type_.to_function_type(),
         )),

@@ -1,6 +1,6 @@
 use super::{
     BitArrayExpr, BitArrayFunctionExpr, BoolExpr, BoolFunctionExpr, BoolListCaseBranches,
-    CustomExpr, CustomFunctionExpr, FloatExpr, FloatFunctionExpr, FunctionFunctionExpr, IntExpr,
+    CustomFunctionExpr, FloatExpr, FloatFunctionExpr, FunctionFunctionExpr, IntExpr,
     IntFunctionExpr, ListCaseBranches, ListFunctionExpr, NilExpr, NilFunctionExpr, StringExpr,
     StringFunctionExpr, TupleExpr, TupleFunctionExpr, UtfCodepointExpr, UtfCodepointFunctionExpr,
 };
@@ -25,10 +25,7 @@ pub(crate) enum BoolCaseBranches {
         true_: UtfCodepointExpr,
         false_: UtfCodepointExpr,
     },
-    Custom {
-        true_: CustomExpr,
-        false_: CustomExpr,
-    },
+    Custom(super::CustomBoolCaseBranches),
     Float {
         true_: FloatExpr,
         false_: FloatExpr,
@@ -110,10 +107,7 @@ pub(crate) enum IntCaseBranches {
         clauses: Vec<(BigInt, UtfCodepointExpr)>,
         fallback: UtfCodepointExpr,
     },
-    Custom {
-        clauses: Vec<(BigInt, CustomExpr)>,
-        fallback: CustomExpr,
-    },
+    Custom(super::CustomCaseBranches<BigInt>),
     Float {
         clauses: Vec<(BigInt, FloatExpr)>,
         fallback: FloatExpr,
@@ -195,10 +189,7 @@ pub(crate) enum StringCaseBranches {
         clauses: Vec<(EcoString, UtfCodepointExpr)>,
         fallback: UtfCodepointExpr,
     },
-    Custom {
-        clauses: Vec<(EcoString, CustomExpr)>,
-        fallback: CustomExpr,
-    },
+    Custom(super::CustomCaseBranches<EcoString>),
     Float {
         clauses: Vec<(EcoString, FloatExpr)>,
         fallback: FloatExpr,
@@ -280,10 +271,7 @@ pub(crate) enum FloatCaseBranches {
         clauses: Vec<(f64, UtfCodepointExpr)>,
         fallback: UtfCodepointExpr,
     },
-    Custom {
-        clauses: Vec<(f64, CustomExpr)>,
-        fallback: CustomExpr,
-    },
+    Custom(super::CustomCaseBranches<f64>),
     Float {
         clauses: Vec<(f64, FloatExpr)>,
         fallback: FloatExpr,

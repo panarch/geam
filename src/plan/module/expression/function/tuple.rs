@@ -1,7 +1,9 @@
 use crate::plan::CustomFieldAccess;
+#[cfg(test)]
+use crate::plan::ParamLocal;
 use crate::plan::{
     BoolExpr, CaptureArg, FloatExpr, FunctionFunctionExpr, FunctionListExpr, FunctionType, IntExpr,
-    PanicExpr, ParamLocal, Step, StringExpr, TupleExpr, TupleFunctionFunctionId, TupleFunctionId,
+    PanicExpr, ParamSlot, Step, StringExpr, TupleExpr, TupleFunctionFunctionId, TupleFunctionId,
     TupleFunctionLocalId, TupleFunctionReference, ValueType,
 };
 use ecow::EcoString;
@@ -18,7 +20,7 @@ pub(crate) enum TupleFunctionExprKind {
     Reference(TupleFunctionReference),
     Closure {
         runtime_id: TupleFunctionId,
-        params: Vec<ParamLocal>,
+        params: Vec<ParamSlot>,
         captures: Vec<CaptureArg>,
         return_type: Vec<ValueType>,
     },
@@ -77,7 +79,11 @@ pub(crate) enum TupleFunctionExprKind {
 impl TupleFunctionExpr {
     pub(crate) fn reference(value: TupleFunctionReference, return_type: Vec<ValueType>) -> Self {
         let type_ = FunctionType::new(
-            value.params().iter().map(ParamLocal::value_type).collect(),
+            value
+                .params()
+                .iter()
+                .map(crate::plan::ParamSlot::value_type)
+                .collect(),
             ValueType::Tuple(return_type),
         );
         Self {
@@ -86,9 +92,9 @@ impl TupleFunctionExpr {
         }
     }
 
-    pub(crate) fn closure(
+    pub(crate) fn closure_slots(
         runtime_id: TupleFunctionId,
-        params: Vec<ParamLocal>,
+        params: Vec<ParamSlot>,
         captures: Vec<CaptureArg>,
         type_: FunctionType,
         return_type: Vec<ValueType>,
@@ -102,6 +108,23 @@ impl TupleFunctionExpr {
                 return_type,
             },
         }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn closure(
+        runtime_id: TupleFunctionId,
+        params: Vec<ParamLocal>,
+        captures: Vec<CaptureArg>,
+        type_: FunctionType,
+        return_type: Vec<ValueType>,
+    ) -> Self {
+        Self::closure_slots(
+            runtime_id,
+            params.into_iter().map(ParamSlot::from_local).collect(),
+            captures,
+            type_,
+            return_type,
+        )
     }
 
     pub(crate) fn local_get(
@@ -297,7 +320,9 @@ mod tests {
             .kind(),
             &TupleFunctionExprKind::Closure {
                 runtime_id: TupleFunctionId(0),
-                params: vec![ParamLocal::int(crate::plan::IntLocalId(0))],
+                params: vec![crate::plan::ParamSlot::from_local(ParamLocal::int(
+                    crate::plan::IntLocalId(0)
+                ))],
                 captures: Vec::new(),
                 return_type: tuple_type(),
             },

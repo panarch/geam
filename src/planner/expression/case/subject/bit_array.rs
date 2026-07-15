@@ -1,6 +1,6 @@
 use super::super::super::plan_expr_with_expected_source_stop_type;
 use super::super::invalid_case_shape;
-use super::{CaseClause, OrderedCaseCandidateInput, OrderedCasePattern, case_return_type};
+use super::{CaseClause, OrderedCaseCandidateInput, OrderedCasePattern, case_return_shape};
 use crate::plan::{BitArrayExpr, BitArrayLocalId, BoolExpr, Expr, ExprKind, Step, ValueType};
 use crate::planner::context::PlanContext;
 use crate::planner::error::{InvalidCaseShapeReason, InvalidTypedAstReason, PlanError};
@@ -17,7 +17,7 @@ pub(super) fn plan(
     context: &mut PlanContext<'_>,
 ) -> Result<Expr, PlanError> {
     let subject = plan_expr_with_expected_source_stop_type(subject, ValueType::BitArray, context)?;
-    let return_type = case_return_type(type_.as_ref())?;
+    let return_shape = case_return_shape(type_.as_ref())?;
     let ExprKind::BitArray(subject) = subject.into_kind() else {
         return Err(invalid_case_shape(
             InvalidCaseShapeReason::PatternTypeMismatch,
@@ -30,7 +30,7 @@ pub(super) fn plan(
             ordered_clauses.push(super::plan_ordered_case_candidate(
                 OrderedCaseCandidateInput {
                     case_type: type_.as_ref(),
-                    return_type: &return_type,
+                    return_shape: &return_shape,
                     then: clause.then.clone(),
                     guard: clause.guard.clone(),
                 },

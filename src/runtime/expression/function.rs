@@ -15,7 +15,10 @@ use crate::plan::execution::{CustomConstructorId, CustomFieldAccess, ExecutionPl
 use crate::plan::execution::{FunctionExpr, FunctionExprKind};
 use crate::runtime::frame::Frame;
 use crate::runtime::state::RuntimeState;
-use crate::runtime::{EvaluatedFunctionValue, EvaluatedValue, ExecutionError};
+use crate::runtime::{
+    EvaluatedCustomFunction, EvaluatedFunction, EvaluatedFunctionValue, EvaluatedValue,
+    ExecutionError,
+};
 
 pub(in crate::runtime) use self::{
     bit_array::eval_bit_array_function_expr,
@@ -37,41 +40,74 @@ pub(in crate::runtime) fn eval_function_expr(
     frame: &mut Frame,
     expression: &FunctionExpr,
 ) -> Result<EvaluatedFunctionValue, ExecutionError> {
-    match expression.kind() {
+    let value: EvaluatedFunctionValue = match expression.kind() {
         FunctionExprKind::Int(expression) => {
-            Ok(eval_int_function_expr(plan, state, frame, expression)?.into())
+            eval_int_function_expr(plan, state, frame, expression)?.into()
         }
         FunctionExprKind::String(expression) => {
-            Ok(eval_string_function_expr(plan, state, frame, expression)?.into())
+            eval_string_function_expr(plan, state, frame, expression)?.into()
         }
         FunctionExprKind::BitArray(expression) => {
-            Ok(eval_bit_array_function_expr(plan, state, frame, expression)?.into())
+            eval_bit_array_function_expr(plan, state, frame, expression)?.into()
         }
         FunctionExprKind::UtfCodepoint(expression) => {
-            Ok(eval_utf_codepoint_function_expr(plan, state, frame, expression)?.into())
+            eval_utf_codepoint_function_expr(plan, state, frame, expression)?.into()
         }
         FunctionExprKind::Custom(expression) => {
-            Ok(eval_custom_function_expr(plan, state, frame, expression)?.into())
+            eval_custom_function_expr(plan, state, frame, expression)?.into()
         }
         FunctionExprKind::Float(expression) => {
-            Ok(eval_float_function_expr(plan, state, frame, expression)?.into())
+            eval_float_function_expr(plan, state, frame, expression)?.into()
         }
         FunctionExprKind::Bool(expression) => {
-            Ok(eval_bool_function_expr(plan, state, frame, expression)?.into())
+            eval_bool_function_expr(plan, state, frame, expression)?.into()
         }
         FunctionExprKind::Nil(expression) => {
-            Ok(eval_nil_function_expr(plan, state, frame, expression)?.into())
+            eval_nil_function_expr(plan, state, frame, expression)?.into()
         }
         FunctionExprKind::Tuple(expression) => {
-            Ok(eval_tuple_function_expr(plan, state, frame, expression)?.into())
+            eval_tuple_function_expr(plan, state, frame, expression)?.into()
         }
         FunctionExprKind::List(expression) => {
-            Ok(eval_list_function_expr(plan, state, frame, expression)?.into())
+            eval_list_function_expr(plan, state, frame, expression)?.into()
         }
         FunctionExprKind::Function(expression) => {
-            Ok(eval_function_function_expr(plan, state, frame, expression)?.into())
+            eval_function_function_expr(plan, state, frame, expression)?.into()
         }
-    }
+    };
+    Ok(value.with_type(expression.shape().type_().clone()))
+}
+
+pub(in crate::runtime) fn eval_typed_function_expr<Expression, Id: Clone>(
+    plan: &ExecutionPlan,
+    state: &mut RuntimeState,
+    frame: &mut Frame,
+    expression: &crate::plan::execution::TypedFunctionExpr<Expression>,
+    eval: impl FnOnce(
+        &ExecutionPlan,
+        &mut RuntimeState,
+        &mut Frame,
+        &Expression,
+    ) -> Result<EvaluatedFunction<Id>, ExecutionError>,
+) -> Result<EvaluatedFunction<Id>, ExecutionError> {
+    let value = eval(plan, state, frame, expression.expression())?;
+    Ok(value.with_type(expression.shape().type_().clone()))
+}
+
+pub(in crate::runtime) fn eval_typed_custom_function_expr<Expression>(
+    plan: &ExecutionPlan,
+    state: &mut RuntimeState,
+    frame: &mut Frame,
+    expression: &crate::plan::execution::TypedFunctionExpr<Expression>,
+    eval: impl FnOnce(
+        &ExecutionPlan,
+        &mut RuntimeState,
+        &mut Frame,
+        &Expression,
+    ) -> Result<EvaluatedCustomFunction, ExecutionError>,
+) -> Result<EvaluatedCustomFunction, ExecutionError> {
+    let value = eval(plan, state, frame, expression.expression())?;
+    Ok(value.with_type(expression.shape().type_().clone()))
 }
 
 fn eval_custom_field_function(

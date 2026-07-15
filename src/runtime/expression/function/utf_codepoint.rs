@@ -24,9 +24,10 @@ pub(in crate::runtime) fn eval_utf_codepoint_function_expr(
         UtfCodepointFunctionExprKind::Reference(reference) => {
             Ok(EvaluatedUtfCodepointFunction::new(
                 *reference.function(),
-                reference.params().to_vec(),
+                reference.param_locals(),
                 Vec::new(),
-                crate::runtime::evaluated::function_type(
+                crate::runtime::evaluated::function_type_from_slots(
+                    plan,
                     reference.params(),
                     crate::plan::execution::ValueType::UtfCodepoint,
                 ),
@@ -34,9 +35,10 @@ pub(in crate::runtime) fn eval_utf_codepoint_function_expr(
         }
         UtfCodepointFunctionExprKind::Closure(template) => Ok(EvaluatedUtfCodepointFunction::new(
             *template.function(),
-            template.params().to_vec(),
+            template.param_locals(),
             function::eval_capture_args(plan, state, frame, template.captures())?,
-            crate::runtime::evaluated::function_type(
+            crate::runtime::evaluated::function_type_from_slots(
+                plan,
                 template.params(),
                 crate::plan::execution::ValueType::UtfCodepoint,
             ),

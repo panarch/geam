@@ -1,7 +1,7 @@
 use super::{invalid_expression_type, invalid_expression_type_for_value};
 use crate::plan::{
-    BoolExpr, CustomExpr, Expr, FloatExpr, FunctionExpr, IntExpr, ListExpr, NilExpr, StringExpr,
-    TupleExpr, ValueType,
+    BoolExpr, Expr, FloatExpr, FunctionExpr, IntExpr, ListExpr, NilExpr, StringExpr, TupleExpr,
+    ValueType,
 };
 use crate::planner::context::PlanContext;
 use crate::planner::error::{
@@ -278,13 +278,17 @@ fn plan_record(
             Ok(argument)
         })
         .collect::<Result<Vec<_>, _>>()?;
-    CustomExpr::try_constructor(constructor, arguments)
+    let construction =
+        crate::plan::CustomConstruction::try_new(constructor, arguments).map_err(|_| {
+            PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionShape {
+                    kind: InvalidExpressionShapeKind::RecordConstructor,
+                },
+            }
+        })?;
+    context
+        .custom_expr_from_construction(construction)
         .map(Expr::custom)
-        .map_err(|_| PlanError::InvalidTypedAst {
-            reason: InvalidTypedAstReason::ExpressionShape {
-                kind: InvalidExpressionShapeKind::RecordConstructor,
-            },
-        })
 }
 
 fn plan_record_constructor(
@@ -315,11 +319,22 @@ fn plan_record_constructor(
     {
         return invalid_expression_shape(InvalidExpressionShapeKind::RecordConstructor);
     }
+    let shape = crate::plan::ValueShape::from_gleam(constructor.type_.as_ref()).ok_or(
+        PlanError::UnsupportedExpression {
+            kind: UnsupportedExpressionKind::GenericFunction,
+        },
+    )?;
     let constructor = context.custom_constructor(&constructor)?;
     if usize::from(*arity) != constructor.fields().len() {
         return invalid_expression_shape(InvalidExpressionShapeKind::RecordConstructor);
     }
-    Ok(crate::plan::module::custom_constructor_expr(constructor))
+    crate::plan::module::custom_constructor_expr(constructor)
+        .with_shape(shape)
+        .ok_or(PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::ExpressionShape {
+                kind: InvalidExpressionShapeKind::RecordConstructor,
+            },
+        })
 }
 
 fn invalid_expression_shape(kind: InvalidExpressionShapeKind) -> Result<Expr, PlanError> {

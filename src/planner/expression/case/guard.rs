@@ -280,14 +280,7 @@ fn plan_tuple_index(
                 actual: InvalidExpressionType::Tuple,
             },
         })?;
-    let actual = tuple.type_().get(index).cloned().ok_or_else(|| {
-        invalid_expression_type_for_value(expected.clone(), ValueType::Tuple(Vec::new()))
-    })?;
-    if actual != expected {
-        return Err(invalid_expression_type_for_value(expected.clone(), actual));
-    }
-
-    Ok(super::super::tuple_index_expr(tuple, index, expected))
+    super::super::tuple_index_expr(tuple, index, expected)
 }
 
 fn plan_local(name: EcoString, context: &PlanContext<'_>) -> Result<Expr, PlanError> {
@@ -297,14 +290,22 @@ fn plan_local(name: EcoString, context: &PlanContext<'_>) -> Result<Expr, PlanEr
     if let Some(local) = context.lookup_custom_local(&name) {
         return Ok(Expr::custom(CustomExpr::local_get(local, name)));
     }
-    if let Some((local, type_)) = context.lookup_tuple_local(&name) {
-        return Ok(Expr::tuple(TupleExpr::local_get(local, name, type_)));
+    if let Some((local, shape)) = context.lookup_tuple_local(&name) {
+        let type_ = shape
+            .iter()
+            .map(crate::plan::ValueShape::value_type)
+            .collect();
+        return Ok(Expr::tuple(
+            TupleExpr::local_get(local, name, type_).with_shape(shape),
+        ));
     }
-    if let Some(local) = context.lookup_list_local(&name) {
-        return Ok(Expr::list(ListExpr::local_get(local, name)));
+    if let Some((local, item_shape)) = context.lookup_list_local(&name) {
+        return Ok(Expr::list(
+            ListExpr::local_get(local, name).with_item_shape(item_shape),
+        ));
     }
-    if let Some(binding) = context.lookup_function_local(&name) {
-        return Ok(function_local_get(binding, name));
+    if let Some((binding, shape)) = context.lookup_function_local(&name) {
+        return function_local_get(binding, name, shape);
     }
 
     Err(PlanError::InvalidTypedAst {
@@ -333,42 +334,54 @@ fn local_get(local: LocalId, name: EcoString, type_: ValueType) -> Result<Expr, 
     }
 }
 
-fn function_local_get(binding: FunctionLocalBinding, name: EcoString) -> Expr {
-    match binding {
-        FunctionLocalBinding::Int { local, type_ } => Expr::function(FunctionExpr::int(
-            IntFunctionExpr::local_get(local, name, type_),
-        )),
-        FunctionLocalBinding::String { local, type_ } => Expr::function(FunctionExpr::string(
-            StringFunctionExpr::local_get(local, name, type_),
-        )),
-        FunctionLocalBinding::BitArray { local, type_ } => Expr::function(FunctionExpr::bit_array(
-            BitArrayFunctionExpr::local_get(local, name, type_),
-        )),
-        FunctionLocalBinding::UtfCodepoint { local, type_ } => Expr::function(
-            FunctionExpr::utf_codepoint(UtfCodepointFunctionExpr::local_get(local, name, type_)),
-        ),
-        FunctionLocalBinding::Custom(local) => Expr::function(FunctionExpr::custom(
-            CustomFunctionExpr::local_get(local, name),
-        )),
-        FunctionLocalBinding::Float { local, type_ } => Expr::function(FunctionExpr::float(
-            FloatFunctionExpr::local_get(local, name, type_),
-        )),
-        FunctionLocalBinding::Bool { local, type_ } => Expr::function(FunctionExpr::bool(
-            BoolFunctionExpr::local_get(local, name, type_),
-        )),
-        FunctionLocalBinding::Nil { local, type_ } => Expr::function(FunctionExpr::nil(
-            NilFunctionExpr::local_get(local, name, type_),
-        )),
-        FunctionLocalBinding::Tuple { local, type_ } => Expr::function(FunctionExpr::tuple(
-            TupleFunctionExpr::local_get(local, name, type_),
-        )),
-        FunctionLocalBinding::List(local) => {
-            Expr::function(FunctionExpr::list(ListFunctionExpr::local_get(local, name)))
+fn function_local_get(
+    binding: FunctionLocalBinding,
+    name: EcoString,
+    shape: crate::plan::FunctionShape,
+) -> Result<Expr, PlanError> {
+    let expression = match binding {
+        FunctionLocalBinding::Int { local, type_ } => {
+            FunctionExpr::int(IntFunctionExpr::local_get(local, name, type_))
         }
-        FunctionLocalBinding::Function(local) => Expr::function(FunctionExpr::function(
-            FunctionFunctionExpr::local_get(local, name),
-        )),
-    }
+        FunctionLocalBinding::String { local, type_ } => {
+            FunctionExpr::string(StringFunctionExpr::local_get(local, name, type_))
+        }
+        FunctionLocalBinding::BitArray { local, type_ } => {
+            FunctionExpr::bit_array(BitArrayFunctionExpr::local_get(local, name, type_))
+        }
+        FunctionLocalBinding::UtfCodepoint { local, type_ } => {
+            FunctionExpr::utf_codepoint(UtfCodepointFunctionExpr::local_get(local, name, type_))
+        }
+        FunctionLocalBinding::Custom(local) => {
+            FunctionExpr::custom(CustomFunctionExpr::local_get(local, name))
+        }
+        FunctionLocalBinding::Float { local, type_ } => {
+            FunctionExpr::float(FloatFunctionExpr::local_get(local, name, type_))
+        }
+        FunctionLocalBinding::Bool { local, type_ } => {
+            FunctionExpr::bool(BoolFunctionExpr::local_get(local, name, type_))
+        }
+        FunctionLocalBinding::Nil { local, type_ } => {
+            FunctionExpr::nil(NilFunctionExpr::local_get(local, name, type_))
+        }
+        FunctionLocalBinding::Tuple { local, type_ } => {
+            FunctionExpr::tuple(TupleFunctionExpr::local_get(local, name, type_))
+        }
+        FunctionLocalBinding::List(local) => {
+            FunctionExpr::list(ListFunctionExpr::local_get(local, name))
+        }
+        FunctionLocalBinding::Function(local) => {
+            FunctionExpr::function(FunctionFunctionExpr::local_get(local, name))
+        }
+    };
+    expression
+        .with_resolved_shape(shape)
+        .map(Expr::function)
+        .ok_or(PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::ExpressionShape {
+                kind: InvalidExpressionShapeKind::Invalid,
+            },
+        })
 }
 
 fn invalid_expression_type_for_value(expected: ValueType, actual: ValueType) -> PlanError {
@@ -412,11 +425,12 @@ mod tests {
         CustomFunctionLocal, CustomFunctionLocalId, CustomFunctionType, CustomType, CustomTypeName,
         Expr, FloatExpr, FloatFunctionExpr, FloatFunctionLocalId, FunctionExpr,
         FunctionFunctionExpr, FunctionFunctionLocal, FunctionFunctionLocalId, FunctionFunctionType,
-        FunctionType, IntExpr, IntFunctionExpr, IntFunctionLocalId, IntLocalId, ListExpr,
-        ListFunctionExpr, ListLocal, LocalId, NilExpr, NilFunctionExpr, NilFunctionLocalId,
-        NilLocalId, StringExpr, StringFunctionExpr, StringFunctionLocalId, StringListLocalId,
-        TupleExpr, TupleFunctionExpr, TupleFunctionLocalId, TupleLocalId, UtfCodepointExpr,
-        UtfCodepointFunctionExpr, UtfCodepointFunctionLocalId, UtfCodepointLocalId, ValueType,
+        FunctionShape, FunctionType, IntExpr, IntFunctionExpr, IntFunctionLocalId, IntLocalId,
+        ListExpr, ListFunctionExpr, ListLocal, LocalId, NilExpr, NilFunctionExpr,
+        NilFunctionLocalId, NilLocalId, StringExpr, StringFunctionExpr, StringFunctionLocalId,
+        StringListLocalId, TupleExpr, TupleFunctionExpr, TupleFunctionLocalId, TupleLocalId,
+        UtfCodepointExpr, UtfCodepointFunctionExpr, UtfCodepointFunctionLocalId,
+        UtfCodepointLocalId, ValueType,
     };
     use crate::planner::context::{AnonymousFunctions, FunctionLocalBinding, PlanContext};
     use crate::planner::support::dummy_span;
@@ -1212,11 +1226,10 @@ mod tests {
                     type_: unary_int.clone(),
                 },
                 "f".into(),
+                FunctionShape::from_function_type(unary_int.clone()),
             ),
-            Expr::function(FunctionExpr::int(IntFunctionExpr::local_get(
-                IntFunctionLocalId(0),
-                "f".into(),
-                unary_int,
+            Ok(Expr::function(FunctionExpr::int(
+                IntFunctionExpr::local_get(IntFunctionLocalId(0), "f".into(), unary_int,)
             ))),
         );
         assert_eq!(
@@ -1226,11 +1239,10 @@ mod tests {
                     type_: unary_string.clone(),
                 },
                 "f".into(),
+                FunctionShape::from_function_type(unary_string.clone()),
             ),
-            Expr::function(FunctionExpr::string(StringFunctionExpr::local_get(
-                StringFunctionLocalId(0),
-                "f".into(),
-                unary_string,
+            Ok(Expr::function(FunctionExpr::string(
+                StringFunctionExpr::local_get(StringFunctionLocalId(0), "f".into(), unary_string,)
             ))),
         );
         assert_eq!(
@@ -1240,11 +1252,14 @@ mod tests {
                     type_: unary_bit_array.clone(),
                 },
                 "f".into(),
+                FunctionShape::from_function_type(unary_bit_array.clone()),
             ),
-            Expr::function(FunctionExpr::bit_array(BitArrayFunctionExpr::local_get(
-                BitArrayFunctionLocalId(0),
-                "f".into(),
-                unary_bit_array,
+            Ok(Expr::function(FunctionExpr::bit_array(
+                BitArrayFunctionExpr::local_get(
+                    BitArrayFunctionLocalId(0),
+                    "f".into(),
+                    unary_bit_array,
+                )
             ))),
         );
         assert_eq!(
@@ -1254,14 +1269,15 @@ mod tests {
                     type_: unary_utf_codepoint.clone(),
                 },
                 "f".into(),
+                FunctionShape::from_function_type(unary_utf_codepoint.clone()),
             ),
-            Expr::function(FunctionExpr::utf_codepoint(
+            Ok(Expr::function(FunctionExpr::utf_codepoint(
                 UtfCodepointFunctionExpr::local_get(
                     UtfCodepointFunctionLocalId(0),
                     "f".into(),
                     unary_utf_codepoint,
                 ),
-            )),
+            ))),
         );
         assert_eq!(
             function_local_get(
@@ -1270,10 +1286,13 @@ mod tests {
                     unary_custom.clone(),
                 )),
                 "f".into(),
+                FunctionShape::from_function_type(unary_custom.to_function_type()),
             ),
-            Expr::function(FunctionExpr::custom(CustomFunctionExpr::local_get(
-                CustomFunctionLocal::new(CustomFunctionLocalId(0), unary_custom),
-                "f".into(),
+            Ok(Expr::function(FunctionExpr::custom(
+                CustomFunctionExpr::local_get(
+                    CustomFunctionLocal::new(CustomFunctionLocalId(0), unary_custom),
+                    "f".into(),
+                )
             ))),
         );
         assert_eq!(
@@ -1283,11 +1302,10 @@ mod tests {
                     type_: unary_float.clone(),
                 },
                 "f".into(),
+                FunctionShape::from_function_type(unary_float.clone()),
             ),
-            Expr::function(FunctionExpr::float(FloatFunctionExpr::local_get(
-                FloatFunctionLocalId(0),
-                "f".into(),
-                unary_float,
+            Ok(Expr::function(FunctionExpr::float(
+                FloatFunctionExpr::local_get(FloatFunctionLocalId(0), "f".into(), unary_float,)
             ))),
         );
         assert_eq!(
@@ -1297,11 +1315,10 @@ mod tests {
                     type_: unary_bool.clone(),
                 },
                 "f".into(),
+                FunctionShape::from_function_type(unary_bool.clone()),
             ),
-            Expr::function(FunctionExpr::bool(BoolFunctionExpr::local_get(
-                BoolFunctionLocalId(0),
-                "f".into(),
-                unary_bool,
+            Ok(Expr::function(FunctionExpr::bool(
+                BoolFunctionExpr::local_get(BoolFunctionLocalId(0), "f".into(), unary_bool,)
             ))),
         );
         assert_eq!(
@@ -1311,11 +1328,10 @@ mod tests {
                     type_: unary_nil.clone(),
                 },
                 "f".into(),
+                FunctionShape::from_function_type(unary_nil.clone()),
             ),
-            Expr::function(FunctionExpr::nil(NilFunctionExpr::local_get(
-                NilFunctionLocalId(0),
-                "f".into(),
-                unary_nil,
+            Ok(Expr::function(FunctionExpr::nil(
+                NilFunctionExpr::local_get(NilFunctionLocalId(0), "f".into(), unary_nil,)
             ))),
         );
         assert_eq!(
@@ -1325,32 +1341,34 @@ mod tests {
                     type_: tuple_type.clone(),
                 },
                 "f".into(),
+                FunctionShape::from_function_type(tuple_type.clone()),
             ),
-            Expr::function(FunctionExpr::tuple(TupleFunctionExpr::local_get(
-                TupleFunctionLocalId(0),
-                "f".into(),
-                tuple_type,
+            Ok(Expr::function(FunctionExpr::tuple(
+                TupleFunctionExpr::local_get(TupleFunctionLocalId(0), "f".into(), tuple_type,)
             ))),
         );
         assert_eq!(
             function_local_get(
                 FunctionLocalBinding::List(crate::plan::ListFunctionLocal::from_item_type(
                     0,
-                    list_type,
+                    list_type.clone(),
                     ValueType::Int,
                 )),
                 "f".into(),
+                FunctionShape::from_function_type(list_type),
             ),
-            Expr::function(FunctionExpr::list(ListFunctionExpr::local_get(
-                crate::plan::ListFunctionLocal::from_item_type(
-                    0,
-                    crate::plan::FunctionType::new(
-                        Vec::new(),
-                        crate::plan::ValueType::List(Box::new(crate::plan::ValueType::Int))
+            Ok(Expr::function(FunctionExpr::list(
+                ListFunctionExpr::local_get(
+                    crate::plan::ListFunctionLocal::from_item_type(
+                        0,
+                        crate::plan::FunctionType::new(
+                            Vec::new(),
+                            crate::plan::ValueType::List(Box::new(crate::plan::ValueType::Int))
+                        ),
+                        crate::plan::ValueType::Int,
                     ),
-                    crate::plan::ValueType::Int,
-                ),
-                "f".into()
+                    "f".into()
+                )
             ))),
         );
         assert_eq!(
@@ -1360,10 +1378,13 @@ mod tests {
                     function_type.clone(),
                 )),
                 "f".into(),
+                FunctionShape::from_function_type(function_type.to_function_type()),
             ),
-            Expr::function(FunctionExpr::function(FunctionFunctionExpr::local_get(
-                FunctionFunctionLocal::new(FunctionFunctionLocalId(0), function_type),
-                "f".into(),
+            Ok(Expr::function(FunctionExpr::function(
+                FunctionFunctionExpr::local_get(
+                    FunctionFunctionLocal::new(FunctionFunctionLocalId(0), function_type),
+                    "f".into(),
+                )
             ))),
         );
     }
@@ -1416,6 +1437,10 @@ mod tests {
                 ValueType::String,
                 ValueType::BitArray,
                 ValueType::UtfCodepoint,
+                ValueType::Custom(CustomType::new(
+                    CustomTypeName::new("geam".into(), "main".into(), "Boxed".into()),
+                    Vec::new(),
+                )),
                 ValueType::Bool,
                 ValueType::Nil,
                 ValueType::Tuple(Vec::new()),
@@ -1429,6 +1454,7 @@ mod tests {
                 InvalidExpressionType::String,
                 InvalidExpressionType::BitArray,
                 InvalidExpressionType::UtfCodepoint,
+                InvalidExpressionType::Custom,
                 InvalidExpressionType::Bool,
                 InvalidExpressionType::Nil,
                 InvalidExpressionType::Tuple,

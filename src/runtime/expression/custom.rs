@@ -193,13 +193,13 @@ pub fn main() {
     #[test]
     fn custom_tuple_projection_reports_direct_mutated_family_mismatch() {
         let type_ = boxed_type();
-        let expression = crate::plan::CustomExpr::tuple_index(
+        let expression = crate::plan::CustomExpr::tuple_index_shape(
             TupleExpr::value(
                 vec![Expr::int(IntExpr::value(1.into()))],
                 vec![ValueType::Custom(type_.clone())],
             ),
             0,
-            type_.clone(),
+            crate::plan::CustomValueShape::any(type_.clone()),
         );
 
         assert_eq!(
@@ -231,30 +231,30 @@ pub fn main() {
                 vec![Expr::int(IntExpr::panic(panic()))],
             )
             .expect("test custom construction should be valid"),
-            CustomExpr::tuple_index(
+            CustomExpr::tuple_index_shape(
                 TupleExpr::panic(panic(), vec![ValueType::Custom(boxed_type())]),
                 0,
-                boxed_type(),
+                crate::plan::CustomValueShape::any(boxed_type()),
             ),
             wrap(CustomExpr::bool_case(
                 BoolExpr::panic(panic()),
-                value(),
-                value(),
+                crate::plan::CustomBoolCaseBranches::try_new(value(), value())
+                    .expect("matching custom branches should be valid"),
             )),
             wrap(CustomExpr::int_case(
                 IntExpr::panic(panic()),
-                Vec::new(),
-                value(),
+                crate::plan::CustomCaseBranches::try_new(Vec::new(), value())
+                    .expect("matching custom branches should be valid"),
             )),
             wrap(CustomExpr::string_case(
                 StringExpr::panic(panic()),
-                Vec::new(),
-                value(),
+                crate::plan::CustomCaseBranches::try_new(Vec::new(), value())
+                    .expect("matching custom branches should be valid"),
             )),
             wrap(CustomExpr::float_case(
                 FloatExpr::panic(panic()),
-                Vec::new(),
-                value(),
+                crate::plan::CustomCaseBranches::try_new(Vec::new(), value())
+                    .expect("matching custom branches should be valid"),
             )),
             wrap(CustomExpr::block(
                 vec![Step::evaluate(Expr::int(IntExpr::panic(panic())))],
@@ -262,23 +262,35 @@ pub fn main() {
             )),
             wrap(CustomExpr::bool_case(
                 BoolExpr::value(true),
-                CustomExpr::panic(panic(), boxed_type()),
-                value(),
+                crate::plan::CustomBoolCaseBranches::try_new(
+                    CustomExpr::panic(panic(), boxed_type()),
+                    value(),
+                )
+                .expect("matching custom branches should be valid"),
             )),
             wrap(CustomExpr::int_case(
                 IntExpr::value(1.into()),
-                vec![(1.into(), CustomExpr::panic(panic(), boxed_type()))],
-                value(),
+                crate::plan::CustomCaseBranches::try_new(
+                    vec![(1.into(), CustomExpr::panic(panic(), boxed_type()))],
+                    value(),
+                )
+                .expect("matching custom branches should be valid"),
             )),
             wrap(CustomExpr::string_case(
                 StringExpr::value("hit".into()),
-                vec![("hit".into(), CustomExpr::panic(panic(), boxed_type()))],
-                value(),
+                crate::plan::CustomCaseBranches::try_new(
+                    vec![("hit".into(), CustomExpr::panic(panic(), boxed_type()))],
+                    value(),
+                )
+                .expect("matching custom branches should be valid"),
             )),
             wrap(CustomExpr::float_case(
                 FloatExpr::value(1.0),
-                vec![(1.0, CustomExpr::panic(panic(), boxed_type()))],
-                value(),
+                crate::plan::CustomCaseBranches::try_new(
+                    vec![(1.0, CustomExpr::panic(panic(), boxed_type()))],
+                    value(),
+                )
+                .expect("matching custom branches should be valid"),
             )),
             wrap(CustomExpr::block(
                 Vec::new(),

@@ -8,8 +8,11 @@ pub(in crate::plan::execution::lowering) fn custom_expr(
     expression: module::CustomExpr,
     context: &mut super::super::LoweringContext,
 ) -> execution::CustomExpr {
-    let (type_, kind) = expression.into_parts();
-    execution::CustomExpr::from_parts(context.custom_type(type_), custom_expr_kind(kind, context))
+    let (shape, kind) = expression.into_parts();
+    execution::CustomExpr::from_parts(
+        context.custom_value_shape(shape),
+        custom_expr_kind(kind, context),
+    )
 }
 
 pub(in crate::plan::execution::lowering) fn custom_expr_kind(

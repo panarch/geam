@@ -1,18 +1,18 @@
-use super::{CaptureArg, ParamLocal};
+use super::{CaptureArg, ParamLocal, ParamSlot};
 
 pub(crate) struct FunctionReference<Function> {
     function: Function,
-    params: Vec<ParamLocal>,
+    params: Vec<ParamSlot>,
 }
 
 pub(crate) struct ClosureTemplate<Function> {
     function: Function,
-    params: Vec<ParamLocal>,
+    params: Vec<ParamSlot>,
     captures: Vec<CaptureArg>,
 }
 
 impl<Function> FunctionReference<Function> {
-    pub(super) fn new(function: Function, params: Vec<ParamLocal>) -> Self {
+    pub(super) fn new(function: Function, params: Vec<ParamSlot>) -> Self {
         Self { function, params }
     }
 
@@ -20,15 +20,22 @@ impl<Function> FunctionReference<Function> {
         &self.function
     }
 
-    pub(crate) fn params(&self) -> &[ParamLocal] {
+    pub(crate) fn params(&self) -> &[ParamSlot] {
         &self.params
+    }
+
+    pub(crate) fn param_locals(&self) -> Vec<ParamLocal> {
+        self.params
+            .iter()
+            .map(|param| param.local().clone())
+            .collect()
     }
 }
 
 impl<Function> ClosureTemplate<Function> {
     pub(super) fn new(
         function: Function,
-        params: Vec<ParamLocal>,
+        params: Vec<ParamSlot>,
         captures: Vec<CaptureArg>,
     ) -> Self {
         Self {
@@ -42,8 +49,15 @@ impl<Function> ClosureTemplate<Function> {
         &self.function
     }
 
-    pub(crate) fn params(&self) -> &[ParamLocal] {
+    pub(crate) fn params(&self) -> &[ParamSlot] {
         &self.params
+    }
+
+    pub(crate) fn param_locals(&self) -> Vec<ParamLocal> {
+        self.params
+            .iter()
+            .map(|param| param.local().clone())
+            .collect()
     }
 
     pub(crate) fn captures(&self) -> &[CaptureArg] {

@@ -1,7 +1,7 @@
 use super::super::super::plan_bool_expr;
 use super::super::invalid_case_shape;
-use super::{CaseClause, OrderedCaseClause, OrderedCaseClauseInput, case_return_type};
-use crate::plan::{BoolExpr, Expr, ValueType};
+use super::{CaseClause, OrderedCaseClause, OrderedCaseClauseInput, case_return_shape};
+use crate::plan::{BoolExpr, Expr, ValueShape};
 use crate::planner::context::PlanContext;
 use crate::planner::error::{InvalidCaseShapeReason, InvalidTypedAstReason, PlanError};
 use ecow::EcoString;
@@ -16,13 +16,13 @@ pub(super) fn plan(
     context: &mut PlanContext<'_>,
 ) -> Result<Expr, PlanError> {
     let subject = plan_bool_expr(subject, context)?;
-    let return_type = case_return_type(type_.as_ref())?;
+    let return_shape = case_return_shape(type_.as_ref())?;
     if clauses
         .iter()
         .any(|clause| clause.guard.is_some() || clause.has_alternative_patterns())
     {
         let (subject_step, subject) = super::bind_bool_case_subject(subject, context);
-        let case = plan_guarded_bool_case(type_.as_ref(), return_type, subject, clauses, context)?;
+        let case = plan_guarded_bool_case(type_.as_ref(), return_shape, subject, clauses, context)?;
         return Ok(super::case_subject_block(subject_step, case));
     }
     let needs_subject_binding = clauses.iter().any(clause_has_bool_bound_name);
@@ -37,8 +37,13 @@ pub(super) fn plan(
     for clause in clauses {
         let pattern = plan_bool_case_pattern(clause.pattern)?;
         let bindings = super::branch_bindings(pattern.bound_names(), Expr::bool(subject.clone()));
-        let branch =
-            super::plan_case_branch(type_.as_ref(), &return_type, clause.then, bindings, context)?;
+        let branch = super::plan_case_branch(
+            type_.as_ref(),
+            &return_shape,
+            clause.then,
+            bindings,
+            context,
+        )?;
 
         match pattern {
             BoolCasePattern::Literal { value: true, .. } => {
@@ -69,7 +74,7 @@ pub(super) fn plan(
 
 fn plan_guarded_bool_case(
     case_type: &Type,
-    return_type: ValueType,
+    return_shape: ValueShape,
     subject: BoolExpr,
     clauses: Vec<CaseClause>,
     context: &mut PlanContext<'_>,
@@ -85,7 +90,7 @@ fn plan_guarded_bool_case(
             let ordered_clause = super::plan_ordered_case_clause(
                 OrderedCaseClauseInput {
                     case_type,
-                    return_type: &return_type,
+                    return_shape: &return_shape,
                     then: clause.then.clone(),
                     branch_bindings: bindings,
                     guard: clause.guard.clone(),
@@ -1298,6 +1303,81 @@ pub fn main() {
                     RuntimeFunctionId::String(StringFunctionId(0)),
                     [LocalId::Int(IntLocalId(0))],
                 )),
+            ),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::CaseShape {
+                    reason: InvalidCaseShapeReason::BranchReturnTypeMismatch,
+                },
+            }),
+        );
+
+        let custom_expr = |name: &str, local| {
+            let type_ = crate::plan::CustomType::new(
+                crate::plan::CustomTypeName::new("geam".into(), "main".into(), name.into()),
+                Vec::new(),
+            );
+            Expr::custom(crate::plan::CustomExpr::local_get(
+                crate::plan::CustomLocal::new(crate::plan::CustomLocalId(local), type_),
+                name.into(),
+            ))
+        };
+        assert_eq!(
+            super::super::bool_case_expr(
+                BoolExpr::value(true),
+                custom_expr("First", 0),
+                custom_expr("Second", 1),
+            ),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::CaseShape {
+                    reason: InvalidCaseShapeReason::BranchReturnTypeMismatch,
+                },
+            }),
+        );
+        let tuple_expr = |expression: Expr| {
+            let type_ = expression.value_type();
+            Expr::tuple(crate::plan::TupleExpr::value(vec![expression], vec![type_]))
+        };
+        assert_eq!(
+            super::super::bool_case_expr(
+                BoolExpr::value(true),
+                tuple_expr(custom_expr("First", 0)),
+                tuple_expr(custom_expr("Second", 1)),
+            ),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::CaseShape {
+                    reason: InvalidCaseShapeReason::BranchReturnTypeMismatch,
+                },
+            }),
+        );
+
+        let malformed_return_type = crate::plan::CustomType::new(
+            crate::plan::CustomTypeName::new("geam".into(), "main".into(), "Malformed".into()),
+            Vec::new(),
+        );
+        let malformed_function = |id| {
+            let function = Expr::from(function_ref(
+                RuntimeFunctionId::Int(IntFunctionId(id)),
+                [LocalId::Int(IntLocalId(0))],
+            ))
+            .into_function()
+            .expect("test expression is function-valued")
+            .into_int()
+            .expect("test expression is Int-returning");
+            Expr::function(FunctionExpr::int_with_shape(
+                function,
+                crate::plan::FunctionShape::new(
+                    vec![crate::plan::ValueShape::Int],
+                    crate::plan::ValueShape::Custom(crate::plan::CustomValueShape::any(
+                        malformed_return_type.clone(),
+                    )),
+                ),
+            ))
+        };
+        assert_eq!(
+            super::super::bool_case_expr(
+                BoolExpr::value(true),
+                malformed_function(0),
+                malformed_function(1),
             ),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::CaseShape {

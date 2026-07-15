@@ -30,7 +30,8 @@ pub(super) use self::{
         eval_custom_function_expr_kind, eval_float_function_expr, eval_function_expr,
         eval_function_function_expr, eval_function_function_expr_kind, eval_int_function_expr,
         eval_list_function_expr, eval_nil_function_expr, eval_string_function_expr,
-        eval_tuple_function_expr, eval_utf_codepoint_function_expr,
+        eval_tuple_function_expr, eval_typed_custom_function_expr, eval_typed_function_expr,
+        eval_utf_codepoint_function_expr,
     },
     int::eval_int_expr,
     list::{
@@ -463,7 +464,7 @@ pub fn main() { function_function }
         ];
 
         let function = plan.int_function_function(IntFunctionFunctionId(0));
-        let expression = expression_return(function.return_())
+        let expression = expression_return(function.return_().body())
             .expect("source function should have an expression return body");
         let mut state = crate::runtime::RuntimeState::new();
         let mut frame = Frame::new(function.frame_layout(), &mut state);
@@ -477,7 +478,7 @@ pub fn main() { function_function }
         );
 
         let function = plan.string_function_function(StringFunctionFunctionId(0));
-        let expression = expression_return(function.return_())
+        let expression = expression_return(function.return_().body())
             .expect("source function should have an expression return body");
         let mut state = crate::runtime::RuntimeState::new();
         let mut frame = Frame::new(function.frame_layout(), &mut state);
@@ -491,7 +492,7 @@ pub fn main() { function_function }
         );
 
         let function = plan.float_function_function(FloatFunctionFunctionId(0));
-        let expression = expression_return(function.return_())
+        let expression = expression_return(function.return_().body())
             .expect("source function should have an expression return body");
         let mut state = crate::runtime::RuntimeState::new();
         let mut frame = Frame::new(function.frame_layout(), &mut state);
@@ -505,7 +506,7 @@ pub fn main() { function_function }
         );
 
         let function = plan.bool_function_function(BoolFunctionFunctionId(0));
-        let expression = expression_return(function.return_())
+        let expression = expression_return(function.return_().body())
             .expect("source function should have an expression return body");
         let mut state = crate::runtime::RuntimeState::new();
         let mut frame = Frame::new(function.frame_layout(), &mut state);
@@ -519,7 +520,7 @@ pub fn main() { function_function }
         );
 
         let function = plan.nil_function_function(NilFunctionFunctionId(0));
-        let expression = expression_return(function.return_())
+        let expression = expression_return(function.return_().body())
             .expect("source function should have an expression return body");
         let mut state = crate::runtime::RuntimeState::new();
         let mut frame = Frame::new(function.frame_layout(), &mut state);
@@ -533,7 +534,7 @@ pub fn main() { function_function }
         );
 
         let function = plan.tuple_function_function(TupleFunctionFunctionId(0));
-        let expression = expression_return(function.return_())
+        let expression = expression_return(function.return_().body())
             .expect("source function should have an expression return body");
         let mut state = crate::runtime::RuntimeState::new();
         let mut frame = Frame::new(function.frame_layout(), &mut state);
@@ -548,7 +549,7 @@ pub fn main() { function_function }
 
         let function =
             plan.int_list_function_function(crate::plan::execution::IntListFunctionFunctionId(0));
-        let expression = expression_return(function.return_())
+        let expression = expression_return(function.return_().body())
             .expect("source function should have an expression return body");
         let mut state = crate::runtime::RuntimeState::new();
         let mut frame = Frame::new(function.frame_layout(), &mut state);
@@ -586,8 +587,8 @@ pub fn main() { function_function }
             StringFunctionId(0),
             Vec::new(),
             Vec::new(),
-            crate::runtime::evaluated::function_type(
-                &[],
+            crate::plan::execution::FunctionType::new(
+                Vec::new(),
                 crate::plan::execution::ValueType::String,
             ),
         );
@@ -595,7 +596,10 @@ pub fn main() { function_function }
             IntFunctionId(0),
             Vec::new(),
             Vec::new(),
-            crate::runtime::evaluated::function_type(&[], crate::plan::execution::ValueType::Int),
+            crate::plan::execution::FunctionType::new(
+                Vec::new(),
+                crate::plan::execution::ValueType::Int,
+            ),
         );
         let wrong_string_type =
             ValueType::Function(Box::new(plan.function_type(wrong_string_function.type_())));
@@ -603,7 +607,7 @@ pub fn main() { function_function }
             ValueType::Function(Box::new(plan.function_type(wrong_int_function.type_())));
 
         let function = plan.int_function_function(IntFunctionFunctionId(0));
-        let expression = expression_return(function.return_())
+        let expression = expression_return(function.return_().body())
             .expect("source function should have an expression return body");
         let mut state = crate::runtime::RuntimeState::new();
         let mut frame = Frame::new(function.frame_layout(), &mut state);
@@ -622,7 +626,7 @@ pub fn main() { function_function }
         );
 
         let function = plan.string_function_function(StringFunctionFunctionId(0));
-        let expression = expression_return(function.return_())
+        let expression = expression_return(function.return_().body())
             .expect("source function should have an expression return body");
         let mut state = crate::runtime::RuntimeState::new();
         let mut frame = Frame::new(function.frame_layout(), &mut state);
@@ -639,7 +643,7 @@ pub fn main() { function_function }
         );
 
         let function = plan.float_function_function(FloatFunctionFunctionId(0));
-        let expression = expression_return(function.return_())
+        let expression = expression_return(function.return_().body())
             .expect("source function should have an expression return body");
         let mut state = crate::runtime::RuntimeState::new();
         let mut frame = Frame::new(function.frame_layout(), &mut state);
@@ -656,7 +660,7 @@ pub fn main() { function_function }
         );
 
         let function = plan.bool_function_function(BoolFunctionFunctionId(0));
-        let expression = expression_return(function.return_())
+        let expression = expression_return(function.return_().body())
             .expect("source function should have an expression return body");
         let mut state = crate::runtime::RuntimeState::new();
         let mut frame = Frame::new(function.frame_layout(), &mut state);
@@ -673,7 +677,7 @@ pub fn main() { function_function }
         );
 
         let function = plan.nil_function_function(NilFunctionFunctionId(0));
-        let expression = expression_return(function.return_())
+        let expression = expression_return(function.return_().body())
             .expect("source function should have an expression return body");
         let mut state = crate::runtime::RuntimeState::new();
         let mut frame = Frame::new(function.frame_layout(), &mut state);
@@ -690,7 +694,7 @@ pub fn main() { function_function }
         );
 
         let function = plan.tuple_function_function(TupleFunctionFunctionId(0));
-        let expression = expression_return(function.return_())
+        let expression = expression_return(function.return_().body())
             .expect("source function should have an expression return body");
         let mut state = crate::runtime::RuntimeState::new();
         let mut frame = Frame::new(function.frame_layout(), &mut state);
@@ -708,7 +712,7 @@ pub fn main() { function_function }
 
         let function =
             plan.int_list_function_function(crate::plan::execution::IntListFunctionFunctionId(0));
-        let expression = expression_return(function.return_())
+        let expression = expression_return(function.return_().body())
             .expect("source function should have an expression return body");
         let mut state = crate::runtime::RuntimeState::new();
         let mut frame = Frame::new(function.frame_layout(), &mut state);
@@ -799,14 +803,14 @@ pub fn main() { Nil }
         );
 
         let function = plan.utf_codepoint_function_function(UtfCodepointFunctionFunctionId(0));
-        let expression = expression_return(function.return_())
+        let expression = expression_return(function.return_().body())
             .expect("source function should have an expression return body");
         let expected = EvaluatedUtfCodepointFunction::new(
             UtfCodepointFunctionId(0),
             Vec::new(),
             Vec::new(),
-            crate::runtime::evaluated::function_type(
-                &[],
+            crate::plan::execution::FunctionType::new(
+                Vec::new(),
                 crate::plan::execution::ValueType::UtfCodepoint,
             ),
         );
@@ -825,7 +829,10 @@ pub fn main() { Nil }
             IntFunctionId(0),
             Vec::new(),
             Vec::new(),
-            crate::runtime::evaluated::function_type(&[], crate::plan::execution::ValueType::Int),
+            crate::plan::execution::FunctionType::new(
+                Vec::new(),
+                crate::plan::execution::ValueType::Int,
+            ),
         );
         frame.set_tuple(
             TupleLocalId(0),
@@ -988,7 +995,8 @@ pub fn main() { function_function }
         assert_eq!(
             expression_return(
                 plan.int_function_function(IntFunctionFunctionId(0))
-                    .return_(),
+                    .return_()
+                    .body(),
             )
             .map(|_| ()),
             None,
@@ -996,7 +1004,8 @@ pub fn main() { function_function }
         assert_eq!(
             expression_return(
                 plan.string_function_function(StringFunctionFunctionId(0))
-                    .return_(),
+                    .return_()
+                    .body(),
             )
             .map(|_| ()),
             None,
@@ -1004,7 +1013,8 @@ pub fn main() { function_function }
         assert_eq!(
             expression_return(
                 plan.float_function_function(FloatFunctionFunctionId(0))
-                    .return_(),
+                    .return_()
+                    .body(),
             )
             .map(|_| ()),
             None,
@@ -1012,7 +1022,8 @@ pub fn main() { function_function }
         assert_eq!(
             expression_return(
                 plan.bool_function_function(BoolFunctionFunctionId(0))
-                    .return_(),
+                    .return_()
+                    .body(),
             )
             .map(|_| ()),
             None,
@@ -1020,7 +1031,8 @@ pub fn main() { function_function }
         assert_eq!(
             expression_return(
                 plan.nil_function_function(NilFunctionFunctionId(0))
-                    .return_(),
+                    .return_()
+                    .body(),
             )
             .map(|_| ()),
             None,
@@ -1028,7 +1040,8 @@ pub fn main() { function_function }
         assert_eq!(
             expression_return(
                 plan.tuple_function_function(TupleFunctionFunctionId(0))
-                    .return_(),
+                    .return_()
+                    .body(),
             )
             .map(|_| ()),
             None,
@@ -1038,7 +1051,8 @@ pub fn main() { function_function }
                 plan.int_list_function_function(crate::plan::execution::IntListFunctionFunctionId(
                     0
                 ))
-                .return_(),
+                .return_()
+                .body(),
             )
             .map(|_| ()),
             None,
@@ -1083,7 +1097,8 @@ pub fn main() { Nil }
         assert_eq!(
             expression_return(
                 plan.utf_codepoint_function_function(UtfCodepointFunctionFunctionId(0))
-                    .return_(),
+                    .return_()
+                    .body(),
             )
             .map(|_| ()),
             None,

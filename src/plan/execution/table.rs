@@ -183,7 +183,7 @@ impl FunctionTables {
 
     #[cfg(test)]
     pub(super) fn custom_function_id(&self, index: usize) -> CustomFunctionId {
-        CustomFunctionId::new(index, self.custom_functions[index].return_().type_id())
+        CustomFunctionId::new(index, *self.custom_functions[index].return_().shape())
     }
 
     pub(super) fn bool_function(&self, id: BoolFunctionId) -> &ExecutableFunction<BoolReturn> {
@@ -315,6 +315,28 @@ impl FunctionTables {
         id: &CustomFunctionFunctionId,
     ) -> &ExecutableFunction<CustomFunctionReturn> {
         &self.custom_function_functions[id.index()]
+    }
+
+    #[cfg(test)]
+    pub(super) fn custom_function_function_id(&self, index: usize) -> CustomFunctionFunctionId {
+        CustomFunctionFunctionId::new(
+            index,
+            self.custom_function_functions[index]
+                .return_()
+                .type_()
+                .clone(),
+        )
+    }
+
+    #[cfg(test)]
+    pub(super) fn function_function_function_id(&self, index: usize) -> FunctionFunctionFunctionId {
+        FunctionFunctionFunctionId::new(
+            index,
+            self.function_function_functions[index]
+                .return_()
+                .type_()
+                .clone(),
+        )
     }
 
     pub(super) fn bool_function_function(

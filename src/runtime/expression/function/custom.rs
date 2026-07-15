@@ -5,7 +5,7 @@ use crate::plan::execution::{
     FunctionReturnFamily,
 };
 use crate::runtime::evaluated::{
-    EvaluatedCustomFunction, EvaluatedFunctionValueKind, EvaluatedValue, function_type,
+    EvaluatedCustomFunction, EvaluatedFunctionValueKind, EvaluatedValue,
 };
 use crate::runtime::expression::{
     eval_bool_expr, eval_float_expr, eval_int_expr, eval_panic_expr, eval_string_expr,
@@ -43,16 +43,17 @@ pub(in crate::runtime) fn eval_custom_function_expr_kind(
         ),
         CustomFunctionExprKind::Reference(reference) => Ok(EvaluatedCustomFunction::function(
             *reference.function(),
-            reference.params().to_vec(),
+            reference.param_locals(),
             Vec::new(),
-            function_type(
+            crate::runtime::evaluated::function_type_from_slots(
+                plan,
                 reference.params(),
-                crate::plan::execution::ValueType::Custom(type_.return_()),
+                crate::plan::execution::ValueType::Custom(type_.return_().type_id()),
             ),
         )),
         CustomFunctionExprKind::Closure(template) => Ok(EvaluatedCustomFunction::function(
             *template.function(),
-            template.params().to_vec(),
+            template.param_locals(),
             function::eval_capture_args(plan, state, frame, template.captures())?,
             type_.to_function_type(),
         )),

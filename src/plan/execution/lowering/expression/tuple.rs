@@ -11,7 +11,7 @@ pub(in crate::plan::execution::lowering) fn tuple_expr(
     use execution::TupleExprKind as E;
     use module::TupleExprKind as M;
 
-    let (type_, kind) = expression.into_parts();
+    let (type_, _shape, kind) = expression.into_parts();
     let kind = match kind {
         M::Value(values) => E::Value(
             values

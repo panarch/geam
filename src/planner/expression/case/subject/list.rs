@@ -1,13 +1,13 @@
-use super::super::super::plan_expr_with_expected_source_stop_type;
+use super::super::super::plan_expr_with_expected_source_stop_shape;
 use super::super::super::{list_index_expr, tuple_index_expr};
 use super::super::invalid_case_shape;
 use super::{
     CaseClause, CaseSubjectVariants, OrderedCaseCandidateInput, OrderedCasePattern,
-    case_return_type,
+    case_return_shape,
 };
 use crate::plan::{
     BoolExpr, CustomBindingPattern, CustomExpr, Expr, ExprKind, FloatExpr, IntExpr, ListExpr,
-    ListLocal, Step, StringExpr, ValueType,
+    ListLocal, Step, StringExpr, ValueShape, ValueType,
 };
 use crate::planner::context::PlanContext;
 use crate::planner::error::{InvalidCaseShapeReason, PlanError, UnsupportedExpressionKind};
@@ -21,14 +21,14 @@ pub(super) fn plan(
     type_: Arc<Type>,
     subject: TypedExpr,
     element_type: ValueType,
+    subject_shape: ValueShape,
     subject_variants: CaseSubjectVariants,
     clauses: Vec<CaseClause>,
     context: &mut PlanContext<'_>,
 ) -> Result<Expr, PlanError> {
     let subject_value_type = ValueType::List(Box::new(element_type.clone()));
-    let subject =
-        plan_expr_with_expected_source_stop_type(subject, subject_value_type.clone(), context)?;
-    let return_type = case_return_type(type_.as_ref())?;
+    let subject = plan_expr_with_expected_source_stop_shape(subject, subject_shape, context)?;
+    let return_shape = case_return_shape(type_.as_ref())?;
 
     let ExprKind::List(subject) = subject.into_kind() else {
         return Err(invalid_case_shape(
@@ -42,7 +42,7 @@ pub(super) fn plan(
             ordered_clauses.push(super::plan_ordered_case_candidate(
                 OrderedCaseCandidateInput {
                     case_type: type_.as_ref(),
-                    return_type: &return_type,
+                    return_shape: &return_shape,
                     then: clause.then.clone(),
                     guard: clause.guard.clone(),
                 },
@@ -443,7 +443,7 @@ fn plan_tuple_case_pattern(
         .zip(element_variants)
         .enumerate()
     {
-        let value = tuple_index_expr(tuple.clone(), index, type_.clone());
+        let value = tuple_index_expr(tuple.clone(), index, type_.clone())?;
         patterns.push(plan_list_case_pattern_with_context(
             pattern, value, type_, variants, context,
         )?);
@@ -1686,6 +1686,35 @@ pub fn main() {
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::CaseShape {
                     reason: InvalidCaseShapeReason::PatternTypeMismatch,
+                },
+            }),
+        );
+
+        let conflicting_shape = Expr::tuple(
+            crate::plan::TupleExpr::local_get(
+                crate::plan::TupleLocalId(0),
+                "pair".into(),
+                vec![ValueType::Int],
+            )
+            .with_shape(vec![crate::plan::ValueShape::String].into_boxed_slice()),
+        );
+        assert_eq!(
+            super::plan_list_case_pattern(
+                gleam_core::ast::Pattern::Tuple {
+                    location: dummy_span(),
+                    elements: vec![gleam_core::ast::Pattern::Discard {
+                        location: dummy_span(),
+                        name: "_".into(),
+                        type_: gleam_core::type_::int(),
+                    }],
+                },
+                conflicting_shape,
+                ValueType::Tuple(vec![ValueType::Int]),
+            ),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionType {
+                    expected: InvalidExpressionType::Int,
+                    actual: InvalidExpressionType::String,
                 },
             }),
         );

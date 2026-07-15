@@ -1,7 +1,7 @@
 mod free_variables;
 
 use crate::plan::{
-    CaptureArg, Expr, FunctionExpr, FunctionType, ParamLocal, RuntimeFunctionId, ValueType,
+    CaptureArg, Expr, FunctionExpr, FunctionShape, FunctionType, RuntimeFunctionId, ValueShape,
 };
 use crate::planner::context::PlanContext;
 use crate::planner::error::{
@@ -35,15 +35,16 @@ pub(super) fn plan_anonymous(
         }
     }
 
-    let function_type = anonymous_function_type(type_.as_ref())?;
+    let function_shape = anonymous_function_shape(type_.as_ref())?;
+    let function_type = function_shape.type_();
     let error_name = context.anonymous_function_error_name();
     let params = function_params(error_name.clone(), &arguments, ParamLabelPolicy::Reject)?;
     validate_argument_types(&error_name, &function_type, &params)?;
-    plan_anonymous_with_valid_arguments(function_type, params, arguments, body, context)
+    plan_anonymous_with_valid_arguments(function_shape, params, arguments, body, context)
 }
 
 fn plan_anonymous_with_valid_arguments(
-    function_type: FunctionType,
+    function_shape: FunctionShape,
     params: Vec<crate::planner::context::FunctionParam>,
     arguments: Vec<TypedArg>,
     body: Vec1<TypedStatement>,
@@ -51,25 +52,25 @@ fn plan_anonymous_with_valid_arguments(
 ) -> Result<Expr, PlanError> {
     let free_names = free_variables::anonymous_free_variables(&arguments, &body);
     let captures = context.capture_bindings(&free_names)?;
-    plan_anonymous_with_captures(function_type, params, captures, body, context)
+    plan_anonymous_with_captures(function_shape, params, captures, body, context)
 }
 
 fn plan_anonymous_with_captures(
-    function_type: FunctionType,
+    function_shape: FunctionShape,
     params: Vec<crate::planner::context::FunctionParam>,
     captures: Vec<crate::planner::context::CaptureBinding>,
     body: Vec1<TypedStatement>,
     context: &mut PlanContext<'_>,
 ) -> Result<Expr, PlanError> {
-    let return_type = function_type.return_().clone();
-    let runtime_id = context.allocate_anonymous_runtime_id(&return_type);
+    let return_shape = function_shape.return_shape().clone();
+    let runtime_id = context.allocate_anonymous_runtime_id_shape(&return_shape);
     let name = context.reserve_anonymous_function_name();
 
     let planned = {
         let mut body_context = context.anonymous_function_context(name.clone());
         plan_anonymous_function_body(
             &name,
-            &return_type,
+            &return_shape,
             &runtime_id,
             &params,
             captures,
@@ -79,20 +80,24 @@ fn plan_anonymous_with_captures(
     };
 
     let planned = planned?;
-    let (name, info) = context.allocate_anonymous_function(name, return_type, params, runtime_id);
+    let (name, info) =
+        context.allocate_anonymous_function_shape(name, return_shape, params, runtime_id);
     let value = if planned.captures.is_empty() {
         FunctionExpr::reference(info.reference())
     } else {
         closure_expr(
             &info.runtime_id,
-            info.param_locals(),
+            info.param_slots(),
             planned.captures.clone(),
-            function_type,
+            &function_shape,
         )
     };
     let function = anonymous_function_plan(info, name, planned);
     context.push_anonymous_function(function);
-    Ok(Expr::function(value))
+    value
+        .with_resolved_shape(function_shape)
+        .map(Expr::function)
+        .ok_or_else(invalid_function_literal_kind_error)
 }
 
 fn validate_capture_literal(
@@ -158,37 +163,43 @@ fn invalid_capture_literal_shape() -> PlanError {
 
 fn closure_expr(
     runtime_id: &RuntimeFunctionId,
-    params: Vec<ParamLocal>,
+    params: Vec<crate::plan::ParamSlot>,
     captures: Vec<CaptureArg>,
-    type_: FunctionType,
+    shape: &FunctionShape,
 ) -> FunctionExpr {
+    let type_ = shape.type_();
     match runtime_id {
         RuntimeFunctionId::Int(runtime_id) => FunctionExpr::int(
-            crate::plan::IntFunctionExpr::closure(*runtime_id, params, captures, type_),
+            crate::plan::IntFunctionExpr::closure_slots(*runtime_id, params, captures, type_),
         ),
         RuntimeFunctionId::String(runtime_id) => FunctionExpr::string(
-            crate::plan::StringFunctionExpr::closure(*runtime_id, params, captures, type_),
+            crate::plan::StringFunctionExpr::closure_slots(*runtime_id, params, captures, type_),
         ),
         RuntimeFunctionId::BitArray(runtime_id) => FunctionExpr::bit_array(
-            crate::plan::BitArrayFunctionExpr::closure(*runtime_id, params, captures, type_),
+            crate::plan::BitArrayFunctionExpr::closure_slots(*runtime_id, params, captures, type_),
         ),
-        RuntimeFunctionId::UtfCodepoint(runtime_id) => FunctionExpr::utf_codepoint(
-            crate::plan::UtfCodepointFunctionExpr::closure(*runtime_id, params, captures, type_),
-        ),
+        RuntimeFunctionId::UtfCodepoint(runtime_id) => {
+            FunctionExpr::utf_codepoint(crate::plan::UtfCodepointFunctionExpr::closure_slots(
+                *runtime_id,
+                params,
+                captures,
+                type_,
+            ))
+        }
         RuntimeFunctionId::Custom(id) => FunctionExpr::custom(
-            crate::plan::CustomFunctionExpr::closure(id.clone(), params, captures),
+            crate::plan::CustomFunctionExpr::closure_slots(id.clone(), params, captures),
         ),
         RuntimeFunctionId::Float(runtime_id) => FunctionExpr::float(
-            crate::plan::FloatFunctionExpr::closure(*runtime_id, params, captures, type_),
+            crate::plan::FloatFunctionExpr::closure_slots(*runtime_id, params, captures, type_),
         ),
         RuntimeFunctionId::Bool(runtime_id) => FunctionExpr::bool(
-            crate::plan::BoolFunctionExpr::closure(*runtime_id, params, captures, type_),
+            crate::plan::BoolFunctionExpr::closure_slots(*runtime_id, params, captures, type_),
         ),
         RuntimeFunctionId::Nil(runtime_id) => FunctionExpr::nil(
-            crate::plan::NilFunctionExpr::closure(*runtime_id, params, captures, type_),
+            crate::plan::NilFunctionExpr::closure_slots(*runtime_id, params, captures, type_),
         ),
         RuntimeFunctionId::Tuple { id, return_type } => {
-            FunctionExpr::tuple(crate::plan::TupleFunctionExpr::closure(
+            FunctionExpr::tuple(crate::plan::TupleFunctionExpr::closure_slots(
                 *id,
                 params,
                 captures,
@@ -196,17 +207,15 @@ fn closure_expr(
                 return_type.clone(),
             ))
         }
-        RuntimeFunctionId::List(id) => FunctionExpr::list(crate::plan::ListFunctionExpr::closure(
-            id.clone(),
-            params,
-            captures,
-        )),
+        RuntimeFunctionId::List(id) => FunctionExpr::list(
+            crate::plan::ListFunctionExpr::closure_slots(id.clone(), params, captures),
+        ),
         RuntimeFunctionId::Function { id, return_type } => {
-            let callable_type = crate::plan::FunctionFunctionType::new(
-                type_.argument_types().to_vec(),
-                return_type.clone(),
+            let callable_type = crate::plan::FunctionFunctionType::from_shapes(
+                shape.argument_shapes().to_vec(),
+                FunctionShape::from_function_type(return_type.clone()),
             );
-            FunctionExpr::function(crate::plan::FunctionFunctionExpr::closure(
+            FunctionExpr::function(crate::plan::FunctionFunctionExpr::closure_slots(
                 id.clone(),
                 params,
                 captures,
@@ -216,64 +225,64 @@ fn closure_expr(
     }
 }
 
-fn anonymous_function_type(type_: &Type) -> Result<FunctionType, PlanError> {
-    match ValueType::from_gleam(type_) {
-        Some(ValueType::Function(type_)) => Ok(*type_),
-        Some(ValueType::Int) => Err(PlanError::InvalidTypedAst {
+fn anonymous_function_shape(type_: &Type) -> Result<FunctionShape, PlanError> {
+    match ValueShape::from_gleam(type_) {
+        Some(ValueShape::Function(shape)) => Ok(*shape),
+        Some(ValueShape::Int) => Err(PlanError::InvalidTypedAst {
             reason: InvalidTypedAstReason::ExpressionType {
                 expected: InvalidExpressionType::Function,
                 actual: InvalidExpressionType::Int,
             },
         }),
-        Some(ValueType::String) => Err(PlanError::InvalidTypedAst {
+        Some(ValueShape::String) => Err(PlanError::InvalidTypedAst {
             reason: InvalidTypedAstReason::ExpressionType {
                 expected: InvalidExpressionType::Function,
                 actual: InvalidExpressionType::String,
             },
         }),
-        Some(ValueType::BitArray) => Err(PlanError::InvalidTypedAst {
+        Some(ValueShape::BitArray) => Err(PlanError::InvalidTypedAst {
             reason: InvalidTypedAstReason::ExpressionType {
                 expected: InvalidExpressionType::Function,
                 actual: InvalidExpressionType::BitArray,
             },
         }),
-        Some(ValueType::UtfCodepoint) => Err(PlanError::InvalidTypedAst {
+        Some(ValueShape::UtfCodepoint) => Err(PlanError::InvalidTypedAst {
             reason: InvalidTypedAstReason::ExpressionType {
                 expected: InvalidExpressionType::Function,
                 actual: InvalidExpressionType::UtfCodepoint,
             },
         }),
-        Some(ValueType::Custom(_)) => Err(PlanError::InvalidTypedAst {
+        Some(ValueShape::Custom(_)) => Err(PlanError::InvalidTypedAst {
             reason: InvalidTypedAstReason::ExpressionType {
                 expected: InvalidExpressionType::Function,
                 actual: InvalidExpressionType::Custom,
             },
         }),
-        Some(ValueType::Float) => Err(PlanError::InvalidTypedAst {
+        Some(ValueShape::Float) => Err(PlanError::InvalidTypedAst {
             reason: InvalidTypedAstReason::ExpressionType {
                 expected: InvalidExpressionType::Function,
                 actual: InvalidExpressionType::Float,
             },
         }),
-        Some(ValueType::Bool) => Err(PlanError::InvalidTypedAst {
+        Some(ValueShape::Bool) => Err(PlanError::InvalidTypedAst {
             reason: InvalidTypedAstReason::ExpressionType {
                 expected: InvalidExpressionType::Function,
                 actual: InvalidExpressionType::Bool,
             },
         }),
-        Some(ValueType::Nil) => Err(PlanError::InvalidTypedAst {
+        Some(ValueShape::Nil) => Err(PlanError::InvalidTypedAst {
             reason: InvalidTypedAstReason::ExpressionType {
                 expected: InvalidExpressionType::Function,
                 actual: InvalidExpressionType::Nil,
             },
         }),
-        Some(ValueType::Tuple(_)) => Err(PlanError::InvalidTypedAst {
+        Some(ValueShape::Tuple(_)) => Err(PlanError::InvalidTypedAst {
             reason: InvalidTypedAstReason::ExpressionType {
                 expected: InvalidExpressionType::Function,
                 actual: InvalidExpressionType::Tuple,
             },
         }),
-        Some(ValueType::List(_)) => Err(PlanError::InvalidTypedAst {
+        Some(ValueShape::List(_)) => Err(PlanError::InvalidTypedAst {
             reason: InvalidTypedAstReason::ExpressionType {
                 expected: InvalidExpressionType::Function,
                 actual: InvalidExpressionType::List,
@@ -303,7 +312,7 @@ fn validate_argument_types(
 ) -> Result<(), PlanError> {
     let actual = params
         .iter()
-        .map(|param| param.local.value_type())
+        .map(|param| param.local().value_type())
         .collect::<Vec<_>>();
 
     if actual == type_.argument_types() {
@@ -321,9 +330,9 @@ fn validate_argument_types(
 #[cfg(test)]
 mod tests {
     use crate::plan::{
-        Expr, FunctionFunctionId, FunctionType, IntExpr, IntFunctionFunctionId, IntFunctionId,
-        IntLocalId, LocalId, PanicExpr, PanicSite, ParamLocal, ReturnExpr, RuntimeFunctionId,
-        SourceSpan, StringExpr, TupleFunctionId, ValueType,
+        Expr, FunctionFunctionId, FunctionShape, FunctionType, IntExpr, IntFunctionFunctionId,
+        IntFunctionId, IntLocalId, LocalId, PanicExpr, PanicSite, ParamLocal, ReturnExpr,
+        RuntimeFunctionId, SourceSpan, StringExpr, TupleFunctionId, ValueType,
     };
     use crate::planner::dsl::{
         call_int_function, capture_int, capture_tuple, function, function_function_closure,
@@ -616,9 +625,12 @@ pub fn main() {
                 id: TupleFunctionId(0),
                 return_type: return_type.clone(),
             },
-            Vec::<ParamLocal>::new(),
+            Vec::<crate::plan::ParamSlot>::new(),
             Vec::new(),
-            FunctionType::new(Vec::new(), ValueType::Tuple(return_type.clone())),
+            &FunctionShape::from_function_type(FunctionType::new(
+                Vec::new(),
+                ValueType::Tuple(return_type.clone()),
+            )),
         );
 
         assert_eq!(

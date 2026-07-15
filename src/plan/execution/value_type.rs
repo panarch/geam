@@ -103,14 +103,16 @@ pub(crate) struct FunctionType {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub(crate) struct CustomFunctionType {
-    arguments: Vec<ValueType>,
-    return_: CustomTypeId,
+    type_: FunctionType,
+    arguments: Box<[super::ValueShapeId]>,
+    return_: super::CustomValueShape,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub(crate) struct FunctionFunctionType {
-    arguments: Vec<ValueType>,
-    return_: Box<FunctionType>,
+    type_: FunctionType,
+    arguments: Box<[super::ValueShapeId]>,
+    return_: super::FunctionShape,
 }
 
 #[derive(Default)]
@@ -194,38 +196,52 @@ impl FunctionType {
 }
 
 impl CustomFunctionType {
-    pub(in crate::plan::execution) fn new(
-        arguments: Vec<ValueType>,
-        return_: CustomTypeId,
+    pub(in crate::plan::execution) fn from_shapes(
+        type_: FunctionType,
+        arguments: Vec<super::ValueShapeId>,
+        return_: super::CustomValueShape,
     ) -> Self {
-        Self { arguments, return_ }
+        Self {
+            type_,
+            arguments: arguments.into_boxed_slice(),
+            return_,
+        }
     }
 
-    pub(crate) fn return_(&self) -> CustomTypeId {
-        self.return_
+    pub(crate) fn return_(&self) -> &super::CustomValueShape {
+        &self.return_
     }
 
     pub(crate) fn to_function_type(&self) -> FunctionType {
-        FunctionType::new(self.arguments.clone(), ValueType::Custom(self.return_))
+        self.type_.clone()
     }
 }
 
 impl FunctionFunctionType {
-    pub(in crate::plan::execution) fn new(
-        arguments: Vec<ValueType>,
-        return_: FunctionType,
+    pub(in crate::plan::execution) fn from_shapes(
+        type_: FunctionType,
+        arguments: Vec<super::ValueShapeId>,
+        return_: super::FunctionShape,
     ) -> Self {
         Self {
-            arguments,
-            return_: Box::new(return_),
+            type_,
+            arguments: arguments.into_boxed_slice(),
+            return_,
         }
     }
 
+    #[cfg(test)]
+    pub(crate) fn argument_shapes(&self) -> &[super::ValueShapeId] {
+        &self.arguments
+    }
+
+    #[cfg(test)]
+    pub(crate) fn return_shape(&self) -> &super::FunctionShape {
+        &self.return_
+    }
+
     pub(crate) fn to_function_type(&self) -> FunctionType {
-        FunctionType::new(
-            self.arguments.clone(),
-            ValueType::Function(self.return_.clone()),
-        )
+        self.type_.clone()
     }
 }
 

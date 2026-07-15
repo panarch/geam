@@ -23,18 +23,20 @@ pub(in crate::runtime) fn eval_bit_array_function_expr(
     match expression.kind() {
         BitArrayFunctionExprKind::Reference(reference) => Ok(EvaluatedBitArrayFunction::new(
             *reference.function(),
-            reference.params().to_vec(),
+            reference.param_locals(),
             Vec::new(),
-            crate::runtime::evaluated::function_type(
+            crate::runtime::evaluated::function_type_from_slots(
+                plan,
                 reference.params(),
                 crate::plan::execution::ValueType::BitArray,
             ),
         )),
         BitArrayFunctionExprKind::Closure(template) => Ok(EvaluatedBitArrayFunction::new(
             *template.function(),
-            template.params().to_vec(),
+            template.param_locals(),
             function::eval_capture_args(plan, state, frame, template.captures())?,
-            crate::runtime::evaluated::function_type(
+            crate::runtime::evaluated::function_type_from_slots(
+                plan,
                 template.params(),
                 crate::plan::execution::ValueType::BitArray,
             ),

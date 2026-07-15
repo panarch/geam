@@ -10,6 +10,7 @@ use std::marker::PhantomData;
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct TypedListExpr<Item: ListItem> {
+    item_shape: crate::plan::ValueShape,
     pub(super) item: Item,
     pub(super) kind: TypedListExprKind<Item>,
 }
@@ -129,7 +130,24 @@ impl<Item: ListItem> ListIndexSource<Item> {
 
 impl<Item: ListItem> TypedListExpr<Item> {
     fn new(item: Item, kind: TypedListExprKind<Item>) -> Self {
-        Self { item, kind }
+        let item_shape = crate::plan::ValueShape::from_value_type(item.value_type());
+        Self {
+            item_shape,
+            item,
+            kind,
+        }
+    }
+
+    fn from_shape_item_and_kind(
+        item_shape: crate::plan::ValueShape,
+        item: Item,
+        kind: TypedListExprKind<Item>,
+    ) -> Self {
+        Self {
+            item_shape,
+            item,
+            kind,
+        }
     }
 
     pub(crate) fn item(&self) -> &Item {
@@ -144,16 +162,27 @@ impl<Item: ListItem> TypedListExpr<Item> {
         &self.kind
     }
 
-    fn from_item_and_kind(item: Item, kind: TypedListExprKind<Item>) -> Self {
-        Self::new(item, kind)
+    pub(crate) fn item_shape(&self) -> &crate::plan::ValueShape {
+        &self.item_shape
+    }
+
+    pub(super) fn with_item_shape(mut self, item_shape: crate::plan::ValueShape) -> Self {
+        self.item_shape = item_shape;
+        self
     }
 
     pub(crate) fn into_item_and_kind(self) -> (Item, TypedListExprKind<Item>) {
         (self.item, self.kind)
     }
 
+    pub(crate) fn into_shape_item_and_kind(
+        self,
+    ) -> (crate::plan::ValueShape, Item, TypedListExprKind<Item>) {
+        (self.item_shape, self.item, self.kind)
+    }
+
     pub(crate) fn into_return_kind(self) -> TypedListReturnKind<Item> {
-        let (item, kind) = self.into_item_and_kind();
+        let (item_shape, item, kind) = self.into_shape_item_and_kind();
         match kind {
             TypedListExprKind::Call { function, args } => {
                 TypedListReturnKind::Call { function, args }
@@ -164,8 +193,8 @@ impl<Item: ListItem> TypedListExpr<Item> {
                 false_,
             } => TypedListReturnKind::BoolCase {
                 subject: *subject,
-                true_: Self::from_item_and_kind(item.clone(), *true_),
-                false_: Self::from_item_and_kind(item, *false_),
+                true_: Self::from_shape_item_and_kind(item_shape.clone(), item.clone(), *true_),
+                false_: Self::from_shape_item_and_kind(item_shape, item, *false_),
             },
             TypedListExprKind::IntCase {
                 subject,
@@ -175,9 +204,18 @@ impl<Item: ListItem> TypedListExpr<Item> {
                 subject: *subject,
                 clauses: clauses
                     .into_iter()
-                    .map(|(value, branch)| (value, Self::from_item_and_kind(item.clone(), branch)))
+                    .map(|(value, branch)| {
+                        (
+                            value,
+                            Self::from_shape_item_and_kind(
+                                item_shape.clone(),
+                                item.clone(),
+                                branch,
+                            ),
+                        )
+                    })
                     .collect(),
-                fallback: Self::from_item_and_kind(item, *fallback),
+                fallback: Self::from_shape_item_and_kind(item_shape, item, *fallback),
             },
             TypedListExprKind::StringCase {
                 subject,
@@ -187,9 +225,18 @@ impl<Item: ListItem> TypedListExpr<Item> {
                 subject: *subject,
                 clauses: clauses
                     .into_iter()
-                    .map(|(value, branch)| (value, Self::from_item_and_kind(item.clone(), branch)))
+                    .map(|(value, branch)| {
+                        (
+                            value,
+                            Self::from_shape_item_and_kind(
+                                item_shape.clone(),
+                                item.clone(),
+                                branch,
+                            ),
+                        )
+                    })
                     .collect(),
-                fallback: Self::from_item_and_kind(item, *fallback),
+                fallback: Self::from_shape_item_and_kind(item_shape, item, *fallback),
             },
             TypedListExprKind::FloatCase {
                 subject,
@@ -199,15 +246,26 @@ impl<Item: ListItem> TypedListExpr<Item> {
                 subject: *subject,
                 clauses: clauses
                     .into_iter()
-                    .map(|(value, branch)| (value, Self::from_item_and_kind(item.clone(), branch)))
+                    .map(|(value, branch)| {
+                        (
+                            value,
+                            Self::from_shape_item_and_kind(
+                                item_shape.clone(),
+                                item.clone(),
+                                branch,
+                            ),
+                        )
+                    })
                     .collect(),
-                fallback: Self::from_item_and_kind(item, *fallback),
+                fallback: Self::from_shape_item_and_kind(item_shape, item, *fallback),
             },
             TypedListExprKind::Block { steps, return_ } => TypedListReturnKind::Block {
                 steps,
-                return_: Self::from_item_and_kind(item, *return_),
+                return_: Self::from_shape_item_and_kind(item_shape, item, *return_),
             },
-            kind => TypedListReturnKind::Expr(Self::from_item_and_kind(item, kind)),
+            kind => {
+                TypedListReturnKind::Expr(Self::from_shape_item_and_kind(item_shape, item, kind))
+            }
         }
     }
 
@@ -216,8 +274,9 @@ impl<Item: ListItem> TypedListExpr<Item> {
     }
 
     pub(super) fn spread(elements: Vec<Item::ElementExpr>, tail: TypedListExpr<Item>) -> Self {
-        let (item, tail) = tail.into_item_and_kind();
-        Self::new(
+        let (item_shape, item, tail) = tail.into_shape_item_and_kind();
+        Self::from_shape_item_and_kind(
+            item_shape,
             item,
             TypedListExprKind::Spread {
                 elements,
@@ -267,8 +326,9 @@ impl<Item: ListItem> TypedListExpr<Item> {
     }
 
     pub(super) fn drop_first(list: TypedListExpr<Item>, count: usize) -> Self {
-        let (item, list) = list.into_item_and_kind();
-        Self::new(
+        let (item_shape, item, list) = list.into_shape_item_and_kind();
+        Self::from_shape_item_and_kind(
+            item_shape,
             item,
             TypedListExprKind::DropFirst {
                 list: Box::new(list),
@@ -286,9 +346,10 @@ impl<Item: ListItem> TypedListExpr<Item> {
         true_: TypedListExpr<Item>,
         false_: TypedListExpr<Item>,
     ) -> Self {
-        let (item, true_) = true_.into_item_and_kind();
+        let (item_shape, item, true_) = true_.into_shape_item_and_kind();
         let (_, false_) = false_.into_item_and_kind();
-        Self::new(
+        Self::from_shape_item_and_kind(
+            item_shape,
             item,
             TypedListExprKind::BoolCase {
                 subject: Box::new(subject),
@@ -310,8 +371,9 @@ impl<Item: ListItem> TypedListExpr<Item> {
                 (pattern, branch)
             })
             .collect();
-        let (item, fallback) = fallback.into_item_and_kind();
-        Self::new(
+        let (item_shape, item, fallback) = fallback.into_shape_item_and_kind();
+        Self::from_shape_item_and_kind(
+            item_shape,
             item,
             TypedListExprKind::IntCase {
                 subject: Box::new(subject),
@@ -333,8 +395,9 @@ impl<Item: ListItem> TypedListExpr<Item> {
                 (pattern, branch)
             })
             .collect();
-        let (item, fallback) = fallback.into_item_and_kind();
-        Self::new(
+        let (item_shape, item, fallback) = fallback.into_shape_item_and_kind();
+        Self::from_shape_item_and_kind(
+            item_shape,
             item,
             TypedListExprKind::StringCase {
                 subject: Box::new(subject),
@@ -356,8 +419,9 @@ impl<Item: ListItem> TypedListExpr<Item> {
                 (pattern, branch)
             })
             .collect();
-        let (item, fallback) = fallback.into_item_and_kind();
-        Self::new(
+        let (item_shape, item, fallback) = fallback.into_shape_item_and_kind();
+        Self::from_shape_item_and_kind(
+            item_shape,
             item,
             TypedListExprKind::FloatCase {
                 subject: Box::new(subject),
@@ -368,8 +432,9 @@ impl<Item: ListItem> TypedListExpr<Item> {
     }
 
     pub(super) fn block(steps: Vec<Step>, return_: TypedListExpr<Item>) -> Self {
-        let (item, return_) = return_.into_item_and_kind();
-        Self::new(
+        let (item_shape, item, return_) = return_.into_shape_item_and_kind();
+        Self::from_shape_item_and_kind(
+            item_shape,
             item,
             TypedListExprKind::Block {
                 steps,

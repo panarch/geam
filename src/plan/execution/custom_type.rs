@@ -1,7 +1,7 @@
 use super::{CustomTypeId, ValueType};
 use crate::plan;
 use ecow::EcoString;
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 
 pub(super) struct CustomTypeTable {
     types: Vec<CustomTypeDescriptor>,
@@ -9,7 +9,7 @@ pub(super) struct CustomTypeTable {
 
 pub(super) struct CustomTypeDescriptor {
     type_: plan::CustomType,
-    constructors: HashMap<usize, CustomConstructorDescriptor>,
+    constructors: BTreeMap<usize, CustomConstructorDescriptor>,
 }
 
 pub(crate) struct CustomConstructorDescriptor {
@@ -39,6 +39,14 @@ impl CustomTypeTable {
         &self.types[id.type_id().index()].constructors[&id.index()]
     }
 
+    pub(crate) fn constructor_names(&self, id: CustomTypeId) -> Vec<EcoString> {
+        self.types[id.index()]
+            .constructors
+            .values()
+            .map(|constructor| constructor.name().clone())
+            .collect()
+    }
+
     #[cfg(test)]
     pub(crate) fn len(&self) -> usize {
         self.types.len()
@@ -58,7 +66,7 @@ impl CustomTypeDescriptor {
     pub(super) fn new(type_: plan::CustomType) -> Self {
         Self {
             type_,
-            constructors: HashMap::new(),
+            constructors: BTreeMap::new(),
         }
     }
 

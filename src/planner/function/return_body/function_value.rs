@@ -17,80 +17,58 @@ pub(super) fn function_returning_function_expr(
     runtime_id: FunctionFunctionId,
     actual: FunctionExpr,
 ) -> Result<ReturnExpr, PlanError> {
-    match (runtime_id, actual.into_kind()) {
-        (FunctionFunctionId::Int(runtime_id), FunctionExprKind::Int(actual)) => {
-            let type_ = actual.type_().clone();
-            Ok(ReturnExpr::int_function_body(
-                runtime_id,
-                type_,
-                int_function_return(actual),
-            ))
-        }
+    let (shape, kind) = actual.into_parts();
+    match (runtime_id, kind) {
+        (FunctionFunctionId::Int(runtime_id), FunctionExprKind::Int(actual)) => Ok(
+            ReturnExpr::int_function_shape_body(runtime_id, shape, int_function_return(actual)),
+        ),
         (FunctionFunctionId::String(runtime_id), FunctionExprKind::String(actual)) => {
-            let type_ = actual.type_().clone();
-            Ok(ReturnExpr::string_function_body(
+            Ok(ReturnExpr::string_function_shape_body(
                 runtime_id,
-                type_,
+                shape,
                 string_function_return(actual),
             ))
         }
         (FunctionFunctionId::BitArray(runtime_id), FunctionExprKind::BitArray(actual)) => {
-            let type_ = actual.type_().clone();
-            Ok(ReturnExpr::bit_array_function_body(
+            Ok(ReturnExpr::bit_array_function_shape_body(
                 runtime_id,
-                type_,
+                shape,
                 bit_array_function_return(actual),
             ))
         }
         (FunctionFunctionId::UtfCodepoint(runtime_id), FunctionExprKind::UtfCodepoint(actual)) => {
-            let type_ = actual.type_().clone();
-            Ok(ReturnExpr::utf_codepoint_function_body(
+            Ok(ReturnExpr::utf_codepoint_function_shape_body(
                 runtime_id,
-                type_,
+                shape,
                 utf_codepoint_function_return(actual),
             ))
         }
-        (FunctionFunctionId::Custom(runtime_id), FunctionExprKind::Custom(actual)) => Ok(
-            ReturnExpr::custom_function_body(runtime_id.index(), custom_function_return(actual)),
+        (FunctionFunctionId::Custom(runtime_id), FunctionExprKind::Custom(actual)) => {
+            Ok(ReturnExpr::custom_function_shape_body(
+                runtime_id.index(),
+                shape,
+                custom_function_return(actual),
+            ))
+        }
+        (FunctionFunctionId::Float(runtime_id), FunctionExprKind::Float(actual)) => Ok(
+            ReturnExpr::float_function_shape_body(runtime_id, shape, float_function_return(actual)),
         ),
-        (FunctionFunctionId::Float(runtime_id), FunctionExprKind::Float(actual)) => {
-            let type_ = actual.type_().clone();
-            Ok(ReturnExpr::float_function_body(
-                runtime_id,
-                type_,
-                float_function_return(actual),
-            ))
-        }
-        (FunctionFunctionId::Bool(runtime_id), FunctionExprKind::Bool(actual)) => {
-            let type_ = actual.type_().clone();
-            Ok(ReturnExpr::bool_function_body(
-                runtime_id,
-                type_,
-                bool_function_return(actual),
-            ))
-        }
-        (FunctionFunctionId::Nil(runtime_id), FunctionExprKind::Nil(actual)) => {
-            let type_ = actual.type_().clone();
-            Ok(ReturnExpr::nil_function_body(
-                runtime_id,
-                type_,
-                nil_function_return(actual),
-            ))
-        }
-        (FunctionFunctionId::Tuple(runtime_id), FunctionExprKind::Tuple(actual)) => {
-            let type_ = actual.type_().clone();
-            Ok(ReturnExpr::tuple_function_body(
-                runtime_id,
-                type_,
-                tuple_function_return(actual),
-            ))
-        }
+        (FunctionFunctionId::Bool(runtime_id), FunctionExprKind::Bool(actual)) => Ok(
+            ReturnExpr::bool_function_shape_body(runtime_id, shape, bool_function_return(actual)),
+        ),
+        (FunctionFunctionId::Nil(runtime_id), FunctionExprKind::Nil(actual)) => Ok(
+            ReturnExpr::nil_function_shape_body(runtime_id, shape, nil_function_return(actual)),
+        ),
+        (FunctionFunctionId::Tuple(runtime_id), FunctionExprKind::Tuple(actual)) => Ok(
+            ReturnExpr::tuple_function_shape_body(runtime_id, shape, tuple_function_return(actual)),
+        ),
         (FunctionFunctionId::List(runtime_id), FunctionExprKind::List(actual)) => Ok(
-            ReturnExpr::list_function_body(runtime_id, list_function_return(actual)),
+            ReturnExpr::list_function_shape_body(runtime_id, shape, list_function_return(actual)),
         ),
         (FunctionFunctionId::Function(runtime_id), FunctionExprKind::Function(actual)) => {
-            Ok(ReturnExpr::function_function_body(
+            Ok(ReturnExpr::function_function_shape_body(
                 runtime_id.index(),
+                shape,
                 function_function_return(actual),
             ))
         }

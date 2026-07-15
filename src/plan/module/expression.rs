@@ -14,11 +14,12 @@ mod string;
 mod tuple;
 mod utf_codepoint;
 
-use crate::plan::ValueType;
+use crate::plan::{Step, ValueShape, ValueType};
 
 pub(crate) use self::case::{
     BoolCaseBranches, FloatCaseBranches, IntCaseBranches, StringCaseBranches,
 };
+pub(crate) use self::function::TypedFunctionExpr;
 pub use self::{
     arg::CallArg,
     bit_array::BitArrayExpr,
@@ -40,14 +41,18 @@ pub(crate) use self::{
     arg::{CallArgKind, CaptureArg, CaptureArgKind},
     bit_array::{BitArrayExprKind, BitArraySegment, Endianness, FloatBitSize, StringEncoding},
     bool::BoolExprKind,
-    custom::{CustomExprKind, CustomLocalExpr, custom_constructor_expr},
+    custom::{
+        CustomBoolCaseBranches, CustomCaseBranches, CustomConstruction, CustomExprKind,
+        CustomLocalExpr, custom_constructor_expr,
+    },
     custom_field::CustomFieldAccess,
     float::FloatExprKind,
     function::{
         BitArrayFunctionExprKind, BoolFunctionExprKind, CustomFunctionExprKind,
         FloatFunctionExprKind, FunctionExprKind, FunctionFunctionCallMismatch,
         FunctionFunctionExprKind, IntFunctionExprKind, ListFunctionExprKind, NilFunctionExprKind,
-        StringFunctionExprKind, TupleFunctionExprKind, UtfCodepointFunctionExprKind,
+        StringFunctionExprKind, TupleFunctionExprKind, TypedFunctionExprKind,
+        UtfCodepointFunctionExprKind,
     },
     int::IntExprKind,
     list::{
@@ -67,6 +72,7 @@ pub(crate) use self::{
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Expr {
+    shape: crate::plan::ValueShape,
     kind: ExprKind,
 }
 
@@ -86,86 +92,196 @@ pub(crate) enum ExprKind {
 }
 
 impl Expr {
+    pub(crate) fn shape(&self) -> &crate::plan::ValueShape {
+        &self.shape
+    }
+
+    pub(crate) fn with_shape(self, shape: crate::plan::ValueShape) -> Option<Self> {
+        let Self {
+            shape: current,
+            kind,
+        } = self;
+        match (shape, kind) {
+            (crate::plan::ValueShape::Function(shape), ExprKind::Function(expression)) => {
+                let expression = expression.with_shape(*shape)?;
+                Some(Self {
+                    shape: crate::plan::ValueShape::Function(Box::new(expression.shape().clone())),
+                    kind: ExprKind::Function(expression),
+                })
+            }
+            (shape, kind) => {
+                if shape.value_type() != current.value_type() {
+                    return None;
+                }
+                let shape = current.refine(&shape)?;
+                Self {
+                    shape: current,
+                    kind,
+                }
+                .with_resolved_shape(shape)
+            }
+        }
+    }
+
+    pub(crate) fn with_resolved_shape(self, shape: crate::plan::ValueShape) -> Option<Self> {
+        let kind = match (shape.clone(), self.kind) {
+            (crate::plan::ValueShape::Int, ExprKind::Int(expression)) => ExprKind::Int(expression),
+            (crate::plan::ValueShape::String, ExprKind::String(expression)) => {
+                ExprKind::String(expression)
+            }
+            (crate::plan::ValueShape::BitArray, ExprKind::BitArray(expression)) => {
+                ExprKind::BitArray(expression)
+            }
+            (crate::plan::ValueShape::UtfCodepoint, ExprKind::UtfCodepoint(expression)) => {
+                ExprKind::UtfCodepoint(expression)
+            }
+            (crate::plan::ValueShape::Custom(shape), ExprKind::Custom(expression)) => {
+                ExprKind::Custom(expression.with_shape(shape))
+            }
+            (crate::plan::ValueShape::Float, ExprKind::Float(expression)) => {
+                ExprKind::Float(expression)
+            }
+            (crate::plan::ValueShape::Bool, ExprKind::Bool(expression)) => {
+                ExprKind::Bool(expression)
+            }
+            (crate::plan::ValueShape::Nil, ExprKind::Nil(expression)) => ExprKind::Nil(expression),
+            (crate::plan::ValueShape::Tuple(shape), ExprKind::Tuple(expression)) => {
+                ExprKind::Tuple(expression.with_shape(shape))
+            }
+            (crate::plan::ValueShape::List(item_shape), ExprKind::List(expression)) => {
+                ExprKind::List(expression.with_item_shape(*item_shape))
+            }
+            (crate::plan::ValueShape::Function(shape), ExprKind::Function(expression)) => {
+                ExprKind::Function(expression.with_resolved_shape(*shape)?)
+            }
+            _ => return None,
+        };
+        Some(Self { shape, kind })
+    }
+
     pub(crate) fn int(expression: IntExpr) -> Self {
         Self {
+            shape: crate::plan::ValueShape::Int,
             kind: ExprKind::Int(expression),
         }
     }
 
     pub(crate) fn string(expression: StringExpr) -> Self {
         Self {
+            shape: crate::plan::ValueShape::String,
             kind: ExprKind::String(expression),
         }
     }
 
     pub(crate) fn bit_array(expression: BitArrayExpr) -> Self {
         Self {
+            shape: crate::plan::ValueShape::BitArray,
             kind: ExprKind::BitArray(expression),
         }
     }
 
     pub(crate) fn utf_codepoint(expression: UtfCodepointExpr) -> Self {
         Self {
+            shape: crate::plan::ValueShape::UtfCodepoint,
             kind: ExprKind::UtfCodepoint(expression),
         }
     }
 
     pub(crate) fn custom(expression: CustomExpr) -> Self {
+        let shape = crate::plan::ValueShape::Custom(expression.shape().clone());
         Self {
+            shape,
             kind: ExprKind::Custom(expression),
         }
     }
 
     pub(crate) fn float(expression: FloatExpr) -> Self {
         Self {
+            shape: crate::plan::ValueShape::Float,
             kind: ExprKind::Float(expression),
         }
     }
 
     pub(crate) fn bool(expression: BoolExpr) -> Self {
         Self {
+            shape: crate::plan::ValueShape::Bool,
             kind: ExprKind::Bool(expression),
         }
     }
 
     pub(crate) fn nil(expression: NilExpr) -> Self {
         Self {
+            shape: crate::plan::ValueShape::Nil,
             kind: ExprKind::Nil(expression),
         }
     }
 
     pub(crate) fn tuple(expression: TupleExpr) -> Self {
+        let shape = crate::plan::ValueShape::Tuple(expression.shape().to_vec().into_boxed_slice());
         Self {
+            shape,
             kind: ExprKind::Tuple(expression),
         }
     }
 
     pub(crate) fn list(expression: ListExpr) -> Self {
+        let shape = crate::plan::ValueShape::List(Box::new(expression.item_shape().clone()));
         Self {
+            shape,
             kind: ExprKind::List(expression),
         }
     }
 
     pub(crate) fn function(expression: FunctionExpr) -> Self {
+        let shape = crate::plan::ValueShape::Function(Box::new(expression.shape().clone()));
         Self {
+            shape,
             kind: ExprKind::Function(expression),
         }
     }
 
-    pub(crate) fn custom_field(access: CustomFieldAccess, return_type: ValueType) -> Self {
-        match return_type {
-            ValueType::Int => Self::int(IntExpr::custom_field(access)),
-            ValueType::String => Self::string(StringExpr::custom_field(access)),
-            ValueType::BitArray => Self::bit_array(BitArrayExpr::custom_field(access)),
-            ValueType::UtfCodepoint => Self::utf_codepoint(UtfCodepointExpr::custom_field(access)),
-            ValueType::Custom(type_) => Self::custom(CustomExpr::custom_field(access, type_)),
-            ValueType::Float => Self::float(FloatExpr::custom_field(access)),
-            ValueType::Bool => Self::bool(BoolExpr::custom_field(access)),
-            ValueType::Nil => Self::nil(NilExpr::custom_field(access)),
-            ValueType::Tuple(type_) => Self::tuple(TupleExpr::custom_field(access, type_)),
-            ValueType::List(item_type) => Self::list(ListExpr::custom_field(access, *item_type)),
-            ValueType::Function(type_) => {
-                Self::function(FunctionExpr::custom_field(access, *type_))
+    pub(crate) fn block(steps: Vec<Step>, return_: Self) -> Self {
+        let Self { shape, kind } = return_;
+        let kind = match kind {
+            ExprKind::Int(return_) => ExprKind::Int(IntExpr::block(steps, return_)),
+            ExprKind::String(return_) => ExprKind::String(StringExpr::block(steps, return_)),
+            ExprKind::BitArray(return_) => ExprKind::BitArray(BitArrayExpr::block(steps, return_)),
+            ExprKind::UtfCodepoint(return_) => {
+                ExprKind::UtfCodepoint(UtfCodepointExpr::block(steps, return_))
+            }
+            ExprKind::Custom(return_) => ExprKind::Custom(CustomExpr::block(steps, return_)),
+            ExprKind::Float(return_) => ExprKind::Float(FloatExpr::block(steps, return_)),
+            ExprKind::Bool(return_) => ExprKind::Bool(BoolExpr::block(steps, return_)),
+            ExprKind::Nil(return_) => ExprKind::Nil(NilExpr::block(steps, return_)),
+            ExprKind::Tuple(return_) => ExprKind::Tuple(TupleExpr::block(steps, return_)),
+            ExprKind::List(return_) => ExprKind::List(ListExpr::block(steps, return_)),
+            ExprKind::Function(return_) => ExprKind::Function(FunctionExpr::block(steps, return_)),
+        };
+        Self { shape, kind }
+    }
+
+    pub(crate) fn custom_field_shape(access: CustomFieldAccess, shape: ValueShape) -> Self {
+        match shape {
+            ValueShape::Int => Self::int(IntExpr::custom_field(access)),
+            ValueShape::String => Self::string(StringExpr::custom_field(access)),
+            ValueShape::BitArray => Self::bit_array(BitArrayExpr::custom_field(access)),
+            ValueShape::UtfCodepoint => Self::utf_codepoint(UtfCodepointExpr::custom_field(access)),
+            ValueShape::Custom(shape) => {
+                Self::custom(CustomExpr::custom_field_shape(access, shape))
+            }
+            ValueShape::Float => Self::float(FloatExpr::custom_field(access)),
+            ValueShape::Bool => Self::bool(BoolExpr::custom_field(access)),
+            ValueShape::Nil => Self::nil(NilExpr::custom_field(access)),
+            ValueShape::Tuple(shape) => {
+                let type_ = shape.iter().map(ValueShape::value_type).collect();
+                Self::tuple(TupleExpr::custom_field(access, type_).with_shape(shape))
+            }
+            ValueShape::List(item_shape) => {
+                let item_type = item_shape.value_type();
+                Self::list(ListExpr::custom_field(access, item_type).with_item_shape(*item_shape))
+            }
+            ValueShape::Function(shape) => {
+                Self::function(FunctionExpr::custom_field_shape(access, *shape))
             }
         }
     }
@@ -184,8 +300,8 @@ impl Expr {
             BoolCaseBranches::UtfCodepoint { true_, false_ } => {
                 Self::utf_codepoint(UtfCodepointExpr::bool_case(subject, true_, false_))
             }
-            BoolCaseBranches::Custom { true_, false_ } => {
-                Self::custom(CustomExpr::bool_case(subject, true_, false_))
+            BoolCaseBranches::Custom(branches) => {
+                Self::custom(CustomExpr::bool_case(subject, branches))
             }
             BoolCaseBranches::Float { true_, false_ } => {
                 Self::float(FloatExpr::bool_case(subject, true_, false_))
@@ -252,8 +368,8 @@ impl Expr {
             IntCaseBranches::UtfCodepoint { clauses, fallback } => {
                 Self::utf_codepoint(UtfCodepointExpr::int_case(subject, clauses, fallback))
             }
-            IntCaseBranches::Custom { clauses, fallback } => {
-                Self::custom(CustomExpr::int_case(subject, clauses, fallback))
+            IntCaseBranches::Custom(branches) => {
+                Self::custom(CustomExpr::int_case(subject, branches))
             }
             IntCaseBranches::Float { clauses, fallback } => {
                 Self::float(FloatExpr::int_case(subject, clauses, fallback))
@@ -320,8 +436,8 @@ impl Expr {
             StringCaseBranches::UtfCodepoint { clauses, fallback } => {
                 Self::utf_codepoint(UtfCodepointExpr::string_case(subject, clauses, fallback))
             }
-            StringCaseBranches::Custom { clauses, fallback } => {
-                Self::custom(CustomExpr::string_case(subject, clauses, fallback))
+            StringCaseBranches::Custom(branches) => {
+                Self::custom(CustomExpr::string_case(subject, branches))
             }
             StringCaseBranches::Float { clauses, fallback } => {
                 Self::float(FloatExpr::string_case(subject, clauses, fallback))
@@ -394,8 +510,8 @@ impl Expr {
             FloatCaseBranches::UtfCodepoint { clauses, fallback } => {
                 Self::utf_codepoint(UtfCodepointExpr::float_case(subject, clauses, fallback))
             }
-            FloatCaseBranches::Custom { clauses, fallback } => {
-                Self::custom(CustomExpr::float_case(subject, clauses, fallback))
+            FloatCaseBranches::Custom(branches) => {
+                Self::custom(CustomExpr::float_case(subject, branches))
             }
             FloatCaseBranches::Float { clauses, fallback } => {
                 Self::float(FloatExpr::float_case(subject, clauses, fallback))
@@ -460,6 +576,10 @@ impl Expr {
 
     pub(crate) fn into_kind(self) -> ExprKind {
         self.kind
+    }
+
+    pub(crate) fn into_parts(self) -> (crate::plan::ValueShape, ExprKind) {
+        (self.shape, self.kind)
     }
 
     pub(crate) fn into_int(self) -> Option<IntExpr> {
@@ -559,26 +679,71 @@ impl Expr {
             }
         }
     }
+
+    pub(crate) fn value_shape(&self) -> &crate::plan::ValueShape {
+        &self.shape
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::{
-        BoolCaseBranches, BoolExpr, BoolFunctionExpr, BoolListCaseBranches, Expr,
+        BoolCaseBranches, BoolExpr, BoolFunctionExpr, BoolListCaseBranches, CustomExpr, Expr,
         FloatCaseBranches, FloatExpr, FloatFunctionExpr, FunctionExpr, FunctionFunctionExpr,
         IntCaseBranches, IntExpr, IntFunctionExpr, ListCaseBranches, ListExpr, ListFunctionExpr,
         NilExpr, NilFunctionExpr, StringCaseBranches, StringExpr, StringFunctionExpr, TupleExpr,
         UtfCodepointExpr,
     };
     use crate::plan::{
-        BoolFunctionId, BoolFunctionReference, BoolLocalId, FloatFunctionId,
+        BoolFunctionId, BoolFunctionReference, BoolLocalId, CustomConstructorRefinement,
+        CustomLocal, CustomType, CustomTypeName, CustomValueShape, FloatFunctionId,
         FloatFunctionReference, FloatLocalId, FunctionFunctionId, FunctionFunctionReference,
         FunctionReference, FunctionType, IntFunctionFunctionId, IntFunctionId,
         IntFunctionReference, IntListLocalId, IntLocalId, ListFunctionId, ListFunctionReference,
         ListLocal, NilFunctionId, NilFunctionReference, NilLocalId, ParamLocal, RuntimeFunctionId,
-        StringFunctionId, StringFunctionReference, StringLocalId, UtfCodepointLocalId, ValueType,
+        StringFunctionId, StringFunctionReference, StringLocalId, UtfCodepointLocalId, ValueShape,
+        ValueType,
     };
     use num_bigint::BigInt;
+
+    #[test]
+    fn expression_shape_updates_reject_incompatible_value_families() {
+        let expression = Expr::int(IntExpr::value(BigInt::from(1)));
+
+        assert_eq!(expression.clone().with_shape(ValueShape::String), None);
+        assert_eq!(expression.with_resolved_shape(ValueShape::String), None);
+
+        let type_ = CustomType::new(
+            CustomTypeName::new("geam".into(), "main".into(), "Choice".into()),
+            Vec::new(),
+        );
+        let first = CustomValueShape::new(
+            type_.type_name().clone(),
+            Vec::new(),
+            CustomConstructorRefinement::Exact(0),
+        );
+        let second = CustomValueShape::new(
+            type_.type_name().clone(),
+            Vec::new(),
+            CustomConstructorRefinement::Exact(1),
+        );
+        let expression = Expr::custom(CustomExpr::local_get(
+            CustomLocal::from_shape(crate::plan::CustomLocalId(0), first),
+            "choice".into(),
+        ));
+
+        assert_eq!(expression.with_shape(ValueShape::Custom(second)), None);
+
+        let expression = Expr::function(FunctionExpr::int(int_function_expr()));
+        let shape = ValueShape::Function(Box::new(crate::plan::FunctionShape::from_function_type(
+            FunctionType::new(vec![ValueType::Int], ValueType::Int),
+        )));
+
+        assert_eq!(
+            expression.clone().with_resolved_shape(shape.clone()),
+            Some(expression),
+        );
+    }
 
     #[test]
     fn expr_bool_case_shapes() {

@@ -8,6 +8,7 @@ mod nil;
 mod returning_function;
 mod string;
 mod tuple;
+mod typed;
 mod utf_codepoint;
 
 pub use self::{
@@ -21,10 +22,12 @@ pub(crate) use self::{
     custom::CustomFunctionExprKind, float::FloatFunctionExprKind, int::IntFunctionExprKind,
     list::ListFunctionExprKind, nil::NilFunctionExprKind,
     returning_function::FunctionFunctionExprKind, string::StringFunctionExprKind,
-    tuple::TupleFunctionExprKind, utf_codepoint::UtfCodepointFunctionExprKind,
+    tuple::TupleFunctionExprKind, typed::TypedFunctionExpr,
+    utf_codepoint::UtfCodepointFunctionExprKind,
 };
 
 pub struct FunctionExpr {
+    shape: super::super::FunctionShape,
     kind: FunctionExprKind,
 }
 
@@ -43,8 +46,15 @@ pub(crate) enum FunctionExprKind {
 }
 
 impl FunctionExpr {
-    pub(in crate::plan::execution) fn from_kind(kind: FunctionExprKind) -> Self {
-        Self { kind }
+    pub(in crate::plan::execution) fn from_parts(
+        shape: super::super::FunctionShape,
+        kind: FunctionExprKind,
+    ) -> Self {
+        Self { shape, kind }
+    }
+
+    pub(crate) fn shape(&self) -> &super::super::FunctionShape {
+        &self.shape
     }
 
     pub(crate) fn kind(&self) -> &FunctionExprKind {

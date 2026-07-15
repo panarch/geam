@@ -772,10 +772,17 @@ pub(super) fn run_int_function_loop(
     loop {
         let runtime_function = plan.int_function_function(function);
         execute_steps(plan, state, runtime_function.steps(), &mut frame)?;
+        let return_ = runtime_function.return_();
         let eval = eval_int_function_expr;
-        let outcome = eval_return_body(plan, state, &mut frame, runtime_function.return_(), eval)?;
+        let outcome = eval_return_body(plan, state, &mut frame, return_.body(), eval)?;
         match outcome {
-            ReturnOutcome::Value(value) => return finish_return(state, frame, value),
+            ReturnOutcome::Value(value) => {
+                return finish_return(
+                    state,
+                    frame,
+                    value.with_type(return_.shape().type_().clone()),
+                );
+            }
             ReturnOutcome::TailCall {
                 function: next,
                 args,
@@ -797,10 +804,17 @@ pub(super) fn run_float_function_loop(
     loop {
         let runtime_function = plan.float_function_function(function);
         execute_steps(plan, state, runtime_function.steps(), &mut frame)?;
+        let return_ = runtime_function.return_();
         let eval = eval_float_function_expr;
-        let outcome = eval_return_body(plan, state, &mut frame, runtime_function.return_(), eval)?;
+        let outcome = eval_return_body(plan, state, &mut frame, return_.body(), eval)?;
         match outcome {
-            ReturnOutcome::Value(value) => return finish_return(state, frame, value),
+            ReturnOutcome::Value(value) => {
+                return finish_return(
+                    state,
+                    frame,
+                    value.with_type(return_.shape().type_().clone()),
+                );
+            }
             ReturnOutcome::TailCall {
                 function: next,
                 args,
@@ -822,10 +836,17 @@ pub(super) fn run_string_function_loop(
     loop {
         let runtime_function = plan.string_function_function(function);
         execute_steps(plan, state, runtime_function.steps(), &mut frame)?;
+        let return_ = runtime_function.return_();
         let eval = eval_string_function_expr;
-        let outcome = eval_return_body(plan, state, &mut frame, runtime_function.return_(), eval)?;
+        let outcome = eval_return_body(plan, state, &mut frame, return_.body(), eval)?;
         match outcome {
-            ReturnOutcome::Value(value) => return finish_return(state, frame, value),
+            ReturnOutcome::Value(value) => {
+                return finish_return(
+                    state,
+                    frame,
+                    value.with_type(return_.shape().type_().clone()),
+                );
+            }
             ReturnOutcome::TailCall {
                 function: next,
                 args,
@@ -847,15 +868,22 @@ pub(super) fn run_bit_array_function_loop(
     loop {
         let runtime_function = plan.bit_array_function_function(function);
         execute_steps(plan, state, runtime_function.steps(), &mut frame)?;
+        let return_ = runtime_function.return_();
         let outcome = eval_return_body(
             plan,
             state,
             &mut frame,
-            runtime_function.return_(),
+            return_.body(),
             eval_bit_array_function_expr,
         )?;
         match outcome {
-            ReturnOutcome::Value(value) => return finish_return(state, frame, value),
+            ReturnOutcome::Value(value) => {
+                return finish_return(
+                    state,
+                    frame,
+                    value.with_type(return_.shape().type_().clone()),
+                );
+            }
             ReturnOutcome::TailCall {
                 function: next,
                 args,
@@ -877,15 +905,22 @@ pub(super) fn run_utf_codepoint_function_loop(
     loop {
         let runtime_function = plan.utf_codepoint_function_function(function);
         execute_steps(plan, state, runtime_function.steps(), &mut frame)?;
+        let return_ = runtime_function.return_();
         let outcome = eval_return_body(
             plan,
             state,
             &mut frame,
-            runtime_function.return_(),
+            return_.body(),
             eval_utf_codepoint_function_expr,
         )?;
         match outcome {
-            ReturnOutcome::Value(value) => return finish_return(state, frame, value),
+            ReturnOutcome::Value(value) => {
+                return finish_return(
+                    state,
+                    frame,
+                    value.with_type(return_.shape().type_().clone()),
+                );
+            }
             ReturnOutcome::TailCall {
                 function: next,
                 args,
@@ -919,7 +954,13 @@ pub(super) fn run_custom_function_loop(
             },
         )?;
         match outcome {
-            ReturnOutcome::Value(value) => return finish_return(state, frame, value),
+            ReturnOutcome::Value(value) => {
+                return finish_return(
+                    state,
+                    frame,
+                    value.with_type(return_.shape().type_().clone()),
+                );
+            }
             ReturnOutcome::TailCall {
                 function: next_index,
                 args,
@@ -942,10 +983,17 @@ pub(super) fn run_bool_function_loop(
     loop {
         let runtime_function = plan.bool_function_function(function);
         execute_steps(plan, state, runtime_function.steps(), &mut frame)?;
+        let return_ = runtime_function.return_();
         let eval = eval_bool_function_expr;
-        let outcome = eval_return_body(plan, state, &mut frame, runtime_function.return_(), eval)?;
+        let outcome = eval_return_body(plan, state, &mut frame, return_.body(), eval)?;
         match outcome {
-            ReturnOutcome::Value(value) => return finish_return(state, frame, value),
+            ReturnOutcome::Value(value) => {
+                return finish_return(
+                    state,
+                    frame,
+                    value.with_type(return_.shape().type_().clone()),
+                );
+            }
             ReturnOutcome::TailCall {
                 function: next,
                 args,
@@ -967,10 +1015,17 @@ pub(super) fn run_nil_function_loop(
     loop {
         let runtime_function = plan.nil_function_function(function);
         execute_steps(plan, state, runtime_function.steps(), &mut frame)?;
+        let return_ = runtime_function.return_();
         let eval = eval_nil_function_expr;
-        let outcome = eval_return_body(plan, state, &mut frame, runtime_function.return_(), eval)?;
+        let outcome = eval_return_body(plan, state, &mut frame, return_.body(), eval)?;
         match outcome {
-            ReturnOutcome::Value(value) => return finish_return(state, frame, value),
+            ReturnOutcome::Value(value) => {
+                return finish_return(
+                    state,
+                    frame,
+                    value.with_type(return_.shape().type_().clone()),
+                );
+            }
             ReturnOutcome::TailCall {
                 function: next,
                 args,
@@ -992,10 +1047,17 @@ pub(super) fn run_tuple_function_loop(
     loop {
         let runtime_function = plan.tuple_function_function(function);
         execute_steps(plan, state, runtime_function.steps(), &mut frame)?;
+        let return_ = runtime_function.return_();
         let eval = eval_tuple_function_expr;
-        let outcome = eval_return_body(plan, state, &mut frame, runtime_function.return_(), eval)?;
+        let outcome = eval_return_body(plan, state, &mut frame, return_.body(), eval)?;
         match outcome {
-            ReturnOutcome::Value(value) => return finish_return(state, frame, value),
+            ReturnOutcome::Value(value) => {
+                return finish_return(
+                    state,
+                    frame,
+                    value.with_type(return_.shape().type_().clone()),
+                );
+            }
             ReturnOutcome::TailCall {
                 function: next,
                 args,
@@ -1017,10 +1079,17 @@ pub(super) fn run_list_function_loop(
     loop {
         let runtime_function = plan.list_function_function(&function);
         execute_steps(plan, state, runtime_function.steps(), &mut frame)?;
+        let return_ = runtime_function.return_();
         let eval = eval_list_function_expr;
-        let outcome = eval_return_body(plan, state, &mut frame, runtime_function.return_(), eval)?;
+        let outcome = eval_return_body(plan, state, &mut frame, return_.body(), eval)?;
         match outcome {
-            ReturnOutcome::Value(value) => return finish_return(state, frame, value),
+            ReturnOutcome::Value(value) => {
+                return finish_return(
+                    state,
+                    frame,
+                    value.with_type(return_.shape().type_().clone()),
+                );
+            }
             ReturnOutcome::TailCall {
                 function: next,
                 args,
@@ -1054,7 +1123,13 @@ pub(super) fn run_function_function_loop(
             },
         )?;
         match outcome {
-            ReturnOutcome::Value(value) => return finish_return(state, frame, value),
+            ReturnOutcome::Value(value) => {
+                return finish_return(
+                    state,
+                    frame,
+                    value.with_type(return_.shape().type_().clone()),
+                );
+            }
             ReturnOutcome::TailCall {
                 function: next_index,
                 args,

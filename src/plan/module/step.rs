@@ -2,9 +2,10 @@ use super::expression::{
     BitArrayExpr, BitArrayFunctionExpr, BoolExpr, BoolFunctionExpr, CustomExpr, CustomFunctionExpr,
     CustomLocalExpr, Expr, FloatExpr, FloatFunctionExpr, FunctionFunctionExpr, IntExpr,
     IntFunctionExpr, ListFunctionExpr, ListLocalExpr, NilExpr, NilFunctionExpr, StringExpr,
-    StringFunctionExpr, TupleExpr, TupleFunctionExpr, UtfCodepointExpr, UtfCodepointFunctionExpr,
+    StringFunctionExpr, TupleExpr, TupleFunctionExpr, TypedFunctionExpr, UtfCodepointExpr,
+    UtfCodepointFunctionExpr,
 };
-use super::function::ParamLocal;
+use super::function::{ParamLocal, ParamSlot};
 use super::id::{
     BitArrayFunctionLocalId, BitArrayLocalId, BoolFunctionLocalId, BoolLocalId,
     CustomFunctionLocal, CustomFunctionLocalId, CustomLocal, CustomLocalId, FloatFunctionLocalId,
@@ -24,7 +25,13 @@ pub struct Step {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct AssertBinding {
-    local: ParamLocal,
+    slot: ParamSlot,
+    name: EcoString,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct StringAssertBinding {
+    local: StringLocalId,
     name: EcoString,
 }
 
@@ -43,8 +50,8 @@ pub(crate) enum AssertPattern {
     Custom(crate::plan::CustomPattern),
     StringPrefix {
         prefix: EcoString,
-        left: Option<AssertBinding>,
-        right: Option<AssertBinding>,
+        left: Option<StringAssertBinding>,
+        right: Option<StringAssertBinding>,
     },
     Alias {
         pattern: Box<AssertPattern>,
@@ -134,57 +141,57 @@ pub(crate) enum StepKind {
     LetIntFunction {
         local: IntFunctionLocalId,
         name: EcoString,
-        value: IntFunctionExpr,
+        value: TypedFunctionExpr<IntFunctionExpr>,
     },
     LetFloatFunction {
         local: FloatFunctionLocalId,
         name: EcoString,
-        value: FloatFunctionExpr,
+        value: TypedFunctionExpr<FloatFunctionExpr>,
     },
     LetStringFunction {
         local: StringFunctionLocalId,
         name: EcoString,
-        value: StringFunctionExpr,
+        value: TypedFunctionExpr<StringFunctionExpr>,
     },
     LetBitArrayFunction {
         local: BitArrayFunctionLocalId,
         name: EcoString,
-        value: BitArrayFunctionExpr,
+        value: TypedFunctionExpr<BitArrayFunctionExpr>,
     },
     LetUtfCodepointFunction {
         local: UtfCodepointFunctionLocalId,
         name: EcoString,
-        value: UtfCodepointFunctionExpr,
+        value: TypedFunctionExpr<UtfCodepointFunctionExpr>,
     },
     LetCustomFunction {
         local: CustomFunctionLocal,
         name: EcoString,
-        value: CustomFunctionExpr,
+        value: TypedFunctionExpr<CustomFunctionExpr>,
     },
     LetBoolFunction {
         local: BoolFunctionLocalId,
         name: EcoString,
-        value: BoolFunctionExpr,
+        value: TypedFunctionExpr<BoolFunctionExpr>,
     },
     LetNilFunction {
         local: NilFunctionLocalId,
         name: EcoString,
-        value: NilFunctionExpr,
+        value: TypedFunctionExpr<NilFunctionExpr>,
     },
     LetTupleFunction {
         local: TupleFunctionLocalId,
         name: EcoString,
-        value: TupleFunctionExpr,
+        value: TypedFunctionExpr<TupleFunctionExpr>,
     },
     LetListFunction {
         local: ListFunctionLocal,
         name: EcoString,
-        value: ListFunctionExpr,
+        value: TypedFunctionExpr<ListFunctionExpr>,
     },
     LetFunctionFunction {
         local: FunctionFunctionLocal,
         name: EcoString,
-        value: FunctionFunctionExpr,
+        value: TypedFunctionExpr<FunctionFunctionExpr>,
     },
     AssertList {
         local: ListLocal,
@@ -220,15 +227,32 @@ pub(crate) enum StepKind {
 }
 
 impl AssertBinding {
-    pub(crate) fn new(local: ParamLocal, name: EcoString) -> Self {
-        Self { local, name }
+    pub(crate) fn new(local: ParamLocal, name: EcoString, shape: crate::plan::ValueShape) -> Self {
+        Self {
+            slot: ParamSlot::new(local, shape),
+            name,
+        }
     }
 
     pub(crate) fn local(&self) -> &ParamLocal {
-        &self.local
+        self.slot.local()
     }
 
-    pub(crate) fn into_parts(self) -> (ParamLocal, EcoString) {
+    pub(crate) fn into_parts(self) -> (ParamSlot, EcoString) {
+        (self.slot, self.name)
+    }
+}
+
+impl StringAssertBinding {
+    pub(crate) fn new(local: StringLocalId, name: EcoString) -> Self {
+        Self { local, name }
+    }
+
+    pub(crate) fn local(&self) -> StringLocalId {
+        self.local
+    }
+
+    pub(crate) fn into_parts(self) -> (StringLocalId, EcoString) {
         (self.local, self.name)
     }
 }
@@ -384,116 +408,231 @@ impl Step {
         }
     }
 
-    pub(crate) fn let_int_function(
+    pub(crate) fn let_int_function_expr(
         local: IntFunctionLocalId,
         name: EcoString,
-        value: IntFunctionExpr,
+        value: TypedFunctionExpr<IntFunctionExpr>,
     ) -> Self {
         Self {
             kind: StepKind::LetIntFunction { local, name, value },
         }
     }
 
-    pub(crate) fn let_float_function(
+    pub(crate) fn let_float_function_expr(
         local: FloatFunctionLocalId,
         name: EcoString,
-        value: FloatFunctionExpr,
+        value: TypedFunctionExpr<FloatFunctionExpr>,
     ) -> Self {
         Self {
             kind: StepKind::LetFloatFunction { local, name, value },
         }
     }
 
-    pub(crate) fn let_string_function(
+    pub(crate) fn let_string_function_expr(
         local: StringFunctionLocalId,
         name: EcoString,
-        value: StringFunctionExpr,
+        value: TypedFunctionExpr<StringFunctionExpr>,
     ) -> Self {
         Self {
             kind: StepKind::LetStringFunction { local, name, value },
         }
     }
 
-    pub(crate) fn let_bit_array_function(
+    pub(crate) fn let_bit_array_function_expr(
         local: BitArrayFunctionLocalId,
         name: EcoString,
-        value: BitArrayFunctionExpr,
+        value: TypedFunctionExpr<BitArrayFunctionExpr>,
     ) -> Self {
         Self {
             kind: StepKind::LetBitArrayFunction { local, name, value },
         }
     }
 
-    pub(crate) fn let_utf_codepoint_function(
+    pub(crate) fn let_utf_codepoint_function_expr(
         local: UtfCodepointFunctionLocalId,
         name: EcoString,
-        value: UtfCodepointFunctionExpr,
+        value: TypedFunctionExpr<UtfCodepointFunctionExpr>,
     ) -> Self {
         Self {
             kind: StepKind::LetUtfCodepointFunction { local, name, value },
         }
     }
 
-    pub(crate) fn let_custom_function(
+    pub(crate) fn let_custom_function_expr(
         local: CustomFunctionLocalId,
         name: EcoString,
-        value: CustomFunctionExpr,
+        value: TypedFunctionExpr<CustomFunctionExpr>,
     ) -> Self {
-        let local = CustomFunctionLocal::new(local, value.custom_function_type().clone());
+        let local =
+            CustomFunctionLocal::new(local, value.expression().custom_function_type().clone());
         Self {
             kind: StepKind::LetCustomFunction { local, name, value },
         }
     }
 
-    pub(crate) fn let_bool_function(
+    pub(crate) fn let_bool_function_expr(
         local: BoolFunctionLocalId,
         name: EcoString,
-        value: BoolFunctionExpr,
+        value: TypedFunctionExpr<BoolFunctionExpr>,
     ) -> Self {
         Self {
             kind: StepKind::LetBoolFunction { local, name, value },
         }
     }
 
-    pub(crate) fn let_nil_function(
+    pub(crate) fn let_nil_function_expr(
         local: NilFunctionLocalId,
         name: EcoString,
-        value: NilFunctionExpr,
+        value: TypedFunctionExpr<NilFunctionExpr>,
     ) -> Self {
         Self {
             kind: StepKind::LetNilFunction { local, name, value },
         }
     }
 
-    pub(crate) fn let_tuple_function(
+    pub(crate) fn let_tuple_function_expr(
         local: TupleFunctionLocalId,
         name: EcoString,
-        value: TupleFunctionExpr,
+        value: TypedFunctionExpr<TupleFunctionExpr>,
     ) -> Self {
         Self {
             kind: StepKind::LetTupleFunction { local, name, value },
         }
     }
 
-    pub(crate) fn let_list_function(
+    pub(crate) fn let_list_function_expr(
         local: ListFunctionLocal,
         name: EcoString,
-        value: ListFunctionExpr,
+        value: TypedFunctionExpr<ListFunctionExpr>,
     ) -> Self {
         Self {
             kind: StepKind::LetListFunction { local, name, value },
         }
     }
 
+    pub(crate) fn let_function_function_expr(
+        local: FunctionFunctionLocalId,
+        name: EcoString,
+        value: TypedFunctionExpr<FunctionFunctionExpr>,
+    ) -> Self {
+        let local =
+            FunctionFunctionLocal::new(local, value.expression().function_function_type().clone());
+        Self {
+            kind: StepKind::LetFunctionFunction { local, name, value },
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn let_int_function(
+        local: IntFunctionLocalId,
+        name: EcoString,
+        value: IntFunctionExpr,
+    ) -> Self {
+        let shape = crate::plan::FunctionShape::from_function_type(value.type_().clone());
+        Self::let_int_function_expr(local, name, TypedFunctionExpr::new(shape, value))
+    }
+
+    #[cfg(test)]
+    pub(crate) fn let_float_function(
+        local: FloatFunctionLocalId,
+        name: EcoString,
+        value: FloatFunctionExpr,
+    ) -> Self {
+        let shape = crate::plan::FunctionShape::from_function_type(value.type_().clone());
+        Self::let_float_function_expr(local, name, TypedFunctionExpr::new(shape, value))
+    }
+
+    #[cfg(test)]
+    pub(crate) fn let_string_function(
+        local: StringFunctionLocalId,
+        name: EcoString,
+        value: StringFunctionExpr,
+    ) -> Self {
+        let shape = crate::plan::FunctionShape::from_function_type(value.type_().clone());
+        Self::let_string_function_expr(local, name, TypedFunctionExpr::new(shape, value))
+    }
+
+    #[cfg(test)]
+    pub(crate) fn let_bit_array_function(
+        local: BitArrayFunctionLocalId,
+        name: EcoString,
+        value: BitArrayFunctionExpr,
+    ) -> Self {
+        let shape = crate::plan::FunctionShape::from_function_type(value.type_().clone());
+        Self::let_bit_array_function_expr(local, name, TypedFunctionExpr::new(shape, value))
+    }
+
+    #[cfg(test)]
+    pub(crate) fn let_utf_codepoint_function(
+        local: UtfCodepointFunctionLocalId,
+        name: EcoString,
+        value: UtfCodepointFunctionExpr,
+    ) -> Self {
+        let shape = crate::plan::FunctionShape::from_function_type(value.type_().clone());
+        Self::let_utf_codepoint_function_expr(local, name, TypedFunctionExpr::new(shape, value))
+    }
+
+    #[cfg(test)]
+    pub(crate) fn let_custom_function(
+        local: CustomFunctionLocalId,
+        name: EcoString,
+        value: CustomFunctionExpr,
+    ) -> Self {
+        let shape = crate::plan::FunctionShape::new(
+            value.custom_function_type().argument_shapes().to_vec(),
+            crate::plan::ValueShape::Custom(value.custom_function_type().return_().clone()),
+        );
+        Self::let_custom_function_expr(local, name, TypedFunctionExpr::new(shape, value))
+    }
+
+    #[cfg(test)]
+    pub(crate) fn let_bool_function(
+        local: BoolFunctionLocalId,
+        name: EcoString,
+        value: BoolFunctionExpr,
+    ) -> Self {
+        let shape = crate::plan::FunctionShape::from_function_type(value.type_().clone());
+        Self::let_bool_function_expr(local, name, TypedFunctionExpr::new(shape, value))
+    }
+
+    #[cfg(test)]
+    pub(crate) fn let_nil_function(
+        local: NilFunctionLocalId,
+        name: EcoString,
+        value: NilFunctionExpr,
+    ) -> Self {
+        let shape = crate::plan::FunctionShape::from_function_type(value.type_().clone());
+        Self::let_nil_function_expr(local, name, TypedFunctionExpr::new(shape, value))
+    }
+
+    #[cfg(test)]
+    pub(crate) fn let_tuple_function(
+        local: TupleFunctionLocalId,
+        name: EcoString,
+        value: TupleFunctionExpr,
+    ) -> Self {
+        let shape = crate::plan::FunctionShape::from_function_type(value.type_().clone());
+        Self::let_tuple_function_expr(local, name, TypedFunctionExpr::new(shape, value))
+    }
+
+    #[cfg(test)]
+    pub(crate) fn let_list_function(
+        local: ListFunctionLocal,
+        name: EcoString,
+        value: ListFunctionExpr,
+    ) -> Self {
+        let shape = crate::plan::FunctionShape::from_function_type(value.type_().clone());
+        Self::let_list_function_expr(local, name, TypedFunctionExpr::new(shape, value))
+    }
+
+    #[cfg(test)]
     pub(crate) fn let_function_function(
         local: FunctionFunctionLocalId,
         name: EcoString,
         value: FunctionFunctionExpr,
     ) -> Self {
-        let local = FunctionFunctionLocal::new(local, value.function_function_type().clone());
-        Self {
-            kind: StepKind::LetFunctionFunction { local, name, value },
-        }
+        let shape = crate::plan::FunctionShape::from_function_type(value.type_());
+        Self::let_function_function_expr(local, name, TypedFunctionExpr::new(shape, value))
     }
 
     pub(crate) fn evaluate(value: Expr) -> Self {
@@ -595,7 +734,7 @@ mod tests {
         FunctionFunctionLocal, FunctionFunctionLocalId, FunctionFunctionType, FunctionType,
         IntExpr, IntFunctionId, IntFunctionLocalId, IntFunctionReference, IntListLocalId,
         IntLocalId, ListAssertPattern, ListAssertTail, ListLocal, PanicExpr, PanicSite, ParamLocal,
-        StringExpr, ValueType,
+        StringExpr, TypedFunctionExpr, ValueShape, ValueType,
     };
     use num_bigint::BigInt;
 
@@ -614,7 +753,10 @@ mod tests {
             &StepKind::LetIntFunction {
                 local: IntFunctionLocalId(0),
                 name: "f".into(),
-                value: function_expr(),
+                value: TypedFunctionExpr::new(
+                    crate::plan::FunctionShape::from_function_type(function_expr().type_().clone()),
+                    function_expr(),
+                ),
             },
         );
         assert_eq!(
@@ -689,7 +831,16 @@ mod tests {
             &StepKind::LetCustomFunction {
                 local: CustomFunctionLocal::new(CustomFunctionLocalId(3), custom_function_type,),
                 name: "custom".into(),
-                value: custom_value,
+                value: TypedFunctionExpr::new(
+                    crate::plan::FunctionShape::new(
+                        custom_value
+                            .custom_function_type()
+                            .argument_shapes()
+                            .to_vec(),
+                        ValueShape::Custom(custom_value.custom_function_type().return_().clone(),),
+                    ),
+                    custom_value,
+                ),
             },
         );
 
@@ -714,7 +865,10 @@ mod tests {
                     function_function_type,
                 ),
                 name: "function".into(),
-                value: function_value,
+                value: TypedFunctionExpr::new(
+                    crate::plan::FunctionShape::from_function_type(function_value.type_()),
+                    function_value,
+                ),
             },
         );
     }

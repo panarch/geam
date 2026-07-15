@@ -7,6 +7,7 @@ mod function;
 mod module;
 mod pattern;
 mod statement;
+mod value_shape;
 
 pub use error::{
     InvalidCallShapeReason, InvalidCaseShapeReason, InvalidCustomTypeReason,

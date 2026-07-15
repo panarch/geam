@@ -1,6 +1,6 @@
 use crate::plan::{
-    FunctionFunctionLocalId, FunctionId, FunctionType, IntFunctionLocalId, ModulePlan,
-    ParamBinding, ParamLocal, SourceContext, ValueType,
+    FunctionFunctionLocalId, FunctionId, IntFunctionLocalId, ModulePlan, ParamBinding, ParamLocal,
+    SourceContext, ValueType,
 };
 use crate::planner::context::{
     AnonymousFunctions, FunctionInfo, FunctionParam, FunctionRuntimeIds,
@@ -110,14 +110,14 @@ fn function_table(
 
     for function in functions {
         let name = function_name(function)?;
-        let return_type =
-            function_return_type(name.clone(), &function.return_type, &function.body)?;
+        let return_shape =
+            function_return_shape(name.clone(), &function.return_type, &function.body)?;
         let params = function_params(name.clone(), &function.arguments, ParamLabelPolicy::Allow)?;
         seeds.push(FunctionSeed {
             name,
             function: function.clone(),
             params,
-            return_type,
+            return_shape,
         });
     }
 
@@ -180,11 +180,11 @@ fn function_info(
     seed: &FunctionSeed,
     runtime_ids: &mut FunctionRuntimeIds,
 ) -> FunctionInfo {
-    let runtime_id = runtime_ids.next(&seed.return_type);
+    let runtime_id = runtime_ids.next_shape(&seed.return_shape);
     FunctionInfo {
         id: FunctionId::new(function_index),
         runtime_id,
-        return_type: seed.return_type.clone(),
+        return_shape: seed.return_shape.clone(),
         params: seed.params.clone(),
     }
 }
@@ -194,22 +194,31 @@ struct FunctionSeed {
     name: EcoString,
     function: TypedFunction,
     params: Vec<FunctionParam>,
-    return_type: ValueType,
+    return_shape: crate::plan::ValueShape,
 }
 
+#[cfg(test)]
 fn function_return_type(
     name: EcoString,
     type_: &Type,
     body: &[gleam_core::ast::TypedStatement],
 ) -> Result<ValueType, PlanError> {
-    if let Some(return_type) = ValueType::from_gleam(type_) {
-        return Ok(return_type);
+    function_return_shape(name, type_, body).map(|shape| shape.value_type())
+}
+
+fn function_return_shape(
+    name: EcoString,
+    type_: &Type,
+    body: &[gleam_core::ast::TypedStatement],
+) -> Result<crate::plan::ValueShape, PlanError> {
+    if let Some(return_shape) = crate::plan::ValueShape::from_gleam(type_) {
+        return Ok(return_shape);
     }
 
     if is_inferred_return_type(type_)
         && let Some(return_type) = source_stop_return_type(body)
     {
-        return Ok(return_type);
+        return Ok(crate::plan::ValueShape::from_value_type(return_type));
     }
 
     Err(PlanError::UnsupportedFunction {
@@ -304,141 +313,151 @@ pub(super) fn function_params(
                 }
             };
 
-            let Some(type_) = ValueType::from_gleam(&argument.type_) else {
+            let Some(shape) = crate::plan::ValueShape::from_gleam(&argument.type_) else {
                 return Err(PlanError::UnsupportedArgument {
                     function: function_name.clone(),
                     reason: UnsupportedArgumentReason::UnsupportedType,
                 });
             };
-            let local = match &type_ {
-                ValueType::Int => {
+            let local = match &shape {
+                crate::plan::ValueShape::Int => {
                     let local = ParamLocal::int(crate::plan::IntLocalId(next_int));
                     next_int += 1;
                     local
                 }
-                ValueType::Float => {
+                crate::plan::ValueShape::Float => {
                     let local = ParamLocal::float(crate::plan::FloatLocalId(next_float));
                     next_float += 1;
                     local
                 }
-                ValueType::String => {
+                crate::plan::ValueShape::String => {
                     let local = ParamLocal::string(crate::plan::StringLocalId(next_string));
                     next_string += 1;
                     local
                 }
-                ValueType::BitArray => {
+                crate::plan::ValueShape::BitArray => {
                     let local = ParamLocal::bit_array(crate::plan::BitArrayLocalId(next_bit_array));
                     next_bit_array += 1;
                     local
                 }
-                ValueType::UtfCodepoint => {
+                crate::plan::ValueShape::UtfCodepoint => {
                     let local = ParamLocal::utf_codepoint(crate::plan::UtfCodepointLocalId(
                         next_utf_codepoint,
                     ));
                     next_utf_codepoint += 1;
                     local
                 }
-                ValueType::Custom(type_) => {
-                    let local =
-                        ParamLocal::custom(crate::plan::CustomLocalId(next_custom), type_.clone());
+                crate::plan::ValueShape::Custom(custom_shape) => {
+                    let local = ParamLocal::custom_shape(
+                        crate::plan::CustomLocalId(next_custom),
+                        custom_shape.clone(),
+                    );
                     next_custom += 1;
                     local
                 }
-                ValueType::Bool => {
+                crate::plan::ValueShape::Bool => {
                     let local = ParamLocal::bool(crate::plan::BoolLocalId(next_bool));
                     next_bool += 1;
                     local
                 }
-                ValueType::Nil => {
+                crate::plan::ValueShape::Nil => {
                     let local = ParamLocal::nil(crate::plan::NilLocalId(next_nil));
                     next_nil += 1;
                     local
                 }
-                ValueType::Tuple(type_) => {
-                    let local =
-                        ParamLocal::tuple(crate::plan::TupleLocalId(next_tuple), type_.clone());
+                crate::plan::ValueShape::Tuple(elements) => {
+                    let local = ParamLocal::tuple(
+                        crate::plan::TupleLocalId(next_tuple),
+                        elements
+                            .iter()
+                            .map(crate::plan::ValueShape::value_type)
+                            .collect(),
+                    );
                     next_tuple += 1;
                     local
                 }
-                ValueType::List(element_type) => {
-                    let local = match element_type.as_ref() {
-                        ValueType::Int => {
+                crate::plan::ValueShape::List(element_shape) => {
+                    let local = match element_shape.as_ref() {
+                        crate::plan::ValueShape::Int => {
                             let local = crate::plan::ListLocal::int(crate::plan::IntListLocalId(
                                 next_int_list,
                             ));
                             next_int_list += 1;
                             local
                         }
-                        ValueType::String => {
+                        crate::plan::ValueShape::String => {
                             let local = crate::plan::ListLocal::string(
                                 crate::plan::StringListLocalId(next_string_list),
                             );
                             next_string_list += 1;
                             local
                         }
-                        ValueType::BitArray => {
+                        crate::plan::ValueShape::BitArray => {
                             let local = crate::plan::ListLocal::bit_array(
                                 crate::plan::BitArrayListLocalId(next_bit_array_list),
                             );
                             next_bit_array_list += 1;
                             local
                         }
-                        ValueType::UtfCodepoint => {
+                        crate::plan::ValueShape::UtfCodepoint => {
                             let local = crate::plan::ListLocal::utf_codepoint(
                                 crate::plan::UtfCodepointListLocalId(next_utf_codepoint_list),
                             );
                             next_utf_codepoint_list += 1;
                             local
                         }
-                        ValueType::Custom(item_type) => {
+                        crate::plan::ValueShape::Custom(item_shape) => {
                             let local = crate::plan::ListLocal::custom(
                                 crate::plan::CustomListLocalId(next_custom_list),
-                                item_type.clone(),
+                                item_shape.type_().clone(),
                             );
                             next_custom_list += 1;
                             local
                         }
-                        ValueType::Float => {
+                        crate::plan::ValueShape::Float => {
                             let local = crate::plan::ListLocal::float(
                                 crate::plan::FloatListLocalId(next_float_list),
                             );
                             next_float_list += 1;
                             local
                         }
-                        ValueType::Bool => {
+                        crate::plan::ValueShape::Bool => {
                             let local = crate::plan::ListLocal::bool(crate::plan::BoolListLocalId(
                                 next_bool_list,
                             ));
                             next_bool_list += 1;
                             local
                         }
-                        ValueType::Nil => {
+                        crate::plan::ValueShape::Nil => {
                             let local = crate::plan::ListLocal::nil(crate::plan::NilListLocalId(
                                 next_nil_list,
                             ));
                             next_nil_list += 1;
                             local
                         }
-                        ValueType::Tuple(item_type) => {
+                        crate::plan::ValueShape::Tuple(item_shape) => {
                             let local = crate::plan::ListLocal::tuple(
                                 crate::plan::TupleListLocalId(next_tuple_list),
-                                item_type.clone(),
+                                item_shape
+                                    .iter()
+                                    .map(crate::plan::ValueShape::value_type)
+                                    .collect(),
                             );
                             next_tuple_list += 1;
                             local
                         }
-                        ValueType::List(item_type) => {
+                        crate::plan::ValueShape::List(item_shape) => {
                             let local = crate::plan::ListLocal::list(
                                 crate::plan::ListListLocalId(next_list_list),
-                                *item_type.clone(),
+                                item_shape.value_type(),
                             );
                             next_list_list += 1;
                             local
                         }
-                        ValueType::Function(item_type) => {
+                        crate::plan::ValueShape::Function(item_shape) => {
                             let local = crate::plan::ListLocal::function(
                                 crate::plan::FunctionListLocalId(next_function_list),
-                                *item_type.clone(),
+                                item_shape.type_(),
                             );
                             next_function_list += 1;
                             local
@@ -446,13 +465,11 @@ pub(super) fn function_params(
                     };
                     ParamLocal::list(local)
                 }
-                ValueType::Function(type_) => function_locals.next(type_),
+                crate::plan::ValueShape::Function(function_shape) => {
+                    function_locals.next_shape(function_shape)
+                }
             };
-            Ok(FunctionParam {
-                local,
-                binding,
-                label,
-            })
+            Ok(FunctionParam::new(local, shape, binding, label))
         })
         .collect()
 }
@@ -479,15 +496,16 @@ struct FunctionParamLocalCounters {
 }
 
 impl FunctionParamLocalCounters {
-    fn next(&mut self, type_: &FunctionType) -> ParamLocal {
-        match type_.return_() {
-            ValueType::Int => {
+    fn next_shape(&mut self, shape: &crate::plan::FunctionShape) -> ParamLocal {
+        let type_ = shape.type_();
+        match shape.return_shape() {
+            crate::plan::ValueShape::Int => {
                 let local =
                     ParamLocal::int_function(IntFunctionLocalId(self.next_int), type_.clone());
                 self.next_int += 1;
                 local
             }
-            ValueType::Float => {
+            crate::plan::ValueShape::Float => {
                 let local = ParamLocal::float_function(
                     crate::plan::FloatFunctionLocalId(self.next_float),
                     type_.clone(),
@@ -495,7 +513,7 @@ impl FunctionParamLocalCounters {
                 self.next_float += 1;
                 local
             }
-            ValueType::String => {
+            crate::plan::ValueShape::String => {
                 let local = ParamLocal::string_function(
                     crate::plan::StringFunctionLocalId(self.next_string),
                     type_.clone(),
@@ -503,7 +521,7 @@ impl FunctionParamLocalCounters {
                 self.next_string += 1;
                 local
             }
-            ValueType::BitArray => {
+            crate::plan::ValueShape::BitArray => {
                 let local = ParamLocal::bit_array_function(
                     crate::plan::BitArrayFunctionLocalId(self.next_bit_array),
                     type_.clone(),
@@ -511,7 +529,7 @@ impl FunctionParamLocalCounters {
                 self.next_bit_array += 1;
                 local
             }
-            ValueType::UtfCodepoint => {
+            crate::plan::ValueShape::UtfCodepoint => {
                 let local = ParamLocal::utf_codepoint_function(
                     crate::plan::UtfCodepointFunctionLocalId(self.next_utf_codepoint),
                     type_.clone(),
@@ -519,18 +537,18 @@ impl FunctionParamLocalCounters {
                 self.next_utf_codepoint += 1;
                 local
             }
-            ValueType::Custom(return_type) => {
+            crate::plan::ValueShape::Custom(return_shape) => {
                 let local = ParamLocal::custom_function(crate::plan::CustomFunctionLocal::new(
                     crate::plan::CustomFunctionLocalId(self.next_custom),
-                    crate::plan::CustomFunctionType::new(
-                        type_.argument_types().to_vec(),
-                        return_type.clone(),
+                    crate::plan::CustomFunctionType::from_shapes(
+                        shape.argument_shapes().to_vec(),
+                        return_shape.clone(),
                     ),
                 ));
                 self.next_custom += 1;
                 local
             }
-            ValueType::Bool => {
+            crate::plan::ValueShape::Bool => {
                 let local = ParamLocal::bool_function(
                     crate::plan::BoolFunctionLocalId(self.next_bool),
                     type_.clone(),
@@ -538,7 +556,7 @@ impl FunctionParamLocalCounters {
                 self.next_bool += 1;
                 local
             }
-            ValueType::Nil => {
+            crate::plan::ValueShape::Nil => {
                 let local = ParamLocal::nil_function(
                     crate::plan::NilFunctionLocalId(self.next_nil),
                     type_.clone(),
@@ -546,7 +564,7 @@ impl FunctionParamLocalCounters {
                 self.next_nil += 1;
                 local
             }
-            ValueType::Tuple(_) => {
+            crate::plan::ValueShape::Tuple(_) => {
                 let local = ParamLocal::tuple_function(
                     crate::plan::TupleFunctionLocalId(self.next_tuple),
                     type_.clone(),
@@ -554,22 +572,22 @@ impl FunctionParamLocalCounters {
                 self.next_tuple += 1;
                 local
             }
-            ValueType::List(item_type) => {
+            crate::plan::ValueShape::List(item_shape) => {
                 let local =
                     ParamLocal::list_function(crate::plan::ListFunctionLocal::from_item_type(
                         self.next_list,
                         type_.clone(),
-                        item_type.as_ref().clone(),
+                        item_shape.value_type(),
                     ));
                 self.next_list += 1;
                 local
             }
-            ValueType::Function(return_type) => {
+            crate::plan::ValueShape::Function(return_shape) => {
                 let local = ParamLocal::function_function(crate::plan::FunctionFunctionLocal::new(
                     FunctionFunctionLocalId(self.next_function),
-                    crate::plan::FunctionFunctionType::new(
-                        type_.argument_types().to_vec(),
-                        return_type.as_ref().clone(),
+                    crate::plan::FunctionFunctionType::from_shapes(
+                        shape.argument_shapes().to_vec(),
+                        return_shape.as_ref().clone(),
                     ),
                 ));
                 self.next_function += 1;
@@ -979,12 +997,26 @@ fn after() -> Result(Int, Nil) {
             vec![
                 (
                     "before".into(),
-                    RuntimeFunctionId::Custom(CustomFunctionId::new(0, result_custom_type(),)),
+                    RuntimeFunctionId::Custom(CustomFunctionId::from_shape(
+                        0,
+                        crate::plan::CustomValueShape::new(
+                            result_custom_type().type_name().clone(),
+                            vec![crate::plan::ValueShape::Int, crate::plan::ValueShape::Nil],
+                            crate::plan::CustomConstructorRefinement::Exact(0),
+                        ),
+                    )),
                     result_type(),
                 ),
                 (
                     "after".into(),
-                    RuntimeFunctionId::Custom(CustomFunctionId::new(1, result_custom_type(),)),
+                    RuntimeFunctionId::Custom(CustomFunctionId::from_shape(
+                        1,
+                        crate::plan::CustomValueShape::new(
+                            result_custom_type().type_name().clone(),
+                            vec![crate::plan::ValueShape::Int, crate::plan::ValueShape::Nil],
+                            crate::plan::CustomConstructorRefinement::Exact(0),
+                        ),
+                    )),
                     result_type(),
                 ),
             ],

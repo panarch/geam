@@ -1,19 +1,19 @@
 use super::{
     BitArrayFunctionId, BoolFunctionId, CustomFunctionId, FloatFunctionId, FunctionFunctionId,
-    IntFunctionId, ListFunctionId, NilFunctionId, ParamLocal, RuntimeFunctionId, StringFunctionId,
+    IntFunctionId, ListFunctionId, NilFunctionId, ParamSlot, RuntimeFunctionId, StringFunctionId,
     TupleFunctionId, UtfCodepointFunctionId,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct FunctionReference {
     runtime_id: RuntimeFunctionId,
-    params: Vec<ParamLocal>,
+    params: Vec<ParamSlot>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct TypedFunctionReference<Function> {
     function: Function,
-    params: Vec<ParamLocal>,
+    params: Vec<ParamSlot>,
 }
 
 pub(crate) type IntFunctionReference = TypedFunctionReference<IntFunctionId>;
@@ -29,21 +29,37 @@ pub(crate) type ListFunctionReference = TypedFunctionReference<ListFunctionId>;
 pub(crate) type FunctionFunctionReference = TypedFunctionReference<FunctionFunctionId>;
 
 impl FunctionReference {
-    pub(crate) fn new(runtime_id: RuntimeFunctionId, params: Vec<ParamLocal>) -> Self {
+    pub(crate) fn from_slots(runtime_id: RuntimeFunctionId, params: Vec<ParamSlot>) -> Self {
         Self { runtime_id, params }
     }
 
-    pub(crate) fn into_parts(self) -> (RuntimeFunctionId, Vec<ParamLocal>) {
+    #[cfg(test)]
+    pub(crate) fn new(runtime_id: RuntimeFunctionId, params: Vec<super::ParamLocal>) -> Self {
+        Self::from_slots(
+            runtime_id,
+            params.into_iter().map(ParamSlot::from_local).collect(),
+        )
+    }
+
+    pub(crate) fn into_parts(self) -> (RuntimeFunctionId, Vec<ParamSlot>) {
         (self.runtime_id, self.params)
     }
 }
 
 impl<Function> TypedFunctionReference<Function> {
-    pub(crate) fn new(function: Function, params: Vec<ParamLocal>) -> Self {
+    pub(crate) fn from_slots(function: Function, params: Vec<ParamSlot>) -> Self {
         Self { function, params }
     }
 
-    pub(crate) fn into_parts(self) -> (Function, Vec<ParamLocal>) {
+    #[cfg(test)]
+    pub(crate) fn new(function: Function, params: Vec<super::ParamLocal>) -> Self {
+        Self::from_slots(
+            function,
+            params.into_iter().map(ParamSlot::from_local).collect(),
+        )
+    }
+
+    pub(crate) fn into_parts(self) -> (Function, Vec<ParamSlot>) {
         (self.function, self.params)
     }
 
@@ -51,7 +67,7 @@ impl<Function> TypedFunctionReference<Function> {
         &self.function
     }
 
-    pub(crate) fn params(&self) -> &[ParamLocal] {
+    pub(crate) fn params(&self) -> &[ParamSlot] {
         &self.params
     }
 }

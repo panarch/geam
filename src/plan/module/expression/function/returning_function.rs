@@ -1,8 +1,10 @@
 use crate::plan::CustomFieldAccess;
+#[cfg(test)]
+use crate::plan::ParamLocal;
 use crate::plan::{
     BoolExpr, CaptureArg, FloatExpr, FunctionFunctionFunctionId, FunctionFunctionId,
     FunctionFunctionLocal, FunctionFunctionReference, FunctionFunctionType, FunctionListExpr,
-    FunctionType, IntExpr, PanicExpr, ParamLocal, Step, StringExpr, TupleExpr, ValueType,
+    FunctionType, IntExpr, PanicExpr, ParamSlot, Step, StringExpr, TupleExpr, ValueShape,
 };
 use ecow::EcoString;
 use num_bigint::BigInt;
@@ -24,7 +26,7 @@ pub(crate) enum FunctionFunctionExprKind {
     Reference(FunctionFunctionReference),
     Closure {
         runtime_id: FunctionFunctionId,
-        params: Vec<ParamLocal>,
+        params: Vec<ParamSlot>,
         captures: Vec<CaptureArg>,
     },
     LocalGet {
@@ -76,9 +78,18 @@ pub(crate) enum FunctionFunctionExprKind {
 }
 
 impl FunctionFunctionExpr {
+    pub(crate) fn with_type(mut self, type_: FunctionFunctionType) -> Self {
+        self.type_ = type_;
+        self
+    }
+
     pub(crate) fn reference(value: FunctionFunctionReference, return_type: FunctionType) -> Self {
         let type_ = FunctionFunctionType::new(
-            value.params().iter().map(ParamLocal::value_type).collect(),
+            value
+                .params()
+                .iter()
+                .map(crate::plan::ParamSlot::value_type)
+                .collect(),
             return_type,
         );
         Self {
@@ -87,9 +98,9 @@ impl FunctionFunctionExpr {
         }
     }
 
-    pub(crate) fn closure(
+    pub(crate) fn closure_slots(
         runtime_id: FunctionFunctionId,
-        params: Vec<ParamLocal>,
+        params: Vec<ParamSlot>,
         captures: Vec<CaptureArg>,
         type_: FunctionFunctionType,
     ) -> Self {
@@ -101,6 +112,21 @@ impl FunctionFunctionExpr {
                 captures,
             },
         }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn closure(
+        runtime_id: FunctionFunctionId,
+        params: Vec<ParamLocal>,
+        captures: Vec<CaptureArg>,
+        type_: FunctionFunctionType,
+    ) -> Self {
+        Self::closure_slots(
+            runtime_id,
+            params.into_iter().map(ParamSlot::from_local).collect(),
+            captures,
+            type_,
+        )
     }
 
     pub(crate) fn local_get(local: FunctionFunctionLocal, name: EcoString) -> Self {
@@ -134,12 +160,14 @@ impl FunctionFunctionExpr {
             });
         }
 
-        let returned = function.function_function_type().return_();
-        let ValueType::Function(return_) = returned.return_() else {
+        let returned = function.function_function_type().return_shape();
+        let ValueShape::Function(return_) = returned.return_shape() else {
             return Err(FunctionFunctionCallMismatch::ReturnFamily);
         };
-        let type_ =
-            FunctionFunctionType::new(returned.argument_types().to_vec(), return_.as_ref().clone());
+        let type_ = FunctionFunctionType::from_shapes(
+            returned.argument_shapes().to_vec(),
+            return_.as_ref().clone(),
+        );
 
         Ok(Self {
             type_,
@@ -321,7 +349,9 @@ mod tests {
             .kind(),
             &FunctionFunctionExprKind::Closure {
                 runtime_id: FunctionFunctionId::Int(IntFunctionFunctionId(0)),
-                params: vec![ParamLocal::int(crate::plan::IntLocalId(0))],
+                params: vec![crate::plan::ParamSlot::from_local(ParamLocal::int(
+                    crate::plan::IntLocalId(0)
+                ))],
                 captures: Vec::new(),
             },
         );

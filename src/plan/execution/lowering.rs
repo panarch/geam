@@ -10,6 +10,7 @@ mod value_type;
 
 use super::ExecutionPlan;
 use super::custom_type::CustomTypeTable;
+use super::value_shape::ValueShapeTable;
 use super::value_type::ListTypeTable;
 use crate::plan::ModulePlan;
 
@@ -26,6 +27,21 @@ impl LoweringContext {
 
     fn value_type(&mut self, type_: crate::plan::ValueType) -> super::ValueType {
         self.types.value_type(type_)
+    }
+
+    fn custom_value_shape(
+        &mut self,
+        shape: crate::plan::CustomValueShape,
+    ) -> super::CustomValueShape {
+        self.types.custom_value_shape(shape)
+    }
+
+    fn value_shape(&mut self, shape: crate::plan::ValueShape) -> super::ValueShapeId {
+        self.types.value_shape(shape)
+    }
+
+    fn function_shape(&mut self, shape: crate::plan::FunctionShape) -> super::FunctionShape {
+        self.types.function_shape(shape)
     }
 
     fn function_type(&mut self, type_: crate::plan::FunctionType) -> super::FunctionType {
@@ -60,10 +76,6 @@ impl LoweringContext {
 
     fn utf_codepoint_list_type(&mut self) -> super::UtfCodepointListTypeId {
         self.types.utf_codepoint_list_type()
-    }
-
-    fn custom_type(&mut self, type_: crate::plan::CustomType) -> super::CustomTypeId {
-        self.types.custom_type(type_)
     }
 
     fn custom_constructor(
@@ -101,7 +113,7 @@ impl LoweringContext {
         self.types.function_list_type(item)
     }
 
-    fn into_tables(self) -> (ListTypeTable, CustomTypeTable) {
+    fn into_tables(self) -> (ListTypeTable, CustomTypeTable, ValueShapeTable) {
         self.types.into_tables()
     }
 }
@@ -120,7 +132,7 @@ pub(super) fn lower(module_plan: ModulePlan) -> ExecutionPlan {
         tables.push(function, &mut context);
     }
 
-    let (list_types, custom_types) = context.into_tables();
+    let (list_types, custom_types, value_shapes) = context.into_tables();
     ExecutionPlan {
         module: parts.module,
         source_context: parts.source_context,
@@ -128,6 +140,7 @@ pub(super) fn lower(module_plan: ModulePlan) -> ExecutionPlan {
         functions: tables.finish(),
         list_types,
         custom_types,
+        value_shapes,
     }
 }
 

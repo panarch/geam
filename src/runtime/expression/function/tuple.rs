@@ -22,13 +22,13 @@ pub(in crate::runtime) fn eval_tuple_function_expr(
     match expression.kind() {
         TupleFunctionExprKind::Reference(reference) => Ok(EvaluatedTupleFunction::new(
             *reference.function(),
-            reference.params().to_vec(),
+            reference.param_locals(),
             Vec::new(),
             expression.type_().clone(),
         )),
         TupleFunctionExprKind::Closure(template) => Ok(EvaluatedTupleFunction::new(
             *template.function(),
-            template.params().to_vec(),
+            template.param_locals(),
             function::eval_capture_args(plan, state, frame, template.captures())?,
             expression.type_().clone(),
         )),

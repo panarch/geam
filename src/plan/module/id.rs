@@ -30,7 +30,7 @@ pub struct CustomLocalId(pub(crate) usize);
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub(crate) struct CustomLocal {
     id: CustomLocalId,
-    type_: crate::plan::CustomType,
+    shape: crate::plan::CustomValueShape,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -271,7 +271,7 @@ pub struct UtfCodepointFunctionId(pub(crate) usize);
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CustomFunctionId {
     index: usize,
-    return_type: crate::plan::CustomType,
+    return_shape: crate::plan::CustomValueShape,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -514,7 +514,11 @@ impl CustomFunctionLocal {
 
 impl CustomLocal {
     pub(crate) fn new(id: CustomLocalId, type_: crate::plan::CustomType) -> Self {
-        Self { id, type_ }
+        Self::from_shape(id, crate::plan::CustomValueShape::any(type_))
+    }
+
+    pub(crate) fn from_shape(id: CustomLocalId, shape: crate::plan::CustomValueShape) -> Self {
+        Self { id, shape }
     }
 
     pub(crate) fn id(&self) -> CustomLocalId {
@@ -522,17 +526,29 @@ impl CustomLocal {
     }
 
     pub(crate) fn type_(&self) -> &crate::plan::CustomType {
-        &self.type_
+        self.shape.type_()
     }
 
-    pub(crate) fn into_parts(self) -> (CustomLocalId, crate::plan::CustomType) {
-        (self.id, self.type_)
+    pub(crate) fn shape(&self) -> &crate::plan::CustomValueShape {
+        &self.shape
+    }
+
+    pub(crate) fn into_parts(self) -> (CustomLocalId, crate::plan::CustomValueShape) {
+        (self.id, self.shape)
     }
 }
 
 impl CustomFunctionId {
+    #[cfg(test)]
     pub(crate) fn new(index: usize, return_type: crate::plan::CustomType) -> Self {
-        Self { index, return_type }
+        Self::from_shape(index, crate::plan::CustomValueShape::any(return_type))
+    }
+
+    pub(crate) fn from_shape(index: usize, return_shape: crate::plan::CustomValueShape) -> Self {
+        Self {
+            index,
+            return_shape,
+        }
     }
 
     pub(crate) fn index(&self) -> usize {
@@ -540,11 +556,15 @@ impl CustomFunctionId {
     }
 
     pub(crate) fn return_type(&self) -> &crate::plan::CustomType {
-        &self.return_type
+        self.return_shape.type_()
     }
 
-    pub(crate) fn into_parts(self) -> (usize, crate::plan::CustomType) {
-        (self.index, self.return_type)
+    pub(crate) fn return_shape(&self) -> &crate::plan::CustomValueShape {
+        &self.return_shape
+    }
+
+    pub(crate) fn into_parts(self) -> (usize, crate::plan::CustomValueShape) {
+        (self.index, self.return_shape)
     }
 }
 
@@ -1201,7 +1221,10 @@ mod tests {
 
         assert_eq!(id.index(), 5);
         assert_eq!(id.return_type(), &type_);
-        assert_eq!(id.into_parts(), (5, type_));
+        assert_eq!(
+            id.into_parts(),
+            (5, crate::plan::CustomValueShape::any(type_)),
+        );
     }
 
     #[test]
