@@ -3,5 +3,7 @@ fn add_one(value: Int) {
 }
 
 pub fn main() {
-  #(1, add_one) == #(1, add_one)
+  add_one == add_one
 }
+
+// geam:expect Bool(true)

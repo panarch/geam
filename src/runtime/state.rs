@@ -777,7 +777,7 @@ pub fn main() { 0 }
     fn list_value_facade_reconstructs_every_exact_storage_family() {
         let plan = crate::runtime::plan_src(EVERY_LIST_FAMILY_SOURCE);
         let mut state = RuntimeState::new();
-        let int_function = EvaluatedIntFunction::new(
+        let int_function = EvaluatedIntFunction::reference(
             crate::plan::execution::IntFunctionId(0),
             Vec::new(),
             Vec::new(),
@@ -909,7 +909,7 @@ pub fn main() { 0 }
         let mut state = RuntimeState::new();
         let value = state.int(type_id, vec![1.into()]);
         let slot = value.core.slot();
-        let closure = EvaluatedIntFunction::new(
+        let closure = EvaluatedIntFunction::reference(
             crate::plan::execution::IntFunctionId(0),
             Vec::new(),
             vec![EvaluatedCapture::list(

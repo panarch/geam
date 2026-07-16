@@ -8,7 +8,6 @@ use crate::plan::{
 use crate::planner::context::{FunctionLocalBinding, PlanContext};
 use crate::planner::error::{
     InvalidExpressionShapeKind, InvalidExpressionType, InvalidTypedAstReason, PlanError,
-    UnsupportedBinOpKind,
 };
 use ecow::EcoString;
 use gleam_core::ast::{BinOp, ClauseGuard};
@@ -91,20 +90,8 @@ fn plan_binary_operator(
     match operator {
         BinOp::And => bool_binary_operator(left, right, context, BoolExpr::and),
         BinOp::Or => bool_binary_operator(left, right, context, BoolExpr::or),
-        BinOp::Eq => equality(
-            left,
-            right,
-            context,
-            UnsupportedBinOpKind::EqFunction,
-            false,
-        ),
-        BinOp::NotEq => equality(
-            left,
-            right,
-            context,
-            UnsupportedBinOpKind::NotEqFunction,
-            true,
-        ),
+        BinOp::Eq => equality_operator(left, right, context, BoolExpr::equal),
+        BinOp::NotEq => equality_operator(left, right, context, BoolExpr::not_equal),
         BinOp::GtInt => int_comparison_operator(left, right, context, BoolExpr::gt_int),
         BinOp::GtEqInt => int_comparison_operator(left, right, context, BoolExpr::gte_int),
         BinOp::LtInt => int_comparison_operator(left, right, context, BoolExpr::lt_int),
@@ -192,27 +179,15 @@ fn string_binary_operator(
     Ok(Expr::string(operator(left, right)))
 }
 
-fn equality(
+fn equality_operator(
     left: ClauseGuard<Arc<Type>>,
     right: ClauseGuard<Arc<Type>>,
     context: &mut PlanContext<'_>,
-    operator: UnsupportedBinOpKind,
-    negated: bool,
+    operator: fn(Expr, Expr) -> BoolExpr,
 ) -> Result<Expr, PlanError> {
     let left = plan_expr(left, context)?;
     let right = plan_expr(right, context)?;
-    if context.contains_function_value(&left.value_type())?
-        || context.contains_function_value(&right.value_type())?
-    {
-        return Err(PlanError::UnsupportedBinOp { operator });
-    }
-
-    let expression = if negated {
-        BoolExpr::not_equal(left, right)
-    } else {
-        BoolExpr::equal(left, right)
-    };
-    Ok(Expr::bool(expression))
+    Ok(Expr::bool(operator(left, right)))
 }
 
 fn plan_int(
@@ -419,22 +394,21 @@ mod tests {
     use super::{function_local_get, invalid_expression_type, plan_expr};
     use crate::plan::{
         BitArrayExpr, BitArrayFunctionExpr, BitArrayFunctionLocalId, BitArrayLocalId, BoolExpr,
-        BoolFunctionExpr, BoolFunctionLocalId, BoolLocalId, CustomFunctionExpr,
-        CustomFunctionLocal, CustomFunctionLocalId, CustomFunctionType, CustomType, CustomTypeName,
-        Expr, FloatExpr, FloatFunctionExpr, FloatFunctionLocalId, FunctionExpr,
-        FunctionFunctionExpr, FunctionFunctionLocal, FunctionFunctionLocalId, FunctionFunctionType,
-        FunctionShape, FunctionType, IntExpr, IntFunctionExpr, IntFunctionLocalId, IntLocalId,
-        ListExpr, ListFunctionExpr, ListLocal, LocalId, NilExpr, NilFunctionExpr,
-        NilFunctionLocalId, NilLocalId, StringExpr, StringFunctionExpr, StringFunctionLocalId,
-        StringListLocalId, TupleExpr, TupleFunctionExpr, TupleFunctionLocalId, TupleLocalId,
-        UtfCodepointExpr, UtfCodepointFunctionExpr, UtfCodepointFunctionLocalId,
-        UtfCodepointLocalId, ValueType,
+        BoolFunctionExpr, BoolFunctionLocalId, BoolLocalId, CustomExpr, CustomFunctionExpr,
+        CustomFunctionLocal, CustomFunctionLocalId, CustomFunctionType, CustomLocal, CustomType,
+        CustomTypeName, CustomValueShape, Expr, FloatExpr, FloatFunctionExpr, FloatFunctionLocalId,
+        FunctionExpr, FunctionFunctionExpr, FunctionFunctionLocal, FunctionFunctionLocalId,
+        FunctionFunctionType, FunctionShape, FunctionType, IntExpr, IntFunctionExpr,
+        IntFunctionLocalId, IntLocalId, ListExpr, ListFunctionExpr, ListLocal, LocalId, NilExpr,
+        NilFunctionExpr, NilFunctionLocalId, NilLocalId, StringExpr, StringFunctionExpr,
+        StringFunctionLocalId, StringListLocalId, TupleExpr, TupleFunctionExpr,
+        TupleFunctionLocalId, TupleLocalId, UtfCodepointExpr, UtfCodepointFunctionExpr,
+        UtfCodepointFunctionLocalId, UtfCodepointLocalId, ValueType,
     };
     use crate::planner::context::{AnonymousFunctions, FunctionLocalBinding, PlanContext};
     use crate::planner::support::dummy_span;
     use crate::planner::{
         InvalidExpressionShapeKind, InvalidExpressionType, InvalidTypedAstReason, PlanError,
-        UnsupportedBinOpKind,
     };
     use ecow::EcoString;
     use gleam_core::ast::{BinOp, ClauseGuard, Constant, Publicity};
@@ -452,6 +426,12 @@ mod tests {
         let mut context = PlanContext::new(&module, &functions, &mut anonymous);
         context.define_bool_local("flag".into());
         context.define_tuple_local("pair".into(), vec![ValueType::Int, ValueType::String]);
+        let custom_type = CustomType::new(
+            CustomTypeName::new("geam".into(), module.clone(), "Holder".into()),
+            Vec::new(),
+        );
+        let custom_shape = CustomValueShape::any(custom_type);
+        let custom_local = context.define_custom_local_shape("holder".into(), custom_shape.clone());
 
         assert_eq!(
             plan_expr(int_constant(1), &mut context),
@@ -505,6 +485,19 @@ mod tests {
         assert_eq!(
             plan_expr(module_select("main", int_constant_literal(3)), &mut context),
             Ok(Expr::int(IntExpr::value(3.into()))),
+        );
+        assert_eq!(
+            plan_expr(
+                var(
+                    "holder",
+                    type_::named("geam", "main", "Holder", Publicity::Public, Vec::new(),),
+                ),
+                &mut context,
+            ),
+            Ok(Expr::custom(CustomExpr::local_get(
+                CustomLocal::from_shape(custom_local, custom_shape),
+                "holder".into(),
+            ))),
         );
     }
 
@@ -1034,6 +1027,70 @@ mod tests {
     }
 
     #[test]
+    fn reject_margin_equality_operand_errors() {
+        let module = EcoString::from("main");
+        let functions = HashMap::new();
+        let mut anonymous = AnonymousFunctions::default();
+        let mut context = PlanContext::new(&module, &functions, &mut anonymous);
+        let expected = Err(invalid_expression_shape(
+            InvalidExpressionShapeKind::Invalid,
+        ));
+
+        assert_eq!(
+            super::plan_binary_operator(
+                BinOp::Eq,
+                ClauseGuard::Invalid {
+                    location: dummy_span(),
+                    type_: type_::int(),
+                },
+                int_constant(1),
+                &mut context,
+            ),
+            expected.clone(),
+        );
+        assert_eq!(
+            super::plan_binary_operator(
+                BinOp::Eq,
+                int_constant(1),
+                ClauseGuard::Invalid {
+                    location: dummy_span(),
+                    type_: type_::int(),
+                },
+                &mut context,
+            ),
+            expected,
+        );
+        assert_eq!(
+            super::plan_binary_operator(
+                BinOp::NotEq,
+                ClauseGuard::Invalid {
+                    location: dummy_span(),
+                    type_: type_::int(),
+                },
+                int_constant(1),
+                &mut context,
+            ),
+            Err(invalid_expression_shape(
+                InvalidExpressionShapeKind::Invalid
+            )),
+        );
+        assert_eq!(
+            super::plan_binary_operator(
+                BinOp::NotEq,
+                int_constant(1),
+                ClauseGuard::Invalid {
+                    location: dummy_span(),
+                    type_: type_::int(),
+                },
+                &mut context,
+            ),
+            Err(invalid_expression_shape(
+                InvalidExpressionShapeKind::Invalid
+            )),
+        );
+    }
+
+    #[test]
     fn plan_tuple_index_rejects_invalid_typed_ast_shapes() {
         let module = EcoString::from("main");
         let functions = HashMap::new();
@@ -1388,46 +1445,7 @@ mod tests {
     }
 
     #[test]
-    fn guard_helper_type_classification_is_exact() {
-        let module = EcoString::from("main");
-        let functions = HashMap::new();
-        let mut anonymous = AnonymousFunctions::default();
-        let context = PlanContext::new(&module, &functions, &mut anonymous);
-
-        assert_eq!(
-            context.contains_function_value(&ValueType::Function(Box::new(FunctionType::new(
-                Vec::new(),
-                ValueType::Int
-            ),))),
-            Ok(true),
-        );
-        assert_eq!(
-            context.contains_function_value(&ValueType::Tuple(vec![
-                ValueType::Int,
-                ValueType::Function(Box::new(FunctionType::new(Vec::new(), ValueType::Int))),
-            ])),
-            Ok(true)
-        );
-        assert_eq!(
-            context.contains_function_value(&ValueType::List(Box::new(ValueType::Function(
-                Box::new(FunctionType::new(Vec::new(), ValueType::Int))
-            ),))),
-            Ok(true)
-        );
-        assert_eq!(
-            context.contains_function_value(&ValueType::Tuple(vec![
-                ValueType::Int,
-                ValueType::Float,
-                ValueType::String,
-                ValueType::BitArray,
-                ValueType::UtfCodepoint,
-                ValueType::Bool,
-                ValueType::Nil,
-                ValueType::List(Box::new(ValueType::Int)),
-            ])),
-            Ok(false)
-        );
-
+    fn invalid_expression_type_classification_is_exact() {
         assert_eq!(
             [
                 ValueType::Int,
@@ -1463,130 +1481,45 @@ mod tests {
     }
 
     #[test]
-    fn guard_equality_preserves_custom_type_definition_errors_from_either_operand() {
+    fn equality_accepts_function_value_guards() {
         let module = EcoString::from("main");
         let functions = HashMap::new();
         let mut anonymous = AnonymousFunctions::default();
         let mut context = PlanContext::new(&module, &functions, &mut anonymous);
-        let custom_name = CustomTypeName::new("geam".into(), module.clone(), "Missing".into());
-        context.define_custom_local("missing".into(), CustomType::new(custom_name, Vec::new()));
-        let gleam_type = Arc::new(Type::Named {
-            publicity: Publicity::Private,
-            name: "Missing".into(),
-            module: module.clone(),
-            package: "geam".into(),
-            arguments: Vec::new(),
-            inferred_variant: None,
-        });
-        let expected = Err(PlanError::InvalidTypedAst {
-            reason: InvalidTypedAstReason::CustomType {
-                name: "Missing".into(),
-                reason: crate::planner::InvalidCustomTypeReason::UnknownDefinition,
-            },
-        });
-
-        assert_eq!(
-            super::equality(
-                var("missing", gleam_type.clone()),
-                int_constant(1),
-                &mut context,
-                UnsupportedBinOpKind::EqFunction,
-                false,
-            ),
-            expected.clone(),
-        );
-        assert_eq!(
-            super::equality(
-                int_constant(1),
-                var("missing", gleam_type),
-                &mut context,
-                UnsupportedBinOpKind::EqFunction,
-                false,
-            ),
-            expected,
-        );
-    }
-
-    #[test]
-    fn equality_rejects_function_value_guard() {
-        let module = EcoString::from("main");
-        let functions = HashMap::new();
-        let mut anonymous = AnonymousFunctions::default();
-        let mut context = PlanContext::new(&module, &functions, &mut anonymous);
-        context.define_int_function_local(
+        let function_type = FunctionType::new(vec![ValueType::Int], ValueType::Int);
+        context.define_int_function_local("callback".into(), function_type.clone());
+        let gleam_type = type_::fn_(vec![type_::int()], type_::int());
+        let expected = Expr::function(FunctionExpr::int(IntFunctionExpr::local_get(
+            IntFunctionLocalId(0),
             "callback".into(),
-            FunctionType::new(vec![ValueType::Int], ValueType::Int),
-        );
-        let function_type = type_::fn_(vec![type_::int()], type_::int());
+            function_type,
+        )));
 
         assert_eq!(
             super::plan_bool(
                 ClauseGuard::BinaryOperator {
                     location: dummy_span(),
-                    operator: gleam_core::ast::BinOp::Eq,
+                    operator: BinOp::Eq,
                     operator_start: 0,
-                    left: Box::new(var("callback", function_type.clone())),
-                    right: Box::new(var("callback", function_type)),
+                    left: Box::new(var("callback", gleam_type.clone())),
+                    right: Box::new(var("callback", gleam_type.clone())),
                 },
                 &mut context,
             ),
-            Err(PlanError::UnsupportedBinOp {
-                operator: UnsupportedBinOpKind::EqFunction,
-            }),
+            Ok(BoolExpr::equal(expected.clone(), expected.clone())),
         );
         assert_eq!(
-            plan_expr(
+            super::plan_bool(
                 ClauseGuard::BinaryOperator {
                     location: dummy_span(),
                     operator: BinOp::NotEq,
                     operator_start: 0,
-                    left: Box::new(int_constant(1)),
-                    right: Box::new(var(
-                        "callback",
-                        type_::fn_(vec![type_::int()], type_::int())
-                    )),
+                    left: Box::new(var("callback", gleam_type.clone())),
+                    right: Box::new(var("callback", gleam_type)),
                 },
                 &mut context,
             ),
-            Err(PlanError::UnsupportedBinOp {
-                operator: UnsupportedBinOpKind::NotEqFunction,
-            }),
-        );
-        assert_eq!(
-            plan_expr(
-                ClauseGuard::BinaryOperator {
-                    location: dummy_span(),
-                    operator: BinOp::Eq,
-                    operator_start: 0,
-                    left: Box::new(ClauseGuard::Invalid {
-                        location: dummy_span(),
-                        type_: type_::int(),
-                    }),
-                    right: Box::new(int_constant(1)),
-                },
-                &mut context,
-            ),
-            Err(invalid_expression_shape(
-                InvalidExpressionShapeKind::Invalid
-            )),
-        );
-        assert_eq!(
-            plan_expr(
-                ClauseGuard::BinaryOperator {
-                    location: dummy_span(),
-                    operator: BinOp::Eq,
-                    operator_start: 0,
-                    left: Box::new(int_constant(1)),
-                    right: Box::new(ClauseGuard::Invalid {
-                        location: dummy_span(),
-                        type_: type_::int(),
-                    }),
-                },
-                &mut context,
-            ),
-            Err(invalid_expression_shape(
-                InvalidExpressionShapeKind::Invalid
-            )),
+            Ok(BoolExpr::not_equal(expected.clone(), expected)),
         );
     }
 

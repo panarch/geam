@@ -2187,7 +2187,7 @@ pub fn main() {
             .expect("source should lower an assert-list step");
         let alias_pattern = &expect_list_assert_pattern(pattern).elements()[0];
         let mut frame = Frame::new(function.frame_layout(), &mut state);
-        let wrong_kind = EvaluatedFunctionValue::from(EvaluatedFunctionFunction::new(
+        let wrong_kind = EvaluatedFunctionValue::from(EvaluatedFunctionFunction::reference(
             FunctionFunctionId::Int(IntFunctionFunctionId(0)),
             Vec::new(),
             Vec::new(),
@@ -2269,7 +2269,7 @@ pub fn main() {
         assert_eq!(bindings, Vec::new());
 
         let wrong_function =
-            EvaluatedFunctionValue::from(crate::runtime::EvaluatedIntFunction::new(
+            EvaluatedFunctionValue::from(crate::runtime::EvaluatedIntFunction::reference(
                 IntFunctionId(0),
                 Vec::new(),
                 Vec::new(),

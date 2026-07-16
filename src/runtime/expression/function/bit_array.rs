@@ -21,7 +21,7 @@ pub(in crate::runtime) fn eval_bit_array_function_expr(
     expression: &BitArrayFunctionExpr,
 ) -> Result<EvaluatedBitArrayFunction, ExecutionError> {
     match expression.kind() {
-        BitArrayFunctionExprKind::Reference(reference) => Ok(EvaluatedBitArrayFunction::new(
+        BitArrayFunctionExprKind::Reference(reference) => Ok(EvaluatedBitArrayFunction::reference(
             *reference.function(),
             reference.param_locals(),
             Vec::new(),
@@ -31,7 +31,7 @@ pub(in crate::runtime) fn eval_bit_array_function_expr(
                 crate::plan::execution::ValueType::BitArray,
             ),
         )),
-        BitArrayFunctionExprKind::Closure(template) => Ok(EvaluatedBitArrayFunction::new(
+        BitArrayFunctionExprKind::Closure(template) => Ok(EvaluatedBitArrayFunction::closure(
             *template.function(),
             template.param_locals(),
             function::eval_capture_args(plan, state, frame, template.captures())?,

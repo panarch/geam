@@ -20,7 +20,7 @@ pub(in crate::runtime) fn eval_bool_function_expr(
     expression: &BoolFunctionExpr,
 ) -> Result<EvaluatedBoolFunction, ExecutionError> {
     match expression.kind() {
-        BoolFunctionExprKind::Reference(reference) => Ok(EvaluatedBoolFunction::new(
+        BoolFunctionExprKind::Reference(reference) => Ok(EvaluatedBoolFunction::reference(
             *reference.function(),
             reference.param_locals(),
             Vec::new(),
@@ -30,7 +30,7 @@ pub(in crate::runtime) fn eval_bool_function_expr(
                 crate::plan::execution::ValueType::Bool,
             ),
         )),
-        BoolFunctionExprKind::Closure(template) => Ok(EvaluatedBoolFunction::new(
+        BoolFunctionExprKind::Closure(template) => Ok(EvaluatedBoolFunction::closure(
             *template.function(),
             template.param_locals(),
             function::eval_capture_args(plan, state, frame, template.captures())?,

@@ -82,16 +82,12 @@ fn plan_anonymous_with_captures(
     let planned = planned?;
     let (name, info) =
         context.allocate_anonymous_function_shape(name, return_shape, params, runtime_id);
-    let value = if planned.captures.is_empty() {
-        FunctionExpr::reference(info.reference())
-    } else {
-        closure_expr(
-            &info.runtime_id,
-            info.param_slots(),
-            planned.captures.clone(),
-            &function_shape,
-        )
-    };
+    let value = closure_expr(
+        &info.runtime_id,
+        info.param_slots(),
+        planned.captures.clone(),
+        &function_shape,
+    );
     let function = anonymous_function_plan(info, name, planned);
     context.push_anonymous_function(function);
     value
@@ -335,11 +331,10 @@ mod tests {
         RuntimeFunctionId, SourceSpan, StringExpr, TupleFunctionId, ValueType,
     };
     use crate::planner::dsl::{
-        call_int_function, capture_int, capture_tuple, function, function_function_closure,
-        function_function_ref, function_ref, int, int_arg, int_function_call_arg,
-        int_function_closure, int_function_ref, int_return_tail_call, let_int_function_step,
-        let_int_step, let_tuple_step, local_int, local_int_function, local_tuple,
-        module_with_anonymous, string, tuple, tuple_function_closure,
+        call_int_function, capture_int, capture_tuple, function, function_function_closure, int,
+        int_arg, int_function_call_arg, int_function_closure, int_return_tail_call,
+        let_int_function_step, let_int_step, let_tuple_step, local_int, local_int_function,
+        local_tuple, module_with_anonymous, string, tuple, tuple_function_closure,
     };
     use crate::planner::error::{
         InvalidExpressionShapeKind, InvalidExpressionType, InvalidFunctionShapeReason,
@@ -365,7 +360,11 @@ pub fn main() {
 "#,
         ))
         .expect("source should plan");
-        let add_one = int_function_ref(1, [LocalId::Int(IntLocalId(0))]);
+        let add_one = int_function_closure(
+            1,
+            [LocalId::Int(IntLocalId(0))],
+            Vec::<crate::plan::CaptureArg>::new(),
+        );
         let expected = module_with_anonymous(
             "main",
             function(
@@ -399,7 +398,11 @@ pub fn main() {
         .expect("source should plan");
         let expected = module_with_anonymous(
             "main",
-            function("main", int(42)).evaluate(int_function_ref(1, [LocalId::Int(IntLocalId(0))])),
+            function("main", int(42)).evaluate(int_function_closure(
+                1,
+                [LocalId::Int(IntLocalId(0))],
+                Vec::<crate::plan::CaptureArg>::new(),
+            )),
             [],
             [function("<anonymous:0>", int(1)).discard_int_param(0)],
         );
@@ -422,7 +425,11 @@ pub fn main() {
 "#,
         ))
         .expect("source should plan");
-        let wrapped = int_function_ref(2, [LocalId::Int(IntLocalId(0))]);
+        let wrapped = int_function_closure(
+            2,
+            [LocalId::Int(IntLocalId(0))],
+            Vec::<crate::plan::CaptureArg>::new(),
+        );
         let expected = module_with_anonymous(
             "main",
             function(
@@ -458,9 +465,10 @@ pub fn main() {
             "main",
             function(
                 "main",
-                function_ref(
-                    RuntimeFunctionId::Int(IntFunctionId(0)),
+                int_function_closure(
+                    0,
                     [LocalId::Int(IntLocalId(0))],
+                    Vec::<crate::plan::CaptureArg>::new(),
                 ),
             ),
             [],
@@ -488,9 +496,10 @@ pub fn main() {
             "main",
             function(
                 "main",
-                function_function_ref(
+                function_function_closure(
                     FunctionFunctionId::Int(IntFunctionFunctionId(0)),
                     Vec::<ParamLocal>::new(),
+                    Vec::<crate::plan::CaptureArg>::new(),
                     returned_function_type.clone(),
                 ),
             ),
@@ -500,9 +509,10 @@ pub fn main() {
                     .param_int(0, "value"),
                 function(
                     "<anonymous:0>",
-                    function_ref(
-                        RuntimeFunctionId::Int(IntFunctionId(0)),
+                    int_function_closure(
+                        0,
                         [LocalId::Int(IntLocalId(0))],
+                        Vec::<crate::plan::CaptureArg>::new(),
                     ),
                 ),
             ],
@@ -688,7 +698,11 @@ pub fn main() {
 "#,
         ))
         .expect("source should plan");
-        let add_one = int_function_ref(2, [LocalId::Int(IntLocalId(0))]);
+        let add_one = int_function_closure(
+            2,
+            [LocalId::Int(IntLocalId(0))],
+            Vec::<crate::plan::CaptureArg>::new(),
+        );
         let expected = module_with_anonymous(
             "main",
             function(
@@ -735,7 +749,11 @@ pub fn main() {
 "#,
         ))
         .expect("source should plan");
-        let add_one = int_function_ref(2, [LocalId::Int(IntLocalId(0))]);
+        let add_one = int_function_closure(
+            2,
+            [LocalId::Int(IntLocalId(0))],
+            Vec::<crate::plan::CaptureArg>::new(),
+        );
         let expected = module_with_anonymous(
             "main",
             function(

@@ -1807,7 +1807,7 @@ fn functions(function: fn() -> List(fn() -> Int)) { function() }
 pub fn main() { Nil }
 "#,
         );
-        let wrong_int = crate::runtime::EvaluatedListFunction::new(
+        let wrong_int = crate::runtime::EvaluatedListFunction::reference(
             ListFunctionId::Int(plan.int_list_function_id(0)),
             Vec::new(),
             Vec::new(),
@@ -1818,7 +1818,7 @@ pub fn main() { Nil }
                 ),
             ),
         );
-        let wrong_string = crate::runtime::EvaluatedListFunction::new(
+        let wrong_string = crate::runtime::EvaluatedListFunction::reference(
             ListFunctionId::String(plan.string_list_function_id(0)),
             Vec::new(),
             Vec::new(),
@@ -2052,7 +2052,7 @@ pub fn main() { #(list_function, custom_function, function_function) }
         .list()
         .expect("list_function should return a list function");
         assert_eq!(functions, Vec::new());
-        let wrong_string = crate::runtime::EvaluatedFunctionFunction::new(
+        let wrong_string = crate::runtime::EvaluatedFunctionFunction::reference(
             FunctionFunctionId::String(StringFunctionFunctionId(0)),
             Vec::new(),
             Vec::new(),
@@ -2061,7 +2061,7 @@ pub fn main() { #(list_function, custom_function, function_function) }
                 crate::plan::execution::ValueType::String,
             ),
         );
-        let wrong_int = crate::runtime::EvaluatedFunctionFunction::new(
+        let wrong_int = crate::runtime::EvaluatedFunctionFunction::reference(
             FunctionFunctionId::Int(IntFunctionFunctionId(0)),
             Vec::new(),
             Vec::new(),
@@ -2293,7 +2293,7 @@ pub fn main() { #(list_function, custom_function, function_function) }
         .list()
         .expect("list_function should return a list function");
         assert_eq!(functions, Vec::new());
-        let wrong_string = crate::runtime::EvaluatedStringFunction::new(
+        let wrong_string = crate::runtime::EvaluatedStringFunction::reference(
             StringFunctionId(0),
             Vec::new(),
             Vec::new(),
@@ -2302,7 +2302,7 @@ pub fn main() { #(list_function, custom_function, function_function) }
                 crate::plan::execution::ValueType::String,
             ),
         );
-        let wrong_int = crate::runtime::EvaluatedIntFunction::new(
+        let wrong_int = crate::runtime::EvaluatedIntFunction::reference(
             IntFunctionId(0),
             Vec::new(),
             Vec::new(),

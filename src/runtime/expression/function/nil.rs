@@ -20,7 +20,7 @@ pub(in crate::runtime) fn eval_nil_function_expr(
     expression: &NilFunctionExpr,
 ) -> Result<EvaluatedNilFunction, ExecutionError> {
     match expression.kind() {
-        NilFunctionExprKind::Reference(reference) => Ok(EvaluatedNilFunction::new(
+        NilFunctionExprKind::Reference(reference) => Ok(EvaluatedNilFunction::reference(
             *reference.function(),
             reference.param_locals(),
             Vec::new(),
@@ -30,7 +30,7 @@ pub(in crate::runtime) fn eval_nil_function_expr(
                 crate::plan::execution::ValueType::Nil,
             ),
         )),
-        NilFunctionExprKind::Closure(template) => Ok(EvaluatedNilFunction::new(
+        NilFunctionExprKind::Closure(template) => Ok(EvaluatedNilFunction::closure(
             *template.function(),
             template.param_locals(),
             function::eval_capture_args(plan, state, frame, template.captures())?,

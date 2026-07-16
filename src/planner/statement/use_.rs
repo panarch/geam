@@ -58,8 +58,8 @@ mod tests {
     use crate::planner::context::{AnonymousFunctions, PlanContext};
     use crate::planner::dsl::{
         call_int_function, capture_int, function, int, int_arg, int_function_arg,
-        int_function_call_arg, int_function_closure, int_function_ref, int_return_tail_call,
-        let_list_step, let_tuple_step, local_int, local_int_function, local_list, local_tuple,
+        int_function_call_arg, int_function_closure, int_return_tail_call, let_list_step,
+        let_tuple_step, local_int, local_int_function, local_list, local_tuple,
         module_with_anonymous, tuple, tuple_arg,
     };
     use crate::planner::plan_module;
@@ -100,7 +100,7 @@ fn pair(callback: fn() -> Int) {
                     1,
                     [int_function_arg(
                         0,
-                        int_function_ref(2, Vec::<LocalId>::new()),
+                        int_function_closure(2, Vec::<LocalId>::new(), []),
                     )],
                 ),
             ),
@@ -141,7 +141,7 @@ pub fn main() {
                     1,
                     [int_function_arg(
                         0,
-                        int_function_ref(2, [LocalId::Int(IntLocalId(0))]),
+                        int_function_closure(2, [LocalId::Int(IntLocalId(0))], []),
                     )],
                 ),
             ),
@@ -250,7 +250,10 @@ pub fn main() {
                     1,
                     [
                         int_arg(0, int(41)),
-                        int_function_arg(0, int_function_ref(2, [LocalId::Int(IntLocalId(0))])),
+                        int_function_arg(
+                            0,
+                            int_function_closure(2, [LocalId::Int(IntLocalId(0))], []),
+                        ),
                     ],
                 ),
             ),
@@ -290,7 +293,7 @@ pub fn main() {
         let type_ = [ValueType::Int, ValueType::Int];
         let tuple_type = ValueType::Tuple(type_.to_vec());
         let anonymous_ref =
-            int_function_ref(2, [ParamLocal::tuple(TupleLocalId(0), type_.to_vec())]);
+            int_function_closure(2, [ParamLocal::tuple(TupleLocalId(0), type_.to_vec())], []);
         let internal_tuple = local_tuple(1, "<tuple:1>", type_.clone());
         let expected = module_with_anonymous(
             "main",
@@ -395,7 +398,7 @@ pub fn main() {
                     1,
                     [int_function_arg(
                         0,
-                        int_function_ref(2, [LocalId::Int(IntLocalId(0))]),
+                        int_function_closure(2, [LocalId::Int(IntLocalId(0))], []),
                     )],
                 ),
             ),
@@ -448,9 +451,10 @@ pub fn main() {
                     1,
                     [int_function_arg(
                         0,
-                        int_function_ref(
+                        int_function_closure(
                             2,
                             [ParamLocal::tuple(TupleLocalId(0), outer_type.to_vec())],
+                            [],
                         ),
                     )],
                 ),

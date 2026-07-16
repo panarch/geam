@@ -41,7 +41,7 @@ pub(in crate::runtime) fn eval_custom_function_expr_kind(
         CustomFunctionExprKind::Constructor(constructor) => Ok(
             EvaluatedCustomFunction::constructor(*constructor, type_.to_function_type()),
         ),
-        CustomFunctionExprKind::Reference(reference) => Ok(EvaluatedCustomFunction::function(
+        CustomFunctionExprKind::Reference(reference) => Ok(EvaluatedCustomFunction::reference(
             *reference.function(),
             reference.param_locals(),
             Vec::new(),
@@ -51,7 +51,7 @@ pub(in crate::runtime) fn eval_custom_function_expr_kind(
                 crate::plan::execution::ValueType::Custom(type_.return_().type_id()),
             ),
         )),
-        CustomFunctionExprKind::Closure(template) => Ok(EvaluatedCustomFunction::function(
+        CustomFunctionExprKind::Closure(template) => Ok(EvaluatedCustomFunction::closure(
             *template.function(),
             template.param_locals(),
             function::eval_capture_args(plan, state, frame, template.captures())?,

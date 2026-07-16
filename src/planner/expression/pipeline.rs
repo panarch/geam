@@ -107,8 +107,8 @@ mod tests {
     use crate::plan::{IntLocalId, LocalId};
     use crate::planner::dsl::{
         block_int, bool_, bool_arg, bool_return_block, bool_return_tail_call, call_int,
-        call_int_function, function, int, int_arg, int_function_call_arg, int_function_ref,
-        int_return_block, int_return_expr, int_return_tail_call, let_bool_step,
+        call_int_function, function, int, int_arg, int_function_call_arg, int_function_closure,
+        int_function_ref, int_return_block, int_return_expr, int_return_tail_call, let_bool_step,
         let_int_function_step, let_int_step, let_nil_step, let_string_step, local_bool, local_int,
         local_int_function, local_nil, local_string, module, module_with_anonymous, nil, nil_arg,
         nil_return_block, nil_return_tail_call, string, string_arg, string_return_block,
@@ -441,7 +441,7 @@ pub fn main() {
                 int_return_block(
                     [let_int_step(0, "_pipe", int(1))],
                     int_return_expr(call_int_function(
-                        int_function_ref(1, [LocalId::Int(IntLocalId(0))]),
+                        int_function_closure(1, [LocalId::Int(IntLocalId(0))], []),
                         [int_function_call_arg(0, local_int(0, "_pipe"))],
                     )),
                 ),

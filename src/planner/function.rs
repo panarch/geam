@@ -175,7 +175,7 @@ mod tests {
         function_function_ref, function_function_return_block, function_function_return_expr,
         function_function_return_int_case, function_function_return_string_case,
         function_function_return_tail_call, function_ref, int, int_arg, int_function_arg,
-        int_function_call_arg, int_function_ref, int_function_return_block,
+        int_function_call_arg, int_function_closure, int_function_ref, int_function_return_block,
         int_function_return_bool_case, int_function_return_expr, int_function_return_int_case,
         int_function_return_string_case, int_function_return_tail_call, int_return_block,
         int_return_bool_case, int_return_expr, int_return_int_case, int_return_tail_call,
@@ -1172,7 +1172,7 @@ pub fn main() {
             .step(let_int_function_step(
                 0,
                 "main",
-                int_function_ref(1, Vec::<LocalId>::new()),
+                int_function_closure(1, Vec::<LocalId>::new(), []),
             )),
             [],
             [function("<anonymous:0>", int(0))],

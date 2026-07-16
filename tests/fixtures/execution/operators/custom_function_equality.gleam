@@ -10,4 +10,4 @@ pub fn main() {
   Holder(identity) == Holder(identity)
 }
 
-// geam:reject unsupported binary operator: equality on function values
+// geam:expect Bool(true)

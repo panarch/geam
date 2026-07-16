@@ -38,13 +38,13 @@ pub(in crate::runtime) fn eval_function_function_expr_kind(
     kind: &FunctionFunctionExprKind,
 ) -> Result<EvaluatedFunctionFunction, ExecutionError> {
     match kind {
-        FunctionFunctionExprKind::Reference(reference) => Ok(EvaluatedFunctionFunction::new(
+        FunctionFunctionExprKind::Reference(reference) => Ok(EvaluatedFunctionFunction::reference(
             reference.function().clone(),
             reference.param_locals(),
             Vec::new(),
             type_.to_function_type(),
         )),
-        FunctionFunctionExprKind::Closure(template) => Ok(EvaluatedFunctionFunction::new(
+        FunctionFunctionExprKind::Closure(template) => Ok(EvaluatedFunctionFunction::closure(
             template.function().clone(),
             template.param_locals(),
             function::eval_capture_args(plan, state, frame, template.captures())?,

@@ -22,7 +22,7 @@ pub(in crate::runtime) fn eval_utf_codepoint_function_expr(
 ) -> Result<EvaluatedUtfCodepointFunction, ExecutionError> {
     match expression.kind() {
         UtfCodepointFunctionExprKind::Reference(reference) => {
-            Ok(EvaluatedUtfCodepointFunction::new(
+            Ok(EvaluatedUtfCodepointFunction::reference(
                 *reference.function(),
                 reference.param_locals(),
                 Vec::new(),
@@ -33,16 +33,18 @@ pub(in crate::runtime) fn eval_utf_codepoint_function_expr(
                 ),
             ))
         }
-        UtfCodepointFunctionExprKind::Closure(template) => Ok(EvaluatedUtfCodepointFunction::new(
-            *template.function(),
-            template.param_locals(),
-            function::eval_capture_args(plan, state, frame, template.captures())?,
-            crate::runtime::evaluated::function_type_from_slots(
-                plan,
-                template.params(),
-                crate::plan::execution::ValueType::UtfCodepoint,
-            ),
-        )),
+        UtfCodepointFunctionExprKind::Closure(template) => {
+            Ok(EvaluatedUtfCodepointFunction::closure(
+                *template.function(),
+                template.param_locals(),
+                function::eval_capture_args(plan, state, frame, template.captures())?,
+                crate::runtime::evaluated::function_type_from_slots(
+                    plan,
+                    template.params(),
+                    crate::plan::execution::ValueType::UtfCodepoint,
+                ),
+            ))
+        }
         UtfCodepointFunctionExprKind::LocalGet { local, .. } => {
             Ok(frame.get_utf_codepoint_function(*local))
         }
