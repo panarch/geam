@@ -66,10 +66,11 @@ Typed projections have the following approved execution invariants:
   custom field projection or binding whose runtime field has a different
   exact value type.
 
-Record access and total custom binding must preserve constructor refinements or
-exhaustive remainder proofs in the module plan. Execution lowering consumes
-those proofs; runtime field projection and total binding must not recheck the
-custom discriminant. Refutable pattern mismatch remains normal fallthrough.
+Planner-established type, shape, and discriminant relationships must be
+preserved structurally through lowering. Runtime must not revalidate them
+unless this policy explicitly lists the boundary as an approved execution
+invariant. Source-level refutable matches remain normal control flow, not
+execution invariant failures.
 
 List item-family identity must be preserved by the execution list type graph,
 family-specific frame/function boundaries, and RC-backed typed runtime handles.
