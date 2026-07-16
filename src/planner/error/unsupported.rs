@@ -59,14 +59,6 @@ pub enum UnsupportedBitArraySegmentReason {
 }
 
 #[derive(Debug, Error, Clone, Copy, PartialEq, Eq)]
-pub enum UnsupportedBinOpKind {
-    #[error("equal function")]
-    EqFunction,
-    #[error("not equal function")]
-    NotEqFunction,
-}
-
-#[derive(Debug, Error, Clone, Copy, PartialEq, Eq)]
 pub enum UnsupportedCaseReason {
     #[error("case subject type is not supported")]
     UnsupportedSubjectType,

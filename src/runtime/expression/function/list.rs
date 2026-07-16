@@ -20,7 +20,7 @@ pub(in crate::runtime) fn eval_list_function_expr(
     expression: &ListFunctionExpr,
 ) -> Result<EvaluatedListFunction, ExecutionError> {
     match expression.kind() {
-        ListFunctionExprKind::Reference(reference) => Ok(EvaluatedListFunction::new(
+        ListFunctionExprKind::Reference(reference) => Ok(EvaluatedListFunction::reference(
             reference.function().clone(),
             reference.param_locals(),
             Vec::new(),
@@ -30,7 +30,7 @@ pub(in crate::runtime) fn eval_list_function_expr(
                 crate::plan::execution::ValueType::List(reference.function().list_type()),
             ),
         )),
-        ListFunctionExprKind::Closure(template) => Ok(EvaluatedListFunction::new(
+        ListFunctionExprKind::Closure(template) => Ok(EvaluatedListFunction::closure(
             template.function().clone(),
             template.param_locals(),
             function::eval_capture_args(plan, state, frame, template.captures())?,

@@ -20,7 +20,7 @@ pub(in crate::runtime) fn eval_string_function_expr(
     expression: &StringFunctionExpr,
 ) -> Result<EvaluatedStringFunction, ExecutionError> {
     match expression.kind() {
-        StringFunctionExprKind::Reference(reference) => Ok(EvaluatedStringFunction::new(
+        StringFunctionExprKind::Reference(reference) => Ok(EvaluatedStringFunction::reference(
             *reference.function(),
             reference.param_locals(),
             Vec::new(),
@@ -30,7 +30,7 @@ pub(in crate::runtime) fn eval_string_function_expr(
                 crate::plan::execution::ValueType::String,
             ),
         )),
-        StringFunctionExprKind::Closure(template) => Ok(EvaluatedStringFunction::new(
+        StringFunctionExprKind::Closure(template) => Ok(EvaluatedStringFunction::closure(
             *template.function(),
             template.param_locals(),
             function::eval_capture_args(plan, state, frame, template.captures())?,

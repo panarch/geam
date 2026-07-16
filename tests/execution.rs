@@ -169,6 +169,16 @@ mod operators {
         float_division,
         tuple_equality,
         list_equality,
+        function_equality,
+        function_inequality,
+        function_identity,
+        function_identity_families,
+        tuple_function_equality,
+        list_function_equality,
+        custom_function_equality,
+        nested_generic_custom_function_equality,
+        recursive_custom_function_equality,
+        result_function_equality,
         string_concatenation,
         bool_operators,
         short_circuit_block_scope,
@@ -603,19 +613,6 @@ mod rejection {
             echo,
             bit_array_native_endian,
             polymorphic_custom_constructor,
-        );
-    }
-
-    mod operators {
-        rejection_cases!("operators";
-            function_equality,
-            function_inequality,
-            tuple_function_equality,
-            list_function_equality,
-            custom_function_equality,
-            nested_generic_custom_function_equality,
-            recursive_custom_function_equality,
-            result_function_equality,
         );
     }
 

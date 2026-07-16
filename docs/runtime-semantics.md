@@ -37,6 +37,26 @@ Do not add a custom wrapper or semantic normalization only to hide Rust floating
 point behavior. Add one only when it is required to match a documented Gleam
 semantic boundary or an explicit Geam runtime policy.
 
+## Function Equality
+
+Function equality follows runtime identity rather than comparing function code,
+types, or captured values structurally.
+
+- Repeated evaluation of the same top-level function reference produces the
+  same identity.
+- Evaluating an anonymous closure produces a fresh identity, including closures
+  with no captures.
+- Evaluating a custom type constructor as a first-class function produces a
+  fresh identity.
+- Moving or cloning a function value through locals, arguments, captures,
+  containers, calls, or returns preserves its identity.
+- Tuple, list, custom, and `Result` equality applies these rules recursively to
+  contained function values.
+
+The public Rust `FunctionValue` representation is an owned materialized value;
+its `PartialEq` implementation is not the identity used by Gleam source-level
+function equality.
+
 ## Numeric Division By Zero
 
 Integer division and remainder by zero are normalized because Gleam defines

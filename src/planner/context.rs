@@ -25,8 +25,7 @@ use crate::plan::{
     UtfCodepointListLocalId, UtfCodepointLocalId, ValueType,
 };
 use crate::plan::{
-    CustomConstructorRefinement, CustomType, CustomTypeName, CustomValueShape, FunctionShape,
-    ValueShape,
+    CustomConstructorRefinement, CustomType, CustomValueShape, FunctionShape, ValueShape,
 };
 use crate::planner::error::{
     InvalidCustomTypeReason, InvalidExpressionShapeKind, InvalidTypedAstReason, PlanError,
@@ -36,7 +35,7 @@ use ecow::EcoString;
 use gleam_core::type_::{
     PRELUDE_MODULE_NAME, PatternConstructor, Type, ValueConstructor, ValueConstructorVariant,
 };
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 #[derive(Clone)]
 pub(super) struct FunctionInfo {
@@ -152,12 +151,6 @@ enum LocalBinding {
         binding: FunctionLocalBinding,
         shape: FunctionShape,
     },
-}
-
-#[derive(Clone, PartialEq, Eq, Hash)]
-struct CustomFunctionShape {
-    name: CustomTypeName,
-    arguments: Vec<bool>,
 }
 
 pub(super) struct CaptureBinding {
@@ -1291,15 +1284,6 @@ impl<'a> PlanContext<'a> {
         local
     }
 
-    #[cfg(test)]
-    pub(super) fn define_custom_local(
-        &mut self,
-        name: EcoString,
-        type_: CustomType,
-    ) -> CustomLocalId {
-        self.define_custom_local_shape(name, CustomValueShape::any(type_))
-    }
-
     pub(super) fn define_custom_local_shape(
         &mut self,
         name: EcoString,
@@ -2058,170 +2042,6 @@ impl<'a> PlanContext<'a> {
             constructor: CustomConstructor::new(type_, name, variant_index, fields),
             constructor_count,
         })
-    }
-
-    pub(super) fn contains_function_value(&self, type_: &ValueType) -> Result<bool, PlanError> {
-        self.contains_function_value_with_visited(type_, &mut HashSet::new())
-    }
-
-    fn contains_function_value_with_visited(
-        &self,
-        type_: &ValueType,
-        visited: &mut HashSet<CustomFunctionShape>,
-    ) -> Result<bool, PlanError> {
-        match type_ {
-            ValueType::Function(_) => Ok(true),
-            ValueType::Tuple(elements) => {
-                for element in elements {
-                    if self.contains_function_value_with_visited(element, visited)? {
-                        return Ok(true);
-                    }
-                }
-                Ok(false)
-            }
-            ValueType::List(element) => self.contains_function_value_with_visited(element, visited),
-            ValueType::Custom(type_) => self.custom_type_contains_function(type_, visited),
-            ValueType::Int
-            | ValueType::Float
-            | ValueType::String
-            | ValueType::BitArray
-            | ValueType::UtfCodepoint
-            | ValueType::Bool
-            | ValueType::Nil => Ok(false),
-        }
-    }
-
-    fn custom_type_contains_function(
-        &self,
-        type_: &CustomType,
-        visited: &mut HashSet<CustomFunctionShape>,
-    ) -> Result<bool, PlanError> {
-        let arguments = type_
-            .arguments()
-            .iter()
-            .map(|argument| self.contains_function_value_with_visited(argument, visited))
-            .collect::<Result<Vec<_>, _>>()?;
-        self.custom_shape_contains_function(type_.type_name(), arguments, visited)
-    }
-
-    fn custom_shape_contains_function(
-        &self,
-        name: &CustomTypeName,
-        arguments: Vec<bool>,
-        visited: &mut HashSet<CustomFunctionShape>,
-    ) -> Result<bool, PlanError> {
-        let shape = CustomFunctionShape {
-            name: name.clone(),
-            arguments,
-        };
-        if !visited.insert(shape.clone()) {
-            return Ok(false);
-        }
-
-        let result = if name.package().is_empty()
-            && name.module() == PRELUDE_MODULE_NAME
-            && name.name() == "Result"
-        {
-            if shape.arguments.len() != 2 {
-                return Err(PlanError::InvalidTypedAst {
-                    reason: InvalidTypedAstReason::CustomType {
-                        name: name.name().clone(),
-                        reason: InvalidCustomTypeReason::TypeArgumentCount,
-                    },
-                });
-            }
-            Ok(shape.arguments.iter().copied().any(|argument| argument))
-        } else {
-            let Some(definition) = self
-                .custom_types
-                .iter()
-                .find(|definition| definition.name() == name)
-            else {
-                return Err(PlanError::InvalidTypedAst {
-                    reason: InvalidTypedAstReason::CustomType {
-                        name: name.name().clone(),
-                        reason: InvalidCustomTypeReason::UnknownDefinition,
-                    },
-                });
-            };
-            if definition.parameters().len() != shape.arguments.len() {
-                return Err(PlanError::InvalidTypedAst {
-                    reason: InvalidTypedAstReason::CustomType {
-                        name: name.name().clone(),
-                        reason: InvalidCustomTypeReason::TypeArgumentCount,
-                    },
-                });
-            }
-            let mut contains_function = false;
-            'constructors: for constructor in definition.constructors() {
-                for field in constructor.fields() {
-                    if self.custom_template_contains_function(
-                        field.type_(),
-                        name,
-                        &shape.arguments,
-                        visited,
-                    )? {
-                        contains_function = true;
-                        break 'constructors;
-                    }
-                }
-            }
-            Ok(contains_function)
-        };
-
-        visited.remove(&shape);
-        result
-    }
-
-    fn custom_template_contains_function(
-        &self,
-        template: &CustomTypeTemplate,
-        owner: &CustomTypeName,
-        arguments: &[bool],
-        visited: &mut HashSet<CustomFunctionShape>,
-    ) -> Result<bool, PlanError> {
-        match template {
-            CustomTypeTemplate::Function { .. } => Ok(true),
-            CustomTypeTemplate::Tuple(elements) => {
-                let mut contains_function = false;
-                for element in elements {
-                    contains_function |=
-                        self.custom_template_contains_function(element, owner, arguments, visited)?;
-                }
-                Ok(contains_function)
-            }
-            CustomTypeTemplate::List(element) => {
-                self.custom_template_contains_function(element, owner, arguments, visited)
-            }
-            CustomTypeTemplate::Custom {
-                name,
-                arguments: templates,
-            } => {
-                let mut nested_arguments = Vec::with_capacity(templates.len());
-                for template in templates {
-                    let contains_function = self
-                        .custom_template_contains_function(template, owner, arguments, visited)?;
-                    nested_arguments.push(contains_function);
-                }
-                self.custom_shape_contains_function(name, nested_arguments, visited)
-            }
-            CustomTypeTemplate::Parameter(parameter) => match arguments.get(parameter.0).copied() {
-                Some(contains_function) => Ok(contains_function),
-                None => Err(PlanError::InvalidTypedAst {
-                    reason: InvalidTypedAstReason::CustomType {
-                        name: owner.name().clone(),
-                        reason: InvalidCustomTypeReason::ParameterType,
-                    },
-                }),
-            },
-            CustomTypeTemplate::Int
-            | CustomTypeTemplate::Float
-            | CustomTypeTemplate::String
-            | CustomTypeTemplate::BitArray
-            | CustomTypeTemplate::UtfCodepoint
-            | CustomTypeTemplate::Bool
-            | CustomTypeTemplate::Nil => Ok(false),
-        }
     }
 
     pub(super) fn lookup_function_local(
@@ -3984,13 +3804,6 @@ mod tests {
                 InvalidCustomTypeReason::TypeArgumentCount,
             )),
         );
-        assert_eq!(
-            context.contains_function_value(&ValueType::Custom(generic_without_arguments.clone())),
-            Err(invalid_custom_constructor_error(
-                &generic_without_arguments,
-                InvalidCustomTypeReason::TypeArgumentCount,
-            )),
-        );
 
         let result_type = CustomType::new(
             CustomTypeName::new(
@@ -4074,13 +3887,6 @@ mod tests {
                 InvalidCustomTypeReason::TypeArgumentCount,
             )),
         );
-        assert_eq!(
-            context.contains_function_value(&ValueType::Custom(malformed_result_type.clone())),
-            Err(invalid_custom_constructor_error(
-                &malformed_result_type,
-                InvalidCustomTypeReason::TypeArgumentCount,
-            )),
-        );
         let non_prelude_result = CustomType::new(
             CustomTypeName::new(
                 "other".into(),
@@ -4102,82 +3908,6 @@ mod tests {
                 InvalidCustomTypeReason::UnknownDefinition,
             )),
         );
-        assert_eq!(
-            context.contains_function_value(&ValueType::Custom(non_prelude_result.clone())),
-            Err(invalid_custom_constructor_error(
-                &non_prelude_result,
-                InvalidCustomTypeReason::UnknownDefinition,
-            )),
-        );
-        assert_eq!(
-            context.contains_function_value(&ValueType::Custom(generic_int)),
-            Ok(false),
-        );
-        assert_eq!(
-            context.contains_function_value(&ValueType::Custom(CustomType::new(
-                recursive_name,
-                Vec::new(),
-            ))),
-            Ok(false),
-        );
-        assert_eq!(
-            context.contains_function_value(&ValueType::Tuple(vec![
-                ValueType::Int,
-                ValueType::Function(Box::new(FunctionType::new(Vec::new(), ValueType::String,))),
-            ])),
-            Ok(true),
-        );
-        assert_eq!(
-            context.contains_function_value(&ValueType::Tuple(vec![
-                ValueType::Int,
-                ValueType::String,
-            ])),
-            Ok(false),
-        );
-        assert_eq!(
-            context.contains_function_value(&ValueType::List(Box::new(ValueType::Function(
-                Box::new(FunctionType::new(Vec::new(), ValueType::Nil)),
-            )))),
-            Ok(true),
-        );
-        assert_eq!(
-            context.contains_function_value(&ValueType::Custom(CustomType::new(
-                function_name,
-                Vec::new(),
-            ))),
-            Ok(true),
-        );
-        assert_eq!(
-            context.contains_function_value(&ValueType::Custom(CustomType::new(
-                tuple_function_name,
-                Vec::new(),
-            ))),
-            Ok(true),
-        );
-        assert_eq!(
-            context.contains_function_value(&ValueType::Custom(CustomType::new(
-                list_function_name,
-                Vec::new(),
-            ))),
-            Ok(true),
-        );
-        assert_eq!(
-            context.contains_function_value(&ValueType::Custom(CustomType::new(
-                result_type.type_name().clone(),
-                vec![
-                    ValueType::Function(Box::new(FunctionType::new(Vec::new(), ValueType::Int,))),
-                    ValueType::String,
-                ],
-            ))),
-            Ok(true),
-        );
-        assert_eq!(
-            context.contains_function_value(&ValueType::Custom(CustomType::new(
-                result_type.type_name().clone(),
-                vec![ValueType::Int, ValueType::String],
-            ))),
-            Ok(false),
-        );
         let broken = CustomType::new(broken_name, vec![ValueType::Int]);
         assert_eq!(
             context.custom_constructor_from_parts(
@@ -4191,84 +3921,6 @@ mod tests {
                 reason: InvalidTypedAstReason::CustomType {
                     name: "Broken".into(),
                     reason: InvalidCustomTypeReason::ParameterType,
-                },
-            }),
-        );
-        assert_eq!(
-            context.contains_function_value(&ValueType::Custom(broken.clone())),
-            Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::CustomType {
-                    name: "Broken".into(),
-                    reason: InvalidCustomTypeReason::ParameterType,
-                },
-            }),
-        );
-        assert_eq!(
-            context.contains_function_value(&ValueType::Custom(CustomType::new(
-                tuple_broken_name,
-                Vec::new(),
-            ))),
-            Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::CustomType {
-                    name: "TupleBroken".into(),
-                    reason: InvalidCustomTypeReason::ParameterType,
-                },
-            }),
-        );
-        assert_eq!(
-            context.contains_function_value(&ValueType::Custom(CustomType::new(
-                custom_argument_broken_name,
-                Vec::new(),
-            ))),
-            Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::CustomType {
-                    name: "CustomArgumentBroken".into(),
-                    reason: InvalidCustomTypeReason::ParameterType,
-                },
-            }),
-        );
-        assert_eq!(
-            context.contains_function_value(&ValueType::Custom(CustomType::new(
-                result_type.type_name().clone(),
-                vec![ValueType::String, ValueType::Custom(broken.clone())],
-            ))),
-            Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::CustomType {
-                    name: "Broken".into(),
-                    reason: InvalidCustomTypeReason::ParameterType,
-                },
-            }),
-        );
-        let missing = CustomType::new(missing_name, Vec::new());
-        assert_eq!(
-            context.contains_function_value(&ValueType::Custom(missing.clone())),
-            Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::CustomType {
-                    name: "Missing".into(),
-                    reason: InvalidCustomTypeReason::UnknownDefinition,
-                },
-            }),
-        );
-        assert_eq!(
-            context.contains_function_value(&ValueType::Tuple(vec![ValueType::Custom(
-                missing.clone(),
-            )])),
-            Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::CustomType {
-                    name: "Missing".into(),
-                    reason: InvalidCustomTypeReason::UnknownDefinition,
-                },
-            }),
-        );
-        assert_eq!(
-            context.contains_function_value(&ValueType::Custom(CustomType::new(
-                nested_broken_name,
-                Vec::new(),
-            ))),
-            Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::CustomType {
-                    name: "Missing".into(),
-                    reason: InvalidCustomTypeReason::UnknownDefinition,
                 },
             }),
         );
@@ -4327,52 +3979,6 @@ mod tests {
                 &missing_parameter,
             ),
             parameter_error,
-        );
-    }
-
-    #[test]
-    fn reject_margin_custom_function_shape_errors_through_module_planning() {
-        let mut tuple_parameter = crate::planner::support::compile(
-            "pub type Box(value) { Box(#(Int, value)) } fn equal(value: Box(Int)) { value == value } pub fn main() { 0 }",
-        );
-        let missing_parameter = type_::generic_var(99);
-        tuple_parameter.definitions.custom_types[0]
-            .typed_parameters
-            .push(missing_parameter.clone());
-        tuple_parameter.definitions.custom_types[0].constructors[0].arguments[0].type_ =
-            type_::tuple(vec![type_::int(), missing_parameter]);
-        let type_argument_count_error = PlanError::InvalidTypedAst {
-            reason: InvalidTypedAstReason::CustomType {
-                name: "Box".into(),
-                reason: InvalidCustomTypeReason::TypeArgumentCount,
-            },
-        };
-        assert_eq!(
-            crate::planner::plan_module(tuple_parameter),
-            Err(type_argument_count_error.clone()),
-        );
-
-        let mut custom_argument = crate::planner::support::compile(
-            "pub type Wrapper(value) { Wrapper(value) } pub type Box(value) { Box(Wrapper(value)) } fn equal(value: Box(Int)) { value == value } pub fn main() { 0 }",
-        );
-        let box_type = custom_argument
-            .definitions
-            .custom_types
-            .iter_mut()
-            .find(|type_| type_.name == "Box")
-            .expect("compiled module should contain Box");
-        let missing_parameter = type_::generic_var(99);
-        box_type.typed_parameters.push(missing_parameter.clone());
-        box_type.constructors[0].arguments[0].type_ = type_::named(
-            "main",
-            "main",
-            "Wrapper",
-            Publicity::Public,
-            vec![missing_parameter],
-        );
-        assert_eq!(
-            crate::planner::plan_module(custom_argument),
-            Err(type_argument_count_error),
         );
     }
 

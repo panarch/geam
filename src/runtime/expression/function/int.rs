@@ -20,7 +20,7 @@ pub(in crate::runtime) fn eval_int_function_expr(
     expression: &IntFunctionExpr,
 ) -> Result<EvaluatedIntFunction, ExecutionError> {
     match expression.kind() {
-        IntFunctionExprKind::Reference(reference) => Ok(EvaluatedIntFunction::new(
+        IntFunctionExprKind::Reference(reference) => Ok(EvaluatedIntFunction::reference(
             *reference.function(),
             reference.param_locals(),
             Vec::new(),
@@ -30,7 +30,7 @@ pub(in crate::runtime) fn eval_int_function_expr(
                 crate::plan::execution::ValueType::Int,
             ),
         )),
-        IntFunctionExprKind::Closure(template) => Ok(EvaluatedIntFunction::new(
+        IntFunctionExprKind::Closure(template) => Ok(EvaluatedIntFunction::closure(
             *template.function(),
             template.param_locals(),
             function::eval_capture_args(plan, state, frame, template.captures())?,

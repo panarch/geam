@@ -83,10 +83,65 @@ pub(in crate::runtime) enum EvaluatedValue {
 
 #[derive(Debug, Clone, PartialEq)]
 pub(in crate::runtime) struct EvaluatedFunction<Id> {
+    identity: EvaluatedFunctionIdentity,
     runtime_id: Id,
     params: Vec<ParamLocal>,
     captures: Vec<EvaluatedCapture>,
     type_: FunctionType,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(in crate::runtime) struct FunctionReferenceIdentity {
+    table: FunctionTableIdentity,
+    index: usize,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum FunctionTableIdentity {
+    Value(FunctionReturnFamily),
+    List(ListFunctionReturnFamily),
+    Function(FunctionReturnFamily),
+    ReturningListFunction(ListFunctionReturnFamily),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ListFunctionReturnFamily {
+    Int,
+    String,
+    BitArray,
+    UtfCodepoint,
+    Custom,
+    Float,
+    Bool,
+    Nil,
+    Tuple,
+    List,
+    Function,
+}
+
+#[derive(Debug, Clone)]
+enum EvaluatedFunctionIdentity {
+    Reference(FunctionReferenceIdentity),
+    Instance(Rc<FunctionInstance>),
+}
+
+#[derive(Debug)]
+struct FunctionInstance;
+
+impl PartialEq for EvaluatedFunctionIdentity {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::Reference(left), Self::Reference(right)) => left == right,
+            (Self::Instance(left), Self::Instance(right)) => Rc::ptr_eq(left, right),
+            _ => false,
+        }
+    }
+}
+
+impl Eq for EvaluatedFunctionIdentity {}
+
+pub(in crate::runtime) trait FunctionReferenceId {
+    fn reference_identity(&self) -> FunctionReferenceIdentity;
 }
 
 pub(in crate::runtime) type EvaluatedIntFunction = EvaluatedFunction<IntFunctionId>;
@@ -105,6 +160,229 @@ pub(in crate::runtime) type EvaluatedNilFunction = EvaluatedFunction<NilFunction
 pub(in crate::runtime) type EvaluatedTupleFunction = EvaluatedFunction<TupleFunctionId>;
 pub(in crate::runtime) type EvaluatedListFunction = EvaluatedFunction<ListFunctionId>;
 pub(in crate::runtime) type EvaluatedFunctionFunction = EvaluatedFunction<FunctionFunctionId>;
+
+impl FunctionReferenceIdentity {
+    fn value(family: FunctionReturnFamily, index: usize) -> Self {
+        Self {
+            table: FunctionTableIdentity::Value(family),
+            index,
+        }
+    }
+
+    fn list(family: ListFunctionReturnFamily, index: usize) -> Self {
+        Self {
+            table: FunctionTableIdentity::List(family),
+            index,
+        }
+    }
+
+    fn function(family: FunctionReturnFamily, index: usize) -> Self {
+        Self {
+            table: FunctionTableIdentity::Function(family),
+            index,
+        }
+    }
+
+    fn returning_list_function(family: ListFunctionReturnFamily, index: usize) -> Self {
+        Self {
+            table: FunctionTableIdentity::ReturningListFunction(family),
+            index,
+        }
+    }
+}
+
+impl FunctionReferenceId for IntFunctionId {
+    fn reference_identity(&self) -> FunctionReferenceIdentity {
+        FunctionReferenceIdentity::value(FunctionReturnFamily::Int, self.0)
+    }
+}
+
+impl FunctionReferenceId for FloatFunctionId {
+    fn reference_identity(&self) -> FunctionReferenceIdentity {
+        FunctionReferenceIdentity::value(FunctionReturnFamily::Float, self.0)
+    }
+}
+
+impl FunctionReferenceId for StringFunctionId {
+    fn reference_identity(&self) -> FunctionReferenceIdentity {
+        FunctionReferenceIdentity::value(FunctionReturnFamily::String, self.0)
+    }
+}
+
+impl FunctionReferenceId for BitArrayFunctionId {
+    fn reference_identity(&self) -> FunctionReferenceIdentity {
+        FunctionReferenceIdentity::value(FunctionReturnFamily::BitArray, self.0)
+    }
+}
+
+impl FunctionReferenceId for UtfCodepointFunctionId {
+    fn reference_identity(&self) -> FunctionReferenceIdentity {
+        FunctionReferenceIdentity::value(FunctionReturnFamily::UtfCodepoint, self.0)
+    }
+}
+
+impl FunctionReferenceId for CustomFunctionId {
+    fn reference_identity(&self) -> FunctionReferenceIdentity {
+        FunctionReferenceIdentity::value(FunctionReturnFamily::Custom, self.index())
+    }
+}
+
+impl FunctionReferenceId for BoolFunctionId {
+    fn reference_identity(&self) -> FunctionReferenceIdentity {
+        FunctionReferenceIdentity::value(FunctionReturnFamily::Bool, self.0)
+    }
+}
+
+impl FunctionReferenceId for NilFunctionId {
+    fn reference_identity(&self) -> FunctionReferenceIdentity {
+        FunctionReferenceIdentity::value(FunctionReturnFamily::Nil, self.0)
+    }
+}
+
+impl FunctionReferenceId for TupleFunctionId {
+    fn reference_identity(&self) -> FunctionReferenceIdentity {
+        FunctionReferenceIdentity::value(FunctionReturnFamily::Tuple, self.0)
+    }
+}
+
+impl FunctionReferenceId for ListFunctionId {
+    fn reference_identity(&self) -> FunctionReferenceIdentity {
+        match self {
+            Self::Int(id) => {
+                FunctionReferenceIdentity::list(ListFunctionReturnFamily::Int, id.index())
+            }
+            Self::String(id) => {
+                FunctionReferenceIdentity::list(ListFunctionReturnFamily::String, id.index())
+            }
+            Self::BitArray(id) => {
+                FunctionReferenceIdentity::list(ListFunctionReturnFamily::BitArray, id.index())
+            }
+            Self::UtfCodepoint(id) => {
+                FunctionReferenceIdentity::list(ListFunctionReturnFamily::UtfCodepoint, id.index())
+            }
+            Self::Custom(id) => {
+                FunctionReferenceIdentity::list(ListFunctionReturnFamily::Custom, id.index())
+            }
+            Self::Float(id) => {
+                FunctionReferenceIdentity::list(ListFunctionReturnFamily::Float, id.index())
+            }
+            Self::Bool(id) => {
+                FunctionReferenceIdentity::list(ListFunctionReturnFamily::Bool, id.index())
+            }
+            Self::Nil(id) => {
+                FunctionReferenceIdentity::list(ListFunctionReturnFamily::Nil, id.index())
+            }
+            Self::Tuple(id) => {
+                FunctionReferenceIdentity::list(ListFunctionReturnFamily::Tuple, id.index())
+            }
+            Self::List(id) => {
+                FunctionReferenceIdentity::list(ListFunctionReturnFamily::List, id.index())
+            }
+            Self::Function(id) => {
+                FunctionReferenceIdentity::list(ListFunctionReturnFamily::Function, id.index())
+            }
+        }
+    }
+}
+
+impl FunctionReferenceId for FunctionFunctionId {
+    fn reference_identity(&self) -> FunctionReferenceIdentity {
+        match self {
+            Self::Int(id) => FunctionReferenceIdentity::function(FunctionReturnFamily::Int, id.0),
+            Self::Float(id) => {
+                FunctionReferenceIdentity::function(FunctionReturnFamily::Float, id.0)
+            }
+            Self::String(id) => {
+                FunctionReferenceIdentity::function(FunctionReturnFamily::String, id.0)
+            }
+            Self::BitArray(id) => {
+                FunctionReferenceIdentity::function(FunctionReturnFamily::BitArray, id.0)
+            }
+            Self::UtfCodepoint(id) => {
+                FunctionReferenceIdentity::function(FunctionReturnFamily::UtfCodepoint, id.0)
+            }
+            Self::Custom(id) => {
+                FunctionReferenceIdentity::function(FunctionReturnFamily::Custom, id.index())
+            }
+            Self::Bool(id) => FunctionReferenceIdentity::function(FunctionReturnFamily::Bool, id.0),
+            Self::Nil(id) => FunctionReferenceIdentity::function(FunctionReturnFamily::Nil, id.0),
+            Self::Tuple(id) => {
+                FunctionReferenceIdentity::function(FunctionReturnFamily::Tuple, id.0)
+            }
+            Self::List(id) => match id {
+                crate::plan::execution::ListFunctionFunctionId::Int { id, .. } => {
+                    FunctionReferenceIdentity::returning_list_function(
+                        ListFunctionReturnFamily::Int,
+                        id.0,
+                    )
+                }
+                crate::plan::execution::ListFunctionFunctionId::String { id, .. } => {
+                    FunctionReferenceIdentity::returning_list_function(
+                        ListFunctionReturnFamily::String,
+                        id.0,
+                    )
+                }
+                crate::plan::execution::ListFunctionFunctionId::BitArray { id, .. } => {
+                    FunctionReferenceIdentity::returning_list_function(
+                        ListFunctionReturnFamily::BitArray,
+                        id.0,
+                    )
+                }
+                crate::plan::execution::ListFunctionFunctionId::UtfCodepoint { id, .. } => {
+                    FunctionReferenceIdentity::returning_list_function(
+                        ListFunctionReturnFamily::UtfCodepoint,
+                        id.0,
+                    )
+                }
+                crate::plan::execution::ListFunctionFunctionId::Custom { id, .. } => {
+                    FunctionReferenceIdentity::returning_list_function(
+                        ListFunctionReturnFamily::Custom,
+                        id.0,
+                    )
+                }
+                crate::plan::execution::ListFunctionFunctionId::Float { id, .. } => {
+                    FunctionReferenceIdentity::returning_list_function(
+                        ListFunctionReturnFamily::Float,
+                        id.0,
+                    )
+                }
+                crate::plan::execution::ListFunctionFunctionId::Bool { id, .. } => {
+                    FunctionReferenceIdentity::returning_list_function(
+                        ListFunctionReturnFamily::Bool,
+                        id.0,
+                    )
+                }
+                crate::plan::execution::ListFunctionFunctionId::Nil { id, .. } => {
+                    FunctionReferenceIdentity::returning_list_function(
+                        ListFunctionReturnFamily::Nil,
+                        id.0,
+                    )
+                }
+                crate::plan::execution::ListFunctionFunctionId::Tuple { id, .. } => {
+                    FunctionReferenceIdentity::returning_list_function(
+                        ListFunctionReturnFamily::Tuple,
+                        id.0,
+                    )
+                }
+                crate::plan::execution::ListFunctionFunctionId::List { id, .. } => {
+                    FunctionReferenceIdentity::returning_list_function(
+                        ListFunctionReturnFamily::List,
+                        id.0,
+                    )
+                }
+                crate::plan::execution::ListFunctionFunctionId::Function { id, .. } => {
+                    FunctionReferenceIdentity::returning_list_function(
+                        ListFunctionReturnFamily::Function,
+                        id.0,
+                    )
+                }
+            },
+            Self::Function(id) => {
+                FunctionReferenceIdentity::function(FunctionReturnFamily::Function, id.index())
+            }
+        }
+    }
+}
 
 pub(in crate::runtime) fn function_type_from_slots(
     plan: &crate::plan::execution::ExecutionPlan,
@@ -299,14 +577,33 @@ impl EvaluatedValue {
     }
 }
 
+impl<Id: Clone + FunctionReferenceId> EvaluatedFunction<Id> {
+    pub(in crate::runtime) fn reference(
+        runtime_id: Id,
+        params: Vec<ParamLocal>,
+        captures: Vec<EvaluatedCapture>,
+        type_: FunctionType,
+    ) -> Self {
+        let identity = EvaluatedFunctionIdentity::Reference(runtime_id.reference_identity());
+        Self {
+            identity,
+            runtime_id,
+            params,
+            captures,
+            type_,
+        }
+    }
+}
+
 impl<Id: Clone> EvaluatedFunction<Id> {
-    pub(in crate::runtime) fn new(
+    pub(in crate::runtime) fn closure(
         runtime_id: Id,
         params: Vec<ParamLocal>,
         captures: Vec<EvaluatedCapture>,
         type_: FunctionType,
     ) -> Self {
         Self {
+            identity: EvaluatedFunctionIdentity::Instance(Rc::new(FunctionInstance)),
             runtime_id,
             params,
             captures,
@@ -337,20 +634,33 @@ impl<Id: Clone> EvaluatedFunction<Id> {
 }
 
 impl EvaluatedCustomFunction {
-    pub(in crate::runtime) fn function(
+    pub(in crate::runtime) fn reference(
         runtime_id: CustomFunctionId,
         params: Vec<ParamLocal>,
         captures: Vec<EvaluatedCapture>,
         type_: FunctionType,
     ) -> Self {
-        Self::Function(EvaluatedFunction::new(runtime_id, params, captures, type_))
+        Self::Function(EvaluatedFunction::reference(
+            runtime_id, params, captures, type_,
+        ))
+    }
+
+    pub(in crate::runtime) fn closure(
+        runtime_id: CustomFunctionId,
+        params: Vec<ParamLocal>,
+        captures: Vec<EvaluatedCapture>,
+        type_: FunctionType,
+    ) -> Self {
+        Self::Function(EvaluatedFunction::closure(
+            runtime_id, params, captures, type_,
+        ))
     }
 
     pub(in crate::runtime) fn constructor(
         constructor: CustomConstructorId,
         type_: FunctionType,
     ) -> Self {
-        Self::Constructor(EvaluatedFunction::new(
+        Self::Constructor(EvaluatedFunction::closure(
             constructor,
             Vec::new(),
             Vec::new(),
@@ -653,7 +963,7 @@ pub(in crate::runtime) fn values_equal(
             lists_equal(plan, state, left, right)
         }
         (EvaluatedValue::Function(left), EvaluatedValue::Function(right)) => {
-            functions_equal(plan, state, left, right)
+            functions_equal(left, right)
         }
         _ => false,
     }
@@ -678,387 +988,64 @@ fn lists_equal(
             .all(|(left, right)| values_equal(plan, state, left, right))
 }
 
-fn functions_equal(
-    plan: &crate::ExecutionPlan,
-    state: &RuntimeState,
-    left: &EvaluatedFunctionValue,
-    right: &EvaluatedFunctionValue,
-) -> bool {
+fn functions_equal(left: &EvaluatedFunctionValue, right: &EvaluatedFunctionValue) -> bool {
     match (left.kind(), right.kind()) {
         (EvaluatedFunctionValueKind::Int(left), EvaluatedFunctionValueKind::Int(right)) => {
-            function_values_equal(plan, state, left, right)
+            function_values_equal(left, right)
         }
         (EvaluatedFunctionValueKind::Float(left), EvaluatedFunctionValueKind::Float(right)) => {
-            function_values_equal(plan, state, left, right)
+            function_values_equal(left, right)
         }
         (EvaluatedFunctionValueKind::String(left), EvaluatedFunctionValueKind::String(right)) => {
-            function_values_equal(plan, state, left, right)
+            function_values_equal(left, right)
         }
         (
             EvaluatedFunctionValueKind::BitArray(left),
             EvaluatedFunctionValueKind::BitArray(right),
-        ) => function_values_equal(plan, state, left, right),
+        ) => function_values_equal(left, right),
         (
             EvaluatedFunctionValueKind::UtfCodepoint(left),
             EvaluatedFunctionValueKind::UtfCodepoint(right),
-        ) => function_values_equal(plan, state, left, right),
+        ) => function_values_equal(left, right),
         (EvaluatedFunctionValueKind::Custom(left), EvaluatedFunctionValueKind::Custom(right)) => {
-            custom_function_values_equal(plan, state, left, right)
+            custom_function_values_equal(left, right)
         }
         (EvaluatedFunctionValueKind::Bool(left), EvaluatedFunctionValueKind::Bool(right)) => {
-            function_values_equal(plan, state, left, right)
+            function_values_equal(left, right)
         }
         (EvaluatedFunctionValueKind::Nil(left), EvaluatedFunctionValueKind::Nil(right)) => {
-            function_values_equal(plan, state, left, right)
+            function_values_equal(left, right)
         }
         (EvaluatedFunctionValueKind::Tuple(left), EvaluatedFunctionValueKind::Tuple(right)) => {
-            function_values_equal(plan, state, left, right)
+            function_values_equal(left, right)
         }
         (EvaluatedFunctionValueKind::List(left), EvaluatedFunctionValueKind::List(right)) => {
-            function_values_equal(plan, state, left, right)
+            function_values_equal(left, right)
         }
         (
             EvaluatedFunctionValueKind::Function(left),
             EvaluatedFunctionValueKind::Function(right),
-        ) => function_values_equal(plan, state, left, right),
+        ) => function_values_equal(left, right),
         _ => false,
     }
 }
 
-fn function_values_equal<Id: PartialEq>(
-    plan: &crate::ExecutionPlan,
-    state: &RuntimeState,
-    left: &EvaluatedFunction<Id>,
-    right: &EvaluatedFunction<Id>,
-) -> bool {
-    left.runtime_id == right.runtime_id
-        && left.params == right.params
-        && left.type_ == right.type_
-        && left.captures.len() == right.captures.len()
-        && left
-            .captures
-            .iter()
-            .zip(&right.captures)
-            .all(|(left, right)| captures_equal(plan, state, left, right))
+fn function_values_equal<Id>(left: &EvaluatedFunction<Id>, right: &EvaluatedFunction<Id>) -> bool {
+    left.identity == right.identity
 }
 
 fn custom_function_values_equal(
-    plan: &crate::ExecutionPlan,
-    state: &RuntimeState,
     left: &EvaluatedCustomFunction,
     right: &EvaluatedCustomFunction,
 ) -> bool {
     match (left, right) {
         (EvaluatedCustomFunction::Function(left), EvaluatedCustomFunction::Function(right)) => {
-            function_values_equal(plan, state, left, right)
+            function_values_equal(left, right)
         }
         (
             EvaluatedCustomFunction::Constructor(left),
             EvaluatedCustomFunction::Constructor(right),
-        ) => function_values_equal(plan, state, left, right),
-        _ => false,
-    }
-}
-
-fn captures_equal(
-    plan: &crate::ExecutionPlan,
-    state: &RuntimeState,
-    left: &EvaluatedCapture,
-    right: &EvaluatedCapture,
-) -> bool {
-    match (left.kind(), right.kind()) {
-        (
-            EvaluatedCaptureKind::Int {
-                local: left_local,
-                value: left,
-            },
-            EvaluatedCaptureKind::Int {
-                local: right_local,
-                value: right,
-            },
-        ) => left_local == right_local && left == right,
-        (
-            EvaluatedCaptureKind::Float {
-                local: left_local,
-                value: left,
-            },
-            EvaluatedCaptureKind::Float {
-                local: right_local,
-                value: right,
-            },
-        ) => left_local == right_local && left == right,
-        (
-            EvaluatedCaptureKind::String {
-                local: left_local,
-                value: left,
-            },
-            EvaluatedCaptureKind::String {
-                local: right_local,
-                value: right,
-            },
-        ) => left_local == right_local && left == right,
-        (
-            EvaluatedCaptureKind::UtfCodepoint {
-                local: left_local,
-                value: left,
-            },
-            EvaluatedCaptureKind::UtfCodepoint {
-                local: right_local,
-                value: right,
-            },
-        ) => left_local == right_local && left == right,
-        (
-            EvaluatedCaptureKind::Bool {
-                local: left_local,
-                value: left,
-            },
-            EvaluatedCaptureKind::Bool {
-                local: right_local,
-                value: right,
-            },
-        ) => left_local == right_local && left == right,
-        (EvaluatedCaptureKind::Nil { local: left }, EvaluatedCaptureKind::Nil { local: right }) => {
-            left == right
-        }
-        (
-            EvaluatedCaptureKind::Tuple {
-                local: left_local,
-                value: left,
-            },
-            EvaluatedCaptureKind::Tuple {
-                local: right_local,
-                value: right,
-            },
-        ) => {
-            left_local == right_local
-                && values_equal(
-                    plan,
-                    state,
-                    &EvaluatedValue::Tuple(left.clone()),
-                    &EvaluatedValue::Tuple(right.clone()),
-                )
-        }
-        (EvaluatedCaptureKind::List(left), EvaluatedCaptureKind::List(right)) => {
-            list_captures_equal(plan, state, left, right)
-        }
-        (
-            EvaluatedCaptureKind::IntFunction {
-                local: left_local,
-                value: left,
-            },
-            EvaluatedCaptureKind::IntFunction {
-                local: right_local,
-                value: right,
-            },
-        ) => left_local == right_local && function_values_equal(plan, state, left, right),
-        (
-            EvaluatedCaptureKind::FloatFunction {
-                local: left_local,
-                value: left,
-            },
-            EvaluatedCaptureKind::FloatFunction {
-                local: right_local,
-                value: right,
-            },
-        ) => left_local == right_local && function_values_equal(plan, state, left, right),
-        (
-            EvaluatedCaptureKind::StringFunction {
-                local: left_local,
-                value: left,
-            },
-            EvaluatedCaptureKind::StringFunction {
-                local: right_local,
-                value: right,
-            },
-        ) => left_local == right_local && function_values_equal(plan, state, left, right),
-        (
-            EvaluatedCaptureKind::UtfCodepointFunction {
-                local: left_local,
-                value: left,
-            },
-            EvaluatedCaptureKind::UtfCodepointFunction {
-                local: right_local,
-                value: right,
-            },
-        ) => left_local == right_local && function_values_equal(plan, state, left, right),
-        (
-            EvaluatedCaptureKind::BoolFunction {
-                local: left_local,
-                value: left,
-            },
-            EvaluatedCaptureKind::BoolFunction {
-                local: right_local,
-                value: right,
-            },
-        ) => left_local == right_local && function_values_equal(plan, state, left, right),
-        (
-            EvaluatedCaptureKind::NilFunction {
-                local: left_local,
-                value: left,
-            },
-            EvaluatedCaptureKind::NilFunction {
-                local: right_local,
-                value: right,
-            },
-        ) => left_local == right_local && function_values_equal(plan, state, left, right),
-        (
-            EvaluatedCaptureKind::TupleFunction {
-                local: left_local,
-                value: left,
-            },
-            EvaluatedCaptureKind::TupleFunction {
-                local: right_local,
-                value: right,
-            },
-        ) => left_local == right_local && function_values_equal(plan, state, left, right),
-        (
-            EvaluatedCaptureKind::ListFunction {
-                local: left_local,
-                value: left,
-            },
-            EvaluatedCaptureKind::ListFunction {
-                local: right_local,
-                value: right,
-            },
-        ) => left_local == right_local && function_values_equal(plan, state, left, right),
-        (
-            EvaluatedCaptureKind::FunctionFunction {
-                local: left_local,
-                value: left,
-            },
-            EvaluatedCaptureKind::FunctionFunction {
-                local: right_local,
-                value: right,
-            },
-        ) => left_local == right_local && function_values_equal(plan, state, left, right),
-        _ => false,
-    }
-}
-
-fn list_captures_equal(
-    plan: &crate::ExecutionPlan,
-    state: &RuntimeState,
-    left: &EvaluatedListCapture,
-    right: &EvaluatedListCapture,
-) -> bool {
-    match (left, right) {
-        (
-            EvaluatedListCapture::Int {
-                local: left_local,
-                value: left,
-            },
-            EvaluatedListCapture::Int {
-                local: right_local,
-                value: right,
-            },
-        ) => {
-            left_local == right_local
-                && lists_equal(plan, state, &left.clone().into(), &right.clone().into())
-        }
-        (
-            EvaluatedListCapture::String {
-                local: left_local,
-                value: left,
-            },
-            EvaluatedListCapture::String {
-                local: right_local,
-                value: right,
-            },
-        ) => {
-            left_local == right_local
-                && lists_equal(plan, state, &left.clone().into(), &right.clone().into())
-        }
-        (
-            EvaluatedListCapture::UtfCodepoint {
-                local: left_local,
-                value: left,
-            },
-            EvaluatedListCapture::UtfCodepoint {
-                local: right_local,
-                value: right,
-            },
-        ) => {
-            left_local == right_local
-                && lists_equal(plan, state, &left.clone().into(), &right.clone().into())
-        }
-        (
-            EvaluatedListCapture::Float {
-                local: left_local,
-                value: left,
-            },
-            EvaluatedListCapture::Float {
-                local: right_local,
-                value: right,
-            },
-        ) => {
-            left_local == right_local
-                && lists_equal(plan, state, &left.clone().into(), &right.clone().into())
-        }
-        (
-            EvaluatedListCapture::Bool {
-                local: left_local,
-                value: left,
-            },
-            EvaluatedListCapture::Bool {
-                local: right_local,
-                value: right,
-            },
-        ) => {
-            left_local == right_local
-                && lists_equal(plan, state, &left.clone().into(), &right.clone().into())
-        }
-        (
-            EvaluatedListCapture::Nil {
-                local: left_local,
-                value: left,
-            },
-            EvaluatedListCapture::Nil {
-                local: right_local,
-                value: right,
-            },
-        ) => {
-            left_local == right_local
-                && lists_equal(plan, state, &left.clone().into(), &right.clone().into())
-        }
-        (
-            EvaluatedListCapture::Tuple {
-                local: left_local,
-                value: left,
-            },
-            EvaluatedListCapture::Tuple {
-                local: right_local,
-                value: right,
-            },
-        ) => {
-            left_local == right_local
-                && lists_equal(plan, state, &left.clone().into(), &right.clone().into())
-        }
-        (
-            EvaluatedListCapture::List {
-                local: left_local,
-                value: left,
-            },
-            EvaluatedListCapture::List {
-                local: right_local,
-                value: right,
-            },
-        ) => {
-            left_local == right_local
-                && lists_equal(plan, state, &left.clone().into(), &right.clone().into())
-        }
-        (
-            EvaluatedListCapture::Function {
-                local: left_local,
-                value: left,
-            },
-            EvaluatedListCapture::Function {
-                local: right_local,
-                value: right,
-            },
-        ) => {
-            left_local == right_local
-                && lists_equal(plan, state, &left.clone().into(), &right.clone().into())
-        }
+        ) => function_values_equal(left, right),
         _ => false,
     }
 }
@@ -1068,20 +1055,21 @@ mod tests {
     use super::{
         EvaluatedBitArray, EvaluatedBitArrayFunction, EvaluatedBoolFunction, EvaluatedCapture,
         EvaluatedCustomFunction, EvaluatedFloatFunction, EvaluatedFunctionFunction,
-        EvaluatedFunctionValue, EvaluatedIntFunction, EvaluatedListCapture, EvaluatedListFunction,
-        EvaluatedNilFunction, EvaluatedStringFunction, EvaluatedTupleFunction,
-        EvaluatedUtfCodepointFunction, EvaluatedValue, values_equal,
+        EvaluatedFunctionValue, EvaluatedIntFunction, EvaluatedListFunction, EvaluatedNilFunction,
+        EvaluatedStringFunction, EvaluatedTupleFunction, EvaluatedUtfCodepointFunction,
+        EvaluatedValue, FunctionReferenceId, FunctionReferenceIdentity, ListFunctionReturnFamily,
+        values_equal,
     };
     use crate::plan::ValueType;
     use crate::plan::execution::{
-        BitArrayFunctionId, BoolFunctionId, BoolFunctionLocalId, BoolListLocalId, BoolLocalId,
-        FloatFunctionId, FloatFunctionLocalId, FloatListLocalId, FloatLocalId, FunctionFunctionId,
-        FunctionListLocalId, IntFunctionFunctionId, IntFunctionId, IntFunctionLocalId,
-        IntListFunctionLocalId, IntListLocalId, IntLocalId, ListFunctionId, ListFunctionLocal,
-        ListListLocalId, NilFunctionId, NilFunctionLocalId, NilListLocalId, NilLocalId, ParamLocal,
-        StringFunctionId, StringFunctionLocalId, StringListLocalId, StringLocalId, TupleFunctionId,
-        TupleFunctionLocalId, TupleListLocalId, TupleLocalId, UtfCodepointFunctionId,
-        UtfCodepointFunctionLocalId, UtfCodepointListLocalId, UtfCodepointLocalId,
+        BitArrayFunctionId, BitArrayListFunctionFunctionId, BoolFunctionId,
+        BoolListFunctionFunctionId, CustomListFunctionFunctionId, FloatFunctionId,
+        FloatListFunctionFunctionId, FunctionFunctionId, FunctionListFunctionFunctionId,
+        IntFunctionFunctionId, IntFunctionId, IntListFunctionFunctionId, IntLocalId,
+        ListFunctionFunctionId, ListFunctionId, ListListFunctionFunctionId, NilFunctionId,
+        NilListFunctionFunctionId, ParamLocal, StringFunctionId, StringListFunctionFunctionId,
+        TupleFunctionId, TupleListFunctionFunctionId, UtfCodepointFunctionId,
+        UtfCodepointListFunctionFunctionId,
     };
     use crate::runtime::state::{ListValueId, RuntimeState};
     use bitvec::order::Msb0;
@@ -1119,7 +1107,7 @@ pub fn main() { 0 }
         let plan = crate::runtime::plan_src(EVERY_LIST_FAMILY_SOURCE);
         let mut state = RuntimeState::new();
         let list = state.int(plan.int_list_function_id(0).type_id(), vec![1.into()]);
-        let function = EvaluatedIntFunction::new(
+        let function = EvaluatedIntFunction::reference(
             IntFunctionId(0),
             Vec::new(),
             Vec::new(),
@@ -1169,14 +1157,14 @@ pub fn main() { 0 }
             Vec::new(),
             crate::plan::execution::ValueType::Int,
         );
-        let int_function = EvaluatedIntFunction::new(
+        let int_function = EvaluatedIntFunction::reference(
             IntFunctionId(0),
             Vec::new(),
             Vec::new(),
             execution_int_type.clone(),
         );
         let custom_type = plan.custom_list_function_id(0).type_id().item_type();
-        let custom_function = EvaluatedCustomFunction::function(
+        let custom_function = EvaluatedCustomFunction::reference(
             plan.custom_function_id(0),
             Vec::new(),
             Vec::new(),
@@ -1204,7 +1192,7 @@ pub fn main() { 0 }
                 EvaluatedFunctionValue::from(int_function.clone()),
             ),
             (
-                EvaluatedFunctionValue::from(EvaluatedFloatFunction::new(
+                EvaluatedFunctionValue::from(EvaluatedFloatFunction::reference(
                     FloatFunctionId(0),
                     Vec::new(),
                     Vec::new(),
@@ -1213,7 +1201,7 @@ pub fn main() { 0 }
                         crate::plan::execution::ValueType::Float,
                     ),
                 )),
-                EvaluatedFunctionValue::from(EvaluatedFloatFunction::new(
+                EvaluatedFunctionValue::from(EvaluatedFloatFunction::reference(
                     FloatFunctionId(0),
                     Vec::new(),
                     Vec::new(),
@@ -1224,7 +1212,7 @@ pub fn main() { 0 }
                 )),
             ),
             (
-                EvaluatedFunctionValue::from(EvaluatedStringFunction::new(
+                EvaluatedFunctionValue::from(EvaluatedStringFunction::reference(
                     StringFunctionId(0),
                     Vec::new(),
                     Vec::new(),
@@ -1233,7 +1221,7 @@ pub fn main() { 0 }
                         crate::plan::execution::ValueType::String,
                     ),
                 )),
-                EvaluatedFunctionValue::from(EvaluatedStringFunction::new(
+                EvaluatedFunctionValue::from(EvaluatedStringFunction::reference(
                     StringFunctionId(0),
                     Vec::new(),
                     Vec::new(),
@@ -1244,7 +1232,7 @@ pub fn main() { 0 }
                 )),
             ),
             (
-                EvaluatedFunctionValue::from(EvaluatedBitArrayFunction::new(
+                EvaluatedFunctionValue::from(EvaluatedBitArrayFunction::reference(
                     BitArrayFunctionId(0),
                     Vec::new(),
                     Vec::new(),
@@ -1253,7 +1241,7 @@ pub fn main() { 0 }
                         crate::plan::execution::ValueType::BitArray,
                     ),
                 )),
-                EvaluatedFunctionValue::from(EvaluatedBitArrayFunction::new(
+                EvaluatedFunctionValue::from(EvaluatedBitArrayFunction::reference(
                     BitArrayFunctionId(0),
                     Vec::new(),
                     Vec::new(),
@@ -1264,7 +1252,7 @@ pub fn main() { 0 }
                 )),
             ),
             (
-                EvaluatedFunctionValue::from(EvaluatedUtfCodepointFunction::new(
+                EvaluatedFunctionValue::from(EvaluatedUtfCodepointFunction::reference(
                     UtfCodepointFunctionId(0),
                     Vec::new(),
                     Vec::new(),
@@ -1273,7 +1261,7 @@ pub fn main() { 0 }
                         crate::plan::execution::ValueType::UtfCodepoint,
                     ),
                 )),
-                EvaluatedFunctionValue::from(EvaluatedUtfCodepointFunction::new(
+                EvaluatedFunctionValue::from(EvaluatedUtfCodepointFunction::reference(
                     UtfCodepointFunctionId(0),
                     Vec::new(),
                     Vec::new(),
@@ -1292,7 +1280,7 @@ pub fn main() { 0 }
                 EvaluatedFunctionValue::from(constructor_function.clone()),
             ),
             (
-                EvaluatedFunctionValue::from(EvaluatedBoolFunction::new(
+                EvaluatedFunctionValue::from(EvaluatedBoolFunction::reference(
                     BoolFunctionId(0),
                     Vec::new(),
                     Vec::new(),
@@ -1301,7 +1289,7 @@ pub fn main() { 0 }
                         crate::plan::execution::ValueType::Bool,
                     ),
                 )),
-                EvaluatedFunctionValue::from(EvaluatedBoolFunction::new(
+                EvaluatedFunctionValue::from(EvaluatedBoolFunction::reference(
                     BoolFunctionId(0),
                     Vec::new(),
                     Vec::new(),
@@ -1312,7 +1300,7 @@ pub fn main() { 0 }
                 )),
             ),
             (
-                EvaluatedFunctionValue::from(EvaluatedNilFunction::new(
+                EvaluatedFunctionValue::from(EvaluatedNilFunction::reference(
                     NilFunctionId(0),
                     Vec::new(),
                     Vec::new(),
@@ -1321,7 +1309,7 @@ pub fn main() { 0 }
                         crate::plan::execution::ValueType::Nil,
                     ),
                 )),
-                EvaluatedFunctionValue::from(EvaluatedNilFunction::new(
+                EvaluatedFunctionValue::from(EvaluatedNilFunction::reference(
                     NilFunctionId(0),
                     Vec::new(),
                     Vec::new(),
@@ -1332,7 +1320,7 @@ pub fn main() { 0 }
                 )),
             ),
             (
-                EvaluatedFunctionValue::from(EvaluatedTupleFunction::new(
+                EvaluatedFunctionValue::from(EvaluatedTupleFunction::reference(
                     TupleFunctionId(0),
                     Vec::new(),
                     Vec::new(),
@@ -1343,7 +1331,7 @@ pub fn main() { 0 }
                         ]),
                     ),
                 )),
-                EvaluatedFunctionValue::from(EvaluatedTupleFunction::new(
+                EvaluatedFunctionValue::from(EvaluatedTupleFunction::reference(
                     TupleFunctionId(0),
                     Vec::new(),
                     Vec::new(),
@@ -1356,7 +1344,7 @@ pub fn main() { 0 }
                 )),
             ),
             (
-                EvaluatedFunctionValue::from(EvaluatedListFunction::new(
+                EvaluatedFunctionValue::from(EvaluatedListFunction::reference(
                     ListFunctionId::Int(plan.int_list_function_id(0)),
                     Vec::new(),
                     Vec::new(),
@@ -1367,7 +1355,7 @@ pub fn main() { 0 }
                         ),
                     ),
                 )),
-                EvaluatedFunctionValue::from(EvaluatedListFunction::new(
+                EvaluatedFunctionValue::from(EvaluatedListFunction::reference(
                     ListFunctionId::Int(plan.int_list_function_id(0)),
                     Vec::new(),
                     Vec::new(),
@@ -1380,7 +1368,7 @@ pub fn main() { 0 }
                 )),
             ),
             (
-                EvaluatedFunctionValue::from(EvaluatedFunctionFunction::new(
+                EvaluatedFunctionValue::from(EvaluatedFunctionFunction::reference(
                     FunctionFunctionId::Int(IntFunctionFunctionId(0)),
                     Vec::new(),
                     Vec::new(),
@@ -1391,7 +1379,7 @@ pub fn main() { 0 }
                         )),
                     ),
                 )),
-                EvaluatedFunctionValue::from(EvaluatedFunctionFunction::new(
+                EvaluatedFunctionValue::from(EvaluatedFunctionFunction::reference(
                     FunctionFunctionId::Int(IntFunctionFunctionId(0)),
                     Vec::new(),
                     Vec::new(),
@@ -1408,15 +1396,12 @@ pub fn main() { 0 }
         for (left, right) in function_pairs {
             let family = left.kind().family();
             assert_eq!(family, right.kind().family());
-            assert!(
-                values_equal(
-                    &plan,
-                    &state,
-                    &EvaluatedValue::Function(left),
-                    &EvaluatedValue::Function(right),
-                ),
-                "matching function families must compare equal",
-            );
+            assert!(values_equal(
+                &plan,
+                &state,
+                &EvaluatedValue::Function(left),
+                &EvaluatedValue::Function(right),
+            ));
         }
         assert!(!values_equal(
             &plan,
@@ -1424,25 +1409,22 @@ pub fn main() { 0 }
             &EvaluatedValue::Function(EvaluatedFunctionValue::from(custom_function)),
             &EvaluatedValue::Function(EvaluatedFunctionValue::from(constructor_function)),
         ));
-        assert!(
-            !values_equal(
-                &plan,
-                &state,
-                &EvaluatedValue::Function(EvaluatedFunctionValue::from(int_function.clone())),
-                &EvaluatedValue::Function(EvaluatedFunctionValue::from(
-                    EvaluatedFloatFunction::new(
-                        FloatFunctionId(0),
+        assert!(!values_equal(
+            &plan,
+            &state,
+            &EvaluatedValue::Function(EvaluatedFunctionValue::from(int_function.clone())),
+            &EvaluatedValue::Function(EvaluatedFunctionValue::from(
+                EvaluatedFloatFunction::reference(
+                    FloatFunctionId(0),
+                    Vec::new(),
+                    Vec::new(),
+                    crate::plan::execution::FunctionType::new(
                         Vec::new(),
-                        Vec::new(),
-                        crate::plan::execution::FunctionType::new(
-                            Vec::new(),
-                            crate::plan::execution::ValueType::Float,
-                        ),
+                        crate::plan::execution::ValueType::Float,
                     ),
-                )),
-            ),
-            "different function families must not compare equal",
-        );
+                ),
+            )),
+        ));
 
         let int_lists = (
             state.int(plan.int_list_function_id(0).type_id(), vec![1.into()]),
@@ -1546,512 +1528,299 @@ pub fn main() { 0 }
         ];
 
         for (left, right) in list_pairs {
-            assert!(
-                values_equal(
-                    &plan,
-                    &state,
-                    &EvaluatedValue::List(left),
-                    &EvaluatedValue::List(right),
-                ),
-                "matching list families must compare equal",
-            );
+            assert!(values_equal(
+                &plan,
+                &state,
+                &EvaluatedValue::List(left),
+                &EvaluatedValue::List(right),
+            ));
         }
-        assert!(
-            !values_equal(
-                &plan,
-                &state,
-                &EvaluatedValue::List(ListValueId::Int(int_lists.0)),
-                &EvaluatedValue::List(ListValueId::String(string_lists.0)),
-            ),
-            "different list families must not compare equal",
+        assert!(!values_equal(
+            &plan,
+            &state,
+            &EvaluatedValue::List(ListValueId::Int(int_lists.0)),
+            &EvaluatedValue::List(ListValueId::String(string_lists.0)),
+        ));
+        assert!(values_equal(
+            &plan,
+            &state,
+            &EvaluatedValue::Tuple(vec![EvaluatedValue::Int(1.into())]),
+            &EvaluatedValue::Tuple(vec![EvaluatedValue::Int(1.into())]),
+        ));
+        assert!(!values_equal(
+            &plan,
+            &state,
+            &EvaluatedValue::Tuple(vec![EvaluatedValue::Int(1.into())]),
+            &EvaluatedValue::Tuple(Vec::new()),
+        ));
+        assert!(!values_equal(
+            &plan,
+            &state,
+            &EvaluatedValue::Int(1.into()),
+            &EvaluatedValue::String("one".into()),
+        ));
+    }
+
+    #[test]
+    fn function_identity_distinguishes_references_and_instances() {
+        let plan = crate::runtime::plan_src(EVERY_LIST_FAMILY_SOURCE);
+        let state = RuntimeState::new();
+        let int_type = crate::plan::execution::FunctionType::new(
+            Vec::new(),
+            crate::plan::execution::ValueType::Int,
         );
-        assert!(
-            values_equal(
-                &plan,
-                &state,
-                &EvaluatedValue::Tuple(vec![EvaluatedValue::Int(1.into())]),
-                &EvaluatedValue::Tuple(vec![EvaluatedValue::Int(1.into())]),
-            ),
-            "matching tuple values must compare equal",
+        let reference = EvaluatedIntFunction::reference(
+            IntFunctionId(0),
+            Vec::new(),
+            Vec::new(),
+            int_type.clone(),
         );
-        assert!(
-            !values_equal(
-                &plan,
-                &state,
-                &EvaluatedValue::Tuple(vec![EvaluatedValue::Int(1.into())]),
-                &EvaluatedValue::Tuple(Vec::new()),
+        let same_target_with_different_metadata = EvaluatedIntFunction::reference(
+            IntFunctionId(0),
+            vec![ParamLocal::Int(IntLocalId(0))],
+            Vec::new(),
+            crate::plan::execution::FunctionType::new(
+                vec![crate::plan::execution::ValueType::Int],
+                crate::plan::execution::ValueType::Int,
             ),
-            "different tuple lengths must not compare equal",
         );
-        assert!(
-            !values_equal(
-                &plan,
-                &state,
-                &EvaluatedValue::Int(1.into()),
-                &EvaluatedValue::String("one".into()),
-            ),
-            "different value families must not compare equal",
+        let different_target = EvaluatedIntFunction::reference(
+            IntFunctionId(1),
+            Vec::new(),
+            Vec::new(),
+            int_type.clone(),
+        );
+        let reference_for_instance_comparison = reference.clone();
+        let closure = EvaluatedIntFunction::closure(
+            IntFunctionId(0),
+            Vec::new(),
+            vec![EvaluatedCapture::int(IntLocalId(0), 1.into())],
+            int_type.clone(),
+        );
+        let same_closure = closure.clone();
+        let separate_closure = EvaluatedIntFunction::closure(
+            IntFunctionId(0),
+            Vec::new(),
+            vec![EvaluatedCapture::int(IntLocalId(0), 1.into())],
+            int_type,
+        );
+
+        assert!(values_equal(
+            &plan,
+            &state,
+            &EvaluatedValue::Function(EvaluatedFunctionValue::from(reference.clone())),
+            &EvaluatedValue::Function(EvaluatedFunctionValue::from(
+                same_target_with_different_metadata,
+            )),
+        ));
+        assert!(!values_equal(
+            &plan,
+            &state,
+            &EvaluatedValue::Function(EvaluatedFunctionValue::from(reference)),
+            &EvaluatedValue::Function(EvaluatedFunctionValue::from(different_target)),
+        ));
+        assert!(!values_equal(
+            &plan,
+            &state,
+            &EvaluatedValue::Function(EvaluatedFunctionValue::from(
+                reference_for_instance_comparison,
+            )),
+            &EvaluatedValue::Function(EvaluatedFunctionValue::from(closure.clone())),
+        ));
+        assert!(values_equal(
+            &plan,
+            &state,
+            &EvaluatedValue::Function(EvaluatedFunctionValue::from(closure.clone())),
+            &EvaluatedValue::Function(EvaluatedFunctionValue::from(same_closure)),
+        ));
+        assert!(!values_equal(
+            &plan,
+            &state,
+            &EvaluatedValue::Function(EvaluatedFunctionValue::from(closure)),
+            &EvaluatedValue::Function(EvaluatedFunctionValue::from(separate_closure)),
+        ));
+    }
+
+    #[test]
+    fn list_function_reference_identity_uses_item_family_table_target() {
+        let plan = crate::runtime::plan_src(EVERY_LIST_FAMILY_SOURCE);
+        let ids = [
+            ListFunctionId::Int(plan.int_list_function_id(0)),
+            ListFunctionId::String(plan.string_list_function_id(0)),
+            ListFunctionId::BitArray(plan.bit_array_list_function_id(0)),
+            ListFunctionId::UtfCodepoint(plan.utf_codepoint_list_function_id(0)),
+            ListFunctionId::Custom(plan.custom_list_function_id(0)),
+            ListFunctionId::Float(plan.float_list_function_id(0)),
+            ListFunctionId::Bool(plan.bool_list_function_id(0)),
+            ListFunctionId::Nil(plan.nil_list_function_id(0)),
+            ListFunctionId::Tuple(plan.tuple_list_function_id(0)),
+            ListFunctionId::List(plan.list_list_function_id(0)),
+            ListFunctionId::Function(plan.function_list_function_id(0)),
+        ];
+
+        assert_eq!(
+            ids.map(|id| id.reference_identity()),
+            [
+                FunctionReferenceIdentity::list(ListFunctionReturnFamily::Int, 0),
+                FunctionReferenceIdentity::list(ListFunctionReturnFamily::String, 0),
+                FunctionReferenceIdentity::list(ListFunctionReturnFamily::BitArray, 0),
+                FunctionReferenceIdentity::list(ListFunctionReturnFamily::UtfCodepoint, 0),
+                FunctionReferenceIdentity::list(ListFunctionReturnFamily::Custom, 0),
+                FunctionReferenceIdentity::list(ListFunctionReturnFamily::Float, 0),
+                FunctionReferenceIdentity::list(ListFunctionReturnFamily::Bool, 0),
+                FunctionReferenceIdentity::list(ListFunctionReturnFamily::Nil, 0),
+                FunctionReferenceIdentity::list(ListFunctionReturnFamily::Tuple, 0),
+                FunctionReferenceIdentity::list(ListFunctionReturnFamily::List, 0),
+                FunctionReferenceIdentity::list(ListFunctionReturnFamily::Function, 0),
+            ],
         );
     }
 
     #[test]
-    fn semantic_function_equality_covers_every_capture_family() {
+    fn function_returning_list_reference_identity_uses_table_target() {
         let plan = crate::runtime::plan_src(EVERY_LIST_FAMILY_SOURCE);
-        let mut state = RuntimeState::new();
-        let execution_int_type = crate::plan::execution::FunctionType::new(
+        let type_ = crate::plan::execution::FunctionType::new(
             Vec::new(),
             crate::plan::execution::ValueType::Int,
         );
-        let captured_int_function = EvaluatedIntFunction::new(
-            IntFunctionId(1),
-            Vec::new(),
-            Vec::new(),
-            execution_int_type.clone(),
-        );
-        let captured_float_function = EvaluatedFloatFunction::new(
-            FloatFunctionId(0),
-            Vec::new(),
-            Vec::new(),
-            crate::plan::execution::FunctionType::new(
-                Vec::new(),
-                crate::plan::execution::ValueType::Float,
-            ),
-        );
-        let captured_string_function = EvaluatedStringFunction::new(
-            StringFunctionId(0),
-            Vec::new(),
-            Vec::new(),
-            crate::plan::execution::FunctionType::new(
-                Vec::new(),
-                crate::plan::execution::ValueType::String,
-            ),
-        );
-        let captured_utf_codepoint_function = EvaluatedUtfCodepointFunction::new(
-            UtfCodepointFunctionId(0),
-            Vec::new(),
-            Vec::new(),
-            crate::plan::execution::FunctionType::new(
-                Vec::new(),
-                crate::plan::execution::ValueType::UtfCodepoint,
-            ),
-        );
-        let captured_bool_function = EvaluatedBoolFunction::new(
-            BoolFunctionId(0),
-            Vec::new(),
-            Vec::new(),
-            crate::plan::execution::FunctionType::new(
-                Vec::new(),
-                crate::plan::execution::ValueType::Bool,
-            ),
-        );
-        let captured_nil_function = EvaluatedNilFunction::new(
-            NilFunctionId(0),
-            Vec::new(),
-            Vec::new(),
-            crate::plan::execution::FunctionType::new(
-                Vec::new(),
-                crate::plan::execution::ValueType::Nil,
-            ),
-        );
-        let captured_tuple_function = EvaluatedTupleFunction::new(
-            TupleFunctionId(0),
-            Vec::new(),
-            Vec::new(),
-            crate::plan::execution::FunctionType::new(
-                Vec::new(),
-                crate::plan::execution::ValueType::Tuple(vec![
-                    crate::plan::execution::ValueType::Int,
-                ]),
-            ),
-        );
-        let list_function_id = ListFunctionId::Int(plan.int_list_function_id(0));
-        let captured_list_function = EvaluatedListFunction::new(
-            list_function_id.clone(),
-            Vec::new(),
-            Vec::new(),
-            crate::plan::execution::FunctionType::new(
-                Vec::new(),
-                crate::plan::execution::ValueType::List(
-                    plan.int_list_function_id(0).type_id().list_type(),
-                ),
-            ),
-        );
-        let captured_function_function = EvaluatedFunctionFunction::new(
-            FunctionFunctionId::Int(IntFunctionFunctionId(0)),
-            Vec::new(),
-            Vec::new(),
-            crate::plan::execution::FunctionType::new(
-                Vec::new(),
-                crate::plan::execution::ValueType::Function(Box::new(execution_int_type.clone())),
-            ),
-        );
-        let function_function_local = plan
-            .int_function(IntFunctionId(1))
-            .frame_layout()
-            .function_functions()[0]
-            .clone();
-        let left_int_list = state.int(plan.int_list_function_id(0).type_id(), vec![1.into()]);
-        let right_int_list = state.int(plan.int_list_function_id(0).type_id(), vec![1.into()]);
-        let left_string_list = state.string(
-            plan.string_list_function_id(0).type_id(),
-            vec!["one".into()],
-        );
-        let right_string_list = state.string(
-            plan.string_list_function_id(0).type_id(),
-            vec!["one".into()],
-        );
-        let left_utf_codepoint_list =
-            state.utf_codepoint(plan.utf_codepoint_list_function_id(0).type_id(), vec!['a']);
-        let right_utf_codepoint_list =
-            state.utf_codepoint(plan.utf_codepoint_list_function_id(0).type_id(), vec!['a']);
-        let left_float_list = state.float(plan.float_list_function_id(0).type_id(), vec![1.5]);
-        let right_float_list = state.float(plan.float_list_function_id(0).type_id(), vec![1.5]);
-        let left_bool_list = state.bool(plan.bool_list_function_id(0).type_id(), vec![true]);
-        let right_bool_list = state.bool(plan.bool_list_function_id(0).type_id(), vec![true]);
-        let left_nil_list = state.nil(plan.nil_list_function_id(0).type_id(), 1);
-        let right_nil_list = state.nil(plan.nil_list_function_id(0).type_id(), 1);
-        let left_tuple_list = state.tuple(
-            plan.tuple_list_function_id(0).type_id(),
-            vec![vec![EvaluatedValue::Int(1.into())]],
-        );
-        let right_tuple_list = state.tuple(
-            plan.tuple_list_function_id(0).type_id(),
-            vec![vec![EvaluatedValue::Int(1.into())]],
-        );
-        let left_child = state.int(plan.int_list_function_id(0).type_id(), vec![1.into()]);
-        let right_child = state.int(plan.int_list_function_id(0).type_id(), vec![1.into()]);
-        let left_nested_list = state.list(
-            plan.list_list_function_id(0).type_id(),
-            vec![left_child.into_core()],
-        );
-        let right_nested_list = state.list(
-            plan.list_list_function_id(0).type_id(),
-            vec![right_child.into_core()],
-        );
-        let left_function_list = state.function(
-            plan.function_list_function_id(0).type_id(),
-            vec![EvaluatedFunctionValue::from(captured_int_function.clone())],
-        );
-        let right_function_list = state.function(
-            plan.function_list_function_id(0).type_id(),
-            vec![EvaluatedFunctionValue::from(captured_int_function.clone())],
-        );
-        let list_function_local = ListFunctionLocal::Int {
-            local: IntListFunctionLocalId(0),
-            type_: execution_int_type.clone(),
-            list_type: plan.int_list_function_id(0).type_id(),
-        };
-        let captures = [
-            (
-                EvaluatedCapture::int(IntLocalId(0), 1.into()),
-                EvaluatedCapture::int(IntLocalId(0), 1.into()),
-            ),
-            (
-                EvaluatedCapture::float(FloatLocalId(0), 1.5),
-                EvaluatedCapture::float(FloatLocalId(0), 1.5),
-            ),
-            (
-                EvaluatedCapture::string(StringLocalId(0), "one".into()),
-                EvaluatedCapture::string(StringLocalId(0), "one".into()),
-            ),
-            (
-                EvaluatedCapture::utf_codepoint(UtfCodepointLocalId(0), 'a'),
-                EvaluatedCapture::utf_codepoint(UtfCodepointLocalId(0), 'a'),
-            ),
-            (
-                EvaluatedCapture::bool(BoolLocalId(0), true),
-                EvaluatedCapture::bool(BoolLocalId(0), true),
-            ),
-            (
-                EvaluatedCapture::nil(NilLocalId(0)),
-                EvaluatedCapture::nil(NilLocalId(0)),
-            ),
-            (
-                EvaluatedCapture::tuple(TupleLocalId(0), vec![EvaluatedValue::Int(1.into())]),
-                EvaluatedCapture::tuple(TupleLocalId(0), vec![EvaluatedValue::Int(1.into())]),
-            ),
-            (
-                EvaluatedCapture::list(EvaluatedListCapture::Int {
-                    local: IntListLocalId(0),
-                    value: left_int_list,
-                }),
-                EvaluatedCapture::list(EvaluatedListCapture::Int {
-                    local: IntListLocalId(0),
-                    value: right_int_list,
-                }),
-            ),
-            (
-                EvaluatedCapture::list(EvaluatedListCapture::String {
-                    local: StringListLocalId(0),
-                    value: left_string_list,
-                }),
-                EvaluatedCapture::list(EvaluatedListCapture::String {
-                    local: StringListLocalId(0),
-                    value: right_string_list,
-                }),
-            ),
-            (
-                EvaluatedCapture::list(EvaluatedListCapture::UtfCodepoint {
-                    local: UtfCodepointListLocalId(0),
-                    value: left_utf_codepoint_list,
-                }),
-                EvaluatedCapture::list(EvaluatedListCapture::UtfCodepoint {
-                    local: UtfCodepointListLocalId(0),
-                    value: right_utf_codepoint_list,
-                }),
-            ),
-            (
-                EvaluatedCapture::list(EvaluatedListCapture::Float {
-                    local: FloatListLocalId(0),
-                    value: left_float_list,
-                }),
-                EvaluatedCapture::list(EvaluatedListCapture::Float {
-                    local: FloatListLocalId(0),
-                    value: right_float_list,
-                }),
-            ),
-            (
-                EvaluatedCapture::list(EvaluatedListCapture::Bool {
-                    local: BoolListLocalId(0),
-                    value: left_bool_list,
-                }),
-                EvaluatedCapture::list(EvaluatedListCapture::Bool {
-                    local: BoolListLocalId(0),
-                    value: right_bool_list,
-                }),
-            ),
-            (
-                EvaluatedCapture::list(EvaluatedListCapture::Nil {
-                    local: NilListLocalId(0),
-                    value: left_nil_list,
-                }),
-                EvaluatedCapture::list(EvaluatedListCapture::Nil {
-                    local: NilListLocalId(0),
-                    value: right_nil_list,
-                }),
-            ),
-            (
-                EvaluatedCapture::list(EvaluatedListCapture::Tuple {
-                    local: TupleListLocalId(0),
-                    value: left_tuple_list,
-                }),
-                EvaluatedCapture::list(EvaluatedListCapture::Tuple {
-                    local: TupleListLocalId(0),
-                    value: right_tuple_list,
-                }),
-            ),
-            (
-                EvaluatedCapture::list(EvaluatedListCapture::List {
-                    local: ListListLocalId(0),
-                    value: left_nested_list,
-                }),
-                EvaluatedCapture::list(EvaluatedListCapture::List {
-                    local: ListListLocalId(0),
-                    value: right_nested_list,
-                }),
-            ),
-            (
-                EvaluatedCapture::list(EvaluatedListCapture::Function {
-                    local: FunctionListLocalId(0),
-                    value: left_function_list,
-                }),
-                EvaluatedCapture::list(EvaluatedListCapture::Function {
-                    local: FunctionListLocalId(0),
-                    value: right_function_list,
-                }),
-            ),
-            (
-                EvaluatedCapture::int_function(
-                    IntFunctionLocalId(0),
-                    captured_int_function.clone(),
-                ),
-                EvaluatedCapture::int_function(
-                    IntFunctionLocalId(0),
-                    captured_int_function.clone(),
-                ),
-            ),
-            (
-                EvaluatedCapture::float_function(
-                    FloatFunctionLocalId(0),
-                    captured_float_function.clone(),
-                ),
-                EvaluatedCapture::float_function(
-                    FloatFunctionLocalId(0),
-                    captured_float_function.clone(),
-                ),
-            ),
-            (
-                EvaluatedCapture::string_function(
-                    StringFunctionLocalId(0),
-                    captured_string_function.clone(),
-                ),
-                EvaluatedCapture::string_function(
-                    StringFunctionLocalId(0),
-                    captured_string_function.clone(),
-                ),
-            ),
-            (
-                EvaluatedCapture::utf_codepoint_function(
-                    UtfCodepointFunctionLocalId(0),
-                    captured_utf_codepoint_function.clone(),
-                ),
-                EvaluatedCapture::utf_codepoint_function(
-                    UtfCodepointFunctionLocalId(0),
-                    captured_utf_codepoint_function,
-                ),
-            ),
-            (
-                EvaluatedCapture::bool_function(
-                    BoolFunctionLocalId(0),
-                    captured_bool_function.clone(),
-                ),
-                EvaluatedCapture::bool_function(
-                    BoolFunctionLocalId(0),
-                    captured_bool_function.clone(),
-                ),
-            ),
-            (
-                EvaluatedCapture::nil_function(
-                    NilFunctionLocalId(0),
-                    captured_nil_function.clone(),
-                ),
-                EvaluatedCapture::nil_function(
-                    NilFunctionLocalId(0),
-                    captured_nil_function.clone(),
-                ),
-            ),
-            (
-                EvaluatedCapture::tuple_function(
-                    TupleFunctionLocalId(0),
-                    captured_tuple_function.clone(),
-                ),
-                EvaluatedCapture::tuple_function(
-                    TupleFunctionLocalId(0),
-                    captured_tuple_function.clone(),
-                ),
-            ),
-            (
-                EvaluatedCapture::list_function(
-                    list_function_local.clone(),
-                    captured_list_function.clone(),
-                ),
-                EvaluatedCapture::list_function(
-                    list_function_local,
-                    captured_list_function.clone(),
-                ),
-            ),
-            (
-                EvaluatedCapture::function_function(
-                    function_function_local.clone(),
-                    captured_function_function.clone(),
-                ),
-                EvaluatedCapture::function_function(
-                    function_function_local,
-                    captured_function_function,
-                ),
-            ),
+        let ids = [
+            ListFunctionFunctionId::Int {
+                id: IntListFunctionFunctionId(0),
+                type_: type_.clone(),
+                list_type: plan.int_list_function_id(0).type_id(),
+            },
+            ListFunctionFunctionId::String {
+                id: StringListFunctionFunctionId(0),
+                type_: type_.clone(),
+                list_type: plan.string_list_function_id(0).type_id(),
+            },
+            ListFunctionFunctionId::BitArray {
+                id: BitArrayListFunctionFunctionId(0),
+                type_: type_.clone(),
+                list_type: plan.bit_array_list_function_id(0).type_id(),
+            },
+            ListFunctionFunctionId::UtfCodepoint {
+                id: UtfCodepointListFunctionFunctionId(0),
+                type_: type_.clone(),
+                list_type: plan.utf_codepoint_list_function_id(0).type_id(),
+            },
+            ListFunctionFunctionId::Custom {
+                id: CustomListFunctionFunctionId(0),
+                type_: type_.clone(),
+                list_type: plan.custom_list_function_id(0).type_id(),
+            },
+            ListFunctionFunctionId::Float {
+                id: FloatListFunctionFunctionId(0),
+                type_: type_.clone(),
+                list_type: plan.float_list_function_id(0).type_id(),
+            },
+            ListFunctionFunctionId::Bool {
+                id: BoolListFunctionFunctionId(0),
+                type_: type_.clone(),
+                list_type: plan.bool_list_function_id(0).type_id(),
+            },
+            ListFunctionFunctionId::Nil {
+                id: NilListFunctionFunctionId(0),
+                type_: type_.clone(),
+                list_type: plan.nil_list_function_id(0).type_id(),
+            },
+            ListFunctionFunctionId::Tuple {
+                id: TupleListFunctionFunctionId(0),
+                type_: type_.clone(),
+                list_type: plan.tuple_list_function_id(0).type_id(),
+            },
+            ListFunctionFunctionId::List {
+                id: ListListFunctionFunctionId(0),
+                type_: type_.clone(),
+                list_type: plan.list_list_function_id(0).type_id(),
+            },
+            ListFunctionFunctionId::Function {
+                id: FunctionListFunctionFunctionId(0),
+                type_,
+                list_type: plan.function_list_function_id(0).type_id(),
+            },
         ];
 
-        for (left_capture, right_capture) in captures {
-            let left =
-                EvaluatedValue::Function(EvaluatedFunctionValue::from(EvaluatedIntFunction::new(
-                    IntFunctionId(0),
-                    Vec::new(),
-                    vec![left_capture],
-                    execution_int_type.clone(),
-                )));
-            let right =
-                EvaluatedValue::Function(EvaluatedFunctionValue::from(EvaluatedIntFunction::new(
-                    IntFunctionId(0),
-                    Vec::new(),
-                    vec![right_capture],
-                    execution_int_type.clone(),
-                )));
-            assert!(
-                values_equal(&plan, &state, &left, &right),
-                "matching capture families must compare equal",
-            );
-        }
-
-        let mismatched_capture =
-            EvaluatedValue::Function(EvaluatedFunctionValue::from(EvaluatedIntFunction::new(
-                IntFunctionId(0),
-                Vec::new(),
-                vec![EvaluatedCapture::int(IntLocalId(0), 1.into())],
-                execution_int_type.clone(),
-            )));
-        let mismatched_kind =
-            EvaluatedValue::Function(EvaluatedFunctionValue::from(EvaluatedIntFunction::new(
-                IntFunctionId(0),
-                Vec::new(),
-                vec![EvaluatedCapture::string(StringLocalId(0), "one".into())],
-                execution_int_type.clone(),
-            )));
-        assert!(
-            !values_equal(&plan, &state, &mismatched_capture, &mismatched_kind,),
-            "different capture families must not compare equal",
-        );
-
-        let mismatched_list_capture =
-            EvaluatedValue::Function(EvaluatedFunctionValue::from(EvaluatedIntFunction::new(
-                IntFunctionId(0),
-                Vec::new(),
-                vec![EvaluatedCapture::list(EvaluatedListCapture::Int {
-                    local: IntListLocalId(0),
-                    value: state.int(plan.int_list_function_id(0).type_id(), vec![1.into()]),
-                })],
-                execution_int_type.clone(),
-            )));
-        let mismatched_list_capture_kind =
-            EvaluatedValue::Function(EvaluatedFunctionValue::from(EvaluatedIntFunction::new(
-                IntFunctionId(0),
-                Vec::new(),
-                vec![EvaluatedCapture::list(EvaluatedListCapture::String {
-                    local: StringListLocalId(0),
-                    value: state.string(
-                        plan.string_list_function_id(0).type_id(),
-                        vec!["one".into()],
-                    ),
-                })],
-                execution_int_type.clone(),
-            )));
-        assert!(
-            !values_equal(
-                &plan,
-                &state,
-                &mismatched_list_capture,
-                &mismatched_list_capture_kind,
-            ),
-            "different captured list families must not compare equal",
-        );
-
-        let different_id =
-            EvaluatedValue::Function(EvaluatedFunctionValue::from(EvaluatedIntFunction::new(
-                IntFunctionId(1),
-                Vec::new(),
-                Vec::new(),
-                execution_int_type.clone(),
-            )));
-        let different_params =
-            EvaluatedValue::Function(EvaluatedFunctionValue::from(EvaluatedIntFunction::new(
-                IntFunctionId(0),
-                vec![ParamLocal::Int(IntLocalId(0))],
-                Vec::new(),
-                crate::plan::execution::FunctionType::new(
-                    vec![crate::plan::execution::ValueType::Int],
-                    crate::plan::execution::ValueType::Int,
+        assert_eq!(
+            ids.map(|id| FunctionFunctionId::List(id).reference_identity()),
+            [
+                FunctionReferenceIdentity::returning_list_function(
+                    ListFunctionReturnFamily::Int,
+                    0,
                 ),
-            )));
-        let base = EvaluatedValue::Function(EvaluatedFunctionValue::from(
-            EvaluatedIntFunction::new(IntFunctionId(0), Vec::new(), Vec::new(), execution_int_type),
+                FunctionReferenceIdentity::returning_list_function(
+                    ListFunctionReturnFamily::String,
+                    0,
+                ),
+                FunctionReferenceIdentity::returning_list_function(
+                    ListFunctionReturnFamily::BitArray,
+                    0,
+                ),
+                FunctionReferenceIdentity::returning_list_function(
+                    ListFunctionReturnFamily::UtfCodepoint,
+                    0,
+                ),
+                FunctionReferenceIdentity::returning_list_function(
+                    ListFunctionReturnFamily::Custom,
+                    0,
+                ),
+                FunctionReferenceIdentity::returning_list_function(
+                    ListFunctionReturnFamily::Float,
+                    0,
+                ),
+                FunctionReferenceIdentity::returning_list_function(
+                    ListFunctionReturnFamily::Bool,
+                    0,
+                ),
+                FunctionReferenceIdentity::returning_list_function(
+                    ListFunctionReturnFamily::Nil,
+                    0,
+                ),
+                FunctionReferenceIdentity::returning_list_function(
+                    ListFunctionReturnFamily::Tuple,
+                    0,
+                ),
+                FunctionReferenceIdentity::returning_list_function(
+                    ListFunctionReturnFamily::List,
+                    0,
+                ),
+                FunctionReferenceIdentity::returning_list_function(
+                    ListFunctionReturnFamily::Function,
+                    0,
+                ),
+            ],
+        );
+    }
+
+    #[test]
+    fn constructor_callable_identity_is_fresh_and_clone_preserving() {
+        let plan = crate::runtime::plan_src(EVERY_LIST_FAMILY_SOURCE);
+        let state = RuntimeState::new();
+        let constructor_id = plan.custom_constructor_id(0, 0);
+        let constructor = plan.custom_constructor(constructor_id);
+        let type_ = crate::plan::execution::FunctionType::new(
+            constructor
+                .fields()
+                .iter()
+                .map(|field| field.type_().clone())
+                .collect(),
+            crate::plan::execution::ValueType::Custom(constructor_id.type_id()),
+        );
+        let first = EvaluatedCustomFunction::constructor(constructor_id, type_.clone());
+        let same = first.clone();
+        let separate = EvaluatedCustomFunction::constructor(constructor_id, type_);
+
+        assert!(values_equal(
+            &plan,
+            &state,
+            &EvaluatedValue::Function(EvaluatedFunctionValue::from(first.clone())),
+            &EvaluatedValue::Function(EvaluatedFunctionValue::from(same)),
         ));
-        assert!(
-            !values_equal(&plan, &state, &base, &different_id),
-            "different function ids must not compare equal",
-        );
-        assert!(
-            !values_equal(&plan, &state, &base, &different_params),
-            "different function parameters must not compare equal",
-        );
+        assert!(!values_equal(
+            &plan,
+            &state,
+            &EvaluatedValue::Function(EvaluatedFunctionValue::from(first)),
+            &EvaluatedValue::Function(EvaluatedFunctionValue::from(separate)),
+        ));
     }
 }

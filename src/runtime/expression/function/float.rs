@@ -20,7 +20,7 @@ pub(in crate::runtime) fn eval_float_function_expr(
     expression: &FloatFunctionExpr,
 ) -> Result<EvaluatedFloatFunction, ExecutionError> {
     match expression.kind() {
-        FloatFunctionExprKind::Reference(reference) => Ok(EvaluatedFloatFunction::new(
+        FloatFunctionExprKind::Reference(reference) => Ok(EvaluatedFloatFunction::reference(
             *reference.function(),
             reference.param_locals(),
             Vec::new(),
@@ -30,7 +30,7 @@ pub(in crate::runtime) fn eval_float_function_expr(
                 crate::plan::execution::ValueType::Float,
             ),
         )),
-        FloatFunctionExprKind::Closure(template) => Ok(EvaluatedFloatFunction::new(
+        FloatFunctionExprKind::Closure(template) => Ok(EvaluatedFloatFunction::closure(
             *template.function(),
             template.param_locals(),
             function::eval_capture_args(plan, state, frame, template.captures())?,

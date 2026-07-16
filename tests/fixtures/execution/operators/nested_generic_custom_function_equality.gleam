@@ -14,4 +14,4 @@ pub fn main() {
   Wrapper(Boxed(value)) == Wrapper(Boxed(value))
 }
 
-// geam:reject unsupported binary operator: equality on function values
+// geam:expect Bool(true)

@@ -12,4 +12,4 @@ pub fn main() {
   Next(Function(value)) == Next(Function(value))
 }
 
-// geam:reject unsupported binary operator: equality on function values
+// geam:expect Bool(true)

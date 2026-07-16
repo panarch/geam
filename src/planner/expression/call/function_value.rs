@@ -257,8 +257,9 @@ mod tests {
     use crate::planner::dsl::{
         block_int_function, bool_, bool_case_int_function, call_int_function, function,
         function_function_ref, function_ref, int, int_case_int_function, int_function_call_arg,
-        int_function_ref, let_int_function_step, local_int, local_int_function, local_tuple,
-        module, module_with_anonymous, string, tuple, tuple_arg, tuple_function_ref,
+        int_function_closure, int_function_ref, let_int_function_step, local_int,
+        local_int_function, local_tuple, module, module_with_anonymous, string, tuple, tuple_arg,
+        tuple_function_ref,
     };
     use crate::planner::expression::call::support::expect_call_statement_mut;
     use crate::planner::expression::{typed_int_expr, typed_string_expr};
@@ -279,7 +280,7 @@ mod tests {
             function(
                 "main",
                 call_int_function(
-                    int_function_ref(1, [LocalId::Int(IntLocalId(0))]),
+                    int_function_closure(1, [LocalId::Int(IntLocalId(0))], []),
                     [int_function_call_arg(0, int(41))],
                 ),
             ),

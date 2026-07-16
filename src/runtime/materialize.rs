@@ -568,7 +568,7 @@ pub fn main() { 0 }
             0,
             vec![CustomFieldValue::from_evaluated(None, Value::Int(1.into()))],
         );
-        let int_function = EvaluatedIntFunction::new(
+        let int_function = EvaluatedIntFunction::reference(
             IntFunctionId(0),
             Vec::new(),
             Vec::new(),
@@ -737,13 +737,13 @@ pub fn main() { 0 }
             crate::plan::execution::ValueType::Int,
         );
         let module_int_type = FunctionType::new(Vec::new(), ValueType::Int);
-        let int_function = EvaluatedIntFunction::new(
+        let int_function = EvaluatedIntFunction::reference(
             IntFunctionId(0),
             Vec::new(),
             Vec::new(),
             execution_int_type.clone(),
         );
-        let float_function = EvaluatedFloatFunction::new(
+        let float_function = EvaluatedFloatFunction::reference(
             FloatFunctionId(0),
             Vec::new(),
             Vec::new(),
@@ -752,7 +752,7 @@ pub fn main() { 0 }
                 crate::plan::execution::ValueType::Float,
             ),
         );
-        let string_function = EvaluatedStringFunction::new(
+        let string_function = EvaluatedStringFunction::reference(
             StringFunctionId(0),
             Vec::new(),
             Vec::new(),
@@ -761,7 +761,7 @@ pub fn main() { 0 }
                 crate::plan::execution::ValueType::String,
             ),
         );
-        let bit_array_function = EvaluatedBitArrayFunction::new(
+        let bit_array_function = EvaluatedBitArrayFunction::reference(
             BitArrayFunctionId(0),
             Vec::new(),
             Vec::new(),
@@ -770,7 +770,7 @@ pub fn main() { 0 }
                 crate::plan::execution::ValueType::BitArray,
             ),
         );
-        let utf_codepoint_function = EvaluatedUtfCodepointFunction::new(
+        let utf_codepoint_function = EvaluatedUtfCodepointFunction::reference(
             UtfCodepointFunctionId(0),
             Vec::new(),
             Vec::new(),
@@ -779,7 +779,7 @@ pub fn main() { 0 }
                 crate::plan::execution::ValueType::UtfCodepoint,
             ),
         );
-        let custom_function = EvaluatedCustomFunction::function(
+        let custom_function = EvaluatedCustomFunction::reference(
             plan.custom_function_id(0),
             Vec::new(),
             Vec::new(),
@@ -788,7 +788,7 @@ pub fn main() { 0 }
                 crate::plan::execution::ValueType::Custom(custom_type_id),
             ),
         );
-        let bool_function = EvaluatedBoolFunction::new(
+        let bool_function = EvaluatedBoolFunction::reference(
             BoolFunctionId(0),
             Vec::new(),
             Vec::new(),
@@ -797,7 +797,7 @@ pub fn main() { 0 }
                 crate::plan::execution::ValueType::Bool,
             ),
         );
-        let nil_function = EvaluatedNilFunction::new(
+        let nil_function = EvaluatedNilFunction::reference(
             NilFunctionId(0),
             Vec::new(),
             Vec::new(),
@@ -806,7 +806,7 @@ pub fn main() { 0 }
                 crate::plan::execution::ValueType::Nil,
             ),
         );
-        let tuple_function = EvaluatedTupleFunction::new(
+        let tuple_function = EvaluatedTupleFunction::reference(
             TupleFunctionId(0),
             Vec::new(),
             Vec::new(),
@@ -818,7 +818,7 @@ pub fn main() { 0 }
             ),
         );
         let list_function_id = ListFunctionId::Int(plan.int_list_function_id(0));
-        let list_function = EvaluatedListFunction::new(
+        let list_function = EvaluatedListFunction::reference(
             list_function_id.clone(),
             Vec::new(),
             Vec::new(),
@@ -829,7 +829,7 @@ pub fn main() { 0 }
                 ),
             ),
         );
-        let function_function = EvaluatedFunctionFunction::new(
+        let function_function = EvaluatedFunctionFunction::reference(
             FunctionFunctionId::Int(IntFunctionFunctionId(0)),
             Vec::new(),
             Vec::new(),
@@ -1163,7 +1163,7 @@ pub fn main() { 0 }
             vec![crate::plan::execution::ValueType::Int],
             crate::plan::execution::ValueType::Int,
         );
-        let function = EvaluatedIntFunction::new(
+        let function = EvaluatedIntFunction::reference(
             IntFunctionId(0),
             vec![crate::plan::execution::ParamLocal::Int(IntLocalId(0))],
             vec![EvaluatedCapture::int(IntLocalId(1), 42.into())],

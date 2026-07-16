@@ -583,7 +583,7 @@ pub fn main() { function_function }
             }),
         );
 
-        let wrong_string_function = EvaluatedStringFunction::new(
+        let wrong_string_function = EvaluatedStringFunction::reference(
             StringFunctionId(0),
             Vec::new(),
             Vec::new(),
@@ -592,7 +592,7 @@ pub fn main() { function_function }
                 crate::plan::execution::ValueType::String,
             ),
         );
-        let wrong_int_function = EvaluatedIntFunction::new(
+        let wrong_int_function = EvaluatedIntFunction::reference(
             IntFunctionId(0),
             Vec::new(),
             Vec::new(),
@@ -805,7 +805,7 @@ pub fn main() { Nil }
         let function = plan.utf_codepoint_function_function(UtfCodepointFunctionFunctionId(0));
         let expression = expression_return(function.return_().body())
             .expect("source function should have an expression return body");
-        let expected = EvaluatedUtfCodepointFunction::new(
+        let expected = EvaluatedUtfCodepointFunction::reference(
             UtfCodepointFunctionId(0),
             Vec::new(),
             Vec::new(),
@@ -825,7 +825,7 @@ pub fn main() { Nil }
             Ok(expected),
         );
 
-        let wrong_function = EvaluatedIntFunction::new(
+        let wrong_function = EvaluatedIntFunction::reference(
             IntFunctionId(0),
             Vec::new(),
             Vec::new(),

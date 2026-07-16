@@ -20,13 +20,13 @@ pub(in crate::runtime) fn eval_tuple_function_expr(
     expression: &TupleFunctionExpr,
 ) -> Result<EvaluatedTupleFunction, ExecutionError> {
     match expression.kind() {
-        TupleFunctionExprKind::Reference(reference) => Ok(EvaluatedTupleFunction::new(
+        TupleFunctionExprKind::Reference(reference) => Ok(EvaluatedTupleFunction::reference(
             *reference.function(),
             reference.param_locals(),
             Vec::new(),
             expression.type_().clone(),
         )),
-        TupleFunctionExprKind::Closure(template) => Ok(EvaluatedTupleFunction::new(
+        TupleFunctionExprKind::Closure(template) => Ok(EvaluatedTupleFunction::closure(
             *template.function(),
             template.param_locals(),
             function::eval_capture_args(plan, state, frame, template.captures())?,
