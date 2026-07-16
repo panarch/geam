@@ -1,4 +1,4 @@
-use super::{ExecutionError, Panic, PanicDetails};
+use super::{BitArraySegmentPanicReason, ExecutionError, Panic, PanicDetails};
 use crate::plan::{FunctionType, ValueType};
 use crate::runtime::Value;
 use miette::{Diagnostic, LabeledSpan, SourceCode};
@@ -14,6 +14,20 @@ impl Diagnostic for Panic {
             Some(PanicDetails::LetAssert { value, .. }) => {
                 Some(Box::new(format!("failed value: {}", render_value(value))))
             }
+            Some(PanicDetails::BitArraySegment { reason }) => Some(Box::new(match reason {
+                BitArraySegmentPanicReason::InvalidFloatSize { bit_size } => format!(
+                    "float segments must be 16, 32, or 64 bits; evaluated size was {bit_size} bits"
+                ),
+                BitArraySegmentPanicReason::InsufficientBits {
+                    requested,
+                    available,
+                } => format!(
+                    "sized bits segment requested {requested} bits, but the value contains {available} bits"
+                ),
+                BitArraySegmentPanicReason::SizeOutOfRange { bit_size } => {
+                    format!("BitArray segment size {bit_size} exceeds the supported host range")
+                }
+            })),
             None => None,
         }
     }

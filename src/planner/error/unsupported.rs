@@ -54,10 +54,6 @@ pub enum UnsupportedExpressionKind {
 pub enum UnsupportedBitArraySegmentReason {
     #[error("native-endian segments are not supported")]
     NativeEndianness,
-    #[error("dynamic segment sizes are not supported")]
-    DynamicSize,
-    #[error("sized bits segments are not supported")]
-    SizedBits,
     #[error("bit array segment size exceeds the supported host range")]
     SizeOutOfRange,
 }

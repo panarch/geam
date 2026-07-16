@@ -105,6 +105,17 @@ fn bit_array_segment(
             bit_size,
             endianness: lower_endianness(endianness),
         },
+        module::BitArraySegment::EvaluatedInt {
+            value,
+            size,
+            endianness,
+            site,
+        } => execution::BitArraySegment::EvaluatedInt {
+            value: int_expr(value, context),
+            size: lower_evaluated_size(size, context),
+            endianness: lower_endianness(endianness),
+            site,
+        },
         module::BitArraySegment::Float {
             value,
             bit_size,
@@ -113,6 +124,17 @@ fn bit_array_segment(
             value: float_expr(value, context),
             bit_size: lower_float_bit_size(bit_size),
             endianness: lower_endianness(endianness),
+        },
+        module::BitArraySegment::EvaluatedFloat {
+            value,
+            size,
+            endianness,
+            site,
+        } => execution::BitArraySegment::EvaluatedFloat {
+            value: float_expr(value, context),
+            size: lower_evaluated_size(size, context),
+            endianness: lower_endianness(endianness),
+            site,
         },
         module::BitArraySegment::String { value, encoding } => execution::BitArraySegment::String {
             value: string_expr(value, context),
@@ -135,7 +157,29 @@ fn bit_array_segment(
         module::BitArraySegment::Bits(value) => {
             execution::BitArraySegment::Bits(bit_array_expr(value, context))
         }
+        module::BitArraySegment::SizedBits { value, size, site } => {
+            execution::BitArraySegment::SizedBits {
+                value: bit_array_expr(value, context),
+                size: match size {
+                    module::BitArrayBitsSize::Fixed(size) => {
+                        execution::BitArrayBitsSize::Fixed(size)
+                    }
+                    module::BitArrayBitsSize::Evaluated(size) => {
+                        execution::BitArrayBitsSize::Evaluated(lower_evaluated_size(size, context))
+                    }
+                },
+                site,
+            }
+        }
     }
+}
+
+fn lower_evaluated_size(
+    size: module::BitArrayEvaluatedSize,
+    context: &mut super::super::LoweringContext,
+) -> execution::BitArrayEvaluatedSize {
+    let (value, unit) = size.into_parts();
+    execution::BitArrayEvaluatedSize::new(int_expr(value, context), unit)
 }
 
 fn lower_float_bit_size(value: module::FloatBitSize) -> execution::FloatBitSize {

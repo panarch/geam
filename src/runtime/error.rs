@@ -6,7 +6,7 @@ use crate::plan::{PanicSite, SourceContext, SourceSpan, ValueType};
 use crate::runtime::Value;
 use ecow::EcoString;
 
-pub use self::panic::{Panic, PanicDetails, PanicKind, PanicMessage};
+pub use self::panic::{BitArraySegmentPanicReason, Panic, PanicDetails, PanicKind, PanicMessage};
 
 pub(crate) type ExecutionResult<T> = Result<T, ExecutionError>;
 
@@ -74,6 +74,20 @@ impl ExecutionError {
                 value,
                 pattern_span,
             }),
+        ))
+    }
+
+    pub(crate) fn bit_array_segment_panic(
+        source_context: Option<&SourceContext>,
+        reason: BitArraySegmentPanicReason,
+        site: PanicSite,
+    ) -> Self {
+        Self::Panic(Panic::new(
+            PanicKind::BitArraySegment,
+            PanicMessage::Default,
+            site,
+            source_context,
+            Some(PanicDetails::BitArraySegment { reason }),
         ))
     }
 }

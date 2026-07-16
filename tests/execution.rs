@@ -76,6 +76,8 @@ mod expressions {
     execution_cases!("expressions";
         bit_array,
         bit_array_float_16,
+        bit_array_dynamic_size,
+        bit_array_sized_bits,
         list_bit_array_element,
         list_utf_codepoint_element,
         record_access,
@@ -499,6 +501,21 @@ mod execution_errors {
             todo_assignment,
             empty_function,
             empty_block,
+            bit_array_invalid_float_size,
+            bit_array_fixed_bits_insufficient,
+            bit_array_dynamic_bits_insufficient,
+            bit_array_size_out_of_range,
+            bit_array_size_expression_panic,
+            bit_array_value_before_size_panic,
+            bit_array_dynamic_int_value_panic,
+            bit_array_dynamic_int_size_panic,
+            bit_array_dynamic_float_value_panic,
+            bit_array_dynamic_float_size_panic,
+            bit_array_static_int_value_panic,
+            bit_array_static_float_value_panic,
+            bit_array_static_string_value_panic,
+            bit_array_static_utf_codepoint_value_panic,
+            bit_array_static_bits_value_panic,
         );
     }
 
@@ -585,8 +602,6 @@ mod rejection {
         rejection_cases!("expressions";
             echo,
             bit_array_native_endian,
-            bit_array_dynamic_size,
-            bit_array_sized_bits,
             polymorphic_custom_constructor,
         );
     }
