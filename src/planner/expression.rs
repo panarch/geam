@@ -309,9 +309,7 @@ fn panic_expr(panic: PanicExpr, return_shape: ValueShape) -> Expr {
         ValueShape::UtfCodepoint => {
             Expr::utf_codepoint(crate::plan::UtfCodepointExpr::panic(panic))
         }
-        ValueShape::Custom(shape) => {
-            Expr::custom(CustomExpr::panic(panic, shape.type_().clone()).with_shape(shape))
-        }
+        ValueShape::Custom(shape) => Expr::custom(CustomExpr::panic_shape(panic, shape)),
         ValueShape::Float => Expr::float(FloatExpr::panic(panic)),
         ValueShape::Bool => Expr::bool(BoolExpr::panic(panic)),
         ValueShape::Nil => Expr::nil(crate::plan::NilExpr::panic(panic)),

@@ -264,7 +264,7 @@ fn custom_binding_pattern(
     pattern: module::CustomBindingPattern,
     context: &mut super::LoweringContext,
 ) -> execution::CustomBindingPattern {
-    let (constructor, fields) = pattern.into_parts();
+    let (_source_shape, constructor, fields) = pattern.into_parts();
     execution::CustomBindingPattern::new(
         context.custom_constructor(constructor),
         fields

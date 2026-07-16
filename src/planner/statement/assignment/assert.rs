@@ -56,12 +56,13 @@ pub(super) fn plan_assert_assignment(
         .map(|message| plan_assert_message(message, context))
         .transpose()?;
 
+    let item_shape = value.item_shape().clone();
     let (local, list_value) = context.define_internal_list_value(value);
     let name = internal_list_name(&local);
     let site = context.panic_site(location);
     let pattern_span = pattern.location().into();
     let pattern = crate::planner::pattern::plan_runtime_pattern(pattern, context)?.pattern;
-    let list_local = ListExpr::local_get(local.clone(), name.clone());
+    let list_local = ListExpr::local_get(local.clone(), name.clone()).with_item_shape(item_shape);
     let steps = vec![
         Step::let_list_expr(name, list_value),
         Step::assert_list_at(local, pattern, message, site, pattern_span),
@@ -170,7 +171,7 @@ fn plan_assert_custom_assignment(
         .map(|message| plan_assert_message(message, context))
         .transpose()?;
     let local = context.define_internal_custom_local();
-    let typed_local = crate::plan::CustomLocal::new(local, pattern_type.clone());
+    let typed_local = crate::plan::CustomLocal::from_shape(local, value.shape().clone());
     let name = internal_custom_name(local);
     let local_value = crate::plan::CustomExpr::local_get(typed_local.clone(), name.clone());
     let site = context.panic_site(location);

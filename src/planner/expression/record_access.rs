@@ -16,16 +16,14 @@ pub(super) fn plan(
     record: TypedExpr,
     context: &mut PlanContext<'_>,
 ) -> Result<Expr, PlanError> {
-    let record_type = record.type_();
     let record = plan_expr(record, context)?;
-    plan_from_expr(type_, Some(label), index, record_type, record, context)
+    plan_from_expr(type_, Some(label), index, record, context)
 }
 
 pub(super) fn plan_from_expr(
     type_: Arc<Type>,
     label: Option<EcoString>,
     index: u64,
-    record_type: Arc<Type>,
     record: Expr,
     context: &mut PlanContext<'_>,
 ) -> Result<Expr, PlanError> {
@@ -50,8 +48,7 @@ pub(super) fn plan_from_expr(
         )
     })?;
     let expected = expected_shape.value_type();
-    let (access, source_shape) =
-        context.custom_field_access(record, record_type.as_ref(), index, label, &expected)?;
+    let (access, source_shape) = context.custom_field_access(record, index, label, &expected)?;
     let resolved_shape = source_shape.refine(&expected_shape).ok_or_else(|| {
         super::invalid_expression_type_for_value(expected.clone(), source_shape.value_type())
     })?;
@@ -119,7 +116,6 @@ mod tests {
                 type_::int(),
                 Some("value".into()),
                 0,
-                gleam_type.clone(),
                 Expr::int(IntExpr::value(1.into())),
                 &mut context,
             ),
@@ -135,7 +131,6 @@ mod tests {
                 type_::generic_var(99),
                 Some("value".into()),
                 0,
-                gleam_type,
                 custom_local(custom_type),
                 &mut context,
             ),
@@ -155,14 +150,6 @@ mod tests {
                 type_::int(),
                 Some("value".into()),
                 0,
-                Arc::new(Type::Named {
-                    publicity: Publicity::Private,
-                    package: "geam".into(),
-                    module: module.clone(),
-                    name: "Missing".into(),
-                    arguments: Vec::new(),
-                    inferred_variant: None,
-                }),
                 custom_local(missing.clone()),
                 &mut context,
             ),
@@ -195,7 +182,6 @@ mod tests {
         assert_eq!(
             context.custom_field_access(
                 custom_local_expr(missing.clone()),
-                generic_gleam_type(&module, Vec::new(), None).as_ref(),
                 0,
                 Some("value".into()),
                 &ValueType::Int,
@@ -208,7 +194,6 @@ mod tests {
         assert_eq!(
             context.custom_field_access(
                 custom_local_expr(generic_without_arguments.clone()),
-                generic_gleam_type(&module, Vec::new(), None).as_ref(),
                 0,
                 Some("value".into()),
                 &ValueType::Int,
@@ -220,8 +205,17 @@ mod tests {
         );
         assert_eq!(
             context.custom_field_access(
-                custom_local_expr(generic_int.clone()),
-                generic_gleam_type(&module, vec![type_::int()], Some(1)).as_ref(),
+                CustomExpr::local_get(
+                    CustomLocal::from_shape(
+                        CustomLocalId(0),
+                        CustomValueShape::new(
+                            generic_int.type_name().clone(),
+                            vec![ValueShape::Int],
+                            CustomConstructorRefinement::Exact(1),
+                        ),
+                    ),
+                    "value".into(),
+                ),
                 0,
                 Some("value".into()),
                 &ValueType::Int,
@@ -234,7 +228,6 @@ mod tests {
         assert_eq!(
             context.custom_field_access(
                 custom_local_expr(generic_int.clone()),
-                generic_gleam_type(&module, vec![type_::int()], None).as_ref(),
                 1,
                 Some("value".into()),
                 &ValueType::Int,
@@ -247,7 +240,6 @@ mod tests {
         assert_eq!(
             context.custom_field_access(
                 custom_local_expr(generic_int.clone()),
-                generic_gleam_type(&module, vec![type_::int()], None).as_ref(),
                 0,
                 Some("wrong".into()),
                 &ValueType::Int,
@@ -260,7 +252,6 @@ mod tests {
         assert_eq!(
             context.custom_field_access(
                 custom_local_expr(generic_int.clone()),
-                generic_gleam_type(&module, vec![type_::int()], None).as_ref(),
                 0,
                 Some("value".into()),
                 &ValueType::String,
@@ -296,15 +287,6 @@ mod tests {
         assert_eq!(
             broken_context.custom_field_access(
                 custom_local_expr(broken.clone()),
-                Arc::new(Type::Named {
-                    publicity: Publicity::Private,
-                    package: "geam".into(),
-                    module: module.clone(),
-                    name: "Broken".into(),
-                    arguments: vec![type_::int()],
-                    inferred_variant: None,
-                })
-                .as_ref(),
                 0,
                 Some("value".into()),
                 &ValueType::Int,
@@ -349,15 +331,6 @@ mod tests {
         assert_eq!(
             partially_broken_context.custom_field_access(
                 custom_local_expr(partially_broken.clone()),
-                Arc::new(Type::Named {
-                    publicity: Publicity::Private,
-                    package: "geam".into(),
-                    module: module.clone(),
-                    name: "PartiallyBroken".into(),
-                    arguments: vec![type_::int()],
-                    inferred_variant: None,
-                })
-                .as_ref(),
                 0,
                 Some("value".into()),
                 &ValueType::Int,
@@ -413,18 +386,9 @@ mod tests {
             PlanContext::new_with_custom_types(&module, &functions, &definitions, &mut anonymous);
 
         let empty = CustomType::new(empty_name.clone(), Vec::new());
-        let empty_source = Arc::new(Type::Named {
-            publicity: Publicity::Private,
-            package: "geam".into(),
-            module: module.clone(),
-            name: empty_name.name().clone(),
-            arguments: Vec::new(),
-            inferred_variant: None,
-        });
         assert_eq!(
             context.custom_field_access(
                 custom_local_expr(empty.clone()),
-                empty_source.as_ref(),
                 0,
                 Some("value".into()),
                 &ValueType::Int,
@@ -458,21 +422,9 @@ mod tests {
             CustomLocal::from_shape(CustomLocalId(0), shared_shape),
             "shared".into(),
         );
-        let shared_source = Arc::new(Type::Named {
-            publicity: Publicity::Private,
-            package: "geam".into(),
-            module: module.clone(),
-            name: shared_name.name().clone(),
-            arguments: vec![
-                type_::fn_(vec![named_custom_type(&choice)], type_::int()),
-                type_::fn_(vec![named_custom_type(&choice)], type_::int()),
-            ],
-            inferred_variant: None,
-        });
         assert_eq!(
             context.custom_field_access(
                 source,
-                shared_source.as_ref(),
                 0,
                 Some("value".into()),
                 &ValueType::Function(Box::new(function_type)),
@@ -516,18 +468,6 @@ mod tests {
             CustomLocal::from_shape(CustomLocalId(0), source_shape),
             "record".into(),
         ));
-        let record_type = generic_gleam_type(
-            &module,
-            vec![Arc::new(Type::Named {
-                publicity: Publicity::Private,
-                package: "geam".into(),
-                module: module.clone(),
-                name: "Choice".into(),
-                arguments: Vec::new(),
-                inferred_variant: Some(0),
-            })],
-            Some(0),
-        );
         let expected = Arc::new(Type::Named {
             publicity: Publicity::Private,
             package: "geam".into(),
@@ -541,14 +481,7 @@ mod tests {
             PlanContext::new_with_custom_types(&module, &functions, &definitions, &mut anonymous);
 
         assert_eq!(
-            plan_from_expr(
-                expected,
-                Some("value".into()),
-                0,
-                record_type,
-                source,
-                &mut context,
-            ),
+            plan_from_expr(expected, Some("value".into()), 0, source, &mut context,),
             Err(super::super::invalid_expression_type_for_value(
                 ValueType::Custom(choice.clone()),
                 ValueType::Custom(choice),
@@ -592,17 +525,6 @@ mod tests {
             name: "Generic".into(),
             arguments,
             inferred_variant,
-        })
-    }
-
-    fn named_custom_type(type_: &CustomType) -> Arc<Type> {
-        Arc::new(Type::Named {
-            publicity: Publicity::Private,
-            package: type_.type_name().package().clone(),
-            module: type_.type_name().module().clone(),
-            name: type_.type_name().name().clone(),
-            arguments: Vec::new(),
-            inferred_variant: None,
         })
     }
 

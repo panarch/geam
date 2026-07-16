@@ -238,15 +238,15 @@ fn plan_tuple_case_pattern_with_context(
                     InvalidCaseShapeReason::PatternTypeMismatch,
                 ));
             };
-            let pattern = plan_custom_subject_pattern(
-                pattern.clone(),
-                subject_variants.custom_variant(),
-                context,
-            )?;
+            let pattern =
+                plan_custom_subject_pattern(pattern.clone(), value.shape().clone(), context)?;
             let mut total_branch_steps = Vec::new();
-            if let Some(binding) = pattern.custom_binding.clone() {
-                total_branch_steps =
-                    total_custom_binding_steps(value.clone(), binding.into_binding(), context);
+            if let Some(binding) = pattern
+                .custom_binding
+                .clone()
+                .and_then(|binding| binding.into_intrinsic_binding())
+            {
+                total_branch_steps = total_custom_binding_steps(value.clone(), binding, context);
             }
             Ok(TupleCasePattern {
                 match_condition: Some(BoolExpr::custom_matches(value, pattern.pattern)),
@@ -359,7 +359,7 @@ fn plan_tuple_case_pattern(
     let functions = std::collections::HashMap::new();
     let mut anonymous = crate::planner::context::AnonymousFunctions::default();
     let mut context = PlanContext::new(&module_name, &functions, &mut anonymous);
-    let subject_variants = CaseSubjectVariants::without_inferred_variants(&subject_type);
+    let subject_variants = CaseSubjectVariants::from_value_type(&subject_type);
     plan_tuple_case_pattern_with_context(
         pattern,
         value,
@@ -430,9 +430,10 @@ fn bind_tuple_case_subject(subject: TupleExpr, context: &mut PlanContext<'_>) ->
     let local = context.define_internal_tuple_local();
     let name = internal_tuple_case_subject_name(local);
     let type_ = subject.type_().to_vec();
+    let shape = subject.shape().to_vec().into_boxed_slice();
     (
         Step::let_tuple(local, name.clone(), subject),
-        Expr::tuple(TupleExpr::local_get(local, name, type_)),
+        Expr::tuple(TupleExpr::local_get(local, name, type_).with_shape(shape)),
     )
 }
 
@@ -447,7 +448,7 @@ mod tests {
         BitArrayPatternSizeExpr, BitArrayPatternValue, BitArraySegment, BoolExpr,
         CustomConstructor, CustomConstructorField, CustomExpr, CustomLocalId, CustomPattern,
         CustomType, CustomTypeName, Endianness, Expr, IntExpr, IntLocalId, ListExpr, Signedness,
-        Step, StringExpr, StringLocalId, TupleExpr, TupleLocalId, ValueType,
+        Step, StringExpr, StringLocalId, TupleExpr, TupleLocalId, ValueShape, ValueType,
     };
     use crate::planner::context::{AnonymousFunctions, PlanContext};
     use crate::planner::dsl::{
@@ -462,6 +463,32 @@ mod tests {
     use gleam_core::parse::LiteralFloatValue;
     use gleam_core::type_::error::VariableOrigin;
     use std::collections::HashMap;
+
+    #[test]
+    fn tuple_case_subject_local_preserves_nested_custom_refinement() {
+        let module_name = ecow::EcoString::from("main");
+        let functions = HashMap::new();
+        let mut anonymous = AnonymousFunctions::default();
+        let mut context = PlanContext::new(&module_name, &functions, &mut anonymous);
+        let type_ = CustomType::new(
+            CustomTypeName::new("geam".into(), "main".into(), "Choice".into()),
+            Vec::new(),
+        );
+        let value = CustomExpr::try_constructor(
+            CustomConstructor::new(type_.clone(), "First".into(), 0, Vec::new()),
+            Vec::new(),
+        )
+        .expect("test custom construction should be valid");
+        let custom_shape = ValueShape::Custom(value.shape().clone());
+        let subject = TupleExpr::value(vec![Expr::custom(value)], vec![ValueType::Custom(type_)]);
+
+        let (_, local) = super::bind_tuple_case_subject(subject, &mut context);
+
+        assert_eq!(
+            local.value_shape(),
+            &ValueShape::Tuple(vec![custom_shape].into_boxed_slice()),
+        );
+    }
 
     #[test]
     fn reject_margin_tuple_pattern_with_mismatched_subject_variant_shapes() {

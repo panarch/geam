@@ -513,6 +513,7 @@ impl CustomFunctionLocal {
 }
 
 impl CustomLocal {
+    #[cfg(test)]
     pub(crate) fn new(id: CustomLocalId, type_: crate::plan::CustomType) -> Self {
         Self::from_shape(id, crate::plan::CustomValueShape::any(type_))
     }

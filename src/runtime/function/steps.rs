@@ -550,16 +550,6 @@ fn append_custom_field_bindings(
     bindings: &mut Vec<PendingBinding>,
 ) -> ExecutionResult<()> {
     let constructor_id = pattern.constructor();
-    if value.constructor() != constructor_id {
-        let expected = plan.custom_constructor(constructor_id);
-        let actual = plan.custom_constructor(value.constructor());
-        return Err(ExecutionError::CustomFieldDiscriminantMismatch {
-            expected_type: plan.custom_value_type(constructor_id.type_id()),
-            expected_constructors: vec![expected.name().clone()],
-            actual_type: plan.custom_value_type(value.type_id()),
-            actual_constructor: actual.name().clone(),
-        });
-    }
     for (field_index, pattern) in pattern.fields().iter().enumerate() {
         let value = &value.fields()[field_index];
         append_total_bindings(plan, constructor_id, field_index, value, pattern, bindings)?;
@@ -1722,53 +1712,6 @@ pub fn main() {
             }),
         );
         assert_eq!(bindings, Vec::new());
-    }
-
-    #[test]
-    fn custom_total_binding_reports_discriminant_mismatch() {
-        let plan = crate::runtime::plan_src(
-            r#"
-pub type Choice { Boxed(Int) Other(Int) }
-pub fn main() {
-  let other = Other(2)
-  let Boxed(value) = Boxed(1)
-  value
-}
-"#,
-        );
-        let function = plan.int_function(IntFunctionId(0));
-        let custom_exprs = function
-            .steps()
-            .iter()
-            .filter_map(|step| match step.kind() {
-                StepKind::LetCustom(binding) => Some(binding.value()),
-                _ => None,
-            })
-            .collect::<Vec<_>>();
-        let pattern = function
-            .steps()
-            .iter()
-            .find_map(|step| match step.kind() {
-                StepKind::BindCustomFields { pattern, .. } => Some(pattern),
-                _ => None,
-            })
-            .expect("source should lower a total custom binding");
-        let mut state = crate::runtime::RuntimeState::new();
-        let mut frame = Frame::new(function.frame_layout(), &mut state);
-        let other = eval_custom_expr(&plan, &mut state, &mut frame, custom_exprs[0])
-            .expect("other constructor should evaluate");
-        let expected = plan.custom_constructor(pattern.constructor());
-        let actual = plan.custom_constructor(other.constructor());
-
-        assert_eq!(
-            bind_custom_fields(&plan, pattern, &other),
-            Err(ExecutionError::CustomFieldDiscriminantMismatch {
-                expected_type: plan.custom_value_type(pattern.constructor().type_id()),
-                expected_constructors: vec![expected.name().clone()],
-                actual_type: plan.custom_value_type(other.type_id()),
-                actual_constructor: actual.name().clone(),
-            }),
-        );
     }
 
     #[test]

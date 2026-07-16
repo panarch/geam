@@ -64,13 +64,11 @@ fn plan_expr(
             container,
             ..
         } => {
-            let container_type = container.type_();
             let container = plan_expr(*container, context)?;
             super::super::record_access::plan_from_expr(
                 type_,
                 Some(label),
                 index,
-                container_type,
                 container,
                 context,
             )

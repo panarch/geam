@@ -183,16 +183,7 @@ fn plan_implicit_argument(
             },
         });
     }
-    let record_type = record.type_();
-
-    record_access::plan_from_expr(
-        type_,
-        label,
-        index,
-        record_type,
-        Expr::custom(source),
-        context,
-    )
+    record_access::plan_from_expr(type_, label, index, Expr::custom(source), context)
 }
 
 fn record_constructor(
@@ -407,7 +398,6 @@ pub fn main() {
             ),
             0,
             Some("name".into()),
-            vec![constructor.clone()],
         )));
         let updated = CustomExpr::from_construction(
             shape,
@@ -464,7 +454,6 @@ pub fn main() {
             ),
             0,
             None,
-            vec![constructor.clone()],
         )));
         let updated = CustomExpr::from_construction(
             shape,

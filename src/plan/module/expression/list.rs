@@ -815,12 +815,11 @@ mod tests {
         UtfCodepointListExpr, UtfCodepointListItem,
     };
     use crate::plan::{
-        BitArrayExpr, BoolExpr, CustomConstructor, CustomConstructorField,
-        CustomConstructorRefinement, CustomExpr, CustomFieldAccess, CustomLocal, CustomLocalId,
-        CustomType, CustomTypeName, CustomValueShape, Expr, FloatExpr, FunctionExpr,
-        FunctionReference, FunctionShape, FunctionType, IntExpr, IntFunctionId, IntListFunctionId,
-        IntListLocalId, ListFunctionExpr, ListFunctionId, ListFunctionReference, ListLocal,
-        NilExpr, PanicExpr, PanicSite, RuntimeFunctionId, Step, StringExpr, TupleExpr,
+        BitArrayExpr, BoolExpr, CustomConstructorRefinement, CustomExpr, CustomFieldAccess,
+        CustomLocal, CustomLocalId, CustomType, CustomTypeName, CustomValueShape, Expr, FloatExpr,
+        FunctionExpr, FunctionReference, FunctionShape, FunctionType, IntExpr, IntFunctionId,
+        IntListFunctionId, IntListLocalId, ListFunctionExpr, ListFunctionId, ListFunctionReference,
+        ListLocal, NilExpr, PanicExpr, PanicSite, RuntimeFunctionId, Step, StringExpr, TupleExpr,
         UtfCodepointExpr, UtfCodepointLocalId, ValueShape, ValueType,
     };
     use num_bigint::BigInt;
@@ -1143,15 +1142,6 @@ mod tests {
             ),
             0,
             Some("value".into()),
-            vec![CustomConstructor::new(
-                custom_type.clone(),
-                "Boxed".into(),
-                0,
-                vec![CustomConstructorField::new(
-                    Some("value".into()),
-                    ValueType::Int,
-                )],
-            )],
         );
         let function_type = FunctionType::new(Vec::new(), ValueType::Int);
 

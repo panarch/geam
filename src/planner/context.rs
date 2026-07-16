@@ -1882,7 +1882,6 @@ impl<'a> PlanContext<'a> {
     pub(super) fn custom_field_access(
         &self,
         source: CustomExpr,
-        source_type: &Type,
         index: usize,
         label: Option<EcoString>,
         expected: &ValueType,
@@ -1906,14 +1905,16 @@ impl<'a> PlanContext<'a> {
             ));
         }
 
-        let inferred_variant = source_type.custom_type_inferred_variant().map(usize::from);
-        let constructors = match inferred_variant {
-            Some(index) => vec![type_definition.constructor(index).ok_or_else(|| {
-                invalid_custom_type(custom_type, InvalidCustomTypeReason::ConstructorIndex)
-            })?],
-            None => type_definition.constructors().iter().collect(),
+        let constructors = match custom_shape.constructor() {
+            crate::plan::CustomConstructorRefinement::Exact(index) => {
+                vec![type_definition.constructor(index).ok_or_else(|| {
+                    invalid_custom_type(custom_type, InvalidCustomTypeReason::ConstructorIndex)
+                })?]
+            }
+            crate::plan::CustomConstructorRefinement::Any => {
+                type_definition.constructors().iter().collect()
+            }
         };
-        let mut allowed = Vec::with_capacity(constructors.len());
         let mut result_shape: Option<ValueShape> = None;
         for constructor in constructors {
             let field = constructor.fields().get(index).ok_or_else(|| {
@@ -1939,22 +1940,9 @@ impl<'a> PlanContext<'a> {
                 })?,
                 None => field_shape,
             });
-            let fields = constructor
-                .fields()
-                .iter()
-                .map(|field| {
-                    Ok(CustomConstructorField::new(
-                        field.label().cloned(),
-                        instantiate_custom_type_template(field.type_(), custom_type)?,
-                    ))
-                })
-                .collect::<Result<Vec<_>, _>>()?;
-            allowed.push(CustomConstructor::new(
-                custom_type.clone(),
-                constructor.name().clone(),
-                constructor.index(),
-                fields,
-            ));
+            constructor.fields().iter().try_for_each(|field| {
+                instantiate_custom_type_template(field.type_(), custom_type).map(|_| ())
+            })?;
         }
 
         let Some(result_shape) = result_shape else {
@@ -1963,10 +1951,7 @@ impl<'a> PlanContext<'a> {
                 InvalidCustomTypeReason::FieldIndex,
             ));
         };
-        Ok((
-            CustomFieldAccess::new(source, index, label, allowed),
-            result_shape,
-        ))
+        Ok((CustomFieldAccess::new(source, index, label), result_shape))
     }
 
     fn custom_constructor_from_parts(

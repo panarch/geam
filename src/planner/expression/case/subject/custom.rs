@@ -1,9 +1,7 @@
 use super::super::super::plan_expr_with_expected_source_stop_shape;
 use super::super::invalid_case_shape;
 use super::{CaseClause, OrderedCaseCandidateInput, OrderedCasePattern, case_return_shape};
-use crate::plan::{
-    BoolExpr, CustomExpr, CustomLocalId, CustomType, Expr, Step, ValueShape, ValueType,
-};
+use crate::plan::{BoolExpr, CustomExpr, CustomLocalId, Expr, Step, ValueShape, ValueType};
 use crate::planner::context::PlanContext;
 use crate::planner::error::{InvalidCaseShapeReason, PlanError};
 use crate::planner::pattern::{
@@ -18,9 +16,7 @@ use std::sync::Arc;
 pub(super) fn plan(
     type_: Arc<Type>,
     subject: TypedExpr,
-    subject_type: CustomType,
     subject_shape: ValueShape,
-    inferred_variant: Option<usize>,
     clauses: Vec<CaseClause>,
     context: &mut PlanContext<'_>,
 ) -> Result<Expr, PlanError> {
@@ -31,8 +27,8 @@ pub(super) fn plan(
             InvalidCaseShapeReason::PatternTypeMismatch,
         ));
     };
-    let (subject_step, subject_local, subject) = bind_subject(subject, subject_type, context);
-    let mut covered_constructors = HashSet::new();
+    let (subject_step, subject_local, subject) = bind_subject(subject, context);
+    let mut coverage = CustomCaseCoverage::default();
     let mut ordered_clauses = Vec::new();
     for clause in clauses {
         let is_guarded = clause.guard.is_some();
@@ -46,21 +42,29 @@ pub(super) fn plan(
                 },
                 context,
                 |context| {
-                    let mut planned =
-                        plan_pattern(pattern, subject.clone(), inferred_variant, context)?;
-                    if !is_guarded && let Some(binding) = planned.custom_binding.take() {
-                        covered_constructors.insert(binding.binding().constructor().index());
-                        if planned.pattern.is_total
-                            || covered_constructors.len() == binding.constructor_count()
-                        {
+                    let mut planned = plan_pattern(pattern, subject.clone(), context)?;
+                    if let Some(binding) = planned.custom_binding.take() {
+                        let proof = coverage.add_candidate(
+                            binding.constructor().index(),
+                            binding.constructor_count(),
+                            planned.pattern.is_total,
+                            is_guarded,
+                        );
+                        let total_binding = match proof {
+                            Some(CustomCaseBindingProof::Intrinsic) => {
+                                binding.into_intrinsic_binding()
+                            }
+                            Some(CustomCaseBindingProof::ExhaustiveRemainder(excluded)) => {
+                                Some(binding.into_remainder_binding(excluded))
+                            }
+                            None => None,
+                        };
+                        if let Some(binding) = total_binding {
                             planned.pattern.is_total = true;
                             planned
                                 .pattern
                                 .total_branch_steps
-                                .push(Step::bind_custom_fields(
-                                    subject_local,
-                                    binding.into_binding(),
-                                ));
+                                .push(Step::bind_custom_fields(subject_local, binding));
                         }
                     }
                     Ok(planned.pattern)
@@ -73,10 +77,44 @@ pub(super) fn plan(
         .map(|case| super::case_subject_block(subject_step, case))
 }
 
+#[derive(Default)]
+struct CustomCaseCoverage {
+    constructors: HashSet<usize>,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+enum CustomCaseBindingProof {
+    Intrinsic,
+    ExhaustiveRemainder(Vec<usize>),
+}
+
+impl CustomCaseCoverage {
+    fn add_candidate(
+        &mut self,
+        constructor: usize,
+        constructor_count: usize,
+        is_intrinsically_total: bool,
+        is_guarded: bool,
+    ) -> Option<CustomCaseBindingProof> {
+        if is_guarded {
+            return None;
+        }
+        let mut excluded = self.constructors.iter().copied().collect::<Vec<_>>();
+        excluded.sort_unstable();
+        self.constructors.insert(constructor);
+        if is_intrinsically_total {
+            Some(CustomCaseBindingProof::Intrinsic)
+        } else if self.constructors.len() == constructor_count {
+            Some(CustomCaseBindingProof::ExhaustiveRemainder(excluded))
+        } else {
+            None
+        }
+    }
+}
+
 fn plan_pattern(
     pattern: TypedPattern,
     subject: CustomExpr,
-    inferred_variant: Option<usize>,
     context: &mut PlanContext<'_>,
 ) -> Result<PlannedCustomPattern, PlanError> {
     if pattern_value_type(&pattern)? != ValueType::Custom(subject.type_().clone()) {
@@ -108,7 +146,7 @@ fn plan_pattern(
             custom_binding: None,
         }),
         pattern => {
-            let pattern = plan_custom_subject_pattern(pattern, inferred_variant, context)?;
+            let pattern = plan_custom_subject_pattern(pattern, subject.shape().clone(), context)?;
             Ok(PlannedCustomPattern {
                 pattern: OrderedCasePattern {
                     match_condition: BoolExpr::custom_matches(subject.clone(), pattern.pattern),
@@ -140,11 +178,10 @@ fn strip_whole_aliases(pattern: TypedPattern) -> (TypedPattern, Vec<EcoString>) 
 
 fn bind_subject(
     subject: CustomExpr,
-    subject_type: CustomType,
     context: &mut PlanContext<'_>,
 ) -> (Step, CustomLocalId, CustomExpr) {
     let local = context.define_internal_custom_local();
-    let typed_local = crate::plan::CustomLocal::new(local, subject_type);
+    let typed_local = crate::plan::CustomLocal::from_shape(local, subject.shape().clone());
     let name = internal_subject_name(local);
     let step = Step::let_custom(local, name.clone(), subject);
     (step, local, CustomExpr::local_get(typed_local, name))
@@ -295,7 +332,6 @@ pub fn main() { 0 }
                 origin: VariableOrigin::generated(),
             },
             subject.clone(),
-            None,
             &mut context,
         )
         .expect("a variable custom pattern should plan");
@@ -322,7 +358,6 @@ pub fn main() { 0 }
                     ),
                 },
                 subject.clone(),
-                None,
                 &mut context,
             )
             .map(|_| ()),
@@ -336,7 +371,6 @@ pub fn main() { 0 }
                     int_value: BigInt::from(1),
                 }),
                 subject,
-                None,
                 &mut context,
             )
             .map(|_| ()),
@@ -391,6 +425,22 @@ pub fn main() { 0 }
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::InvalidPattern,
             }),
+        );
+    }
+
+    #[test]
+    fn custom_case_coverage_excludes_guards_and_proves_the_final_remainder() {
+        let mut coverage = super::CustomCaseCoverage::default();
+
+        assert_eq!(coverage.add_candidate(0, 2, false, true), None);
+        assert_eq!(coverage.add_candidate(0, 2, false, false), None);
+        assert_eq!(
+            coverage.add_candidate(1, 2, false, false),
+            Some(super::CustomCaseBindingProof::ExhaustiveRemainder(vec![0])),
+        );
+        assert_eq!(
+            super::CustomCaseCoverage::default().add_candidate(0, 1, true, false),
+            Some(super::CustomCaseBindingProof::Intrinsic),
         );
     }
 

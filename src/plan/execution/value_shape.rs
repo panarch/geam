@@ -50,8 +50,11 @@ pub(crate) enum ValueShapeDescriptor {
 }
 
 pub(super) struct ValueShapeTable {
+    // The runtime trusts lowered refinements, but the execution IR keeps their canonical graph.
+    #[cfg_attr(not(test), allow(dead_code))]
     shapes: Vec<ValueShapeDescriptor>,
     shape_types: Vec<super::ValueType>,
+    #[cfg_attr(not(test), allow(dead_code))]
     custom_shapes: Vec<CustomValueShapeDescriptor>,
 }
 
@@ -70,6 +73,7 @@ impl CustomValueShapeId {
         Self(index)
     }
 
+    #[cfg(test)]
     fn index(self) -> usize {
         self.0
     }
@@ -84,6 +88,7 @@ impl CustomValueShape {
         self.type_id
     }
 
+    #[cfg(test)]
     pub(super) fn shape_id(self) -> CustomValueShapeId {
         self.shape_id
     }
@@ -117,6 +122,7 @@ impl ValueShapeTable {
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn get(&self, id: ValueShapeId) -> &ValueShapeDescriptor {
         &self.shapes[id.index()]
     }
@@ -125,6 +131,7 @@ impl ValueShapeTable {
         &self.shape_types[id.index()]
     }
 
+    #[cfg(test)]
     pub(crate) fn custom(&self, id: CustomValueShapeId) -> &CustomValueShapeDescriptor {
         &self.custom_shapes[id.index()]
     }
@@ -143,14 +150,17 @@ impl CustomValueShapeDescriptor {
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn type_id(&self) -> CustomTypeId {
         self.type_id
     }
 
+    #[cfg(test)]
     pub(crate) fn arguments(&self) -> &[ValueShapeId] {
         &self.arguments
     }
 
+    #[cfg(test)]
     pub(crate) fn constructor(&self) -> CustomConstructorRefinement {
         self.constructor
     }
@@ -440,7 +450,10 @@ pub fn main() -> Wrapper(#(
             .return_()
             .shape();
 
-        assert_eq!(plan.custom_shape_constructor_names(shape), vec!["Wrapper"],);
+        assert_eq!(
+            plan.custom_shape_refinement(shape),
+            super::CustomConstructorRefinement::Any,
+        );
         assert_eq!(
             plan.custom_shape_value_type(shape),
             crate::plan::CustomType::new(

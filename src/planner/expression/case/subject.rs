@@ -26,7 +26,7 @@ use std::sync::Arc;
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum CaseSubjectVariants {
     Other,
-    Custom(Option<usize>),
+    Custom,
     Tuple(Vec<CaseSubjectVariants>),
     List(Box<CaseSubjectVariants>),
 }
@@ -57,7 +57,7 @@ impl CaseSubjectVariants {
                 {
                     Self::Other
                 } else {
-                    Self::Custom(type_.custom_type_inferred_variant().map(usize::from))
+                    Self::Custom
                 }
             }
             Type::Fn { .. } => Self::Other,
@@ -65,18 +65,13 @@ impl CaseSubjectVariants {
     }
 
     #[cfg(test)]
-    fn without_inferred_variants(value_type: &ValueType) -> Self {
+    fn from_value_type(value_type: &ValueType) -> Self {
         match value_type {
-            ValueType::Custom(_) => Self::Custom(None),
-            ValueType::Tuple(elements) => Self::Tuple(
-                elements
-                    .iter()
-                    .map(Self::without_inferred_variants)
-                    .collect(),
-            ),
-            ValueType::List(element) => {
-                Self::List(Box::new(Self::without_inferred_variants(element)))
+            ValueType::Custom(_) => Self::Custom,
+            ValueType::Tuple(elements) => {
+                Self::Tuple(elements.iter().map(Self::from_value_type).collect())
             }
+            ValueType::List(element) => Self::List(Box::new(Self::from_value_type(element))),
             ValueType::Int
             | ValueType::Float
             | ValueType::String
@@ -88,24 +83,17 @@ impl CaseSubjectVariants {
         }
     }
 
-    fn custom_variant(&self) -> Option<usize> {
-        match self {
-            Self::Custom(variant) => *variant,
-            Self::Other | Self::Tuple(_) | Self::List(_) => None,
-        }
-    }
-
     fn into_tuple(self) -> Option<Vec<Self>> {
         match self {
             Self::Tuple(elements) => Some(elements),
-            Self::Other | Self::Custom(_) | Self::List(_) => None,
+            Self::Other | Self::Custom | Self::List(_) => None,
         }
     }
 
     fn into_list(self) -> Option<Self> {
         match self {
             Self::List(element) => Some(*element),
-            Self::Other | Self::Custom(_) | Self::Tuple(_) => None,
+            Self::Other | Self::Custom | Self::Tuple(_) => None,
         }
     }
 }
@@ -131,15 +119,7 @@ pub(super) fn plan(
         ValueType::String => string::plan(type_, subject, clauses, context),
         ValueType::BitArray => bit_array::plan(type_, subject, clauses, context),
         ValueType::UtfCodepoint => utf_codepoint::plan(type_, subject, clauses, context),
-        ValueType::Custom(subject_type) => custom::plan(
-            type_,
-            subject,
-            subject_type,
-            subject_shape,
-            subject_variants.custom_variant(),
-            clauses,
-            context,
-        ),
+        ValueType::Custom(_) => custom::plan(type_, subject, subject_shape, clauses, context),
         ValueType::Float => float::plan(type_, subject, clauses, context),
         ValueType::Nil => nil::plan(type_, subject, clauses, context),
         ValueType::Tuple(subject_type) => tuple::plan(
@@ -815,9 +795,7 @@ mod tests {
             ),
             super::CaseSubjectVariants::Tuple(vec![
                 super::CaseSubjectVariants::Other,
-                super::CaseSubjectVariants::List(Box::new(super::CaseSubjectVariants::Custom(
-                    None
-                ),)),
+                super::CaseSubjectVariants::List(Box::new(super::CaseSubjectVariants::Custom)),
             ]),
         );
         assert_eq!(
@@ -836,7 +814,7 @@ mod tests {
         });
         assert_eq!(
             super::CaseSubjectVariants::from_gleam(linked.as_ref()),
-            super::CaseSubjectVariants::List(Box::new(super::CaseSubjectVariants::Custom(None),)),
+            super::CaseSubjectVariants::List(Box::new(super::CaseSubjectVariants::Custom)),
         );
     }
 
@@ -844,19 +822,12 @@ mod tests {
     fn case_subject_variant_accessors_reject_other_shapes() {
         use super::CaseSubjectVariants as Variants;
 
-        assert_eq!(Variants::Other.custom_variant(), None);
-        assert_eq!(Variants::Tuple(Vec::new()).custom_variant(), None);
-        assert_eq!(
-            Variants::List(Box::new(Variants::Other)).custom_variant(),
-            None
-        );
-
         assert_eq!(Variants::Other.into_tuple(), None);
-        assert_eq!(Variants::Custom(Some(0)).into_tuple(), None);
+        assert_eq!(Variants::Custom.into_tuple(), None);
         assert_eq!(Variants::List(Box::new(Variants::Other)).into_tuple(), None);
 
         assert_eq!(Variants::Other.into_list(), None);
-        assert_eq!(Variants::Custom(Some(0)).into_list(), None);
+        assert_eq!(Variants::Custom.into_list(), None);
         assert_eq!(Variants::Tuple(Vec::new()).into_list(), None);
     }
 

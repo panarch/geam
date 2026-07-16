@@ -80,9 +80,10 @@ pub(crate) use step::{
     AssertBinding, AssertPattern, BitArrayAssertPattern, ListAssertPattern, ListAssertTail, Step,
     StepKind, StringAssertBinding,
 };
+#[cfg(test)]
+pub(crate) use value_shape::ValueShapeDescriptor;
 pub(crate) use value_shape::{
-    CustomConstructorRefinement, CustomValueShape, CustomValueShapeId, FunctionShape,
-    ValueShapeDescriptor, ValueShapeId,
+    CustomConstructorRefinement, CustomValueShape, CustomValueShapeId, FunctionShape, ValueShapeId,
 };
 pub(crate) use value_type::{
     BitArrayListTypeId, BoolListTypeId, CustomConstructorId, CustomFunctionType, CustomListTypeId,
@@ -162,6 +163,7 @@ impl ExecutionPlan {
         self.custom_types.value_type(id)
     }
 
+    #[cfg(test)]
     pub(crate) fn custom_shape_refinement(
         &self,
         shape: &CustomValueShape,
@@ -169,6 +171,7 @@ impl ExecutionPlan {
         self.value_shapes.custom(shape.shape_id()).constructor()
     }
 
+    #[cfg(test)]
     pub(crate) fn custom_shape_value_type(
         &self,
         shape: &CustomValueShape,
@@ -176,22 +179,7 @@ impl ExecutionPlan {
         self.custom_shape_type(shape.shape_id())
     }
 
-    pub(crate) fn custom_shape_constructor_names(
-        &self,
-        shape: &CustomValueShape,
-    ) -> Vec<EcoString> {
-        match self.custom_shape_refinement(shape) {
-            CustomConstructorRefinement::Any => {
-                self.custom_types.constructor_names(shape.type_id())
-            }
-            CustomConstructorRefinement::Exact(index) => vec![
-                self.custom_constructor(CustomConstructorId::new(shape.type_id(), index))
-                    .name()
-                    .clone(),
-            ],
-        }
-    }
-
+    #[cfg(test)]
     fn custom_shape_type(&self, id: CustomValueShapeId) -> crate::plan::CustomType {
         let shape = self.value_shapes.custom(id);
         let nominal = self.custom_types.value_type(shape.type_id());
@@ -205,6 +193,7 @@ impl ExecutionPlan {
         )
     }
 
+    #[cfg(test)]
     fn value_shape_type(&self, id: ValueShapeId) -> crate::plan::ValueType {
         match self.value_shapes.get(id) {
             ValueShapeDescriptor::Int => crate::plan::ValueType::Int,

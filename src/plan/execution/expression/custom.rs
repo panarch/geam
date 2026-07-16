@@ -90,10 +90,6 @@ impl CustomExpr {
         self.shape.type_id()
     }
 
-    pub(crate) fn shape(&self) -> &CustomValueShape {
-        &self.shape
-    }
-
     pub(crate) fn kind(&self) -> &CustomExprKind {
         &self.kind
     }

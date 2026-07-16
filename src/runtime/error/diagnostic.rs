@@ -48,9 +48,6 @@ impl Diagnostic for ExecutionError {
             Self::CustomFieldFamilyMismatch { .. } => {
                 Some(Box::new("geam::custom_field_family_mismatch"))
             }
-            Self::CustomFieldDiscriminantMismatch { .. } => {
-                Some(Box::new("geam::custom_field_discriminant_mismatch"))
-            }
             Self::ListIndexOutOfBounds { .. } => Some(Box::new("geam::list_index_out_of_bounds")),
         }
     }
@@ -61,7 +58,6 @@ impl Diagnostic for ExecutionError {
             Self::FunctionReturnFamilyMismatch { .. }
             | Self::TupleIndexFamilyMismatch { .. }
             | Self::CustomFieldFamilyMismatch { .. }
-            | Self::CustomFieldDiscriminantMismatch { .. }
             | Self::ListIndexOutOfBounds { .. } => None,
         }
     }
@@ -72,7 +68,6 @@ impl Diagnostic for ExecutionError {
             Self::FunctionReturnFamilyMismatch { .. }
             | Self::TupleIndexFamilyMismatch { .. }
             | Self::CustomFieldFamilyMismatch { .. }
-            | Self::CustomFieldDiscriminantMismatch { .. }
             | Self::ListIndexOutOfBounds { .. } => None,
         }
     }
@@ -83,7 +78,6 @@ impl Diagnostic for ExecutionError {
             Self::FunctionReturnFamilyMismatch { .. }
             | Self::TupleIndexFamilyMismatch { .. }
             | Self::CustomFieldFamilyMismatch { .. }
-            | Self::CustomFieldDiscriminantMismatch { .. }
             | Self::ListIndexOutOfBounds { .. } => None,
         }
     }
@@ -307,21 +301,6 @@ mod tests {
                     actual: ValueType::String,
                 },
                 "geam::custom_field_family_mismatch",
-            ),
-            (
-                ExecutionError::CustomFieldDiscriminantMismatch {
-                    expected_type: CustomType::new(
-                        CustomTypeName::new("geam".into(), "main".into(), "Shape".into()),
-                        Vec::new(),
-                    ),
-                    expected_constructors: vec!["Circle".into()],
-                    actual_type: CustomType::new(
-                        CustomTypeName::new("geam".into(), "main".into(), "Shape".into()),
-                        Vec::new(),
-                    ),
-                    actual_constructor: "Square".into(),
-                },
-                "geam::custom_field_discriminant_mismatch",
             ),
             (
                 ExecutionError::ListIndexOutOfBounds {

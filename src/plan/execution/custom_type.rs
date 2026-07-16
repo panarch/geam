@@ -39,14 +39,6 @@ impl CustomTypeTable {
         &self.types[id.type_id().index()].constructors[&id.index()]
     }
 
-    pub(crate) fn constructor_names(&self, id: CustomTypeId) -> Vec<EcoString> {
-        self.types[id.index()]
-            .constructors
-            .values()
-            .map(|constructor| constructor.name().clone())
-            .collect()
-    }
-
     #[cfg(test)]
     pub(crate) fn len(&self) -> usize {
         self.types.len()

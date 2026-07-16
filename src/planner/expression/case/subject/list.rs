@@ -176,7 +176,7 @@ pub(super) fn plan_list_case_pattern(
     let functions = std::collections::HashMap::new();
     let mut anonymous = crate::planner::context::AnonymousFunctions::default();
     let mut context = PlanContext::new(&module_name, &functions, &mut anonymous);
-    let subject_variants = CaseSubjectVariants::without_inferred_variants(&subject_type);
+    let subject_variants = CaseSubjectVariants::from_value_type(&subject_type);
     plan_list_case_pattern_with_context(
         pattern,
         value,
@@ -289,15 +289,15 @@ pub(super) fn plan_list_case_pattern_with_context(
                     InvalidCaseShapeReason::PatternTypeMismatch,
                 ));
             };
-            let pattern = plan_custom_subject_pattern(
-                pattern.clone(),
-                subject_variants.custom_variant(),
-                context,
-            )?;
+            let pattern =
+                plan_custom_subject_pattern(pattern.clone(), value.shape().clone(), context)?;
             let mut total_branch_steps = Vec::new();
-            if let Some(binding) = pattern.custom_binding.clone() {
-                total_branch_steps =
-                    total_custom_binding_steps(value.clone(), binding.into_binding(), context);
+            if let Some(binding) = pattern
+                .custom_binding
+                .clone()
+                .and_then(|binding| binding.into_intrinsic_binding())
+            {
+                total_branch_steps = total_custom_binding_steps(value.clone(), binding, context);
             }
             Ok(ListCasePattern {
                 match_condition: Some(BoolExpr::custom_matches(value, pattern.pattern)),
@@ -523,11 +523,12 @@ fn matches_type(type_: &Type, subject_type: &ValueType) -> bool {
 }
 
 fn bind_list_case_subject(subject: ListExpr, context: &mut PlanContext<'_>) -> (Step, Expr) {
+    let item_shape = subject.item_shape().clone();
     let (local, value) = context.define_internal_list_value(subject);
     let name = internal_list_case_subject_name(&local);
     (
         Step::let_list_expr(name.clone(), value),
-        Expr::list(ListExpr::local_get(local, name)),
+        Expr::list(ListExpr::local_get(local, name).with_item_shape(item_shape)),
     )
 }
 
@@ -555,7 +556,7 @@ mod tests {
         BitArrayPatternSizeExpr, BitArrayPatternValue, BitArraySegment, BoolExpr,
         CustomConstructor, CustomConstructorField, CustomExpr, CustomLocalId, CustomPattern,
         CustomType, CustomTypeName, Endianness, Expr, IntExpr, IntListLocalId, IntLocalId,
-        ListExpr, ListLocal, Signedness, Step, StringExpr, ValueType,
+        ListExpr, ListLocal, Signedness, Step, StringExpr, ValueShape, ValueType,
     };
     use crate::planner::context::{AnonymousFunctions, PlanContext};
     use crate::planner::dsl::{
@@ -569,6 +570,33 @@ mod tests {
     };
     use gleam_core::type_::error::VariableOrigin;
     use std::collections::HashMap;
+
+    #[test]
+    fn list_case_subject_local_preserves_custom_item_refinement() {
+        let module_name = ecow::EcoString::from("main");
+        let functions = HashMap::new();
+        let mut anonymous = AnonymousFunctions::default();
+        let mut context = PlanContext::new(&module_name, &functions, &mut anonymous);
+        let type_ = CustomType::new(
+            CustomTypeName::new("geam".into(), "main".into(), "Choice".into()),
+            Vec::new(),
+        );
+        let value = CustomExpr::try_constructor(
+            CustomConstructor::new(type_.clone(), "First".into(), 0, Vec::new()),
+            Vec::new(),
+        )
+        .expect("test custom construction should be valid");
+        let custom_shape = ValueShape::Custom(value.shape().clone());
+        let subject = ListExpr::try_value(vec![Expr::custom(value)], ValueType::Custom(type_))
+            .expect("test custom list should be valid");
+
+        let (_, local) = super::bind_list_case_subject(subject, &mut context);
+
+        assert_eq!(
+            local.value_shape(),
+            &ValueShape::List(Box::new(custom_shape)),
+        );
+    }
 
     #[test]
     fn reject_margin_list_and_tuple_patterns_with_mismatched_subject_variant_shapes() {

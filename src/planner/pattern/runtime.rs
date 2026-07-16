@@ -1,7 +1,8 @@
 use crate::plan::{
     AssertBinding, AssertPattern, BitArrayBindingPattern, BitArrayPatternSegment,
-    CustomBindingPattern, CustomPattern, ListAssertPattern, ListAssertTail, ParamLocal,
-    TotalBindingPattern, ValueShape, ValueType,
+    CustomBindingPattern, CustomConstructor, CustomConstructorRefinement, CustomPattern,
+    CustomValueShape, ListAssertPattern, ListAssertTail, ParamLocal, TotalBindingPattern,
+    ValueShape, ValueType,
 };
 use crate::planner::context::PlanContext;
 use crate::planner::error::{InvalidTypedAstReason, PlanError};
@@ -20,21 +21,67 @@ pub(in crate::planner) struct PlannedRuntimePattern {
 
 #[derive(Clone)]
 pub(in crate::planner) struct PlannedCustomBinding {
-    binding: CustomBindingPattern,
+    constructor: CustomConstructor,
+    fields: Vec<TotalBindingPattern>,
+    source_shape: CustomValueShape,
     constructor_count: usize,
 }
 
 impl PlannedCustomBinding {
-    pub(in crate::planner) fn binding(&self) -> &CustomBindingPattern {
-        &self.binding
+    pub(in crate::planner) fn constructor(&self) -> &CustomConstructor {
+        &self.constructor
     }
 
     pub(in crate::planner) fn constructor_count(&self) -> usize {
         self.constructor_count
     }
 
-    pub(in crate::planner) fn into_binding(self) -> CustomBindingPattern {
-        self.binding
+    pub(in crate::planner) fn intrinsic_binding(&self) -> Option<CustomBindingPattern> {
+        match self.source_shape.constructor() {
+            CustomConstructorRefinement::Exact(index) if index == self.constructor.index() => {
+                Some(CustomBindingPattern::exact(
+                    self.source_shape.clone(),
+                    self.constructor.clone(),
+                    self.fields.clone(),
+                ))
+            }
+            CustomConstructorRefinement::Any if self.constructor_count == 1 => {
+                Some(CustomBindingPattern::only_constructor(
+                    self.source_shape.clone(),
+                    self.constructor.clone(),
+                    self.fields.clone(),
+                ))
+            }
+            CustomConstructorRefinement::Any | CustomConstructorRefinement::Exact(_) => None,
+        }
+    }
+
+    pub(in crate::planner) fn into_intrinsic_binding(self) -> Option<CustomBindingPattern> {
+        match self.source_shape.constructor() {
+            CustomConstructorRefinement::Exact(index) if index == self.constructor.index() => Some(
+                CustomBindingPattern::exact(self.source_shape, self.constructor, self.fields),
+            ),
+            CustomConstructorRefinement::Any if self.constructor_count == 1 => {
+                Some(CustomBindingPattern::only_constructor(
+                    self.source_shape,
+                    self.constructor,
+                    self.fields,
+                ))
+            }
+            CustomConstructorRefinement::Any | CustomConstructorRefinement::Exact(_) => None,
+        }
+    }
+
+    pub(in crate::planner) fn into_remainder_binding(
+        self,
+        excluded: Vec<usize>,
+    ) -> CustomBindingPattern {
+        CustomBindingPattern::exhaustive_remainder(
+            self.source_shape,
+            excluded,
+            self.constructor,
+            self.fields,
+        )
     }
 }
 
@@ -134,7 +181,13 @@ pub(in crate::planner) fn plan_runtime_pattern(
             constructor,
             type_,
             ..
-        } => plan_custom_pattern(arguments, constructor, type_, None, context),
+        } => {
+            let Some(ValueShape::Custom(source_shape)) = ValueShape::from_gleam(type_.as_ref())
+            else {
+                return Err(invalid_pattern());
+            };
+            plan_custom_pattern(arguments, constructor, type_, source_shape, context)
+        }
         Pattern::StringPrefix {
             left_side_string,
             left_side_assignment,
@@ -176,7 +229,7 @@ pub(in crate::planner) fn plan_runtime_pattern(
 
 pub(in crate::planner) fn plan_custom_subject_pattern(
     pattern: TypedPattern,
-    inferred_variant: Option<usize>,
+    source_shape: CustomValueShape,
     context: &mut PlanContext<'_>,
 ) -> Result<PlannedRuntimePattern, PlanError> {
     let Pattern::Constructor {
@@ -188,7 +241,7 @@ pub(in crate::planner) fn plan_custom_subject_pattern(
     else {
         return Err(invalid_pattern());
     };
-    plan_custom_pattern(arguments, constructor, type_, inferred_variant, context)
+    plan_custom_pattern(arguments, constructor, type_, source_shape, context)
 }
 
 fn plan_list_pattern(
@@ -294,14 +347,12 @@ fn plan_custom_pattern(
     arguments: Vec<gleam_core::ast::CallArg<TypedPattern>>,
     constructor: Inferred<gleam_core::type_::PatternConstructor>,
     type_: Arc<Type>,
-    inferred_variant: Option<usize>,
+    source_shape: CustomValueShape,
     context: &mut PlanContext<'_>,
 ) -> Result<PlannedRuntimePattern, PlanError> {
     let Inferred::Known(constructor) = constructor else {
         return Err(invalid_pattern());
     };
-    let matches_inferred_variant =
-        inferred_variant == Some(usize::from(constructor.constructor_index));
     let field_types = arguments
         .iter()
         .map(|argument| pattern_value_type(&argument.value))
@@ -320,9 +371,13 @@ fn plan_custom_pattern(
         fields.push(field.pattern);
     }
     let fields_are_total = total_fields.len() == fields.len();
-    let is_total = fields_are_total && (constructor_count == 1 || matches_inferred_variant);
+    let matches_exact_constructor = source_shape.constructor()
+        == CustomConstructorRefinement::Exact(usize::from(constructor.constructor_index));
+    let is_total = fields_are_total && (constructor_count == 1 || matches_exact_constructor);
     let custom_binding = fields_are_total.then(|| PlannedCustomBinding {
-        binding: CustomBindingPattern::new(custom_constructor.clone(), total_fields),
+        constructor: custom_constructor.clone(),
+        fields: total_fields,
+        source_shape,
         constructor_count,
     });
     Ok(PlannedRuntimePattern {
@@ -331,7 +386,8 @@ fn plan_custom_pattern(
         total_binding: if is_total {
             custom_binding
                 .as_ref()
-                .map(|binding| TotalBindingPattern::custom(binding.binding().clone()))
+                .and_then(PlannedCustomBinding::intrinsic_binding)
+                .map(TotalBindingPattern::custom)
         } else {
             None
         },
@@ -444,12 +500,16 @@ fn invalid_pattern() -> PlanError {
 
 #[cfg(test)]
 mod tests {
+    use super::{CustomConstructorRefinement, CustomValueShape};
     use super::{
         PlannedRuntimePattern, invalid_pattern, pattern_value_type, plan_bool_pattern,
         plan_custom_pattern, plan_list_tail, plan_nil_pattern, plan_runtime_pattern,
         total_bit_array_binding,
     };
-    use crate::plan::{AssertPattern, BitArrayPattern, ValueShape, ValueType};
+    use crate::plan::{
+        AssertPattern, BitArrayPattern, CustomBindingPattern, CustomTypeName, TotalBindingPattern,
+        ValueShape, ValueType,
+    };
     use crate::planner::context::{AnonymousFunctions, FunctionInfo, PlanContext};
     use crate::planner::{InvalidCustomTypeReason, InvalidTypedAstReason, PlanError};
     use ecow::EcoString;
@@ -610,11 +670,29 @@ mod tests {
             Inferred::Known(pattern_constructor("Other")),
             Vec::new(),
         ));
+        assert_invalid(plan_runtime_pattern(
+            Pattern::Constructor {
+                location: span,
+                name_location: span,
+                name: "Invalid".into(),
+                arguments: Vec::new(),
+                module: None,
+                constructor: Inferred::Known(pattern_constructor("Invalid")),
+                spread: None,
+                type_: type_::generic_var(0),
+            },
+            &mut context,
+        ));
+        let result_shape = CustomValueShape::new(
+            CustomTypeName::new("".into(), "gleam".into(), "Result".into()),
+            vec![ValueShape::Int, ValueShape::String],
+            CustomConstructorRefinement::Any,
+        );
         assert_invalid(plan_custom_pattern(
             Vec::new(),
             Inferred::Unknown,
             type_::result(type_::int(), type_::string()),
-            None,
+            result_shape.clone(),
             &mut context,
         ));
         assert_eq!(
@@ -622,7 +700,7 @@ mod tests {
                 Vec::new(),
                 Inferred::Known(pattern_constructor("Ok")),
                 type_::generic_var(0),
-                None,
+                result_shape.clone(),
                 &mut context,
             )
             .map(|_| ()),
@@ -646,7 +724,7 @@ mod tests {
             }],
             Inferred::Known(pattern_constructor("Ok")),
             type_::result(type_::int(), type_::string()),
-            None,
+            result_shape.clone(),
             &mut context,
         ));
         assert_invalid(plan_custom_pattern(
@@ -661,7 +739,7 @@ mod tests {
             }],
             Inferred::Known(pattern_constructor("Ok")),
             type_::result(type_::int(), type_::string()),
-            None,
+            result_shape,
             &mut context,
         ));
 
@@ -725,6 +803,40 @@ mod tests {
         let mut anonymous = AnonymousFunctions::default();
         let mut context = PlanContext::new(&module, &functions, &mut anonymous);
         let span = crate::planner::support::dummy_span();
+        let result_shape = CustomValueShape::new(
+            CustomTypeName::new("".into(), "gleam".into(), "Result".into()),
+            vec![ValueShape::Int, ValueShape::String],
+            CustomConstructorRefinement::Any,
+        );
+        let any = plan_custom_pattern(
+            vec![CallArg {
+                label: None,
+                location: span,
+                value: Pattern::Discard {
+                    name: "_".into(),
+                    location: span,
+                    type_: type_::int(),
+                },
+                implicit: None,
+            }],
+            Inferred::Known(pattern_constructor("Ok")),
+            type_::result(type_::int(), type_::string()),
+            result_shape.clone(),
+            &mut context,
+        )
+        .expect("non-inferred Result variant should plan");
+        assert_eq!(
+            any.custom_binding
+                .as_ref()
+                .expect("total fields should preserve the custom binding")
+                .intrinsic_binding(),
+            None,
+        );
+        let exact_result_shape = CustomValueShape::new(
+            result_shape.type_name().clone(),
+            result_shape.arguments().to_vec(),
+            CustomConstructorRefinement::Exact(0),
+        );
         let planned = plan_custom_pattern(
             vec![CallArg {
                 label: None,
@@ -738,13 +850,26 @@ mod tests {
             }],
             Inferred::Known(pattern_constructor("Ok")),
             type_::result(type_::int(), type_::string()),
-            Some(0),
+            exact_result_shape.clone(),
             &mut context,
         )
         .expect("inferred Result variant should plan");
 
         assert!(planned.is_total);
-        assert!(planned.total_binding.is_some());
+        let constructor = planned
+            .custom_binding
+            .as_ref()
+            .expect("inferred Result pattern should preserve its custom binding")
+            .constructor()
+            .clone();
+        assert_eq!(
+            planned.total_binding,
+            Some(TotalBindingPattern::custom(CustomBindingPattern::exact(
+                exact_result_shape,
+                constructor,
+                vec![TotalBindingPattern::discard(ValueType::Int)],
+            ))),
+        );
         assert_eq!(
             planned
                 .custom_binding

@@ -65,10 +65,11 @@ Typed projections have the following approved execution invariants:
 - `ExecutionError::CustomFieldFamilyMismatch` is only for a planner-selected
   custom field projection or binding whose runtime field has a different
   exact value type.
-- `ExecutionError::CustomFieldDiscriminantMismatch` is only for total custom
-  binding or field projection when the runtime type or constructor is outside
-  the planner-selected set. Refutable pattern mismatch remains normal
-  fallthrough.
+
+Record access and total custom binding must preserve constructor refinements or
+exhaustive remainder proofs in the module plan. Execution lowering consumes
+those proofs; runtime field projection and total binding must not recheck the
+custom discriminant. Refutable pattern mismatch remains normal fallthrough.
 
 List item-family identity must be preserved by the execution list type graph,
 family-specific frame/function boundaries, and RC-backed typed runtime handles.

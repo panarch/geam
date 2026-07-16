@@ -196,8 +196,13 @@ impl CustomExpr {
         )
     }
 
+    #[cfg(test)]
     pub(crate) fn panic(panic: PanicExpr, type_: CustomType) -> Self {
         Self::new(CustomValueShape::any(type_), CustomExprKind::Panic(panic))
+    }
+
+    pub(crate) fn panic_shape(panic: PanicExpr, shape: CustomValueShape) -> Self {
+        Self::new(shape, CustomExprKind::Panic(panic))
     }
 
     pub(crate) fn bool_case(subject: BoolExpr, branches: CustomBoolCaseBranches) -> Self {
@@ -269,7 +274,7 @@ impl CustomExpr {
         &self.shape
     }
 
-    pub(crate) fn with_shape(mut self, shape: CustomValueShape) -> Self {
+    pub(super) fn with_shape(mut self, shape: CustomValueShape) -> Self {
         self.shape = shape;
         self
     }

@@ -710,7 +710,7 @@ impl Step {
     }
 
     pub(crate) fn bind_custom_fields(local: CustomLocalId, pattern: CustomBindingPattern) -> Self {
-        let local = CustomLocal::new(local, pattern.constructor().type_().clone());
+        let local = CustomLocal::from_shape(local, pattern.source_shape().clone());
         Self {
             kind: StepKind::BindCustomFields { local, pattern },
         }
