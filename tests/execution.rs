@@ -135,6 +135,11 @@ mod bindings {
         let_assert_list_destructuring,
         let_assert_fixed_list,
         let_assert_empty_list,
+        let_assert_literal_pattern,
+        let_assert_constructor_pattern,
+        let_assert_string_prefix_pattern,
+        let_assert_nested_list_pattern,
+        let_assert_pattern_families,
         let_assert_discard_alias,
         final_let_assert_list,
         expression_steps,
@@ -534,6 +539,11 @@ mod execution_errors {
             let_assert_bit_array_pattern,
             let_assert_bit_array_utf_codepoint_default_message,
             let_assert_bit_array_utf_codepoint_message_error,
+            let_assert_literal_pattern,
+            let_assert_bool_pattern,
+            let_assert_string_prefix_pattern,
+            let_assert_nested_compound_pattern,
+            let_assert_message_failure,
         );
     }
 
@@ -591,15 +601,6 @@ mod rejection {
             nested_generic_custom_function_equality,
             recursive_custom_function_equality,
             result_function_equality,
-        );
-    }
-
-    mod patterns {
-        rejection_cases!("patterns";
-            let_assert_literal_pattern,
-            let_assert_constructor_pattern,
-            let_assert_string_prefix_pattern,
-            let_assert_nested_list_pattern,
         );
     }
 

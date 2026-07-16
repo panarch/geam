@@ -51,12 +51,16 @@ pub(crate) enum AssertPattern {
     },
 }
 
-pub(crate) enum BitArrayAssertPattern {
-    Pattern(BitArrayPattern),
-    Alias {
-        pattern: Box<BitArrayAssertPattern>,
-        local: BitArrayLocalId,
-    },
+pub(crate) enum AssertSubject {
+    Int(IntLocalId),
+    Float(FloatLocalId),
+    String(StringLocalId),
+    BitArray(BitArrayLocalId),
+    Custom(CustomLocal),
+    Bool(BoolLocalId),
+    Nil(NilLocalId),
+    Tuple(TupleLocalId),
+    List(ListLocal),
 }
 
 pub(crate) struct ListAssertPattern {
@@ -154,22 +158,8 @@ pub(crate) enum StepKind {
         local: FunctionFunctionLocal,
         value: TypedFunctionExpr<FunctionFunctionExpr>,
     },
-    AssertList {
-        local: ListLocal,
-        pattern: AssertPattern,
-        message: Option<StringExpr>,
-        site: PanicSite,
-        pattern_span: SourceSpan,
-    },
-    AssertBitArray {
-        local: BitArrayLocalId,
-        pattern: BitArrayAssertPattern,
-        message: Option<StringExpr>,
-        site: PanicSite,
-        pattern_span: SourceSpan,
-    },
-    AssertCustom {
-        local: CustomLocal,
+    AssertPattern {
+        subject: AssertSubject,
         pattern: AssertPattern,
         message: Option<StringExpr>,
         site: PanicSite,

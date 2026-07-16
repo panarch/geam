@@ -99,8 +99,8 @@ pub(crate) use reference::{
 };
 pub use step::Step;
 pub(crate) use step::{
-    AssertBinding, AssertPattern, BitArrayAssertPattern, ListAssertPattern, ListAssertTail,
-    StepKind, StringAssertBinding,
+    AssertBinding, AssertPattern, AssertSubject, ListAssertPattern, ListAssertTail, StepKind,
+    StringAssertBinding,
 };
 
 #[derive(Debug, PartialEq)]

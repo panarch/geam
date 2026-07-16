@@ -344,7 +344,6 @@ mod tests {
     use crate::planner::error::{
         InvalidExpressionShapeKind, InvalidExpressionType, InvalidFunctionShapeReason,
         InvalidPipelineShapeReason, InvalidTypedAstReason, PlanError, UnsupportedExpressionKind,
-        UnsupportedPatternKind,
     };
     use crate::planner::plan_module;
     use crate::planner::support::{compile, dummy_span};
@@ -1066,26 +1065,6 @@ pub fn main() {
                 reason: InvalidTypedAstReason::PipelineShape {
                     reason: InvalidPipelineShapeReason::NonCallStep,
                 },
-            }),
-        );
-    }
-
-    #[test]
-    fn reject_profile_anonymous_function_let_assert_constructor_pattern() {
-        assert_eq!(
-            plan_module(compile(
-                r#"
-pub fn main() {
-  fn() {
-    let assert True = True
-    1
-  }
-  1
-}
-"#,
-            )),
-            Err(PlanError::UnsupportedPattern {
-                kind: UnsupportedPatternKind::Constructor,
             }),
         );
     }
