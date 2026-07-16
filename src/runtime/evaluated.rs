@@ -1396,44 +1396,35 @@ pub fn main() { 0 }
         for (left, right) in function_pairs {
             let family = left.kind().family();
             assert_eq!(family, right.kind().family());
-            assert_eq!(
-                values_equal(
-                    &plan,
-                    &state,
-                    &EvaluatedValue::Function(left),
-                    &EvaluatedValue::Function(right),
-                ),
-                true,
-            );
+            assert!(values_equal(
+                &plan,
+                &state,
+                &EvaluatedValue::Function(left),
+                &EvaluatedValue::Function(right),
+            ));
         }
-        assert_eq!(
-            values_equal(
-                &plan,
-                &state,
-                &EvaluatedValue::Function(EvaluatedFunctionValue::from(custom_function)),
-                &EvaluatedValue::Function(EvaluatedFunctionValue::from(constructor_function)),
-            ),
-            false,
-        );
-        assert_eq!(
-            values_equal(
-                &plan,
-                &state,
-                &EvaluatedValue::Function(EvaluatedFunctionValue::from(int_function.clone())),
-                &EvaluatedValue::Function(EvaluatedFunctionValue::from(
-                    EvaluatedFloatFunction::reference(
-                        FloatFunctionId(0),
+        assert!(!values_equal(
+            &plan,
+            &state,
+            &EvaluatedValue::Function(EvaluatedFunctionValue::from(custom_function)),
+            &EvaluatedValue::Function(EvaluatedFunctionValue::from(constructor_function)),
+        ));
+        assert!(!values_equal(
+            &plan,
+            &state,
+            &EvaluatedValue::Function(EvaluatedFunctionValue::from(int_function.clone())),
+            &EvaluatedValue::Function(EvaluatedFunctionValue::from(
+                EvaluatedFloatFunction::reference(
+                    FloatFunctionId(0),
+                    Vec::new(),
+                    Vec::new(),
+                    crate::plan::execution::FunctionType::new(
                         Vec::new(),
-                        Vec::new(),
-                        crate::plan::execution::FunctionType::new(
-                            Vec::new(),
-                            crate::plan::execution::ValueType::Float,
-                        ),
+                        crate::plan::execution::ValueType::Float,
                     ),
-                )),
-            ),
-            false,
-        );
+                ),
+            )),
+        ));
 
         let int_lists = (
             state.int(plan.int_list_function_id(0).type_id(), vec![1.into()]),
@@ -1537,52 +1528,37 @@ pub fn main() { 0 }
         ];
 
         for (left, right) in list_pairs {
-            assert_eq!(
-                values_equal(
-                    &plan,
-                    &state,
-                    &EvaluatedValue::List(left),
-                    &EvaluatedValue::List(right),
-                ),
-                true,
-            );
+            assert!(values_equal(
+                &plan,
+                &state,
+                &EvaluatedValue::List(left),
+                &EvaluatedValue::List(right),
+            ));
         }
-        assert_eq!(
-            values_equal(
-                &plan,
-                &state,
-                &EvaluatedValue::List(ListValueId::Int(int_lists.0)),
-                &EvaluatedValue::List(ListValueId::String(string_lists.0)),
-            ),
-            false,
-        );
-        assert_eq!(
-            values_equal(
-                &plan,
-                &state,
-                &EvaluatedValue::Tuple(vec![EvaluatedValue::Int(1.into())]),
-                &EvaluatedValue::Tuple(vec![EvaluatedValue::Int(1.into())]),
-            ),
-            true,
-        );
-        assert_eq!(
-            values_equal(
-                &plan,
-                &state,
-                &EvaluatedValue::Tuple(vec![EvaluatedValue::Int(1.into())]),
-                &EvaluatedValue::Tuple(Vec::new()),
-            ),
-            false,
-        );
-        assert_eq!(
-            values_equal(
-                &plan,
-                &state,
-                &EvaluatedValue::Int(1.into()),
-                &EvaluatedValue::String("one".into()),
-            ),
-            false,
-        );
+        assert!(!values_equal(
+            &plan,
+            &state,
+            &EvaluatedValue::List(ListValueId::Int(int_lists.0)),
+            &EvaluatedValue::List(ListValueId::String(string_lists.0)),
+        ));
+        assert!(values_equal(
+            &plan,
+            &state,
+            &EvaluatedValue::Tuple(vec![EvaluatedValue::Int(1.into())]),
+            &EvaluatedValue::Tuple(vec![EvaluatedValue::Int(1.into())]),
+        ));
+        assert!(!values_equal(
+            &plan,
+            &state,
+            &EvaluatedValue::Tuple(vec![EvaluatedValue::Int(1.into())]),
+            &EvaluatedValue::Tuple(Vec::new()),
+        ));
+        assert!(!values_equal(
+            &plan,
+            &state,
+            &EvaluatedValue::Int(1.into()),
+            &EvaluatedValue::String("one".into()),
+        ));
     }
 
     #[test]
@@ -1629,55 +1605,40 @@ pub fn main() { 0 }
             int_type,
         );
 
-        assert_eq!(
-            values_equal(
-                &plan,
-                &state,
-                &EvaluatedValue::Function(EvaluatedFunctionValue::from(reference.clone())),
-                &EvaluatedValue::Function(EvaluatedFunctionValue::from(
-                    same_target_with_different_metadata,
-                )),
-            ),
-            true,
-        );
-        assert_eq!(
-            values_equal(
-                &plan,
-                &state,
-                &EvaluatedValue::Function(EvaluatedFunctionValue::from(reference)),
-                &EvaluatedValue::Function(EvaluatedFunctionValue::from(different_target)),
-            ),
-            false,
-        );
-        assert_eq!(
-            values_equal(
-                &plan,
-                &state,
-                &EvaluatedValue::Function(EvaluatedFunctionValue::from(
-                    reference_for_instance_comparison,
-                )),
-                &EvaluatedValue::Function(EvaluatedFunctionValue::from(closure.clone())),
-            ),
-            false,
-        );
-        assert_eq!(
-            values_equal(
-                &plan,
-                &state,
-                &EvaluatedValue::Function(EvaluatedFunctionValue::from(closure.clone())),
-                &EvaluatedValue::Function(EvaluatedFunctionValue::from(same_closure)),
-            ),
-            true,
-        );
-        assert_eq!(
-            values_equal(
-                &plan,
-                &state,
-                &EvaluatedValue::Function(EvaluatedFunctionValue::from(closure)),
-                &EvaluatedValue::Function(EvaluatedFunctionValue::from(separate_closure)),
-            ),
-            false,
-        );
+        assert!(values_equal(
+            &plan,
+            &state,
+            &EvaluatedValue::Function(EvaluatedFunctionValue::from(reference.clone())),
+            &EvaluatedValue::Function(EvaluatedFunctionValue::from(
+                same_target_with_different_metadata,
+            )),
+        ));
+        assert!(!values_equal(
+            &plan,
+            &state,
+            &EvaluatedValue::Function(EvaluatedFunctionValue::from(reference)),
+            &EvaluatedValue::Function(EvaluatedFunctionValue::from(different_target)),
+        ));
+        assert!(!values_equal(
+            &plan,
+            &state,
+            &EvaluatedValue::Function(EvaluatedFunctionValue::from(
+                reference_for_instance_comparison,
+            )),
+            &EvaluatedValue::Function(EvaluatedFunctionValue::from(closure.clone())),
+        ));
+        assert!(values_equal(
+            &plan,
+            &state,
+            &EvaluatedValue::Function(EvaluatedFunctionValue::from(closure.clone())),
+            &EvaluatedValue::Function(EvaluatedFunctionValue::from(same_closure)),
+        ));
+        assert!(!values_equal(
+            &plan,
+            &state,
+            &EvaluatedValue::Function(EvaluatedFunctionValue::from(closure)),
+            &EvaluatedValue::Function(EvaluatedFunctionValue::from(separate_closure)),
+        ));
     }
 
     #[test]
@@ -1849,23 +1810,17 @@ pub fn main() { 0 }
         let same = first.clone();
         let separate = EvaluatedCustomFunction::constructor(constructor_id, type_);
 
-        assert_eq!(
-            values_equal(
-                &plan,
-                &state,
-                &EvaluatedValue::Function(EvaluatedFunctionValue::from(first.clone())),
-                &EvaluatedValue::Function(EvaluatedFunctionValue::from(same)),
-            ),
-            true,
-        );
-        assert_eq!(
-            values_equal(
-                &plan,
-                &state,
-                &EvaluatedValue::Function(EvaluatedFunctionValue::from(first)),
-                &EvaluatedValue::Function(EvaluatedFunctionValue::from(separate)),
-            ),
-            false,
-        );
+        assert!(values_equal(
+            &plan,
+            &state,
+            &EvaluatedValue::Function(EvaluatedFunctionValue::from(first.clone())),
+            &EvaluatedValue::Function(EvaluatedFunctionValue::from(same)),
+        ));
+        assert!(!values_equal(
+            &plan,
+            &state,
+            &EvaluatedValue::Function(EvaluatedFunctionValue::from(first)),
+            &EvaluatedValue::Function(EvaluatedFunctionValue::from(separate)),
+        ));
     }
 }
