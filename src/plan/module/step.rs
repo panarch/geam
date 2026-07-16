@@ -59,14 +59,17 @@ pub(crate) enum AssertPattern {
     },
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub(crate) enum BitArrayAssertPattern {
-    Pattern(BitArrayPattern),
-    Alias {
-        pattern: Box<BitArrayAssertPattern>,
-        local: BitArrayLocalId,
-        name: EcoString,
-    },
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum AssertSubject {
+    Int(IntLocalId),
+    Float(FloatLocalId),
+    String(StringLocalId),
+    BitArray(BitArrayLocalId),
+    Custom(CustomLocal),
+    Bool(BoolLocalId),
+    Nil(NilLocalId),
+    Tuple(TupleLocalId),
+    List(ListLocal),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -193,22 +196,8 @@ pub(crate) enum StepKind {
         name: EcoString,
         value: TypedFunctionExpr<FunctionFunctionExpr>,
     },
-    AssertList {
-        local: ListLocal,
-        pattern: AssertPattern,
-        message: Option<StringExpr>,
-        site: PanicSite,
-        pattern_span: SourceSpan,
-    },
-    AssertBitArray {
-        local: BitArrayLocalId,
-        pattern: BitArrayAssertPattern,
-        message: Option<StringExpr>,
-        site: PanicSite,
-        pattern_span: SourceSpan,
-    },
-    AssertCustom {
-        local: CustomLocal,
+    AssertPattern {
+        subject: AssertSubject,
         pattern: AssertPattern,
         message: Option<StringExpr>,
         site: PanicSite,
@@ -275,20 +264,6 @@ impl AssertPattern {
 
     pub(crate) fn custom(pattern: crate::plan::CustomPattern) -> Self {
         Self::Custom(pattern)
-    }
-}
-
-impl BitArrayAssertPattern {
-    pub(crate) fn pattern(pattern: BitArrayPattern) -> Self {
-        Self::Pattern(pattern)
-    }
-
-    pub(crate) fn alias(pattern: Self, local: BitArrayLocalId, name: EcoString) -> Self {
-        Self::Alias {
-            pattern: Box::new(pattern),
-            local,
-            name,
-        }
     }
 }
 
@@ -655,52 +630,16 @@ impl Step {
         }
     }
 
-    pub(crate) fn assert_list_at(
-        local: ListLocal,
+    pub(crate) fn assert_pattern_at(
+        subject: AssertSubject,
         pattern: AssertPattern,
         message: Option<StringExpr>,
         site: PanicSite,
         pattern_span: SourceSpan,
     ) -> Self {
         Self {
-            kind: StepKind::AssertList {
-                local,
-                pattern,
-                message,
-                site,
-                pattern_span,
-            },
-        }
-    }
-
-    pub(crate) fn assert_bit_array_at(
-        local: BitArrayLocalId,
-        pattern: BitArrayAssertPattern,
-        message: Option<StringExpr>,
-        site: PanicSite,
-        pattern_span: SourceSpan,
-    ) -> Self {
-        Self {
-            kind: StepKind::AssertBitArray {
-                local,
-                pattern,
-                message,
-                site,
-                pattern_span,
-            },
-        }
-    }
-
-    pub(crate) fn assert_custom_at(
-        local: CustomLocal,
-        pattern: AssertPattern,
-        message: Option<StringExpr>,
-        site: PanicSite,
-        pattern_span: SourceSpan,
-    ) -> Self {
-        Self {
-            kind: StepKind::AssertCustom {
-                local,
+            kind: StepKind::AssertPattern {
+                subject,
                 pattern,
                 message,
                 site,
@@ -729,12 +668,12 @@ impl Step {
 mod tests {
     use super::{Step, StepKind};
     use crate::plan::{
-        AssertPattern, BoolExpr, CustomFunctionExpr, CustomFunctionLocal, CustomFunctionLocalId,
-        CustomFunctionType, CustomType, CustomTypeName, Expr, FunctionFunctionExpr,
-        FunctionFunctionLocal, FunctionFunctionLocalId, FunctionFunctionType, FunctionType,
-        IntExpr, IntFunctionId, IntFunctionLocalId, IntFunctionReference, IntListLocalId,
-        IntLocalId, ListAssertPattern, ListAssertTail, ListLocal, PanicExpr, PanicSite, ParamLocal,
-        StringExpr, TypedFunctionExpr, ValueShape, ValueType,
+        AssertPattern, AssertSubject, BoolExpr, CustomFunctionExpr, CustomFunctionLocal,
+        CustomFunctionLocalId, CustomFunctionType, CustomType, CustomTypeName, Expr,
+        FunctionFunctionExpr, FunctionFunctionLocal, FunctionFunctionLocalId, FunctionFunctionType,
+        FunctionType, IntExpr, IntFunctionId, IntFunctionLocalId, IntFunctionReference,
+        IntListLocalId, IntLocalId, ListAssertPattern, ListAssertTail, ListLocal, PanicExpr,
+        PanicSite, ParamLocal, StringExpr, TypedFunctionExpr, ValueShape, ValueType,
     };
     use num_bigint::BigInt;
 
@@ -777,8 +716,8 @@ mod tests {
             },
         );
         assert_eq!(
-            Step::assert_list_at(
-                ListLocal::int(IntListLocalId(0)),
+            Step::assert_pattern_at(
+                AssertSubject::List(ListLocal::int(IntListLocalId(0))),
                 AssertPattern::list(ListAssertPattern::new(
                     ValueType::Int,
                     vec![AssertPattern::Discard],
@@ -792,8 +731,8 @@ mod tests {
                 crate::plan::SourceSpan::new(0, 0),
             )
             .kind(),
-            &StepKind::AssertList {
-                local: ListLocal::int(IntListLocalId(0)),
+            &StepKind::AssertPattern {
+                subject: AssertSubject::List(ListLocal::int(IntListLocalId(0))),
                 pattern: AssertPattern::list(ListAssertPattern::new(
                     ValueType::Int,
                     vec![AssertPattern::Discard],

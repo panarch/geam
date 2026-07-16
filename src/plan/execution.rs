@@ -77,8 +77,8 @@ pub(crate) use return_::{
     UtfCodepointFunctionReturn, UtfCodepointListReturn, UtfCodepointReturn,
 };
 pub(crate) use step::{
-    AssertBinding, AssertPattern, BitArrayAssertPattern, ListAssertPattern, ListAssertTail, Step,
-    StepKind, StringAssertBinding,
+    AssertBinding, AssertPattern, AssertSubject, ListAssertPattern, ListAssertTail, Step, StepKind,
+    StringAssertBinding,
 };
 #[cfg(test)]
 pub(crate) use value_shape::ValueShapeDescriptor;

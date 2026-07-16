@@ -1,12 +1,13 @@
 use crate::plan::ValueType;
 use crate::plan::execution::ExecutionPlan;
 use crate::plan::execution::{
-    AssertBinding, AssertPattern, BitArrayFunctionLocalId, BitArrayLocalId, BoolFunctionLocalId,
-    BoolLocalId, CustomBindingPattern, CustomConstructorId, CustomFunctionLocal, CustomLocal,
-    FloatFunctionLocalId, FloatLocalId, FunctionFunctionLocal, IntFunctionLocalId, IntLocalId,
-    ListAssertPattern, ListAssertTail, ListFunctionLocal, NilFunctionLocalId, NilLocalId,
-    ParamLocal, StepKind, StringFunctionLocalId, StringLocalId, TotalBindingPattern,
-    TupleFunctionLocalId, TupleLocalId, UtfCodepointFunctionLocalId, UtfCodepointLocalId,
+    AssertBinding, AssertPattern, AssertSubject, BitArrayFunctionLocalId, BitArrayLocalId,
+    BoolFunctionLocalId, BoolLocalId, CustomBindingPattern, CustomConstructorId,
+    CustomFunctionLocal, CustomLocal, FloatFunctionLocalId, FloatLocalId, FunctionFunctionLocal,
+    IntFunctionLocalId, IntLocalId, ListAssertPattern, ListAssertTail, ListFunctionLocal,
+    NilFunctionLocalId, NilLocalId, ParamLocal, StepKind, StringFunctionLocalId, StringLocalId,
+    TotalBindingPattern, TupleFunctionLocalId, TupleLocalId, UtfCodepointFunctionLocalId,
+    UtfCodepointLocalId,
 };
 use crate::runtime::error::ExecutionResult;
 use crate::runtime::expression::{
@@ -24,12 +25,11 @@ use crate::runtime::expression::{
 use crate::runtime::frame::Frame;
 use crate::runtime::state::{ListValueId, RuntimeState};
 use crate::runtime::{
-    BitArrayValue, EvaluatedBitArray, EvaluatedBitArrayFunction, EvaluatedBoolFunction,
-    EvaluatedCustomFunction, EvaluatedCustomValue, EvaluatedFloatFunction,
-    EvaluatedFunctionFunction, EvaluatedFunctionValue, EvaluatedFunctionValueKind,
-    EvaluatedIntFunction, EvaluatedListCapture, EvaluatedListFunction, EvaluatedNilFunction,
-    EvaluatedStringFunction, EvaluatedTupleFunction, EvaluatedUtfCodepointFunction, EvaluatedValue,
-    Value,
+    EvaluatedBitArray, EvaluatedBitArrayFunction, EvaluatedBoolFunction, EvaluatedCustomFunction,
+    EvaluatedCustomValue, EvaluatedFloatFunction, EvaluatedFunctionFunction,
+    EvaluatedFunctionValue, EvaluatedFunctionValueKind, EvaluatedIntFunction, EvaluatedListCapture,
+    EvaluatedListFunction, EvaluatedNilFunction, EvaluatedStringFunction, EvaluatedTupleFunction,
+    EvaluatedUtfCodepointFunction, EvaluatedValue,
 };
 use crate::runtime::{ExecutionError, PanicKind};
 use ecow::EcoString;
@@ -155,24 +155,17 @@ pub(in crate::runtime) fn execute_steps(
                 )?;
                 frame.set_function_function(local, value);
             }
-            StepKind::AssertList {
-                local,
+            StepKind::AssertPattern {
+                subject,
                 pattern,
                 message,
                 site,
                 pattern_span,
             } => {
-                let value = get_list_value(frame, local);
+                let value = assert_subject_value(frame, subject);
                 let mut bindings = Vec::new();
-                if match_assert_pattern(
-                    plan,
-                    state,
-                    frame,
-                    pattern,
-                    &EvaluatedValue::List(value.clone()),
-                    &mut bindings,
-                )?
-                .is_none()
+                if match_assert_pattern(plan, state, frame, pattern, &value, &mut bindings)?
+                    .is_none()
                 {
                     let message = match message {
                         Some(message) => Some(eval_string_expr(plan, state, frame, message)?),
@@ -182,76 +175,7 @@ pub(in crate::runtime) fn execute_steps(
                         plan.source_context(),
                         message,
                         site.clone(),
-                        crate::runtime::materialize::value(
-                            plan,
-                            state,
-                            EvaluatedValue::List(value),
-                        ),
-                        *pattern_span,
-                    ));
-                }
-                for binding in bindings {
-                    frame_set_binding(frame, binding);
-                }
-            }
-            StepKind::AssertBitArray {
-                local,
-                pattern,
-                message,
-                site,
-                pattern_span,
-            } => {
-                let value = frame.get_bit_array(*local);
-                let mut bindings = Vec::new();
-                if match_bit_array_assert_pattern(frame, pattern, &value, &mut bindings).is_none() {
-                    let message = match message {
-                        Some(message) => Some(eval_string_expr(plan, state, frame, message)?),
-                        None => None,
-                    };
-                    return Err(ExecutionError::let_assert_panic(
-                        plan.source_context(),
-                        message,
-                        site.clone(),
-                        Value::BitArray(BitArrayValue::from_evaluated(value.bits())),
-                        *pattern_span,
-                    ));
-                }
-                for binding in bindings {
-                    frame_set_binding(frame, binding);
-                }
-            }
-            StepKind::AssertCustom {
-                local,
-                pattern,
-                message,
-                site,
-                pattern_span,
-            } => {
-                let value = frame.get_custom(*local);
-                let mut bindings = Vec::new();
-                if match_assert_pattern(
-                    plan,
-                    state,
-                    frame,
-                    pattern,
-                    &EvaluatedValue::Custom(value.clone()),
-                    &mut bindings,
-                )?
-                .is_none()
-                {
-                    let message = match message {
-                        Some(message) => Some(eval_string_expr(plan, state, frame, message)?),
-                        None => None,
-                    };
-                    return Err(ExecutionError::let_assert_panic(
-                        plan.source_context(),
-                        message,
-                        site.clone(),
-                        crate::runtime::materialize::value(
-                            plan,
-                            state,
-                            EvaluatedValue::Custom(value),
-                        ),
+                        crate::runtime::materialize::value(plan, state, value),
                         *pattern_span,
                     ));
                 }
@@ -294,21 +218,20 @@ pub(in crate::runtime) fn execute_steps(
     Ok(())
 }
 
-fn match_bit_array_assert_pattern(
-    frame: &mut Frame,
-    pattern: &crate::plan::execution::BitArrayAssertPattern,
-    value: &EvaluatedBitArray,
-    bindings: &mut Vec<PendingBinding>,
-) -> Option<()> {
-    match pattern {
-        crate::plan::execution::BitArrayAssertPattern::Pattern(pattern) => {
-            crate::runtime::pattern::match_bit_array_pattern(frame, value, pattern).then_some(())
+fn assert_subject_value(frame: &Frame, subject: &AssertSubject) -> EvaluatedValue {
+    match subject {
+        AssertSubject::Int(local) => EvaluatedValue::Int(frame.get_int(*local)),
+        AssertSubject::Float(local) => EvaluatedValue::Float(frame.get_float(*local)),
+        AssertSubject::String(local) => EvaluatedValue::String(frame.get_string(*local)),
+        AssertSubject::BitArray(local) => EvaluatedValue::BitArray(frame.get_bit_array(*local)),
+        AssertSubject::Custom(local) => EvaluatedValue::Custom(frame.get_custom(*local)),
+        AssertSubject::Bool(local) => EvaluatedValue::Bool(frame.get_bool(*local)),
+        AssertSubject::Nil(local) => {
+            frame.get_nil(*local);
+            EvaluatedValue::Nil
         }
-        crate::plan::execution::BitArrayAssertPattern::Alias { pattern, local } => {
-            match_bit_array_assert_pattern(frame, pattern, value, bindings)?;
-            bindings.push(PendingBinding::BitArray(*local, value.clone()));
-            Some(())
-        }
+        AssertSubject::Tuple(local) => EvaluatedValue::Tuple(frame.get_tuple(*local)),
+        AssertSubject::List(local) => EvaluatedValue::List(get_list_value(frame, local)),
     }
 }
 
@@ -930,9 +853,9 @@ mod tests {
     };
     use crate::plan::ValueType;
     use crate::plan::execution::{
-        AssertPattern, CustomLocal, FunctionFunctionId, IntFunctionFunctionId, IntFunctionId,
-        IntListLocalId, IntLocalId, ListAssertPattern, ListLocal, Step, StepKind, StringFunctionId,
-        StringLocalId,
+        AssertPattern, AssertSubject, CustomLocal, FunctionFunctionId, IntFunctionFunctionId,
+        IntFunctionId, IntListLocalId, IntLocalId, ListAssertPattern, ListLocal, Step, StepKind,
+        StringFunctionId, StringLocalId,
     };
     use crate::runtime::expression::eval_custom_expr;
     use crate::runtime::frame::Frame;
@@ -1277,7 +1200,7 @@ pub fn main() {
             .steps()
             .iter()
             .find_map(|step| match step.kind() {
-                StepKind::AssertList { pattern, .. } => Some(pattern),
+                StepKind::AssertPattern { pattern, .. } => Some(pattern),
                 _ => None,
             })
             .expect("source should lower an assert-list step");
@@ -1322,7 +1245,7 @@ pub fn main() {
             .steps()
             .iter()
             .find_map(|step| match step.kind() {
-                StepKind::AssertList { pattern, .. } => Some(pattern),
+                StepKind::AssertPattern { pattern, .. } => Some(pattern),
                 _ => None,
             })
             .expect("source should lower an assert-list step");
@@ -1354,7 +1277,7 @@ pub fn main() {
             .steps()
             .iter()
             .find_map(|step| match step.kind() {
-                StepKind::AssertList { pattern, .. } => Some(pattern),
+                StepKind::AssertPattern { pattern, .. } => Some(pattern),
                 _ => None,
             })
             .expect("source should lower an assert-list step");
@@ -1386,7 +1309,7 @@ pub fn main() {
             .steps()
             .iter()
             .find_map(|step| match step.kind() {
-                StepKind::AssertList { pattern, .. } => Some(pattern),
+                StepKind::AssertPattern { pattern, .. } => Some(pattern),
                 _ => None,
             })
             .expect("source should lower an assert-list step");
@@ -1471,7 +1394,7 @@ pub fn main() {
             .steps()
             .iter()
             .find_map(|step| match step.kind() {
-                StepKind::AssertList { pattern, .. } => {
+                StepKind::AssertPattern { pattern, .. } => {
                     Some(&expect_list_assert_pattern(pattern).elements()[0])
                 }
                 _ => None,
@@ -1500,7 +1423,7 @@ pub fn main() {
             .steps()
             .iter()
             .find_map(|step| match step.kind() {
-                StepKind::AssertList { pattern, .. } => {
+                StepKind::AssertPattern { pattern, .. } => {
                     Some(&expect_list_assert_pattern(pattern).elements()[0])
                 }
                 _ => None,
@@ -1539,9 +1462,12 @@ pub fn main() {
     fn assert_steps_propagate_custom_field_family_mismatches() {
         let custom_plan = crate::runtime::plan_src(
             r#"
-pub type Boxed { Boxed(Int) }
+pub type Boxed { Boxed(Int) Other }
+fn boxed(value: Bool) -> Boxed {
+  case value { True -> Boxed(1) False -> Other }
+}
 pub fn main() {
-  let assert Boxed(value) = Boxed(1)
+  let assert Boxed(value) = boxed(True)
   value
 }
 "#,
@@ -1552,7 +1478,10 @@ pub fn main() {
             .iter()
             .enumerate()
             .find_map(|(index, step)| match step.kind() {
-                StepKind::AssertCustom { local, .. } => Some((index, *local)),
+                StepKind::AssertPattern {
+                    subject: AssertSubject::Custom(local),
+                    ..
+                } => Some((index, *local)),
                 _ => None,
             })
             .expect("source should lower an assert-custom step");
@@ -1602,8 +1531,8 @@ pub fn main() {
             .iter()
             .enumerate()
             .find_map(|(index, step)| match step.kind() {
-                StepKind::AssertList {
-                    local: ListLocal::Tuple { local, type_id },
+                StepKind::AssertPattern {
+                    subject: AssertSubject::List(ListLocal::Tuple { local, type_id }),
                     ..
                 } => Some((index, *local, *type_id)),
                 _ => None,
@@ -1654,8 +1583,12 @@ pub type Choice {
   Other
 }
 
+fn choice(value: Bool) -> Choice {
+  case value { True -> Boxed(1) False -> Other }
+}
+
 pub fn main() {
-  let assert Boxed(value) = Boxed(1)
+  let assert Boxed(value) = choice(True)
   value
 }
 "#,
@@ -1665,7 +1598,8 @@ pub fn main() {
             .steps()
             .iter()
             .find_map(|step| match step.kind() {
-                StepKind::AssertCustom {
+                StepKind::AssertPattern {
+                    subject: AssertSubject::Custom(_),
                     pattern: pattern @ AssertPattern::Custom(custom_pattern),
                     ..
                 } => Some((pattern, custom_pattern)),
@@ -1735,8 +1669,8 @@ pub fn main() {
             .iter()
             .enumerate()
             .find_map(|(index, step)| match step.kind() {
-                StepKind::AssertList {
-                    local: ListLocal::Tuple { type_id, .. },
+                StepKind::AssertPattern {
+                    subject: AssertSubject::List(ListLocal::Tuple { type_id, .. }),
                     pattern: AssertPattern::List(pattern),
                     ..
                 } => Some((index, *type_id, pattern)),
@@ -1806,7 +1740,8 @@ pub fn main() {
             .steps()
             .iter()
             .find_map(|step| match step.kind() {
-                StepKind::AssertCustom {
+                StepKind::AssertPattern {
+                    subject: AssertSubject::Custom(_),
                     pattern: pattern @ AssertPattern::Custom(custom_pattern),
                     ..
                 } => Some((pattern, custom_pattern.constructor())),
@@ -2103,7 +2038,7 @@ pub fn main() {
             .steps()
             .iter()
             .find_map(|step| match step.kind() {
-                StepKind::AssertList { pattern, .. } => Some(pattern),
+                StepKind::AssertPattern { pattern, .. } => Some(pattern),
                 _ => None,
             })
             .expect("source should lower an assert-list step");
@@ -2122,7 +2057,7 @@ pub fn main() {
             .steps()
             .iter()
             .find_map(|step| match step.kind() {
-                StepKind::AssertList { pattern, .. } => Some(pattern),
+                StepKind::AssertPattern { pattern, .. } => Some(pattern),
                 _ => None,
             })
             .expect("source should lower an assert-list step");
@@ -2176,7 +2111,7 @@ pub fn main() {
             .steps()
             .iter()
             .find_map(|step| match step.kind() {
-                StepKind::AssertList { pattern, .. } => Some(pattern),
+                StepKind::AssertPattern { pattern, .. } => Some(pattern),
                 _ => None,
             })
             .expect("source should lower an assert-list step");
@@ -2212,7 +2147,7 @@ pub fn main() {
             .steps()
             .iter()
             .find_map(|step| match step.kind() {
-                StepKind::AssertList { pattern, .. } => Some(pattern),
+                StepKind::AssertPattern { pattern, .. } => Some(pattern),
                 _ => None,
             })
             .expect("source should lower an assert-list step");
@@ -2246,7 +2181,7 @@ pub fn main() {
             .steps()
             .iter()
             .find_map(|step| match step.kind() {
-                StepKind::AssertList { pattern, .. } => Some(pattern),
+                StepKind::AssertPattern { pattern, .. } => Some(pattern),
                 _ => None,
             })
             .expect("source should lower an assert-list step");
@@ -2283,7 +2218,7 @@ pub fn main() {
 fn strings() -> List(String) { [] }
 fn target() { 1 }
 pub fn main() {
-  let assert [..rest] = [1]
+  let assert [_, ..rest] = [1]
   let assert [values] = [[1]]
   let assert [function] = [target]
   #(rest, values, function())
@@ -2295,7 +2230,9 @@ pub fn main() {
             .steps()
             .iter()
             .filter_map(|step| match step.kind() {
-                StepKind::AssertList { pattern, .. } => Some(expect_list_assert_pattern(pattern)),
+                StepKind::AssertPattern { pattern, .. } => {
+                    Some(expect_list_assert_pattern(pattern))
+                }
                 _ => None,
             })
             .collect::<Vec<_>>();
@@ -2371,7 +2308,7 @@ pub fn main() {
             .steps()
             .iter()
             .find_map(|step| match step.kind() {
-                StepKind::AssertList { pattern, .. } => Some(pattern),
+                StepKind::AssertPattern { pattern, .. } => Some(pattern),
                 _ => None,
             })
             .expect("source should lower an assert-list step");

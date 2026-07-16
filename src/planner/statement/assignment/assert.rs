@@ -3,15 +3,14 @@ use super::{
     plan_ordinary_assignment_value, value_type_expression_type,
 };
 use crate::plan::{
-    BitArrayAssertPattern, BitArrayExpr, Expr, ListExpr, ListLocal, Step, StringExpr, ValueType,
+    AssertSubject, BitArrayExpr, BoolExpr, CustomExpr, CustomLocal, Expr, ExprKind, FloatExpr,
+    IntExpr, ListExpr, ListLocal, NilExpr, Step, StringExpr, TupleExpr, ValueType,
 };
 use crate::planner::context::PlanContext;
-use crate::planner::error::{
-    InvalidExpressionType, InvalidTypedAstReason, PlanError, UnsupportedPatternKind,
-};
+use crate::planner::error::{InvalidExpressionType, InvalidTypedAstReason, PlanError};
 use crate::planner::expression::plan_expr;
 use ecow::EcoString;
-use gleam_core::ast::{Pattern, SrcSpan, TypedExpr, TypedPattern};
+use gleam_core::ast::{SrcSpan, TypedExpr, TypedPattern};
 
 pub(super) fn plan_assert_assignment(
     location: SrcSpan,
@@ -20,78 +19,21 @@ pub(super) fn plan_assert_assignment(
     message: Option<TypedExpr>,
     context: &mut PlanContext<'_>,
 ) -> Result<PlannedAssignment, PlanError> {
-    if let Some(pattern_type) = assert_custom_pattern_type(&pattern) {
-        return plan_assert_custom_assignment(
-            location,
-            pattern,
-            pattern_type,
-            value,
-            message,
-            context,
-        );
-    }
-    if assert_bit_array_pattern(&pattern) {
-        return plan_assert_bit_array_assignment(location, pattern, value, message, context);
-    }
-    let Some(pattern_type) = assert_list_pattern_type(&pattern) else {
-        let pattern = plan_assert_exhaustive_pattern(pattern, context)?;
-        let value = plan_ordinary_assignment_value(&pattern, value, context)?;
-        return plan_bound_assignment(pattern, value, context);
-    };
-
-    let value = plan_expr(value, context)?;
-    let actual = value.value_type();
-    let value = value
-        .into_list()
-        .ok_or_else(|| list_assert_value_must_be_list(actual))?;
-    let element_type = value.element_type().clone();
-    if ValueType::from_gleam(pattern_type.as_ref())
-        != Some(ValueType::List(Box::new(element_type.clone())))
-    {
-        return Err(PlanError::InvalidTypedAst {
-            reason: InvalidTypedAstReason::InvalidPattern,
-        });
-    }
-    let message = message
-        .map(|message| plan_assert_message(message, context))
-        .transpose()?;
-
-    let item_shape = value.item_shape().clone();
-    let (local, list_value) = context.define_internal_list_value(value);
-    let name = internal_list_name(&local);
-    let site = context.panic_site(location);
-    let pattern_span = pattern.location().into();
-    let pattern = crate::planner::pattern::plan_runtime_pattern(pattern, context)?.pattern;
-    let list_local = ListExpr::local_get(local.clone(), name.clone()).with_item_shape(item_shape);
-    let steps = vec![
-        Step::let_list_expr(name, list_value),
-        Step::assert_list_at(local, pattern, message, site, pattern_span),
-    ];
-
-    Ok(PlannedAssignment {
-        steps,
-        value: Expr::list(list_local),
-    })
-}
-
-fn plan_bit_array_assert_pattern(
-    pattern: TypedPattern,
-    context: &mut PlanContext<'_>,
-) -> Result<BitArrayAssertPattern, PlanError> {
-    match pattern {
-        Pattern::BitArray { segments, .. } => {
-            let (pattern, _) = crate::planner::pattern::plan_bit_array_pattern(segments, context)?;
-            Ok(BitArrayAssertPattern::pattern(pattern))
+    if let Some(binding) = plan_total_assert_pattern(pattern.clone(), context)? {
+        if binding_pattern_depends_on_source_shape(&binding) {
+            let value = plan_expr(value, context)?;
+            if binding_pattern_accepts_shape(&binding, value.shape()) {
+                return plan_bound_assignment(binding, value, context);
+            }
+            return plan_refutable_assert_assignment_from_expr(
+                location, pattern, value, message, context,
+            );
         }
-        Pattern::Assign { name, pattern, .. } => {
-            let pattern = plan_bit_array_assert_pattern(*pattern, context)?;
-            let local = context.define_bit_array_local(name.clone());
-            Ok(BitArrayAssertPattern::alias(pattern, local, name))
-        }
-        _ => Err(PlanError::InvalidTypedAst {
-            reason: InvalidTypedAstReason::InvalidPattern,
-        }),
+        let value = plan_ordinary_assignment_value(&binding, value, context)?;
+        return plan_bound_assignment(binding, value, context);
     }
+
+    plan_refutable_assert_assignment(location, pattern, value, message, context)
 }
 
 pub(super) fn plan_assert_assignment_steps(
@@ -101,19 +43,88 @@ pub(super) fn plan_assert_assignment_steps(
     message: Option<TypedExpr>,
     context: &mut PlanContext<'_>,
 ) -> Result<Vec<Step>, PlanError> {
-    if assert_custom_pattern_type(&pattern).is_some()
-        || assert_list_pattern_type(&pattern).is_some()
-        || assert_bit_array_pattern(&pattern)
-    {
-        return Ok(plan_assert_assignment(location, pattern, value, message, context)?.steps);
+    if let Some(binding) = plan_total_assert_pattern(pattern.clone(), context)? {
+        if binding_pattern_depends_on_source_shape(&binding) {
+            let value = plan_expr(value, context)?;
+            if binding_pattern_accepts_shape(&binding, value.shape()) {
+                return plan_assignment_steps(binding, value, context);
+            }
+            return Ok(plan_refutable_assert_assignment_from_expr(
+                location, pattern, value, message, context,
+            )?
+            .steps);
+        }
+        let value = plan_ordinary_assignment_value(&binding, value, context)?;
+        return plan_assignment_steps(binding, value, context);
     }
 
-    let pattern = plan_assert_exhaustive_pattern(pattern, context)?;
-    let value = plan_ordinary_assignment_value(&pattern, value, context)?;
-    plan_assignment_steps(pattern, value, context)
+    Ok(plan_refutable_assert_assignment(location, pattern, value, message, context)?.steps)
 }
 
-fn plan_assert_bit_array_assignment(
+fn plan_total_assert_pattern(
+    pattern: TypedPattern,
+    context: &PlanContext<'_>,
+) -> Result<Option<BindingPattern>, PlanError> {
+    match super::plan_binding_pattern_in_context(pattern, context) {
+        Ok(pattern) => Ok(Some(pattern)),
+        Err(PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::InvalidPattern,
+        }) => Ok(None),
+        Err(error) => Err(error),
+    }
+}
+
+fn binding_pattern_depends_on_source_shape(pattern: &BindingPattern) -> bool {
+    match pattern {
+        BindingPattern::Custom { .. } => true,
+        BindingPattern::Tuple(elements) => {
+            elements.iter().any(binding_pattern_depends_on_source_shape)
+        }
+        BindingPattern::Alias { pattern, .. } => binding_pattern_depends_on_source_shape(pattern),
+        BindingPattern::Named(_) | BindingPattern::Discard | BindingPattern::ListTail { .. } => {
+            false
+        }
+    }
+}
+
+fn binding_pattern_accepts_shape(
+    pattern: &BindingPattern,
+    shape: &crate::plan::ValueShape,
+) -> bool {
+    match pattern {
+        BindingPattern::Named(_) | BindingPattern::Discard => true,
+        BindingPattern::Tuple(elements) => {
+            let crate::plan::ValueShape::Tuple(shapes) = shape else {
+                return false;
+            };
+            elements.len() == shapes.len()
+                && elements
+                    .iter()
+                    .zip(shapes)
+                    .all(|(pattern, shape)| binding_pattern_accepts_shape(pattern, shape))
+        }
+        BindingPattern::ListTail { element_type, .. } => {
+            shape.value_type() == ValueType::List(Box::new(element_type.clone()))
+        }
+        BindingPattern::Custom {
+            source_shape,
+            constructor_count,
+            constructor,
+            ..
+        } => {
+            let crate::plan::ValueShape::Custom(actual) = shape else {
+                return false;
+            };
+            actual.type_() == source_shape.type_()
+                && (*constructor_count == 1
+                    || actual.constructor()
+                        == crate::plan::CustomConstructorRefinement::Exact(constructor.index()))
+        }
+        BindingPattern::Alias { pattern, .. } => binding_pattern_accepts_shape(pattern, shape),
+    }
+}
+
+fn plan_refutable_assert_assignment(
     location: SrcSpan,
     pattern: TypedPattern,
     value: TypedExpr,
@@ -121,82 +132,149 @@ fn plan_assert_bit_array_assignment(
     context: &mut PlanContext<'_>,
 ) -> Result<PlannedAssignment, PlanError> {
     let value = plan_expr(value, context)?;
-    let actual = value.value_type();
-    let value = value
-        .into_bit_array()
-        .ok_or_else(|| bit_array_assert_value_must_be_bit_array(actual))?;
-    let message = message
-        .map(|message| plan_assert_message(message, context))
-        .transpose()?;
-    let local = context.define_internal_bit_array_local();
-    let name = internal_bit_array_name(local);
-    let local_value = BitArrayExpr::local_get(local, name.clone());
-    let site = context.panic_site(location);
-    let pattern_span = pattern.location().into();
-    let pattern = plan_bit_array_assert_pattern(pattern, context)?;
-
-    Ok(PlannedAssignment {
-        steps: vec![
-            Step::let_bit_array(local, name, value),
-            Step::assert_bit_array_at(local, pattern, message, site, pattern_span),
-        ],
-        value: Expr::bit_array(local_value),
-    })
+    plan_refutable_assert_assignment_from_expr(location, pattern, value, message, context)
 }
 
-fn plan_assert_custom_assignment(
+fn plan_refutable_assert_assignment_from_expr(
     location: SrcSpan,
     pattern: TypedPattern,
-    pattern_type: std::sync::Arc<gleam_core::type_::Type>,
-    value: TypedExpr,
+    value: Expr,
     message: Option<TypedExpr>,
     context: &mut PlanContext<'_>,
 ) -> Result<PlannedAssignment, PlanError> {
-    let Some(ValueType::Custom(pattern_type)) = ValueType::from_gleam(pattern_type.as_ref()) else {
-        return Err(PlanError::InvalidTypedAst {
-            reason: InvalidTypedAstReason::InvalidPattern,
-        });
-    };
-    let value = plan_expr(value, context)?;
-    let actual = value.value_type();
-    let value = value
-        .into_custom()
-        .ok_or_else(|| custom_assert_value_must_be_custom(actual))?;
-    if value.type_() != &pattern_type {
-        return Err(PlanError::InvalidTypedAst {
-            reason: InvalidTypedAstReason::InvalidPattern,
-        });
-    }
+    validate_pattern_value_type(&pattern, value.value_type())?;
     let message = message
         .map(|message| plan_assert_message(message, context))
         .transpose()?;
-    let local = context.define_internal_custom_local();
-    let typed_local = crate::plan::CustomLocal::from_shape(local, value.shape().clone());
-    let name = internal_custom_name(local);
-    let local_value = crate::plan::CustomExpr::local_get(typed_local.clone(), name.clone());
+    let (let_step, subject, local_value) = plan_assert_subject(value, context)?;
     let site = context.panic_site(location);
     let pattern_span = pattern.location().into();
     let pattern = crate::planner::pattern::plan_runtime_pattern(pattern, context)?.pattern;
 
     Ok(PlannedAssignment {
         steps: vec![
-            Step::let_custom(local, name, value),
-            Step::assert_custom_at(typed_local, pattern, message, site, pattern_span),
+            let_step,
+            Step::assert_pattern_at(subject, pattern, message, site, pattern_span),
         ],
-        value: Expr::custom(local_value),
+        value: local_value,
     })
 }
 
-fn plan_assert_exhaustive_pattern(
-    pattern: TypedPattern,
-    context: &PlanContext<'_>,
-) -> Result<BindingPattern, PlanError> {
-    match super::plan_binding_pattern_in_context(pattern.clone(), context) {
-        Ok(pattern) => Ok(pattern),
-        Err(PlanError::InvalidTypedAst {
+fn validate_pattern_value_type(pattern: &TypedPattern, actual: ValueType) -> Result<(), PlanError> {
+    let expected = crate::planner::pattern::pattern_value_type(pattern)?;
+    if expected == actual {
+        return Ok(());
+    }
+    let expected_family = value_type_expression_type(expected);
+    let actual_family = value_type_expression_type(actual);
+    if expected_family == actual_family {
+        return Err(PlanError::InvalidTypedAst {
             reason: InvalidTypedAstReason::InvalidPattern,
-        }) => Err(unsupported_assert_exhaustive_pattern_error(&pattern)),
-        Err(error) => Err(error),
+        });
+    }
+    Err(PlanError::InvalidTypedAst {
+        reason: InvalidTypedAstReason::ExpressionType {
+            expected: expected_family,
+            actual: actual_family,
+        },
+    })
+}
+
+fn plan_assert_subject(
+    value: Expr,
+    context: &mut PlanContext<'_>,
+) -> Result<(Step, AssertSubject, Expr), PlanError> {
+    match value.into_kind() {
+        ExprKind::Int(value) => {
+            let local = context.define_internal_int_local();
+            let name = internal_assert_name("int", local.0);
+            Ok((
+                Step::let_int(local, name.clone(), value),
+                AssertSubject::Int(local),
+                Expr::int(IntExpr::local_get(local, name)),
+            ))
+        }
+        ExprKind::Float(value) => {
+            let local = context.define_internal_float_local();
+            let name = internal_assert_name("float", local.0);
+            Ok((
+                Step::let_float(local, name.clone(), value),
+                AssertSubject::Float(local),
+                Expr::float(FloatExpr::local_get(local, name)),
+            ))
+        }
+        ExprKind::String(value) => {
+            let local = context.define_internal_string_local();
+            let name = internal_assert_name("string", local.0);
+            Ok((
+                Step::let_string(local, name.clone(), value),
+                AssertSubject::String(local),
+                Expr::string(StringExpr::local_get(local, name)),
+            ))
+        }
+        ExprKind::BitArray(value) => {
+            let local = context.define_internal_bit_array_local();
+            let name = internal_bit_array_name(local);
+            Ok((
+                Step::let_bit_array(local, name.clone(), value),
+                AssertSubject::BitArray(local),
+                Expr::bit_array(BitArrayExpr::local_get(local, name)),
+            ))
+        }
+        ExprKind::Custom(value) => {
+            let local = context.define_internal_custom_local();
+            let local = CustomLocal::from_shape(local, value.shape().clone());
+            let name = internal_custom_name(local.id());
+            Ok((
+                Step::let_custom(local.id(), name.clone(), value),
+                AssertSubject::Custom(local.clone()),
+                Expr::custom(CustomExpr::local_get(local, name)),
+            ))
+        }
+        ExprKind::Bool(value) => {
+            let local = context.define_internal_bool_local();
+            let name = internal_assert_name("bool", local.0);
+            Ok((
+                Step::let_bool(local, name.clone(), value),
+                AssertSubject::Bool(local),
+                Expr::bool(BoolExpr::local_get(local, name)),
+            ))
+        }
+        ExprKind::Nil(value) => {
+            let local = context.define_internal_nil_local();
+            let name = internal_assert_name("nil", local.0);
+            Ok((
+                Step::let_nil(local, name.clone(), value),
+                AssertSubject::Nil(local),
+                Expr::nil(NilExpr::local_get(local, name)),
+            ))
+        }
+        ExprKind::Tuple(value) => {
+            let local = context.define_internal_tuple_local();
+            let name = internal_assert_name("tuple", local.0);
+            let type_ = value.type_().to_vec();
+            let shape = value.shape().to_vec().into_boxed_slice();
+            Ok((
+                Step::let_tuple(local, name.clone(), value),
+                AssertSubject::Tuple(local),
+                Expr::tuple(TupleExpr::local_get(local, name, type_).with_shape(shape)),
+            ))
+        }
+        ExprKind::List(value) => {
+            let item_shape = value.item_shape().clone();
+            let (local, value) = context.define_internal_list_value(value);
+            let name = internal_list_name(&local);
+            let local_value =
+                ListExpr::local_get(local.clone(), name.clone()).with_item_shape(item_shape);
+            Ok((
+                Step::let_list_expr(name, value),
+                AssertSubject::List(local),
+                Expr::list(local_value),
+            ))
+        }
+        ExprKind::UtfCodepoint(_) | ExprKind::Function(_) => Err(PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::InvalidPattern,
+        }),
     }
 }
 
@@ -216,93 +294,6 @@ fn plan_assert_message(
         })
 }
 
-fn assert_bit_array_pattern(pattern: &TypedPattern) -> bool {
-    match pattern {
-        Pattern::BitArray { .. } => true,
-        Pattern::Assign { pattern, .. } => assert_bit_array_pattern(pattern),
-        _ => false,
-    }
-}
-
-fn assert_custom_pattern_type(
-    pattern: &TypedPattern,
-) -> Option<std::sync::Arc<gleam_core::type_::Type>> {
-    match pattern {
-        Pattern::Constructor { type_, .. }
-            if matches!(
-                ValueType::from_gleam(type_.as_ref()),
-                Some(ValueType::Custom(_))
-            ) =>
-        {
-            Some(type_.clone())
-        }
-        Pattern::Assign { pattern, .. } => assert_custom_pattern_type(pattern),
-        _ => None,
-    }
-}
-
-fn assert_list_pattern_type(
-    pattern: &TypedPattern,
-) -> Option<std::sync::Arc<gleam_core::type_::Type>> {
-    match pattern {
-        Pattern::List { type_, .. } => Some(type_.clone()),
-        Pattern::Assign { pattern, .. } => assert_list_pattern_type(pattern),
-        Pattern::Int { .. }
-        | Pattern::Float { .. }
-        | Pattern::String { .. }
-        | Pattern::Variable { .. }
-        | Pattern::BitArraySize(_)
-        | Pattern::Discard { .. }
-        | Pattern::Constructor { .. }
-        | Pattern::Tuple { .. }
-        | Pattern::BitArray { .. }
-        | Pattern::StringPrefix { .. }
-        | Pattern::Invalid { .. } => None,
-    }
-}
-
-fn unsupported_assert_pattern_error(pattern: &TypedPattern) -> PlanError {
-    match pattern {
-        Pattern::List { .. } => PlanError::UnsupportedPattern {
-            kind: UnsupportedPatternKind::List,
-        },
-        Pattern::Int { .. } | Pattern::Float { .. } | Pattern::String { .. } => {
-            PlanError::UnsupportedPattern {
-                kind: UnsupportedPatternKind::Literal,
-            }
-        }
-        Pattern::Constructor { .. } => PlanError::UnsupportedPattern {
-            kind: UnsupportedPatternKind::Constructor,
-        },
-        Pattern::StringPrefix { .. } => PlanError::UnsupportedPattern {
-            kind: UnsupportedPatternKind::StringPrefix,
-        },
-        Pattern::Assign { pattern, .. } => unsupported_assert_pattern_error(pattern),
-        Pattern::Invalid { .. }
-        | Pattern::BitArray { .. }
-        | Pattern::BitArraySize(_)
-        | Pattern::Discard { .. }
-        | Pattern::Variable { .. }
-        | Pattern::Tuple { .. } => PlanError::InvalidTypedAst {
-            reason: InvalidTypedAstReason::InvalidPattern,
-        },
-    }
-}
-
-fn unsupported_assert_exhaustive_pattern_error(pattern: &TypedPattern) -> PlanError {
-    match pattern {
-        Pattern::Tuple { elements, .. } => elements
-            .iter()
-            .map(unsupported_assert_exhaustive_pattern_error)
-            .find(|error| matches!(error, PlanError::UnsupportedPattern { .. }))
-            .unwrap_or(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::InvalidPattern,
-            }),
-        Pattern::Assign { pattern, .. } => unsupported_assert_exhaustive_pattern_error(pattern),
-        pattern => unsupported_assert_pattern_error(pattern),
-    }
-}
-
 fn internal_list_name(local: &ListLocal) -> EcoString {
     format!("<list:{}:{}>", local.family_name(), local.index()).into()
 }
@@ -315,41 +306,22 @@ fn internal_custom_name(local: crate::plan::CustomLocalId) -> EcoString {
     format!("<custom:{}>", local.0).into()
 }
 
-fn list_assert_value_must_be_list(actual: ValueType) -> PlanError {
-    PlanError::InvalidTypedAst {
-        reason: InvalidTypedAstReason::ExpressionType {
-            expected: InvalidExpressionType::List,
-            actual: value_type_expression_type(actual),
-        },
-    }
-}
-
-fn bit_array_assert_value_must_be_bit_array(actual: ValueType) -> PlanError {
-    PlanError::InvalidTypedAst {
-        reason: InvalidTypedAstReason::ExpressionType {
-            expected: InvalidExpressionType::BitArray,
-            actual: value_type_expression_type(actual),
-        },
-    }
-}
-
-fn custom_assert_value_must_be_custom(actual: ValueType) -> PlanError {
-    PlanError::InvalidTypedAst {
-        reason: InvalidTypedAstReason::ExpressionType {
-            expected: InvalidExpressionType::Custom,
-            actual: value_type_expression_type(actual),
-        },
-    }
+fn internal_assert_name(family: &str, index: usize) -> EcoString {
+    format!("<assert:{family}:{index}>").into()
 }
 
 #[cfg(test)]
 mod tests {
     use crate::plan::{
-        AssertBinding, AssertPattern, BitArrayAssertPattern, BitArrayExpr, BitArrayListLocalId,
+        AssertBinding, AssertPattern, AssertSubject, BitArrayExpr, BitArrayListLocalId,
         BitArrayLocalId, BitArrayPattern, BitArrayPatternSegment, BitArrayPatternSize,
-        BitArrayPatternSizeExpr, BitArrayPatternValue, BitArraySegment, Endianness, IntExpr,
-        IntListLocalId, IntLocalId, ListAssertPattern, ListAssertTail, ListLocal, PanicSite,
-        ParamLocal, Signedness, SourceSpan, Step, StringExpr, ValueShape, ValueType,
+        BitArrayPatternSizeExpr, BitArrayPatternValue, BitArraySegment,
+        CustomConstructorRefinement, CustomLocal, CustomLocalId, CustomType, CustomTypeName,
+        CustomValueShape, Endianness, FloatLocalId, FunctionExpr, IntExpr, IntFunctionExpr,
+        IntFunctionId, IntFunctionReference, IntListLocalId, IntLocalId, ListAssertPattern,
+        ListAssertTail, ListLocal, NilLocalId, PanicSite, ParamLocal, Signedness, SourceSpan, Step,
+        StepKind, StringExpr, StringLocalId, TupleLocalId, UtfCodepointExpr, UtfCodepointLocalId,
+        ValueShape, ValueType,
     };
     use crate::planner::context::{AnonymousFunctions, PlanContext};
     use crate::planner::dsl::{
@@ -357,20 +329,21 @@ mod tests {
         module, tuple,
     };
     use crate::planner::plan_module;
-    use crate::planner::support::{compile, dummy_span, expect_plan_error};
+    use crate::planner::support::{compile, dummy_span};
     use crate::planner::{
         InvalidExpressionShapeKind, InvalidExpressionType, InvalidTypedAstReason, PlanError,
-        UnsupportedExpressionKind, UnsupportedPatternKind,
+        UnsupportedExpressionKind,
     };
-    use ecow::EcoString;
     use gleam_core::ast::{
-        AssignName, AssignmentKind, BitArraySegment as BitArrayPatternSegmentAst, Pattern,
-        Statement, TailPattern, TypedAssignment, TypedExpr,
+        AssignmentKind, BitArraySegment as BitArrayPatternSegmentAst, Pattern, Statement,
+        TailPattern, TypedAssignment, TypedExpr,
     };
     use gleam_core::exhaustiveness::CompiledCase;
     use gleam_core::type_::{self, error::VariableOrigin};
     use num_bigint::BigInt;
     use std::collections::HashMap;
+
+    use super::super::{BindingPattern, ListTailBinding};
 
     #[test]
     fn plan_let_assert_named_assignment_reuses_exhaustive_binding_semantics() {
@@ -390,6 +363,259 @@ pub fn main() {
         );
 
         assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn refutable_let_assert_uses_each_reachable_typed_subject_family() {
+        let actual = plan_module(compile(
+            r#"
+pub type Choice { Empty Full(Int) }
+fn choice(value: Bool) -> Choice {
+  case value { True -> Full(1) False -> Empty }
+}
+pub fn main() {
+  let assert 1 = 1
+  let assert 1.5 = 1.5
+  let assert "one" = "one"
+  let assert <<1>> = <<1>>
+  let assert Full(_) = choice(True)
+  let assert True = True
+  let assert Nil = Nil
+  let assert #(1) = #(1)
+  let assert [1] = [1]
+  0
+}
+"#,
+        ))
+        .expect("source should plan");
+        let subjects = actual
+            .main_function()
+            .steps()
+            .iter()
+            .filter_map(|step| match step.kind() {
+                StepKind::AssertPattern { subject, .. } => Some(subject.clone()),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        let custom_type = CustomType::new(
+            CustomTypeName::new("geam".into(), "main".into(), "Choice".into()),
+            Vec::new(),
+        );
+
+        assert_eq!(
+            subjects,
+            vec![
+                AssertSubject::Int(IntLocalId(0)),
+                AssertSubject::Float(FloatLocalId(0)),
+                AssertSubject::String(StringLocalId(0)),
+                AssertSubject::BitArray(BitArrayLocalId(0)),
+                AssertSubject::Custom(CustomLocal::from_shape(
+                    CustomLocalId(0),
+                    CustomValueShape::any(custom_type),
+                )),
+                AssertSubject::Bool(crate::plan::BoolLocalId(0)),
+                AssertSubject::Nil(NilLocalId(0)),
+                AssertSubject::Tuple(TupleLocalId(0)),
+                AssertSubject::List(ListLocal::int(IntListLocalId(0))),
+            ],
+        );
+    }
+
+    #[test]
+    fn final_custom_let_assert_uses_constructor_shape_to_select_binding_or_assertion() {
+        let total = plan_module(compile(
+            r#"
+pub type Choice { Empty Full(Int) }
+pub fn main() {
+  let assert Full(value) = Full(1)
+}
+"#,
+        ))
+        .expect("matching final custom assertion should plan");
+        let refutable = plan_module(compile(
+            r#"
+pub type Choice { Empty Full(Int) }
+pub fn main() {
+  let assert Full(value) = Empty
+}
+"#,
+        ))
+        .expect("mismatched final custom assertion should plan as refutable");
+        let plans = [("total", &total), ("refutable", &refutable)];
+        let custom_bindings = plans
+            .iter()
+            .flat_map(|(kind, plan)| {
+                plan.main_function()
+                    .steps()
+                    .iter()
+                    .filter_map(move |step| match step.kind() {
+                        StepKind::BindCustomFields { .. } => Some(*kind),
+                        _ => None,
+                    })
+            })
+            .collect::<Vec<_>>();
+        let assertion_subjects = plans
+            .iter()
+            .flat_map(|(kind, plan)| {
+                plan.main_function()
+                    .steps()
+                    .iter()
+                    .filter_map(move |step| match step.kind() {
+                        StepKind::AssertPattern { subject, .. } => Some((*kind, subject.clone())),
+                        _ => None,
+                    })
+            })
+            .collect::<Vec<_>>();
+        let choice_name = CustomTypeName::new("geam".into(), "main".into(), "Choice".into());
+
+        assert_eq!(custom_bindings, vec!["total"]);
+        assert_eq!(
+            assertion_subjects,
+            vec![(
+                "refutable",
+                AssertSubject::Custom(CustomLocal::from_shape(
+                    CustomLocalId(0),
+                    CustomValueShape::new(
+                        choice_name,
+                        Vec::new(),
+                        CustomConstructorRefinement::Exact(0),
+                    ),
+                )),
+            )],
+        );
+    }
+
+    #[test]
+    fn total_binding_shape_compatibility_checks_each_recursive_owner() {
+        let named = BindingPattern::Named("value".into());
+        let discard = BindingPattern::Discard;
+        let alias = BindingPattern::Alias {
+            pattern: Box::new(BindingPattern::Discard),
+            name: "whole".into(),
+        };
+        let tuple = BindingPattern::Tuple(vec![
+            BindingPattern::Named("first".into()),
+            BindingPattern::ListTail {
+                tail: ListTailBinding::Discard,
+                element_type: ValueType::Int,
+            },
+        ]);
+        let list = BindingPattern::ListTail {
+            tail: ListTailBinding::Named("rest".into()),
+            element_type: ValueType::Int,
+        };
+
+        assert!(super::binding_pattern_accepts_shape(
+            &named,
+            &ValueShape::Int
+        ));
+        assert!(super::binding_pattern_accepts_shape(
+            &discard,
+            &ValueShape::String,
+        ));
+        assert!(super::binding_pattern_accepts_shape(
+            &alias,
+            &ValueShape::Bool
+        ));
+        assert!(!super::binding_pattern_accepts_shape(
+            &tuple,
+            &ValueShape::Int
+        ));
+        assert!(!super::binding_pattern_accepts_shape(
+            &tuple,
+            &ValueShape::Tuple(vec![ValueShape::Int].into_boxed_slice()),
+        ));
+        assert!(super::binding_pattern_accepts_shape(
+            &tuple,
+            &ValueShape::Tuple(
+                vec![ValueShape::Int, ValueShape::List(Box::new(ValueShape::Int))]
+                    .into_boxed_slice(),
+            ),
+        ));
+        assert!(!super::binding_pattern_accepts_shape(
+            &tuple,
+            &ValueShape::Tuple(
+                vec![
+                    ValueShape::Int,
+                    ValueShape::List(Box::new(ValueShape::String)),
+                ]
+                .into_boxed_slice(),
+            ),
+        ));
+        assert!(super::binding_pattern_accepts_shape(
+            &list,
+            &ValueShape::List(Box::new(ValueShape::Int)),
+        ));
+        assert!(!super::binding_pattern_accepts_shape(
+            &list,
+            &ValueShape::List(Box::new(ValueShape::String)),
+        ));
+    }
+
+    #[test]
+    fn assert_subject_rejects_root_families_without_refutable_patterns() {
+        let module_name = "main".into();
+        let functions = HashMap::new();
+        let mut anonymous = AnonymousFunctions::default();
+        let mut context = PlanContext::new(&module_name, &functions, &mut anonymous);
+        let cases = [
+            (
+                Pattern::Variable {
+                    location: dummy_span(),
+                    name: "codepoint".into(),
+                    type_: type_::utf_codepoint(),
+                    origin: VariableOrigin::generated(),
+                },
+                crate::plan::Expr::utf_codepoint(UtfCodepointExpr::local_get(
+                    UtfCodepointLocalId(0),
+                    "codepoint".into(),
+                )),
+            ),
+            (
+                Pattern::Variable {
+                    location: dummy_span(),
+                    name: "function".into(),
+                    type_: type_::fn_(Vec::new(), type_::int()),
+                    origin: VariableOrigin::generated(),
+                },
+                crate::plan::Expr::function(FunctionExpr::int(IntFunctionExpr::reference(
+                    IntFunctionReference::new(IntFunctionId(0), Vec::new()),
+                ))),
+            ),
+        ];
+
+        for (pattern, expression) in cases {
+            assert_eq!(
+                super::plan_refutable_assert_assignment_from_expr(
+                    dummy_span(),
+                    pattern,
+                    expression,
+                    None,
+                    &mut context,
+                )
+                .map(|_| ()),
+                Err(PlanError::InvalidTypedAst {
+                    reason: InvalidTypedAstReason::InvalidPattern,
+                }),
+            );
+        }
+    }
+
+    #[test]
+    fn assertion_type_validation_propagates_malformed_pattern_shape() {
+        assert_eq!(
+            super::validate_pattern_value_type(
+                &Pattern::BitArraySize(gleam_core::ast::BitArraySize::Int {
+                    location: dummy_span(),
+                    value: "1".into(),
+                    int_value: BigInt::from(1),
+                }),
+                ValueType::Int,
+            ),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::InvalidPattern,
+            }),
+        );
     }
 
     #[test]
@@ -437,36 +663,16 @@ pub fn main() {
         assert_eq!(
             plan_module(nominal_mismatch),
             Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::InvalidPattern,
-            }),
-        );
-
-        let module_name = "main".into();
-        let functions = HashMap::new();
-        let mut anonymous = AnonymousFunctions::default();
-        let mut context = PlanContext::new(&module_name, &functions, &mut anonymous);
-        assert_eq!(
-            super::plan_assert_custom_assignment(
-                dummy_span(),
-                Pattern::Discard {
-                    name: "_".into(),
-                    location: dummy_span(),
-                    type_: type_::int(),
+                reason: InvalidTypedAstReason::CustomType {
+                    name: "Second".into(),
+                    reason: crate::planner::InvalidCustomTypeReason::ConstructorName,
                 },
-                type_::int(),
-                typed_int_expr(1),
-                None,
-                &mut context,
-            )
-            .map(|_| ()),
-            Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::InvalidPattern,
             }),
         );
     }
 
     #[test]
-    fn custom_let_assert_propagates_value_message_and_pattern_errors() {
+    fn total_custom_let_assert_propagates_value_and_pattern_errors_but_not_message() {
         let source = r#"
 pub type Boxed { Boxed(Int) }
 pub fn main() {
@@ -482,6 +688,18 @@ pub fn main() {
 
         let mut invalid_value = compile(source);
         let assignment = expect_assignment_mut(&mut invalid_value.definitions.functions[0].body[0]);
+        assignment.value = invalid_expr(assignment.value.type_());
+
+        let mut invalid_final_value = compile(
+            r#"
+pub type Boxed { Boxed(Int) }
+pub fn main() {
+  let assert Boxed(value) = Boxed(1)
+}
+"#,
+        );
+        let assignment =
+            expect_assignment_mut(&mut invalid_final_value.definitions.functions[0].body[0]);
         assignment.value = invalid_expr(assignment.value.type_());
 
         let mut invalid_message = compile(source);
@@ -503,16 +721,23 @@ pub fn main() {
             int_value: BigInt::from(1),
         });
 
-        for invalid in [invalid_value, invalid_message] {
-            assert_eq!(
-                plan_module(invalid),
-                Err(PlanError::InvalidTypedAst {
-                    reason: InvalidTypedAstReason::ExpressionShape {
-                        kind: InvalidExpressionShapeKind::Invalid,
-                    },
-                }),
-            );
-        }
+        assert_eq!(
+            plan_module(invalid_value),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionShape {
+                    kind: InvalidExpressionShapeKind::Invalid,
+                },
+            }),
+        );
+        assert_eq!(
+            plan_module(invalid_final_value),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionShape {
+                    kind: InvalidExpressionShapeKind::Invalid,
+                },
+            }),
+        );
+        assert_eq!(plan_module(invalid_message), plan_module(compile(source)));
         assert_eq!(
             plan_module(invalid_pattern),
             Err(PlanError::InvalidTypedAst {
@@ -666,8 +891,8 @@ pub fn main() {
                     "<list:int:0>",
                     list([int(1), int(2)], ValueType::Int),
                 ))
-                .step(Step::assert_list_at(
-                    ListLocal::int(IntListLocalId(0)),
+                .step(Step::assert_pattern_at(
+                    AssertSubject::List(ListLocal::int(IntListLocalId(0))),
                     AssertPattern::list(ListAssertPattern::new(
                         ValueType::Int,
                         vec![AssertPattern::Bind(AssertBinding::new(
@@ -709,8 +934,8 @@ pub fn main() {
                     "<list:int:0>",
                     list([int(1)], ValueType::Int),
                 ))
-                .step(Step::assert_list_at(
-                    ListLocal::int(IntListLocalId(0)),
+                .step(Step::assert_pattern_at(
+                    AssertSubject::List(ListLocal::int(IntListLocalId(0))),
                     AssertPattern::list(ListAssertPattern::new(
                         ValueType::Int,
                         vec![AssertPattern::Bind(AssertBinding::new(
@@ -728,23 +953,6 @@ pub fn main() {
         );
 
         assert_eq!(actual, expected);
-    }
-
-    #[test]
-    fn reject_profile_let_assert_tuple_containing_list_pattern() {
-        assert_eq!(
-            expect_plan_error(
-                r#"
-pub fn main() {
-  let assert #([first]) = #([1])
-  first
-}
-"#,
-            ),
-            PlanError::UnsupportedPattern {
-                kind: UnsupportedPatternKind::List,
-            },
-        );
     }
 
     #[test]
@@ -779,9 +987,9 @@ pub fn main() {
                         endianness: Endianness::Big,
                     }]),
                 ))
-                .step(Step::assert_bit_array_at(
-                    BitArrayLocalId(0),
-                    BitArrayAssertPattern::pattern(pattern),
+                .step(Step::assert_pattern_at(
+                    AssertSubject::BitArray(BitArrayLocalId(0)),
+                    AssertPattern::BitArray(pattern),
                     None,
                     PanicSite::new("main".into(), "main".into(), SourceSpan::new(19, 29)),
                     SourceSpan::new(30, 39),
@@ -827,8 +1035,8 @@ pub fn main() {
                         ValueType::BitArray,
                     ),
                 ))
-                .step(Step::assert_list_at(
-                    ListLocal::bit_array(BitArrayListLocalId(0)),
+                .step(Step::assert_pattern_at(
+                    AssertSubject::List(ListLocal::bit_array(BitArrayListLocalId(0))),
                     AssertPattern::list(ListAssertPattern::new(
                         ValueType::BitArray,
                         vec![AssertPattern::BitArray(pattern)],
@@ -952,49 +1160,6 @@ pub fn main() {
     }
 
     #[test]
-    fn reject_margin_bit_array_assert_pattern_must_end_in_a_bit_array_pattern() {
-        let module = EcoString::from("main");
-        let functions = HashMap::new();
-        let mut anonymous = AnonymousFunctions::default();
-        let mut context = PlanContext::new(&module, &functions, &mut anonymous);
-
-        assert_eq!(
-            super::plan_bit_array_assert_pattern(
-                Pattern::Assign {
-                    location: dummy_span(),
-                    name: "whole".into(),
-                    pattern: Box::new(Pattern::Int {
-                        location: dummy_span(),
-                        value: "1".into(),
-                        int_value: BigInt::from(1),
-                    }),
-                },
-                &mut context,
-            ),
-            Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::InvalidPattern,
-            }),
-        );
-    }
-
-    #[test]
-    fn reject_profile_let_assert_string_prefix_pattern() {
-        assert_eq!(
-            expect_plan_error(
-                r#"
-pub fn main() {
-  let assert "pre" <> rest = "prefix"
-  rest
-}
-"#,
-            ),
-            PlanError::UnsupportedPattern {
-                kind: UnsupportedPatternKind::StringPrefix,
-            },
-        );
-    }
-
-    #[test]
     fn reject_margin_let_assert_list_pattern_type_mismatch() {
         let module_name = "main".into();
         let functions = HashMap::new();
@@ -1052,7 +1217,7 @@ pub fn main() {
     }
 
     #[test]
-    fn reject_margin_let_assert_tuple_pattern_rejects_nested_list_pattern() {
+    fn reject_margin_let_assert_tuple_pattern_rejects_non_tuple_value() {
         let module_name = "main".into();
         let functions = HashMap::new();
         let mut anonymous = AnonymousFunctions::default();
@@ -1070,8 +1235,11 @@ pub fn main() {
                 &mut context,
             )
             .err(),
-            Some(PlanError::UnsupportedPattern {
-                kind: UnsupportedPatternKind::List,
+            Some(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionType {
+                    expected: InvalidExpressionType::Tuple,
+                    actual: InvalidExpressionType::Int,
+                },
             }),
         );
     }
@@ -1107,10 +1275,11 @@ pub fn main() {
         let module_name = "main".into();
         let functions = HashMap::new();
         let mut anonymous = AnonymousFunctions::default();
-        let context = PlanContext::new(&module_name, &functions, &mut anonymous);
+        let mut context = PlanContext::new(&module_name, &functions, &mut anonymous);
 
         assert_eq!(
-            super::plan_assert_exhaustive_pattern(
+            super::plan_assert_assignment(
+                dummy_span(),
                 Pattern::Tuple {
                     location: dummy_span(),
                     elements: vec![Pattern::List {
@@ -1128,8 +1297,11 @@ pub fn main() {
                         type_: type_::list(type_::generic_var(0)),
                     }],
                 },
-                &context
-            ),
+                typed_int_expr(1),
+                None,
+                &mut context,
+            )
+            .map(|_| ()),
             Err(PlanError::UnsupportedExpression {
                 kind: UnsupportedExpressionKind::UnsupportedListElementType,
             }),
@@ -1256,99 +1428,6 @@ pub fn main() {
             Some(PlanError::UnsupportedExpression {
                 kind: UnsupportedExpressionKind::Echo,
             }),
-        );
-    }
-
-    #[test]
-    fn assert_list_pattern_type_only_accepts_list_wrappers() {
-        let list = int_list_pattern();
-        let alias = Pattern::Assign {
-            location: dummy_span(),
-            name: "values".into(),
-            pattern: Box::new(list.clone()),
-        };
-
-        assert_eq!(
-            super::assert_list_pattern_type(&list),
-            Some(type_::list(type_::int())),
-        );
-        assert_eq!(
-            super::assert_list_pattern_type(&alias),
-            Some(type_::list(type_::int())),
-        );
-        assert_eq!(
-            super::assert_list_pattern_type(&Pattern::Variable {
-                location: dummy_span(),
-                name: "value".into(),
-                type_: type_::int(),
-                origin: VariableOrigin::generated(),
-            }),
-            None,
-        );
-    }
-
-    #[test]
-    fn unsupported_assert_pattern_error_reports_profile_boundaries() {
-        let list = Pattern::List {
-            location: dummy_span(),
-            elements: Vec::new(),
-            tail: None,
-            type_: type_::list(type_::int()),
-        };
-        let string_prefix = Pattern::StringPrefix {
-            location: dummy_span(),
-            left_location: dummy_span(),
-            left_side_assignment: None,
-            right_location: dummy_span(),
-            left_side_string: "pre".into(),
-            right_side_assignment: AssignName::Variable("rest".into()),
-        };
-        let invalid = Pattern::Invalid {
-            location: dummy_span(),
-            type_: type_::int(),
-        };
-        let alias = Pattern::Assign {
-            location: dummy_span(),
-            name: "alias".into(),
-            pattern: Box::new(string_prefix.clone()),
-        };
-
-        assert_eq!(
-            super::unsupported_assert_pattern_error(&list),
-            PlanError::UnsupportedPattern {
-                kind: UnsupportedPatternKind::List,
-            },
-        );
-        assert_eq!(
-            super::unsupported_assert_pattern_error(&string_prefix),
-            PlanError::UnsupportedPattern {
-                kind: UnsupportedPatternKind::StringPrefix,
-            },
-        );
-        assert_eq!(
-            super::unsupported_assert_pattern_error(&alias),
-            PlanError::UnsupportedPattern {
-                kind: UnsupportedPatternKind::StringPrefix,
-            },
-        );
-        assert_eq!(
-            super::unsupported_assert_pattern_error(&invalid),
-            PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::InvalidPattern,
-            },
-        );
-    }
-
-    #[test]
-    fn list_assert_value_must_be_list_reports_actual_family() {
-        assert_eq!(
-            super::list_assert_value_must_be_list(ValueType::Int),
-            PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::ExpressionType {
-                    expected: InvalidExpressionType::List,
-                    actual: InvalidExpressionType::Int,
-                },
-            },
         );
     }
 

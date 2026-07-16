@@ -1,7 +1,7 @@
 use super::FrameLayout;
 use crate::plan::{
-    AssertPattern, BitArrayAssertPattern, CustomBindingPattern, ListAssertPattern, ListAssertTail,
-    Step, StepKind, TotalBindingPattern,
+    AssertPattern, AssertSubject, CustomBindingPattern, ListAssertPattern, ListAssertTail, Step,
+    StepKind, TotalBindingPattern,
 };
 
 impl FrameLayout {
@@ -94,37 +94,13 @@ impl FrameLayout {
                 self.include_function_function_expr(value.expression());
                 self.include_function_function(local.clone());
             }
-            StepKind::AssertList {
-                local,
+            StepKind::AssertPattern {
+                subject,
                 pattern,
                 message,
                 ..
             } => {
-                self.include_list(local);
-                self.include_assert_pattern(pattern);
-                if let Some(message) = message {
-                    self.include_string_expr(message);
-                }
-            }
-            StepKind::AssertBitArray {
-                local,
-                pattern,
-                message,
-                ..
-            } => {
-                self.include_bit_array(*local);
-                self.include_bit_array_assert_pattern(pattern);
-                if let Some(message) = message {
-                    self.include_string_expr(message);
-                }
-            }
-            StepKind::AssertCustom {
-                local,
-                pattern,
-                message,
-                ..
-            } => {
-                self.include_custom(local.clone());
+                self.include_assert_subject(subject);
                 self.include_assert_pattern(pattern);
                 if let Some(message) = message {
                     self.include_string_expr(message);
@@ -187,13 +163,17 @@ impl FrameLayout {
         }
     }
 
-    fn include_bit_array_assert_pattern(&mut self, pattern: &BitArrayAssertPattern) {
-        match pattern {
-            BitArrayAssertPattern::Pattern(pattern) => self.include_bit_array_pattern(pattern),
-            BitArrayAssertPattern::Alias { pattern, local, .. } => {
-                self.include_bit_array_assert_pattern(pattern);
-                self.include_bit_array(*local);
-            }
+    fn include_assert_subject(&mut self, subject: &AssertSubject) {
+        match subject {
+            AssertSubject::Int(local) => self.include_int(*local),
+            AssertSubject::Float(local) => self.include_float(*local),
+            AssertSubject::String(local) => self.include_string(*local),
+            AssertSubject::BitArray(local) => self.include_bit_array(*local),
+            AssertSubject::Custom(local) => self.include_custom(local.clone()),
+            AssertSubject::Bool(local) => self.include_bool(*local),
+            AssertSubject::Nil(local) => self.include_nil(*local),
+            AssertSubject::Tuple(local) => self.include_tuple(*local),
+            AssertSubject::List(local) => self.include_list(local),
         }
     }
 
@@ -241,11 +221,11 @@ impl FrameLayout {
 mod tests {
     use super::FrameLayout;
     use crate::plan::{
-        AssertBinding, AssertPattern, BoolExpr, BoolFunctionExpr, BoolFunctionLocalId, BoolLocalId,
-        Expr, IntExpr, IntFunctionId, IntLocalId, ListAssertPattern, ListAssertTail, ListLocal,
-        NilExpr, NilFunctionExpr, NilFunctionLocalId, NilLocalId, PanicSite, ParamLocal,
-        ReturnExpr, SourceSpan, StringExpr, StringFunctionExpr, StringFunctionLocalId,
-        StringLocalId, TupleListLocalId, ValueShape, ValueType,
+        AssertBinding, AssertPattern, AssertSubject, BoolExpr, BoolFunctionExpr,
+        BoolFunctionLocalId, BoolLocalId, Expr, IntExpr, IntFunctionId, IntLocalId,
+        ListAssertPattern, ListAssertTail, ListLocal, NilExpr, NilFunctionExpr, NilFunctionLocalId,
+        NilLocalId, PanicSite, ParamLocal, ReturnExpr, SourceSpan, StringExpr, StringFunctionExpr,
+        StringFunctionLocalId, StringLocalId, TupleListLocalId, ValueShape, ValueType,
     };
 
     #[test]
@@ -395,8 +375,8 @@ mod tests {
         let list_element_type = ValueType::Tuple(tuple_type.clone());
         let subject_local = ListLocal::tuple(TupleListLocalId(0), tuple_type.clone());
         let tail_local = ListLocal::tuple(TupleListLocalId(1), tuple_type.clone());
-        let steps = [crate::plan::Step::assert_list_at(
-            subject_local,
+        let steps = [crate::plan::Step::assert_pattern_at(
+            AssertSubject::List(subject_local),
             AssertPattern::list(ListAssertPattern::new(
                 list_element_type.clone(),
                 vec![AssertPattern::Tuple(vec![

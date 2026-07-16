@@ -7,7 +7,7 @@ mod value_type;
 #[cfg(test)]
 pub(crate) use module::ListReturn;
 pub(crate) use module::{
-    AssertBinding, AssertPattern, BitArrayAssertPattern, BitArrayBindingPattern, BitArrayExprKind,
+    AssertBinding, AssertPattern, AssertSubject, BitArrayBindingPattern, BitArrayExprKind,
     BitArrayFunctionExprKind, BitArrayFunctionReference, BitArrayFunctionReturn, BitArrayPattern,
     BitArrayPatternSegment, BitArrayPatternSize, BitArrayPatternSizeExpr, BitArrayPatternValue,
     BitArrayReturn, BitArraySegment, BitArrayStringPattern, BoolCaseBranches, BoolExprKind,

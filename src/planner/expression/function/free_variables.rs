@@ -778,6 +778,30 @@ pub fn main() {
     }
 
     #[test]
+    fn anonymous_free_variables_treat_nested_let_assert_pattern_names_as_bound() {
+        assert_eq!(
+            anonymous_function_free_variables(
+                r#"
+pub type Payload {
+  Payload(Int)
+}
+
+pub fn main() {
+  let subject = #([Payload(1)], <<2>>, "prefix")
+  let message = "missing"
+  fn() {
+    let assert #([Payload(value)], <<bit>>, "pre" <> suffix) = subject as message
+    #(value, bit, suffix)
+  }
+  1
+}
+"#,
+            ),
+            vec!["subject".to_string(), "message".to_string()],
+        );
+    }
+
+    #[test]
     fn anonymous_free_variables_include_synthetic_negate_int() {
         let body = Vec1::new(Statement::Expression(TypedExpr::NegateInt {
             location: dummy_span(),

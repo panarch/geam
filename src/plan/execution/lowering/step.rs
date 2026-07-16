@@ -186,40 +186,14 @@ fn lower_step(step: module::Step, context: &mut super::LoweringContext) -> execu
             local: function_function_local(local, context),
             value: typed_function_expr(value, context, function_function_expr),
         },
-        M::AssertList {
-            local,
+        M::AssertPattern {
+            subject,
             pattern,
             message,
             site,
             pattern_span,
-        } => E::AssertList {
-            local: list_local(local, context),
-            pattern: assert_pattern(pattern, context),
-            message: message.map(|message| string_expr(message, context)),
-            site,
-            pattern_span,
-        },
-        M::AssertBitArray {
-            local,
-            pattern,
-            message,
-            site,
-            pattern_span,
-        } => E::AssertBitArray {
-            local: execution::BitArrayLocalId(local.0),
-            pattern: bit_array_assert_pattern(pattern),
-            message: message.map(|message| string_expr(message, context)),
-            site,
-            pattern_span,
-        },
-        M::AssertCustom {
-            local,
-            pattern,
-            message,
-            site,
-            pattern_span,
-        } => E::AssertCustom {
-            local: custom_local(local, context),
+        } => E::AssertPattern {
+            subject: assert_subject(subject, context),
             pattern: assert_pattern(pattern, context),
             message: message.map(|message| string_expr(message, context)),
             site,
@@ -242,21 +216,38 @@ fn lower_step(step: module::Step, context: &mut super::LoweringContext) -> execu
     })
 }
 
-fn bit_array_assert_pattern(
-    pattern: module::BitArrayAssertPattern,
-) -> execution::BitArrayAssertPattern {
-    match pattern {
-        module::BitArrayAssertPattern::Pattern(pattern) => {
-            execution::BitArrayAssertPattern::Pattern(super::pattern::bit_array_pattern(pattern))
+fn assert_subject(
+    subject: module::AssertSubject,
+    context: &mut super::LoweringContext,
+) -> execution::AssertSubject {
+    match subject {
+        module::AssertSubject::Int(local) => {
+            execution::AssertSubject::Int(execution::IntLocalId(local.0))
         }
-        module::BitArrayAssertPattern::Alias {
-            pattern,
-            local,
-            name: _,
-        } => execution::BitArrayAssertPattern::Alias {
-            pattern: Box::new(bit_array_assert_pattern(*pattern)),
-            local: execution::BitArrayLocalId(local.0),
-        },
+        module::AssertSubject::Float(local) => {
+            execution::AssertSubject::Float(execution::FloatLocalId(local.0))
+        }
+        module::AssertSubject::String(local) => {
+            execution::AssertSubject::String(execution::StringLocalId(local.0))
+        }
+        module::AssertSubject::BitArray(local) => {
+            execution::AssertSubject::BitArray(execution::BitArrayLocalId(local.0))
+        }
+        module::AssertSubject::Custom(local) => {
+            execution::AssertSubject::Custom(custom_local(local, context))
+        }
+        module::AssertSubject::Bool(local) => {
+            execution::AssertSubject::Bool(execution::BoolLocalId(local.0))
+        }
+        module::AssertSubject::Nil(local) => {
+            execution::AssertSubject::Nil(execution::NilLocalId(local.0))
+        }
+        module::AssertSubject::Tuple(local) => {
+            execution::AssertSubject::Tuple(execution::TupleLocalId(local.0))
+        }
+        module::AssertSubject::List(local) => {
+            execution::AssertSubject::List(list_local(local, context))
+        }
     }
 }
 
@@ -396,11 +387,11 @@ fn assert_tail(
 #[cfg(test)]
 mod tests {
     use crate::plan::execution::{
-        AssertBinding, AssertPattern, BitArrayAssertPattern, BitArrayBindingPattern,
-        BitArrayLocalId, BitArrayPatternSegment, BitArrayPatternSizeExpr, BitArrayPatternValue,
-        ExecutionPlan, IntFunctionId, IntListLocalId, IntLocalId, ListAssertPattern,
-        ListAssertTail, ListFunctionId, ListListFunctionId, ListListTypeId, ListLocal,
-        ListLocalExpr, ParamLocal, RuntimeFunctionId, Step, StepKind,
+        AssertBinding, AssertPattern, AssertSubject, BitArrayBindingPattern, BitArrayLocalId,
+        BitArrayPatternSegment, BitArrayPatternSizeExpr, BitArrayPatternValue, ExecutionPlan,
+        IntFunctionId, IntListLocalId, IntLocalId, ListAssertPattern, ListAssertTail,
+        ListFunctionId, ListListFunctionId, ListListTypeId, ListLocal, ListLocalExpr, ParamLocal,
+        RuntimeFunctionId, Step, StepKind,
     };
 
     #[test]
@@ -580,9 +571,9 @@ pub fn main() {
         BitArrayLocalId,
         u8,
     ) {
-        if let StepKind::AssertBitArray {
-            local,
-            pattern: BitArrayAssertPattern::Pattern(pattern),
+        if let StepKind::AssertPattern {
+            subject: AssertSubject::BitArray(local),
+            pattern: AssertPattern::BitArray(pattern),
             ..
         } = step.kind()
             && let [
@@ -624,7 +615,11 @@ pub fn main() {
 
     fn expect_list_assert(step: &Step) -> (&ListLocal, &AssertPattern) {
         match step.kind() {
-            StepKind::AssertList { local, pattern, .. } => (local, pattern),
+            StepKind::AssertPattern {
+                subject: AssertSubject::List(local),
+                pattern,
+                ..
+            } => (local, pattern),
             _ => panic!("expected a list-assert step"),
         }
     }

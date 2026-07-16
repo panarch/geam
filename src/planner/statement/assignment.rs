@@ -2518,23 +2518,6 @@ pub fn main() {
     }
 
     #[test]
-    fn reject_profile_let_assert_literal_alias_pattern() {
-        assert_eq!(
-            expect_plan_error(
-                r#"
-pub fn main() {
-  let assert 1 as one = 1
-  one
-}
-"#,
-            ),
-            PlanError::UnsupportedPattern {
-                kind: UnsupportedPatternKind::Literal,
-            },
-        );
-    }
-
-    #[test]
     fn plan_binding_pattern_accepts_supported_shapes() {
         let variable = |name: &str| Pattern::Variable {
             location: dummy_span(),
