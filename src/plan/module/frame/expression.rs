@@ -177,12 +177,26 @@ impl FrameLayout {
                 for segment in segments {
                     match segment {
                         BitArraySegment::Int { value, .. } => self.include_int_expr(value),
+                        BitArraySegment::EvaluatedInt { value, size, .. } => {
+                            self.include_int_expr(value);
+                            self.include_int_expr(size.value());
+                        }
                         BitArraySegment::Float { value, .. } => self.include_float_expr(value),
+                        BitArraySegment::EvaluatedFloat { value, size, .. } => {
+                            self.include_float_expr(value);
+                            self.include_int_expr(size.value());
+                        }
                         BitArraySegment::String { value, .. } => self.include_string_expr(value),
                         BitArraySegment::UtfCodepoint { value, .. } => {
                             self.include_utf_codepoint_expr(value)
                         }
                         BitArraySegment::Bits(value) => self.include_bit_array_expr(value),
+                        BitArraySegment::SizedBits { value, size, .. } => {
+                            self.include_bit_array_expr(value);
+                            if let crate::plan::BitArrayBitsSize::Evaluated(size) = size {
+                                self.include_int_expr(size.value());
+                            }
+                        }
                     }
                 }
             }
@@ -1014,14 +1028,60 @@ impl FrameLayout {
 mod tests {
     use super::FrameLayout;
     use crate::plan::{
-        BoolExpr, BoolListCaseBranches, BoolListLocalId, BoolLocalId, CallArg, Expr, FloatExpr,
-        FloatFunctionId, FloatFunctionLocalId, FloatListLocalId, FloatLocalId, FunctionType,
-        IntExpr, IntFunctionId, IntListLocalId, IntLocalId, ListCaseBranches, ListExpr,
-        ListFunctionExpr, ListFunctionId, ListListLocalId, ListLocal, NilExpr, NilListLocalId,
-        NilLocalId, PanicExpr, PanicSite, ReturnExpr, Step, StringExpr, StringListLocalId,
-        StringLocalId, TupleExpr, TupleFunctionExpr, TupleFunctionId, TupleFunctionLocalId,
-        TupleListLocalId, TupleLocalId, ValueType,
+        BitArrayBitsSize, BitArrayEvaluatedSize, BitArrayExpr, BitArrayFunctionId, BitArrayLocalId,
+        BitArraySegment, BoolExpr, BoolListCaseBranches, BoolListLocalId, BoolLocalId, CallArg,
+        Endianness, Expr, FloatExpr, FloatFunctionId, FloatFunctionLocalId, FloatListLocalId,
+        FloatLocalId, FunctionType, IntExpr, IntFunctionId, IntListLocalId, IntLocalId,
+        ListCaseBranches, ListExpr, ListFunctionExpr, ListFunctionId, ListListLocalId, ListLocal,
+        NilExpr, NilListLocalId, NilLocalId, PanicExpr, PanicSite, ReturnExpr, Step, StringExpr,
+        StringListLocalId, StringLocalId, TupleExpr, TupleFunctionExpr, TupleFunctionId,
+        TupleFunctionLocalId, TupleListLocalId, TupleLocalId, ValueType,
     };
+
+    #[test]
+    fn frame_layout_includes_evaluated_bit_array_segment_dependencies() {
+        let site = PanicSite::unknown();
+        let expression = BitArrayExpr::value(vec![
+            BitArraySegment::EvaluatedInt {
+                value: IntExpr::local_get(IntLocalId(1), "int_value".into()),
+                size: BitArrayEvaluatedSize::new(
+                    IntExpr::local_get(IntLocalId(3), "int_size".into()),
+                    2,
+                ),
+                endianness: Endianness::Big,
+                site: site.clone(),
+            },
+            BitArraySegment::EvaluatedFloat {
+                value: FloatExpr::local_get(FloatLocalId(2), "float_value".into()),
+                size: BitArrayEvaluatedSize::new(
+                    IntExpr::local_get(IntLocalId(4), "float_size".into()),
+                    1,
+                ),
+                endianness: Endianness::Little,
+                site: site.clone(),
+            },
+            BitArraySegment::SizedBits {
+                value: BitArrayExpr::local_get(BitArrayLocalId(5), "fixed_bits".into()),
+                size: BitArrayBitsSize::Fixed(4),
+                site: site.clone(),
+            },
+            BitArraySegment::SizedBits {
+                value: BitArrayExpr::local_get(BitArrayLocalId(7), "dynamic_bits".into()),
+                size: BitArrayBitsSize::Evaluated(BitArrayEvaluatedSize::new(
+                    IntExpr::local_get(IntLocalId(6), "bits_size".into()),
+                    1,
+                )),
+                site,
+            },
+        ]);
+        let return_ = ReturnExpr::bit_array(BitArrayFunctionId(0), expression);
+
+        let parts = FrameLayout::from_function_parts(&[], &[], &return_).into_parts();
+
+        assert_eq!(parts.ints, 7);
+        assert_eq!(parts.floats, 3);
+        assert_eq!(parts.bit_arrays, 8);
+    }
 
     #[test]
     fn frame_layout_includes_list_projection_expression_dependencies() {

@@ -8,7 +8,9 @@ mod pattern;
 mod state;
 mod value;
 
-pub use error::{ExecutionError, Panic, PanicDetails, PanicKind, PanicMessage};
+pub use error::{
+    BitArraySegmentPanicReason, ExecutionError, Panic, PanicDetails, PanicKind, PanicMessage,
+};
 pub(in crate::runtime) use evaluated::{
     EvaluatedBitArray, EvaluatedBitArrayFunction, EvaluatedBoolFunction, EvaluatedCapture,
     EvaluatedCaptureKind, EvaluatedCustomFunction, EvaluatedCustomValue, EvaluatedFloatFunction,

@@ -33,7 +33,10 @@ pub use self::{
 };
 pub(crate) use self::{
     arg::{CallArgKind, CaptureArg, CaptureArgKind},
-    bit_array::{BitArrayExprKind, BitArraySegment, Endianness, FloatBitSize, StringEncoding},
+    bit_array::{
+        BitArrayBitsSize, BitArrayEvaluatedSize, BitArrayExprKind, BitArraySegment, Endianness,
+        FloatBitSize, StringEncoding,
+    },
     bool::BoolExprKind,
     custom::{CustomConstruction, CustomExprKind, CustomFunctionCall, CustomLocalExpr},
     custom_field::CustomFieldAccess,

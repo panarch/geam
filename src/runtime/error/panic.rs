@@ -2,6 +2,7 @@ use crate::plan::{PanicSite, SourceContext, SourceSpan};
 use crate::runtime::Value;
 use ecow::EcoString;
 use miette::NamedSource;
+use num_bigint::BigInt;
 use std::fmt;
 
 #[derive(Debug, Clone)]
@@ -19,6 +20,7 @@ pub enum PanicKind {
     Todo,
     Assert,
     LetAssert,
+    BitArraySegment,
     EmptyFunction,
     EmptyBlock,
     IncompleteUse,
@@ -36,6 +38,16 @@ pub enum PanicDetails {
         value: Value,
         pattern_span: SourceSpan,
     },
+    BitArraySegment {
+        reason: BitArraySegmentPanicReason,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum BitArraySegmentPanicReason {
+    InvalidFloatSize { bit_size: BigInt },
+    InsufficientBits { requested: usize, available: usize },
+    SizeOutOfRange { bit_size: BigInt },
 }
 
 impl Panic {
@@ -127,6 +139,7 @@ impl PanicKind {
             Self::Todo => "todo",
             Self::Assert => "assert",
             Self::LetAssert => "let_assert",
+            Self::BitArraySegment => "bit_array_segment",
             Self::EmptyFunction => "empty_function",
             Self::EmptyBlock => "empty_block",
             Self::IncompleteUse => "incomplete_use",
@@ -139,6 +152,7 @@ impl PanicKind {
             Self::Todo => "todo",
             Self::Assert => "assert",
             Self::LetAssert => "let assert",
+            Self::BitArraySegment => "bit array segment",
             Self::EmptyFunction => "empty function",
             Self::EmptyBlock => "empty block",
             Self::IncompleteUse => "incomplete use",
@@ -151,6 +165,7 @@ impl PanicKind {
             Self::Todo => "`todo` expression evaluated. This code has not yet been implemented.",
             Self::Assert => "Assertion failed.",
             Self::LetAssert => "Pattern match failed, no pattern matched the value.",
+            Self::BitArraySegment => "BitArray segment construction failed.",
             Self::EmptyFunction => "Function body is empty.",
             Self::EmptyBlock => "Block is empty.",
             Self::IncompleteUse => "Use callback is incomplete.",
@@ -176,7 +191,7 @@ impl PanicMessage {
 
 #[cfg(test)]
 mod tests {
-    use super::{Panic, PanicDetails, PanicKind, PanicMessage};
+    use super::{BitArraySegmentPanicReason, Panic, PanicDetails, PanicKind, PanicMessage};
     use crate::plan::{PanicSite, SourceContext, SourceSpan, ValueType};
     use crate::runtime::ExecutionError;
     use crate::runtime::Value;
@@ -213,6 +228,16 @@ mod tests {
                     PanicSite::unknown(),
                 ),
                 "let_assert: Pattern match failed, no pattern matched the value.",
+            ),
+            (
+                ExecutionError::bit_array_segment_panic(
+                    None,
+                    BitArraySegmentPanicReason::InvalidFloatSize {
+                        bit_size: 24.into(),
+                    },
+                    PanicSite::unknown(),
+                ),
+                "bit_array_segment: BitArray segment construction failed.",
             ),
             (
                 ExecutionError::source_panic(

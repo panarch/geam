@@ -13,7 +13,7 @@ pub use plan::{
 };
 pub use planner::{PlanError, plan_module, plan_module_with_source};
 pub use runtime::{
-    BitArrayValue, BitArrayValueLengthError, CustomFieldValue, CustomValue, ExecutionError,
-    FunctionValue, ListValue, ListValueItemTypeMismatch, Panic, PanicDetails, PanicKind,
-    PanicMessage, Value, run_main,
+    BitArraySegmentPanicReason, BitArrayValue, BitArrayValueLengthError, CustomFieldValue,
+    CustomValue, ExecutionError, FunctionValue, ListValue, ListValueItemTypeMismatch, Panic,
+    PanicDetails, PanicKind, PanicMessage, Value, run_main,
 };

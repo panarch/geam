@@ -8,13 +8,13 @@ use super::{
 };
 use crate::plan::ValueType;
 use crate::plan::execution::{
-    BitArrayExpr, BitArrayExprKind, BitArraySegment, Endianness, ExecutionPlan, FloatBitSize,
-    StringEncoding,
+    BitArrayBitsSize, BitArrayEvaluatedSize, BitArrayExpr, BitArrayExprKind, BitArraySegment,
+    Endianness, ExecutionPlan, FloatBitSize, StringEncoding,
 };
 use crate::runtime::evaluated::{EvaluatedBitArray, EvaluatedValue};
 use crate::runtime::frame::Frame;
 use crate::runtime::state::RuntimeState;
-use crate::runtime::{ExecutionError, function};
+use crate::runtime::{BitArraySegmentPanicReason, ExecutionError, function};
 
 pub(in crate::runtime) fn eval_bit_array_expr(
     plan: &ExecutionPlan,
@@ -141,6 +141,16 @@ fn append_segment(
             let value = eval_int_expr(plan, state, frame, value)?;
             append_integer(output, &value, *bit_size, *endianness);
         }
+        BitArraySegment::EvaluatedInt {
+            value,
+            size,
+            endianness,
+            site,
+        } => {
+            let value = eval_int_expr(plan, state, frame, value)?;
+            let bit_size = eval_bit_size(plan, state, frame, size, site)?;
+            append_integer(output, &value, bit_size, *endianness);
+        }
         BitArraySegment::Float {
             value,
             bit_size,
@@ -148,6 +158,30 @@ fn append_segment(
         } => {
             let value = eval_float_expr(plan, state, frame, value)?;
             append_float(output, value, *bit_size, *endianness);
+        }
+        BitArraySegment::EvaluatedFloat {
+            value,
+            size,
+            endianness,
+            site,
+        } => {
+            let value = eval_float_expr(plan, state, frame, value)?;
+            let bit_size = eval_bit_size(plan, state, frame, size, site)?;
+            let bit_size = match bit_size {
+                16 => FloatBitSize::Sixteen,
+                32 => FloatBitSize::ThirtyTwo,
+                64 => FloatBitSize::SixtyFour,
+                bit_size => {
+                    return Err(ExecutionError::bit_array_segment_panic(
+                        plan.source_context(),
+                        BitArraySegmentPanicReason::InvalidFloatSize {
+                            bit_size: BigInt::from(bit_size),
+                        },
+                        site.clone(),
+                    ));
+                }
+            };
+            append_float(output, value, bit_size, *endianness);
         }
         BitArraySegment::String { value, encoding } => {
             let value = eval_string_expr(plan, state, frame, value)?;
@@ -161,8 +195,48 @@ fn append_segment(
             let value = eval_bit_array_expr(plan, state, frame, value)?;
             output.extend_from_bitslice(value.bits());
         }
+        BitArraySegment::SizedBits { value, size, site } => {
+            let value = eval_bit_array_expr(plan, state, frame, value)?;
+            let bit_size = match size {
+                BitArrayBitsSize::Fixed(bit_size) => *bit_size,
+                BitArrayBitsSize::Evaluated(size) => eval_bit_size(plan, state, frame, size, site)?,
+            };
+            let Some(bits) = value.bits().get(..bit_size) else {
+                return Err(ExecutionError::bit_array_segment_panic(
+                    plan.source_context(),
+                    BitArraySegmentPanicReason::InsufficientBits {
+                        requested: bit_size,
+                        available: value.bits().len(),
+                    },
+                    site.clone(),
+                ));
+            };
+            output.extend_from_bitslice(bits);
+        }
     }
     Ok(())
+}
+
+fn eval_bit_size(
+    plan: &ExecutionPlan,
+    state: &mut RuntimeState,
+    frame: &mut Frame,
+    size: &BitArrayEvaluatedSize,
+    site: &crate::plan::PanicSite,
+) -> Result<usize, ExecutionError> {
+    let value = eval_int_expr(plan, state, frame, size.value())?;
+    let bit_size = if value < BigInt::from(0) {
+        BigInt::from(0)
+    } else {
+        value * BigInt::from(size.unit())
+    };
+    usize::try_from(bit_size.clone()).map_err(|_| {
+        ExecutionError::bit_array_segment_panic(
+            plan.source_context(),
+            BitArraySegmentPanicReason::SizeOutOfRange { bit_size },
+            site.clone(),
+        )
+    })
 }
 
 fn append_integer(
@@ -287,14 +361,59 @@ use bitvec::view::BitView;
 mod tests {
     use bitvec::order::Msb0;
     use bitvec::vec::BitVec;
+    use num_bigint::BigInt;
 
     use crate::plan::{
-        BitArrayExpr, BitArrayFunctionId, BitArraySegment, BoolExpr, Endianness, Expr,
-        FloatBitSize, FloatExpr, FunctionId, FunctionPlan, IntExpr, ListExpr, ModulePlan,
-        PanicExpr, PanicSite, ReturnExpr, Step, StringEncoding, StringExpr, TupleExpr,
-        UtfCodepointExpr, ValueType,
+        BitArrayBitsSize, BitArrayEvaluatedSize, BitArrayExpr, BitArrayFunctionId, BitArraySegment,
+        BoolExpr, Endianness, Expr, FloatBitSize, FloatExpr, FunctionId, FunctionPlan, IntExpr,
+        ListExpr, ModulePlan, PanicExpr, PanicSite, ReturnExpr, SourceSpan, Step, StringEncoding,
+        StringExpr, TupleExpr, UtfCodepointExpr, ValueType,
     };
+    use crate::runtime::BitArraySegmentPanicReason;
     use crate::runtime::{BitArrayValue, ExecutionError, ListValue, Value, run_main};
+
+    #[test]
+    fn evaluated_segment_failures_preserve_exact_panic_reasons() {
+        for (source, segment, reason) in [
+            (
+                "pub fn main() { let size = 24 <<1.5:float-size(size)>> }",
+                "1.5:float-size(size)",
+                BitArraySegmentPanicReason::InvalidFloatSize {
+                    bit_size: 24.into(),
+                },
+            ),
+            (
+                "pub fn main() { let bits = <<1>> <<bits:bits-size(9)>> }",
+                "bits:bits-size(9)",
+                BitArraySegmentPanicReason::InsufficientBits {
+                    requested: 9,
+                    available: 8,
+                },
+            ),
+            (
+                "pub fn main() { let size = 99999999999999999999999999999999999999 <<1:size(size)>> }",
+                "1:size(size)",
+                BitArraySegmentPanicReason::SizeOutOfRange {
+                    bit_size: BigInt::parse_bytes(b"99999999999999999999999999999999999999", 10)
+                        .expect("integer"),
+                },
+            ),
+        ] {
+            let start = source.find(segment).expect("segment should exist");
+            assert_eq!(
+                crate::runtime::run_src_error(source),
+                ExecutionError::bit_array_segment_panic(
+                    None,
+                    reason,
+                    PanicSite::new(
+                        "main".into(),
+                        "main".into(),
+                        SourceSpan::new(start, start + segment.len()),
+                    ),
+                ),
+            );
+        }
+    }
 
     #[test]
     fn module_expression_errors_propagate_through_bit_array_wrappers() {
@@ -320,6 +439,43 @@ mod tests {
                 encoding: StringEncoding::Utf8,
             }]),
             BitArrayExpr::value(vec![BitArraySegment::Bits(BitArrayExpr::panic(panic()))]),
+            BitArrayExpr::value(vec![BitArraySegment::EvaluatedInt {
+                value: IntExpr::panic(panic()),
+                size: BitArrayEvaluatedSize::new(IntExpr::value(8.into()), 1),
+                endianness: Endianness::Big,
+                site: PanicSite::unknown(),
+            }]),
+            BitArrayExpr::value(vec![BitArraySegment::EvaluatedInt {
+                value: IntExpr::value(1.into()),
+                size: BitArrayEvaluatedSize::new(IntExpr::panic(panic()), 1),
+                endianness: Endianness::Big,
+                site: PanicSite::unknown(),
+            }]),
+            BitArrayExpr::value(vec![BitArraySegment::EvaluatedFloat {
+                value: FloatExpr::panic(panic()),
+                size: BitArrayEvaluatedSize::new(IntExpr::value(16.into()), 1),
+                endianness: Endianness::Big,
+                site: PanicSite::unknown(),
+            }]),
+            BitArrayExpr::value(vec![BitArraySegment::EvaluatedFloat {
+                value: FloatExpr::value(1.5),
+                size: BitArrayEvaluatedSize::new(IntExpr::panic(panic()), 1),
+                endianness: Endianness::Big,
+                site: PanicSite::unknown(),
+            }]),
+            BitArrayExpr::value(vec![BitArraySegment::SizedBits {
+                value: BitArrayExpr::panic(panic()),
+                size: BitArrayBitsSize::Fixed(0),
+                site: PanicSite::unknown(),
+            }]),
+            BitArrayExpr::value(vec![BitArraySegment::SizedBits {
+                value: BitArrayExpr::value(Vec::new()),
+                size: BitArrayBitsSize::Evaluated(BitArrayEvaluatedSize::new(
+                    IntExpr::panic(panic()),
+                    1,
+                )),
+                site: PanicSite::unknown(),
+            }]),
             BitArrayExpr::tuple_index(TupleExpr::panic(panic(), vec![ValueType::BitArray]), 0),
             BitArrayExpr::list_index(
                 ListExpr::panic(panic(), ValueType::BitArray)

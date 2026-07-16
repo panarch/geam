@@ -2,7 +2,7 @@ use super::{
     BitArrayFunctionExpr, BitArrayListExpr, BoolExpr, CallArg, CustomFieldAccess, FloatExpr,
     IntExpr, PanicExpr, StringExpr, TupleExpr, UtfCodepointExpr,
 };
-use crate::plan::{BitArrayFunctionId, BitArrayLocalId, Step};
+use crate::plan::{BitArrayFunctionId, BitArrayLocalId, PanicSite, Step};
 use ecow::EcoString;
 use num_bigint::BigInt;
 
@@ -27,16 +27,54 @@ pub enum FloatBitSize {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub(crate) struct BitArrayEvaluatedSize {
+    value: IntExpr,
+    unit: u8,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) enum BitArrayBitsSize {
+    Fixed(usize),
+    Evaluated(BitArrayEvaluatedSize),
+}
+
+impl BitArrayEvaluatedSize {
+    pub(crate) fn new(value: IntExpr, unit: u8) -> Self {
+        Self { value, unit }
+    }
+
+    pub(crate) fn value(&self) -> &IntExpr {
+        &self.value
+    }
+
+    pub(crate) fn into_parts(self) -> (IntExpr, u8) {
+        (self.value, self.unit)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub enum BitArraySegment {
     Int {
         value: IntExpr,
         bit_size: usize,
         endianness: Endianness,
     },
+    EvaluatedInt {
+        value: IntExpr,
+        size: BitArrayEvaluatedSize,
+        endianness: Endianness,
+        site: PanicSite,
+    },
     Float {
         value: FloatExpr,
         bit_size: FloatBitSize,
         endianness: Endianness,
+    },
+    EvaluatedFloat {
+        value: FloatExpr,
+        size: BitArrayEvaluatedSize,
+        endianness: Endianness,
+        site: PanicSite,
     },
     String {
         value: StringExpr,
@@ -47,6 +85,11 @@ pub enum BitArraySegment {
         encoding: StringEncoding,
     },
     Bits(BitArrayExpr),
+    SizedBits {
+        value: BitArrayExpr,
+        size: BitArrayBitsSize,
+        site: PanicSite,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -209,10 +252,13 @@ impl BitArrayExpr {
 
 #[cfg(test)]
 mod tests {
-    use super::{BitArrayExpr, BitArrayExprKind, BitArraySegment, Endianness};
+    use super::{
+        BitArrayBitsSize, BitArrayEvaluatedSize, BitArrayExpr, BitArrayExprKind, BitArraySegment,
+        Endianness,
+    };
     use crate::plan::{
         BitArrayFunctionId, BitArrayFunctionReference, BitArrayLocalId, BoolExpr, Expr, FloatExpr,
-        IntExpr, Step, StringExpr, TupleExpr, ValueType,
+        FloatLocalId, IntExpr, IntLocalId, PanicSite, Step, StringExpr, TupleExpr, ValueType,
     };
     use num_bigint::BigInt;
 
@@ -318,6 +364,57 @@ mod tests {
                 return_: Box::new(bit_array_value(2)),
             },
         );
+    }
+
+    #[test]
+    fn evaluated_segment_owners_preserve_value_size_and_failure_site() {
+        let site = PanicSite::new(
+            "main".into(),
+            "main".into(),
+            crate::plan::SourceSpan::new(4, 20),
+        );
+        let int_size =
+            BitArrayEvaluatedSize::new(IntExpr::local_get(IntLocalId(1), "int_size".into()), 2);
+        let float_size =
+            BitArrayEvaluatedSize::new(IntExpr::local_get(IntLocalId(2), "float_size".into()), 4);
+        let bits_size =
+            BitArrayEvaluatedSize::new(IntExpr::local_get(IntLocalId(3), "bits_size".into()), 8);
+        let segments = vec![
+            BitArraySegment::EvaluatedInt {
+                value: IntExpr::local_get(IntLocalId(0), "int_value".into()),
+                size: int_size.clone(),
+                endianness: Endianness::Little,
+                site: site.clone(),
+            },
+            BitArraySegment::EvaluatedFloat {
+                value: FloatExpr::local_get(FloatLocalId(0), "float_value".into()),
+                size: float_size.clone(),
+                endianness: Endianness::Big,
+                site: site.clone(),
+            },
+            BitArraySegment::SizedBits {
+                value: BitArrayExpr::local_get(BitArrayLocalId(0), "bits".into()),
+                size: BitArrayBitsSize::Fixed(12),
+                site: site.clone(),
+            },
+            BitArraySegment::SizedBits {
+                value: BitArrayExpr::local_get(BitArrayLocalId(1), "dynamic_bits".into()),
+                size: BitArrayBitsSize::Evaluated(bits_size.clone()),
+                site: site.clone(),
+            },
+        ];
+
+        assert_eq!(
+            BitArrayExpr::value(segments.clone()).kind(),
+            &BitArrayExprKind::Value(segments),
+        );
+        assert_eq!(
+            int_size.value(),
+            &IntExpr::local_get(IntLocalId(1), "int_size".into())
+        );
+        assert_eq!(int_size.into_parts().1, 2);
+        assert_eq!(float_size.into_parts().1, 4);
+        assert_eq!(bits_size.into_parts().1, 8);
     }
 
     fn bit_array_value(value: u8) -> BitArrayExpr {

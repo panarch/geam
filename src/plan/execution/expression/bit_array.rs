@@ -2,6 +2,7 @@ use super::{
     BitArrayFunctionExpr, BitArrayListExpr, BoolExpr, CallArg, CustomFieldAccess, FloatExpr,
     IntExpr, PanicExpr, StringExpr, TupleExpr, UtfCodepointExpr,
 };
+use crate::plan::PanicSite;
 use crate::plan::execution::{BitArrayFunctionId, BitArrayLocalId, Step};
 use ecow::EcoString;
 use num_bigint::BigInt;
@@ -26,16 +27,52 @@ pub(crate) enum FloatBitSize {
     SixtyFour,
 }
 
+pub(crate) struct BitArrayEvaluatedSize {
+    value: IntExpr,
+    unit: u8,
+}
+
+pub(crate) enum BitArrayBitsSize {
+    Fixed(usize),
+    Evaluated(BitArrayEvaluatedSize),
+}
+
+impl BitArrayEvaluatedSize {
+    pub(in crate::plan::execution) fn new(value: IntExpr, unit: u8) -> Self {
+        Self { value, unit }
+    }
+
+    pub(crate) fn value(&self) -> &IntExpr {
+        &self.value
+    }
+
+    pub(crate) fn unit(&self) -> u8 {
+        self.unit
+    }
+}
+
 pub(crate) enum BitArraySegment {
     Int {
         value: IntExpr,
         bit_size: usize,
         endianness: Endianness,
     },
+    EvaluatedInt {
+        value: IntExpr,
+        size: BitArrayEvaluatedSize,
+        endianness: Endianness,
+        site: PanicSite,
+    },
     Float {
         value: FloatExpr,
         bit_size: FloatBitSize,
         endianness: Endianness,
+    },
+    EvaluatedFloat {
+        value: FloatExpr,
+        size: BitArrayEvaluatedSize,
+        endianness: Endianness,
+        site: PanicSite,
     },
     String {
         value: StringExpr,
@@ -46,6 +83,11 @@ pub(crate) enum BitArraySegment {
         encoding: StringEncoding,
     },
     Bits(BitArrayExpr),
+    SizedBits {
+        value: BitArrayExpr,
+        size: BitArrayBitsSize,
+        site: PanicSite,
+    },
 }
 
 pub struct BitArrayExpr {
